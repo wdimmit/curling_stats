@@ -583,3 +583,59 @@ including one that asserts timing alone would have got g2e1 wrong.
   no key is set and says so in the log.
 * **Entry speed is still reported, and still decides nothing** — see the
   measurement above; nothing in the service changes that.
+
+## ds11 — a season reviewed by hand
+
+The first dataset here whose labels a detector did not write. 1,668 frames from
+114 games across a whole club season (24 Tuesdays, five sheets), auto-labelled
+by `ds10_stratified` and then checked frame by frame by a person: 7,110 labels
+in, 6,999 out, 325 rejected and 214 added.
+
+Its val split — 364 frames from 25 games on five held-out dates — is therefore
+the first benchmark in this project that measures something. Every number below
+is against it, and all three models are measured identically.
+
+| model | trained on | mAP50 | mAP50-95 | P | R |
+|---|---|---|---|---|---|
+| ds10_stratified | 6,144 detector-written | 0.9848 | 0.9484 | 0.9839 | 0.9453 |
+| ds11a | 1,304 hand-reviewed | 0.9931 | 0.9551 | **0.9924** | 0.9730 |
+| ds11b | both, 7,448 | **0.9933** | **0.9664** | 0.9832 | **0.9772** |
+
+**The gains land where the review said they should.** Reviewing the 551-frame
+pilot measured ds10's error rate per bin, and it spread fourfold: sparse frames
+lost 9% of their stones and motion frames carried three times the false-positive
+rate, while crowded houses ran at 2.6% error and 114 empty frames drew not one
+correction between them. Wave 2's quota was re-cut on that evidence — sparse and
+motion up, empty down to a token — and recall moved in exactly those bins:
+
+| bin | recall: ds10 | ds11a | ds11b |
+|---|---|---|---|
+| sparse | 0.9232 | **0.9620** | 0.9579 |
+| motion | 0.9262 | **0.9763** | 0.9691 |
+| medium | 0.9536 | **0.9838** | 0.9799 |
+| busy | 0.9880 | 0.9861 | **0.9948** |
+
+The bin that was already good barely moved. That is the shape of a targeted
+intervention rather than a general lift.
+
+**Two findings worth keeping.**
+
+*Reviewed breadth beats dense volume.* ds11a is trained on a fifth of ds10's
+frames and beats it on every metric. ds10's 6,995 frames are two seconds apart
+inside twenty ends of five games; ds11a's 1,304 are minutes apart across 95.
+
+*Empty frames teach nothing.* Across both waves, 203 frames whose right answer
+was "nothing" produced zero corrections — the detector never invented a stone on
+one, and the reviewer never found a missed stone on one. They are safe and
+uninformative, and they were 21% of the pilot's review time.
+
+**What this does not say.** mAP is not delivery recall. The pipeline misses
+about 40% of deliveries while the detector finds 98% of stones, so the loss is
+downstream — tracking, occlusion, the 16-shot fit, reading the house. Nothing
+here has been run end to end against `ground_truth.json`, and until it is, ds11b
+is a better detector on a benchmark rather than a better answer on a game.
+
+A residual circularity also stands: the labels began as ds10's predictions and a
+person changed 7.6% of them, so whatever the reviewer also missed still counts
+as agreement. Every frame was looked at, which makes this far weaker than
+ds1–ds10 had, but it is not zero.
