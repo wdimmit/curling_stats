@@ -143,3 +143,57 @@ it is meant to find. The lower quartile is used instead.
 
 Corrections go in `out/overrides.json`, keyed `"<game>.<end>.<shot>"`, and are
 layered over the detections on load so re-running never destroys them.
+
+## Charting a game
+
+```
+curling-score analyze <url> --out out
+curling-score serve --out out
+```
+
+The viewer is a charting tool, not a scoreboard. For each shot it shows the
+video, the house it left behind, and the path the stone took; you fill in what
+the detector could not read and grade the shot as a coach would.
+
+- **Blanks are explicit.** A shot whose house we could not read is hatched and
+  labelled `STATE UNKNOWN` — never drawn as an empty house. The header counts
+  how many are left; `n` jumps to the next one.
+- **The video starts before the throw.** Each shot seeks to `t_enter_s` minus a
+  lead-in (10 s by default, adjustable in the header), so you see the call and
+  the delivery rather than a stone already at rest. One embedded player is
+  reused throughout — navigating never reloads it.
+- **Shot types.** The detector offers only `draw`, `guard`, `hit`, `through` or
+  `unknown`, from where the stone stopped, how fast it entered and what it
+  moved. The full Curl Coach taxonomy (peel, freeze, come around, run back…) is
+  yours to pick, because those describe what was *called*.
+- **Grading** is Curl Coach's 0–4 per shot, with a miss reason and a note. The
+  Report view groups every player's shots by type and gives an average and a
+  shooting percentage (`points ÷ 4 × shots graded`). Ungraded shots count as
+  thrown but never as misses, and the report says how many are still ungraded.
+
+Keys: `←`/`→` shots, `n` next blank, `r`/`y` stone colour, `x` delete, `d` mark
+the delivered stone, `c` recolour, `t` track overlay, `v` replay, `p`
+play/pause, `0`–`4` grade, `Enter` mark charted and move on.
+
+Everything you enter is written to `out/overrides.json` as you go (the viewer
+POSTs it back to its own server; `⬇` downloads it if the server is gone).
+Re-running `analyze` layers the same file back over fresh detections.
+
+**Scoring is deliberately de-emphasised.** Computed end scores are still
+produced and shown in a collapsed panel, but precise measurement and the
+occlusion that comes with players clearing rocks make them unreliable, and they
+are not what this tool is for.
+
+## Hosting it
+
+The same pipeline runs as a small public service: paste a link, get a private
+charting URL; the club's league playlists are watched and processed
+automatically; a catalogue lists every game. The API runs on Cloud Run with
+Firestore and Cloud Storage, all inside free tiers at club scale; processing
+runs on a home GPU machine that pulls jobs over HTTPS. See
+[`deploy/README.md`](deploy/README.md).
+
+```bash
+MEMORY_BACKENDS=1 WORKER_TOKEN=w ADMIN_TOKEN=a uvicorn curling_score.service.asgi:app   # try it locally
+API_URL=http://127.0.0.1:8000 WORKER_TOKEN=w python -m curling_score.service.worker      # …and a worker
+```

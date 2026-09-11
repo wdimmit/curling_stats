@@ -1,0 +1,14 @@
+.venv
+.git
+out*/
+review*/
+inspect*/
+labelreview*/
+labelfix*/
+datasets/
+runs/
+*.jpg
+*.mp4
+*.npz
+__pycache__/
+.pytest_cache/

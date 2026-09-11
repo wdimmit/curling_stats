@@ -1,0 +1,24 @@
+{
+  "indexes": [
+    { "collectionGroup": "jobs", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "state", "order": "ASCENDING" },
+      { "fieldPath": "run_after", "order": "ASCENDING" },
+      { "fieldPath": "created_at", "order": "ASCENDING" } ] },
+    { "collectionGroup": "jobs", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "state", "order": "ASCENDING" },
+      { "fieldPath": "lease_expires_at", "order": "ASCENDING" } ] },
+    { "collectionGroup": "jobs", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "run_id", "order": "ASCENDING" },
+      { "fieldPath": "created_at", "order": "DESCENDING" } ] },
+    { "collectionGroup": "vod_runs", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "video_id", "order": "ASCENDING" },
+      { "fieldPath": "created_at", "order": "DESCENDING" } ] },
+    { "collectionGroup": "vod_runs", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "created_at", "order": "DESCENDING" } ] }
+  ],
+  "fieldOverrides": [
+    { "collectionGroup": "rate_limits", "fieldPath": "expires_at",
+      "ttl": true, "indexes": [] }
+  ]
+}

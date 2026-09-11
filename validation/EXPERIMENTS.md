@@ -426,3 +426,160 @@ The yellow is collateral damage from a rejected red.
 This is a 640-only failure at present: 448 is the operating point and accepts
 both shots. Recorded as a robustness gap in the late-entry route rather than a
 live bug.
+
+## Pivot: from scoring to charting (2026-09-10)
+
+The goal changed. The target is no longer "compute the score" but "help a player
+chart and grade their own game", the way Curl Coach does: best-effort house
+states, explicit blanks where we cannot read one, video at the moment each shot
+was *called*, the stone's track drawn on the house, and a coarse auto shot type.
+
+Scoring is explicitly de-emphasised. It was never going to be reliable -- two
+independent reasons, both measured here earlier: board agreement ran at 0-4 of
+13 ends, and the clearing-time occlusion that breaks the final house is exactly
+when the score is decided. Neither is worth fixing for a target that no longer
+needs it. The score is still computed and still emitted; it is simply demoted
+to a collapsed panel and no longer treated as the acceptance test.
+
+What this reuses rather than rebuilds:
+
+* `shots.from_deliveries` + `rest.stones_in_window` already produced a per-shot
+  house. That *is* the charting substrate; it needed no new CV.
+* `delivery._house_delta` already computed added/removed per shot and threw the
+  result away. Retained, it is the primary evidence for "this was a hit" --
+  stronger than any velocity threshold, because a stone that removed another
+  did so whatever the tracker thought of its speed.
+* The flight was computed inside `find_deliveries` and discarded at the end of
+  each loop iteration. `Delivery.track` now keeps it; the detection cache means
+  re-emitting timelines with tracks costs no GPU time.
+
+What is deliberately *not* automated: the fine Curl Coach types (peel, freeze,
+come around, run back, tick). Those describe the shot that was *called*, and no
+amount of tracking recovers intent -- a stone that removes a guard is a peel if
+that was the call and a wrecked draw if it was not. The detector offers five
+coarse observable categories (draw / guard / hit / through / unknown) and the
+charter supplies the rest. `unknown` is a first-class answer, not a failure.
+
+Two ground-truth-adjacent notes carried over from the debugging above:
+
+* `_still_there` rejects 9 of the 18 hand-labelled real deliveries. The pipeline
+  survives because other acceptance routes cover, but it is the *only* gate on
+  the late-entry route, which is why the 640 red takeout at t=5282 vanished.
+  Still open, and now lower priority: the charting UI gives a person a blank to
+  fill rather than silently dropping the shot.
+* ds10s (yolo11s) scores 18/18 deliveries and 8/8 phantoms against the corrected
+  ground truth; ds10 (yolo11n) scores 17/18 at both 448 and 640 -- but misses a
+  *different* shot at each size (g1e4 red t=3152 at 448, g1e6 yellow t=5209.8 at
+  640). yolo11s wins end-to-end despite worse validation mAP (0.9113 vs 0.9213),
+  which is one more datum for the standing finding that mAP against
+  auto-labelled data does not predict delivery recall.
+
+## Entry speed does not identify a takeout
+
+`classify.py` shipped with a speed fallback: where the house showed no change,
+a stone entering the panel above `HIT_SPEED_M_S = 2.5` was called a missed hit.
+The threshold was asserted, not measured -- the docstring claimed draws enter at
+1.1-2.0 m/s and takeouts at 2.6-4.5 "with nothing in between". That was written
+from assumption and was wrong on every count.
+
+`speeds.py` labelled all 200 accepted deliveries across both games of the
+reference VOD by whether the shot moved or removed a stone -- evidence entirely
+independent of velocity -- and measured `Delivery.speed_at()` for each:
+
+    house changed    n=82   min 0.20  p10 0.42  med 0.80  p90 1.29  max 1.73
+    house unchanged  n=118  min 0.01  p10 0.18  med 0.38  p90 0.52  max 3.29
+
+Two separate refutations:
+
+1. **No separation.** 105 of the 118 unchanged deliveries are at or above the
+   slowest changed one; all 82 changed ones are at or below the fastest
+   unchanged one. The distributions overlap end to end.
+2. **The threshold was above the entire hit population.** Confirmed hits top out
+   at 1.73 m/s, so 2.5 could never have fired on a real takeout. It could only
+   ever have mislabelled the handful of unchanged tracks reading 2.5-3.3 m/s,
+   which are far more likely to be tracking artifacts than shots.
+
+The absolute values were wrong too, and the reason is geometric: the overhead
+panel covers only the last few metres before the house, and a stone crossing it
+takes 6-8 s to cover ~5 m. Everything is moving at well under 1 m/s by the time
+we see it, takeouts included -- they have already shed their weight. The
+measurement that should separate weight classes is taken at the one place on the
+sheet where the weight classes have converged.
+
+The fallback is removed. Hits are identified by the house alone; a takeout that
+missed everything is reported as `draw`/`guard`/`through` on its rest position,
+and the charter corrects it from the video. `entry_speed_m_s` is still emitted
+and shown in the UI as "Weight", because a person can use a number that a
+threshold cannot.
+
+## Blanks: the alternation parity rule beats timing
+
+The first attempt at marking unseen deliveries keyed on the colour sequence
+repeating -- two reds running means a yellow went unseen between them. It never
+fired once. `fit_end` *enforces* alternation by dropping candidates, so by the
+time `from_deliveries` sees a sequence it always alternates perfectly. On the
+reference VOD this produced a timeline with **0 blanks across 200 shots**, every
+one of the 13 ends looking complete. Four of them were not.
+
+A missed delivery survives `fit_end` only as an end that is *short*:
+
+    g1e1  13 shots     g2e1  15 shots     g2e3  13 shots     g2e4  15 shots
+
+Timing looked like the way to place them, and on its own it is wrong. Gaps
+between deliveries, against each end's own median:
+
+    g1e1  one gap at 3.1x median      (shortfall 3)
+    g2e3  one gap at 2.7x median      (shortfall 3)
+    g2e1  three gaps at ~2.1x median  (shortfall 1)   <-- over-predicts
+    g2e4  two gaps at ~2.1x median    (shortfall 1)   <-- over-predicts
+
+Teams stop to confer and to measure, so a long gap is weak evidence. A
+gap-driven filler would have invented three blanks in g2e1 and two in g2e4.
+
+The strong constraint is parity, and it is free. The kept sequence alternates,
+so inserting a *single* blank between two neighbours is impossible -- it would
+have to differ from both, and there are only two colours. Mid-end insertions
+must come in pairs; an odd remainder can only belong at the end. That decides
+all four ends without appeal to timing:
+
+* shortfall 1 (g2e1, g2e4) -- odd, so it is the last rock. The long gaps are
+  pauses, exactly as suspected.
+* shortfall 3 (g1e1, g2e3) -- one pair plus one. Timing then only has to choose
+  *which* gap holds the pair, and in both ends exactly one gap qualifies.
+
+Result: 8 blanks, matching the 208 - 200 shortfall exactly, alternation intact
+and 8 rocks per team in every filled end.
+
+Capped at 4 blanks (`MAX_FILL`). The argument is decisive for a rock or three
+and worthless when half an end is missing, where every position would be
+invented. Below that the end reports `unplaced_shots` and the viewer warns that
+numbering after a gap may name the wrong thrower -- an honest "we lost track"
+rather than eight fabricated positions.
+
+The four real ends are now regression fixtures in `tests/test_shots.py`,
+including one that asserts timing alone would have got g2e1 wrong.
+
+## Hosting: what the build changed from the plan (2026-09-11)
+
+* **Pinned mtimes, not copied ones.** The plan had the proxy take its source
+  video's mtime so a rebuilt proxy would still hit the detection cache. A
+  re-downloaded original gets a new mtime too, which would have invalidated the
+  cache all the same. Every cached media file now carries one fixed timestamp;
+  the cache key's mtime component then only ever changes when the *bytes* do
+  (size still participates), which is the property actually wanted.
+* **Backoff belongs to whoever schedules.** `ensure_cached` can wait out a
+  YouTube block in-process (the CLI does), but the worker asks for a single
+  attempt and lets the queue's blocked-ladder reschedule, so a five-minute wait
+  is never served twice.
+* **An upload path through the API.** Signed bucket URLs are the normal route;
+  when the store cannot sign (the in-memory one) the API accepts the bytes
+  itself. That is what lets the multi-process local compose run with no bucket.
+* **Two length limits, not one.** `max_hours` (12) is a sanity cap; 5 h is the
+  threshold above which a stream needs a start time and is analysed in a window.
+  The plan had a single 5–6 h figure doing both jobs, which rejected exactly the
+  streams the windowing was written for.
+* **yt-dlp metadata at home.** A local run has no Data API key; on a
+  residential connection yt-dlp metadata is fine, so the service picks it when
+  no key is set and says so in the log.
+* **Entry speed is still reported, and still decides nothing** — see the
+  measurement above; nothing in the service changes that.

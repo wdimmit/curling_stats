@@ -1,0 +1,23 @@
+# The home worker. Copy deploy/worker.env.example to deploy/worker.env, fill it
+# in, then:  docker compose -f deploy/docker-compose.worker.yml up -d --build
+services:
+  worker:
+    build: { context: .., dockerfile: Dockerfile.worker }
+    image: curling-worker:local
+    restart: unless-stopped
+    env_file: worker.env
+    environment:
+      CURLING_SCORE_CACHE: /data/cache
+      WORKER_CACHE_GB: "300"
+      # YTDLP_POT_PROVIDER: http://pot:4416     # if the pot sidecar below is enabled
+    volumes:
+      - /srv/curling-cache:/data/cache
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+  # Only needed if YouTube starts demanding proof-of-origin tokens from this
+  # connection too. Off by default: a residential IP rarely needs it.
+  # pot:
+  #   image: brainicism/bgutil-ytdlp-pot-provider:latest
+  #   restart: unless-stopped

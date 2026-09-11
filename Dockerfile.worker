@@ -1,0 +1,17 @@
+# The processing worker: CUDA, torch, ultralytics, ffmpeg, yt-dlp, and the model.
+# Built on the PyTorch runtime image so torch is not installed a second time.
+FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY src ./src
+# torch comes from the base image; ultralytics and the rest from the extras.
+RUN pip install --no-cache-dir ".[worker]" "ultralytics>=8.3"
+# The production weights. Replacing this file changes MODEL_ID, which the API
+# checks on every claim -- set MODEL_ID on the API to match.
+ARG WEIGHTS=weights/ds10_stratified.pt
+COPY ${WEIGHTS} /opt/curling/model.pt
+ENV CURLING_SCORE_CACHE=/data/cache WEIGHTS=/opt/curling/model.pt PYTHONUNBUFFERED=1
+VOLUME /data/cache
+CMD ["python", "-m", "curling_score.service.worker"]

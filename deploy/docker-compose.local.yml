@@ -1,0 +1,40 @@
+# Everything on one machine, for development: the API on the Firestore emulator
+# with an in-memory blob store (uploads route through the API), plus a worker.
+# Run:  docker compose -f deploy/docker-compose.local.yml up --build
+# Then: open http://localhost:8080
+services:
+  firestore:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: gcloud emulators firestore start --host-port=0.0.0.0:8081 --project=local
+    ports: ["8081:8081"]
+  api:
+    build: { context: .., dockerfile: Dockerfile.api }
+    depends_on: [firestore]
+    ports: ["8080:8080"]
+    environment:
+      REPO: firestore
+      STORE: memory
+      FIRESTORE_EMULATOR_HOST: firestore:8081
+      GCP_PROJECT: local
+      PUBLIC_BASE_URL: http://api:8080
+      WORKER_TOKEN: local-worker-token
+      ADMIN_TOKEN: local-admin-token
+      MODEL_ID: ${MODEL_ID:-classical}
+      ALLOWED_CHANNEL_IDS: ""          # open, for local testing
+      YT_API_KEY: ${YT_API_KEY:-}      # unset: submissions cannot be validated
+  worker:
+    build: { context: .., dockerfile: Dockerfile.worker }
+    depends_on: [api]
+    environment:
+      API_URL: http://api:8080
+      WORKER_TOKEN: local-worker-token
+      WORKER_ID: local
+      WORKER_CACHE_GB: "50"
+    volumes:
+      - curling-cache:/data/cache
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+volumes:
+  curling-cache: {}

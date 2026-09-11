@@ -1,0 +1,39 @@
+# Cloud Run service for the API. Deploy with deploy/deploy-api.sh.
+# Secrets are read from Secret Manager; everything else is plain env.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: curling-chart
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "2"
+        run.googleapis.com/cpu-throttling: "true"     # request-based billing
+    spec:
+      serviceAccountName: curling-chart@PROJECT_ID.iam.gserviceaccount.com
+      containerConcurrency: 80
+      timeoutSeconds: 60
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/curling/api:latest
+          resources:
+            limits: { cpu: "1", memory: 512Mi }
+          env:
+            - { name: GCP_PROJECT,        value: PROJECT_ID }
+            - { name: GCS_BUCKET,         value: curling-chart-PROJECT_ID }
+            - { name: SIGNER_EMAIL,       value: curling-chart@PROJECT_ID.iam.gserviceaccount.com }
+            - { name: PUBLIC_BASE_URL,    value: https://chart.example.org }
+            - { name: ALLOWED_CHANNEL_IDS, value: UC81pcWoRJbdnK77B3WS0zjg }
+            - { name: REQUIRE_APPROVAL,   value: "0" }
+            - { name: MODEL_ID,           value: "ds10_stratified-REPLACEME" }   # python -c 'from curling_score.version import model_id; print(model_id("weights/ds10_stratified.pt"))'
+            - { name: MAX_QUEUED,         value: "10" }
+            - name: WORKER_TOKEN
+              valueFrom: { secretKeyRef: { name: curling-worker-token, key: latest } }
+            - name: ADMIN_TOKEN
+              valueFrom: { secretKeyRef: { name: curling-admin-token, key: latest } }
+            - name: YT_API_KEY
+              valueFrom: { secretKeyRef: { name: curling-yt-api-key, key: latest } }
+            - name: IP_SALT
+              valueFrom: { secretKeyRef: { name: curling-ip-salt, key: latest } }
