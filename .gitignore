@@ -1,0 +1,25 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Cached video downloads and analysis output
+cache/
+out/
+out_*/
+runs/
+
+# Generated review pages. Every one of these is rebuilt by
+# `curling-score labels --fix` or `curling-score review` from data that IS
+# tracked, and together they are ~340 MB of jpgs.
+review/
+review_*/
+labelreview_*/
+labelfix_*/
+inspect/
+inspect_*/
+
+# One-off frames dropped at the repo root while looking at something.
+/*.jpg
+/*.png
