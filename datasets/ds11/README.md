@@ -95,3 +95,28 @@ with probability roughly `(W+4)/60`. Measured yield: **7.1 flights per video**.
 nobody ticked. An unreviewed frame still carries whatever the detector said,
 and letting those through silently is what would make the whole exercise
 circular again.
+
+## What the harvest found
+
+**114 of 120 videos are usable; 6,400 candidate frames.**
+
+The six that are not are all the same thing, and it is not a bug: on those
+nights **only one of the two overhead cameras was feeding**, so the lower half
+of the composite strip is a blank grey rectangle. `layout.detect_panels`
+reports "expected 3 horizontal bars, found 2" and refuses rather than guessing,
+which is the behaviour the README argues for — reading a band of clean ice as a
+separator once put the bottom-panel crop inside the top panel.
+
+    2025-12-09  all five sheets   Bs_z89y-hi8 G_3D95BIbK8 563I0SvTZsM
+                                  dCviTBb5X-E 0M6_9wD3ofE
+    2025-12-16  sheet 4           H00-hfFV7oI
+
+All six are train videos, so the val split is untouched. They were not chased:
+114 videos already yield 6,400 candidates against a budget of under 2,000
+frames, so recovering five more would mean relaxing a safety check to gain
+nothing.
+
+It is worth knowing outside ds11 though. **`analyze` cannot read these VODs
+either** — a single-overhead night is a real thing the club does, roughly 5% of
+the season, and the pipeline currently fails on it rather than reading the one
+house it can see. That is a candidate for `BACKLOG.md`.
