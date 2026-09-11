@@ -122,3 +122,9 @@ tr.total td { border-top:2px solid var(--line); font-weight:650; }
   body { background:#fff; }
   .card { break-inside:avoid; border-color:#ccc; }
 }
+
+/* --- view-only mode ---------------------------------------------------- */
+body[data-mode="view"] .tools, body[data-mode="view"] #typeGroups,
+body[data-mode="view"] #typeList, body[data-mode="view"] #scoreBtns,
+body[data-mode="view"] #missReason, body[data-mode="view"] #note { pointer-events:none; opacity:.6; }
+body[data-mode="view"] #house { cursor:default; }

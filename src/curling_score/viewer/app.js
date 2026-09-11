@@ -58,8 +58,13 @@ const MISS_REASONS = ["heavy", "light", "narrow", "wide", "wrong turn",
                       "swept too long", "not swept enough", "wrecked on a guard",
                       "rock picked", "hogged"];
 
+/* Served by the hosted API the page is mounted at /c/{slug}/ and told its
+ * mode; served locally there is no window.CHART and everything is editable. */
+const CHART = (typeof window !== "undefined" && window.CHART) || { mode:"edit", slug:null };
+const READ_ONLY = CHART.mode === "view";
+
 const state = {
-  doc:null, overrides:{}, gi:0, ei:0, si:0,
+  doc:null, overrides:{}, version:null, gi:0, ei:0, si:0,
   selStone:null, placeColor:"red", openGroup:null,
   showTrack:true, autoplay:true, leadIn:10,
   player:null, playerReady:false, pendingSeek:null, seekTimer:null,
@@ -101,6 +106,7 @@ const typeOf = s => s ? (s.shot_type || "unknown") : "unknown";
 const isGraded = s => s && typeof s.user_score === "number";
 
 function patchShot(fields) {
+  if (READ_ONLY) return;
   const key = shotKey();
   if (!key) return;
   state.overrides[key] = { ...(state.overrides[key] || {}), ...fields };
@@ -151,6 +157,7 @@ function removeStone(i) {
 /* ------------------------------------------------------------------- save */
 
 function markDirty() {
+  if (READ_ONLY) return;
   setSave("unsaved", "•");
   clearTimeout(state.saveTimer);
   state.saveTimer = setTimeout(save, SAVE_DEBOUNCE_MS);
@@ -167,12 +174,25 @@ async function save() {
   state.saving = true;
   setSave("", "saving…");
   try {
-    const res = await fetch("overrides.json", {
+    // The version we last saw rides along so two open tabs cannot silently
+    // overwrite each other; the local server ignores it.
+    const url = state.version === null ? "overrides.json" : `overrides.json?v=${state.version}`;
+    const res = await fetch(url, {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
       body:JSON.stringify(state.overrides),
     });
+    if (res.status === 409) {
+      const body = await res.json();
+      state.overrides = body.overrides || {};
+      state.version = body.version ?? state.version;
+      render();
+      setSave("failed", "reloaded — someone else saved");
+      return;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json().catch(() => ({}));
+    if (typeof body.version === "number") state.version = body.version;
     const t = new Date();
     setSave("saved", `saved ${String(t.getHours()).padStart(2,"0")}:` +
                      `${String(t.getMinutes()).padStart(2,"0")}`);
@@ -191,7 +211,9 @@ async function save() {
 const BROWSER = typeof document !== "undefined";
 
 if (BROWSER) addEventListener("pagehide", () => {
-  if (!state.saveTimer) return;
+  if (!state.saveTimer || READ_ONLY) return;
+  // A beacon cannot read the reply, so it saves unconditionally: better a
+  // last-writer save than losing the last minute of grading.
   navigator.sendBeacon?.("overrides.json",
     new Blob([JSON.stringify(state.overrides)], { type:"application/json" }));
 });
@@ -756,7 +778,7 @@ function savePrefs() {
 /* Exported for the node tests, which exercise the merge and the report
  * arithmetic without a browser. Harmless in one. */
 if (typeof module !== "undefined" && module.exports)
-  module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots,
+  module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots, READ_ONLY,
                      gatherStats, pct, avg,
                      isBlank, isGraded, typeOf, shotVideoTime, TYPE, TYPES,
                      GROUPS, POSITIONS, stoneAt, R, LIMIT };
@@ -765,10 +787,36 @@ if (BROWSER) boot();
 
 function boot() { Promise.all([
   fetch("timeline.json").then(r => r.json()),
-  fetch("overrides.json").then(r => r.ok ? r.json() : {}).catch(() => ({})),
+  fetch("overrides.json").then(async r => {
+    // The hosted API versions the overrides through an ETag; the local server
+    // has none, and then saves are unconditional.
+    const tag = r.headers.get("ETag");
+    if (tag) { const n = parseInt(tag.replace(/"/g, ""), 10); if (!isNaN(n)) state.version = n; }
+    return r.ok ? r.json() : {};
+  }).catch(() => ({})),
 ]).then(([d, ov]) => {
   state.doc = d;
   state.overrides = (ov && typeof ov === "object" && !Array.isArray(ov)) ? ov : {};
+  if (READ_ONLY) {
+    document.body.dataset.mode = "view";
+    for (const id of ["download", "delStone", "markThrown", "resetShot", "markCharted"])
+      $(id).hidden = true;
+    $("save").hidden = true;
+  }
+  $("copyLink").onclick = async () => {
+    try { await navigator.clipboard.writeText(location.href); $("copyLink").textContent = "Copied ✓"; }
+    catch { prompt("Copy this link:", location.href); }
+    setTimeout(() => { $("copyLink").textContent = "Copy link"; }, 1500);
+  };
+  const share = d.chart && d.chart.share_url;
+  if (share && !READ_ONLY) {
+    $("shareLink").hidden = false;
+    $("shareLink").onclick = async () => {
+      try { await navigator.clipboard.writeText(share); $("shareLink").textContent = "Copied ✓"; }
+      catch { prompt("View-only link:", share); }
+      setTimeout(() => { $("shareLink").textContent = "View-only link"; }, 1500);
+    };
+  }
 
   const src = d.source;
   $("src").innerHTML = `sheet ${esc(src.sheet ?? "?")} &middot; ` +

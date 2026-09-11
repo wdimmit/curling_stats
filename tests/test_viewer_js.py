@@ -249,3 +249,10 @@ class TestAnEndWithNothingDetected:
                      "out([isBlank(null) ?? null, typeOf(null), "
                      "isGraded(null) ?? null, shotVideoTime(null)]);")
         assert got == [None, "unknown", None, None]
+
+
+class TestHostedMode:
+    def test_served_locally_the_page_is_editable(self):
+        # No window.CHART in node, as when curling-score serve hosts the page.
+        got = run_js("out([A.READ_ONLY, state.version]);")
+        assert got == [False, None]
