@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Curling Chart</title>
+<link rel="stylesheet" href="/static/site.css">
+<header>
+  <h1>Curling Chart</h1>
+  <a href="/">Submit a link</a>
+  <span style="flex:1"></span>
+  <select id="league"><option value="">All leagues</option></select>
+</header>
+<main>
+  <p class="muted">Every game we've processed. Click one to get your own charting link —
+  each link is private to whoever has it, so a team can grade a game without anyone
+  else seeing.</p>
+  <div id="list" class="card"><span class="muted">Loading…</span></div>
+</main>
+<script src="/static/games.js"></script>

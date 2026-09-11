@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Curling Chart</title>
+<link rel="stylesheet" href="/static/site.css">
+<header>
+  <h1>Curling Chart</h1>
+  <a href="/games">All games</a>
+</header>
+<main>
+  <div class="card">
+    <p>Paste the YouTube link to a club stream. We find the game, work out every
+    shot and where the stones came to rest, and give you a link where your team
+    can watch each shot, fix what we missed, and grade it.</p>
+    <form id="f">
+      <label for="url">YouTube link</label>
+      <input id="url" name="url" placeholder="https://www.youtube.com/watch?v=… (a ?t= start time is kept)" required autofocus>
+      <div class="row">
+        <div style="flex:1">
+          <label for="start">Game starts at (optional)</label>
+          <input id="start" name="start" placeholder="e.g. 1:52:30 or 6750 — for a stream with several games">
+        </div>
+        <div style="width:140px">
+          <label for="sheet">Sheet (optional)</label>
+          <input id="sheet" name="sheet" type="number" min="1" max="8" placeholder="from title">
+        </div>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="primary" id="go" type="submit">Get my link</button>
+        <span class="muted">Processing takes about half an hour the first time a video is seen.</span>
+      </div>
+    </form>
+    <div id="msg"></div>
+  </div>
+</main>
+<footer>
+  This service downloads the video from YouTube in order to analyse it, which is
+  against YouTube's Terms of Service; it does so from a single residential
+  connection belonging to the operator, only for the club's own videos, and keeps
+  no copy beyond what processing needs. Playback on the chart page uses YouTube's
+  own player. Do not submit videos you do not have the right to analyse.
+</footer>
+<script src="/static/submit.js"></script>
