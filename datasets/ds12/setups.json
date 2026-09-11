@@ -1,0 +1,2970 @@
+{
+ "OvJYTYdnnmA": {
+  "video_id": "OvJYTYdnnmA",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     812,
+     11,
+     298,
+     510
+    ],
+    "calib": {
+     "center_px": [
+      145.32386779785156,
+      135.57872009277344
+     ],
+     "px_per_m": 67.43460088954498,
+     "edge_erosion_px": 1.4479161549074604,
+     "residual_m": 0.0025200496646107843,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     812,
+     552,
+     298,
+     518
+    ],
+    "calib": {
+     "center_px": [
+      139.41494750976562,
+      350.22198486328125
+     ],
+     "px_per_m": 75.55977457458391,
+     "edge_erosion_px": 2.009756041640543,
+     "residual_m": 0.0006294997831823042,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "L7mK9r5gio0": {
+  "video_id": "L7mK9r5gio0",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3120.0,
+   4065.0,
+   5010.0,
+   5955.0,
+   6905.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     810,
+     10,
+     297,
+     514
+    ],
+    "calib": {
+     "center_px": [
+      154.5376434326172,
+      158.7841796875
+     ],
+     "px_per_m": 76.34119980544953,
+     "edge_erosion_px": 1.9955700081320344,
+     "residual_m": 0.0001100136654933257,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     810,
+     554,
+     297,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      148.86233520507812,
+      357.0822448730469
+     ],
+     "px_per_m": 77.62329216914797,
+     "edge_erosion_px": 2.53095425823102,
+     "residual_m": 0.003102393078954115,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "szUiGy1xwaA": {
+  "video_id": "szUiGy1xwaA",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     809,
+     10,
+     302,
+     522
+    ],
+    "calib": {
+     "center_px": [
+      149.3873291015625,
+      152.17205810546875
+     ],
+     "px_per_m": 79.10348612859595,
+     "edge_erosion_px": 1.945496771291829,
+     "residual_m": 0.002292739224148232,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     809,
+     540,
+     302,
+     530
+    ],
+    "calib": {
+     "center_px": [
+      153.0669708251953,
+      369.97198486328125
+     ],
+     "px_per_m": 77.40754001768245,
+     "edge_erosion_px": 2.5348955141185456,
+     "residual_m": 0.001294210756410136,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "s_iPqkT02q8": {
+  "video_id": "s_iPqkT02q8",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     813,
+     10,
+     294,
+     527
+    ],
+    "calib": {
+     "center_px": [
+      148.5723419189453,
+      152.32359313964844
+     ],
+     "px_per_m": 77.31377779622743,
+     "edge_erosion_px": 2.394806998967937,
+     "residual_m": 0.004576736601246156,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     813,
+     553,
+     294,
+     517
+    ],
+    "calib": {
+     "center_px": [
+      147.38755798339844,
+      352.63812255859375
+     ],
+     "px_per_m": 76.09795541967,
+     "edge_erosion_px": 2.1973206188264385,
+     "residual_m": 0.002517601391434343,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "3cF0nmZyMl0": {
+  "video_id": "3cF0nmZyMl0",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     807,
+     10,
+     300,
+     534
+    ],
+    "calib": {
+     "center_px": [
+      150.46884155273438,
+      161.02090454101562
+     ],
+     "px_per_m": 79.61214216252502,
+     "edge_erosion_px": 2.0559434034418587,
+     "residual_m": 0.0008383295940391939,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     807,
+     554,
+     300,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      154.890625,
+      344.8487854003906
+     ],
+     "px_per_m": 75.64862255941624,
+     "edge_erosion_px": 2.0691248506254283,
+     "residual_m": 0.007981502155999928,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "zm8piAr-5ss": {
+  "video_id": "zm8piAr-5ss",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3120.0,
+   4065.0,
+   5010.0,
+   5955.0,
+   6905.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     812,
+     11,
+     298,
+     510
+    ],
+    "calib": {
+     "center_px": [
+      145.38011169433594,
+      135.6848907470703
+     ],
+     "px_per_m": 67.43794428932608,
+     "edge_erosion_px": 1.5340216200699786,
+     "residual_m": 0.003187666196980346,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     812,
+     552,
+     298,
+     518
+    ],
+    "calib": {
+     "center_px": [
+      139.4187469482422,
+      350.2989501953125
+     ],
+     "px_per_m": 75.57687995125684,
+     "edge_erosion_px": 2.045703335633931,
+     "residual_m": 0.003070792866817663,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "w_idtwUuEpM": {
+  "video_id": "w_idtwUuEpM",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   279.6,
+   1219.6,
+   2164.6,
+   3109.6,
+   4049.6,
+   4994.6,
+   5934.6,
+   6879.6
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     810,
+     10,
+     297,
+     514
+    ],
+    "calib": {
+     "center_px": [
+      154.44137573242188,
+      158.75714111328125
+     ],
+     "px_per_m": 76.35017563280763,
+     "edge_erosion_px": 2.121392313948121,
+     "residual_m": 0.0005118811854222085,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     810,
+     554,
+     297,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      149.07366943359375,
+      357.21112060546875
+     ],
+     "px_per_m": 77.62027644878167,
+     "edge_erosion_px": 2.5957433762865207,
+     "residual_m": 0.00762606217407076,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "ChzMBp26z6g": {
+  "video_id": "ChzMBp26z6g",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     809,
+     10,
+     302,
+     522
+    ],
+    "calib": {
+     "center_px": [
+      149.4534912109375,
+      152.28639221191406
+     ],
+     "px_per_m": 79.1119482515287,
+     "edge_erosion_px": 2.075956599116296,
+     "residual_m": 0.00023488606357509372,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     809,
+     540,
+     302,
+     530
+    ],
+    "calib": {
+     "center_px": [
+      153.2547607421875,
+      370.006591796875
+     ],
+     "px_per_m": 77.33078865490225,
+     "edge_erosion_px": 2.676019041613074,
+     "residual_m": 0.003737969536489697,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "DWzZ8TdKPzA": {
+  "video_id": "DWzZ8TdKPzA",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     813,
+     10,
+     294,
+     527
+    ],
+    "calib": {
+     "center_px": [
+      148.45889282226562,
+      152.4405517578125
+     ],
+     "px_per_m": 77.31593276356477,
+     "edge_erosion_px": 2.53192714516544,
+     "residual_m": 0.0033369844879401287,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     813,
+     554,
+     294,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      147.91671752929688,
+      351.85162353515625
+     ],
+     "px_per_m": 76.07293980806772,
+     "edge_erosion_px": 2.4753433103230407,
+     "residual_m": 0.003211602610636022,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "dsEOpY_Cg_w": {
+  "video_id": "dsEOpY_Cg_w",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     807,
+     10,
+     301,
+     534
+    ],
+    "calib": {
+     "center_px": [
+      150.4237823486328,
+      161.10182189941406
+     ],
+     "px_per_m": 79.65038806414802,
+     "edge_erosion_px": 2.140787735635314,
+     "residual_m": 0.0005075706805305066,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     807,
+     554,
+     301,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      154.81834411621094,
+      344.7972717285156
+     ],
+     "px_per_m": 75.68665034655972,
+     "edge_erosion_px": 2.1659603881545877,
+     "residual_m": 0.013179143836768135,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "B6MJEnfo1aE": {
+  "video_id": "B6MJEnfo1aE",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     812,
+     11,
+     298,
+     510
+    ],
+    "calib": {
+     "center_px": [
+      145.26661682128906,
+      135.55181884765625
+     ],
+     "px_per_m": 67.46242626656236,
+     "edge_erosion_px": 1.52747621942342,
+     "residual_m": 0.0042820141897495076,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     812,
+     552,
+     298,
+     518
+    ],
+    "calib": {
+     "center_px": [
+      139.30258178710938,
+      350.3230285644531
+     ],
+     "px_per_m": 75.56434335170746,
+     "edge_erosion_px": 2.0331269834370005,
+     "residual_m": 0.0009842662569296782,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "bJN_SwjsZ48": {
+  "video_id": "bJN_SwjsZ48",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     810,
+     10,
+     297,
+     514
+    ],
+    "calib": {
+     "center_px": [
+      154.3092803955078,
+      158.81321716308594
+     ],
+     "px_per_m": 76.37235517483013,
+     "edge_erosion_px": 2.154016496600235,
+     "residual_m": 7.349860305103974e-06,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     810,
+     554,
+     297,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      148.78135681152344,
+      357.30572509765625
+     ],
+     "px_per_m": 77.66802996108825,
+     "edge_erosion_px": 2.6469441084007315,
+     "residual_m": 0.007110556424814997,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "XVGuuz5XlXo": {
+  "video_id": "XVGuuz5XlXo",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     809,
+     10,
+     302,
+     522
+    ],
+    "calib": {
+     "center_px": [
+      149.2861785888672,
+      152.16070556640625
+     ],
+     "px_per_m": 79.11179811768038,
+     "edge_erosion_px": 2.0225966771592994,
+     "residual_m": 0.0004787548171287417,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     809,
+     540,
+     302,
+     530
+    ],
+    "calib": {
+     "center_px": [
+      153.16429138183594,
+      370.103271484375
+     ],
+     "px_per_m": 77.421768119557,
+     "edge_erosion_px": 2.612111949751778,
+     "residual_m": 0.004048044825185043,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "zeo2lZvH3RY": {
+  "video_id": "zeo2lZvH3RY",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     813,
+     10,
+     294,
+     527
+    ],
+    "calib": {
+     "center_px": [
+      148.6267852783203,
+      152.33242797851562
+     ],
+     "px_per_m": 77.3234562369799,
+     "edge_erosion_px": 2.5644024828268357,
+     "residual_m": 0.003080463794835567,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     813,
+     553,
+     294,
+     517
+    ],
+    "calib": {
+     "center_px": [
+      147.5270233154297,
+      352.76324462890625
+     ],
+     "px_per_m": 76.1556707645305,
+     "edge_erosion_px": 2.4060161398497257,
+     "residual_m": 0.003940457439512046,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "MMY2eNE_TwA": {
+  "video_id": "MMY2eNE_TwA",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     807,
+     10,
+     300,
+     534
+    ],
+    "calib": {
+     "center_px": [
+      150.4939727783203,
+      161.32398986816406
+     ],
+     "px_per_m": 79.66480080928878,
+     "edge_erosion_px": 2.1340828505993272,
+     "residual_m": 0.00043879885192468695,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     807,
+     554,
+     300,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      155.0283660888672,
+      344.86865234375
+     ],
+     "px_per_m": 75.70847892805553,
+     "edge_erosion_px": 2.222928931093236,
+     "residual_m": 0.013828106220682321,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "PV31YExnMwE": {
+  "video_id": "PV31YExnMwE",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     812,
+     11,
+     298,
+     510
+    ],
+    "calib": {
+     "center_px": [
+      145.42051696777344,
+      135.68836975097656
+     ],
+     "px_per_m": 67.46289688823369,
+     "edge_erosion_px": 1.5311331595559778,
+     "residual_m": 0.00390837695166199,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     812,
+     553,
+     298,
+     517
+    ],
+    "calib": {
+     "center_px": [
+      139.4000244140625,
+      349.2388610839844
+     ],
+     "px_per_m": 75.55943771506892,
+     "edge_erosion_px": 2.044372469532931,
+     "residual_m": 0.002217800345056717,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "zEXqq3rIwdo": {
+  "video_id": "zEXqq3rIwdo",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     810,
+     10,
+     297,
+     514
+    ],
+    "calib": {
+     "center_px": [
+      154.43502807617188,
+      158.78256225585938
+     ],
+     "px_per_m": 76.34388110142054,
+     "edge_erosion_px": 2.0854808123301893,
+     "residual_m": 0.0007709016379634733,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     810,
+     554,
+     297,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      148.88619995117188,
+      357.1497802734375
+     ],
+     "px_per_m": 77.63690264640566,
+     "edge_erosion_px": 2.6660849427173616,
+     "residual_m": 0.006844662761106092,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "BMzrG9tvbaQ": {
+  "video_id": "BMzrG9tvbaQ",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     809,
+     10,
+     302,
+     522
+    ],
+    "calib": {
+     "center_px": [
+      149.31045532226562,
+      152.20127868652344
+     ],
+     "px_per_m": 79.12553655375966,
+     "edge_erosion_px": 1.9975762664943773,
+     "residual_m": 0.0015630805086098434,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     809,
+     540,
+     302,
+     530
+    ],
+    "calib": {
+     "center_px": [
+      153.322021484375,
+      370.13934326171875
+     ],
+     "px_per_m": 77.32382293945388,
+     "edge_erosion_px": 2.5468312993275504,
+     "residual_m": 0.0026483507505495308,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "4cCM9eGMYXk": {
+  "video_id": "4cCM9eGMYXk",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3120.0,
+   4065.0,
+   5010.0,
+   5955.0,
+   6905.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     813,
+     10,
+     294,
+     527
+    ],
+    "calib": {
+     "center_px": [
+      148.55654907226562,
+      152.3163299560547
+     ],
+     "px_per_m": 77.28546036940169,
+     "edge_erosion_px": 2.480297750498977,
+     "residual_m": 0.0016931443654389909,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     813,
+     554,
+     294,
+     504
+    ],
+    "calib": {
+     "center_px": [
+      147.66525268554688,
+      351.5888366699219
+     ],
+     "px_per_m": 76.03871607552318,
+     "edge_erosion_px": 2.4161889604326916,
+     "residual_m": 0.004258187287558718,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "RpAPa-1Ucw0": {
+  "video_id": "RpAPa-1Ucw0",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     807,
+     10,
+     300,
+     534
+    ],
+    "calib": {
+     "center_px": [
+      150.44219970703125,
+      161.2328338623047
+     ],
+     "px_per_m": 79.67975298494282,
+     "edge_erosion_px": 2.150032064440893,
+     "residual_m": 0.0012403641299404973,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     807,
+     554,
+     300,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      154.93211364746094,
+      344.8404235839844
+     ],
+     "px_per_m": 75.69005280890262,
+     "edge_erosion_px": 2.1636080523266514,
+     "residual_m": 0.015080988859570174,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "KtF-Ea_ubBk": {
+  "video_id": "KtF-Ea_ubBk",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     812,
+     11,
+     298,
+     510
+    ],
+    "calib": {
+     "center_px": [
+      145.42691040039062,
+      135.6165008544922
+     ],
+     "px_per_m": 67.42697669757021,
+     "edge_erosion_px": 1.4695969655492718,
+     "residual_m": 0.0036817015954793515,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     812,
+     552,
+     298,
+     518
+    ],
+    "calib": {
+     "center_px": [
+      139.50485229492188,
+      350.34326171875
+     ],
+     "px_per_m": 75.59651031301729,
+     "edge_erosion_px": 2.0489610880945577,
+     "residual_m": 0.004386860922904393,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "KqC_xnRbFfI": {
+  "video_id": "KqC_xnRbFfI",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     810,
+     10,
+     297,
+     514
+    ],
+    "calib": {
+     "center_px": [
+      154.45849609375,
+      158.74932861328125
+     ],
+     "px_per_m": 76.3575898198381,
+     "edge_erosion_px": 2.0760463068510546,
+     "residual_m": 0.00040584865571431785,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     810,
+     554,
+     297,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      148.87857055664062,
+      357.3395080566406
+     ],
+     "px_per_m": 77.65303423824423,
+     "edge_erosion_px": 2.6047006471393104,
+     "residual_m": 0.006897920205790982,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "s90LGSWF3Zg": {
+  "video_id": "s90LGSWF3Zg",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     809,
+     10,
+     302,
+     522
+    ],
+    "calib": {
+     "center_px": [
+      149.38612365722656,
+      152.13519287109375
+     ],
+     "px_per_m": 79.12484250087455,
+     "edge_erosion_px": 2.0406183672050133,
+     "residual_m": 0.00028758678605124064,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     809,
+     540,
+     302,
+     530
+    ],
+    "calib": {
+     "center_px": [
+      153.18653869628906,
+      369.9829406738281
+     ],
+     "px_per_m": 77.34864736091636,
+     "edge_erosion_px": 2.7003207985066524,
+     "residual_m": 0.0027741065424572186,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "mPvSGoo0pX4": {
+  "video_id": "mPvSGoo0pX4",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     813,
+     10,
+     294,
+     530
+    ],
+    "calib": {
+     "center_px": [
+      148.49807739257812,
+      152.23333740234375
+     ],
+     "px_per_m": 77.30335946896655,
+     "edge_erosion_px": 2.495716478017158,
+     "residual_m": 0.0022734095714123954,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     813,
+     554,
+     294,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      147.88641357421875,
+      351.8136291503906
+     ],
+     "px_per_m": 76.0816623809304,
+     "edge_erosion_px": 2.5130330411084003,
+     "residual_m": 0.003699157411655181,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "rb2Z21rm1qc": {
+  "video_id": "rb2Z21rm1qc",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     807,
+     10,
+     300,
+     534
+    ],
+    "calib": {
+     "center_px": [
+      150.50181579589844,
+      161.12217712402344
+     ],
+     "px_per_m": 79.66681959000047,
+     "edge_erosion_px": 2.1728551565757073,
+     "residual_m": 0.0010796230281113564,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     807,
+     554,
+     300,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      154.8662567138672,
+      344.8052673339844
+     ],
+     "px_per_m": 75.68550956818775,
+     "edge_erosion_px": 2.182031863496661,
+     "residual_m": 0.014240357991541615,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "76FZa42rcGQ": {
+  "video_id": "76FZa42rcGQ",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     812,
+     11,
+     298,
+     510
+    ],
+    "calib": {
+     "center_px": [
+      145.4801788330078,
+      135.70668029785156
+     ],
+     "px_per_m": 67.42536932375323,
+     "edge_erosion_px": 1.5223211413380113,
+     "residual_m": 0.006482017452060317,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     812,
+     554,
+     298,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      139.56600952148438,
+      348.2176818847656
+     ],
+     "px_per_m": 75.528839244861,
+     "edge_erosion_px": 1.986843841643747,
+     "residual_m": 0.00018957823367446124,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "CTQp6E5ouyM": {
+  "video_id": "CTQp6E5ouyM",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3120.0,
+   4065.0,
+   5010.0,
+   5955.0,
+   6905.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     810,
+     10,
+     297,
+     514
+    ],
+    "calib": {
+     "center_px": [
+      154.67098999023438,
+      158.80174255371094
+     ],
+     "px_per_m": 76.3090854998564,
+     "edge_erosion_px": 2.000744381190458,
+     "residual_m": 0.0005247941241189129,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     810,
+     554,
+     297,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      149.19236755371094,
+      356.9841613769531
+     ],
+     "px_per_m": 77.64818085313651,
+     "edge_erosion_px": 2.5126557759921297,
+     "residual_m": 0.0059152224134272225,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "UhzT4CZ6Qkw": {
+  "video_id": "UhzT4CZ6Qkw",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3120.0,
+   4065.0,
+   5010.0,
+   5955.0,
+   6905.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     809,
+     10,
+     302,
+     522
+    ],
+    "calib": {
+     "center_px": [
+      149.4174346923828,
+      152.2749481201172
+     ],
+     "px_per_m": 79.08504246723322,
+     "edge_erosion_px": 2.0109988493273647,
+     "residual_m": 0.0013884642977475565,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     809,
+     540,
+     302,
+     530
+    ],
+    "calib": {
+     "center_px": [
+      153.4824676513672,
+      370.085205078125
+     ],
+     "px_per_m": 77.27544017031744,
+     "edge_erosion_px": 2.608401775612151,
+     "residual_m": 0.003815254226240707,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "6dt0WrJ1U_Q": {
+  "video_id": "6dt0WrJ1U_Q",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     813,
+     10,
+     294,
+     527
+    ],
+    "calib": {
+     "center_px": [
+      148.44223022460938,
+      152.37966918945312
+     ],
+     "px_per_m": 77.26068775555375,
+     "edge_erosion_px": 2.456999442993748,
+     "residual_m": 0.003384973238875178,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     813,
+     554,
+     294,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      147.94886779785156,
+      351.7513732910156
+     ],
+     "px_per_m": 76.02374102546472,
+     "edge_erosion_px": 2.399190829227308,
+     "residual_m": 0.0035946918434620443,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "hWvam2M19w8": {
+  "video_id": "hWvam2M19w8",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     807,
+     10,
+     300,
+     534
+    ],
+    "calib": {
+     "center_px": [
+      150.47207641601562,
+      161.11585998535156
+     ],
+     "px_per_m": 79.64390941575428,
+     "edge_erosion_px": 2.125581354129423,
+     "residual_m": 0.0012475480417539467,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     807,
+     554,
+     300,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      154.70616149902344,
+      344.7580871582031
+     ],
+     "px_per_m": 75.682343033584,
+     "edge_erosion_px": 2.1137936774681236,
+     "residual_m": 0.012985799307710127,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "6EvjbFScY8s": {
+  "video_id": "6EvjbFScY8s",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     812,
+     11,
+     298,
+     510
+    ],
+    "calib": {
+     "center_px": [
+      145.38540649414062,
+      135.55026245117188
+     ],
+     "px_per_m": 67.43536239698462,
+     "edge_erosion_px": 1.43900926939736,
+     "residual_m": 4.1286839239446794e-05,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     812,
+     553,
+     298,
+     517
+    ],
+    "calib": {
+     "center_px": [
+      139.44631958007812,
+      349.3656311035156
+     ],
+     "px_per_m": 75.58313730563304,
+     "edge_erosion_px": 1.997402248213774,
+     "residual_m": 0.003199068421060279,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "mP2cOsY43m8": {
+  "video_id": "mP2cOsY43m8",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     810,
+     10,
+     297,
+     514
+    ],
+    "calib": {
+     "center_px": [
+      154.45294189453125,
+      158.6959991455078
+     ],
+     "px_per_m": 76.3616945267361,
+     "edge_erosion_px": 2.0583081492636097,
+     "residual_m": 0.0014547516513858567,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     810,
+     554,
+     297,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      148.74380493164062,
+      357.1856994628906
+     ],
+     "px_per_m": 77.63827900574626,
+     "edge_erosion_px": 2.597343759029428,
+     "residual_m": 0.003904943001126406,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "ty6iDshm44U": {
+  "video_id": "ty6iDshm44U",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     809,
+     10,
+     302,
+     522
+    ],
+    "calib": {
+     "center_px": [
+      149.30641174316406,
+      152.13877868652344
+     ],
+     "px_per_m": 79.15906164172466,
+     "edge_erosion_px": 1.9891686157612867,
+     "residual_m": 0.0016806329172716146,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     809,
+     540,
+     302,
+     530
+    ],
+    "calib": {
+     "center_px": [
+      153.2456512451172,
+      370.1321716308594
+     ],
+     "px_per_m": 77.28517635989141,
+     "edge_erosion_px": 2.4608192516945167,
+     "residual_m": 0.0011077140732491544,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "YAjvG4bpHLA": {
+  "video_id": "YAjvG4bpHLA",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     813,
+     10,
+     294,
+     527
+    ],
+    "calib": {
+     "center_px": [
+      148.6087188720703,
+      152.26124572753906
+     ],
+     "px_per_m": 77.34362054092712,
+     "edge_erosion_px": 2.441241185664296,
+     "residual_m": 0.00471859028049687,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     813,
+     554,
+     294,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      147.65443420410156,
+      351.7687072753906
+     ],
+     "px_per_m": 76.08628367424232,
+     "edge_erosion_px": 2.2819300276892136,
+     "residual_m": 0.001130766590086824,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "hWqg99T0UiY": {
+  "video_id": "hWqg99T0UiY",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3120.0,
+   4065.0,
+   5010.0,
+   5955.0,
+   6905.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     807,
+     10,
+     300,
+     534
+    ],
+    "calib": {
+     "center_px": [
+      150.5706329345703,
+      161.13552856445312
+     ],
+     "px_per_m": 79.6743373121717,
+     "edge_erosion_px": 2.1057945235518787,
+     "residual_m": 6.448373743971381e-05,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     807,
+     554,
+     300,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      154.9492645263672,
+      344.8492736816406
+     ],
+     "px_per_m": 75.67269941946427,
+     "edge_erosion_px": 2.1019080707196736,
+     "residual_m": 0.006102890134995763,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "a2EJcV29ido": {
+  "video_id": "a2EJcV29ido",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   435.0,
+   1890.0,
+   3345.0,
+   4795.0,
+   6250.0,
+   7704.933,
+   9159.933,
+   10614.933
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     812,
+     11,
+     298,
+     510
+    ],
+    "calib": {
+     "center_px": [
+      145.4547119140625,
+      135.7794952392578
+     ],
+     "px_per_m": 67.44278505129748,
+     "edge_erosion_px": 1.4855671766941754,
+     "residual_m": 0.0018898533691369904,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     812,
+     554,
+     298,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      139.52891540527344,
+      348.1334533691406
+     ],
+     "px_per_m": 75.56818577147024,
+     "edge_erosion_px": 2.012307479144056,
+     "residual_m": 0.0010748063118963568,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "JuOuYhZ0tJQ": {
+  "video_id": "JuOuYhZ0tJQ",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   435.0,
+   1885.0,
+   3340.0,
+   6245.0,
+   7699.933,
+   9149.933,
+   10604.933
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     810,
+     10,
+     297,
+     514
+    ],
+    "calib": {
+     "center_px": [
+      154.66932678222656,
+      158.89669799804688
+     ],
+     "px_per_m": 76.34015866079577,
+     "edge_erosion_px": 2.001668989423564,
+     "residual_m": 0.0012777072222151609,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 7
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     810,
+     554,
+     297,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      149.058349609375,
+      357.03619384765625
+     ],
+     "px_per_m": 77.6273367418779,
+     "edge_erosion_px": 2.494765050797014,
+     "residual_m": 0.005126393051679571,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 7
+    },
+    "error": null
+   }
+  }
+ },
+ "fYrL5-wAjX8": {
+  "video_id": "fYrL5-wAjX8",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   435.0,
+   1885.0,
+   3340.0,
+   6245.0,
+   7699.933,
+   9149.933,
+   10604.933
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     809,
+     10,
+     302,
+     522
+    ],
+    "calib": {
+     "center_px": [
+      149.38873291015625,
+      152.16604614257812
+     ],
+     "px_per_m": 79.09021454259515,
+     "edge_erosion_px": 1.9898418149104202,
+     "residual_m": 0.0013301545283232845,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 7
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     809,
+     540,
+     302,
+     529
+    ],
+    "calib": {
+     "center_px": [
+      153.08633422851562,
+      370.0874938964844
+     ],
+     "px_per_m": 77.41917644076058,
+     "edge_erosion_px": 2.5819429972604837,
+     "residual_m": 0.003773904048673265,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 7
+    },
+    "error": null
+   }
+  }
+ },
+ "MXM8TaR3TN0": {
+  "video_id": "MXM8TaR3TN0",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   435.0,
+   1890.0,
+   3345.0,
+   4795.0,
+   6250.0,
+   7704.6,
+   9159.6,
+   10614.6
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     813,
+     10,
+     294,
+     527
+    ],
+    "calib": {
+     "center_px": [
+      148.5656280517578,
+      152.34463500976562
+     ],
+     "px_per_m": 77.29777996190437,
+     "edge_erosion_px": 2.4049375239559083,
+     "residual_m": 0.0031783050484661107,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     813,
+     554,
+     294,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      147.37112426757812,
+      351.5289306640625
+     ],
+     "px_per_m": 76.1020384631357,
+     "edge_erosion_px": 2.3148425214384645,
+     "residual_m": 0.003070753567010736,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "IziPzVwmz14": {
+  "video_id": "IziPzVwmz14",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   435.0,
+   1885.0,
+   3340.0,
+   4795.0,
+   6250.0,
+   7698.8,
+   9153.8,
+   10608.8
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     807,
+     10,
+     300,
+     534
+    ],
+    "calib": {
+     "center_px": [
+      150.38209533691406,
+      161.1414337158203
+     ],
+     "px_per_m": 79.6545120397467,
+     "edge_erosion_px": 2.092277325384231,
+     "residual_m": 0.000302119048404036,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     807,
+     553,
+     300,
+     517
+    ],
+    "calib": {
+     "center_px": [
+      154.7955322265625,
+      345.7203063964844
+     ],
+     "px_per_m": 75.68229462965208,
+     "edge_erosion_px": 2.1144146803680144,
+     "residual_m": 0.008959088283666788,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "Phiwz6FcetY": {
+  "video_id": "Phiwz6FcetY",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     812,
+     11,
+     298,
+     510
+    ],
+    "calib": {
+     "center_px": [
+      145.3105926513672,
+      135.55052185058594
+     ],
+     "px_per_m": 67.46178056942736,
+     "edge_erosion_px": 1.4847379273517873,
+     "residual_m": 0.0030247394849471573,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     812,
+     552,
+     298,
+     518
+    ],
+    "calib": {
+     "center_px": [
+      139.41810607910156,
+      350.3196716308594
+     ],
+     "px_per_m": 75.57438041331761,
+     "edge_erosion_px": 1.9937378819149387,
+     "residual_m": 0.0023726743951842026,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "fYjuPpecsvY": {
+  "video_id": "fYjuPpecsvY",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     810,
+     10,
+     297,
+     514
+    ],
+    "calib": {
+     "center_px": [
+      154.4242706298828,
+      158.7503204345703
+     ],
+     "px_per_m": 76.34971938477713,
+     "edge_erosion_px": 2.0145016229214434,
+     "residual_m": 0.0008638828940983633,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     810,
+     554,
+     297,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      149.1506805419922,
+      357.2622375488281
+     ],
+     "px_per_m": 77.65384928705315,
+     "edge_erosion_px": 2.4922158465084863,
+     "residual_m": 0.004828057487094034,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "7pYLuXrimNY": {
+  "video_id": "7pYLuXrimNY",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     809,
+     10,
+     302,
+     522
+    ],
+    "calib": {
+     "center_px": [
+      149.3179168701172,
+      152.0723114013672
+     ],
+     "px_per_m": 79.12733406308894,
+     "edge_erosion_px": 1.9509524120341837,
+     "residual_m": 0.0010946677078775549,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     809,
+     540,
+     302,
+     530
+    ],
+    "calib": {
+     "center_px": [
+      153.18679809570312,
+      370.2474060058594
+     ],
+     "px_per_m": 77.4138000703428,
+     "edge_erosion_px": 2.5193904995554135,
+     "residual_m": 0.005908255451513915,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "gZMDusb_9a8": {
+  "video_id": "gZMDusb_9a8",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2170.0,
+   3115.0,
+   4060.0,
+   5005.0,
+   5955.0,
+   6900.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     813,
+     10,
+     294,
+     527
+    ],
+    "calib": {
+     "center_px": [
+      148.6462860107422,
+      152.2937469482422
+     ],
+     "px_per_m": 77.28144127575129,
+     "edge_erosion_px": 2.437226003017088,
+     "residual_m": 0.003783832371034765,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     813,
+     554,
+     294,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      147.21502685546875,
+      351.7363586425781
+     ],
+     "px_per_m": 76.15512547926753,
+     "edge_erosion_px": 2.311505324334206,
+     "residual_m": 0.003390049344003587,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ },
+ "k2s2WXvmiYc": {
+  "video_id": "k2s2WXvmiYc",
+  "frame_size": [
+   1920,
+   1080
+  ],
+  "frame_times": [
+   280.0,
+   1225.0,
+   2175.0,
+   3120.0,
+   4065.0,
+   5015.0,
+   5960.0,
+   6910.0
+  ],
+  "error": null,
+  "panels": {
+   "top": {
+    "name": "top",
+    "rect": [
+     807,
+     10,
+     300,
+     534
+    ],
+    "calib": {
+     "center_px": [
+      150.49232482910156,
+      161.2284698486328
+     ],
+     "px_per_m": 79.63903939127083,
+     "edge_erosion_px": 2.0761162180210704,
+     "residual_m": 0.0022525010660682126,
+     "flipped": false
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   },
+   "bottom": {
+    "name": "bottom",
+    "rect": [
+     807,
+     554,
+     300,
+     516
+    ],
+    "calib": {
+     "center_px": [
+      154.9130401611328,
+      344.81939697265625
+     ],
+     "px_per_m": 75.68252831975762,
+     "edge_erosion_px": 2.139507932090595,
+     "residual_m": 0.0087398220942487,
+     "flipped": true
+    },
+    "lighting": {
+     "lit": 8
+    },
+    "error": null
+   }
+  }
+ }
+}
