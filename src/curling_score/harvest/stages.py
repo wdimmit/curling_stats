@@ -69,7 +69,8 @@ def stage_plan(args) -> int:
             print(f"  {i}/{len(entries)}", flush=True)
 
     doc = plan_mod.build(entries, formats, n_val=args.val_dates,
-                         playlist_url=args.playlist, min_height=args.min_height)
+                         playlist_url=args.playlist, min_height=args.min_height,
+                         all_val=getattr(args, "all_val", False))
     out = _save(args.out, doc)
     s = doc["summary"]
     print(f"wrote {out}: {s['videos']} videos over {s['dates']} dates, "
@@ -142,6 +143,11 @@ def stage_pool(args) -> int:
     det = yolo.YoloDetector(args.weights, conf=args.conf, device=args.device,
                             imgsz=args.imgsz)
     det.model.overrides["half"] = True
+    extra = None
+    if getattr(args, "weights_extra", None):
+        extra = yolo.YoloDetector(args.weights_extra, conf=args.conf,
+                                  device=args.device, imgsz=args.imgsz)
+        extra.model.overrides["half"] = True
 
     banked, setup_doc, t_start = {}, {}, time.time()
     for i, v in enumerate(videos, 1):
@@ -167,7 +173,7 @@ def stage_pool(args) -> int:
             print(f"[{i:3d}] {vid}: UNUSABLE -- {why}", flush=True)
             continue
         cands, stats = pool_mod.build_video_pool(
-            vid, paths, setup, det, out, fps=args.fps)
+            vid, paths, setup, det, out, fps=args.fps, extra_detector=extra)
         banked[vid] = [M.candidate_to_json(c) for c in cands]
         _save(out / "candidates.json", banked)
         _save(out / "setups.json", setup_doc)

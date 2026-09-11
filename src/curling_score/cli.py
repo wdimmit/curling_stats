@@ -432,6 +432,8 @@ def _add_harvest(sub):
                    help="drop videos YouTube will not serve this tall")
     q.add_argument("--check", action="store_true",
                    help="fail unless every date has every sheet")
+    q.add_argument("--all-val", action="store_true",
+                   help="a held-out test set: every video is one split")
 
     q = stage.add_parser("clips", help="fetch the short clips each video needs")
     q.add_argument("--videos", default="datasets/ds11/videos.json")
@@ -447,6 +449,10 @@ def _add_harvest(sub):
     q.add_argument("--root", required=True, help="where clips are cached")
     q.add_argument("--out", required=True, help="where candidate crops go")
     q.add_argument("--weights", required=True)
+    q.add_argument("--weights-extra",
+                   help="union a second model's detections into the first "
+                        "guess, so a set built to compare two models does not "
+                        "flatter either")
     q.add_argument("--conf", type=float, default=0.25)
     q.add_argument("--imgsz", type=int, default=640)
     q.add_argument("--device", default=None)

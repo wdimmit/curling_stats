@@ -7,11 +7,16 @@ down-sheet.
 
 from datetime import datetime, timezone
 
-from curling_score.game import rules, shots as shots_mod
+from curling_score.game import classify, rules, shots as shots_mod
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# The overhead camera only sees the last few metres of a 45 m sheet, so the
+# stone comes into view long after it left the hand. To watch the shot being
+# called and thrown you have to start this far back from where we first see it.
+VIDEO_LEAD_IN_S = 10.0
 
 
 def _stone(d) -> dict:
@@ -23,6 +28,36 @@ def _stone(d) -> dict:
         "in_house": bool((d.x_m**2 + d.y_m**2) ** 0.5 <= C.IN_HOUSE_MAX_D_M),
         "confidence": round(float(d.confidence), 3),
     }
+
+
+def _track(dv) -> list:
+    """The flight as [[t, x, y], ...], rounded to what the viewer can draw.
+
+    Centimetres and hundredths of a second: finer than the detector's own
+    accuracy, and it keeps a four-hour game's tracks to a sensible file size.
+    """
+    if dv is None or not dv.track:
+        return []
+    return [
+        [round(float(t), 2), round(float(x), 3), round(float(y), 3)]
+        for t, x, y in dv.track
+    ]
+
+
+def _delta(delta) -> dict | None:
+    """Round the house diff for output, leaving its shape alone."""
+    if delta is None:
+        return None
+    def one(s):
+        out = {"color": s["color"], "x": round(float(s["x"]), 4),
+               "y": round(float(s["y"]), 4)}
+        if "distance_m" in s:
+            out |= {"from_x": round(float(s["from_x"]), 4),
+                    "from_y": round(float(s["from_y"]), 4),
+                    "distance_m": round(float(s["distance_m"]), 3)}
+        return out
+    return {k: [one(s) for s in delta.get(k, [])]
+            for k in ("added", "removed", "moved")}
 
 
 def build_end(number, house, start_s, end_s, shots) -> dict:
@@ -37,6 +72,9 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
     out_shots = []
     for s in shots:
         throw = s.throw
+        dv = getattr(s, "delivery", None)
+        kind, kind_conf = classify.classify_shot(s)
+        t_enter = None if dv is None else round(float(dv.t_enter), 2)
         out_shots.append(
             {
                 "number": s.number,
@@ -47,9 +85,27 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
                 "rock_of_player": throw.rock_of_player,
                 "label": rules.shot_label(number, s.number),
                 "t_rest_s": None if s.missing else round(float(s.t_rest_s), 2),
+                "t_enter_s": t_enter,
+                # Where to start the video to see the shot being called and
+                # thrown, not merely its arrival.
+                "t_video_s": (
+                    None if t_enter is None else round(max(0.0, t_enter - VIDEO_LEAD_IN_S), 2)
+                ),
                 "confidence": round(float(s.confidence), 3),
                 "color_inferred": bool(s.color_inferred),
                 "missing": bool(s.missing),
+                "state_known": bool(getattr(s, "state_known", True)),
+                "shot_type": kind,
+                "shot_type_confidence": round(float(kind_conf), 3),
+                "shot_type_source": "auto",
+                "reason": None if dv is None else dv.reason,
+                "travel_m": None if dv is None else round(float(dv.travel_m), 3),
+                "entry_speed_m_s": (
+                    None if dv is None else round(float(dv.speed_at()), 3)
+                ),
+                "track": _track(dv),
+                "house_delta": _delta(getattr(s, "house_delta", None)),
+                "delivered_stone_index": getattr(s, "delivered_stone_index", None),
                 "stones": [_stone(d) for d in s.stones],
             }
         )
@@ -63,6 +119,11 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
         "score": score,
         "shots": out_shots,
         "shots_observed": sum(1 for s in shots if not s.missing),
+        # Sixteen rocks are thrown. Where the list is shorter than that, the
+        # missing ones could not even be placed, and the viewer has to say so
+        # rather than present a short end as a whole one.
+        "shots_expected": C.STONES_PER_END,
+        "unplaced_shots": max(0, C.STONES_PER_END - len(shots)),
         "scored_from_shot": scoring.number if scoring else None,
         "final_stones": [_stone(d) for d in final],
         "scoreboard_agrees": None,
@@ -115,7 +176,12 @@ def build_document(video_id, url, sheet, duration_s, calibration, games) -> dict
     for game in games:
         for end in game["ends"]:
             for shot in end["shots"]:
-                t = shot.get("t_rest_s")
+                # Prefer the moment before the throw: a link that lands on the
+                # stone already at rest shows the one thing the viewer can
+                # already see in the house diagram.
+                t = shot.get("t_video_s")
+                if t is None:
+                    t = shot.get("t_rest_s")
                 shot["youtube_url"] = (
                     watch_url_at(video_id, t) if t is not None else None
                 )

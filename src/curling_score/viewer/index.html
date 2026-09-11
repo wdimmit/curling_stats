@@ -1,221 +1,94 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Curling Timeline</title>
-<style>
-  :root {
-    --bg:#f7f7f5; --panel:#fff; --ink:#1a1a1a; --muted:#6b6b6b;
-    --line:#e0e0dc; --accent:#2b6cb0; --red:#d13438; --yellow:#e8b400;
-    --warn:#b45309; --warnbg:#fef3c7;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg:#16171a; --panel:#1e2024; --ink:#ececec; --muted:#9aa0a6;
-      --line:#31343a; --accent:#6ea8fe; --warnbg:#3a2f12; --warn:#fbbf24;
-    }
-  }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink);
-         font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
-  header { padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel);
-           display:flex; gap:16px; align-items:baseline; flex-wrap:wrap; }
-  h1 { font-size:16px; margin:0; font-weight:650; }
-  .muted { color:var(--muted); }
-  main { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; padding:20px;
-         align-items:start; }
-  @media (max-width:860px){ main { grid-template-columns:1fr; } }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
-  select, button { font:inherit; padding:6px 10px; border-radius:7px;
-                   border:1px solid var(--line); background:var(--panel); color:var(--ink); }
-  button { cursor:pointer; }
-  button:disabled { opacity:.4; cursor:default; }
-  table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
-  th,td { padding:5px 7px; text-align:center; border-bottom:1px solid var(--line); }
-  th { color:var(--muted); font-weight:600; font-size:12px; }
-  td.name { text-align:left; font-weight:600; }
-  .swatch { display:inline-block; width:10px; height:10px; border-radius:50%;
-            margin-right:6px; vertical-align:baseline; }
-  .shots { display:flex; flex-wrap:wrap; gap:5px; margin-top:10px; }
-  .shot { width:30px; height:30px; border-radius:7px; border:1px solid var(--line);
-          display:grid; place-items:center; font-size:11px; cursor:pointer;
-          background:var(--panel); font-variant-numeric:tabular-nums; }
-  .shot.red { background:var(--red); color:#fff; border-color:transparent; }
-  .shot.yellow { background:var(--yellow); color:#1a1a1a; border-color:transparent; }
-  .shot.sel { outline:3px solid var(--accent); outline-offset:1px; }
-  .shot.missing { opacity:.45; border-style:dashed; }
-  .warn { background:var(--warnbg); color:var(--warn); border-radius:7px;
-          padding:8px 10px; margin-top:10px; font-size:13px; }
-  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .grow { flex:1 1 auto; }
-  a { color:var(--accent); }
-  #house { width:100%; height:auto; display:block; }
-  dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:10px 0 0; }
-  dt { color:var(--muted); }
-  dd { margin:0; font-variant-numeric:tabular-nums; }
-</style>
+<title>Curling Chart</title>
+<link rel="stylesheet" href="style.css">
 
 <header>
-  <h1>Curling Timeline</h1>
+  <h1>Curling Chart</h1>
   <span class="muted" id="src"></span>
+  <select id="game" aria-label="Game"></select>
+  <select id="end" aria-label="End"></select>
   <span class="grow"></span>
-  <select id="game"></select>
-  <select id="end"></select>
+  <button id="blanks" class="pill" title="Jump to the next shot needing charting"></button>
+  <span id="save" class="pill">saved</span>
+  <button id="download" title="Save overrides.json to disk">&#11015;</button>
+  <button id="reportBtn">Report</button>
 </header>
 
 <main>
+  <!-- ---------------------------------------------------------------- play -->
   <section class="card">
-    <div class="row">
-      <button id="prev">&larr; Prev</button>
-      <button id="next">Next &rarr;</button>
+    <div class="video" id="video"><div id="player"></div></div>
+    <div class="row" style="margin-top:10px">
+      <button id="prev" title="Previous shot (&larr;)">&larr;</button>
+      <button id="next" title="Next shot (&rarr;)">&rarr;</button>
+      <button id="replay" title="Replay from before the throw (v)">&#8635; Replay</button>
       <strong id="label" class="grow"></strong>
-      <a id="link" target="_blank" rel="noopener">Watch &rarr;</a>
+      <a id="link" target="_blank" rel="noopener">YouTube &rarr;</a>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <label class="chk"><input type="checkbox" id="autoplay" checked> play on jump</label>
+      <label class="chk">lead-in
+        <input type="number" id="leadin" min="0" max="60" step="1" style="width:58px">s
+      </label>
     </div>
     <div id="flags"></div>
-    <svg id="house" viewBox="-2.6 -2.6 5.2 8.6" aria-label="House diagram"></svg>
     <div class="shots" id="shots"></div>
   </section>
 
+  <!-- --------------------------------------------------------------- house -->
+  <section class="card">
+    <div class="tools">
+      <button class="swatchbtn red" id="pickRed" title="Place red (r)"></button>
+      <button class="swatchbtn yellow" id="pickYellow" title="Place yellow (y)"></button>
+      <button id="delStone" title="Delete selected stone (x)">&#9003;</button>
+      <button id="markThrown" title="Mark selected as the delivered stone (d)">&#9678;</button>
+      <span class="grow"></span>
+      <label class="chk"><input type="checkbox" id="showTrack" checked> track</label>
+      <button id="resetShot" title="Discard manual edits to this shot">Reset</button>
+    </div>
+    <svg id="house" viewBox="-2.6 -2.6 5.2 8.6" aria-label="House diagram"></svg>
+    <div class="muted" style="font-size:12px;margin-top:6px">
+      Click the ice to add a stone, drag to move, drag off the sheet to remove.
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------------- chart -->
   <aside class="card">
-    <table id="score"></table>
+    <h2>Shot type</h2>
+    <div class="pick" id="typeGroups"></div>
+    <div class="pick" id="typeList" style="margin-top:6px"></div>
+    <div class="muted" id="autoType" style="font-size:12px;margin-top:6px"></div>
+
+    <h3>Score</h3>
+    <div class="pick scorebtns" id="scoreBtns"></div>
+
+    <h3>Miss reason</h3>
+    <input type="text" id="missReason" list="missList" placeholder="&mdash;">
+    <datalist id="missList"></datalist>
+
+    <h3>Note</h3>
+    <textarea id="note" placeholder="&mdash;"></textarea>
+
+    <div class="row" style="margin-top:10px">
+      <button id="markCharted" class="grow">&#10004; Mark charted (Enter)</button>
+    </div>
+
     <dl id="detail"></dl>
+
+    <details id="queueBox">
+      <summary>Needs charting (<span id="queueCount">0</span>)</summary>
+      <div class="queue" id="queue"></div>
+    </details>
+
+    <details id="scoreBox">
+      <summary>Scoreboard (detected &mdash; not a goal of this tool)</summary>
+      <table id="score"></table>
+    </details>
   </aside>
 </main>
 
-<script>
-const R = { button:0.152, four:0.610, eight:1.219, twelve:1.829, stone:0.142,
-            inHouse:1.971, hog:6.401, back:-1.829 };
-let doc=null, gi=0, ei=0, si=0;
+<section id="report"></section>
 
-const $ = id => document.getElementById(id);
-const el = (tag, attrs={}) => {
-  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const [k,v] of Object.entries(attrs)) n.setAttribute(k, v);
-  return n;
-};
-
-function game(){ return doc.games[gi]; }
-function end(){ return game().ends[ei]; }
-function shot(){ return end().shots[si]; }
-
-function drawHouse(stones){
-  const svg = $("house");
-  svg.textContent = "";
-  const ice = getComputedStyle(document.body).getPropertyValue("--panel");
-  svg.appendChild(el("rect",{x:-2.375,y:R.back,width:4.75,height:R.hog-R.back,
-                            fill:"#fbfbfa",stroke:"#c9c9c4","stroke-width":.02}));
-  // Rings, outermost first. Club paints the 12-foot green and the 4-foot blue.
-  for (const [r,fill] of [[R.twelve,"#3f9c47"],[R.eight,"#fbfbfa"],
-                          [R.four,"#3b4fa8"],[R.button,"#fbfbfa"]])
-    svg.appendChild(el("circle",{cx:0,cy:0,r,fill}));
-  for (const y of [0, R.hog]) // tee line and hog line
-    svg.appendChild(el("line",{x1:-2.375,y1:y,x2:2.375,y2:y,
-                               stroke:"#8a8a85","stroke-width":y?0.05:0.02}));
-  svg.appendChild(el("line",{x1:0,y1:R.back,x2:0,y2:R.hog,
-                             stroke:"#8a8a85","stroke-width":.015}));
-  for (const s of stones||[]) {
-    const g = el("g");
-    g.appendChild(el("circle",{cx:s.x,cy:s.y,r:R.stone,fill:"#9a9a95",
-                               stroke:"#5f5f5b","stroke-width":.02}));
-    g.appendChild(el("circle",{cx:s.x,cy:s.y,r:R.stone*0.55,
-                               fill:s.color==="red"?"#d13438":"#e8b400"}));
-    g.appendChild(el("title",{}));
-    g.lastChild.textContent =
-      `${s.color} — ${s.distance_to_tee.toFixed(2)} m from the tee` +
-      (s.in_house ? " (counting)" : "");
-    svg.appendChild(g);
-  }
-}
-
-function scoreTable(){
-  const g = game(), ends = g.ends;
-  const head = "<tr><th></th>" + ends.map(e=>`<th>${e.number}</th>`).join("") +
-               "<th>Total</th></tr>";
-  const rows = ["red","yellow"].map(c => {
-    const cells = ends.map(e => {
-      const pts = e.score[c];
-      const hammer = e.hammer===c ? '<span title="had the hammer">·</span>' : "";
-      return `<td>${pts||"&ndash;"}${hammer}</td>`;
-    }).join("");
-    return `<tr><td class="name"><span class="swatch" style="background:var(--${c})"></span>`+
-           `${g.teams[c].name || c}</td>${cells}<td><strong>${g.final[c]}</strong></td></tr>`;
-  }).join("");
-  const b = g.scoreboard;
-  let foot = "";
-  if (b) {
-    const cls = b.agrees_with_detection ? "" : ' style="color:var(--warn)"';
-    foot = `<tr${cls}><td class="name">wall board</td>` +
-      `<td colspan="${ends.length}">` +
-      (b.agrees_with_detection
-        ? "agrees with the detected score"
-        : `reads red ${b.final.red}, yellow ${b.final.yellow} &mdash; ` +
-          `the detected score above is not trustworthy`) +
-      `</td><td></td></tr>`;
-  }
-  $("score").innerHTML = head + rows + foot;
-}
-
-function render(){
-  const e = end(), s = shot();
-  $("label").textContent = s ? s.label : "no shots detected";
-  $("flags").innerHTML = "";
-  if (s && s.missing)
-    $("flags").innerHTML = `<div class="warn">This delivery was never seen. It is
-      inserted because the teams must alternate — without it every later shot in
-      the end would name the wrong thrower.</div>`;
-  else if (s && s.color_inferred)
-    $("flags").innerHTML = `<div class="warn">No new stone appeared, so this is
-      read as a takeout and the thrower comes from the alternation rule.</div>`;
-
-  const link = $("link");
-  if (s && s.youtube_url) { link.href = s.youtube_url; link.style.visibility="visible"; }
-  else link.style.visibility = "hidden";
-
-  drawHouse(s ? s.stones : []);
-
-  $("shots").innerHTML = e.shots.map((sh,i) =>
-    `<div class="shot ${sh.color} ${sh.missing?"missing":""} ${i===si?"sel":""}"
-          data-i="${i}" title="${sh.label}">${sh.number}</div>`).join("");
-  [...$("shots").children].forEach(n =>
-    n.onclick = () => { si = +n.dataset.i; render(); });
-
-  const counting = (s?.stones||[]).filter(x=>x.in_house).length;
-  $("detail").innerHTML = `
-    <dt>End</dt><dd>${e.number} (${e.house} house)</dd>
-    <dt>Hammer</dt><dd>${e.hammer ?? "—"}</dd>
-    <dt>End score</dt><dd>red ${e.score.red} &middot; yellow ${e.score.yellow}</dd>
-    <dt>Running</dt><dd>red ${e.running.red} &middot; yellow ${e.running.yellow}</dd>
-    <dt>Stones shown</dt><dd>${s?.stones.length ?? 0} (${counting} counting)</dd>
-    <dt>Confidence</dt><dd>${s ? s.confidence.toFixed(2) : "—"}</dd>
-    <dt>Shots seen</dt><dd>${e.shots_observed} of ${e.shots.length}</dd>`;
-  $("prev").disabled = si<=0;
-  $("next").disabled = si>=e.shots.length-1;
-  scoreTable();
-}
-
-function fillEnds(){
-  $("end").innerHTML = game().ends.map((e,i)=>
-    `<option value="${i}">End ${e.number} (${e.house})</option>`).join("");
-  $("end").value = ei;
-}
-
-fetch("timeline.json").then(r=>r.json()).then(d=>{
-  doc = d;
-  const src = d.source;
-  $("src").innerHTML = `sheet ${src.sheet ?? "?"} &middot; ` +
-    `<a href="${src.url}" target="_blank" rel="noopener">${src.video_id}</a> &middot; ` +
-    `${(src.duration_s/3600).toFixed(2)} h`;
-  $("game").innerHTML = d.games.map((g,i)=>
-    `<option value="${i}">Game ${i+1} (${g.ends.length} ends)</option>`).join("");
-  $("game").onchange = e => { gi=+e.target.value; ei=0; si=0; fillEnds(); render(); };
-  $("end").onchange = e => { ei=+e.target.value; si=0; render(); };
-  $("prev").onclick = () => { if(si>0){si--; render();} };
-  $("next").onclick = () => { if(si<end().shots.length-1){si++; render();} };
-  addEventListener("keydown", ev => {
-    if (ev.key==="ArrowLeft") $("prev").click();
-    if (ev.key==="ArrowRight") $("next").click();
-  });
-  fillEnds(); render();
-}).catch(err => {
-  document.body.innerHTML = `<main class="card">Could not load timeline.json — ${err}</main>`;
-});
-</script>
+<script src="app.js"></script>

@@ -98,7 +98,7 @@ def clip_moments(clip_path, pts_start_s: float, rects, fps: float = DETECT_FPS):
 def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
                      fps: float = DETECT_FPS, grid_per_clip: int = GRID_PER_CLIP,
                      motion_frames: int = MOTION_FRAMES,
-                     jpeg_quality: int = JPEG_QUALITY):
+                     jpeg_quality: int = JPEG_QUALITY, extra_detector=None):
     """Every candidate frame one video can offer, written out with its labels.
 
     Returns ``(candidates, stats)``. Grid frames come from fixed points in each
@@ -108,6 +108,12 @@ def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
     The labels written here are the detector's opinion. They are a starting
     point for a person, not the dataset: nothing enters the set until a human
     has ticked the frame.
+
+    ``extra_detector`` unions a second model's detections into that first guess
+    (via ``dataset.merge_detections``, confidence-sorted so the surer reading
+    wins a collision). It exists for a set built to *compare* two models: label
+    it with one of them and its own misses are the ones the reviewer is least
+    likely to notice, which quietly flatters it. A union hides neither.
     """
     import cv2
 
@@ -135,6 +141,9 @@ def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
         for name, panel in panels.items():
             crops = [crop[name] for _t, crop in moments]
             dets = detector.find_stones_batch(crops, panel.calib)
+            if extra_detector is not None:
+                other = extra_detector.find_stones_batch(crops, panel.calib)
+                dets = [dataset.merge_detections(a, b) for a, b in zip(dets, other)]
             seq = list(zip(times, dets))
 
             flights = motion.find_flights(seq)

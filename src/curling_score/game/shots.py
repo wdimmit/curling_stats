@@ -288,6 +288,71 @@ def _delivered_index(stones, dv, tol_m: float = 0.45) -> int | None:
     return best
 
 
+# A gap this many times the end's own median is long enough to hold a delivery
+# we never saw. Judged against the end rather than a fixed number of seconds,
+# because how long a team takes over a rock varies a lot between ends.
+GAP_FACTOR = 1.7
+# How many blanks are worth placing. The parity-and-gap argument below is
+# decisive when an end is a rock or three short; it is worthless when half the
+# end is missing, where every position would be invented. An end shorter than
+# that is a detection failure rather than a few unseen rocks, and saying so at
+# the end level beats scattering eight meaningless blanks through it.
+MAX_FILL = 4
+
+
+def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL):
+    """Mark the deliveries an end is missing, and where they went.
+
+    ``fit_end`` enforces strict alternation by dropping candidates, so by the
+    time we see a sequence it always alternates and never repeats a colour --
+    which means a missed delivery shows up only as an end that is *short*, not
+    as a break in the pattern. Sixteen rocks are thrown; anything less was
+    thrown and not seen.
+
+    Where they go is constrained more tightly than it looks. Inserting a single
+    blank between two alternating neighbours would break the alternation, so a
+    mid-end insertion has to come in pairs; an odd remainder can only belong at
+    the end. On the reference VOD that decides every case on its own: the two
+    ends missing one rock can only be missing their last, and the two missing
+    three have exactly one gap long enough to hold a pair.
+
+    Timing alone would not have done it -- one end has three gaps at twice its
+    median and is only one rock short, because teams stop to confer and to
+    measure. The parity rule is what makes the guess honest.
+    """
+    short = per_end - len(seq)
+    if not 0 < short <= max_fill:
+        return seq
+    seq = list(seq)
+
+    real = [(i, dv) for i, (_c, dv) in enumerate(seq) if dv is not None]
+    if short >= 2 and len(real) >= 3:
+        gaps = sorted(
+            ((b.t_enter - a.t_enter, ib) for (_ia, a), (ib, b) in
+             zip(real, real[1:])),
+            reverse=True,
+        )
+        median = sorted(g for g, _ in gaps)[len(gaps) // 2]
+        # Biggest gaps first, and apply them back to front so the earlier
+        # insertion points keep their meaning.
+        chosen = []
+        for gap, at in gaps:
+            if short < 2 or gap < GAP_FACTOR * median:
+                break
+            chosen.append(at)
+            short -= 2
+        for at in sorted(chosen, reverse=True):
+            before = seq[at - 1][0]
+            first = rules.other_color(before)
+            seq[at:at] = [(first, None), (rules.other_color(first), None)]
+
+    # Whatever is left was thrown after the last delivery we saw -- or was
+    # never thrown at all, if the end was conceded. The charter can say which.
+    for _ in range(short):
+        seq.append((rules.other_color(seq[-1][0]) if seq else "red", None))
+    return seq
+
+
 def _with_placeholders(deliveries):
     """Deliveries in order, with a gap marked wherever alternation breaks.
 
@@ -326,7 +391,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     if not deliveries or not frames:
         return []
 
-    out: list[Shot] = []
+    houses: dict[int, list] = {}
     for i, dv in enumerate(deliveries):
         # Read between this stone settling and the next one being thrown.
         start = dv.t_rest
@@ -337,17 +402,52 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
             window = [
                 (t, d) for t, d in frames if start <= t <= start + settle_window_s
             ]
-        stones = stones_in_window(window) if window else []
+        houses[i] = stones_in_window(window) if window else []
 
+    out: list[Shot] = []
+    previous: list = []
+    seen = 0
+    plan = _fill_short_end(_with_placeholders(deliveries), C.STONES_PER_END)
+    for color, dv in plan:
+        if len(out) >= C.STONES_PER_END:
+            break
+        if dv is None:
+            # A delivery we never saw. Its house is unknown -- not empty -- and
+            # the previous house is the last thing we actually observed, so the
+            # next shot's delta is still measured against something real.
+            out.append(
+                Shot(
+                    number=len(out) + 1,
+                    color=color,
+                    stones=[],
+                    t_rest_s=float("nan"),
+                    color_inferred=True,
+                    missing=True,
+                    confidence=0.0,
+                    state_known=False,
+                )
+            )
+            continue
+        stones = houses[seen]
+        seen += 1
         out.append(
             Shot(
-                number=i + 1,
+                number=len(out) + 1,
                 color=dv.color,
                 stones=stones,
                 t_rest_s=dv.t_rest,
                 color_inferred=False,
                 missing=False,
                 confidence=1.0 if dv.came_to_rest else 0.8,
+                delivery=dv,
+                # An empty reading is normally a failure to see the house --
+                # the stone just thrown has to be somewhere. The exception is a
+                # stone that ran out of play, which legitimately leaves the
+                # house exactly as it found it, empty included.
+                state_known=bool(stones) or not dv.came_to_rest,
+                house_delta=house_delta(previous, stones),
+                delivered_stone_index=_delivered_index(stones, dv),
             )
         )
+        previous = stones
     return out

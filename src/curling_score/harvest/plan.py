@@ -15,7 +15,7 @@ MIN_HEIGHT = 1080
 
 
 def build(entries, formats, n_val: int = 5, playlist_url: str = "",
-          min_height: int = MIN_HEIGHT) -> dict:
+          min_height: int = MIN_HEIGHT, all_val: bool = False) -> dict:
     """The season plan: every game, its split, and how it will be fetched.
 
     ``formats`` maps video id to the survey of what YouTube will serve, keyed
@@ -37,8 +37,12 @@ def build(entries, formats, n_val: int = 5, playlist_url: str = "",
             f"nothing to build a dataset from")
 
     entries = [e for e, _h in kept]
-    val_dates = playlist.pick_val_dates([e.date for e in entries], n=n_val)
-    splits = playlist.assign_splits(entries, val_dates)
+    if all_val:
+        val_dates = sorted({e.date for e in entries})
+        splits = {e.video_id: "val" for e in entries}
+    else:
+        val_dates = playlist.pick_val_dates([e.date for e in entries], n=n_val)
+        splits = playlist.assign_splits(entries, val_dates)
 
     videos = []
     for e in sorted(entries, key=lambda e: (e.date, e.sheet)):

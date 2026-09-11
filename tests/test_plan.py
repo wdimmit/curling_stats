@@ -88,3 +88,20 @@ class TestBuildPlan:
         doc = plan.build(entries, formats(entries), n_val=5)
         assert doc["summary"]["train_videos"] + doc["summary"]["val_videos"] == 130
         assert doc["summary"]["val_videos"] == 25
+
+
+class TestAllVal:
+    def test_a_test_set_is_all_one_split(self):
+        # A held-out test set is never trained on, so there is nothing to hold
+        # out from.
+        entries = season(n_dates=9)
+        doc = plan.build(entries, formats(entries), all_val=True)
+        assert {v["split"] for v in doc["videos"]} == {"val"}
+        assert doc["summary"]["train_videos"] == 0
+
+    def test_it_needs_no_room_to_spread_hold_outs(self):
+        # pick_val_dates refuses fewer than 2n dates; a test set must not be
+        # subject to that at all.
+        entries = season(n_dates=3)
+        doc = plan.build(entries, formats(entries), n_val=5, all_val=True)
+        assert doc["summary"]["val_videos"] == len(entries)
