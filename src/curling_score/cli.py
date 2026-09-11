@@ -399,6 +399,13 @@ def _info(args) -> int:
 
 
 
+def _stage_names():
+    """The harvest stages, for anything that needs to name them."""
+    from curling_score.harvest import stages
+
+    return sorted(stages.STAGES)
+
+
 def _harvest(args) -> int:
     """Build a season's worth of training candidates, one stage at a time.
 
@@ -535,8 +542,10 @@ def main(argv=None) -> int:
                    help="also show every Nth frame, to catch anything systematic")
     p.add_argument("--fix", action="store_true",
                    help="a page where labels can be clicked to reject them")
-    p.add_argument("--apply", metavar="EDITS_JSON", action="append",
-                   help="apply exported label edits; repeat to merge sessions")
+    # nargs="+" with extend, so a shell glob over a directory of sessions
+    # works as written, and so does repeating the flag.
+    p.add_argument("--apply", metavar="EDITS_JSON", nargs="+", action="extend",
+                   help="apply exported label edits; several are merged")
     p.add_argument("--all", action="store_true",
                    help="review every frame, not just the ranked suspects")
     p.add_argument("--per-page", type=int, default=200,
