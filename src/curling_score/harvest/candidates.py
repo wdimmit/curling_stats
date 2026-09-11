@@ -32,21 +32,34 @@ from dataclasses import dataclass, field
 # could never be filled. Seven or more is 15%, and still a crowded house.
 COUNT_BINS = (("empty", 0, 0), ("sparse", 1, 3), ("medium", 4, 6), ("busy", 7, 999))
 
-# Per video: 15 for a train video, 16 for a val one.
+# Per video, 15 frames, weighted by where the detector was measured to be
+# weak rather than spread evenly.
 #
-# Set against measured supply per video -- empty 23, motion 18, medium 4.8,
-# busy 4.0, sparse 2.5 -- so every bin is askable-for. Motion is the largest
-# share of the positives because a stone in flight is what the pipeline misses,
-# but it stays under a third: the house state that scoring reads is made of
-# stones at rest, and a set that over-weighted flight would trade one weakness
-# for another.
-QUOTA = {"empty": 2, "sparse": 2, "medium": 4, "busy": 3, "motion": 4}
-VAL_QUOTA = {"empty": 2, "sparse": 2, "medium": 4, "busy": 3, "motion": 5}
+# The wave-1 pilot reviewed 551 frames by hand and scored ds10_stratified
+# against them. Overall it manages mAP50-95 0.952, but the bins spread
+# fourfold, and three of the results contradicted the even split this quota
+# replaces:
+#
+#   empty   114 frames, 0 labels,  0.0% error  -- not one correction in 114
+#   sparse  112 frames, 224 labels, 11.2%, R 0.908  <- worst, and unforeseen
+#   medium  111 frames, 551 labels,  7.1%, R 0.943
+#   busy    103 frames, 875 labels,  2.6%, R 0.987  <- already excellent
+#   motion  111 frames, 561 labels,  6.1%, P 0.963  <- worst precision
+#
+# So empty drops to a token 1 (it was 21% of the pilot and taught nothing),
+# busy and medium shrink, and sparse and motion take the room. A missed guard
+# is a missed delivery and a phantom stone in flight is a phantom delivery;
+# neither shows up in an overall mAP of 0.99.
+#
+# Set against measured supply per video -- empty 24.5, motion 17.2, sparse 5.2,
+# medium 5.2, busy 4.1 -- sparse at 5 is the one that bites: 57% of videos can
+# fill it and the rest report a shortfall. That is deliberate. Sparse frames are
+# the scarcest thing worth having, so the quota sweeps up what exists.
+QUOTA = {"empty": 1, "sparse": 5, "medium": 2, "busy": 2, "motion": 5}
+# Val takes the same shape. A benchmark that is composed differently from the
+# training set measures a different problem.
+VAL_QUOTA = dict(QUOTA)
 
-# Wave 1 is the pilot: one frame per bin per video, about 600 frames, reviewed
-# before committing to the rest. Its picks are a strict subset of wave 2's --
-# `_spread` always starts from the same frame, whatever the quota -- so the
-# pilot's review is carried forward rather than repeated.
 WAVE1_QUOTA = {name: 1 for name in QUOTA}
 
 
@@ -167,7 +180,14 @@ def select(pool, quota=None, max_per_clip: int = MAX_PER_CLIP, backfill: bool = 
     the one that was intended.
 
     ``backfill`` tops up a missed *count* bin from whatever else is going,
-    which keeps the frame budget whole. It never backfills motion.
+    which keeps the frame budget whole.
+
+    It draws from neither motion nor empty. Motion because a flight quota met
+    with still frames would make the flight coverage a number nobody could
+    trust. Empty because the pilot measured 114 empty frames and got not one
+    correction out of them: topping up a short bin with empties spends review
+    time on the one thing shown to teach nothing, and since empties are 44% of
+    the pool that is exactly what a naive backfill does.
     """
     quota = dict(quota if quota is not None else QUOTA)
     by_bin: dict[str, list] = {}
@@ -182,11 +202,13 @@ def select(pool, quota=None, max_per_clip: int = MAX_PER_CLIP, backfill: bool = 
             shortfall[name] = want - len(got)
 
     filled = 0
+    NO_BACKFILL_FROM = ("motion", "empty")
     if backfill:
         missing = sum(n for b, n in shortfall.items() if b != "motion")
         if missing:
             taken = set(chosen)
-            rest = [c for c in pool if c not in taken and c.kind != "motion"]
+            rest = [c for c in pool
+                    if c not in taken and bin_of(c) not in NO_BACKFILL_FROM]
             extra = _spread(rest, missing, max_per_clip)
             chosen.extend(extra)
             filled = len(extra)

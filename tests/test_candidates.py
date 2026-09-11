@@ -163,9 +163,38 @@ class TestQuotaFor:
     def test_the_pilot_takes_one_of_each(self):
         assert set(C.quota_for(wave=1).values()) == {1}
 
-    def test_val_gets_a_little_more_motion(self):
-        assert C.quota_for("val")["motion"] > C.quota_for("train")["motion"]
+    def test_val_takes_the_same_shape_as_train(self):
+        # A benchmark composed differently from the training set measures a
+        # different problem.
+        assert C.quota_for("val") == C.quota_for("train")
+
+    def test_the_weak_bins_get_the_room(self):
+        # Measured on the 551-frame pilot: sparse loses 9% of its stones and
+        # motion has three times the false-positive rate, while 114 empty
+        # frames produced not one correction.
+        q = C.quota_for("train")
+        assert q["sparse"] >= 4 and q["motion"] >= 4
+        assert q["empty"] <= 1
+        assert q["busy"] <= q["sparse"]
 
     def test_the_pilot_nests_inside_the_full_quota(self):
         assert all(C.quota_for(wave=1)[k] <= C.quota_for("train", 2)[k]
                    for k in C.quota_for(wave=1))
+
+
+class TestBackfillSource:
+    def test_never_tops_up_from_empty_frames(self):
+        # 114 empty frames in the pilot produced not one correction, and
+        # empties are 44% of the pool -- so a naive backfill quietly refills
+        # the very bin the quota just de-weighted.
+        p = [cand(600.0 + i * 100.0, 0, 0, clip=600.0 + i * 100.0) for i in range(20)]
+        p += [cand(9000.0 + i * 100.0, 2, 2, clip=9000.0 + i * 100.0) for i in range(3)]
+        picked, short = C.select(p, quota={"empty": 1, "medium": 8}, backfill=True)
+        assert sum(1 for c in picked if C.bin_of(c) == "empty") == 1
+        assert short["medium"] == 5
+
+    def test_still_tops_up_from_the_informative_bins(self):
+        p = [cand(600.0 + i * 100.0, 4, 4, clip=600.0 + i * 100.0) for i in range(10)]
+        picked, short = C.select(p, quota={"sparse": 3, "busy": 2}, backfill=True)
+        assert len(picked) == 5
+        assert short["sparse"] == 3 and short["backfilled"] == 3
