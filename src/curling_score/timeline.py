@@ -170,8 +170,15 @@ def build_game(index, start_s, end_s, ends) -> dict:
     }
 
 
-def build_document(video_id, url, sheet, duration_s, calibration, games) -> dict:
-    """The whole analysis, ready to write to ``timeline.json``."""
+def build_document(video_id, url, sheet, duration_s, calibration, games,
+                   window=None, processing_version=None) -> dict:
+    """The whole analysis, ready to write to ``timeline.json``.
+
+    ``window`` is the ``(start_s, end_s)`` of the stream that was analysed when
+    the caller asked for only part of it; ``processing_version`` names the
+    pipeline and model that produced this, so two documents for one video can
+    be told apart.
+    """
     games = [dict(g) for g in games]
     for game in games:
         for end in game["ends"]:
@@ -185,14 +192,20 @@ def build_document(video_id, url, sheet, duration_s, calibration, games) -> dict
                 shot["youtube_url"] = (
                     watch_url_at(video_id, t) if t is not None else None
                 )
+    start_s, end_s = window if window else (None, None)
     return {
         "schema_version": SCHEMA_VERSION,
+        "processing_version": processing_version,
         "source": {
             "url": url,
             "video_id": video_id,
             "sheet": sheet,
             "duration_s": round(float(duration_s), 2),
             "analysed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "window": {
+                "start_s": None if start_s is None else round(float(start_s), 2),
+                "end_s": None if end_s is None else round(float(end_s), 2),
+            },
         },
         "calibration": calibration,
         "games": games,

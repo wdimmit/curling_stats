@@ -11,10 +11,12 @@ from curling_score.ingest import cache, source
 
 
 def _analyze(args) -> int:
-    doc = analyze_mod.analyze(args.url, shot_fps=args.fps,
+    doc = analyze_mod.analyze(args.url, root=args.cache_root, shot_fps=args.fps,
                               use_proxy=not args.no_proxy,
                               weights=args.weights, imgsz=args.imgsz,
-                              device=args.device)
+                              device=args.device, start_s=args.start,
+                              end_s=args.end, sheet=args.sheet,
+                              skip_scoreboard=args.no_scoreboard)
     out = analyze_mod.write(doc, args.out)
     print(f"\nwrote {out}")
     for game in doc["games"]:
@@ -492,6 +494,18 @@ def main(argv=None) -> int:
     p.add_argument("--weights", help="a trained YOLO model to detect with")
     p.add_argument("--imgsz", type=int, default=448)
     p.add_argument("--device", default=None)
+    p.add_argument("--start", type=float, default=None,
+                   help="analyse from this many seconds into the stream")
+    p.add_argument("--end", type=float, default=None,
+                   help="...up to this many seconds")
+    p.add_argument("--sheet", type=int, default=None,
+                   help="sheet number, when the title does not say")
+    p.add_argument("--no-scoreboard", action="store_true",
+                   help="skip reading the wall board (the only pass that needs "
+                        "the full-resolution original)")
+    p.add_argument("--cache-root", default=None,
+                   help="where videos, proxies and detections are kept "
+                        "(default: $CURLING_SCORE_CACHE or ~/.cache/curling_score)")
     p.set_defaults(func=_analyze)
 
     _add_harvest(sub)

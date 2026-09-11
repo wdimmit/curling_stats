@@ -2,9 +2,11 @@
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 
-from curling_score import timeline
+from curling_score import timeline, version
 from curling_score.detect import delivery, sequence
 from curling_score.game import (
     endcheck,
@@ -25,6 +27,11 @@ CALIB_STRIDE = 90  # keyframes apart, to spread samples across the whole video
 SHOT_FPS = 10.0  # decoding dominates, so a high rate is nearly free
 BOARD_INTERVAL_S = 450.0  # how often to read the wall scoreboard
 
+# The stages a caller can watch, in the order they run. A hosted worker turns
+# these into a progress bar; the CLI ignores them.
+PHASES = ("download", "proxy", "calibrate", "profile", "detect", "rules",
+          "scoreboard")
+
 
 def _proxy_setups(setups, strip):
     """The same calibrations, with panel rects moved into proxy coordinates.
@@ -40,16 +47,48 @@ def _proxy_setups(setups, strip):
     }
 
 
+def _no_phase(name, fraction, message=None):
+    return None
+
+
 def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             use_proxy: bool = True, weights=None, imgsz: int = 448,
-            device=None) -> dict:
-    """Analyse a club VOD and return the timeline document."""
-    info = source.fetch_info(url)
-    progress(f"{info.title} ({info.duration_s / 3600:.2f} h, sheet {info.sheet})")
+            device=None, *, start_s=None, end_s=None, sheet=None,
+            skip_scoreboard: bool = False, on_phase=None, info=None,
+            download_attempts=None) -> dict:
+    """Analyse a club VOD and return the timeline document.
 
-    path = cache.ensure_cached(url, root=root)
+    ``start_s``/``end_s`` bound the part of the stream that is *analysed*: the
+    activity profile and every end within it. The download, calibration and
+    proxy still cover the whole video -- a cropped-in-time proxy would shift
+    every timestamp and change the detection cache's keys -- so this saves the
+    detection time, which is what dominates, not the download.
+
+    ``sheet`` overrides the number read from the title. ``skip_scoreboard``
+    leaves out the wall-board pass, which is the only stage that needs the
+    full-resolution original. ``on_phase(name, fraction, message)`` is called as
+    the stages run, for a caller that wants to show progress. ``info`` lets a
+    caller that already fetched the metadata pass it in rather than ask
+    YouTube twice.
+    """
+    phase = on_phase or _no_phase
+    info = info or source.fetch_info(url)
+    sheet = sheet if sheet is not None else info.sheet
+    progress(f"{info.title} ({info.duration_s / 3600:.2f} h, sheet {sheet})")
+
+    phase("download", 0.0, "downloading video")
+    download_kwargs = {}
+    if download_attempts is not None:
+        download_kwargs["attempts"] = download_attempts
+    path = cache.ensure_cached(
+        url, root=root,
+        progress_hook=lambda f, m: phase("download", f, m),
+        **download_kwargs,
+    )
+    phase("download", 1.0, "video ready")
     progress(f"video at {path}")
 
+    phase("calibrate", 0.0, "sampling keyframes")
     progress("sampling keyframes for layout and calibration...")
     calib_frames = F.sample_keyframes(path, count=CALIB_FRAMES, stride=CALIB_STRIDE)
     progress(f"{len(calib_frames)} calibration frames")
@@ -60,6 +99,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             f"{name} panel {setup.rect} {setup.calib.px_per_m:.1f} px/m "
             f"(residual {setup.calib.residual_m * 100:.2f} cm)"
         )
+    phase("calibrate", 1.0, "calibrated")
 
     # Every later pass decodes only the overhead strip, which is about a
     # sixteenth of the frame. Analysis is decode-bound, so this is 3-4x cheaper
@@ -67,11 +107,15 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     read_path, read_setups = path, setups
     if use_proxy:
         strip = proxy.strip_rect(panels.top, panels.bottom)
+        phase("proxy", 0.0, "building strip proxy")
         read_path = proxy.ensure_proxy(
             path, info.video_id, strip, root=root, progress=progress
         )
+        phase("proxy", 1.0, "proxy ready")
         read_setups = _proxy_setups(setups, strip)
         progress(f"reading from strip proxy {strip[2]}x{strip[3]}")
+    else:
+        phase("proxy", 1.0, "reading the full frame")
 
     detector = None
     if weights:
@@ -82,17 +126,26 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         detector.model.overrides["half"] = True
         progress(f"detecting with {weights} at imgsz={imgsz}")
 
+    phase("profile", 0.0, "finding games and ends")
     progress("building activity profile...")
-    samples = profile.build_profile(read_path, read_setups)
+    sweep = None
+    if start_s is not None or end_s is not None:
+        sweep = F.keyframe_sweep(read_path, start_s=start_s, end_s=end_s)
+    samples = profile.build_profile(read_path, read_setups, sweep=sweep)
     games = segment.segment_games(samples)
     progress(f"{len(games)} game(s), {[len(g.ends) for g in games]} ends")
+    phase("profile", 1.0, f"{len(games)} game(s)")
 
+    total_ends = sum(len(g.ends) for g in games) or 1
+    done_ends = 0
     out_games = []
     for game in games:
         out_ends = []
         for end in game.ends:
             setup = read_setups[end.house]
             progress(f"  game {game.index + 1} end {end.number} ({end.house})...")
+            phase("detect", done_ends / total_ends,
+                  f"game {game.index + 1} end {end.number}")
             seq = sequence.detect_end(read_path, setup, end, shot_fps,
                                       detector)
             # The run-up belongs to the previous end, so anything thrown in it
@@ -135,6 +188,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             built["missed_after"] = audit.missed_after
             built["detection_confidence"] = round(audit.confidence, 3)
             out_ends.append(built)
+            done_ends += 1
             progress(
                 f"    {len(kept)}/16 deliveries "
                 f"(R{audit.thrown['red']} Y{audit.thrown['yellow']} offered"
@@ -145,41 +199,52 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         out_games.append(
             timeline.build_game(game.index, game.start_s, game.end_s, out_ends)
         )
+    phase("detect", 1.0, "all ends detected")
+    phase("rules", 1.0, "timeline built")
 
     # --- independent check against the wall scoreboard -----------------
     # Never used for timing: the club often posts it several ends late. It is
-    # read here only to say whether the computed scores are believable.
-    progress("reading the wall scoreboard...")
-    for game, out_game in zip(games, out_games):
-        readings = []
-        t = game.start_s
-        while t <= game.end_s:
-            r = sb.read_board_at(path, t)
-            if r is not None and not r.is_blank():
-                readings.append(r)
-            t += BOARD_INTERVAL_S
-        if not readings:
+    # read here only to say whether the computed scores are believable -- and
+    # it is the one stage that reads the full-resolution original, so a caller
+    # that does not want to keep that file can leave it out.
+    if skip_scoreboard:
+        for out_game in out_games:
             out_game["scoreboard"] = None
-            continue
-        consolidated = sb.consolidate(readings)
-        final = sb.cumulative(consolidated[-1])
-        try:
-            per_end = sb.per_end_scores(consolidated)
-        except sb.ScoreboardError:
-            per_end = None
-        agrees = final == out_game["final"]
-        out_game["scoreboard"] = {
-            "final": final,
-            "per_end": per_end,
-            "agrees_with_detection": agrees,
-        }
-        for end in out_game["ends"]:
-            end["scoreboard_agrees"] = agrees
-        progress(
-            f"  game {game.index + 1}: board says {final}, "
-            f"detection says {out_game['final']}"
-            f"{'' if agrees else '  <-- DISAGREE'}"
-        )
+        phase("scoreboard", 1.0, "skipped")
+    else:
+        phase("scoreboard", 0.0, "reading the wall scoreboard")
+        progress("reading the wall scoreboard...")
+        for game, out_game in zip(games, out_games):
+            readings = []
+            t = game.start_s
+            while t <= game.end_s:
+                r = sb.read_board_at(path, t)
+                if r is not None and not r.is_blank():
+                    readings.append(r)
+                t += BOARD_INTERVAL_S
+            if not readings:
+                out_game["scoreboard"] = None
+                continue
+            consolidated = sb.consolidate(readings)
+            final = sb.cumulative(consolidated[-1])
+            try:
+                per_end = sb.per_end_scores(consolidated)
+            except sb.ScoreboardError:
+                per_end = None
+            agrees = final == out_game["final"]
+            out_game["scoreboard"] = {
+                "final": final,
+                "per_end": per_end,
+                "agrees_with_detection": agrees,
+            }
+            for end in out_game["ends"]:
+                end["scoreboard_agrees"] = agrees
+            progress(
+                f"  game {game.index + 1}: board says {final}, "
+                f"detection says {out_game['final']}"
+                f"{'' if agrees else '  <-- DISAGREE'}"
+            )
+        phase("scoreboard", 1.0, "scoreboard read")
 
     calibration = {
         name: {
@@ -194,15 +259,21 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     return timeline.build_document(
         video_id=info.video_id,
         url=source.canonical_url(url),
-        sheet=info.sheet,
+        sheet=sheet,
         duration_s=info.duration_s,
         calibration=calibration,
         games=out_games,
+        window=(start_s, end_s),
+        processing_version=version.processing_version(weights),
     )
 
 
 def write(document: dict, out_dir) -> Path:
-    """Write ``timeline.json``, folding in any hand corrections alongside it."""
+    """Write ``timeline.json``, folding in any hand corrections alongside it.
+
+    Written to a temporary file and renamed, so a crash mid-write leaves the
+    previous timeline in place rather than a truncated one that fails to parse.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     overrides_path = out_dir / "overrides.json"
@@ -211,5 +282,12 @@ def write(document: dict, out_dir) -> Path:
             document, json.loads(overrides_path.read_text())
         )
     path = out_dir / "timeline.json"
-    path.write_text(json.dumps(document, indent=2))
+    fd, tmp = tempfile.mkstemp(dir=out_dir, prefix=".timeline-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(document, fh, indent=2)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
     return path

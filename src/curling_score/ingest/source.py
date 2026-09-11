@@ -12,6 +12,8 @@ from urllib.parse import parse_qs, urlparse
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _SHEET_RE = re.compile(r"\bSheet\s+(\d+)\b", re.IGNORECASE)
+# YouTube's own timestamp forms: "90", "90s", "1m30s", "1h2m3s".
+_TIME_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$")
 
 
 def video_id(url: str) -> str:
@@ -44,6 +46,44 @@ def watch_url_at(vid: str, t_seconds: float) -> str:
     return f"https://youtu.be/{vid}?t={int(t_seconds)}"
 
 
+def parse_time(text) -> float | None:
+    """Seconds from a YouTube-style timestamp, or None if it is not one."""
+    if text is None:
+        return None
+    text = str(text).strip().lower()
+    if not text:
+        return None
+    m = _TIME_RE.match(text)
+    if not m or not any(m.groups()):
+        return None
+    h, mi, s = (int(g) if g else 0 for g in m.groups())
+    return float(h * 3600 + mi * 60 + s)
+
+
+@dataclass(frozen=True)
+class Link:
+    """A pasted link, taken apart: which video, and where in it."""
+
+    video_id: str
+    start_s: float | None
+
+
+def parse_link(url: str) -> Link:
+    """The video id and any start time carried by the link.
+
+    ``canonical_url`` deliberately drops everything but the id, which is right
+    for downloading and wrong for a user who pasted ``?t=4212`` to say *which
+    game* in a four-hour stream they mean. This keeps that.
+    """
+    vid = video_id(url)
+    parsed = urlparse(url.strip())
+    query = parse_qs(parsed.query)
+    raw = (query.get("t") or query.get("start") or [None])[0]
+    if raw is None and parsed.fragment.startswith("t="):
+        raw = parsed.fragment[2:]
+    return Link(video_id=vid, start_s=parse_time(raw))
+
+
 def sheet_from_title(title: str) -> int | None:
     """Club titles look like "4/30 - Sheet 2 - Spring Skip's Choice League 2026"."""
     match = _SHEET_RE.search(title or "")
@@ -59,9 +99,10 @@ class VideoInfo:
     is_live: bool
     upload_date: str | None
     sheet: int | None
+    channel_id: str | None = None
 
 
-def fetch_info(url: str) -> VideoInfo:
+def fetch_info(url: str, timeout_s: float = 60.0) -> VideoInfo:
     """Query YouTube for metadata. Requires network; does not download media."""
     import yt_dlp
 
@@ -70,6 +111,8 @@ def fetch_info(url: str) -> VideoInfo:
         "no_warnings": True,
         "noplaylist": True,
         "skip_download": True,
+        # A hung metadata request otherwise blocks a caller forever.
+        "socket_timeout": timeout_s,
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(canonical_url(url), download=False)
@@ -85,4 +128,5 @@ def fetch_info(url: str) -> VideoInfo:
         is_live=bool(info.get("is_live")),
         upload_date=info.get("upload_date"),
         sheet=sheet_from_title(title),
+        channel_id=info.get("channel_id"),
     )

@@ -19,6 +19,8 @@ is what iteration actually looks like. It is cached
 beside the video and keyed by the crop, so a re-detected layout rebuilds it.
 """
 
+import os
+import secrets
 import subprocess
 from pathlib import Path
 
@@ -87,7 +89,11 @@ def ensure_proxy(video_path, vid, strip, root=None, progress=None) -> Path:
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
     x, y, w, h = strip
-    tmp = dest.with_suffix(".partial.mp4")
+    # A name no other process will pick: two jobs on the same video must not
+    # write over each other's half-built file.
+    tmp = dest.with_name(
+        f"{dest.stem}.partial-{os.getpid()}-{secrets.token_hex(4)}.mp4"
+    )
     cmd = [
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
         "-i", str(video_path),
@@ -97,6 +103,15 @@ def ensure_proxy(video_path, vid, strip, root=None, progress=None) -> Path:
     ]
     if progress:
         progress(f"building strip proxy {w}x{h} (one-off, ~9 min for a 4 h video)")
-    subprocess.run(cmd, check=True)
-    tmp.replace(dest)
+    try:
+        subprocess.run(cmd, check=True)
+        tmp.replace(dest)
+    finally:
+        tmp.unlink(missing_ok=True)
+    # The detection cache keys on this file's name, size and mtime. A rebuilt
+    # proxy of the same crop is the same pixels, and must say so, or a worker
+    # that lost its disk re-detects every end it had already done.
+    from curling_score.ingest.cache import pin_mtime
+
+    pin_mtime(dest)
     return dest

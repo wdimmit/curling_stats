@@ -40,9 +40,10 @@ _FIELDS = ("x_m", "y_m", "x_px", "y_px", "area_px", "confidence")
 
 
 def cache_dir() -> Path:
-    root = os.environ.get("CURLING_SCORE_CACHE")
-    base = Path(root) if root else Path.home() / ".cache" / "curling_score"
-    return base / "detections"
+    # One root for every cache, so pointing a worker at a disk moves all of it.
+    from curling_score.ingest.cache import default_root
+
+    return default_root() / "detections"
 
 
 def _file_identity(path) -> list:

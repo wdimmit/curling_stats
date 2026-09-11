@@ -11,7 +11,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "httpx>=0.27"]
+# The YOLO detector. Kept out of the base install so the API image and the
+# classical-detector path stay small; the worker image installs it.
+gpu = ["torch>=2.4", "ultralytics>=8.3"]
+# The hosted service: API, Firestore, blob storage.
+service = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "google-cloud-firestore>=2.19",
+    "google-cloud-storage>=2.18",
+    "httpx>=0.27",
+]
+# The processing worker only needs to talk HTTP to the API.
+worker = ["httpx>=0.27"]
 
 [project.scripts]
 curling-score = "curling_score.cli:main"
@@ -24,7 +37,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"curling_score.viewer" = ["*.html"]
+"curling_score.viewer" = ["*.html", "*.js", "*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
