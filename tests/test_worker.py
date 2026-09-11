@@ -144,3 +144,31 @@ class TestLoop:
         worker.run_forever(api, "home", root=tmp_path, weights=None, out_dir=tmp_path,
                            cache_gb=1.0, sleep=lambda s: None, once=True)
         assert api.completed == [] and api.failed == []
+
+
+class TestResolveWeights:
+    def test_an_explicit_setting_wins(self, monkeypatch):
+        # A deployment must be able to pin its own model.
+        monkeypatch.setenv("WEIGHTS", "/models/pinned.pt")
+        assert worker.resolve_weights() == "/models/pinned.pt"
+
+    def test_none_selects_the_classical_detector(self, monkeypatch):
+        monkeypatch.setenv("WEIGHTS", "none")
+        assert worker.resolve_weights() is None
+
+    def test_unset_means_the_project_default(self, monkeypatch):
+        # Standardised on ds11a: unset used to mean the colour detector.
+        monkeypatch.delenv("WEIGHTS", raising=False)
+        monkeypatch.delenv("CURLING_SCORE_WEIGHTS", raising=False)
+        got = worker.resolve_weights()
+        assert got is not None and got.endswith("ds11a.pt")
+
+    def test_a_missing_default_falls_back_loudly_not_silently(
+            self, tmp_path, monkeypatch, caplog):
+        # Safe only because model_id writes the fallback into every timeline's
+        # processing_version, so it is recorded rather than hidden.
+        monkeypatch.delenv("WEIGHTS", raising=False)
+        monkeypatch.setenv("CURLING_SCORE_WEIGHTS", str(tmp_path / "absent.pt"))
+        with caplog.at_level("WARNING"):
+            assert worker.resolve_weights() is None
+        assert "classical" in caplog.text

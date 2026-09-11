@@ -7,7 +7,22 @@ import sys
 from pathlib import Path
 
 from curling_score import analyze as analyze_mod
+from curling_score import weights as weights_mod
 from curling_score.ingest import cache, source
+
+
+def _default_weights():
+    """The standard detector, or None if this checkout has no weights.
+
+    Resolved for --help and for the default value, so the help text names the
+    model that will actually run. A missing file must not stop `--help` or a
+    subcommand that never detects, so the error is deferred to use.
+    """
+    try:
+        path = weights_mod.default_path()
+    except FileNotFoundError:
+        return None
+    return str(path) if path else None
 
 
 def _analyze(args) -> int:
@@ -491,7 +506,9 @@ def main(argv=None) -> int:
     p.add_argument("--fps", type=float, default=analyze_mod.SHOT_FPS)
     p.add_argument("--no-proxy", action="store_true",
                    help="decode the full frame instead of a cropped strip proxy")
-    p.add_argument("--weights", help="a trained YOLO model to detect with")
+    p.add_argument("--weights", default=_default_weights(),
+                   help=f"a trained YOLO model to detect with "
+                        f"(default: {_default_weights() or 'classical'})")
     p.add_argument("--imgsz", type=int, default=448)
     p.add_argument("--device", default=None)
     p.add_argument("--start", type=float, default=None,
@@ -529,7 +546,9 @@ def main(argv=None) -> int:
     p.add_argument("url")
     p.add_argument("--out", default="review")
     p.add_argument("--fps", type=float, default=10.0)
-    p.add_argument("--weights", help="a trained YOLO model to detect with")
+    p.add_argument("--weights", default=_default_weights(),
+                   help=f"a trained YOLO model to detect with "
+                        f"(default: {_default_weights() or 'classical'})")
     p.add_argument("--imgsz", type=int, default=448)
     p.add_argument("--device", default=None)
     p.add_argument("--no-proxy", action="store_true")
@@ -547,7 +566,9 @@ def main(argv=None) -> int:
     p.add_argument("--fps", type=float, default=1.0,
                    help="frames to render per second of video")
     p.add_argument("--out", default="inspect")
-    p.add_argument("--weights", help="a trained YOLO model to detect with")
+    p.add_argument("--weights", default=_default_weights(),
+                   help=f"a trained YOLO model to detect with "
+                        f"(default: {_default_weights() or 'classical'})")
     p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--device")
     p.add_argument("--no-proxy", action="store_true")

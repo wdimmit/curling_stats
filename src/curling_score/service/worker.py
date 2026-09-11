@@ -183,6 +183,32 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     })
 
 
+def resolve_weights():
+    """Which model this worker runs.
+
+    ``WEIGHTS`` still wins, so a deployment can pin a model or ask for the
+    classical detector with ``none``. Unset now means the project default
+    (ds11a) rather than the colour detector.
+
+    A worker that cannot find the default falls back to classical and says so,
+    rather than refusing to start. That is safe here only because
+    ``version.model_id`` writes the model into every timeline's
+    ``processing_version``: the fallback is recorded, not hidden.
+    """
+    from curling_score import weights as weights_mod
+
+    chosen = os.environ.get("WEIGHTS")
+    if chosen:
+        return None if chosen.strip().lower() in ("none", "classical") else chosen
+    try:
+        path = weights_mod.default_path()
+    except FileNotFoundError as exc:
+        log.warning("no default weights (%s); falling back to the classical "
+                    "detector, which will show in processing_version", exc)
+        return None
+    return str(path) if path else None
+
+
 def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | None,
                 out_dir: Path, cache_gb: float, sleep=time.sleep, once: bool = False):
     model = version.model_id(weights)
@@ -238,7 +264,7 @@ def main(argv=None) -> int:
     token = os.environ["WORKER_TOKEN"]
     root = Path(os.environ.get("CURLING_SCORE_CACHE") or cache.default_root())
     os.environ["CURLING_SCORE_CACHE"] = str(root)
-    weights = os.environ.get("WEIGHTS") or None
+    weights = resolve_weights()
     run_forever(
         ApiClient(api_url, token), os.environ.get("WORKER_ID") or socket.gethostname(),
         root=root, weights=weights, out_dir=Path(os.environ.get("WORKER_OUT", root / "out")),
