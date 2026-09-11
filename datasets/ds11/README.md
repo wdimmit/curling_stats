@@ -120,3 +120,41 @@ It is worth knowing outside ds11 though. **`analyze` cannot read these VODs
 either** — a single-overhead night is a real thing the club does, roughly 5% of
 the season, and the pipeline currently fails on it rather than reading the one
 house it can see. That is a candidate for `BACKLOG.md`.
+
+## The pilot's answer: the detector is not the bottleneck
+
+The val split of wave 1 — 121 frames from 25 games on five held-out Tuesdays,
+every frame looked at by a person — is the first val set in this project that no
+detector wrote. Measured against it, `weights/ds10_stratified.pt`:
+
+| | mAP50 | mAP50-95 | P | R |
+|---|---|---|---|---|
+| all (121 frames, 494 labels) | 0.9842 | 0.9581 | 0.9853 | 0.9492 |
+| static (72 frames, 364) | 0.9885 | 0.9623 | 0.9860 | 0.9643 |
+| motion (24 frames, 130) | 0.9808 | 0.9478 | 0.9628 | 0.9578 |
+| empty (25 frames, 0) | — no instances to score | | | |
+
+The reviewer rejected 13 of 495 auto-labels and added 12, so ds10 runs at about
+**2.6% false positives and 2.4% missed** on games it has never seen. Its
+mAP50-95 here (0.958) is *higher* than on its own circular val (0.921).
+
+This is a negative result and it is the point of running a pilot. **More
+training data of this kind will not buy much**: the detector is already near its
+ceiling on unseen games, which is the same conclusion `EXPERIMENTS.md` reached
+from the other direction after ten dataset variants failed to move board
+agreement.
+
+Three caveats, so the number is not read as more than it is:
+
+* **It is not fully independent.** The labels began as ds10's own predictions
+  and a person changed 5% of them. Whatever the reviewer also missed still
+  counts as agreement. Every frame was looked at, which makes this far weaker
+  circularity than ds1–ds10 had, but it is not zero.
+* **The motion/static gap is not significant at this size.** Motion precision
+  is 0.963 against 0.986, but that is roughly five false positives against five,
+  on 130 labels against 364. It is a hint, not a finding. Frames needing *any*
+  correction were 33% for motion against 18% overall, which points the same way
+  without settling it.
+* **mAP is not delivery recall.** The pipeline misses ~40% of deliveries with a
+  detector that finds 98% of stones, so the loss is downstream — tracking,
+  occlusion, the 16-shot fit, reading the house.
