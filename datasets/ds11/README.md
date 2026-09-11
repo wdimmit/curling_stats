@@ -121,40 +121,53 @@ either** — a single-overhead night is a real thing the club does, roughly 5% o
 the season, and the pipeline currently fails on it rather than reading the one
 house it can see. That is a candidate for `BACKLOG.md`.
 
-## The pilot's answer: the detector is not the bottleneck
+## What the pilot measured
 
-The val split of wave 1 — 121 frames from 25 games on five held-out Tuesdays,
-every frame looked at by a person — is the first val set in this project that no
-detector wrote. Measured against it, `weights/ds10_stratified.pt`:
+All 551 wave-1 frames were reviewed by hand: 64 auto-labels rejected, 57 added,
+**5.5% of labels corrected**. ds10 has seen none of these 120 videos, so for
+measuring *it* the ds11 train/val split is irrelevant and all 551 frames are
+held out.
 
-| | mAP50 | mAP50-95 | P | R |
-|---|---|---|---|---|
-| all (121 frames, 494 labels) | 0.9842 | 0.9581 | 0.9853 | 0.9492 |
-| static (72 frames, 364) | 0.9885 | 0.9623 | 0.9860 | 0.9643 |
-| motion (24 frames, 130) | 0.9808 | 0.9478 | 0.9628 | 0.9578 |
-| empty (25 frames, 0) | — no instances to score | | | |
+`weights/ds10_stratified.pt` overall: **mAP50 0.9900, mAP50-95 0.9519,
+P 0.9808, R 0.9482**. Its mAP50-95 against its own circular val was 0.921, so it
+does not do worse on unseen games — it does better.
 
-The reviewer rejected 13 of 495 auto-labels and added 12, so ds10 runs at about
-**2.6% false positives and 2.4% missed** on games it has never seen. Its
-mAP50-95 here (0.958) is *higher* than on its own circular val (0.921).
+That single number hides a fourfold spread:
 
-This is a negative result and it is the point of running a pilot. **More
-training data of this kind will not buy much**: the detector is already near its
-ceiling on unseen games, which is the same conclusion `EXPERIMENTS.md` reached
-from the other direction after ten dataset variants failed to move board
-agreement.
+| bin | frames | labels | err/label | mAP50-95 | P | R |
+|---|---|---|---|---|---|---|
+| empty | 114 | 0 | **0.0%** | — | — | — |
+| sparse (1-3) | 112 | 224 | **11.2%** | 0.9215 | 0.9813 | **0.9078** |
+| medium (4-6) | 111 | 551 | 7.1% | 0.9501 | 0.9886 | 0.9433 |
+| busy (7+) | 103 | 875 | **2.6%** | 0.9656 | 0.9815 | **0.9869** |
+| motion | 111 | 561 | 6.1% | 0.9464 | **0.9630** | 0.9455 |
 
-Three caveats, so the number is not read as more than it is:
+Four things follow, and three of them contradict what the design assumed.
 
-* **It is not fully independent.** The labels began as ds10's own predictions
-  and a person changed 5% of them. Whatever the reviewer also missed still
-  counts as agreement. Every frame was looked at, which makes this far weaker
-  circularity than ds1–ds10 had, but it is not zero.
-* **The motion/static gap is not significant at this size.** Motion precision
-  is 0.963 against 0.986, but that is roughly five false positives against five,
-  on 130 labels against 364. It is a hint, not a finding. Frames needing *any*
-  correction were 33% for motion against 18% overall, which points the same way
-  without settling it.
-* **mAP is not delivery recall.** The pipeline misses ~40% of deliveries with a
-  detector that finds 98% of stones, so the loss is downstream — tracking,
-  occlusion, the 16-shot fit, reading the house.
+**Empty frames taught nothing.** 114 of them, and not one correction: ds10 put
+no box on any empty house, and no missed stone was found on one. The negatives
+are *safe* but they are not *informative*, and at 21% of the pilot they were the
+single largest waste of review time. The quota should be near zero.
+
+**Sparse frames are the worst, and that was not predicted.** A house holding one
+to three stones loses **9% of them** (recall 0.908) — four times the loss on a
+crowded house. The intuition that a lone stone against clean ice is the easy
+case is wrong.
+
+**Busy frames are the best.** Recall 0.987 on 875 labels in packed houses,
+which is the clearest vindication yet of detecting the handle rather than the
+granite: the touching-stone merge that dominates the literature simply does not
+happen here.
+
+**Motion frames have the worst precision** — 0.963 against 0.988 for static, on
+561 labels, so roughly three times the false-positive rate. On the val split
+alone (130 labels) this looked like noise; at 4.5x the sample it does not.
+
+The two weaknesses point at the pipeline's actual complaint. A missed guard is a
+missed delivery; a phantom stone in flight is a phantom delivery. Neither shows
+up in an overall mAP of 0.99.
+
+Caveat that still stands: the labels began as ds10's predictions and a person
+changed 5.5% of them, so whatever the reviewer also missed still counts as
+agreement. Every frame was looked at, which makes this far weaker circularity
+than ds1-ds10 had, but it is not zero.
