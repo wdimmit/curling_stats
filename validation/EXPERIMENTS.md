@@ -639,3 +639,53 @@ A residual circularity also stands: the labels began as ds10's predictions and a
 person changed 7.6% of them, so whatever the reviewer also missed still counts
 as agreement. Every frame was looked at, which makes this far weaker than
 ds1–ds10 had, but it is not zero.
+
+## ds12 — the same three models, a different league
+
+ds11's val split is 25 unseen *games*, but from the same competition, weeknight
+and months as the training data. ds12 asks the other question: 207 frames from
+45 games of the Spring Monday Open League 2026 — different competition,
+different night, shorter games, and entirely later in time than every training
+frame. No overlap with anything any model has seen.
+
+Its labels are the **union** of ds10's and ds11a's detections, reviewed by hand.
+Labelling with one model hides that model's own misses, because an unlabelled
+stone is easy to overlook where a wrong box is obvious. The reviewer rejected 31
+of 743 and added 8 — only eight stones that *both* models missed, which is the
+union working.
+
+| model | mAP50 | mAP50-95 | P | R |
+|---|---|---|---|---|
+| ds10_stratified | 0.9522 | 0.9107 | 0.9861 | 0.9134 |
+| ds11a | **0.9921** | 0.9436 | 0.9789 | **0.9666** |
+| ds11b | 0.9805 | **0.9476** | 0.9855 | 0.9534 |
+
+**What degrades, moving league:**
+
+| model | ds11 val mAP50 | ds12 mAP50 | drop |
+|---|---|---|---|
+| ds10 | 0.9848 | 0.9522 | −3.3 |
+| ds11a | 0.9931 | 0.9921 | **−0.1** |
+| ds11b | 0.9933 | 0.9805 | −1.3 |
+
+**Motion decides it.** ds10 loses one moving stone in five on this league:
+
+| model | motion mAP50 | motion recall |
+|---|---|---|
+| ds10 | 0.8586 | 0.8097 |
+| ds11a | 0.9773 | **0.9352** |
+| ds11b | 0.9527 | 0.8981 |
+
+A 12.6-point recall gain, the largest effect anywhere in this work, in exactly
+the bin the frames were harvested for.
+
+**More data made transfer worse.** ds11b beats ds11a on the same-league
+benchmark and loses to it here. ds10's 6,144 dense frames are 82% of ds11b's
+training mix and pull it back toward ds10's biases: ds11b's sparse recall on
+this league (0.8859) is no better than ds10's (0.8883), where ds11a reaches
+0.9234. So the choice is not "best model" but "best for what" — ds11b fits the
+Super League, ds11a survives a change of league.
+
+Caveat: ds11b was not part of the union that labelled this set, so a stone only
+it would find is unlabelled unless the reviewer added it. Its numbers here are a
+slight floor rather than exact.
