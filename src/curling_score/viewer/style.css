@@ -162,7 +162,7 @@ body[data-mode="view"] #house { cursor:default; }
    house takes what is left, and the chart panel becomes a sheet over both.
    Everything is placed with fixed/absolute positioning because the player
    iframe must never be reparented -- see app.js's one-player invariant. */
-@media (max-width: 640px) {
+@media (max-width: 640px) and (min-height: 521px) {
   body { height: 100dvh; overflow: hidden; }
 
   header { height: 48px; padding: 0 8px 0 12px; flex-wrap: nowrap; gap: 8px; }
@@ -339,4 +339,19 @@ body[data-mode="view"] #house { cursor:default; }
   body[data-peek="order"][data-sheet="peek"] #orderRow:not([hidden]),
   body[data-peek="order"][data-sheet="peek"] #placeStones:not([hidden]) { display: flex; }
   body[data-peek="order"][data-sheet="peek"] #orderRow { border-color: var(--accent); }
+}
+
+/* --- short screens ------------------------------------------------------ */
+/* The shell needs a tall viewport. Below that the pre-existing single-column
+   layout already scrolls and clips nothing, so the only thing worth adding is
+   keeping the transport within reach of a thumb. */
+@media (max-width: 640px) and (max-height: 520px) {
+  main { margin-bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .transport { position: fixed; left: 12px; right: 12px; z-index: 5;
+               bottom: calc(12px + env(safe-area-inset-bottom));
+               margin: 0; gap: 8px; flex-wrap: nowrap;
+               background: var(--panel); padding: 8px; border-radius: 10px;
+               box-shadow: 0 2px 12px rgb(0 0 0 / .14); }
+  .transport button { height: 44px; }
+  .transport #label, .transport #link { display: none; }
 }
