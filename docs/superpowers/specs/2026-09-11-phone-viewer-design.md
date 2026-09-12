@@ -90,7 +90,7 @@ thrown, then say what was on the ice.
 picker, which beats any custom dropdown we would write, and `render()` already
 fills it with fifteen well-labelled options. It only needs to grow to 44 px.
 
-### The unresolved part: the renumber is invisible
+### The renumber announces itself
 
 On desktop the `#shots` chip strip sits under the video, so a reorder visibly
 rewrites sixteen labels. Candidate C deliberately has no strip — the header
@@ -98,15 +98,25 @@ stone chip replaced it — so the only feedback is that chip changing from `9`
 to `3`. That is very thin for an operation that renumbers the whole end, and
 `moveBefore.onchange` also moves `state.si` underneath the user.
 
-Two ways out, and this needs a decision before implementation:
+**Decided: a transient toast, not a chip strip.** A permanent strip costs
+46 px on every screen to explain an occasional action, which is the wrong
+trade. Instead `#renumbered` appears after a reorder, says what happened, and
+leaves.
 
-1. **A transient confirmation** after a reorder — "end renumbered, this is now
-   rock 3" — in the sheet for a few seconds. Cheap, and keeps the chosen layout.
-2. **Bring back a chip strip**, as Candidate B had it. Stronger feedback, but
-   it costs 46 px permanently and undoes a choice already made.
+- **It floats over the house**, absolutely positioned just above the sheet, so
+  it costs no layout at all and nothing reflows when it comes and goes.
+- **It carries what the user could not otherwise know.** Moving a blank settles
+  its *colour*, because `layout()` recolours blanks by the alternation around
+  them. So the text is "End renumbered — this is now **rock 3**, red by
+  alternation", not a bare "renumbered".
+- **It exists in both layouts but is only visible on phone**, and carries
+  `role="status"`. The desktop chip strip is a purely visual signal, so a
+  screen-reader user gets nothing from it today; announcing the renumber is
+  worth having at every width even though the toast is not drawn there.
+- It auto-dismisses after ~5 s. It confirms an action the user just took, so
+  auto-dismissal is safe — no decision depends on reading it.
 
-Recommendation: (1). The renumber is rare, and paying 46 px on every screen for
-feedback on an occasional action is the wrong trade.
+Shown as the fourth artboard on the canvas.
 
 ## Architecture
 
@@ -249,6 +259,10 @@ What can be tested, and should be written test-first:
 - `peekMode(shot)` → `"grade" | "order"`, the shot-state branch that decides
   which peek a shot gets. Pure, one line, and the thing most likely to be got
   wrong for a shot that is both blank and already graded.
+- `renumberNotice(before, after)` → the toast's text, or `null` when nothing
+  moved. The `null` case is the one worth a test: picking "detected order" when
+  the shot is already in detected order, or a `before` that lands it back where
+  it started, must not announce a renumber that did not happen.
 
 `layout()` and the reorder itself are already covered by
 `tests/test_viewer_js.py` as of `5ba4858`; this work must not change them.
