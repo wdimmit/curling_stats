@@ -408,6 +408,85 @@ class TestShortEndsAreFilledWithBlanks:
         assert shots.from_deliveries([], self._frames({0: []})) == []
 
 
+class TestStonesOnTheSheetPlaceTheBlanks:
+    """The sheet cannot hold more stones than rocks have been thrown."""
+
+    def _alt(self, n, first="red"):
+        other = "yellow" if first == "red" else "red"
+        dv = TestShortEndsAreFilledWithBlanks()._dv
+        return [dv(first if i % 2 == 0 else other, 10 + i * 50) for i in range(n)]
+
+    def _plan(self, n, sizes, first="red"):
+        return shots._fill_short_end(
+            shots._with_placeholders(self._alt(n, first)), 16, house_sizes=sizes)
+
+    def test_three_stones_after_the_first_seen_rock_means_two_went_before(self):
+        # Game 3 end 4 of the 5U championship: the two lead guards were never
+        # seen, so the first house read held three stones. Timing could not
+        # place them -- the end's clock had not started -- but the count can.
+        plan = self._plan(14, [3] + [4] * 13)
+        blanks = [i for i, (_c, dv) in enumerate(plan) if dv is None]
+        assert blanks == [0, 1]
+        # The rock we saw first was the third thrown and keeps its colour.
+        assert [c for c, _ in plan[:3]] == ["red", "yellow", "red"]
+
+    def test_the_end_stays_legal(self):
+        plan = self._plan(14, [3] + [4] * 13)
+        colors = [c for c, _ in plan]
+        assert len(plan) == 16
+        assert all(a != b for a, b in zip(colors, colors[1:]))
+        assert colors.count("red") == 8
+
+    def test_a_house_that_never_outgrows_the_count_changes_nothing(self):
+        # Fourteen rocks, houses of at most one stone each: blanks go where
+        # they always did, at the end.
+        plan = self._plan(14, [1] * 14)
+        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [14, 15]
+
+    def test_one_stone_too_many_still_costs_a_pair(self):
+        # A single blank between alternating neighbours cannot exist, so the
+        # evidence for one rock buys a pair -- and the rest of the deficit
+        # goes to the tail as before.
+        plan = self._plan(13, [2] + [3] * 12)
+        blanks = [i for i, (_c, dv) in enumerate(plan) if dv is None]
+        assert blanks == [0, 1, 15]
+
+    def test_it_never_invents_more_rocks_than_the_end_is_short(self):
+        plan = self._plan(15, [4] + [5] * 14)   # one short; the count says three
+        assert len(plan) == 16
+        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [15]
+
+    def test_evidence_mid_end_puts_the_pair_there(self):
+        # Ten rocks alternate cleanly, then the eleventh house holds two more
+        # stones than have been thrown: the pair goes before it, not at the end.
+        sizes = list(range(1, 11)) + [13, 14, 15, 16]
+        plan = self._plan(14, sizes)
+        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [10, 11]
+
+    def test_from_deliveries_feeds_the_house_sizes_through(self):
+        # Fourteen alternating deliveries; the first settles with three stones
+        # already on the sheet. The blanks lead the end.
+        from curling_score.detect.rocks import Detection
+
+        def det(color, x, y):
+            return Detection(color=color, x_m=x, y_m=y, x_px=0.0, y_px=0.0,
+                             area_px=150.0, confidence=0.9)
+
+        dvs = self._alt(14)
+        frames = []
+        for i, dv in enumerate(dvs):
+            stones = [det("red", 0.3, 4.2), det("yellow", 0.3, 3.5),
+                      det(dv.color, 0.0, -1.7)] + [
+                det("red" if k % 2 else "yellow", 0.4 * k - 1.0, 0.5) for k in range(i)]
+            for k in range(20):
+                frames.append((dv.t_rest + 0.5 * k, stones))
+        got = shots.from_deliveries(dvs, frames)
+        assert [s.missing for s in got[:3]] == [True, True, False]
+        assert [s.color for s in got[:3]] == ["red", "yellow", "red"]
+        assert got[2].number == 3 and got[2].delivery is dvs[0]
+        assert not any(s.missing for s in got[3:])
+
+
 class TestFillingAgainstRealEnds:
     """The four short ends of the reference VOD, by their real delivery times.
 

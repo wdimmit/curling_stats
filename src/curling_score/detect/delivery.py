@@ -271,6 +271,37 @@ def _tail(track, i: int):
     return out
 
 
+def _head(track, i: int):
+    """The same track up to, and not including, sample ``i``."""
+    out = _Track(track.color, track.ts[0], track.xs[0], track.ys[0])
+    for t, x, y in zip(track.ts[1:i], track.xs[1:i], track.ys[1:i]):
+        out.add(t, x, y)
+    return out
+
+
+def _candidate_tracks(frames):
+    """Every track, split where one stone's history was handed to another.
+
+    A track that starts where a stone is still sitting borrowed that stone's
+    history; its own motion began where the two parted. The borrowed part is
+    not thrown away: it is the parked stone, and if that stone arrived within
+    the footage its arrival is a delivery in its own right. Game 3 end 4 of
+    the 5U championship lost its opening guard this way. The guard parked at
+    (+0.36, +4.22) for four minutes; a later red passed 0.3 m from it while
+    the sweepers hid it, the tracker handed the guard's track to the passing
+    stone, and the trim that gave the flight back to the shooter discarded the
+    guard's arrival with the history it cut. Every shot in the end was then
+    credited to the wrong thrower.
+    """
+    for track in _build_tracks(frames):
+        i0 = _trim_borrowed_start(frames, track)
+        if i0 > 0:
+            yield _head(track, i0)
+        tail = _tail(track, i0)
+        i1 = _trim_borrowed_end(frames, tail)
+        yield tail if i1 >= len(tail.ts) else _head(tail, i1)
+
+
 def _build_tracks(frames):
     tracks: list[_Track] = []
     live: list[_Track] = []
@@ -392,17 +423,56 @@ def _trim_borrowed_start(frames, track):
     return left
 
 
+def _trim_borrowed_end(frames, track) -> int:
+    """Drop a trailing segment that belongs to a stone already sitting there.
+
+    Returns the index the track's own account ends at (exclusive). The mirror
+    of `_trim_borrowed_start`: a track that finishes on a spot where a stone
+    of its colour was sitting *before it got there* did not come to rest, it
+    was handed that stone. The case is a shooter passing a parked stone while
+    the sweepers hide both. The parked stone's track takes the shooter over,
+    which orphans the shooter's first few sightings, and when the parked stone
+    shows again a second later it is the one detection inside that orphan's
+    widened gate -- so the orphan "comes to rest" exactly where a stone had
+    been all along, and reads as a short delivery with the strongest evidence
+    there is.
+    """
+    n = len(track.ts)
+    x1, y1 = track.xs[-1], track.ys[-1]
+    arrived = n - 1
+    while arrived > 0 and (
+        (track.xs[arrived - 1] - x1) ** 2 + (track.ys[arrived - 1] - y1) ** 2
+    ) ** 0.5 <= CHANGE_TOLERANCE_M:
+        arrived -= 1
+    if arrived == 0 or track.ts[-1] - track.ts[arrived] < REST_HOLD_S:
+        return n  # never moved, or never settled: nothing was borrowed
+    if _place_was_empty(frames, track.color, x1, y1, track.ts[arrived],
+                        unknown_is_empty=True):
+        return n
+    return arrived
+
+
 def _rest_index(track):
-    """First index from which the stone stays put for REST_HOLD_S."""
+    """First index from which the stone stays put for REST_HOLD_S.
+
+    "Stays put for a second" has to be witnessed by a sighting at least a
+    second later, so where the track has one it closes the window. Judged on
+    the samples inside the second alone, a stone that crept 0.05 m in 0.7 s
+    and then, after half a second under the sweepers, showed up 0.2 m further
+    on was called at rest from its first sighting -- game 3 end 4's yellow
+    guard, first seen with its box clipped against the top of the panel. A
+    stone at rest is exactly where it was after the gap; a moving one is not.
+    """
     n = len(track.ts)
     for i in range(n):
         j = i
         while j + 1 < n and track.ts[j + 1] - track.ts[i] < REST_HOLD_S:
             j += 1
-        if track.ts[j] - track.ts[i] < REST_HOLD_S * 0.5:
-            # Too little track to judge -- either a time gap where the stone was
-            # hidden, or the tail of the track. Skip it; do not abandon the
-            # scan, or one early occlusion hides the stone settling later.
+        if j + 1 < n:
+            j += 1  # the first sample REST_HOLD_S or more after i
+        elif track.ts[j] - track.ts[i] < REST_HOLD_S * 0.5:
+            # The tail of the track, too short to judge. Skip it rather than
+            # give up: the stone may still be seen settling later.
             continue
         span = max(
             ((track.xs[k] - track.xs[i]) ** 2 + (track.ys[k] - track.ys[i]) ** 2) ** 0.5
@@ -607,12 +677,17 @@ REQUIRED_LOOKBACK_S = EMPTY_LOOKBACK_S + CHANGE_WINDOW_S
 EMPTY_MAX_PRESENCE = 0.2
 
 
-def _place_was_empty(frames, color, x, y, t0) -> bool:
-    """Whether no stone of this colour had been sitting here beforehand."""
+def _place_was_empty(frames, color, x, y, t0, unknown_is_empty=False) -> bool:
+    """Whether no stone of this colour had been sitting here beforehand.
+
+    With too little footage before ``t0`` to tell, the answer is whatever the
+    caller can afford to be wrong about: a delivery must not be claimed on no
+    evidence, while a track link is refused only on positive evidence.
+    """
     lo, hi = t0 - EMPTY_LOOKBACK_S, t0 - CHANGE_GUARD_S
     window = [(t, d) for t, d in frames if lo <= t <= hi]
     if len(window) < CHANGE_MIN_FRAMES:
-        return False  # nothing to go on; do not claim a delivery
+        return unknown_is_empty  # nothing to go on
     hits = sum(
         1 for _t, dets in window
         if any(d.color == color
@@ -720,10 +795,7 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
 
     out: list[Delivery] = []
     claimed: list[tuple] = []
-    for track in _build_tracks(frames):
-        # A track that starts where a stone is still sitting borrowed that
-        # stone's history; its own motion began where the two parted.
-        track = _tail(track, _trim_borrowed_start(frames, track))
+    for track in _candidate_tracks(frames):
         if len(track.ts) < 4:
             continue
         late_entry = False

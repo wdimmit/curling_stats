@@ -300,7 +300,8 @@ GAP_FACTOR = 1.7
 MAX_FILL = 4
 
 
-def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL):
+def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL,
+                    house_sizes=None):
     """Mark the deliveries an end is missing, and where they went.
 
     ``fit_end`` enforces strict alternation by dropping candidates, so by the
@@ -319,11 +320,37 @@ def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL):
     Timing alone would not have done it -- one end has three gaps at twice its
     median and is only one rock short, because teams stop to confer and to
     measure. The parity rule is what makes the guess honest.
+
+    ``house_sizes`` -- how many stones the sheet held after each seen delivery,
+    in order -- is harder evidence still, and is used first. The sheet cannot
+    hold more stones than rocks have been thrown, so a house of three after
+    what looked like the first delivery means two went by unseen before it.
+    That is exactly the case the gap rule cannot reach: a rock missed before
+    the first one we saw leaves no gap between deliveries at all, and the
+    blanks for it used to be appended to the end of the end, where they named
+    the wrong throwers for every shot in between.
     """
     short = per_end - len(seq)
     if not 0 < short <= max_fill:
         return seq
     seq = list(seq)
+
+    if house_sizes and short >= 2:
+        sizes = iter(house_sizes)
+        p = 0
+        while p < len(seq):
+            color, dv = seq[p]
+            if dv is not None:
+                need = next(sizes, 0) - (p + 1)
+                if need > 0:
+                    # Pairs, for the same parity reason as below: a lone
+                    # blank between two alternating neighbours cannot exist.
+                    pairs = min((need + 1) // 2, short // 2)
+                    pair = [(color, None), (rules.other_color(color), None)]
+                    seq[p:p] = pair * pairs
+                    short -= 2 * pairs
+                    p += 2 * pairs
+            p += 1
 
     real = [(i, dv) for i, (_c, dv) in enumerate(seq) if dv is not None]
     if short >= 2 and len(real) >= 3:
@@ -407,7 +434,8 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     out: list[Shot] = []
     previous: list = []
     seen = 0
-    plan = _fill_short_end(_with_placeholders(deliveries), C.STONES_PER_END)
+    plan = _fill_short_end(_with_placeholders(deliveries), C.STONES_PER_END,
+                           house_sizes=[len(houses[i]) for i in range(len(deliveries))])
     for color, dv in plan:
         if len(out) >= C.STONES_PER_END:
             break

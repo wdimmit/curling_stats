@@ -22,8 +22,8 @@ def run_js(body: str):
     """Run ``body`` with the viewer's exports in scope; return its JSON output."""
     script = (
         f"const A = require({str(APP)!r});\n"
-        "const {state, merge, keyFor, mergedShots, gatherStats, pct, avg,\n"
-        "       isBlank, isGraded, typeOf, shotVideoTime, stoneAt,\n"
+        "const {state, merge, keyFor, mergedShots, layout, identity, gatherStats,\n"
+        "       pct, avg, isBlank, isGraded, typeOf, shotVideoTime, stoneAt,\n"
         "       shotKey, rawShot} = A;\n"
         "function out(v){ console.log(JSON.stringify(v)); }\n" + body
     )
@@ -256,3 +256,63 @@ class TestHostedMode:
         # No window.CHART in node, as when curling-score serve hosts the page.
         got = run_js("out([A.READ_ONLY, state.version]);")
         assert got == [False, None]
+
+
+class TestMovingAShot:
+    """Must match timeline.apply_overrides shot for shot -- the same end, the
+    same moves, the same numbers, colours and labels on both sides."""
+
+    def _shots(self):
+        def s(n, color, inferred=False):
+            return {"number": n, "color": color, "color_inferred": inferred,
+                    "missing": inferred, "state_known": not inferred,
+                    "label": f"4th end, shot {n}", "position": "lead",
+                    "shot_type": "draw", "stones": []}
+        return [s(1, "red"), s(2, "yellow"), s(3, "red"), s(4, "yellow"),
+                s(5, "red", True), s(6, "yellow", True)]
+
+    def _both(self, overrides):
+        from curling_score import timeline
+        fields = ("id", "number", "color", "label", "position", "rock_of_player",
+                  "has_hammer", "thrower_slot")
+        py = timeline.apply_overrides(doc(self._shots(), end_number=4), overrides)
+        py = [[s.get(f) for f in fields] for s in py["games"][0]["ends"][0]["shots"]]
+        js = run_js(setup(doc(self._shots(), end_number=4), overrides) +
+                    f"out(mergedShots(e).map(s => {list(fields)}.map(f => s[f] ?? null)));")
+        return py, js
+
+    def test_js_and_python_agree_on_a_move_to_the_front(self):
+        py, js = self._both({"0.4.5": {"before": 1}, "0.4.6": {"before": 1}})
+        assert js == py
+        assert [row[0] for row in js] == [5, 6, 1, 2, 3, 4]
+
+    def test_js_and_python_agree_on_a_move_into_the_middle(self):
+        py, js = self._both({"0.4.5": {"before": 2}, "0.4.6": {"before": 2},
+                             "0.4.3": {"color": "yellow"}})
+        assert js == py
+
+    def test_js_and_python_agree_when_nothing_moved(self):
+        py, js = self._both({"0.4.3": {"user_score": 2}})
+        assert js == py
+        assert js[0][0] is None   # no id until an end is reordered
+
+    def test_the_raw_shot_follows_the_display_order(self):
+        got = run_js(setup(doc(self._shots(), end_number=4),
+                           {"0.4.5": {"before": 1}}) +
+                     "state.si = 0; out([rawShot().number, shotKey()]);")
+        assert got == [5, "0.4.5"]
+
+    def test_a_moved_blank_borrows_a_time_from_the_nearest_seen_rock(self):
+        shots = self._shots()
+        shots[0]["t_enter_s"] = 2899.0
+        got = run_js(setup(doc(shots, end_number=4),
+                           {"0.4.5": {"before": 1}, "0.4.6": {"before": 1}}) +
+                     "state.leadIn = 10; out(mergedShots(e).slice(0, 3).map(shotVideoTime));")
+        assert got == [2899.0 - 90 - 10, 2899.0 - 45 - 10, 2899.0 - 10]
+
+    def test_a_trailing_blank_is_guessed_after_the_last_seen_rock(self):
+        shots = self._shots()
+        shots[3]["t_enter_s"] = 3000.0
+        got = run_js(setup(doc(shots, end_number=4)) +
+                     "state.leadIn = 0; out(shotVideoTime(mergedShots(e)[5]));")
+        assert got == 3090.0

@@ -689,3 +689,81 @@ Super League, ds11a survives a change of league.
 Caveat: ds11b was not part of the union that labelled this set, so a stone only
 it would find is unlabelled unless the reviewer added it. Its numbers here are a
 slight floor rather than exact.
+
+
+## Two lost guards, and the tracker's borrowed history (2026-09-11)
+
+The first game charted through the hosted site -- Rice v Casey, 5U National
+Championship, draw 1 sheet 5 -- came back with end 4 reading a red draw as the
+lead's first rock. The charter, watching the video, said it was rock 3: two
+guards had gone before it. The chart had appended two blanks to the *end* of
+the end, so every one of the fourteen shots in between named the wrong thrower.
+
+Replayed from the worker's cached detections (`scripts/replay_end.py`, new),
+both guards were plainly detected -- a red parking at (+0.36, +4.22) from
+2824.6 and a yellow running from +4.60 to +3.57 from 2861.2 -- and neither was
+ever a candidate. Three separate faults, two of them in the tracker:
+
+1. **A parked stone's track was handed to a passing one.** At 3078 a red draw
+   passed 0.3 m from the red guard while the sweepers hid it; the tracker
+   annexed the guard's track. `_trim_borrowed_start` correctly gave the flight
+   to the shooter and threw the guard's own arrival away with the history it
+   cut. The head of a borrowed track is now judged as its own stone: it passes
+   only by the house-appear route, which demands the spot was empty beforehand,
+   so a stone parked before the footage began is still refused.
+2. **A stone creeping in at the panel edge was "at rest from its first
+   sighting".** The yellow's box was clipped against the top of the frame, so
+   it moved 0.05 m in 0.7 s, vanished under the sweepers for half a second and
+   reappeared 0.2 m on. The rest test looked only at samples inside the first
+   second and called it at rest at index 0; judged as a stone that had always
+   been there it was refused for not being new. "Stays put for a second" is
+   now witnessed by the first sample at least a second later.
+3. **Blanks went to the tail on no evidence.** The gap rule cannot see a rock
+   missed before the first one seen -- there is no gap between deliveries --
+   and parity alone puts the remainder last. The house read after each seen
+   delivery is harder evidence: the sheet cannot hold more stones than rocks
+   thrown, and the first house here held three. `_fill_short_end` now uses
+   the stone counts first, then the gaps, then the tail.
+
+A synthetic fixture for (1) exposed a fourth fault that the real footage
+happened not to trigger: the shooter's orphaned first sightings, cut off at the
+handover, "came to rest" a second later exactly where the parked stone showed
+again -- a 0.38 m delivery with the strongest evidence there is. That is the
+mirror of the borrowed start, and `_trim_borrowed_end` is its mirror fix: a
+track finishing on a spot a stone of its colour occupied before it got there
+did not stop, it was handed that stone. Two position-based gates were tried
+first and backed out: the tracker's gate legitimately lets a stone stop far
+short of its prediction, because that is what a collision looks like.
+
+**On the game itself** (all eight ends, same detections): end 4 goes from 14
+kept + 2 tail blanks to 16 kept, exactly the charter's account; the other seven
+ends keep the identical deliveries, three of them with a different confirming
+route (`rest` where a first sighting was previously misjudged).
+
+**On the reference VOD**: the new code finds all 18 hand-confirmed deliveries
+and rejects all 8 hand-confirmed non-deliveries. The previous timeline could
+not be compared end for end -- it predates the switch to ds11a, and every
+delivery shifts 2 s with the detector -- so the previous tracker was run on the
+same ds11a detections instead: all 13 ends keep the identical deliveries and
+blanks under both trackers (201 of 208 kept either way), and the new code
+offers three of them in the first pass that the gap search used to have to
+recover. Game 2 end 2's two
+missing rocks (8773, 8822) are missing under both trackers: clean flights into
+the house that vanish as the players close over the stone, the occlusion case
+already on the list, not a regression.
+
+**The charter's remedy.** Detection will miss rocks again, so the viewer now
+lets a blank be moved: a shot patch may carry `before: <shot>`, and both
+`timeline.apply_overrides` and the page put the end in that order, renumber
+it, recompute thrower/label/hammer from the new numbers, recolour the blanks
+by alternation and keep every correction filed under the original number
+(`id`). A blank with no timestamp borrows one from the nearest seen rock, a
+typical gap per shot away, so the video still opens near the right place.
+
+`PIPELINE_VERSION` is now 2026.09.2; charts pinned to the old run keep
+working, and a reprocess makes end 4 whole on a fresh link.
+
+**Also seen:** the CLI analysis of the reference VOD hung once in the detect
+phase outside Docker -- 25 min wall, 3 min CPU, GPU memory held and idle --
+the same signature as the worker hang earlier today. Shared memory was not a
+factor here. Still unexplained.

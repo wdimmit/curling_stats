@@ -84,8 +84,11 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g,
 
 const game = () => state.doc.games[state.gi];
 const end  = () => game().ends[state.ei];
-const rawShot = () => end().shots[state.si] ?? null;
-const keyFor = (g, e, s) => `${g.index}.${e.number}.${s.number}`;
+/* A shot is known by the number detection gave it. Moving one renumbers the
+ * end, so `id` keeps the original where that has happened. */
+const identity = s => s.id ?? s.number;
+const rawShot = () => layout(end()).raws[state.si] ?? null;
+const keyFor = (g, e, s) => `${g.index}.${e.number}.${identity(s)}`;
 // An end where detection found nothing still has to render, so everything
 // downstream has to cope with there being no current shot.
 const shotKey = () => { const s = rawShot(); return s ? keyFor(game(), end(), s) : null; };
@@ -98,8 +101,80 @@ function merge(g, e, s) {
   if (!patch) return s;
   return { ...s, ...patch, corrected:true };
 }
-const shot = () => merge(game(), end(), rawShot());
-const mergedShots = e => e.shots.map(s => merge(game(), e, s));
+const shot = () => layout(end()).shots[state.si] ?? null;
+const mergedShots = e => layout(e).shots;
+
+/* Mirror of the rest of timeline.apply_overrides: after the patches, a shot
+ * carrying `before` was thrown before the shot it names, so the end is put in
+ * that order and renumbered -- thrower, label and hammer follow the number,
+ * and a blank's colour follows the alternation around it. `raws` are the
+ * document's own shot objects in the same order, for editing. */
+const TYPICAL_GAP_S = 45;   // a club delivery about every 45 s; for guessing a blank's time
+function layout(e) {
+  const g = game();
+  let shots = e.shots.map(s => ({ ...merge(g, e, s) }));
+  let raws = e.shots;
+  const ids = new Set(shots.map(identity));
+  const moves = shots.filter(s => Number.isInteger(s.before) &&
+                                  s.before !== identity(s) && ids.has(s.before));
+  if (moves.length) {
+    shots = shots.filter(s => !moves.includes(s));
+    for (const s of [...moves].sort((a, b) => identity(a) - identity(b))) {
+      const at = shots.findIndex(o => identity(o) === s.before);
+      shots.splice(at === -1 ? shots.length : at, 0, s);
+    }
+    const prefix = `${g.index}.${e.number}.`;
+    const fixed = new Set(Object.entries(state.overrides)
+      .filter(([k, p]) => k.startsWith(prefix) && p && "color" in p)
+      .map(([k]) => +k.slice(prefix.length)));
+    renumber(shots, e.number, fixed);
+    const byId = new Map(e.shots.map(s => [identity(s), s]));
+    raws = shots.map(s => byId.get(identity(s)));
+  }
+  guessTimes(shots);
+  return { shots, raws };
+}
+
+const throwInfo = n => {
+  const k = (n + 1) >> 1;   // this team's k-th stone
+  return { has_hammer:n % 2 === 0, thrower_slot:(k + 1) >> 1, rock_of_player:2 - (k % 2) };
+};
+const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th"
+                          : { 1:"st", 2:"nd", 3:"rd" }[n % 10] || "th");
+function renumber(shots, endNo, fixed) {
+  const anchors = [];
+  shots.forEach((s, i) => {
+    if (!s.color_inferred || fixed.has(identity(s))) anchors.push([i, s.color]);
+  });
+  shots.forEach((s, i) => {
+    s.id = identity(s);
+    s.number = i + 1;
+    const t = throwInfo(i + 1);
+    s.has_hammer = t.has_hammer;
+    s.thrower_slot = t.thrower_slot;
+    s.position = POSITIONS[t.thrower_slot - 1];
+    s.rock_of_player = t.rock_of_player;
+    s.label = `${ordinal(endNo)} end, ${s.position}'s ${t.rock_of_player === 1 ? "first" : "second"} rock`;
+    if (s.color_inferred && anchors.length && !fixed.has(s.id)) {
+      let best = anchors[0];
+      for (const a of anchors) if (Math.abs(a[0] - i) < Math.abs(best[0] - i)) best = a;
+      s.color = (i - best[0]) % 2 === 0 ? best[1] : (best[1] === "red" ? "yellow" : "red");
+    }
+  });
+}
+
+/* A blank has no timestamp. The nearest rock that has one, a typical gap per
+ * shot away, is a fair place to start the video looking for it. */
+function guessTimes(shots) {
+  const timed = shots.map((s, i) => [i, s.t_enter_s]).filter(([, t]) => typeof t === "number");
+  if (!timed.length) return;
+  shots.forEach((s, i) => {
+    if (typeof s.t_enter_s === "number" || typeof s.t_rest_s === "number") return;
+    let best = timed[0];
+    for (const a of timed) if (Math.abs(a[0] - i) < Math.abs(best[0] - i)) best = a;
+    s.t_guess_s = Math.max(0, best[1] + (i - best[0]) * TYPICAL_GAP_S);
+  });
+}
 
 const isBlank = s => s && (s.state_known === false || s.missing);
 const typeOf = s => s ? (s.shot_type || "unknown") : "unknown";
@@ -110,6 +185,15 @@ function patchShot(fields) {
   const key = shotKey();
   if (!key) return;
   state.overrides[key] = { ...(state.overrides[key] || {}), ...fields };
+  markDirty();
+  render();
+}
+
+function unpatchShot(field) {
+  const key = shotKey();
+  if (!key || !state.overrides[key]) return;
+  delete state.overrides[key][field];
+  if (!Object.keys(state.overrides[key]).length) delete state.overrides[key];
   markDirty();
   render();
 }
@@ -442,6 +526,8 @@ function shotVideoTime(s) {
     return Math.max(0, s.t_enter_s - state.leadIn);
   if (typeof s.t_rest_s === "number")
     return Math.max(0, s.t_rest_s - state.leadIn - 8);
+  if (typeof s.t_guess_s === "number")
+    return Math.max(0, s.t_guess_s - state.leadIn);
   return null;
 }
 
@@ -483,6 +569,13 @@ function renderChart() {
   ).join("") + `<button data-v="" title="Clear the score">&mdash;</button>`;
   [...$("scoreBtns").children].forEach(n => n.onclick = () =>
     patchShot({ user_score:n.dataset.v === "" ? null : +n.dataset.v }));
+
+  const others = mergedShots(end()).filter(x => s && identity(x) !== identity(s));
+  $("moveBefore").innerHTML = `<option value="">detected order</option>` +
+    others.map(x => `<option value="${identity(x)}"
+      ${s?.before === identity(x) ? "selected" : ""}>before #${x.number}
+      (${x.color}${isBlank(x) ? ", blank" : ""})</option>`).join("");
+  $("moveBefore").disabled = !s || READ_ONLY;
 
   if (document.activeElement !== $("missReason"))
     $("missReason").value = s?.miss_reason || "";
@@ -549,6 +642,10 @@ function render() {
   if (isBlank(s))
     flags.push(`This shot's house could not be read. Place the stones as they
       were, then mark it charted — a blank here is not an empty house.`);
+  if (s?.missing && typeof s.t_guess_s === "number")
+    flags.push(`This rock was never seen, so the video starts at a guess —
+      about ${TYPICAL_GAP_S} s a shot from the nearest rock that was. If it was
+      really thrown earlier in the end, move it under <strong>Order</strong>.`);
   else if (s?.color_inferred)
     flags.push(`No new stone appeared, so the thrower comes from the
       alternation rule rather than from seeing the rock arrive.`);
@@ -778,7 +875,7 @@ function savePrefs() {
 /* Exported for the node tests, which exercise the merge and the report
  * arithmetic without a browser. Harmless in one. */
 if (typeof module !== "undefined" && module.exports)
-  module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots, READ_ONLY,
+  module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots, layout, identity, READ_ONLY,
                      gatherStats, pct, avg,
                      isBlank, isGraded, typeOf, shotVideoTime, TYPE, TYPES,
                      GROUPS, POSITIONS, stoneAt, R, LIMIT };
@@ -799,7 +896,7 @@ function boot() { Promise.all([
   state.overrides = (ov && typeof ov === "object" && !Array.isArray(ov)) ? ov : {};
   if (READ_ONLY) {
     document.body.dataset.mode = "view";
-    for (const id of ["download", "delStone", "markThrown", "resetShot", "markCharted"])
+    for (const id of ["download", "delStone", "markThrown", "resetShot", "markCharted", "orderBox"])
       $(id).hidden = true;
     $("save").hidden = true;
   }
@@ -850,6 +947,14 @@ function boot() { Promise.all([
                                  savePrefs(); render(); };
   $("missReason").oninput = ev => patchShot({ miss_reason:ev.target.value || null });
   $("note").oninput = ev => patchShot({ note:ev.target.value || null });
+  $("moveBefore").onchange = ev => {
+    // Follow the shot to its new place rather than staying on its old slot.
+    const id = identity(shot());
+    if (ev.target.value === "") unpatchShot("before");
+    else patchShot({ before:+ev.target.value });
+    const at = mergedShots(end()).findIndex(x => identity(x) === id);
+    if (at >= 0 && at !== state.si) { state.si = at; render(); }
+  };
 
   restorePrefs();
   bindHouse();

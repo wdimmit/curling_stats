@@ -129,3 +129,76 @@ class TestHammerCrossCheck:
         ]
         game = timeline.build_game(0, 0.0, 900.0, ends)
         assert game["hammer_consistent"] is None
+
+
+class TestMovingAShot:
+    """`before` on a patch says the shot was really thrown before another.
+
+    The filler's blanks land at the end of a short end when nothing says
+    otherwise; the charter watching the video often knows better. Moving the
+    blank has to renumber the end -- the thrower is read off the number -- and
+    keep every correction filed where it was.
+    """
+
+    def _doc(self):
+        def s(n, color, inferred=False):
+            return {"number": n, "color": color, "color_inferred": inferred,
+                    "missing": inferred, "state_known": not inferred,
+                    "label": f"4th end, shot {n}", "position": "lead"}
+        return {"games": [{"index": 0, "ends": [{"number": 4, "shots": [
+            s(1, "red"), s(2, "yellow"), s(3, "red"), s(4, "yellow"),
+            s(5, "red", True), s(6, "yellow", True)]}]}]}
+
+    def _shots(self, overrides):
+        return timeline.apply_overrides(self._doc(), overrides)["games"][0]["ends"][0]["shots"]
+
+    def test_two_blanks_moved_to_the_front_lead_the_end(self):
+        got = self._shots({"0.4.5": {"before": 1}, "0.4.6": {"before": 1}})
+        assert [s["id"] for s in got] == [5, 6, 1, 2, 3, 4]
+        assert [s["number"] for s in got] == [1, 2, 3, 4, 5, 6]
+
+    def test_the_throwers_follow_the_new_numbers(self):
+        got = self._shots({"0.4.5": {"before": 1}, "0.4.6": {"before": 1}})
+        assert got[2]["label"] == "4th end, lead's second rock"
+        assert got[2]["rock_of_player"] == 2 and got[2]["position"] == "lead"
+        assert got[4]["label"] == "4th end, second's first rock"
+        assert [s["has_hammer"] for s in got] == [False, True] * 3
+
+    def test_blanks_take_the_colour_the_alternation_needs(self):
+        # The blanks were red/yellow at the tail; in front of a red rock they
+        # have to be red then yellow, so the seen rock keeps its own colour.
+        got = self._shots({"0.4.5": {"before": 1}, "0.4.6": {"before": 1}})
+        assert [s["color"] for s in got] == ["red", "yellow"] * 3
+        assert got[2]["color_inferred"] is False
+
+    def test_a_seen_rock_never_changes_colour(self):
+        got = self._shots({"0.4.5": {"before": 2}, "0.4.6": {"before": 2}})
+        assert [s["id"] for s in got] == [1, 5, 6, 2, 3, 4]
+        assert [s["color"] for s in got] == ["red", "yellow", "red", "yellow", "red", "yellow"]
+
+    def test_a_colour_set_by_hand_on_a_blank_is_kept(self):
+        got = self._shots({"0.4.6": {"before": 1, "color": "red"}})
+        assert got[0]["id"] == 6 and got[0]["color"] == "red"
+
+    def test_corrections_stay_filed_under_the_original_number(self):
+        got = self._shots({"0.4.5": {"before": 1}, "0.4.1": {"user_score": 3}})
+        moved_first = got[1]
+        assert moved_first["id"] == 1 and moved_first["number"] == 2
+        assert moved_first["user_score"] == 3 and moved_first["corrected"] is True
+
+    def test_applying_twice_is_the_same_as_once(self):
+        ov = {"0.4.5": {"before": 1}, "0.4.6": {"before": 1}, "0.4.3": {"user_score": 2}}
+        once = timeline.apply_overrides(self._doc(), ov)
+        twice = timeline.apply_overrides(json.loads(json.dumps(once)), ov)
+        assert once == twice
+
+    def test_an_end_nobody_moved_is_untouched(self):
+        got = self._shots({"0.4.3": {"user_score": 2}})
+        assert "id" not in got[0]
+        assert [s["number"] for s in got] == [1, 2, 3, 4, 5, 6]
+        assert got[0]["label"] == "4th end, shot 1"
+
+    def test_a_target_that_does_not_exist_moves_nothing(self):
+        got = self._shots({"0.4.5": {"before": 99}})
+        assert [s["number"] for s in got] == [1, 2, 3, 4, 5, 6]
+        assert "id" not in got[0]

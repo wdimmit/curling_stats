@@ -26,3 +26,6 @@ inspect_*/
 review_ds11/
 review_ds12/
 .review_root/
+
+# setuptools build tree from `pip install .`
+build/

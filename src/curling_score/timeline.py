@@ -212,25 +212,93 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
     }
 
 
+def shot_identity(shot: dict) -> int:
+    """The number a shot was detected with, which is what overrides key on.
+
+    Moving a shot renumbers everything around it, so the displayed ``number``
+    can drift from the one its corrections are filed under; ``id`` keeps the
+    original where that has happened.
+    """
+    return int(shot.get("id", shot["number"]))
+
+
+def _reorder(shots: list) -> list:
+    """Honour ``before`` on any shot: it was thrown before the shot named.
+
+    A blank appended to the end of a short end is the filler's best guess at
+    where an unseen rock went. When the charter knows better -- the video shows
+    two guards before the first rock we saw -- they move it, and this is the
+    move. Shots are placed in the order of their original numbers so two moved
+    before the same target keep their relative order.
+    """
+    moved = [s for s in shots if isinstance(s.get("before"), int)
+             and s["before"] != shot_identity(s)]
+    if not moved:
+        return shots
+    ids = {shot_identity(s) for s in shots}
+    moved = [s for s in moved if s["before"] in ids]
+    if not moved:
+        return shots
+    out = [s for s in shots if s not in moved]
+    for s in sorted(moved, key=shot_identity):
+        at = next((i for i, o in enumerate(out)
+                   if shot_identity(o) == s["before"]), len(out))
+        out.insert(at, s)
+    return out
+
+
+def _renumber(shots: list, end_number: int, patched: set) -> None:
+    """Give a reordered end its numbers, throwers and labels afresh.
+
+    Everything a shot's number implies follows it: who threw it, which of
+    their two rocks it was, whether it is the hammer. Blanks take their colour
+    from the alternation around them, since that colour was only ever
+    inferred; a detected rock keeps the colour it was seen with, and so does
+    any shot whose colour the charter set by hand.
+    """
+    anchors = [(i, s["color"]) for i, s in enumerate(shots)
+               if not s.get("color_inferred") or shot_identity(s) in patched]
+    for i, s in enumerate(shots):
+        s["id"] = shot_identity(s)
+        s["number"] = i + 1
+        t = rules.throw_info(i + 1)
+        s["has_hammer"] = t.has_hammer
+        s["thrower_slot"] = t.position_slot
+        s["position"] = C.POSITION_NAMES[t.position_slot]
+        s["rock_of_player"] = t.rock_of_player
+        s["label"] = rules.shot_label(end_number, i + 1)
+        if s.get("color_inferred") and anchors and shot_identity(s) not in patched:
+            j, color = min(anchors, key=lambda a: abs(a[0] - i))
+            s["color"] = color if (i - j) % 2 == 0 else rules.other_color(color)
+
+
 def apply_overrides(document: dict, overrides: dict) -> dict:
     """Layer hand corrections over the detected timeline.
 
     Overrides are keyed ``"<game>.<end>.<shot>"`` so re-running the analysis
-    never destroys work someone did by hand.
+    never destroys work someone did by hand. A patch may carry ``before``,
+    naming the shot this one was actually thrown before; the end is then put
+    in that order and renumbered, with the original numbers kept in ``id`` so
+    the keys still resolve.
     """
+    patches: dict[tuple[int, int], dict[int, dict]] = {}
     for key, patch in (overrides or {}).items():
         try:
             g, e, s = (int(part) for part in key.split("."))
         except ValueError:
             continue
-        for game in document.get("games", []):
-            if game["index"] != g:
-                continue
-            for end in game["ends"]:
-                if end["number"] != e:
-                    continue
-                for shot in end["shots"]:
-                    if shot["number"] == s:
-                        shot.update(patch)
-                        shot["corrected"] = True
+        patches.setdefault((g, e), {})[s] = patch
+    for game in document.get("games", []):
+        for end in game["ends"]:
+            here = patches.get((game["index"], end["number"]), {})
+            for shot in end["shots"]:
+                patch = here.get(shot_identity(shot))
+                if patch is not None:
+                    shot.update(patch)
+                    shot["corrected"] = True
+            ordered = _reorder(end["shots"])
+            if ordered is not end["shots"]:
+                colour_set = {s for s, p in here.items() if "color" in p}
+                _renumber(ordered, end["number"], colour_set)
+                end["shots"] = ordered
     return document

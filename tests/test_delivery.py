@@ -1052,3 +1052,94 @@ def _r(reason):
 
     return Delivery(color="red", t_enter=0.0, t_rest=1.0, entry_y_m=1.0,
                     rest_x_m=0.0, rest_y_m=0.0, travel_m=1.0, reason=reason)
+
+
+class TestAStoneCreepingInAtTheEdge:
+    """Game 3 end 4 of the 5U championship, the yellow lead's first guard.
+
+    First seen at y = +4.60, right at the top of the panel, it moved 0.05 m in
+    its first 0.7 s -- a bounding box clipped by the frame edge barely moves
+    -- then vanished under the sweepers for half a second and reappeared 0.2 m
+    further on, running at 0.2 m/s to stop a metre down the sheet. The rest
+    test asked whether it stayed put for a second, saw 0.7 s of near-stillness
+    with nothing after it inside the second, and called it at rest from its
+    very first sighting. Judged as a stone that had always been there, it was
+    then refused for not being new.
+    """
+
+    def _guard(self):
+        tr = interp([(0.0, -0.07, 4.60), (0.7, -0.02, 4.55), (1.3, 0.01, 4.41),
+                     (6.5, 0.34, 3.60), (7.6, 0.36, 3.57)], fps=10.0, color="yellow")
+        tr = drop(tr, [(0.75, 1.25)])
+        return tr + resting("yellow", 0.36, 3.57, 7.7, 60.0)
+
+    def test_it_is_a_delivery(self):
+        got = delivery.find_deliveries(merge(self._guard()))
+        assert len(got) == 1
+        assert got[0].came_to_rest is True
+        assert got[0].t_enter == pytest.approx(0.0, abs=0.2)
+
+    def test_it_rests_where_it_stopped_not_where_it_hesitated(self):
+        got = delivery.find_deliveries(merge(self._guard()))
+        assert got[0].rest_y_m == pytest.approx(3.57, abs=0.1)
+        assert got[0].travel_m > 0.9
+
+
+class TestAParkedStoneAnnexedByAPassingOne:
+    """Game 3 end 4 again, the red lead's first guard -- the one the chart
+    called rock 1's predecessor and never listed.
+
+    It arrived at 2824.6 and parked at (+0.36, +4.22) for four minutes. At 3078
+    a red draw passed 0.3 m from it while the sweepers hid it, and the tracker
+    handed the guard's track to the passing stone. The borrowed-start trim
+    rightly gave the flight back to the shooter -- and threw the guard's
+    arrival away with the history it trimmed. The guard is a stone in its own
+    right; if it arrived within the sequence, that arrival is a delivery.
+    """
+
+    def _frames(self):
+        quiet = [(round(t * 0.1, 3), []) for t in range(0, 400)]     # 40 s of empty ice
+        guard = interp([(40.0, 0.30, 4.30), (41.5, 0.36, 4.22)], fps=10.0, color="red")
+        guard += resting("red", 0.36, 4.22, 41.6, 200.0)
+        guard = drop(guard, [(99.3, 100.2)])          # hidden as the shooter passes
+        shooter = thrown("red", y0=4.60, y1=-1.0, t0=99.0, speed=0.8, fps=10.0, x=0.10)
+        return quiet + merge(guard, shooter)
+
+    def test_the_tracker_really_does_hand_the_track_over(self):
+        # The premise: one red track runs from the guard's arrival to the
+        # shooter's resting place. Without that the rest of the class proves
+        # nothing.
+        tracks = [t for t in delivery._build_tracks(self._frames())
+                  if t.ts[0] <= 41.0 and t.ys[-1] < 0.0]
+        assert len(tracks) == 1
+
+    def test_both_stones_are_deliveries(self):
+        got = sorted(delivery.find_deliveries(self._frames()), key=lambda d: d.t_enter)
+        assert len(got) == 2
+        assert got[0].t_enter == pytest.approx(40.0, abs=0.2)
+        # The shooter's first sightings went to the parked stone's track, so
+        # its own account starts a little late -- but there is one, and only one.
+        assert 99.0 <= got[1].t_enter <= 100.5
+
+    def test_the_guard_is_where_it_parked_and_the_shooter_where_it_stopped(self):
+        got = sorted(delivery.find_deliveries(self._frames()), key=lambda d: d.t_enter)
+        assert got[0].rest_y_m == pytest.approx(4.22, abs=0.1)
+        assert got[1].rest_y_m == pytest.approx(-1.0, abs=0.2)
+        assert got[1].travel_m > 4.5   # its account starts where the handover did
+
+    def test_a_stone_parked_before_the_footage_began_is_still_not_one(self):
+        # The same handover, but the guard was there from the first frame:
+        # nothing says it arrived, so nothing may call it a delivery.
+        frames = [(t, d) for t, d in self._frames() if t >= 41.6]
+        got = delivery.find_deliveries(frames)
+        assert len(got) == 1 and 99.0 <= got[0].t_enter <= 100.5
+        assert got[0].rest_y_m == pytest.approx(-1.0, abs=0.2)
+
+    def test_the_shooters_orphaned_first_sightings_do_not_become_a_delivery(self):
+        # Cut off when the parked stone's track took the shooter over, the
+        # fragment ends 0.14 m from where that stone reappears a second later.
+        # Linking the two would make a red that "came to rest" exactly where a
+        # red had been sitting for a minute. The spot was occupied; no link.
+        got = delivery.find_deliveries(self._frames())
+        assert not any(d.travel_m < 1.0 and d.t_enter > 60 for d in got), \
+            [(d.t_enter, d.travel_m, d.reason) for d in got]
