@@ -72,6 +72,11 @@ async function tick() {
   if (s.status === "pending_approval") {
     html = `<div class="warn">Waiting for the club admin to approve this video.
       Your link is saved — this page becomes the chart once it is processed.</div>`;
+  } else if (s.status === "queued" && s.stalled) {
+    html = `<div class="warn"><strong>Interrupted — going back in the queue.</strong>
+      The machine working on this stopped part-way through. Nothing is lost: it
+      picks up from where the caches left it, which is usually much quicker than
+      starting over.</div>`;
   } else if (s.status === "queued") {
     const ahead = s.position ?? 0;
     html = s.worker_online

@@ -633,3 +633,43 @@ class TestStatusIsInformative:
         job = self._running(world)
         slug = self._slug(world)
         assert world["client"].get(f"/c/{slug}/status.json").json()["attempt"] == 1
+
+
+class TestAStalledJobTellsTheTruth:
+    """Leases are reclaimed lazily, so a dead worker's job keeps its row.
+
+    With one worker busy for half an hour that row reads "processing" with a
+    frozen fraction the whole time. It happened in the first real deployment:
+    a worker restarted mid-job and its run sat at `detect 0.08`, indisting-
+    uishable from one making progress.
+    """
+
+    def _running(self, world):
+        submit(world)
+        job = world["client"].post("/api/worker/claim", headers=WORKER,
+                                   json={"worker_id": "home", "model_id": "m-abc"}
+                                   ).json()["job"]
+        run = world["repo"].list_runs()[0]
+        return job, world["repo"].charts_for_run(run.id)[0].id
+
+    def test_an_expired_lease_reads_as_queued_not_processing(self, world):
+        job, slug = self._running(world)
+        world["client"].post(f"/api/worker/jobs/{job['id']}/progress", headers=WORKER,
+                             json={"worker_id": "home", "phase": "detect", "fraction": 0.08})
+        assert world["client"].get(f"/c/{slug}/status.json").json()["status"] == "processing"
+        world["clock"].advance(601)
+        st = world["client"].get(f"/c/{slug}/status.json").json()
+        assert st["status"] == "queued" and st["stalled"] is True
+
+    def test_a_live_lease_is_not_called_stalled(self, world):
+        _job, slug = self._running(world)
+        st = world["client"].get(f"/c/{slug}/status.json").json()
+        assert st["status"] == "processing" and st["stalled"] is False
+
+    def test_a_genuinely_queued_job_is_not_called_stalled(self, world):
+        submit(world)
+        run = world["repo"].list_runs()[0]
+        slug = world["repo"].charts_for_run(run.id)[0].id
+        st = world["client"].get(f"/c/{slug}/status.json").json()
+        assert st["status"] == "queued" and st["stalled"] is False
+        assert st["position"] == 0

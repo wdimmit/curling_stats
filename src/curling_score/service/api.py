@@ -184,8 +184,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
         job = repo.job_for_run(run.id)
         t = now()
         online = worker_online(repo.workers(), t)
+        # Leases are reclaimed lazily, inside the next claim. With one worker
+        # busy on a long job that can be half an hour away, so a job whose
+        # worker died still reads as "processing" with a frozen fraction. Say
+        # what is true: it is waiting to be picked up again.
+        stalled = (job is not None and job.state == "running"
+                   and job.lease_expires_at is not None
+                   and job.lease_expires_at < t)
+        status = "queued" if stalled and run.status == "processing" else run.status
         out = {
-            "status": run.status, "title": run.title, "league": run.league,
+            "status": status,
+            "stalled": stalled, "title": run.title, "league": run.league,
             "worker_online": online, "read_only": read_only,
             "phase": None, "fraction": None, "message": None, "eta_s": None,
             "position": None, "game": None, "other_games": [],
@@ -195,9 +204,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
             # on, and showing it makes a healthy run look broken.
             "error": run.error if run.status == "failed" else None,
         }
-        if run.status in ("queued", "pending_approval") and job is not None:
+        if status in ("queued", "pending_approval") and job is not None and not stalled:
             out["position"] = repo.queue_position(job.id)
-        if run.status == "processing" and job is not None:
+        if status == "processing" and job is not None:
             out.update(phase=job.phase, fraction=job.fraction, message=job.message,
                        attempt=job.attempts)
             if job.started_at:
@@ -222,7 +231,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
                 rest = sum(PHASE_BUDGET_MIN[p] for p in PHASE_ORDER[i + 1:])
                 here = PHASE_BUDGET_MIN[job.phase] * (1.0 - (job.fraction or 0.0))
                 out["eta_s"] = round((rest + here) * 60)
-        if run.status == "ready" and chart.game_index is not None:
+        if status == "ready" and chart.game_index is not None:
             for g in run.games:
                 entry = {"index": g["index"], "start_s": g["start_s"],
                          "end_s": g["end_s"], "ends": g.get("ends")}
