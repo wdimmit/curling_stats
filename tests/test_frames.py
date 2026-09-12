@@ -152,3 +152,24 @@ class TestKeyframeSweepSeeking:
         times = [t for t, _ in frames.keyframe_sweep(primary_video, decode=False)]
         assert times[0] < 10.0
         assert times[-1] > 14000.0
+
+
+class TestFfmpegLogsBypassPython:
+    """PyAV's log callback deadlocks with frame threading on container close.
+
+    The decoder thread wants the GIL to log; the main thread holds it while
+    freeing the codec context and waiting for that thread. Two hangs on
+    2026-09-11 had exactly those stacks. FFmpeg's own callback needs no GIL.
+    """
+
+    def test_the_module_restores_ffmpeg_s_own_callback_on_import(self, monkeypatch):
+        import importlib
+
+        import av
+
+        from curling_score.ingest import frames
+
+        calls = []
+        monkeypatch.setattr(av.logging, "restore_default_callback", lambda: calls.append("restored"))
+        importlib.reload(frames)
+        assert calls == ["restored"]

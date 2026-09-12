@@ -147,3 +147,23 @@ class TestDetectorIdentity:
     def test_the_classical_detector_differs_from_a_model(self, tmp_path):
         assert cache.key(**args(tmp_path, detector=None)) != cache.key(
             **args(tmp_path, detector=self.Fake(0.3)))
+
+
+class TestWeightsAreKnownByContent:
+    def test_touching_the_weights_file_does_not_change_the_key(self, tmp_path):
+        import os
+
+        from curling_score.detect import cache
+
+        w = tmp_path / "m.pt"
+        w.write_bytes(b"weights" * 1000)
+        before = cache._weights_identity(w)
+        os.utime(w, ns=(1, 1))
+        assert cache._weights_identity(w) == before
+
+    def test_different_weights_are_different(self, tmp_path):
+        from curling_score.detect import cache
+
+        a, b = tmp_path / "a.pt", tmp_path / "b.pt"
+        a.write_bytes(b"one"); b.write_bytes(b"two")
+        assert cache._weights_identity(a)[2] != cache._weights_identity(b)[2]

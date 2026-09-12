@@ -18,6 +18,21 @@ from pathlib import Path
 import av
 import numpy as np
 
+# FFmpeg must log straight to stderr, never through PyAV's Python callback.
+#
+# With the callback in place a decoder thread that wants to log has to take
+# the GIL to do it. When a container closes, the main thread frees the codec
+# context *while holding the GIL* and waits for those threads to finish. If
+# one of them is mid-log at that moment the two wait on each other for ever.
+# Frame threading (``thread_type = "AUTO"``) is what makes the threads, so
+# every decode here is exposed. Seen twice on 2026-09-11: the hosted worker
+# and a local analysis both froze between one end's detection and the next,
+# GPU idle, with exactly this pair of stacks -- ``avcodec_free_context`` under
+# ``Stream.__dealloc__`` on the main thread, ``logging_log_callback`` in a
+# ``pthread_cond_timedwait`` on the decoder's.
+av.logging.restore_default_callback()
+av.logging.set_libav_level(av.logging.ERROR)
+
 
 @dataclass(frozen=True)
 class VideoProbe:

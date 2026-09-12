@@ -17,6 +17,7 @@ otherwise invisible to a key built from arguments alone.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -64,13 +65,38 @@ def _source_digest() -> str:
     return h.hexdigest()[:16]
 
 
+@functools.lru_cache(maxsize=8)
+def _content_identity(path: str, size: int, mtime_ns: int) -> list:
+    """A file by what is in it, not when it was written.
+
+    The weights are copied into every worker image build, which gives the
+    same file a new mtime each time; keyed on that, one rebuild threw away
+    every cached detection and re-ran a whole game on the GPU. The size and
+    mtime are only here to make the cache of digests cheap to key.
+    """
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return [Path(path).name, size, h.hexdigest()[:16]]
+
+
+def _weights_identity(path) -> list:
+    p = Path(path)
+    try:
+        st = p.stat()
+    except OSError:
+        return [str(p), None]
+    return _content_identity(str(p), st.st_size, st.st_mtime_ns)
+
+
 def _detector_identity(detector) -> list:
     if detector is None:
         return ["classical"]
     weights = getattr(getattr(detector, "model", None), "ckpt_path", None)
     return [
         type(detector).__name__,
-        _file_identity(weights) if weights else None,
+        _weights_identity(weights) if weights else None,
         getattr(detector, "conf", None),
         getattr(detector, "imgsz", None),
         bool(getattr(detector, "model", None)
