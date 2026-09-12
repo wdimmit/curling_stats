@@ -8,8 +8,19 @@
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ffmpeg libglib2.0-0 \
+        ffmpeg libglib2.0-0 curl unzip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# yt-dlp needs a JavaScript runtime to solve YouTube's URL challenge; without
+# one it warns and falls back to player clients whose media URLs are refused
+# far more often. The first new video after launch drew two 403s in a row that
+# way before the third attempt got through. Deno is the runtime yt-dlp looks
+# for by default, so it only has to be on the PATH.
+ARG DENO_VERSION=v2.5.2
+RUN curl -fsSL "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
+        -o /tmp/deno.zip \
+ && unzip -q /tmp/deno.zip -d /usr/local/bin && rm /tmp/deno.zip \
+ && deno --version
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
