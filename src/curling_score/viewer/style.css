@@ -116,6 +116,13 @@ body.reporting main { display:none; }
 td.sub { text-align:left; padding-left:18px; color:var(--muted); font-size:12px; }
 tr.total td { border-top:2px solid var(--line); font-weight:650; }
 
+/* --- gathered controls -------------------------------------------------- */
+/* `display:contents` lets the menu exist as a container for the phone while
+   its children lay out in the header row on desktop, as they always have. */
+#menu { display: contents; }
+#menuBtn { display: none; }
+.transport { margin-top: 10px; }
+
 @media print {
   header, main, .noprint { display:none !important; }
   #report { display:block !important; }

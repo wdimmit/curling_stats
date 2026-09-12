@@ -7,40 +7,45 @@
 <header>
   <h1>Curling Chart</h1>
   <span class="muted" id="src"></span>
-  <select id="game" aria-label="Game"></select>
-  <select id="end" aria-label="End"></select>
+  <span id="stoneChip" hidden></span>
   <span class="grow"></span>
   <button id="blanks" class="pill" title="Jump to the next shot needing charting"></button>
-  <button id="copyLink" title="Copy this page's link">Copy link</button>
-  <button id="shareLink" title="Copy a link others can view but not edit" hidden>View-only link</button>
   <span id="save" class="pill">saved</span>
-  <button id="download" title="Save overrides.json to disk">&#11015;</button>
-  <button id="reportBtn">Report</button>
-</header>
-
-<main>
-  <!-- ---------------------------------------------------------------- play -->
-  <section class="card">
-    <div class="video" id="video"><div id="player"></div></div>
-    <div class="row" style="margin-top:10px">
-      <button id="prev" title="Previous shot (&larr;)">&larr;</button>
-      <button id="next" title="Next shot (&rarr;)">&rarr;</button>
-      <button id="replay" title="Replay from before the throw (v)">&#8635; Replay</button>
-      <strong id="label" class="grow"></strong>
-      <a id="link" target="_blank" rel="noopener">YouTube &rarr;</a>
-    </div>
+  <button id="menuBtn" title="More">&#8943;</button>
+  <div id="menu">
+    <select id="game" aria-label="Game"></select>
+    <select id="end" aria-label="End"></select>
+    <button id="copyLink" title="Copy this page's link">Copy link</button>
+    <button id="shareLink" title="Copy a link others can view but not edit" hidden>View-only link</button>
+    <button id="download" title="Save overrides.json to disk">&#11015;</button>
+    <button id="reportBtn">Report</button>
     <div class="row" style="margin-top:6px">
       <label class="chk"><input type="checkbox" id="autoplay" checked> play on jump</label>
       <label class="chk">lead-in
         <input type="number" id="leadin" min="0" max="60" step="1" style="width:58px">s
       </label>
     </div>
+  </div>
+</header>
+
+<main>
+  <!-- ---------------------------------------------------------------- play -->
+  <section class="card" id="playCard">
+    <div class="video" id="video"><div id="player"></div></div>
+    <div class="row transport" id="transport">
+      <button id="prev" title="Previous shot (&larr;)">&larr;</button>
+      <button id="next" title="Next shot (&rarr;)">&rarr;</button>
+      <button id="replay" title="Replay from before the throw (v)">&#8635; Replay</button>
+      <button id="markCharted">&#10004; Mark charted (Enter)</button>
+      <strong id="label" class="grow"></strong>
+      <a id="link" target="_blank" rel="noopener">YouTube &rarr;</a>
+    </div>
     <div id="flags"></div>
     <div class="shots" id="shots"></div>
   </section>
 
   <!-- --------------------------------------------------------------- house -->
-  <section class="card">
+  <section class="card" id="houseCard">
     <div class="tools">
       <button class="swatchbtn red" id="pickRed" title="Place red (r)"></button>
       <button class="swatchbtn yellow" id="pickYellow" title="Place yellow (y)"></button>
@@ -57,7 +62,7 @@
   </section>
 
   <!-- --------------------------------------------------------------- chart -->
-  <aside class="card">
+  <aside class="card" id="chart">
     <h2>Shot type</h2>
     <div class="pick" id="typeGroups"></div>
     <div class="pick" id="typeList" style="margin-top:6px"></div>
@@ -80,10 +85,6 @@
         Detection missed a rock and put its blank in the wrong place? Move the
         blank to where it was thrown; the whole end renumbers.
       </div>
-    </div>
-
-    <div class="row" style="margin-top:10px">
-      <button id="markCharted" class="grow">&#10004; Mark charted (Enter)</button>
     </div>
 
     <dl id="detail"></dl>
