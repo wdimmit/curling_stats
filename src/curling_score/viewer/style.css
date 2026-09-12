@@ -352,6 +352,7 @@ body[data-mode="view"] #house { cursor:default; }
                margin: 0; gap: 8px; flex-wrap: nowrap;
                background: var(--panel); padding: 8px; border-radius: 10px;
                box-shadow: 0 2px 12px rgb(0 0 0 / .14); }
-  .transport button { height: 44px; }
+  .transport button { height: 44px; min-width: 44px; padding: 0 10px; }
+  .transport #prev, .transport #next { flex: 0 0 44px; padding: 0; }
   .transport #label, .transport #link { display: none; }
 }
