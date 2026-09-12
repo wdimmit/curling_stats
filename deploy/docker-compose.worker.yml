@@ -11,7 +11,9 @@ services:
       WORKER_CACHE_GB: "300"
       # YTDLP_POT_PROVIDER: http://pot:4416     # if the pot sidecar below is enabled
     volumes:
-      - /srv/curling-cache:/data/cache
+      # The host's designated storage. 394 GB free there, so the 300 GB budget
+      # above has room; change both together if that ever stops being true.
+      - /data/wdd/curling-cache:/data/cache
     deploy:
       resources:
         reservations:

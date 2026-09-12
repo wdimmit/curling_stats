@@ -27,7 +27,10 @@ spec:
             - { name: PUBLIC_BASE_URL,    value: https://chart.example.org }
             - { name: ALLOWED_CHANNEL_IDS, value: UC81pcWoRJbdnK77B3WS0zjg }
             - { name: REQUIRE_APPROVAL,   value: "0" }
-            - { name: MODEL_ID,           value: "ds10_stratified-REPLACEME" }   # python -c 'from curling_score.version import model_id; print(model_id("weights/ds10_stratified.pt"))'
+            # Must equal the worker's model, or every claim is refused. Recompute
+            # after changing Dockerfile.worker's MODEL:
+            #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'
+            - { name: MODEL_ID,           value: "ds11a-27fe3faa" }
             - { name: MAX_QUEUED,         value: "10" }
             - name: WORKER_TOKEN
               valueFrom: { secretKeyRef: { name: curling-worker-token, key: latest } }

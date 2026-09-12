@@ -19,7 +19,8 @@ services:
       PUBLIC_BASE_URL: http://api:8080
       WORKER_TOKEN: local-worker-token
       ADMIN_TOKEN: local-admin-token
-      MODEL_ID: ${MODEL_ID:-classical}
+      # Default matches the worker's ds11a; override for a different model.
+      MODEL_ID: ${MODEL_ID:-ds11a-27fe3faa}
       ALLOWED_CHANNEL_IDS: ""          # open, for local testing
       YT_API_KEY: ${YT_API_KEY:-}      # unset: submissions cannot be validated
   worker:

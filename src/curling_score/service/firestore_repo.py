@@ -206,7 +206,8 @@ class FirestoreRepo:
 
         @fs.transactional
         def _save(tx):
-            snap = tx.get(ref)
+            # Transaction.get yields snapshots even for a single reference.
+            snap = next(iter(tx.get(ref)))
             if not snap.exists:
                 raise KeyError(slug)
             data = snap.to_dict()
@@ -252,7 +253,7 @@ class FirestoreRepo:
 
         @fs.transactional
         def _bump(tx):
-            snap = tx.get(ref)
+            snap = next(iter(tx.get(ref)))
             row = snap.to_dict() if snap.exists else {}
             hour = row.get("hour_count", 0) if row.get("hour_bucket") == hb else 0
             day = row.get("day_count", 0) if row.get("day_bucket") == db_ else 0

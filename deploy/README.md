@@ -59,7 +59,8 @@ gcloud artifacts repositories create curling --repository-format=docker --locati
 ```
 
 Edit `deploy/cloudrun.yaml`: `PUBLIC_BASE_URL` (your domain), `MODEL_ID`
-(`python -c 'from curling_score.version import model_id; print(model_id("weights/ds10_stratified.pt"))'`).
+(`python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'`
+— it must match the worker image's `MODEL`, or the API refuses every claim).
 
 ## Deploy the API
 
@@ -76,15 +77,16 @@ On the GPU machine (Docker + nvidia-container-toolkit):
 ```bash
 git clone … && cd curling_score
 cp deploy/worker.env.example deploy/worker.env   # API_URL, WORKER_TOKEN (same secret as the API)
-sudo mkdir -p /srv/curling-cache && sudo chown $USER /srv/curling-cache
+mkdir -p /data/wdd/curling-cache          # or wherever you have a few hundred GB
 docker compose -f deploy/docker-compose.worker.yml up -d --build
 docker compose -f deploy/docker-compose.worker.yml logs -f
 ```
 
 The worker polls `/api/worker/claim` (10 s when busy, 30 s idle) and heartbeats
 once a minute. If the box reboots mid-job the lease expires after 10 minutes
-and the job is requeued; the caches under `/srv/curling-cache` make the retry a
-~2 minute warm run. `WORKER_CACHE_GB` prunes old media (never detections).
+and the job is requeued; the caches under `/data/wdd/curling-cache` make the retry a
+~2 minute warm run. `WORKER_CACHE_GB` prunes old media (never detections); keep
+it comfortably under the free space on whatever volume holds the cache.
 
 ## Watching a league
 

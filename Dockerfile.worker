@@ -8,10 +8,17 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 # torch comes from the base image; ultralytics and the rest from the extras.
 RUN pip install --no-cache-dir ".[worker]" "ultralytics>=8.3"
-# The production weights. Replacing this file changes MODEL_ID, which the API
-# checks on every claim -- set MODEL_ID on the API to match.
-ARG WEIGHTS=weights/ds10_stratified.pt
-COPY ${WEIGHTS} /opt/curling/model.pt
-ENV CURLING_SCORE_CACHE=/data/cache WEIGHTS=/opt/curling/model.pt PYTHONUNBUFFERED=1
+# The production detector, pinned through the documented environment variable
+# so `weights.default_path()` resolves it the same way everywhere.
+#
+# Keep the file's own name. `version.model_id` uses the stem, so copying this
+# to `model.pt` would write "model-<hash>" into every timeline's
+# processing_version and into the API's MODEL_ID check -- a name that says
+# nothing about which detector ran. Change MODEL here and set MODEL_ID on the
+# API to match, or the API refuses the worker's claim.
+ARG MODEL=ds11a.pt
+COPY weights/${MODEL} /opt/curling/weights/${MODEL}
+ENV CURLING_SCORE_WEIGHTS=/opt/curling/weights/${MODEL} \
+    CURLING_SCORE_CACHE=/data/cache PYTHONUNBUFFERED=1
 VOLUME /data/cache
 CMD ["python", "-m", "curling_score.service.worker"]
