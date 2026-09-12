@@ -46,7 +46,9 @@ gcloud iam service-accounts add-iam-policy-binding $SA --member=serviceAccount:$
 
 # Secrets
 for s in curling-worker-token curling-admin-token curling-ip-salt; do
-  python -c 'import secrets;print(secrets.token_hex(32))' | gcloud secrets create $s --data-file=-
+  # printf, not print: a trailing newline lands in the secret, and the client's
+  # shell strips it in command substitution -- the two then never match.
+  python -c 'import secrets;print(secrets.token_hex(32),end="")' | gcloud secrets create $s --data-file=-
 done
 # YouTube Data API key: APIs & Services → Credentials → API key, restricted to the YouTube Data API v3
 echo -n "$YT_API_KEY" | gcloud secrets create curling-yt-api-key --data-file=-

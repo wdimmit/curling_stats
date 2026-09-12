@@ -102,9 +102,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
 
     # ------------------------------------------------------------ helpers
     def bearer_ok(header, expected) -> bool:
+        """Whether the request carries this token.
+
+        Both sides are stripped. A secret is very often created by piping
+        something into `gcloud secrets create`, and `print`, `echo` and most
+        editors add a trailing newline; the client's shell then drops it in
+        command substitution, and the two no longer match. Comparing the
+        meaningful characters costs nothing and removes a whole class of
+        "401 and no idea why".
+        """
         if not expected or not header or not header.startswith("Bearer "):
             return False
-        return hmac.compare_digest(header[len("Bearer "):], expected)
+        return hmac.compare_digest(header[len("Bearer "):].strip(), expected.strip())
 
     def require_worker(authorization):
         if not settings.worker_token:

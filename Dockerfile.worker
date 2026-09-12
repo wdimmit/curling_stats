@@ -1,13 +1,37 @@
-# The processing worker: CUDA, torch, ultralytics, ffmpeg, yt-dlp, and the model.
-# Built on the PyTorch runtime image so torch is not installed a second time.
-FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libgl1 libglib2.0-0 \
+# The processing worker: the pipeline, a GPU, ffmpeg and yt-dlp.
+#
+# Not built on a CUDA base image. PyTorch's wheels already carry the CUDA
+# runtime, and the only thing that must come from the host is the driver, which
+# the nvidia container runtime injects. That leaves the Python version free to
+# match what the tests run on -- pytorch/pytorch ships 3.11, and this project
+# requires 3.12, which is how the first build failed.
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
-# torch comes from the base image; ultralytics and the rest from the extras.
-RUN pip install --no-cache-dir ".[worker]" "ultralytics>=8.3"
+
+# cu121, deliberately: the worker host's driver is 525.105.17, which is CUDA
+# 12.0, and PyTorch's cu121 build needs only >= 525.60.13. A cu124 build would
+# want a 550-series driver and fail at run time, not at build time.
+#
+# Pinned because these decide what the detector sees. The detection cache keys
+# on the source of rocks.py, yolo.py and calibrate.py but not on library
+# versions, so a silent torch or opencv bump would change detections while
+# every cache key stayed the same.
+RUN pip install --no-cache-dir \
+        torch==2.5.1 torchvision==0.20.1 \
+        --index-url https://download.pytorch.org/whl/cu121 \
+ && pip install --no-cache-dir \
+        "ultralytics==8.4.143" "numpy==2.5.3" \
+        "opencv-python-headless==5.0.0.93" "av==18.1.0" \
+ && pip install --no-cache-dir --no-deps . \
+ && pip install --no-cache-dir "httpx>=0.27" "yt-dlp>=2026.8.19"
+
 # The production detector, pinned through the documented environment variable
 # so `weights.default_path()` resolves it the same way everywhere.
 #

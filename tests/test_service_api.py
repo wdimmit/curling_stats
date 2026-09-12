@@ -505,3 +505,41 @@ class TestCatalogueAndAdmin:
         assert "Get my link" in c.get("/").text
         assert "All games" in c.get("/games").text or "games.js" in c.get("/games").text
         assert c.get("/static/site.css").status_code == 200
+
+
+class TestTokensWithStraySurroundingWhitespace:
+    """Secrets pick up trailing newlines; the comparison must not care.
+
+    Every token in the deployment was created by piping `print(...)` into
+    `gcloud secrets create`, which stores the newline. The worker reads its own
+    copy through `$(...)`, which strips it. That mismatch is a 401 with nothing
+    in the logs to explain it, and it cost a real deployment.
+    """
+
+    @pytest.mark.parametrize("stored,sent", [
+        ("worker-secret\n", "worker-secret"),
+        ("worker-secret", "worker-secret\n"),
+        (" worker-secret ", "worker-secret"),
+        ("worker-secret\n", "worker-secret\n"),
+    ])
+    def test_a_stray_newline_either_side_still_authenticates(self, world, stored, sent):
+        world["settings"].worker_token = stored
+        submit(world)
+        r = world["client"].post("/api/worker/claim",
+                                 headers={"Authorization": f"Bearer {sent}"},
+                                 json={"worker_id": "home", "model_id": "m-abc"})
+        assert r.status_code == 200, r.text
+
+    def test_a_genuinely_wrong_token_is_still_refused(self, world):
+        world["settings"].worker_token = "worker-secret\n"
+        r = world["client"].post("/api/worker/claim",
+                                 headers={"Authorization": "Bearer nope"},
+                                 json={"worker_id": "home"})
+        assert r.status_code == 401
+
+    def test_an_empty_token_never_authenticates(self, world):
+        world["settings"].worker_token = ""
+        r = world["client"].post("/api/worker/claim",
+                                 headers={"Authorization": "Bearer "},
+                                 json={"worker_id": "home"})
+        assert r.status_code in (401, 503)
