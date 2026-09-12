@@ -253,6 +253,21 @@ body[data-mode="view"] #house { cursor:default; }
   #orderBox #moveBefore { position: absolute; width: 1px; height: 1px;
                           min-height: 0; opacity: 0; pointer-events: none; }
 
+  /* Floated over the house rather than placed in the sheet, so nothing
+     reflows when it arrives or leaves. #renumbered is (1,0,0), tied with the
+     bare `display:none` that hides every phone-only element by default
+     (above the phone block, so earlier in source) -- this rule, landing
+     later at the same specificity, wins the cascade. The [hidden] rule below
+     is (1,1,0) and so wins outright, in either order, whenever the attribute
+     is set. */
+  #renumbered { display: block; position: fixed; z-index: 6;
+                left: 12px; right: 12px; bottom: 268px;
+                background: var(--ink); color: var(--bg); font-size: 13px;
+                line-height: 1.35; border-radius: 9px; padding: 10px 12px;
+                box-shadow: 0 2px 12px rgb(0 0 0 / .22); }
+  #renumbered[hidden] { display: none; }
+  body[data-sheet="open"] #renumbered { bottom: auto; top: calc(56px + 56.25vw); }
+
   #sheetHandle { display: block; width: 100%; height: 32px; border: 0;
                  background: none; padding: 0; }
   #sheetHandle .grip { display: block; width: 36px; height: 4px; margin: 0 auto;

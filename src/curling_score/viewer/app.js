@@ -69,7 +69,7 @@ const state = {
   showTrack:true, autoplay:true, leadIn:10,
   player:null, playerReady:false, pendingSeek:null, seekTimer:null,
   saveTimer:null, saving:false, again:false, reporting:false,
-  sheet:"peek", houseMode:"", notice:null,
+  sheet:"peek", houseMode:"", notice:null, noticeTimer:null,
 };
 
 const $ = id => document.getElementById(id);
@@ -1045,13 +1045,25 @@ function boot() { Promise.all([
                                  savePrefs(); render(); };
   $("missReason").oninput = ev => patchShot({ miss_reason:ev.target.value || null });
   $("note").oninput = ev => patchShot({ note:ev.target.value || null });
+  $("orderRow").onclick = () => {
+    // The native <select> is a full-width picker on iOS and Android, which is
+    // better than anything we would draw; the row is only its label.
+    $("moveBefore").showPicker ? $("moveBefore").showPicker() : $("moveBefore").click();
+  };
   $("moveBefore").onchange = ev => {
     // Follow the shot to its new place rather than staying on its old slot.
-    const id = identity(shot());
+    const was = shot(), id = identity(was);
     if (ev.target.value === "") unpatchShot("before");
     else patchShot({ before:+ev.target.value });
-    const at = mergedShots(end()).findIndex(x => identity(x) === id);
-    if (at >= 0 && at !== state.si) { state.si = at; render(); }
+    const shots = mergedShots(end());
+    const at = shots.findIndex(x => identity(x) === id);
+    state.notice = renumberNotice(was, at >= 0 ? shots[at] : null);
+    if (at >= 0 && at !== state.si) state.si = at;
+    render();
+    if (state.notice) {
+      clearTimeout(state.noticeTimer);
+      state.noticeTimer = setTimeout(() => { state.notice = null; render(); }, 5000);
+    }
   };
   $("houseDone").onclick = () => { state.houseMode = ""; render(); };
   $("placeStones").onclick = () => {
