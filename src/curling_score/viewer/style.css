@@ -197,7 +197,14 @@ body[data-mode="view"] #house { cursor:default; }
   body.reporting { height: auto; overflow: auto; }
 
   header { height: 48px; padding: 0 8px 0 12px; flex-wrap: nowrap; gap: 8px; }
-  h1, #src, #save { display: none; }
+  h1, #src { display: none; }
+  /* #save is the only channel that says a save is not landing -- "not saved
+     -- use ⬇", or "reloaded -- someone else saved", which silently replaces
+     the charter's overrides with somebody else's. A phone is the likeliest
+     place to be on flaky data, so the failure states stay on screen; setSave()
+     marks exactly those with .bad, and everything quieter (.ok "saved", and
+     the class-less "•" and "saving…") is hidden. */
+  #save:not(.bad) { display: none; }
   #menuBtn { display: grid; place-items: center; width: 44px; height: 44px;
              flex: 0 0 44px; padding: 0; border-color: transparent; }
   /* The playback settings stay in #playCard -- moving them into #menu changed
@@ -218,7 +225,13 @@ body[data-mode="view"] #house { cursor:default; }
     border-radius: 0 0 10px 10px;
     box-shadow: 0 6px 24px rgb(0 0 0 / .18); }
   #menu > * { width: 100%; height: 44px; }
-  #blanks { min-height: 44px; }
+  /* The header does not wrap here, so when #save is showing a failure the two
+     pills have to share what is left of a narrow one. The failure is the
+     message that matters, so it is the one that never shrinks; the charting
+     count gives way and ellipsises instead. .pill's white-space:nowrap stands. */
+  #blanks { min-height: 44px; min-width: 0; overflow: hidden;
+            text-overflow: ellipsis; }
+  #save { flex: 0 0 auto; }
   #playback label.chk { min-height: 44px; }
 
   #stoneChip { display: grid; place-items: center; flex: 0 0 40px;
