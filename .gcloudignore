@@ -1,0 +1,36 @@
+# What Cloud Build uploads as the build context.
+#
+# Without this file gcloud falls back to .gitignore, which keeps datasets/ and
+# every model in weights/ -- 130 MB uploaded to build an API image that needs
+# only src/. Docker's own .dockerignore does not apply: it filters what the
+# daemon sees, after the upload has already happened.
+.git/
+.gcloudignore
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Training data, analysis output and the review pages built from them.
+datasets/
+runs/
+tests/
+validation/
+out/
+out_*/
+review/
+review_*/
+labelreview_*/
+labelfix_*/
+inspect/
+inspect_*/
+*.jpg
+*.png
+*.mp4
+*.npz
+
+# The API image needs no model at all; the worker image needs only the default
+# one, which Dockerfile.worker names. Shipping the others is 60 MB per build.
+weights/*
+!weights/ds11a.pt
