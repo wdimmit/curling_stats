@@ -53,3 +53,27 @@ class TestPhases:
         assert analyze.PHASES[0] == "download"
         assert "detect" in analyze.PHASES
         assert analyze.PHASES[-1] == "scoreboard"
+
+
+class TestDownloadChatter:
+    def test_a_caller_watching_phases_silences_ytdlp_s_own_bar(self, tmp_path, monkeypatch):
+        """Both at once makes a container log unreadable and says nothing extra."""
+        seen = {}
+
+        def fake_ensure(url, root=None, progress=True, **kw):
+            seen["progress"] = progress
+            raise RuntimeError("stop here: the download flag is all we need")
+
+        from curling_score.ingest import cache
+        monkeypatch.setattr(cache, "ensure_cached", fake_ensure)
+        from curling_score import analyze as analyze_mod
+        for on_phase, expected in ((lambda *a, **k: None, False), (None, True)):
+            seen.clear()
+            try:
+                analyze_mod.analyze("VXU9xwmugRg", on_phase=on_phase,
+                                    info=type("I", (), {
+                                        "title": "t", "duration_s": 1.0, "sheet": 2,
+                                        "video_id": "VXU9xwmugRg"})())
+            except RuntimeError:
+                pass
+            assert seen["progress"] is expected

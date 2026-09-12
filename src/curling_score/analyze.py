@@ -82,6 +82,10 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         download_kwargs["attempts"] = download_attempts
     path = cache.ensure_cached(
         url, root=root,
+        # A caller watching phases gets the fraction through on_phase, so
+        # yt-dlp's own progress bar is redundant -- and it rewrites its line
+        # thousands of times, which in a container makes the log unreadable.
+        progress=on_phase is None,
         progress_hook=lambda f, m: phase("download", f, m),
         **download_kwargs,
     )

@@ -188,14 +188,37 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
             "status": run.status, "title": run.title, "league": run.league,
             "worker_online": online, "read_only": read_only,
             "phase": None, "fraction": None, "message": None, "eta_s": None,
-            "position": None, "error": run.error, "game": None, "other_games": [],
+            "position": None, "game": None, "other_games": [],
+            "elapsed_s": None, "phase_elapsed_s": None, "phases": [], "attempt": None,
+            # Only a run that actually failed should show an error. A job that
+            # hit a hiccup and was retried is not a failure the reader can act
+            # on, and showing it makes a healthy run look broken.
+            "error": run.error if run.status == "failed" else None,
         }
         if run.status in ("queued", "pending_approval") and job is not None:
             out["position"] = repo.queue_position(job.id)
         if run.status == "processing" and job is not None:
-            out.update(phase=job.phase, fraction=job.fraction, message=job.message)
-            if job.phase in PHASE_ORDER:
-                i = PHASE_ORDER.index(job.phase)
+            out.update(phase=job.phase, fraction=job.fraction, message=job.message,
+                       attempt=job.attempts)
+            if job.started_at:
+                out["elapsed_s"] = round((t - job.started_at).total_seconds())
+            if job.phase_started_at:
+                out["phase_elapsed_s"] = round((t - job.phase_started_at).total_seconds())
+            # Every stage, with what it cost -- a finished phase reports its own
+            # duration rather than an estimate, so the page stops guessing as
+            # the job goes on.
+            done = job.phase_timings or {}
+            i = PHASE_ORDER.index(job.phase) if job.phase in PHASE_ORDER else -1
+            out["phases"] = [
+                {"name": p,
+                 "state": ("done" if p in done else
+                           "running" if p == job.phase else
+                           "past" if i >= 0 and k < i else "todo"),
+                 "took_s": done.get(p),
+                 "budget_s": round(PHASE_BUDGET_MIN[p] * 60)}
+                for k, p in enumerate(PHASE_ORDER)
+            ]
+            if i >= 0:
                 rest = sum(PHASE_BUDGET_MIN[p] for p in PHASE_ORDER[i + 1:])
                 here = PHASE_BUDGET_MIN[job.phase] * (1.0 - (job.fraction or 0.0))
                 out["eta_s"] = round((rest + here) * 60)
@@ -357,7 +380,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
         def chart_page(key: str):
             chart, run, read_only = lookup(kind, key)
             if run.status != "ready" or chart.game_index is None:
-                return page("status.html", SLUG=chart.id, MODE="view" if read_only else "edit")
+                return page("status.html")
             text = (VIEWER_DIR / "index.html").read_text()
             boot = (f'<script>window.CHART={json.dumps({"slug": chart.id, "mode": "view" if read_only else "edit"})};'
                     f'</script>\n<script src="app.js"></script>')
@@ -438,6 +461,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
         job = repo.claim_job(str(body.get("worker_id", "worker")), t, settings.lease_s)
         if job is None:
             return Response(status_code=204)
+        # Whatever went wrong last time is history now; leaving it set means the
+        # status page shows a stale failure through an entirely healthy run.
+        repo.update_job(job.id, error=None, error_kind=None, phase=None,
+                        fraction=None, message=None, phase_started_at=t,
+                        phase_timings={})
+        repo.update_run(job.run_id, error=None)
         run = repo.get_run(job.run_id)
         repo.heartbeat(Worker(id=str(body.get("worker_id", "worker")), last_seen_at=t,
                               version=body.get("version"), model_id=body.get("model_id"),
@@ -465,8 +494,30 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
         job = owned_job(job_id, body.get("worker_id"))
         t = now()
         lease = t + timedelta(seconds=settings.lease_s)
-        repo.update_job(job.id, phase=body.get("phase"), fraction=body.get("fraction"),
-                        message=body.get("message"), progress_at=t, lease_expires_at=lease)
+        phase = body.get("phase")
+        fields = {"phase": phase, "fraction": body.get("fraction"),
+                  "message": body.get("message"), "progress_at": t,
+                  "lease_expires_at": lease}
+        if phase != job.phase:
+            # A phase boundary: bank how long the last one took, and start the
+            # clock on this one.
+            if job.phase and job.phase_started_at:
+                timings = dict(job.phase_timings or {})
+                timings[job.phase] = round((t - job.phase_started_at).total_seconds(), 1)
+                fields["phase_timings"] = timings
+            fields["phase_started_at"] = t
+        repo.update_job(job.id, **fields)
+        # A progress post proves the worker is alive. Without this the only
+        # heartbeat is the claim, so a worker goes "offline" 90 seconds into
+        # every job and the page tells the user their game is not being worked
+        # on while it plainly is.
+        if job.worker_id:
+            known = {w.id: w for w in repo.workers()}.get(job.worker_id)
+            repo.heartbeat(Worker(
+                id=job.worker_id, last_seen_at=t, current_job_id=job.id,
+                version=getattr(known, "version", None),
+                model_id=getattr(known, "model_id", None),
+                gpu=getattr(known, "gpu", None)))
         return {"ok": True, "lease_expires_at": _iso(lease)}
 
     @app.post("/api/worker/jobs/{job_id}/artifacts")

@@ -72,6 +72,10 @@ class Job:
     fraction: float | None = None
     message: str | None = None
     progress_at: datetime | None = None
+    phase_started_at: datetime | None = None
+    # Seconds each finished phase took, so the page can show where the time
+    # went rather than only where the job is.
+    phase_timings: dict = field(default_factory=dict)
     error: str | None = None
     error_kind: str | None = None
     started_at: datetime | None = None

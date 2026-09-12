@@ -566,3 +566,70 @@ class TestRetryDelay:
         r = world["client"].post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER,
                                  json={"worker_id": "home", "error": "x", "kind": "transient"})
         assert r.json()["retry_after_s"] == 60
+
+
+class TestStatusIsInformative:
+    """What the waiting page can say about a job in flight."""
+
+    def _running(self, world):
+        submit(world)
+        return world["client"].post("/api/worker/claim", headers=WORKER,
+                                    json={"worker_id": "home", "model_id": "m-abc"}
+                                    ).json()["job"]
+
+    def _slug(self, world):
+        return world["repo"].list_runs()[0] and [
+            c.id for c in world["repo"].charts_for_run(world["repo"].list_runs()[0].id)][0]
+
+    def test_a_working_worker_reads_as_online_all_job_long(self, world):
+        """The claim used to be the only heartbeat, so a worker went 'offline'
+        90 seconds into every job while plainly working."""
+        job = self._running(world)
+        slug = self._slug(world)
+        world["clock"].advance(600)
+        assert world["client"].get(f"/c/{slug}/status.json").json()["worker_online"] is False
+        world["client"].post(f"/api/worker/jobs/{job['id']}/progress", headers=WORKER,
+                             json={"worker_id": "home", "phase": "detect", "fraction": 0.3})
+        assert world["client"].get(f"/c/{slug}/status.json").json()["worker_online"] is True
+
+    def test_each_finished_phase_reports_what_it_took(self, world):
+        job = self._running(world)
+        slug = self._slug(world)
+        c = world["client"]
+        c.post(f"/api/worker/jobs/{job['id']}/progress", headers=WORKER,
+               json={"worker_id": "home", "phase": "download", "fraction": 0.5})
+        world["clock"].advance(180)
+        c.post(f"/api/worker/jobs/{job['id']}/progress", headers=WORKER,
+               json={"worker_id": "home", "phase": "proxy", "fraction": 0.1})
+        st = c.get(f"/c/{slug}/status.json").json()
+        by = {p["name"]: p for p in st["phases"]}
+        assert by["download"]["state"] == "done" and by["download"]["took_s"] == 180.0
+        assert by["proxy"]["state"] == "running"
+        assert by["detect"]["state"] == "todo"
+        assert st["elapsed_s"] == 180 and st["phase_elapsed_s"] == 0
+
+    def test_a_retried_job_does_not_show_the_old_error(self, world):
+        job = self._running(world)
+        slug = self._slug(world)
+        c = world["client"]
+        c.post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER,
+               json={"worker_id": "home", "error": "a hiccup", "kind": "transient",
+                     "retry_after_s": 0})
+        c.post("/api/worker/claim", headers=WORKER,
+               json={"worker_id": "home", "model_id": "m-abc"})
+        st = c.get(f"/c/{slug}/status.json").json()
+        assert st["status"] == "processing" and st["error"] is None
+
+    def test_a_real_failure_is_still_shown(self, world):
+        job = self._running(world)
+        slug = self._slug(world)
+        world["client"].post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER,
+                             json={"worker_id": "home", "error": "Video unavailable",
+                                   "kind": "permanent"})
+        st = world["client"].get(f"/c/{slug}/status.json").json()
+        assert st["status"] == "failed" and "unavailable" in st["error"]
+
+    def test_the_attempt_number_is_visible(self, world):
+        job = self._running(world)
+        slug = self._slug(world)
+        assert world["client"].get(f"/c/{slug}/status.json").json()["attempt"] == 1
