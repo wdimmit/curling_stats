@@ -239,4 +239,30 @@ body[data-mode="view"] #house { cursor:default; }
   .swatchbtn { width: 44px; height: 44px; }
   .pick { gap: 8px; }
   .pick button { padding: 0 14px; font-size: 13px; }
+
+  /* the sheet's open state: it grows to cover the house down to the video,
+     scrolls its own content, and reveals the full form */
+  body[data-sheet="open"] #chart {
+    height: calc(100dvh - 48px - 56.25vw);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* the full form only exists in the open state. The child combinator on
+     h3 matters: Score/Miss reason/Note are direct children of #chart, but
+     the Order heading lives inside #orderBox -- #orderRow fronts that
+     control on the phone, so its own heading must stay hidden. */
+  body[data-sheet="open"] #chart > h3,
+  body[data-sheet="open"] #chart #typeList,
+  body[data-sheet="open"] #chart #missReason,
+  body[data-sheet="open"] #chart #note { display: block; }
+  body[data-sheet="open"] #orderRow { display: flex; }
+  body[data-sheet="peek"] #chart #typeList,
+  body[data-sheet="peek"] #chart #missReason,
+  body[data-sheet="peek"] #chart #note { display: none; }
+
+  /* No `display` here: Task 3 hides #orderRow globally at the same specificity,
+     and this rule lands later, so declaring one would show it in every state.
+     The open state and Task 7's blank peek each turn it on deliberately. */
+  #orderRow { width: 100%; height: 44px; align-items: center;
+              gap: 10px; margin-top: 12px; text-align: left; }
 }

@@ -993,6 +993,11 @@ function boot() { Promise.all([
     const open = document.body.dataset.menu === "open";
     document.body.dataset.menu = open ? "" : "open";
   };
+  $("sheetHandle").onclick = () => {
+    state.sheet = state.sheet === "open" ? "peek" : "open";
+    $("sheetHandle").setAttribute("aria-expanded", String(state.sheet === "open"));
+    render();
+  };
   // Closing on pointerdown would hide #menu before the click could land, so the
   // control never fires. Close on click instead -- after it has acted. #playback
   // is a sibling panel, not a child of #menu, so it needs its own guard, and it
