@@ -19,12 +19,6 @@
     <button id="shareLink" title="Copy a link others can view but not edit" hidden>View-only link</button>
     <button id="download" title="Save overrides.json to disk">&#11015;</button>
     <button id="reportBtn">Report</button>
-    <div class="row" style="margin-top:6px">
-      <label class="chk"><input type="checkbox" id="autoplay" checked> play on jump</label>
-      <label class="chk">lead-in
-        <input type="number" id="leadin" min="0" max="60" step="1" style="width:58px">s
-      </label>
-    </div>
   </div>
 </header>
 
@@ -39,6 +33,12 @@
       <button id="markCharted">&#10004; Mark charted (Enter)</button>
       <strong id="label" class="grow"></strong>
       <a id="link" target="_blank" rel="noopener">YouTube &rarr;</a>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <label class="chk"><input type="checkbox" id="autoplay" checked> play on jump</label>
+      <label class="chk">lead-in
+        <input type="number" id="leadin" min="0" max="60" step="1" style="width:58px">s
+      </label>
     </div>
     <div id="flags"></div>
     <div class="shots" id="shots"></div>
