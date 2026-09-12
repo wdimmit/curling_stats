@@ -1186,3 +1186,38 @@ class TestAStoneLostWhileStillRunning:
         got = delivery.find_deliveries(merge(peel, nxt))
         assert not any(d.came_to_rest and d.t_enter < 1.0 for d in got), \
             [(d.t_enter, d.reason, d.rest_y_m) for d in got]
+
+
+class TestAGuardFrozenOnItsOwnColour:
+    """Game 3 end 7, the yellow lead's... ninth rock of the end.
+
+    A yellow guard sat at (-0.08, +3.95). The next yellow came in at the top
+    of the panel, slid a quarter of a metre and froze against it, a diameter
+    away -- which is exactly the tolerance the was-the-spot-empty test uses,
+    so a freeze on one's own colour could never pass it. The detector also
+    boxed the two touching stones as one for a while, so the track's settled
+    position was the parked stone's. The spot gained a stone: two yellows
+    within reach where there had been one.
+    """
+
+    def _frames(self):
+        parked = resting("yellow", -0.08, 3.95, 0.0, 120.0)
+        # Frozen: one diameter away, 0.29 m -- as close as two stones can be.
+        arrive = interp([(60.0, -0.36, 4.12), (62.0, -0.36, 3.80)], fps=10.0, color="yellow")
+        frozen = resting("yellow", -0.36, 3.80, 62.1, 120.0)
+        return merge(parked, arrive, frozen)
+
+    def test_the_freeze_is_a_delivery(self):
+        got = delivery.find_deliveries(self._frames())
+        assert [round(d.t_enter) for d in got] == [60]
+
+    def test_it_rests_where_the_new_stone_sits_not_on_the_parked_one(self):
+        got = delivery.find_deliveries(self._frames())
+        assert got[0].rest_x_m == pytest.approx(-0.36, abs=0.1)
+        assert got[0].rest_y_m == pytest.approx(3.80, abs=0.1)
+
+    def test_a_parked_stone_showing_again_is_still_not_a_delivery(self):
+        # Hidden for five seconds and back in the same place: one yellow
+        # before, one after. The spot gained nothing.
+        parked = drop(resting("yellow", -0.08, 3.95, 0.0, 120.0), [(60.0, 65.0)])
+        assert delivery.find_deliveries(merge(parked)) == []

@@ -825,3 +825,28 @@ installed by ``av.logging.set_level``, and torchvision calls that when it is
 imported -- which is when the YOLO detector is built, after ``frames`` has
 loaded and restored the default. The restore now happens at every container
 open, where nothing can undo it before the decode.
+
+
+## A guard frozen on its own colour (2026-09-12)
+
+End 7, rocks 8 and 9. The chart showed a blank pair there; the replay showed
+a strong red candidate at 6174 -- a takeout that ran through -- dropped by the
+rules as one red too many, because the next kept rock was also red and no
+yellow had been found between them. The house read at rock 10 said where the
+yellow went: a guard appeared at +3.79, right beside the yellow guard already
+at +3.95.
+
+That yellow was tracked in from the top edge and refused by the house-appear
+route on "the spot was not empty". Two touching stones sit one diameter apart,
+and one diameter is exactly the tolerance that test uses for "the same spot",
+so a freeze against one's own colour can never pass it; the detector boxing
+the pair as one while the arrival settled, and drifting the track onto the
+parked stone, made sure. What the spot did gain is a second stone: one more
+yellow within a stone's reach after than before. The arrival now passes on
+that evidence and rests on the newcomer, not on the parked stone.
+
+**On the game**: end 7 goes to 16 kept -- the red at 6174 becomes rock 8 and
+the frozen yellow rock 9. **On the reference VOD**, previous tracker against
+this one on the same detections: every end identical, 201 of 208.
+
+`PIPELINE_VERSION` 2026.09.4.

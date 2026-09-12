@@ -744,8 +744,10 @@ def _appeared_without_replacing(frames, track) -> bool:
     return now > was
 
 
-def _arrived_at_rest(frames, track, at_i: int = 0) -> bool:
+def _arrived_at_rest(frames, track, at_i: int = 0):
     """A delivery whose flight was all but over before it came into view.
+
+    Returns where it rests, or None.
 
     A guard thrown short stops just inside the top of the panel -- one measured
     in game 2 end 3 came to rest at y = +4.08 against a panel edge at +4.60 --
@@ -766,26 +768,65 @@ def _arrived_at_rest(frames, track, at_i: int = 0) -> bool:
     the flight that would settle the question.
     """
     if track.ys[0] < MIN_ENTRY_Y_M:
-        return False  # a stone cannot arrive from anywhere but up-sheet
-    return _is_new_stone(frames, track, at_i)
+        return None  # a stone cannot arrive from anywhere but up-sheet
+    return _arrival_rest(frames, track, at_i)
+
+
+def _stone_gained_near(frames, color, x, y, t0, t_settled):
+    """A settled stone of ``color`` near ``(x, y)`` that is new since ``t0``.
+
+    A guard frozen against a stone of its own colour stops a diameter from it,
+    which is exactly the tolerance `_place_was_empty` uses for "the same spot",
+    so that test can never pass a freeze -- and the detector often boxes two
+    touching stones as one while the arrival settles, drifting the track onto
+    the parked stone. Game 3 end 7's ninth rock was lost this way, and the
+    rules then dropped the real eighth as one red too many. What the spot did
+    gain is a second stone: one more of the colour within a stone's reach after
+    than before. Returns where it sits, or None.
+    """
+    reach = 2.0 * CHANGE_TOLERANCE_M
+    before = _settled_stones(frames, t0 - EMPTY_LOOKBACK_S, t0 - CHANGE_GUARD_S)
+    after = _settled_stones(frames, t_settled + CHANGE_GUARD_S,
+                            t_settled + CHANGE_GUARD_S + CHANGE_WINDOW_S)
+    if before is None or after is None:
+        return None
+    near = lambda stones: [(sx, sy) for c, sx, sy in stones
+                           if c == color and ((sx - x) ** 2 + (sy - y) ** 2) ** 0.5 <= reach]
+    was, now = near(before), near(after)
+    if len(now) <= len(was):
+        return None
+    # Pair each stone that was there with the after-stone nearest it; the
+    # newcomer is whatever is left over.
+    left = list(now)
+    for bx, by in was:
+        if left:
+            left.remove(min(left, key=lambda p: (p[0] - bx) ** 2 + (p[1] - by) ** 2))
+    return left[0] if left else None
+
+
+def _arrival_rest(frames, track, at_i: int = 0):
+    """Where this track's stone came to rest, if the sheet did not have it before.
+
+    Three things together, and none of them alone: it is still there
+    afterwards, the spot did not already hold it -- empty, or holding one
+    fewer stone of the colour than it does now -- and the colour's count went
+    up rather than a stone merely moving from one place to another. Only a
+    delivery adds a stone. Returns the resting place, or None.
+    """
+    settled = _settled_index(track, at_i)
+    x, y, t = track.xs[settled], track.ys[settled], track.ts[settled]
+    if not _still_there(frames, track.color, x, y, t):
+        return None
+    rest = (x, y)
+    if not _place_was_empty(frames, track.color, x, y, track.ts[0]):
+        rest = _stone_gained_near(frames, track.color, x, y, track.ts[0], t)
+        if rest is None:
+            return None
+    return rest if _appeared_without_replacing(frames, track) else None
 
 
 def _is_new_stone(frames, track, at_i: int = 0) -> bool:
-    """Whether this track ends on a stone the sheet did not have before.
-
-    Three things together, and none of them alone: it is still there
-    afterwards, nothing of its colour had been sitting in that spot, and the
-    colour's count went up rather than a stone merely moving from one place to
-    another. Only a delivery adds a stone.
-    """
-    settled = _settled_index(track, at_i)
-    if not _still_there(frames, track.color, track.xs[settled],
-                        track.ys[settled], track.ts[settled]):
-        return False
-    if not _place_was_empty(frames, track.color, track.xs[settled],
-                            track.ys[settled], track.ts[0]):
-        return False
-    return _appeared_without_replacing(frames, track)
+    return _arrival_rest(frames, track, at_i) is not None
 
 
 def _settled_index(track, from_i: int = 0) -> int:
@@ -845,7 +886,8 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
             # judge. Usually that means it was already in play -- but a guard
             # thrown short comes to rest just inside the panel and looks
             # exactly the same, so ask whether the sheet gained a stone.
-            if _arrived_at_rest(frames, track):
+            rest = _arrived_at_rest(frames, track)
+            if rest is not None:
                 j = _settled_index(track)
                 out.append(
                     Delivery(
@@ -853,9 +895,9 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
                         t_enter=track.ts[0],
                         t_rest=track.ts[j],
                         entry_y_m=track.ys[0],
-                        rest_x_m=track.xs[j],
-                        rest_y_m=track.ys[j],
-                        travel_m=track.ys[0] - track.ys[j],
+                        rest_x_m=rest[0],
+                        rest_y_m=rest[1],
+                        travel_m=track.ys[0] - rest[1],
                         came_to_rest=True,
                         reason="house-appear",
                         track=_path(track, j),
@@ -874,7 +916,8 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
             # Too little movement to judge as a flight -- but a guard that was
             # already almost stopped when it came into view moves about this
             # much, so ask the sheet whether it gained a stone before giving up.
-            if at_rest and _arrived_at_rest(frames, track, end_i):
+            rest = _arrived_at_rest(frames, track, end_i) if at_rest else None
+            if rest is not None:
                 j = _settled_index(track, end_i)
                 out.append(
                     Delivery(
@@ -882,9 +925,9 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
                         t_enter=track.ts[0],
                         t_rest=track.ts[j],
                         entry_y_m=track.ys[0],
-                        rest_x_m=track.xs[j],
-                        rest_y_m=track.ys[j],
-                        travel_m=track.ys[0] - track.ys[j],
+                        rest_x_m=rest[0],
+                        rest_y_m=rest[1],
+                        travel_m=track.ys[0] - rest[1],
                         came_to_rest=True,
                         reason="house-appear",
                         track=_path(track, j),
