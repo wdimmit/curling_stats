@@ -127,7 +127,7 @@ tr.total td { border-top:2px solid var(--line); font-weight:650; }
 #playback { margin-top: 6px; }
 
 /* --- phone-only elements: present, wired, dormant on desktop ------------ */
-#stoneChip, #sheetHandle, #renumbered, #orderRow, .housebar { display: none; }
+#stoneChip, #sheetHandle, #renumbered, #orderRow, .housebar, #placeStones { display: none; }
 /* Restated: an id selector outranks the UA [hidden] rule, so once Task 4
    gives #stoneChip a display:grid inside the phone block, chip.hidden = true
    must still win. */
@@ -294,4 +294,18 @@ body[data-mode="view"] #house { cursor:default; }
      The open state and Task 7's blank peek each turn it on deliberately. */
   #orderRow { width: 100%; height: 44px; align-items: center;
               gap: 10px; margin-top: 12px; text-align: left; }
+
+  /* A rock nobody saw cannot be usefully graded, so its peek asks the two
+     questions that can be answered: where was it thrown, and what was on the
+     ice. The grade row comes back as soon as the sheet is opened or the house
+     has been placed and the shot marked charted. */
+  /* No `display` here, for the same reason as #orderRow: the global hide is the
+     same specificity and lands earlier, so the blank peek turns it on instead. */
+  #placeStones { width: 100%; height: 44px; align-items: center;
+                 justify-content: center; margin-top: 8px; }
+  body[data-peek="order"][data-sheet="peek"] #typeGroups,
+  body[data-peek="order"][data-sheet="peek"] .scorebtns { display: none; }
+  body[data-peek="order"][data-sheet="peek"] #orderRow,
+  body[data-peek="order"][data-sheet="peek"] #placeStones { display: flex; }
+  body[data-peek="order"][data-sheet="peek"] #orderRow { border-color: var(--accent); }
 }

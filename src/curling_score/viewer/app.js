@@ -1054,6 +1054,7 @@ function boot() { Promise.all([
     if (at >= 0 && at !== state.si) { state.si = at; render(); }
   };
   $("houseDone").onclick = () => { state.houseMode = ""; render(); };
+  $("placeStones").onclick = () => { state.houseMode = "edit"; render(); };
   $("recolour").onclick = () => { if (state.selStone !== null) toggleStoneColor(); };
 
   restorePrefs();
