@@ -69,6 +69,7 @@ const state = {
   showTrack:true, autoplay:true, leadIn:10,
   player:null, playerReady:false, pendingSeek:null, seekTimer:null,
   saveTimer:null, saving:false, again:false, reporting:false,
+  sheet:"peek", houseMode:"", notice:null,
 };
 
 const $ = id => document.getElementById(id);
@@ -603,6 +604,19 @@ function renderChart() {
       (${x.color}${isBlank(x) ? ", blank" : ""})</option>`).join("");
   $("moveBefore").disabled = !s || READ_ONLY;
 
+  const movedBefore = others.find(x => s?.before === identity(x));
+  $("orderRowValue").textContent =
+    movedBefore ? `before #${movedBefore.number} (${movedBefore.color})` : "detected order";
+  $("orderRow").disabled = !s || READ_ONLY;
+
+  document.body.dataset.peek = peekMode(s);
+  document.body.dataset.sheet = state.sheet;
+  document.body.dataset.house = state.houseMode;
+
+  const note = $("renumbered");
+  note.textContent = state.notice || "";
+  note.hidden = !state.notice;
+
   if (document.activeElement !== $("missReason"))
     $("missReason").value = s?.miss_reason || "";
   if (document.activeElement !== $("note")) $("note").value = s?.note || "";
@@ -663,6 +677,12 @@ function goTo(ei, si) {
 function render() {
   const e = end(), s = shot();
   $("label").textContent = s ? (s.label || `shot ${s.number}`) : "no shots detected";
+
+  // Status for the phone header, where the shot chip strip does not fit.
+  const chip = $("stoneChip");
+  chip.textContent = s ? (isBlank(s) ? "?" : s.number) : "";
+  chip.className = s ? `chip ${s.color} ${isBlank(s) ? "unknown" : ""}` : "chip";
+  chip.hidden = !s;
 
   const flags = [];
   if (isBlank(s))
@@ -923,8 +943,10 @@ function boot() { Promise.all([
   state.overrides = (ov && typeof ov === "object" && !Array.isArray(ov)) ? ov : {};
   if (READ_ONLY) {
     document.body.dataset.mode = "view";
-    for (const id of ["download", "delStone", "markThrown", "resetShot", "markCharted", "orderBox"])
-      $(id).hidden = true;
+    for (const id of ["download", "delStone", "markThrown", "resetShot", "markCharted",
+                      "orderBox", "orderRow", "recolour", "houseDone", "placeStones"]) {
+      const el = $(id); if (el) el.hidden = true;   // placeStones lands in Task 7
+    }
     $("save").hidden = true;
   }
   $("copyLink").onclick = async () => {

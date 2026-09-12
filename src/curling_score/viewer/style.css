@@ -123,6 +123,14 @@ tr.total td { border-top:2px solid var(--line); font-weight:650; }
 #menuBtn { display: none; }
 .transport { margin-top: 10px; }
 
+/* --- phone-only elements: present, wired, dormant on desktop ------------ */
+#stoneChip, #sheetHandle, #renumbered, #orderRow, .housebar { display: none; }
+/* Restated: an id selector outranks the UA [hidden] rule, so once Task 4
+   gives #stoneChip a display:grid inside the phone block, chip.hidden = true
+   must still win. */
+#stoneChip[hidden] { display: none; }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+
 @media print {
   header, main, .noprint { display:none !important; }
   #report { display:block !important; }

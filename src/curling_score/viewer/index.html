@@ -56,6 +56,10 @@
       <button id="resetShot" title="Discard manual edits to this shot">Reset</button>
     </div>
     <svg id="house" viewBox="-2.6 -2.6 5.2 8.6" aria-label="House diagram"></svg>
+    <div class="housebar">
+      <button id="recolour" title="Swap the selected stone's colour (c)">&#8644;</button>
+      <button id="houseDone">Done</button>
+    </div>
     <div class="muted" style="font-size:12px;margin-top:6px">
       Click the ice to add a stone, drag to move, drag off the sheet to remove.
     </div>
@@ -63,6 +67,9 @@
 
   <!-- --------------------------------------------------------------- chart -->
   <aside class="card" id="chart">
+    <button id="sheetHandle" aria-expanded="false" aria-controls="chart">
+      <span class="grip"></span><span class="sr">Expand the chart panel</span>
+    </button>
     <h2>Shot type</h2>
     <div class="pick" id="typeGroups"></div>
     <div class="pick" id="typeList" style="margin-top:6px"></div>
@@ -80,6 +87,10 @@
 
     <div id="orderBox">
       <h3>Order</h3>
+      <button id="orderRow" type="button">
+        <span class="lbl">Order</span>
+        <span id="orderRowValue">detected order</span>
+      </button>
       <select id="moveBefore" title="Where in the end this rock was really thrown"></select>
       <div class="muted" style="font-size:12px;margin-top:4px">
         Detection missed a rock and put its blank in the wrong place? Move the
@@ -98,6 +109,8 @@
       <summary>Scoreboard (detected &mdash; not a goal of this tool)</summary>
       <table id="score"></table>
     </details>
+
+    <div id="renumbered" role="status" hidden></div>
   </aside>
 </main>
 
