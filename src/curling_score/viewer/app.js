@@ -630,9 +630,10 @@ function renderChart() {
     movedBefore ? `before #${movedBefore.number} (${movedBefore.color})` : "detected order";
   $("orderRow").disabled = !s || READ_ONLY;
 
-  const note = $("renumbered");
-  note.textContent = state.notice || "";
-  note.hidden = !state.notice;
+  // role="status" only announces from inside the accessibility tree, so the
+  // region stays in it always -- clipped on desktop, hidden by :empty on the
+  // phone -- and only its text changes. `hidden` would take it back out.
+  $("renumbered").textContent = state.notice || "";
 
   if (document.activeElement !== $("missReason"))
     $("missReason").value = s?.miss_reason || "";

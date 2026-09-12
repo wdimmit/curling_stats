@@ -115,7 +115,10 @@
       <table id="score"></table>
     </details>
 
-    <div id="renumbered" role="status" hidden></div>
+    <!-- No `hidden`: a live region only announces from inside the
+         accessibility tree, so it stays there and only its text changes.
+         The stylesheet clips it on desktop and hides it while :empty. -->
+    <div id="renumbered" role="status"></div>
   </aside>
 </main>
 

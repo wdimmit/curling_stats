@@ -153,7 +153,16 @@ tr.total td { border-top:2px solid var(--line); font-weight:650; }
 }
 
 /* --- phone-only elements: present, wired, dormant on desktop ------------ */
-#stoneChip, #sheetHandle, #renumbered, #orderRow, .housebar, #placeStones { display: none; }
+#stoneChip, #sheetHandle, #orderRow, .housebar, #placeStones { display: none; }
+/* Not in that group: #renumbered is a role="status" live region, and a live
+   region inside `display:none` is not in the accessibility tree, so it never
+   announces. The desktop chip strip is a purely visual signal -- a screen
+   reader has nothing else to tell it the end just renumbered -- so the region
+   stays in the tree at every width and is clipped out of sight instead, with
+   the same technique .sr uses below. The phone block, which shows it as a
+   toast, undoes each of these four declarations by name. */
+#renumbered { position:absolute; width:1px; height:1px; overflow:hidden;
+              clip-path:inset(50%); }
 /* Restated: an id selector outranks the UA [hidden] rule, so once Task 4
    gives #stoneChip a display:grid inside the phone block, chip.hidden = true
    must still win. That restatement is enough for #stoneChip, whose only
@@ -298,18 +307,19 @@ body[data-mode="view"] #house { cursor:default; }
                           min-height: 0; opacity: 0; pointer-events: none; }
 
   /* Floated over the house rather than placed in the sheet, so nothing
-     reflows when it arrives or leaves. #renumbered is (1,0,0), tied with the
-     bare `display:none` that hides every phone-only element by default
-     (above the phone block, so earlier in source) -- this rule, landing
-     later at the same specificity, wins the cascade. The [hidden] rule below
-     is (1,1,0) and so wins outright, in either order, whenever the attribute
-     is set. */
+     reflows when it arrives or leaves. This is (1,0,0), tied with the base
+     `#renumbered` rule that clips the live region out of sight at every other
+     width, and lands later -- so it wins, and has to undo each of that rule's
+     four declarations by name to do it. */
   #renumbered { display: block; position: fixed; z-index: 6;
+                width: auto; height: auto; overflow: visible; clip-path: none;
                 left: 12px; right: 12px; bottom: 268px;
                 background: var(--ink); color: var(--bg); font-size: 13px;
                 line-height: 1.35; border-radius: 9px; padding: 10px 12px;
                 box-shadow: 0 2px 12px rgb(0 0 0 / .22); }
-  #renumbered[hidden] { display: none; }
+  /* :empty, not [hidden]: the region has to stay in the accessibility tree to
+     announce at all, so renderChart() only ever changes its text. (1,1,0). */
+  #renumbered:empty { display: none; }
   /* Same idiom as the peek state: the toast's bottom edge sits 12px above the
      sheet's top edge, whatever height the sheet currently has. In the open
      state that floats it over the video's lower edge, which is the only free
