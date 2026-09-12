@@ -281,9 +281,26 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
         sleep(POLL_BUSY_S)
 
 
+def _enable_stack_dumps():
+    """Let `kill -USR1` print every thread's stack to the log.
+
+    A worker that stops making progress looks exactly like one doing slow
+    work from the outside. This is the cheapest way to tell the difference on
+    a machine where attaching a debugger needs privileges the container does
+    not have.
+    """
+    import faulthandler
+    import signal
+
+    faulthandler.enable()
+    if hasattr(faulthandler, "register"):
+        faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
+
+
 def main(argv=None) -> int:
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname)s %(message)s")
+    _enable_stack_dumps()
     api_url = os.environ["API_URL"]
     token = os.environ["WORKER_TOKEN"]
     root = Path(os.environ.get("CURLING_SCORE_CACHE") or cache.default_root())

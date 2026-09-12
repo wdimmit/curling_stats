@@ -6,6 +6,12 @@ services:
     image: curling-worker:local
     restart: unless-stopped
     env_file: worker.env
+    # A hung worker is useless if it cannot be inspected: SYS_PTRACE lets
+    # `py-spy dump` read the stacks from inside the container, which is the
+    # only way to tell a deadlock from slow work. The default 64 MB /dev/shm
+    # is also a known source of torch hangs.
+    cap_add: [SYS_PTRACE]
+    shm_size: 2gb
     environment:
       CURLING_SCORE_CACHE: /data/cache
       WORKER_CACHE_GB: "300"

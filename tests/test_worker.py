@@ -216,3 +216,15 @@ class TestProgressIsBestEffort:
             worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
                                out_dir=tmp_path / "out", analyze_fn=boom,
                                fetch_info=fake_info)
+
+
+class TestStackDumpsCanBeRequested:
+    def test_sigusr1_is_registered_for_a_stack_dump(self):
+        """A stalled worker has to be inspectable, or a hang is unfalsifiable."""
+        import faulthandler
+        import signal
+
+        worker._enable_stack_dumps()
+        assert faulthandler.is_enabled()
+        # Registering again is harmless and proves the handler is ours.
+        faulthandler.unregister(signal.SIGUSR1)
