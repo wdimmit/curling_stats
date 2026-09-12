@@ -38,6 +38,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "curling_score.viewer" = ["*.html", "*.js", "*.css"]
+"curling_score.service" = ["static/*.html", "static/*.js", "static/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

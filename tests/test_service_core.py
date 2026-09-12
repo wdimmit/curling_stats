@@ -399,3 +399,36 @@ class TestPlaylistWatcher:
         result = playlists.poll(repo, yt, processing_version="p+m", now=T0)
         assert len(result["created"]) == 1
         assert repo.list_runs(status="queued")[0].video_id == "vidB"
+
+
+class TestThePagesAreShipped:
+    """Present in the source tree is not the same as present in the wheel.
+
+    Every page the API serves 500'd in production because `package-data`
+    declared only the viewer's files, and the service's own were left out of
+    the installed package. The tests could not see it: they run from a checkout
+    where the files are on disk either way.
+    """
+
+    def test_every_page_the_api_serves_is_declared_as_package_data(self):
+        import tomllib
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        data = tomllib.loads((root / "pyproject.toml").read_text())
+        globs = data["tool"]["setuptools"]["package-data"]
+        assert "curling_score.service" in globs, (
+            "the service's static pages are not shipped; every page 500s once "
+            "installed")
+        suffixes = {Path(g).suffix for g in globs["curling_score.service"]}
+        served = {p.suffix for p in (root / "src/curling_score/service/static").iterdir()}
+        assert served <= suffixes, f"not declared: {served - suffixes}"
+
+    def test_the_viewer_assets_are_declared_too(self):
+        import tomllib
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        globs = tomllib.loads((root / "pyproject.toml").read_text())[
+            "tool"]["setuptools"]["package-data"]["curling_score.viewer"]
+        assert {".html", ".js", ".css"} <= {Path(g).suffix for g in globs}

@@ -494,11 +494,11 @@ class TestCatalogueAndAdmin:
         assert pls[0]["label"] == "Tuesday Open" and "liveVid0001" not in pls[0]["last_seen_video_ids"]
 
     def test_health(self, world):
-        assert world["client"].get("/healthz").json() == {"ok": True}
-        assert world["client"].get("/healthz/worker").status_code == 503
+        assert world["client"].get("/api/healthz").json() == {"ok": True}
+        assert world["client"].get("/api/healthz/worker").status_code == 503
         world["client"].post("/api/worker/claim", headers=WORKER,
                              json={"worker_id": "home", "model_id": "m-abc"})
-        assert world["client"].get("/healthz/worker").status_code == 200
+        assert world["client"].get("/api/healthz/worker").status_code == 200
 
     def test_the_pages_load(self, world):
         c = world["client"]

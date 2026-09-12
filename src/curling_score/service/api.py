@@ -225,11 +225,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
             raise HTTPException(404)
         return FileResponse(STATIC_DIR / name, media_type=STATIC_ASSETS[name])
 
-    @app.get("/healthz")
+    # Under /api/ deliberately: Google's frontend reserves /healthz and answers
+    # it with its own 404 before the request reaches this container.
+    @app.get("/api/healthz")
     def healthz():
         return {"ok": True}
 
-    @app.get("/healthz/worker")
+    @app.get("/api/healthz/worker")
     def healthz_worker():
         seen = repo.workers()
         latest = max((w.last_seen_at for w in seen), default=None)
