@@ -126,6 +126,32 @@ tr.total td { border-top:2px solid var(--line); font-weight:650; }
    wins, so this only takes effect once the inline style it replaces is gone. */
 #playback { margin-top: 6px; }
 
+/* --- desktop header order ----------------------------------------------- */
+/* Gathering six controls into #menu restored their boxes (display:contents
+   keeps them flex items of the header) but not their place in the row: in
+   source order they now follow the .grow spacer, which threw the game and end
+   selects to the far right and pulled `saved` left of the group. `order` puts
+   the row back exactly as it was without moving a node -- the same technique
+   .transport already uses. Every selector here is an id or a child of header,
+   so nothing competes with it; the .grow spacer is matched as `header > .grow`
+   because .grow is also used inside .transport and .tools, where every sibling
+   is still at the initial `order: 0` and reordering one would move it last.
+   #game .. #reportBtn cannot take the child combinator: display:contents does
+   not flatten the DOM, so #menu is still their parent. */
+@media (min-width: 641px) {
+  header > h1        { order: 1; }
+  header > #src      { order: 2; }
+  header #game       { order: 3; }
+  header #end        { order: 4; }
+  header > .grow     { order: 5; }
+  header > #blanks   { order: 6; }
+  header #copyLink   { order: 7; }
+  header #shareLink  { order: 8; }
+  header > #save     { order: 9; }
+  header #download   { order: 10; }
+  header #reportBtn  { order: 11; }
+}
+
 /* --- phone-only elements: present, wired, dormant on desktop ------------ */
 #stoneChip, #sheetHandle, #renumbered, #orderRow, .housebar, #placeStones { display: none; }
 /* Restated: an id selector outranks the UA [hidden] rule, so once Task 4
