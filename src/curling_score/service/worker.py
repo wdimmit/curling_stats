@@ -25,6 +25,9 @@ POLL_IDLE_S = 30.0    # otherwise stay well inside Firestore's free read quota
 HEARTBEAT_S = 60.0    # how often an idle worker says it is alive
 PROGRESS_MIN_GAP_S = 5.0
 UPLOAD_TIMEOUT_S = 600.0
+# Short, because a progress post that is not answered promptly has already
+# failed at its job of being timely, and the next one is seconds away.
+PROGRESS_TIMEOUT_S = 15.0
 
 
 class Lost(Exception):
@@ -39,8 +42,9 @@ class ApiClient:
         self._http = http or httpx.Client(timeout=60.0)
         self._headers = {"Authorization": f"Bearer {token}"}
 
-    def _post(self, path, payload):
-        r = self._http.post(f"{self.base}{path}", json=payload, headers=self._headers)
+    def _post(self, path, payload, timeout=None):
+        r = self._http.post(f"{self.base}{path}", json=payload,
+                            headers=self._headers, timeout=timeout)
         if r.status_code == 409:
             raise Lost(r.text)
         r.raise_for_status()
@@ -58,9 +62,21 @@ class ApiClient:
         return r.json()["job"]
 
     def progress(self, job_id, worker_id, phase, fraction, message):
+        """Report where the job has got to. Best-effort by contract.
+
+        A progress post is telemetry: it moves a bar on a page and pushes the
+        lease out. Losing one is not a reason to abandon half an hour of work,
+        so the caller is expected to swallow network failures -- and the lease
+        is the backstop, since a worker that has genuinely stopped talking
+        stops renewing it and the job is requeued.
+
+        Only 409 propagates: that is the server saying the job is no longer
+        ours, which is a real instruction to stop.
+        """
         return self._post(f"/api/worker/jobs/{job_id}/progress",
                           {"worker_id": worker_id, "phase": phase,
-                           "fraction": fraction, "message": message})
+                           "fraction": fraction, "message": message},
+                          timeout=PROGRESS_TIMEOUT_S)
 
     def artifacts(self, job_id, worker_id, files, detcache):
         return self._post(f"/api/worker/jobs/{job_id}/artifacts",
@@ -130,9 +146,17 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
         t = clock()
         timings.setdefault(name, {"first_s": round(t - t_start, 1)})
         timings[name]["last_s"] = round(t - t_start, 1)
-        if fraction >= 1.0 or t - last["t"] >= PROGRESS_MIN_GAP_S:
-            last["t"] = t
+        if fraction < 1.0 and t - last["t"] < PROGRESS_MIN_GAP_S:
+            return
+        last["t"] = t
+        try:
             api.progress(job["id"], worker_id, name, float(fraction), message)
+        except Lost:
+            raise                      # the server has given the job away
+        except Exception as exc:       # noqa: BLE001 - any network trouble
+            # Telemetry, not correctness. A timeout here once cost a job that
+            # had just finished a three-minute download and was otherwise fine.
+            log.warning("progress (%s %.2f) not delivered: %s", name, fraction, exc)
 
     on_phase("download", 0.0, "checking the video")
     info = fetch_info(url)

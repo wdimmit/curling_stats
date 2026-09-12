@@ -563,7 +563,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
             ladder = (300, 600, 1200)
             delay = ladder[min(job.attempts - 1, len(ladder) - 1)]
         else:
-            delay = float(body.get("retry_after_s") or 60)
+            # `or` would turn an explicit 0 -- "retry now" -- into 60.
+            asked = body.get("retry_after_s")
+            delay = float(60 if asked is None else asked)
         repo.update_job(job.id, state="queued", worker_id=None, lease_expires_at=None,
                         run_after=t + timedelta(seconds=delay), error=error, error_kind=kind)
         repo.update_run(job.run_id, status="queued", error=error)

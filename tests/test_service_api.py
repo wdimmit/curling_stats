@@ -543,3 +543,26 @@ class TestTokensWithStraySurroundingWhitespace:
                                  headers={"Authorization": "Bearer "},
                                  json={"worker_id": "home"})
         assert r.status_code in (401, 503)
+
+
+class TestRetryDelay:
+    def test_an_explicit_zero_means_retry_now(self, world):
+        # `float(x or 60)` would read 0 as "unset" and wait a minute.
+        submit(world)
+        job = world["client"].post("/api/worker/claim", headers=WORKER,
+                                   json={"worker_id": "home", "model_id": "m-abc"}).json()["job"]
+        r = world["client"].post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER,
+                                 json={"worker_id": "home", "error": "released",
+                                       "kind": "transient", "retry_after_s": 0})
+        assert r.json()["retry_after_s"] == 0
+        assert world["client"].post("/api/worker/claim", headers=WORKER,
+                                    json={"worker_id": "home2", "model_id": "m-abc"}
+                                    ).status_code == 200
+
+    def test_an_unset_delay_still_defaults_to_a_minute(self, world):
+        submit(world)
+        job = world["client"].post("/api/worker/claim", headers=WORKER,
+                                   json={"worker_id": "home", "model_id": "m-abc"}).json()["job"]
+        r = world["client"].post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER,
+                                 json={"worker_id": "home", "error": "x", "kind": "transient"})
+        assert r.json()["retry_after_s"] == 60

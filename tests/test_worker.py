@@ -172,3 +172,47 @@ class TestResolveWeights:
         with caplog.at_level("WARNING"):
             assert worker.resolve_weights() is None
         assert "classical" in caplog.text
+
+
+class TestProgressIsBestEffort:
+    """A 30-minute job must not die because telemetry did."""
+
+    class FlakyApi(FakeApi):
+        def __init__(self, jobs, fail_times=1, exc=None):
+            super().__init__(jobs)
+            self.fail_times = fail_times
+            self.exc = exc or TimeoutError("read timed out")
+
+        def progress(self, *a, **kw):
+            if self.fail_times > 0:
+                self.fail_times -= 1
+                raise self.exc
+            return super().progress(*a, **kw)
+
+    def test_a_failed_progress_post_does_not_abort_the_job(self, tmp_path):
+        api = self.FlakyApi([], fail_times=2)
+        worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
+                           out_dir=tmp_path / "out",
+                           analyze_fn=lambda url, **kw: (
+                               kw["on_phase"]("detect", 0.5, "end 3") or fake_doc()),
+                           fetch_info=fake_info)
+        assert len(api.completed) == 1, "the job should still have completed"
+
+    def test_losing_the_job_does_stop_it(self, tmp_path):
+        api = self.FlakyApi([], fail_times=1, exc=worker.Lost("not yours"))
+        with pytest.raises(worker.Lost):
+            worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
+                               out_dir=tmp_path / "out",
+                               analyze_fn=lambda url, **kw: (
+                                   kw["on_phase"]("detect", 0.5, "x") or fake_doc()),
+                               fetch_info=fake_info)
+        assert api.completed == []
+
+    def test_a_failure_that_is_not_progress_still_fails_the_job(self, tmp_path):
+        api = FakeApi([])
+        def boom(url, **kw):
+            raise RuntimeError("ffmpeg exploded")
+        with pytest.raises(RuntimeError):
+            worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
+                               out_dir=tmp_path / "out", analyze_fn=boom,
+                               fetch_info=fake_info)
