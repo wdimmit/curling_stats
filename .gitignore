@@ -29,3 +29,11 @@ review_ds12/
 
 # setuptools build tree from `pip install .`
 build/
+
+# Credentials, which belong in the deploy environment rather than here.
+# worker.env carries the shared WORKER_TOKEN: the documented setup is to copy
+# worker.env.example over it and fill it in, one `git add -A` away from
+# committing the token to a public repo. The Firebase key is a public
+# identifier and no secret, but it is still deploy config, not source.
+deploy/worker.env
+firebase_api_key.json
