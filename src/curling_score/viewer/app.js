@@ -989,6 +989,17 @@ function boot() { Promise.all([
   $("markThrown").onclick = () => patchShot({ delivered_stone_index:state.selStone });
   $("markCharted").onclick = markCharted;
   $("resetShot").onclick = clearShot;
+  $("menuBtn").onclick = () => {
+    const open = document.body.dataset.menu === "open";
+    document.body.dataset.menu = open ? "" : "open";
+  };
+  // Anything else you touch closes it, including a control inside it.
+  addEventListener("pointerdown", ev => {
+    if (document.body.dataset.menu !== "open") return;
+    if (ev.target.closest("#menuBtn")) return;
+    if (ev.target.closest("#menu") && ev.target.tagName === "DIV") return;
+    document.body.dataset.menu = "";
+  }, true);
   $("showTrack").onchange = ev => { state.showTrack = ev.target.checked;
                                     savePrefs(); drawHouse(); };
   $("autoplay").onchange = ev => { state.autoplay = ev.target.checked; savePrefs(); };

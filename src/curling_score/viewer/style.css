@@ -143,3 +143,97 @@ body[data-mode="view"] .tools, body[data-mode="view"] #typeGroups,
 body[data-mode="view"] #typeList, body[data-mode="view"] #scoreBtns,
 body[data-mode="view"] #missReason, body[data-mode="view"] #note { pointer-events:none; opacity:.6; }
 body[data-mode="view"] #house { cursor:default; }
+
+/* --- phone -------------------------------------------------------------- */
+/* A fixed-height shell, not a scrolling page: the video pins at the top, the
+   house takes what is left, and the chart panel becomes a sheet over both.
+   Everything is placed with fixed/absolute positioning because the player
+   iframe must never be reparented -- see app.js's one-player invariant. */
+@media (max-width: 640px) {
+  body { height: 100dvh; overflow: hidden; }
+
+  header { height: 48px; padding: 0 8px 0 12px; flex-wrap: nowrap; gap: 8px; }
+  h1, #src, #save { display: none; }
+  #menuBtn { display: grid; place-items: center; width: 44px; height: 44px;
+             flex: 0 0 44px; padding: 0; border-color: transparent; }
+  /* The playback settings stay in #playCard -- moving them into #menu changed
+     the desktop header -- so the phone lifts both panels into one full-width
+     dropdown at fixed offsets, rather than one guessing the other's height. */
+  #menu, #playback { display: none; }
+  body[data-menu="open"] #menu,
+  body[data-menu="open"] #playback {
+    position: fixed; left: 0; right: 0; z-index: 7; margin: 0;
+    background: var(--panel); padding: 10px 12px;
+    border-bottom: 1px solid var(--line); }
+  body[data-menu="open"] #playback { display: flex; top: 48px; height: 52px;
+    align-items: center; gap: 14px; }
+  body[data-menu="open"] #menu { display: grid; top: 100px; gap: 8px;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 6px 24px rgb(0 0 0 / .18); }
+  #menu > * { width: 100%; height: 44px; }
+  #menu .row { height: auto; }
+  #blanks { min-height: 44px; }
+
+  #stoneChip { display: grid; place-items: center; flex: 0 0 40px;
+               width: 40px; height: 40px; border-radius: 7px; font-size: 15px;
+               font-weight: 650; font-variant-numeric: tabular-nums;
+               border: 1px solid transparent; }
+  #stoneChip.red { background: var(--red); color: #fff; }
+  #stoneChip.yellow { background: var(--yellow); color: #1a1a1a; }
+  #stoneChip.unknown { background: var(--panel); color: var(--warn);
+                       border: 2px dashed var(--warn); }
+
+  main { display: block; padding: 0; margin: 48px 0 0;
+         height: calc(100dvh - 48px); }
+  main > .card { border: 0; border-radius: 0; padding: 0; background: none; }
+
+  /* the video keeps its own box at the top; the house fills the gap down to
+     the sheet, and #chart is lifted out of flow onto the bottom of the screen */
+  #playCard .shots { display: none; }
+  #houseCard { position: absolute; top: calc(48px + 56.25vw); bottom: 256px;
+               left: 0; right: 0; overflow: hidden; min-height: 280px; }
+  #house { height: 100%; }
+  #houseCard .muted { display: none; }
+
+  #flags { position: fixed; top: calc(48px + 56.25vw); left: 0; right: 0;
+           z-index: 3; max-height: 92px; overflow-y: auto; padding: 0 10px; }
+  #flags:empty { display: none; }
+
+  #chart { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
+           height: 256px; border-radius: 16px 16px 0 0; border: 0;
+           border-top: 1px solid var(--line);
+           box-shadow: 0 -3px 14px rgb(0 0 0 / .08);
+           padding: 0 12px calc(84px + env(safe-area-inset-bottom));
+           overflow: hidden; }
+  #chart h2, #chart h3, #chart dl, #chart details,
+  #chart #autoType, #orderBox h3, #orderBox .muted { display: none; }
+  #orderBox #moveBefore { position: absolute; width: 1px; height: 1px;
+                          opacity: 0; pointer-events: none; }
+
+  #sheetHandle { display: block; width: 100%; height: 32px; border: 0;
+                 background: none; padding: 0; }
+  #sheetHandle .grip { display: block; width: 36px; height: 4px; margin: 0 auto;
+                       border-radius: 2px; background: var(--line); }
+
+  /* the transport is its own fixed layer so it can sit visually inside the
+     sheet without being its child -- which is what lets it live in #playCard */
+  .transport { position: fixed; left: 12px; right: 12px; z-index: 5;
+               bottom: calc(24px + env(safe-area-inset-bottom));
+               margin: 0; gap: 8px; flex-wrap: nowrap; }
+  .transport button { height: 48px; flex: 0 0 56px; padding: 0; }
+  .transport #markCharted { flex: 1 1 auto; background: var(--accent);
+                            color: #fff; border-color: transparent; }
+  .transport #label, .transport #link { display: none; }
+  .transport #prev { order: 1; }
+  .transport #replay { order: 2; }
+  .transport #markCharted { order: 3; }
+  .transport #next { order: 4; }
+
+  /* touch targets */
+  .pick button, .scorebtns button, .swatchbtn, .shot,
+  #chart button, #chart select, #chart input { min-height: 44px; }
+  .scorebtns button { flex: 1 1 0; width: auto; height: 48px; }
+  .swatchbtn { width: 44px; height: 44px; }
+  .pick { gap: 8px; }
+  .pick button { padding: 0 14px; font-size: 13px; }
+}
