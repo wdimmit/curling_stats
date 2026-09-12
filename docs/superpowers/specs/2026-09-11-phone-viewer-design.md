@@ -1,6 +1,7 @@
 # A phone layout for the charting viewer
 
 **Status:** design approved, ready for an implementation plan.
+**Revised** after `5ba4858` (rock order) — see "Rock order" below.
 **Wireframes:** [Curling Chart on a Phone](https://claude.ai/code/artifact/db3ba9fa-0e55-46cd-ba53-2ee61c054445)
 (page "Phone layout"; the rejected candidates are on page "Not chosen").
 
@@ -40,6 +41,8 @@ house is a **full-screen mode** you enter deliberately, and is also where a
 The ranking is the point: grading is frequent, house editing is rare, so
 grading owns the thumb zone and editing is a mode.
 
+The peek's content depends on the shot's state — see "Rock order" below.
+
 Vertical budget at 390×844:
 
 | band | height | notes |
@@ -54,6 +57,56 @@ is 337. The crop is **derived from that height, not hardcoded** — which is why
 `houseViewBox()` below is a function rather than three literals.
 
 Expanding the sheet grows it over the house; the video never moves.
+
+## Rock order
+
+`5ba4858` added `#orderBox`: a correction may carry `before: N`, and
+`layout()` then reorders the end, renumbers it, recomputes thrower, label and
+blank colour, and keeps grades filed under the original number via
+`identity(s) = s.id ?? s.number`. It is the newest and least forgiving part of
+charting, and the first wireframes predated it. Two things were wrong.
+
+**It did not fit.** The expanded sheet was already at 564 of 577 px. The Order
+block adds ~64 more. So: the sheet body scrolls with the transport pinned, and
+Order collapses to a **44 px disclosure row** showing its current state
+(`detected order`, or `before #3 (red)`) that opens the picker on tap. Rare for
+a real shot, so collapsing is right. On desktop `#orderBox` stays expanded
+exactly as today.
+
+**A blank's fast path is not grading.** You cannot usefully grade a rock nobody
+saw, and `isBlank(s)` already distinguishes them. So the peek is
+**shot-state dependent**:
+
+| peek, normal shot | peek, `isBlank(s)` |
+|---|---|
+| shot-type group chips | the order picker, promoted and expanded |
+| grade row `0`–`4` | "Place the stones" → house-edit mode |
+| transport bar | transport bar |
+
+That is the flow the commit describes: find the blank, say where it was really
+thrown, then say what was on the ice.
+
+**Keep the native `<select>`.** iOS and Android render it as a full-width
+picker, which beats any custom dropdown we would write, and `render()` already
+fills it with fifteen well-labelled options. It only needs to grow to 44 px.
+
+### The unresolved part: the renumber is invisible
+
+On desktop the `#shots` chip strip sits under the video, so a reorder visibly
+rewrites sixteen labels. Candidate C deliberately has no strip — the header
+stone chip replaced it — so the only feedback is that chip changing from `9`
+to `3`. That is very thin for an operation that renumbers the whole end, and
+`moveBefore.onchange` also moves `state.si` underneath the user.
+
+Two ways out, and this needs a decision before implementation:
+
+1. **A transient confirmation** after a reorder — "end renumbered, this is now
+   rock 3" — in the sheet for a few seconds. Cheap, and keeps the chosen layout.
+2. **Bring back a chip strip**, as Candidate B had it. Stronger feedback, but
+   it costs 46 px permanently and undoes a choice already made.
+
+Recommendation: (1). The renumber is rare, and paying 46 px on every screen for
+feedback on an occasional action is the wrong trade.
 
 ## Architecture
 
@@ -105,6 +158,9 @@ and no handler in `boot()` changes.
   sheet. Needs a visible close control in the expanded state; swipe-to-dismiss
   alone is unreliable.
 - `#houseDone` — leaves the full-screen house mode.
+- `#orderRow` — the collapsed disclosure row that fronts `#moveBefore` on
+  phone. `#moveBefore` itself is reused, not duplicated; the row is a label
+  that reflects its value and forwards taps to it.
 
 ### New state
 
@@ -149,6 +205,9 @@ handles fourteen bindings:
 | `t` | track overlay | house-edit mode, toggle |
 | `Escape` | close the Report | the Report's own close control |
 
+Rock order has no shortcut at all, on any platform — it is mouse- or
+touch-only in both layouts, which is consistent.
+
 `c` is the one real gap: `toggleStoneColor()` is reachable only from the
 keyboard today, so house-edit mode needs a new button for it. On desktop it can
 stay keyboard-only, as now.
@@ -187,6 +246,12 @@ What can be tested, and should be written test-first:
   whose aspect ratio matches the band it fills.
 - The sheet/house mode transitions, if factored as pure functions over
   `state` rather than inline DOM writes.
+- `peekMode(shot)` → `"grade" | "order"`, the shot-state branch that decides
+  which peek a shot gets. Pure, one line, and the thing most likely to be got
+  wrong for a shot that is both blank and already graded.
+
+`layout()` and the reorder itself are already covered by
+`tests/test_viewer_js.py` as of `5ba4858`; this work must not change them.
 
 Everything else is verified by eye at 390×844, 430×932 and in landscape. Two
 regressions are worth guarding by hand on every change: the player must not
@@ -203,6 +268,10 @@ rather than drawing as an empty house.
   mode the house sits inside a fixed shell that does not scroll, so this is
   safe — but if the fallback stack ever puts the house in a scroller, dragging
   and page-scroll will fight.
+- **A reorder moves `state.si` under the user.** `moveBefore.onchange`
+  follows the shot to its new slot deliberately. On a phone, where the chip
+  strip is absent, that is a screen changing for reasons the user cannot see —
+  which is the risk the transient confirmation exists to cover.
 - **The sheet covers the house while expanded.** A user editing stone
   positions must collapse the sheet first. This is deliberate, and the
   full-screen house mode is the escape hatch.
