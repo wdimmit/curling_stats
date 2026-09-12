@@ -228,9 +228,13 @@ body[data-mode="view"] #house { cursor:default; }
     position: fixed; left: 0; right: 0; z-index: 10; margin: 0;
     background: var(--panel); padding: 10px 12px;
     border-bottom: 1px solid var(--line); }
-  body[data-menu="open"] #playback { display: flex; top: 48px; height: 52px;
+  /* 64px, not 52: the panel is border-box with 10px of vertical padding, and
+     its two labels are 44px touch targets -- 52px left them 32px and they
+     overflowed into the header above and the menu's padding below. #menu's
+     top follows it: 48 + 64. */
+  body[data-menu="open"] #playback { display: flex; top: 48px; height: 64px;
     align-items: center; gap: 14px; }
-  body[data-menu="open"] #menu { display: grid; top: 100px; gap: 8px;
+  body[data-menu="open"] #menu { display: grid; top: 112px; gap: 8px;
     border-radius: 0 0 10px 10px;
     box-shadow: 0 6px 24px rgb(0 0 0 / .18); }
   #menu > * { width: 100%; height: 44px; }
@@ -275,7 +279,11 @@ body[data-mode="view"] #house { cursor:default; }
      header and its own toolbar, the video and chart are underneath but
      never torn down -- #houseCard's own solid background is what hides
      them, so #playCard stays in flow and its iframe stays alive. */
-  body[data-house="edit"] #houseCard { top: 48px; bottom: 114px; z-index: 8;
+  /* 114px clears the swatch bar and the housebar below it; both of those are
+     themselves offset by the safe area, so this must be too, or the bottom of
+     the editor's house sits behind an opaque toolbar on a home-indicator phone. */
+  body[data-house="edit"] #houseCard { top: 48px; z-index: 8;
+                                       bottom: calc(114px + env(safe-area-inset-bottom));
                                        background: var(--bg); }
   body[data-house="edit"] #chart,
   body[data-house="edit"] .transport { display: none; }
@@ -346,8 +354,15 @@ body[data-mode="view"] #house { cursor:default; }
     bottom: calc(100dvh - 48px - 56.25vw + 12px);
   }
 
-  #sheetHandle { display: block; width: 100%; height: 32px; border: 0;
-                 background: none; padding: 0; }
+  /* #chart #sheetHandle, not #sheetHandle: the 44px touch-target rule below is
+     `#chart button` at (1,0,1) and min-height beats height, so a bare id
+     selector loses and the handle is silently 44px -- eating the 12px that is
+     the peek's entire slack. This is (2,0,1), and the min-height is restated
+     because that is the declaration actually being overridden. The grip is the
+     visible target; the sheet also opens from the chips and the form below. */
+  #chart #sheetHandle { display: block; width: 100%; height: 32px;
+                        min-height: 32px; border: 0;
+                        background: none; padding: 0; }
   #sheetHandle .grip { display: block; width: 36px; height: 4px; margin: 0 auto;
                        border-radius: 2px; background: var(--line); }
 
@@ -387,7 +402,10 @@ body[data-mode="view"] #house { cursor:default; }
   body[data-sheet="open"] #chart #typeList,
   body[data-sheet="open"] #chart #missReason,
   body[data-sheet="open"] #chart #note { display: block; }
-  body[data-sheet="open"] #orderRow:not([hidden]) { display: flex; }
+  /* Expanding the sheet must never take a control away, so the blank's
+     "Place the stones" comes along into the open state too. */
+  body[data-sheet="open"] #orderRow:not([hidden]),
+  body[data-sheet="open"] #placeStones:not([hidden]) { display: flex; }
   body[data-sheet="peek"] #chart #typeList,
   body[data-sheet="peek"] #chart #missReason,
   body[data-sheet="peek"] #chart #note { display: none; }
