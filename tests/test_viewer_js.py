@@ -24,7 +24,7 @@ def run_js(body: str):
         f"const A = require({str(APP)!r});\n"
         "const {state, merge, keyFor, mergedShots, layout, identity, gatherStats,\n"
         "       pct, avg, isBlank, isGraded, typeOf, shotVideoTime, stoneAt,\n"
-        "       shotKey, rawShot} = A;\n"
+        "       shotKey, rawShot, houseViewBox, peekMode, renumberNotice} = A;\n"
         "function out(v){ console.log(JSON.stringify(v)); }\n" + body
     )
     proc = subprocess.run([node, "-e", script], capture_output=True, text=True,
@@ -316,3 +316,92 @@ class TestMovingAShot:
         got = run_js(setup(doc(shots, end_number=4)) +
                      "state.leadIn = 0; out(shotVideoTime(mergedShots(e)[5]));")
         assert got == 3090.0
+
+
+class TestHouseViewBox:
+    """The desktop crop is load-bearing: it must not drift by a character."""
+
+    def test_the_full_view_is_the_string_the_desktop_has_always_used(self):
+        got = run_js('out(houseViewBox("full", 0.605));')
+        assert got == "-2.6 -2.6 5.2 8.6"
+
+    def test_an_unusable_aspect_falls_back_to_the_full_view(self):
+        for bad in ("0", "-1", "NaN", "undefined"):
+            got = run_js(f'out(houseViewBox("crop", {bad}));')
+            assert got == "-2.6 -2.6 5.2 8.6", bad
+
+    def test_the_crop_is_always_as_wide_as_the_sheet(self):
+        x, y, w, h = (float(v) for v in
+                      run_js('out(houseViewBox("crop", 390/321));').split())
+        assert (x, w) == (-2.6, 5.2)
+
+    def test_the_crop_fills_the_box_it_is_given(self):
+        x, y, w, h = (float(v) for v in
+                      run_js('out(houseViewBox("crop", 390/321));').split())
+        assert w / h == pytest.approx(390 / 321, abs=1e-3)
+
+    def test_the_crop_is_centred_on_the_tee_so_the_house_stays_whole(self):
+        x, y, w, h = (float(v) for v in
+                      run_js('out(houseViewBox("crop", 390/321));').split())
+        assert y == pytest.approx(-h / 2, abs=1e-3)
+        assert y <= -1.829 and y + h >= 1.829   # the whole 12-foot is visible
+
+    def test_a_box_taller_than_the_sheet_does_not_zoom_past_the_full_view(self):
+        x, y, w, h = (float(v) for v in
+                      run_js('out(houseViewBox("crop", 0.2));').split())
+        assert h == 8.6
+
+
+class TestPeekMode:
+    """A blank's fast path is saying where the rock went, not grading it."""
+
+    def test_a_shot_we_watched_offers_grading(self):
+        got = run_js(setup(doc([shot(1, "red", "lead")])) +
+                     'out(peekMode(merge(g, e, e.shots[0])));')
+        assert got == "grade"
+
+    def test_a_rock_never_seen_offers_the_order_picker(self):
+        got = run_js(setup(doc([shot(1, "red", "lead", missing=True)])) +
+                     'out(peekMode(merge(g, e, e.shots[0])));')
+        assert got == "order"
+
+    def test_an_unreadable_house_offers_the_order_picker(self):
+        got = run_js(setup(doc([shot(1, "red", "lead", state_known=False)])) +
+                     'out(peekMode(merge(g, e, e.shots[0])));')
+        assert got == "order"
+
+    def test_grading_a_blank_without_placing_stones_leaves_it_a_blank(self):
+        got = run_js(setup(doc([shot(1, "red", "lead", state_known=False)]),
+                           {"0.1.1": {"user_score": 3}}) +
+                     'out(peekMode(merge(g, e, e.shots[0])));')
+        assert got == "order"
+
+    def test_there_being_no_shot_is_not_a_blank(self):
+        got = run_js('out(peekMode(null));')
+        assert got == "grade"
+
+
+class TestRenumberNotice:
+    """The phone has no chip strip, so the renumber has to say so itself."""
+
+    def test_a_move_says_the_new_number(self):
+        got = run_js('out(renumberNotice({number:9}, {number:3}));')
+        assert "rock 3" in got
+
+    def test_a_move_that_settled_the_colour_says_where_the_colour_came_from(self):
+        got = run_js('out(renumberNotice({number:9},'
+                     ' {number:3, color:"red", color_inferred:true}));')
+        assert "rock 3" in got and "red" in got and "alternation" in got
+
+    def test_a_rock_whose_colour_was_seen_does_not_claim_alternation(self):
+        got = run_js('out(renumberNotice({number:9},'
+                     ' {number:3, color:"red", color_inferred:false}));')
+        assert "alternation" not in got
+
+    def test_landing_back_on_the_same_number_announces_nothing(self):
+        got = run_js('out(renumberNotice({number:4}, {number:4}));')
+        assert got is None
+
+    def test_a_missing_shot_announces_nothing(self):
+        assert run_js('out(renumberNotice(null, {number:3}));') is None
+        assert run_js('out(renumberNotice({number:3}, null));') is None

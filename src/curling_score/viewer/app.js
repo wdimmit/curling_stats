@@ -180,6 +180,32 @@ const isBlank = s => s && (s.state_known === false || s.missing);
 const typeOf = s => s ? (s.shot_type || "unknown") : "unknown";
 const isGraded = s => s && typeof s.user_score === "number";
 
+/* The phone cannot show the sheet's whole length beside the video, so it shows
+ * the house centred on the tee and lets the guards fall off the bottom.
+ * Centring is what keeps the 12-foot whole however short the band gets.
+ * `aspect` is the rendered box's width over its height; desktop passes nothing
+ * that matters, because "full" is always the view it has always had. */
+function houseViewBox(mode, aspect) {
+  if (mode !== "crop" || !(aspect > 0)) return "-2.6 -2.6 5.2 8.6";
+  const h = Math.min(5.2 / aspect, 8.6);
+  const n = x => String(+x.toFixed(3));
+  return `-2.6 ${n(-h / 2)} 5.2 ${n(h)}`;
+}
+
+/* Nobody can grade a rock nobody saw. A blank's fast path is saying where it
+ * was thrown and what was on the ice, so its peek carries different controls. */
+const peekMode = s => isBlank(s) ? "order" : "grade";
+
+/* Moving a rock renumbers all sixteen. On desktop the chip strip shows that
+ * happening; the phone has no strip, so the change announces itself -- and
+ * says where the colour came from, since `renumber` settles a blank's colour
+ * from the alternation around it and the charter has no other way to know. */
+function renumberNotice(before, after) {
+  if (!before || !after || before.number === after.number) return null;
+  const why = after.color_inferred ? `, ${after.color} by alternation` : "";
+  return `End renumbered — this is now rock ${after.number}${why}`;
+}
+
 function patchShot(fields) {
   if (READ_ONLY) return;
   const key = shotKey();
@@ -878,7 +904,8 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots, layout, identity, READ_ONLY,
                      gatherStats, pct, avg,
                      isBlank, isGraded, typeOf, shotVideoTime, TYPE, TYPES,
-                     GROUPS, POSITIONS, stoneAt, R, LIMIT };
+                     GROUPS, POSITIONS, stoneAt, R, LIMIT,
+                     houseViewBox, peekMode, renumberNotice };
 
 if (BROWSER) boot();
 
