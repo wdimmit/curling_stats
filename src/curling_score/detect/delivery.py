@@ -122,6 +122,20 @@ REST_HOLD_S = 1.0
 CHANGE_WINDOW_S = 6.0
 # Kept clear of the delivery so neither window catches the stones in flight.
 CHANGE_GUARD_S = 1.5
+# A stone the tracker lost while it was still moving has not stopped yet, so
+# the house cannot show it until it has. How long that takes follows from how
+# fast it was going: a stone slows at roughly 0.08 m/s^2 -- a draw crosses the
+# far hog line at about 2 m/s and comes to rest some 27 m on, 25 s later --
+# and it slows less than that only when it is nearly stopped already. So a
+# stone lost at 0.6 m/s needs up to another 7.5 s. Game 3 end 6 of the 5U
+# championship lost its opening red exactly so: tracked to +0.63 m at 0.6
+# m/s, hidden for 5.7 s as the players closed over it, sitting 2.3 m further
+# on when they moved off -- and seen for only 30% of a six-second window that
+# opened while it was still rolling, which is short of the 40% that counts as
+# settled. The run-out is capped at the least time between two deliveries, so
+# a stone that left play can never be read as resting where the next one lands.
+STONE_DECEL_M_S2 = 0.08
+MAX_RUNOUT_S = 10.0
 # Two stones cannot be closer than a diameter, so anything further apart than
 # that is a different stone rather than the same one re-measured.
 CHANGE_TOLERANCE_M = 2.0 * C.STONE_RADIUS_M
@@ -568,19 +582,30 @@ def _approach(track, x, y, upto_i) -> float:
     )
 
 
-def _house_change(frames, track, end_i):
+def _runout_s(track, end_i) -> float:
+    """How long a stone lost at sample ``end_i`` may still have been moving."""
+    vx, vy = _velocity_at(track, end_i)
+    return min((vx * vx + vy * vy) ** 0.5 / STONE_DECEL_M_S2, MAX_RUNOUT_S)
+
+
+def _house_change(frames, track, end_i, in_motion: bool = False):
     """The house change this shot is answerable for, if any.
 
     Returns ``(rest, claim)``. ``rest`` is the resting place the change names,
     when it names one. ``claim`` identifies the stone that changed, as
     ``(kind, colour, x, y, approach)`` -- callers use it to make sure one
     change confirms one delivery and not every track that was passing.
+
+    ``in_motion`` says the track ended before the stone stopped, so the
+    after-window is held open for as long as the stone could still have been
+    running (see ``STONE_DECEL_M_S2``).
     """
     t_in, t_out = track.ts[0], track.ts[end_i]
     before = _settled_stones(frames, t_in - CHANGE_GUARD_S - CHANGE_WINDOW_S,
                              t_in - CHANGE_GUARD_S)
+    runout = _runout_s(track, end_i) if in_motion else 0.0
     after = _settled_stones(frames, t_out + CHANGE_GUARD_S,
-                            t_out + CHANGE_GUARD_S + CHANGE_WINDOW_S)
+                            t_out + CHANGE_GUARD_S + CHANGE_WINDOW_S + runout)
     if before is None or after is None:
         return None, None
     added, removed = _house_delta(before, after)
@@ -884,7 +909,7 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
             # Either the tracker came out of a collision holding the wrong
             # stone, or the shooter left the playing area. Ask the house, which
             # a shot changes and a sweeper does not.
-            rest, claim = _house_change(frames, track, end_i)
+            rest, claim = _house_change(frames, track, end_i, in_motion=not at_rest)
             if rest is not None:
                 rest_x, rest_y = rest
                 settled = True

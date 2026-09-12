@@ -1143,3 +1143,46 @@ class TestAParkedStoneAnnexedByAPassingOne:
         got = delivery.find_deliveries(self._frames())
         assert not any(d.travel_m < 1.0 and d.t_enter > 60 for d in got), \
             [(d.t_enter, d.travel_m, d.reason) for d in got]
+
+
+class TestAStoneLostWhileStillRunning:
+    """Game 3 end 6 of the 5U championship, the red lead's first rock.
+
+    Tracked from the top of the panel down to +0.63 m at 0.6 m/s, then the
+    players closed over it for 5.7 s; when they moved off it sat 2.3 m further
+    on. Too long a gap for the linker, and the house-change check opened its
+    after-window while the stone was still rolling, so it was seen in 30% of
+    it against the 40% that counts as settled. A stone that was still moving
+    when it was lost needs time to stop before the house can show it.
+    """
+
+    def _frames(self):
+        quiet = [(round(t * 0.1, 3), []) for t in range(0, 300)]     # 30 s of empty ice
+        flight = interp([(30.0, -0.46, 4.60), (37.3, -0.23, 0.63)], fps=10.0, color="red")
+        rest = resting("red", 0.31, -1.61, 43.0, 90.0)
+        return quiet + merge(flight, rest)
+
+    def test_it_is_a_delivery_that_came_to_rest_where_it_was_next_seen(self):
+        got = delivery.find_deliveries(self._frames())
+        assert len(got) == 1
+        assert got[0].t_enter == pytest.approx(30.0, abs=0.2)
+        assert got[0].came_to_rest is True
+        assert got[0].rest_y_m == pytest.approx(-1.61, abs=0.15)
+
+    def test_a_stone_that_stopped_in_view_gets_no_extra_time(self):
+        # Ended at rest: the house is read in the usual window, and a stone
+        # appearing fifteen seconds later is somebody else's.
+        tr = thrown("red", y0=4.2, y1=1.0, t0=0.0, speed=0.5, fps=10.0)
+        late = resting("red", 0.9, -1.5, tr[-1][0] + 12.0, tr[-1][0] + 40.0)
+        got = delivery.find_deliveries(merge(tr, late))
+        assert len(got) == 1
+        assert got[0].rest_y_m == pytest.approx(1.0, abs=0.2)
+
+    def test_a_stone_that_left_play_is_not_read_as_resting_where_the_next_one_lands(self):
+        # A fast stone vanishing through the back; the next delivery's stone
+        # settles 20 s later. The run-out is capped well short of that.
+        peel = interp([(0.0, 0.1, 4.60), (3.0, 0.1, -1.9)], fps=10.0, color="red")
+        nxt = resting("red", -0.5, 0.5, 25.0, 70.0)
+        got = delivery.find_deliveries(merge(peel, nxt))
+        assert not any(d.came_to_rest and d.t_enter < 1.0 for d in got), \
+            [(d.t_enter, d.reason, d.rest_y_m) for d in got]

@@ -12,7 +12,7 @@ from pathlib import Path
 # Bump when a code change alters what the timeline says -- new fields, changed
 # rules, different acceptance thresholds. Not for refactors that leave the
 # document byte-identical.
-PIPELINE_VERSION = "2026.09.2"
+PIPELINE_VERSION = "2026.09.3"
 
 
 def model_id(weights) -> str:

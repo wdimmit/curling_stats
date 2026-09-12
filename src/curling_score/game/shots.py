@@ -335,16 +335,26 @@ def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL,
         return seq
     seq = list(seq)
 
-    if house_sizes and short >= 2:
+    if house_sizes:
         sizes = iter(house_sizes)
         p = 0
         while p < len(seq):
             color, dv = seq[p]
             if dv is not None:
                 need = next(sizes, 0) - (p + 1)
-                if need > 0:
-                    # Pairs, for the same parity reason as below: a lone
-                    # blank between two alternating neighbours cannot exist.
+                if need > 0 and p == 0:
+                    # Before the first rock seen there is no neighbour to
+                    # alternate against, so any number of blanks fits: the
+                    # colours simply run backwards from the first rock's.
+                    k = min(need, short)
+                    lead = [(color if (k - i) % 2 == 0 else rules.other_color(color), None)
+                            for i in range(k)]
+                    seq[0:0] = lead
+                    short -= k
+                    p += k
+                elif need > 0:
+                    # Mid-end, pairs -- for the same parity reason as below: a
+                    # lone blank between two alternating neighbours cannot exist.
                     pairs = min((need + 1) // 2, short // 2)
                     pair = [(color, None), (rules.other_color(color), None)]
                     seq[p:p] = pair * pairs

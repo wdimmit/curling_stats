@@ -437,24 +437,47 @@ class TestStonesOnTheSheetPlaceTheBlanks:
         assert all(a != b for a, b in zip(colors, colors[1:]))
         assert colors.count("red") == 8
 
+    def test_one_rock_missed_before_the_first_seen_leads_the_end_alone(self):
+        # Game 3 end 6: a red draw ran to the back of the house under the
+        # sweepers and was never a candidate; the first house read held two
+        # stones after one seen delivery. A lone blank cannot go between two
+        # alternating rocks, but before the first there is nothing to break.
+        plan = self._plan(15, [2] + [3] * 14, first="yellow")
+        blanks = [i for i, (_c, dv) in enumerate(plan) if dv is None]
+        assert blanks == [0]
+        assert [c for c, _ in plan[:3]] == ["red", "yellow", "red"]
+        colors = [c for c, _ in plan]
+        assert all(a != b for a, b in zip(colors, colors[1:]))
+        assert colors.count("red") == 8
+
+    def test_three_missed_at_the_front_take_three_blanks(self):
+        plan = self._plan(13, [4] + [5] * 12, first="red")
+        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [0, 1, 2]
+        assert [c for c, _ in plan[:4]] == ["yellow", "red", "yellow", "red"]
+
     def test_a_house_that_never_outgrows_the_count_changes_nothing(self):
         # Fourteen rocks, houses of at most one stone each: blanks go where
         # they always did, at the end.
         plan = self._plan(14, [1] * 14)
         assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [14, 15]
 
-    def test_one_stone_too_many_still_costs_a_pair(self):
-        # A single blank between alternating neighbours cannot exist, so the
-        # evidence for one rock buys a pair -- and the rest of the deficit
-        # goes to the tail as before.
+    def test_one_stone_too_many_at_the_front_costs_one_blank(self):
+        # Evidence for one rock before the first seen buys exactly one blank
+        # there; the rest of the deficit goes to the tail as before.
         plan = self._plan(13, [2] + [3] * 12)
         blanks = [i for i, (_c, dv) in enumerate(plan) if dv is None]
-        assert blanks == [0, 1, 15]
+        assert blanks == [0, 14, 15]
+
+    def test_one_stone_too_many_mid_end_still_costs_a_pair(self):
+        # Between two alternating neighbours a lone blank cannot exist.
+        sizes = list(range(1, 8)) + [9, 10, 11, 12, 13, 14]
+        plan = self._plan(13, sizes)
+        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [7, 8, 15]
 
     def test_it_never_invents_more_rocks_than_the_end_is_short(self):
         plan = self._plan(15, [4] + [5] * 14)   # one short; the count says three
         assert len(plan) == 16
-        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [15]
+        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [0]
 
     def test_evidence_mid_end_puts_the_pair_there(self):
         # Ten rocks alternate cleanly, then the eleventh house holds two more

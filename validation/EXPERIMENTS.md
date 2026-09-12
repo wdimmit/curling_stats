@@ -767,3 +767,52 @@ working, and a reprocess makes end 4 whole on a fresh link.
 phase outside Docker -- 25 min wall, 3 min CPU, GPU memory held and idle --
 the same signature as the worker hang earlier today. Shared memory was not a
 factor here. Still unexplained.
+
+
+## A stone lost while still running (2026-09-12)
+
+Same game, end 6: the charter said the first rock was missed the way end 4's
+were. It was not, quite. The red draw was tracked from the top of the panel to
++0.63 m at 0.6 m/s, then the players closed over it for 5.7 s, and it sat 2.3 m
+further on when they moved off. Two things then went wrong. The linker bridges
+4 s, so the resting stone became a track that "entered" from inside the house
+and was refused. And the flight's house-change check opened its after-window
+1.5 s after the stone vanished -- while it was still rolling under the sweepers
+-- so the stone was present in 30% of the window against the 40% that counts
+as settled.
+
+**Widening the linker was tried first and backed out.** At 8 s it finds end
+6's red, and on the reference VOD it also builds a red delivery in game 2 end
+3 out of a red-jacketed sweeper's three-sample fragment, a struck red's
+resting place and a 6.7 s gap over which the "stone" moved 0.2 m. The fit then
+kept 12 of that end's 14. Whether that red was real cannot be told from the
+detections; a change that trades one end for another on evidence this thin is
+not a fix.
+
+**What was done instead follows from the stone's own speed.** A stone that
+was still moving when the tracker lost it has not stopped, and how long it
+needs is bounded by how fast it was going: stones slow at roughly 0.08 m/s^2
+(a draw crosses the far hog at about 2 m/s and stops 27 m on, 25 s later), so
+a stone lost at 0.6 m/s may run for another 7.5 s. The house-change
+after-window is now held open that long for a track that ended in motion,
+capped at the ten seconds no two deliveries are ever inside, so a stone that
+left play can never be read as resting where the next one lands.
+
+**On the game**: end 6 is complete; end 1's yellow at 393 is now confirmed
+from its real flight at 386 rather than a late-entry fragment; every other end
+keeps identical deliveries. **On the reference VOD**, the previous tracker
+against this one on the same detections: 201 of 208 kept either way, all
+kept sets identical except game 2 end 2, where the red at 8821 -- the very
+rock the old ds10 timeline had and ds11a had lost -- is found from its flight
+and displaces a weaker gap-search recovery at 8723.
+
+**Blanks at the front no longer need a pair.** The stone-count rule inserted
+pairs to keep alternation, which is right mid-end and wrong before the first
+rock seen, where there is no neighbour to alternate against. End 6 was one
+rock short with the count saying so at the first house; the blank now leads.
+Two reference ends move their tail blank to the front on the same evidence,
+and in both a stone is visibly on the sheet before the first delivery seen --
+game 1 end 1 because the video starts mid-end, game 2 end 4 because a yellow
+arrives twelve seconds before the segmenter's start.
+
+`PIPELINE_VERSION` 2026.09.3.
