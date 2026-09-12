@@ -55,7 +55,11 @@
       <label class="chk"><input type="checkbox" id="showTrack" checked> track</label>
       <button id="resetShot" title="Discard manual edits to this shot">Reset</button>
     </div>
-    <svg id="house" aria-label="House diagram"></svg>
+    <!-- drawHouse() overwrites this on every render; it only governs the very
+         first measurement, before any render has run, so getBoundingClientRect
+         reads a real 5.2x8.6 ratio rather than the no-viewBox 300x150 default
+         (which self-perpetuates a bogus crop -- see app.js's drawHouse()). -->
+    <svg id="house" viewBox="-2.6 -2.6 5.2 8.6" aria-label="House diagram"></svg>
     <div class="housebar">
       <button id="recolour" title="Swap the selected stone's colour (c)">&#8644;</button>
       <button id="houseDone">Done</button>

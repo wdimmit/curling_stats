@@ -355,8 +355,14 @@ function drawHouse() {
   const svg = $("house");
   // The desktop and the full-screen editor both want the whole sheet; the
   // phone's house band is too short for it, so it crops to what it can show.
+  // Gated on the phone media query, not just the measured box: a bad first
+  // measurement (no viewBox yet, #house's height:auto falling back to the
+  // no-intrinsic-ratio default of 150px) would otherwise read as "short and
+  // wide" on a desktop too, and that crop is a fixed point -- its own aspect
+  // ratio re-derives the same 150px on every later measurement.
   const box = svg.getBoundingClientRect();
-  const cropped = state.houseMode !== "edit" && box.width > 0 &&
+  const phone = matchMedia("(max-width: 640px)").matches;
+  const cropped = phone && state.houseMode !== "edit" && box.width > 0 &&
                   box.height > 0 && box.height < box.width * 1.3;
   svg.setAttribute("viewBox",
     houseViewBox(cropped ? "crop" : "full", box.width / box.height));
@@ -624,10 +630,6 @@ function renderChart() {
     movedBefore ? `before #${movedBefore.number} (${movedBefore.color})` : "detected order";
   $("orderRow").disabled = !s || READ_ONLY;
 
-  document.body.dataset.peek = peekMode(s);
-  document.body.dataset.sheet = state.sheet;
-  document.body.dataset.house = state.houseMode;
-
   const note = $("renumbered");
   note.textContent = state.notice || "";
   note.hidden = !state.notice;
@@ -691,6 +693,16 @@ function goTo(ei, si) {
 
 function render() {
   const e = end(), s = shot();
+  // These have to land before drawHouse() (below) reads the DOM: it measures
+  // #houseCard with getBoundingClientRect(), which flushes layout against
+  // whatever state.house/sheet/peek last put on <body> -- setting them here,
+  // rather than down in renderChart(), is what lets leaving the editor
+  // re-crop against the band's real, already-shrunk size instead of the
+  // still-full-screen one.
+  document.body.dataset.peek = peekMode(s);
+  document.body.dataset.sheet = state.sheet;
+  document.body.dataset.house = state.houseMode;
+
   $("label").textContent = s ? (s.label || `shot ${s.number}`) : "no shots detected";
 
   // Status for the phone header, where the shot chip strip does not fit.

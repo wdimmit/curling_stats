@@ -165,7 +165,10 @@ body[data-mode="view"] #house { cursor:default; }
   #menu, #playback { display: none; }
   body[data-menu="open"] #menu,
   body[data-menu="open"] #playback {
-    position: fixed; left: 0; right: 0; z-index: 7; margin: 0;
+    /* Above the edit-mode house (z-index 8/9): the menu must still open over
+       the full-screen editor, and #menuBtn stays tappable in the header
+       while the editor is showing. */
+    position: fixed; left: 0; right: 0; z-index: 10; margin: 0;
     background: var(--panel); padding: 10px 12px;
     border-bottom: 1px solid var(--line); }
   body[data-menu="open"] #playback { display: flex; top: 48px; height: 52px;
@@ -209,8 +212,8 @@ body[data-mode="view"] #house { cursor:default; }
   body[data-house="edit"] .transport { display: none; }
   /* #houseCard .tools is (1,1,0) and hides the swatch bar above; matching
      that id here, not just the class, is what lets this (1,2,1) rule win. */
-  body[data-house="edit"] #houseCard .tools { display: flex; position: fixed;
-    z-index: 9; left: 0; right: 0;
+  body[data-house="edit"] #houseCard .tools { display: flex; flex-wrap: nowrap;
+    position: fixed; z-index: 9; left: 0; right: 0;
     bottom: calc(58px + env(safe-area-inset-bottom));
     height: 56px; margin: 0; padding: 0 12px; background: var(--panel);
     border-top: 1px solid var(--line); }
@@ -220,6 +223,10 @@ body[data-mode="view"] #house { cursor:default; }
   body[data-house="edit"] #houseDone { flex: 1 1 auto; height: 46px;
     background: var(--accent); color: #fff; border-color: transparent; }
   body[data-house="edit"] #recolour { flex: 0 0 56px; height: 46px; }
+  /* The blank-shot "place the stones" warning in #flags is exactly the
+     prompt this mode exists to act on, so it must stay above the editor
+     and reachable at the header's height, not the collapsed band's. */
+  body[data-house="edit"] #flags { z-index: 9; top: 48px; }
 
   #flags { position: fixed; top: calc(48px + 56.25vw); left: 0; right: 0;
            z-index: 3; max-height: 92px; overflow-y: auto; padding: 0 10px; }
