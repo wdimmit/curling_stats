@@ -18,20 +18,30 @@ from pathlib import Path
 import av
 import numpy as np
 
-# FFmpeg must log straight to stderr, never through PyAV's Python callback.
-#
-# With the callback in place a decoder thread that wants to log has to take
-# the GIL to do it. When a container closes, the main thread frees the codec
-# context *while holding the GIL* and waits for those threads to finish. If
-# one of them is mid-log at that moment the two wait on each other for ever.
-# Frame threading (``thread_type = "AUTO"``) is what makes the threads, so
-# every decode here is exposed. Seen twice on 2026-09-11: the hosted worker
-# and a local analysis both froze between one end's detection and the next,
-# GPU idle, with exactly this pair of stacks -- ``avcodec_free_context`` under
-# ``Stream.__dealloc__`` on the main thread, ``logging_log_callback`` in a
-# ``pthread_cond_timedwait`` on the decoder's.
-av.logging.restore_default_callback()
-av.logging.set_libav_level(av.logging.ERROR)
+
+
+def _quiet_ffmpeg():
+    """FFmpeg must log straight to stderr, never through PyAV's Python callback.
+
+    With that callback in place a decoder thread that wants to log has to take
+    the GIL to do it. When a container closes, the main thread frees the codec
+    context *while holding the GIL* and waits for those threads to finish; if
+    one of them is mid-log at that moment the two wait on each other for ever.
+    Frame threading (``thread_type = "AUTO"``) is what makes the threads, so
+    every decode here is exposed. Seen three times on 2026-09-11/12 -- the
+    hosted worker twice and a local analysis once -- always between one end's
+    detection and the next, GPU idle, with the same pair of stacks:
+    ``avcodec_free_context`` under ``Stream.__dealloc__`` on the main thread,
+    ``logging_log_callback`` in a ``pthread_cond_timedwait`` on the decoder's.
+
+    PyAV itself installs a callback that does nothing. The dangerous one is
+    installed by ``av.logging.set_level``, and torchvision calls that on
+    import -- which happens when the YOLO detector is built, long after this
+    module loaded. So restoring the default once at import was undone before
+    the first frame was decoded; it has to be re-asserted at every open.
+    """
+    av.logging.restore_default_callback()
+    av.logging.set_libav_level(av.logging.ERROR)
 
 
 @dataclass(frozen=True)
@@ -43,6 +53,7 @@ class VideoProbe:
 
 
 def probe(path) -> VideoProbe:
+    _quiet_ffmpeg()
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
         rate = stream.average_rate or stream.guessed_rate
@@ -73,6 +84,7 @@ def stream_start_s(path) -> float:
     full video, so this says where in the VOD it came from -- which is what
     lets a harvested frame name a moment. See :mod:`curling_score.harvest.clips`.
     """
+    _quiet_ffmpeg()
     with av.open(str(path)) as container:
         return _stream_start(container.streams.video[0])
 
@@ -88,6 +100,7 @@ def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
     video -- reaching the one-hour mark by scanning costs about ten seconds, and
     it grows from there.
     """
+    _quiet_ffmpeg()
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
         stream.thread_type = "AUTO"
@@ -117,6 +130,7 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
         raise ValueError("end_s must not precede start_s")
     step = 1.0 / fps
 
+    _quiet_ffmpeg()
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
         stream.thread_type = "AUTO"

@@ -158,18 +158,43 @@ class TestFfmpegLogsBypassPython:
     """PyAV's log callback deadlocks with frame threading on container close.
 
     The decoder thread wants the GIL to log; the main thread holds it while
-    freeing the codec context and waiting for that thread. Two hangs on
-    2026-09-11 had exactly those stacks. FFmpeg's own callback needs no GIL.
+    freeing the codec context and waiting for that thread. Three hangs on
+    2026-09-11/12 had exactly those stacks. FFmpeg's own callback needs no
+    GIL -- but torchvision installs PyAV's on import, after this module has
+    loaded, so the default has to be put back at every open.
     """
 
-    def test_the_module_restores_ffmpeg_s_own_callback_on_import(self, monkeypatch):
-        import importlib
+    def _python_sees_ffmpeg_logs(self, caplog):
+        import logging
 
+        import av
+
+        with caplog.at_level(logging.ERROR, logger="libav.probe"):
+            av.logging.log(av.logging.ERROR, "probe", "are you there")
+        return any("are you there" in r.message for r in caplog.records)
+
+    def test_the_python_callback_is_what_torchvision_leaves_behind(self, caplog):
+        import av
+
+        av.logging.set_level(av.logging.ERROR)     # what torchvision.io does on import
+        assert self._python_sees_ffmpeg_logs(caplog)
+
+    def test_opening_a_video_puts_ffmpeg_s_own_callback_back(self, caplog, tmp_path):
         import av
 
         from curling_score.ingest import frames
 
-        calls = []
-        monkeypatch.setattr(av.logging, "restore_default_callback", lambda: calls.append("restored"))
-        importlib.reload(frames)
-        assert calls == ["restored"]
+        av.logging.set_level(av.logging.ERROR)
+        frames._quiet_ffmpeg()
+        caplog.clear()
+        assert not self._python_sees_ffmpeg_logs(caplog)
+
+    def test_every_decode_path_reasserts_it(self):
+        import inspect
+
+        from curling_score.ingest import frames
+
+        src = inspect.getsource(frames)
+        opens = src.count("with av.open(")
+        assert opens >= 2
+        assert src.count("_quiet_ffmpeg()\n    with av.open(") == opens

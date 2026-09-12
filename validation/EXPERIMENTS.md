@@ -816,3 +816,12 @@ game 1 end 1 because the video starts mid-end, game 2 end 4 because a yellow
 arrives twelve seconds before the segmenter's start.
 
 `PIPELINE_VERSION` 2026.09.3.
+
+
+**The hang, third time.** The redeploy for end 6 froze on the same spot with
+the same two stacks, despite yesterday's restore of FFmpeg's log callback.
+PyAV's own import installs a callback that does nothing; the GIL-taking one is
+installed by ``av.logging.set_level``, and torchvision calls that when it is
+imported -- which is when the YOLO detector is built, after ``frames`` has
+loaded and restored the default. The restore now happens at every container
+open, where nothing can undo it before the decode.
