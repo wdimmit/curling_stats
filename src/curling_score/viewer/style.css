@@ -164,6 +164,11 @@ body[data-mode="view"] #house { cursor:default; }
    iframe must never be reparented -- see app.js's one-player invariant. */
 @media (max-width: 640px) and (min-height: 521px) {
   body { height: 100dvh; overflow: hidden; }
+  /* The shell is a fixed-height page; the report is not. It is a sibling of
+     main in normal flow, taller than any phone screen, and `overflow:hidden`
+     on the body would leave everything past the first screenful unreachable
+     -- no scrollbar, no pan. (0,1,1) over the (0,0,1) above. */
+  body.reporting { height: auto; overflow: auto; }
 
   header { height: 48px; padding: 0 8px 0 12px; flex-wrap: nowrap; gap: 8px; }
   h1, #src, #save { display: none; }
