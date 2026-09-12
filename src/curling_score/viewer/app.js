@@ -998,6 +998,10 @@ function boot() { Promise.all([
     if (document.body.dataset.menu !== "open") return;
     if (ev.target.closest("#menuBtn")) return;
     if (ev.target.closest("#menu") && ev.target.tagName === "DIV") return;
+    // #playback is a sibling panel raised alongside #menu, not a child of
+    // it, so closest("#menu") misses it -- give it its own guard or the
+    // autoplay checkbox and lead-in field would be unreachable on a phone.
+    if (ev.target.closest("#playback")) return;
     document.body.dataset.menu = "";
   }, true);
   $("showTrack").onchange = ev => { state.showTrack = ev.target.checked;
