@@ -309,8 +309,20 @@ body[data-mode="view"] #house { cursor:default; }
            overflow: hidden; }
   #chart h2, #chart h3, #chart dl, #chart details,
   #chart #autoType, #orderBox h3, #orderBox .muted { display: none; }
-  #orderBox #moveBefore { position: absolute; width: 1px; height: 1px;
-                          min-height: 0; opacity: 0; pointer-events: none; }
+  /* The real <select> sits invisibly over its own label, so the tap that opens
+     the native picker is a real one on the control itself: showPicker() is not
+     universal (Firefox has none for <select>) and a synthetic click on a
+     <select> opens nothing in any browser, so forwarding left #orderRow dead --
+     and #orderRow is the promoted control on a blank, the fast path the phone
+     layout is built around. The geometry is stated on #orderBox rather than
+     left to #orderRow's margin, which would collapse out of an unpadded parent
+     and put the overlay 12px low. It is shown by exactly the two rules that
+     show #orderRow, and by nothing else, so an invisible full-width control can
+     never sit over something it is not labelling. */
+  #orderBox { position: relative; margin-top: 12px; }
+  #orderBox #moveBefore { display: none; position: absolute; top: 0;
+                          left: 0; right: 0; width: auto; height: 44px;
+                          margin: 0; opacity: 0; }
 
   /* Floated over the house rather than placed in the sheet, so nothing
      reflows when it arrives or leaves. This is (1,0,0), tied with the base
@@ -383,8 +395,10 @@ body[data-mode="view"] #house { cursor:default; }
   /* No `display` here: Task 3 hides #orderRow globally at the same specificity,
      and this rule lands later, so declaring one would show it in every state.
      The open state and Task 7's blank peek each turn it on deliberately. */
+  /* margin-top: 0 -- the 12px above the row is #orderBox's, so the invisible
+     select over it can be positioned from a box whose top edge is the row's. */
   #orderRow { width: 100%; height: 44px; align-items: center;
-              gap: 10px; margin-top: 12px; text-align: left; }
+              gap: 10px; margin-top: 0; text-align: left; }
 
   /* A rock nobody saw cannot be usefully graded, so its peek asks the two
      questions that can be answered: where was it thrown, and what was on the
@@ -398,6 +412,11 @@ body[data-mode="view"] #house { cursor:default; }
   body[data-peek="order"][data-sheet="peek"] .scorebtns { display: none; }
   body[data-peek="order"][data-sheet="peek"] #orderRow:not([hidden]),
   body[data-peek="order"][data-sheet="peek"] #placeStones:not([hidden]) { display: flex; }
+  /* The overlay follows #orderRow exactly: (2,2,0) beats #orderBox #moveBefore's
+     (2,0,0), and :not([hidden]) means READ_ONLY's hidden row takes it with it. */
+  body[data-sheet="open"] #orderRow:not([hidden]) ~ #moveBefore,
+  body[data-peek="order"][data-sheet="peek"] #orderRow:not([hidden]) ~ #moveBefore {
+    display: block; }
   body[data-peek="order"][data-sheet="peek"] #orderRow { border-color: var(--accent); }
 }
 

@@ -1066,11 +1066,11 @@ function boot() { Promise.all([
                                  savePrefs(); render(); };
   $("missReason").oninput = ev => patchShot({ miss_reason:ev.target.value || null });
   $("note").oninput = ev => patchShot({ note:ev.target.value || null });
-  $("orderRow").onclick = () => {
-    // The native <select> is a full-width picker on iOS and Android, which is
-    // better than anything we would draw; the row is only its label.
-    $("moveBefore").showPicker ? $("moveBefore").showPicker() : $("moveBefore").click();
-  };
+  // #orderRow carries no handler: on the phone the real <select> is laid over
+  // it at full size and zero opacity, so the tap that opens the native picker
+  // is a real one on the control itself. showPicker() is absent in Firefox and
+  // young everywhere else, and a synthetic click on a <select> opens nothing in
+  // any browser -- forwarding would have left the row dead.
   $("moveBefore").onchange = ev => {
     // Follow the shot to its new place rather than staying on its old slot.
     const was = shot(), id = identity(was);
