@@ -24,7 +24,8 @@ def run_js(body: str):
         f"const A = require({str(APP)!r});\n"
         "const {state, merge, keyFor, mergedShots, layout, identity, gatherStats,\n"
         "       pct, avg, isBlank, isGraded, typeOf, shotVideoTime, stoneAt,\n"
-        "       shotKey, rawShot, houseViewBox, peekMode, renumberNotice} = A;\n"
+        "       shotKey, rawShot, houseViewBox, shouldCrop, peekMode,\n"
+        "       renumberNotice} = A;\n"
         "function out(v){ console.log(JSON.stringify(v)); }\n" + body
     )
     proc = subprocess.run([node, "-e", script], capture_output=True, text=True,
@@ -389,6 +390,35 @@ class TestHouseViewBox:
         x, y, w, h = (float(v) for v in
                       run_js('out(houseViewBox("crop", 0.2));').split())
         assert h == 8.6
+
+
+class TestShouldCrop:
+    """Whether the band shows the crop. Two bugs have lived in this branch."""
+
+    def call(self, **kw):
+        args = {"phone": True, "editing": False, "width": 390, "height": 320}
+        args.update(kw)
+        return run_js(f"out(shouldCrop({json.dumps(args)}));")
+
+    def test_a_short_wide_band_on_the_phone_is_cropped(self):
+        assert self.call() is True
+
+    def test_a_desktop_is_never_cropped_however_its_box_measures(self):
+        assert self.call(phone=False) is False
+        assert self.call(phone=False, height=150) is False
+
+    def test_the_full_screen_editor_always_gets_the_whole_sheet(self):
+        assert self.call(editing=True) is False
+
+    def test_an_unmeasurable_box_is_not_cropped(self):
+        # The first paint can measure a zero-height SVG; cropping to that
+        # ratio is a fixed point that re-derives itself forever.
+        assert self.call(height=0) is False
+        assert self.call(width=0) is False
+
+    def test_a_band_tall_enough_for_the_sheet_is_left_alone(self):
+        assert self.call(height=390 * 1.3) is False
+        assert self.call(height=390 * 1.3 - 1) is True
 
 
 class TestPeekMode:

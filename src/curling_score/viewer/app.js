@@ -63,6 +63,12 @@ const MISS_REASONS = ["heavy", "light", "narrow", "wide", "wrong turn",
 const CHART = (typeof window !== "undefined" && window.CHART) || { mode:"edit", slug:null };
 const READ_ONLY = CHART.mode === "view";
 
+/* The JS gate must match the stylesheet's phone block exactly: below 521px of
+ * height the shell does not apply, and neither may the behaviour that assumes
+ * it -- an editor whose Done button that layout never draws, or a crop whose
+ * own aspect ratio is a fixed point once #house goes back to height:auto. */
+const PHONE_QUERY = "(max-width: 640px) and (min-height: 521px)";
+
 const state = {
   doc:null, overrides:{}, version:null, gi:0, ei:0, si:0,
   selStone:null, placeColor:"red", openGroup:null,
@@ -193,6 +199,17 @@ function houseViewBox(mode, aspect) {
   const h = Math.min(5.2 / aspect, 8.6);
   const n = x => String(+x.toFixed(3));
   return `-2.6 ${n(-h / 2)} 5.2 ${n(h)}`;
+}
+
+/* Whether the house band shows the crop rather than the whole sheet. Pure, and
+ * separate from drawHouse(), because it is the branch this layout gets wrong:
+ * a desktop's first, unmeasurable box once read as "short and wide", and a
+ * cropped box carried across a rotation once re-derived its own crop forever.
+ * `phone` is the stylesheet's gate, not merely a width -- the crop only makes
+ * sense where the shell that shortens the band is actually in force. */
+function shouldCrop({ phone, editing, width, height }) {
+  return !!phone && !editing && width > 0 && height > 0 &&
+         height < width * 1.3;
 }
 
 /* Nobody can grade a rock nobody saw. A blank's fast path is saying where it
@@ -361,11 +378,12 @@ function drawHouse() {
   // measurement (no viewBox yet, #house's height:auto falling back to the
   // no-intrinsic-ratio default of 150px) would otherwise read as "short and
   // wide" on a desktop too, and that crop is a fixed point -- its own aspect
-  // ratio re-derives the same 150px on every later measurement.
+  // ratio re-derives the same 150px on every later measurement. The decision
+  // itself is shouldCrop(), where the tests can reach it.
   const box = svg.getBoundingClientRect();
-  const phone = matchMedia("(max-width: 640px)").matches;
-  const cropped = phone && state.houseMode !== "edit" && box.width > 0 &&
-                  box.height > 0 && box.height < box.width * 1.3;
+  const cropped = shouldCrop({ phone:matchMedia(PHONE_QUERY).matches,
+                               editing:state.houseMode === "edit",
+                               width:box.width, height:box.height });
   svg.setAttribute("viewBox",
     houseViewBox(cropped ? "crop" : "full", box.width / box.height));
   const s = shot();
@@ -466,7 +484,7 @@ function bindHouse() {
     // cannot both open the editor and place a stone. bindHouse() owns
     // pointerdown on this element, so the branch lives here rather than in a
     // competing listener whose ordering would be fragile.
-    if (matchMedia("(max-width: 640px)").matches && state.houseMode !== "edit") {
+    if (matchMedia(PHONE_QUERY).matches && state.houseMode !== "edit") {
       if (!READ_ONLY) { state.houseMode = "edit"; render(); }
       return;
     }
@@ -955,7 +973,7 @@ if (typeof module !== "undefined" && module.exports)
                      gatherStats, pct, avg,
                      isBlank, isGraded, typeOf, shotVideoTime, TYPE, TYPES,
                      GROUPS, POSITIONS, stoneAt, R, LIMIT,
-                     houseViewBox, peekMode, renumberNotice };
+                     houseViewBox, shouldCrop, peekMode, renumberNotice };
 
 if (BROWSER) boot();
 
@@ -1085,7 +1103,21 @@ function boot() { Promise.all([
   let houseResize;
   addEventListener("resize", () => {
     clearTimeout(houseResize);
-    houseResize = setTimeout(drawHouse, 120);
+    houseResize = setTimeout(() => {
+      // Both the editor and the open sheet exist only inside the shell. A
+      // rotation that leaves the shell's gate must put them down, or the
+      // charter is stranded in an editor whose Done button the short-screen
+      // layout never draws.
+      if (!matchMedia(PHONE_QUERY).matches &&
+          (state.houseMode || state.sheet !== "peek")) {
+        state.houseMode = "";
+        state.sheet = "peek";
+        $("sheetHandle").setAttribute("aria-expanded", "false");
+        render();          // render() redraws the house on its way through
+        return;
+      }
+      drawHouse();
+    }, 120);
   });
   requestAnimationFrame(drawHouse);   // first paint may measure a zero-height SVG
   loadPlayer();
