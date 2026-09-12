@@ -22,6 +22,8 @@ service = [
     "google-cloud-firestore>=2.19",
     "google-cloud-storage>=2.18",
     "httpx>=0.27",
+    # ID-token verification only; see service/auth.py for why not google-auth.
+    "firebase-admin>=6.5",
 ]
 # The processing worker only needs to talk HTTP to the API.
 worker = ["httpx>=0.27"]

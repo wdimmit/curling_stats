@@ -49,7 +49,14 @@ def build():
     else:
         from curling_score.service.youtube import FakeYouTube
         youtube = FakeYouTube()
-    return create_app(repo, store, youtube, settings)
+    # AUTH=firebase verifies real Google sign-ins and needs FIREBASE_PROJECT;
+    # anything else means no accounts, which is what a checkout, the test
+    # suite, and anyone running this at home get by default. Deliberately not
+    # folded into MEMORY_BACKENDS: trying out sign-in against throwaway state
+    # is a reasonable thing to want.
+    from curling_score.service import auth as auth_mod
+    verifier = auth_mod.from_env(os.environ.get)
+    return create_app(repo, store, youtube, settings, auth=verifier)
 
 
 app = build()

@@ -11,17 +11,38 @@ Composite indexes this needs (``deploy/firestore.indexes.json``):
     vod_runs  (video_id ASC, created_at DESC)
     sources   (league ASC, played_at DESC)
     charts    (run_id ASC)
+
+Field-index exemptions the same file carries: charts.overrides and
+charts.overrides_meta are maps whose every subfield Firestore would otherwise
+index, thousands of entries per chart, for something no query ever touches.
 """
 
+import json
 from datetime import timedelta
 
 from curling_score.service.records import (
-    Chart, Job, Run, Source, WatchedPlaylist, Worker,
+    Chart, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
 )
-from curling_score.service.repo import LEASE_S, _day_bucket, _hour_bucket
+from curling_score.service.repo import (
+    LEASE_S, MAX_STORED_OVERRIDES_BYTES, _day_bucket, _hour_bucket,
+)
 
 RUNS, JOBS, SOURCES, CHARTS = "vod_runs", "jobs", "sources", "charts"
 SHARES, WORKERS, PLAYLISTS, RATES = "share_slugs", "workers", "watched_playlists", "rate_limits"
+USERS, TEAMS, INVITES, CLAIMS = "users", "teams", "invites", "chart_claims"
+
+
+def _claim_id(owner_key: str, source_id: str) -> str:
+    """The document whose existence *is* the claim.
+
+    Derivable on purpose -- two teammates asking at the same moment must
+    compute the same id -- which is safe because it is not a capability: it
+    holds only a pointer, and the deny-all rules mean no browser ever reads
+    this collection. The chart id it points at stays unguessable.
+    """
+    import hashlib
+
+    return hashlib.sha256(f"{owner_key}|{source_id}".encode()).hexdigest()[:32]
 
 
 class FirestoreRepo:
@@ -220,6 +241,134 @@ class FirestoreRepo:
 
         return _save(transaction)
 
+    def merge_overrides(self, slug, patch, remove, meta, now):
+        """Per-key edits, so disjoint saves cannot overwrite one another.
+
+        The field paths must be built with FieldPath, not string-formatted. An
+        override key is "<game>.<end>.<shot>" -- dots, and a leading digit --
+        and Firestore reads a raw "overrides.0.1.1" as a walk into nested maps.
+        That writes {"0": {"1": {"1": ...}}}, which every dotted lookup after it
+        misses, so the chart quietly reads back as though nobody ever graded it.
+        FieldPath quotes the segment: overrides.`0.1.1`.
+        """
+        from google.cloud.firestore_v1.field_path import FieldPath
+
+        ref = self._col(CHARTS).document(slug)
+        transaction = self.db.transaction()
+        fs = self._fs
+
+        @fs.transactional
+        def _merge(tx):
+            snap = next(iter(tx.get(ref)))
+            if not snap.exists:
+                raise KeyError(slug)
+            data = snap.to_dict()
+            current = int(data.get("overrides_version", 0))
+            merged = dict(data.get("overrides", {}))
+            merged.update({k: dict(v) for k, v in patch.items()})
+            for k in remove:
+                merged.pop(k, None)
+            blob = json.dumps(merged)
+            if len(blob) > MAX_STORED_OVERRIDES_BYTES:
+                return current, dict(data.get("overrides", {})), False
+            updates = {"overrides_version": current + 1, "updated_at": now}
+            for k, v in patch.items():
+                updates[FieldPath("overrides", k).to_api_repr()] = dict(v)
+                if k in meta:
+                    updates[FieldPath("overrides_meta", k).to_api_repr()] = dict(meta[k])
+            for k in remove:
+                updates[FieldPath("overrides", k).to_api_repr()] = fs.DELETE_FIELD
+                updates[FieldPath("overrides_meta", k).to_api_repr()] = fs.DELETE_FIELD
+            tx.update(ref, updates)
+            return current + 1, json.loads(blob), True
+
+        return _merge(transaction)
+
+    def charts_for_owner(self, user_id, limit=200):
+        q = self._where(CHARTS, "owner_user_id", "==", user_id)
+        docs = [Chart.from_dict(d.to_dict()) for d in q.limit(limit).stream()]
+        return sorted(docs, key=lambda c: c.updated_at, reverse=True)
+
+    def charts_for_team(self, team_id, limit=200):
+        q = self._where(CHARTS, "team_id", "==", team_id)
+        docs = [Chart.from_dict(d.to_dict()) for d in q.limit(limit).stream()]
+        return sorted(docs, key=lambda c: c.updated_at, reverse=True)
+
+    def claim_chart(self, owner_key, source_id, chart_id):
+        """First writer wins, and everyone else is told who did.
+
+        `create` fails if the document is already there, which is the whole
+        uniqueness mechanism -- no transaction, no index, no read-then-write
+        for two callers to interleave.
+        """
+        from google.api_core.exceptions import AlreadyExists
+
+        ref = self._col(CLAIMS).document(_claim_id(owner_key, source_id))
+        try:
+            ref.create({"chart_id": chart_id, "owner_key": owner_key,
+                        "source_id": source_id})
+            return chart_id
+        except AlreadyExists:
+            snap = ref.get()
+            return snap.to_dict()["chart_id"] if snap.exists else chart_id
+
+    def chart_claim(self, owner_key, source_id):
+        snap = self._col(CLAIMS).document(_claim_id(owner_key, source_id)).get()
+        return snap.to_dict()["chart_id"] if snap.exists else None
+
+    # ---- users --------------------------------------------------------
+    def put_user(self, user):
+        self._col(USERS).document(user.id).set(user.to_dict())
+
+    def get_user(self, user_id):
+        return self._get(USERS, user_id, User)
+
+    def update_user(self, user_id, **fields):
+        return self._update(USERS, user_id, User, fields)
+
+    # ---- teams --------------------------------------------------------
+    def put_team(self, team):
+        self._col(TEAMS).document(team.id).set(team.to_dict())
+
+    def get_team(self, team_id):
+        return self._get(TEAMS, team_id, Team)
+
+    def update_team(self, team_id, **fields):
+        return self._update(TEAMS, team_id, Team, fields)
+
+    def teams_for_user(self, user_id):
+        q = self._where(TEAMS, "member_ids", "array_contains", user_id)
+        docs = [Team.from_dict(d.to_dict()) for d in q.stream()]
+        return sorted(docs, key=lambda t: t.created_at)
+
+    def team_members(self, team_id):
+        got = self.get_team(team_id)
+        return list(got.member_ids) if got else []
+
+    def add_member(self, team_id, user_id):
+        # ArrayUnion, not read-modify-write: two people accepting one invite at
+        # the same moment must not lose each other.
+        return self._update(TEAMS, team_id, Team,
+                            {"member_ids": self._fs.ArrayUnion([user_id])})
+
+    def remove_member(self, team_id, user_id):
+        return self._update(TEAMS, team_id, Team,
+                            {"member_ids": self._fs.ArrayRemove([user_id])})
+
+    # ---- invites ------------------------------------------------------
+    def put_invite(self, invite):
+        self._col(INVITES).document(invite.id).set(invite.to_dict())
+
+    def get_invite(self, token):
+        return self._get(INVITES, token, Invite)
+
+    def update_invite(self, token, **fields):
+        return self._update(INVITES, token, Invite, fields)
+
+    def invites_for_team(self, team_id):
+        q = self._where(INVITES, "team_id", "==", team_id)
+        return [Invite.from_dict(d.to_dict()) for d in q.stream()]
+
     # ---- workers ------------------------------------------------------
     def heartbeat(self, worker):
         self._col(WORKERS).document(worker.id).set(worker.to_dict())
@@ -271,9 +420,12 @@ class FirestoreRepo:
     def export_all(self):
         def dump(col):
             return [d.to_dict() for d in self._col(col).stream()]
+        # chart_claims and share_slugs are derivable and deliberately absent;
+        # import_all rebuilds both.
         return {"runs": dump(RUNS), "jobs": dump(JOBS), "sources": dump(SOURCES),
                 "charts": dump(CHARTS), "workers": dump(WORKERS),
-                "watched_playlists": dump(PLAYLISTS)}
+                "watched_playlists": dump(PLAYLISTS), "users": dump(USERS),
+                "teams": dump(TEAMS), "invites": dump(INVITES)}
 
     def import_all(self, data):
         for d in data.get("runs", []):
@@ -288,3 +440,17 @@ class FirestoreRepo:
             self.heartbeat(Worker.from_dict(d))
         for d in data.get("watched_playlists", []):
             self.put_playlist(WatchedPlaylist.from_dict(d))
+        for d in data.get("users", []):
+            self.put_user(User.from_dict(d))
+        for d in data.get("teams", []):
+            self.put_team(Team.from_dict(d))
+        for d in data.get("invites", []):
+            self.put_invite(Invite.from_dict(d))
+        # Claims are derivable, so they are not exported -- rebuilt here
+        # instead, because a restore that lost them would start handing a team
+        # a second chart for a game it already has.
+        for d in data.get("charts", []):
+            c = Chart.from_dict(d)
+            key = c.team_id or c.owner_user_id
+            if key and c.source_id and not c.superseded_by:
+                self.claim_chart(key, c.source_id, c.id)

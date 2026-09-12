@@ -19,9 +19,11 @@ from pathlib import Path
 HERE = Path(__file__).parent
 ASSETS = ("index.html", "app.js", "style.css")
 OVERRIDES = "overrides.json"
-# A whole game's charting is a few hundred small patches; anything approaching
-# this is a bug or a bad actor, not a game.
-MAX_BODY_BYTES = 10_000_000
+# A whole game's charting is a few hundred small patches; a game with every
+# stone placed by hand measures around 300 KB, so this is already generous.
+# The hosted side keeps the same figure for a different reason: past 1 MiB
+# Firestore refuses the document outright.
+MAX_BODY_BYTES = 700_000
 
 
 class ViewerHandler(http.server.SimpleHTTPRequestHandler):

@@ -74,6 +74,9 @@
     <button id="sheetHandle" aria-expanded="false" aria-controls="chart">
       <span class="grip"></span><span class="sr">Expand the chart panel</span>
     </button>
+    <!-- Everything a charter fills in, in one box: the review surface hides
+         the box rather than a list of ids that drifts as the panel grows. -->
+    <div id="grading">
     <h2>Shot type</h2>
     <div class="pick" id="typeGroups"></div>
     <div class="pick" id="typeList" style="margin-top:6px"></div>
@@ -101,6 +104,7 @@
         Detection missed a rock and put its blank in the wrong place? Move the
         blank to where it was thrown; the whole end renumbers.
       </div>
+    </div>
     </div>
 
     <dl id="detail"></dl>

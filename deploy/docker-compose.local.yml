@@ -17,6 +17,12 @@ services:
       FIRESTORE_EMULATOR_HOST: firestore:8081
       GCP_PROJECT: local
       PUBLIC_BASE_URL: http://api:8080
+      # Sign-in needs a real (throwaway) Firebase project: the browser has to
+      # do a real popup, so there is nothing to fake. Unset means no accounts,
+      # and the site behaves exactly as it did before they existed.
+      FIREBASE_PROJECT: ${FIREBASE_PROJECT:-}
+      FIREBASE_API_KEY: ${FIREBASE_API_KEY:-}
+      FIREBASE_AUTH_DOMAIN: ${FIREBASE_AUTH_DOMAIN:-}
       WORKER_TOKEN: local-worker-token
       ADMIN_TOKEN: local-admin-token
       # Default matches the worker's ds11a; override for a different model.

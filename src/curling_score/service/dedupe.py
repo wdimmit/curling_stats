@@ -116,14 +116,37 @@ def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
 
 
 def resolve_chart(repo, chart: Chart, run: Run, now: datetime) -> Chart:
-    """Attach a chart to the game its start time points at, once the run is ready."""
+    """Attach a chart to the game its start time points at, once the run is ready.
+
+    This is also where a team finds out it already had a chart for this game.
+    Two teammates who paste the same unprocessed link both get a link back and
+    both wait on the status page; only here, when the games are finally known,
+    can we tell that they asked for the same one. Whoever claimed it first
+    keeps it, and the other link starts pointing at theirs.
+
+    Folding the loser away is safe rather than lossy: a chart whose run is not
+    ready serves the status page, not the viewer, and its timeline 404s -- so
+    there is nothing in it to lose. The one path that could put grading in an
+    unresolved chart is a POST straight to its overrides, and that case is
+    flagged rather than folded.
+    """
     index, distance = snap_to_game(run.games, chart.requested_start_s)
     if index is None:
         return chart
     game = next(g for g in run.games if g["index"] == index)
     source = find_or_create_source(repo, run, game, now)
-    return repo.update_chart(chart.id, source_id=source.id, game_index=index,
-                             snap_distance_s=distance, updated_at=now)
+    fields = {"source_id": source.id, "game_index": index,
+              "snap_distance_s": distance, "updated_at": now}
+    key = chart.team_id or chart.owner_user_id
+    if key:
+        winner = repo.claim_chart(key, source.id, chart.id)
+        if winner != chart.id:
+            if chart.overrides:
+                # Someone charted into this before it resolved. Two people's
+                # grading is never merged behind their backs.
+                return repo.update_chart(chart.id, duplicate_of=winner, **fields)
+            return repo.update_chart(chart.id, superseded_by=winner, updated_at=now)
+    return repo.update_chart(chart.id, **fields)
 
 
 def resolve_charts_for_run(repo, run: Run, now: datetime) -> int:
@@ -131,8 +154,11 @@ def resolve_charts_for_run(repo, run: Run, now: datetime) -> int:
     for game in run.games:
         find_or_create_source(repo, run, game, now)
     n = 0
-    for chart in repo.charts_for_run(run.id):
-        if chart.source_id is None:
+    # Oldest first, so that when two teammates raced, the one who asked first
+    # keeps their link as the team's. Neither repo promises an order.
+    waiting = sorted(repo.charts_for_run(run.id), key=lambda c: (c.created_at, c.id))
+    for chart in waiting:
+        if chart.source_id is None and not chart.superseded_by:
             resolve_chart(repo, chart, run, now)
             n += 1
     return n

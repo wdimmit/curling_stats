@@ -1,23 +1,31 @@
 """Where the service's records live, and the few operations that must be atomic.
 
 Everything the API does is a handful of reads and writes on small documents.
-Three of them have to be indivisible -- handing a job to exactly one worker,
-saving overrides only if nobody else saved first, and counting a submission
-against a rate limit -- and those are the whole reason this is an interface
+Four of them have to be indivisible -- handing a job to exactly one worker,
+saving overrides only if nobody else saved first, counting a submission
+against a rate limit, and settling which chart a team's game gets when two
+teammates ask at once -- and those are the whole reason this is an interface
 rather than a dict: the in-memory version makes them atomic with a lock, the
 Firestore version with a transaction, and the API cannot tell which it has.
 """
 
+import copy
+import json
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from curling_score.service.records import (
-    Chart, Job, Run, Source, WatchedPlaylist, Worker,
+    Chart, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
 )
 
 LEASE_S = 600.0
 HEARTBEAT_STALE_S = 90.0
+# What one chart's overrides may grow to. Firestore's hard limit is 1 MiB per
+# document and a fully hand-placed game measures ~300 KB, so this leaves room
+# to work in and still refuses long before the commit would fail. Checked on
+# the merged result, not the request: many small merges add up too.
+MAX_STORED_OVERRIDES_BYTES = 700_000
 
 
 def utcnow() -> datetime:
@@ -54,6 +62,31 @@ class Repo(Protocol):
     def charts_for_run(self, run_id: str) -> list[Chart]: ...
     def save_overrides(self, slug: str, overrides: dict, expected_version: int | None,
                        now: datetime) -> tuple[bool, int, dict]: ...
+    def merge_overrides(self, slug: str, patch: dict, remove: list[str], meta: dict,
+                        now: datetime) -> tuple[int, dict, bool]: ...
+    def charts_for_owner(self, user_id: str, limit: int = 200) -> list[Chart]: ...
+    def charts_for_team(self, team_id: str, limit: int = 200) -> list[Chart]: ...
+    # One chart per game per owner. Returns the winning chart id -- ours if we
+    # got there first, theirs if not. Atomic: this is the fourth one.
+    def claim_chart(self, owner_key: str, source_id: str, chart_id: str) -> str: ...
+    def chart_claim(self, owner_key: str, source_id: str) -> str | None: ...
+    # users
+    def put_user(self, user: User) -> None: ...
+    def get_user(self, user_id: str) -> User | None: ...
+    def update_user(self, user_id: str, **fields) -> User | None: ...
+    # teams -- member storage is deliberately behind these four
+    def put_team(self, team: Team) -> None: ...
+    def get_team(self, team_id: str) -> Team | None: ...
+    def update_team(self, team_id: str, **fields) -> Team | None: ...
+    def teams_for_user(self, user_id: str) -> list[Team]: ...
+    def team_members(self, team_id: str) -> list[str]: ...
+    def add_member(self, team_id: str, user_id: str) -> Team | None: ...
+    def remove_member(self, team_id: str, user_id: str) -> Team | None: ...
+    # invites
+    def put_invite(self, invite: Invite) -> None: ...
+    def get_invite(self, token: str) -> Invite | None: ...
+    def update_invite(self, token: str, **fields) -> Invite | None: ...
+    def invites_for_team(self, team_id: str) -> list[Invite]: ...
     # workers
     def heartbeat(self, worker: Worker) -> None: ...
     def workers(self) -> list[Worker]: ...
@@ -97,6 +130,10 @@ class MemoryRepo:
         self.workers_: dict[str, Worker] = {}
         self.playlists: dict[str, WatchedPlaylist] = {}
         self.rate: dict[str, dict] = {}
+        self.users: dict[str, User] = {}
+        self.teams: dict[str, Team] = {}
+        self.invites: dict[str, Invite] = {}
+        self.claims: dict[tuple[str, str], str] = {}
 
     # ---- runs ---------------------------------------------------------
     def put_run(self, run):
@@ -254,6 +291,134 @@ class MemoryRepo:
             chart.updated_at = now
             return True, chart.overrides_version, chart.overrides
 
+    def merge_overrides(self, slug, patch, remove, meta, now):
+        """Apply per-key edits and return (version, merged, ok).
+
+        Unlike save_overrides this never refuses on a version: two people
+        editing different shots have no conflict to report, and one editing the
+        same shot is simply the later of the two. `ok` is False only when the
+        result would be too big to store.
+        """
+        with self._lock:
+            chart = self.charts.get(slug)
+            if chart is None:
+                raise KeyError(slug)
+            merged = dict(chart.overrides)
+            merged.update({k: dict(v) for k, v in patch.items()})
+            for k in remove:
+                merged.pop(k, None)
+            blob = json.dumps(merged)
+            if len(blob) > MAX_STORED_OVERRIDES_BYTES:
+                return chart.overrides_version, copy.deepcopy(chart.overrides), False
+            meta_now = dict(chart.overrides_meta)
+            meta_now.update({k: dict(v) for k, v in meta.items()})
+            for k in remove:
+                meta_now.pop(k, None)
+            chart.overrides = merged
+            chart.overrides_meta = meta_now
+            chart.overrides_version += 1
+            chart.updated_at = now
+            # Round-tripped rather than handed out live: Firestore returns a
+            # fresh map every time and the two must not differ.
+            return chart.overrides_version, json.loads(blob), True
+
+    def charts_for_owner(self, user_id, limit=200):
+        out = [c for c in self.charts.values() if c.owner_user_id == user_id]
+        out.sort(key=lambda c: c.updated_at, reverse=True)
+        return out[:limit]
+
+    def charts_for_team(self, team_id, limit=200):
+        out = [c for c in self.charts.values() if c.team_id == team_id]
+        out.sort(key=lambda c: c.updated_at, reverse=True)
+        return out[:limit]
+
+    def claim_chart(self, owner_key, source_id, chart_id):
+        with self._lock:
+            return self.claims.setdefault((owner_key, source_id), chart_id)
+
+    def chart_claim(self, owner_key, source_id):
+        return self.claims.get((owner_key, source_id))
+
+    # ---- users --------------------------------------------------------
+    def put_user(self, user):
+        with self._lock:
+            self.users[user.id] = user
+
+    def get_user(self, user_id):
+        return self.users.get(user_id)
+
+    def update_user(self, user_id, **fields):
+        with self._lock:
+            got = self.users.get(user_id)
+            if got is None:
+                return None
+            for k, v in fields.items():
+                setattr(got, k, v)
+            return got
+
+    # ---- teams --------------------------------------------------------
+    def put_team(self, team):
+        with self._lock:
+            self.teams[team.id] = team
+
+    def get_team(self, team_id):
+        return self.teams.get(team_id)
+
+    def update_team(self, team_id, **fields):
+        with self._lock:
+            got = self.teams.get(team_id)
+            if got is None:
+                return None
+            for k, v in fields.items():
+                setattr(got, k, v)
+            return got
+
+    def teams_for_user(self, user_id):
+        out = [t for t in self.teams.values() if user_id in t.member_ids]
+        out.sort(key=lambda t: t.created_at)
+        return out
+
+    def team_members(self, team_id):
+        got = self.teams.get(team_id)
+        return list(got.member_ids) if got else []
+
+    def add_member(self, team_id, user_id):
+        with self._lock:
+            got = self.teams.get(team_id)
+            if got is None:
+                return None
+            if user_id not in got.member_ids:
+                got.member_ids = [*got.member_ids, user_id]
+            return got
+
+    def remove_member(self, team_id, user_id):
+        with self._lock:
+            got = self.teams.get(team_id)
+            if got is None:
+                return None
+            got.member_ids = [m for m in got.member_ids if m != user_id]
+            return got
+
+    # ---- invites ------------------------------------------------------
+    def put_invite(self, invite):
+        with self._lock:
+            self.invites[invite.id] = invite
+
+    def get_invite(self, token):
+        return self.invites.get(token)
+
+    def update_invite(self, token, **fields):
+        with self._lock:
+            got = self.invites.get(token)
+            if got is None:
+                return None
+            for k, v in fields.items():
+                setattr(got, k, v)
+            return got
+
+    def invites_for_team(self, team_id):
+        return [i for i in self.invites.values() if i.team_id == team_id]
+
     # ---- workers ------------------------------------------------------
     def heartbeat(self, worker):
         with self._lock:
@@ -310,6 +475,9 @@ class MemoryRepo:
             "charts": [c.to_dict() for c in self.charts.values()],
             "workers": [w.to_dict() for w in self.workers_.values()],
             "watched_playlists": [p.to_dict() for p in self.playlists.values()],
+            "users": [u.to_dict() for u in self.users.values()],
+            "teams": [t.to_dict() for t in self.teams.values()],
+            "invites": [i.to_dict() for i in self.invites.values()],
         }
 
     def import_all(self, data):
@@ -326,3 +494,16 @@ class MemoryRepo:
                 self.heartbeat(Worker.from_dict(d))
             for d in data.get("watched_playlists", []):
                 self.put_playlist(WatchedPlaylist.from_dict(d))
+            for d in data.get("users", []):
+                self.put_user(User.from_dict(d))
+            for d in data.get("teams", []):
+                self.put_team(Team.from_dict(d))
+            for d in data.get("invites", []):
+                self.put_invite(Invite.from_dict(d))
+            # Claims are derivable, so they are not exported -- rebuilt here
+            # instead, because a restore that lost them would start handing a
+            # team a second chart for a game it already has.
+            for c in self.charts.values():
+                key = c.team_id or c.owner_user_id
+                if key and c.source_id and not c.superseded_by:
+                    self.claim_chart(key, c.source_id, c.id)

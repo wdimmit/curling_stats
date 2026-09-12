@@ -62,9 +62,20 @@ const MISS_REASONS = ["heavy", "light", "narrow", "wide", "wrong turn",
                       "rock picked", "hogged"];
 
 /* Served by the hosted API the page is mounted at /c/{slug}/ and told its
- * mode; served locally there is no window.CHART and everything is editable. */
+ * mode; served locally there is no window.CHART and everything is editable.
+ *
+ * Review is the public /g/{source}/ surface: a game with no chart behind it,
+ * so there is nothing to save and nothing to load. It is read-only for the
+ * same reason a view link is, and then some -- the server exposes no route it
+ * could write to -- so it implies READ_ONLY rather than sitting beside it. */
 const CHART = (typeof window !== "undefined" && window.CHART) || { mode:"edit", slug:null };
-const READ_ONLY = CHART.mode === "view";
+const HOSTED = typeof window !== "undefined" && !!window.CHART;
+const REVIEW = CHART.mode === "review";
+/* Whether this server understands a per-key merge. The local `curling-score
+ * serve` does not -- it sets no window.CHART at all -- so the page keeps
+ * sending whole documents there, exactly as it always has. */
+const MERGE = !!CHART.merge;
+const READ_ONLY = CHART.mode === "view" || REVIEW;
 
 /* The JS gate must match the stylesheet's phone block exactly: below 521px of
  * height the shell does not apply, and neither may the behaviour that assumes
@@ -78,6 +89,12 @@ const state = {
   showTrack:true, autoplay:true, leadIn:10,
   player:null, playerReady:false, pendingSeek:null, seekTimer:null,
   saveTimer:null, saving:false, again:false, reporting:false,
+  /* Which shots have edits the server has not acknowledged. A set rather than
+   * a flag because a merge sends only these keys, and because the unload
+   * beacon must be able to tell "nothing to save" from "saved once, ages ago"
+   * -- the old boolean could not, and beaconed the whole document on every
+   * tab close forever after the first edit. */
+  dirty:new Set(), dragging:false,
   sheet:"peek", houseMode:"", notice:null, noticeTimer:null,
 };
 
@@ -289,11 +306,73 @@ function removeStone(i) {
 
 /* ------------------------------------------------------------------- save */
 
-function markDirty() {
-  if (READ_ONLY) return;
+function scheduleSave() {
   setSave("unsaved", "•");
   clearTimeout(state.saveTimer);
   state.saveTimer = setTimeout(save, SAVE_DEBOUNCE_MS);
+}
+
+function markDirty(key) {
+  if (READ_ONLY) return;
+  const k = key || shotKey();
+  if (k) state.dirty.add(k);
+  scheduleSave();
+}
+
+/* The body of a merge: every dirty shot, and null for one edited away. A
+ * tombstone only has to survive the request -- the server turns it into a
+ * field delete and nothing is left behind. */
+function dirtyPayload(overrides, dirty) {
+  const body = {};
+  for (const k of dirty) body[k] = overrides[k] ?? null;
+  return body;
+}
+
+function saveUrl() {
+  const q = [];
+  if (MERGE) q.push("merge=1");
+  if (state.version !== null) q.push(`v=${state.version}`);
+  return "overrides.json" + (q.length ? `?${q.join("&")}` : "");
+}
+
+const chartedNotice = n => `Someone else charted ${n} shot${n === 1 ? "" : "s"}`;
+
+function setNotice(text) {
+  state.notice = text;
+  if (!text) return;
+  clearTimeout(state.noticeTimer);
+  state.noticeTimer = setTimeout(() => { state.notice = null; render(); }, 5000);
+}
+
+/* The shot the charter has their hands on right now. Nothing arriving from
+ * the server may overwrite it: the miss reason and the note patch on every
+ * keystroke, so there is a moment after each debounced save where the key is
+ * clean and redrawing it would take the caret with it. Skipped keys are not
+ * lost -- the next poll brings them once focus has moved on. */
+function busyKey() {
+  if (state.dragging) return shotKey();
+  if (typeof document === "undefined") return null;
+  const a = document.activeElement;
+  return a && (a.id === "missReason" || a.id === "note") ? shotKey() : null;
+}
+
+/* Fold the server's map into ours, keeping anything we have not saved yet.
+ * Returns the keys that actually moved, so the page can say what changed. */
+function reconcile(serverMap) {
+  const busy = busyKey();
+  const touched = [];
+  for (const k of Object.keys(serverMap)) {
+    if (state.dirty.has(k) || k === busy) continue;
+    if (JSON.stringify(state.overrides[k]) === JSON.stringify(serverMap[k])) continue;
+    state.overrides[k] = serverMap[k];
+    touched.push(k);
+  }
+  for (const k of Object.keys(state.overrides)) {
+    if (k in serverMap || state.dirty.has(k) || k === busy) continue;
+    delete state.overrides[k];                    // a teammate cleared it
+    touched.push(k);
+  }
+  return touched;
 }
 
 function setSave(cls, text) {
@@ -305,20 +384,28 @@ function setSave(cls, text) {
 async function save() {
   if (state.saving) { state.again = true; return; }
   state.saving = true;
+  state.saveTimer = null;
   setSave("", "saving…");
+  // Taken before the request and cleared before the await: an edit made while
+  // this one is in flight re-dirties its key and rides the next save, instead
+  // of being cleared along with the keys this save is carrying.
+  const sent = [...state.dirty];
+  const payload = MERGE ? dirtyPayload(state.overrides, state.dirty) : state.overrides;
+  state.dirty.clear();
   try {
-    // The version we last saw rides along so two open tabs cannot silently
-    // overwrite each other; the local server ignores it.
-    const url = state.version === null ? "overrides.json" : `overrides.json?v=${state.version}`;
-    const res = await fetch(url, {
+    // The version we last saw rides along. On the whole-document path it is a
+    // precondition and a mismatch is a 409; on a merge it is only a hint about
+    // how far behind we are, and disjoint edits never conflict at all.
+    const res = await fetch(saveUrl(), {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify(state.overrides),
+      body:JSON.stringify(payload),
     });
     if (res.status === 409) {
       const body = await res.json();
       state.overrides = body.overrides || {};
       state.version = body.version ?? state.version;
+      state.dirty.clear();
       render();
       setSave("failed", "reloaded — someone else saved");
       return;
@@ -326,10 +413,19 @@ async function save() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.json().catch(() => ({}));
     if (typeof body.version === "number") state.version = body.version;
+    if (body.overrides) {                       // we were behind; catch up
+      const touched = reconcile(body.overrides);
+      if (touched.length) setNotice(chartedNotice(touched.length));
+      render();
+    }
     const t = new Date();
     setSave("saved", `saved ${String(t.getHours()).padStart(2,"0")}:` +
                      `${String(t.getMinutes()).padStart(2,"0")}`);
   } catch (err) {
+    // Put the keys back by hand. The whole document used to go up every time,
+    // so a failed save recovered by accident; a patch carries only what it was
+    // given, and anything dropped here is simply gone.
+    for (const k of sent) state.dirty.add(k);
     // Keep the edits in memory and say so plainly -- the download button is
     // still there, so nothing charted has to be lost.
     setSave("failed", "not saved — use ⬇");
@@ -337,18 +433,58 @@ async function save() {
     state.saveTimer = setTimeout(save, 5000);
   } finally {
     state.saving = false;
-    if (state.again) { state.again = false; markDirty(); }
+    if (state.again) { state.again = false; scheduleSave(); }
   }
+}
+
+/* A chart a team shares is the only one somebody else can change under you,
+ * so it is the only one worth asking about. Skipped whenever there is work in
+ * flight or in hand: reconcile would refuse those keys anyway, and this way a
+ * charter who is actually charting costs no reads at all. */
+const POLL_MS = 15000;
+
+function pollShared() {
+  if (!MERGE || READ_ONLY || !CHART.shared) return;
+  setInterval(async () => {
+    if (state.saving || state.dirty.size || state.dragging) return;
+    try {
+      const res = await fetch("overrides.json", { headers:
+        state.version === null ? {} : { "If-None-Match": `"${state.version}"` } });
+      if (res.status === 304 || !res.ok) return;
+      const tag = res.headers.get("ETag");
+      if (tag) { const n = parseInt(tag.replace(/"/g, ""), 10); if (!isNaN(n)) state.version = n; }
+      const touched = reconcile(await res.json());
+      if (touched.length) { setNotice(chartedNotice(touched.length)); render(); }
+    } catch { /* offline: the next tick asks again */ }
+  }, POLL_MS);
 }
 
 const BROWSER = typeof document !== "undefined";
 
+/* What a closing tab still owes the server, or null if it owes nothing.
+ *
+ * Gated on there being unsaved work, not on a timer handle that was set once
+ * and never cleared -- that guard went true on the first edit and stayed true,
+ * so every later tab close beaconed the whole document with no version and
+ * overwrote whatever anyone else had done in the meantime.
+ *
+ * A beacon cannot read the reply, so it sends no version and saves
+ * unconditionally: better a last-writer save than losing the last minute of
+ * grading. On a merge that costs nobody else anything -- only the shots in
+ * hand go up, so a closing tab can no longer erase a teammate's work. It is
+ * also what keeps the payload inside the ~64 KiB a beacon is allowed, which a
+ * whole hand-placed game is not. */
+function unloadBeacon() {
+  if (READ_ONLY || !state.dirty.size) return null;
+  return { url: MERGE ? "overrides.json?merge=1" : "overrides.json",
+           body: MERGE ? dirtyPayload(state.overrides, state.dirty) : state.overrides };
+}
+
 if (BROWSER) addEventListener("pagehide", () => {
-  if (!state.saveTimer || READ_ONLY) return;
-  // A beacon cannot read the reply, so it saves unconditionally: better a
-  // last-writer save than losing the last minute of grading.
-  navigator.sendBeacon?.("overrides.json",
-    new Blob([JSON.stringify(state.overrides)], { type:"application/json" }));
+  const beacon = unloadBeacon();
+  if (!beacon) return;
+  navigator.sendBeacon?.(beacon.url,
+    new Blob([JSON.stringify(beacon.body)], { type:"application/json" }));
 });
 
 function download() {
@@ -481,6 +617,7 @@ function drawTrack(svg, s) {
 function bindHouse() {
   const svg = $("house");
   let drag = null;
+  const setDrag = d => { drag = d; state.dragging = d !== null; };
 
   svg.addEventListener("pointerdown", ev => {
     // On the phone the house is a picture until you enter the editor: one tap
@@ -495,12 +632,12 @@ function bindHouse() {
     const p = sheetPoint(ev);
     if (g) {
       const i = +g.dataset.i;
-      drag = { i, start:p, moved:false };
+      setDrag({ i, start:p, moved:false });
       state.selStone = i;
       svg.setPointerCapture(ev.pointerId);
       render();
     } else {
-      drag = { i:null, start:p, moved:false };
+      setDrag({ i:null, start:p, moved:false });
     }
   });
 
@@ -528,7 +665,7 @@ function bindHouse() {
   svg.addEventListener("pointerup", ev => {
     if (!drag) return;
     const p = sheetPoint(ev);
-    const d = drag; drag = null;
+    const d = drag; setDrag(null);
     if (d.i !== null) {
       if (!d.moved) { render(); return; }          // a click that selected it
       if (!onSheet(p)) { removeStone(d.i); return; }  // dragged off: remove it
@@ -975,7 +1112,8 @@ function savePrefs() {
 /* Exported for the node tests, which exercise the merge and the report
  * arithmetic without a browser. Harmless in one. */
 if (typeof module !== "undefined" && module.exports)
-  module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots, layout, identity, READ_ONLY,
+  module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots, layout, identity, READ_ONLY, REVIEW, MERGE,
+                     dirtyPayload, saveUrl, reconcile, busyKey, unloadBeacon,
                      gatherStats, pct, avg,
                      isBlank, isGraded, typeOf, shotVideoTime, TYPE, TYPES,
                      GROUPS, POSITIONS, stoneAt, R, LIMIT,
@@ -985,7 +1123,7 @@ if (BROWSER) boot();
 
 function boot() { Promise.all([
   fetch("timeline.json").then(r => r.json()),
-  fetch("overrides.json").then(async r => {
+  REVIEW ? Promise.resolve({}) : fetch("overrides.json").then(async r => {
     // The hosted API versions the overrides through an ETag; the local server
     // has none, and then saves are unconditional.
     const tag = r.headers.get("ETag");
@@ -996,12 +1134,20 @@ function boot() { Promise.all([
   state.doc = d;
   state.overrides = (ov && typeof ov === "object" && !Array.isArray(ov)) ? ov : {};
   if (READ_ONLY) {
-    document.body.dataset.mode = "view";
+    document.body.dataset.mode = REVIEW ? "review" : "view";
     for (const id of ["download", "delStone", "markThrown", "resetShot", "markCharted",
                       "orderBox", "orderRow", "recolour", "houseDone", "placeStones"]) {
       const el = $(id); if (el) el.hidden = true;   // placeStones lands in Task 7
     }
     $("save").hidden = true;
+  }
+  // Hosted, every one of these pages was reached from the catalogue and had no
+  // way back to it. The title is the link because the header has no room for
+  // another child: the desktop block orders all of them by hand, and the phone
+  // one hides the title outright at 48px of nowrap.
+  if (HOSTED) {
+    const h = document.querySelector("header h1");
+    if (h) h.innerHTML = '<a href="/games" title="All games">Curling Chart</a>';
   }
   $("copyLink").onclick = async () => {
     try { await navigator.clipboard.writeText(location.href); $("copyLink").textContent = "Copied ✓"; }
@@ -1126,6 +1272,7 @@ function boot() { Promise.all([
     }, 120);
   });
   requestAnimationFrame(drawHouse);   // first paint may measure a zero-height SVG
+  pollShared();
   loadPlayer();
   seekCurrent();
 }).catch(err => {

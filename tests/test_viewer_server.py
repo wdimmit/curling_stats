@@ -198,6 +198,33 @@ class TestRejections:
     def test_an_empty_body_is_refused(self, served):
         assert post(served.base, b"")[0] == 400
 
+    def test_a_null_patch_is_refused_by_a_server_that_does_not_merge(self, served):
+        """A merge says "drop this shot" with null.
+
+        Posted without ?merge=1 -- to the local server, or to an older hosted
+        one -- that has to be refused rather than stored, because a null where
+        a patch belongs would break every reader of the file.
+        """
+        before = self._seed(served)
+        status, _ = post(served.base, {"0.3.1": None})
+        assert status == 400
+        assert served.saved() == before
+
+    def test_the_local_server_will_not_take_a_merge_at_all(self, served):
+        """The safety net under the whole two-format arrangement.
+
+        A merge body is *partial*. If the local server matched this path it
+        would write those few shots as the entire overrides file and silently
+        drop the rest of the game. It does not match, so the page finds out
+        immediately instead.
+        """
+        local_only(served)
+        before = self._seed(served)
+        status, _ = post(served.base, {"0.3.1": {"user_score": 4}},
+                         path="/overrides.json?merge=1")
+        assert status == 404
+        assert served.saved() == before
+
 
 class TestServedFiles:
     def test_it_copies_every_asset_the_page_needs(self, served):

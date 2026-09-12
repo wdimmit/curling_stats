@@ -18,6 +18,9 @@ header { padding:10px 16px; border-bottom:1px solid var(--line);
          background:var(--panel); display:flex; gap:12px; align-items:center;
          flex-wrap:wrap; position:sticky; top:0; z-index:5; }
 h1 { font-size:15px; margin:0; font-weight:650; white-space:nowrap; }
+/* The title reads as a title until you reach for it. */
+h1 a { text-decoration:none; color:inherit; }
+h1 a:hover { color:var(--accent); text-decoration:underline; }
 h2 { font-size:13px; margin:0 0 8px; font-weight:650; color:var(--muted);
      text-transform:uppercase; letter-spacing:.04em; }
 h3 { font-size:13px; margin:14px 0 6px; font-weight:650; }
@@ -191,6 +194,21 @@ body[data-mode="view"] .tools, body[data-mode="view"] #typeGroups,
 body[data-mode="view"] #typeList, body[data-mode="view"] #scoreBtns,
 body[data-mode="view"] #missReason, body[data-mode="view"] #note { pointer-events:none; opacity:.6; }
 body[data-mode="view"] #house { cursor:default; }
+
+/* Review is not a dimmed editor -- it is a different tool. A view link shows
+   someone's grading, so its controls stay visible and inert; a review link has
+   no grading to show, so the controls would be furniture. What is left is the
+   reason to come here at all: the video, the shots, and the house. */
+body[data-mode="review"] #grading,
+body[data-mode="review"] #queueBox,
+body[data-mode="review"] #markCharted,
+body[data-mode="review"] #blanks,
+body[data-mode="review"] #save,
+body[data-mode="review"] #download,
+body[data-mode="review"] #reportBtn,
+body[data-mode="review"] #houseCard .tools,
+body[data-mode="review"] .housebar { display: none; }
+body[data-mode="review"] #house { cursor:default; }
 
 /* --- phone -------------------------------------------------------------- */
 /* A fixed-height shell, not a scrolling page: the video pins at the top, the

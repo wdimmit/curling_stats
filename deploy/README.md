@@ -29,7 +29,34 @@ gcloud firestore indexes composite create --collection-group=vod_runs \
 gcloud firestore indexes composite create --collection-group=vod_runs \
   --field-config=field-path=status,order=ascending --field-config=field-path=created_at,order=descending
 gcloud firestore fields ttls update expires_at --collection-group=rate_limits --enable-ttl
+gcloud firestore fields ttls update expires_at --collection-group=invites --enable-ttl
+# Two maps nothing ever queries. Left alone, Firestore indexes every subfield
+# of both -- thousands of entries per charted game, against a 40,000-per-
+# document ceiling -- purely to pay for writes nobody reads.
+gcloud firestore fields update --collection-group=charts --field-path=overrides --disable-indexes
+gcloud firestore fields update --collection-group=charts --field-path=overrides_meta --disable-indexes
 # (or: firebase deploy --only firestore with deploy/firestore.indexes.json + firestore.rules)
+#
+# No composite index is needed for accounts: every query they add is one
+# equality filter with the ordering done in Python, which the automatic
+# single-field indexes already cover.
+
+# Accounts (optional -- skip all of this and the site simply has none).
+# Identity Platform, the Google provider, and the domains a sign-in may come
+# from. The web API key is a public identifier, not a secret: it belongs in
+# cloudrun.yaml next to GCP_PROJECT, and the Authorized domains list is what
+# actually limits it.
+gcloud services enable identitytoolkit.googleapis.com
+# Then, in the Firebase console for this project:
+#   Authentication > Sign-in method  > enable Google
+#   Authentication > Settings > Authorized domains > add chart.example.org,
+#     and localhost too if you want sign-in to work against a local run --
+#     an Identity Platform project does not necessarily have it already
+#   Project settings > General > Your apps > register a Web app, copy its
+#     apiKey. A project can have Identity Platform switched on and still have
+#     no web app, in which case there is no apiKey to configure yet.
+# Nothing new is needed in Secret Manager or IAM: verifying an ID token uses
+# only Google's public certificates and the project id.
 
 # Bucket: private, with a lifecycle rule that expires detection caches after a year
 gsutil mb -l $REGION gs://curling-chart-$PROJECT_ID

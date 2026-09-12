@@ -32,6 +32,18 @@ spec:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'
             - { name: MODEL_ID,           value: "ds11a-27fe3faa" }
             - { name: MAX_QUEUED,         value: "10" }
+            # Accounts, and all of it optional: deploy-api.sh fills these from
+            # FIREBASE_PROJECT / FIREBASE_API_KEY in its own environment, and
+            # leaves them empty otherwise -- which switches accounts off and
+            # gives you the service exactly as it was before they existed.
+            #
+            # All three are public identifiers. The apiKey ships in the source
+            # of every Firebase web app there has ever been, so none of this
+            # belongs in Secret Manager; what limits its use is the Authorized
+            # domains list in the Firebase Auth console.
+            - { name: FIREBASE_PROJECT,     value: "FB_PROJECT" }
+            - { name: FIREBASE_API_KEY,     value: "FB_API_KEY" }
+            - { name: FIREBASE_AUTH_DOMAIN, value: "FB_AUTH_DOMAIN" }
             - name: WORKER_TOKEN
               valueFrom: { secretKeyRef: { name: curling-worker-token, key: latest } }
             - name: ADMIN_TOKEN

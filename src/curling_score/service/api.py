@@ -1,9 +1,14 @@
 """The HTTP face of the service: submit a link, chart a game, feed the worker.
 
-Three audiences, three surfaces. People get a submit form, a status page, the
-charting viewer under ``/c/{slug}/`` and a read-only twin under ``/s/``. The
-worker gets a claim/progress/complete protocol behind a bearer token. The
+People get a submit form, a status page, the charting viewer under
+``/c/{slug}/``, a read-only twin under ``/s/{share}/``, and -- for anyone who
+only wants the shot-to-shot navigation -- a public, chart-less ``/g/{source}/``.
+The worker gets a claim/progress/complete protocol behind a bearer token. The
 operator gets an admin token for approvals, retries, playlists and a backup.
+
+The three human surfaces differ in what holding the URL means. ``/g/`` is
+public and grants nothing; the other two are unguessable, and holding one *is*
+the permission it carries. The kind of URL decides the mode, always.
 
 The viewer is served under a directory-shaped URL on purpose: its page fetches
 bare ``timeline.json`` and ``overrides.json``, so mounted at ``/c/{slug}/`` it
@@ -27,7 +32,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from curling_score import timeline, version, viewer
 from curling_score.ingest import source
 from curling_score.service import dedupe, playlists, slug
-from curling_score.service.records import Chart, Job, Run, Worker
+from curling_score.service.auth import NoAuth
+from curling_score.service.records import (
+    Chart, Invite, Job, Run, Source, Team, User, Worker,
+)
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import detcache_key, meta_key, timeline_key
 from curling_score.service.youtube import SubmissionError, validate_submission
@@ -40,8 +48,23 @@ VIEWER_ASSETS = {"app.js": "application/javascript", "style.css": "text/css"}
 STATIC_ASSETS = {"status.js": "application/javascript",
                  "games.js": "application/javascript",
                  "submit.js": "application/javascript",
+                 "auth.js": "application/javascript",
+                 "me.js": "application/javascript",
+                 "mine.js": "application/javascript",
+                 "join.js": "application/javascript",
+                 "teams.js": "application/javascript",
                  "site.css": "text/css"}
-MAX_OVERRIDES_BYTES = 10_000_000
+# A whole-document save, and a merge patch. The first was 10 MB, which is ten
+# times what Firestore will hold in one document -- the commit fails with an
+# InvalidArgument the API turns into a bare 500, and MemoryRepo never
+# reproduces it, so nothing caught it. Both are request caps; the size the
+# stored document may reach is MAX_STORED_OVERRIDES_BYTES, checked on the
+# merged result, because many small merges add up where one request does not.
+MAX_OVERRIDES_BYTES = 700_000
+MAX_MERGE_BYTES = 100_000
+# Starting a chart on a game we already hold queues no work, so it gets a
+# budget of its own rather than one of the five submissions an hour.
+CHART_RATE_FACTOR = 6
 # Minutes each stage usually takes on the home box, for the status page's ETA.
 PHASE_BUDGET_MIN = {"download": 3, "proxy": 9, "calibrate": 0.5, "profile": 1,
                     "detect": 9, "rules": 1, "scoreboard": 0.5, "upload": 0.5}
@@ -65,6 +88,14 @@ class Settings:
     rate_day: int = 20
     ip_salt: str = "curling"
     lease_s: float = LEASE_S
+    # Firebase's web config. None of it is secret -- the apiKey is a public
+    # project identifier that ships in the source of every Firebase app -- so
+    # it lives in plain env vars, and what actually limits abuse is the
+    # Authorized domains list in the Auth console.
+    firebase_project: str = ""
+    firebase_api_key: str = ""
+    firebase_auth_domain: str = ""
+    auth_emulator: str = ""
 
     @property
     def processing_version(self) -> str:
@@ -86,6 +117,10 @@ class Settings:
             rate_hour=int(env("RATE_HOUR", "5")),
             rate_day=int(env("RATE_DAY", "20")),
             ip_salt=env("IP_SALT", "curling"),
+            firebase_project=env("FIREBASE_PROJECT", ""),
+            firebase_api_key=env("FIREBASE_API_KEY", ""),
+            firebase_auth_domain=env("FIREBASE_AUTH_DOMAIN", ""),
+            auth_emulator=env("FIREBASE_AUTH_EMULATOR_HOST", ""),
         )
 
 
@@ -97,8 +132,11 @@ def _iso(dt):
     return dt.isoformat(timespec="seconds") if dt else None
 
 
-def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
+def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) -> FastAPI:
     app = FastAPI(title="Curling Chart", docs_url=None, redoc_url=None)
+    # Keyword with a default, so every caller that predates accounts keeps
+    # working and gets a service with no accounts in it.
+    auth = auth or NoAuth()
 
     # ------------------------------------------------------------ helpers
     def bearer_ok(header, expected) -> bool:
@@ -127,6 +165,58 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
         if not bearer_ok(authorization, settings.admin_token):
             raise HTTPException(401, "bad admin token")
 
+    def user_for_claims(claims: dict) -> User:
+        """The person behind a verified token, created on first sight."""
+        uid = claims["sub"]                      # the Firebase UID, not Google's
+        t = now()
+        got = repo.get_user(uid)
+        if got is None:
+            got = User(id=uid, created_at=t, last_seen_at=t,
+                       email=(claims.get("email") or "").lower() or None,
+                       email_verified=bool(claims.get("email_verified")),
+                       name=claims.get("name"), picture_url=claims.get("picture"))
+            repo.put_user(got)
+            return got
+        # Throttled hard: without this every authenticated request is a write,
+        # and writes are the quota that runs out.
+        if got.last_seen_at is None or (t - got.last_seen_at).total_seconds() > 3600:
+            got = repo.update_user(uid, last_seen_at=t) or got
+        return got
+
+    def current_user_or_none(authorization) -> User | None:
+        """Who this request is, if it says so.
+
+        Never raises. A missing, expired, malformed or foreign token all mean
+        the same thing -- we do not know who this is -- and that is a state
+        every route here already handles, because it is the only state that
+        existed before accounts did.
+        """
+        if not auth.enabled or not authorization or not authorization.startswith("Bearer "):
+            return None
+        claims = auth.verify(authorization[len("Bearer "):].strip())
+        if not claims or not claims.get("sub"):
+            return None
+        return user_for_claims(claims)
+
+    def require_user(authorization) -> User:
+        if not auth.enabled:
+            raise HTTPException(503, "accounts are not configured")
+        got = current_user_or_none(authorization)
+        if got is None:
+            raise HTTPException(401, "sign in to do that")
+        return got
+
+    def owner_key_for(chart: Chart) -> str | None:
+        """What a chart dedupes against, or None to never dedupe.
+
+        An anonymous chart has no owner and so keeps today's behaviour exactly:
+        every submission gets its own link.
+        """
+        return chart.team_id or chart.owner_user_id
+
+    def may_use_team(user: User | None, team_id: str | None) -> bool:
+        return bool(user and team_id and user.id in repo.team_members(team_id))
+
     def client_ip(request: Request) -> str:
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
@@ -146,13 +236,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
             raise KeyError(key)
         return json.loads(data)
 
-    def chart_doc(chart: Chart, run: Run, read_only: bool) -> dict:
-        """The pristine document, cut down to the chart's game."""
+    def game_doc(run: Run, game_index: int | None) -> dict:
+        """The pristine document, cut down to one game."""
         doc = json.loads(json.dumps(load_doc(run.timeline_key)))  # a private copy
-        if chart.game_index is not None:
-            doc["games"] = [g for g in doc["games"] if g["index"] == chart.game_index]
+        if game_index is not None:
+            doc["games"] = [g for g in doc["games"] if g["index"] == game_index]
         game = doc["games"][0] if doc["games"] else None
         doc["source"]["start_s"] = game["start_s"] if game else None
+        return doc
+
+    def chart_doc(chart: Chart, run: Run, read_only: bool) -> dict:
+        """One game, plus what the people holding this link may do with it."""
+        doc = game_doc(run, chart.game_index)
         doc["chart"] = {
             "slug": chart.id,
             "share_url": None if read_only else url_for(f"/s/{chart.share_slug}/"),
@@ -169,6 +264,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
         chart = repo.get_chart(key) if kind == "c" else repo.chart_by_share(key)
         if chart is None:
             raise HTTPException(404, "no such chart")
+        # A link that lost a race to a teammate keeps working: follow the
+        # pointer here rather than redirecting, so the URL somebody wrote down
+        # never breaks and app.js's relative POSTs land on the right chart
+        # without knowing any of this happened. Chains are one deep by
+        # construction -- a claim never changes hands -- but bound it anyway.
+        for _ in range(4):
+            if not chart.superseded_by:
+                break
+            nxt = repo.get_chart(chart.superseded_by)
+            if nxt is None:
+                break
+            chart = nxt
         run = repo.get_run(chart.run_id)
         if run is None:
             raise HTTPException(404, "the chart's run is missing")
@@ -241,15 +348,47 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
                     out["other_games"].append(entry)
         return out
 
-    def new_chart(video_id, run, start_s, sheet, iph, t) -> Chart:
+    def existing_chart_for(owner_key, run, start_s) -> Chart | None:
+        """The chart this owner already has for the game being asked for.
+
+        Only answerable once the run is ready, because only then is it known
+        which game a start time lands in. Before that a second chart is made
+        and resolve_chart folds it away when the games arrive.
+        """
+        if not owner_key or run.status != "ready":
+            return None
+        index, _d = dedupe.snap_to_game(run.games, start_s)
+        if index is None:
+            return None
+        game = next((g for g in run.games if g["index"] == index), None)
+        if game is None:
+            return None
+        src = dedupe.find_or_create_source(repo, run, game, now())
+        found = repo.chart_claim(owner_key, src.id)
+        return repo.get_chart(found) if found else None
+
+    def new_chart(video_id, run, start_s, sheet, iph, t, user=None,
+                  team_id=None) -> tuple[Chart, bool]:
+        """This owner's chart for this game, made if they have not got one.
+
+        Anonymous submissions never dedupe -- no owner, no claim -- so the
+        behaviour anyone relied on before accounts existed is unchanged.
+        """
+        owner_key = team_id or (user.id if user else None)
+        found = existing_chart_for(owner_key, run, start_s)
+        if found is not None:
+            return found, True
         chart = Chart(id=slug.new_slug(), share_slug=slug.new_slug(), video_id=video_id,
                       run_id=run.id, created_at=t, updated_at=t,
                       requested_start_s=start_s, requested_sheet=sheet,
-                      submitter_ip_hash=iph)
+                      submitter_ip_hash=iph,
+                      owner_user_id=user.id if user else None, team_id=team_id)
         repo.put_chart(chart)
         if run.status == "ready":
             chart = dedupe.resolve_chart(repo, chart, run, t)
-        return chart
+            if chart.superseded_by:                    # lost a race just now
+                return repo.get_chart(chart.superseded_by), True
+        return chart, False
 
     # ------------------------------------------------------------- public
     @app.get("/", response_class=HTMLResponse)
@@ -259,6 +398,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
     @app.get("/games", response_class=HTMLResponse)
     def games_page():
         return page("games.html")
+
+    @app.get("/mine", response_class=HTMLResponse)
+    def mine_page():
+        return page("mine.html")
+
+    @app.get("/join/{token}", response_class=HTMLResponse)
+    def join_page(token: str):
+        # The token is read back off the URL by the page itself; nothing is
+        # rendered into the HTML, so there is nothing here to escape.
+        return page("join.html")
 
     @app.get("/static/{name}")
     def static_asset(name: str):
@@ -313,7 +462,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
         return {"games": out, "leagues": leagues}
 
     @app.post("/api/submissions", status_code=201)
-    async def submit(request: Request):
+    async def submit(request: Request, authorization: str | None = Header(default=None)):
+        me = current_user_or_none(authorization)
         try:
             body = await request.json()
         except ValueError:
@@ -333,6 +483,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
         sheet = None if sheet in (None, "") else int(sheet)
         t = now()
         iph = ip_hash(request)
+        team_id = body.get("team_id") or None
+        if team_id and not may_use_team(me, team_id):
+            raise HTTPException(403, "you are not on that team")
 
         if not repo.bump_rate_limit(iph, t, settings.rate_hour, settings.rate_day):
             raise HTTPException(429, "too many submissions from this address; try later")
@@ -366,7 +519,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
             if status == "queued":
                 repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued",
                                  created_at=t, run_after=t))
-        chart = new_chart(link.video_id, run, start_s, sheet, iph, t)
+        chart, reused_chart = new_chart(link.video_id, run, start_s, sheet, iph, t,
+                                        user=me, team_id=team_id)
         job = repo.job_for_run(run.id)
         return {
             "slug": chart.id,
@@ -375,7 +529,255 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
             "status": run.status,
             "position": repo.queue_position(job.id) if job and run.status == "queued" else None,
             "reused": reused,
+            "reused_chart": reused_chart,
         }
+
+    @app.post("/api/charts", status_code=201)
+    def api_start_charting(body: dict, request: Request,
+                           authorization: str | None = Header(default=None)):
+        """Chart a game the catalogue already knows about.
+
+        Separate from /api/submissions, which ingests a *video*: this queues no
+        work, so it must not spend one of the five submissions an hour. It is
+        also what makes coming back work -- ask twice and you get the same
+        chart, rather than the blank second one the catalogue used to mint.
+        """
+        me = current_user_or_none(authorization)
+        source_id = str(body.get("source_id") or "")
+        src = repo.get_source(source_id)
+        if src is None:
+            raise HTTPException(404, "no such game")
+        run = repo.get_run(src.current_run_id)
+        if run is None or run.status != "ready":
+            raise HTTPException(409, "that game is still processing")
+        team_id = body.get("team_id") or None
+        if team_id and not may_use_team(me, team_id):
+            raise HTTPException(403, "you are not on that team")
+        iph = ip_hash(request)
+        # Its own, looser budget. Charting queues no work, so counting it
+        # against submissions would make coming back to your own games cost
+        # the same as asking for a new video -- but leaving it uncounted lets
+        # anyone create documents without end. Only a chart that is actually
+        # made is counted; reopening one you already have is free.
+        if not existing_chart_for(team_id or (me.id if me else None), run, src.game_start_s):
+            if not repo.bump_rate_limit("chart:" + iph, now(),
+                                        settings.rate_hour * CHART_RATE_FACTOR,
+                                        settings.rate_day * CHART_RATE_FACTOR):
+                raise HTTPException(429, "too many new charts from this address; try later")
+        chart, reused = new_chart(src.video_id, run, src.game_start_s, src.sheet,
+                                  iph, now(), user=me, team_id=team_id)
+        return {"slug": chart.id, "chart_url": url_for(f"/c/{chart.id}/"),
+                "share_url": url_for(f"/s/{chart.share_slug}/"),
+                "status": run.status, "reused_chart": reused}
+
+    # ---------------------------------------------------- account routes
+    # Accounts exist so a person can find their links again, and so a team can
+    # share one. They gate nothing: every route below is additive, and a chart
+    # URL keeps working for whoever holds it whether or not anyone is signed in.
+    def chart_summary(chart: Chart, cache: dict | None = None) -> dict:
+        # A list is mostly the same handful of runs and teams over and over.
+        cache = {} if cache is None else cache
+        if (run := cache.get(("run", chart.run_id), ...)) is ...:
+            run = cache[("run", chart.run_id)] = repo.get_run(chart.run_id)
+        team = None
+        if chart.team_id:
+            if (team := cache.get(("team", chart.team_id), ...)) is ...:
+                team = cache[("team", chart.team_id)] = repo.get_team(chart.team_id)
+        return {
+            "slug": chart.id,
+            "chart_url": url_for(f"/c/{chart.id}/"),
+            "share_url": url_for(f"/s/{chart.share_slug}/"),
+            "source_id": chart.source_id,
+            "review_url": url_for(f"/g/{chart.source_id}/") if chart.source_id else None,
+            "title": run.title if run else None,
+            "league": run.league if run else None,
+            "sheet": run.sheet if run else None,
+            "played_at": _iso(run.published_at) if run else None,
+            "status": run.status if run else None,
+            "game_index": chart.game_index,
+            "updated_at": _iso(chart.updated_at),
+            "shots_charted": len(chart.overrides),
+            "team_id": chart.team_id,
+            "team_name": team.name if team else None,
+            "superseded_by": chart.superseded_by,
+            "duplicate_of": chart.duplicate_of,
+        }
+
+    def team_summary(team: Team, members: bool = False) -> dict:
+        out = {"id": team.id, "name": team.name, "owner_user_id": team.owner_user_id,
+               "member_count": len(team.member_ids), "created_at": _iso(team.created_at)}
+        if members:
+            out["members"] = [
+                {"id": uid, "name": (u.name if (u := repo.get_user(uid)) else None),
+                 "email": u.email if u else None, "is_owner": uid == team.owner_user_id}
+                for uid in team.member_ids
+            ]
+        return out
+
+    @app.get("/api/auth/config")
+    def auth_config():
+        """What the browser needs to start a sign-in, or that it cannot.
+
+        Served rather than templated into each page: there are four places that
+        render HTML and one of them would eventually be forgotten. With no
+        project configured this reports disabled and the whole feature simply
+        is not there.
+        """
+        if not (auth.enabled and settings.firebase_api_key):
+            return JSONResponse({"enabled": False},
+                                headers={"Cache-Control": "public, max-age=300"})
+        return JSONResponse({"enabled": True,
+                             "apiKey": settings.firebase_api_key,
+                             "authDomain": settings.firebase_auth_domain,
+                             "projectId": settings.firebase_project,
+                             "emulator": settings.auth_emulator or None},
+                            headers={"Cache-Control": "public, max-age=300"})
+
+    @app.get("/api/me")
+    def api_me(authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        teams = repo.teams_for_user(me.id)
+        return {"user": {"id": me.id, "email": me.email, "name": me.name,
+                         "picture_url": me.picture_url},
+                "teams": [team_summary(t) for t in teams]}
+
+    @app.get("/api/me/charts")
+    def api_my_charts(authorization: str | None = Header(default=None)):
+        """Every game this person can get back to: their own, and their teams'."""
+        me = require_user(authorization)
+        seen, out = set(), []
+        for chart in repo.charts_for_owner(me.id):
+            seen.add(chart.id)
+            out.append(chart)
+        for team in repo.teams_for_user(me.id):
+            for chart in repo.charts_for_team(team.id):
+                if chart.id not in seen:
+                    seen.add(chart.id)
+                    out.append(chart)
+        # A superseded chart is the same game as the one it points at; showing
+        # both would be showing a duplicate the person cannot act on.
+        out = [c for c in out if not c.superseded_by]
+        out.sort(key=lambda c: c.updated_at, reverse=True)
+        cache = {}
+        return {"charts": [chart_summary(c, cache) for c in out]}
+
+    @app.post("/api/me/charts/{chart_id}/claim")
+    def api_claim_chart(chart_id: str, body: dict | None = None,
+                        authorization: str | None = Header(default=None)):
+        """Put a link you already hold into your list.
+
+        Holding the chart id is the whole permission -- it is the same thing
+        that lets you edit -- so nothing else is asked for. What is refused is
+        claiming a chart that already belongs to a team you are not on, which
+        would otherwise let anyone you shared a link with take it.
+        """
+        me = require_user(authorization)
+        chart = repo.get_chart(chart_id)
+        if chart is None:
+            raise HTTPException(404, "no such chart")
+        # An old link may point at the chart its team kept. Claim the live one,
+        # the way opening the link would have taken you there.
+        for _ in range(4):
+            if not chart.superseded_by:
+                break
+            nxt = repo.get_chart(chart.superseded_by)
+            if nxt is None:
+                break
+            chart = nxt
+        chart_id = chart.id
+        team_id = (body or {}).get("team_id")
+        if chart.team_id and not may_use_team(me, chart.team_id):
+            raise HTTPException(403, "this chart belongs to another team")
+        if team_id and not may_use_team(me, team_id):
+            raise HTTPException(403, "you are not on that team")
+        fields = {"owner_user_id": chart.owner_user_id or me.id, "team_id": team_id or chart.team_id}
+        chart = repo.update_chart(chart_id, **fields)
+        key = owner_key_for(chart)
+        if key and chart.source_id:
+            repo.claim_chart(key, chart.source_id, chart.id)
+        return chart_summary(chart)
+
+    @app.post("/api/teams", status_code=201)
+    def api_create_team(body: dict, authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        name = (body.get("name") or "").strip()
+        if not 1 <= len(name) <= 60:
+            raise HTTPException(422, "a team needs a name")
+        team = Team(id=slug.new_team_id(), name=name, owner_user_id=me.id,
+                    created_at=now(), member_ids=[me.id])
+        repo.put_team(team)
+        return team_summary(team, members=True)
+
+    @app.get("/api/teams/{team_id}")
+    def api_get_team(team_id: str, authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        team = repo.get_team(team_id)
+        if team is None or me.id not in team.member_ids:
+            raise HTTPException(404, "no such team")
+        charts = [c for c in repo.charts_for_team(team_id) if not c.superseded_by]
+        cache = {}
+        return {**team_summary(team, members=True),
+                "charts": [chart_summary(c, cache) for c in charts]}
+
+    @app.post("/api/teams/{team_id}/invites", status_code=201)
+    def api_create_invite(team_id: str, body: dict | None = None,
+                          authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        team = repo.get_team(team_id)
+        if team is None or me.id not in team.member_ids:
+            raise HTTPException(404, "no such team")
+        days = (body or {}).get("days", 14)
+        invite = Invite(id=slug.new_invite_token(), team_id=team_id,
+                        created_by_user_id=me.id, created_at=now(),
+                        expires_at=now() + timedelta(days=float(days)))
+        repo.put_invite(invite)
+        return {"token": invite.id, "url": url_for(f"/join/{invite.id}"),
+                "team": team.name, "expires_at": _iso(invite.expires_at)}
+
+    @app.get("/api/invites/{token}")
+    def api_preview_invite(token: str):
+        """What the join page says before anyone signs in.
+
+        Unauthenticated on purpose: telling the holder of an invite which team
+        it is for is exactly what the invite is.
+        """
+        invite = repo.get_invite(token)
+        if invite is None:
+            raise HTTPException(404, "no such invitation")
+        team = repo.get_team(invite.team_id)
+        return {"team": team.name if team else None, "team_id": invite.team_id,
+                "usable": invite.usable(now()) and team is not None}
+
+    @app.post("/api/invites/{token}/accept")
+    def api_accept_invite(token: str, authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        invite = repo.get_invite(token)
+        if invite is None:
+            raise HTTPException(404, "no such invitation")
+        team = repo.get_team(invite.team_id)
+        if team is None:
+            raise HTTPException(404, "that team is gone")
+        if me.id in team.member_ids:
+            return team_summary(team, members=True)   # accepting twice is fine
+        if not invite.usable(now()):
+            raise HTTPException(410, "that invitation has expired")
+        team = repo.add_member(invite.team_id, me.id)
+        repo.update_invite(token, uses=invite.uses + 1)
+        return team_summary(team, members=True)
+
+    @app.delete("/api/teams/{team_id}/members/{user_id}")
+    def api_remove_member(team_id: str, user_id: str,
+                          authorization: str | None = Header(default=None)):
+        """Leave a team, or -- if you own it -- show somebody out."""
+        me = require_user(authorization)
+        team = repo.get_team(team_id)
+        if team is None or me.id not in team.member_ids:
+            raise HTTPException(404, "no such team")
+        if user_id != me.id and team.owner_user_id != me.id:
+            raise HTTPException(403, "only the team's owner can remove someone else")
+        if user_id == team.owner_user_id:
+            raise HTTPException(409, "the owner cannot leave; hand the team over first")
+        return team_summary(repo.remove_member(team_id, user_id), members=True)
 
     # ------------------------------------------------------ chart routes
     def register_chart_routes(kind: str):
@@ -391,7 +793,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
             if run.status != "ready" or chart.game_index is None:
                 return page("status.html")
             text = (VIEWER_DIR / "index.html").read_text()
-            boot = (f'<script>window.CHART={json.dumps({"slug": chart.id, "mode": "view" if read_only else "edit"})};'
+            # `merge` says this server takes per-key patches; the local
+            # `curling-score serve` sets no window.CHART at all and so keeps
+            # getting whole documents. `shared` is what turns on polling for a
+            # teammate's edits -- pointless, and a read every 15s, on a chart
+            # only one person can reach.
+            boot = (f'<script>window.CHART={json.dumps({"slug": chart.id, "mode": "view" if read_only else "edit", "merge": True, "shared": chart.team_id is not None})};'
                     f'</script>\n<script src="app.js"></script>')
             return HTMLResponse(text.replace('<script src="app.js"></script>', boot, 1))
 
@@ -409,31 +816,86 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
                                 headers={"Cache-Control": "private, max-age=3600"})
 
         @app.get(prefix + "/overrides.json")
-        def overrides_get(key: str):
+        def overrides_get(key: str, request: Request):
             chart, _run, _ro = lookup(kind, key)
-            return JSONResponse(chart.overrides, headers={"ETag": f'"{chart.overrides_version}"'})
+            # A shared chart is polled for a teammate's edits; almost every one
+            # of those asks finds nothing, so answer them without the body.
+            tag = f'"{chart.overrides_version}"'
+            if request.headers.get("if-none-match") == tag:
+                return Response(status_code=304, headers={"ETag": tag})
+            return JSONResponse(chart.overrides, headers={"ETag": tag})
+
+        @app.get(prefix + "/overrides_meta.json")
+        def overrides_meta_get(key: str):
+            """Who last touched each shot, and when.
+
+            Served apart from overrides.json on purpose: the viewer feeds that
+            response straight into its override map, and apply_overrides copies
+            a patch onto the shot wholesale, so a `by` mixed in there would ride
+            into export.json and on into the training labels.
+            """
+            chart, _run, _ro = lookup(kind, key)
+            return JSONResponse(chart.overrides_meta,
+                                headers={"ETag": f'"{chart.overrides_version}"'})
 
         @app.post(prefix + "/overrides.json")
-        async def overrides_post(key: str, request: Request, v: int | None = Query(default=None)):
+        async def overrides_post(key: str, request: Request,
+                                 v: int | None = Query(default=None),
+                                 merge: bool = Query(default=False)):
+            """Save grading, whole-document or shot by shot.
+
+            The whole-document form is what the local `curling-score serve`
+            speaks and what every page sent before merging existed; it keeps its
+            version check and its 409. A merge carries only the shots that
+            changed and never refuses on a version -- two people editing
+            different shots have nothing to conflict about, and the same shot is
+            simply the later of the two.
+            """
             chart, _run, read_only = lookup(kind, key)
             if read_only:
                 raise HTTPException(403, "this is a view-only link")
             body = await request.body()
             if not body:
                 return JSONResponse({"ok": False, "error": "empty body"}, status_code=400)
-            if len(body) > MAX_OVERRIDES_BYTES:
-                return JSONResponse({"ok": False, "error": "too large"}, status_code=400)
+            if len(body) > (MAX_MERGE_BYTES if merge else MAX_OVERRIDES_BYTES):
+                return JSONResponse({"ok": False, "error": "too large"},
+                                    status_code=413 if merge else 400)
             try:
                 data = json.loads(body)
             except ValueError as err:
                 return JSONResponse({"ok": False, "error": f"invalid JSON: {err}"}, status_code=400)
-            if not isinstance(data, dict) or not all(isinstance(x, dict) for x in data.values()):
+            if not isinstance(data, dict):
                 return JSONResponse({"ok": False, "error": "expected {key: patch}"}, status_code=400)
-            ok, ver, current = repo.save_overrides(chart.id, data, v, now())
+
+            if not merge:
+                if not all(isinstance(x, dict) for x in data.values()):
+                    return JSONResponse({"ok": False, "error": "expected {key: patch}"},
+                                        status_code=400)
+                ok, ver, current = repo.save_overrides(chart.id, data, v, now())
+                if not ok:
+                    return JSONResponse({"ok": False, "error": "stale", "version": ver,
+                                         "overrides": current}, status_code=409)
+                return {"ok": True, "shots": len(data), "version": ver}
+
+            # A merge value is a patch, or null to delete that shot.
+            if not all(x is None or isinstance(x, dict) for x in data.values()):
+                return JSONResponse({"ok": False, "error": "expected {key: patch|null}"},
+                                    status_code=400)
+            patch = {k: x for k, x in data.items() if x is not None}
+            remove = [k for k, x in data.items() if x is None]
+            stamp = _iso(now())
+            meta = {k: {"at": stamp} for k in patch}
+            ver, merged, ok = repo.merge_overrides(chart.id, patch, remove, meta, now())
             if not ok:
-                return JSONResponse({"ok": False, "error": "stale", "version": ver,
-                                     "overrides": current}, status_code=409)
-            return {"ok": True, "shots": len(data), "version": ver}
+                return JSONResponse({"ok": False, "error": "chart is full", "version": ver},
+                                    status_code=413)
+            out = {"ok": True, "shots": len(data), "version": ver}
+            # Only somebody who was actually behind needs the whole map back. A
+            # lone charter is always exactly one behind their own last save, and
+            # a beacon sends no version because it cannot read the reply.
+            if v is not None and v != ver - 1:
+                out["overrides"] = merged
+            return out
 
         @app.get(prefix + "/export.json")
         def export_json(key: str):
@@ -453,6 +915,57 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow) -> FastAPI:
 
     register_chart_routes("c")
     register_chart_routes("s")
+
+    # ------------------------------------------------------ review routes
+    # Watching a game without charting it. A source is already the thing a
+    # person means by "this game", and the catalogue already hands out its id,
+    # so this surface needs no record of its own -- which is the point: no
+    # chart is created by browsing, and nothing here can write. Read-only is a
+    # property of the surface, not a check inside it; there is no POST route to
+    # forget to guard.
+    def lookup_source(sid: str) -> tuple[Source, Run]:
+        src = repo.get_source(sid)
+        if src is None:
+            raise HTTPException(404, "no such game")
+        run = repo.get_run(src.current_run_id)
+        if run is None or run.status != "ready":
+            raise HTTPException(404, "not processed yet")
+        return src, run
+
+    @app.get("/g/{sid}", include_in_schema=False)
+    def review_redirect(sid: str):
+        return RedirectResponse(f"/g/{sid}/", status_code=302)
+
+    @app.get("/g/{sid}/", response_class=HTMLResponse)
+    def review_page(sid: str):
+        lookup_source(sid)
+        text = (VIEWER_DIR / "index.html").read_text()
+        boot = (f'<script>window.CHART={json.dumps({"mode": "review", "source": sid})};'
+                f'</script>\n<script src="app.js"></script>')
+        return HTMLResponse(text.replace('<script src="app.js"></script>', boot, 1))
+
+    @app.get("/g/{sid}/timeline.json")
+    def review_timeline(sid: str):
+        src, run = lookup_source(sid)
+        doc = game_doc(run, src.game_index)
+        # No slug and no share_url: this link is already the public one.
+        doc["chart"] = {"read_only": True, "review": True,
+                        "title": run.title, "league": run.league}
+        return JSONResponse(doc, headers={"Cache-Control": "public, max-age=3600"})
+
+    @app.get("/g/{sid}/export.json")
+    def review_export(sid: str):
+        src, run = lookup_source(sid)
+        return game_doc(run, src.game_index)
+
+    @app.get("/g/{sid}/{asset}")
+    def review_asset(sid: str, asset: str):
+        lookup_source(sid)
+        if asset in VIEWER_ASSETS:
+            return FileResponse(VIEWER_DIR / asset, media_type=VIEWER_ASSETS[asset])
+        if asset in STATIC_ASSETS:
+            return FileResponse(STATIC_DIR / asset, media_type=STATIC_ASSETS[asset])
+        raise HTTPException(404)
 
     # ------------------------------------------------------------- worker
     @app.post("/api/worker/claim")

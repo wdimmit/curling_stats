@@ -195,6 +195,29 @@ Firestore and Cloud Storage, all inside free tiers at club scale; processing
 runs on a home GPU machine that pulls jobs over HTTPS. See
 [`deploy/README.md`](deploy/README.md).
 
+There are three ways to open a game, and which URL you have decides what you
+can do with it:
+
+| | | |
+|---|---|---|
+| `/g/{game}/` | **Watch** | Public. Steps through a game shot by shot, with the house and the video, and nothing to fill in. Linked from the catalogue, creates nothing, and has no route that could write. |
+| `/s/{slug}/` | **View** | Somebody's chart, including their grading, read-only. |
+| `/c/{slug}/` | **Chart** | The charting tool. |
+
+The two slugs are 22 random characters and holding one *is* the permission it
+carries — that has not changed, and no account is needed for any of it.
+
+**Accounts** are optional and purely additive: signing in with Google gives you
+a list at `/mine` of the games you have submitted or charted, so losing the
+link stops mattering. A **team** shares one chart per game — everyone fills in
+the same sheet rather than four of them — and members see the same list. Anyone
+holding a chart link can still edit it whether or not they are signed in, and
+whether or not they are on the team; an account changes what you can *find*,
+never what a URL lets you do.
+
+Leave `FIREBASE_PROJECT` unset and none of that exists: no sign-in button, and
+the service behaves exactly as it did before any of it was added.
+
 ```bash
 MEMORY_BACKENDS=1 WORKER_TOKEN=w ADMIN_TOKEN=a uvicorn curling_score.service.asgi:app   # try it locally
 API_URL=http://127.0.0.1:8000 WORKER_TOKEN=w python -m curling_score.service.worker      # …and a worker

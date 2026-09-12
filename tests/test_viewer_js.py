@@ -34,6 +34,169 @@ def run_js(body: str):
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
+def run_js_with_chart(chart, body: str):
+    """Run with ``window.CHART`` set before app.js loads, as the browser does.
+
+    ``global.document`` stays unset, so the module's own ``BROWSER`` gate keeps
+    ``boot()`` from running and reaching for a page that is not there.
+    """
+    window = f"global.window = {{ CHART: {json.dumps(chart)} }};\n" if chart is not None else ""
+    script = (
+        window
+        + f"const A = require({str(APP)!r});\n"
+        "const {READ_ONLY, REVIEW, MERGE, state, dirtyPayload, saveUrl,\n"
+        "       reconcile, busyKey, shotKey, unloadBeacon} = A;\n"
+        "function out(v){ console.log(JSON.stringify(v)); }\n" + body
+    )
+    proc = subprocess.run([node, "-e", script], capture_output=True, text=True,
+                          timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+class TestModes:
+    """Which surface the page thinks it is on, and what that permits."""
+
+    def test_review_is_read_only(self):
+        """The invariant: /g/ can never edit, whatever else changes."""
+        assert run_js_with_chart({"mode": "review", "source": "s_x"},
+                                 "out([REVIEW, READ_ONLY]);") == [True, True]
+
+    def test_a_share_link_is_read_only_but_not_review(self):
+        assert run_js_with_chart({"mode": "view", "slug": "abc"},
+                                 "out([REVIEW, READ_ONLY]);") == [False, True]
+
+    def test_a_chart_link_edits(self):
+        assert run_js_with_chart({"mode": "edit", "slug": "abc"},
+                                 "out([REVIEW, READ_ONLY]);") == [False, False]
+
+    def test_served_locally_everything_edits(self):
+        """`curling-score serve` sets no window.CHART and must stay editable."""
+        assert run_js_with_chart(None, "out([REVIEW, READ_ONLY]);") == [False, False]
+
+
+class TestDirtyPayload:
+    """What a merge actually puts on the wire."""
+
+    def test_it_sends_only_the_dirty_shots(self):
+        body = run_js_with_chart(
+            {"mode": "edit", "merge": True},
+            "state.overrides = {a:{x:1}, b:{y:2}, c:{z:3}};\n"
+            "out(dirtyPayload(state.overrides, new Set(['a','c'])));")
+        assert body == {"a": {"x": 1}, "c": {"z": 3}}
+
+    def test_a_shot_edited_away_becomes_a_tombstone(self):
+        """The key is gone locally, so the server has to be told to drop it."""
+        body = run_js_with_chart(
+            {"mode": "edit", "merge": True},
+            "state.overrides = {a:{x:1}};\n"
+            "out(dirtyPayload(state.overrides, new Set(['a','gone'])));")
+        assert body == {"a": {"x": 1}, "gone": None}
+
+
+class TestSaveUrl:
+    def test_a_hosted_chart_merges(self):
+        got = run_js_with_chart({"mode": "edit", "merge": True},
+                                "state.version = 3; out(saveUrl());")
+        assert got == "overrides.json?merge=1&v=3"
+
+    def test_the_local_server_still_gets_whole_documents(self):
+        """`curling-score serve` sets no window.CHART and cannot merge."""
+        got = run_js_with_chart(None, "state.version = null; out(saveUrl());")
+        assert got == "overrides.json"
+
+    def test_a_first_save_carries_no_version(self):
+        got = run_js_with_chart({"mode": "edit", "merge": True},
+                                "state.version = null; out(saveUrl());")
+        assert got == "overrides.json?merge=1"
+
+
+class TestUnloadBeacon:
+    """The tab-close save. This is the one that used to eat a teammate's work."""
+
+    def test_a_tab_with_nothing_unsaved_sends_nothing(self):
+        """It used to send the whole document, every close, forever after the
+        first edit -- with no version, so it overwrote whatever it landed on."""
+        got = run_js_with_chart(
+            {"mode": "edit", "merge": True},
+            "state.overrides = {a:{x:1}, b:{y:2}}; state.dirty = new Set();\n"
+            "out(unloadBeacon());")
+        assert got is None
+
+    def test_it_carries_only_the_unsaved_shots(self):
+        got = run_js_with_chart(
+            {"mode": "edit", "merge": True},
+            "state.overrides = {a:{x:1}, b:{y:2}}; state.dirty = new Set(['b']);\n"
+            "out(unloadBeacon());")
+        assert got == {"url": "overrides.json?merge=1", "body": {"b": {"y": 2}}}
+
+    def test_a_view_link_never_beacons(self):
+        got = run_js_with_chart(
+            {"mode": "view", "merge": True},
+            "state.overrides = {a:{x:1}}; state.dirty = new Set(['a']);\n"
+            "out(unloadBeacon());")
+        assert got is None
+
+    def test_the_local_server_still_gets_the_whole_document(self):
+        got = run_js_with_chart(
+            None,
+            "state.overrides = {a:{x:1}, b:{y:2}}; state.dirty = new Set(['b']);\n"
+            "out(unloadBeacon());")
+        assert got == {"url": "overrides.json", "body": {"a": {"x": 1}, "b": {"y": 2}}}
+
+
+RECONCILE = """
+state.doc = %s; state.gi = 0; state.ei = 0; state.si = 0;
+state.overrides = %s; state.dirty = new Set(%s); state.dragging = %s;
+"""
+
+
+def reconcile_js(overrides, dirty, server, dragging="false"):
+    document = doc([shot(1, "red", "lead")])
+    return (RECONCILE % (json.dumps(document), json.dumps(overrides),
+                         json.dumps(list(dirty)), dragging)
+            + f"const touched = reconcile({json.dumps(server)});\n"
+              "out({overrides: state.overrides, touched: touched.sort()});")
+
+
+class TestReconcile:
+    """Folding in a teammate's edits without stepping on your own."""
+
+    def test_a_clean_key_takes_the_servers_value(self):
+        got = run_js_with_chart({"mode": "edit", "merge": True},
+                                reconcile_js({"a": {"x": 1}}, [], {"a": {"x": 9}}))
+        assert got["overrides"] == {"a": {"x": 9}} and got["touched"] == ["a"]
+
+    def test_an_unsaved_key_is_never_overwritten(self):
+        """Ours is newer -- it has not reached the server yet."""
+        got = run_js_with_chart({"mode": "edit", "merge": True},
+                                reconcile_js({"a": {"x": 1}}, ["a"], {"a": {"x": 9}}))
+        assert got["overrides"] == {"a": {"x": 1}} and got["touched"] == []
+
+    def test_a_key_the_server_dropped_goes_too(self):
+        got = run_js_with_chart({"mode": "edit", "merge": True},
+                                reconcile_js({"a": {"x": 1}, "b": {"y": 2}}, [], {"a": {"x": 1}}))
+        assert got["overrides"] == {"a": {"x": 1}} and got["touched"] == ["b"]
+
+    def test_but_not_one_we_have_just_cleared_ourselves(self):
+        got = run_js_with_chart({"mode": "edit", "merge": True},
+                                reconcile_js({"b": {"y": 2}}, ["b"], {}))
+        assert got["overrides"] == {"b": {"y": 2}} and got["touched"] == []
+
+    def test_an_unchanged_key_is_not_reported_as_touched(self):
+        """Otherwise every poll would claim a teammate had been charting."""
+        got = run_js_with_chart({"mode": "edit", "merge": True},
+                                reconcile_js({"a": {"x": 1}}, [], {"a": {"x": 1}}))
+        assert got["touched"] == []
+
+    def test_the_shot_being_dragged_is_left_alone(self):
+        """A redraw mid-drag would yank the stone out from under the pointer."""
+        got = run_js_with_chart(
+            {"mode": "edit", "merge": True},
+            reconcile_js({"0.1.1": {"x": 1}}, [], {"0.1.1": {"x": 9}}, dragging="true"))
+        assert got["overrides"] == {"0.1.1": {"x": 1}} and got["touched"] == []
+
+
 def shot(number, color, position, **kw):
     base = {"number": number, "color": color, "position": position,
             "stones": [], "missing": False, "state_known": True,

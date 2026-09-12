@@ -20,6 +20,13 @@ input, select, button { font:inherit; padding:8px 10px; border-radius:7px; color
 input { width:100%; }
 button { cursor:pointer; }
 button.primary { background:var(--accent); color:#fff; border-color:transparent; padding:9px 16px; }
+/* Watch is a plain link on purpose -- bookmarkable, middle-clickable, and the
+   one action here that costs nothing -- so it needs a button's look, not a
+   button's element. */
+a.btn { display:inline-block; text-decoration:none; padding:8px 10px; border-radius:7px;
+        border:1px solid var(--line); background:var(--panel); color:var(--ink); }
+a.btn.primary { background:var(--accent); color:#fff; border-color:transparent; }
+.actions { display:flex; gap:6px; white-space:nowrap; }
 button:disabled { opacity:.5; cursor:default; }
 .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .warn { background:var(--warnbg); color:var(--warn); border-radius:7px; padding:9px 12px; margin-top:12px; font-size:14px; }

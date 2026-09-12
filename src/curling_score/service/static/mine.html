@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My games — Curling Chart</title>
+<link rel="stylesheet" href="/static/site.css">
+<header>
+  <h1><a href="/games">Curling Chart</a></h1>
+  <a href="/games">All games</a>
+  <a href="/">Submit a link</a>
+  <span style="flex:1"></span>
+  <span id="who" class="muted"></span>
+</header>
+<main>
+  <div id="signedout" hidden>
+    <div class="card">
+      <h2 style="margin-top:0">Keep your games</h2>
+      <p class="muted">Sign in and the games you chart stay in one list, on every
+      device. Every chart link keeps working exactly as it does now, signed in or
+      not — an account only gives you a way back to them.</p>
+      <button id="signin" class="primary">Sign in with Google</button>
+      <p class="muted" id="disabled" hidden>Accounts are not switched on for this site.</p>
+    </div>
+  </div>
+
+  <div id="signedin" hidden>
+    <h2>My games</h2>
+    <div id="charts" class="card"><span class="muted">Loading…</span></div>
+
+    <h2>Teams</h2>
+    <div id="teams" class="card"><span class="muted">Loading…</span></div>
+    <div class="card" style="margin-top:12px">
+      <label for="teamname">Start a team</label>
+      <div class="row">
+        <input id="teamname" placeholder="Thistles" style="flex:1" maxlength="60">
+        <button id="maketeam">Create</button>
+      </div>
+      <p class="muted" style="font-size:13px">Everyone on a team shares one chart per
+      game, so you are all filling in the same sheet rather than four of them.</p>
+    </div>
+
+    <h2>Add a link you already have</h2>
+    <div class="card">
+      <div class="row">
+        <input id="claimurl" placeholder="https://…/c/…" style="flex:1">
+        <button id="claim">Add</button>
+      </div>
+      <p class="muted" style="font-size:13px">Charted something before you signed in?
+      Paste its link and it joins your list.</p>
+      <div id="claimnote"></div>
+    </div>
+  </div>
+</main>
+<footer>Your links keep working whether or not you are signed in.</footer>
+<script type="module" src="/static/me.js"></script>
+<script type="module" src="/static/mine.js"></script>

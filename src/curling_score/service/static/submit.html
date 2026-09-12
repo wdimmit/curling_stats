@@ -6,6 +6,8 @@
 <header>
   <h1>Curling Chart</h1>
   <a href="/games">All games</a>
+  <span style="flex:1"></span>
+  <span id="who" class="muted"></span>
 </header>
 <main>
   <div class="card">
@@ -25,6 +27,7 @@
           <input id="sheet" name="sheet" type="number" min="1" max="8" placeholder="from title">
         </div>
       </div>
+      <div class="row" id="teamrow" hidden style="margin-top:12px"></div>
       <div class="row" style="margin-top:16px">
         <button class="primary" id="go" type="submit">Get my link</button>
         <span class="muted">Processing takes about half an hour the first time a video is seen.</span>
@@ -40,4 +43,5 @@
   no copy beyond what processing needs. Playback on the chart page uses YouTube's
   own player. Do not submit videos you do not have the right to analyse.
 </footer>
-<script src="/static/submit.js"></script>
+<script type="module" src="/static/me.js"></script>
+<script type="module" src="/static/submit.js"></script>

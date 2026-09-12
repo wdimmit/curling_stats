@@ -19,6 +19,10 @@
   ],
   "fieldOverrides": [
     { "collectionGroup": "rate_limits", "fieldPath": "expires_at",
+      "ttl": true, "indexes": [] },
+    { "collectionGroup": "charts", "fieldPath": "overrides", "indexes": [] },
+    { "collectionGroup": "charts", "fieldPath": "overrides_meta", "indexes": [] },
+    { "collectionGroup": "invites", "fieldPath": "expires_at",
       "ttl": true, "indexes": [] }
   ]
 }

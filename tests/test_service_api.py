@@ -383,6 +383,97 @@ class TestCharting:
         assert r.status_code == code and r.json()["ok"] is False
         assert c.get(f"/c/{s}/overrides.json").json() == {"keep": {"x": 1}}
 
+    def test_merging_two_disjoint_shots_never_conflicts(self, world):
+        """Two people charting one game: different shots, no 409, nothing lost."""
+        s = self._ready(world)
+        c = world["client"]
+        a = c.post(f"/c/{s}/overrides.json?merge=1&v=0", json={"0.1.1": {"user_score": 3}})
+        b = c.post(f"/c/{s}/overrides.json?merge=1&v=0", json={"0.1.2": {"user_score": 4}})
+        assert a.status_code == 200 and b.status_code == 200
+        assert c.get(f"/c/{s}/overrides.json").json() == {
+            "0.1.1": {"user_score": 3}, "0.1.2": {"user_score": 4}}
+
+    def test_a_caller_that_was_behind_is_told_the_whole_truth(self, world):
+        s = self._ready(world)
+        c = world["client"]
+        c.post(f"/c/{s}/overrides.json?merge=1&v=0", json={"0.1.1": {"user_score": 3}})
+        r = c.post(f"/c/{s}/overrides.json?merge=1&v=0", json={"0.1.2": {"user_score": 4}})
+        assert r.status_code == 200
+        assert r.json()["overrides"] == {"0.1.1": {"user_score": 3},
+                                         "0.1.2": {"user_score": 4}}
+
+    def test_a_caller_that_was_current_is_not_sent_the_map(self, world):
+        """The single-editor case stays exactly the size it is today."""
+        s = self._ready(world)
+        c = world["client"]
+        r = c.post(f"/c/{s}/overrides.json?merge=1&v=0", json={"0.1.1": {"user_score": 3}})
+        assert r.json() == {"ok": True, "shots": 1, "version": 1}
+
+    def test_a_beacon_is_not_sent_the_map_either(self, world):
+        """It cannot read the reply, so sending one is pure waste."""
+        s = self._ready(world)
+        c = world["client"]
+        c.post(f"/c/{s}/overrides.json?merge=1&v=0", json={"0.1.1": {"user_score": 3}})
+        r = c.post(f"/c/{s}/overrides.json?merge=1", json={"0.1.2": {"user_score": 4}})
+        assert r.status_code == 200 and "overrides" not in r.json()
+
+    def test_null_deletes_a_shot(self, world):
+        s = self._ready(world)
+        c = world["client"]
+        c.post(f"/c/{s}/overrides.json?merge=1&v=0", json={"0.1.1": {"user_score": 3},
+                                                           "0.1.2": {"user_score": 4}})
+        c.post(f"/c/{s}/overrides.json?merge=1&v=1", json={"0.1.1": None})
+        assert c.get(f"/c/{s}/overrides.json").json() == {"0.1.2": {"user_score": 4}}
+
+    @pytest.mark.parametrize("body", [b'{"k": "not a patch"}', b'{"k": 3}', b"[1,2]", b""])
+    def test_bad_merge_bodies_are_400_and_change_nothing(self, world, body):
+        s = self._ready(world)
+        c = world["client"]
+        c.post(f"/c/{s}/overrides.json?v=0", json={"keep": {"x": 1}})
+        r = c.post(f"/c/{s}/overrides.json?merge=1&v=1", content=body,
+                   headers={"Content-Type": "application/json"})
+        assert r.status_code == 400 and r.json()["ok"] is False
+        assert c.get(f"/c/{s}/overrides.json").json() == {"keep": {"x": 1}}
+
+    def test_an_oversized_merge_is_refused(self, world):
+        s = self._ready(world)
+        c = world["client"]
+        big = {"0.1.1": {"note": "x" * 200_000}}
+        r = c.post(f"/c/{s}/overrides.json?merge=1&v=0", json=big)
+        assert r.status_code == 413 and r.json()["ok"] is False
+        assert c.get(f"/c/{s}/overrides.json").json() == {}
+
+    def test_a_view_link_cannot_merge_either(self, world):
+        s = self._ready(world)
+        c = world["client"]
+        share = c.get(f"/c/{s}/timeline.json").json()["chart"]["share_url"].rstrip("/").split("/")[-1]
+        r = c.post(f"/s/{share}/overrides.json?merge=1&v=0", json={"0.1.1": {"user_score": 3}})
+        assert r.status_code == 403
+
+    def test_meta_records_who_and_when_without_touching_the_overrides(self, world):
+        """Attribution has to stay out of the patch: apply_overrides splats it onto the shot."""
+        s = self._ready(world)
+        c = world["client"]
+        c.post(f"/c/{s}/overrides.json?merge=1&v=0", json={"0.1.1": {"user_score": 3}})
+        assert c.get(f"/c/{s}/overrides.json").json() == {"0.1.1": {"user_score": 3}}
+        meta = c.get(f"/c/{s}/overrides_meta.json").json()
+        assert set(meta) == {"0.1.1"} and meta["0.1.1"]["at"].startswith("2026-09-11")
+        # Nothing leaks into the exported shot.
+        shot = c.get(f"/c/{s}/export.json").json()["games"][0]["ends"][0]["shots"][0]
+        assert "by" not in shot and "at" not in shot
+
+    def test_an_unchanged_chart_answers_a_poll_with_304(self, world):
+        """A shared chart is polled every 15s and almost always has no news."""
+        s = self._ready(world)
+        c = world["client"]
+        c.post(f"/c/{s}/overrides.json?merge=1&v=0", json={"0.1.1": {"user_score": 3}})
+        tag = c.get(f"/c/{s}/overrides.json").headers["ETag"]
+        r = c.get(f"/c/{s}/overrides.json", headers={"If-None-Match": tag})
+        assert r.status_code == 304 and not r.content
+        c.post(f"/c/{s}/overrides.json?merge=1&v=1", json={"0.1.2": {"user_score": 4}})
+        r = c.get(f"/c/{s}/overrides.json", headers={"If-None-Match": tag})
+        assert r.status_code == 200 and set(r.json()) == {"0.1.1", "0.1.2"}
+
     def test_export_merges_overrides_into_the_document(self, world):
         s = self._ready(world)
         c = world["client"]
@@ -479,6 +570,35 @@ class TestCatalogueAndAdmin:
         restore(fresh, data)
         assert fresh.get_chart(s).overrides == {"0.1.1": {"user_score": 4}}
 
+    def test_the_backup_carries_accounts_and_rebuilds_the_claims(self, world):
+        """Claims are derived, so they are not exported -- but a restore that
+        did not rebuild them would start handing a team a second chart."""
+        from curling_score.service.records import Invite, Team, User
+        repo = world["repo"]
+        repo.put_user(User(id="uid-1", created_at=T0, email="a@b.c"))
+        repo.put_team(Team(id="t_1", name="Thistles", owner_user_id="uid-1",
+                           created_at=T0, member_ids=["uid-1"]))
+        repo.put_invite(Invite(id="i_1", team_id="t_1", created_by_user_id="uid-1",
+                               created_at=T0, expires_at=T0 + timedelta(days=14)))
+        s = submit(world).json()["slug"]
+        work_through(world)
+        repo.update_chart(s, team_id="t_1")
+        chart = repo.get_chart(s)
+        repo.claim_chart("t_1", chart.source_id, s)
+
+        data = world["client"].get("/api/admin/export", headers=ADMIN).json()
+        assert [u["id"] for u in data["users"]] == ["uid-1"]
+        assert [t["name"] for t in data["teams"]] == ["Thistles"]
+        assert [i["id"] for i in data["invites"]] == ["i_1"]
+        assert "chart_claims" not in data
+
+        from curling_score.service.restore import restore
+        fresh = MemoryRepo()
+        restore(fresh, data)
+        assert fresh.get_team("t_1").member_ids == ["uid-1"]
+        assert fresh.get_invite("i_1").expires_at == T0 + timedelta(days=14)
+        assert fresh.chart_claim("t_1", chart.source_id) == s
+
     def test_playlists_are_watched_and_polled(self, world):
         c = world["client"]
         r = c.post("/api/admin/playlists", headers=ADMIN,
@@ -505,6 +625,25 @@ class TestCatalogueAndAdmin:
         assert "Get my link" in c.get("/").text
         assert "All games" in c.get("/games").text or "games.js" in c.get("/games").text
         assert c.get("/static/site.css").status_code == 200
+        assert "My games" in c.get("/mine").text
+        assert "Join a team" in c.get("/join/i_whatever").text
+
+    def test_every_script_a_page_asks_for_is_actually_served(self, world):
+        """The allowlist is hand-kept, so a new page can reference a 404."""
+        import re
+        c = world["client"]
+        for path in ("/", "/games", "/mine", "/join/i_x"):
+            for src in re.findall(r'src="(/static/[^"]+)"', c.get(path).text):
+                assert c.get(src).status_code == 200, f"{path} asks for {src}"
+
+    def test_the_modules_those_scripts_import_are_served_too(self, world):
+        """A bare `import "./auth.js"` resolves next to the script, not under /static."""
+        import re
+        c = world["client"]
+        for name in ("me.js", "mine.js", "join.js", "submit.js", "games.js", "teams.js"):
+            body = c.get(f"/static/{name}").text
+            for mod in re.findall(r'from "\./([^"]+)"', body):
+                assert c.get(f"/static/{mod}").status_code == 200, f"{name} imports {mod}"
 
 
 class TestTokensWithStraySurroundingWhitespace:

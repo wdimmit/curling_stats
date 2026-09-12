@@ -116,9 +116,99 @@ class Chart:
     source_id: str | None = None
     game_index: int | None = None
     snap_distance_s: float | None = None
+    # The team this chart belongs to, if any. NOT an access-control field:
+    # /c/ stays writable by anyone holding it, signed in or not, and that is
+    # deliberate. What it decides is which chart teammates land on and whose
+    # list it shows up in. Beware `where("team_id", "==", None)` -- Firestore
+    # treats an absent field and a null one as different, so that query misses
+    # every chart written before this field existed.
+    team_id: str | None = None
+    owner_user_id: str | None = None
+    # This chart's link now shows another chart: the team already had one for
+    # this game. The link keeps working -- lookup follows the pointer -- so
+    # nobody's bookmark ever breaks.
+    superseded_by: str | None = None
+    # The same collision, but this chart already had grading in it. Two
+    # people's charting is never merged automatically; a banner is recoverable
+    # and a bad merge is not.
+    duplicate_of: str | None = None
     overrides: dict = field(default_factory=dict)
+    # Who last touched each override key, and when: {key: {"by", "at"}}. Kept
+    # beside the overrides rather than inside them because apply_overrides
+    # splats a patch straight onto the shot, so anything stored in there would
+    # flow into export.json and on into training labels. `at` is an ISO string
+    # -- restore.py's field revival is one level deep and will not descend.
+    overrides_meta: dict = field(default_factory=dict)
     overrides_version: int = 0
     submitter_ip_hash: str | None = None
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class User:
+    """Somebody who signed in.
+
+    ``id`` is the Firebase UID, not the Google ``sub``: it stays put if a
+    second sign-in provider is ever linked, and it is what every Firebase API
+    speaks. Using it as the document id means no lookup table.
+    """
+
+    id: str
+    created_at: datetime
+    email: str | None = None
+    email_verified: bool = False
+    name: str | None = None
+    picture_url: str | None = None
+    last_seen_at: datetime | None = None
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class Team:
+    """A few people who chart together, and the games they share.
+
+    Members are a list on the team rather than documents of their own. The
+    question asked most often is "is this person on this chart's team", and the
+    team id comes from the chart -- so this answers it with one read of a
+    document we usually already have, and ArrayUnion/ArrayRemove make joining
+    and leaving atomic without a transaction. Reach for membership documents
+    when roles or joined-at dates are wanted; the repo's team_members() and
+    teams_for_user() exist so that swap stays a two-method change.
+    """
+
+    id: str
+    name: str
+    owner_user_id: str
+    created_at: datetime
+    member_ids: list = field(default_factory=list)
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class Invite:
+    """A link that adds whoever opens it to a team."""
+
+    id: str
+    team_id: str
+    created_by_user_id: str
+    created_at: datetime
+    expires_at: datetime | None = None
+    max_uses: int | None = None
+    uses: int = 0
+    revoked_at: datetime | None = None
+
+    def usable(self, now: datetime) -> bool:
+        if self.revoked_at is not None:
+            return False
+        if self.expires_at is not None and self.expires_at <= now:
+            return False
+        return self.max_uses is None or self.uses < self.max_uses
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

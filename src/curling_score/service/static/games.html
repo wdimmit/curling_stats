@@ -7,12 +7,16 @@
   <h1>Curling Chart</h1>
   <a href="/">Submit a link</a>
   <span style="flex:1"></span>
+  <span id="who" class="muted"></span>
   <select id="league"><option value="">All leagues</option></select>
 </header>
 <main>
-  <p class="muted">Every game we've processed. Click one to get your own charting link —
-  each link is private to whoever has it, so a team can grade a game without anyone
+  <p class="muted">Every game we've processed. <strong>Watch</strong> steps through a game
+  shot by shot — no link to keep, nothing to fill in. <strong>Chart</strong> gets you your own
+  charting link, private to whoever has it, so a team can grade a game without anyone
   else seeing.</p>
+  <div class="row" id="teamrow" hidden style="margin-bottom:12px"></div>
   <div id="list" class="card"><span class="muted">Loading…</span></div>
 </main>
-<script src="/static/games.js"></script>
+<script type="module" src="/static/me.js"></script>
+<script type="module" src="/static/games.js"></script>

@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from curling_score.service.records import (
-    Chart, Job, Run, Source, WatchedPlaylist, Worker,
+    Chart, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
 )
 from curling_score.service.repo import MemoryRepo
 
@@ -37,7 +37,8 @@ def _firestore_repo():
     client = firestore.Client(project=os.environ.get("GCP_PROJECT", "curling-test"))
     repo = FirestoreRepo(client=client)
     for col in ("vod_runs", "jobs", "sources", "charts", "share_slugs",
-                "workers", "watched_playlists", "rate_limits"):
+                "workers", "watched_playlists", "rate_limits",
+                "users", "teams", "invites", "chart_claims"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -192,6 +193,201 @@ class TestCharts:
     def test_saving_to_a_missing_chart_raises(self, repo):
         with pytest.raises(KeyError):
             repo.save_overrides("nope", {}, None, T0)
+
+
+class TestMergeOverrides:
+    """Per-key merging, so two people charting one game cannot erase each other."""
+
+    def test_a_dotted_key_stays_one_flat_key(self, repo):
+        """Override keys are "<game>.<end>.<shot>".
+
+        Firestore reads a dot in a field path as a step into a nested map, so
+        the obvious update writes {"0": {"1": {"1": ...}}} and every dotted
+        lookup downstream -- apply_overrides included -- then finds nothing and
+        the chart reads as ungraded. The key must survive whole.
+        """
+        repo.put_chart(chart())
+        repo.merge_overrides("c_1", {"0.1.1": {"user_score": 3}}, [], {}, at(1))
+        assert repo.get_chart("c_1").overrides == {"0.1.1": {"user_score": 3}}
+
+    def test_a_plain_key_works_too(self, repo):
+        """The one that passes even with the nesting bug -- both, or neither proves much."""
+        repo.put_chart(chart())
+        repo.merge_overrides("c_1", {"plain": {"x": 1}}, [], {}, at(1))
+        assert repo.get_chart("c_1").overrides == {"plain": {"x": 1}}
+
+    def test_merging_another_key_leaves_the_first_alone(self, repo):
+        """The whole point: disjoint edits do not collide."""
+        repo.put_chart(chart())
+        repo.merge_overrides("c_1", {"0.1.1": {"user_score": 3}}, [], {}, at(1))
+        version, merged, ok = repo.merge_overrides("c_1", {"0.1.2": {"user_score": 4}},
+                                                   [], {}, at(2))
+        assert ok and version == 2
+        assert merged == {"0.1.1": {"user_score": 3}, "0.1.2": {"user_score": 4}}
+        assert repo.get_chart("c_1").overrides == merged
+
+    def test_merging_the_same_key_replaces_the_shot(self, repo):
+        """A shot moves as a unit: stones and delivered_stone_index index each other."""
+        repo.put_chart(chart())
+        repo.merge_overrides("c_1", {"0.1.1": {"user_score": 3, "note": "wide"}},
+                             [], {}, at(1))
+        _v, merged, _ok = repo.merge_overrides("c_1", {"0.1.1": {"user_score": 1}},
+                                               [], {}, at(2))
+        assert merged == {"0.1.1": {"user_score": 1}}
+
+    def test_removing_a_key_removes_its_meta_too(self, repo):
+        repo.put_chart(chart())
+        repo.merge_overrides("c_1", {"0.1.1": {"user_score": 3}}, [],
+                             {"0.1.1": {"by": "u1", "at": "2026-09-11T12:00:00+00:00"}}, at(1))
+        assert repo.get_chart("c_1").overrides_meta["0.1.1"]["by"] == "u1"
+        _v, merged, _ok = repo.merge_overrides("c_1", {}, ["0.1.1"], {}, at(2))
+        assert merged == {}
+        got = repo.get_chart("c_1")
+        assert got.overrides == {} and got.overrides_meta == {}
+
+    def test_meta_lands_under_the_same_dotted_key(self, repo):
+        repo.put_chart(chart())
+        repo.merge_overrides("c_1", {"0.1.1": {"user_score": 3}}, [],
+                             {"0.1.1": {"by": "u1", "at": "2026-09-11T12:00:00+00:00"}}, at(1))
+        assert list(repo.get_chart("c_1").overrides_meta) == ["0.1.1"]
+
+    def test_removing_a_key_that_is_not_there_is_fine(self, repo):
+        repo.put_chart(chart())
+        _v, merged, ok = repo.merge_overrides("c_1", {}, ["nope"], {}, at(1))
+        assert ok and merged == {}
+
+    def test_the_version_counts_up_alongside_save_overrides(self, repo):
+        repo.put_chart(chart())
+        repo.save_overrides("c_1", {"a": {"x": 1}}, 0, at(1))
+        version, merged, ok = repo.merge_overrides("c_1", {"b": {"y": 2}}, [], {}, at(2))
+        assert ok and version == 2 and merged == {"a": {"x": 1}, "b": {"y": 2}}
+        ok2, version2, _ = repo.save_overrides("c_1", {"c": {}}, 2, at(3))
+        assert ok2 and version2 == 3
+
+    def test_the_merged_map_is_a_copy(self, repo):
+        """Handing out the store's own dict is a divergence Firestore cannot have."""
+        repo.put_chart(chart())
+        _v, merged, _ok = repo.merge_overrides("c_1", {"a": {"x": 1}}, [], {}, at(1))
+        merged["a"]["x"] = 999
+        assert repo.get_chart("c_1").overrides == {"a": {"x": 1}}
+
+    def test_merging_into_a_missing_chart_raises(self, repo):
+        with pytest.raises(KeyError):
+            repo.merge_overrides("nope", {"a": {}}, [], {}, T0)
+
+
+def user(**kw):
+    base = dict(id="fbuid1", created_at=T0, email="a@example.org", email_verified=True)
+    base.update(kw)
+    return User(**base)
+
+
+def team(**kw):
+    base = dict(id="t_1", name="Thistles", owner_user_id="fbuid1", created_at=T0,
+                member_ids=["fbuid1"])
+    base.update(kw)
+    return Team(**base)
+
+
+class TestUsers:
+    def test_put_get_and_update(self, repo):
+        repo.put_user(user())
+        assert repo.get_user("fbuid1").email == "a@example.org"
+        assert repo.get_user("nope") is None
+        repo.update_user("fbuid1", name="Sarah", last_seen_at=at(60))
+        got = repo.get_user("fbuid1")
+        assert got.name == "Sarah" and got.last_seen_at == at(60)
+
+    def test_putting_twice_is_idempotent(self, repo):
+        """Two requests can race the first-sight upsert; neither may fail."""
+        repo.put_user(user())
+        repo.put_user(user(name="Sarah"))
+        assert repo.get_user("fbuid1").name == "Sarah"
+
+
+class TestTeams:
+    def test_put_get_and_update(self, repo):
+        repo.put_team(team())
+        assert repo.get_team("t_1").name == "Thistles"
+        assert repo.get_team("nope") is None
+        repo.update_team("t_1", name="Renamed")
+        assert repo.get_team("t_1").name == "Renamed"
+
+    def test_members_come_and_go(self, repo):
+        repo.put_team(team())
+        repo.add_member("t_1", "fbuid2")
+        assert sorted(repo.team_members("t_1")) == ["fbuid1", "fbuid2"]
+        repo.remove_member("t_1", "fbuid2")
+        assert repo.team_members("t_1") == ["fbuid1"]
+
+    def test_adding_the_same_member_twice_is_idempotent(self, repo):
+        """Two people can accept one invite at the same moment."""
+        repo.put_team(team())
+        repo.add_member("t_1", "fbuid2")
+        repo.add_member("t_1", "fbuid2")
+        assert sorted(repo.team_members("t_1")) == ["fbuid1", "fbuid2"]
+
+    def test_removing_someone_who_is_not_a_member_is_a_no_op(self, repo):
+        repo.put_team(team())
+        repo.remove_member("t_1", "stranger")
+        assert repo.team_members("t_1") == ["fbuid1"]
+
+    def test_teams_for_user_finds_every_one(self, repo):
+        repo.put_team(team())
+        repo.put_team(team(id="t_2", name="Rocks", member_ids=["fbuid1", "fbuid2"]))
+        repo.put_team(team(id="t_3", name="Other", member_ids=["fbuid9"]))
+        assert sorted(t.id for t in repo.teams_for_user("fbuid1")) == ["t_1", "t_2"]
+        assert [t.id for t in repo.teams_for_user("fbuid2")] == ["t_2"]
+        assert repo.teams_for_user("nobody") == []
+
+
+class TestInvites:
+    def _invite(self, **kw):
+        base = dict(id="i_1", team_id="t_1", created_by_user_id="fbuid1", created_at=T0)
+        base.update(kw)
+        return Invite(**base)
+
+    def test_put_get_and_update(self, repo):
+        repo.put_invite(self._invite())
+        assert repo.get_invite("i_1").team_id == "t_1"
+        assert repo.get_invite("nope") is None
+        repo.update_invite("i_1", uses=1)
+        assert repo.get_invite("i_1").uses == 1
+
+    def test_invites_for_team(self, repo):
+        repo.put_invite(self._invite())
+        repo.put_invite(self._invite(id="i_2"))
+        repo.put_invite(self._invite(id="i_3", team_id="t_9"))
+        assert sorted(i.id for i in repo.invites_for_team("t_1")) == ["i_1", "i_2"]
+
+
+class TestChartClaims:
+    """One chart per game per team, decided by whoever gets there first."""
+
+    def test_the_first_claim_wins_and_later_ones_are_told_so(self, repo):
+        assert repo.claim_chart("t_1", "s_1", "c_1") == "c_1"
+        assert repo.claim_chart("t_1", "s_1", "c_2") == "c_1"
+
+    def test_reading_a_claim_back(self, repo):
+        repo.claim_chart("t_1", "s_1", "c_1")
+        assert repo.chart_claim("t_1", "s_1") == "c_1"
+        assert repo.chart_claim("t_1", "s_other") is None
+        assert repo.chart_claim("t_other", "s_1") is None
+
+    def test_different_owners_of_the_same_game_do_not_collide(self, repo):
+        assert repo.claim_chart("t_1", "s_1", "c_1") == "c_1"
+        assert repo.claim_chart("t_2", "s_1", "c_2") == "c_2"
+
+
+class TestChartsByOwner:
+    def test_by_team_and_by_user(self, repo):
+        repo.put_chart(chart(id="c_1", share_slug="sh_1", team_id="t_1"))
+        repo.put_chart(chart(id="c_2", share_slug="sh_2", team_id="t_1"))
+        repo.put_chart(chart(id="c_3", share_slug="sh_3", owner_user_id="fbuid1"))
+        repo.put_chart(chart(id="c_4", share_slug="sh_4"))
+        assert sorted(c.id for c in repo.charts_for_team("t_1")) == ["c_1", "c_2"]
+        assert [c.id for c in repo.charts_for_owner("fbuid1")] == ["c_3"]
+        assert repo.charts_for_team("t_none") == []
 
 
 class TestSources:

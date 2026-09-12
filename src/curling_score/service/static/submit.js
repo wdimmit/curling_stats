@@ -1,5 +1,15 @@
 "use strict";
+/* A module, so a submission can carry who made it -- otherwise a signed-in
+ * person's own link would not show up in their list. Deferred like every
+ * module, which is fine: the form it binds to is parsed by then. */
+import { authedFetch, onUser } from "./auth.js";
+import { teamPicker } from "./teams.js";
+
 const $ = id => document.getElementById(id);
+
+/* Which team this goes to, when the person is on one. */
+const picker = teamPicker($("teamrow"));
+onUser((user, ready) => { if (ready) picker.refresh(user); });
 
 function parseStart(text) {
   text = (text || "").trim();
@@ -20,10 +30,12 @@ $("f").addEventListener("submit", async ev => {
   const body = { url: $("url").value.trim() };
   if (start !== null) body.start_s = start;
   if ($("sheet").value) body.sheet = parseInt($("sheet").value, 10);
+  const team = picker.value();
+  if (team) body.team_id = team;
   $("go").disabled = true;
   $("msg").innerHTML = `<div class="muted" style="margin-top:12px">Checking the video…</div>`;
   try {
-    const res = await fetch("/api/submissions", {
+    const res = await authedFetch("/api/submissions", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
