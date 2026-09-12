@@ -993,17 +993,19 @@ function boot() { Promise.all([
     const open = document.body.dataset.menu === "open";
     document.body.dataset.menu = open ? "" : "open";
   };
-  // Anything else you touch closes it, including a control inside it.
+  // Closing on pointerdown would hide #menu before the click could land, so the
+  // control never fires. Close on click instead -- after it has acted. #playback
+  // is a sibling panel, not a child of #menu, so it needs its own guard, and it
+  // deliberately stays open while you adjust the settings in it.
   addEventListener("pointerdown", ev => {
     if (document.body.dataset.menu !== "open") return;
     if (ev.target.closest("#menuBtn")) return;
-    if (ev.target.closest("#menu") && ev.target.tagName === "DIV") return;
-    // #playback is a sibling panel raised alongside #menu, not a child of
-    // it, so closest("#menu") misses it -- give it its own guard or the
-    // autoplay checkbox and lead-in field would be unreachable on a phone.
+    if (ev.target.closest("#menu")) return;
     if (ev.target.closest("#playback")) return;
     document.body.dataset.menu = "";
   }, true);
+  for (const ev of ["click", "change"])
+    $("menu").addEventListener(ev, () => { document.body.dataset.menu = ""; });
   $("showTrack").onchange = ev => { state.showTrack = ev.target.checked;
                                     savePrefs(); drawHouse(); };
   $("autoplay").onchange = ev => { state.autoplay = ev.target.checked; savePrefs(); };

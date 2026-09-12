@@ -122,6 +122,9 @@ tr.total td { border-top:2px solid var(--line); font-weight:650; }
 #menu { display: contents; }
 #menuBtn { display: none; }
 .transport { margin-top: 10px; }
+/* Base is (1,0,0); the phone's open-state `margin: 0` is (1,1,1) and still
+   wins, so this only takes effect once the inline style it replaces is gone. */
+#playback { margin-top: 6px; }
 
 /* --- phone-only elements: present, wired, dormant on desktop ------------ */
 #stoneChip, #sheetHandle, #renumbered, #orderRow, .housebar { display: none; }
@@ -171,8 +174,8 @@ body[data-mode="view"] #house { cursor:default; }
     border-radius: 0 0 10px 10px;
     box-shadow: 0 6px 24px rgb(0 0 0 / .18); }
   #menu > * { width: 100%; height: 44px; }
-  #menu .row { height: auto; }
   #blanks { min-height: 44px; }
+  #playback label.chk { min-height: 44px; }
 
   #stoneChip { display: grid; place-items: center; flex: 0 0 40px;
                width: 40px; height: 40px; border-radius: 7px; font-size: 15px;
@@ -183,15 +186,16 @@ body[data-mode="view"] #house { cursor:default; }
   #stoneChip.unknown { background: var(--panel); color: var(--warn);
                        border: 2px dashed var(--warn); }
 
-  main { display: block; padding: 0; margin: 48px 0 0;
+  main { display: block; padding: 0; margin: 0;
          height: calc(100dvh - 48px); }
   main > .card { border: 0; border-radius: 0; padding: 0; background: none; }
 
   /* the video keeps its own box at the top; the house fills the gap down to
      the sheet, and #chart is lifted out of flow onto the bottom of the screen */
   #playCard .shots { display: none; }
-  #houseCard { position: absolute; top: calc(48px + 56.25vw); bottom: 256px;
+  #houseCard { position: fixed; top: calc(48px + 56.25vw); bottom: 256px;
                left: 0; right: 0; overflow: hidden; min-height: 280px; }
+  #houseCard .tools { display: none; }
   #house { height: 100%; }
   #houseCard .muted { display: none; }
 
@@ -201,14 +205,14 @@ body[data-mode="view"] #house { cursor:default; }
 
   #chart { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
            height: 256px; border-radius: 16px 16px 0 0; border: 0;
-           border-top: 1px solid var(--line);
+           border-top: 1px solid var(--line); background: var(--panel);
            box-shadow: 0 -3px 14px rgb(0 0 0 / .08);
            padding: 0 12px calc(84px + env(safe-area-inset-bottom));
            overflow: hidden; }
   #chart h2, #chart h3, #chart dl, #chart details,
   #chart #autoType, #orderBox h3, #orderBox .muted { display: none; }
   #orderBox #moveBefore { position: absolute; width: 1px; height: 1px;
-                          opacity: 0; pointer-events: none; }
+                          min-height: 0; opacity: 0; pointer-events: none; }
 
   #sheetHandle { display: block; width: 100%; height: 32px; border: 0;
                  background: none; padding: 0; }
@@ -221,12 +225,11 @@ body[data-mode="view"] #house { cursor:default; }
                bottom: calc(24px + env(safe-area-inset-bottom));
                margin: 0; gap: 8px; flex-wrap: nowrap; }
   .transport button { height: 48px; flex: 0 0 56px; padding: 0; }
-  .transport #markCharted { flex: 1 1 auto; background: var(--accent);
-                            color: #fff; border-color: transparent; }
   .transport #label, .transport #link { display: none; }
   .transport #prev { order: 1; }
   .transport #replay { order: 2; }
-  .transport #markCharted { order: 3; }
+  .transport #markCharted { order: 3; flex: 1 1 auto; background: var(--accent);
+                            color: #fff; border-color: transparent; }
   .transport #next { order: 4; }
 
   /* touch targets */
