@@ -49,6 +49,15 @@ WEIGHT_BY_REASON = {
     # thrown short, and also the only one a stone pushed back between ends
     # could satisfy, so the rules should prefer any other account.
     "house-appear": 0.45,
+    # A throw seen leaving the far house with no arrival seen here. Real, but
+    # placed only by inference: its time is the start of the slide and its
+    # rest, if any, is read off the house. Anything actually seen arriving in
+    # this house outranks it -- when a release went unpaired because its
+    # arrival came late or its handle colour was misread, the arrival is the
+    # record and the release must lose the tie, not replace it.
+    "release-add": 0.4,
+    "release-remove": 0.35,
+    "hogged": 0.3,
 }
 DEFAULT_WEIGHT = 0.5
 
@@ -71,9 +80,30 @@ DEFAULT_WEIGHT = 0.5
 # discards individual stones, where it is not.
 MIN_SEPARATION_S = 10.0
 
+# Two candidates of the same colour cannot both be kept as neighbours -- unless
+# a rock of the other colour was thrown between them and never seen: hogged,
+# lost under the sweepers, or anything else that leaves no trace in the house.
+# Dropping one of the two was the only option, and it discarded a real
+# delivery every time (game 3 end 7's takeout at 6174). The time between them
+# says which case it is: two rocks thrown in turn are one interval apart, and
+# a rock missed between them makes it two. Judged against the end's own
+# median interval, because how long a team takes over a rock varies a lot.
+MISSED_GAP_FACTOR = 1.6
+
 
 def weight(dv) -> float:
     return WEIGHT_BY_REASON.get(getattr(dv, "reason", ""), DEFAULT_WEIGHT)
+
+
+def missed_gap_s(items, factor: float = MISSED_GAP_FACTOR,
+                 min_separation_s: float = MIN_SEPARATION_S) -> float:
+    """The shortest gap between two same-colour candidates that can hold a
+    missed rock of the other colour, judged against this end's own rhythm."""
+    ts = sorted(d.t_enter for d in items)
+    gaps = sorted(b - a for a, b in zip(ts, ts[1:]) if b - a >= min_separation_s)
+    if not gaps:
+        return float("inf")
+    return factor * gaps[len(gaps) // 2]
 
 
 def fit_end(deliveries, per_end: int = C.STONES_PER_END,
@@ -82,32 +112,43 @@ def fit_end(deliveries, per_end: int = C.STONES_PER_END,
     """The longest run of candidates that the rules permit, in time order.
 
     Ties on length are broken by evidence, so where the rules leave a choice
-    the better-attested candidate survives.
+    the better-attested candidate survives. Two candidates of the same colour
+    may follow one another only when the time between them has room for the
+    other team's unseen rock, which is then counted against that team's eight
+    and the end's sixteen; :func:`shots.from_deliveries` shows it as a blank.
     """
     items = sorted(deliveries, key=lambda d: d.t_enter)
     if not items:
         return []
+    gap_for_missed = missed_gap_s(items, min_separation_s=min_separation_s)
 
     # State is the last candidate kept -- which fixes both whose turn it is and
-    # when they threw -- plus how many each team has thrown. Keying on the
-    # index rather than just the colour is what lets the spacing rule apply:
-    # two paths reaching the same colour and counts can have got there at
-    # different times, and only the time says whether another stone can follow.
+    # when they threw -- plus how many each team has thrown, unseen rocks
+    # included. Keying on the index rather than just the colour is what lets
+    # the spacing rule apply: two paths reaching the same colour and counts can
+    # have got there at different times, and only the time says whether
+    # another stone can follow. The value is (real candidates kept, evidence,
+    # chain): the unseen rocks fill slots but are not the thing being maximised.
     best: dict[tuple[int, int, int], tuple[int, float, tuple]] = {
         (-1, 0, 0): (0, 0.0, ())
     }
     for i, dv in enumerate(items):
         for (last_i, nr, ny), (count, wsum, chain) in list(best.items()):
+            thrown = {"red": nr, "yellow": ny}
             if last_i >= 0:
                 prev = items[last_i]
-                if dv.color == prev.color:
-                    continue  # a team cannot throw twice in a row
                 if dv.t_enter - prev.t_enter < min_separation_s:
                     continue  # no two stones are thrown that close together
-            thrown = {"red": nr, "yellow": ny}
-            if thrown[dv.color] >= per_team or count >= per_end:
-                continue
+                if dv.color == prev.color:
+                    if dv.t_enter - prev.t_enter < gap_for_missed:
+                        continue  # a team cannot throw twice in a row
+                    # Room for the other team's rock between them: an unseen one.
+                    other = "yellow" if dv.color == "red" else "red"
+                    thrown[other] += 1
             thrown[dv.color] += 1
+            if (thrown["red"] > per_team or thrown["yellow"] > per_team
+                    or thrown["red"] + thrown["yellow"] > per_end):
+                continue
             key = (i, thrown["red"], thrown["yellow"])
             cand = (count + 1, wsum + weight(dv), chain + (i,))
             have = best.get(key)

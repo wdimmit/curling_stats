@@ -50,6 +50,9 @@ const TYPES = [
   // Curl Coach's "non scored shots": charted, but never counted in a
   // percentage, because there was no shot to make.
   { id:"through",     name:"Throw away",    group:"Other", unscored:true },
+  // Seen thrown, never reached the house: the detector saw it leave the
+  // far house and nothing arrive. Scored, because there was a shot to make.
+  { id:"hogged",      name:"Hogged",        group:"Other" },
   { id:"not_thrown",  name:"Not thrown",    group:"Other", unscored:true },
   { id:"unknown",     name:"Unknown",       group:"Other", unscored:true },
 ];
@@ -743,6 +746,9 @@ function render() {
   else if (s?.color_inferred)
     flags.push(`No new stone appeared, so the thrower comes from the
       alternation rule rather than from seeing the rock arrive.`);
+  if (s?.reason === "hogged")
+    flags.push(`This rock was seen leaving the far house and never arrived:
+      hogged, or lost on the way. The video starts at the release.`);
   if (s?.shot_type === "unknown" && !isBlank(s))
     flags.push(`Too little of the flight was seen to name the shot — pick a
       type if you can tell from the video.`);

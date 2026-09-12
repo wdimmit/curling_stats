@@ -282,19 +282,10 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
 
 
 def _enable_stack_dumps():
-    """Let `kill -USR1` print every thread's stack to the log.
+    """See :func:`curling_score.diagnostics.enable_stack_dumps`."""
+    from curling_score.diagnostics import enable_stack_dumps
 
-    A worker that stops making progress looks exactly like one doing slow
-    work from the outside. This is the cheapest way to tell the difference on
-    a machine where attaching a debugger needs privileges the container does
-    not have.
-    """
-    import faulthandler
-    import signal
-
-    faulthandler.enable()
-    if hasattr(faulthandler, "register"):
-        faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
+    enable_stack_dumps()
 
 
 def main(argv=None) -> int:

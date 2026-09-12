@@ -885,3 +885,87 @@ edge is not running.
 
 Every end's detection span changes with the run-up, so the detection cache
 misses once for every game. `PIPELINE_VERSION` 2026.09.5.
+
+
+## Hogged rocks: the throw is visible where the arrival is not (2026-09-12)
+
+The third hosted game (Skip's Choice League, sheet 5) opened end 2 with a red
+that never crossed the hog line and was taken out of play. Neither house camera
+can see a hogged rock: it stops between the hog lines, outside both views. The
+end read as fifteen rocks starting with a yellow, every thrower one slot off,
+and the end's hammer contradicted the score before it.
+
+**The throw is in the picture.** The broadcast frame carries end-on cameras
+that show the delivery plainly, but they would need a new model. The cheaper
+source is the overhead panel of the *thrower's own* house: the slide starts in
+the hack behind that house and the stone is released before the near hog line,
+so every delivery crosses that panel from its back edge up-sheet at about
+2 m/s -- and the panel already has the detector and the calibration. Measured
+on cached detections: releases enter within 0.1 m of the back edge at 1.5-2.1
+m/s and are followed 4.5-6.7 m; a red-jacketed sweeper beside a release is
+also picked up climbing at 2 m/s but starts mid-panel, which the entry test
+refuses. Release to arrival was 18-19 s on the two deliveries timed; the club
+says 6 s is possible and 10-15 s usual, so the pairing window is 6-25 s.
+
+On the hogged end itself, before any code: releases at 1109 (red), 1162
+(yellow) and 1208 (red) against arrivals at 1180 (yellow) and 1226 (red). The
+red at 1109 has no arrival. That is the hogged rock, timed to the second.
+
+**What was built.** `detect/release.py` watches the thrower's panel at 5 fps
+for stones leaving that way and pairs each with an arrival of its colour in
+the window; a release with no arrival becomes a delivery with reason `hogged`,
+timed at the release (which is also where a viewer wants the video to start),
+resting beyond the hog line so the house read after it is unchanged, and typed
+`hogged` by the classifier. It enters the rules as an ordinary candidate, so
+the alternation fit places it and the thrower labels come out right.
+
+**The fit no longer has to drop a real rock.** Two same-colour candidates as
+neighbours used to force the fit to discard one, and every case examined
+(end 7's takeout, this one) was a real rock lost between them. Now the time
+between them decides: at 1.6 times the end's own median interval or more,
+there was room for the other team's rock, which is counted against that
+team's eight and shown as a blank. Closer than that, one of the two is still a
+phantom and the weaker goes.
+
+
+**Two things the first run taught.** The run-up added yesterday began where
+the previous end's *house emptied*, and end 1's house was still being cleared
+until 1170 -- a minute after the hogged red left the hack. Teams throw the next
+end's first rock while the far house is still being cleared, so the run-up now
+begins when the previous end's last rock came to rest. And an unpaired release
+is not yet a hogged rock: the house camera loses arrivals too. Each is settled
+by what the far house did in the half-minute after the throw -- a stone of its
+colour appearing means it arrived unseen (`release-add`, rested on that stone),
+a stone vanishing means it hit and ran through (`release-remove`), and no
+change means hogged. Timed from the start of the slide the lag ran 11-24 s
+across the ends measured, so the window is 6-30 s.
+
+**On the hogged end**: twelve releases seen of sixteen throws, eleven paired
+11-19 s to their arrivals, and the red at 1109 with no arrival and no change in
+the house. It is rock 1; the end is sixteen. A second unpaired "red" at 1616 is
+the yellow's release with the handle colour misread -- the yellow arrives 18 s
+later, no red does, and red already has eight -- and the eight-per-team rule
+drops it without help.
+
+
+**Order matters.** Paired before the second pass, an unpaired release stood
+in for an arrival the gap search would have recovered, and by filling the gap
+it stopped the search from running: seven ends across three games swapped a
+real arrival for a release-derived stand-in at the slide time. Pairing now
+runs after the second pass, against everything the house offered. Release
+candidates also weigh less than any arrival route, so where a release went
+unpaired because its arrival came late or its handle colour was misread, the
+arrival is the record and the release loses the tie.
+
+**Across the four games**, previous pipeline against this one on the same
+detections: the hogged game 92 -> 96 of 96; the playdown 141 -> 144 of 144; the
+championship 128 -> 128; the reference 202 -> 204 with every hand-confirmed
+delivery and non-delivery unchanged. Release detection sees 10-16 of each
+end's 16 throws and pairs all but the ones it is meant to find.
+
+**A hang, intermittent.** One local rerun of the playdown stalled twenty
+minutes into a cached run -- 75 of 77 threads in futex wait, GPU idle -- and a
+second run of the same command finished in two. The CLI had no way to dump
+its stacks, so it does now (`diagnostics.enable_stack_dumps`, shared with the
+worker). Whether this is the PyAV deadlock by another route or something else
+is open until it recurs with the dump armed.

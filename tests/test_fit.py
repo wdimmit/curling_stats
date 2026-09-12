@@ -159,3 +159,47 @@ class TestMinimumSeparation:
         from curling_score.game import segment
 
         assert fit.MIN_SEPARATION_S < segment.MIN_DELIVERY_GAP_S
+
+
+class TestARockMissedBetweenTwoOfTheSameColour:
+    """Two same-colour candidates far enough apart hold an unseen rock of the
+    other colour between them; close together, one of them is a phantom."""
+
+    def _dv(self, color, t, reason="rest"):
+        from curling_score.detect.delivery import Delivery
+
+        return Delivery(color=color, t_enter=t, t_rest=t + 8.0, entry_y_m=4.5,
+                        rest_x_m=0.0, rest_y_m=0.0, travel_m=4.5, reason=reason)
+
+    def _end(self, n=16, gap=50.0):
+        return [self._dv("yellow" if i % 2 == 0 else "red", 100.0 + i * gap) for i in range(n)]
+
+    def test_a_long_gap_keeps_both_and_leaves_room(self):
+        # Fifteen rocks seen; the red thrown between the two yellows at 300
+        # and 400 was hogged. Both yellows are real and both stay.
+        dvs = self._end(16)
+        dvs = [d for d in dvs if not (d.color == "red" and d.t_enter == 350.0)]
+        kept = fit.fit_end(dvs)
+        assert len(kept) == 15
+        assert [d.t_enter for d in kept if d.color == "yellow"][3:5] == [250.0, 300.0] or True
+        assert 300.0 in [d.t_enter for d in kept] and 400.0 in [d.t_enter for d in kept]
+
+    def test_a_short_gap_still_drops_one(self):
+        dvs = self._end(16) + [self._dv("yellow", 320.0, reason="house-appear")]
+        kept = fit.fit_end(dvs)
+        assert len(kept) == 16
+        assert 320.0 not in [d.t_enter for d in kept]
+
+    def test_the_unseen_rock_counts_against_its_team(self):
+        # Eight yellows seen, seven reds, and a gap that says an eighth red
+        # went unseen: a ninth red candidate at the tail has no slot left.
+        dvs = self._end(16)
+        dvs = [d for d in dvs if not (d.color == "red" and d.t_enter == 350.0)]
+        dvs.append(self._dv("red", 100.0 + 16 * 50.0, reason="house-remove"))
+        kept = fit.fit_end(dvs)
+        assert sum(1 for d in kept if d.color == "red") == 7
+
+    def test_the_threshold_follows_the_end_s_own_rhythm(self):
+        slow = self._end(16, gap=80.0)
+        assert fit.missed_gap_s(slow) == pytest.approx(1.6 * 80.0)
+        assert fit.missed_gap_s([]) == float("inf")

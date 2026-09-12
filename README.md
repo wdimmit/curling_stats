@@ -27,6 +27,7 @@ strip down the middle of the frame. Everything is read from those two panels.
 | Calibrate | `geometry/calibrate.py` | Fit pixels→metres from the painted rings |
 | Detect | `detect/rocks.py` | Find stone **handles** by colour |
 | Rest | `detect/rest.py` | Track stones over time; find the configurations that held |
+| Release | `detect/release.py` | Watch the *thrower's* house for stones leaving: a throw with no arrival is a hogged rock |
 | Segment | `game/segment.py` | Split the stream into games and ends |
 | Shots | `game/shots.py` | Turn rest states into an ordered, attributed shot sequence |
 | Rules | `game/rules.py` | Scoring, hammer, shot→player — pure logic, no CV |
@@ -162,10 +163,11 @@ the detector could not read and grade the shot as a coach would.
   lead-in (10 s by default, adjustable in the header), so you see the call and
   the delivery rather than a stone already at rest. One embedded player is
   reused throughout — navigating never reloads it.
-- **Shot types.** The detector offers only `draw`, `guard`, `hit`, `through` or
-  `unknown`, from where the stone stopped, how fast it entered and what it
-  moved. The full Curl Coach taxonomy (peel, freeze, come around, run back…) is
-  yours to pick, because those describe what was *called*.
+- **Shot types.** The detector offers only `draw`, `guard`, `hit`, `through`,
+  `hogged` or `unknown`, from where the stone stopped, what it moved, and --
+  for a hogged rock -- from having seen it thrown and never arrive. The full
+  Curl Coach taxonomy (peel, freeze, come around, run back…) is yours to pick,
+  because those describe what was *called*.
 - **Grading** is Curl Coach's 0–4 per shot, with a miss reason and a note. The
   Report view groups every player's shots by type and gives an average and a
   shooting percentage (`points ÷ 4 × shots graded`). Ungraded shots count as

@@ -65,7 +65,7 @@ def _review(args) -> int:
     from pathlib import Path
 
     from curling_score.analyze import _proxy_setups
-    from curling_score.detect import delivery
+    from curling_score.detect import delivery, release, sequence
     from curling_score.game import (
         fit, misses, profile, secondpass, segment, shots as shots_mod,
     )
@@ -100,7 +100,6 @@ def _review(args) -> int:
         for end in game.ends:
             setup = read_setups[end.house]
             from_s = analyze_mod.run_up_from(prev_end_s, end.start_s)
-            prev_end_s = end.end_s
             seq = _detect_end(read_path, setup, end, args.fps, detector, from_s)
             found = [
                 d for d in delivery.find_deliveries(
@@ -115,10 +114,18 @@ def _review(args) -> int:
             gaps = secondpass.gaps_to_search(found, end.start_s, end.end_s)
             recovered = secondpass.search(seq, gaps, found)
             offered = sorted(found + recovered, key=lambda d: d.t_enter)
+            far = read_setups[analyze_mod.OTHER_HOUSE[end.house]]
+            releases = release.find_releases(
+                sequence.detect_span(read_path, far, from_s, end.end_s,
+                                     release.RELEASE_FPS, detector),
+                far.view_y_min_m)
+            offered = sorted(offered + release.unaccounted(
+                [r for r in releases if r.t >= from_s], offered, seq), key=lambda d: d.t_enter)
             # The rules trim the candidate list before anything is built from
             # it, so the review has to review what survives -- otherwise it
             # flags gaps around candidates the pipeline has already discarded.
             found = fit.fit_end(offered)
+            prev_end_s = min(end.end_s, found[-1].t_rest) if found else end.end_s
             sh = shots_mod.from_deliveries(found, seq)
             scoring = shots_mod.scoring_shot(sh)
             in_house = None
@@ -497,6 +504,9 @@ def _add_harvest(sub):
 
 
 def main(argv=None) -> int:
+    from curling_score.diagnostics import enable_stack_dumps
+
+    enable_stack_dumps()
     parser = argparse.ArgumentParser(
         prog="curling-score",
         description="Turn a Seattle Curling Club YouTube VOD into a game timeline.",

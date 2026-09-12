@@ -10,6 +10,7 @@ it was not. So we report only what can be seen:
     guard    came to rest in play, short of the house
     hit      moved or removed a stone that was already there
     through  ran out of play without leaving anything behind
+    hogged   seen thrown, never reached the house (see detect.release)
     unknown  not enough of the flight was seen to say
 
 and leave the fine-grained type to the person charting, who knows the call.
@@ -38,6 +39,7 @@ DRAW = "draw"
 GUARD = "guard"
 HIT = "hit"
 THROUGH = "through"
+HOGGED = "hogged"
 UNKNOWN = "unknown"
 
 # A shot confirmed by what it did to the house is as certain as we get; one
@@ -66,6 +68,14 @@ def classify(delivery, house_delta=None):
     """
     if delivery is None:
         return UNKNOWN, 0.0
+    # Seen leaving the thrower's house and never arriving here: taken out of
+    # play at the hog line. The house cannot say anything about it.
+    if delivery.reason == "hogged":
+        return HOGGED, CONF_CLEAR_REST
+    # Seen thrown, arrival unseen, and a stone went missing from the house
+    # meanwhile: it ran through and took that stone with it.
+    if delivery.reason == "release-remove":
+        return HIT, CONF_HOUSE_CHANGED
 
     # A stone that struck something is a hit regardless of where it ended up --
     # including a shooter that rolled out, which is the case the geometry alone

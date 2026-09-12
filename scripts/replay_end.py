@@ -24,7 +24,7 @@ import pickle
 from pathlib import Path
 
 from curling_score import analyze as analyze_mod, weights as weights_mod
-from curling_score.detect import delivery as D, sequence, yolo
+from curling_score.detect import delivery as D, release, sequence, yolo
 from curling_score.game import endcheck, fit, profile, secondpass, segment, shots as shots_mod
 from curling_score.geometry import layout
 from curling_score.ingest import cache, frames as F, proxy
@@ -149,8 +149,13 @@ def main():
     vid = doc["source"]["video_id"]
     game = next(g for g in doc["games"] if g["index"] == args.game)
     e = next(e for e in game["ends"] if e["number"] == args.end)
-    earlier = [x["end_s"] for x in game["ends"] if x["number"] < e["number"]]
-    from_s = analyze_mod.run_up_from(max(earlier) if earlier else None, e["start_s"])
+    earlier = [x for x in game["ends"] if x["number"] < e["number"]]
+    prev_close = None
+    if earlier:
+        prev = max(earlier, key=lambda x: x["number"])
+        rests = [s["t_rest_s"] for s in prev["shots"] if s.get("t_rest_s") is not None]
+        prev_close = min(prev["end_s"], max(rests)) if rests else prev["end_s"]
+    from_s = analyze_mod.run_up_from(prev_close, e["start_s"])
     root = Path(args.cache_root) if args.cache_root else cache.default_root()
     video = root / "videos" / f"{vid}.mp4"
     if not video.is_file():
@@ -181,12 +186,30 @@ def main():
     print(f"\n== find_deliveries offered {len(every)} (run-up from {from_s:.0f})")
     show("cand", every, from_s)
     ds = [d for d in every if d.t_enter >= from_s]
+
     gaps = secondpass.gaps_to_search(ds, end.start_s, end.end_s)
     print(f"\n== gaps searched: {[(round(g.start_s, 1), round(g.end_s, 1), g.expected_color) for g in gaps]}")
     rec = secondpass.search(frames, gaps, ds)
     print(f"== recovered {len(rec)}"); show("rec ", rec, end.start_s)
     if rec:
         ds = sorted(ds + rec, key=lambda d: d.t_enter)
+    # The thrower's house: every release crosses it on the way out.
+    far = analyze_mod._proxy_setups(setups, strip)[analyze_mod.OTHER_HOUSE[e["house"]]]
+    releases = release.find_releases(
+        sequence.detect_span(read_path, far, from_s, end.end_s, release.RELEASE_FPS, detector),
+        far.view_y_min_m)
+    releases = [r for r in releases if r.t >= from_s]
+    matched, unmatched = release.pair(releases, ds)
+    print(f"\n== releases seen leaving the {analyze_mod.OTHER_HOUSE[e['house']]} house: {len(releases)}")
+    for r in releases:
+        to = matched.get(r)
+        print(f"  {r.color:6s} released {r.t:7.1f} at {r.speed_m_s:.1f} m/s, followed to y={r.y_exit_m:+.2f}"
+              + (f" -> arrived {to.t_enter:.1f} ({to.t_enter - r.t:.0f} s later)" if to else "   <-- NO ARRIVAL: hogged?"))
+    settled = [release.settle(r, frames) for r in unmatched]
+    for d in settled:
+        print(f"     -> the house says: {d.reason}" + (f" at ({d.rest_x_m:+.2f},{d.rest_y_m:+.2f})" if d.reason == release.REASON_ADD else ""))
+    if settled:
+        ds = sorted(ds + settled, key=lambda d: d.t_enter)
     kept = fit.fit_end(ds)
     print(f"\n== fit_end kept {len(kept)}, dropped {len(ds) - len(kept)}")
     show("DROP", [d for d in ds if d not in kept], end.start_s)

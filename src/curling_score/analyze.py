@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 from curling_score import timeline, version
-from curling_score.detect import delivery, sequence
+from curling_score.detect import delivery, release, sequence
 from curling_score.game import (
     endcheck,
     fit,
@@ -31,6 +31,8 @@ BOARD_INTERVAL_S = 450.0  # how often to read the wall scoreboard
 # these into a progress bar; the CLI ignores them.
 PHASES = ("download", "proxy", "calibrate", "profile", "detect", "rules",
           "scoreboard")
+# Each end is played into one house and thrown from behind the other.
+OTHER_HOUSE = {"top": "bottom", "bottom": "top"}
 
 
 def _proxy_setups(setups, strip):
@@ -68,6 +70,12 @@ def run_up_from(prev_end_s, start_s: float) -> float:
     from here. So everything from that close onward is this end's. The first
     end of a game keeps the old half-minute, since what precedes it on this
     panel is another game's clearing.
+
+    "Closed" means the previous end's last rock came to rest, not when its
+    house emptied: teams throw the next end's first rock while the far house
+    is still being cleared. Game 4 end 2's hogged red left the hack at 1109,
+    forty seconds after end 1's last rock stopped and a minute before the
+    segmenter saw end 1's house empty.
     """
     from curling_score.detect.delivery import REQUIRED_LOOKBACK_S
     from curling_score.game.segment import GAME_GAP_S
@@ -179,7 +187,6 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             phase("detect", done_ends / total_ends,
                   f"game {game.index + 1} end {end.number}")
             from_s = run_up_from(prev_end_s, end.start_s)
-            prev_end_s = end.end_s
             seq = sequence.detect_end(read_path, setup, end, shot_fps,
                                       detector, from_s=from_s)
             # Anything thrown since the previous end closed is this end's;
@@ -201,6 +208,23 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 deliveries = sorted(
                     deliveries + recovered, key=lambda d: d.t_enter
                 )
+            # The other panel is the thrower's house, and every delivery
+            # crosses it on the way out. A throw seen there with no arrival
+            # here is a hogged rock -- the one kind of miss this house can
+            # never show, and it puts every later thrower off by one. Paired
+            # only now, after the second pass: an arrival the gap search
+            # recovers is still an arrival, and a release standing in for it
+            # would have hidden the very gap that finds it.
+            far = read_setups[OTHER_HOUSE[end.house]]
+            releases = release.find_releases(
+                sequence.detect_span(read_path, far, from_s, end.end_s,
+                                     release.RELEASE_FPS, detector),
+                far.view_y_min_m,
+            )
+            releases = [r for r in releases if r.t >= from_s]
+            unaccounted = release.unaccounted(releases, deliveries, seq)
+            if unaccounted:
+                deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)
             # Audit what detection actually offered, before the rules trim
             # it -- that is the honest measure of how well detection did.
             audit = endcheck.check(deliveries)
@@ -210,11 +234,16 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             # built at all: shot 17 has no thrower.
             kept = fit.fit_end(deliveries)
             dropped = len(deliveries) - len(kept)
+            # The next end's run-up begins when this end's last rock stopped.
+            prev_end_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
             shots = shots_mod.from_deliveries(kept, seq)
             built = timeline.build_end(
                 end.number, end.house, end.start_s, end.end_s, shots
             )
             built["deliveries_seen"] = len(deliveries)
+            built["releases_seen"] = len(releases)
+            built["releases_unaccounted"] = len(unaccounted)
+            built["hogged"] = sum(1 for d in unaccounted if d.reason == release.REASON)
             built["deliveries_recovered"] = len(recovered)
             built["deliveries_dropped"] = dropped
             built["thrown"] = audit.thrown

@@ -574,3 +574,16 @@ class TestFillingAgainstRealEnds:
         plan = shots._fill_short_end(
             shots._with_placeholders(self._deliveries(first, gaps)), 16)
         assert sum(1 for _c, dv in plan if dv is None) == 1
+
+
+class TestAHoggedRockInTheSequence:
+    def test_it_is_a_known_shot_that_changed_nothing(self):
+        from curling_score.detect import release
+
+        dvs = TestShortEndsAreFilledWithBlanks()._alternating(4)   # y r y r at 10, 60, 110, 160
+        hog = release.as_delivery(release.Release("yellow", 210.0, 4.0, 2.0))
+        got = shots.from_deliveries(dvs + [hog], TestShotsFromDeliveries()._frames({0: []}))
+        last = got[4]
+        assert last.color == "yellow" and last.missing is False
+        assert last.state_known is True
+        assert last.delivered_stone_index is None
