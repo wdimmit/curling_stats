@@ -259,8 +259,14 @@ body[data-mode="view"] #house { cursor:default; }
   /* the video keeps its own box at the top; the house fills the gap down to
      the sheet, and #chart is lifted out of flow onto the bottom of the screen */
   #playCard .shots { display: none; }
+  /* No min-height: with one it would be over-constrained, `bottom` would be
+     dropped, and the box would grow down behind the sheet -- so the measured
+     box and the visible box would differ and the crop, centred in the former,
+     would hide the front of the house behind the sheet. Exactly the gap
+     between the video and the sheet means the tee is centred in what the user
+     actually sees. A short phone then gets a tighter crop, not a hidden one. */
   #houseCard { position: fixed; top: calc(48px + 56.25vw); bottom: 256px;
-               left: 0; right: 0; overflow: hidden; min-height: 280px; }
+               left: 0; right: 0; overflow: hidden; }
   #houseCard .tools { display: none; }
   #house { height: 100%; }
   #houseCard .muted { display: none; }

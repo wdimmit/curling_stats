@@ -340,11 +340,50 @@ class TestHouseViewBox:
                       run_js('out(houseViewBox("crop", 390/321));').split())
         assert w / h == pytest.approx(390 / 321, abs=1e-3)
 
-    def test_the_crop_is_centred_on_the_tee_so_the_house_stays_whole(self):
+    def test_the_crop_is_centred_on_the_tee(self):
+        """Centring on the tee is the whole of what the crop guarantees.
+
+        It is *not* a guarantee that the whole house is shown. The band is
+        exactly the gap between the video and the sheet, so on a short phone
+        the crop is tighter than the rings and the front of the twelve-foot
+        falls off the bottom. Centred means what is lost is lost evenly, and
+        that nothing is drawn where the sheet would cover it. The ring itself
+        survives only while the band's aspect stays at or below RING_ASPECT --
+        see the two tests below, which pin that boundary.
+        """
         x, y, w, h = (float(v) for v in
                       run_js('out(houseViewBox("crop", 390/321));').split())
         assert y == pytest.approx(-h / 2, abs=1e-3)
-        assert y <= -1.829 and y + h >= 1.829   # the whole 12-foot is visible
+
+    # The crop always spans the sheet's 5.2 m of width, and the twelve-foot
+    # reaches 1.829 m from the tee in each direction, so the ring fits exactly
+    # when the box is 5.2 / (2 * 1.829) times wider than it is tall. On a
+    # 390 px-wide phone that wants a 274 px band, which needs about 797 px of
+    # dynamic viewport -- more than a 390x844 phone has once the video, the
+    # header and the sheet have taken theirs.
+    RING_ASPECT = 5.2 / (2 * 1.829)          # 1.4215...
+
+    def test_the_whole_twelve_foot_is_visible_right_up_to_that_aspect(self):
+        x, y, w, h = (float(v) for v in
+                      run_js(f'out(houseViewBox("crop", {self.RING_ASPECT!r}));').split())
+        assert y <= -1.829 and y + h >= 1.829
+
+    def test_a_band_any_shorter_than_that_crops_into_the_twelve_foot(self):
+        x, y, w, h = (float(v) for v in
+                      run_js(f'out(houseViewBox("crop", {self.RING_ASPECT * 1.01!r}));').split())
+        assert y > -1.829 and y + h < 1.829
+
+    def test_the_band_a_real_phone_gets_shows_the_rings_but_not_all_of_them(self):
+        # 390x844 with a 48 px header, a 219.375 px video and a 256 px sheet
+        # leaves a 320.625 px band -- the whole ring. 390x700 leaves 176.625,
+        # which does not, and that is the honest outcome, not a bug.
+        tall = [float(v) for v in
+                run_js('out(houseViewBox("crop", 390/320.625));').split()]
+        short = [float(v) for v in
+                 run_js('out(houseViewBox("crop", 390/176.625));').split()]
+        assert tall[1] <= -1.829 and tall[1] + tall[3] >= 1.829 - 1e-3
+        assert short[1] > -1.829
+        assert short[1] == pytest.approx(-short[3] / 2, abs=1e-3)
 
     def test_a_box_taller_than_the_sheet_does_not_zoom_past_the_full_view(self):
         x, y, w, h = (float(v) for v in

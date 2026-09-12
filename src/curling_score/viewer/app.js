@@ -188,6 +188,8 @@ const isGraded = s => s && typeof s.user_score === "number";
  * that matters, because "full" is always the view it has always had. */
 function houseViewBox(mode, aspect) {
   if (mode !== "crop" || !(aspect > 0)) return "-2.6 -2.6 5.2 8.6";
+  // A box taller than the whole sheet is capped, and the result is then
+  // letterboxed -- its centring is the box's, no longer the sheet's.
   const h = Math.min(5.2 / aspect, 8.6);
   const n = x => String(+x.toFixed(3));
   return `-2.6 ${n(-h / 2)} 5.2 ${n(h)}`;
