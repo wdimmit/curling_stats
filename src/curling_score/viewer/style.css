@@ -266,7 +266,13 @@ body[data-mode="view"] #house { cursor:default; }
                 line-height: 1.35; border-radius: 9px; padding: 10px 12px;
                 box-shadow: 0 2px 12px rgb(0 0 0 / .22); }
   #renumbered[hidden] { display: none; }
-  body[data-sheet="open"] #renumbered { bottom: auto; top: calc(56px + 56.25vw); }
+  /* Same idiom as the peek state: the toast's bottom edge sits 12px above the
+     sheet's top edge, whatever height the sheet currently has. In the open
+     state that floats it over the video's lower edge, which is the only free
+     space -- the video and the sheet are contiguous. */
+  body[data-sheet="open"] #renumbered {
+    bottom: calc(100dvh - 48px - 56.25vw + 12px);
+  }
 
   #sheetHandle { display: block; width: 100%; height: 32px; border: 0;
                  background: none; padding: 0; }
