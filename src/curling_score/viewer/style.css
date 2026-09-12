@@ -130,8 +130,18 @@ tr.total td { border-top:2px solid var(--line); font-weight:650; }
 #stoneChip, #sheetHandle, #renumbered, #orderRow, .housebar, #placeStones { display: none; }
 /* Restated: an id selector outranks the UA [hidden] rule, so once Task 4
    gives #stoneChip a display:grid inside the phone block, chip.hidden = true
-   must still win. */
-#stoneChip[hidden] { display: none; }
+   must still win. That restatement is enough for #stoneChip, whose only
+   competing author rule is the bare id above, at (1,0,0) -- #stoneChip[hidden]
+   at (1,1,0) beats it outright.
+   #placeStones and #orderRow are not that simple: the blank-peek and
+   open-sheet rules below turn them on with `body[data-peek=...][data-sheet=...]
+   #id`, which is (1,2,1) (open-sheet's is (1,1,1)) -- both outrank a bare
+   [hidden] override's (1,1,0), id count tied and class/attr count losing.
+   So restating [hidden] here is necessary (it is still what governs the
+   default, unadorned phone state) but not sufficient; those two rules also
+   carry `:not([hidden])` so they do not match at all -- rather than lose a
+   specificity fight -- once READ_ONLY sets `.hidden = true`. */
+#stoneChip[hidden], #placeStones[hidden], #orderRow[hidden] { display: none; }
 .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
 
 @media print {
@@ -284,7 +294,7 @@ body[data-mode="view"] #house { cursor:default; }
   body[data-sheet="open"] #chart #typeList,
   body[data-sheet="open"] #chart #missReason,
   body[data-sheet="open"] #chart #note { display: block; }
-  body[data-sheet="open"] #orderRow { display: flex; }
+  body[data-sheet="open"] #orderRow:not([hidden]) { display: flex; }
   body[data-sheet="peek"] #chart #typeList,
   body[data-sheet="peek"] #chart #missReason,
   body[data-sheet="peek"] #chart #note { display: none; }
@@ -305,7 +315,7 @@ body[data-mode="view"] #house { cursor:default; }
                  justify-content: center; margin-top: 8px; }
   body[data-peek="order"][data-sheet="peek"] #typeGroups,
   body[data-peek="order"][data-sheet="peek"] .scorebtns { display: none; }
-  body[data-peek="order"][data-sheet="peek"] #orderRow,
-  body[data-peek="order"][data-sheet="peek"] #placeStones { display: flex; }
+  body[data-peek="order"][data-sheet="peek"] #orderRow:not([hidden]),
+  body[data-peek="order"][data-sheet="peek"] #placeStones:not([hidden]) { display: flex; }
   body[data-peek="order"][data-sheet="peek"] #orderRow { border-color: var(--accent); }
 }
