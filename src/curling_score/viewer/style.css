@@ -199,6 +199,28 @@ body[data-mode="view"] #house { cursor:default; }
   #house { height: 100%; }
   #houseCard .muted { display: none; }
 
+  /* Full-screen editing: the house band takes the whole screen between the
+     header and its own toolbar, the video and chart are underneath but
+     never torn down -- #houseCard's own solid background is what hides
+     them, so #playCard stays in flow and its iframe stays alive. */
+  body[data-house="edit"] #houseCard { top: 48px; bottom: 114px; z-index: 8;
+                                       background: var(--bg); }
+  body[data-house="edit"] #chart,
+  body[data-house="edit"] .transport { display: none; }
+  /* #houseCard .tools is (1,1,0) and hides the swatch bar above; matching
+     that id here, not just the class, is what lets this (1,2,1) rule win. */
+  body[data-house="edit"] #houseCard .tools { display: flex; position: fixed;
+    z-index: 9; left: 0; right: 0;
+    bottom: calc(58px + env(safe-area-inset-bottom));
+    height: 56px; margin: 0; padding: 0 12px; background: var(--panel);
+    border-top: 1px solid var(--line); }
+  body[data-house="edit"] .housebar { display: flex; gap: 8px; position: fixed;
+    z-index: 9; left: 12px; right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom)); }
+  body[data-house="edit"] #houseDone { flex: 1 1 auto; height: 46px;
+    background: var(--accent); color: #fff; border-color: transparent; }
+  body[data-house="edit"] #recolour { flex: 0 0 56px; height: 46px; }
+
   #flags { position: fixed; top: calc(48px + 56.25vw); left: 0; right: 0;
            z-index: 3; max-height: 92px; overflow-y: auto; padding: 0 10px; }
   #flags:empty { display: none; }

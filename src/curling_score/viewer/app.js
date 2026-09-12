@@ -353,6 +353,13 @@ const clampY = y => Math.max(LIMIT.yLo, Math.min(LIMIT.yHi, y));
 
 function drawHouse() {
   const svg = $("house");
+  // The desktop and the full-screen editor both want the whole sheet; the
+  // phone's house band is too short for it, so it crops to what it can show.
+  const box = svg.getBoundingClientRect();
+  const cropped = state.houseMode !== "edit" && box.width > 0 &&
+                  box.height > 0 && box.height < box.width * 1.3;
+  svg.setAttribute("viewBox",
+    houseViewBox(cropped ? "crop" : "full", box.width / box.height));
   const s = shot();
   svg.textContent = "";
 
@@ -447,6 +454,14 @@ function bindHouse() {
   let drag = null;
 
   svg.addEventListener("pointerdown", ev => {
+    // On the phone the house is a picture until you enter the editor: one tap
+    // cannot both open the editor and place a stone. bindHouse() owns
+    // pointerdown on this element, so the branch lives here rather than in a
+    // competing listener whose ordering would be fragile.
+    if (matchMedia("(max-width: 640px)").matches && state.houseMode !== "edit") {
+      if (!READ_ONLY) { state.houseMode = "edit"; render(); }
+      return;
+    }
     const g = ev.target.closest(".stone");
     const p = sheetPoint(ev);
     if (g) {
@@ -1026,6 +1041,8 @@ function boot() { Promise.all([
     const at = mergedShots(end()).findIndex(x => identity(x) === id);
     if (at >= 0 && at !== state.si) { state.si = at; render(); }
   };
+  $("houseDone").onclick = () => { state.houseMode = ""; render(); };
+  $("recolour").onclick = () => { if (state.selStone !== null) toggleStoneColor(); };
 
   restorePrefs();
   bindHouse();
@@ -1033,6 +1050,13 @@ function boot() { Promise.all([
   fillEnds();
   render();
   setSave("saved", Object.keys(state.overrides).length ? "loaded" : "no edits yet");
+  // The crop is measured, so it has to be re-measured when the box changes.
+  let houseResize;
+  addEventListener("resize", () => {
+    clearTimeout(houseResize);
+    houseResize = setTimeout(drawHouse, 120);
+  });
+  requestAnimationFrame(drawHouse);   // first paint may measure a zero-height SVG
   loadPlayer();
   seekCurrent();
 }).catch(err => {
