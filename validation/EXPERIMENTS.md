@@ -850,3 +850,38 @@ the frozen yellow rock 9. **On the reference VOD**, previous tracker against
 this one on the same detections: every end identical, 201 of 208.
 
 `PIPELINE_VERSION` 2026.09.4.
+
+
+## Three misses in the second hosted game (2026-09-12)
+
+Draw 7, sheet 4 of the PNWCA playdown; the charter named three rocks. Two
+share a cause and the third is a camera fact.
+
+**Ends 2 and 3, the first rock.** Both were detected cleanly once the window
+was widened -- a red into the top of the house at 986, a yellow through the
+house at 1903 -- and both were thrown before the segmenter's start of the end
+(1000 and 1940). The segmenter opens an end when a stone first *rests* in its
+house, from a keyframe sweep with smoothing, so the boundary lands after the
+first stone has settled; a first rock thrown through leaves it nothing to see
+at all, so end 3 "began" with its second rock. Detection reached back only 36 s
+from that boundary and the analysis discarded anything before it as the
+previous end's run-up. Between the previous end closing and this one opening,
+this panel holds nothing but this end's first stones -- the previous end was
+played into the other house and its stones are cleared toward the hack behind
+it, away from here -- so the run-up now begins where the previous end closed
+(`analyze.run_up_from`), bounded by the game gap, and everything from there
+on is this end's.
+
+**End 6, the last rock.** A yellow tracked from the top of the panel to
+-1.94 m at 0.75 m/s and never seen again; the house unchanged. The exit test
+only knew "seen crossing the back line" (a centre at or past -1.97) or
+leaving sideways. The top camera's view ends at -1.97 m, the back line itself,
+and a box clipped by the image edge never reports a centre beyond it. The
+panel now knows where its view ends (`PanelSetup.view_y_min_m`), and a stone
+last seen within its own radius of that edge, running fast enough to have been
+past the back line before the tracker gave up, has left play. A sweeper's blob
+vanishing mid-house at a run is not at the edge; a stone dying against the
+edge is not running.
+
+Every end's detection span changes with the run-up, so the detection cache
+misses once for every game. `PIPELINE_VERSION` 2026.09.5.

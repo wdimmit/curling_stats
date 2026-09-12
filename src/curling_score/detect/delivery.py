@@ -838,26 +838,49 @@ def _settled_index(track, from_i: int = 0) -> int:
     return j
 
 
-def _left_the_view(track, end_i, x_limit_m: float) -> bool:
-    """Whether the stone was on its way out of sight and not coming back."""
-    if track.ys[end_i] <= C.THROUGH_BACK_Y_M:
+def _left_the_view(track, end_i, x_limit_m: float,
+                   y_min_m: float = C.THROUGH_BACK_Y_M) -> bool:
+    """Whether the stone was on its way out of sight and not coming back.
+
+    ``y_min_m`` is where the view ends down-sheet. On the club's top camera
+    that is the back line itself, and a box clipped by the image edge never
+    reports a centre beyond it -- game 3 end 6's last yellow was seen at
+    -1.94 m doing 0.75 m/s, three centimetres short of "crossed", and then
+    not at all. A stone last seen within its own radius of that edge, still
+    running fast enough to have been past the back line before the tracker
+    gave up, has left. Both halves matter: a sweeper's blob vanishing mid-house
+    at a run is not at the edge, and a stone dying against the edge is not
+    running.
+    """
+    y1 = track.ys[end_i]
+    if y1 <= C.THROUGH_BACK_Y_M:
         return True  # seen crossing the back line, which is inside the panel
+    vx, vy = _velocity_at(track, end_i)
+    at_edge = y1 <= y_min_m + C.STONE_RADIUS_M
+    if at_edge and vy < 0 and y1 + vy * TRACK_TIMEOUT_S <= C.THROUGH_BACK_Y_M:
+        return True  # running out the back of the view
     x0, x1 = track.xs[0], track.xs[end_i]
     if abs(x1) >= x_limit_m:
         return True
-    vx, _vy = _velocity_at(track, end_i)
     if abs(vx) < 1e-6 or (vx > 0) != (x1 > 0):
         return False  # not heading out
     return abs(x1) - abs(x0) >= x_limit_m - abs(x1)
 
 
 def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
-                    view_x_limit_m: float | None = None) -> list[Delivery]:
-    """Find every thrown stone in a dense sequence of detections."""
+                    view_x_limit_m: float | None = None,
+                    view_y_min_m: float | None = None) -> list[Delivery]:
+    """Find every thrown stone in a dense sequence of detections.
+
+    ``view_x_limit_m`` and ``view_y_min_m`` say where the camera's view ends,
+    so a stone that ran out of the picture can be told from one that vanished
+    in play. Absent, the view is taken to end at the side and back lines.
+    """
     frames = [(t, list(d)) for t, d in frames]
     if not frames:
         return []
     x_limit = min(C.SIDELINE_ABS_X_M, view_x_limit_m or C.SIDELINE_ABS_X_M)
+    y_min = C.THROUGH_BACK_Y_M if view_y_min_m is None else view_y_min_m
 
     out: list[Delivery] = []
     claimed: list[tuple] = []
@@ -959,7 +982,7 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
                 reason = "house-add"
             elif claim is not None:
                 reason = "house-remove"
-            elif _left_the_view(track, end_i, x_limit):
+            elif _left_the_view(track, end_i, x_limit, y_min):
                 reason = "left-view"
             else:
                 continue

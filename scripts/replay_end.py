@@ -45,7 +45,7 @@ def setups_for(video, vid, root):
 
 def show(tag, deliveries, start_s):
     for d in sorted(deliveries, key=lambda d: d.t_enter):
-        flag = "" if d.t_enter >= start_s else "  <-- before the end's start"
+        flag = "" if d.t_enter >= start_s else "  <-- before the run-up"
         print(f"  {tag} {d.color:6s} enter={d.t_enter:7.1f} rest={d.t_rest:7.1f} "
               f"y0={d.entry_y_m:5.2f} -> ({d.rest_x_m:5.2f},{d.rest_y_m:5.2f}) "
               f"travel={d.travel_m:5.2f} {d.reason:12s} rest={d.came_to_rest} "
@@ -149,6 +149,8 @@ def main():
     vid = doc["source"]["video_id"]
     game = next(g for g in doc["games"] if g["index"] == args.game)
     e = next(e for e in game["ends"] if e["number"] == args.end)
+    earlier = [x["end_s"] for x in game["ends"] if x["number"] < e["number"]]
+    from_s = analyze_mod.run_up_from(max(earlier) if earlier else None, e["start_s"])
     root = Path(args.cache_root) if args.cache_root else cache.default_root()
     video = root / "videos" / f"{vid}.mp4"
     if not video.is_file():
@@ -166,7 +168,8 @@ def main():
 
     end = segment.EndSegment(number=e["number"], house=e["house"],
                              start_s=e["start_s"], end_s=e["end_s"])
-    seq = list(sequence.detect_end(read_path, setup, end, analyze_mod.SHOT_FPS, detector))
+    seq = list(sequence.detect_end(read_path, setup, end, analyze_mod.SHOT_FPS, detector,
+                                   from_s=from_s))
     frames = [(t, list(d)) for t, d in seq]
     if args.dump:
         pickle.dump(frames, open(args.dump, "wb"))
@@ -174,10 +177,10 @@ def main():
           f"{len(frames)} frames {frames[0][0]:.1f}..{frames[-1][0]:.1f}")
 
     x_limit = setup.view_x_limit_m
-    every = D.find_deliveries(frames, view_x_limit_m=x_limit)
-    print(f"\n== find_deliveries offered {len(every)}")
-    show("cand", every, end.start_s)
-    ds = [d for d in every if d.t_enter >= end.start_s]
+    every = D.find_deliveries(frames, view_x_limit_m=x_limit, view_y_min_m=setup.view_y_min_m)
+    print(f"\n== find_deliveries offered {len(every)} (run-up from {from_s:.0f})")
+    show("cand", every, from_s)
+    ds = [d for d in every if d.t_enter >= from_s]
     gaps = secondpass.gaps_to_search(ds, end.start_s, end.end_s)
     print(f"\n== gaps searched: {[(round(g.start_s, 1), round(g.end_s, 1), g.expected_color) for g in gaps]}")
     rec = secondpass.search(frames, gaps, ds)

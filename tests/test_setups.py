@@ -85,3 +85,28 @@ class TestDerive:
         # frames a second apart would read a settled house as a bar.
         with pytest.raises(ValueError):
             setups.derive("v", [(1.0, np.zeros((1080, 1920, 3), np.uint8))])
+
+
+class TestHowFarThePanelSees:
+    def _setup(self, flipped=False):
+        from curling_score.game import profile
+        from curling_score.geometry.calibrate import PanelCalib
+
+        # 300 x 520 px at 80 px/m with the tee 360 px from the top edge.
+        calib = PanelCalib(center_px=(150.0, 360.0), px_per_m=80.0, edge_erosion_px=0.0,
+                           residual_m=0.0, flipped=flipped)
+        return profile.PanelSetup(rect=(0, 0, 300, 520), calib=calib)
+
+    def test_the_down_sheet_edge_of_the_view(self):
+        import pytest
+
+        # Unflipped, the delivery end is at the bottom of the image, so the
+        # down-sheet edge is the top row: 360 px above the tee.
+        assert self._setup().view_y_min_m == pytest.approx(-360 / 80.0, abs=0.01)
+
+    def test_a_flipped_panel_measures_the_other_edge(self):
+        import pytest
+
+        # Flipped, the delivery end is at the top, and the down-sheet edge is
+        # the bottom row: 159 px below the tee.
+        assert self._setup(flipped=True).view_y_min_m == pytest.approx(-(519 - 360) / 80.0, abs=0.01)

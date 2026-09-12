@@ -51,6 +51,33 @@ def _no_phase(name, fraction, message=None):
     return None
 
 
+def run_up_from(prev_end_s, start_s: float) -> float:
+    """Where an end's run-up begins: the moment the previous end closed.
+
+    The segmenter starts an end when a stone first rests in its house, read
+    from a keyframe sweep and smoothed, so the boundary lands after the first
+    stone has settled -- and a first rock thrown through the house leaves
+    nothing for it to see at all. Game 3 end 2 opened with a red into the top
+    of the house at 986, fourteen seconds before the boundary; end 3 opened
+    with a yellow through the house at 1903, thirty-seven seconds before.
+    Both were detected and both were discarded as belonging to the run-up.
+
+    Between the previous end closing and this one opening, this panel holds
+    nothing but this end's first stones: the previous end was played into the
+    other house, and its stones are cleared toward the hack behind it, away
+    from here. So everything from that close onward is this end's. The first
+    end of a game keeps the old half-minute, since what precedes it on this
+    panel is another game's clearing.
+    """
+    from curling_score.detect.delivery import REQUIRED_LOOKBACK_S
+    from curling_score.game.segment import GAME_GAP_S
+
+    lookback = start_s - REQUIRED_LOOKBACK_S
+    if prev_end_s is None:
+        return max(0.0, lookback)
+    return max(0.0, min(lookback, max(prev_end_s, start_s - GAME_GAP_S)))
+
+
 def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             use_proxy: bool = True, weights=None, imgsz: int = 448,
             device=None, *, start_s=None, end_s=None, sheet=None,
@@ -145,20 +172,24 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     out_games = []
     for game in games:
         out_ends = []
+        prev_end_s = None
         for end in game.ends:
             setup = read_setups[end.house]
             progress(f"  game {game.index + 1} end {end.number} ({end.house})...")
             phase("detect", done_ends / total_ends,
                   f"game {game.index + 1} end {end.number}")
+            from_s = run_up_from(prev_end_s, end.start_s)
+            prev_end_s = end.end_s
             seq = sequence.detect_end(read_path, setup, end, shot_fps,
-                                      detector)
-            # The run-up belongs to the previous end, so anything thrown in it
-            # is not this end's.
+                                      detector, from_s=from_s)
+            # Anything thrown since the previous end closed is this end's;
+            # anything earlier on this panel is not.
             deliveries = [
                 d for d in delivery.find_deliveries(
-                    seq, view_x_limit_m=setup.view_x_limit_m
+                    seq, view_x_limit_m=setup.view_x_limit_m,
+                    view_y_min_m=setup.view_y_min_m,
                 )
-                if d.t_enter >= end.start_s
+                if d.t_enter >= from_s
             ]
             # The first pass has to be strict or sweepers count as stones. Once
             # it is in hand the rules say where the gaps are and what colour

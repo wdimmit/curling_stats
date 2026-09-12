@@ -17,7 +17,7 @@ BATCH = 64
 
 
 def detect_end(path, setup, end, fps: float, detector=None,
-               use_cache: bool = True):
+               use_cache: bool = True, from_s: float | None = None):
     """Detections for one end, with enough run-up to judge its first shot.
 
     Delivery detection asks what the sheet looked like *before* a stone
@@ -26,10 +26,15 @@ def detect_end(path, setup, end, fps: float, detector=None,
     evidence rather than on it -- game 1 end 2's first yellow arrives two
     seconds in, and whether it was found came down to which side of a proxy
     keyframe the boundary landed on.
+
+    ``from_s`` reaches further back still, to where the caller knows this
+    end's run-up begins (see ``analyze.run_up_from``).
     """
     from curling_score.detect.delivery import REQUIRED_LOOKBACK_S
 
     start = max(0.0, end.start_s - REQUIRED_LOOKBACK_S)
+    if from_s is not None:
+        start = max(0.0, min(start, from_s))
     return detect_span(path, setup, start, end.end_s, fps, detector, use_cache)
 
 

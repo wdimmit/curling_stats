@@ -77,3 +77,24 @@ class TestDownloadChatter:
             except RuntimeError:
                 pass
             assert seen["progress"] is expected
+
+
+class TestTheRunUpStartsWhereThePreviousEndClosed:
+    """The segmenter opens an end when a stone first rests in its house, so
+    first rocks thrown before that -- through the house, or just early --
+    were discarded as the previous end's run-up."""
+
+    def test_the_first_end_of_a_game_keeps_the_half_minute(self):
+        assert analyze.run_up_from(None, 100.0) == 100.0 - 36.0
+
+    def test_a_later_end_reaches_back_to_the_previous_close(self):
+        assert analyze.run_up_from(1815.0, 1940.0) == 1815.0   # game 3 end 3: yellow through at 1903
+
+    def test_it_never_reaches_back_further_than_a_game_gap(self):
+        assert analyze.run_up_from(1000.0, 2000.0) == 2000.0 - 240.0
+
+    def test_a_close_that_lands_inside_the_half_minute_still_gets_the_half_minute(self):
+        assert analyze.run_up_from(985.0, 1000.0) == 1000.0 - 36.0
+
+    def test_it_never_goes_before_the_start_of_the_video(self):
+        assert analyze.run_up_from(None, 10.0) == 0.0

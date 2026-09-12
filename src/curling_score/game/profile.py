@@ -36,6 +36,20 @@ class PanelSetup:
         corners = ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))
         return min(abs(self.calib.to_sheet(px, py)[0]) for px, py in corners)
 
+    @property
+    def view_y_min_m(self) -> float:
+        """How far past the tee, down-sheet, this panel can see.
+
+        On the club's top camera this is the back line itself, -1.97 m: a
+        stone running through the house leaves the picture at the very moment
+        it leaves play, and a box clipped by the image edge never puts its
+        centre beyond the line. Whether such a stone "crossed the back line"
+        has to be judged against the edge of the view, not the line.
+        """
+        _x, _y, w, h = self.rect
+        corners = ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))
+        return min(self.calib.to_sheet(px, py)[1] for px, py in corners)
+
 
 # Which way stones enter each panel: the two houses are played toward from
 # opposite directions.

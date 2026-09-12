@@ -1221,3 +1221,34 @@ class TestAGuardFrozenOnItsOwnColour:
         # before, one after. The spot gained nothing.
         parked = drop(resting("yellow", -0.08, 3.95, 0.0, 120.0), [(60.0, 65.0)])
         assert delivery.find_deliveries(merge(parked)) == []
+
+
+class TestRunningOutTheBackOfTheView:
+    """Game 3 end 6's last yellow: tracked from the top of the panel to
+    -1.94 m at 0.75 m/s and never seen again. The top camera's view ends at
+    the back line itself, and a box clipped by the image edge never reports a
+    centre beyond it, so "seen crossing the back line" could not fire."""
+
+    def _through(self, speed=0.75, last_y=-1.94):
+        t_end = (4.6 - last_y) / speed
+        return merge(interp([(0.0, 1.1, 4.6), (t_end, 1.2, last_y)], fps=10.0, color="yellow"),
+                     resting("red", -0.5, 0.5, 0.0, 60.0))
+
+    def test_a_stone_still_running_at_the_edge_of_the_view_has_left_play(self):
+        got = delivery.find_deliveries(self._through(), view_y_min_m=-1.97)
+        assert [d.reason for d in got] == ["left-view"]
+        assert got[0].came_to_rest is False
+
+    def test_a_deeper_view_gives_the_stone_the_benefit_of_the_doubt(self):
+        # The bottom camera sees to -2.15: a stone last seen at -1.94, a
+        # stone's width short of that edge, and then gone was lost in play.
+        got = delivery.find_deliveries(self._through(), view_y_min_m=-2.15)
+        assert got == []
+
+    def test_a_stone_dying_against_the_edge_has_not_left(self):
+        got = delivery.find_deliveries(self._through(speed=0.02, last_y=-1.9), view_y_min_m=-1.97)
+        assert not any(d.reason == "left-view" for d in got)
+
+    def test_without_a_view_edge_the_back_line_is_the_edge(self):
+        got = delivery.find_deliveries(self._through())
+        assert [d.reason for d in got] == ["left-view"]

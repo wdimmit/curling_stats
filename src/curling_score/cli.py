@@ -96,14 +96,18 @@ def _review(args) -> int:
     games = segment.segment_games(profile.build_profile(read_path, read_setups))
     rows = []
     for gi, game in enumerate(games, 1):
+        prev_end_s = None
         for end in game.ends:
             setup = read_setups[end.house]
-            seq = _detect_end(read_path, setup, end, args.fps, detector)
+            from_s = analyze_mod.run_up_from(prev_end_s, end.start_s)
+            prev_end_s = end.end_s
+            seq = _detect_end(read_path, setup, end, args.fps, detector, from_s)
             found = [
                 d for d in delivery.find_deliveries(
-                    seq, view_x_limit_m=setup.view_x_limit_m
+                    seq, view_x_limit_m=setup.view_x_limit_m,
+                    view_y_min_m=setup.view_y_min_m,
                 )
-                if d.t_enter >= end.start_s
+                if d.t_enter >= from_s
             ]
             # Match the analysis pipeline: the constraint-guided second pass is
             # part of detection now, so the review must reflect what it found or
@@ -200,11 +204,11 @@ def _review(args) -> int:
     return 0
 
 
-def _detect_end(path, setup, end, fps, detector):
+def _detect_end(path, setup, end, fps, detector, from_s=None):
     """Detections for one end, batched, cached, and with its run-up."""
     from curling_score.detect import sequence
 
-    return sequence.detect_end(path, setup, end, fps, detector)
+    return sequence.detect_end(path, setup, end, fps, detector, from_s=from_s)
 
 
 def _inspect(args) -> int:
