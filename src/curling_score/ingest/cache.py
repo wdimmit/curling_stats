@@ -154,5 +154,10 @@ def ensure_cached(url: str, root: Path | None = None, progress: bool = True, *,
         tmp.replace(dest)
         pin_mtime(dest)
     finally:
-        tmp.unlink(missing_ok=True)
+        # yt-dlp writes to ``<name>.part`` (and a ``.ytdl`` sidecar) and only
+        # renames on success, so a failed attempt leaves those, not ``tmp``.
+        # Two refused downloads of one video left two of them behind; the
+        # pruner skips anything called ``.part``, so they would have stayed.
+        for leftover in (tmp, Path(f"{tmp}.part"), Path(f"{tmp}.ytdl")):
+            leftover.unlink(missing_ok=True)
     return dest

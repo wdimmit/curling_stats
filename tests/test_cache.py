@@ -25,3 +25,37 @@ class TestCachePath:
 
     def test_default_root_is_under_the_user_cache_dir(self):
         assert cache.default_root() == Path.home() / ".cache" / "curling_score"
+
+
+class TestAFailedDownloadLeavesNothingBehind:
+    """yt-dlp writes ``<name>.part`` and renames on success, so a refused
+    download leaves the ``.part``, not the name we chose. Two 403s on one
+    video left two of them in the cache, and the pruner never touches
+    anything called ``.part``."""
+
+    def test_ytdlp_s_partial_file_is_removed_when_the_download_fails(self, tmp_path):
+        import pytest
+
+        from curling_score.ingest import cache
+
+        def refused(url, opts):
+            partial = tmp_path / "videos" / (opts["outtmpl"].rsplit("/", 1)[1] + ".part")
+            partial.write_bytes(b"ten megabytes of nothing")
+            raise RuntimeError("HTTP Error 403: Forbidden")
+
+        with pytest.raises(RuntimeError):
+            cache.ensure_cached("https://www.youtube.com/watch?v=abcdefghijk",
+                                root=tmp_path, downloader=refused)
+        assert list((tmp_path / "videos").iterdir()) == []
+
+    def test_a_successful_download_is_kept(self, tmp_path):
+        from curling_score.ingest import cache
+
+        def ok(url, opts):
+            from pathlib import Path as P
+            P(opts["outtmpl"]).write_bytes(b"video")
+
+        got = cache.ensure_cached("https://www.youtube.com/watch?v=abcdefghijk",
+                                  root=tmp_path, downloader=ok)
+        assert got.read_bytes() == b"video"
+        assert [p.name for p in (tmp_path / "videos").iterdir()] == ["abcdefghijk.mp4"]
