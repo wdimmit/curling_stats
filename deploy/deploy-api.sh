@@ -39,14 +39,26 @@ gcloud builds submit --project "$PROJECT_ID" --region "$REGION" \
 
 MODEL_ID="${MODEL_ID:-$(python3 -c 'import sys; sys.path.insert(0,"src"); from curling_score import weights, version; print(version.model_id(weights.default_path()))' 2>/dev/null || echo classical)}"
 echo "deploying (model ${MODEL_ID})"
+# Accounts are configured in cloudrun.yaml, not here. An omitted variable used
+# to mean "blank it", and since `services replace` is declarative that silently
+# switched sign-in off site-wide. Overriding is now something you have to ask
+# for: FIREBASE_PROJECT for another project, ACCOUNTS=off to remove accounts.
+FB=()
+fb() { FB+=(-e "s|\(name: $1,[[:space:]]*value: \)\"[^\"]*\"|\1\"$2\"|"); }
+if [ "${ACCOUNTS:-}" = "off" ]; then
+  fb FIREBASE_PROJECT ""; fb FIREBASE_API_KEY ""; fb FIREBASE_AUTH_DOMAIN ""
+elif [ -n "${FIREBASE_PROJECT:-}" ]; then
+  fb FIREBASE_PROJECT "${FIREBASE_PROJECT}"
+  fb FIREBASE_AUTH_DOMAIN "${FIREBASE_AUTH_DOMAIN:-${FIREBASE_PROJECT}.firebaseapp.com}"
+  [ -n "${FIREBASE_API_KEY:-}" ] && fb FIREBASE_API_KEY "${FIREBASE_API_KEY}"
+fi
+
 sed -e "s|PROJECT_ID|${PROJECT_ID}|g" \
     -e "s|REGION-docker|${REGION}-docker|g" \
     -e "s|api:latest|api:${TAG}|" \
     -e "s|value: \"ds11a-27fe3faa\"|value: \"${MODEL_ID}\"|" \
     -e "s|https://chart.example.org|${PUBLIC_BASE_URL:-}|" \
-    -e "s|FB_PROJECT|${FIREBASE_PROJECT:-}|" \
-    -e "s|FB_API_KEY|${FIREBASE_API_KEY:-}|" \
-    -e "s|FB_AUTH_DOMAIN|${FIREBASE_AUTH_DOMAIN:-${FIREBASE_PROJECT:+${FIREBASE_PROJECT}.firebaseapp.com}}|" \
+    ${FB[@]+"${FB[@]}"} \
     deploy/cloudrun.yaml > "$WORK/service.yaml"
 gcloud run services replace "$WORK/service.yaml" --project "$PROJECT_ID" --region "$REGION"
 
@@ -58,6 +70,14 @@ gcloud run services add-iam-policy-binding curling-chart \
 URL=$(gcloud run services describe curling-chart --project "$PROJECT_ID" \
         --region "$REGION" --format='value(status.url)')
 echo "deployed: $URL"
-[ -n "${FIREBASE_PROJECT:-}" ] && [ -n "${FIREBASE_API_KEY:-}" ] \
-  || echo "note: accounts are off (set FIREBASE_PROJECT and FIREBASE_API_KEY to enable sign-in)"
+# Read back what was actually deployed rather than what this shell believed:
+# the one line that said accounts were off was, for thirteen hours, the only
+# sign that a deploy had turned them off.
+case "$(curl -fsS "$URL/api/auth/config" | tr -d ' ' || true)" in
+  *'"enabled":true'*) echo "accounts: sign-in is live" ;;
+  *'"enabled":false'*)
+    echo "accounts: SIGN-IN IS OFF on the deployed service" >&2
+    [ "${ACCOUNTS:-}" = "off" ] || { echo "  (ACCOUNTS=off was not set -- this is probably not what you wanted)" >&2; exit 1; } ;;
+  *) echo "accounts: could not read $URL/api/auth/config" >&2 ;;
+esac
 [ -n "${PUBLIC_BASE_URL:-}" ] || echo "note: PUBLIC_BASE_URL is unset; re-run with PUBLIC_BASE_URL=$URL to bake absolute links"

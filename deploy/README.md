@@ -99,6 +99,19 @@ gcloud run domain-mappings create --service curling-chart --domain chart.example
 # add the DNS records it prints; TLS is managed
 ```
 
+Everything the service runs on is in `cloudrun.yaml`, accounts included, and a
+bare `deploy-api.sh` reproduces what is live. That is deliberate: `gcloud run
+services replace` is declarative, so anything the file does not say is removed
+from the service. The three Firebase values used to be filled from the
+deployer's shell and blanked when it was silent, and on 2026-09-13 a deploy
+without them switched sign-in off site-wide for thirteen hours. Config for a
+live feature cannot live only in a shell.
+
+To deploy against a different project, `FIREBASE_PROJECT=… FIREBASE_API_KEY=…`
+override the file. To run without accounts at all, `ACCOUNTS=off` — and only
+that, because the script now reads `/api/auth/config` back from the deployed
+service and fails if sign-in went away without being asked to.
+
 ## The home worker
 
 On the GPU machine (Docker + nvidia-container-toolkit):
