@@ -107,10 +107,16 @@ deployer's shell and blanked when it was silent, and on 2026-09-13 a deploy
 without them switched sign-in off site-wide for thirteen hours. Config for a
 live feature cannot live only in a shell.
 
+The one piece that is not in the repo is the Firebase `apiKey`: drop the
+snippet the Firebase console gives you into `firebase_api_key.json`, which is
+gitignored, and the deploy reads it from there. Public identifier or not, it is
+one deployment's config rather than source.
+
 To deploy against a different project, `FIREBASE_PROJECT=… FIREBASE_API_KEY=…`
-override the file. To run without accounts at all, `ACCOUNTS=off` — and only
-that, because the script now reads `/api/auth/config` back from the deployed
-service and fails if sign-in went away without being asked to.
+override both. To run without accounts at all, `ACCOUNTS=off` — and only that:
+without a key and without that flag the deploy stops before it starts, and
+afterwards it reads `/api/auth/config` back from the service it just deployed
+and fails if sign-in went away without being asked to.
 
 ## The home worker
 

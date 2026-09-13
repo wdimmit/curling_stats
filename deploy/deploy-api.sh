@@ -45,12 +45,26 @@ echo "deploying (model ${MODEL_ID})"
 # for: FIREBASE_PROJECT for another project, ACCOUNTS=off to remove accounts.
 FB=()
 fb() { FB+=(-e "s|\(name: $1,[[:space:]]*value: \)\"[^\"]*\"|\1\"$2\"|"); }
+
+# The apiKey is the one piece of this that is not in the repo. Take it from the
+# environment, or from the snippet the Firebase console gives you -- which is a
+# JS object literal, not JSON, so it is read with a regex rather than a parser.
+KEY_FILE="${FIREBASE_KEY_FILE:-firebase_api_key.json}"
+if [ -z "${FIREBASE_API_KEY:-}" ] && [ -f "$KEY_FILE" ]; then
+  FIREBASE_API_KEY="$(sed -n 's/.*apiKey["'"'"']*[[:space:]]*:[[:space:]]*["'"'"']\([^"'"'"']*\).*/\1/p' "$KEY_FILE" | head -1)"
+fi
+
 if [ "${ACCOUNTS:-}" = "off" ]; then
   fb FIREBASE_PROJECT ""; fb FIREBASE_API_KEY ""; fb FIREBASE_AUTH_DOMAIN ""
-elif [ -n "${FIREBASE_PROJECT:-}" ]; then
-  fb FIREBASE_PROJECT "${FIREBASE_PROJECT}"
-  fb FIREBASE_AUTH_DOMAIN "${FIREBASE_AUTH_DOMAIN:-${FIREBASE_PROJECT}.firebaseapp.com}"
-  [ -n "${FIREBASE_API_KEY:-}" ] && fb FIREBASE_API_KEY "${FIREBASE_API_KEY}"
+elif [ -n "${FIREBASE_API_KEY:-}" ]; then
+  fb FIREBASE_API_KEY "${FIREBASE_API_KEY}"
+  [ -n "${FIREBASE_PROJECT:-}" ] && {
+    fb FIREBASE_PROJECT "${FIREBASE_PROJECT}"
+    fb FIREBASE_AUTH_DOMAIN "${FIREBASE_AUTH_DOMAIN:-${FIREBASE_PROJECT}.firebaseapp.com}"; }
+else
+  echo "no Firebase apiKey: put the console snippet in $KEY_FILE, or set" >&2
+  echo "FIREBASE_API_KEY, or deploy without accounts with ACCOUNTS=off" >&2
+  exit 1
 fi
 
 sed -e "s|PROJECT_ID|${PROJECT_ID}|g" \

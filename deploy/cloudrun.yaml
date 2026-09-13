@@ -37,14 +37,18 @@ spec:
             # none of this belongs in Secret Manager; what limits its use is
             # the Authorized domains list in the Firebase Auth console.
             #
-            # They live here, and not in whoever's shell runs the deploy,
-            # because `gcloud run services replace` is declarative: on
-            # 2026-09-13 a deploy without them in its environment substituted
-            # three empty strings and switched sign-in off site-wide for
-            # thirteen hours, reporting it in one line at the end of its own
-            # output. Config for a live feature cannot live only in a shell.
-            # deploy-api.sh overrides these when FIREBASE_PROJECT is set, and
-            # ACCOUNTS=off blanks them deliberately.
+            # The project and its auth domain follow PROJECT_ID, so they live
+            # here: on 2026-09-13 a deploy without them in its environment
+            # substituted empty strings and switched sign-in off site-wide for
+            # thirteen hours, because `gcloud run services replace` is
+            # declarative and silence means removal.
+            #
+            # The apiKey is the exception and stays out of the repo, which is
+            # what `firebase_api_key.json` is ignored for (e6dd248): public
+            # identifier or not, it is one deployment's config and not source.
+            # deploy-api.sh reads it from that file, or from FIREBASE_API_KEY,
+            # and refuses to deploy without one unless ACCOUNTS=off says so --
+            # so it can no longer go missing quietly.
             - { name: FIREBASE_PROJECT,     value: "PROJECT_ID" }
             - { name: FIREBASE_API_KEY,     value: "FB_API_KEY" }
             - { name: FIREBASE_AUTH_DOMAIN, value: "PROJECT_ID.firebaseapp.com" }
