@@ -32,6 +32,11 @@ class Shot:
     # The delivery this shot was built from, kept so the flight and the route
     # that confirmed it survive into the timeline. None for a placeholder.
     delivery: object = None
+    # The throw seen leaving the other house, when one was paired to this
+    # arrival. It carries the only view we get of the stone before the far
+    # hog line, so the long split and the thinking-time clock both read it.
+    # None whenever the throwing-end camera did not follow the delivery.
+    release: object = None
     # Whether we believe the house we are showing. False means we could not
     # read it and a person has to fill it in -- which is a different statement
     # from an empty house, and must never be rendered as one.
@@ -408,7 +413,8 @@ def _with_placeholders(deliveries):
     return out
 
 
-def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S):
+def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S,
+                    thrown_by=None):
     """Build the shot list from observed deliveries.
 
     This replaces inferring shots from how the house changed. That approach
@@ -420,6 +426,9 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     Reading the house in the quiet window after each delivery settles fixes
     that, and the delivered stone names its own thrower, so no colour has to be
     inferred from the alternation rule.
+
+    ``thrown_by`` maps ``id(delivery)`` to the ``Release`` it was paired with,
+    keyed by identity because two deliveries of a colour can compare equal.
     """
     from curling_score.detect.rest import stones_in_window
 
@@ -478,6 +487,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
                 missing=False,
                 confidence=1.0 if dv.came_to_rest else 0.8,
                 delivery=dv,
+                release=(thrown_by or {}).get(id(dv)),
                 # An empty reading is normally a failure to see the house --
                 # the stone just thrown has to be somewhere. The exception is a
                 # stone that ran out of play, which legitimately leaves the

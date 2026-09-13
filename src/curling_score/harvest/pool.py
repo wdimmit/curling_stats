@@ -20,6 +20,7 @@ from curling_score.train import dataset
 DETECT_FPS = 5.0
 GRID_PER_CLIP = 2
 MOTION_FRAMES = 3
+THROW_FRAMES = 3
 JPEG_QUALITY = 92
 
 
@@ -98,12 +99,14 @@ def clip_moments(clip_path, pts_start_s: float, rects, fps: float = DETECT_FPS):
 def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
                      fps: float = DETECT_FPS, grid_per_clip: int = GRID_PER_CLIP,
                      motion_frames: int = MOTION_FRAMES,
+                     throw_frames: int = THROW_FRAMES,
                      jpeg_quality: int = JPEG_QUALITY, extra_detector=None):
     """Every candidate frame one video can offer, written out with its labels.
 
     Returns ``(candidates, stats)``. Grid frames come from fixed points in each
-    clip; motion frames come from tracking within it. A moment that is both is
-    kept once, as motion -- the flight is why it is wanted.
+    clip; motion and throw frames come from tracking within it. A moment that
+    is more than one is kept once, under the rarest -- the movement is why it
+    is wanted, and a departure is rarer than an arrival.
 
     The labels written here are the detector's opinion. They are a starting
     point for a person, not the dataset: nothing enters the set until a human
@@ -124,7 +127,12 @@ def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
     out_dir.mkdir(parents=True, exist_ok=True)
     panels = {p.name: p for p in setup.panels.values() if p.calib is not None}
     rects = {name: tuple(p.rect) for name, p in panels.items()}
-    found, stats = [], {"clips": 0, "moments": 0, "flights": 0, "written": 0}
+    found, stats = [], {"clips": 0, "moments": 0, "flights": 0, "throws": 0,
+                        "written": 0}
+    # The panel's back edge, which is what tells a delivery leaving the hack
+    # from a sweeper who started mid-panel. Computed once per panel, not per
+    # clip -- it depends only on the crop and its calibration.
+    back_edge = {name: p.setup().view_y_min_m for name, p in panels.items()}
 
     for clip_path in clip_paths:
         from curling_score.ingest import frames as F
@@ -147,7 +155,9 @@ def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
             seq = list(zip(times, dets))
 
             flights = motion.find_flights(seq)
+            throws = motion.find_throws(seq, back_edge[name])
             stats["flights"] += len(flights)
+            stats["throws"] += len(throws)
             wanted = {}  # t -> (kind, flight_id)
             for t in grid_moments(times, grid_per_clip):
                 wanted[t] = ("grid", None)
@@ -155,6 +165,13 @@ def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
                 for t in nearest_moments(
                         motion.flight_times(flight, motion_frames), times):
                     wanted[t] = ("motion", fid)  # a flight outranks the grid
+            # A throw outranks both. It is the scarcer thing by far -- no
+            # dataset through ds12 contains one -- so where a moment is both,
+            # it is wanted for the departure.
+            for tid, throw in enumerate(throws):
+                for t in nearest_moments(
+                        motion.flight_times(throw, throw_frames), times):
+                    wanted[t] = ("throw", tid)
 
             by_time = dict(seq)
             crop_at = {t: c for (t, c) in zip(times, crops)}
@@ -177,7 +194,7 @@ def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
                 cv2.imwrite(str(out_dir / f"{stem}.jpg"), img,
                             [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
                 saved = []
-                if kind == "motion":
+                if kind in ("motion", "throw"):
                     for near in neighbours_of(t, times):
                         if near is None:
                             continue

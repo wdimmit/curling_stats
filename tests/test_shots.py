@@ -587,3 +587,38 @@ class TestAHoggedRockInTheSequence:
         assert last.color == "yellow" and last.missing is False
         assert last.state_known is True
         assert last.delivered_stone_index is None
+
+
+class TestTheReleaseThatThrewIt:
+    """A shot has to carry its own release, or the split has nothing to time."""
+
+    def _one_delivery(self):
+        from curling_score.detect.delivery import Delivery
+        return Delivery(color="red", t_enter=100.0, t_rest=108.0, entry_y_m=4.2,
+                        rest_x_m=0.1, rest_y_m=0.4, travel_m=3.8)
+
+    def _frames(self, dv):
+        stone = det(dv.color, dv.rest_x_m, dv.rest_y_m)
+        return [(dv.t_rest + i * 0.5, [stone]) for i in range(20)]
+
+    def test_a_shot_keeps_the_release_it_was_paired_with(self):
+        from curling_score.detect.release import Release
+        dv = self._one_delivery()
+        r = Release(color="red", t=88.0, y_exit_m=3.1, speed_m_s=1.9)
+        built = shots.from_deliveries([dv], self._frames(dv),
+                                      thrown_by={id(dv): r})
+        assert built[0].release is r
+
+    def test_a_shot_with_no_release_still_builds(self):
+        dv = self._one_delivery()
+        built = shots.from_deliveries([dv], self._frames(dv))
+        assert built[0].release is None
+        assert built[0].delivery is dv
+
+    def test_a_placeholder_shot_has_no_release(self):
+        from curling_score.detect.release import Release
+        dv = self._one_delivery()
+        r = Release(color="red", t=88.0, y_exit_m=3.1, speed_m_s=1.9)
+        built = shots.from_deliveries([dv], self._frames(dv),
+                                      thrown_by={id(dv): r})
+        assert all(s.release is None for s in built if s.missing)

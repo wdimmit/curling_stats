@@ -808,6 +808,8 @@ function renderChart() {
     <dt>Thrower</dt><dd>${esc(s?.position ?? "—")}${s ? ` (rock ${s.rock_of_player})` : ""}</dd>
     <dt>Weight</dt><dd>${s?.entry_speed_m_s != null ? s.entry_speed_m_s.toFixed(2) + " m/s" : "—"}</dd>
     <dt>Travel</dt><dd>${s?.travel_m != null ? s.travel_m.toFixed(2) + " m" : "—"}</dd>
+    <dt>Long split</dt><dd>${splitText(s)}</dd>
+    <dt>Thinking</dt><dd>${s?.thinking_time_s != null ? clockText(s.thinking_time_s) : "—"}</dd>
     <dt>House</dt><dd>${deltaText}</dd>
     <dt>Evidence</dt><dd>${esc(s?.reason ?? "—")}</dd>
     <dt>Stones</dt><dd>${s?.stones?.length ?? 0}</dd>`;
@@ -947,6 +949,38 @@ function scoreTable() {
 
 const POSITIONS = ["lead", "second", "third", "skip"];
 
+/* mm:ss, because a thinking-time budget is quoted in minutes. */
+function clockText(seconds) {
+  if (seconds == null) return "—";
+  const t = Math.max(0, Math.round(seconds));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+}
+
+/* A split is only meaningful next to how much of it was actually seen: the
+ * throwing end is reached by carrying the slide the last stretch to the hog
+ * line, and a shot the camera lost early says so rather than looking exact. */
+function splitText(s) {
+  if (s?.long_split_s == null) return "—";
+  const extra = s.long_split_extrapolated_m;
+  const note = extra > 0.05 ? ` (${extra.toFixed(1)} m est.)` : "";
+  return `${s.long_split_s.toFixed(1)} s${note}`;
+}
+
+/* Per team: the clock, and how much of the game it was read from. Ends carry
+ * the totals already, so this is a sum rather than a re-derivation. */
+function gatherThinking() {
+  const out = { red:0, yellow:0, measured:0, unmeasured:0 };
+  for (const e of game().ends) {
+    const t = e.thinking_time;
+    if (!t) continue;
+    out.red += t.red || 0;
+    out.yellow += t.yellow || 0;
+    out.measured += t.measured_shots || 0;
+    out.unmeasured += t.unmeasured_shots || 0;
+  }
+  return out;
+}
+
 function gatherStats() {
   const out = {};
   for (const c of ["red","yellow"]) {
@@ -973,6 +1007,7 @@ const avg = r => r.graded ? (r.sum / r.graded).toFixed(2) : "—";
 
 function renderReport() {
   const stats = gatherStats();
+  const think = gatherThinking();
   const g = game();
   const cards = ["red","yellow"].map(c => {
     const teamTotal = { thrown:0, graded:0, sum:0 };
@@ -1005,7 +1040,9 @@ function renderReport() {
       <table style="margin-top:12px"><tr class="total">
         <td class="name">team</td><td>${teamTotal.thrown}</td>
         <td>${teamTotal.graded}</td><td>${avg(teamTotal)}</td>
-        <td class="pct">${pct(teamTotal)}</td></tr></table></div>`;
+        <td class="pct">${pct(teamTotal)}</td></tr>
+        <tr><td class="name">thinking</td>
+        <td colspan="4">${clockText(think[c])}</td></tr></table></div>`;
   }).join("");
 
   const total = ["red","yellow"].reduce((n,c) =>
@@ -1022,6 +1059,10 @@ function renderReport() {
     ${graded < total ? `<div class="warn noprint">Percentages cover only the
       ${graded} graded shots. Ungraded shots are counted as thrown, never as
       misses.</div>` : ""}
+    ${think.unmeasured ? `<div class="warn noprint">Thinking time is read from
+      ${think.measured} of ${think.measured + think.unmeasured} shots — the
+      throwing-end camera did not follow the rest, and an end's first stone has
+      nothing to time from. Treat these as lower bounds.</div>` : ""}
     <div class="reportgrid" style="margin-top:12px">${cards}</div>`;
 }
 
@@ -1114,7 +1155,7 @@ function savePrefs() {
 if (typeof module !== "undefined" && module.exports)
   module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots, layout, identity, READ_ONLY, REVIEW, MERGE,
                      dirtyPayload, saveUrl, reconcile, busyKey, unloadBeacon,
-                     gatherStats, pct, avg,
+                     gatherStats, gatherThinking, clockText, splitText, pct, avg,
                      isBlank, isGraded, typeOf, shotVideoTime, TYPE, TYPES,
                      GROUPS, POSITIONS, stoneAt, R, LIMIT,
                      houseViewBox, shouldCrop, peekMode, renumberNotice };

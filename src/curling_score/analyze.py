@@ -216,13 +216,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             # recovers is still an arrival, and a release standing in for it
             # would have hidden the very gap that finds it.
             far = read_setups[OTHER_HOUSE[end.house]]
-            releases = release.find_releases(
+            releases, thrown_by, unaccounted = release.find_and_pair(
                 sequence.detect_span(read_path, far, from_s, end.end_s,
                                      release.RELEASE_FPS, detector),
-                far.view_y_min_m,
+                far.view_y_min_m, deliveries, seq, since=from_s,
             )
-            releases = [r for r in releases if r.t >= from_s]
-            unaccounted = release.unaccounted(releases, deliveries, seq)
             if unaccounted:
                 deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)
             # Audit what detection actually offered, before the rules trim
@@ -236,7 +234,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             dropped = len(deliveries) - len(kept)
             # The next end's run-up begins when this end's last rock stopped.
             prev_end_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
-            shots = shots_mod.from_deliveries(kept, seq)
+            shots = shots_mod.from_deliveries(
+                kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()})
             built = timeline.build_end(
                 end.number, end.house, end.start_s, end.end_s, shots
             )

@@ -25,7 +25,7 @@ def run_js(body: str):
         "const {state, merge, keyFor, mergedShots, layout, identity, gatherStats,\n"
         "       pct, avg, isBlank, isGraded, typeOf, shotVideoTime, stoneAt,\n"
         "       shotKey, rawShot, houseViewBox, shouldCrop, peekMode,\n"
-        "       renumberNotice} = A;\n"
+        "       renumberNotice, gatherThinking, clockText, splitText} = A;\n"
         "function out(v){ console.log(JSON.stringify(v)); }\n" + body
     )
     proc = subprocess.run([node, "-e", script], capture_output=True, text=True,
@@ -637,3 +637,45 @@ class TestRenumberNotice:
     def test_a_missing_shot_announces_nothing(self):
         assert run_js('out(renumberNotice(null, {number:3}));') is None
         assert run_js('out(renumberNotice({number:3}, null));') is None
+
+
+class TestTimingDisplay:
+    """A split and a clock a player reads off and believes."""
+
+    def test_a_clock_reads_as_minutes_and_seconds(self):
+        assert run_js("out([clockText(36), clockText(185), clockText(0)])") == [
+            "0:36", "3:05", "0:00"]
+
+    def test_an_unread_clock_is_a_dash_not_a_zero(self):
+        assert run_js("out(clockText(null))") == "—"
+
+    def test_a_split_says_how_much_was_estimated(self):
+        got = run_js(
+            "out([splitText({long_split_s:17.4, long_split_extrapolated_m:2.3}),"
+            "     splitText({long_split_s:17.4, long_split_extrapolated_m:0})])")
+        assert got[0] == "17.4 s (2.3 m est.)"
+        assert got[1] == "17.4 s"
+
+    def test_an_unmeasured_split_is_a_dash(self):
+        assert run_js("out(splitText({long_split_s:null}))") == "—"
+        assert run_js("out(splitText(null))") == "—"
+
+    def test_thinking_time_sums_the_ends(self):
+        got = run_js("""
+          state.doc = {games:[{ends:[
+            {thinking_time:{red:60, yellow:30, measured_shots:4, unmeasured_shots:2}},
+            {thinking_time:{red:40, yellow:20, measured_shots:5, unmeasured_shots:1}}
+          ]}]};
+          state.gi = 0;
+          out(gatherThinking());
+        """)
+        assert got == {"red": 100, "yellow": 50, "measured": 9, "unmeasured": 3}
+
+    def test_an_end_with_no_clock_is_skipped_not_counted_as_zero(self):
+        got = run_js("""
+          state.doc = {games:[{ends:[{}, {thinking_time:{red:10, yellow:5,
+            measured_shots:1, unmeasured_shots:0}}]}]};
+          state.gi = 0;
+          out(gatherThinking());
+        """)
+        assert got == {"red": 10, "yellow": 5, "measured": 1, "unmeasured": 0}

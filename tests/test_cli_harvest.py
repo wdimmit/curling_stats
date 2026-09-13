@@ -39,9 +39,12 @@ class TestStages:
     def test_select_can_ask_for_the_pilot(self):
         assert parse(["harvest", "select", "--pool", "/tmp/p", "--wave", "1"]).wave == 1
 
-    def test_the_pilot_is_the_only_other_wave(self):
+    def test_select_can_ask_for_the_throw_wave(self):
+        assert parse(["harvest", "select", "--pool", "/tmp/p", "--wave", "3"]).wave == 3
+
+    def test_there_is_no_fourth_wave(self):
         with pytest.raises(SystemExit):
-            parse(["harvest", "select", "--pool", "/tmp/p", "--wave", "3"])
+            parse(["harvest", "select", "--pool", "/tmp/p", "--wave", "4"])
 
     def test_pool_requires_the_weights_that_write_the_first_guess(self):
         with pytest.raises(SystemExit):

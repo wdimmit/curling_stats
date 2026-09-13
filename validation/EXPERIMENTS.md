@@ -969,3 +969,118 @@ second run of the same command finished in two. The CLI had no way to dump
 its stacks, so it does now (`diagnostics.enable_stack_dumps`, shared with the
 worker). Whether this is the PyAV deadlock by another route or something else
 is open until it recurs with the dump armed.
+
+## The hog line is not in view, and the calibration is not why (2026-09-12)
+
+Building the long split started from the assumption that a hog-to-hog time was
+measurable. It is not, and the reason took two wrong turns to pin down. Both
+are recorded because the second one is a trap anybody would fall into.
+
+**Neither hog line is inside an overhead panel.** Mapping each panel's crop
+corners through its own calibration gives top −2.080 … +4.639 m and bottom
+−2.033 … +4.596 m, against `TEE_TO_HOGLINE_M` = 6.401. About 1.8 m short at
+each end.
+
+**The painted red line near the top of every panel is not the hog line.** It
+measures a consistent +4.47 m (median 4.49 across six ds11 videos, p10 4.46,
+p90 4.54). Reading it as the hog line makes the calibration look like it
+under-reads the far field by 30%, and that is a very convincing story: the
+README already says the oblique view compresses the far field, and the line
+even bows 22 px across the panel in a clean quadratic, exactly like barrel
+distortion.
+
+**The scale was then measured directly, and it is fine.** A stone is 0.284 m
+across, so its apparent size reads the local scale. Over 358 clean, unclipped
+detections near the centre line of the reference VOD:
+
+| sheet y | n | box w (px) | box h (px) |
+|---|---|---|---|
+| −1 m | 69 | 21.81 | 21.87 |
+| 0 m | 111 | 21.71 | 21.74 |
+| +1 m | 63 | 21.74 | 21.83 |
+| +2 m | 49 | 21.49 | 21.48 |
+| +3 m | 17 | 21.62 | 21.66 |
+| +4 m | 48 | 21.32 | 19.52 |
+
+Flat to ~2% in width across the whole range; only the last bin's height falls,
+and there the stone is against the frame edge. Two candidate distortion models
+fitted to the rings plus a hog line at +4.47 m were also checked against the
+blue 4-foot holdout and both failed it badly — a radial cubic by 4.01 cm and a
+1-D projective by 2.95 cm, against the 0.29 cm mean / 0.69 cm worst the
+ring-only fit already achieves. `geometry/calibrate.py` is unchanged.
+
+**Extrapolating the arrival to the far hog line was measured and rejected.**
+Fitting constant deceleration to each of 161 tracks and predicting the crossing
+just 1.0 m beyond the fitted data missed by a median of **0.713 s** (p75 0.909,
+p90 1.123, max 4.52). Tracks start at a median +4.02 m, so the hog line is
+2.4 m out — over twice that reach, on a quantity whose meaningful differences
+are a few tenths of a second. This restates `delivery.py`'s existing warning
+that a forward velocity extrapolation "does not work, and was measured
+failing".
+
+**So the split is measured over a stated baseline**: the near hog line to a
+line at +3.4 m in the arrival panel, 24.946 m. Only the throwing end is
+extrapolated. A release is tracked from the back edge at 1.5–2.1 m/s
+essentially unchanging — the thrower is still sliding with the stone — for
+4.5–6.7 m, so carrying it the last 1.7–3.9 m costs a few hundredths of a
+second, and every shot reports how much was carried. `ARRIVAL_LINE_Y_M = 3.4`
+comes from the p10 of track starts (+3.44), so about nine shots in ten cross it
+while genuinely tracked.
+
+## Nothing has ever been trained on a throw (2026-09-12)
+
+`train/dataset.is_flight` computes `travel = ys[0] - ys[-1]` and requires it
+positive — net *down-sheet* travel. A release climbs. So the test fails by
+construction for every departing stone, and all 547 frames in ds11's `motion`
+bin are arrivals. Across ds1–ds12 the detector has been shown stones coming
+into the house and never one leaving the hack, which is the gap `harvest`
+wave 3 exists to fill: `motion.find_throws` delegates to
+`release.find_releases` so there is one definition of a departure rather than
+two that drift, and the `throw` bin joins `motion` and `empty` in refusing
+backfill, since a throw quota met with still frames would make the coverage of
+the one thing it exists for a number nobody could trust.
+
+## The long split on a real end, and what limits it (2026-09-12)
+
+Game 1 end 4 of the reference VOD, replayed from cache. Sixteen shots, eleven
+releases found, **three splits measured**:
+
+| shot | reason | split | what it is |
+|---|---|---|---|
+| 7 yellow | rest, stops at (0.30, 0.95) | **16.82 s** | a draw into the house |
+| 10 red | house-remove | **9.82 s** | a takeout |
+| 12 red | house-remove | **9.78 s** | a takeout |
+
+Draw and takeout separate cleanly, which is what the measurement is for. Three
+of sixteen is the honest coverage, and three things cost the rest.
+
+**The pairing is not precise enough to time with, and this is the big one.**
+`release.pair` answers "did this throw arrive at all?" inside a 6-30 s window,
+where several seconds of slop are harmless. Used as a *measurement* it is not.
+On this end the clean pairs run 18-20 s from release to arrival, but shots 6, 8
+and 9 paired against a release only 10-15 s earlier — and shot 8 is a draw that
+stops on the button, which cannot cross 24.9 m in 8.5 s. The suspect releases
+share a signature: they are followed to the very top of the panel (+4.28,
++4.36, +4.53) at 1.3-2.3 m/s, where genuine deliveries are lost among the
+sweepers at +1.4 to +2.6. A player walking up-sheet from the house fits that
+description better than a stone does.
+
+So `split.long_split` now checks itself: a stone only ever slows, so its mean
+speed over the baseline cannot exceed the speed it was measured sliding at
+before the hog line. Both are measured independently, so the test needs no new
+constant beyond a 10% allowance for noise. It removed exactly shots 6, 8 and 9
+and kept the three above.
+
+**The extrapolation cap costs three more.** Shots 1, 2 and 4 were followed only
+to +1.88, +1.56 and +1.42 m, leaving 4.5-5.0 m to the hog line against a cap of
+4.0. Refused rather than guessed.
+
+**A guard that stops above the line can never have one.** Shots 13 and 14 come
+to rest at y = 3.43 and 3.56, above `ARRIVAL_LINE_Y_M` = 3.4, so their tracks
+never cross it. This is not tunable away: raising the line catches short guards
+but loses the tracks that lock on late (starts are median +4.02, p10 +3.44),
+and lowering it does the reverse. 3.4 is the compromise.
+
+Thinking time on the same end reads from 10 of 16 shots: red 218 s, yellow
+100 s. That gap is mostly coverage, not play — six red intervals were measured
+against four yellow — which is why the totals never travel without their counts.

@@ -66,6 +66,10 @@ class Release:
     t: float           # first sighting, at the back edge of the view
     y_exit_m: float    # how far up the panel it was followed
     speed_m_s: float
+    # The climb itself, as ``(t, x, y)``. A release is a line crossing waiting
+    # to be timed -- the near tee line for thinking time, the hog line for the
+    # long split -- and neither can be read from the endpoints alone.
+    track: tuple[tuple[float, float, float], ...] = ()
 
 
 def find_releases(frames, view_y_min_m: float) -> list[Release]:
@@ -86,7 +90,10 @@ def find_releases(frames, view_y_min_m: float) -> list[Release]:
         speed = up / dur
         if not MIN_SPEED_M_S <= speed <= MAX_SPEED_M_S:
             continue
-        out.append(Release(track.color, track.ts[0], track.ys[-1], speed))
+        out.append(Release(
+            track.color, track.ts[0], track.ys[-1], speed,
+            track=tuple(zip(track.ts, track.xs, track.ys)),
+        ))
     out.sort(key=lambda r: r.t)
     # One throw at a time: of two sightings inside the separation, keep the
     # one followed further, which is the stone rather than the broom beside it.
@@ -179,7 +186,28 @@ def settle(release: Release, frames) -> D.Delivery:
     return rock
 
 
-def unaccounted(releases, deliveries, frames=()) -> list[D.Delivery]:
+def find_and_pair(frames, view_y_min_m: float, deliveries, house_frames=(),
+                  since: float | None = None):
+    """The whole throwing-end pass: find, pair, and settle what did not arrive.
+
+    Returns ``(releases, matched, unaccounted)``. Three callers need exactly
+    this sequence -- ``analyze``, ``cli review`` and ``scripts/replay_end`` --
+    and ran it as two calls that each paired independently, so the matching
+    was computed twice and could drift between them.
+
+    ``since`` drops releases from before an end's run-up, which every caller
+    did by hand between the two calls.
+    """
+    releases = find_releases(frames, view_y_min_m)
+    if since is not None:
+        releases = [r for r in releases if r.t >= since]
+    pairing = pair(releases, deliveries)
+    matched, _ = pairing
+    return releases, matched, unaccounted(releases, deliveries, house_frames,
+                                          pairing=pairing)
+
+
+def unaccounted(releases, deliveries, frames=(), pairing=None) -> list[D.Delivery]:
     """The releases with no arrival, as deliveries the rules can place.
 
     With the target house's ``frames`` each is settled by what the house did;
@@ -192,7 +220,7 @@ def unaccounted(releases, deliveries, frames=()) -> list[D.Delivery]:
     so an unclaimed arrival that soon can only be this one. Such a release is
     explained, and adds nothing.
     """
-    matched, unmatched = pair(releases, deliveries)
+    matched, unmatched = pair(releases, deliveries) if pairing is None else pairing
     claimed = set(id(d) for d in matched.values())
     frames = [(t, list(d)) for t, d in frames]
     out = []

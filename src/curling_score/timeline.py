@@ -7,11 +7,11 @@ down-sheet.
 
 from datetime import datetime, timezone
 
-from curling_score.game import classify, rules, shots as shots_mod
+from curling_score.game import classify, rules, shots as shots_mod, split, thinking
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # The overhead camera only sees the last few metres of a 45 m sheet, so the
 # stone comes into view long after it left the hand. To watch the shot being
@@ -69,10 +69,16 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
         [rules.Stone(color=d.color, x=d.x_m, y=d.y_m) for d in final]
     )
 
+    clock = thinking.for_end(shots)
+
     out_shots = []
-    for s in shots:
+    for i, s in enumerate(shots):
         throw = s.throw
         dv = getattr(s, "delivery", None)
+        rel = getattr(s, "release", None)
+        sp = split.long_split(rel, dv)
+        t_tee = thinking.tee_crossing(s)
+        think = clock.per_shot[i] if i < len(clock.per_shot) else None
         kind, kind_conf = classify.classify_shot(s)
         t_enter = None if dv is None else round(float(dv.t_enter), 2)
         out_shots.append(
@@ -103,6 +109,25 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
                 "entry_speed_m_s": (
                     None if dv is None else round(float(dv.speed_at()), 3)
                 ),
+                # Seen leaving the other house. None whenever that camera lost
+                # the throw, which is most of what limits the two timings below.
+                "t_release_s": None if rel is None else round(float(rel.t), 2),
+                "release_speed_m_s": (
+                    None if rel is None else round(float(rel.speed_m_s), 3)
+                ),
+                "t_tee_s": None if t_tee is None else round(float(t_tee), 2),
+                "long_split_s": (
+                    None if sp is None else round(float(sp.seconds), 2)
+                ),
+                "long_split_baseline_m": (
+                    None if sp is None else round(float(sp.baseline_m), 3)
+                ),
+                "long_split_extrapolated_m": (
+                    None if sp is None else round(float(sp.extrapolated_m), 3)
+                ),
+                "thinking_time_s": (
+                    None if think is None else round(float(think), 2)
+                ),
                 "track": _track(dv),
                 "house_delta": _delta(getattr(s, "house_delta", None)),
                 "delivered_stone_index": getattr(s, "delivered_stone_index", None),
@@ -124,6 +149,13 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
         # rather than present a short end as a whole one.
         "shots_expected": C.STONES_PER_END,
         "unplaced_shots": max(0, C.STONES_PER_END - len(shots)),
+        "splits_measured": sum(1 for o in out_shots if o["long_split_s"] is not None),
+        "thinking_time": {
+            **{c: round(v, 2) for c, v in clock.by_color.items()},
+            "measured_shots": clock.measured_shots,
+            "unmeasured_shots": clock.unmeasured_shots,
+            "anomalies": clock.anomalies,
+        },
         "scored_from_shot": scoring.number if scoring else None,
         "final_stones": [_stone(d) for d in final],
         "scoreboard_agrees": None,
@@ -159,11 +191,29 @@ def build_game(index, start_s, end_s, ends) -> dict:
             o == w for o, w in zip(observed, expected) if o
         )
 
+    clock = {c: 0.0 for c in rules.COLORS}
+    measured = unmeasured = anomalies = splits = 0
+    for end in ends:
+        t = end.get("thinking_time") or {}
+        for c in rules.COLORS:
+            clock[c] += float(t.get(c, 0.0) or 0.0)
+        measured += int(t.get("measured_shots", 0) or 0)
+        unmeasured += int(t.get("unmeasured_shots", 0) or 0)
+        anomalies += int(t.get("anomalies", 0) or 0)
+        splits += int(end.get("splits_measured", 0) or 0)
+
     return {
         "index": index,
         "start_s": round(float(start_s), 2),
         "end_s": round(float(end_s), 2),
         "teams": {c: {"name": None} for c in rules.COLORS},
+        "thinking_time": {
+            **{c: round(v, 2) for c, v in clock.items()},
+            "measured_shots": measured,
+            "unmeasured_shots": unmeasured,
+            "anomalies": anomalies,
+        },
+        "splits_measured": splits,
         "final": dict(running),
         "hammer_consistent": consistent,
         "ends": ends,

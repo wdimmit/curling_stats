@@ -60,6 +60,52 @@ homography work in `geometry/calibrate.py` does not transfer. The cheap version
 needs no metres at all — just "a stone-coloured blob crossed the throwing end's
 hog line at time t", which is a tripwire in pixel space.
 
+## The painted line near the top of a panel is not the hog line
+
+Every overhead panel shows a red line across the sheet a little below its top
+edge, and it is very tempting to read it as the hog line. It is not. Measured
+against each video's own calibration it sits at a consistent **+4.47 m** from
+the tee (median 4.49 over six videos, p10 4.46, p90 4.54), against a hog line
+at `TEE_TO_HOGLINE_M` = 6.401.
+
+The trap is that the discrepancy looks exactly like a far-field scale error,
+and the README's own "the oblique view compresses the far field" invites that
+reading. It is worth knowing that the scale was checked directly and is fine. A
+stone is a fixed 0.284 m across, so its apparent size measures the local scale;
+over 358 clean unclipped detections near the centre line of the reference VOD
+the detected box is 21.81 px wide at y = -1 m and 21.32 px at y = +4 m, flat to
+about 2%. Only the box *height* falls in the last bin, and there the stone is
+against the frame edge.
+
+So the panels genuinely reach about +4.6 m and the hog line genuinely is not in
+view. Two consequences already relied on elsewhere: `game/split.py` measures its
+baseline from the near hog line to a line at +3.4 m rather than hog to hog, and
+`geometry/calibrate.py` needs no distortion term.
+
+## Release pairing is too loose to time with
+
+`release.pair` matches a throw to an arrival inside a 6-30 s window, which is
+the right question for "did this rock arrive, or was it hogged?" -- several
+seconds of slop change no answer. `game/split.py` asks it to carry a
+*measurement* instead, and there the slop is the measurement.
+
+Measured on game 1 end 4: clean pairs run 18-20 s from release to arrival,
+while three shots paired against a release 10-15 s earlier, one of them a draw
+stopping on the button that would have had to cover 24.9 m in 8.5 s. The split
+now refuses those on physical grounds -- a stone's mean speed cannot exceed the
+speed it was measured sliding at -- but refusing is not the same as pairing
+correctly, and it costs coverage: three splits from sixteen shots.
+
+The suspect releases share a signature worth chasing: followed to the very top
+of the panel (+4.28 to +4.53) at 1.3-2.3 m/s, where a genuine delivery is lost
+among the sweepers by +1.4 to +2.6. A player walking up-sheet from the house
+fits that better than a stone. `ENTRY_MARGIN_M` refuses a track that *starts*
+mid-panel, but nothing refuses one that runs the whole length of it without
+ever being occluded, which a swept stone essentially never does.
+
+Getting this right would lift the long split from a sample to a statistic, and
+would tighten hogged-rock detection at the same time.
+
 ## Cache the activity profile
 
 `profile.build_profile` scans the whole video counting stones per panel per

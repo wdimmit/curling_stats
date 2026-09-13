@@ -193,3 +193,58 @@ class TestAReleaseNeverOutranksAnArrival:
         arrivals = [w for k, w in fit.WEIGHT_BY_REASON.items() if not k.startswith("release") and k != "hogged"]
         for k in ("release-add", "release-remove", "hogged"):
             assert fit.WEIGHT_BY_REASON[k] < min(arrivals)
+
+
+# --- the release carries its own track, and pairing is computed once ---------
+
+
+def test_a_release_keeps_the_track_it_was_found_from():
+    """Without the track there is nothing to time a line crossing against."""
+    fs = frames(leaving("red", 100.0))
+    [r] = release.find_releases(fs, VIEW_Y_MIN)
+    assert r.track, "the release dropped the track it was built from"
+    ts = [t for t, _x, _y in r.track]
+    ys = [y for _t, _x, y in r.track]
+    assert ts == sorted(ts)
+    assert ts[0] == r.t
+    assert ys[0] <= VIEW_Y_MIN + release.ENTRY_MARGIN_M
+    assert ys[-1] == pytest.approx(r.y_exit_m)
+
+
+def test_the_track_spans_the_whole_climb():
+    fs = frames(leaving("yellow", 50.0, y0=-2.2, y1=2.4, speed=2.0, fps=5.0))
+    [r] = release.find_releases(fs, VIEW_Y_MIN)
+    ys = [y for _t, _x, y in r.track]
+    assert ys[-1] - ys[0] >= release.MIN_TRAVEL_M
+
+
+def test_find_and_pair_agrees_with_the_two_calls_it_replaces():
+    fs = frames(leaving("red", 100.0), leaving("yellow", 200.0))
+    ds = [arrival("red", 115.0)]
+    releases, matched, un = release.find_and_pair(fs, VIEW_Y_MIN, ds)
+
+    assert releases == release.find_releases(fs, VIEW_Y_MIN)
+    want_matched, want_un = release.pair(releases, ds)
+    assert matched == want_matched
+    assert [u.color for u in un] == [u.color for u in release.unaccounted(releases, ds)]
+
+
+def test_unaccounted_accepts_a_pairing_rather_than_recomputing_it():
+    fs = frames(leaving("red", 100.0))
+    ds = []
+    releases = release.find_releases(fs, VIEW_Y_MIN)
+    pairing = release.pair(releases, ds)
+    assert (
+        [d.reason for d in release.unaccounted(releases, ds, pairing=pairing)]
+        == [d.reason for d in release.unaccounted(releases, ds)]
+    )
+
+
+def test_a_matched_release_is_reported_alongside_its_arrival():
+    """The pairing is the whole point: it is what carries a release onto a shot."""
+    fs = frames(leaving("red", 100.0))
+    a = arrival("red", 115.0)
+    _releases, matched, un = release.find_and_pair(fs, VIEW_Y_MIN, [a])
+    assert un == []
+    assert list(matched.values()) == [a]
+    assert list(matched)[0].t == pytest.approx(100.0)

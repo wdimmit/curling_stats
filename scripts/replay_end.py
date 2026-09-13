@@ -25,7 +25,8 @@ from pathlib import Path
 
 from curling_score import analyze as analyze_mod, weights as weights_mod
 from curling_score.detect import delivery as D, release, sequence, yolo
-from curling_score.game import endcheck, fit, profile, secondpass, segment, shots as shots_mod
+from curling_score.game import (endcheck, fit, profile, secondpass, segment,
+                                shots as shots_mod, split, thinking)
 from curling_score.geometry import layout
 from curling_score.ingest import cache, frames as F, proxy
 
@@ -195,21 +196,43 @@ def main():
         ds = sorted(ds + rec, key=lambda d: d.t_enter)
     # The thrower's house: every release crosses it on the way out.
     far = analyze_mod._proxy_setups(setups, strip)[analyze_mod.OTHER_HOUSE[e["house"]]]
-    releases = release.find_releases(
+    releases, matched, settled = release.find_and_pair(
         sequence.detect_span(read_path, far, from_s, end.end_s, release.RELEASE_FPS, detector),
-        far.view_y_min_m)
-    releases = [r for r in releases if r.t >= from_s]
-    matched, unmatched = release.pair(releases, ds)
+        far.view_y_min_m, ds, frames, since=from_s)
     print(f"\n== releases seen leaving the {analyze_mod.OTHER_HOUSE[e['house']]} house: {len(releases)}")
     for r in releases:
         to = matched.get(r)
         print(f"  {r.color:6s} released {r.t:7.1f} at {r.speed_m_s:.1f} m/s, followed to y={r.y_exit_m:+.2f}"
               + (f" -> arrived {to.t_enter:.1f} ({to.t_enter - r.t:.0f} s later)" if to else "   <-- NO ARRIVAL: hogged?"))
-    settled = [release.settle(r, frames) for r in unmatched]
+    # ``find_and_pair`` has already settled these against the house, and has
+    # dropped the releases explained as a colour misread -- so this is exactly
+    # what the pipeline will add, not an approximation of it.
     for d in settled:
         print(f"     -> the house says: {d.reason}" + (f" at ({d.rest_x_m:+.2f},{d.rest_y_m:+.2f})" if d.reason == release.REASON_ADD else ""))
     if settled:
         ds = sorted(ds + settled, key=lambda d: d.t_enter)
+    # What the two derived timings make of this end. Both are best-effort by
+    # construction, so the counts matter as much as the numbers.
+    thrown_by = {id(d): r for r, d in matched.items()}
+    built = shots_mod.from_deliveries(fit.fit_end(ds), frames, thrown_by=thrown_by)
+    clock = thinking.for_end(built)
+    print("\n== timings")
+    measured = 0
+    for sh, secs in zip(built, clock.per_shot):
+        sp = split.long_split(getattr(sh, "release", None),
+                              getattr(sh, "delivery", None))
+        if sp:
+            measured += 1
+            split_txt = f"{sp.seconds:6.2f}s (est {sp.extrapolated_m:.1f} m)"
+        else:
+            split_txt = "     -             "
+        clock_txt = "    -" if secs is None else f"{secs:5.1f}s"
+        print(f"  {sh.number:2d} {sh.color:6s} split {split_txt}  thinking {clock_txt}")
+    print(f"  splits {measured}/{len(built)}; clock read from {clock.measured_shots}"
+          f" (+{clock.unmeasured_shots} unmeasured, {clock.anomalies} anomalies)")
+    print("  thinking time: "
+          + ", ".join(f"{c} {v:.0f}s" for c, v in clock.by_color.items()))
+
     kept = fit.fit_end(ds)
     print(f"\n== fit_end kept {len(kept)}, dropped {len(ds) - len(kept)}")
     show("DROP", [d for d in ds if d not in kept], end.start_s)

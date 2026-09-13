@@ -79,3 +79,56 @@ class TestFlightTimes:
     def test_never_returns_more_times_than_it_has_samples(self):
         (flight,) = motion.find_flights(travelling(n=12, fps=2.0))
         assert len(motion.flight_times(flight, n=99)) <= len(flight.ts)
+
+
+def leaving(color="red", y0=-2.2, y1=2.6, speed=2.0, fps=5.0, t0=300.0, x=0.1):
+    """A stone climbing out of the thrower's own house: a delivery, seen early."""
+    out, t, y = [], t0, y0
+    while y <= y1 + 1e-9:
+        out.append((round(t, 3), [det(color, x, y)]))
+        y += speed / fps
+        t += 1.0 / fps
+    return out
+
+
+VIEW_Y_MIN = -2.25
+
+
+class TestFindThrows:
+    """The throw is the one thing the harvest has never been able to select.
+
+    ``is_flight`` requires net *down-sheet* travel, so a release -- which
+    climbs -- fails it by construction, and every frame in the motion bin is
+    an arrival. These frames are what the model has never been shown.
+    """
+
+    def test_a_release_is_not_a_flight(self):
+        assert motion.find_flights(leaving()) == []
+
+    def test_finds_a_stone_leaving_the_thrower_s_house(self):
+        (throw,) = motion.find_throws(leaving(), VIEW_Y_MIN)
+        assert throw.color == "red"
+        assert throw.ts[0] == pytest.approx(300.0)
+        assert throw.ys[-1] > throw.ys[0]
+
+    def test_ignores_a_sweeper_starting_mid_panel(self):
+        # The entry test is the whole defence against a red-jacketed sweeper
+        # running up-sheet beside the stone.
+        assert motion.find_throws(leaving(y0=0.5, y1=4.0), VIEW_Y_MIN) == []
+
+    def test_ignores_an_arrival_running_the_other_way(self):
+        assert motion.find_throws(travelling(), VIEW_Y_MIN) == []
+
+    def test_throw_times_span_the_climb(self):
+        (throw,) = motion.find_throws(leaving(), VIEW_Y_MIN)
+        picks = motion.flight_times(throw, 3)
+        assert len(picks) == 3
+        assert picks[0] == throw.ts[0]
+        assert picks[-1] == throw.ts[-1]
+
+    def test_it_reuses_the_one_definition_of_a_release(self):
+        """Two definitions of a throw would drift; there must only be one."""
+        from curling_score.detect import release
+        fs = leaving()
+        assert len(motion.find_throws(fs, VIEW_Y_MIN)) == len(
+            release.find_releases(fs, VIEW_Y_MIN))

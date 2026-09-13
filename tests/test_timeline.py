@@ -202,3 +202,90 @@ class TestMovingAShot:
         got = self._shots({"0.4.5": {"before": 99}})
         assert [s["number"] for s in got] == [1, 2, 3, 4, 5, 6]
         assert "id" not in got[0]
+
+
+class TestTimingFields:
+    """The split and the clock reach the document, and say when they cannot."""
+
+    def _shot(self, n, color, t_rest, t_rel=None, y_enter=4.5):
+        from curling_score.detect.delivery import Delivery
+        from curling_score.detect.release import Release
+        tr, t, y = [], t_rest - 6.0, y_enter
+        while y >= 0.2:
+            tr.append((round(t, 3), 0.0, round(y, 4)))
+            y -= 0.08
+            t += 0.1
+        dv = Delivery(color=color, t_enter=tr[0][0], t_rest=t_rest,
+                      entry_y_m=y_enter, rest_x_m=0.0, rest_y_m=tr[-1][2],
+                      travel_m=y_enter - tr[-1][2], track=tuple(tr))
+        rel = None
+        if t_rel is not None:
+            rt, tt, yy = [], t_rel, -2.0
+            while yy <= 3.6:
+                rt.append((round(tt, 3), 0.05, round(yy, 4)))
+                yy += 0.4
+                tt += 0.2
+            rel = Release(color=color, t=rt[0][0], y_exit_m=rt[-1][2],
+                          speed_m_s=2.0, track=tuple(rt))
+        return S.Shot(number=n, color=color, stones=[det(color, 0.1, 0.2)],
+                      t_rest_s=t_rest, delivery=dv, release=rel)
+
+    def test_a_measured_shot_carries_its_split_and_clock(self):
+        end = timeline.build_end(
+            number=1, house="top", start_s=0.0, end_s=900.0,
+            shots=[self._shot(1, "red", 100.0, t_rel=70.0),
+                   self._shot(2, "yellow", 160.0, t_rel=130.0)],
+        )
+        second = end["shots"][1]
+        assert second["t_release_s"] == pytest.approx(130.0)
+        assert second["t_tee_s"] == pytest.approx(131.0, abs=0.05)
+        assert second["long_split_s"] is not None
+        assert second["thinking_time_s"] == pytest.approx(26.0, abs=0.1)
+        assert end["splits_measured"] == 2
+
+    def test_a_shot_with_no_release_reports_none_rather_than_zero(self):
+        end = timeline.build_end(
+            number=1, house="top", start_s=0.0, end_s=900.0,
+            shots=[self._shot(1, "red", 100.0), self._shot(2, "yellow", 160.0)],
+        )
+        for s in end["shots"]:
+            assert s["t_release_s"] is None
+            assert s["long_split_s"] is None
+            assert s["thinking_time_s"] is None
+        assert end["splits_measured"] == 0
+        assert end["thinking_time"]["measured_shots"] == 0
+        assert end["thinking_time"]["unmeasured_shots"] == 2
+
+    def test_the_end_totals_the_clock_by_colour(self):
+        end = timeline.build_end(
+            number=1, house="top", start_s=0.0, end_s=900.0,
+            shots=[self._shot(1, "red", 100.0, t_rel=70.0),
+                   self._shot(2, "yellow", 160.0, t_rel=130.0)],
+        )
+        assert end["thinking_time"]["yellow"] == pytest.approx(26.0, abs=0.1)
+        assert end["thinking_time"]["red"] == 0.0
+        assert end["thinking_time"]["anomalies"] == 0
+
+    def test_a_game_adds_its_ends_up(self):
+        one = timeline.build_end(
+            number=1, house="top", start_s=0.0, end_s=900.0,
+            shots=[self._shot(1, "red", 100.0, t_rel=70.0),
+                   self._shot(2, "yellow", 160.0, t_rel=130.0)],
+        )
+        two = dict(one, number=2)
+        game = timeline.build_game(0, 0.0, 1800.0, [one, two])
+        assert game["thinking_time"]["yellow"] == pytest.approx(
+            2 * one["thinking_time"]["yellow"], abs=0.01)
+        assert game["splits_measured"] == 2 * one["splits_measured"]
+
+    def test_the_schema_version_says_the_shape_changed(self):
+        assert timeline.SCHEMA_VERSION == 3
+
+    def test_a_placeholder_shot_has_no_timings(self):
+        end = timeline.build_end(
+            number=1, house="top", start_s=0.0, end_s=900.0,
+            shots=[self._shot(1, "red", 100.0, t_rel=70.0),
+                   shot(2, "yellow", [], missing=True)],
+        )
+        assert end["shots"][1]["long_split_s"] is None
+        assert end["shots"][1]["thinking_time_s"] is None

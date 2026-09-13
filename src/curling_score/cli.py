@@ -115,12 +115,11 @@ def _review(args) -> int:
             recovered = secondpass.search(seq, gaps, found)
             offered = sorted(found + recovered, key=lambda d: d.t_enter)
             far = read_setups[analyze_mod.OTHER_HOUSE[end.house]]
-            releases = release.find_releases(
+            _releases, _thrown_by, unaccounted = release.find_and_pair(
                 sequence.detect_span(read_path, far, from_s, end.end_s,
                                      release.RELEASE_FPS, detector),
-                far.view_y_min_m)
-            offered = sorted(offered + release.unaccounted(
-                [r for r in releases if r.t >= from_s], offered, seq), key=lambda d: d.t_enter)
+                far.view_y_min_m, offered, seq, since=from_s)
+            offered = sorted(offered + unaccounted, key=lambda d: d.t_enter)
             # The rules trim the candidate list before anything is built from
             # it, so the review has to review what survives -- otherwise it
             # flags gaps around candidates the pipeline has already discarded.
@@ -492,8 +491,9 @@ def _add_harvest(sub):
     q.add_argument("--pool", required=True)
     q.add_argument("--videos", default="datasets/ds11/videos.json")
     q.add_argument("--manifest", default="datasets/ds11/manifest.json")
-    q.add_argument("--wave", type=int, default=2, choices=(1, 2),
-                   help="1 is the pilot: one frame per bin per video")
+    q.add_argument("--wave", type=int, default=2, choices=(1, 2, 3),
+                   help="1 is the pilot: one frame per bin per video; "
+                        "3 takes throws only, which no earlier set contains")
 
     q = stage.add_parser("build", help="write the YOLO tree from a manifest")
     q.add_argument("--manifest", default="datasets/ds11/manifest.json")

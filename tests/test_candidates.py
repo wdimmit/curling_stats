@@ -198,3 +198,43 @@ class TestBackfillSource:
         picked, short = C.select(p, quota={"sparse": 3, "busy": 2}, backfill=True)
         assert len(picked) == 5
         assert short["sparse"] == 3 and short["backfilled"] == 3
+
+
+class TestTheThrowBin:
+    """A throw is wanted because it is a throw, like a flight."""
+
+    def test_a_throw_outranks_the_count_bins(self):
+        assert C.bin_of(cand(1.0, 3, 3, kind="throw")) == "throw"
+
+    def test_a_throw_bin_exists_in_the_quota(self):
+        assert "throw" in C.quota_for("train", wave=3)
+        assert "throw" in C.quota_for("val", wave=3)
+
+    def test_wave_three_asks_for_throws_and_nothing_else(self):
+        # The point of the wave is the one thing every earlier set is missing.
+        assert set(C.quota_for("train", wave=3)) == {"throw"}
+
+    def test_only_a_real_throw_can_fill_the_throw_quota(self):
+        # Same reasoning as motion: a throw quota met with still frames would
+        # make the coverage a number nobody could trust.
+        pool = [cand(float(i) * 100, 2, 2) for i in range(20)]
+        picked, short = C.select(pool, quota={"throw": 3, "medium": 2},
+                                 backfill=True)
+        assert short.get("throw") == 3
+        assert not any(c.kind == "throw" for c in picked)
+
+    def test_throws_are_spread_across_the_night(self):
+        pool = [cand(float(i) * 300, 2, 2, kind="throw", clip=float(i) * 300)
+                for i in range(12)]
+        picked, short = C.select(pool, quota={"throw": 3})
+        assert len(picked) == 3
+        assert not short
+        ts = sorted(c.t_abs for c in picked)
+        assert ts[0] == 0.0 and ts[-1] == 3300.0
+
+    def test_a_short_supply_of_throws_is_reported_not_padded(self):
+        pool = [cand(0.0, 2, 2, kind="throw")] + [cand(float(i) * 100, 2, 2)
+                                                  for i in range(1, 10)]
+        picked, short = C.select(pool, quota={"throw": 4})
+        assert short["throw"] == 3
+        assert len(picked) == 1

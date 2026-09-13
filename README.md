@@ -31,6 +31,8 @@ strip down the middle of the frame. Everything is read from those two panels.
 | Segment | `game/segment.py` | Split the stream into games and ends |
 | Shots | `game/shots.py` | Turn rest states into an ordered, attributed shot sequence |
 | Rules | `game/rules.py` | Scoring, hammer, shot→player — pure logic, no CV |
+| Split | `game/split.py` | Time a stone down the sheet — the long split |
+| Clock | `game/thinking.py` | Thinking time per team, between the shots it can see |
 | Validate | `game/scoreboard.py` | Read the wall scoreboard as an independent check |
 
 Four decisions carry most of the weight:
@@ -135,7 +137,24 @@ it is meant to find. The lower quartile is used instead.
   read from who threw first.
 - **Positions far up-sheet are approximate.** The oblique view compresses the
   far field; the calibration is a pure scale about the house. Everything inside
-  the scoring region is accurate, guards less so.
+  the scoring region is accurate, guards less so. The scale itself holds up: a
+  stone's detected box is flat to ~2% from the tee out to +4 m.
+- **The long split is not hog to hog.** Neither hog line is inside an overhead
+  panel — they reach about +4.6 m against a hog line at 6.401 — so the split is
+  measured over a stated 24.95 m baseline, from the near hog line to a line
+  3.4 m up-sheet of the far tee. Only the throwing end is extrapolated, and
+  only across the 1.7–3.9 m the slide covers at a near-constant speed; each
+  shot reports how much. Going the other way was measured and rejected: a
+  crossing predicted 1.0 m beyond an arrival's track misses by a median 0.71 s.
+- **The split covers a minority of shots, and says so.** On the reference end it
+  reads 3 of 16. The limit is the release-to-arrival pairing, which was built to
+  ask whether a rock arrived at all and is too loose to time with; a split whose
+  mean speed exceeds the speed the stone was measured sliding at is refused
+  rather than published. A guard that stops above the arrival line never crosses
+  it and has no split at all. `end["splits_measured"]` is the count.
+- **Thinking time is a lower bound.** It needs the throwing-end camera to have
+  followed the delivery, and an end's first stone has nothing to time from, so
+  every total says how many shots it was read from.
 - **The hammer chain does not yet self-validate.** It is read from who threw
   first, which is wrong when an end's opening deliveries are missed.
 - **Scoreboard validation is not implemented** (the board sits at a different

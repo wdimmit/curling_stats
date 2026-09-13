@@ -76,6 +76,42 @@ def find_flights(sequence, min_seconds: float = MIN_FLIGHT_S) -> list[Flight]:
     return found
 
 
+def find_throws(sequence, view_y_min_m: float) -> list[Flight]:
+    """Every stone seen *leaving* the thrower's house in one sequence.
+
+    The counterpart to :func:`find_flights`, and the frames the harvest has
+    never been able to offer. ``dataset.is_flight`` measures
+    ``ys[0] - ys[-1]`` and requires it positive, so it accepts only net
+    down-sheet travel; a release climbs, and fails the test by construction.
+    Every frame in the motion bin is therefore an arrival, and the model has
+    never been shown the throw itself.
+
+    Like ``find_flights`` delegating to ``dataset.is_flight``, this delegates
+    to :func:`curling_score.detect.release.find_releases` rather than restating
+    what a departing stone looks like -- one definition that the pipeline and
+    the training set share, instead of two that drift apart. That also buys the
+    entry test, which is the only thing separating a delivery from the
+    red-jacketed sweeper running up-sheet beside it.
+
+    ``sequence`` is ``(absolute_t, detections)`` in time order, and
+    ``view_y_min_m`` is the panel's back edge -- the same value
+    ``find_releases`` is given in the analysis pipeline.
+    """
+    from curling_score.detect import release
+
+    window = [(t, list(dets)) for t, dets in sequence]
+    found = [
+        Flight(color=r.color,
+               ts=tuple(t for t, _x, _y in r.track),
+               xs=tuple(x for _t, x, _y in r.track),
+               ys=tuple(y for _t, _x, y in r.track))
+        for r in release.find_releases(window, view_y_min_m)
+        if r.track
+    ]
+    found.sort(key=lambda f: f.ts[0])
+    return found
+
+
 def flight_times(flight: Flight, n: int = 3) -> list[float]:
     """``n`` moments spanning a flight, ends included.
 

@@ -62,11 +62,21 @@ VAL_QUOTA = dict(QUOTA)
 
 WAVE1_QUOTA = {name: 1 for name in QUOTA}
 
+# Wave 3 asks for throws and nothing else. Every set through ds12 was built
+# from ``is_flight``, which measures net *down-sheet* travel and so can only
+# ever accept an arrival -- the model has been shown 547 stones coming into the
+# house and not one leaving the hack. Two per video over the season's 120 is
+# the couple of hundred frames that gap is worth, and mixing the other bins
+# back in would spend review time re-teaching what ds11 already covers.
+THROW_QUOTA = {"throw": 2}
+
 
 def quota_for(split: str = "train", wave: int = 2) -> dict:
     """The bin quota for one video."""
     if wave == 1:
         return dict(WAVE1_QUOTA)
+    if wave == 3:
+        return dict(THROW_QUOTA)
     return dict(VAL_QUOTA if split == "val" else QUOTA)
 
 MAX_PER_CLIP = 3
@@ -80,7 +90,7 @@ class Candidate:
     panel: str
     t_abs: float
     clip_start_s: float
-    kind: str  # "grid" or "motion"
+    kind: str  # "grid", "motion" (an arrival) or "throw" (a departure)
     n_red: int
     n_yellow: int
     flight_id: int | None = None
@@ -91,8 +101,8 @@ class Candidate:
     # first box; across 120 videos a borrowed median would be wrong nearly
     # everywhere.
     box_wh: tuple = ()
-    # For a motion frame, the stems either side. One still cannot tell a
-    # moving stone from a red shoe; three can.
+    # For a motion or throw frame, the stems either side. One still cannot
+    # tell a moving stone from a red shoe; three can.
     neighbours: tuple = ()
 
     @property
@@ -118,11 +128,12 @@ def stem_for(video_id: str, panel: str, t_abs: float) -> str:
 def bin_of(candidate: Candidate) -> str:
     """Which quota this frame counts against.
 
-    Motion wins over the count bins: a flight frame is wanted because it is a
-    flight, and which count bin it would otherwise land in is beside the point.
+    Motion and throw win over the count bins: such a frame is wanted because
+    the stone is moving, and which count bin it would otherwise land in is
+    beside the point.
     """
-    if candidate.kind == "motion":
-        return "motion"
+    if candidate.kind in ("motion", "throw"):
+        return candidate.kind
     for name, low, high in COUNT_BINS:
         if low <= candidate.n_stones <= high:
             return name
@@ -182,9 +193,9 @@ def select(pool, quota=None, max_per_clip: int = MAX_PER_CLIP, backfill: bool = 
     ``backfill`` tops up a missed *count* bin from whatever else is going,
     which keeps the frame budget whole.
 
-    It draws from neither motion nor empty. Motion because a flight quota met
-    with still frames would make the flight coverage a number nobody could
-    trust. Empty because the pilot measured 114 empty frames and got not one
+    It draws from neither motion, throw nor empty. The two moving bins because
+    a quota met with still frames would make the coverage of the very thing
+    they exist for a number nobody could trust. Empty because the pilot measured 114 empty frames and got not one
     correction out of them: topping up a short bin with empties spends review
     time on the one thing shown to teach nothing, and since empties are 44% of
     the pool that is exactly what a naive backfill does.
@@ -202,9 +213,10 @@ def select(pool, quota=None, max_per_clip: int = MAX_PER_CLIP, backfill: bool = 
             shortfall[name] = want - len(got)
 
     filled = 0
-    NO_BACKFILL_FROM = ("motion", "empty")
+    NO_BACKFILL_FROM = ("motion", "throw", "empty")
     if backfill:
-        missing = sum(n for b, n in shortfall.items() if b != "motion")
+        missing = sum(n for b, n in shortfall.items()
+                      if b not in ("motion", "throw"))
         if missing:
             taken = set(chosen)
             rest = [c for c in pool
