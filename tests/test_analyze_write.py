@@ -84,8 +84,14 @@ class TestTheRunUpStartsWhereThePreviousEndClosed:
     first rocks thrown before that -- through the house, or just early --
     were discarded as the previous end's run-up."""
 
-    def test_the_first_end_of_a_game_keeps_the_half_minute(self):
-        assert analyze.run_up_from(None, 100.0) == 100.0 - 36.0
+    def test_the_first_end_of_a_game_gets_the_whole_game_gap(self):
+        # Game 5's opening yellow ran through the house 67 s before the
+        # segmenter saw the end begin; a half-minute would have missed it.
+        assert analyze.run_up_from(None, 300.0) == 300.0 - 240.0
+
+    def test_a_later_game_s_first_end_is_bounded_by_the_previous_game(self):
+        assert analyze.run_up_from(6435.0, 7590.0) == 7590.0 - 240.0
+        assert analyze.run_up_from(7500.0, 7590.0) == 7500.0
 
     def test_a_later_end_reaches_back_to_the_previous_close(self):
         assert analyze.run_up_from(1815.0, 1940.0) == 1815.0   # game 3 end 3: yellow through at 1903
@@ -98,3 +104,4 @@ class TestTheRunUpStartsWhereThePreviousEndClosed:
 
     def test_it_never_goes_before_the_start_of_the_video(self):
         assert analyze.run_up_from(None, 10.0) == 0.0
+        assert analyze.run_up_from(None, 135.0) == 0.0

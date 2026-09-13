@@ -67,9 +67,12 @@ def run_up_from(prev_end_s, start_s: float) -> float:
     Between the previous end closing and this one opening, this panel holds
     nothing but this end's first stones: the previous end was played into the
     other house, and its stones are cleared toward the hack behind it, away
-    from here. So everything from that close onward is this end's. The first
-    end of a game keeps the old half-minute, since what precedes it on this
-    panel is another game's clearing.
+    from here. So everything from that close onward is this end's, bounded by
+    the gap that would have split the games. The first end of a game has no
+    previous end and gets the whole gap: game 5's opening yellow ran clean
+    through the house 67 s before the segmenter saw the end begin, which is
+    what a through-shot does -- it leaves nothing for the segmenter to see.
+    The previous game's last rock still bounds it where there is one.
 
     "Closed" means the previous end's last rock came to rest, not when its
     house emptied: teams throw the next end's first rock while the far house
@@ -81,9 +84,8 @@ def run_up_from(prev_end_s, start_s: float) -> float:
     from curling_score.game.segment import GAME_GAP_S
 
     lookback = start_s - REQUIRED_LOOKBACK_S
-    if prev_end_s is None:
-        return max(0.0, lookback)
-    return max(0.0, min(lookback, max(prev_end_s, start_s - GAME_GAP_S)))
+    floor = start_s - GAME_GAP_S if prev_end_s is None else max(prev_end_s, start_s - GAME_GAP_S)
+    return max(0.0, min(lookback, floor))
 
 
 def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
@@ -178,9 +180,9 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     total_ends = sum(len(g.ends) for g in games) or 1
     done_ends = 0
     out_games = []
+    prev_end_s = None
     for game in games:
         out_ends = []
-        prev_end_s = None
         for end in game.ends:
             setup = read_setups[end.house]
             progress(f"  game {game.index + 1} end {end.number} ({end.house})...")

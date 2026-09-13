@@ -1084,3 +1084,27 @@ and lowering it does the reverse. 3.4 is the compromise.
 Thinking time on the same end reads from 10 of 16 shots: red 218 s, yellow
 100 s. That gap is mostly coverage, not play — six red intervals were measured
 against four yellow — which is why the totals never travel without their counts.
+
+
+## The first end has no previous end (2026-09-12)
+
+Game 5 (6/18, sheet 4) opened with a yellow thrown clean through the house
+at 68.6, released at 54.4; the red that followed also ran through. The
+segmenter saw the end begin only at 135, when the third rock rested, and the
+first end's run-up reached back the old half-minute -- to 99, which caught the
+red by a second and not the yellow. Every later end reaches back to the
+previous end's last rock; the first end had nothing to reach back to. It now
+gets the whole game gap (240 s), bounded by the previous game's last rock
+where there is one. Replayed from the start of the video: 18 candidates, 16
+kept, and all fourteen releases seen paired to arrivals 9-18 s later.
+
+The risk is practice slides before the game, which arrive in the house like
+deliveries. Checked on all five games' first ends below.
+
+**Checked on all five games' first ends.** Game 5: 15 -> 16, the yellow at
+68.6 leading. The other four games' first ends are unchanged -- no practice
+slide entered any of them -- and the reference gains one rock: game 2's
+first end, a red the release camera saw thrown at 7541 with no arrival and
+no change in the house, 50 s before the segmenter saw the end begin. Every
+hand-confirmed delivery and non-delivery still stands. `PIPELINE_VERSION`
+2026.09.7.

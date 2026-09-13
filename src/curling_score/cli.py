@@ -95,8 +95,8 @@ def _review(args) -> int:
 
     games = segment.segment_games(profile.build_profile(read_path, read_setups))
     rows = []
+    prev_end_s = None
     for gi, game in enumerate(games, 1):
-        prev_end_s = None
         for end in game.ends:
             setup = read_setups[end.house]
             from_s = analyze_mod.run_up_from(prev_end_s, end.start_s)

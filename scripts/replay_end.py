@@ -151,9 +151,11 @@ def main():
     game = next(g for g in doc["games"] if g["index"] == args.game)
     e = next(e for e in game["ends"] if e["number"] == args.end)
     earlier = [x for x in game["ends"] if x["number"] < e["number"]]
+    if not earlier:   # the first end: the previous game's last end, if any
+        earlier = [x for g in doc["games"] if g["index"] < game["index"] for x in g["ends"]]
     prev_close = None
     if earlier:
-        prev = max(earlier, key=lambda x: x["number"])
+        prev = max(earlier, key=lambda x: x["end_s"])
         rests = [s["t_rest_s"] for s in prev["shots"] if s.get("t_rest_s") is not None]
         prev_close = min(prev["end_s"], max(rests)) if rests else prev["end_s"]
     from_s = analyze_mod.run_up_from(prev_close, e["start_s"])
