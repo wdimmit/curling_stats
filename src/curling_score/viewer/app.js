@@ -86,7 +86,7 @@ const PHONE_QUERY = "(max-width: 640px) and (min-height: 521px)";
 const state = {
   doc:null, overrides:{}, version:null, gi:0, ei:0, si:0,
   selStone:null, placeColor:"red", openGroup:null,
-  showTrack:true, autoplay:true, leadIn:10, clockOpen:false,
+  showTrack:true, autoplay:true, leadIn:10, clockOpen:false, clockBars:false,
   player:null, playerReady:false, pendingSeek:null, seekTimer:null,
   saveTimer:null, saving:false, again:false, reporting:false,
   /* Which shots have edits the server has not acknowledged. A set rather than
@@ -954,9 +954,29 @@ function clockPanel() {
   let here = state.si + 1;               // 1-based: point 0 is the origin
   for (let i = 0; i < state.ei && i < ends.length; i++)
     here += mergedShots(ends[i]).length;
-  $("clock").innerHTML = thinkingChart(series, here, TALLBOX) + `<div class="key muted">
-    <span><i class="sw red"></i>${clockText(series.red)}</span>
-    <span><i class="sw yellow"></i>${clockText(series.yellow)}</span></div>`;
+  // Two questions, one panel, because the column is not wide enough for both
+  // at once: who is ahead on the clock, and which rock took so long.
+  const bars = state.clockBars;
+  $("clock").innerHTML = (bars ? thinkingBars : thinkingChart)(series, here, TALLBOX)
+    + `<div class="key muted">
+        <span><i class="sw red"></i>${clockText(series.red)}</span>
+        <span><i class="sw yellow"></i>${clockText(series.yellow)}</span>
+        <span class="grow"></span>
+        <button id="clockMode" class="linky">${bars ? "totals" : "per rock"}</button>
+      </div>`;
+  $("clockMode").onclick = () => {
+    state.clockBars = !state.clockBars;
+    savePrefs();
+    clockPanel();
+  };
+  // A tall bar is only useful if it takes you to the rock that made it.
+  for (const bar of $("clock").querySelectorAll("rect[data-shot]"))
+    bar.onclick = () => {
+      const p = series.points[+bar.dataset.shot];
+      if (!p) return;
+      state.ei = p.ei; state.si = p.si; state.selStone = null;
+      render(); seekCurrent();
+    };
 }
 
 function scoreTable() {
@@ -1030,20 +1050,30 @@ function gatherThinking() {
  * bounds; the count that says how much was read is right above the chart. */
 function cumulativeThinking() {
   const points = [{ i:0, red:0, yellow:0, estimated:false }];
-  const bounds = [];
+  const bounds = [], ends = [];
   let i = 0, red = 0, yellow = 0;
   for (const e of game().ends) {
-    for (const s of mergedShots(e)) {
+    mergedShots(e).forEach((s, k) => {
       i++;
       const secs = s.thinking_time_s;
       if (secs != null && s.color === "red") red += secs;
       else if (secs != null && s.color === "yellow") yellow += secs;
-      points.push({ i, red, yellow, color:s.color,
+      // The interval itself travels with the running total, so the bars and
+      // the lines are one walk over the game and share an x axis exactly.
+      points.push({ i, red, yellow, color:s.color, secs,
+                    ei: ends.length, si: k, end: e.number,
+                    label: s.label || `shot ${s.number}`,
                     estimated: secs != null && !!s.t_tee_estimated });
-    }
+    });
     bounds.push({ i, number:e.number });
+    ends.push(e);
   }
-  return { points, bounds, red, yellow };
+  const spent = points.map(p => p.secs).filter(s => s != null).sort((a, b) => a - b);
+  return { points, bounds, red, yellow,
+           // What "long" means here, rather than in the abstract: teams take
+           // as long as the game is, and a slow rock is slow against its own.
+           median: spent.length ? spent[Math.floor(spent.length / 2)] : 0,
+           longest: spent.length ? spent[spent.length - 1] : 0 };
 }
 
 const CHARTBOX = { w:640, h:210, padL:46, padR:8, padT:8, padB:22 };
@@ -1106,6 +1136,62 @@ function thinkingChart(series, at = null, BOX = CHARTBOX) {
   </svg>`;
 }
 
+/* The same game as bars, one per rock, in the order they were thrown.
+ *
+ * The lines answer "who is ahead on the clock"; this answers "which rock took
+ * so long", which is not a question a cumulative curve can be read for -- a
+ * long shot is a slightly steeper step among a hundred others. A bar is tall
+ * or it is not. The dashed line is the game's own median, because teams take
+ * as long as the game is and a slow rock is only slow against its own.
+ *
+ * Deliberately not a histogram of durations: that shows the spread and loses
+ * the thing being looked for, which is *which* rock to go and watch. */
+function thinkingBars(series, at = null, BOX = CHARTBOX) {
+  const { points, bounds, median } = series;
+  const n = points.length - 1;
+  const shots = points.filter(p => p.secs != null);
+  if (n < 1 || !shots.length) return "";
+  const top = Math.max(series.longest, 1);
+  const x = i => BOX.padL + (i / n) * (BOX.w - BOX.padL - BOX.padR);
+  const y = v => BOX.h - BOX.padB - (v / top) * (BOX.h - BOX.padT - BOX.padB);
+  const step = [30, 60, 120, 300].find(s => top / s <= 4) || 600;
+  const grid = [];
+  for (let v = 0; v <= top; v += step)
+    grid.push(`<line x1="${BOX.padL}" x2="${BOX.w - BOX.padR}"
+        y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="g"/>
+      <text x="${BOX.padL - 6}" y="${(y(v) + 4).toFixed(1)}"
+        class="yl">${clockText(v)}</text>`);
+  const ticks = bounds.map(b => `<line x1="${x(b.i).toFixed(1)}"
+      x2="${x(b.i).toFixed(1)}" y1="${BOX.padT}" y2="${BOX.h - BOX.padB}"
+      class="b"/>`).join("");
+  const labels = bounds.map((b, k) => {
+    const from = k ? bounds[k - 1].i : 0;
+    return `<text x="${((x(from) + x(b.i)) / 2).toFixed(1)}"
+      y="${BOX.h - 7}" class="xl">${b.number}</text>`;
+  }).join("");
+  // One bar per rock, filling the slot it occupies with a hairline of space.
+  const w = Math.max(1.5, (x(1) - x(0)) * 0.8);
+  const bars = shots.map(p => {
+    const h = Math.max(0.8, (BOX.h - BOX.padB) - y(p.secs));
+    return `<rect class="bar ${p.color || ""}${p.estimated ? " est" : ""}"
+      x="${(x(p.i) - w / 2).toFixed(1)}" y="${y(p.secs).toFixed(1)}"
+      width="${w.toFixed(1)}" height="${h.toFixed(1)}" data-shot="${p.i}"
+      ><title>End ${p.end}, ${esc(p.label)} — ${clockText(p.secs)}${
+        p.estimated ? " (estimated)" : ""}</title></rect>`;
+  }).join("");
+  const mid = median > 0 ? `<line class="median" x1="${BOX.padL}"
+      x2="${BOX.w - BOX.padR}" y1="${y(median).toFixed(1)}"
+      y2="${y(median).toFixed(1)}"><title>median ${clockText(median)}</title></line>` : "";
+  const you = at == null || at < 0 || at > n ? "" :
+    `<line class="you" x1="${x(at).toFixed(1)}" x2="${x(at).toFixed(1)}"
+       y1="${BOX.padT}" y2="${BOX.h - BOX.padB}"/>`;
+  return `<svg class="clockchart bars" viewBox="0 0 ${BOX.w} ${BOX.h}" role="img"
+      aria-label="Thinking time per rock, longest ${clockText(series.longest)},
+                  median ${clockText(median)}">
+    ${grid.join("")}${ticks}${labels}${you}${bars}${mid}
+  </svg>`;
+}
+
 function gatherStats() {
   const out = {};
   for (const c of ["red","yellow"]) {
@@ -1133,6 +1219,7 @@ const avg = r => r.graded ? (r.sum / r.graded).toFixed(2) : "—";
 function renderReport() {
   const stats = gatherStats();
   const think = gatherThinking();
+  const clock = cumulativeThinking();
   const g = game();
   const cards = ["red","yellow"].map(c => {
     const teamTotal = { thrown:0, graded:0, sum:0 };
@@ -1193,8 +1280,9 @@ function renderReport() {
         stopped the usual 16 s before the rock arrived.` : ""} Treat these as
       lower bounds.</div>` : ""}
     ${think.measured ? `<div class="card clockcard" style="margin-top:12px">
-      <h2>Thinking time<span class="muted"> &mdash; cumulative, by end</span></h2>
-      ${thinkingChart(cumulativeThinking())}
+      <h2>Thinking time<span class="muted"> &mdash; cumulative, then per rock</span></h2>
+      ${thinkingChart(clock)}
+      ${thinkingBars(clock)}
       <div class="key muted">
         <span><i class="sw red"></i>red ${clockText(think.red)}</span>
         <span><i class="sw yellow"></i>yellow ${clockText(think.yellow)}</span>
@@ -1275,6 +1363,7 @@ function restorePrefs() {
     if (typeof p.autoplay === "boolean") state.autoplay = p.autoplay;
     if (typeof p.leadIn === "number") state.leadIn = p.leadIn;
     if (typeof p.clockOpen === "boolean") state.clockOpen = p.clockOpen;
+    if (typeof p.clockBars === "boolean") state.clockBars = p.clockBars;
   } catch { /* a fresh browser, or storage blocked: defaults are fine */ }
   $("showTrack").checked = state.showTrack;
   $("autoplay").checked = state.autoplay;
@@ -1292,7 +1381,7 @@ function savePrefs() {
   try {
     localStorage.setItem("curlchart", JSON.stringify({
       showTrack:state.showTrack, autoplay:state.autoplay, leadIn:state.leadIn,
-      clockOpen:state.clockOpen }));
+      clockOpen:state.clockOpen, clockBars:state.clockBars }));
   } catch { /* not important enough to bother the user about */ }
 }
 
@@ -1302,7 +1391,7 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots, layout, identity, READ_ONLY, REVIEW, MERGE,
                      dirtyPayload, saveUrl, reconcile, busyKey, unloadBeacon,
                      gatherStats, gatherThinking, clockText, splitText, thinkText, pct, avg,
-                     cumulativeThinking, thinkingChart,
+                     cumulativeThinking, thinkingChart, thinkingBars,
                      isBlank, isGraded, typeOf, shotVideoTime, TYPE, TYPES,
                      GROUPS, POSITIONS, stoneAt, R, LIMIT,
                      houseViewBox, shouldCrop, peekMode, renumberNotice };

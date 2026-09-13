@@ -26,7 +26,7 @@ def run_js(body: str):
         "       pct, avg, isBlank, isGraded, typeOf, shotVideoTime, stoneAt,\n"
         "       shotKey, rawShot, houseViewBox, shouldCrop, peekMode,\n"
         "       renumberNotice, gatherThinking, clockText, splitText,\n"
-        "       thinkText, cumulativeThinking, thinkingChart} = A;\n"
+        "       thinkText, cumulativeThinking, thinkingChart, thinkingBars} = A;\n"
         "function out(v){ console.log(JSON.stringify(v)); }\n" + body
     )
     proc = subprocess.run([node, "-e", script], capture_output=True, text=True,
@@ -819,3 +819,60 @@ class TestWhereYouAreOnTheClock:
             got = run_js(clock_setup() +
                          f"out(thinkingChart(cumulativeThinking(), {at}));")
             assert got.count('class="you"') == 1
+
+
+class TestTheBarsPerRock:
+    """A cumulative curve cannot be read for "which rock took so long" -- a
+    long shot is a slightly steeper step among a hundred. A bar is tall."""
+
+    def test_one_bar_per_rock_that_was_timed(self):
+        """Four of the six shots in the fixture have an interval."""
+        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking()));")
+        assert got.count("<rect") == 4
+
+    def test_a_bar_is_its_team_s_colour(self):
+        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking()));")
+        assert got.count('class="bar red') == 2
+        assert got.count('class="bar yellow') == 2
+
+    def test_an_assumed_interval_is_drawn_hollow(self):
+        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking()));")
+        assert got.count(" est\"") == 1
+
+    def test_the_median_is_drawn_so_long_means_long_for_this_game(self):
+        got = run_js(clock_setup() +
+                     "const c = cumulativeThinking();"
+                     "out([thinkingBars(c).includes('class=\"median\"'), c.median, c.longest]);")
+        assert got[0] is True
+        assert got[1] == 30 and got[2] == 40
+
+    def test_every_bar_says_which_rock_it_is(self):
+        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking()));")
+        assert "<title>End 1, shot 2 &mdash; 0:30</title>".replace("&mdash;", "—") in got
+        assert "(estimated)" in got
+
+    def test_a_bar_carries_the_rock_it_came_from(self):
+        """So that clicking one can go there; the index keys back into points."""
+        got = run_js(clock_setup() +
+                     "const c = cumulativeThinking();"
+                     "const m = [...thinkingBars(c).matchAll(/data-shot=\"(\\d+)\"/g)]"
+                     "  .map(x => +x[1]);"
+                     "out(m.map(i => [c.points[i].end, c.points[i].si]));")
+        assert got == [[1, 1], [1, 2], [1, 3], [2, 1]]
+
+    def test_it_shares_the_ends_with_the_cumulative_chart(self):
+        got = run_js(clock_setup() +
+                     "const c = cumulativeThinking();"
+                     "out([thinkingChart(c), thinkingBars(c)].map(s =>"
+                     "  [...s.matchAll(/class=\"b\"/g)].length));")
+        assert got[0] == got[1] == 2
+
+    def test_a_game_nobody_timed_draws_nothing(self):
+        got = run_js(clock_setup() +
+                     "out(thinkingBars({points:[{i:0}], bounds:[], red:0, yellow:0,"
+                     "                  median:0, longest:0}));")
+        assert got == ""
+
+    def test_it_takes_a_position_like_the_lines_do(self):
+        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking(), 3));")
+        assert got.count('class="you"') == 1
