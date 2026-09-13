@@ -16,13 +16,13 @@ const hms = s => { s = Math.max(0, Math.round(s || 0)); const h = Math.floor(s /
 
 let all = [];
 let mine = new Map();          // source_id -> the chart slug I already have
+let signedIn = false;          // whether the League cells are editable
 const picker = teamPicker($("teamrow"));
 
 async function load() {
   const data = await (await fetch("/api/games")).json();
   all = data.games;
-  $("league").innerHTML = `<option value="">All leagues</option>` +
-    data.leagues.map(l => `<option>${esc(l)}</option>`).join("");
+  refreshLeagueFilter();
   render();
 }
 
@@ -35,6 +35,67 @@ async function loadMine(user) {
         if (c.source_id) mine.set(c.source_id, c.slug);
   }
   render();
+}
+
+/* The league a game belongs to, editable once you are signed in.
+ *
+ * The playlist watcher labels everything it queues; a link pasted by hand
+ * arrives with nothing, and an unlabelled game can only be found by scrolling
+ * to its date. Read-only it is just text -- the row is busy enough without a
+ * permanent input in it -- and a click turns it into one. */
+function leagueCell(g) {
+  const shown = esc(g.league || "");
+  if (!signedIn || !g.source_id)
+    return `<td>${shown || '<span class="muted">&mdash;</span>'}</td>`;
+  return `<td class="league"><button class="linky" data-league="${esc(g.source_id)}"
+    title="Set the league for every game from this recording">${
+      shown || '<span class="muted">set league</span>'}</button></td>`;
+}
+
+function editLeague(cell, sourceId) {
+  const game = all.find(g => g.source_id === sourceId);
+  const known = [...new Set(all.map(g => g.league).filter(Boolean))];
+  cell.innerHTML = `<input list="leagues" value="${esc(game?.league || "")}"
+      maxlength="60" aria-label="League">
+    <datalist id="leagues">${known.map(l => `<option>${esc(l)}</option>`).join("")}</datalist>`;
+  const input = cell.querySelector("input");
+  input.focus(); input.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    if (!save) return render();
+    const league = input.value.trim();
+    input.disabled = true;
+    const res = await authedFetch(`/api/games/${encodeURIComponent(sourceId)}/league`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ league }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.detail || res.statusText);
+      return render();
+    }
+    // One recording is one sheet for one night, so the server labelled every
+    // game in it. Move them all here rather than reloading the catalogue.
+    for (const g of all)
+      if (g.video_id === game.video_id) g.league = league || null;
+    refreshLeagueFilter();
+    render();
+  };
+  input.onkeydown = e => {
+    if (e.key === "Enter") finish(true);
+    if (e.key === "Escape") finish(false);
+  };
+  input.onblur = () => finish(true);
+}
+
+function refreshLeagueFilter() {
+  const chosen = $("league").value;
+  const known = [...new Set(all.map(g => g.league).filter(Boolean))].sort();
+  $("league").innerHTML = `<option value="">All leagues</option>` +
+    known.map(l => `<option>${esc(l)}</option>`).join("");
+  $("league").value = known.includes(chosen) ? chosen : "";
 }
 
 function actions(g) {
@@ -62,7 +123,7 @@ function render() {
     ${byDate[date].sort((a, b) => (a.sheet ?? 99) - (b.sheet ?? 99) || (a.start_s ?? 0) - (b.start_s ?? 0)).map(g => `
       <tr>
         <td>${g.sheet ?? "?"}</td>
-        <td>${esc(g.league || "")}</td>
+        ${leagueCell(g)}
         <td>${g.game_index == null ? esc(g.title || g.video_id) : `Game ${g.game_index + 1}`}</td>
         <td>${g.start_s == null ? "—" : hms(g.start_s)}</td>
         <td>${g.ends ?? "—"}</td>
@@ -72,6 +133,8 @@ function render() {
     </table>`).join("");
   for (const b of $("list").querySelectorAll("button[data-v]"))
     b.onclick = () => chart(b, b.dataset.s, b.dataset.v, b.dataset.t);
+  for (const b of $("list").querySelectorAll("button[data-league]"))
+    b.onclick = () => editLeague(b.parentElement, b.dataset.league);
 }
 
 async function chart(button, sourceId, videoId, start) {
@@ -92,5 +155,9 @@ async function chart(button, sourceId, videoId, start) {
 }
 
 $("league").onchange = render;
-onUser(async (user, ready) => { if (ready) { await picker.refresh(user); await loadMine(user); } });
+onUser(async (user, ready) => {
+  signedIn = !!user;
+  if (ready) { await picker.refresh(user); await loadMine(user); }
+  else render();
+});
 load();

@@ -359,3 +359,65 @@ class TestCapabilityUrlsAreUntouched:
         assert '"shared": true' in w["client"].get(f"/c/{slug}/").text
         solo = post(w, "/api/charts", {"source_id": sid}, ALEX).json()["slug"]
         assert '"shared": false' in w["client"].get(f"/c/{solo}/").text
+
+
+class TestNamingALeague:
+    """The watcher labels what it queues; a pasted link arrives with nothing,
+    and an unlabelled game is findable only by scrolling to its date."""
+
+    def test_a_pasted_link_starts_with_no_league(self, w):
+        a_ready_game(w)
+        assert all(g["league"] is None for g in w["client"].get("/api/games").json()["games"])
+
+    def test_a_signed_in_person_can_name_it(self, w):
+        src = a_ready_game(w)
+        r = post(w, f"/api/games/{src}/league", {"league": "Tuesday Super League"}, SARAH)
+        assert r.status_code == 200 and r.json()["league"] == "Tuesday Super League"
+        listed = w["client"].get("/api/games").json()
+        assert listed["leagues"] == ["Tuesday Super League"]
+
+    def test_it_names_every_game_in_the_recording(self, w):
+        """One recording is one sheet for one night, so both its games are it."""
+        src = a_ready_game(w)
+        assert post(w, f"/api/games/{src}/league", {"league": "Tuesday"}, SARAH).json()["games"] == 2
+        games = [g for g in w["client"].get("/api/games").json()["games"] if g["source_id"]]
+        assert len(games) == 2 and {g["league"] for g in games} == {"Tuesday"}
+
+    def test_it_names_the_runs_too_so_a_reprocess_keeps_it(self, w):
+        """A reprocess builds its run from the last one; a label that lived
+        only on the source would be one a reprocess quietly dropped."""
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/league", {"league": "Tuesday"}, SARAH)
+        vid = w["repo"].get_source(src).video_id
+        assert [r.league for r in w["repo"].runs_for_video(vid)] == ["Tuesday"]
+
+    def test_the_filter_then_finds_it(self, w):
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/league", {"league": "Tuesday"}, SARAH)
+        found = w["client"].get("/api/games?league=Tuesday").json()["games"]
+        assert [g["source_id"] for g in found if g["source_id"]]
+        assert not [g for g in w["client"].get("/api/games?league=Friday").json()["games"]
+                    if g["source_id"]]
+
+    def test_an_empty_name_clears_it(self, w):
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/league", {"league": "Tuesday"}, SARAH)
+        assert post(w, f"/api/games/{src}/league", {"league": "  "}, SARAH).json()["league"] is None
+        assert w["client"].get("/api/games").json()["leagues"] == []
+
+    def test_signed_out_it_is_read_only(self, w):
+        src = a_ready_game(w)
+        assert post(w, f"/api/games/{src}/league", {"league": "Tuesday"}).status_code == 401
+        assert w["client"].get("/api/games").json()["leagues"] == []
+
+    def test_a_name_nobody_could_read_is_refused(self, w):
+        src = a_ready_game(w)
+        assert post(w, f"/api/games/{src}/league", {"league": "x" * 61}, SARAH).status_code == 422
+
+    def test_a_game_we_do_not_have_is_404(self, w):
+        assert post(w, "/api/games/s_nope/league", {"league": "Tuesday"}, SARAH).status_code == 404
+
+    def test_without_accounts_there_is_nothing_to_sign_in_to(self, no_accounts):
+        src = a_ready_game(no_accounts)
+        assert post(no_accounts, f"/api/games/{src}/league",
+                    {"league": "Tuesday"}, SARAH).status_code == 503

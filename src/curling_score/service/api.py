@@ -461,6 +461,39 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         leagues = sorted({g["league"] for g in out if g["league"]})
         return {"games": out, "leagues": leagues}
 
+    @app.post("/api/games/{source_id}/league")
+    def api_set_league(source_id: str, body: dict,
+                       authorization: str | None = Header(default=None)):
+        """Name the league a game belongs to, for the games nothing named.
+
+        The playlist watcher stamps the league it found a recording in, so
+        everything it queues arrives labelled. A link somebody pastes by hand
+        arrives with nothing, and an unlabelled game cannot be filtered for or
+        grouped -- it is only findable by scrolling to its date.
+
+        One recording is one sheet for one night, so every game in it belongs
+        to the same league and one edit names them all. It is written to the
+        runs as well: a reprocess builds its new run from the last one, and a
+        label that survived only on the source would be a label that a
+        reprocess quietly dropped.
+        """
+        me = require_user(authorization)
+        label = str(body.get("league") or "").strip()
+        if len(label) > 60:
+            raise HTTPException(422, "that name is too long for a league")
+        src = repo.get_source(source_id)
+        if src is None:
+            raise HTTPException(404, "no such game")
+        league = label or None
+        games = repo.sources_for_video(src.video_id)
+        for s in games:
+            repo.update_source(s.id, league=league)
+        for run in repo.runs_for_video(src.video_id):
+            repo.update_run(run.id, league=league)
+        log.info("league %r set on %s (%d games) by %s",
+                 league, src.video_id, len(games), me.id)
+        return {"ok": True, "league": league, "games": len(games)}
+
     @app.post("/api/submissions", status_code=201)
     async def submit(request: Request, authorization: str | None = Header(default=None)):
         me = current_user_or_none(authorization)

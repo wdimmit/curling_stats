@@ -27,6 +27,13 @@ a.btn { display:inline-block; text-decoration:none; padding:8px 10px; border-rad
         border:1px solid var(--line); background:var(--panel); color:var(--ink); }
 a.btn.primary { background:var(--accent); color:#fff; border-color:transparent; }
 .actions { display:flex; gap:6px; white-space:nowrap; }
+/* An editable League cell has to read as text until you want to change it --
+   a table of permanent inputs is a form, and this is a catalogue. */
+.league button.linky { all:unset; cursor:text; display:block; min-width:7em;
+                       padding:2px 0; border-bottom:1px dashed transparent; }
+.league button.linky:hover, .league button.linky:focus-visible {
+  border-bottom-color:var(--line); }
+.league input { padding:2px 4px; }
 button:disabled { opacity:.5; cursor:default; }
 .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .warn { background:var(--warnbg); color:var(--warn); border-radius:7px; padding:9px 12px; margin-top:12px; font-size:14px; }
