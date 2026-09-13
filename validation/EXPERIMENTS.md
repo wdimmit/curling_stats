@@ -1108,3 +1108,68 @@ first end, a red the release camera saw thrown at 7541 with no arrival and
 no change in the house, 50 s before the segmenter saw the end begin. Every
 hand-confirmed delivery and non-delivery still stands. `PIPELINE_VERSION`
 2026.09.7.
+
+
+## The clock does not need a release (2026-09-13)
+
+Game `AEqLTgM25Tc` (sheet 1) was charted with thinking time on 80 of its 112
+rocks, and the question was what the other 32 had in common. Every one was
+replayed from cache and classified:
+
+| | |
+|---|---|
+| a track the gates refused | **17** |
+| first rock of an end | 7 |
+| a track that never reached the tee line | 5 |
+| nothing at all left the house on camera | 2 |
+| more than one candidate | 1 |
+
+Not one was lost for want of a *tee crossing*: across all five charted games,
+zero shots have a release and no crossing. The clock was being starved
+entirely by `release.find_releases`, and that turned out to be a question it
+never had to ask.
+
+**Two questions, two sets of gates.** `find_releases` decides whether a rock
+was *thrown*, and an unpaired release of its becomes a delivery candidate that
+`fit_end` can place -- so it is strict, and has to be: a sweeper walking
+up-sheet at 0.8 m/s is refused for exactly that reason. The clock asks
+something far weaker of a rock already watched arriving: not "was this a throw"
+but "when did this throw cross the tee line". `thinking.time_shots` now runs
+*after* the rules have settled the shot list, and can only attach a time to a
+rock already in it.
+
+Its gates are set where this game's refusals actually sat -- travel down to
+2.16 m against `MIN_TRAVEL_M` 3.0, speed to 0.82 m/s against 1.0, entry to
+1.08 m against 0.6. Two more shots were tracks dying 0.16 and 0.54 m below the
+line at 2.3 m/s, which is a tenth of a second of carry against an interval of
+twenty, so a track that ends within a metre of the line is carried to it. The
+one "ambiguous" shot was a single delivery seen as two tracks, 2 s apart,
+entering 0.08 and 1.06 m above the back edge; the one out of the hack wins.
+
+**Where nothing was seen, the interval is assumed rather than dropped.** A shot
+with no number does not merely go unreported -- it silently shortens the team
+total that *is* reported. Over the 503 throws across the five games seen both
+crossing the tee and arriving, the lag between runs a median 16.3 s and a mean
+15.9, p10 11.8 to p90 19.0, and the five game medians sit between 15.9 and
+17.1 -- a property of the sheet, not of a team. Sixteen seconds is the round
+number between median and mean. Those intervals carry `Shot.tee_estimated`,
+show as `(est.)`, and are counted in `estimated_shots` on every total.
+
+**Measured on the game that raised it: 80 -> 105 of 112 (94%), 5 of them
+estimated.** Every end now reads 15 of 16, which is the ceiling -- an end's
+first rock has nothing to time from. Two intervals came out negative and were
+charged nothing, as they already were.
+
+The control is the reason to trust the looser gates. They never run on a shot
+the pairing already timed, but asked what they *would* have said on those 83
+shots, they pick the same track and the same crossing every time, worst
+difference **0.00 s**. Nothing about the long split changes: it reads
+`Shot.release` and never `Shot.tee_s`, because a split needs a speed as well as
+an instant, and the speed is the half of a slide delivery that is not the
+rock's (see the entry above). `PIPELINE_VERSION` 2026.09.8.
+
+The report gained a chart of it: each team's clock accumulated rock by rock,
+ends marked along the bottom. A team's line is flat through the other team's
+rocks, so the gap between them is what the two have spent, and the slope is
+who is slowing down. On this game red spends 29:30 against yellow's 20:20, and
+the chart puts the moment it opened in the 4th and 5th ends.

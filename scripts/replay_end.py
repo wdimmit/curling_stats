@@ -198,9 +198,10 @@ def main():
         ds = sorted(ds + rec, key=lambda d: d.t_enter)
     # The thrower's house: every release crosses it on the way out.
     far = analyze_mod._proxy_setups(setups, strip)[analyze_mod.OTHER_HOUSE[e["house"]]]
+    far_seq = list(sequence.detect_span(read_path, far, from_s, end.end_s,
+                                        release.RELEASE_FPS, detector))
     releases, matched, settled = release.find_and_pair(
-        sequence.detect_span(read_path, far, from_s, end.end_s, release.RELEASE_FPS, detector),
-        far.view_y_min_m, ds, frames, since=from_s)
+        far_seq, far.view_y_min_m, ds, frames, since=from_s)
     print(f"\n== releases seen leaving the {analyze_mod.OTHER_HOUSE[e['house']]} house: {len(releases)}")
     for r in releases:
         to = matched.get(r)
@@ -217,6 +218,7 @@ def main():
     # construction, so the counts matter as much as the numbers.
     thrown_by = {id(d): r for r, d in matched.items()}
     built = shots_mod.from_deliveries(fit.fit_end(ds), frames, thrown_by=thrown_by)
+    thinking.time_shots(built, far_seq, far.view_y_min_m)
     clock = thinking.for_end(built)
     print("\n== timings")
     measured = 0
@@ -229,9 +231,12 @@ def main():
         else:
             split_txt = "     -             "
         clock_txt = "    -" if secs is None else f"{secs:5.1f}s"
-        print(f"  {sh.number:2d} {sh.color:6s} split {split_txt}  thinking {clock_txt}")
+        how = " est" if getattr(sh, "tee_estimated", False) else (
+            "" if getattr(sh, "release", None) is not None else " seen")
+        print(f"  {sh.number:2d} {sh.color:6s} split {split_txt}  thinking {clock_txt}{how}")
     print(f"  splits {measured}/{len(built)}; clock read from {clock.measured_shots}"
-          f" (+{clock.unmeasured_shots} unmeasured, {clock.anomalies} anomalies)")
+          f" ({clock.estimated_shots} of them estimated, +{clock.unmeasured_shots}"
+          f" unmeasured, {clock.anomalies} anomalies)")
     print("  thinking time: "
           + ", ".join(f"{c} {v:.0f}s" for c, v in clock.by_color.items()))
 

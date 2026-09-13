@@ -25,7 +25,8 @@ def run_js(body: str):
         "const {state, merge, keyFor, mergedShots, layout, identity, gatherStats,\n"
         "       pct, avg, isBlank, isGraded, typeOf, shotVideoTime, stoneAt,\n"
         "       shotKey, rawShot, houseViewBox, shouldCrop, peekMode,\n"
-        "       renumberNotice, gatherThinking, clockText, splitText} = A;\n"
+        "       renumberNotice, gatherThinking, clockText, splitText,\n"
+        "       thinkText, cumulativeThinking, thinkingChart} = A;\n"
         "function out(v){ console.log(JSON.stringify(v)); }\n" + body
     )
     proc = subprocess.run([node, "-e", script], capture_output=True, text=True,
@@ -669,7 +670,8 @@ class TestTimingDisplay:
           state.gi = 0;
           out(gatherThinking());
         """)
-        assert got == {"red": 100, "yellow": 50, "measured": 9, "unmeasured": 3}
+        assert got == {"red": 100, "yellow": 50, "measured": 9,
+                       "unmeasured": 3, "estimated": 0}
 
     def test_an_end_with_no_clock_is_skipped_not_counted_as_zero(self):
         got = run_js("""
@@ -678,4 +680,117 @@ class TestTimingDisplay:
           state.gi = 0;
           out(gatherThinking());
         """)
-        assert got == {"red": 10, "yellow": 5, "measured": 1, "unmeasured": 0}
+        assert got == {"red": 10, "yellow": 5, "measured": 1,
+                       "unmeasured": 0, "estimated": 0}
+
+
+class TestAnEstimatedClockSaysSo:
+    """A guessed interval is worth showing and worth marking: a shot with no
+    number silently shortens its team's total, and an unmarked guess is worse
+    than either."""
+
+    def test_a_seen_crossing_reads_as_a_plain_clock(self):
+        assert run_js(
+            "out(thinkText({thinking_time_s:74, t_tee_estimated:false}))") == "1:14"
+
+    def test_an_assumed_crossing_is_marked(self):
+        assert run_js(
+            "out(thinkText({thinking_time_s:74, t_tee_estimated:true}))") == "1:14 (est.)"
+
+    def test_no_clock_at_all_is_a_dash(self):
+        assert run_js("out(thinkText({thinking_time_s:null}))") == "—"
+        assert run_js("out(thinkText(null))") == "—"
+
+    def test_the_report_counts_the_estimates_apart(self):
+        got = run_js("""
+          state.doc = {games:[{ends:[
+            {thinking_time:{red:60, yellow:30, measured_shots:4,
+                            unmeasured_shots:2, estimated_shots:1}},
+            {thinking_time:{red:40, yellow:20, measured_shots:5,
+                            unmeasured_shots:1, estimated_shots:2}}
+          ]}]};
+          state.gi = 0;
+          out(gatherThinking());
+        """)
+        assert got["estimated"] == 3 and got["measured"] == 9
+
+
+CLOCK_DOC = {
+    "source": {"video_id": "v"},
+    "games": [{"index": 0, "teams": {"red": {"name": None}, "yellow": {"name": None}},
+               "final": {"red": 0, "yellow": 0}, "ends": [
+        {"number": 1, "score": {"red": 0, "yellow": 0},
+         "thinking_time": {"red": 20.0, "yellow": 40.0, "measured_shots": 3,
+                           "unmeasured_shots": 1, "estimated_shots": 1},
+         "shots": [
+            shot(1, "red", "lead", thinking_time_s=None),
+            shot(2, "yellow", "lead", thinking_time_s=30.0),
+            shot(3, "red", "lead", thinking_time_s=20.0),
+            shot(4, "yellow", "lead", thinking_time_s=10.0,
+                 t_tee_estimated=True)]},
+        {"number": 2, "score": {"red": 0, "yellow": 0},
+         "thinking_time": {"red": 40.0, "yellow": 0.0, "measured_shots": 1,
+                           "unmeasured_shots": 1, "estimated_shots": 0},
+         "shots": [
+            shot(1, "yellow", "lead", thinking_time_s=None),
+            shot(2, "red", "lead", thinking_time_s=40.0)]},
+    ]}],
+}
+
+
+def clock_setup():
+    return SETUP % (json.dumps(CLOCK_DOC), "{}")
+
+
+class TestTheClockChart:
+    """Cumulative thinking time, which is a shape rather than a number: the
+    gap between the lines at any rock is what the two teams have spent."""
+
+    def test_a_team_s_line_steps_only_on_its_own_rocks(self):
+        got = run_js(clock_setup() + "out(cumulativeThinking().points);")
+        assert [p["red"] for p in got] == [0, 0, 0, 20, 20, 20, 60]
+        assert [p["yellow"] for p in got] == [0, 0, 30, 30, 40, 40, 40]
+
+    def test_it_starts_at_the_origin(self):
+        got = run_js(clock_setup() + "out(cumulativeThinking().points[0]);")
+        assert got["i"] == 0 and got["red"] == 0 and got["yellow"] == 0
+
+    def test_an_interval_nobody_could_read_does_not_step(self):
+        """Which is exactly why both lines are lower bounds."""
+        got = run_js(clock_setup() + "out(cumulativeThinking().points);")
+        assert got[1]["red"] == 0 and got[1]["yellow"] == 0
+
+    def test_the_totals_are_the_ones_the_report_prints(self):
+        got = run_js(clock_setup() +
+                     "const c = cumulativeThinking();"
+                     "out([c.red, c.yellow, gatherThinking().red, gatherThinking().yellow]);")
+        assert got[0] == got[2] and got[1] == got[3]
+
+    def test_the_ends_are_marked_where_they_ended(self):
+        got = run_js(clock_setup() + "out(cumulativeThinking().bounds);")
+        assert got == [{"i": 4, "number": 1}, {"i": 6, "number": 2}]
+
+    def test_an_estimated_step_is_carried_through(self):
+        got = run_js(clock_setup() +
+                     "out(cumulativeThinking().points.filter(p => p.estimated));")
+        assert len(got) == 1 and got[0]["i"] == 4
+
+    def test_the_chart_draws_one_line_per_team(self):
+        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking()));")
+        assert got.count('class="ln red"') == 1
+        assert got.count('class="ln yellow"') == 1
+
+    def test_the_chart_marks_every_estimated_step(self):
+        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking()));")
+        assert got.count('class="est ') == 1
+
+    def test_a_game_with_no_clock_at_all_draws_nothing(self):
+        """Better an absent chart than two flat lines implying nobody thought."""
+        got = run_js(clock_setup() +
+                     "out(thinkingChart({points:[{i:0,red:0,yellow:0}],"
+                     "                   bounds:[], red:0, yellow:0}));")
+        assert got == ""
+
+    def test_the_axis_is_labelled_in_minutes(self):
+        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking()));")
+        assert "0:00" in got and 'class="yl"' in got

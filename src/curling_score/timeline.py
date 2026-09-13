@@ -116,6 +116,9 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
                     None if rel is None else round(float(rel.speed_m_s), 3)
                 ),
                 "t_tee_s": None if t_tee is None else round(float(t_tee), 2),
+                # True when the crossing -- and so the interval below -- is the
+                # typical lag taken off the arrival rather than a sighting.
+                "t_tee_estimated": bool(getattr(s, "tee_estimated", False)),
                 "long_split_s": (
                     None if sp is None else round(float(sp.seconds), 2)
                 ),
@@ -154,6 +157,7 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
             **{c: round(v, 2) for c, v in clock.by_color.items()},
             "measured_shots": clock.measured_shots,
             "unmeasured_shots": clock.unmeasured_shots,
+            "estimated_shots": clock.estimated_shots,
             "anomalies": clock.anomalies,
         },
         "scored_from_shot": scoring.number if scoring else None,
@@ -192,13 +196,14 @@ def build_game(index, start_s, end_s, ends) -> dict:
         )
 
     clock = {c: 0.0 for c in rules.COLORS}
-    measured = unmeasured = anomalies = splits = 0
+    measured = unmeasured = anomalies = estimated = splits = 0
     for end in ends:
         t = end.get("thinking_time") or {}
         for c in rules.COLORS:
             clock[c] += float(t.get(c, 0.0) or 0.0)
         measured += int(t.get("measured_shots", 0) or 0)
         unmeasured += int(t.get("unmeasured_shots", 0) or 0)
+        estimated += int(t.get("estimated_shots", 0) or 0)
         anomalies += int(t.get("anomalies", 0) or 0)
         splits += int(end.get("splits_measured", 0) or 0)
 
@@ -211,6 +216,7 @@ def build_game(index, start_s, end_s, ends) -> dict:
             **{c: round(v, 2) for c, v in clock.items()},
             "measured_shots": measured,
             "unmeasured_shots": unmeasured,
+            "estimated_shots": estimated,
             "anomalies": anomalies,
         },
         "splits_measured": splits,

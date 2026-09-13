@@ -32,7 +32,7 @@ strip down the middle of the frame. Everything is read from those two panels.
 | Shots | `game/shots.py` | Turn rest states into an ordered, attributed shot sequence |
 | Rules | `game/rules.py` | Scoring, hammer, shot→player — pure logic, no CV |
 | Split | `game/split.py` | Time a stone down the sheet — the long split |
-| Clock | `game/thinking.py` | Thinking time per team, between the shots it can see |
+| Clock | `game/thinking.py` | Thinking time per team, and the tee crossings it is read from |
 | Validate | `game/scoreboard.py` | Read the wall scoreboard as an independent check |
 
 Four decisions carry most of the weight:
@@ -152,9 +152,14 @@ it is meant to find. The lower quartile is used instead.
   mean speed exceeds the speed the stone was measured sliding at is refused
   rather than published. A guard that stops above the arrival line never crosses
   it and has no split at all. `end["splits_measured"]` is the count.
-- **Thinking time is a lower bound.** It needs the throwing-end camera to have
-  followed the delivery, and an end's first stone has nothing to time from, so
-  every total says how many shots it was read from.
+- **Thinking time is a lower bound.** An end's first stone has nothing to time
+  from, so a seven-end game can never read more than 105 of its 112 rocks, and
+  every total says how many it was read from. The clock does not need a paired
+  release — it wants the moment the rock crossed the tee line and nothing more,
+  which the throwing camera gives up far more readily than it gives up a throw
+  (94% against 71% on the game this was measured on). Where even that was not
+  seen it is assumed, at the 16 s median measured over 503 timed throws, and
+  those intervals are marked `(est.)` and counted in `estimated_shots`.
 - **The hammer chain does not yet self-validate.** It is read from who threw
   first, which is wrong when an end's opening deliveries are missed.
 - **Scoreboard validation is not implemented** (the board sits at a different
@@ -191,6 +196,10 @@ the detector could not read and grade the shot as a coach would.
   Report view groups every player's shots by type and gives an average and a
   shooting percentage (`points ÷ 4 × shots graded`). Ungraded shots count as
   thrown but never as misses, and the report says how many are still ungraded.
+- **The clock** is charted there too: each team's thinking time accumulated
+  rock by rock, with the ends marked along the bottom. A team's line is flat
+  through the other team's rocks, so the gap between them at any point is what
+  the two have spent — and where it opens is the end that cost it.
 
 Keys: `←`/`→` shots, `n` next blank, `r`/`y` stone colour, `x` delete, `d` mark
 the delivered stone, `c` recolour, `t` track overlay, `v` replay, `p`

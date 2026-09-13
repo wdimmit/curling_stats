@@ -116,6 +116,42 @@ body.reporting main { display:none; }
 .reportgrid { display:grid; gap:14px;
               grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); }
 .pct { font-weight:650; }
+
+/* --- the clock chart ---------------------------------------------------- */
+/* Scales uniformly with the card, so the tick labels keep their proportions
+   at phone width; the cap stops it from towering on a wide screen. */
+.clockchart { display:block; width:100%; height:auto; max-height:260px;
+              overflow:visible; }
+.clockchart .ln { fill:none; stroke-width:2; vector-effect:non-scaling-stroke;
+                  stroke-linejoin:round; }
+.clockchart .ln.red { stroke:var(--red); }
+.clockchart .ln.yellow { stroke:var(--yellow); }
+.clockchart .g { stroke:var(--line); stroke-width:1;
+                 vector-effect:non-scaling-stroke; }
+/* End boundaries sit behind the lines and must not compete with them. */
+.clockchart .b { stroke:var(--line); stroke-width:1; stroke-dasharray:2 4;
+                 vector-effect:non-scaling-stroke; }
+.clockchart .yl { fill:var(--muted); font-size:10px; text-anchor:end; }
+.clockchart .xl { fill:var(--muted); font-size:10px; text-anchor:middle; }
+/* These are viewBox units, and the whole box is scaled down to phone width --
+   so the labels have to be drawn larger there to come out the same size. */
+@media (max-width:640px) {
+  .clockchart .yl, .clockchart .xl { font-size:17px; }
+  .clockchart .ln { stroke-width:1.5; }
+}
+/* Hollow, so an estimated step reads as a question rather than a data point. */
+.clockchart .est { fill:var(--panel); stroke-width:1.5;
+                   vector-effect:non-scaling-stroke; }
+.clockchart .est.red { stroke:var(--red); }
+.clockchart .est.yellow { stroke:var(--yellow); }
+.clockcard .key { display:flex; gap:14px; flex-wrap:wrap; font-size:12px;
+                  margin-top:6px; }
+.clockcard .key i.sw { display:inline-block; width:10px; height:10px;
+                       border-radius:50%; margin-right:5px;
+                       vertical-align:-1px; }
+.clockcard .key i.sw.red { background:var(--red); }
+.clockcard .key i.sw.yellow { background:var(--yellow); }
+.clockcard .key i.sw.est { background:var(--panel); border:1.5px solid var(--muted); }
 td.sub { text-align:left; padding-left:18px; color:var(--muted); font-size:12px; }
 tr.total td { border-top:2px solid var(--line); font-weight:650; }
 

@@ -809,7 +809,7 @@ function renderChart() {
     <dt>Weight</dt><dd>${s?.entry_speed_m_s != null ? s.entry_speed_m_s.toFixed(2) + " m/s" : "—"}</dd>
     <dt>Travel</dt><dd>${s?.travel_m != null ? s.travel_m.toFixed(2) + " m" : "—"}</dd>
     <dt>Long split</dt><dd>${splitText(s)}</dd>
-    <dt>Thinking</dt><dd>${s?.thinking_time_s != null ? clockText(s.thinking_time_s) : "—"}</dd>
+    <dt>Thinking</dt><dd>${thinkText(s)}</dd>
     <dt>House</dt><dd>${deltaText}</dd>
     <dt>Evidence</dt><dd>${esc(s?.reason ?? "—")}</dd>
     <dt>Stones</dt><dd>${s?.stones?.length ?? 0}</dd>`;
@@ -956,6 +956,15 @@ function clockText(seconds) {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
 
+/* The clock, marked when it rests on an assumed tee crossing rather than a
+ * seen one — the throwing camera missed that delivery, so the interval is the
+ * typical throw-to-arrival lag taken off the arrival. Worth showing (a shot
+ * with no number silently shortens its team's total) and worth marking. */
+function thinkText(s) {
+  if (s?.thinking_time_s == null) return "—";
+  return clockText(s.thinking_time_s) + (s.t_tee_estimated ? " (est.)" : "");
+}
+
 /* A split is only meaningful next to how much of it was actually seen: the
  * throwing end is reached by carrying the slide the last stretch to the hog
  * line, and a shot the camera lost early says so rather than looking exact. */
@@ -969,7 +978,7 @@ function splitText(s) {
 /* Per team: the clock, and how much of the game it was read from. Ends carry
  * the totals already, so this is a sum rather than a re-derivation. */
 function gatherThinking() {
-  const out = { red:0, yellow:0, measured:0, unmeasured:0 };
+  const out = { red:0, yellow:0, measured:0, unmeasured:0, estimated:0 };
   for (const e of game().ends) {
     const t = e.thinking_time;
     if (!t) continue;
@@ -977,8 +986,89 @@ function gatherThinking() {
     out.yellow += t.yellow || 0;
     out.measured += t.measured_shots || 0;
     out.unmeasured += t.unmeasured_shots || 0;
+    out.estimated += t.estimated_shots || 0;
   }
   return out;
+}
+
+/* Each team's clock as the game goes on, rock by rock.
+ *
+ * Cumulative rather than per shot. A per-shot series at sixteen rocks an end is
+ * mostly noise -- one long discussion looks like a trend -- whereas what a
+ * coach is actually after is the shape: which team is drawing ahead on the
+ * clock, and the end where it started. A team's line only steps on its own
+ * rocks and is flat through the other team's, so the gap between the lines at
+ * any point is the difference in what they have spent so far.
+ *
+ * An interval nobody could read adds nothing, which makes both lines lower
+ * bounds; the count that says how much was read is right above the chart. */
+function cumulativeThinking() {
+  const points = [{ i:0, red:0, yellow:0, estimated:false }];
+  const bounds = [];
+  let i = 0, red = 0, yellow = 0;
+  for (const e of game().ends) {
+    for (const s of mergedShots(e)) {
+      i++;
+      const secs = s.thinking_time_s;
+      if (secs != null && s.color === "red") red += secs;
+      else if (secs != null && s.color === "yellow") yellow += secs;
+      points.push({ i, red, yellow, color:s.color,
+                    estimated: secs != null && !!s.t_tee_estimated });
+    }
+    bounds.push({ i, number:e.number });
+  }
+  return { points, bounds, red, yellow };
+}
+
+const BOX = { w:640, h:210, padL:46, padR:8, padT:8, padB:22 };
+
+/* Hand-rolled SVG rather than a charting library: this is two polylines and
+ * some gridlines, the viewer has no build step and loads no third-party code,
+ * and the page has to print. */
+function thinkingChart(series) {
+  const { points, bounds } = series;
+  const n = points.length - 1;
+  const top = Math.max(series.red, series.yellow);
+  if (n < 1 || top <= 0) return "";
+  const x = i => BOX.padL + (i / n) * (BOX.w - BOX.padL - BOX.padR);
+  const y = v => BOX.h - BOX.padB
+                 - (v / top) * (BOX.h - BOX.padT - BOX.padB);
+  // A gridline every round minute or five, whichever keeps it under six lines,
+  // so the labels read as times rather than as arbitrary seconds.
+  const step = [30, 60, 120, 300, 600, 900].find(s => top / s <= 5) || 1800;
+  const grid = [];
+  for (let v = 0; v <= top; v += step)
+    grid.push(`<line x1="${BOX.padL}" x2="${BOX.w - BOX.padR}"
+        y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="g"/>
+      <text x="${BOX.padL - 6}" y="${(y(v) + 4).toFixed(1)}"
+        class="yl">${clockText(v)}</text>`);
+  // End boundaries: the clock is spent inside ends, so the ends are the scale
+  // that matters along the bottom.
+  const ticks = bounds.map(b => `<line x1="${x(b.i).toFixed(1)}"
+      x2="${x(b.i).toFixed(1)}" y1="${BOX.padT}"
+      y2="${BOX.h - BOX.padB}" class="b"/>`).join("");
+  const labels = bounds.map((b, k) => {
+    const from = k ? bounds[k - 1].i : 0;
+    return `<text x="${((x(from) + x(b.i)) / 2).toFixed(1)}"
+      y="${BOX.h - 7}" class="xl">${b.number}</text>`;
+  }).join("");
+  const path = c => points
+    .map(p => `${x(p.i).toFixed(1)},${y(p[c]).toFixed(1)}`).join(" ");
+  // Where the clock was stopped on an assumed crossing rather than a seen one,
+  // mark the step it produced instead of letting it pass as measurement.
+  const marks = points.filter(p => p.estimated).map(p =>
+    `<circle cx="${x(p.i).toFixed(1)}" cy="${y(p[p.color]).toFixed(1)}" r="2.6"
+       class="est ${p.color}"/>`).join("");
+  // Uniform scaling, so the labels are not stretched at phone width; the
+  // stylesheet lets the height follow.
+  return `<svg class="clockchart" viewBox="0 0 ${BOX.w} ${BOX.h}" role="img"
+      aria-label="Cumulative thinking time: red ${clockText(series.red)},
+                  yellow ${clockText(series.yellow)}">
+    ${grid.join("")}${ticks}${labels}
+    <polyline class="ln yellow" points="${path("yellow")}"/>
+    <polyline class="ln red" points="${path("red")}"/>
+    ${marks}
+  </svg>`;
 }
 
 function gatherStats() {
@@ -1059,10 +1149,22 @@ function renderReport() {
     ${graded < total ? `<div class="warn noprint">Percentages cover only the
       ${graded} graded shots. Ungraded shots are counted as thrown, never as
       misses.</div>` : ""}
-    ${think.unmeasured ? `<div class="warn noprint">Thinking time is read from
-      ${think.measured} of ${think.measured + think.unmeasured} shots — the
-      throwing-end camera did not follow the rest, and an end's first stone has
-      nothing to time from. Treat these as lower bounds.</div>` : ""}
+    ${think.unmeasured || think.estimated ? `<div class="warn noprint">Thinking
+      time is read from ${think.measured} of
+      ${think.measured + think.unmeasured} shots — an end's first stone has
+      nothing to time from, and a few throws the camera never caught.${
+        think.estimated ? ` ${think.estimated} of the ${think.measured} are
+        estimated: the throw was not seen leaving the house, so the clock is
+        stopped the usual 16 s before the rock arrived.` : ""} Treat these as
+      lower bounds.</div>` : ""}
+    ${think.measured ? `<div class="card clockcard" style="margin-top:12px">
+      <h2>Thinking time<span class="muted"> &mdash; cumulative, by end</span></h2>
+      ${thinkingChart(cumulativeThinking())}
+      <div class="key muted">
+        <span><i class="sw red"></i>red ${clockText(think.red)}</span>
+        <span><i class="sw yellow"></i>yellow ${clockText(think.yellow)}</span>
+        ${think.estimated ? '<span><i class="sw est"></i>estimated interval</span>' : ""}
+      </div></div>` : ""}
     <div class="reportgrid" style="margin-top:12px">${cards}</div>`;
 }
 
@@ -1155,7 +1257,8 @@ function savePrefs() {
 if (typeof module !== "undefined" && module.exports)
   module.exports = { state, merge, keyFor, shotKey, rawShot, mergedShots, layout, identity, READ_ONLY, REVIEW, MERGE,
                      dirtyPayload, saveUrl, reconcile, busyKey, unloadBeacon,
-                     gatherStats, gatherThinking, clockText, splitText, pct, avg,
+                     gatherStats, gatherThinking, clockText, splitText, thinkText, pct, avg,
+                     cumulativeThinking, thinkingChart,
                      isBlank, isGraded, typeOf, shotVideoTime, TYPE, TYPES,
                      GROUPS, POSITIONS, stoneAt, R, LIMIT,
                      houseViewBox, shouldCrop, peekMode, renumberNotice };

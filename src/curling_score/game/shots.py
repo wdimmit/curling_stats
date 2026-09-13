@@ -37,6 +37,17 @@ class Shot:
     # hog line, so the long split and the thinking-time clock both read it.
     # None whenever the throwing-end camera did not follow the delivery.
     release: object = None
+    # When this rock crossed the delivering end's tee line, for the shots no
+    # release was paired to. The clock wants that instant and nothing else,
+    # which is far less than "was a rock thrown at all" -- see
+    # ``thinking.time_shots``. Deliberately not folded into ``release``: a
+    # split needs a speed as well as an instant, and must never read one of
+    # these.
+    tee_s: float | None = None
+    # True when ``tee_s`` is the typical lag subtracted from the arrival
+    # rather than anything seen. Travels with the shot so that no total can
+    # quietly absorb a guess.
+    tee_estimated: bool = False
     # Whether we believe the house we are showing. False means we could not
     # read it and a person has to fill it in -- which is a different statement
     # from an empty house, and must never be rendered as one.

@@ -16,6 +16,7 @@ from curling_score.game import (
     secondpass,
     segment,
     shots as shots_mod,
+    thinking,
 )
 from curling_score.geometry import layout
 from curling_score.ingest import cache, frames as F, proxy, source
@@ -218,10 +219,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             # recovers is still an arrival, and a release standing in for it
             # would have hidden the very gap that finds it.
             far = read_setups[OTHER_HOUSE[end.house]]
+            far_seq = list(sequence.detect_span(
+                read_path, far, from_s, end.end_s,
+                release.RELEASE_FPS, detector))
             releases, thrown_by, unaccounted = release.find_and_pair(
-                sequence.detect_span(read_path, far, from_s, end.end_s,
-                                     release.RELEASE_FPS, detector),
-                far.view_y_min_m, deliveries, seq, since=from_s,
+                far_seq, far.view_y_min_m, deliveries, seq, since=from_s,
             )
             if unaccounted:
                 deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)
@@ -238,6 +240,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             prev_end_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
             shots = shots_mod.from_deliveries(
                 kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()})
+            # Only now that the rules have settled which rocks exist: the
+            # clock wants a tee crossing for each of them, which is a far
+            # weaker thing to ask of the same footage than a release was, and
+            # cannot reach back into the shot list.
+            thinking.time_shots(shots, far_seq, far.view_y_min_m)
             built = timeline.build_end(
                 end.number, end.house, end.start_s, end.end_s, shots
             )

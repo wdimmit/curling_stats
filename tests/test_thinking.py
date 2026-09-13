@@ -144,3 +144,170 @@ class TestTotals:
         both = thinking.for_game([shots, shots])
         assert both.by_color["yellow"] == pytest.approx(2 * one.by_color["yellow"])
         assert both.measured_shots == 2 * one.measured_shots
+
+
+# --------------------------------------------------------------------- timing
+# What the clock can establish without a paired release. ``find_releases``
+# answers "was a rock thrown", and an unpaired release of its can add a shot,
+# so it is strict. These shots already exist; all that is wanted is the instant
+# their rock crossed the tee line, and that can be had on much less evidence.
+
+from curling_score.detect.rocks import Detection  # noqa: E402
+
+VIEW_Y_MIN = -2.0
+
+
+def _det(color, x, y):
+    return Detection(color=color, x_m=x, y_m=y, x_px=0.0, y_px=0.0,
+                     area_px=140.0, confidence=0.9)
+
+
+def leaving(color, t0, y0=-1.95, y1=2.4, speed=2.0, fps=5.0, x=0.1):
+    """A stone climbing out of the thrower's house, as that panel sees it."""
+    out, t, y = [], t0, y0
+    while y < y1:
+        out.append((round(t, 3), _det(color, x, y)))
+        y += speed / fps
+        t += 1.0 / fps
+    return out
+
+
+def frames(*traces):
+    by_t = {}
+    for tr in traces:
+        for t, d in tr:
+            by_t.setdefault(t, []).append(d)
+    return [(t, by_t[t]) for t in sorted(by_t)]
+
+
+class Arrival:
+    def __init__(self, t_enter):
+        self.t_enter = t_enter
+
+
+def arriving(n, color, rest, t_enter, release=None):
+    s = Shot(n, color, t_rest_s=rest, release=release)
+    s.delivery = Arrival(t_enter)
+    s.tee_s, s.tee_estimated = None, False
+    return s
+
+
+class TestTimingAShotWithNoRelease:
+    def test_it_reads_the_tee_crossing_off_the_track(self):
+        # climbs from -1.95 at 2 m/s, so it crosses y = 0 at t = 100.975
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(shots, frames(leaving("yellow", 100.0)), VIEW_Y_MIN)
+        assert shots[1].tee_s == pytest.approx(100.975, abs=0.02)
+        assert shots[1].tee_estimated is False
+
+    def test_a_climb_too_short_to_be_called_a_throw_still_times_it(self):
+        """2.0 m: under ``release.MIN_TRAVEL_M``, over the clock's own floor."""
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(shots, frames(leaving("yellow", 100.0, y1=0.05)),
+                            VIEW_Y_MIN)
+        assert shots[1].tee_s == pytest.approx(100.975, abs=0.02)
+        assert shots[1].tee_estimated is False
+
+    def test_a_track_that_dies_just_below_the_line_is_carried_to_it(self):
+        # ends at -0.35 m still doing 2 m/s: 0.175 s short of the tee
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(shots, frames(leaving("yellow", 100.0, y1=-0.3)),
+                            VIEW_Y_MIN)
+        assert shots[1].tee_s == pytest.approx(100.975, abs=0.06)
+        assert shots[1].tee_estimated is False
+
+    def test_a_track_that_dies_well_below_the_line_is_not_carried(self):
+        """Beyond ``TRACK_TEE_GAP_M`` the throw was lost too early to place."""
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(shots, frames(leaving("yellow", 100.0, y1=-1.4)),
+                            VIEW_Y_MIN)
+        assert shots[1].tee_estimated is True
+
+    def test_something_starting_up_the_panel_is_not_this_delivery(self):
+        """A sweeper walking up-sheet never came out of the hack."""
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(
+            shots, frames(leaving("yellow", 100.0, y0=0.7, y1=3.0)), VIEW_Y_MIN)
+        assert shots[1].tee_estimated is True
+
+    def test_the_other_team_s_rock_is_not_taken(self):
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(shots, frames(leaving("red", 100.0)), VIEW_Y_MIN)
+        assert shots[1].tee_estimated is True
+
+    def test_a_throw_outside_the_lag_window_is_not_taken(self):
+        """80 s before the arrival is the previous end's business, not this."""
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 200.0, 117.0)]
+        thinking.time_shots(shots, frames(leaving("yellow", 37.0)), VIEW_Y_MIN)
+        assert shots[1].tee_estimated is True
+
+    def test_one_delivery_seen_twice_is_taken_from_the_hack(self):
+        """The rock and the slider beside it, or a track broken and remade."""
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(
+            shots,
+            frames(leaving("yellow", 100.0, x=0.1),
+                   leaving("yellow", 101.4, y0=-0.9, y1=3.0, x=0.9)),
+            VIEW_Y_MIN)
+        assert shots[1].tee_s == pytest.approx(100.975, abs=0.02)
+
+
+class TestWhenNothingWasSeenLeavingTheHouse:
+    def test_the_clock_stops_the_usual_lag_before_the_rock_arrived(self):
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(shots, [], VIEW_Y_MIN)
+        assert shots[1].tee_s == pytest.approx(
+            117.0 - thinking.ASSUMED_TEE_TO_ARRIVAL_S)
+        assert shots[1].tee_estimated is True
+
+    def test_the_lag_is_the_one_measured_across_the_charted_games(self):
+        assert thinking.ASSUMED_TEE_TO_ARRIVAL_S == 16.0
+
+    def test_an_estimate_is_counted_apart_from_what_was_seen(self):
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(shots, [], VIEW_Y_MIN)
+        end = thinking.for_end(shots)
+        assert end.measured_shots == 1
+        assert end.estimated_shots == 1
+        assert end.by_color["yellow"] == pytest.approx(
+            (117.0 - 16.0) - (80.0 + thinking.GRACE_S))
+
+    def test_a_game_adds_its_estimates_up(self):
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        thinking.time_shots(shots, [], VIEW_Y_MIN)
+        assert thinking.for_game([shots, shots]).estimated_shots == 2
+
+
+class TestWhatTheTimingPassLeavesAlone:
+    def test_a_shot_with_a_paired_release_keeps_it(self):
+        """The pairing is the better evidence, and the long split needs it."""
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0, release=rel(140.0, "yellow"))]
+        thinking.time_shots(shots, frames(leaving("yellow", 100.0)), VIEW_Y_MIN)
+        assert shots[1].tee_s is None
+        assert thinking.tee_crossing(shots[1]) == pytest.approx(141.0, abs=0.02)
+
+    def test_a_blank_is_never_given_a_time(self):
+        blank = Shot(2, "yellow", missing=True)
+        blank.delivery, blank.tee_s, blank.tee_estimated = None, None, False
+        shots = [arriving(1, "red", 80.0, 70.0), blank]
+        thinking.time_shots(shots, [], VIEW_Y_MIN)
+        assert blank.tee_s is None
+
+    def test_it_never_adds_or_drops_a_shot(self):
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0)]
+        before = [s.number for s in shots]
+        thinking.time_shots(shots, frames(leaving("yellow", 100.0)), VIEW_Y_MIN)
+        assert [s.number for s in shots] == before
