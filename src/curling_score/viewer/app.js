@@ -86,7 +86,7 @@ const PHONE_QUERY = "(max-width: 640px) and (min-height: 521px)";
 const state = {
   doc:null, overrides:{}, version:null, gi:0, ei:0, si:0,
   selStone:null, placeColor:"red", openGroup:null,
-  showTrack:true, autoplay:true, leadIn:10,
+  showTrack:true, autoplay:true, leadIn:10, clockOpen:false,
   player:null, playerReady:false, pendingSeek:null, seekTimer:null,
   saveTimer:null, saving:false, again:false, reporting:false,
   /* Which shots have edits the server has not acknowledged. A set rather than
@@ -929,8 +929,34 @@ function render() {
 
   renderChart();
   renderQueue();
+  clockPanel();
   scoreTable();
   if (state.reporting) renderReport();
+}
+
+/* The clock beside the game rather than inside the report, because a review
+ * link never reaches the report: it has no grading, so its button is hidden,
+ * and the clock would have gone with it. This is detection like the house and
+ * the shot list, and every mode gets it.
+ *
+ * Rebuilt per shot rather than per game, cheaply, because the interesting
+ * part when you are stepping through is where *you* are on it. */
+function clockPanel() {
+  const box = $("clockBox");
+  if (!box) return;
+  const series = cumulativeThinking();
+  if (!series.points.length || (!series.red && !series.yellow)) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const ends = game().ends;
+  let here = state.si + 1;               // 1-based: point 0 is the origin
+  for (let i = 0; i < state.ei && i < ends.length; i++)
+    here += mergedShots(ends[i]).length;
+  $("clock").innerHTML = thinkingChart(series, here, TALLBOX) + `<div class="key muted">
+    <span><i class="sw red"></i>${clockText(series.red)}</span>
+    <span><i class="sw yellow"></i>${clockText(series.yellow)}</span></div>`;
 }
 
 function scoreTable() {
@@ -1020,12 +1046,17 @@ function cumulativeThinking() {
   return { points, bounds, red, yellow };
 }
 
-const BOX = { w:640, h:210, padL:46, padR:8, padT:8, padB:22 };
+const CHARTBOX = { w:640, h:210, padL:46, padR:8, padT:8, padB:22 };
+/* The same chart in the aside is a third of the width, and the box scales
+ * whole: at the report's proportions it comes out 95 px tall with the labels
+ * on top of the lines. Taller and roomier in its own units, so that what the
+ * browser scales down is still legible. */
+const TALLBOX = { w:640, h:400, padL:96, padR:12, padT:14, padB:52 };
 
 /* Hand-rolled SVG rather than a charting library: this is two polylines and
  * some gridlines, the viewer has no build step and loads no third-party code,
  * and the page has to print. */
-function thinkingChart(series) {
+function thinkingChart(series, at = null, BOX = CHARTBOX) {
   const { points, bounds } = series;
   const n = points.length - 1;
   const top = Math.max(series.red, series.yellow);
@@ -1056,6 +1087,10 @@ function thinkingChart(series) {
     .map(p => `${x(p.i).toFixed(1)},${y(p[c]).toFixed(1)}`).join(" ");
   // Where the clock was stopped on an assumed crossing rather than a seen one,
   // mark the step it produced instead of letting it pass as measurement.
+  // Where the viewer is in the game, when this is drawn beside the play.
+  const you = at == null || at < 0 || at > n ? "" :
+    `<line class="you" x1="${x(at).toFixed(1)}" x2="${x(at).toFixed(1)}"
+       y1="${BOX.padT}" y2="${BOX.h - BOX.padB}"/>`;
   const marks = points.filter(p => p.estimated).map(p =>
     `<circle cx="${x(p.i).toFixed(1)}" cy="${y(p[p.color]).toFixed(1)}" r="2.6"
        class="est ${p.color}"/>`).join("");
@@ -1064,7 +1099,7 @@ function thinkingChart(series) {
   return `<svg class="clockchart" viewBox="0 0 ${BOX.w} ${BOX.h}" role="img"
       aria-label="Cumulative thinking time: red ${clockText(series.red)},
                   yellow ${clockText(series.yellow)}">
-    ${grid.join("")}${ticks}${labels}
+    ${grid.join("")}${ticks}${labels}${you}
     <polyline class="ln yellow" points="${path("yellow")}"/>
     <polyline class="ln red" points="${path("red")}"/>
     ${marks}
@@ -1239,16 +1274,25 @@ function restorePrefs() {
     if (typeof p.showTrack === "boolean") state.showTrack = p.showTrack;
     if (typeof p.autoplay === "boolean") state.autoplay = p.autoplay;
     if (typeof p.leadIn === "number") state.leadIn = p.leadIn;
+    if (typeof p.clockOpen === "boolean") state.clockOpen = p.clockOpen;
   } catch { /* a fresh browser, or storage blocked: defaults are fine */ }
   $("showTrack").checked = state.showTrack;
   $("autoplay").checked = state.autoplay;
   $("leadin").value = state.leadIn;
+  // Opened once, it stays open: somebody watching a game for the clock wants
+  // it every time, and somebody who is not never sees more than a summary.
+  $("clockBox").open = state.clockOpen;
+  $("clockBox").ontoggle = () => {
+    state.clockOpen = $("clockBox").open;
+    savePrefs();
+  };
 }
 
 function savePrefs() {
   try {
     localStorage.setItem("curlchart", JSON.stringify({
-      showTrack:state.showTrack, autoplay:state.autoplay, leadIn:state.leadIn }));
+      showTrack:state.showTrack, autoplay:state.autoplay, leadIn:state.leadIn,
+      clockOpen:state.clockOpen }));
   } catch { /* not important enough to bother the user about */ }
 }
 

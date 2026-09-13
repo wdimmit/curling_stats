@@ -794,3 +794,28 @@ class TestTheClockChart:
     def test_the_axis_is_labelled_in_minutes(self):
         got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking()));")
         assert "0:00" in got and 'class="yl"' in got
+
+
+class TestWhereYouAreOnTheClock:
+    """Drawn beside the play, the useful part is where the viewer is: the
+    chart takes an optional position so stepping through moves a marker."""
+
+    def test_no_position_draws_no_marker(self):
+        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking()));")
+        assert 'class="you"' not in got
+
+    def test_a_position_draws_one(self):
+        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking(), 3));")
+        assert got.count('class="you"') == 1
+
+    def test_a_position_off_the_end_is_ignored_rather_than_drawn_outside(self):
+        for at in ("-1", "999"):
+            got = run_js(clock_setup() +
+                         f"out(thinkingChart(cumulativeThinking(), {at}));")
+            assert 'class="you"' not in got
+
+    def test_the_first_and_last_rock_are_both_on_the_chart(self):
+        for at in ("0", "6"):
+            got = run_js(clock_setup() +
+                         f"out(thinkingChart(cumulativeThinking(), {at}));")
+            assert got.count('class="you"') == 1

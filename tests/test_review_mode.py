@@ -40,6 +40,19 @@ class TestReviewPage:
     def test_an_unknown_game_is_404(self, world):
         assert world["client"].get("/g/s_nosuchgame/").status_code == 404
 
+    def test_the_clock_is_here_without_charting(self, world):
+        """The report is hidden in review mode -- it is about grading, and a
+        review link has none -- and the thinking-time chart used to live only
+        inside it. The clock is detection, like the house and the shot list."""
+        sid = a_source(world)["source_id"]
+        page = world["client"].get(f"/g/{sid}/").text
+        assert 'id="clockBox"' in page and "Thinking time" in page
+        css = world["client"].get(f"/g/{sid}/style.css").text
+        review_rules = [line for line in css.splitlines()
+                        if 'data-mode="review"' in line]
+        assert review_rules, "the review-mode block moved; this test is stale"
+        assert not any("clockBox" in line for line in review_rules)
+
     def test_the_viewer_assets_are_served(self, world):
         sid = a_source(world)["source_id"]
         assert world["client"].get(f"/g/{sid}/app.js").status_code == 200

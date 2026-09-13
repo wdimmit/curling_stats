@@ -139,6 +139,19 @@ body.reporting main { display:none; }
   .clockchart .yl, .clockchart .xl { font-size:17px; }
   .clockchart .ln { stroke-width:1.5; }
 }
+/* In the aside the same 640-unit box is squeezed into a third of the width,
+   so its labels need drawing larger there too. */
+#clock .clockchart .yl, #clock .clockchart .xl { font-size:24px; }
+#clock .clockchart { max-height:none; }
+#clock .key { display:flex; gap:12px; font-size:12px; margin-top:4px; }
+#clock .key i.sw { display:inline-block; width:9px; height:9px; border-radius:50%;
+                   margin-right:4px; vertical-align:-1px; }
+#clock .key i.sw.red { background:var(--red); }
+#clock .key i.sw.yellow { background:var(--yellow); }
+/* Where the viewer is in the game. Faint: it is context for the lines, and
+   must not be mistaken for one of them. */
+.clockchart .you { stroke:var(--accent); stroke-width:1.5; opacity:.55;
+                   vector-effect:non-scaling-stroke; }
 /* Hollow, so an estimated step reads as a question rather than a data point. */
 .clockchart .est { fill:var(--panel); stroke-width:1.5;
                    vector-effect:non-scaling-stroke; }
