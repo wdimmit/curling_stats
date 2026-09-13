@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from curling_score.service import slug
+from curling_score.service import dedupe, slug
 from curling_score.service.api import Settings, create_app
 from curling_score.service.records import WatchedPlaylist
 from curling_score.service.repo import MemoryRepo
@@ -812,3 +812,60 @@ class TestAStalledJobTellsTheTruth:
         st = world["client"].get(f"/c/{slug}/status.json").json()
         assert st["status"] == "queued" and st["stalled"] is False
         assert st["position"] == 0
+
+
+class TestSubmittingALength:
+    """Only the first game of a long stream, without paying for the rest.
+
+    The fixture's video is 14392 s -- under ``dedupe.MAX_WHOLE_S``, so it is
+    normally read whole and a start time narrows nothing.
+    """
+
+    def _run(self, world):
+        runs = world["repo"].runs_for_video(VID)
+        assert len(runs) == 1
+        return runs[0]
+
+    def test_without_a_length_the_whole_video_is_read(self, world):
+        assert submit(world).status_code == 201
+        run = self._run(world)
+        assert run.window_start_s is None and run.window_end_s is None
+
+    def test_a_length_windows_the_run(self, world):
+        assert submit(world, duration_s=7200).status_code == 201
+        run = self._run(world)
+        assert (run.window_start_s, run.window_end_s) == (0.0, 7200.0)
+
+    def test_a_length_runs_from_the_start_time(self, world):
+        assert submit(world, start_s=6750, duration_s=7200).status_code == 201
+        run = self._run(world)
+        assert run.window_start_s == 6750.0 - dedupe.WINDOW_BEFORE_S
+        assert run.window_end_s == 6750.0 + 7200.0
+
+    def test_a_length_of_zero_is_refused(self, world):
+        r = submit(world, duration_s=0)
+        assert r.status_code == 400
+        assert not world["repo"].runs_for_video(VID)
+
+    def test_a_negative_length_is_refused(self, world):
+        assert submit(world, duration_s=-60).status_code == 400
+
+    def test_a_length_that_is_not_a_number_is_refused(self, world):
+        assert submit(world, duration_s="two hours").status_code == 400
+
+    def test_an_empty_length_is_the_same_as_none(self, world):
+        assert submit(world, duration_s="").status_code == 201
+        run = self._run(world)
+        assert run.window_start_s is None
+
+    def test_the_window_reaches_the_worker(self, world):
+        assert submit(world, duration_s=7200).status_code == 201
+        c = world["client"]
+        r = c.post("/api/worker/claim", json={"worker_id": "home", "model_id": "m-abc",
+                                              "version": "2026.09.1", "gpu": "A2000"},
+                   headers=WORKER)
+        assert r.status_code == 200, r.text
+        job = r.json()["job"]
+        # Flat keys, which is what worker.process_job reads.
+        assert job["window_start_s"] == 0.0
+        assert job["window_end_s"] == 7200.0

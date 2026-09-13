@@ -204,6 +204,42 @@ class TestWindows:
             dedupe.window_for(8 * 3600, None)
 
 
+class TestAskingForALength:
+    """A four-hour stream holding several games should not cost four hours.
+
+    Under ``MAX_WHOLE_S`` the window is normally the whole video, so a start
+    time alone narrows nothing. An explicit length has to beat that.
+    """
+
+    def test_a_length_narrows_a_stream_that_would_be_analysed_whole(self):
+        assert dedupe.window_for(4 * 3600, None, 2 * 3600) == (0.0, 2 * 3600)
+
+    def test_no_length_still_means_the_whole_video(self):
+        assert dedupe.window_for(4 * 3600, None) == (None, None)
+
+    def test_a_length_runs_from_the_start_time_and_keeps_the_lead_in(self):
+        # 1:52:30 for two hours, with the ten minutes before that a game often
+        # needs -- so the span is the length plus the lead-in, not the length.
+        start = 1.875 * 3600
+        got = dedupe.window_for(4 * 3600, start, 2 * 3600)
+        assert got == (start - dedupe.WINDOW_BEFORE_S, start + 2 * 3600)
+
+    def test_a_length_is_clamped_to_the_video(self):
+        assert dedupe.window_for(3 * 3600, None, 9 * 3600) == (0.0, 3 * 3600)
+
+    def test_the_lead_in_never_runs_before_the_video(self):
+        assert dedupe.window_for(4 * 3600, 60.0, 1800.0)[0] == 0.0
+
+    def test_a_length_satisfies_a_long_stream_that_would_otherwise_be_refused(self):
+        # Saying how long is at least as good as saying where it starts.
+        assert dedupe.window_for(8 * 3600, None, 2 * 3600) == (0.0, 2 * 3600)
+
+    def test_a_length_that_is_not_a_length_is_refused(self):
+        for bad in (0, -1, -3600):
+            with pytest.raises(ValueError):
+                dedupe.window_for(4 * 3600, None, bad)
+
+
 class TestReusableRun:
     def test_the_same_video_and_version_is_reused(self):
         r = run(status="ready")

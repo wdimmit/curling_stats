@@ -34,8 +34,25 @@ class NeedsStartTime(Exception):
     """A stream too long to analyse whole, submitted without saying where."""
 
 
-def window_for(duration_s: float, start_s: float | None):
-    """The part of the video a run should cover: ``(start, end)`` or whole."""
+def window_for(duration_s: float, start_s: float | None,
+               length_s: float | None = None):
+    """The part of the video a run should cover: ``(start, end)`` or whole.
+
+    ``length_s`` is how much of the video the submitter actually wants read.
+    It beats the whole-video short-circuit below, which is the entire point:
+    a four-hour stream holding three games is under ``MAX_WHOLE_S``, so a
+    start time alone narrows nothing and the run costs four hours either way.
+
+    The lead-in is kept when a length is given, so the span is the length
+    *plus* ``WINDOW_BEFORE_S`` rather than the length exactly. A game often
+    starts a few minutes before its listed time, and losing its first rocks
+    to save ten minutes of decode is a bad trade.
+    """
+    if length_s is not None:
+        if length_s <= 0:
+            raise ValueError("length must be positive")
+        begin = 0.0 if start_s is None else start_s
+        return max(0.0, begin - WINDOW_BEFORE_S), min(duration_s, begin + length_s)
     if duration_s <= MAX_WHOLE_S:
         return None, None
     if start_s is None:

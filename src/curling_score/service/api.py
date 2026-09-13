@@ -479,6 +479,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(400, "that is not a YouTube video link")
         start_s = body.get("start_s", link.start_s)
         start_s = None if start_s in (None, "") else float(start_s)
+        # How much of the video to read. Without it a stream under
+        # dedupe.MAX_WHOLE_S is analysed whole, so submitting one game out of
+        # a four-hour night costs the whole night.
+        duration_s = body.get("duration_s")
+        if duration_s in (None, ""):
+            duration_s = None
+        else:
+            try:
+                duration_s = float(duration_s)
+            except (TypeError, ValueError):
+                raise HTTPException(400, "give the length as a number of seconds")
+            if duration_s <= 0:
+                raise HTTPException(400, "the length must be more than zero")
         sheet = body.get("sheet")
         sheet = None if sheet in (None, "") else int(sheet)
         t = now()
@@ -504,7 +517,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             if repo.count_queued() >= settings.max_queued:
                 raise HTTPException(503, "the processing queue is full; try again later")
             try:
-                w0, w1 = dedupe.window_for(meta.duration_s, start_s)
+                w0, w1 = dedupe.window_for(meta.duration_s, start_s, duration_s)
             except dedupe.NeedsStartTime:
                 raise HTTPException(422, "that stream is very long -- give the time "
                                          "the game starts (e.g. paste a link with ?t=)")
