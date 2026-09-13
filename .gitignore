@@ -46,3 +46,8 @@ datasets/ds12/ds12_images.tgz
 /yolo11n.pt
 weights/*.pt
 !weights/ds11a.pt
+
+# The frontend toolchain. Sources live in frontend/; the built bundles are
+# tracked under src/curling_score/ because `curling-score serve` has to work
+# after a plain pip install, with no node anywhere.
+frontend/node_modules/

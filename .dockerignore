@@ -12,3 +12,4 @@ runs/
 *.npz
 __pycache__/
 .pytest_cache/
+frontend/

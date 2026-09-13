@@ -1,0 +1,18 @@
+{
+  "name": "curling-chart-frontend",
+  "private": true,
+  "type": "module",
+  "description": "Sources for the charting viewer and the site pages. Built output is committed into src/curling_score/ -- see ../README.md. Always build with `npm run build`, never by invoking esbuild directly, or the build stamp goes stale.",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "check": "node build.mjs --check"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

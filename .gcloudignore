@@ -35,3 +35,8 @@ design/
 # one, which Dockerfile.worker names. Shipping the others is 60 MB per build.
 weights/*
 !weights/ds11a.pt
+
+# Frontend sources and toolchain. The bundles esbuild produces are tracked
+# under src/curling_score/, so the image needs none of this -- and
+# node_modules would put back the 130 MB this file exists to avoid.
+frontend/
