@@ -261,3 +261,38 @@ class TestVersion:
         assert version.model_id(None) == "classical"
         assert version.processing_version(None) == (
             f"{version.PIPELINE_VERSION}+classical")
+
+
+class TestTheLeagueInTheTitle:
+    """The club's titles put the league after the sheet, and keep doing it
+    even when the front of the title is a draw number or a pair of skips."""
+
+    @pytest.mark.parametrize("title,league", [
+        ("11/4 - Sheet 1 - Tuesday Super League 2025-2026",
+         "Tuesday Super League 2025-2026"),
+        ("6/18 - Sheet 4 - Spring Skip's Choice League 2026",
+         "Spring Skip's Choice League 2026"),
+        ("Rice (r) vs Casey (y) - Draw 1 (15:00) - Sheet 5 - 2026 5U National Championship",
+         "2026 5U National Championship"),
+        ("Draw 7 (14:00) - Sheet 4 - 2026 PNWCA Club Men's and Women's Playdown",
+         "2026 PNWCA Club Men's and Women's Playdown"),
+    ])
+    def test_it_is_what_follows_the_sheet(self, title, league):
+        assert source.league_from_title(title) == league
+
+    def test_the_sheet_still_reads_the_same_way(self):
+        assert source.sheet_from_title(
+            "Rice (r) vs Casey (y) - Draw 1 (15:00) - Sheet 5 - 2026 5U National") == 5
+
+    @pytest.mark.parametrize("title", [
+        "", "Some stream with no sheet at all", "4/30 - Sheet 2", "4/30 - Sheet 2 - ",
+    ])
+    def test_it_would_rather_say_nothing(self, title):
+        """A guess from a naming convention, so it declines when the
+        convention is not there rather than inventing a league."""
+        assert source.league_from_title(title) is None
+
+    def test_a_sheet_mentioned_in_passing_is_not_the_separator(self):
+        """Only a segment that is *just* "Sheet N" splits the title."""
+        assert source.league_from_title("Sheet 2 warm-up - Sheet 2 - Friday Night") \
+            == "Friday Night"

@@ -236,18 +236,27 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise KeyError(key)
         return json.loads(data)
 
-    def game_doc(run: Run, game_index: int | None) -> dict:
+    def game_doc(run: Run, game_index: int | None, src: Source | None = None) -> dict:
         """The pristine document, cut down to one game."""
         doc = json.loads(json.dumps(load_doc(run.timeline_key)))  # a private copy
         if game_index is not None:
             doc["games"] = [g for g in doc["games"] if g["index"] == game_index]
         game = doc["games"][0] if doc["games"] else None
         doc["source"]["start_s"] = game["start_s"] if game else None
+        # Who played, if anybody has said. The names live on the source rather
+        # than in the document because they are learned long after the run
+        # that produced it, and every chart pinned to that run should get them
+        # -- including the ones made before anyone typed them in.
+        if game is not None and src is not None:
+            for colour, name in (("red", src.team_red), ("yellow", src.team_yellow)):
+                if name:
+                    game.setdefault("teams", {}).setdefault(colour, {})["name"] = name
         return doc
 
     def chart_doc(chart: Chart, run: Run, read_only: bool) -> dict:
         """One game, plus what the people holding this link may do with it."""
-        doc = game_doc(run, chart.game_index)
+        src = repo.get_source(chart.source_id) if chart.source_id else None
+        doc = game_doc(run, chart.game_index, src)
         doc["chart"] = {
             "slug": chart.id,
             "share_url": None if read_only else url_for(f"/s/{chart.share_slug}/"),
@@ -441,6 +450,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             out.append({
                 "source_id": s.id, "video_id": s.video_id, "title": s.title,
                 "sheet": s.sheet, "league": s.league, "played_at": _iso(s.played_at),
+                "team_red": s.team_red, "team_yellow": s.team_yellow,
                 "game_index": s.game_index, "start_s": s.game_start_s,
                 "end_s": s.game_end_s, "status": run.status if run else None,
                 "ends": next((g.get("ends") for g in (run.games if run else [])
@@ -493,6 +503,66 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         log.info("league %r set on %s (%d games) by %s",
                  league, src.video_id, len(games), me.id)
         return {"ok": True, "league": league, "games": len(games)}
+
+    @app.post("/api/games/{source_id}/teams")
+    def api_set_teams(source_id: str, body: dict,
+                      authorization: str | None = Header(default=None)):
+        """Who played this game, by the colour they threw.
+
+        Per game, where the league is per recording: a night on one sheet is
+        one league and two different pairs of teams. Nothing detects this --
+        the club puts it in some titles and not others, and the cameras read
+        stones rather than scoreboards -- so it is typed in or it is unknown.
+
+        It is served into the timeline of every chart of this game, including
+        charts made before anyone knew, which is why it lives on the source
+        and not in the document the run produced.
+        """
+        me = require_user(authorization)
+        names = {}
+        for colour in ("red", "yellow"):
+            if colour not in body:
+                continue
+            name = str(body.get(colour) or "").strip()
+            if len(name) > 60:
+                raise HTTPException(422, "that name is too long for a team")
+            names["team_" + colour] = name or None
+        if not names:
+            raise HTTPException(400, "name red, yellow, or both")
+        src = repo.get_source(source_id)
+        if src is None:
+            raise HTTPException(404, "no such game")
+        repo.update_source(src.id, **names)
+        log.info("teams %s set on %s by %s", names, src.id, me.id)
+        return {"ok": True, **{c: names.get("team_" + c, getattr(src, "team_" + c))
+                               for c in ("red", "yellow")}}
+
+    @app.post("/api/admin/relabel")
+    def admin_relabel(authorization: str | None = Header(default=None)):
+        """Name the leagues of everything that predates reading them off titles.
+
+        A one-shot for what is already stored. New runs get it at submission
+        and again on completion; this is for the games that arrived before
+        there was anything to derive it from. It only ever fills a blank.
+        """
+        require_admin(authorization)
+        runs = games = 0
+        for run in repo.list_runs():
+            if run.league or not run.title:
+                continue
+            if league := source.league_from_title(run.title):
+                repo.update_run(run.id, league=league)
+                runs += 1
+        for s in repo.list_sources():
+            if s.league:
+                continue
+            run = repo.get_run(s.current_run_id)
+            league = (run.league if run else None) or source.league_from_title(s.title or "")
+            if league:
+                repo.update_source(s.id, league=league)
+                games += 1
+        log.info("relabelled %d runs and %d games from their titles", runs, games)
+        return {"ok": True, "runs": runs, "games": games}
 
     @app.post("/api/submissions", status_code=201)
     async def submit(request: Request, authorization: str | None = Header(default=None)):
@@ -560,7 +630,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                       created_at=t, window_start_s=w0, window_end_s=w1,
                       title=meta.title, channel_id=meta.channel_id,
                       duration_s=meta.duration_s, published_at=meta.published_at,
-                      sheet=sheet if sheet is not None else source.sheet_from_title(meta.title))
+                      sheet=sheet if sheet is not None else source.sheet_from_title(meta.title),
+                      # Nothing queued this from a playlist, so there is no
+                      # label to take; the club's titles carry the league in
+                      # the same breath as the sheet.
+                      league=source.league_from_title(meta.title))
             repo.put_run(run)
             if status == "queued":
                 repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued",
@@ -993,7 +1067,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.get("/g/{sid}/timeline.json")
     def review_timeline(sid: str):
         src, run = lookup_source(sid)
-        doc = game_doc(run, src.game_index)
+        doc = game_doc(run, src.game_index, src)
         # No slug and no share_url: this link is already the public one.
         doc["chart"] = {"read_only": True, "review": True,
                         "title": run.title, "league": run.league}
@@ -1002,7 +1076,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.get("/g/{sid}/export.json")
     def review_export(sid: str):
         src, run = lookup_source(sid)
-        return game_doc(run, src.game_index)
+        return game_doc(run, src.game_index, src)
 
     @app.get("/g/{sid}/{asset}")
     def review_asset(sid: str, asset: str):
@@ -1153,8 +1227,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(409, "timeline.json has not been uploaded")
         t = now()
         games = body.get("games") or []
+        title = body.get("title", run.title)
         repo.update_run(run.id, status="ready", ready_at=t, games=games,
-                        title=body.get("title", run.title),
+                        title=title,
+                        # A label somebody set, or a playlist gave, outranks a
+                        # title read by pattern -- this only fills a blank.
+                        league=run.league or source.league_from_title(title),
                         channel_id=body.get("channel_id", run.channel_id),
                         duration_s=body.get("duration_s", run.duration_s),
                         sheet=body.get("sheet", run.sheet),

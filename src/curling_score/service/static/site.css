@@ -34,6 +34,18 @@ a.btn.primary { background:var(--accent); color:#fff; border-color:transparent; 
 .league button.linky:hover, .league button.linky:focus-visible {
   border-bottom-color:var(--line); }
 .league input { padding:2px 4px; }
+.teams button.linky { all:unset; cursor:text; display:block; min-width:9em;
+                      padding:2px 0; border-bottom:1px dashed transparent; }
+.teams button.linky:hover, .teams button.linky:focus-visible {
+  border-bottom-color:var(--line); }
+/* The colour is the point: which name threw red decides how the chart reads. */
+.team { border-bottom:2px solid; padding-bottom:1px; }
+.team.red { border-color:var(--red); }
+.team.yellow { border-color:var(--yellow); }
+.teamedit { display:flex; gap:6px; align-items:center; }
+.teamedit input { padding:2px 4px; width:7em; border-bottom-width:2px; }
+.teamedit input.red { border-bottom-color:var(--red); }
+.teamedit input.yellow { border-bottom-color:var(--yellow); }
 button:disabled { opacity:.5; cursor:default; }
 .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .warn { background:var(--warnbg); color:var(--warn); border-radius:7px; padding:9px 12px; margin-top:12px; font-size:14px; }

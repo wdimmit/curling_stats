@@ -17,7 +17,7 @@ from curling_score.service.auth import FakeVerifier
 from curling_score.service.repo import MemoryRepo
 from curling_score.service.store import MemoryStore
 from curling_score.service.youtube import FakeYouTube, VideoMeta
-from tests.test_service_api import CLUB, T0, VID, Clock, work_through
+from tests.test_service_api import ADMIN, CLUB, T0, VID, Clock, work_through
 
 SARAH = {"Authorization": "Bearer tok-sarah"}
 ALEX = {"Authorization": "Bearer tok-alex"}
@@ -365,9 +365,31 @@ class TestNamingALeague:
     """The watcher labels what it queues; a pasted link arrives with nothing,
     and an unlabelled game is findable only by scrolling to its date."""
 
-    def test_a_pasted_link_starts_with_no_league(self, w):
+    def test_a_pasted_link_takes_the_league_from_its_title(self, w):
+        """The fixture is titled "4/30 - Sheet 2 - Spring League", and the club
+        writes the league after the sheet, so there is nothing to type in."""
         a_ready_game(w)
-        assert all(g["league"] is None for g in w["client"].get("/api/games").json()["games"])
+        assert w["client"].get("/api/games").json()["leagues"] == ["Spring League"]
+
+    def test_relabelling_fills_the_blanks_left_by_older_games(self, w):
+        """Games processed before titles were read have nothing; one admin
+        call names them, from the same titles they were streamed under."""
+        src = a_ready_game(w)
+        vid = w["repo"].get_source(src).video_id
+        for s in w["repo"].sources_for_video(vid):
+            w["repo"].update_source(s.id, league=None)
+        for r in w["repo"].runs_for_video(vid):
+            w["repo"].update_run(r.id, league=None)
+        assert w["client"].get("/api/games").json()["leagues"] == []
+        got = post(w, "/api/admin/relabel", {}, ADMIN).json()
+        assert got["runs"] == 1 and got["games"] == 2
+        assert w["client"].get("/api/games").json()["leagues"] == ["Spring League"]
+
+    def test_relabelling_never_overwrites_a_name_somebody_chose(self, w):
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/league", {"league": "Tuesday"}, SARAH)
+        assert post(w, "/api/admin/relabel", {}, ADMIN).json()["games"] == 0
+        assert w["client"].get("/api/games").json()["leagues"] == ["Tuesday"]
 
     def test_a_signed_in_person_can_name_it(self, w):
         src = a_ready_game(w)
@@ -408,7 +430,7 @@ class TestNamingALeague:
     def test_signed_out_it_is_read_only(self, w):
         src = a_ready_game(w)
         assert post(w, f"/api/games/{src}/league", {"league": "Tuesday"}).status_code == 401
-        assert w["client"].get("/api/games").json()["leagues"] == []
+        assert w["client"].get("/api/games").json()["leagues"] == ["Spring League"]
 
     def test_a_name_nobody_could_read_is_refused(self, w):
         src = a_ready_game(w)
@@ -421,3 +443,75 @@ class TestNamingALeague:
         src = a_ready_game(no_accounts)
         assert post(no_accounts, f"/api/games/{src}/league",
                     {"league": "Tuesday"}, SARAH).status_code == 503
+
+
+class TestNamingTheTeams:
+    """Per game, where the league is per recording. Nothing detects it: the
+    cameras read stones, not scoreboards."""
+
+    def test_a_game_starts_with_nobody_named(self, w):
+        a_ready_game(w)
+        g = next(x for x in w["client"].get("/api/games").json()["games"] if x["source_id"])
+        assert g["team_red"] is None and g["team_yellow"] is None
+
+    def test_a_signed_in_person_names_them(self, w):
+        src = a_ready_game(w)
+        r = post(w, f"/api/games/{src}/teams", {"red": "Rice", "yellow": "Casey"}, SARAH)
+        assert r.status_code == 200 and r.json()["red"] == "Rice"
+        g = next(x for x in w["client"].get("/api/games").json()["games"]
+                 if x["source_id"] == src)
+        assert (g["team_red"], g["team_yellow"]) == ("Rice", "Casey")
+
+    def test_only_the_game_named_not_the_whole_recording(self, w):
+        """Unlike the league: one night on one sheet is two different pairs."""
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice", "yellow": "Casey"}, SARAH)
+        others = [g for g in w["client"].get("/api/games").json()["games"]
+                  if g["source_id"] and g["source_id"] != src]
+        assert others and all(g["team_red"] is None for g in others)
+
+    def test_one_colour_can_be_named_without_the_other(self, w):
+        src = a_ready_game(w)
+        assert post(w, f"/api/games/{src}/teams", {"red": "Rice"}, SARAH).json()["red"] == "Rice"
+        assert w["repo"].get_source(src).team_yellow is None
+
+    def test_an_empty_name_clears_that_colour(self, w):
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice", "yellow": "Casey"}, SARAH)
+        post(w, f"/api/games/{src}/teams", {"red": ""}, SARAH)
+        assert w["repo"].get_source(src).team_red is None
+        assert w["repo"].get_source(src).team_yellow == "Casey"
+
+    def test_naming_nothing_is_a_mistake_worth_saying(self, w):
+        src = a_ready_game(w)
+        assert post(w, f"/api/games/{src}/teams", {}, SARAH).status_code == 400
+
+    def test_signed_out_it_is_read_only(self, w):
+        src = a_ready_game(w)
+        assert post(w, f"/api/games/{src}/teams", {"red": "Rice"}).status_code == 401
+
+    def test_a_name_nobody_could_read_is_refused(self, w):
+        src = a_ready_game(w)
+        assert post(w, f"/api/games/{src}/teams",
+                    {"red": "x" * 61}, SARAH).status_code == 422
+
+    def test_the_names_reach_the_public_view_of_the_game(self, w):
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice", "yellow": "Casey"}, SARAH)
+        doc = w["client"].get(f"/g/{src}/timeline.json").json()
+        assert doc["games"][0]["teams"]["red"]["name"] == "Rice"
+        assert doc["games"][0]["teams"]["yellow"]["name"] == "Casey"
+
+    def test_they_reach_a_chart_made_before_anyone_knew(self, w):
+        """Which is why they live on the source and not in the run's document:
+        the chart is pinned to a run that was built before the names existed."""
+        src = a_ready_game(w)
+        chart = post(w, "/api/charts", {"source_id": src}, SARAH).json()
+        before = w["client"].get(f"/c/{chart['slug']}/timeline.json").json()
+        assert before["games"][0]["teams"]["red"]["name"] is None
+        post(w, f"/api/games/{src}/teams", {"red": "Rice", "yellow": "Casey"}, SARAH)
+        after = w["client"].get(f"/c/{chart['slug']}/timeline.json").json()
+        assert after["games"][0]["teams"]["red"]["name"] == "Rice"
+
+    def test_a_game_we_do_not_have_is_404(self, w):
+        assert post(w, "/api/games/s_nope/teams", {"red": "Rice"}, SARAH).status_code == 404

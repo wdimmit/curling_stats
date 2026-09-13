@@ -90,6 +90,27 @@ def sheet_from_title(title: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def league_from_title(title: str) -> str | None:
+    """What the club calls the competition, from the title it streamed under.
+
+    The same titles that carry the sheet carry the league after it, and the
+    club is consistent about the order even when the front of the title is
+    not: "4/30 - Sheet 2 - Spring Skip's Choice League 2026" and "Rice (r) vs
+    Casey (y) - Draw 1 (15:00) - Sheet 5 - 2026 5U National Championship" both
+    put it last. So the rule is everything after the Sheet segment, rather
+    than a position counted from the front.
+
+    Only a guess from a naming convention, and one somebody can correct: the
+    playlist watcher's label beats it, and so does anything set by hand.
+    """
+    parts = [p.strip() for p in (title or "").split(" - ")]
+    for i, part in enumerate(parts):
+        if _SHEET_RE.fullmatch(part):
+            rest = " - ".join(p for p in parts[i + 1:] if p)
+            return rest or None
+    return None
+
+
 @dataclass(frozen=True)
 class VideoInfo:
     video_id: str

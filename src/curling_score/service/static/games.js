@@ -98,6 +98,70 @@ function refreshLeagueFilter() {
   $("league").value = known.includes(chosen) ? chosen : "";
 }
 
+/* Who played, by the colour they threw. Per game, where the league is per
+ * recording -- one sheet on one night is one league and two different pairs.
+ * Nothing detects it, so the cell offers itself for filling in. */
+function teamsOf(g) {
+  const r = g.team_red, y = g.team_yellow;
+  if (!r && !y) return "";
+  return `<span class="team red">${esc(r || "red")}</span> v `
+       + `<span class="team yellow">${esc(y || "yellow")}</span>`;
+}
+
+function gameCell(g) {
+  const fallback = g.game_index == null
+    ? esc(g.title || g.video_id) : `Game ${g.game_index + 1}`;
+  const teams = teamsOf(g);
+  if (!signedIn || !g.source_id)
+    return `<td>${teams || fallback}</td>`;
+  return `<td class="teams"><button class="linky" data-teams="${esc(g.source_id)}"
+    title="Say who played this game">${
+      teams || `${fallback} <span class="muted">&mdash; name the teams</span>`}</button></td>`;
+}
+
+function editTeams(cell, sourceId) {
+  const game = all.find(g => g.source_id === sourceId);
+  cell.innerHTML = `<span class="teamedit">
+      <input class="red" value="${esc(game?.team_red || "")}" maxlength="60"
+             placeholder="red" aria-label="Red team">
+      <span class="muted">v</span>
+      <input class="yellow" value="${esc(game?.team_yellow || "")}" maxlength="60"
+             placeholder="yellow" aria-label="Yellow team"></span>`;
+  const [red, yellow] = cell.querySelectorAll("input");
+  red.focus(); red.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    if (!save) return render();
+    const body = { red: red.value.trim(), yellow: yellow.value.trim() };
+    red.disabled = yellow.disabled = true;
+    const res = await authedFetch(`/api/games/${encodeURIComponent(sourceId)}/teams`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.detail || res.statusText);
+      return render();
+    }
+    game.team_red = body.red || null;
+    game.team_yellow = body.yellow || null;
+    render();
+  };
+  // Moving between the two boxes must not count as finishing, so a blur is
+  // only an end when it leaves the pair.
+  for (const input of [red, yellow]) {
+    input.onkeydown = e => {
+      if (e.key === "Enter") finish(true);
+      if (e.key === "Escape") finish(false);
+    };
+    input.onblur = () => setTimeout(() => {
+      if (!cell.contains(document.activeElement)) finish(true);
+    }, 0);
+  }
+}
+
 function actions(g) {
   const watch = g.source_id
     ? `<a class="btn" href="/g/${encodeURIComponent(g.source_id)}/">Watch</a>` : "";
@@ -124,7 +188,7 @@ function render() {
       <tr>
         <td>${g.sheet ?? "?"}</td>
         ${leagueCell(g)}
-        <td>${g.game_index == null ? esc(g.title || g.video_id) : `Game ${g.game_index + 1}`}</td>
+        ${gameCell(g)}
         <td>${g.start_s == null ? "—" : hms(g.start_s)}</td>
         <td>${g.ends ?? "—"}</td>
         <td><span class="pill ${esc(g.status || "")}">${esc(g.status || "")}</span></td>
@@ -135,6 +199,8 @@ function render() {
     b.onclick = () => chart(b, b.dataset.s, b.dataset.v, b.dataset.t);
   for (const b of $("list").querySelectorAll("button[data-league]"))
     b.onclick = () => editLeague(b.parentElement, b.dataset.league);
+  for (const b of $("list").querySelectorAll("button[data-teams]"))
+    b.onclick = () => editTeams(b.parentElement, b.dataset.teams);
 }
 
 async function chart(button, sourceId, videoId, start) {

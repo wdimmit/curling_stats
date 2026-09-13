@@ -98,6 +98,12 @@ class Source:
     sheet: int | None = None
     league: str | None = None
     played_at: datetime | None = None
+    # Who played, by the colour they threw. Per game rather than per video:
+    # the league is the same all night, the teams are not. Set by hand -- the
+    # detector reads stones, not scoreboards -- and served into the timeline,
+    # where the report has been headed "red" and "yellow" for want of them.
+    team_red: str | None = None
+    team_yellow: str | None = None
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
