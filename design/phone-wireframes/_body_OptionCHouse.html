@@ -1,0 +1,81 @@
+<div class="scr" style="height:844px">
+
+  <div class="hd">
+    <div class="ico flat"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path
+      d="M15 18l-6-6 6-6"/></svg></div>
+    <div class="chip" style="background:#e8b400;color:#1a1a1a">5</div>
+    <div class="ttl">Place the stones</div>
+    <div class="grow"></div>
+    <div class="pill mut">of 16</div>
+  </div>
+
+  <!-- the blank case: the one time the house MUST be edited by hand -->
+  <div style="flex:0 0 46px;background:#fef3c7;color:#b45309;display:flex;align-items:center;
+    gap:8px;padding:0 12px;font-size:13px;border-bottom:1px solid #e0e0dc">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round"><path d="M12 8v5"/><path d="M12 16.5v.01"/><circle
+      cx="12" cy="12" r="9"/></svg>
+    <span><strong>State unknown</strong> &mdash; this house could not be read</span>
+  </div>
+
+  <div style="flex:1 1 auto;position:relative;background:#f7f7f5">
+    <svg viewBox="-2.6 -2.45 5.2 8.48" width="390" height="636" style="display:block">
+      <defs>
+        <pattern id="hatch" width="0.34" height="0.34" patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="0.34" stroke="#b45309" stroke-width="0.055" opacity=".3"/>
+        </pattern>
+      </defs>
+      <rect x="-2.375" y="-1.829" width="4.75" height="8.23" fill="#fbfbfa"/>
+      <circle cx="0" cy="0" r="1.829" fill="#3f9c47"/>
+      <circle cx="0" cy="0" r="1.219" fill="#fbfbfa"/>
+      <circle cx="0" cy="0" r="0.61" fill="#3b4fa8"/>
+      <circle cx="0" cy="0" r="0.152" fill="#fbfbfa"/>
+      <line x1="0" y1="-1.829" x2="0" y2="6.03" stroke="#c9c9c4" stroke-width="0.022"/>
+      <line x1="-2.375" y1="0" x2="2.375" y2="0" stroke="#c9c9c4" stroke-width="0.022"/>
+      <line x1="-2.375" y1="-1.829" x2="2.375" y2="-1.829" stroke="#c9c9c4" stroke-width="0.022"/>
+      <rect x="-2.375" y="-1.829" width="4.75" height="8.23" fill="url(#hatch)"/>
+      <rect x="-2.375" y="-1.829" width="4.75" height="8.23" fill="none" stroke="#b45309"
+        stroke-width="0.045" stroke-dasharray="0.22 0.16"/>
+      <line x1="-2.375" y1="-2.45" x2="-2.375" y2="6.03" stroke="#8a8a85" stroke-width="0.03"/>
+      <line x1="2.375" y1="-2.45" x2="2.375" y2="6.03" stroke="#8a8a85" stroke-width="0.03"/>
+      <circle cx="0.36" cy="1.67" r="0.142" fill="#e8b400" stroke="#5f5f5b" stroke-width="0.018"/>
+      <circle cx="-0.55" cy="0.30" r="0.142" fill="#e8b400" stroke="#5f5f5b" stroke-width="0.018"/>
+      <circle cx="-0.55" cy="0.30" r="0.215" fill="none" stroke="#ffffff" stroke-width="0.05"/>
+      <circle cx="1.10" cy="0.85" r="0.142" fill="#d13438" stroke="#5f5f5b" stroke-width="0.018"/>
+      <circle cx="1.10" cy="0.85" r="0.30" fill="none" stroke="#2b6cb0" stroke-width="0.055"/>
+    </svg>
+    <div style="position:absolute;left:12px;right:12px;bottom:10px;text-align:center">
+      <span class="mut" style="background:rgba(247,247,245,.92);font-size:11px;padding:3px 10px;
+        border-radius:999px;border:1px solid #e0e0dc">tap the ice to add &middot; drag off to remove</span>
+    </div>
+  </div>
+
+  <!-- editing tools sit at the bottom, not above the diagram -->
+  <div style="flex:0 0 56px;background:#fff;border-top:1px solid #e0e0dc;display:flex;
+    align-items:center;gap:8px;padding:0 12px">
+    <div style="width:44px;height:44px;border-radius:50%;background:#d13438;
+      border:2px solid #e0e0dc"></div>
+    <div style="width:44px;height:44px;border-radius:50%;background:#e8b400;
+      border:2px solid #2b6cb0;box-shadow:0 0 0 2px #2b6cb0"></div>
+    <div class="grow"></div>
+    <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle
+      cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6" fill="currentColor"
+      stroke="none"/></svg></div>
+    <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path
+      d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/></svg></div>
+    <div class="ico" style="background:#2b6cb0;color:#fff;border-color:transparent"><svg
+      width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-dasharray="3 2.5"><path
+      d="M5 20C7 12 12 8 19 5"/></svg></div>
+  </div>
+
+  <div style="flex:0 0 58px;background:#fff;border-top:1px solid #e0e0dc;display:flex;
+    align-items:center;gap:8px;padding:0 12px">
+    <div class="btn" style="flex:0 0 96px">Reset</div>
+    <div class="btn on" style="flex:1 1 auto;height:46px">Done &mdash; back to grading</div>
+  </div>
+</div>

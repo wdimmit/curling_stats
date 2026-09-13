@@ -1,0 +1,167 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box;}
+    body{margin:0;background:#f7f7f5;color:#1a1a1a;
+         font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;}
+    a{color:#2b6cb0;} a:hover{color:#1e4e7f;}
+    .scr{width:390px;background:#f7f7f5;display:flex;flex-direction:column;overflow:hidden;}
+    .hd{flex:0 0 48px;background:#fff;border-bottom:1px solid #e0e0dc;
+        display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;}
+    .ttl{font-size:13px;font-weight:650;white-space:nowrap;letter-spacing:-.01em;}
+    .grow{flex:1 1 auto;}
+    .mut{color:#6b6b6b;}
+    .pill{padding:4px 10px;border-radius:999px;font-size:12px;
+          border:1px solid #e0e0dc;white-space:nowrap;}
+    .pill.bad{background:#fef3c7;color:#b45309;border-color:transparent;}
+    .pill.ok{background:#dcfce7;color:#15803d;border-color:transparent;}
+    .ico{flex:0 0 44px;width:44px;height:44px;border-radius:7px;border:1px solid #e0e0dc;
+         background:#fff;display:grid;place-items:center;color:#1a1a1a;}
+    .ico.flat{border-color:transparent;background:transparent;}
+    .vid{width:390px;flex:0 0 219px;background:#000;position:relative;display:grid;place-items:center;}
+    .btn{height:44px;border-radius:7px;border:1px solid #e0e0dc;background:#fff;
+         display:grid;place-items:center;font-size:13px;padding:0 12px;color:#1a1a1a;}
+    .btn.on{background:#2b6cb0;color:#fff;border-color:transparent;}
+    .lbl{font-size:11px;font-weight:650;color:#6b6b6b;text-transform:uppercase;letter-spacing:.06em;}
+    .warn{background:#fef3c7;color:#b45309;border-radius:7px;padding:9px 11px;font-size:13px;line-height:1.4;}
+    .sw{width:12px;height:12px;border-radius:50%;flex:0 0 12px;}
+    .chip{flex:0 0 40px;width:40px;height:40px;border-radius:7px;display:grid;place-items:center;
+          font-size:15px;font-weight:650;font-variant-numeric:tabular-nums;
+          border:1px solid transparent;position:relative;}
+  </style>
+</helmet>
+<div class="scr" style="height:844px;position:relative">
+
+  <div class="hd">
+    <!-- a blank's chip carries no colour it can be sure of -->
+    <div class="chip" style="background:#d13438;color:#fff">3</div>
+    <div class="ttl">Game 1 &middot; 3rd end</div>
+    <div class="grow"></div>
+    <div class="pill bad">6 to chart</div>
+    <div class="ico flat"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.6" fill="currentColor"
+      stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle
+      cx="12" cy="19" r="1.6" fill="currentColor" stroke="none"/></svg></div>
+  </div>
+
+  <div class="vid">
+    <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#ffffff"
+      stroke-width="1.4" opacity=".85"><circle cx="12" cy="12" r="10"/><path
+      d="M9.8 7.6l7 4.4-7 4.4z" fill="#ffffff" stroke="none"/></svg>
+    <div style="position:absolute;left:12px;right:12px;bottom:12px;display:flex;gap:6px;
+      align-items:center">
+      <span style="background:#b45309;color:#fff;font-size:11px;padding:3px 7px;
+        border-radius:5px">never seen &mdash; this time is a guess</span>
+    </div>
+    <div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.25)">
+      <div style="width:61%;height:3px;background:#b45309"></div>
+    </div>
+  </div>
+
+  <div style="flex:1 1 auto;position:relative;background:#f7f7f5">
+    <svg viewBox="-2.6 -2.45 5.2 4.28" width="390" height="321" style="display:block">
+      <defs>
+        <pattern id="hatch3" width="0.34" height="0.34" patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="0.34" stroke="#b45309" stroke-width="0.055" opacity=".3"/>
+        </pattern>
+      </defs>
+      <rect x="-2.375" y="-1.829" width="4.75" height="8.23" fill="#fbfbfa"/>
+      <circle cx="0" cy="0" r="1.829" fill="#3f9c47"/>
+      <circle cx="0" cy="0" r="1.219" fill="#fbfbfa"/>
+      <circle cx="0" cy="0" r="0.61" fill="#3b4fa8"/>
+      <circle cx="0" cy="0" r="0.152" fill="#fbfbfa"/>
+      <line x1="0" y1="-1.829" x2="0" y2="1.87" stroke="#c9c9c4" stroke-width="0.022"/>
+      <line x1="-2.375" y1="0" x2="2.375" y2="0" stroke="#c9c9c4" stroke-width="0.022"/>
+      <line x1="-2.375" y1="-1.829" x2="2.375" y2="-1.829" stroke="#c9c9c4" stroke-width="0.022"/>
+      <rect x="-2.375" y="-1.829" width="4.75" height="8.23" fill="url(#hatch3)"/>
+      <rect x="-2.375" y="-1.829" width="4.75" height="8.23" fill="none" stroke="#b45309"
+        stroke-width="0.045" stroke-dasharray="0.22 0.16"/>
+      <line x1="-2.375" y1="-2.45" x2="-2.375" y2="1.87" stroke="#8a8a85" stroke-width="0.03"/>
+      <line x1="2.375" y1="-2.45" x2="2.375" y2="1.87" stroke="#8a8a85" stroke-width="0.03"/>
+    </svg>
+    <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
+      text-align:center">
+      <span style="background:#fef3c7;color:#b45309;font-size:12px;font-weight:650;
+        padding:5px 12px;border-radius:999px;letter-spacing:.04em">STATE UNKNOWN</span>
+    </div>
+  </div>
+
+  <!-- the renumber is otherwise invisible on a phone: no chip strip to watch
+       sixteen labels rewrite themselves, so say what happened and get out -->
+  <div style="position:absolute;left:12px;right:12px;bottom:268px;z-index:3;
+    background:#1a1a1a;color:#fff;border-radius:9px;padding:10px 12px;display:flex;
+    align-items:center;gap:9px;box-shadow:0 2px 12px rgba(0,0,0,.22)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80"
+      stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path
+      d="M20 6.5L9.2 17.3 4 12.1"/></svg>
+    <span style="font-size:13px;line-height:1.35">End renumbered &mdash; this is now
+      <strong>rock 3</strong>, red by alternation</span>
+  </div>
+
+  <!-- peek, blank variant: you cannot usefully grade a rock nobody saw, so the
+       fast path becomes "where was it thrown" and "what was on the ice" -->
+  <div style="flex:0 0 256px;background:#fff;border-top:1px solid #e0e0dc;
+    border-radius:16px 16px 0 0;margin-top:-16px;position:relative;z-index:2;
+    box-shadow:0 -3px 14px rgba(0,0,0,.08);padding:0 12px 24px;display:flex;
+    flex-direction:column">
+
+    <div style="display:flex;justify-content:center;padding:10px 0 10px">
+      <div style="width:36px;height:4px;border-radius:2px;background:#e0e0dc"></div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;height:28px">
+      <div style="font-size:15px;font-weight:650">lead&rsquo;s 1st rock</div>
+      <span class="pill bad" style="font-size:11px;padding:2px 8px">blank</span>
+      <div class="grow"></div>
+      <div class="mut" style="font-size:12px">rock 3 of 16</div>
+    </div>
+
+    <!-- the native select is genuinely the right control here: iOS and Android
+         render it as a full-width picker, which beats any custom dropdown -->
+    <div style="display:flex;align-items:center;gap:10px;margin-top:10px;height:44px;
+      border:1px solid #e0e0dc;border-radius:7px;padding:0 12px;background:#fff">
+      <span class="mut" style="font-size:13px">Thrown</span>
+      <span style="font-size:14px;font-weight:650">before #3 (red)</span>
+      <div class="grow"></div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path
+        d="M6 9l6 6 6-6"/></svg>
+    </div>
+
+    <div class="btn" style="margin-top:8px;height:44px;gap:8px;grid-auto-flow:column"><svg
+      width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12"
+      r="8"/><path d="M12 9v6M9 12h6"/></svg>Place the stones</div>
+
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <div class="btn" style="flex:0 0 56px;padding:0;height:48px"><svg width="24" height="24"
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="btn" style="flex:0 0 56px;padding:0;height:48px"><svg width="22" height="22"
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path
+        d="M3 4.2v4.6h4.6"/></svg></div>
+      <div class="btn on" style="flex:1 1 auto;height:48px;grid-auto-flow:column;gap:8px"><svg
+        width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path
+        d="M20 6.5L9.2 17.3 4 12.1"/></svg>Charted</div>
+      <div class="btn" style="flex:0 0 56px;padding:0;height:48px"><svg width="24" height="24"
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

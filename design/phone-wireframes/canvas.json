@@ -1,0 +1,140 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Phone layout"
+    },
+    {
+      "id": "page-2",
+      "name": "Not chosen"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "C · Stage + sheet (peek)"
+    },
+    {
+      "file": "OptionCExpanded.dc.html",
+      "page": "page-1",
+      "x": 470,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "C · sheet expanded"
+    },
+    {
+      "file": "BlankPeek.dc.html",
+      "page": "page-1",
+      "x": 940,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "C · blank shot (peek)"
+    },
+    {
+      "file": "Renumbered.dc.html",
+      "page": "page-1",
+      "x": 1410,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "C · after a reorder"
+    },
+    {
+      "file": "OptionCHouse.dc.html",
+      "page": "page-1",
+      "x": 1880,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "C · house editor (blank shot)"
+    },
+    {
+      "file": "OptionB.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "B · House page"
+    },
+    {
+      "file": "OptionBChart.dc.html",
+      "page": "page-2",
+      "x": 470,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "B · Chart page"
+    },
+    {
+      "file": "OptionA.dc.html",
+      "page": "page-2",
+      "x": 940,
+      "y": 0,
+      "w": 390,
+      "h": 1600,
+      "title": "A · Stack (full scroll)"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "constraint",
+      "page": "page-1",
+      "x": 0,
+      "y": -620,
+      "w": 2270,
+      "text": "THE MEASUREMENT EVERYTHING FOLLOWS FROM\n\nAt 390 pt the content column is ~358 px. The house SVG is viewBox \"-2.6 -2.6 5.2 8.6\", so at full width it is 592 px tall; the 16:9 video is 201 px in that padded column, 219 px full-bleed as drawn here. Together that is 793 px against roughly 740 px of usable viewport — before the header or a single form control. The video and the house cannot both be full size.\n\nA stone is 0.142 m. At every width here it renders 19–21 px across, well under the 44 pt touch minimum. Per your call that imprecision is accepted rather than paid for with pinch-zoom.\n\nEvery action moves out of the header into the thumb zone: the header keeps identity and status only."
+    },
+    {
+      "id": "candidate-c",
+      "page": "page-1",
+      "x": 0,
+      "y": -300,
+      "w": 2270,
+      "text": "CANDIDATE C — STAGE + SHEET   (chosen)\n\nVideo pinned at the top, the house cropped to the scoring area beneath it, and grading in a bottom sheet whose PEEK state holds the whole fast path — group, grade, next — in one thumb's reach. The house gets 321 px. The guard zone is off-screen until you open the full-screen house editor, which is also where a STATE UNKNOWN blank gets charted.\n\nWhy: if the tracking usually gets the house right, grading is the frequent act and editing the rare one. So grading owns the thumb zone and editing becomes a mode you enter deliberately.\n\nThe header leads with the current stone as a chip — team colour and rock number, in the app's existing .shot chip vocabulary. It is status, not a target. In the expanded sheet, where the house is covered, it is the only thing still saying whose rock this is.\n\nTradeoff: guards are never visible alongside the video, and a sheet is one more concept than tabs."
+    },
+    {
+      "id": "not-chosen",
+      "page": "page-2",
+      "x": 0,
+      "y": -170,
+      "w": 1330,
+      "text": "NOT CHOSEN — kept for reference\n\nThe two candidates that lost to C, with the reasoning that ruled them out."
+    },
+    {
+      "id": "candidate-b",
+      "page": "page-2",
+      "x": 0,
+      "y": 920,
+      "w": 860,
+      "text": "CANDIDATE B — PINNED VIDEO + PAGED CARDS\n\nVideo pinned, then a 16-chip strip for the whole end, then House / Chart / Detail as three peer pages. The house gets 399 px — 72 more than C — and the form gets a page of its own.\n\nWhy it lost: the full form still does not fit one page (the Chart artboard shows it running past the fold), and paging costs a tap on every shot where C's peek costs none. Its best idea — the end at a glance — survives in C as the single header chip."
+    },
+    {
+      "id": "candidate-a",
+      "page": "page-2",
+      "x": 0,
+      "y": 1240,
+      "w": 860,
+      "text": "CANDIDATE A — STACK   (the cheap baseline)\n\nOne scrolling column plus a sticky thumb bar. Close to what you already get by letting the existing grid collapse to 1fr. It was here so the other two had to earn their cost.\n\nWhy it lost: one shot spans about 1600 px, and the video scrolls out of sight exactly when you reach the grade buttons — for a video-led review tool, the worst thing to lose. Drawn at full height with the fold marked."
+    },
+    {
+      "id": "rock-order",
+      "page": "page-1",
+      "x": 0,
+      "y": 900,
+      "w": 2270,
+      "text": "ROCK ORDER (#orderBox, added in 5ba4858) — WHAT IT CHANGED HERE\n\nA correction can now carry `before: N`, which reorders and RENUMBERS the whole end. The first wireframes predated it and had two things wrong.\n\n1. It did not fit. The expanded sheet was already full at 564 of 577 px. Order adds ~64 more. So the sheet body now scrolls with the transport pinned, and Order collapses to a 44 px disclosure row showing its state (\"detected order\") — one tap to the native picker. Rare for a real shot, so collapsing is right; on desktop it stays expanded as today.\n\n2. A blank's fast path is not grading. You cannot usefully grade a rock nobody saw. So the PEEK state is shot-state dependent: for a blank it swaps the group chips and grade row for the order picker and \"Place the stones\" (third artboard). That is the flow the commit describes — find the blank, say where it was really thrown, then say what was on the ice.\n\nKeep the native <select>. iOS and Android render it as a full-width picker wheel, which beats any custom dropdown we would write, and it already carries 15 well-labelled options.\n\nDECIDED — the renumber announces itself. On desktop the #shots chip strip lets you watch 16 labels rewrite themselves; C has no strip, so the only feedback would have been the header chip flipping from 9 to 3. A permanent strip costs 46 px on every screen to explain an occasional action, so instead a transient toast says what happened and leaves (fourth artboard). It floats over the house rather than sitting in the sheet, so it costs no layout at all.\n\nIt also carries something the user could not otherwise know: moving a blank settles its COLOUR, because layout() recolours blanks by the alternation around them. Hence \"rock 3, red by alternation\" rather than a bare \"renumbered\"."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}
