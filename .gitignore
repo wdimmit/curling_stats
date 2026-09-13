@@ -37,3 +37,12 @@ build/
 # identifier and no secret, but it is still deploy config, not source.
 deploy/worker.env
 firebase_api_key.json
+
+# Training binaries that live on the GPU box, not in a public repo. The
+# harvested frames are derived — videos.json plus manifest.json rebuild them —
+# and the retired weights are superseded by the one weights.py resolves.
+datasets/ds11/ds11_images.tgz
+datasets/ds12/ds12_images.tgz
+/yolo11n.pt
+weights/*.pt
+!weights/ds11a.pt
