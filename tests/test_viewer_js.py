@@ -7,52 +7,53 @@ percentages, which are the numbers a player will read off and believe.
 """
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
-APP = Path(__file__).resolve().parents[1] / "src/curling_score/viewer/app.js"
+# The framework-free core, reached through the adapter that keeps the mutable
+# `state` these tests were written against. See tests/js/singleton.mjs.
+CORE = Path(__file__).resolve().parent / "js/singleton.mjs"
+# The stylesheet is hand-authored and deliberately outside the build, so
+# the rules these tests read are still the rules that ship.
+VIEWER = Path(__file__).resolve().parents[1] / "src/curling_score/viewer"
 node = shutil.which("node")
 pytestmark = pytest.mark.skipif(node is None, reason="node is not installed")
 
 
-def run_js(body: str):
-    """Run ``body`` with the viewer's exports in scope; return its JSON output."""
+def run_js(body: str, *, chart=None):
+    """Run ``body`` with the core's exports in scope; return its JSON output.
+
+    ESM rather than ``require``: the core is plain ES modules, and dynamic
+    ``import()`` wants a file URL -- a bare path happens to work on Linux but
+    is not specified to. Everything the module exports is put on ``globalThis``
+    rather than destructured by name, so a new export is testable without
+    editing this harness.
+
+    With ``chart`` given, ``window.CHART`` is set *before* the import, which is
+    how the browser sees it. ``document`` stays unset: nothing reachable from
+    the core may touch it, and these tests are what holds that line.
+    """
+    window = f"globalThis.window = {{ CHART: {json.dumps(chart)} }};\n" if chart is not None else ""
     script = (
-        f"const A = require({str(APP)!r});\n"
-        "const {state, merge, keyFor, mergedShots, layout, identity, gatherStats,\n"
-        "       pct, avg, isBlank, isGraded, typeOf, shotVideoTime, stoneAt,\n"
-        "       shotKey, rawShot, houseViewBox, shouldCrop, peekMode,\n"
-        "       renumberNotice, gatherThinking, clockText, splitText,\n"
-        "       thinkText, cumulativeThinking, thinkingChart, thinkingBars} = A;\n"
+        window
+        + f"const A = await import({CORE.as_uri()!r});\n"
+        "Object.assign(globalThis, A);\n"
         "function out(v){ console.log(JSON.stringify(v)); }\n" + body
     )
-    proc = subprocess.run([node, "-e", script], capture_output=True, text=True,
-                          timeout=60)
+    proc = subprocess.run([node, "--input-type=module", "-e", script],
+                          capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
 def run_js_with_chart(chart, body: str):
-    """Run with ``window.CHART`` set before app.js loads, as the browser does.
-
-    ``global.document`` stays unset, so the module's own ``BROWSER`` gate keeps
-    ``boot()`` from running and reaching for a page that is not there.
-    """
-    window = f"global.window = {{ CHART: {json.dumps(chart)} }};\n" if chart is not None else ""
-    script = (
-        window
-        + f"const A = require({str(APP)!r});\n"
-        "const {READ_ONLY, REVIEW, MERGE, state, dirtyPayload, saveUrl,\n"
-        "       reconcile, busyKey, shotKey, unloadBeacon} = A;\n"
-        "function out(v){ console.log(JSON.stringify(v)); }\n" + body
-    )
-    proc = subprocess.run([node, "-e", script], capture_output=True, text=True,
-                          timeout=60)
-    assert proc.returncode == 0, proc.stderr
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    """``run_js`` with a mode chosen. Kept as its own name so the tests that
+    read better that way do not have to change to say the same thing."""
+    return run_js(body, chart=chart)
 
 
 class TestModes:
@@ -776,24 +777,34 @@ class TestTheClockChart:
         assert len(got) == 1 and got[0]["i"] == 4
 
     def test_the_chart_draws_one_line_per_team(self):
-        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking()));")
-        assert got.count('class="ln red"') == 1
-        assert got.count('class="ln yellow"') == 1
+        got = run_js(clock_setup() +
+                     "out(chartGeometry(cumulativeThinking()).lines"
+                     "      .map(l => [l.color, l.points.length]));")
+        # Yellow first, so red draws over it where the two coincide.
+        assert got == [["yellow", 7], ["red", 7]]
 
     def test_the_chart_marks_every_estimated_step(self):
-        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking()));")
-        assert got.count('class="est ') == 1
+        """And marks it on the line of the team that threw it, not the other."""
+        got = run_js(clock_setup() +
+                     "const c = cumulativeThinking();"
+                     "out([chartGeometry(c).marks.map(m => m.color),"
+                     "     c.points.filter(p => p.estimated).map(p => p.color)]);")
+        assert len(got[0]) == 1
+        assert got[0] == got[1]
 
     def test_a_game_with_no_clock_at_all_draws_nothing(self):
         """Better an absent chart than two flat lines implying nobody thought."""
         got = run_js(clock_setup() +
-                     "out(thinkingChart({points:[{i:0,red:0,yellow:0}],"
+                     "out(chartGeometry({points:[{i:0,red:0,yellow:0}],"
                      "                   bounds:[], red:0, yellow:0}));")
-        assert got == ""
+        assert got is None
 
     def test_the_axis_is_labelled_in_minutes(self):
-        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking()));")
-        assert "0:00" in got and 'class="yl"' in got
+        got = run_js(clock_setup() +
+                     "out(chartGeometry(cumulativeThinking()).grid"
+                     "      .map(g => g.label));")
+        assert got and got[0] == "0:00"
+        assert all(":" in label for label in got)
 
 
 class TestWhereYouAreOnTheClock:
@@ -801,24 +812,26 @@ class TestWhereYouAreOnTheClock:
     chart takes an optional position so stepping through moves a marker."""
 
     def test_no_position_draws_no_marker(self):
-        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking()));")
-        assert 'class="you"' not in got
+        got = run_js(clock_setup() +
+                     "out(chartGeometry(cumulativeThinking()).you);")
+        assert got is None
 
     def test_a_position_draws_one(self):
-        got = run_js(clock_setup() + "out(thinkingChart(cumulativeThinking(), 3));")
-        assert got.count('class="you"') == 1
+        got = run_js(clock_setup() +
+                     "out(chartGeometry(cumulativeThinking(), 3).you);")
+        assert got is not None and got["x"] > 0
 
     def test_a_position_off_the_end_is_ignored_rather_than_drawn_outside(self):
         for at in ("-1", "999"):
             got = run_js(clock_setup() +
-                         f"out(thinkingChart(cumulativeThinking(), {at}));")
-            assert 'class="you"' not in got
+                         f"out(chartGeometry(cumulativeThinking(), {at}).you);")
+            assert got is None
 
     def test_the_first_and_last_rock_are_both_on_the_chart(self):
         for at in ("0", "6"):
             got = run_js(clock_setup() +
-                         f"out(thinkingChart(cumulativeThinking(), {at}));")
-            assert got.count('class="you"') == 1
+                         f"out(chartGeometry(cumulativeThinking(), {at}).you);")
+            assert got is not None
 
 
 class TestTheBarsPerRock:
@@ -827,61 +840,93 @@ class TestTheBarsPerRock:
 
     def test_one_bar_per_rock_that_was_timed(self):
         """Four of the six shots in the fixture have an interval."""
-        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking()));")
-        assert got.count("<rect") == 4
+        got = run_js(clock_setup() +
+                     "out(barsGeometry(cumulativeThinking()).bars.length);")
+        assert got == 4
 
     def test_a_bar_is_its_team_s_colour(self):
-        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking()));")
-        assert got.count('class="bar red') == 2
-        assert got.count('class="bar yellow') == 2
+        got = run_js(clock_setup() +
+                     "out(barsGeometry(cumulativeThinking()).bars"
+                     "      .map(b => b.color));")
+        assert got.count("red") == 2 and got.count("yellow") == 2
 
     def test_an_assumed_interval_is_drawn_hollow(self):
-        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking()));")
-        assert got.count(" est\"") == 1
+        got = run_js(clock_setup() +
+                     "out(barsGeometry(cumulativeThinking()).bars"
+                     "      .filter(b => b.est).length);")
+        assert got == 1
 
     def test_the_median_is_drawn_so_long_means_long_for_this_game(self):
         got = run_js(clock_setup() +
                      "const c = cumulativeThinking();"
-                     "out([thinkingBars(c).includes('class=\"median\"'), c.median, c.longest]);")
+                     "out([barsGeometry(c).median !== null, c.median, c.longest]);")
         assert got[0] is True
         assert got[1] == 30 and got[2] == 40
 
     def test_every_bar_says_which_rock_it_is(self):
-        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking()));")
-        assert "<title>End 1, shot 2 &mdash; 0:30</title>".replace("&mdash;", "—") in got
-        assert "(estimated)" in got
+        got = run_js(clock_setup() +
+                     "out(barsGeometry(cumulativeThinking()).bars"
+                     "      .map(b => b.title));")
+        assert "End 1, shot 2 — 0:30" in got
+        assert any("(estimated)" in t for t in got)
 
     def test_a_bar_carries_the_rock_it_came_from(self):
         """So that clicking one can go there; the index keys back into points."""
         got = run_js(clock_setup() +
                      "const c = cumulativeThinking();"
-                     "const m = [...thinkingBars(c).matchAll(/data-shot=\"(\\d+)\"/g)]"
-                     "  .map(x => +x[1]);"
-                     "out(m.map(i => [c.points[i].end, c.points[i].si]));")
+                     "out(barsGeometry(c).bars"
+                     "      .map(b => [c.points[b.shot].end, c.points[b.shot].si]));")
         assert got == [[1, 1], [1, 2], [1, 3], [2, 1]]
+
+    def test_a_bar_also_carries_where_to_go(self):
+        """The end and shot indices ride on the bar itself, so a click needs no
+        lookup and cannot key into a different game view than the one drawn."""
+        got = run_js(clock_setup() +
+                     "const c = cumulativeThinking();"
+                     "out(barsGeometry(c).bars.map(b => [b.ei, b.si]));")
+        assert got == [[0, 1], [0, 2], [0, 3], [1, 1]]
 
     def test_it_shares_the_ends_with_the_cumulative_chart(self):
         got = run_js(clock_setup() +
                      "const c = cumulativeThinking();"
-                     "out([thinkingChart(c), thinkingBars(c)].map(s =>"
-                     "  [...s.matchAll(/class=\"b\"/g)].length));")
-        assert got[0] == got[1] == 2
+                     "out([chartGeometry(c), barsGeometry(c)]"
+                     "      .map(g => g.ticks.map(t => t.x)));")
+        assert got[0] == got[1]
+        assert len(got[0]) == 2
 
     def test_a_game_nobody_timed_draws_nothing(self):
         got = run_js(clock_setup() +
-                     "out(thinkingBars({points:[{i:0}], bounds:[], red:0, yellow:0,"
+                     "out(barsGeometry({points:[{i:0}], bounds:[], red:0, yellow:0,"
                      "                  median:0, longest:0}));")
-        assert got == ""
+        assert got is None
 
     def test_it_takes_a_position_like_the_lines_do(self):
-        got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking(), 3));")
-        assert got.count('class="you"') == 1
+        got = run_js(clock_setup() +
+                     "out(barsGeometry(cumulativeThinking(), 3).you);")
+        assert got is not None and got["x"] > 0
+
+
+class TestTheJsGateIsTheStylesheetGate:
+    """The phone shell is a stylesheet block, and the JS has to agree about
+    exactly when it is in force -- the crop, the bottom sheet and the
+    full-screen house editor all assume the layout the block creates. The two
+    strings being equal is the whole contract, and nothing checked it until
+    now: `app.js` carried a comment asking the next person to keep them in
+    step, which is not the same as a test."""
+
+    def test_phone_query_is_the_media_query_byte_for_byte(self):
+        css = (VIEWER / "style.css").read_text()
+        queries = re.findall(r"@media ([^{]+)\{", css)
+        want = run_js("out(PHONE_QUERY);")
+        assert want in [q.strip() for q in queries], (
+            f"PHONE_QUERY is {want!r}, which is not one of the stylesheet's "
+            f"media queries -- the phone gate has drifted")
 
 
 class TestABarIsSomethingYouCanHit:
     """Found the rock that took four minutes, now go and watch it."""
 
-    CSS = APP.parent / "style.css"
+    CSS = VIEWER / "style.css"
 
     def test_a_hollow_bar_still_takes_the_click(self):
         """An estimated interval is drawn with no fill, and an unfilled rect
