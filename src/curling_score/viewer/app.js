@@ -969,12 +969,19 @@ function clockPanel() {
     savePrefs();
     clockPanel();
   };
-  // A tall bar is only useful if it takes you to the rock that made it.
-  for (const bar of $("clock").querySelectorAll("rect[data-shot]"))
+  wireBarJumps($("clock"), series);
+}
+
+/* A tall bar is only useful if it takes you to the rock that made it. Wired
+ * wherever the bars are drawn, the report included -- finding the four-minute
+ * rock and then having to hunt for it by hand is most of the work left. */
+function wireBarJumps(root, series, { leaveReport = false } = {}) {
+  for (const bar of root.querySelectorAll("rect[data-shot]"))
     bar.onclick = () => {
       const p = series.points[+bar.dataset.shot];
       if (!p) return;
       state.ei = p.ei; state.si = p.si; state.selStone = null;
+      if (leaveReport) toggleReport(false);
       render(); seekCurrent();
     };
 }
@@ -1289,6 +1296,10 @@ function renderReport() {
         ${think.estimated ? '<span><i class="sw est"></i>estimated interval</span>' : ""}
       </div></div>` : ""}
     <div class="reportgrid" style="margin-top:12px">${cards}</div>`;
+  // The report is a page to read, but a bar in it is still a rock you can go
+  // and watch; going there closes the report rather than leaving it over the
+  // shot it just took you to.
+  wireBarJumps($("report"), clock, { leaveReport: true });
 }
 
 function toggleReport(on) {

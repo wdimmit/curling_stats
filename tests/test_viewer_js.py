@@ -876,3 +876,22 @@ class TestTheBarsPerRock:
     def test_it_takes_a_position_like_the_lines_do(self):
         got = run_js(clock_setup() + "out(thinkingBars(cumulativeThinking(), 3));")
         assert got.count('class="you"') == 1
+
+
+class TestABarIsSomethingYouCanHit:
+    """Found the rock that took four minutes, now go and watch it."""
+
+    CSS = APP.parent / "style.css"
+
+    def test_a_hollow_bar_still_takes_the_click(self):
+        """An estimated interval is drawn with no fill, and an unfilled rect
+        is clickable only on its 1.5 px outline -- which made every estimated
+        rock a target nobody could hit."""
+        css = self.CSS.read_text()
+        rule = next(r for r in css.split("}") if ".bar.est" in r and "fill:none" in r)
+        assert "pointer-events:all" in rule
+
+    def test_a_filled_bar_says_it_is_clickable(self):
+        css = self.CSS.read_text()
+        rule = next(r for r in css.split("}") if ".clockchart .bar {" in r)
+        assert "cursor:pointer" in rule

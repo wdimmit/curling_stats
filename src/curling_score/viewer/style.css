@@ -159,7 +159,11 @@ body.reporting main { display:none; }
 .clockchart .bar:hover { opacity:.65; }
 /* An assumed interval is drawn hollow, the way an assumed step is on the
    lines: the height is a guess and should not read as a measurement. */
-.clockchart .bar.est { fill:none; stroke-width:1.5; vector-effect:non-scaling-stroke; }
+/* pointer-events:all, not the default: a rect with no fill is clickable only
+   on its 1.5 px outline, which made every estimated rock a target nobody
+   could hit. */
+.clockchart .bar.est { fill:none; stroke-width:1.5; pointer-events:all;
+                       vector-effect:non-scaling-stroke; }
 .clockchart .bar.est.red { stroke:var(--red); }
 .clockchart .bar.est.yellow { stroke:var(--yellow); }
 /* The game's own median: what "long" means here rather than in the abstract. */
