@@ -18,9 +18,9 @@
     "frontend/runtime/overridesStore.mjs": "f50dacacca0a3d9ab487fa5b385de8ae4df916756fbceefce291e300ab8589e7",
     "frontend/runtime/player.mjs": "26a9b618741275fa1af77f90df7e02c07479e4cae7f189ca97387ebc08c67dba",
     "frontend/runtime/prefs.mjs": "5fc3a0e40aecb2fc7fcc734f24d626e3ea66ec6a4e7389d510bcab7de7b74506",
-    "frontend/site/Games.jsx": "c8ad4804b79d95a5b444ce73ca5b5487979fceddb0fcb8873bfc077b48a6cb79",
+    "frontend/site/Games.jsx": "c79af026f49274dc1bf17d32cbb06a4317641854a50cc5140a7f671d75d7a848",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
-    "frontend/site/Mine.jsx": "e0d1aa71367e85494757f337fe813be74365a8592f19e9f723045504cb33d011",
+    "frontend/site/Mine.jsx": "51d144408783b2eabdb807ece878ddb928adb09160f8dda81815a02de33b2923",
     "frontend/site/Status.jsx": "69f88cddcb4c58746464227be8d2f51b1327999fa114be57e56fb25f30f3f731",
     "frontend/site/Submit.jsx": "76fcc0a38b4af7cb5dce584f325d192c089c8145dde004594be9eb7b78226b58",
     "frontend/site/auth.js": "5f8188503a00c70db4e696259d8ecef329f94be2e70f76186601fd02652f94ab",
@@ -37,7 +37,7 @@
     "frontend/viewer/main.jsx": "03c6d1858c606f51671b711c0ecf7c3d58260ac3d8198c0d2231b9590a605562"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "b1025b572fc8046be992841adceba97d1d6c0b5b70ab41f6274667a090d83631",
+    "src/curling_score/service/static/site.js": "6e4b4ee181968976d23b26da584a241d49c549eb82b38c64b1e0cd4a514dea82",
     "src/curling_score/viewer/app.js": "a61195bf0900e2bbb32f1efc6e61284c31ea27bbbceb9c55035f3ce33a97ccab"
   }
 }

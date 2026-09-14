@@ -7,8 +7,8 @@ import { Card, Header, Warn } from "./ui.jsx";
 function ChartRow({ c }) {
   return (
     <tr>
-      <td>{day(c.played_at)}</td>
-      <td>
+      <td className="when">{day(c.played_at)}</td>
+      <td className="game">
         {c.title || ""}{" "}
         {c.team_name && <span className="pill">{c.team_name}</span>}
         {c.duplicate_of && (
@@ -16,9 +16,9 @@ function ChartRow({ c }) {
             <a href={`/c/${c.duplicate_of}/`}>Open it</a> — this one is kept as it is.</Warn>
         )}
       </td>
-      <td>{c.sheet ?? "?"}</td>
-      <td>{c.shots_charted || 0}</td>
-      <td><span className={`pill ${c.status || ""}`}>{c.status || ""}</span></td>
+      <td data-label="Sheet">{c.sheet ?? "?"}</td>
+      <td data-label="Charted">{c.shots_charted || 0}</td>
+      <td className="status"><span className={`pill ${c.status || ""}`}>{c.status || ""}</span></td>
       <td className="actions">
         <a className="btn primary" href={`/c/${c.slug}/`}>Chart</a>
         {c.review_url && <a className="btn" href={c.review_url}>Watch</a>}

@@ -43,7 +43,8 @@ function LeagueCell({ game, games, editable, onSaved }) {
   };
   const exit = useCommitOnExit(save, () => setEditing(false));
 
-  if (!editable) return <td>{game.league || <span className="muted">&mdash;</span>}</td>;
+  if (!editable)
+    return <td className="league">{game.league || <span className="muted">&mdash;</span>}</td>;
   if (!editing)
     return (
       <td className="league">
@@ -100,7 +101,7 @@ function TeamsCell({ game, editable, onSaved }) {
   };
   const exit = useCommitOnExit(save, () => setEditing(false));
 
-  if (!editable) return <td>{shown || fallback}</td>;
+  if (!editable) return <td className="teams">{shown || fallback}</td>;
   if (!editing)
     return (
       <td className="teams">
@@ -209,14 +210,14 @@ export function Games() {
                                    || (a.start_s ?? 0) - (b.start_s ?? 0))
                       .map(g => (
                         <tr key={g.source_id || `${g.video_id}:${g.start_s}`}>
-                          <td>{g.sheet ?? "?"}</td>
+                          <td data-label="Sheet">{g.sheet ?? "?"}</td>
                           <LeagueCell game={g} games={all} onSaved={setAll}
                                       editable={editable && !!g.source_id} />
                           <TeamsCell game={g} onSaved={setAll}
                                      editable={editable && !!g.source_id} />
-                          <td>{g.start_s == null ? "—" : hms(g.start_s)}</td>
-                          <td>{g.ends ?? "—"}</td>
-                          <td><span className={`pill ${g.status || ""}`}>{g.status || ""}</span></td>
+                          <td data-label="Starts">{g.start_s == null ? "—" : hms(g.start_s)}</td>
+                          <td data-label="Ends">{g.ends ?? "—"}</td>
+                          <td className="status"><span className={`pill ${g.status || ""}`}>{g.status || ""}</span></td>
                           <Actions game={g} mine={mine} team={team} />
                         </tr>
                       ))}

@@ -66,3 +66,54 @@ h2 { font-size:15px; margin:22px 0 8px; }
 .sw { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 footer { max-width:860px; margin:30px auto; padding:0 18px 30px; color:var(--muted); font-size:12px; }
 code { background:var(--line); padding:1px 5px; border-radius:4px; }
+
+/* --- phone --------------------------------------------------------------- */
+/* The catalogue is a table because on a desktop it is one. On a phone seven
+   columns do not fit, and the column that fell off the right-hand edge was
+   the one holding Watch and Chart -- the two things the page exists to offer.
+   So each row becomes a card: the game names itself, the status sits beside
+   it, the numbers keep the headings they are about to lose, and the actions
+   get a line of their own at a thumb's width. */
+@media (max-width: 640px) {
+  main { padding: 16px 14px; }
+  footer { padding: 0 14px 24px; }
+  .card { padding: 12px 14px; }
+  header { padding: 10px 14px; gap: 10px; }
+
+  #list table, #charts table, #list tbody, #charts tbody { display: block; }
+  /* The heading row is the first <tr>; with the columns gone it heads nothing. */
+  #list tr:first-child, #charts tr:first-child { display: none; }
+  #list tr, #charts tr { display: flex; flex-wrap: wrap; align-items: baseline;
+                         gap: 3px 12px; padding: 14px 0;
+                         border-bottom: 1px solid var(--line); }
+  #list tr:last-child, #charts tr:last-child { border-bottom: 0; padding-bottom: 2px; }
+  #list td, #charts td { display: block; border: 0; padding: 0; font-size: 14px; }
+  /* A bare 2 means nothing once "Sheet" is no longer above it. */
+  #list td[data-label]::before, #charts td[data-label]::before {
+    content: attr(data-label) " "; color: var(--muted); font-size: 12px;
+    text-transform: uppercase; letter-spacing: .04em; }
+
+  .teams, .game { order: 1; flex: 1 1 60%; font-size: 16px; font-weight: 650; }
+  .status { order: 2; margin-left: auto; }
+  .league, .when { order: 3; flex: 1 1 100%; color: var(--muted); font-size: 13px; }
+  #list td[data-label], #charts td[data-label] { order: 4; }
+  /* Full width and 44px tall: these are the page's only real controls, and on
+     a phone they were the part of it nobody could reach. The id is carried
+     here deliberately -- `#list td` above sets display:block at (1,0,1), and
+     a bare `.actions` at (0,1,0) loses to it, which leaves the buttons'
+     flex:1 inert inside a block parent. */
+  #list td.actions, #charts td.actions {
+    order: 9; flex: 1 1 100%; display: flex; gap: 8px; margin-top: 10px;
+    white-space: normal; }
+  /* A link and a button do not agree on height on their own: one is an
+     inline-block sized by its line box, the other a control. */
+  #list td.actions > *, #charts td.actions > * {
+    flex: 1; min-height: 44px; padding: 0 8px; display: flex;
+    align-items: center; justify-content: center; }
+
+  /* Editing a league or a team name is a desktop-shaped job, but the inputs
+     should not overflow the card if someone starts one here. */
+  .league button.linky, .teams button.linky { min-width: 0; }
+  .teamedit { flex-wrap: wrap; }
+  .teamedit input { width: 100%; }
+}
