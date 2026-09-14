@@ -54,7 +54,7 @@ def _no_phase(name, fraction, message=None):
     return None
 
 
-def run_up_from(prev_end_s, start_s: float) -> float:
+def run_up_from(prev_end_s, start_s: float, *, crossed_games: bool = False) -> float:
     """Where an end's run-up begins: the moment the previous end closed.
 
     The segmenter starts an end when a stone first rests in its house, read
@@ -80,12 +80,35 @@ def run_up_from(prev_end_s, start_s: float) -> float:
     is still being cleared. Game 4 end 2's hogged red left the hack at 1109,
     forty seconds after end 1's last rock stopped and a minute before the
     segmenter saw end 1's house empty.
+
+    Within a game the close is the only bound a later end needs, because the
+    previous end's rocks cannot lie before its own last rest -- so reaching
+    back to it can never reach into it. This used to be clamped to
+    ``GAME_GAP_S`` as well, which is really a second and shorter clock:
+    ``GAME_GAP_S`` measures how long *both houses stay empty* before the sheet
+    counts as reset, while a turnaround is scoring, clearing, walking down and
+    setting up, all of which happen with stones still on the sheet. Game
+    4RrNWSeNnMU end 4 took 443.8 s over that turnaround, and the 240 s clamp
+    cut its window 19 s short of its first rock -- a red centre guard at rest
+    at (+0.09, +2.51), which then cost the end its rock count and inverted its
+    hammer.
+
+    ``crossed_games`` is the case where the clamp earns its keep: the first end
+    of a later game anchors to the *previous game's* last rock, and between
+    games the sheet is open and players slide practice rocks. There the gap
+    still bounds the reach. The first end of the video has nothing to anchor
+    to and gets the gap alone.
     """
     from curling_score.detect.delivery import REQUIRED_LOOKBACK_S
     from curling_score.game.segment import GAME_GAP_S
 
     lookback = start_s - REQUIRED_LOOKBACK_S
-    floor = start_s - GAME_GAP_S if prev_end_s is None else max(prev_end_s, start_s - GAME_GAP_S)
+    if prev_end_s is None:
+        floor = start_s - GAME_GAP_S
+    elif crossed_games:
+        floor = max(prev_end_s, start_s - GAME_GAP_S)
+    else:
+        floor = prev_end_s
     return max(0.0, min(lookback, floor))
 
 
@@ -189,7 +212,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             progress(f"  game {game.index + 1} end {end.number} ({end.house})...")
             phase("detect", done_ends / total_ends,
                   f"game {game.index + 1} end {end.number}")
-            from_s = run_up_from(prev_end_s, end.start_s)
+            from_s = run_up_from(prev_end_s, end.start_s,
+                                 crossed_games=end is game.ends[0])
             seq = sequence.detect_end(read_path, setup, end, shot_fps,
                                       detector, from_s=from_s)
             # Anything thrown since the previous end closed is this end's;

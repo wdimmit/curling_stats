@@ -99,7 +99,8 @@ def _review(args) -> int:
     for gi, game in enumerate(games, 1):
         for end in game.ends:
             setup = read_setups[end.house]
-            from_s = analyze_mod.run_up_from(prev_end_s, end.start_s)
+            from_s = analyze_mod.run_up_from(
+                prev_end_s, end.start_s, crossed_games=end is game.ends[0])
             seq = _detect_end(read_path, setup, end, args.fps, detector, from_s)
             found = [
                 d for d in delivery.find_deliveries(

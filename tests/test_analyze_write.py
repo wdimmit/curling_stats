@@ -90,14 +90,23 @@ class TestTheRunUpStartsWhereThePreviousEndClosed:
         assert analyze.run_up_from(None, 300.0) == 300.0 - 240.0
 
     def test_a_later_game_s_first_end_is_bounded_by_the_previous_game(self):
-        assert analyze.run_up_from(6435.0, 7590.0) == 7590.0 - 240.0
-        assert analyze.run_up_from(7500.0, 7590.0) == 7500.0
+        # Between games the sheet is open and players slide practice rocks, so
+        # the gap still bounds the reach even though a close is known.
+        assert analyze.run_up_from(6435.0, 7590.0, crossed_games=True) == 7590.0 - 240.0
+        assert analyze.run_up_from(7500.0, 7590.0, crossed_games=True) == 7500.0
 
     def test_a_later_end_reaches_back_to_the_previous_close(self):
         assert analyze.run_up_from(1815.0, 1940.0) == 1815.0   # game 3 end 3: yellow through at 1903
 
-    def test_it_never_reaches_back_further_than_a_game_gap(self):
-        assert analyze.run_up_from(1000.0, 2000.0) == 2000.0 - 240.0
+    def test_a_long_turnaround_still_reaches_the_previous_close(self):
+        # A game gap is both houses empty; a turnaround is the clearing and
+        # the walk down, with stones still on the sheet. Clamping this to the
+        # game gap cut game 4RrNWSeNnMU end 4 off 19 s short of its first
+        # rock: the close was 443.8 s back, the clamp allowed 240.
+        assert analyze.run_up_from(1000.0, 2000.0) == 1000.0
+        assert analyze.run_up_from(3131.2, 3575.0) == 3131.2
+        # ...but a game break of the same length is still clamped.
+        assert analyze.run_up_from(1000.0, 2000.0, crossed_games=True) == 2000.0 - 240.0
 
     def test_a_close_that_lands_inside_the_half_minute_still_gets_the_half_minute(self):
         assert analyze.run_up_from(985.0, 1000.0) == 1000.0 - 36.0
