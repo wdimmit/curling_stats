@@ -22,9 +22,10 @@ export function thinkText(s) {
   return clockText(s.thinking_time_s) + (s.t_tee_estimated ? " (est.)" : "");
 }
 
-/* A split is only meaningful next to how much of it was actually seen: the
- * throwing end is reached by carrying the slide the last stretch to the hog
- * line, and a shot the camera lost early says so rather than looking exact. */
+/* A split is now hog line to hog line, both ends observed, so there is nothing
+ * to qualify. Timelines analysed before that carry how much of the throwing
+ * end had been extrapolated instead, and those still say so rather than
+ * looking exact -- a chart pins its run, so old ones keep their old numbers. */
 export function splitText(s) {
   if (s?.long_split_s == null) return "—";
   const extra = s.long_split_extrapolated_m;

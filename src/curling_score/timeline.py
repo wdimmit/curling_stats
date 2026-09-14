@@ -125,9 +125,6 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
                 "long_split_baseline_m": (
                     None if sp is None else round(float(sp.baseline_m), 3)
                 ),
-                "long_split_extrapolated_m": (
-                    None if sp is None else round(float(sp.extrapolated_m), 3)
-                ),
                 "thinking_time_s": (
                     None if think is None else round(float(think), 2)
                 ),

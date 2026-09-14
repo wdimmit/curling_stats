@@ -221,7 +221,9 @@ class TestTimingFields:
         rel = None
         if t_rel is not None:
             rt, tt, yy = [], t_rel, -2.0
-            while yy <= 3.6:
+            # Past the hog line's paint at ``split.HOG_APPARENT_Y_M``: a throw
+            # the camera loses short of it has no split, by design.
+            while yy <= 4.8:
                 rt.append((round(tt, 3), 0.05, round(yy, 4)))
                 yy += 0.4
                 tt += 0.2
