@@ -91,10 +91,18 @@ esbuild into two files that are **tracked in git**:
 
 ```bash
 cd frontend && npm install     # once. six packages, ~20 MB
-npm run build                  # -> src/curling_score/viewer/app.js
-                               #    src/curling_score/service/static/site.js
+npm run build                  # lint, then -> src/curling_score/viewer/app.js
+                               #                src/curling_score/service/static/site.js
 npm run watch                  # rebuilds on save; reload the page
+npm run lint                   # just the lint
 ```
+
+The build lints first, and refuses to bundle if it fails. That is there for one
+rule: esbuild compiles an undefined identifier without complaint, so a name
+used in a component it was never passed builds clean and renders an empty page.
+`no-undef` finds it in a second. A second rule keeps `frontend/core/` away from
+`document` and `fetch` — the Python suite imports it under bare node, and
+otherwise the only symptom is a crash in a test that looks unrelated.
 
 **Always build through `npm run build`, never by calling esbuild directly.**
 The build writes `frontend/.buildstamp.json`, and `tests/test_frontend_build.py`

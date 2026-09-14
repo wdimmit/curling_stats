@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   GROUPS, MISS_REASONS, TALLBOX, TYPES,
-  blankQueue, clockText, identity, isBlank, isGraded, splitText, thinkText, typeOf,
+  blankQueue, identity, isBlank, splitText, thinkText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 

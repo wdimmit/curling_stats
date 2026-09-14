@@ -49,6 +49,22 @@ class TestTheBundleMatchesItsSources:
                 f"generated: change frontend/ and rebuild.")
 
 
+class TestTheSourcesLint:
+    """`npm run build` lints before it bundles, so a clean tree should stay
+    clean. Skipped where node_modules is absent, like every other node test
+    here -- this is a convenience for whoever has the toolchain, not a gate
+    for whoever does not."""
+
+    def test_eslint_is_happy(self):
+        import subprocess
+        eslint = ROOT / "frontend/node_modules/.bin/eslint"
+        if not eslint.is_file():
+            pytest.skip("frontend dependencies are not installed here")
+        done = subprocess.run([str(eslint), "."], cwd=ROOT / "frontend",
+                              capture_output=True, text=True, timeout=180)
+        assert done.returncode == 0, done.stdout or done.stderr
+
+
 class TestItStillWorksWithNoNetwork:
     """`curling-score serve` is the README's first command, and auth.js says
     plainly that the viewer stays free of Firebase so the page a person spends

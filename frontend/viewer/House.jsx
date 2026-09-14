@@ -1,7 +1,7 @@
 /* The sheet, the stones on it, and the pointer gestures that edit them. */
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  DRAG_MIN_M, LIMIT, PAINT, PHONE_QUERY, R,
+  DRAG_MIN_M, PAINT, PHONE_QUERY, R,
   clampX, clampY, houseViewBox, isBlank, onSheet, shouldCrop, stoneAt,
 } from "../core/index.mjs";
 import * as dragStore from "../runtime/dragStore.mjs";

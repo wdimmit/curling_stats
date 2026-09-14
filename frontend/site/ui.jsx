@@ -1,6 +1,6 @@
 /* The chrome every page shares. */
 import { useEffect, useState } from "react";
-import { authedFetch, signIn, signOff } from "./auth.js";
+import { signIn, signOff } from "./auth.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 
 /* Signed out until the SDK says otherwise, and silent when accounts are off:

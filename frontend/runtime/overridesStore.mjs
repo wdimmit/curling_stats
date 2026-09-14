@@ -20,7 +20,7 @@ import * as dragStore from "./dragStore.mjs";
 let config = { readOnly: true, merge: false, shared: false };
 let overrides = {};
 let version = null;
-let dirty = new Set();
+const dirty = new Set();
 let saving = false;
 let again = false;
 let timer = null;

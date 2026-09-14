@@ -45,7 +45,7 @@ function Teams({ user }) {
     }
     setTeams(full);
   };
-  useEffect(() => { load(); }, [user?.uid]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [user?.uid]);
 
   async function invite(teamId) {
     setInvites(v => ({ ...v, [teamId]: "…" }));

@@ -11,14 +11,13 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
-  MISS_REASONS, PHONE_QUERY,
+  PHONE_QUERY,
   buildGameView, cumulativeThinking, cursor as cursorOf, gatherStats, gatherThinking,
-  identity, isBlank, isGraded, keyFor, nextBlankAfter, blankQueue, peekMode,
-  renumberNotice, shotVideoTime, typeOf, overrides as edit,
+  identity, isBlank, isGraded, nextBlankAfter, blankQueue, peekMode,
+  renumberNotice, shotVideoTime, overrides as edit,
 } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
-import * as dragStore from "../runtime/dragStore.mjs";
 import { writeBodyState } from "../runtime/bodyState.mjs";
 import { loadPrefs, savePrefs, saveCursor } from "../runtime/prefs.mjs";
 import { House } from "./House.jsx";
@@ -53,7 +52,7 @@ export function App({ doc, config }) {
    * report all read off. */
   const view = useMemo(() => buildGameView(doc, ui.gi, overrides),
                        [doc, ui.gi, overrides]);
-  const { end, shot, raw, key: shotKey } = cursorOf(view, ui.ei, ui.si);
+  const { shot, raw, key: shotKey } = cursorOf(view, ui.ei, ui.si);
   const series = useMemo(() => cumulativeThinking(view), [view]);
   const stats = useMemo(() => gatherStats(view), [view]);
   const think = useMemo(() => gatherThinking(view), [view]);
@@ -171,7 +170,8 @@ export function App({ doc, config }) {
       `Someone else charted ${n} shot${n === 1 ? "" : "s"}`));
   }, [notify]);
 
-  useEffect(() => { saveCursor(config.slug, ui); }, [config.slug, ui.gi, ui.ei, ui.si]);
+  useEffect(() => { saveCursor(config.slug, { gi: ui.gi, ei: ui.ei, si: ui.si }); },
+            [config.slug, ui.gi, ui.ei, ui.si]);
 
   /* The crop is measured, so it has to be re-measured when the box changes --
    * and a rotation that leaves the phone gate has to put the editor and the
