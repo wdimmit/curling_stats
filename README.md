@@ -84,6 +84,39 @@ delivery end, `+x` to the right facing down-sheet. Constants come from World
 Curling's *Rules of Curling* (July 2025); a stone counts when it is within
 `1.971 m` of the tee (12-foot radius 1.829 + stone radius 0.142).
 
+## The frontend
+
+The charting viewer and the site pages are React, built from `frontend/` with
+esbuild into two files that are **tracked in git**:
+
+```bash
+cd frontend && npm install     # once. six packages, ~20 MB
+npm run build                  # -> src/curling_score/viewer/app.js
+                               #    src/curling_score/service/static/site.js
+npm run watch                  # rebuilds on save; reload the page
+```
+
+**Always build through `npm run build`, never by calling esbuild directly.**
+The build writes `frontend/.buildstamp.json`, and `tests/test_frontend_build.py`
+fails when a source has changed without a rebuild, or when a bundle has been
+edited by hand. Invoking esbuild yourself skips the stamp and breaks that check
+for everyone else.
+
+The output is committed because `curling-score serve` above is the first thing
+anyone runs, and it has to work after a plain `pip install` on a machine with
+no node on it. Nothing in either image installs node.
+
+To see all four charting surfaces at once — editing, view-only, the public
+review page and the catalogue — against the real service on in-memory
+backends:
+
+```bash
+python scripts/devserve.py out/timeline.json
+```
+
+The viewer must keep working offline: it loads no Firebase and reaches for
+nothing but YouTube, which `tests/test_frontend_build.py` also checks.
+
 ## Tests
 
 ```bash

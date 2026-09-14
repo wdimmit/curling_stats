@@ -6,7 +6,12 @@
 
 **Architecture:** One DOM, one stylesheet, CSS-led. A `max-width: 640px` media query re-lays the existing markup: the video pins at the top, the house is cropped to the scoring area beneath it, and the chart panel becomes a bottom sheet with a peek and an expanded state. Controls that CSS cannot gather into the phone's bottom bar are moved once in `index.html` into containers that render identically on desktop. Nothing is ever reparented by JavaScript.
 
-**Tech Stack:** Plain HTML/CSS/ES2020 in `src/curling_score/viewer/`. No framework, no build step, no new dependencies. Tests are pytest driving `node -e`.
+**Tech Stack:** ~~Plain HTML/CSS/ES2020 in `src/curling_score/viewer/`. No
+framework, no build step, no new dependencies.~~ **Superseded.** The frontend
+is React, built from `frontend/` with esbuild; see the README. The layout this
+plan describes, and every reason given for it, still stand -- `style.css` was
+carried over unchanged apart from one line. It is the tech-stack line that is
+no longer true. Tests are still pytest driving `node -e`.
 
 **Spec:** `docs/superpowers/specs/2026-09-11-phone-viewer-design.md`
 
