@@ -57,7 +57,6 @@ export const GROUP_TYPE = { Draw: "draw", Guard: "guard", Hit: "hit" };
 
 export const TYPES = [
   { id: "draw",         name: "Draw",            group: "Draw",  base: true },
-  { id: "come_around",  name: "Come around",     group: "Draw"  },
   { id: "freeze",       name: "Freeze",          group: "Draw"  },
   { id: "split_on",     name: "Split on",        group: "Draw"  },
   { id: "tap_up",       name: "Tap up",          group: "Draw"  },
@@ -65,21 +64,15 @@ export const TYPES = [
   { id: "guard",        name: "Guard",           group: "Guard", base: true },
   { id: "centre_guard", name: "Centre guard",    group: "Guard" },
   { id: "corner_guard", name: "Corner guard",    group: "Guard" },
-  // Whether a guard was in the free guard zone is a rule about when it was
-  // thrown, not where it sits, and the two questions were being asked in one
-  // row. Kept so charts that already carry it still read; never offered.
-  { id: "free_guard",   name: "Free guard",      group: "Guard", legacy: true },
 
   { id: "hit",          name: "Hit",             group: "Hit",   base: true },
   { id: "hit_stick",    name: "Hit & stick",     group: "Hit"   },
   { id: "hit_roll",     name: "Hit & roll",      group: "Hit"   },
-  { id: "hit_roll_away",name: "Hit & roll away", group: "Hit"   },
   { id: "double",       name: "Double",          group: "Hit"   },
   { id: "peel",         name: "Peel",            group: "Hit"   },
   { id: "raise",        name: "Raise",           group: "Hit"   },
   { id: "run_back",     name: "Run back",        group: "Hit"   },
   { id: "tick",         name: "Tick",            group: "Hit"   },
-  { id: "tick_bump",    name: "Tick-bump",       group: "Hit"   },
   { id: "in_off",       name: "In-off",          group: "Hit"   },
 
   // Curl Coach's "non scored shots": charted, but never counted in a
@@ -92,9 +85,14 @@ export const TYPES = [
   { id: "unknown",      name: "Unknown",         group: "Other", unscored: true },
 ];
 
-/* What the picker offers inside a group: refinements only. */
+/* What the picker offers inside a group: refinements only.
+ *
+ * A type this table does not know -- one retired since a chart was made --
+ * needs no special case. The report falls back to the raw id under Other, and
+ * the picker opens nothing and waits, which is the right thing to do about a
+ * rock whose type means nothing here. */
 export const subtypesOf = group =>
-  TYPES.filter(t => t.group === group && !t.base && !t.legacy);
+  TYPES.filter(t => t.group === group && !t.base);
 
 export const TYPE = Object.fromEntries(TYPES.map(t => [t.id, t]));
 

@@ -919,7 +919,7 @@ class TestWhichTypesAreOffered:
 
     def test_a_typed_rock_opens_the_group_holding_its_type(self):
         assert run_js('out(openGroupFor("peel", null));') == "Hit"
-        assert run_js('out(openGroupFor("free_guard", null));') == "Guard"
+        assert run_js('out(openGroupFor("centre_guard", null));') == "Guard"
 
     def test_it_stays_put_when_this_rock_is_in_the_group_already_open(self):
         """A run of hits is one click a rock, and the target does not move."""
@@ -966,14 +966,26 @@ class TestASubtypeNeverRepeatsItsCategory:
         assert run_js('out(subtypesOf("Other").map(t => t.id));') == [
             "through", "hogged", "not_thrown", "unknown"]
 
-    def test_a_retired_type_still_reads_but_is_never_offered(self):
-        """Charts made before free guard was dropped must keep rendering: the
-        report looks names up by id, and an id with no entry would come out as
-        raw text in the wrong bucket."""
-        got = run_js("""out([TYPE["free_guard"]?.name ?? null,
-                            openGroupFor("free_guard", null),
+    def test_a_type_this_table_no_longer_knows_degrades_rather_than_breaks(self):
+        """Refinements get retired -- four were, none of which any of the 29
+        charts on the service had ever used. A chart that did carry one must
+        still open, so an unrecognised id has to fall through everywhere
+        rather than be special-cased in a list that only grows."""
+        got = run_js("""out([TYPE["free_guard"] ?? null,
+                            openGroupFor("free_guard", "Guard"),
                             subtypesOf("Guard").some(t => t.id === "free_guard")]);""")
-        assert got == ["Free guard", "Guard", False]
+        # No entry, so the picker opens nothing and waits, which is the honest
+        # thing to do about a rock whose type means nothing here.
+        assert got == [None, None, False]
+
+    def test_an_unknown_type_is_still_counted_as_thrown(self):
+        """And it must not quietly vanish from the report: it is a rock that
+        was thrown, whatever the id says."""
+        got = run_js(setup(doc([shot(1, "red", "lead", shot_type="retired_thing",
+                                    user_score=3)])) +
+                     "const b = gatherStats().red.lead;"
+                     "out([b.thrown, b.graded, Object.keys(b.types)]);")
+        assert got == [1, 1, ["retired_thing"]]
 
 
 class TestTheJsGateIsTheStylesheetGate:
