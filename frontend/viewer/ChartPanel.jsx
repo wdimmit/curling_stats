@@ -1,7 +1,7 @@
 /* Everything a charter fills in, plus the read-only detail beside it. */
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
-  GROUPS, MISS_REASONS, TALLBOX, TYPES,
+  GROUPS, GROUP_TYPE, MISS_REASONS, TALLBOX, TYPES, subtypesOf,
   blankQueue, identity, isBlank, openGroupFor, splitText, thinkText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
@@ -49,17 +49,36 @@ function TypePicker({ shot, shotKey, openGroup, readOnly, actions }) {
   const current = typeOf(shot);
   useOpenGroup(shotKey, current, openGroup, actions);
   const group = openGroup;
+  const base = GROUP_TYPE[group];
+
+  /* Choosing a category is an answer in itself -- "a draw" is a complete
+   * thing to say about a rock. Landing on the category you are already in is
+   * only opening the row, though, and must not quietly throw away a
+   * refinement already set; that is what the blank below is for. */
+  const pickGroup = g => {
+    actions.openGroup(g);
+    const b = GROUP_TYPE[g];
+    if (!readOnly && b && !TYPES.some(t => t.group === g && t.id === current))
+      actions.setType(b);
+  };
+
   return (
     <>
       <h2>Shot type</h2>
       <div className="pick" id="typeGroups">
         {GROUPS.map(g => (
           <button key={g} data-g={g} className={g === group ? "on" : ""}
-                  onClick={() => actions.openGroup(g)}>{g}</button>
+                  onClick={() => pickGroup(g)}>{g}</button>
         ))}
       </div>
       <div className="pick" id="typeList" style={{ marginTop: 6 }}>
-        {group && TYPES.filter(t => t.group === group).map(t => (
+        {/* Blank is a real answer, and the way back from a refinement. */}
+        {base && (
+          <button data-t="" title={`Just a ${group?.toLowerCase()}, with nothing more said`}
+                  className={current === base ? "on" : ""}
+                  onClick={() => !readOnly && actions.setType(base)}>&mdash;</button>
+        )}
+        {group && subtypesOf(group).map(t => (
           <button key={t.id} data-t={t.id} className={t.id === current ? "on" : ""}
                   onClick={() => !readOnly && actions.setType(t.id)}>{t.name}</button>
         ))}

@@ -936,6 +936,46 @@ class TestWhichTypesAreOffered:
         assert not unreachable, f"no group offers {unreachable}"
 
 
+class TestASubtypeNeverRepeatsItsCategory:
+    """Being made to pick "Draw" inside Draw is the same question twice. The
+    category is a whole answer on its own -- the detector never offers more
+    than one anyway -- and what sits under it are refinements."""
+
+    def test_no_group_offers_its_own_name_as_a_subtype(self):
+        got = run_js("""out(GROUPS.map(g =>
+            [g, subtypesOf(g).map(t => t.name)]));""")
+        for group, names in got:
+            assert group not in names, f"{group} offers itself as a subtype"
+
+    def test_a_guard_is_centre_or_corner_and_nothing_else(self):
+        got = run_js('out(subtypesOf("Guard").map(t => t.id));')
+        assert got == ["centre_guard", "corner_guard"]
+
+    def test_the_three_real_categories_are_answers_in_themselves(self):
+        """`shot_type: "draw"` is what the detector emits and what a charter
+        leaves alone, so each category's own id has to be a type."""
+        got = run_js("""out(Object.entries(GROUP_TYPE)
+            .map(([g, id]) => [g, id, TYPE[id]?.group ?? null, !!TYPE[id]?.base]));""")
+        assert got == [["Draw", "draw", "Draw", True],
+                       ["Guard", "guard", "Guard", True],
+                       ["Hit", "hit", "Hit", True]]
+
+    def test_other_is_a_container_not_a_category(self):
+        """A rock is never "an Other" -- its entries are whole answers."""
+        assert run_js('out(GROUP_TYPE["Other"] ?? null);') is None
+        assert run_js('out(subtypesOf("Other").map(t => t.id));') == [
+            "through", "hogged", "not_thrown", "unknown"]
+
+    def test_a_retired_type_still_reads_but_is_never_offered(self):
+        """Charts made before free guard was dropped must keep rendering: the
+        report looks names up by id, and an id with no entry would come out as
+        raw text in the wrong bucket."""
+        got = run_js("""out([TYPE["free_guard"]?.name ?? null,
+                            openGroupFor("free_guard", null),
+                            subtypesOf("Guard").some(t => t.id === "free_guard")]);""")
+        assert got == ["Free guard", "Guard", False]
+
+
 class TestTheJsGateIsTheStylesheetGate:
     """The phone shell is a stylesheet block, and the JS has to agree about
     exactly when it is in force -- the crop, the bottom sheet and the

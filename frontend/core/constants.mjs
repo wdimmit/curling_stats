@@ -38,21 +38,39 @@ export const PHONE_QUERY = "(max-width: 640px) and (min-height: 521px)";
 
 export const POSITIONS = ["lead", "second", "third", "skip"];
 
-/* Curl Coach's taxonomy. The detector only ever offers the four coarse
- * categories; the fine type is a statement about what was *called*, which no
- * amount of tracking recovers, so it is the charter's to give. */
+/* Curl Coach's taxonomy, in two levels.
+ *
+ * The four coarse categories are what the detector offers, and a charter may
+ * leave it at one: "a draw" is a complete answer, not a half-filled one. So
+ * the group carries a type of its own -- `base` below -- and the entries under
+ * it are refinements. None of them repeats its own group, because being made
+ * to pick "Draw" inside Draw is asking the same question twice.
+ *
+ * The fine type is a statement about what was *called*, which no amount of
+ * tracking recovers; it is the charter's to give, or to leave alone.
+ */
 export const GROUPS = ["Draw", "Guard", "Hit", "Other"];
+
+/* Other is a container, not a category: a rock is never "an Other". Its
+ * entries are whole answers, so it has no base type. */
+export const GROUP_TYPE = { Draw: "draw", Guard: "guard", Hit: "hit" };
+
 export const TYPES = [
-  { id: "draw",         name: "Draw",            group: "Draw"  },
+  { id: "draw",         name: "Draw",            group: "Draw",  base: true },
   { id: "come_around",  name: "Come around",     group: "Draw"  },
   { id: "freeze",       name: "Freeze",          group: "Draw"  },
   { id: "split_on",     name: "Split on",        group: "Draw"  },
   { id: "tap_up",       name: "Tap up",          group: "Draw"  },
-  { id: "guard",        name: "Guard",           group: "Guard" },
-  { id: "free_guard",   name: "Free guard",      group: "Guard" },
+
+  { id: "guard",        name: "Guard",           group: "Guard", base: true },
   { id: "centre_guard", name: "Centre guard",    group: "Guard" },
   { id: "corner_guard", name: "Corner guard",    group: "Guard" },
-  { id: "hit",          name: "Hit",             group: "Hit"   },
+  // Whether a guard was in the free guard zone is a rule about when it was
+  // thrown, not where it sits, and the two questions were being asked in one
+  // row. Kept so charts that already carry it still read; never offered.
+  { id: "free_guard",   name: "Free guard",      group: "Guard", legacy: true },
+
+  { id: "hit",          name: "Hit",             group: "Hit",   base: true },
   { id: "hit_stick",    name: "Hit & stick",     group: "Hit"   },
   { id: "hit_roll",     name: "Hit & roll",      group: "Hit"   },
   { id: "hit_roll_away",name: "Hit & roll away", group: "Hit"   },
@@ -63,6 +81,7 @@ export const TYPES = [
   { id: "tick",         name: "Tick",            group: "Hit"   },
   { id: "tick_bump",    name: "Tick-bump",       group: "Hit"   },
   { id: "in_off",       name: "In-off",          group: "Hit"   },
+
   // Curl Coach's "non scored shots": charted, but never counted in a
   // percentage, because there was no shot to make.
   { id: "through",      name: "Throw away",      group: "Other", unscored: true },
@@ -72,6 +91,11 @@ export const TYPES = [
   { id: "not_thrown",   name: "Not thrown",      group: "Other", unscored: true },
   { id: "unknown",      name: "Unknown",         group: "Other", unscored: true },
 ];
+
+/* What the picker offers inside a group: refinements only. */
+export const subtypesOf = group =>
+  TYPES.filter(t => t.group === group && !t.base && !t.legacy);
+
 export const TYPE = Object.fromEntries(TYPES.map(t => [t.id, t]));
 
 export const MISS_REASONS = [
