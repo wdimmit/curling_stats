@@ -53,6 +53,11 @@ export const openGroupFor = core.openGroupFor;
 export const subtypesOf = core.subtypesOf;
 export const shotVideoTime = s => core.shotVideoTime(s, state.leadIn);
 
+/* The watching surface reads the same view every other panel reads. */
+export const rockRows = () => core.rockRows(view(), state.ei, state.leadIn);
+export const rockAt = core.rockAt;
+export const endSummary = () => core.endSummary(view(), state.ei);
+
 export const houseViewBox = core.houseViewBox;
 export const shouldCrop = core.shouldCrop;
 export const stoneAt = core.stoneAt;

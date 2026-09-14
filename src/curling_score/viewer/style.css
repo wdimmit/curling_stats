@@ -291,6 +291,10 @@ body[data-mode="review"] #houseCard .tools,
 body[data-mode="review"] .housebar { display: none; }
 body[data-mode="review"] #house { cursor:default; }
 
+/* Watch mode is a phone layout only. At every other width the read-only
+   surfaces keep the desktop three-column page they have always had. */
+#watch { display: none; }
+
 /* --- phone -------------------------------------------------------------- */
 /* A fixed-height shell, not a scrolling page: the video pins at the top, the
    house takes what is left, and the chart panel becomes a sheet over both.
@@ -535,6 +539,144 @@ body[data-mode="review"] #house { cursor:default; }
   body[data-peek="order"][data-sheet="peek"] #orderRow:not([hidden]) ~ #moveBefore {
     display: block; }
   body[data-peek="order"][data-sheet="peek"] #orderRow { border-color: var(--accent); }
+
+  /* --- watch mode ------------------------------------------------------- */
+  /* The read-only surfaces get a different instrument, not a dimmed one. The
+     charting shell is a sheet built to hold a grade row; with the grading
+     hidden it is an empty 256px panel, and #detail, #clockBox and #scoreBox
+     were never reachable on a phone in any mode. So on /s/ and /g/ the page
+     becomes the end as a list of its rocks, each carrying its own
+     thinking-time bar.
+
+     #playCard is left exactly where it is in the document and pinned by CSS.
+     The player must never be reparented, so nothing here moves it -- the same
+     reason the house editor hides the video behind an opaque background
+     instead of unmounting it. */
+  body[data-mode="view"] main > *:not(#playCard),
+  body[data-mode="review"] main > *:not(#playCard) { display: none; }
+  body[data-mode="view"] #watch,
+  body[data-mode="review"] #watch { display: flex; }
+
+  /* #playCard stays for the player's sake, but its charting furniture does
+     not: the list is the transport now, and the flags are a charting prompt
+     ("this rock needs placing") addressed to somebody who cannot place it. */
+  body[data-mode="view"] #transport, body[data-mode="review"] #transport,
+  body[data-mode="view"] #playback,  body[data-mode="review"] #playback,
+  body[data-mode="view"] #flags,     body[data-mode="review"] #flags,
+  body[data-mode="view"] #stoneChip, body[data-mode="review"] #stoneChip {
+    display: none; }
+  /* The phone hides these to buy room for the grade row. Watch mode has room,
+     and a header saying nothing at all is worse than one saying where you are. */
+  body[data-mode="view"] h1,   body[data-mode="review"] h1,
+  body[data-mode="view"] #src, body[data-mode="review"] #src { display: block; }
+
+  #watch { position: fixed; left: 0; right: 0; top: calc(48px + 56.25vw);
+           bottom: 0; z-index: 4; flex-direction: column;
+           background: var(--bg); }
+
+  .wendbar { height: 44px; flex: none; display: flex; align-items: center;
+             justify-content: space-between; background: var(--panel);
+             border-bottom: 1px solid var(--line); }
+  .wendbar > button { width: 44px; height: 44px; border: 0; background: none;
+                      color: var(--accent); font-size: 17px; padding: 0; }
+  .wendbar > button:disabled { color: var(--muted); opacity: .35; }
+  .wendmid { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+  .wen { font-weight: 650; }
+  .wsc { display: flex; align-items: center; gap: 6px;
+         font-variant-numeric: tabular-nums; }
+  .wham { font-size: 10px; color: var(--muted); letter-spacing: .05em; }
+  .wdot { width: 11px; height: 11px; border-radius: 50%; display: inline-block;
+          flex: none; }
+  .wdot.red { background: var(--red); } .wdot.yellow { background: var(--yellow); }
+
+  .wlist { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+  /* 56px exactly: Watch.jsx scrolls the current row into view by multiplying
+     it, because scrollIntoView would scroll the fixed shell around it. */
+  .wrow { height: 56px; width: 100%; display: grid; gap: 12px; padding: 0 16px;
+          grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center;
+          border: 0; border-bottom: 1px solid var(--line); background: none;
+          font: inherit; color: inherit; text-align: left; position: relative; }
+  .wrow[aria-current] { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .wrow[aria-current]::before { content: ""; position: absolute; left: 0;
+                                top: 0; bottom: 0; width: 3px;
+                                background: var(--accent); }
+  .wdisc { width: 28px; height: 28px; border-radius: 50%; display: grid;
+           place-items: center; font-size: 12px; font-weight: 650;
+           font-variant-numeric: tabular-nums; }
+  .wdisc.red { background: var(--red); color: #fff; }
+  .wdisc.yellow { background: var(--yellow); color: #3a2d00; }
+  .wmid { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .wname { font-size: 15px; font-weight: 650; line-height: 1.1;
+           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The bar is this rock's interval over the end's longest. A rock nobody
+     could time gets the empty track and an em dash, never a zero-width bar --
+     that would read as a rock thrown instantly. */
+  .wtrack { height: 6px; border-radius: 3px; overflow: hidden;
+            background: color-mix(in srgb, var(--muted) 22%, transparent); }
+  .wtrack i { display: block; height: 100%; border-radius: 3px; }
+  .wtrack i.red { background: color-mix(in srgb, var(--red) 62%, transparent); }
+  .wtrack i.yellow { background: color-mix(in srgb, var(--yellow) 78%, transparent); }
+  .wright { display: flex; flex-direction: column; align-items: flex-end;
+            gap: 4px; flex: none; }
+  .wsecs { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .wnow { font-size: 11px; color: var(--accent); font-weight: 600; white-space: nowrap; }
+
+  .wback { position: absolute; left: 50%; transform: translateX(-50%);
+           bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 6;
+           height: 36px; padding: 0 16px; border-radius: 999px;
+           border: 1px solid var(--line); background: var(--panel);
+           color: var(--accent); font: inherit; font-size: 13px;
+           box-shadow: 0 2px 10px rgb(0 0 0 / .14); }
+
+  .wbar { height: calc(56px + env(safe-area-inset-bottom)); flex: none;
+          display: flex; background: var(--panel);
+          border-top: 1px solid var(--line);
+          padding-bottom: env(safe-area-inset-bottom); }
+  .wbar button { flex: 1; border: 0; background: none; font: inherit;
+                 font-size: 14px; color: var(--accent); }
+  .wbar button + button { border-left: 1px solid var(--line); }
+
+  /* Sheets. The house one is #houseCard promoted into the gap between the
+     header and the footer below -- one <House> in the page, so one #house. */
+  .wsheethead { position: fixed; left: 0; right: 0; top: calc(48px + 56.25vw);
+                height: 72px; z-index: 8; background: var(--panel);
+                border-radius: 16px 16px 0 0; border-bottom: 1px solid var(--line);
+                display: grid; grid-template-columns: 1fr auto;
+                grid-template-rows: 28px 44px; align-items: center;
+                padding: 0 16px; column-gap: 10px; }
+  .wgrip { grid-column: 1 / -1; width: 36px; height: 4px; border-radius: 2px;
+           background: var(--line); justify-self: center; }
+  .wst { font-size: 14px; font-weight: 650; }
+  .wsheethead button { border: 0; background: none; font-size: 18px;
+                       color: var(--muted); width: 44px; height: 44px; }
+  .wsheetfoot { position: fixed; left: 0; right: 0;
+                bottom: calc(56px + env(safe-area-inset-bottom));
+                height: 44px; z-index: 8; display: flex; align-items: center;
+                padding: 0 16px; font-size: 13px; color: var(--muted);
+                background: var(--panel); border-top: 1px solid var(--line); }
+
+  body[data-watch="house"] #watch .wlist,
+  body[data-watch="house"] #watch .wback { visibility: hidden; }
+  body[data-watch="house"] main > #houseCard { display: block; position: fixed;
+    left: 0; right: 0; top: calc(48px + 56.25vw + 72px);
+    bottom: calc(100px + env(safe-area-inset-bottom));
+    z-index: 8; margin: 0; border: 0; border-radius: 0;
+    background: var(--panel); padding: 6px 12px; }
+  body[data-watch="house"] #houseCard .tools,
+  body[data-watch="house"] #houseCard .housebar,
+  body[data-watch="house"] #houseCard .muted { display: none; }
+
+  .wsheet { position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+            z-index: 7; background: var(--panel);
+            border-radius: 16px 16px 0 0; display: flex; flex-direction: column; }
+  .wsheet .wsheethead { position: static; height: auto; }
+  .wsheetbody { flex: 1; overflow-y: auto; padding: 12px 16px
+                calc(16px + env(safe-area-inset-bottom)); }
+  .wtotals { display: flex; gap: 20px; align-items: center; margin-top: 12px;
+             font-size: 14px; font-variant-numeric: tabular-nums; }
+  .wtotals span { display: flex; align-items: center; gap: 7px; }
+  .wcaveat { font-size: 12px; color: var(--muted); line-height: 1.5;
+             margin: 12px 0 0; }
 }
 
 /* --- short screens ------------------------------------------------------ */

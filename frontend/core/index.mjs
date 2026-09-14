@@ -9,5 +9,6 @@ export * from "./shots.mjs";
 export * from "./house.mjs";
 export * from "./stats.mjs";
 export * from "./charts.mjs";
+export * from "./watch.mjs";
 export * from "./wire.mjs";
 export * as overrides from "./overrides.mjs";

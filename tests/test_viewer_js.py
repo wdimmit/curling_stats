@@ -1022,3 +1022,192 @@ class TestABarIsSomethingYouCanHit:
         css = self.CSS.read_text()
         rule = next(r for r in css.split("}") if ".clockchart .bar {" in r)
         assert "cursor:pointer" in rule
+
+
+# The real end 4 of 4RrNWSeNnMU: the end whose opening centre guard the
+# detector had been missing. Rock 1 has no interval (the first rock of an end
+# is never timed), rock 9 hogged and was charged nothing, and rock 13 is the
+# 81-second outlier the bars are scaled against.
+END_FOUR = [
+    (1, "red", "guard", None), (2, "yellow", "through", 24.27),
+    (3, "red", "draw", 18.28), (4, "yellow", "hit", 23.28),
+    (5, "red", "guard", 16.23), (6, "yellow", "through", 19.4),
+    (7, "red", "draw", 15.41), (8, "yellow", "through", 36.98),
+    (9, "red", "hogged", 0.0), (10, "yellow", "hit", 53.69),
+    (11, "red", "draw", 21.52), (12, "yellow", "hit", 32.03),
+    (13, "red", "hit", 81.26), (14, "yellow", "through", 54.2),
+    (15, "red", "guard", 41.77), (16, "yellow", "hit", 67.87),
+]
+
+
+def end_four(**end_kw):
+    shots = []
+    for n, colour, kind, secs in END_FOUR:
+        shots.append(shot(n, colour, ["lead", "second", "third", "skip"][(n - 1) // 4],
+                          shot_type=kind, thinking_time_s=secs,
+                          t_rest_s=3300.0 + n * 60, t_enter_s=3290.0 + n * 60))
+    d = doc(shots, end_number=4)
+    d["games"][0]["ends"][0].update(end_kw)
+    return d
+
+
+class TestTheEndAsAList:
+    """What a phone shows someone watching rather than charting."""
+
+    def test_a_row_per_rock_carrying_its_share_of_the_longest_interval(self):
+        got = run_js(setup(end_four()) +
+                     "const r = rockRows();"
+                     "out([r.length, r[12].number, r[12].name, r[12].frac,"
+                     " r[1].name, Number(r[1].frac.toFixed(3))]);")
+        # Rock 13 is the longest in the end, so it is the full-width bar.
+        assert got == [16, 13, "Hit", 1, "Throw away", round(24.27 / 81.26, 3)]
+
+    def test_the_first_rock_of_an_end_is_unmeasured_not_instant(self):
+        """There is no previous rest to measure from, so there is no number --
+        and a zero-width bar would read as a rock thrown instantly."""
+        got = run_js(setup(end_four()) +
+                     "const r = rockRows()[0];"
+                     "out([r.secs, r.text, r.unmeasured, r.frac]);")
+        assert got == [None, "—", True, 0]
+
+    def test_a_rock_charged_nothing_is_not_a_rock_that_took_no_time(self):
+        """The hogged rock's interval came out at zero, which the clock counts
+        as an anomaly rather than a measurement."""
+        got = run_js(setup(end_four()) +
+                     "const r = rockRows()[8];"
+                     "out([r.name, r.secs, r.unmeasured, r.frac]);")
+        assert got == ["Hogged", None, True, 0]
+
+    def test_bars_are_scaled_inside_the_end_never_across_the_game(self):
+        """An end played under time pressure must not look quick beside a
+        leisurely one, so the longest rock of *this* end is full width and the
+        shape of the end is what the bars carry."""
+        body = ("const r = rockRows();"
+                "out([r[12].frac, Number(r[1].frac.toFixed(4))]);")
+        full = run_js(setup(end_four()) + body)
+        # Every interval halved: the same rock is still the longest, and every
+        # bar keeps its share, so the end reads identically.
+        halved = doc([shot(n, c, ["lead", "second", "third", "skip"][(n - 1) // 4],
+                           shot_type=k, thinking_time_s=None if s is None else s / 2,
+                           t_rest_s=3300.0 + n * 60, t_enter_s=3290.0 + n * 60)
+                      for n, c, k, s in END_FOUR], end_number=4)
+        assert run_js(setup(halved) + body) == full == [1, round(24.27 / 81.26, 4)]
+
+    def test_a_type_the_table_no_longer_knows_still_names_itself(self):
+        got = run_js(setup(doc([shot(1, "red", "lead", shot_type="retired_thing",
+                                     thinking_time_s=12.0, t_rest_s=100.0)],
+                               end_number=4)) +
+                     "out(rockRows()[0].name);")
+        assert got == "retired_thing"
+
+    def test_the_row_knows_where_to_start_the_video(self):
+        """Ten seconds before the rock entered, so the throw is seen and not
+        just its aftermath -- the same rule the transport already uses."""
+        got = run_js(setup(end_four()) + "out(rockRows()[2].tVideo);")
+        assert got == 3290.0 + 3 * 60 - 10
+
+
+class TestTheListFollowsTheVideo:
+    """Which rock the playhead is in."""
+
+    def test_a_rock_is_current_from_the_previous_rest_until_its_own(self):
+        """That interval is what a viewer is watching: the throw, not what
+        happens after it stops."""
+        got = run_js(setup(end_four()) +
+                     "const r = rockRows();"
+                     "out([rockAt(r, r[0].tRest - 5), rockAt(r, r[0].tRest + 5),"
+                     " rockAt(r, r[4].tRest + 1)]);")
+        assert got == [0, 1, 5]
+
+    def test_before_the_first_rest_it_is_the_first_rock(self):
+        got = run_js(setup(end_four()) + "out(rockAt(rockRows(), 0));")
+        assert got == 0
+
+    def test_past_the_last_rest_it_stays_on_the_last_rock(self):
+        got = run_js(setup(end_four()) +
+                     "const r = rockRows(); out(rockAt(r, r[15].tRest + 999));")
+        assert got == 15
+
+    def test_a_rock_with_no_rest_time_cannot_bound_anything(self):
+        """A missing rest would otherwise read as zero and drag the answer
+        back to the top of the end."""
+        got = run_js(setup(end_four()) +
+                     "const r = rockRows(); r[3].tRest = null;"
+                     "out(rockAt(r, r[4].tRest + 1));")
+        assert got == 5
+
+
+class TestTheEndSwitcher:
+    def test_it_reads_the_running_score_not_the_end_s_own(self):
+        """Someone reading down the game wants to know who is winning."""
+        got = run_js(setup(end_four(hammer="yellow",
+                                    score={"red": 3, "yellow": 0},
+                                    running={"red": 7, "yellow": 1},
+                                    thinking_time={"red": 194.47, "yellow": 311.71})) +
+                     "const s = endSummary();"
+                     "out([s.number, s.of, s.hammer, s.running, s.red, s.yellow]);")
+        assert got == [4, 1, "yellow", {"red": 7, "yellow": 1}, "3:14", "5:12"]
+
+
+class TestAWatchLinkOnAPhoneShowsSomething:
+    """The bug this layout was written for.
+
+    The phone block hides ``#chart``'s headings, ``<dl>`` and ``<details>``
+    unconditionally, to buy room for the grade row. That took #detail,
+    #clockBox and #scoreBox off the phone in *every* mode, and review also
+    hides #grading -- everything the sheet holds -- so a /g/ link rendered a
+    256px empty panel. 1457 tests passed throughout, because nothing asserts
+    on the rendered phone DOM.
+
+    These read the stylesheet, which is the only guard available without a
+    browser: `pytest` has to stay green inside Dockerfile.api, where there is
+    no node, let alone Chrome.
+    """
+
+    CSS = VIEWER / "style.css"
+
+    def phone_block(self):
+        css = self.CSS.read_text()
+        want = run_js("out(PHONE_QUERY);")
+        at = css.index(f"@media {want}")
+        depth, i = 0, css.index("{", at)
+        for j in range(i, len(css)):
+            depth += (css[j] == "{") - (css[j] == "}")
+            if depth == 0:
+                return css[i:j]
+        raise AssertionError("the phone media query is never closed")
+
+    def test_the_read_only_surfaces_get_a_layout_of_their_own(self):
+        block = self.phone_block()
+        for mode in ("view", "review"):
+            assert f'body[data-mode="{mode}"] #watch' in block, (
+                f"{mode} on a phone has no watch layout, so it is showing the "
+                f"charting shell with the grading cut out")
+
+    def test_the_rock_list_is_not_swept_up_by_the_chart_panel_s_blanket_hide(self):
+        """#watch is a sibling of #chart, not a child, so the rule that hides
+        the panel's own furniture cannot reach it. Stated as a test because
+        the two live a dozen lines apart."""
+        block = self.phone_block()
+        blanket = next(r for r in block.split("}") if "#chart dl" in r)
+        for part in blanket.split(","):
+            assert "#watch" not in part and ".wlist" not in part
+
+    def test_the_list_row_height_matches_what_the_component_scrolls_by(self):
+        """Watch.jsx scrolls the current row into view by multiplying its
+        index, because scrollIntoView would scroll the fixed shell around it.
+        If the two disagree, following drifts a row further out every rock."""
+        block = self.phone_block()
+        rule = next(r for r in block.split("}") if ".wrow {" in r)
+        assert "height: 56px" in rule
+        js = (Path(__file__).resolve().parents[1]
+              / "frontend/viewer/Watch.jsx").read_text()
+        assert "const ROW_H = 56;" in js
+
+    def test_the_player_is_the_one_thing_the_layout_leaves_alone(self):
+        """Watch mode hides main's children, and #playCard must be the
+        exception: reparenting or unmounting it costs the iframe."""
+        block = self.phone_block()
+        rule = next(r for r in block.split("}")
+                    if 'body[data-mode="review"] main > *' in r)
+        assert ":not(#playCard)" in rule

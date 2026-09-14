@@ -11,7 +11,8 @@
  * again immediately before measuring rather than trusting React to have run a
  * sibling's layout effect first.
  */
-export function writeBodyState({ mode, peek, sheet, house, menu, reporting }) {
+export function writeBodyState({ mode, peek, sheet, house, menu, reporting,
+                                 watch }) {
   const b = document.body;
   const set = (k, v) => { if (b.dataset[k] !== v) b.dataset[k] = v; };
   const drop = k => { if (k in b.dataset) delete b.dataset[k]; };
@@ -23,6 +24,9 @@ export function writeBodyState({ mode, peek, sheet, house, menu, reporting }) {
   set("sheet", sheet || "");
   set("house", house || "");
   mode ? set("mode", mode) : drop("mode");
+  // Which sheet watch mode has open, absent when none is. Only the
+  // read-only surfaces ever set it; charting never sees it.
+  watch ? set("watch", watch) : drop("watch");
   // undefined means "never opened" and is absent; "" means "opened, then
   // closed" and stays, which is what the old page left behind. Only
   // [data-menu="open"] is ever selected on, so this is about keeping a DOM

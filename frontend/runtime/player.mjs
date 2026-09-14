@@ -69,6 +69,23 @@ export function seek(t, autoplay) {
   if (autoplay) player.playVideo();
 }
 
+/* Where the playhead is, for a list that follows along. Guarded exactly as
+ * seek() is: before the iframe answers, and after it has failed, there is no
+ * time to report -- and null says so rather than 0, which is a real position
+ * and would drag a following list back to the top of the end. */
+export function currentTime() {
+  if (!player || player === "none" || !ready) return null;
+  const t = player.getCurrentTime();
+  return typeof t === "number" && Number.isFinite(t) ? t : null;
+}
+
+/* Whether it is actually playing. A paused video should not pull the list
+ * around under a thumb that stopped it deliberately. */
+export function isPlaying() {
+  if (!player || player === "none" || !ready) return false;
+  return player.getPlayerState() === 1;
+}
+
 export function togglePlay() {
   if (!player || player === "none" || !ready) return;
   player.getPlayerState() === 1 ? player.pauseVideo() : player.playVideo();

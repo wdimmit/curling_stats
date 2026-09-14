@@ -23,6 +23,7 @@ import { loadPrefs, savePrefs, saveCursor } from "../runtime/prefs.mjs";
 import { House } from "./House.jsx";
 import { ChartPanel } from "./ChartPanel.jsx";
 import { Report } from "./Report.jsx";
+import { Watch } from "./Watch.jsx";
 
 const phone = () => matchMedia(PHONE_QUERY).matches;
 
@@ -42,6 +43,7 @@ export function App({ doc, config }) {
   const [ui, dispatch] = useReducer(reducer, null, () => ({
     gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
     sheet: "peek", houseMode: "", menu: undefined, reporting: false, notice: null,
+    watch: "", following: true,
     ...loadPrefs(),
   }));
 
@@ -70,6 +72,7 @@ export function App({ doc, config }) {
     mode: config.review ? "review" : config.readOnly ? "view" : "",
     peek: peekMode(shot), sheet: ui.sheet, house: ui.houseMode,
     menu: ui.menu, reporting: ui.reporting,
+    watch: config.readOnly ? ui.watch : "",
   };
 
   const noticeTimer = useRef(null);
@@ -152,6 +155,12 @@ export function App({ doc, config }) {
       notify(renumberNotice(was, at >= 0 ? shots[at] : null));
     },
     goToBar: b => { goTo(b.ei, b.si); },
+    /* Watch mode. followTo moves the cursor *without* seeking: the video is
+       already there -- it is what said so -- and seeking to where you already
+       are would stutter the playback once a second. */
+    followTo: si => dispatch({ type: "goTo", ei: ui.ei, si }),
+    setFollowing: on => dispatch({ type: "set", patch: { following: on } }),
+    openWatch: kind => dispatch({ type: "set", patch: { watch: kind } }),
     goToBarFromReport: b => {
       // A bar in the report is still a rock you can go and watch; going there
       // closes the report rather than leaving it over the shot it just
@@ -357,6 +366,13 @@ export function App({ doc, config }) {
                     cursor={{ ei: ui.ei, si: ui.si }} ui={ui} config={config}
                     series={series} here={here} notice={ui.notice} actions={actions} />
       </main>
+
+      {/* Always mounted, like #report: CSS decides who is visible, so crossing
+          the phone gate on a rotation can never reparent the player. */}
+      {config.readOnly
+        ? <Watch view={view} ui={ui} config={config} series={series}
+                 think={think} here={here} actions={actions} />
+        : null}
 
       <section id="report" className={ui.reporting ? "show" : undefined}>
         <Report view={view} stats={stats} think={think} series={series} actions={actions} />
