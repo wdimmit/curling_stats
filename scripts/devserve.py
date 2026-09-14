@@ -67,6 +67,12 @@ def main() -> None:
 
     slug = submit(w).json()["slug"]
     work_through(w, doc=doc, games=len(doc["games"]))
+    # A second video, left queued, so the status page is reachable too -- it is
+    # a surface like any other and is otherwise only visible for the half hour
+    # a real run takes.
+    yt.add(VideoMeta("QUEUEDvid01", "5/1 - Sheet 3 - Spring League", CLUB, 7200.0,
+                     "none", T0))
+    waiting = submit(w, url="https://youtu.be/QUEUEDvid01").json()["slug"]
     share = repo.get_chart(slug).share_slug
     games = [g for g in w["client"].get("/api/games").json()["games"] if g["source_id"]]
     source = games[0]["source_id"] if games else None
@@ -78,6 +84,7 @@ def main() -> None:
     say(f"  view-only  {base}/s/{share}/")
     if source:
         say(f"  review     {base}/g/{source}/")
+    say(f"  waiting    {base}/c/{waiting}/   (status page)")
     say(f"  catalogue  {base}/games")
     say(f"  submit     {base}/\n")
 

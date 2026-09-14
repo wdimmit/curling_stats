@@ -3,20 +3,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Curling Chart</title>
 <link rel="stylesheet" href="/static/site.css">
-<header>
-  <h1>Curling Chart</h1>
-  <a href="/">Submit a link</a>
-  <span style="flex:1"></span>
-  <span id="who" class="muted"></span>
-  <select id="league"><option value="">All leagues</option></select>
-</header>
-<main>
-  <p class="muted">Every game we've processed. <strong>Watch</strong> steps through a game
-  shot by shot — no link to keep, nothing to fill in. <strong>Chart</strong> gets you your own
-  charting link, private to whoever has it, so a team can grade a game without anyone
-  else seeing.</p>
-  <div class="row" id="teamrow" hidden style="margin-bottom:12px"></div>
-  <div id="list" class="card"><span class="muted">Loading…</span></div>
-</main>
-<script type="module" src="/static/me.js"></script>
-<script type="module" src="/static/games.js"></script>
+<!-- Built by site.js from frontend/site/. data-page is what selects the
+     screen: the status page is served under two different URL prefixes, so
+     the document has to say what it is rather than the path being read. -->
+<body data-page="games">
+<div id="root"></div>
+<script type="module" src="/static/site.js"></script>

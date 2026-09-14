@@ -184,7 +184,7 @@ class TestStatusPage:
     def test_a_queued_chart_serves_the_status_page(self, world):
         s = submit(world).json()["slug"]
         r = world["client"].get(f"/c/{s}/")
-        assert r.status_code == 200 and "status.js" in r.text
+        assert r.status_code == 200 and "site.js" in r.text
         st = world["client"].get(f"/c/{s}/status.json").json()
         assert st["status"] == "queued" and st["position"] == 0
         assert st["worker_online"] is False
@@ -498,7 +498,9 @@ class TestCharting:
         c = world["client"]
         assert c.get(f"/c/{s}/app.js").status_code == 200
         assert c.get(f"/c/{s}/style.css").status_code == 200
-        assert c.get(f"/c/{s}/status.js").status_code == 200
+        # status.html is served under this prefix too, and asks for site.js
+        # relatively, so the chart routes have to fall back to the static set.
+        assert c.get(f"/c/{s}/site.js").status_code == 200
         assert c.get(f"/c/{s}/nope.js").status_code == 404
         assert c.get(f"/c/{s}", follow_redirects=False).status_code == 302
 
@@ -621,12 +623,22 @@ class TestCatalogueAndAdmin:
         assert world["client"].get("/api/healthz/worker").status_code == 200
 
     def test_the_pages_load(self, world):
+        """Each route serves its own shell, and says which page it is.
+
+        The text these used to look for is rendered by the bundle now, so the
+        shell is checked for the thing that actually distinguishes it --
+        `data-page`, which is also what the bundle routes on -- and the words
+        are checked where they now live."""
         c = world["client"]
-        assert "Get my link" in c.get("/").text
-        assert "All games" in c.get("/games").text or "games.js" in c.get("/games").text
+        for path, page in [("/", "submit"), ("/games", "games"), ("/mine", "mine"),
+                           ("/join/i_whatever", "join")]:
+            body = c.get(path).text
+            assert f'data-page="{page}"' in body, f"{path} is not the {page} page"
+            assert 'src="/static/site.js"' in body, f"{path} loads no bundle"
         assert c.get("/static/site.css").status_code == 200
-        assert "My games" in c.get("/mine").text
-        assert "Join a team" in c.get("/join/i_whatever").text
+        bundle = c.get("/static/site.js").text
+        for words in ("Get my link", "My games", "Join a team", "All leagues"):
+            assert words in bundle, f"{words!r} is in no page"
 
     def test_every_script_a_page_asks_for_is_actually_served(self, world):
         """The allowlist is hand-kept, so a new page can reference a 404."""
@@ -636,14 +648,20 @@ class TestCatalogueAndAdmin:
             for src in re.findall(r'src="(/static/[^"]+)"', c.get(path).text):
                 assert c.get(src).status_code == 200, f"{path} asks for {src}"
 
-    def test_the_modules_those_scripts_import_are_served_too(self, world):
-        """A bare `import "./auth.js"` resolves next to the script, not under /static."""
+    def test_nothing_served_asks_for_a_file_beside_it(self, world):
+        """This used to resolve each `import "./auth.js"` and check it was
+        served -- an allowlist of nine names, hand-kept, where a miss was a
+        404 nobody saw until a page went blank. There is one bundle now and
+        it has no relative imports at all, which is the stronger statement:
+        assert that, rather than checking a list that can go stale."""
         import re
         c = world["client"]
-        for name in ("me.js", "mine.js", "join.js", "submit.js", "games.js", "teams.js"):
+        for name in ("site.js",):
             body = c.get(f"/static/{name}").text
-            for mod in re.findall(r'from "\./([^"]+)"', body):
-                assert c.get(f"/static/{mod}").status_code == 200, f"{name} imports {mod}"
+            assert not re.findall(r'from\s*"\./', body), f"{name} imports a sibling"
+        # The only thing it may reach for is the Firebase SDK, deliberately
+        # left external so the CDN copy is shared and cached.
+        assert 'https://www.gstatic.com/firebasejs' in c.get("/static/site.js").text
 
 
 class TestTokensWithStraySurroundingWhitespace:

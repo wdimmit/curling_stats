@@ -11,11 +11,19 @@
  * anonymous one: that is the state the whole site was in until accounts
  * existed, and every route still handles it.
  */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut,
-  onAuthStateChanged, connectAuthEmulator,
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+/* Loaded on demand, not at the top.
+ *
+ * A static import of a CDN module makes that CDN a hard dependency of the
+ * whole bundle: if gstatic cannot be reached the module never evaluates, and
+ * with one bundle for the site that is every page blank rather than every
+ * page anonymous. Which contradicts the promise three lines up. Imported
+ * inside the async setup below, an unreachable SDK is just another way for
+ * accounts to be off.
+ *
+ * esbuild leaves these alone (--external:https://*), so the CDN copy is still
+ * shared and cached rather than inlined into the bundle. */
+const SDK = "https://www.gstatic.com/firebasejs/12.19.0/";
+let fb = null;
 
 let auth = null;
 let user = null;
@@ -30,10 +38,24 @@ const started = (async () => {
   let cfg = {};
   try { cfg = await (await fetch("/api/auth/config")).json(); } catch { /* offline */ }
   if (!cfg.enabled) { ready = true; announce(); return; }
-  auth = getAuth(initializeApp({ apiKey: cfg.apiKey, authDomain: cfg.authDomain,
-                                 projectId: cfg.projectId }));
-  if (cfg.emulator) connectAuthEmulator(auth, `http://${cfg.emulator}`, { disableWarnings: true });
-  onAuthStateChanged(auth, u => { user = u; ready = true; announce(); });
+  try {
+    const [app, sdk] = await Promise.all([
+      import(/* @vite-ignore */ `${SDK}firebase-app.js`),
+      import(/* @vite-ignore */ `${SDK}firebase-auth.js`),
+    ]);
+    fb = sdk;
+    auth = sdk.getAuth(app.initializeApp({ apiKey: cfg.apiKey, authDomain: cfg.authDomain,
+                                           projectId: cfg.projectId }));
+    if (cfg.emulator)
+      sdk.connectAuthEmulator(auth, `http://${cfg.emulator}`, { disableWarnings: true });
+    sdk.onAuthStateChanged(auth, u => { user = u; ready = true; announce(); });
+  } catch {
+    // The SDK could not be fetched. Same outcome as accounts being switched
+    // off, which every route already handles.
+    auth = null;
+    ready = true;
+    announce();
+  }
 })();
 
 /** Call fn(user, ready) now and on every change. */
@@ -44,13 +66,13 @@ export const currentUser = () => user;
 export const whenReady = () => started;
 
 export async function signIn() {
-  if (!auth) throw new Error("accounts are not configured");
+  if (!auth || !fb) throw new Error("accounts are not configured");
   // Popup, not redirect: a redirect needs the auth handler to be same-origin
   // or third-party cookies to survive, and neither is true here.
-  return signInWithPopup(auth, new GoogleAuthProvider());
+  return fb.signInWithPopup(auth, new fb.GoogleAuthProvider());
 }
 
-export async function signOff() { if (auth) await signOut(auth); }
+export async function signOff() { if (auth && fb) await fb.signOut(auth); }
 
 /** fetch(), carrying who you are if you are anybody. Never breaks the page. */
 export async function authedFetch(url, opts = {}) {

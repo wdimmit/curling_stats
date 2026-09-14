@@ -1,7 +1,7 @@
 {
   "note": "Written by `npm run build`. tests/test_frontend_build.py checks it.",
   "esbuild": "0.28.2",
-  "flags": "ee85a2e2b435f98d6f8e2f1ca599e54832f95372e40db36a3ffe03f4aa28de0b",
+  "flags": "3814b6394471718919220a4072fed98a4853a93360e8ea70a4896d47dc55fa9a",
   "sources": {
     "frontend/core/charts.mjs": "7c40ad51af22a2525fc97309944f7a2cc5dbabbf9b1235f64d592730bfb22617",
     "frontend/core/constants.mjs": "feb56601bba04120e2cfa91c4e87e9f90c10ad10428c7f57c4974a0dee72a2be",
@@ -17,6 +17,16 @@
     "frontend/runtime/overridesStore.mjs": "d43217e0bc5e2ce57fc70b830bd0ce37b73c406e80fd3e37d5a080f8e4bdbdde",
     "frontend/runtime/player.mjs": "afb24400a06bd59038bc705b6382cd5e343b1d855e45b33a577140b5b08cc0c6",
     "frontend/runtime/prefs.mjs": "5fc3a0e40aecb2fc7fcc734f24d626e3ea66ec6a4e7389d510bcab7de7b74506",
+    "frontend/site/Games.jsx": "c8ad4804b79d95a5b444ce73ca5b5487979fceddb0fcb8873bfc077b48a6cb79",
+    "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
+    "frontend/site/Mine.jsx": "761ca129caf77f1330bc065a399dda7a185f0eff843ef7d99a3bfcda13587d0c",
+    "frontend/site/Status.jsx": "69f88cddcb4c58746464227be8d2f51b1327999fa114be57e56fb25f30f3f731",
+    "frontend/site/Submit.jsx": "76fcc0a38b4af7cb5dce584f325d192c089c8145dde004594be9eb7b78226b58",
+    "frontend/site/auth.js": "5f8188503a00c70db4e696259d8ecef329f94be2e70f76186601fd02652f94ab",
+    "frontend/site/fmt.js": "91ca61e8c86d472b48391a7b2cd68a0119dbb09f23a615dd926657910db33527",
+    "frontend/site/main.jsx": "3ae012ef5bf5845a1bfa2fd195cc7b4bd154746f3e861cf15619abf8ab6fe9d7",
+    "frontend/site/ui.jsx": "eb6b706874489eb709489d40c9223a3edab56a2b0330e659ff8ce0884ce16a35",
+    "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
     "frontend/viewer/App.jsx": "a20b1e8cd2c334f4b30ebe0af13b62bb47a42ef6e1d86c181f050fa417eaa4ba",
     "frontend/viewer/ChartPanel.jsx": "d59b307b8002fbdd38e0f483324731450f7508068ff329b885460e343c6443b1",
     "frontend/viewer/Charts.jsx": "ce099e9ddcf192213d5c88a364110ea3088fd2f5faf701dad8ef3a412b3e789b",
@@ -25,6 +35,7 @@
     "frontend/viewer/main.jsx": "03c6d1858c606f51671b711c0ecf7c3d58260ac3d8198c0d2231b9590a605562"
   },
   "outputs": {
+    "src/curling_score/service/static/site.js": "b1025b572fc8046be992841adceba97d1d6c0b5b70ab41f6274667a090d83631",
     "src/curling_score/viewer/app.js": "8277d8bc8edbd7a693549f00b89960726c3fe9ed5a3e72bc316218dbf72377cb"
   }
 }

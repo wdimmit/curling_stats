@@ -3,19 +3,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Curling Chart</title>
 <link rel="stylesheet" href="/static/site.css">
-<header>
-  <h1>Curling Chart</h1>
-  <a href="/">Submit another</a>
-  <a href="/games">All games</a>
-</header>
-<main>
-  <div class="card">
-    <h2 id="title" style="margin-top:0">Preparing your game…</h2>
-    <div id="body"><span class="muted">Loading…</span></div>
-    <div class="row" style="margin-top:14px">
-      <button id="copy">Copy this link</button>
-      <span class="muted" style="font-size:13px">Bookmark it — this page becomes the chart when processing finishes.</span>
-    </div>
-  </div>
-</main>
-<script src="status.js"></script>
+<!-- Built by site.js from frontend/site/. data-page is what selects the
+     screen: the status page is served under two different URL prefixes, so
+     the document has to say what it is rather than the path being read. -->
+<body data-page="status">
+<div id="root"></div>
+<script type="module" src="site.js"></script>

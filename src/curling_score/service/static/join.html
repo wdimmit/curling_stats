@@ -3,21 +3,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Join a team — Curling Chart</title>
 <link rel="stylesheet" href="/static/site.css">
-<header>
-  <h1><a href="/games">Curling Chart</a></h1>
-  <span style="flex:1"></span>
-  <span id="who" class="muted"></span>
-</header>
-<main>
-  <div class="card">
-    <h2 style="margin-top:0" id="title">Join a team</h2>
-    <p class="muted" id="blurb">Checking that invitation…</p>
-    <div class="row">
-      <button id="join" class="primary" hidden>Join</button>
-      <button id="signin" class="primary" hidden>Sign in with Google to join</button>
-    </div>
-    <div id="note"></div>
-  </div>
-</main>
-<script type="module" src="/static/me.js"></script>
-<script type="module" src="/static/join.js"></script>
+<!-- Built by site.js from frontend/site/. data-page is what selects the
+     screen: the status page is served under two different URL prefixes, so
+     the document has to say what it is rather than the path being read. -->
+<body data-page="join">
+<div id="root"></div>
+<script type="module" src="/static/site.js"></script>

@@ -45,14 +45,11 @@ log = logging.getLogger(__name__)
 VIEWER_DIR = Path(viewer.__file__).parent
 STATIC_DIR = Path(__file__).parent / "static"
 VIEWER_ASSETS = {"app.js": "application/javascript", "style.css": "text/css"}
-STATIC_ASSETS = {"status.js": "application/javascript",
-                 "games.js": "application/javascript",
-                 "submit.js": "application/javascript",
-                 "auth.js": "application/javascript",
-                 "me.js": "application/javascript",
-                 "mine.js": "application/javascript",
-                 "join.js": "application/javascript",
-                 "teams.js": "application/javascript",
+# One bundle for every page. This was nine hand-kept names, one per script
+# plus the modules they imported, and a page referencing a file missing from
+# it 404s at runtime with nothing to catch it -- which is what the test named
+# "every script a page asks for is actually served" exists for.
+STATIC_ASSETS = {"site.js": "application/javascript",
                  "site.css": "text/css"}
 # A whole-document save, and a merge patch. The first was 10 MB, which is ten
 # times what Firestore will hold in one document -- the commit fails with an
