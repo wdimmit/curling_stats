@@ -23,6 +23,7 @@
  */
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -103,15 +104,24 @@ async function stampFor(results) {
   return {
     note: "Written by `npm run build`. tests/test_frontend_build.py checks it.",
     esbuild: esbuild.version,
-    flags: sha256(TARGETS.map(flagsOf).join("\n")),
+    flags: sha256(results.map(r => flagsOf(r.target)).join("\n")),
     sources: Object.fromEntries(Object.entries(sources).sort()),
     outputs: Object.fromEntries(Object.entries(outputs).sort()),
   };
 }
 
+/* A target whose entry does not exist yet is skipped rather than fatal, and
+ * said so out loud. The two bundles land in separate commits, and a build that
+ * refused to run until both existed would mean neither could be checked. */
+const present = () => TARGETS.filter(t => {
+  const here = existsSync(resolve(HERE, t.entry));
+  if (!here) console.log(`  (skipping ${t.name}: no ${t.entry} yet)`);
+  return here;
+});
+
 async function buildAll() {
   const results = [];
-  for (const target of TARGETS)
+  for (const target of present())
     results.push({ target, result: await esbuild.build(optionsFor(target)) });
   return results;
 }

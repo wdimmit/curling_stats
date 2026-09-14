@@ -1,0 +1,30 @@
+{
+  "note": "Written by `npm run build`. tests/test_frontend_build.py checks it.",
+  "esbuild": "0.28.2",
+  "flags": "ee85a2e2b435f98d6f8e2f1ca599e54832f95372e40db36a3ffe03f4aa28de0b",
+  "sources": {
+    "frontend/core/charts.mjs": "7c40ad51af22a2525fc97309944f7a2cc5dbabbf9b1235f64d592730bfb22617",
+    "frontend/core/constants.mjs": "feb56601bba04120e2cfa91c4e87e9f90c10ad10428c7f57c4974a0dee72a2be",
+    "frontend/core/house.mjs": "a6a2cbc892ad81ea8de73f0352a618cad1ab56aef284fe8615c5db066e285949",
+    "frontend/core/index.mjs": "666acca03cd74cfe4e6b8418130a0132ca937ebacd07f7f0181b5641a106cadf",
+    "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
+    "frontend/core/shots.mjs": "f67991d2771965a675ffb63297a436bb9d4bd06dc27b598c6ed323e919345436",
+    "frontend/core/stats.mjs": "ef2e990e1889d2aced8f07408198fbbb45635b891f33e16dc5389fe1c8de08ed",
+    "frontend/core/timeline.mjs": "afd840b572a7fe6aa9fc546d3b135db29ef85f46e14bfc595e352eeb29e88d53",
+    "frontend/core/wire.mjs": "1576a7db7c01f63a6e43683005d2e4a6317ad70f4a2f051d386f5404308e459b",
+    "frontend/runtime/bodyState.mjs": "78a9042785e40d3406df64072a8896a24426eec11221bc5b5b6b404b40405b6d",
+    "frontend/runtime/dragStore.mjs": "39cf427077c473e916a74c5e95b62ac0fd8eacde6b56f4fe8b4f1cc6d516d778",
+    "frontend/runtime/overridesStore.mjs": "d43217e0bc5e2ce57fc70b830bd0ce37b73c406e80fd3e37d5a080f8e4bdbdde",
+    "frontend/runtime/player.mjs": "afb24400a06bd59038bc705b6382cd5e343b1d855e45b33a577140b5b08cc0c6",
+    "frontend/runtime/prefs.mjs": "5fc3a0e40aecb2fc7fcc734f24d626e3ea66ec6a4e7389d510bcab7de7b74506",
+    "frontend/viewer/App.jsx": "a20b1e8cd2c334f4b30ebe0af13b62bb47a42ef6e1d86c181f050fa417eaa4ba",
+    "frontend/viewer/ChartPanel.jsx": "d59b307b8002fbdd38e0f483324731450f7508068ff329b885460e343c6443b1",
+    "frontend/viewer/Charts.jsx": "ce099e9ddcf192213d5c88a364110ea3088fd2f5faf701dad8ef3a412b3e789b",
+    "frontend/viewer/House.jsx": "a936e8b81088f3415906a8b0f85d98abf63c4864eba32e0c33fdf854b7abd99b",
+    "frontend/viewer/Report.jsx": "473b826e2d318393f70038ef6a42fcb0e97b285f255912922ccd7ecc4a4995c6",
+    "frontend/viewer/main.jsx": "03c6d1858c606f51671b711c0ecf7c3d58260ac3d8198c0d2231b9590a605562"
+  },
+  "outputs": {
+    "src/curling_score/viewer/app.js": "8277d8bc8edbd7a693549f00b89960726c3fe9ed5a3e72bc316218dbf72377cb"
+  }
+}

@@ -45,8 +45,11 @@ class TestReviewPage:
         review link has none -- and the thinking-time chart used to live only
         inside it. The clock is detection, like the house and the shot list."""
         sid = a_source(world)["source_id"]
-        page = world["client"].get(f"/g/{sid}/").text
-        assert 'id="clockBox"' in page and "Thinking time" in page
+        # The page is a shell now; the clock is built by the bundle, so that is
+        # where to look for it. Minification mangles identifiers but not string
+        # literals, so both of these survive the build.
+        app = world["client"].get(f"/g/{sid}/app.js").text
+        assert "clockBox" in app and "Thinking time" in app
         css = world["client"].get(f"/g/{sid}/style.css").text
         review_rules = [line for line in css.splitlines()
                         if 'data-mode="review"' in line]

@@ -7,8 +7,8 @@ into ``timeline.json`` so that re-running the analysis never destroys them --
 """
 
 import functools
-import http.server
 import json
+import http.server
 import os
 import shutil
 import tempfile
@@ -18,6 +18,13 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 ASSETS = ("index.html", "app.js", "style.css")
+
+# The comment in index.html that the hosted service replaces with the page's
+# configuration. A comment rather than the script tag: a tag is markup a tool
+# might legitimately reshape, and this substitution failing is silent in the
+# worst direction -- a view-only link that boots editable, or a review link
+# that tries to save.
+BOOT_ANCHOR = "<!--CHART-->"
 OVERRIDES = "overrides.json"
 # A whole game's charting is a few hundred small patches; a game with every
 # stone placed by hand measures around 300 KB, so this is already generous.
@@ -91,6 +98,29 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):  # quieter: one line per request is noise
         if self.command == "POST":
             super().log_message(fmt, *args)
+
+
+def boot_page(config: dict | None = None) -> str:
+    """index.html with ``window.CHART`` injected, or as-is for the local server.
+
+    ``config`` is what tells the page whether this link edits, views or
+    reviews. The local ``curling-score serve`` passes None and sets nothing,
+    which is what makes everything editable and unversioned there.
+
+    A missing anchor raises rather than returning the page unchanged. The
+    version this replaced used ``str.replace(..., 1)``, which silently does
+    nothing when it does not match: a 500 on a chart page is recoverable, a
+    quietly editable share link is not.
+    """
+    text = (HERE / "index.html").read_text()
+    if BOOT_ANCHOR not in text:
+        raise RuntimeError(
+            f"{BOOT_ANCHOR} is missing from index.html, so window.CHART cannot "
+            f"be injected and every link would boot as a local, editable one")
+    if config is None:
+        return text.replace(BOOT_ANCHOR, "", 1)
+    return text.replace(
+        BOOT_ANCHOR, f"<script>window.CHART={json.dumps(config)};</script>", 1)
 
 
 def make_server(out_dir, port: int = 8000):

@@ -29,6 +29,12 @@ h3 { font-size:13px; margin:14px 0 6px; font-weight:650; }
 .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 a { color:var(--accent); }
 
+/* React mounts into a container, and <header>, <main> and #report were body's
+   own children. `display:contents` makes that container generate no box, so
+   the grid below lays out exactly as it did -- the same technique #menu uses
+   a little further down, for the same reason. */
+#root { display:contents; }
+
 main { display:grid; gap:14px; padding:14px;
        grid-template-columns:minmax(0,1fr) minmax(290px,360px) 310px;
        align-items:start; }

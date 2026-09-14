@@ -912,15 +912,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             chart, run, read_only = lookup(kind, key)
             if run.status != "ready" or chart.game_index is None:
                 return page("status.html")
-            text = (VIEWER_DIR / "index.html").read_text()
             # `merge` says this server takes per-key patches; the local
             # `curling-score serve` sets no window.CHART at all and so keeps
             # getting whole documents. `shared` is what turns on polling for a
             # teammate's edits -- pointless, and a read every 15s, on a chart
             # only one person can reach.
-            boot = (f'<script>window.CHART={json.dumps({"slug": chart.id, "mode": "view" if read_only else "edit", "merge": True, "shared": chart.team_id is not None})};'
-                    f'</script>\n<script src="app.js"></script>')
-            return HTMLResponse(text.replace('<script src="app.js"></script>', boot, 1))
+            return HTMLResponse(viewer.boot_page({
+                "slug": chart.id,
+                "mode": "view" if read_only else "edit",
+                "merge": True,
+                "shared": chart.team_id is not None,
+            }))
 
         @app.get(prefix + "/status.json")
         def status_json(key: str):
@@ -1059,10 +1061,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.get("/g/{sid}/", response_class=HTMLResponse)
     def review_page(sid: str):
         lookup_source(sid)
-        text = (VIEWER_DIR / "index.html").read_text()
-        boot = (f'<script>window.CHART={json.dumps({"mode": "review", "source": sid})};'
-                f'</script>\n<script src="app.js"></script>')
-        return HTMLResponse(text.replace('<script src="app.js"></script>', boot, 1))
+        return HTMLResponse(viewer.boot_page({"mode": "review", "source": sid}))
 
     @app.get("/g/{sid}/timeline.json")
     def review_timeline(sid: str):

@@ -78,41 +78,77 @@ const STATES = [
 
 /* Normalise away everything that legitimately differs run to run, so a diff
  * shows structure and not noise: the clock in the save pill, the YouTube
- * iframe the player builds for itself, blob/object URLs, and whitespace. */
+ * iframe the player builds for itself, blob/object URLs, and whitespace.
+ *
+ * Three things are normalised specifically so the vanilla page and the React
+ * one can be compared at all, none of which is a real difference:
+ *   - #root is unwrapped. React needs a mount container; `display:contents`
+ *     means it generates no box, and keeping it would shift every line.
+ *   - adjacent text nodes are merged. `sheet {n} ·` is one text node when
+ *     written with innerHTML and three when rendered from JSX.
+ *   - #report is captured separately, because it is always rendered now
+ *     (printing a closed report must not print a blank page) where before it
+ *     was built only when opened. Comparing it inside the tree would drown
+ *     every other state in an intended change.
+ */
 const SERIALISE = `(() => {
   const VOLATILE = [
     [/saved \\d{2}:\\d{2}/g, "saved HH:MM"],
     [/https:\\/\\/www\\.youtube\\.com\\/embed\\/[^"']*/g, "YOUTUBE_EMBED"],
     [/blob:[^"']*/g, "BLOB_URL"],
-    [/\\bwidget-?id="[^"]*"/g, 'widget-id="N"'],
   ];
   const skip = new Set(["IFRAME", "SCRIPT"]);
+  const transparent = el => el.id === "root";
+
+  function kids(el, depth) {
+    const out = [];
+    let text = "";
+    const flush = () => {
+      const t = text.replace(/\\s+/g, " ").trim();
+      if (t) out.push("  ".repeat(depth + 1) + "#text " + t);
+      text = "";
+    };
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3) { text += n.textContent; continue; }
+      flush();
+      if (n.nodeType !== 1) continue;
+      if (transparent(n)) out.push(...kids(n, depth));
+      else out.push(walk(n, depth + 1));
+    }
+    flush();
+    return out;
+  }
+
   function walk(el, depth) {
     if (skip.has(el.tagName)) return "  ".repeat(depth) + "<" + el.tagName.toLowerCase() + " …/>";
     const attrs = [...el.attributes]
       .filter(a => a.name !== "style" || a.value.trim() !== "")
-      .map(a => a.name + '="' + a.value.replace(/\\s+/g, " ").trim() + '"')
+      .map(a => {
+        let v = a.value.replace(/\\s+/g, " ").trim();
+        // Inline style is compared by what it says, not how it is punctuated:
+        // setting el.style serialises as "width:58px" and React's style prop
+        // as "width: 58px;". Same declaration, and normalising it is what
+        // keeps this tool a gate rather than a wall of known noise.
+        if (a.name === "style")
+          v = v.split(";").map(d => d.trim()).filter(Boolean)
+               .map(d => d.replace(/\\s*:\\s*/, ":")).sort().join(";");
+        return a.name + '="' + v + '"';
+      })
       .sort();
     const head = "  ".repeat(depth) + "<" + el.tagName.toLowerCase()
                + (attrs.length ? " " + attrs.join(" ") : "") + ">";
-    const kids = [...el.childNodes].flatMap(n => {
-      if (n.nodeType === 3) {
-        const t = n.textContent.replace(/\\s+/g, " ").trim();
-        return t ? ["  ".repeat(depth + 1) + "#text " + t] : [];
-      }
-      return n.nodeType === 1 ? [walk(n, depth + 1)] : [];
-    });
-    return [head, ...kids].join("\\n");
+    return [head, ...kids(el, depth)].join("\\n");
   }
-  let out = walk(document.body, 0);
-  for (const [re, to] of VOLATILE) out = out.replace(re, to);
-  return out;
+
+  const clean = s => { for (const [re, to] of VOLATILE) s = s.replace(re, to); return s; };
+  const report = document.getElementById("report");
+  const detached = report && report.parentNode;
+  if (detached) report.remove();
+  const dom = clean(walk(document.body, 0));
+  if (detached) detached.appendChild(report);
+  return { dom, report: report ? clean(walk(report, 0)) : "" };
 })()`;
 
-/* YouTube is blocked for every snapshot. Not to simulate being offline, but
- * to make the result deterministic: left to load, the player area is a race
- * between an iframe arriving and app.js's 8 s watchdog replacing it with the
- * "script blocked" fallback, and the snapshot would capture whichever won. */
 async function snapshot(cdp, urls, state) {
   await cdp.send("Network.enable");
   await cdp.send("Network.setBlockedURLs",
@@ -131,7 +167,7 @@ async function snapshot(cdp, urls, state) {
     reached.push({ sel, ok: await clickOn(cdp, sel) });
     await sleep(350);
   }
-  return { reached, dom: await cdp.eval(SERIALISE) };
+  return { reached, ...(await cdp.eval(SERIALISE)) };
 }
 
 function diff(before, after) {
@@ -141,16 +177,20 @@ function diff(before, after) {
     const a = before[name], b = after[name];
     if (!a) { console.log(`+ ${name}  (only in AFTER)`); bad++; continue; }
     if (!b) { console.log(`- ${name}  (only in BEFORE)`); bad++; continue; }
-    if (a.dom === b.dom) { console.log(`  ${name}  identical`); continue; }
+    const parts = [["tree", a.dom, b.dom]];
+    // Only where the old page actually built one; it built none when closed.
+    if (a.report) parts.push(["report", a.report, b.report]);
+    const off = parts.filter(([, x, y]) => x !== y);
+    if (!off.length) { console.log(`  ${name}  identical`); continue; }
     bad++;
-    const al = a.dom.split("\n"), bl = b.dom.split("\n");
-    console.log(`~ ${name}  (${al.length} -> ${bl.length} lines)`);
-    let shown = 0;
-    for (let i = 0; i < Math.max(al.length, bl.length) && shown < 12; i++) {
-      if (al[i] === bl[i]) continue;
-      if (al[i] !== undefined) console.log(`    - ${al[i].trim().slice(0, 120)}`);
-      if (bl[i] !== undefined) console.log(`    + ${bl[i].trim().slice(0, 120)}`);
-      shown++;
+    for (const [what, x, y] of off) {
+      const xs = new Set(x.split("\n").map(l => l.trim()));
+      const ys = new Set(y.split("\n").map(l => l.trim()));
+      const gone = [...xs].filter(l => !ys.has(l));
+      const came = [...ys].filter(l => !xs.has(l));
+      console.log(`~ ${name} [${what}]  -${gone.length} +${came.length}`);
+      for (const l of gone.slice(0, 8)) console.log(`    - ${l.slice(0, 120)}`);
+      for (const l of came.slice(0, 8)) console.log(`    + ${l.slice(0, 120)}`);
     }
   }
   console.log(`\n${names.length - bad} identical, ${bad} differing`);
