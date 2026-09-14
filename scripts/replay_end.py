@@ -140,6 +140,9 @@ def main():
     ap.add_argument("--game", type=int, default=0, help="game index (default 0)")
     ap.add_argument("--cache-root", default=None)
     ap.add_argument("--weights", default=None)
+    ap.add_argument("--from-s", type=float, default=None,
+                    help="override where the run-up starts, to see what a wider "
+                         "window would have offered")
     ap.add_argument("--gates", nargs="+", metavar="ARG",
                     help="LO HI [COLOR]: trace the gates for tracks starting in that window")
     ap.add_argument("--dump", metavar="PKL",
@@ -159,6 +162,10 @@ def main():
         rests = [s["t_rest_s"] for s in prev["shots"] if s.get("t_rest_s") is not None]
         prev_close = min(prev["end_s"], max(rests)) if rests else prev["end_s"]
     from_s = analyze_mod.run_up_from(prev_close, e["start_s"])
+    if args.from_s is not None:
+        print(f"run-up overridden: {from_s:.1f} -> {args.from_s:.1f} "
+              f"(previous end closed {prev_close:.1f})")
+        from_s = args.from_s
     root = Path(args.cache_root) if args.cache_root else cache.default_root()
     video = root / "videos" / f"{vid}.mp4"
     if not video.is_file():
