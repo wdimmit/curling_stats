@@ -1,5 +1,5 @@
 /* What a single shot is, and what the page says about it. */
-import { TYPE } from "./constants.mjs";
+import { TYPE, TYPES } from "./constants.mjs";
 
 export const isBlank = s => s && (s.state_known === false || s.missing);
 export const typeOf = s => (s ? (s.shot_type || "unknown") : "unknown");
@@ -51,4 +51,26 @@ export function nextBlankAfter(items, ei, si) {
   if (!items.length) return null;
   const at = items.findIndex(it => it.ei > ei || (it.ei === ei && it.si > si));
   return items[at === -1 ? 0 : at];
+}
+
+/* Which group of shot types to show on arriving at a rock, or null for none.
+ *
+ * A rock nothing has typed opens no group. The detector offers only the four
+ * coarse categories and is often wrong -- the fine type is a statement about
+ * what was *called*, which is the charter's to give -- so a pre-opened row
+ * there would be suggesting an answer nobody has.
+ *
+ * Otherwise the row stays where the charter left it, and moves only when this
+ * rock's type is not in the group already open. That keeps a stable click
+ * target through a run of similar shots, while never showing a typed rock
+ * with nothing highlighted, which reads as ungraded when it is not.
+ *
+ * Only ever consulted on arriving at a different rock. Applied on every
+ * render it would fight the charter: clicking "Hit" to turn a draw into a hit
+ * would snap the row back to Draw before the type could be picked.
+ */
+export function openGroupFor(type, openGroup) {
+  if (!type || type === "unknown") return null;
+  if (TYPES.some(t => t.group === openGroup && t.id === type)) return openGroup;
+  return TYPES.find(t => t.id === type)?.group ?? null;
 }

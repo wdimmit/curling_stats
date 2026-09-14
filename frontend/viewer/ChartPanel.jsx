@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   GROUPS, MISS_REASONS, TALLBOX, TYPES,
-  blankQueue, identity, isBlank, splitText, thinkText, typeOf,
+  blankQueue, identity, isBlank, openGroupFor, splitText, thinkText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 
@@ -31,10 +31,24 @@ function useTypedField(initial, commit, busy) {
   };
 }
 
-function TypePicker({ shot, openGroup, readOnly, actions }) {
+/* The rule itself is in core/shots.mjs, where it is tested. This is only
+ * "when": on arriving at a different rock, never on a re-render -- applied on
+ * every render, clicking "Hit" to turn a draw into a hit would snap the row
+ * back to Draw before the type could be picked. */
+function useOpenGroup(shotKey, current, openGroup, actions) {
+  const arrivedOn = useRef(null);
+  useEffect(() => {
+    if (arrivedOn.current === shotKey) return;
+    arrivedOn.current = shotKey;
+    const want = openGroupFor(current, openGroup);
+    if (want !== openGroup) actions.openGroup(want);
+  });
+}
+
+function TypePicker({ shot, shotKey, openGroup, readOnly, actions }) {
   const current = typeOf(shot);
-  const group = openGroup || TYPES.find(t => t.id === current)?.group || "Draw";
-  useEffect(() => { if (!openGroup) actions.openGroup(group); }, [openGroup, group, actions]);
+  useOpenGroup(shotKey, current, openGroup, actions);
+  const group = openGroup;
   return (
     <>
       <h2>Shot type</h2>
@@ -45,7 +59,7 @@ function TypePicker({ shot, openGroup, readOnly, actions }) {
         ))}
       </div>
       <div className="pick" id="typeList" style={{ marginTop: 6 }}>
-        {TYPES.filter(t => t.group === group).map(t => (
+        {group && TYPES.filter(t => t.group === group).map(t => (
           <button key={t.id} data-t={t.id} className={t.id === current ? "on" : ""}
                   onClick={() => !readOnly && actions.setType(t.id)}>{t.name}</button>
         ))}
@@ -68,7 +82,8 @@ function Grading({ shot, shotKey, openGroup, readOnly, others, actions }) {
   const before = others.find(x => shot?.before === identity(x));
   return (
     <div id="grading">
-      <TypePicker shot={shot} openGroup={openGroup} readOnly={readOnly} actions={actions} />
+      <TypePicker shot={shot} shotKey={shotKey} openGroup={openGroup}
+                  readOnly={readOnly} actions={actions} />
 
       <h3>Score</h3>
       <div className="pick scorebtns" id="scoreBtns">

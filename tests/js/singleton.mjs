@@ -49,6 +49,7 @@ export const isGraded = core.isGraded;
 export const typeOf = core.typeOf;
 export const peekMode = core.peekMode;
 export const renumberNotice = core.renumberNotice;
+export const openGroupFor = core.openGroupFor;
 export const shotVideoTime = s => core.shotVideoTime(s, state.leadIn);
 
 export const houseViewBox = core.houseViewBox;

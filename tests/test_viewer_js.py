@@ -906,6 +906,36 @@ class TestTheBarsPerRock:
         assert got is not None and got["x"] > 0
 
 
+class TestWhichTypesAreOffered:
+    """The shot-type row is two levels: four groups, and the types inside the
+    open one. What it does on arriving at a rock is the whole question."""
+
+    def test_a_rock_nothing_has_typed_opens_nothing(self):
+        """The detector offers four coarse guesses and is often wrong -- the
+        fine type is the charter's to give -- so an untyped rock must not be
+        shown a pre-opened row suggesting an answer nobody has."""
+        assert run_js('out(openGroupFor("unknown", "Hit"));') is None
+        assert run_js('out(openGroupFor(null, "Hit"));') is None
+
+    def test_a_typed_rock_opens_the_group_holding_its_type(self):
+        assert run_js('out(openGroupFor("peel", null));') == "Hit"
+        assert run_js('out(openGroupFor("free_guard", null));') == "Guard"
+
+    def test_it_stays_put_when_this_rock_is_in_the_group_already_open(self):
+        """A run of hits is one click a rock, and the target does not move."""
+        assert run_js('out(openGroupFor("hit_roll", "Hit"));') == "Hit"
+
+    def test_it_moves_when_this_rock_is_somewhere_else(self):
+        """Otherwise a typed rock shows nothing highlighted, which reads as
+        ungraded when it is not."""
+        assert run_js('out(openGroupFor("draw", "Hit"));') == "Draw"
+
+    def test_every_type_can_be_reached(self):
+        got = run_js("out(TYPES.map(t => [t.id, openGroupFor(t.id, null)]));")
+        unreachable = [t for t, g in got if g is None and t != "unknown"]
+        assert not unreachable, f"no group offers {unreachable}"
+
+
 class TestTheJsGateIsTheStylesheetGate:
     """The phone shell is a stylesheet block, and the JS has to agree about
     exactly when it is in force -- the crop, the bottom sheet and the
