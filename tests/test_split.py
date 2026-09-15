@@ -307,6 +307,14 @@ class TestTheSideViewIsTheSourceForTheThrowingEnd:
         d = delivery_at(t0=40.0, speed=0.8)
         assert split.long_split(r, d, t_hog=panel + split.CROSS_CHECK_S / 2)
 
+    def test_a_disagreement_of_exactly_the_tolerance_is_kept(self):
+        """The check is a strict ``>``, so a disagreement of exactly
+        ``CROSS_CHECK_S`` is a decision, not an accident: pin it down."""
+        r = release_at(t0=0.0, speed=2.0)
+        panel = split.hog_crossing(r.track)
+        d = delivery_at(t0=40.0, speed=0.8)
+        assert split.long_split(r, d, t_hog=panel + split.CROSS_CHECK_S)
+
     def test_a_throw_the_panel_never_saw_still_gets_a_split(self):
         """This is the whole point: 40% of throws are lost before the line."""
         r = release_at(t0=0.0, speed=2.0, y1=2.5)     # lost well short
