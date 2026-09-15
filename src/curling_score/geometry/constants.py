@@ -21,6 +21,7 @@ R_12FT_M = 1.829
 # --- Sheet (R1) -------------------------------------------------------------
 SHEET_WIDTH_M = 4.750
 TEE_TO_TEE_M = 34.747
+BACKBOARD_TO_BACKBOARD_M = 45.720  # 150 ft, same sheet diagram as TEE_TO_TEE_M
 TEE_TO_BACKLINE_M = 1.829  # back edge of the 12-ft ring sits on the back line
 TEE_TO_HOGLINE_M = 6.401  # to the inside edge
 HOGLINE_WIDTH_M = 0.102

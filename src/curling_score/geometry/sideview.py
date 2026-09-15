@@ -48,7 +48,7 @@ def locate(layout, width: int, height: int) -> dict[str, Rect]:
 # far tee. It sets only the curvature between the two fitted rows; the tripwire
 # does not use it, and the depth scale at the hog line moves by under 5% across
 # D = 35..45 m.
-CAMERA_TO_FAR_TEE_M = 34.747 + (45.720 - 34.747) / 2
+CAMERA_TO_FAR_TEE_M = C.TEE_TO_TEE_M + (C.BACKBOARD_TO_BACKBOARD_M - C.TEE_TO_TEE_M) / 2
 
 # Measured on the clean plates of all ten of the club's side views (5 sheets,
 # left and right), the annulus's greenness peak runs 6.44 to 13.27. 2.5 sits
@@ -56,8 +56,13 @@ CAMERA_TO_FAR_TEE_M = 34.747 + (45.720 - 34.747) / 2
 # hog line cannot be mistaken for paint at any threshold here: its greenness
 # is negative, not merely small.
 _GREEN_THRESHOLD = 2.5
-_HOUSE_SEARCH = (0.33, 0.50)   # fraction of the view's height to look in
-_HOG_SEARCH_PX = 140           # how far below the house the line can be
+# Fitted over both side views of all five club sheets, the tee lands at rows
+# 410.2-489.7 of a 1080-row frame, i.e. 0.380-0.453. (0.33, 0.50) brackets that
+# with about 0.05 spare either side.
+_HOUSE_SEARCH = (0.33, 0.50)
+# Over the same ten views, the hog line sits 57-66 px below the annulus's last
+# green edge. 140 is a little over twice the largest gap seen.
+_HOG_SEARCH_PX = 140
 
 
 @dataclass(frozen=True)
@@ -124,16 +129,19 @@ def solve(plate, rect: Rect, name: str = "side") -> SideView:
     h = rect[3]
     lo, hi = int(h * _HOUSE_SEARCH[0]), int(h * _HOUSE_SEARCH[1])
     edges = _crossings(green, lo, hi, _GREEN_THRESHOLD)
-    if len(edges) >= 4:
-        seen = [edges[0], edges[1], edges[-2], edges[-1]]
-        want = np.array([-C.R_12FT_M, -C.R_8FT_M, C.R_8FT_M, C.R_12FT_M])
-    elif len(edges) >= 2:
-        # A house far enough off blurs its annulus into one run; the outer
-        # edges still bracket the tee.
-        seen = [edges[0], edges[-1]]
-        want = np.array([-C.R_12FT_M, C.R_12FT_M])
-    else:
+    if len(edges) < 2:
         raise SideViewError(f"{name}: found {len(edges)} green edges, need at least 2")
+
+    # Fit from the outermost pair alone. A noisy plate can throw extra
+    # crossings inside the annulus -- one of the club's ten views does,
+    # yielding six -- and picking the 8-ft pair by position (edges[1],
+    # edges[-2]) then mispairs silently: the fit still lands in the plausible
+    # band, which is worse than failing. The inner edges were also the less
+    # trustworthy pair regardless: paint bleed widens the band inward by
+    # about 7 px against 4 px at the outer edge, so preferring them over the
+    # outer pair is not a trade worth making even when they are genuine.
+    seen = [edges[0], edges[-1]]
+    want = np.array([-C.R_12FT_M, C.R_12FT_M])
 
     hog = _hog_row(lum, int(edges[-1]) + 12, name)
 

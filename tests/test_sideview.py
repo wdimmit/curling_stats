@@ -51,7 +51,7 @@ class TestSolve:
 
     def test_the_tee_is_fitted_not_taken_as_the_ring_s_centroid(self):
         """Perspective magnifies the annulus's near half, so its centroid sits
-        about 2 px toward the camera. Fitting the four painted edges does not."""
+        about 2 px toward the camera. Fitting the outer painted edges does not."""
         plate = synth.side_view(tee_row=430.0, hog_row=520.0)
         got = sideview.solve(plate, (0, 0, 810, 1080))
         green = (plate[:, :, 1].astype(float)
@@ -65,6 +65,17 @@ class TestSolve:
         got = sideview.solve(synth.side_view(), (0, 0, 810, 1080))
         assert got.row_for(0.0) == pytest.approx(got.tee_row, abs=0.01)
         assert got.row_for(C.TEE_TO_HOGLINE_M) == pytest.approx(got.hog_row, abs=0.01)
+
+    def test_extra_edges_from_paint_bleed_do_not_mispair(self):
+        """One of the club's ten real views throws six green crossings instead
+        of four -- an extra pair inside the annulus. Picking the 8-ft pair by
+        position there would silently mispair; fitting the outer pair alone
+        must still recover the rows."""
+        plate = synth.side_view(tee_row=430.0, hog_row=520.0)
+        plate[425:429, 300:560] = synth.GREEN_PAINT
+        got = sideview.solve(plate, (0, 0, 810, 1080))
+        assert got.tee_row == pytest.approx(430.0, abs=1.5)
+        assert got.hog_row == pytest.approx(520.0, abs=1.5)
 
     def test_ice_with_no_house_on_it_is_refused(self):
         import numpy as np
