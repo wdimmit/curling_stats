@@ -73,10 +73,12 @@ class TestScanMoments:
 
     def test_an_empty_moment_yields_exactly_one_candidate(self):
         """Both colour scans find nothing in an empty moment and would each
-        emit an indistinguishable "clear" row at the same stem -- one moment
-        must produce one candidate, or `sideframes.select`, which dedupes by
-        object identity rather than by stem, would count the same JPEG twice
-        against a quota.
+        emit an indistinguishable "clear" row at the same stem -- two objects
+        for one JPEG. `sideframes.select` dedupes on the stem itself, not on
+        object identity, so it alone would not be fooled by the duplicate --
+        but `pick_writes` and `sidestages._supply` read the pool one row at a
+        time too, and should not each have to notice and collapse a
+        duplicate this module had no reason to create.
         """
         got = sidepool.scan_moments("v1", moments([None]),
                                     {"left": VIEW}, clip_start_s=100.0)

@@ -124,12 +124,16 @@ def scan_moments(video_id, moments, views, clip_start_s) -> list[SideCandidate]:
     actually proposed anything for a person to look at. A moment where
     *neither* colour found anything gets exactly one ``"clear"`` row rather
     than one per colour scan: with nothing to attribute to a colour, the two
-    scans' "clear" rows would otherwise be identical down to the stem, and a
-    caller that dedupes by identity rather than by stem (``sideframes.
-    select`` does) would count the same JPEG twice against a quota. A moment
-    with a real proposal or an ``"occluded"`` blob under one colour still
-    gets its own row for that colour even when the other colour's scan of the
-    same moment is "clear" -- only two identical "clear" rows collapse.
+    scans' "clear" rows would otherwise be identical down to the stem -- two
+    objects for one JPEG. ``sideframes.select`` dedupes on the stem itself,
+    not on object identity (fixed in ``efc6e22``), so it alone would not be
+    fooled by the duplicate; but ``pick_writes`` and ``sidestages._supply``
+    also read the pool one row at a time, and this module should not depend
+    on every caller remembering to collapse a duplicate it had no reason to
+    create. Collapsed once, here, at the source. A moment with a real
+    proposal or an ``"occluded"`` blob under one colour still gets its own
+    row for that colour even when the other colour's scan of the same moment
+    is "clear" -- only two identical "clear" rows collapse.
 
     ``outcome`` is not the moment's own verdict: it is the whole clip-view-
     colour window's crossing key from ``longview.find_in_frames``, stamped
