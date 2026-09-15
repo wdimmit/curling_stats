@@ -48,12 +48,38 @@ _MIN_SAMPLES = 6
 OFFSET_S = 0.073
 
 
+# Stable, closed set of kinds ``Crossing.key`` takes. ``reason`` stays free
+# prose for a person (it carries a speed or a candidate count); a caller that
+# wants to bucket many refusals -- a coverage report -- should count on
+# ``key`` instead, since two different speeds or candidate counts are the
+# same *kind* of refusal and prose fragments a histogram into one row each.
+KEY_OK = "ok"
+KEY_NO_FRAMES = "no_frames"
+KEY_NO_CANDIDATE = "no_candidate"
+KEY_AMBIGUOUS = "ambiguous"
+KEY_NEVER_REACHED = "never_reached"
+KEY_UNSTEADY = "unsteady"
+KEY_BAD_SPEED = "bad_speed"
+
+KEYS = frozenset({
+    KEY_OK, KEY_NO_FRAMES, KEY_NO_CANDIDATE, KEY_AMBIGUOUS,
+    KEY_NEVER_REACHED, KEY_UNSTEADY, KEY_BAD_SPEED,
+})
+
+
 @dataclass(frozen=True)
 class Crossing:
-    """When a stone crossed the line, or why we will not say."""
+    """When a stone crossed the line, or why we will not say.
+
+    ``key`` is ``reason``'s stable classification, drawn from the closed set
+    ``KEYS`` -- see the note above it. Defaults to ``""`` (unclassified) so a
+    ``Crossing`` built outside this module, such as a test double standing in
+    for the detector, is not forced to pick one.
+    """
 
     t: float | None
     reason: str
+    key: str = ""
     width_px: float = 0.0
 
     def __bool__(self) -> bool:
@@ -157,7 +183,7 @@ def find_in_frames(frames, view, color, times) -> Crossing:
     moving = [tr for tr in tracks.values()
               if len(tr) >= _MIN_SAMPLES and tr[-1][1] > tr[0][1]]
     if not moving:
-        return Crossing(None, "no candidate that could be a stone in flight")
+        return Crossing(None, "no candidate that could be a stone in flight", KEY_NO_CANDIDATE)
     crossed = [tr for tr in moving
                if tr[0][1] <= view.hog_row <= tr[-1][1]]
     if len(crossed) > 1:
@@ -171,14 +197,14 @@ def find_in_frames(frames, view, color, times) -> Crossing:
         # candidates this evenly matched by width are not reliably
         # distinguishable this way, so this refuses unconditionally rather
         # than publish a guess with no safety margin behind it.
-        return Crossing(None, f"two candidates crossed the line ({len(crossed)})")
+        return Crossing(None, f"two candidates crossed the line ({len(crossed)})", KEY_AMBIGUOUS)
     if not crossed:
-        return Crossing(None, "the stone never reached the line")
+        return Crossing(None, "the stone never reached the line", KEY_NEVER_REACHED)
     track = crossed[0]
 
     idx = _crossing_index(track, view.hog_row)
     if idx is None:
-        return Crossing(None, "the stone never reached the line")
+        return Crossing(None, "the stone never reached the line", KEY_NEVER_REACHED)
     # Steadiness only has to hold up to the crossing itself, and only in the
     # samples immediately around it: what the same x-bin was doing several
     # seconds earlier (often still noisy while the handle first resolves out
@@ -189,17 +215,17 @@ def find_in_frames(frames, view, color, times) -> Crossing:
     lo = max(0, idx - (_MIN_SAMPLES - 2))
     local = track[lo:idx + 2]
     if any(b - a < -1.0 for (_, a, _), (_, b, _) in zip(local, local[1:])):
-        return Crossing(None, "the candidate did not travel steadily")
+        return Crossing(None, "the candidate did not travel steadily", KEY_UNSTEADY)
     span = track[-1][0] - track[0][0]
     if span > 0:
         metres = abs(view.metres_at(track[-1][1]) - view.metres_at(track[0][1]))
         speed = metres / span
         if not SPEED_BOUNDS_M_S[0] <= speed <= SPEED_BOUNDS_M_S[1]:
-            return Crossing(None, f"speed {speed:.2f} m/s is not a delivery")
+            return Crossing(None, f"speed {speed:.2f} m/s is not a delivery", KEY_BAD_SPEED)
     (t0, r0, _), (t1, r1, _) = track[idx], track[idx + 1]
     frac = (view.hog_row - r0) / (r1 - r0)
     t = t0 + frac * (t1 - t0) + OFFSET_S
-    return Crossing(t, "ok", width_px=float(np.median([b for _, _, b in track])))
+    return Crossing(t, "ok", KEY_OK, width_px=float(np.median([b for _, _, b in track])))
 
 
 def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
@@ -227,7 +253,7 @@ def find_crossing(video, view, color: str, t0: float, t1: float,
     """Seek, decode and time one crossing."""
     frames, times = decode(video, view.rect, t0, t1, fps)
     if not len(frames):
-        return Crossing(None, "no frames decoded")
+        return Crossing(None, "no frames decoded", KEY_NO_FRAMES)
     shifted = type(view)(rect=(0, 0, view.rect[2], view.rect[3]),
                          tee_row=view.tee_row, hog_row=view.hog_row, d_m=view.d_m)
     return find_in_frames(frames, shifted, color, times)

@@ -12,6 +12,13 @@ Detection is read from the cache built by earlier passes over these videos
 (``detect/cache.py``) -- nothing in this script's imports touches the files
 that key it, so a video already detected costs no GPU time here, only the
 handful of seconds it takes to walk the cached results back into shots.
+
+This is a read-mostly measurement, but not a read-only one: ``proxy.ensure_proxy``
+builds a proxy if one is missing, ``detect_end``/``detect_span`` write a
+detection miss to the cache by default (``use_cache=True``), and ``setups_for``
+writes ``setups-<vid>.pkl``. All additive, none corrupting -- but point
+``--cache-root`` somewhere disposable rather than a shared cache root if you
+would rather this script not write to it.
 """
 
 from __future__ import annotations
@@ -62,6 +69,55 @@ def side_split(shot):
     return split.long_split(getattr(shot, "release", None),
                             getattr(shot, "delivery", None),
                             t_hog=hogtime.crossing(shot))
+
+
+# Stable attribution for a side-view crossing longview *did* find (t_hog is
+# not None) that split.long_split still declined to publish. This mirrors
+# long_split's own control flow, in the same order, so it says which one of
+# its checks was the reason -- it does not change split.py, and none of its
+# own thresholds are altered or duplicated loosely: they are read straight
+# off ``split`` (``split.CROSS_CHECK_S``, ``split.HOG_APPARENT_Y_M``,
+# ``split.SPEED_TOLERANCE``). See FIX 1 in the task brief: an earlier report
+# attributed all 57 non-published-but-longview-found crossings to the
+# cross-check alone, which is arithmetically impossible (only 48 shots had a
+# panel reading to cross-check against at all) -- this replaces the guess
+# with a measurement.
+GATE_NO_RELEASE = "no_release"           # long_split needs a release track too
+GATE_NO_DELIVERY = "no_delivery"         # long_split needs a delivery too
+GATE_CROSS_CHECK = "cross_check"         # panel reading disagreed by > CROSS_CHECK_S
+GATE_NO_FAR_HOG = "no_far_hog_crossing"  # delivery track never crossed (or non-increasing)
+GATE_SPEED_TOLERANCE = "speed_tolerance"  # far crossing looked faster than the near one
+GATE_UNACCOUNTED = "unaccounted"         # none of the above -- would mean long_split
+                                         # should have published; a bug in this mirror
+                                         # if it is ever nonzero, not in split.py
+
+GATES = (GATE_NO_RELEASE, GATE_NO_DELIVERY, GATE_CROSS_CHECK,
+        GATE_NO_FAR_HOG, GATE_SPEED_TOLERANCE, GATE_UNACCOUNTED)
+
+
+def attribute_side_refusal(release, delivery, t_hog):
+    """Which gate in split.long_split stopped a side-view crossing we have.
+
+    Call only when ``t_hog is not None`` (longview found a crossing) and
+    ``side_split(shot)`` was ``None`` for the same shot -- i.e. one of these
+    order-matched checks is why, not a missing reading.
+    """
+    if release is None:
+        return GATE_NO_RELEASE
+    if delivery is None:
+        return GATE_NO_DELIVERY
+    panel = split.hog_crossing(getattr(release, "track", ()))
+    if panel is not None and abs(panel - t_hog) > split.CROSS_CHECK_S:
+        return GATE_CROSS_CHECK
+    end = split.crossing_time(getattr(delivery, "track", ()) or (),
+                              split.HOG_APPARENT_Y_M)
+    if end is None or end <= t_hog:
+        return GATE_NO_FAR_HOG
+    near = split.speed_at_line(getattr(release, "track", ()))
+    far = split.speed_at_line(getattr(delivery, "track", ()))
+    if near and far and far > near * split.SPEED_TOLERANCE:
+        return GATE_SPEED_TOLERANCE
+    return GATE_UNACCOUNTED
 
 
 def _sheet_for(vid):
@@ -152,37 +208,78 @@ class VideoStats:
         self.vid = vid
         self.sheet = sheet
         self.n_ends = 0
+        self.n_failed_ends = 0     # FIX 6: ends that raised, counted rather than silently dropped
         self.n_shots = 0
         self.side_splits = 0
         self.panel_splits = 0
-        self.diffs = []           # t_hog - panel, wherever both fired
-        self.refusals = {}        # reason -> count
-        self.hand = None          # (errors, refused) on the reference VOD, if applicable
+        self.side_crossings_found = 0  # FIX 2.3: longview produced a crossing at all,
+                                       # before long_split's gates decide anything
+        self.published_corroborated = 0    # FIX 2.1: published, panel reading existed
+        self.published_uncorroborated = 0  # FIX 2.1: published, panel never crossed its line
+        self.diffs = []            # t_hog - panel, wherever both fired (pre-veto population)
+        self.diffs_published = []  # t_hog - panel, restricted to published splits (post-veto)
+        self.refusal_gates = {}    # FIX 1: gate name -> count, for side crossings longview
+                                   # found but long_split did not publish
+        self.refusals = {}         # FIX 5: longview.Crossing.key -> [count, example reason]
+        self.hand = None           # (errors, refused) on the reference VOD, if applicable
 
-    def add_refusal(self, reason):
-        self.refusals[reason] = self.refusals.get(reason, 0) + 1
+    def add_refusal(self, reason, key):
+        bucket = self.refusals.setdefault(key, [0, reason])
+        bucket[0] += 1
+
+    def add_gate(self, gate):
+        self.refusal_gates[gate] = self.refusal_gates.get(gate, 0) + 1
 
     def report(self):
         lines = [f"== {self.vid} (sheet {self.sheet if self.sheet is not None else 'unknown'}) =="]
-        lines.append(f"  ends measured: {self.n_ends}")
+        lines.append(f"  ends measured: {self.n_ends}"
+                     + (f" ({self.n_failed_ends} failed and excluded)"
+                        if self.n_failed_ends else ""))
         if self.n_shots:
-            lines.append(f"  side-view coverage:  {self.side_splits}/{self.n_shots} "
+            lines.append(f"  side-view coverage (published splits): {self.side_splits}/{self.n_shots} "
                         f"({100 * self.side_splits / self.n_shots:.1f}%)")
+            lines.append(f"  side-view raw coverage (crossing found, before long_split's gates): "
+                        f"{self.side_crossings_found}/{self.n_shots} "
+                        f"({100 * self.side_crossings_found / self.n_shots:.1f}%)")
             lines.append(f"  panel-only coverage: {self.panel_splits}/{self.n_shots} "
                         f"({100 * self.panel_splits / self.n_shots:.1f}%)")
         else:
             lines.append("  no shots measured")
+        if self.side_splits:
+            lines.append(f"  published splits with panel corroboration (cross-checked): "
+                        f"{self.published_corroborated}/{self.side_splits}")
+            lines.append(f"  published splits with NO panel reading (never cross-checked): "
+                        f"{self.published_uncorroborated}/{self.side_splits}")
         if self.diffs:
             ad = sorted(abs(d) for d in self.diffs)
-            lines.append(f"  agreement where both fired: n={len(ad)}, "
+            lines.append(f"  agreement where both fired, pre-veto population (n={len(ad)}, "
+                        f"includes shots that can never be published and excludes every "
+                        f"published split with no panel reading): "
                         f"median |diff|={statistics.median(ad):.3f}s, "
                         f"worst |diff|={ad[-1]:.3f}s")
         else:
             lines.append("  agreement where both fired: no shots had both readings")
+        if self.diffs_published:
+            adp = sorted(abs(d) for d in self.diffs_published)
+            lines.append(f"  agreement among PUBLISHED splits only, post-veto (n={len(adp)}, "
+                        f"<= {split.CROSS_CHECK_S}s by construction): "
+                        f"median |diff|={statistics.median(adp):.3f}s, "
+                        f"worst |diff|={adp[-1]:.3f}s")
+        if self.refusal_gates:
+            total_gated = sum(self.refusal_gates.values())
+            lines.append(f"  why a side-view crossing longview found ({self.side_crossings_found} "
+                        f"total) was not published ({total_gated} of them, self-checking: "
+                        f"{self.side_crossings_found} found - {self.side_splits} published "
+                        f"= {self.side_crossings_found - self.side_splits} should equal "
+                        f"{total_gated}):")
+            for gate, n in sorted(self.refusal_gates.items(), key=lambda kv: -kv[1]):
+                lines.append(f"    {n:3d}  {gate}")
         if self.refusals:
-            lines.append("  refusal reasons:")
-            for reason, n in sorted(self.refusals.items(), key=lambda kv: -kv[1]):
-                lines.append(f"    {n:3d}  {reason}")
+            total = sum(n for n, _ in self.refusals.values())
+            lines.append(f"  longview refusal reasons ({total} total, bucketed by kind "
+                        f"via Crossing.key -- see FIX 5):")
+            for key, (n, example) in sorted(self.refusals.items(), key=lambda kv: -kv[1][0]):
+                lines.append(f"    {n:3d}  {key:14s} e.g. {example!r}")
         if self.hand is not None:
             errors, refused = self.hand
             if errors:
@@ -239,6 +336,7 @@ def measure_video(video_path, root, detector):
                 print(f"  {vid} game {game.index} end {end.number}: "
                      f"FAILED to build shots: {exc!r}", flush=True)
                 prev_end_s = end.end_s
+                stats.n_failed_ends += 1  # FIX 6: count it, don't just drop it
                 done_ends += 1
                 continue
             if not shots:
@@ -260,24 +358,44 @@ def measure_video(video_path, root, detector):
 
             end_side_splits = end_panel_splits = 0
             for shot in shots:
-                if side_split(shot) is not None:
+                r = getattr(shot, "release", None)
+                delivery = getattr(shot, "delivery", None)
+                t_hog = hogtime.crossing(shot)
+                panel_t = split.hog_crossing(getattr(r, "track", ())) if r else None
+
+                ss = side_split(shot)
+                if ss is not None:
                     stats.side_splits += 1
                     end_side_splits += 1
+                    # FIX 2.1/2.2: a published split whose release track never
+                    # crossed the panel's own hog line was never cross-checked
+                    # against anything -- corroborated vs uncorroborated, and
+                    # agreement restricted to the published (post-veto) population.
+                    if panel_t is not None:
+                        stats.published_corroborated += 1
+                        stats.diffs_published.append(t_hog - panel_t)
+                    else:
+                        stats.published_uncorroborated += 1
                 if panel_only_split(shot) is not None:
                     stats.panel_splits += 1
                     end_panel_splits += 1
 
                 got = crossing_by_id.get(id(shot))
                 if got is not None and not got:
-                    stats.add_refusal(got.reason)
+                    stats.add_refusal(got.reason, got.key)
                 elif view is None and not getattr(shot, "missing", False):
-                    stats.add_refusal("no calibrated side view for this panel")
+                    stats.add_refusal("no calibrated side view for this panel", "no_side_view")
 
-                t_hog = hogtime.crossing(shot)
-                r = getattr(shot, "release", None)
-                panel_t = split.hog_crossing(getattr(r, "track", ())) if r else None
-                if t_hog is not None and panel_t is not None:
-                    stats.diffs.append(t_hog - panel_t)
+                if t_hog is not None:
+                    # FIX 2.3: longview found a crossing at all, before any of
+                    # long_split's gates get a say.
+                    stats.side_crossings_found += 1
+                    if panel_t is not None:
+                        stats.diffs.append(t_hog - panel_t)
+                    if ss is None:
+                        # FIX 1: measure, don't guess, which gate stopped a
+                        # side-view crossing longview was willing to report.
+                        stats.add_gate(attribute_side_refusal(r, delivery, t_hog))
 
             done_ends += 1
             print(f"  {vid} game {game.index} end {end.number}: done "
@@ -353,20 +471,66 @@ def main():
     total_shots = sum(s.n_shots for s in all_stats)
     total_side = sum(s.side_splits for s in all_stats)
     total_panel = sum(s.panel_splits for s in all_stats)
+    total_raw = sum(s.side_crossings_found for s in all_stats)
+    total_corroborated = sum(s.published_corroborated for s in all_stats)
+    total_uncorroborated = sum(s.published_uncorroborated for s in all_stats)
+    total_failed_ends = sum(s.n_failed_ends for s in all_stats)
     all_diffs = [d for s in all_stats for d in s.diffs]
+    all_diffs_published = [d for s in all_stats for d in s.diffs_published]
+    all_gates = {}
+    for s in all_stats:
+        for gate, n in s.refusal_gates.items():
+            all_gates[gate] = all_gates.get(gate, 0) + n
+    all_refusals = {}
+    for s in all_stats:
+        for key, (n, example) in s.refusals.items():
+            bucket = all_refusals.setdefault(key, [0, example])
+            bucket[0] += n
+
     print(f"  videos measured: {len(all_stats)}", flush=True)
-    print(f"  ends measured:   {sum(s.n_ends for s in all_stats)}", flush=True)
+    print(f"  ends measured:   {sum(s.n_ends for s in all_stats)}"
+         + (f" ({total_failed_ends} failed and excluded)" if total_failed_ends else ""),
+         flush=True)
     print(f"  shots measured:  {total_shots}", flush=True)
     if total_shots:
-        print(f"  side-view coverage:  {total_side}/{total_shots} "
+        print(f"  side-view coverage (published splits): {total_side}/{total_shots} "
              f"({100 * total_side / total_shots:.1f}%)", flush=True)
+        print(f"  side-view raw coverage (crossing found, before long_split's gates): "
+             f"{total_raw}/{total_shots} ({100 * total_raw / total_shots:.1f}%)", flush=True)
         print(f"  panel-only coverage: {total_panel}/{total_shots} "
              f"({100 * total_panel / total_shots:.1f}%)", flush=True)
+    if total_side:
+        print(f"  published splits with panel corroboration (cross-checked): "
+             f"{total_corroborated}/{total_side}", flush=True)
+        print(f"  published splits with NO panel reading (never cross-checked): "
+             f"{total_uncorroborated}/{total_side}", flush=True)
     if all_diffs:
         ad = sorted(abs(d) for d in all_diffs)
-        print(f"  agreement where both fired: n={len(ad)}, "
+        print(f"  agreement where both fired, pre-veto population (n={len(ad)}, "
+             f"includes shots that can never be published and excludes every "
+             f"published split with no panel reading): "
              f"median |diff|={statistics.median(ad):.3f}s, worst |diff|={ad[-1]:.3f}s",
              flush=True)
+    if all_diffs_published:
+        adp = sorted(abs(d) for d in all_diffs_published)
+        print(f"  agreement among PUBLISHED splits only, post-veto (n={len(adp)}, "
+             f"<= {split.CROSS_CHECK_S}s by construction): "
+             f"median |diff|={statistics.median(adp):.3f}s, worst |diff|={adp[-1]:.3f}s",
+             flush=True)
+    if all_gates:
+        total_gated = sum(all_gates.values())
+        print(f"  why a side-view crossing longview found ({total_raw} total) was not "
+             f"published ({total_gated} of them, self-checking: {total_raw} found - "
+             f"{total_side} published = {total_raw - total_side} should equal "
+             f"{total_gated}):", flush=True)
+        for gate, n in sorted(all_gates.items(), key=lambda kv: -kv[1]):
+            print(f"    {n:3d}  {gate}", flush=True)
+    if all_refusals:
+        total = sum(n for n, _ in all_refusals.values())
+        print(f"  longview refusal reasons ({total} total, bucketed by kind via "
+             f"Crossing.key):", flush=True)
+        for key, (n, example) in sorted(all_refusals.items(), key=lambda kv: -kv[1][0]):
+            print(f"    {n:3d}  {key:14s} e.g. {example!r}", flush=True)
     print("\n  This script only measures; the gate in the task brief "
          "(coverage >= 90%, panel agreement <= 0.25s, hand marks <= 0.1s) "
          "is reported against below, not decided here.", flush=True)
