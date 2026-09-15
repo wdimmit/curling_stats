@@ -177,8 +177,10 @@ It is *not* true that a trained detector touches `detect/longview.py` alone --
 this document said so, and ds13 has since made it wrong.
 `harvest/sidepool.py` depends on eight of that module's symbols (`candidates`,
 `find_in_frames`, `colour_mask`, `runs`, `BODY_DARKER_THAN_ICE`,
-`STONE_WIDTH_AT_HOG_PX`, `Proposal`, `KEYS`) and `harvest/sideframes.py` pins
-its refusal quota to `longview.KEYS`. That is deliberate: ds13 exists to mine
+`STONE_WIDTH_AT_HOG_PX`, `Proposal`, `KEY_OK`), and `harvest/sideframes.py`'s
+refusal quota is keyed on `longview.KEYS`' members -- not by importing them,
+but pinned by `tests/test_sideframes.py`, which asserts the quota's keys are a
+subset of that frozenset. That is deliberate: ds13 exists to mine
 the classical detector's *refusals*, so it needs the classical detector to go
 on existing. Rewriting `longview.py` in place would break it. Adding the
 trained detector beside it and pointing `hogtime`'s `find=` at the new one

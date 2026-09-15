@@ -5,10 +5,19 @@ one half by where the stone sits along its travel, the other by which gate
 ``detect/longview.py`` used to refuse it. Both halves need every candidate
 frame described up front, which is this module's job: decode a clip once,
 run the colour scan and the crossing detector over it for both wide views and
-both stone colours, and record a :class:`~curling_score.harvest.sideframes.
-SideCandidate` for *every* moment -- including the ones with no stone in
-them at all, since ``sideframes`` needs "clear" and "occluded" moments to
-choose from as much as it needs a crossing.
+both stone colours, and describe every moment -- including the ones with no
+stone in them at all, since ``sideframes`` needs "clear" and "occluded"
+moments to choose from as much as it needs a crossing.
+
+What is *banked*, though, is only what got a JPEG. That distinction cost a
+Critical: this module used to return a :class:`~curling_score.harvest.
+sideframes.SideCandidate` for every moment scanned while writing at most
+``MAX_PER_CLIP_VIEW`` of them, so ``sideframes.select`` could choose a frame no
+file existed for -- about fourteen in every fifteen -- and the failure surfaced
+as a "missing" count at the very last stage rather than as an error. The pool a
+caller receives is now exactly the set of files on disk. ``stats``, by
+contrast, still counts everything scanned: the refusal taxonomy is about what
+the detector saw, not about what was cheap enough to keep.
 
 The split between :func:`scan_moments` and :func:`scan_clip` mirrors
 ``harvest/pool.py``'s panel scan: ``scan_moments`` takes already-decoded
@@ -126,11 +135,13 @@ def scan_moments(video_id, moments, views, clip_start_s) -> list[SideCandidate]:
     than one per colour scan: with nothing to attribute to a colour, the two
     scans' "clear" rows would otherwise be identical down to the stem -- two
     objects for one JPEG. ``sideframes.select`` dedupes on the stem itself,
-    not on object identity (fixed in ``efc6e22``), so it alone would not be
-    fooled by the duplicate; but ``pick_writes`` and ``sidestages._supply``
-    also read the pool one row at a time, and this module should not depend
-    on every caller remembering to collapse a duplicate it had no reason to
-    create. Collapsed once, here, at the source. A moment with a real
+    not on object identity (fixed in ``efc6e22``), and ``pick_writes`` and
+    ``sidestages._supply`` each dedupe by stem too -- so no caller today is
+    fooled by the duplicate. It is collapsed here anyway because none of them
+    should have to be: a row that describes the absence of a colour has no
+    colour to attribute, so emitting one per colour scan invents a distinction
+    that does not exist, and every consumer then pays to undo it. Collapsed
+    once, at the source. A moment with a real
     proposal or an ``"occluded"`` blob under one colour still gets its own
     row for that colour even when the other colour's scan of the same moment
     is "clear" -- only two identical "clear" rows collapse.
@@ -301,7 +312,7 @@ def build_video_pool(video_id, clip_paths, video_views, out_dir, *,
     frame it picks always has pixels on disk for ``stage_build`` to copy. It
     used to be every moment scanned, written or not: 1197 clips x 24 s x 5 fps
     x 2 views is about 287,000 moments, of which ``pick_writes`` (via
-    ``MAX_PER_CLIP_VIEW``, below) keeps roughly 19,000 -- banking the larger
+    ``MAX_PER_CLIP_VIEW``, above) keeps roughly 19,000 -- banking the larger
     number let ``select`` choose a frame ``pick_writes`` had discarded, and
     ``stage_build`` could only report it missing. ``stats`` still counts over
     everything scanned, not just what was written: ``clips`` and ``moments``

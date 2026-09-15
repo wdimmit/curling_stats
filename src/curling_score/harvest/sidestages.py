@@ -248,13 +248,19 @@ def _expand_quota() -> dict:
 def _supply(pool) -> dict:
     """How many pool *frames* were eligible for each bin, before any cap.
 
-    ``select``'s ``shortfall`` counts frames -- it dedupes the pool by stem,
-    since a moment can arrive as up to two rows (one per colour scan) sharing
-    one JPEG. Counting rows here instead would let one frame inflate a bin's
-    supply by up to 2x, printed right next to a shortfall that cannot be
-    inflated the same way -- exactly backwards when a large supply number is
-    meant to say "the caps, not the archive, are why". So this dedupes first,
-    the same way, and counts frames.
+    ``select``'s ``shortfall`` counts frames -- it dedupes the pool by stem.
+    Counting rows here instead would let one frame inflate a bin's supply,
+    printed right next to a shortfall that cannot be inflated the same way --
+    exactly backwards when a large supply number is meant to say "the caps, not
+    the archive, are why". So this dedupes first, the same way, and counts
+    frames.
+
+    Since ``c3fa3e8`` the banked pool comes only from ``pick_writes``, which is
+    already stem-unique, so on the pool this is actually handed the dedupe is a
+    no-op. It stays because it makes this function correct against *a* pool
+    rather than against the one shape the propose stage happens to produce
+    today -- the cost is a dict comprehension, and the alternative is a
+    correctness claim that silently depends on a caller two modules away.
 
     ``select``'s ``shortfall`` alone cannot tell "the archive had none" from
     "the caps were already spent by the scene pass" -- both read as a bin at

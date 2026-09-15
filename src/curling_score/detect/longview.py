@@ -33,11 +33,21 @@ WINDOW_S = (2.0, 6.5)
 # what a stone actually spanned -- not from a distribution over sheets. The
 # bounds were then set wide enough to keep every crossing that pass found.
 #
-# What would measure them: the widths the detector already records. Crossing
-# carries width_px on every success, and scripts/split_coverage.py walks every
-# shot of every cached video -- so a run of it over more than one video yields
-# the distribution these two numbers are standing in for, per sheet and per
-# view. Worth doing before either is trusted on a sheet nobody has checked.
+# What would measure them is NOT the widths this module already records, and an
+# earlier version of this comment said it was. Crossing.width_px is a median
+# over a track every sample of which came through the gate below, which refuses
+# any body outside WIDTH_BOUNDS * expect_px -- 26.0 to 83.2 px. The sample is
+# censored by the very bounds it would be offered as evidence for, so collecting
+# it can only ever confirm them. It is also a median over the whole 2.0-6.5 s
+# window rather than the width AT the line, which is what
+# STONE_WIDTH_AT_HOG_PX names.
+#
+# Measuring the centre and measuring the bounds are different jobs. The centre
+# could come from the retained population, which width_px samples honestly. The
+# bounds need an UNCENSORED distribution: a measuring pass with the width gate
+# widened or bypassed, recording what is there before anything is refused --
+# and scripts/split_coverage.py would have to be taught to record widths at
+# all, since VideoStats carries no such field today.
 WIDTH_BOUNDS = (0.5, 1.6)
 STONE_WIDTH_AT_HOG_PX = 52.0
 # A delivery crosses its hog line between 1.2 and 3.2 m/s -- the range the 27
@@ -104,11 +114,10 @@ class Crossing:
     t: float | None
     reason: str
     key: str = ""
-    # The median body width over the track. Nothing reads it today -- it is
-    # kept because it is the measurement STONE_WIDTH_AT_HOG_PX and WIDTH_BOUNDS
-    # are standing in for without one (see their comment above), and it costs a
-    # median over a list that already exists. A run of
-    # scripts/split_coverage.py that collected these would settle both numbers.
+    # The median body width over the track. Nothing reads it today. Kept because
+    # it is a cheap median over a list that already exists and is the only width
+    # this module reports -- but see WIDTH_BOUNDS' comment above before treating
+    # it as evidence for those bounds: it is a sample drawn from inside them.
     width_px: float = 0.0
 
     def __bool__(self) -> bool:
