@@ -19,9 +19,10 @@ never touches ffmpeg, a video file or a GPU; ``scan_clip`` is decode plus
 That cost is already doubled before ``MAX_PER_CLIP_VIEW`` (below) even comes
 into it: ``longview.candidates`` runs once inside ``longview.find_in_frames``
 (building the crossing track) and a second time directly in the loop below it
-(finding that moment's own proposal), so every one of a clip's ~287,000
-moment-colour pairs pays for the granite scan twice. Unavoidable without
-reaching into ``longview.find_in_frames`` itself, which is protected code.
+(finding that moment's own proposal), so every moment-colour pair pays for the
+granite scan twice. That is ~480 a clip -- 24 s x 5 fps x 2 colours -- and
+about 574,000 across the 1197-clip archive. Unavoidable without reaching into
+``longview.find_in_frames`` itself, which is protected code.
 """
 
 from __future__ import annotations
@@ -207,10 +208,23 @@ def pick_writes(candidates, max_per_clip_view: int = MAX_PER_CLIP_VIEW):
     reports "clear", and a stone's colour is exactly the fact a "clear" row
     cannot express -- keeping it over the real yellow row would spend the
     clip's whole write budget on rows that record the absence of a red stone
-    and never write the crossing at all. Only when neither row (or, on the
-    rare moment both colours propose something, both rows) carries a proposal
-    does this fall back to stability -- the first one seen, red before
-    yellow, since that ordering carries no information either way.
+    and never write the crossing at all.
+
+    When neither row carries a proposal, this falls back to stability -- the
+    first one seen, red before yellow, since that ordering carries no
+    information either way.
+
+    When *both* do, red wins for the same arbitrary reason, and the yellow
+    row's box is dropped. The frame is still written, since both rows name the
+    same stem and so the same image; what is lost is yellow's proposed box and
+    its share of the frame's ``position`` and ``color``, so the frame reaches
+    selection described as a red one. How often that happens is not measured,
+    and it should not be assumed rare: a delivery arrives at a house that
+    already holds stones, which is the ordinary case rather than the
+    exception. The cost is bounded -- a person labelling the frame draws the
+    missing box, which is what they are there for -- but it does skew the
+    stratification toward red, and measuring it is worth a look once the
+    archive run has produced real counts.
     """
     if max_per_clip_view <= 0 or not candidates:
         return []
