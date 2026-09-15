@@ -39,7 +39,13 @@ class TestCrowding:
 
 class TestScanMoments:
     def test_a_stone_is_binned_by_where_it_sits(self):
-        got = sidepool.scan_moments("v1", moments([470.0, 520.0, 570.0]),
+        # 490 rather than 470 for the approach: the synthetic 12-ft annulus
+        # runs rows 409-453, a stone's handle sits 27 rows above its trailing
+        # edge, and the granite scan in `longview.candidates` stops the moment
+        # the dark span stops being stone-sized. A stone at 470 has its handle
+        # in the paint, so the scan finds no body and the frame reads
+        # "occluded" -- correctly. 490 puts the handle at 463, clear of it.
+        got = sidepool.scan_moments("v1", moments([490.0, 520.0, 570.0]),
                                     {"left": VIEW}, clip_start_s=100.0)
         by_t = {c.t_abs: c for c in got if c.view == "left" and c.color == "red"}
         assert [by_t[t].position for t in sorted(by_t)] == \
@@ -62,7 +68,12 @@ class TestScanMoments:
 
     def test_every_candidate_carries_the_window_outcome(self):
         """A moment's outcome is its clip-view-colour verdict, not its own."""
-        rows = [440.0 + 10 * i for i in range(12)]   # a clean crossing
+        # 490 -> 570 over 12 frames at 5 fps is 4.64 m in 2.20 s = 2.11 m/s,
+        # inside longview.SPEED_BOUNDS_M_S of (1.2, 3.2). The 440 -> 550 this
+        # fixture first used is 7.28 m in the same time -- 3.31 m/s, over the
+        # bound -- so the "clean crossing" was refused as bad_speed and this
+        # test could never have passed.
+        rows = [490.0 + 80.0 * i / 11 for i in range(12)]   # a clean crossing
         got = sidepool.scan_moments("v1", moments(rows), {"left": VIEW},
                                     clip_start_s=100.0)
         red = [c for c in got if c.color == "red"]
