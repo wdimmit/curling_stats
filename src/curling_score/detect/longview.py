@@ -105,7 +105,22 @@ def _runs(flags, min_len=1):
     return out
 
 
-def _candidates(win, color, expect_px):
+@dataclass(frozen=True)
+class Proposal:
+    """One candidate stone, as a box a person can correct.
+
+    Every edge is measured: ``body_px`` and ``edge_row`` from the granite's
+    dark span, ``top_row`` from the colour handle's own topmost row. Nothing
+    here assumes how tall a stone is.
+    """
+
+    cx: float
+    top_row: float
+    edge_row: float
+    body_px: float
+
+
+def candidates(win, color, expect_px):
     """Every coloured blob with a granite body of the right width under it."""
     mask = _colour_mask(win, color)
     if mask.sum() < 20:
@@ -122,6 +137,7 @@ def _candidates(win, color, expect_px):
         # for a narrow "body" on its own, which is exactly a broom pad with
         # no stone under it -- a bare colour patch, no granite.
         handle_bottom = int(np.max(np.nonzero(sub)[0]))
+        handle_top = int(np.min(np.nonzero(sub)[0]))
         cx = (x0 + x1) // 2
         half = int(expect_px * 0.9)
         band = grey[:, max(0, cx - half):cx + half]
@@ -143,7 +159,8 @@ def _candidates(win, color, expect_px):
         body = float(max(wide[y] for y in rows))
         if not WIDTH_BOUNDS[0] * expect_px <= body <= WIDTH_BOUNDS[1] * expect_px:
             continue
-        out.append((float(cx), _sub_row(rows, wide, lower), body))
+        out.append(Proposal(float(cx), float(handle_top),
+                            _sub_row(rows, wide, lower), body))
     return out
 
 
@@ -176,9 +193,9 @@ def find_in_frames(frames, view, color, times) -> Crossing:
     tracks: dict[int, list] = {}
     for frame, t in zip(frames, times):
         win = np.asarray(frame, dtype=np.float32)[y:, x:]
-        for cx, edge, body in _candidates(win, color, STONE_WIDTH_AT_HOG_PX):
-            key = int(cx // 120)          # a stone never moves 120 px sideways
-            tracks.setdefault(key, []).append((t, edge, body))
+        for p in candidates(win, color, STONE_WIDTH_AT_HOG_PX):
+            key = int(p.cx // 120)        # a stone never moves 120 px sideways
+            tracks.setdefault(key, []).append((t, p.edge_row, p.body_px))
 
     moving = [tr for tr in tracks.values()
               if len(tr) >= _MIN_SAMPLES and tr[-1][1] > tr[0][1]]

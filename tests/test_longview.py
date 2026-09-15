@@ -35,6 +35,21 @@ def travelling(speed_m_s=2.0, t_cross=0.5, span_s=1.0, fps=30.0, color="red",
     return frames, times
 
 
+class TestProposal:
+    def test_a_proposal_spans_handle_to_ice(self):
+        # side_view_stone takes the plate as its first argument and paints a
+        # grey body above `row` with a coloured handle above that, so the
+        # trailing edge is `row` and the handle's top is well above it.
+        win = synth.side_view_stone(synth.side_view(), 520.0,
+                                    width_px=52, color="red")
+        props = longview.candidates(np.asarray(win, dtype=np.float32), "red", 52.0)
+        assert len(props) == 1
+        prop = props[0]
+        assert prop.edge_row == pytest.approx(520.0, abs=2.0)
+        assert prop.top_row < prop.edge_row - 10   # the handle is above the ice
+        assert prop.body_px == pytest.approx(52.0, rel=0.2)
+
+
 class TestFindingTheCrossing:
     def test_it_times_the_frame_the_stone_reaches_the_line(self):
         frames, times = travelling(speed_m_s=2.0, t_cross=0.5)
