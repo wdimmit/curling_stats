@@ -33,6 +33,11 @@ class TestQuotas:
         refused = sum(v for k, v in S.OUTCOME_QUOTA.items() if k != "ok")
         assert refused >= 4 * found
 
+    def test_the_scene_bins_are_the_positions(self):
+        """Pinned here as well as by the assert in the module, because an
+        assert vanishes under `python -O` and this invariant should not."""
+        assert set(S.SCENE_QUOTA) == set(S.POSITIONS)
+
     def test_every_outcome_quota_names_a_real_refusal(self):
         from curling_score.detect import longview
         assert set(S.OUTCOME_QUOTA) <= set(longview.KEYS)
