@@ -292,13 +292,20 @@ def build_video_pool(video_id, clip_paths, video_views, out_dir, *,
                      jpeg_quality: int = JPEG_QUALITY):
     """Every candidate one video's clips can offer, with a capped set written out.
 
-    Returns ``(candidates, stats)``. ``candidates`` is every moment this video
-    produced, whether or not it was written to disk -- ``sideframes.select``
-    needs the full pool to choose from, and a written JPEG is only needed for
-    the frames actually chosen. ``stats`` counts ``clips`` and ``moments``
-    seen, frames ``written``, and ``refusals`` by ``longview.KEYS`` entry --
-    a count of windows, one clip-view-colour at a time, not of the many
-    candidate rows that window's refusal gets stamped onto.
+    Returns ``(candidates, stats)``. ``candidates`` is only the moments that
+    got a JPEG -- ``sideframes.select`` chooses from exactly this list, so a
+    frame it picks always has pixels on disk for ``stage_build`` to copy. It
+    used to be every moment scanned, written or not: 1197 clips x 24 s x 5 fps
+    x 2 views is about 287,000 moments, of which ``pick_writes`` (via
+    ``MAX_PER_CLIP_VIEW``, below) keeps roughly 19,000 -- banking the larger
+    number let ``select`` choose a frame ``pick_writes`` had discarded, and
+    ``stage_build`` could only report it missing. ``stats`` still counts over
+    everything scanned, not just what was written: ``clips`` and ``moments``
+    seen, frames ``written``, and ``refusals`` by ``longview.KEYS`` entry -- a
+    count of windows, one clip-view-colour at a time, not of the many
+    candidate rows that window's refusal gets stamped onto. That is the
+    refusal taxonomy's job -- what the detector saw -- and narrowing it to
+    what got written would break the diagnostic.
 
     The labels written alongside a JPEG are the detector's opinion, not the
     dataset -- see :func:`_label_for`. A moment the detector refused on its
@@ -326,7 +333,6 @@ def build_video_pool(video_id, clip_paths, video_views, out_dir, *,
             continue
         stats["clips"] += 1
         stats["moments"] += len(moments)
-        all_candidates.extend(candidates)
 
         # `scan_moments` stamps one window's whole outcome onto every moment
         # inside it, so distinct (view, color, outcome) triples -- rather
@@ -352,6 +358,7 @@ def build_video_pool(video_id, clip_paths, video_views, out_dir, *,
                 cv2.imwrite(str(out_path / f"{stem}.jpg"), img,
                            [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
                 stats["written"] += 1
+                all_candidates.append(c)
 
     all_candidates.sort(key=lambda c: (c.t_abs, c.stem))
     return all_candidates, stats

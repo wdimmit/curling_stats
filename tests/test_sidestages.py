@@ -4,7 +4,10 @@ import json
 import pytest
 
 from curling_score import cli
-from curling_score.harvest import sidestages
+from curling_score.geometry.sideview import SideView
+from curling_score.harvest import sidepool, sidestages
+from curling_score.harvest import sideviews as SV
+from tests import synth
 
 
 def parse(argv):
@@ -346,3 +349,75 @@ class TestCli:
     def test_the_manifest_defaults_into_ds13(self):
         args = parse(["sideframes", "select", "--pool", "/tmp/p"])
         assert args.manifest == "datasets/ds13/manifest.json"
+
+
+class TestProposeSelectBuildAgreeOnWhatWasWritten:
+    """The C1 regression: `build_video_pool` used to return *every* candidate
+    it scanned, written or not, so `stage_select` could choose a frame
+    `pick_writes` had discarded and `stage_build` could only report it
+    missing -- on the real numbers, about 14 chosen frames in 15. This drives
+    `propose`, `select` and `build` for real, faking only the ffmpeg decode
+    (`sidepool.scan_clip`), so it exercises the actual `pick_writes` /
+    `cv2.imwrite` / pool-accounting path that broke, with real tiny JPEGs on
+    disk -- no video, no ffmpeg, no GPU.
+    """
+
+    def test_stage_build_reports_zero_missing(self, tmp_path, monkeypatch):
+        view = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0)
+        vv = SV.VideoViews("v1", (810, 1080), {
+            "left": SV.ViewInfo("left", (0, 0, 810, 1080), view=view)})
+
+        # Far more moments than MAX_PER_CLIP_VIEW (8) -- the same fixture
+        # `TestWriteCap` uses to prove `pick_writes` actually discards most
+        # of what a clip offers.
+        rows = [440.0 + 2 * i for i in range(120)]
+
+        def fake_scan_clip(video_id, clip_path, views, *, fps=sidepool.DETECT_FPS):
+            t0 = 100.0
+            moments = []
+            for i, row in enumerate(rows):
+                plate = synth.side_view()
+                img = synth.side_view_stone(plate, row, width_px=52)
+                moments.append((t0 + i / fps, {"left": img[..., ::-1]}))  # bgr
+            rgb_moments = [(t, {n: c[..., ::-1] for n, c in crops.items()})
+                          for t, crops in moments]
+            candidates = sidepool.scan_moments(video_id, rgb_moments, views,
+                                               clip_start_s=t0)
+            return candidates, moments
+
+        monkeypatch.setattr(sidepool, "scan_clip", fake_scan_clip)
+
+        root = tmp_path / "clips"
+        (root / "v1").mkdir(parents=True)
+        (root / "v1" / "000.mkv").write_bytes(b"placeholder")
+        out = tmp_path / "pool"
+        views_path = tmp_path / "sideviews.json"
+        views_path.write_text(json.dumps({"v1": SV.to_json(vv)}))
+        videos_path = write_videos(tmp_path, {"v1": "train"})
+
+        propose_args = argparse.Namespace(
+            root=str(root), out=str(out), videos=str(videos_path),
+            views=str(views_path), fps=5.0, limit=None, force=False,
+            stage="propose")
+        assert sidestages.stage_propose(propose_args) == 0
+
+        pool_doc = json.loads((out / "candidates.json").read_text())
+        written = list((out / "v1").glob("*.jpg"))
+        # The bug: `build_video_pool` banked every moment scanned (120 of
+        # them, one view), not just the ones a JPEG exists for.
+        assert len(pool_doc["v1"]) == len(written), \
+            "the banked pool must be exactly what got written, not everything scanned"
+        assert 0 < len(written) <= sidepool.MAX_PER_CLIP_VIEW
+
+        manifest_path = tmp_path / "manifest.json"
+        select_args = argparse.Namespace(
+            pool=str(out), videos=str(videos_path), manifest=str(manifest_path))
+        assert sidestages.stage_select(select_args) == 0
+
+        build_args = argparse.Namespace(
+            pool=str(out), out=str(tmp_path / "yolo"), manifest=str(manifest_path))
+        assert sidestages.stage_build(build_args) == 0
+
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["summary"]["frames"] > 0, \
+            "the pool must have offered select() something to choose"
