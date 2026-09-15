@@ -175,8 +175,22 @@ means swapping in a trained detector touches `detect/longview.py` alone.
   sheets 2 and 5's right views find an odd number of ring edges. Production
   would have 24 frames and cleaner medians, so these are plausibly thin-plate
   artefacts -- but that is unproven and is the first thing to settle.
-- **The classical detector is exercised on one video.** That is what the gate
-  above is for.
+- **The classical detector is measured on one video** (`VXU9xwmugRg`, sheet
+  2 -- the only video cached where this was run; the other seven catalogued
+  videos live in the worker box's cache). `scripts/split_coverage.py` runs
+  the gate above over all 13 ends (208 shots) of that video and none of the
+  three bars hold: side-view coverage 21.2% (44/208) against a >= 90% bar,
+  panel-only coverage recomputed on the same inputs 28.4% (59/208, not the
+  46% the design doc previously quoted from memory -- that figure was
+  measured on a hand-picked 3-end/48-shot subset and does not reproduce
+  across the whole game), agreement wherever both fired median 0.261 s /
+  worst 0.787 s against a <= 0.25 s bar (n=48), and hand-mark agreement 20 of
+  27 found with worst error 0.619 s among those against a <= 0.1 s bar. The
+  agreement numbers -- a median disagreement already past the cross-check's
+  own tolerance -- read as "finding the wrong object" rather than "finding
+  the right object and losing some," which is why the trained detector
+  behind the `detect/longview.py` seam is the next step rather than tuning
+  the classical one. Full tables in `.superpowers/sdd/2026-09-14-long-camera-hog-crossing/task-8-report.md`.
 - **`HOG_APPARENT_Y_M` was measured on sheet 2 only.** It is the panel
   tripwire's constant, so it governs the cross-check rule; if it does not
   transfer, the cross-check will fire spuriously on other sheets. Marking one
