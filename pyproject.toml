@@ -51,6 +51,10 @@ where = ["src"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-q"
+# Already quiet. Do NOT add another -q on the command line: pytest sums them,
+# and -qq drops the "N passed, M failed" summary line entirely -- the run still
+# reports its real exit status, but the counts vanish. Three separate sessions
+# have read that silence as lost output and gone looking for a flush bug.
 markers = [
     "slow: touches the full cached VOD; deselect with -m 'not slow'",
 ]
