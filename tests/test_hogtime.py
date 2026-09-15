@@ -1,0 +1,87 @@
+"""Giving each shot the moment it crossed the throwing end's hog line.
+
+Runs after the rules have settled the shot list, and like
+``thinking.time_shots`` it can only attach a time to a rock already in it --
+nothing here may add, drop or renumber a shot.
+"""
+
+import pytest
+
+from curling_score.detect.delivery import Delivery
+from curling_score.detect.longview import Crossing
+from curling_score.detect.release import Release
+from curling_score.game import hogtime, shots as S
+from curling_score.detect.rocks import Detection
+
+
+def det(color, x, y):
+    return Detection(color=color, x_m=x, y_m=y, x_px=0.0, y_px=0.0,
+                     area_px=140.0, confidence=0.9)
+
+
+def a_shot(n, color, t_rest, t_rel=None, t_enter=None):
+    dv = Delivery(color=color, t_enter=t_enter if t_enter is not None else t_rest - 8,
+                  t_rest=t_rest, entry_y_m=4.55, rest_x_m=0.0, rest_y_m=1.0,
+                  travel_m=3.5, track=((t_rest - 8, 0.0, 4.55), (t_rest, 0.0, 1.0)))
+    rel = None if t_rel is None else Release(
+        color=color, t=t_rel, y_exit_m=3.0, speed_m_s=2.0,
+        track=((t_rel, 0.05, -2.0), (t_rel + 2, 0.05, 2.0)))
+    return S.Shot(number=n, color=color, stones=[det(color, 0.1, 0.2)],
+                  t_rest_s=t_rest, delivery=dv, release=rel)
+
+
+class Recorder:
+    """Stands in for the detector, and remembers what it was asked."""
+
+    def __init__(self, answer=None):
+        self.calls = []
+        self.answer = answer or (lambda c, lo, hi: Crossing(lo + 3.0, "ok"))
+
+    def __call__(self, video, view, color, t0, t1, fps=30.0):
+        self.calls.append((color, t0, t1))
+        return self.answer(color, t0, t1)
+
+
+class TestTiming:
+    def test_a_shot_with_a_release_is_searched_around_it(self):
+        shots = [a_shot(1, "red", 100.0, t_rel=80.0)]
+        find = Recorder()
+        hogtime.time_hog_crossings(shots, "v.mp4", object(), find=find)
+        assert find.calls == [("red", 82.0, 86.5)]
+        assert hogtime.crossing(shots[0]) == pytest.approx(85.0)
+
+    def test_a_shot_with_no_release_is_searched_back_from_its_arrival(self):
+        shots = [a_shot(1, "red", 100.0, t_enter=92.0)]
+        find = Recorder()
+        hogtime.time_hog_crossings(shots, "v.mp4", object(), find=find)
+        (color, t0, t1), = find.calls
+        assert color == "red"
+        assert (t0, t1) == (92.0 - 20.0, 92.0 - 8.0)
+
+    def test_a_refusal_leaves_the_shot_untimed_rather_than_guessing(self):
+        shots = [a_shot(1, "red", 100.0, t_rel=80.0)]
+        hogtime.time_hog_crossings(
+            shots, "v.mp4", object(),
+            find=Recorder(lambda c, lo, hi: Crossing(None, "two candidates")))
+        assert hogtime.crossing(shots[0]) is None
+
+    def test_a_missing_shot_is_not_searched_for_at_all(self):
+        shots = [a_shot(1, "red", 100.0, t_rel=80.0)]
+        shots[0].missing = True
+        find = Recorder()
+        hogtime.time_hog_crossings(shots, "v.mp4", object(), find=find)
+        assert find.calls == []
+
+    def test_it_never_changes_the_shot_list(self):
+        shots = [a_shot(1, "red", 100.0, t_rel=80.0),
+                 a_shot(2, "yellow", 160.0, t_rel=140.0)]
+        before = [(s.number, s.color) for s in shots]
+        hogtime.time_hog_crossings(shots, "v.mp4", object(), find=Recorder())
+        assert [(s.number, s.color) for s in shots] == before
+        assert len(shots) == 2
+
+
+class TestWhichCamera:
+    def test_the_camera_at_the_far_end_watches_the_throwing_house(self):
+        assert hogtime.CAMERA_FOR["top"] == "left"
+        assert hogtime.CAMERA_FOR["bottom"] == "right"
