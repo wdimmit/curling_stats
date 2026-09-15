@@ -31,7 +31,8 @@ def _analyze(args) -> int:
                               weights=args.weights, imgsz=args.imgsz,
                               device=args.device, start_s=args.start,
                               end_s=args.end, sheet=args.sheet,
-                              skip_scoreboard=args.no_scoreboard)
+                              skip_scoreboard=args.no_scoreboard,
+                              skip_longview=args.no_longview)
     out = analyze_mod.write(doc, args.out)
     print(f"\nwrote {out}")
     for game in doc["games"]:
@@ -576,6 +577,9 @@ def main(argv=None) -> int:
     p.add_argument("--no-scoreboard", action="store_true",
                    help="skip reading the wall board (the only pass that needs "
                         "the full-resolution original)")
+    p.add_argument("--no-longview", action="store_true",
+                   help="skip the side views that time the throwing end's hog "
+                        "crossing (also needs the full-resolution original)")
     p.add_argument("--cache-root", default=None,
                    help="where videos, proxies and detections are kept "
                         "(default: $CURLING_SCORE_CACHE or ~/.cache/curling_score)")

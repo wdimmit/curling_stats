@@ -133,8 +133,9 @@ def gpu_name() -> str | None:
 
 
 def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
-                weights: str | None, out_dir: Path, analyze_fn=None,
-                fetch_info=source.fetch_info, clock=time.monotonic) -> dict:
+                weights: str | None, out_dir: Path, skip_longview: bool = False,
+                analyze_fn=None, fetch_info=source.fetch_info,
+                clock=time.monotonic) -> dict:
     """Run one job end to end. Raises on failure; the caller reports it."""
     analyze_fn = analyze_fn or analyze_mod.analyze
     url = source.canonical_url(job["video_id"])
@@ -166,7 +167,8 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     doc = analyze_fn(
         url, root=root, weights=weights, info=info,
         start_s=job.get("window_start_s"), end_s=job.get("window_end_s"),
-        sheet=job.get("sheet"), skip_scoreboard=True, on_phase=on_phase,
+        sheet=job.get("sheet"), skip_scoreboard=True,
+        skip_longview=skip_longview, on_phase=on_phase,
         download_attempts=1,
     )
     run_dir = out_dir / job["run_id"]
@@ -233,8 +235,19 @@ def resolve_weights():
     return str(path) if path else None
 
 
+def resolve_skip_longview() -> bool:
+    """Whether this worker should skip the side-view hog-crossing pass.
+
+    Off by default, matching ``analyze()``'s own default -- setting
+    ``SKIP_LONGVIEW=1`` is an escape hatch for a deployment that cannot pay
+    for the per-shot ffmpeg decode the side views need, not a new default.
+    """
+    return os.environ.get("SKIP_LONGVIEW") == "1"
+
+
 def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | None,
-                out_dir: Path, cache_gb: float, sleep=time.sleep, once: bool = False):
+                out_dir: Path, cache_gb: float, skip_longview: bool = False,
+                sleep=time.sleep, once: bool = False):
     model = version.model_id(weights)
     gpu = gpu_name()
     log.info("worker %s: model %s, gpu %s, cache %s", worker_id, model, gpu, root)
@@ -259,7 +272,8 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
         log.info("job %s: video %s window %s-%s", job["id"], job["video_id"],
                  job.get("window_start_s"), job.get("window_end_s"))
         try:
-            result = process_job(job, api, worker_id, root=root, weights=weights, out_dir=out_dir)
+            result = process_job(job, api, worker_id, root=root, weights=weights,
+                                 out_dir=out_dir, skip_longview=skip_longview)
             log.info("job %s done: %s", job["id"], result)
         except Lost as exc:
             log.warning("job %s lost: %s", job["id"], exc)
@@ -301,6 +315,7 @@ def main(argv=None) -> int:
         ApiClient(api_url, token), os.environ.get("WORKER_ID") or socket.gethostname(),
         root=root, weights=weights, out_dir=Path(os.environ.get("WORKER_OUT", root / "out")),
         cache_gb=float(os.environ.get("WORKER_CACHE_GB", "300")),
+        skip_longview=resolve_skip_longview(),
         once="--once" in (argv or sys.argv[1:]),
     )
     return 0
