@@ -50,7 +50,12 @@ def locate(layout, width: int, height: int) -> dict[str, Rect]:
 # D = 35..45 m.
 CAMERA_TO_FAR_TEE_M = 34.747 + (45.720 - 34.747) / 2
 
-_GREEN_THRESHOLD = 10.0
+# Measured on the clean plates of all ten of the club's side views (5 sheets,
+# left and right), the annulus's greenness peak runs 6.44 to 13.27. 2.5 sits
+# 2.6x below the weakest of those while staying clear of ice noise, and the
+# hog line cannot be mistaken for paint at any threshold here: its greenness
+# is negative, not merely small.
+_GREEN_THRESHOLD = 2.5
 _HOUSE_SEARCH = (0.33, 0.50)   # fraction of the view's height to look in
 _HOG_SEARCH_PX = 140           # how far below the house the line can be
 

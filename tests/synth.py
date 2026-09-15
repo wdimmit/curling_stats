@@ -62,7 +62,11 @@ def break_ring(img, angle_deg=45.0, width_deg=25.0, cx=148.0, cy=150.0):
 
 
 SIDE_ICE = (238, 238, 236)
-SIDE_LINE = (150, 148, 140)
+# The ice line is neutral-to-bluish, not warm: measured -5.5 to -1.9 greenness
+# (G - (R+B)/2) on the club's own plates where the line is correctly located.
+# This gives -6, matching that measurement -- a warm grey here previously read
+# as faintly green-positive and was mistaken for paint by the fitter.
+SIDE_LINE = (140, 140, 152)
 GREEN_PAINT = (70, 150, 70)
 
 
