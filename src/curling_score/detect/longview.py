@@ -93,7 +93,13 @@ def _colour_mask(win, color):
     return (np.minimum(r, g) - b > 40) & (r > 120) & (g > 110)
 
 
-def _runs(flags, min_len=1):
+def runs(flags, min_len=1):
+    """Contiguous ``True`` spans of ``flags`` as ``(start, stop)`` pairs.
+
+    Public because ``harvest/sidepool.py`` needs the same run-finding to spot
+    a body standing beside a stone (``crowding``); that is another package, so
+    it must import this rather than carry a second copy that could drift.
+    """
     out, start = [], None
     for i, on in enumerate(list(flags) + [False]):
         if on and start is None:
@@ -128,7 +134,7 @@ def candidates(win, color, expect_px):
     grey = win.mean(axis=2)
     ice = np.percentile(grey, 90)
     out = []
-    for x0, x1 in _runs(mask.sum(axis=0) > 0):
+    for x0, x1 in runs(mask.sum(axis=0) > 0):
         sub = mask[:, x0:x1]
         if sub.sum() < 20:
             continue
