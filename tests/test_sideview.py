@@ -11,6 +11,7 @@ import pytest
 from curling_score.geometry import constants as C
 from curling_score.geometry import layout, sideview
 from tests import synth
+from tests.conftest import VALIDATION_VIDS
 
 
 def a_layout(x=810, w=297):
@@ -86,3 +87,25 @@ class TestSolve:
         blank = np.full((1080, 810, 3), 238, dtype=np.uint8)
         with pytest.raises(sideview.SideViewError):
             sideview.solve(blank, (0, 0, 810, 1080))
+
+
+@pytest.mark.slow
+class TestEveryRealView:
+    """Both side views of all five sheets, on plates thinner than production's."""
+
+    @pytest.mark.parametrize("sheet,vid", sorted(VALIDATION_VIDS.items()))
+    def test_both_views_calibrate(self, side_plate, sheet, vid):
+        plate = side_plate(vid)
+        h, w = plate.shape[:2]
+        rects = sideview.locate(a_layout(), width=w, height=h)
+        for name, rect in rects.items():
+            got = sideview.solve(plate, rect, name=f"sheet{sheet}-{name}")
+            assert sideview.PLAUSIBLE_ROWS[0] <= got.rows_tee_to_hog <= sideview.PLAUSIBLE_ROWS[1], (
+                f"sheet {sheet} {name}: tee->hog {got.rows_tee_to_hog:.1f} px")
+
+    def test_a_fit_outside_the_plausible_band_raises_rather_than_returns(self):
+        """A calibration that is merely wrong is the dangerous outcome: every
+        crossing afterwards is confidently mistimed."""
+        plate = synth.side_view(tee_row=430.0, hog_row=470.0)   # only 40 rows
+        with pytest.raises(sideview.SideViewError):
+            sideview.solve(plate, (0, 0, 810, 1080))

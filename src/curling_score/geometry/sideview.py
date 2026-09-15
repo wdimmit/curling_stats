@@ -64,6 +64,12 @@ _HOUSE_SEARCH = (0.33, 0.50)
 # green edge. 140 is a little over twice the largest gap seen.
 _HOG_SEARCH_PX = 140
 
+# Measured across the club's five sheets: the far tee sits 78-90 rows above
+# its hog line. A fit outside this found the wrong row, and a wrong row is far
+# worse than no calibration -- every crossing after it is confidently
+# mistimed.
+PLAUSIBLE_ROWS = (60.0, 110.0)
+
 
 @dataclass(frozen=True)
 class SideView:
@@ -150,4 +156,10 @@ def solve(plate, rect: Rect, name: str = "side") -> SideView:
         return float(((np.array([v.row_for(x) for x in want]) - seen) ** 2).sum())
 
     tee = min(np.arange(hog - _HOG_SEARCH_PX, hog - 30, 0.05), key=error)
-    return SideView(rect=rect, tee_row=float(tee), hog_row=float(hog))
+    view = SideView(rect=rect, tee_row=float(tee), hog_row=float(hog))
+    if not PLAUSIBLE_ROWS[0] <= view.rows_tee_to_hog <= PLAUSIBLE_ROWS[1]:
+        raise SideViewError(
+            f"{name}: tee to hog measured {view.rows_tee_to_hog:.1f} px, "
+            f"outside the {PLAUSIBLE_ROWS[0]:.0f}-{PLAUSIBLE_ROWS[1]:.0f} px "
+            f"every sheet falls in -- the fit found the wrong row")
+    return view
