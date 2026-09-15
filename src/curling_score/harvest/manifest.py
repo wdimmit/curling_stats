@@ -16,6 +16,8 @@ that was asked for.
 import datetime as _dt
 
 from curling_score.harvest.candidates import Candidate, bin_of
+from curling_score.harvest.sideframes import SideCandidate
+from curling_score.harvest.sideframes import bin_of as side_bin_of
 from curling_score.train.dataset import Label
 
 
@@ -100,3 +102,50 @@ def iter_frames(doc):
         entry = doc["videos"][vid]
         for row in entry["frames"]:
             yield entry["split"], candidate_from_json(row)
+
+
+# --- ds13, the side-view set --------------------------------------------
+#
+# A second, smaller pair rather than one polymorphic one: ``Candidate`` and
+# ``SideCandidate`` do not share a shape (a side-view frame has a ``view`` and
+# an ``outcome``; an overhead one has a ``panel`` and a ``kind``), and a
+# function that has to ask which it is holding is worse than two that never
+# have to ask.
+
+
+def side_candidate_to_json(c: SideCandidate) -> dict:
+    return {
+        "stem": c.stem,
+        "video_id": c.video_id,
+        "view": c.view,
+        "t_abs": round(c.t_abs, 3),
+        "clip_start_s": round(c.clip_start_s, 3),
+        "position": c.position,
+        "outcome": c.outcome,
+        "color": c.color,
+        "crowding": c.crowding,
+        "bin": side_bin_of(c),
+        "edge_row": c.edge_row,
+        "labels": [[lab.cls, lab.cx, lab.cy, lab.w, lab.h] for lab in c.labels],
+        "half": c.half,
+    }
+
+
+def side_candidate_from_json(d: dict) -> SideCandidate:
+    return SideCandidate(
+        video_id=d["video_id"], view=d["view"], t_abs=d["t_abs"],
+        clip_start_s=d["clip_start_s"], position=d["position"],
+        outcome=d["outcome"], color=d.get("color", ""),
+        crowding=d.get("crowding", 0), edge_row=d.get("edge_row"),
+        labels=tuple(Label(int(r[0]), *(float(v) for v in r[1:]))
+                    for r in d.get("labels", [])),
+        half=d.get("half", ""),
+    )
+
+
+def side_iter_frames(doc):
+    """``(split, SideCandidate)`` for every selected side-view frame."""
+    for vid in sorted(doc["videos"]):
+        entry = doc["videos"][vid]
+        for row in entry["frames"]:
+            yield entry["split"], side_candidate_from_json(row)

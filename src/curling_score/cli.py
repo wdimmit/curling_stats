@@ -504,6 +504,44 @@ def _add_harvest(sub):
     p.set_defaults(func=_harvest)
 
 
+def _sideframes(args) -> int:
+    """Build ds13, the side-view training set, one stage at a time.
+
+    Same reasoning as ``_harvest``: 1197 clips on a box across the network is
+    not a run anyone restarts from the top, so each stage reads a file and
+    writes a file.
+    """
+    from curling_score.harvest import sidestages
+
+    return sidestages.run(args)
+
+
+def _add_sideframes(sub):
+    p = sub.add_parser(
+        "sideframes", help="build a side-view training set (see ds13)")
+    stage = p.add_subparsers(dest="stage", required=True)
+
+    for name, help_text in (
+        ("views", "locate both side views of every ds11 video, or say why not"),
+        ("propose", "scan the clips and bank every candidate frame"),
+        ("select", "choose ds13's 600 frames"),
+        ("build", "write the YOLO tree from ds13's manifest"),
+    ):
+        q = stage.add_parser(name, help=help_text)
+        q.add_argument("--videos", default="datasets/ds11/videos.json",
+                       help="ds11's own video list, for its splits")
+        q.add_argument("--root", help="where the clips are cached")
+        q.add_argument("--out", help="where crops or the YOLO tree go")
+        q.add_argument("--pool", help="where candidate crops were banked")
+        q.add_argument("--views", default="datasets/ds13/sideviews.json")
+        q.add_argument("--manifest", default="datasets/ds13/manifest.json")
+        q.add_argument("--fps", type=float, default=5.0,
+                       help="detection rate inside a clip")
+        q.add_argument("--limit", type=int)
+
+    p.set_defaults(func=_sideframes)
+
+
 def main(argv=None) -> int:
     from curling_score.diagnostics import enable_stack_dumps
 
@@ -541,6 +579,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=_analyze)
 
     _add_harvest(sub)
+    _add_sideframes(sub)
 
     p = sub.add_parser("train", help="train a stone detector")
     p.add_argument("--data", required=True, help="path to curling.yaml")
