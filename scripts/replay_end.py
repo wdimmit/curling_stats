@@ -243,7 +243,7 @@ def main():
                               getattr(sh, "delivery", None))
         if sp:
             measured += 1
-            split_txt = f"{sp.seconds:6.2f}s (est {sp.extrapolated_m:.1f} m)"
+            split_txt = f"{sp.seconds:6.2f}s"
         else:
             split_txt = "     -             "
         clock_txt = "    -" if secs is None else f"{secs:5.1f}s"
