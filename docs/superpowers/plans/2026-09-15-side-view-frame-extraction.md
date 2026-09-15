@@ -264,47 +264,34 @@ EOF
 
 ---
 
-### Task 2: Give the classical detector a stable refusal key and a full box
+### Task 2: Keep the box the scan already found
 
 **Files:**
 - Modify: `src/curling_score/detect/longview.py`
 - Test: `tests/test_longview.py`
 
 **Interfaces:**
-- Produces: `Crossing.key: str`; `KEYS` (the closed set); `candidates(win, color, expect_px=STONE_WIDTH_AT_HOG_PX) -> list[Proposal]`; `Proposal(cx, top_row, edge_row, body_px)`.
-- Consumed by Task 4 (`harvest/sidepool.py`) and Task 3 (`harvest/sideframes.py`).
+- Produces: `candidates(win, color, expect_px=STONE_WIDTH_AT_HOG_PX) -> list[Proposal]`; `Proposal(cx, top_row, edge_row, body_px)`.
+- Consumed by Task 4 (`harvest/sidepool.py`).
 
-Two things are needed from this module and neither exists yet.
+**This task shrank after the plan was written.** It originally also added
+`Crossing.key` and `longview.KEYS`, so a dataset could stratify on which gate
+refused a window without matching on prose. That landed early, in commit
+`ef55616`, while fixing the split-coverage measurement — which needed the same
+thing to stop its refusal histogram fragmenting into one row per distinct
+speed. The keys are already there and are `ok`, `no_frames`, `no_candidate`,
+`ambiguous`, `never_reached`, `unsteady`, `bad_speed`, as a `frozenset`. **Do
+not re-add them.** Read them before you start; Task 3's quota is keyed on them.
 
-**A stable key.** Selection stratifies by which gate refused a window. Matching
-the prose in `reason` would make a dataset silently mis-stratify the day
-someone rewords a message, and `game/hogtime.py` was deliberately built to do
-no reason-string matching at all. So the key is a field, set at every
-construction site, and a test asserts the set is closed.
+What remains is the box. `candidates` (still named `_candidates`) computes the
+granite body's widest dark span and its sub-pixel trailing edge, and it finds
+the colour handle's extent and throws it away. A label whose bottom edge is the
+ice needs the top too, and taking it from the pixels beats deriving it from an
+assumed stone height.
 
-**A whole box.** `_candidates` already computes the granite body's widest dark
-span and its sub-pixel trailing edge. It also finds the colour handle's
-extent and throws it away. A label whose bottom edge is the ice needs the top
-too, and taking it from the pixels beats deriving it from an assumed stone
-height.
-
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
 
 ```python
-class TestRefusalKeys:
-    def test_every_refusal_carries_a_key_from_the_closed_set(self):
-        import inspect, re
-        src = inspect.getsource(longview)
-        keys = set(re.findall(r'Crossing\([^)]*key="([a-z_]+)"', src))
-        bare = re.findall(r'Crossing\((?![^)]*key=)[^)]*\)', src)
-        assert not bare, f"a Crossing built without a key: {bare}"
-        assert keys <= set(longview.KEYS), keys - set(longview.KEYS)
-
-    def test_a_found_crossing_is_keyed_ok(self, ...):
-        # reuse whichever fixture the existing synthetic-crossing test uses
-        assert got.key == "ok"
-
-
 class TestProposal:
     def test_a_proposal_spans_handle_to_ice(self):
         # side_view_stone takes the plate as its first argument and paints a
@@ -320,20 +307,19 @@ class TestProposal:
         assert prop.body_px == pytest.approx(52.0, rel=0.2)
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [ ] **Step 2: Run it and watch it fail**
 
-Run: `.venv/bin/python -m pytest tests/test_longview.py -v -k "RefusalKeys or Proposal"`
-Expected: FAIL — `AttributeError: module 'curling_score.detect.longview' has no attribute 'KEYS'`
+Run: `.venv/bin/python -m pytest tests/test_longview.py -k Proposal`
+Expected: FAIL — `AttributeError: module 'curling_score.detect.longview' has no attribute 'candidates'`
+
+(Note: `pyproject.toml` already sets `addopts = "-q"`. Do **not** add another
+`-q` — pytest sums them and `-qq` drops the summary line entirely, which has
+already cost three sessions an hour between them. See the comment beside
+`addopts`.)
 
 - [ ] **Step 3: Make the change**
 
 ```python
-# Every way this module can end, as a key selection can stratify on. The prose
-# in ``reason`` is for a person reading a log and may be reworded; this is not.
-KEYS = ("ok", "no_frames", "no_candidate", "two_candidates", "never_reached",
-        "unsteady", "wrong_speed")
-
-
 @dataclass(frozen=True)
 class Proposal:
     """One candidate stone, as a box a person can correct.
@@ -347,65 +333,39 @@ class Proposal:
     top_row: float
     edge_row: float
     body_px: float
-
-
-@dataclass(frozen=True)
-class Crossing:
-    """When a stone crossed the line, or why we will not say."""
-
-    t: float | None
-    reason: str
-    width_px: float = 0.0
-    key: str = "ok"
-
-    def __bool__(self) -> bool:
-        return self.t is not None
 ```
 
-In `_candidates`, keep the existing computation exactly as it is and add the
-handle's top row beside the one it already takes the bottom of:
+In `_candidates`, keep the existing computation exactly as it is and take the
+handle's top beside the bottom it already has:
 
 ```python
         handle_bottom = int(np.max(np.nonzero(sub)[0]))
         handle_top = int(np.min(np.nonzero(sub)[0]))
 ```
 
-and return `Proposal(float(cx), float(handle_top), _sub_row(rows, wide, lower), body)`
-instead of the bare tuple. Rename `_candidates` to `candidates` (public — it is
-now part of the module's interface) and update its one caller in
-`find_in_frames` to read `p.cx`, `p.edge_row`, `p.body_px`.
-
-Then set `key=` at every `Crossing(...)` in the file:
-
-| reason | key |
-|---|---|
-| `"no frames decoded"` | `no_frames` |
-| `"no candidate that could be a stone in flight"` | `no_candidate` |
-| `f"two candidates crossed the line ({len(crossed)})"` | `two_candidates` |
-| `"the stone never reached the line"` (both sites) | `never_reached` |
-| `"the candidate did not travel steadily"` | `unsteady` |
-| `f"speed {speed:.2f} m/s is not a delivery"` | `wrong_speed` |
-| the final success | `ok` |
+Return `Proposal(float(cx), float(handle_top), _sub_row(rows, wide, lower), body)`
+instead of the bare tuple. Rename `_candidates` to `candidates` — it is now part
+of the module's interface — and update its one caller in `find_in_frames` to
+read `p.cx`, `p.edge_row`, `p.body_px`.
 
 - [ ] **Step 4: Run the whole longview suite, including the slow hand marks**
 
-Run: `.venv/bin/python -m pytest tests/test_longview.py -v`
-Expected: the new tests PASS; `TestAgainstHandMarkedCrossings` gives **exactly
-the same results as before the change** — 20 of 27 found, worst error 0.619 s,
-and the same two tests failing for the same reason. Record the before and after
-side by side in your report. A change in those numbers means the refactor was
-not behaviour-preserving and must be reverted, not explained.
+Run: `.venv/bin/python -m pytest tests/test_longview.py`
+Expected: the new test PASSES; `TestAgainstHandMarkedCrossings` gives **exactly
+the same results as before the change** — 20 of 27 found, median error 0.047 s,
+worst 0.619 s, and the same two tests failing for the same reason. Record the
+before and after side by side in your report. A change in those numbers means
+the refactor was not behaviour-preserving and must be reverted, not explained.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/curling_score/detect/longview.py tests/test_longview.py
 git commit -m "$(cat <<'EOF'
-longview: name each refusal, and keep the box the scan already found
+longview: keep the box the scan already found
 
-A dataset stratified on refusal reasons cannot match on prose that may be
-reworded, and a label whose bottom edge is the ice needs the handle's top row
--- which the scan computes and then discards.
+A label whose bottom edge is the ice needs the handle's top row, which the
+scan computes on its way to the body and then discards.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -487,6 +447,18 @@ class TestSelect:
         per_clip = Counter((c.video_id, c.clip_start_s) for c in chosen)
         assert max(per_clip.values()) <= S.MAX_PER_CLIP
 
+    def test_no_candidate_is_scarce_and_that_is_reported_not_hidden(self):
+        """Measured supply is lopsided: over 13 ends the classical detector
+        refused 106 windows as 55 ambiguous, 24 unsteady, 14 never_reached,
+        11 bad_speed and only 2 no_candidate. The quota asks for 50 of the
+        rarest anyway, deliberately -- it sweeps up whatever exists -- so this
+        pins that the gap comes back as a number instead of being padded."""
+        pool = [cand(vid=f"v{i}", t=float(i), clip=float(i), key="ambiguous")
+                for i in range(400)]
+        _chosen, shortfall = S.select(pool)
+        assert shortfall.get("outcome:no_candidate") == \
+            S.OUTCOME_QUOTA["no_candidate"]
+
     def test_a_bin_nobody_can_fill_is_reported_not_padded(self):
         pool = [cand(vid=f"v{i}", t=float(i), clip=float(i), pos="crossing")
                 for i in range(200)]
@@ -560,8 +532,12 @@ SCENE_QUOTA = {"approach": 35, "crossing": 40, "past": 25,
 #
 # The successes are a control group, not a target: without them nobody could
 # tell a model that learned stones from one that learned hard frames.
-OUTCOME_QUOTA = {"ok": 60, "no_candidate": 50, "two_candidates": 50,
-                 "never_reached": 50, "unsteady": 45, "wrong_speed": 45}
+# The keys are ``longview.KEYS`` verbatim -- ``ambiguous`` and ``bad_speed``,
+# not the ``two_candidates``/``wrong_speed`` this plan first guessed at. They
+# are a frozenset in ``detect/longview.py``; the test below pins the match so
+# a renamed key cannot silently empty a bin.
+OUTCOME_QUOTA = {"ok": 60, "no_candidate": 50, "ambiguous": 50,
+                 "never_reached": 50, "unsteady": 45, "bad_speed": 45}
 
 # 600 frames over 120 videos averages five. Eight lets a richer night fill a
 # scarce bin without any one night becoming the dataset.
