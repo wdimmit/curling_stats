@@ -66,7 +66,15 @@ SIDE_ICE = (238, 238, 236)
 # (G - (R+B)/2) on the club's own plates where the line is correctly located.
 # This gives -6, matching that measurement -- a warm grey here previously read
 # as faintly green-positive and was mistaken for paint by the fitter.
-SIDE_LINE = (140, 140, 152)
+#
+# Its luminance dip is real footage's too: about 25 levels below the ice
+# (238 -> ~212), not the ~93-level dip an earlier, darker version of this
+# constant gave. longview's granite-body threshold (_BODY_DARKER_THAN_ICE =
+# 45) is set deliberately above the real 25-level dip so the line is never
+# mistaken for a stone's own edge; a fixture line darker than that threshold
+# would trigger exactly the confusion the threshold exists to avoid, on a
+# defect that does not exist on real footage.
+SIDE_LINE = (208, 208, 220)
 GREEN_PAINT = (70, 150, 70)
 
 
