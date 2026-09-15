@@ -113,6 +113,31 @@ def side_view(tee_row=430.0, hog_row=520.0, w=810, h=1080, d_m=40.233,
     return img
 
 
+def composite_strip(width, height, bar_px=4, bar_color=(90, 90, 90)):
+    """The grey overhead strip framing two house panels, with its 3 bars.
+
+    ``layout.detect_panels`` finds the strip by what never moves: a fixed
+    ``bar_px``-wide flat bar runs along each edge of the strip and again
+    between the two panels, identical on every frame. It also insists panel
+    content is *not* flat, so each panel here is a vertical stripe pattern
+    with plenty of column-to-column contrast -- comfortably past
+    ``_MAX_SPATIAL_STD`` -- rather than a plain fill that would read as one
+    more bar and collapse the two panels into none.
+
+    Channel order does not matter here, as with ``side_view`` above:
+    ``detect_panels`` reads mean-of-channels luminance plus per-column/row
+    variance, so this can sit RGB-side-by-side with an RGB ``side_view`` in
+    one composite frame without either caring.
+    """
+    img = np.full((height, width, 3), bar_color, dtype=np.uint8)
+    mid0 = height // 2 - bar_px // 2
+    mid1 = mid0 + bar_px
+    stripe = (150 + 40 * (np.arange(width - 2 * bar_px) // 6 % 2)).astype(np.uint8)
+    for lo, hi in ((bar_px, mid0), (mid1, height - bar_px)):
+        img[lo:hi, bar_px:width - bar_px] = stripe[None, :, None]
+    return img
+
+
 def side_view_stone(img, row, width_px=52, color="red", x=None):
     """Paint a stone on a side view: a grey body with a coloured handle. RGB."""
     out = img.copy()
