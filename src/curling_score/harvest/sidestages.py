@@ -246,17 +246,26 @@ def _expand_quota() -> dict:
 
 
 def _supply(pool) -> dict:
-    """How many pool candidates were eligible for each bin, before any cap.
+    """How many pool *frames* were eligible for each bin, before any cap.
+
+    ``select``'s ``shortfall`` counts frames -- it dedupes the pool by stem,
+    since a moment can arrive as up to two rows (one per colour scan) sharing
+    one JPEG. Counting rows here instead would let one frame inflate a bin's
+    supply by up to 2x, printed right next to a shortfall that cannot be
+    inflated the same way -- exactly backwards when a large supply number is
+    meant to say "the caps, not the archive, are why". So this dedupes first,
+    the same way, and counts frames.
 
     ``select``'s ``shortfall`` alone cannot tell "the archive had none" from
     "the caps were already spent by the scene pass" -- both read as a bin at
     zero. Counting the pool itself, before selection ever runs, can.
     """
+    frames = list({c.stem: c for c in pool}.values())
     supply = {f"scene:{view}:{position}":
-              sum(1 for c in pool if c.view == view and c.position == position)
+              sum(1 for c in frames if c.view == view and c.position == position)
               for view in ("left", "right")
               for position in sideframes.SCENE_QUOTA}
-    supply.update({f"outcome:{key}": sum(1 for c in pool if c.outcome == key)
+    supply.update({f"outcome:{key}": sum(1 for c in frames if c.outcome == key)
                    for key in sideframes.OUTCOME_QUOTA})
     return supply
 

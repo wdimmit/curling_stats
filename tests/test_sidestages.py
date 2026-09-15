@@ -142,6 +142,27 @@ class TestManifest:
         assert supply["scene:left:approach"] == 0
         assert supply["outcome:bad_speed"] == 0
 
+    def test_supply_counts_frames_not_rows_when_a_moment_has_two(self):
+        """`sidepool.scan_moments` can emit two rows for one moment -- one
+        per colour scan -- sharing a stem and so one JPEG. `select`'s
+        `shortfall` dedupes on stem and counts frames; `_supply` must agree,
+        or a shortfall next to its own supply can read up to 2x too high for
+        exactly the bin that matters.
+        """
+        from curling_score.harvest.sideframes import SideCandidate
+
+        pool = [
+            SideCandidate(video_id="a", view="left", t_abs=100.0,
+                         clip_start_s=100.0, position="clear",
+                         outcome="no_candidate", color="", crowding=0),
+            SideCandidate(video_id="a", view="left", t_abs=100.0,
+                         clip_start_s=100.0, position="clear", outcome="ok",
+                         color="", crowding=0),
+        ]
+        supply = sidestages._supply(pool)
+        assert supply["scene:left:clear"] == 1, \
+            "one JPEG at one stem must count once, not once per row"
+
     def test_a_video_that_would_not_calibrate_is_named(self, tmp_path):
         """sideviews.json lists it with its reason; it is not merely absent."""
         from curling_score.harvest import sideviews
