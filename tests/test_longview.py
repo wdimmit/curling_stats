@@ -40,12 +40,15 @@ class TestFindingTheCrossing:
         frames, times = travelling(speed_m_s=2.0, t_cross=0.5)
         got = longview.find_in_frames(frames, VIEW, "red", times)
         assert got, got.reason
-        assert got.t == pytest.approx(0.5, abs=0.04)
+        # OFFSET_S corrects for real footage's contact shadow, which this
+        # clean synthetic fixture does not draw, so it shows up here as a
+        # constant, expected shift rather than error.
+        assert got.t == pytest.approx(0.5 + longview.OFFSET_S, abs=0.04)
 
     def test_it_interpolates_between_frames_rather_than_snapping(self):
         frames, times = travelling(speed_m_s=2.0, t_cross=0.517)
         got = longview.find_in_frames(frames, VIEW, "red", times)
-        assert got.t == pytest.approx(0.517, abs=0.04)
+        assert got.t == pytest.approx(0.517 + longview.OFFSET_S, abs=0.04)
         assert got.t not in times
 
     def test_it_finds_a_yellow_stone_too(self):
@@ -120,3 +123,67 @@ class TestWhatItRefuses:
         """Marked by hand on 27 deliveries: release + 2.83 s to + 5.43 s."""
         assert longview.WINDOW_S[0] <= 2.83
         assert longview.WINDOW_S[1] >= 5.43
+
+
+import json
+from pathlib import Path
+
+MARKS = Path(__file__).resolve().parents[1] / "datasets/hogmarks/VXU9xwmugRg.json"
+
+# A stone moves about 1.1 px per frame at the hog line and reads ~52 px across,
+# so a detector that finds the right object should land inside a couple of
+# frames of where a person put it. Anything looser is finding something else.
+TOLERANCE_S = 0.15
+
+
+@pytest.mark.slow
+class TestAgainstHandMarkedCrossings:
+    """The 27 marks are the ground truth this detector answers to."""
+
+    def _views(self, primary_video):
+        from curling_score import analyze as A
+        from curling_score.geometry import layout
+        from curling_score.ingest import frames as F
+
+        calib = F.sample_keyframes(primary_video, count=A.CALIB_FRAMES,
+                                   stride=A.CALIB_STRIDE)
+        panels = layout.detect_panels(calib)
+        plate = np.median(np.stack([f.astype(np.float32) for f in calib]), axis=0)
+        h, w = plate.shape[:2]
+        rects = sideview.locate(panels, width=w, height=h)
+        return {n: sideview.solve(plate, r, name=n) for n, r in rects.items()}
+
+    def test_it_lands_where_a_person_marked_the_paint(self, primary_video):
+        doc = json.loads(MARKS.read_text())
+        views = self._views(primary_video)
+        errors, refused = [], []
+        for end in doc["ends"]:
+            view = views[end["side_view"]]
+            for m in end["marks"]:
+                lo = m["release_t_s"] + longview.WINDOW_S[0]
+                hi = m["release_t_s"] + longview.WINDOW_S[1]
+                got = longview.find_crossing(primary_video, view, m["color"], lo, hi)
+                if not got:
+                    refused.append((m["release_t_s"], got.reason))
+                    continue
+                errors.append(got.t - m["hog_crossing_s"])
+        assert errors, "every crossing was refused"
+        worst = max(abs(e) for e in errors)
+        assert worst <= TOLERANCE_S, (
+            f"worst error {worst:.3f} s over {len(errors)} crossings; "
+            f"{len(refused)} refused: {refused}")
+
+    def test_it_finds_most_of_them(self, primary_video):
+        """Coverage is the point of the whole exercise. The panel manages 46%."""
+        doc = json.loads(MARKS.read_text())
+        views = self._views(primary_video)
+        found = total = 0
+        for end in doc["ends"]:
+            view = views[end["side_view"]]
+            for m in end["marks"]:
+                total += 1
+                lo = m["release_t_s"] + longview.WINDOW_S[0]
+                hi = m["release_t_s"] + longview.WINDOW_S[1]
+                found += bool(longview.find_crossing(primary_video, view,
+                                                     m["color"], lo, hi))
+        assert found / total >= 0.85, f"found {found} of {total}"
