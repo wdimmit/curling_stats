@@ -46,7 +46,13 @@ class TestProposal:
         assert len(props) == 1
         prop = props[0]
         assert prop.edge_row == pytest.approx(520.0, abs=2.0)
-        assert prop.top_row < prop.edge_row - 10   # the handle is above the ice
+        # The handle's TOP row, which is the whole point of the field -- not
+        # its bottom, which the scan already had. side_view_stone paints a body
+        # int(0.42 * width_px) = 21 rows tall ending at `row` (499..520) and a
+        # handle width_px // 4 // 2 = 6 rows above that, topping out at 493. A
+        # loose `top_row < edge_row - 10` passes on 499 just as happily as on
+        # 493, so it would not notice the one mistake there is to make here.
+        assert prop.top_row == pytest.approx(493.0, abs=1.5)
         assert prop.body_px == pytest.approx(52.0, rel=0.2)
 
 
