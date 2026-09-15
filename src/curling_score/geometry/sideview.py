@@ -13,6 +13,12 @@ stone with the thrower and sweepers standing over it. From the end of the
 sheet the sweepers are beside the stone, not on top of it.
 """
 
+from dataclasses import dataclass
+
+import numpy as np
+
+from curling_score.geometry import constants as C
+
 Rect = tuple[int, int, int, int]
 
 # The minimum width worth calling a view; below this the strip is against the
@@ -35,3 +41,100 @@ def locate(layout, width: int, height: int) -> dict[str, Rect]:
                 f"{name} view is only {w} px wide; the overhead strip runs to the edge"
             )
     return views
+
+
+# Backboard to backboard is 45.720 m against 34.747 m tee to tee, so a tee sits
+# 5.487 m from its own backboard and a camera on that wall is this far from the
+# far tee. It sets only the curvature between the two fitted rows; the tripwire
+# does not use it, and the depth scale at the hog line moves by under 5% across
+# D = 35..45 m.
+CAMERA_TO_FAR_TEE_M = 34.747 + (45.720 - 34.747) / 2
+
+_GREEN_THRESHOLD = 10.0
+_HOUSE_SEARCH = (0.33, 0.50)   # fraction of the view's height to look in
+_HOG_SEARCH_PX = 140           # how far below the house the line can be
+
+
+@dataclass(frozen=True)
+class SideView:
+    """One wide side view, and where the far end's paint sits in it."""
+
+    rect: Rect
+    tee_row: float
+    hog_row: float
+    d_m: float = CAMERA_TO_FAR_TEE_M
+
+    @property
+    def rows_tee_to_hog(self) -> float:
+        return self.hog_row - self.tee_row
+
+    def _map(self) -> tuple[float, float]:
+        u = self.rows_tee_to_hog * (self.d_m - C.TEE_TO_HOGLINE_M) / C.TEE_TO_HOGLINE_M
+        return self.d_m * u, self.tee_row - u
+
+    def row_for(self, x_m: float) -> float:
+        """The image row of a point ``x_m`` from the far tee, toward the camera."""
+        c, yh = self._map()
+        return yh + c / (self.d_m - x_m)
+
+    def metres_at(self, row: float) -> float:
+        """How far from the far tee a given image row is."""
+        c, yh = self._map()
+        return self.d_m - c / (row - yh)
+
+
+def _green_profile(plate, rect):
+    x, y, w, h = rect
+    view = np.asarray(plate, dtype=np.float32)[y:y + h, x:x + w]
+    mid = view[:, int(w * 0.30):int(w * 0.70)]
+    green = (mid[:, :, 1] - (mid[:, :, 0] + mid[:, :, 2]) / 2).mean(axis=1)
+    return green, view.mean(axis=(1, 2))
+
+
+def _crossings(sig, lo, hi, thresh):
+    out = []
+    for i in range(lo, min(hi, len(sig)) - 1):
+        a, b = sig[i], sig[i + 1]
+        if (a - thresh) * (b - thresh) < 0 and a != b:
+            out.append(i + (thresh - a) / (b - a))
+    return out
+
+
+def _hog_row(lum, start, name):
+    stop = min(start + _HOG_SEARCH_PX, len(lum) - 6)
+    if stop <= start:
+        raise SideViewError(f"{name}: no ice below the house to look for a hog line")
+    dips = [lum[i] - lum[max(0, i - 9):i - 4].mean() for i in range(start, stop)]
+    return start + int(np.argmin(dips))
+
+
+def solve(plate, rect: Rect, name: str = "side") -> SideView:
+    """Fit the far house's tee and hog rows from paint alone.
+
+    The tee is fitted, not taken as the green annulus's centroid: perspective
+    magnifies its near half and drags a centroid about 2 px toward the camera.
+    The hog line is the darkest full-width row below the house.
+    """
+    green, lum = _green_profile(plate, rect)
+    h = rect[3]
+    lo, hi = int(h * _HOUSE_SEARCH[0]), int(h * _HOUSE_SEARCH[1])
+    edges = _crossings(green, lo, hi, _GREEN_THRESHOLD)
+    if len(edges) >= 4:
+        seen = [edges[0], edges[1], edges[-2], edges[-1]]
+        want = np.array([-C.R_12FT_M, -C.R_8FT_M, C.R_8FT_M, C.R_12FT_M])
+    elif len(edges) >= 2:
+        # A house far enough off blurs its annulus into one run; the outer
+        # edges still bracket the tee.
+        seen = [edges[0], edges[-1]]
+        want = np.array([-C.R_12FT_M, C.R_12FT_M])
+    else:
+        raise SideViewError(f"{name}: found {len(edges)} green edges, need at least 2")
+
+    hog = _hog_row(lum, int(edges[-1]) + 12, name)
+
+    def error(tee):
+        v = SideView(rect=rect, tee_row=tee, hog_row=hog)
+        return float(((np.array([v.row_for(x) for x in want]) - seen) ** 2).sum())
+
+    tee = min(np.arange(hog - _HOG_SEARCH_PX, hog - 30, 0.05), key=error)
+    return SideView(rect=rect, tee_row=float(tee), hog_row=float(hog))

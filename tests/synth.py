@@ -59,3 +59,59 @@ def break_ring(img, angle_deg=45.0, width_deg=25.0, cx=148.0, cy=150.0):
     a1 = angle_deg + width_deg / 2.0
     cv2.ellipse(out, (int(cx), int(cy)), (400, 400), 0.0, a0, a1, ICE, -1)
     return out
+
+
+SIDE_ICE = (238, 238, 236)
+SIDE_LINE = (150, 148, 140)
+GREEN_PAINT = (70, 150, 70)
+
+
+def side_view(tee_row=430.0, hog_row=520.0, w=810, h=1080, d_m=40.233,
+              noise=0.0, seed=0):
+    """An oblique view down the sheet at the far end's house.
+
+    Returns **RGB**, unlike ``house_panel`` above, which is BGR for cv2. These
+    feed ``detect/longview.py``, which reads frames ffmpeg decoded as rgb24,
+    and its colour mask takes channel 0 as red. ``sideview.solve`` is unaffected
+    either way -- greenness and luminance are channel-order agnostic.
+
+    Renders only what ``sideview.solve`` reads: the green 12-ft annulus as two
+    bands either side of the tee, and the hog line as a darker row. Positions
+    come from the same perspective map the fit inverts, so a correct fit
+    recovers ``tee_row`` and ``hog_row`` exactly.
+    """
+    img = np.full((h, w, 3), SIDE_ICE, dtype=np.uint8)
+    rows = hog_row - tee_row
+    u = rows * (d_m - C.TEE_TO_HOGLINE_M) / C.TEE_TO_HOGLINE_M
+    c, yh = d_m * u, tee_row - u
+    row_for = lambda x: yh + c / (d_m - x)
+
+    # the annulus: 1.219..1.829 m either side of the tee
+    for lo, hi in ((-C.R_12FT_M, -C.R_8FT_M), (C.R_8FT_M, C.R_12FT_M)):
+        a, b = sorted((int(round(row_for(lo))), int(round(row_for(hi)))))
+        img[a:b + 1, int(w * 0.12):int(w * 0.88)] = GREEN_PAINT
+
+    r = int(round(hog_row))
+    img[r - 1:r + 2] = SIDE_LINE
+
+    if noise:
+        rng = np.random.default_rng(seed)
+        img = np.clip(img.astype(np.float32) + rng.normal(0, noise, img.shape),
+                      0, 255).astype(np.uint8)
+    return img
+
+
+def side_view_stone(img, row, width_px=52, color="red", x=None):
+    """Paint a stone on a side view: a grey body with a coloured handle. RGB."""
+    out = img.copy()
+    h, w = out.shape[:2]
+    cx = w // 2 if x is None else int(x)
+    body_h = max(4, int(width_px * 0.42))
+    r = int(round(row))
+    x0, x1 = cx - width_px // 2, cx + width_px // 2
+    out[max(0, r - body_h):r, max(0, x0):x1] = (150, 150, 150)
+    hw = max(3, width_px // 4)
+    rgb = (210, 40, 40) if color == "red" else (230, 210, 40)
+    out[max(0, r - body_h - hw // 2):max(0, r - body_h) + 1,
+        cx - hw:cx + hw] = rgb
+    return out
