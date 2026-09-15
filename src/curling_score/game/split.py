@@ -54,6 +54,24 @@ SPEED_TOLERANCE = 1.4
 # before both are disbelieved. They are independent cameras timing one painted
 # line, so a real disagreement means one of them found the wrong object and
 # nothing here can say which.
+#
+# UNMEASURED, and worth knowing that before trusting it. 0.25 was chosen as the
+# acceptance bar in the design doc -- "no |t_hog - panel| above 0.25 s on the
+# overlap" -- and then reused here as a runtime veto, which is not the same
+# job: a bar says what would be good enough, a veto decides what ships.
+#
+# It is now the single largest source of refusals. scripts/split_coverage.py
+# measured 25 of 55 unpublished crossings lost to this gate on one video, and
+# the pre-veto disagreement over 48 paired crossings had a median of 0.261 s --
+# just above the threshold, so roughly half the comparable population fails it.
+# That is a threshold sitting in the middle of its own distribution, which is
+# where a number does the most damage per unit of wrongness.
+#
+# What would measure it: the same script over more than one video, comparing
+# the disagreement distribution against the hand-marked crossings in
+# datasets/hogmarks, which are the only independent truth here. If the
+# disagreements are bimodal -- tight agreement plus a tail of mispairings --
+# the cut belongs in the valley, wherever that falls.
 CROSS_CHECK_S = 0.25
 
 

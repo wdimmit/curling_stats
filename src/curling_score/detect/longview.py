@@ -23,17 +23,41 @@ import numpy as np
 # the hack. The window is wider at both ends than every mark observed.
 WINDOW_S = (2.0, 6.5)
 
-# The stone reads about 52 px across at the hog line. These bounds reject a
-# broom pad and a sweeper's shadow while keeping every stone seen so far.
+# How wide a stone reads at the hog line, and how far from that a candidate may
+# be before it is refused.
+#
+# UNMEASURED, both of them, and they are load-bearing: every width gate and
+# every proposed label box rests on the 52. It comes from a single check
+# against the reference VOD's side views during Task 4 of the long-camera plan
+# -- the geometry predicted 53.6 px from a camera 40.233 m out and about 52 was
+# what a stone actually spanned -- not from a distribution over sheets. The
+# bounds were then set wide enough to keep every crossing that pass found.
+#
+# What would measure them: the widths the detector already records. Crossing
+# carries width_px on every success, and scripts/split_coverage.py walks every
+# shot of every cached video -- so a run of it over more than one video yields
+# the distribution these two numbers are standing in for, per sheet and per
+# view. Worth doing before either is trusted on a sheet nobody has checked.
 WIDTH_BOUNDS = (0.5, 1.6)
 STONE_WIDTH_AT_HOG_PX = 52.0
 # A delivery crosses its hog line between 1.2 and 3.2 m/s -- the range the 27
 # hand-marked crossings imply. Slower than that is a stone being nudged aside,
 # or a tracker that has drifted onto one already at rest.
 SPEED_BOUNDS_M_S = (1.2, 3.2)
-# How much darker than the ice granite is. The painted hog line is a dip of
-# about 25 levels, so the threshold has to sit well below it or the line gets
-# picked up as the stone's own edge.
+# How much darker than the ice granite is, in luminance levels.
+#
+# The painted hog line dips about 25 levels below the ice (238 -> ~212), so
+# this sits deliberately ABOVE that: a threshold below 25 would pick the paint
+# up as the stone's own trailing edge, which is the one confusion it exists to
+# prevent. (This comment used to say "well below it", which is backwards
+# against its own value and against tests/synth.py:69-76, where the same
+# reasoning is stated correctly.)
+#
+# The 45 itself is a reasoned estimate, not a measurement: it is comfortably
+# clear of the paint's 25 and comfortably under granite's own contrast against
+# ice. Measuring it would mean sampling the luminance gap between stone and ice
+# across the five sheets' side views, the way _GREEN_THRESHOLD in
+# geometry/sideview.py was measured against real plates.
 BODY_DARKER_THAN_ICE = 45
 _MIN_SAMPLES = 6
 
