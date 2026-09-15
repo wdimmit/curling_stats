@@ -71,6 +71,24 @@ class TestSelect:
         assert shortfall.get("scene:left:approach")
         assert all(c.position == "crossing" for c in chosen if c.half == "scene")
 
+    def test_one_frame_cannot_take_two_of_the_six_hundred_slots(self):
+        """`sidepool` emits a candidate per colour scan per moment, so the same
+        image is in the pool twice -- differing in colour, position, edge_row
+        and labels, so neither identity nor equality dedupes them. Keyed on the
+        object rather than the frame, every selected frame was chosen twice:
+        60 distinct stems came back as 120 rows, each landing in two bins at
+        once and reaching a person twice with two different proposed boxes."""
+        from collections import Counter
+        pool = []
+        for i in range(60):
+            for color, pos in (("red", "approach"), ("yellow", "crossing")):
+                pool.append(cand(vid=f"v{i % 30}", t=float(i), clip=float(i),
+                                 pos=pos, color=color))
+        chosen, _short = S.select(pool)
+        stems = Counter(c.stem for c in chosen)
+        assert not [k for k, n in stems.items() if n > 1]
+        assert len(chosen) == len(stems)
+
     def test_the_scene_half_takes_refused_frames_too(self):
         """The whole point: selection must not consult the detector's verdict."""
         pool = [cand(vid=f"v{i}", t=float(i), clip=float(i), key="no_candidate")

@@ -55,8 +55,14 @@ SCENE_QUOTA = {"approach": 35, "crossing": 40, "past": 25,
 # not the ``two_candidates``/``wrong_speed`` this plan first guessed at. They
 # are a frozenset in ``detect/longview.py``; the test below pins the match so
 # a renamed key cannot silently empty a bin.
-OUTCOME_QUOTA = {"ok": 60, "no_candidate": 50, "ambiguous": 50,
-                 "never_reached": 50, "unsteady": 45, "bad_speed": 45}
+# ``ok`` sits last deliberately. The scene pass runs first and can eat into the
+# global caps, so whatever headroom survives should go to the refusals this set
+# exists for before it goes to the control group.
+#
+# ``no_frames`` is the one ``longview.KEYS`` member with no quota, and that is
+# not an oversight: a window that decoded no frames has no frame to contribute.
+OUTCOME_QUOTA = {"no_candidate": 50, "ambiguous": 50, "never_reached": 50,
+                 "unsteady": 45, "bad_speed": 45, "ok": 60}
 
 # 600 frames over 120 videos averages five. Eight lets a richer night fill a
 # scarce bin without any one night becoming the dataset.
@@ -111,12 +117,14 @@ def bin_of(candidate: SideCandidate) -> str:
     """Which quota bin a candidate counts against, once ``select`` has placed
     it in a half.
 
-    This is the same string ``select`` uses to key ``SCENE_QUOTA`` /
-    ``OUTCOME_QUOTA`` and ``shortfall`` -- kept in one place, as
-    ``harvest.candidates.bin_of`` does for the overhead set, so a manifest
-    reporting which bin a chosen frame filled cannot drift from what
-    ``select`` actually used. Returns ``""`` for a candidate that has not been
-    through ``select`` (``half`` still unset).
+    This builds the same string ``select`` keys ``shortfall`` with, so a
+    manifest's per-bin counts and its shortfall join up. Note that ``select``
+    builds those keys itself rather than calling this -- unlike
+    ``harvest.candidates.bin_of``, which computes from intrinsic fields and so
+    is genuinely the definition of binning. This one reads ``half``, which only
+    ``select`` writes, so it cannot bin a pool that has not been selected, and
+    a manifest that forgets to serialise ``half`` gets ``""`` for every frame
+    rather than an error. Returns ``""`` for an unselected candidate.
     """
     if candidate.half == "scene":
         return f"scene:{candidate.view}:{candidate.position}"
@@ -125,7 +133,7 @@ def bin_of(candidate: SideCandidate) -> str:
     return ""
 
 
-def _fill(pool, want, chosen, taken_ids, video_count, clip_count, half):
+def _fill(pool, want, chosen, taken_stems, video_count, clip_count, half):
     """Pick up to ``want`` frames from ``pool`` via ``_spread``, honouring the
     running *global* ``MAX_PER_VIDEO`` / ``MAX_PER_CLIP`` caps.
 
@@ -142,7 +150,7 @@ def _fill(pool, want, chosen, taken_ids, video_count, clip_count, half):
     remaining = want
     while remaining > 0:
         avail = [c for c in pool
-                 if id(c) not in taken_ids
+                 if c.stem not in taken_stems
                  and video_count.get(c.video_id, 0) < MAX_PER_VIDEO
                  and clip_count.get((c.video_id, c.clip_start_s), 0) < MAX_PER_CLIP]
         if not avail:
@@ -150,7 +158,7 @@ def _fill(pool, want, chosen, taken_ids, video_count, clip_count, half):
         picked = _spread(avail, remaining, MAX_PER_CLIP)
         progressed = False
         for c in picked:
-            if id(c) in taken_ids:
+            if c.stem in taken_stems:
                 continue
             vkey = c.video_id
             ckey = (c.video_id, c.clip_start_s)
@@ -158,7 +166,7 @@ def _fill(pool, want, chosen, taken_ids, video_count, clip_count, half):
                     or clip_count.get(ckey, 0) >= MAX_PER_CLIP):
                 continue
             chosen.append(dataclasses.replace(c, half=half))
-            taken_ids.add(id(c))
+            taken_stems.add(c.stem)
             video_count[vkey] = video_count.get(vkey, 0) + 1
             clip_count[ckey] = clip_count.get(ckey, 0) + 1
             remaining -= 1
@@ -198,7 +206,13 @@ def select(pool, *, scene_quota=None, outcome_quota=None):
 
     chosen: list[SideCandidate] = []
     shortfall: dict[str, int] = {}
-    taken_ids: set[int] = set()
+    # Keyed on the STEM, which is the frame, not on the object. ``sidepool``
+    # emits one candidate per colour scan per moment, so the same image is in
+    # the pool twice -- differing in colour, position, edge_row and labels, so
+    # neither identity nor equality dedupes them. Keyed on the object, a single
+    # JPEG took two of the 600 slots, landed in two bins at once, and reached a
+    # person twice carrying two different proposed boxes.
+    taken_stems: set[str] = set()
     video_count: dict[str, int] = {}
     clip_count: dict[tuple, int] = {}
 
@@ -206,7 +220,7 @@ def select(pool, *, scene_quota=None, outcome_quota=None):
         for position, want in scene_quota.items():
             key = f"scene:{view}:{position}"
             eligible = [c for c in pool if c.view == view and c.position == position]
-            got = _fill(eligible, want, chosen, taken_ids, video_count,
+            got = _fill(eligible, want, chosen, taken_stems, video_count,
                         clip_count, "scene")
             if got < want:
                 shortfall[key] = want - got
@@ -214,7 +228,7 @@ def select(pool, *, scene_quota=None, outcome_quota=None):
     for outcome_key, want in outcome_quota.items():
         key = f"outcome:{outcome_key}"
         eligible = [c for c in pool if c.outcome == outcome_key]
-        got = _fill(eligible, want, chosen, taken_ids, video_count,
+        got = _fill(eligible, want, chosen, taken_stems, video_count,
                     clip_count, "outcome")
         if got < want:
             shortfall[key] = want - got
