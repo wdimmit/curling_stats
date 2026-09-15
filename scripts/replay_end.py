@@ -228,6 +228,15 @@ def main():
     thinking.time_shots(built, far_seq, far.view_y_min_m)
     clock = thinking.for_end(built)
     print("\n== timings")
+    # The throwing end's crossing now comes from the side view
+    # (game/hogtime.py), and this replay does not run it: calibrating a side
+    # view and decoding it per shot would cost minutes, against the seconds a
+    # cached replay otherwise takes, which is the whole reason to reach for
+    # this script. So every split below reads as unmeasured on purpose, not
+    # as a sign the delivery detection is wrong -- the thinking-time column
+    # beside it is unaffected and still worth reading.
+    print("   (splits below are unmeasured: this replay does not run the side "
+          "view that the throwing end now comes from -- see game/hogtime.py)")
     measured = 0
     for sh, secs in zip(built, clock.per_shot):
         sp = split.long_split(getattr(sh, "release", None),
