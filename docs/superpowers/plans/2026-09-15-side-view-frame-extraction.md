@@ -1090,7 +1090,7 @@ cs() { /data/wdd/curling/.venv/bin/python -m curling_score.cli "$@"; }
 
 cs sideframes views   --videos datasets/ds11/videos.json \
                       --root /data/wdd/curling/ds11/clips \
-                      --out  datasets/ds13/sideviews.json
+                      --views datasets/ds13/sideviews.json
 cs sideframes propose --videos datasets/ds11/videos.json \
                       --root /data/wdd/curling/ds11/clips \
                       --views datasets/ds13/sideviews.json \

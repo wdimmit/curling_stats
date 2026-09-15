@@ -64,6 +64,14 @@ SCENE_QUOTA = {"approach": 35, "crossing": 40, "past": 25,
 OUTCOME_QUOTA = {"no_candidate": 50, "ambiguous": 50, "never_reached": 50,
                  "unsteady": 45, "bad_speed": 45, "ok": 60}
 
+# The scene bins ARE the positions -- checked here rather than left to agree by
+# eye, because POSITIONS was for a while the only copy nothing read, and a
+# vocabulary nothing enforces is a vocabulary that drifts. A position with no
+# quota would silently never be selected; a quota naming a position nothing
+# emits would be a bin that can never fill.
+assert set(SCENE_QUOTA) == set(POSITIONS), (
+    f"scene quota {sorted(SCENE_QUOTA)} does not match POSITIONS {sorted(POSITIONS)}")
+
 # 600 frames over 120 videos averages five. Eight lets a richer night fill a
 # scarce bin without any one night becoming the dataset.
 MAX_PER_VIDEO = 8

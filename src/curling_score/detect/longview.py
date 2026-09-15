@@ -104,6 +104,11 @@ class Crossing:
     t: float | None
     reason: str
     key: str = ""
+    # The median body width over the track. Nothing reads it today -- it is
+    # kept because it is the measurement STONE_WIDTH_AT_HOG_PX and WIDTH_BOUNDS
+    # are standing in for without one (see their comment above), and it costs a
+    # median over a list that already exists. A run of
+    # scripts/split_coverage.py that collected these would settle both numbers.
     width_px: float = 0.0
 
     def __bool__(self) -> bool:
