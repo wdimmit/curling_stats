@@ -67,14 +67,18 @@ class TestSolve:
         assert got.row_for(C.TEE_TO_HOGLINE_M) == pytest.approx(got.hog_row, abs=0.01)
 
     def test_extra_edges_from_paint_bleed_do_not_mispair(self):
-        """One of the club's ten real views throws six green crossings instead
-        of four -- an extra pair inside the annulus. Picking the 8-ft pair by
-        position there would silently mispair; fitting the outer pair alone
-        must still recover the rows."""
+        """A gap cut into the near annulus band -- paint bleed, or a sweeper's
+        shadow, as seen on one of the club's ten real views -- throws six green
+        crossings instead of four, with the split *inside* the band itself. That
+        is the case the old positional selection (edges[0], edges[1], edges[-2],
+        edges[-1]) gets wrong: the split's inner edge lands at edges[1], not the
+        true 8-ft boundary. Reconstructing that old selection on this exact
+        plate gives tee 428.25 (1.75 off, outside this test's tolerance);
+        fitting from the outer pair alone gives 429.65 (0.35 off)."""
         plate = synth.side_view(tee_row=430.0, hog_row=520.0)
-        plate[425:429, 300:560] = synth.GREEN_PAINT
+        plate[411:415, :] = synth.SIDE_ICE
         got = sideview.solve(plate, (0, 0, 810, 1080))
-        assert got.tee_row == pytest.approx(430.0, abs=1.5)
+        assert got.tee_row == pytest.approx(430.0, abs=1.0)
         assert got.hog_row == pytest.approx(520.0, abs=1.5)
 
     def test_ice_with_no_house_on_it_is_refused(self):
