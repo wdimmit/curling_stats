@@ -165,16 +165,37 @@ Run over every end of all eight catalogued videos and report:
 - agreement with the 27 hand marks
 
 Ship when coverage is >= 90%, no disagreement with the panel exceeds 0.25 s,
-and the hand marks are matched within 0.1 s. Fail any of those and the seam
-means swapping in a trained detector touches `detect/longview.py` alone.
+and the hand marks are matched within 0.1 s.
+
+Fail any of those and a trained detector goes in behind the seam
+`game/hogtime.py` establishes. **In production that seam is one symbol wide**:
+`hogtime` imports `longview` only for `WINDOW_S` and the default
+`find=longview.find_crossing`, so the pipeline changes by passing a different
+`find`.
+
+It is *not* true that a trained detector touches `detect/longview.py` alone --
+this document said so, and ds13 has since made it wrong.
+`harvest/sidepool.py` depends on eight of that module's symbols (`candidates`,
+`find_in_frames`, `colour_mask`, `runs`, `BODY_DARKER_THAN_ICE`,
+`STONE_WIDTH_AT_HOG_PX`, `Proposal`, `KEYS`) and `harvest/sideframes.py` pins
+its refusal quota to `longview.KEYS`. That is deliberate: ds13 exists to mine
+the classical detector's *refusals*, so it needs the classical detector to go
+on existing. Rewriting `longview.py` in place would break it. Adding the
+trained detector beside it and pointing `hogtime`'s `find=` at the new one
+would not.
 
 ## Known risks
 
-- **Side-view calibration is not yet robust.** On 12-frame plates it fits 7 of
-  10 views; sheet 1's left view fits at 40 px against 78-90 elsewhere, and
-  sheets 2 and 5's right views find an odd number of ring edges. Production
-  would have 24 frames and cleaner medians, so these are plausibly thin-plate
-  artefacts -- but that is unproven and is the first thing to settle.
+- ~~**Side-view calibration is not yet robust.**~~ **CLOSED.** It fitted 7 of
+  10 views on 12-frame plates when this was written. All 10 now fit, on those
+  same thin plates. Two commits did it: `c051a0c` fits the tee from the
+  annulus's outermost pair only -- the edge counts across the ten views are
+  `[4,4,4,4,4,6,4,4,4,4]`, and with six edges the second and second-to-last are
+  not the 8-ft boundary -- and `e7d6839` set `_GREEN_THRESHOLD` from the real
+  plates' measured annulus peaks (6.44-13.27) rather than from a synthetic
+  fixture. Pinned by `tests/test_sideview.py::TestEveryRealView` and
+  `tests/test_sideviews.py::test_real_videos_calibrate_both_views`, both of
+  which run against all five sheets.
 - **The classical detector is measured on one video** (`VXU9xwmugRg`, sheet
   2 -- the only video cached where this was run; the other seven catalogued
   videos live in the worker box's cache). `scripts/split_coverage.py` runs

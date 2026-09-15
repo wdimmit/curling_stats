@@ -10,7 +10,15 @@ hand-marked hog-line crossings, worst error 0.619 s, against a bar of all 27
 within 0.1 s. Neither candidate fix closed the gap, so it is being replaced by
 a trained detector behind the seam `game/hogtime.py` already establishes —
 `hogtime` imports `longview` only for `WINDOW_S` and the default
-`find=longview.find_crossing`, so the swap is one file wide.
+`find=longview.find_crossing`, so in production the swap is one symbol wide:
+point that `find=` at the trained detector.
+
+It is not a *file*-wide swap, and this document originally said it was. This
+plan itself is the reason -- `harvest/sidepool.py` borrows eight symbols from
+`detect/longview.py` and `harvest/sideframes.py` pins its refusal quota to
+`longview.KEYS`, because mining that detector's refusals is the whole point of
+ds13. The classical detector has to keep existing for this dataset to be
+rebuildable. The trained one goes in beside it, not over it.
 
 A trained detector needs frames. This document says which 600, where they come
 from, and what a person will draw on them.
