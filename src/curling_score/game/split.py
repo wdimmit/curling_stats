@@ -50,6 +50,12 @@ BASELINE_M = C.TEE_TO_TEE_M - 2 * (C.TEE_TO_HOGLINE_M - C.STONE_RADIUS_M)
 # taken 20 s apart from different cameras at different sample rates.
 SPEED_TOLERANCE = 1.4
 
+# How far the side view and the panel may disagree about the same crossing
+# before both are disbelieved. They are independent cameras timing one painted
+# line, so a real disagreement means one of them found the wrong object and
+# nothing here can say which.
+CROSS_CHECK_S = 0.25
+
 
 @dataclass(frozen=True)
 class Split:
@@ -108,17 +114,22 @@ def speed_at_line(track, y_line: float = HOG_APPARENT_Y_M) -> float | None:
     return None
 
 
-def long_split(release, delivery) -> Split | None:
+def long_split(release, delivery, *, t_hog=None) -> Split | None:
     """The split for one shot, or None when either end could not be timed.
 
-    Never guessed. A shot the throwing camera lost before the hog line, or one
-    that entered the playing panel already past it, has no split.
+    The throwing end comes from the side view (``game/hogtime.py``): the
+    overhead panel loses about 40% of throws before the hog line. The panel's
+    own tripwire is kept only to check that answer -- never to stand in for it,
+    because two methods inside one game are not comparable with each other.
     """
-    if release is None or delivery is None:
+    if release is None or delivery is None or t_hog is None:
         return None
-    start = hog_crossing(getattr(release, "track", ()))
+    panel = hog_crossing(getattr(release, "track", ()))
+    if panel is not None and abs(panel - t_hog) > CROSS_CHECK_S:
+        return None
+    start = t_hog
     end = crossing_time(getattr(delivery, "track", ()) or (), HOG_APPARENT_Y_M)
-    if start is None or end is None or end <= start:
+    if end is None or end <= start:
         return None
     # The pairing behind this is only as good as a 6-30 s arrival window, and
     # on real ends it puts draws against a release 10 s earlier where the clean

@@ -5,6 +5,7 @@ import pytest
 from curling_score import timeline
 from curling_score.detect.rocks import Detection
 from curling_score.game import shots as S
+from curling_score.game import split
 
 
 def det(color, x, y):
@@ -229,8 +230,12 @@ class TestTimingFields:
                 tt += 0.2
             rel = Release(color=color, t=rt[0][0], y_exit_m=rt[-1][2],
                           speed_m_s=2.0, track=tuple(rt))
+        # The side view agreeing with the panel, standing in for a real
+        # ``hogtime.time_hog_crossings`` pass: ``long_split`` now takes the
+        # throwing end from there, never the panel alone.
+        t_hog = split.hog_crossing(rel.track) if rel is not None else None
         return S.Shot(number=n, color=color, stones=[det(color, 0.1, 0.2)],
-                      t_rest_s=t_rest, delivery=dv, release=rel)
+                      t_rest_s=t_rest, delivery=dv, release=rel, t_hog_s=t_hog)
 
     def test_a_measured_shot_carries_its_split_and_clock(self):
         end = timeline.build_end(

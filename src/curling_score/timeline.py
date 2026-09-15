@@ -7,7 +7,7 @@ down-sheet.
 
 from datetime import datetime, timezone
 
-from curling_score.game import classify, rules, shots as shots_mod, split, thinking
+from curling_score.game import classify, hogtime, rules, shots as shots_mod, split, thinking
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
@@ -76,7 +76,7 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
         throw = s.throw
         dv = getattr(s, "delivery", None)
         rel = getattr(s, "release", None)
-        sp = split.long_split(rel, dv)
+        sp = split.long_split(rel, dv, t_hog=hogtime.crossing(s))
         t_tee = thinking.tee_crossing(s)
         think = clock.per_shot[i] if i < len(clock.per_shot) else None
         kind, kind_conf = classify.classify_shot(s)

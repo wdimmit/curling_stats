@@ -179,7 +179,7 @@ class TestLongSplit:
     def test_measures_between_the_two_crossings(self):
         r = release_at(t0=0.0, speed=2.0)
         d = delivery_at(t0=30.0, speed=0.8)
-        s = split.long_split(r, d)
+        s = split.long_split(r, d, t_hog=split.hog_crossing(r.track))
         assert s is not None
         assert s.baseline_m == pytest.approx(split.BASELINE_M, abs=1e-6)
         assert s.t_start == pytest.approx(split.crossing_time(r.track, LINE), abs=1e-9)
@@ -189,22 +189,26 @@ class TestLongSplit:
     def test_an_arrival_first_seen_below_the_line_is_unmeasured(self):
         r = release_at()
         d = delivery_at(t0=30.0, y0=3.0, y1=0.2)
-        assert split.long_split(r, d) is None
+        assert split.long_split(r, d, t_hog=split.hog_crossing(r.track)) is None
 
     def test_a_throw_lost_before_the_line_is_unmeasured(self):
-        assert split.long_split(release_at(y1=1.0), delivery_at()) is None
+        r = release_at(y1=1.0)
+        assert split.long_split(
+            r, delivery_at(), t_hog=split.hog_crossing(r.track)) is None
 
     def test_no_release_means_no_split(self):
-        assert split.long_split(None, delivery_at()) is None
+        assert split.long_split(None, delivery_at(), t_hog=0.0) is None
 
     def test_no_delivery_means_no_split(self):
-        assert split.long_split(release_at(), None) is None
+        r = release_at()
+        assert split.long_split(
+            r, None, t_hog=split.hog_crossing(r.track)) is None
 
     def test_a_backwards_split_is_refused(self):
         """An arrival timed before its own throw is a pairing error, not a split."""
         r = release_at(t0=100.0)
         d = delivery_at(t0=10.0)
-        assert split.long_split(r, d) is None
+        assert split.long_split(r, d, t_hog=split.hog_crossing(r.track)) is None
 
 
 class TestItRefusesAPhysicallyImpossibleSplit:
@@ -240,12 +244,14 @@ class TestItRefusesAPhysicallyImpossibleSplit:
         start = split.hog_crossing(r.track)
         d = self._arrival_crossing_at(start + 12.0, speed=2.0)
         assert split.speed_at_line(d.track) > split.speed_at_line(r.track)
-        assert split.long_split(r, d) is None
+        assert split.long_split(r, d, t_hog=start) is None
 
     def test_a_stone_that_slowed_on_the_way_down_is_kept(self):
         r = release_at(t0=0.0, speed=2.0)
         start = split.hog_crossing(r.track)
-        s = split.long_split(r, self._arrival_crossing_at(start + split.BASELINE_M / 1.5))
+        s = split.long_split(
+            r, self._arrival_crossing_at(start + split.BASELINE_M / 1.5),
+            t_hog=start)
         assert s is not None
         assert s.speed_m_s == pytest.approx(1.5, abs=0.05)
 
@@ -255,7 +261,8 @@ class TestItRefusesAPhysicallyImpossibleSplit:
         start = split.hog_crossing(r.track)
         assert split.long_split(
             r, self._arrival_crossing_at(start + split.BASELINE_M / 2.5,
-                                         speed=2.5)) is not None
+                                         speed=2.5),
+            t_hog=start) is not None
 
     def test_the_tolerance_forgives_measurement_noise_only(self):
         assert 1.0 < split.SPEED_TOLERANCE <= 1.5
@@ -263,6 +270,46 @@ class TestItRefusesAPhysicallyImpossibleSplit:
     def test_the_split_reports_its_own_mean_speed(self):
         r = release_at(t0=0.0, speed=2.0)
         start = split.hog_crossing(r.track)
-        s = split.long_split(r, self._arrival_crossing_at(start + split.BASELINE_M / 1.6))
+        s = split.long_split(
+            r, self._arrival_crossing_at(start + split.BASELINE_M / 1.6),
+            t_hog=start)
         assert s.speed_m_s == pytest.approx(1.6, abs=0.05)
         assert s.speed_m_s == pytest.approx(s.baseline_m / s.seconds, abs=1e-9)
+
+
+class TestTheSideViewIsTheSourceForTheThrowingEnd:
+    """The panel keeps timing the target end, and cross-checks the other one."""
+
+    def test_the_throwing_end_comes_from_the_side_view_when_given(self):
+        r = release_at(t0=0.0, speed=2.0)
+        d = delivery_at(t0=40.0, speed=0.8)
+        panel = split.hog_crossing(r.track)
+        s = split.long_split(r, d, t_hog=panel + 0.1)
+        assert s.t_start == pytest.approx(panel + 0.1, abs=1e-9)
+
+    def test_without_one_there_is_no_split_even_if_the_panel_saw_it(self):
+        """One method per game: a shot the side view refused has no split,
+        rather than a second-best number that cannot be compared with its
+        neighbours."""
+        r = release_at(t0=0.0, speed=2.0)
+        assert split.hog_crossing(r.track) is not None
+        assert split.long_split(r, delivery_at(t0=40.0), t_hog=None) is None
+
+    def test_the_two_disagreeing_refuses_both(self):
+        r = release_at(t0=0.0, speed=2.0)
+        panel = split.hog_crossing(r.track)
+        d = delivery_at(t0=40.0, speed=0.8)
+        assert split.long_split(r, d, t_hog=panel + split.CROSS_CHECK_S * 3) is None
+
+    def test_a_disagreement_inside_the_tolerance_is_kept(self):
+        r = release_at(t0=0.0, speed=2.0)
+        panel = split.hog_crossing(r.track)
+        d = delivery_at(t0=40.0, speed=0.8)
+        assert split.long_split(r, d, t_hog=panel + split.CROSS_CHECK_S / 2)
+
+    def test_a_throw_the_panel_never_saw_still_gets_a_split(self):
+        """This is the whole point: 40% of throws are lost before the line."""
+        r = release_at(t0=0.0, speed=2.0, y1=2.5)     # lost well short
+        assert split.hog_crossing(r.track) is None
+        s = split.long_split(r, delivery_at(t0=40.0), t_hog=5.0)
+        assert s is not None and s.t_start == pytest.approx(5.0)
