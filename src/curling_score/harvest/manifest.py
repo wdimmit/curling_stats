@@ -52,6 +52,22 @@ def candidate_from_json(d: dict) -> Candidate:
     )
 
 
+def _merge_extra(doc: dict, extra: dict | None) -> dict:
+    """Merge caller-supplied fields into a manifest, guarding against a clash.
+
+    Loudly, not silently. Passing extra={"videos": path} once replaced the
+    whole frame index with a string, and the failure surfaced two stages
+    later as "string indices must be integers".
+    """
+    if extra:
+        clash = sorted(set(extra) & set(doc))
+        if clash:
+            raise ValueError(
+                f"extra would overwrite the manifest's own {', '.join(clash)}")
+        doc.update(extra)
+    return doc
+
+
 def build_manifest(chosen_by_video, splits, quota, extra=None) -> dict:
     """The selected frames for every video, with what each could not supply.
 
@@ -84,16 +100,7 @@ def build_manifest(chosen_by_video, splits, quota, extra=None) -> dict:
         },
         "videos": videos,
     }
-    if extra:
-        # Loudly, not silently. Passing extra={"videos": path} once replaced the
-        # whole frame index with a string, and the failure surfaced two stages
-        # later as "string indices must be integers".
-        clash = sorted(set(extra) & set(doc))
-        if clash:
-            raise ValueError(
-                f"extra would overwrite the manifest's own {', '.join(clash)}")
-        doc.update(extra)
-    return doc
+    return _merge_extra(doc, extra)
 
 
 def iter_frames(doc):
@@ -141,6 +148,54 @@ def side_candidate_from_json(d: dict) -> SideCandidate:
                     for r in d.get("labels", [])),
         half=d.get("half", ""),
     )
+
+
+def build_side_manifest(chosen, shortfall, supply, splits, quota, extra=None) -> dict:
+    """The chosen side-view frames, grouped by video, with the shortfall.
+
+    Unlike :func:`build_manifest`, ``sideframes.select`` chooses across the
+    whole pool in one pass rather than per video, so there is one
+    ``shortfall`` (and one ``supply``) for the run, not one per video -- they
+    belong in the summary, next to the quota they failed, or did not fail,
+    to fill.
+
+    ``quota`` is expected already expanded to the same per-bin keys
+    ``shortfall`` and ``supply`` use (``scene:left:approach``, ...,
+    ``outcome:ok``): ``sideframes.SCENE_QUOTA`` is per view, and summing it
+    un-expanded silently reports half the real 600-frame target. ``supply``
+    is how many pool candidates were eligible for each bin *before*
+    selection -- without it, a bin at zero looks the same whether the
+    archive held nothing for it or the run's caps had already spent it.
+    """
+    videos, counts = {}, {"train": 0, "val": 0}
+    by_video: dict = {}
+    for c in chosen:
+        by_video.setdefault(c.video_id, []).append(c)
+
+    for vid in sorted(by_video):
+        split = splits[vid]  # a video with no split is a bug, not a default
+        picked = by_video[vid]
+        counts[split] = counts.get(split, 0) + len(picked)
+        videos[vid] = {
+            "split": split,
+            "frames": [side_candidate_to_json(c) for c in picked],
+        }
+
+    doc = {
+        "created": _dt.date.today().isoformat(),
+        "quota": dict(quota),
+        "summary": {
+            "videos": len(videos),
+            "frames": sum(counts.values()),
+            "train_frames": counts.get("train", 0),
+            "val_frames": counts.get("val", 0),
+            "target": sum(quota.values()),
+            "shortfall": dict(sorted(shortfall.items())),
+            "supply": dict(sorted(supply.items())),
+        },
+        "videos": videos,
+    }
+    return _merge_extra(doc, extra)
 
 
 def side_iter_frames(doc):

@@ -15,7 +15,6 @@ model measured on the same held-out games can be compared; measured on two
 splits that merely look alike, they cannot.
 """
 
-import datetime as _dt
 import json
 import time
 from pathlib import Path
@@ -39,7 +38,25 @@ def _save(path, doc):
     return path
 
 
-def _one_frame_per_clip(root: Path, vid: str):
+def _require(args, **required) -> bool:
+    """Print a clear error and return True if any required arg is missing.
+
+    ``cli._add_sideframes`` builds all four stages from one shared
+    seven-argument block with nothing marked ``required`` -- the reachability
+    test parses every stage against that same shared block, so marking one
+    stage's argument required there would break the others' parsing rather
+    than just this one's. So each stage checks what it actually needs here,
+    instead of a missing ``--root`` surfacing three calls deep as
+    ``TypeError: argument should be a str or an os.PathLike object, not
+    NoneType``.
+    """
+    missing = [f"--{name}" for name, val in required.items() if not val]
+    if missing:
+        print(f"sideframes {args.stage}: {', '.join(missing)} required")
+    return bool(missing)
+
+
+def _one_frame_per_clip(root: Path):
     """``(t_abs, frame)`` for one keyframe from every clip a video has.
 
     Same trick ``harvest.stages.stage_pool`` uses for the overhead panels:
@@ -57,26 +74,35 @@ def _one_frame_per_clip(root: Path, vid: str):
 
 
 def stage_views(args) -> int:
+    if _require(args, root=args.root):
+        return 2
     doc = _load(args.videos)
     videos = doc["videos"][:args.limit] if args.limit else doc["videos"]
     root = Path(args.root)
 
     out_path = Path(args.views)
     banked = _load(out_path) if out_path.exists() else {}
-    both = one = none = 0
+    both = one = none = skipped = 0
     t_start = time.time()
 
     for i, v in enumerate(videos, 1):
         vid = v["video_id"]
-        timed = _one_frame_per_clip(root / vid, vid)
+        if vid in banked and not args.force:
+            skipped += 1
+            continue
 
-        if len(timed) < MIN_PLATE_FRAMES:
-            h, w = (timed[0][1].shape[:2] if timed else (0, 0))
-            vv = sideviews.VideoViews(
-                vid, (w, h), {},
-                f"only {len(timed)} clip frame(s), need {MIN_PLATE_FRAMES}")
-        else:
-            vv = sideviews.derive(vid, [img for _, img in timed])
+        try:
+            timed = _one_frame_per_clip(root / vid)
+            if len(timed) < MIN_PLATE_FRAMES:
+                h, w = (timed[0][1].shape[:2] if timed else (0, 0))
+                vv = sideviews.VideoViews(
+                    vid, (w, h), {},
+                    f"only {len(timed)} clip frame(s), need {MIN_PLATE_FRAMES}")
+            else:
+                vv = sideviews.derive(vid, [img for _, img in timed])
+        except Exception as exc:  # noqa: BLE001 -- one bad video must not stop the other 119
+            vv = sideviews.VideoViews(vid, (0, 0), {},
+                                       f"{type(exc).__name__}: {exc}")
 
         banked[vid] = sideviews.to_json(vv)
         _save(out_path, banked)
@@ -94,25 +120,53 @@ def stage_views(args) -> int:
               f"(both {both}, one {one}, none {none}) "
               f"({(time.time() - t_start) / i:.0f}s/video)", flush=True)
 
-    print(f"\n{both + one}/{len(videos)} videos with at least one usable "
-          f"view ({both} both, {one} one, {none} none)")
-    return 0 if (both + one) else 1
+    processed = both + one + none
+    print(f"\nthis run: {both + one}/{processed} newly-processed video(s) with "
+          f"at least one usable view ({both} both, {one} one, {none} none)"
+          + (f"; {skipped} already banked, skipped (--force to redo)"
+             if skipped else ""))
+
+    # A separate tally over everything ever banked, not just this run's
+    # videos: once a video already banked is skipped, this run's own counts
+    # and the corpus-wide ones are two different populations, and printing
+    # only one invites reading it as the other.
+    all_both = all_one = all_none = 0
+    for raw in banked.values():
+        n = len(sideviews.usable_views(sideviews.from_json(raw)))
+        if n == 2:
+            all_both += 1
+        elif n == 1:
+            all_one += 1
+        else:
+            all_none += 1
+    print(f"overall: {all_both + all_one}/{len(banked)} banked video(s) with "
+          f"at least one usable view ({all_both} both, {all_one} one, "
+          f"{all_none} none)")
+    return 0 if (all_both + all_one) else 1
 
 
 def stage_propose(args) -> int:
+    if _require(args, root=args.root, out=args.out):
+        return 2
     doc = _load(args.videos)
     videos = doc["videos"][:args.limit] if args.limit else doc["videos"]
     root, out = Path(args.root), Path(args.out)
     views_doc = _load(args.views)
 
     pool_path = out / "candidates.json"
+    errors_path = out / "propose_errors.json"
     banked = _load(pool_path) if pool_path.exists() else {}
-    usable = 0
+    errors = _load(errors_path) if errors_path.exists() else {}
+    skipped = usable = failed = 0
     agg_refusals: dict = {}
     t_start = time.time()
 
     for i, v in enumerate(videos, 1):
         vid = v["video_id"]
+        if vid in banked and not args.force:
+            skipped += 1
+            continue
+
         raw = views_doc.get(vid)
         if raw is None:
             print(f"[{i:3d}] {vid}: not in {args.views}, skipped", flush=True)
@@ -127,9 +181,22 @@ def stage_propose(args) -> int:
             print(f"[{i:3d}] {vid}: no clips, skipped", flush=True)
             continue
 
-        cands, stats = sidepool.build_video_pool(vid, paths, vv, out, fps=args.fps)
+        try:
+            cands, stats = sidepool.build_video_pool(vid, paths, vv, out, fps=args.fps)
+        except Exception as exc:  # noqa: BLE001 -- one bad video must not stop the other 119
+            errors[vid] = f"{type(exc).__name__}: {exc}"
+            banked[vid] = []
+            _save(pool_path, banked)
+            _save(errors_path, errors)
+            failed += 1
+            print(f"[{i:3d}/{len(videos)}] {vid} {v['date']} -> FAILED -- "
+                  f"{errors[vid]}", flush=True)
+            continue
+
         banked[vid] = [M.side_candidate_to_json(c) for c in cands]
+        errors.pop(vid, None)
         _save(pool_path, banked)
+        _save(errors_path, errors)
         usable += 1
         for key, n in stats["refusals"].items():
             agg_refusals[key] = agg_refusals.get(key, 0) + n
@@ -138,8 +205,21 @@ def stage_propose(args) -> int:
               f"{len(cands)} candidates, {stats['written']} written "
               f"({(time.time() - t_start) / i:.0f}s/video)", flush=True)
 
-    print(f"\n{usable}/{len(videos)} videos proposed, "
-          f"{sum(len(c) for c in banked.values())} candidates")
+    processed = usable + failed
+    print(f"\nthis run: {usable}/{processed} newly-proposed video(s)"
+          + (f", {failed} failed" if failed else "")
+          + (f"; {skipped} already banked, skipped (--force to redo)"
+             if skipped else ""))
+
+    # As in stage_views: everything ever banked, a different population from
+    # this run's videos the moment a restart can skip one.
+    all_failed = len(errors)
+    all_usable = len(banked) - all_failed
+    print(f"overall: {all_usable}/{len(banked)} banked video(s) proposed, "
+          f"{sum(len(c) for c in banked.values())} candidates"
+          + (f", {all_failed} failed -- see {errors_path}" if all_failed else ""))
+    if errors:
+        print(f"  failed: {', '.join(sorted(errors))}")
     if agg_refusals:
         # Not an exact count of refused windows: `build_video_pool`'s own
         # docstring says a clip-view that mixes "clear" moments (no colour,
@@ -148,78 +228,73 @@ def stage_propose(args) -> int:
         # detector struggles, not a number to report to two figures.
         print(f"  refusals by gate, roughly (can read up to 2x high): "
               f"{agg_refusals}")
-    return 0 if usable else 1
+    return 0 if all_usable else 1
 
 
-def _build_side_manifest(chosen, shortfall, splits, quota, extra=None) -> dict:
-    """The chosen side-view frames, grouped by video, with the shortfall.
-
-    Unlike ``manifest.build_manifest``, ``sideframes.select`` chooses across
-    the whole pool in one pass rather than per video, so there is one
-    ``shortfall`` for the run, not one per video -- it belongs in the
-    summary, next to the quota it failed to fill.
+def _expand_quota() -> dict:
+    """``SCENE_QUOTA`` is per view; expand both halves to the same per-bin
+    keys ``sideframes.select``'s ``shortfall`` uses, so a reader reconciling
+    the manifest's own numbers gets the real 600-frame target rather than
+    half of it.
     """
-    videos, counts = {}, {"train": 0, "val": 0}
-    by_video: dict = {}
-    for c in chosen:
-        by_video.setdefault(c.video_id, []).append(c)
+    quota = {f"scene:{view}:{position}": want
+             for view in ("left", "right")
+             for position, want in sideframes.SCENE_QUOTA.items()}
+    quota.update({f"outcome:{key}": want
+                  for key, want in sideframes.OUTCOME_QUOTA.items()})
+    return quota
 
-    for vid in sorted(by_video):
-        split = splits[vid]  # a video with no split is a bug, not a default
-        picked = by_video[vid]
-        counts[split] = counts.get(split, 0) + len(picked)
-        videos[vid] = {
-            "split": split,
-            "frames": [M.side_candidate_to_json(c) for c in picked],
-        }
 
-    doc = {
-        "created": _dt.date.today().isoformat(),
-        "quota": dict(quota),
-        "summary": {
-            "videos": len(videos),
-            "frames": sum(counts.values()),
-            "train_frames": counts.get("train", 0),
-            "val_frames": counts.get("val", 0),
-            "shortfall": dict(sorted(shortfall.items())),
-        },
-        "videos": videos,
-    }
-    if extra:
-        clash = sorted(set(extra) & set(doc))
-        if clash:
-            raise ValueError(
-                f"extra would overwrite the manifest's own {', '.join(clash)}")
-        doc.update(extra)
-    return doc
+def _supply(pool) -> dict:
+    """How many pool candidates were eligible for each bin, before any cap.
+
+    ``select``'s ``shortfall`` alone cannot tell "the archive had none" from
+    "the caps were already spent by the scene pass" -- both read as a bin at
+    zero. Counting the pool itself, before selection ever runs, can.
+    """
+    supply = {f"scene:{view}:{position}":
+              sum(1 for c in pool if c.view == view and c.position == position)
+              for view in ("left", "right")
+              for position in sideframes.SCENE_QUOTA}
+    supply.update({f"outcome:{key}": sum(1 for c in pool if c.outcome == key)
+                   for key in sideframes.OUTCOME_QUOTA})
+    return supply
 
 
 def stage_select(args) -> int:
+    if _require(args, pool=args.pool):
+        return 2
     plan_doc = _load(args.videos)
     banked = _load(Path(args.pool) / "candidates.json")
     splits = {v["video_id"]: v["split"] for v in plan_doc["videos"]}
 
     pool = [M.side_candidate_from_json(r)
             for rows in banked.values() for r in rows]
+    supply = _supply(pool)
     chosen, shortfall = sideframes.select(pool)
 
-    quota = {"scene": dict(sideframes.SCENE_QUOTA),
-             "outcome": dict(sideframes.OUTCOME_QUOTA)}
-    doc = _build_side_manifest(
-        chosen, shortfall, splits, quota,
+    quota = _expand_quota()
+    doc = M.build_side_manifest(
+        chosen, shortfall, supply, splits, quota,
         extra={"pool": str(args.pool), "videos_file": str(args.videos)})
     out = _save(args.manifest, doc)
     s = doc["summary"]
     print(f"wrote {out}: {s['frames']} frames "
           f"({s['train_frames']} train / {s['val_frames']} val) "
-          f"from {s['videos']} videos")
+          f"from {s['videos']} videos, target {s['target']}")
     if s["shortfall"]:
+        supply_n = sum(s["supply"].get(k, 0) for k in s["shortfall"])
         print(f"  {len(s['shortfall'])} bin(s) short, "
-              f"{sum(s['shortfall'].values())} frame(s) total")
+              f"{sum(s['shortfall'].values())} frame(s) total "
+              f"({supply_n} eligible candidate(s) sat in those bins before "
+              f"caps -- a large number here means the caps, not the archive, "
+              f"are why)")
     return 0
 
 
 def stage_build(args) -> int:
+    if _require(args, pool=args.pool, out=args.out):
+        return 2
     doc = _load(args.manifest)
     stats = build_mod.build(doc, args.pool, args.out, iter_frames=M.side_iter_frames)
     print(f"{stats['written']} frames, {stats['labels']} labels, "

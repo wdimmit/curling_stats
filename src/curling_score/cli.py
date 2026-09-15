@@ -538,6 +538,9 @@ def _add_sideframes(sub):
         q.add_argument("--fps", type=float, default=5.0,
                        help="detection rate inside a clip")
         q.add_argument("--limit", type=int)
+        q.add_argument("--force", action="store_true",
+                       help="redo a video already banked, instead of "
+                            "skipping it (views/propose only)")
 
     p.set_defaults(func=_sideframes)
 
