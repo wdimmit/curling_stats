@@ -34,7 +34,7 @@ SPEED_BOUNDS_M_S = (1.2, 3.2)
 # How much darker than the ice granite is. The painted hog line is a dip of
 # about 25 levels, so the threshold has to sit well below it or the line gets
 # picked up as the stone's own edge.
-_BODY_DARKER_THAN_ICE = 45
+BODY_DARKER_THAN_ICE = 45
 _MIN_SAMPLES = 6
 
 # The detector's own trailing edge is the stone's lowest dark row, which
@@ -86,7 +86,14 @@ class Crossing:
         return self.t is not None
 
 
-def _colour_mask(win, color):
+def colour_mask(win, color):
+    """Which pixels of ``win`` read as ``color``'s stone handle.
+
+    Public because ``harvest/sidepool.py`` needs the same colour test to tell
+    a moment with a coloured blob under no granite (``occluded``) from a
+    moment with no colour at all (``clear``); that is another package, so it
+    must import this rather than carry a second copy that could drift.
+    """
     r, g, b = win[:, :, 0], win[:, :, 1], win[:, :, 2]
     if color == "red":
         return (r - np.maximum(g, b) > 28) & (r > 90)
@@ -128,7 +135,7 @@ class Proposal:
 
 def candidates(win, color, expect_px):
     """Every coloured blob with a granite body of the right width under it."""
-    mask = _colour_mask(win, color)
+    mask = colour_mask(win, color)
     if mask.sum() < 20:
         return []
     grey = win.mean(axis=2)
@@ -147,7 +154,7 @@ def candidates(win, color, expect_px):
         cx = (x0 + x1) // 2
         half = int(expect_px * 0.9)
         band = grey[:, max(0, cx - half):cx + half]
-        wide = (band < ice - _BODY_DARKER_THAN_ICE).sum(axis=1)
+        wide = (band < ice - BODY_DARKER_THAN_ICE).sum(axis=1)
         # Contiguous from there only, and only while the dark span looks
         # stone-sized: a full-width feature nearby -- the hog line, or the
         # house's own painted rings, both wider than any stone -- fills the

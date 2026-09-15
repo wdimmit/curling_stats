@@ -15,6 +15,13 @@ The split between :func:`scan_moments` and :func:`scan_clip` mirrors
 arrays and holds every judgement, so it is testable with synthetic frames and
 never touches ffmpeg, a video file or a GPU; ``scan_clip`` is decode plus
 ``scan_moments`` and nothing else.
+
+That cost is already doubled before ``MAX_PER_CLIP_VIEW`` (below) even comes
+into it: ``longview.candidates`` runs once inside ``longview.find_in_frames``
+(building the crossing track) and a second time directly in the loop below it
+(finding that moment's own proposal), so every one of a clip's ~287,000
+moment-colour pairs pays for the granite scan twice. Unavoidable without
+reaching into ``longview.find_in_frames`` itself, which is protected code.
 """
 
 from __future__ import annotations
@@ -59,7 +66,7 @@ def crowding(win, cx: float, edge_row: float, expect_px: float) -> int:
     if band.size == 0:
         return 0
     ice = np.percentile(grey, 90)
-    dark = (band < ice - longview._BODY_DARKER_THAN_ICE).mean(axis=0) > 0.5
+    dark = (band < ice - longview.BODY_DARKER_THAN_ICE).mean(axis=0) > 0.5
     spans = [(a, b) for a, b in longview.runs(dark) if b - a > 0.3 * expect_px]
     return sum(1 for a, b in spans if not a <= cx <= b)
 
@@ -106,14 +113,22 @@ def scan_moments(video_id, moments, views, clip_start_s) -> list[SideCandidate]:
     ``sideview.SideView``, in the source frame's own coordinates (this shifts
     them itself before handing them to ``longview``).
 
-    One :class:`SideCandidate` comes out per moment per colour: two colour
-    scans, red and yellow, each independently deciding what that moment shows
-    for that colour. ``position`` is ``position_of(edge_row, hog_row)`` when a
-    proposal survived, falling back to ``"occluded"`` when a coloured handle
-    was seen but no granite body was found under it, and ``"clear"`` when
-    there was no coloured handle at all -- in which case ``color`` is reset to
-    ``""``, since no colour scan actually proposed anything for a person to
-    look at.
+    One :class:`SideCandidate` comes out per moment per colour that found
+    something: two colour scans, red and yellow, each independently deciding
+    what that moment shows for that colour. ``position`` is
+    ``position_of(edge_row, hog_row)`` when a proposal survived, falling back
+    to ``"occluded"`` when a coloured handle was seen but no granite body was
+    found under it, and ``"clear"`` when there was no coloured handle at all
+    -- in which case ``color`` is reset to ``""``, since no colour scan
+    actually proposed anything for a person to look at. A moment where
+    *neither* colour found anything gets exactly one ``"clear"`` row rather
+    than one per colour scan: with nothing to attribute to a colour, the two
+    scans' "clear" rows would otherwise be identical down to the stem, and a
+    caller that dedupes by identity rather than by stem (``sideframes.
+    select`` does) would count the same JPEG twice against a quota. A moment
+    with a real proposal or an ``"occluded"`` blob under one colour still
+    gets its own row for that colour even when the other colour's scan of the
+    same moment is "clear" -- only two identical "clear" rows collapse.
 
     ``outcome`` is not the moment's own verdict: it is the whole clip-view-
     colour window's crossing key from ``longview.find_in_frames``, stamped
@@ -131,6 +146,10 @@ def scan_moments(video_id, moments, views, clip_start_s) -> list[SideCandidate]:
         frames = [img for _, img in pairs]
         shifted = _shifted(view)
 
+        # Which moments (by t_abs) already got their one "clear" row from an
+        # earlier colour scan in this view -- see the docstring above.
+        clear_seen: set = set()
+
         for color in COLORS:
             crossing = longview.find_in_frames(frames, shifted, color, times)
             for t, img in pairs:
@@ -147,12 +166,17 @@ def scan_moments(video_id, moments, views, clip_start_s) -> list[SideCandidate]:
                     crowd = crowding(win, prop.cx, prop.edge_row,
                                      longview.STONE_WIDTH_AT_HOG_PX)
                 else:
-                    has_blob = longview._colour_mask(win, color).sum() >= _MIN_BLOB_PX
+                    has_blob = longview.colour_mask(win, color).sum() >= _MIN_BLOB_PX
                     position = "occluded" if has_blob else "clear"
                     row_color = color if has_blob else ""
                     labels = ()
                     edge_row = None
                     crowd = 0
+
+                if position == "clear":
+                    if t in clear_seen:
+                        continue
+                    clear_seen.add(t)
 
                 out.append(SideCandidate(
                     video_id=video_id, view=view_name, t_abs=t,
@@ -175,15 +199,26 @@ def pick_writes(candidates, max_per_clip_view: int = MAX_PER_CLIP_VIEW):
 
     ``scan_moments`` gives two candidates per moment -- one per colour scan --
     sharing one ``stem`` (video, view and time, not colour). Only one JPEG can
-    exist at that stem, so the first one seen (red before yellow) is kept and
-    its twin dropped before the spread runs, rather than letting both compete
-    for a cap slot over what would be the same written frame.
+    exist at that stem, so one of the two is kept and its twin dropped before
+    the spread runs, rather than letting both compete for a cap slot over what
+    would be the same written frame. The one kept is whichever **carries a
+    proposal** (``edge_row is not None``, equivalently ``labels`` non-empty):
+    for a yellow delivery, the red scan of the same moment finds nothing and
+    reports "clear", and a stone's colour is exactly the fact a "clear" row
+    cannot express -- keeping it over the real yellow row would spend the
+    clip's whole write budget on rows that record the absence of a red stone
+    and never write the crossing at all. Only when neither row (or, on the
+    rare moment both colours propose something, both rows) carries a proposal
+    does this fall back to stability -- the first one seen, red before
+    yellow, since that ordering carries no information either way.
     """
     if max_per_clip_view <= 0 or not candidates:
         return []
     by_stem = {}
     for c in sorted(candidates, key=lambda c: (c.t_abs, c.stem)):
-        by_stem.setdefault(c.stem, c)
+        existing = by_stem.get(c.stem)
+        if existing is None or (existing.edge_row is None and c.edge_row is not None):
+            by_stem[c.stem] = c
     groups: dict[str, list] = {}
     for c in by_stem.values():
         groups.setdefault(c.position, []).append(c)
@@ -247,15 +282,18 @@ def build_video_pool(video_id, clip_paths, video_views, out_dir, *,
     produced, whether or not it was written to disk -- ``sideframes.select``
     needs the full pool to choose from, and a written JPEG is only needed for
     the frames actually chosen. ``stats`` counts ``clips`` and ``moments``
-    seen, frames ``written``, and ``refusals`` by ``longview.KEYS`` entry;
-    the last is counted per candidate row (per clip-view-colour-moment), not
-    deduplicated to one count per window, so it is a rough proportional
-    picture of where the detector struggles rather than an exact count of
-    windows refused.
+    seen, frames ``written``, and ``refusals`` by ``longview.KEYS`` entry --
+    a count of windows, one clip-view-colour at a time, not of the many
+    candidate rows that window's refusal gets stamped onto.
 
     The labels written alongside a JPEG are the detector's opinion, not the
-    dataset -- see :func:`_label_for`. A moment the detector refused gets no
-    box at all.
+    dataset -- see :func:`_label_for`. A moment the detector refused on its
+    own -- no proposal found for it -- gets no box at all, but a moment
+    sitting inside a *window* ``find_in_frames`` refused as a whole can still
+    carry one: the refusal is stamped as ``outcome`` onto every moment in
+    that window regardless of what any one of them shows, and roughly half
+    the final set is chosen for exactly that outcome, so this is not a rare
+    case.
     """
     import cv2
 
@@ -276,9 +314,14 @@ def build_video_pool(video_id, clip_paths, video_views, out_dir, *,
         stats["moments"] += len(moments)
         all_candidates.extend(candidates)
 
-        for c in candidates:
-            if c.outcome and c.outcome != longview.KEY_OK:
-                stats["refusals"][c.outcome] = stats["refusals"].get(c.outcome, 0) + 1
+        # `scan_moments` stamps one window's whole outcome onto every moment
+        # inside it, so distinct (view, color, outcome) triples -- rather
+        # than every candidate row bearing that outcome -- is a count of
+        # windows, not of the many moments each one covers.
+        for view_name, color, outcome in {(c.view, c.color, c.outcome)
+                                          for c in candidates}:
+            if outcome and outcome != longview.KEY_OK:
+                stats["refusals"][outcome] = stats["refusals"].get(outcome, 0) + 1
 
         by_view: dict[str, list] = {}
         for c in candidates:
