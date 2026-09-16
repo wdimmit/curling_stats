@@ -71,3 +71,31 @@ class TestHandler:
 
         handler = segserve.make_handler(".", Boom(), {})
         assert handler is not None       # constructed without touching CUDA
+
+
+class TestStalePageGuard:
+    """A page rendered before the segmenter wiring falls back to a
+    geometry-sized box on every click, which is indistinguishable from
+    segmentation working badly. It cost a review session; refuse to serve it.
+    """
+
+    def test_a_wired_page_is_accepted(self, tmp_path):
+        (tmp_path / "index.html").write_text(
+            "<script>fetch('/segment', {method:'POST'})</script>")
+        segserve.check_page(tmp_path)          # does not raise
+
+    def test_a_page_without_the_wiring_is_refused(self, tmp_path):
+        (tmp_path / "index.html").write_text("<script>placeGeometric()</script>")
+        with pytest.raises(segserve.StalePage, match="re-render|Re-render"):
+            segserve.check_page(tmp_path)
+
+    def test_a_missing_page_is_refused(self, tmp_path):
+        with pytest.raises(segserve.StalePage, match="no index.html"):
+            segserve.check_page(tmp_path)
+
+    def test_the_real_template_passes_its_own_guard(self, tmp_path):
+        """Pins the two together: if the wiring is ever renamed, this fails
+        rather than the guard quietly rejecting every good page."""
+        from curling_score.train import boxedit
+        boxedit.render([], tmp_path, scope="s")
+        segserve.check_page(tmp_path)

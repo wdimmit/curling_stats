@@ -168,8 +168,34 @@ def make_handler(directory: Path, seg: Segmenter, geoms: dict):
     return Handler
 
 
+class StalePage(RuntimeError):
+    """The page on disk predates the segmenter it is being served against."""
+
+
+def check_page(directory) -> None:
+    """Refuse to serve a page that cannot call ``/segment``.
+
+    This exact mistake cost a review session: ``boxedit._PAGE`` was wired to
+    the segmenter, the tests passed, the endpoint answered correctly by curl --
+    and the ``index.html`` on disk had been rendered *before* the wiring, so
+    every click fell back to the geometric box. It looked exactly like
+    segmentation working badly, which is the worst way for it to fail. The
+    end-to-end check missed it too, because it asserted the box was centred on
+    the click, and the geometric fallback is also centred on the click.
+    """
+    page = Path(directory) / "index.html"
+    if not page.is_file():
+        raise StalePage(f"no index.html in {directory}; render one first")
+    if "/segment" not in page.read_text():
+        raise StalePage(
+            f"{page} was rendered before the segmenter wiring: every click "
+            f"would silently fall back to a geometry-sized box. Re-render it "
+            f"with boxedit.render().")
+
+
 def serve(directory, items, weights, port: int = 8777, host: str = "127.0.0.1"):
     directory = Path(directory)
+    check_page(directory)
     geoms = {it["stem"]: it["geom"] for it in items}
     seg = Segmenter(weights, directory / "images")
     httpd = ThreadingHTTPServer((host, port),

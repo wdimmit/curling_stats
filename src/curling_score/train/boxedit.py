@@ -208,6 +208,11 @@ function placeGeometric(item, nx, ny, cls) {
 
 let segOK = true;          // flips false the first time /segment is unreachable
 
+function note(msg) {
+  const n = document.getElementById("segstate");
+  if (n) n.textContent = msg;
+}
+
 async function place(item, nx, ny, cls, fig) {
   if (!segOK) { placeGeometric(item, nx, ny, cls); save(); drawBoxes(fig, item); return; }
   const stage = fig.querySelector(".stage");
@@ -220,6 +225,8 @@ async function place(item, nx, ny, cls, fig) {
     });
     const j = await r.json();
     if (j.ok && j.box) {
+      note("SAM " + j.ratio + "x expected, aspect " + j.aspect +
+           (j.plausible ? "" : " - geometry doubts this"));
       const [x0, y0, x1, y1] = j.box;
       const w = (x1 - x0 + 1) / item.width, h = (y1 - y0 + 1) / item.height;
       // The "geometry doubts this" flag rides as a SIXTH element, not as a
@@ -231,12 +238,16 @@ async function place(item, nx, ny, cls, fig) {
                            (y0 + y1 + 1) / 2 / item.height, w, h,
                            j.plausible ? 0 : 1]);
     } else {
+      // Say so. A silent fall back to the geometric box is indistinguishable
+      // from segmentation that is working badly, and that is exactly how a
+      // page that never called /segment at all went unnoticed.
+      note("SAM found nothing here - box sized by geometry" +
+           (j.reason ? " (" + j.reason + ")" : ""));
       placeGeometric(item, nx, ny, cls);
     }
   } catch (e) {
     segOK = false;                       // say so once, then stop trying
-    const n = document.getElementById("segstate");
-    if (n) n.textContent = "segmenter offline - boxes sized by geometry";
+    note("segmenter offline - boxes sized by geometry");
     placeGeometric(item, nx, ny, cls);
   } finally {
     stage.style.cursor = "";
