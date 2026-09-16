@@ -216,3 +216,32 @@ class TestNothingIsSilentlyDiscarded:
         with every boxed frame would claim coverage nobody gave."""
         src = boxedit._PAGE
         assert "if (s.reviewed) reviewed.push(it.stem);" in src
+
+
+class TestMarkAllReviewed:
+    """`reviewed` is a claim about what a person looked at: `labels.coverage`
+    reports on it and `drop_unreviewed` deletes by it."""
+
+    def test_the_button_exists_and_marks_every_frame(self):
+        src = boxedit._PAGE
+        assert 'id="markall"' in src
+        assert "for (const it of ITEMS) st(it).reviewed = true;" in src
+
+    def test_it_asks_before_claiming_coverage(self):
+        src = boxedit._PAGE
+        block = src.split('getElementById("markall").onclick', 1)[1]\
+                 .split("\ndocument.", 1)[0]
+        assert "confirm(" in block
+        assert "return;" in block
+
+    def test_it_redraws_so_the_green_marks_appear(self):
+        """The reviewed state is drawn per figure; marking all without a
+        redraw would leave 256 frames looking untouched."""
+        src = boxedit._PAGE
+        block = src.split('getElementById("markall").onclick', 1)[1]\
+                 .split("\ndocument.", 1)[0]
+        assert "drawBoxes(document.getElementById" in block
+
+    def test_it_says_so_when_there_is_nothing_to_do(self):
+        src = boxedit._PAGE
+        assert "already marked reviewed" in src

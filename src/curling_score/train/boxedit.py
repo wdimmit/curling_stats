@@ -140,6 +140,7 @@ reviewed frame with no boxes says something useful: no stone in the band.
   <span id="count" class="muted"></span>
   <span id="segstate" class="muted">SAM: click a stone</span>
   <button id="export">Export JSON</button>
+  <button id="markall">Mark all reviewed</button>
   <button id="save">Save to server</button>
   <button id="dl">Download</button>
   <textarea id="out" placeholder="export appears here"></textarea>
@@ -367,6 +368,21 @@ function payload() {
 document.getElementById("export").onclick = () => {
   document.getElementById("out").value = JSON.stringify(payload(), null, 1);
 };
+document.getElementById("markall").onclick = () => {
+  const left = ITEMS.filter(it => !(state[it.stem] || {}).reviewed).length;
+  if (!left) { note("every frame is already marked reviewed"); return; }
+  // Confirmed, because `reviewed` is a claim about what a person looked at:
+  // `labels.coverage` reports on it and `drop_unreviewed` deletes by it, so
+  // marking all of them without looking would launder a guess into coverage.
+  if (!confirm("Mark " + left + " unreviewed frame(s) as reviewed?\n\n" +
+               "This says you have looked at them. Frames you have not seen " +
+               "still carry whatever the model proposed.")) return;
+  for (const it of ITEMS) st(it).reviewed = true;
+  save();
+  ITEMS.forEach((it, i) => drawBoxes(document.getElementById("f" + i), it));
+  note("marked " + left + " frame(s) reviewed");
+};
+
 document.getElementById("save").onclick = async () => {
   const p = payload();
   if (!Object.keys(p.boxes).length) {
