@@ -539,6 +539,9 @@ def _add_sideframes(sub):
         q.add_argument("--fps", type=float, default=5.0,
                        help="detection rate inside a clip")
         q.add_argument("--limit", type=int)
+        q.add_argument("--wave", choices=("full", "window"), default="full",
+                       help="'window' selects the ~200-frame shot-driven wave "
+                            "from whole VODs; 'full' the 600-frame clip set")
         q.add_argument("--force", action="store_true",
                        help="redo a video already banked, instead of "
                             "skipping it (views/propose only)")

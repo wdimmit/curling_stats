@@ -141,7 +141,8 @@ def bin_of(candidate: SideCandidate) -> str:
     return ""
 
 
-def _fill(pool, want, chosen, taken_stems, video_count, clip_count, half):
+def _fill(pool, want, chosen, taken_stems, video_count, clip_count, half,
+          max_per_video=None, max_per_clip=None):
     """Pick up to ``want`` frames from ``pool`` via ``_spread``, honouring the
     running *global* ``MAX_PER_VIDEO`` / ``MAX_PER_CLIP`` caps.
 
@@ -155,23 +156,25 @@ def _fill(pool, want, chosen, taken_stems, video_count, clip_count, half):
     cap) stops rather than looping forever; the shortfall this leaves is
     reported by the caller like any other.
     """
+    max_per_video = MAX_PER_VIDEO if max_per_video is None else max_per_video
+    max_per_clip = MAX_PER_CLIP if max_per_clip is None else max_per_clip
     remaining = want
     while remaining > 0:
         avail = [c for c in pool
                  if c.stem not in taken_stems
-                 and video_count.get(c.video_id, 0) < MAX_PER_VIDEO
-                 and clip_count.get((c.video_id, c.clip_start_s), 0) < MAX_PER_CLIP]
+                 and video_count.get(c.video_id, 0) < max_per_video
+                 and clip_count.get((c.video_id, c.clip_start_s), 0) < max_per_clip]
         if not avail:
             break
-        picked = _spread(avail, remaining, MAX_PER_CLIP)
+        picked = _spread(avail, remaining, max_per_clip)
         progressed = False
         for c in picked:
             if c.stem in taken_stems:
                 continue
             vkey = c.video_id
             ckey = (c.video_id, c.clip_start_s)
-            if (video_count.get(vkey, 0) >= MAX_PER_VIDEO
-                    or clip_count.get(ckey, 0) >= MAX_PER_CLIP):
+            if (video_count.get(vkey, 0) >= max_per_video
+                    or clip_count.get(ckey, 0) >= max_per_clip):
                 continue
             chosen.append(dataclasses.replace(c, half=half))
             taken_stems.add(c.stem)
@@ -186,7 +189,33 @@ def _fill(pool, want, chosen, taken_stems, video_count, clip_count, half):
     return want - remaining
 
 
-def select(pool, *, scene_quota=None, outcome_quota=None):
+# The shot-driven wave, sized for ~200 frames from nine whole VODs.
+#
+# Two things forced its own quota rather than a scaled copy of the pair above.
+# First, the window path never emits "occluded": a frame either has a proposal
+# on the ice (approach/crossing/past) or it has none at all ("clear"). Measured
+# over the first video's 619 candidates the positions were crossing 368,
+# approach 176, clear 39, past 36 and occluded ZERO, so the 35-per-view
+# occluded bin in SCENE_QUOTA could only ever report a 70-frame shortfall.
+# Second, the user's instruction for this wave is to cluster frames at the
+# line, so crossing is weighted where the 600-frame design spread across the
+# flight.
+WINDOW_SCENE_QUOTA = {"crossing": 30, "approach": 16, "past": 6, "clear": 4}
+# Refusals over successes, 68 to 16, keeping the 4:1 the full design uses --
+# and every key has ample supply: scaled from video one, roughly ambiguous
+# 1790, ok 1720, never_reached 850, unsteady 840, bad_speed 240,
+# no_candidate 135 across the nine.
+WINDOW_OUTCOME_QUOTA = {"ambiguous": 18, "never_reached": 16, "unsteady": 16,
+                        "bad_speed": 10, "no_candidate": 8, "ok": 16}
+# MAX_PER_VIDEO is 8 because 600 frames over 120 videos averages five. Nine
+# videos and ~196 frames averages 22, so the same cap would hold the whole
+# selection to 72 and silently report the rest as shortfall. 30 leaves headroom
+# for bins that draw unevenly while still stopping one night supplying half.
+WINDOW_MAX_PER_VIDEO = 30
+
+
+def select(pool, *, scene_quota=None, outcome_quota=None,
+           max_per_video=None, max_per_clip=None):
     """Pick the 600. Returns ``(chosen, shortfall)``.
 
     Two passes, in this order:
@@ -211,6 +240,8 @@ def select(pool, *, scene_quota=None, outcome_quota=None):
     """
     scene_quota = dict(scene_quota if scene_quota is not None else SCENE_QUOTA)
     outcome_quota = dict(outcome_quota if outcome_quota is not None else OUTCOME_QUOTA)
+    max_per_video = MAX_PER_VIDEO if max_per_video is None else max_per_video
+    max_per_clip = MAX_PER_CLIP if max_per_clip is None else max_per_clip
 
     chosen: list[SideCandidate] = []
     shortfall: dict[str, int] = {}
@@ -229,7 +260,7 @@ def select(pool, *, scene_quota=None, outcome_quota=None):
             key = f"scene:{view}:{position}"
             eligible = [c for c in pool if c.view == view and c.position == position]
             got = _fill(eligible, want, chosen, taken_stems, video_count,
-                        clip_count, "scene")
+                        clip_count, "scene", max_per_video, max_per_clip)
             if got < want:
                 shortfall[key] = want - got
 
@@ -237,7 +268,7 @@ def select(pool, *, scene_quota=None, outcome_quota=None):
         key = f"outcome:{outcome_key}"
         eligible = [c for c in pool if c.outcome == outcome_key]
         got = _fill(eligible, want, chosen, taken_stems, video_count,
-                    clip_count, "outcome")
+                    clip_count, "outcome", max_per_video, max_per_clip)
         if got < want:
             shortfall[key] = want - got
 

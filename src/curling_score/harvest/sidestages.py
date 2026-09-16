@@ -288,17 +288,24 @@ def stage_propose(args) -> int:
     return 0 if all_usable else 1
 
 
-def _expand_quota() -> dict:
+def _expand_quota(scene_quota=None, outcome_quota=None) -> dict:
     """``SCENE_QUOTA`` is per view; expand both halves to the same per-bin
     keys ``sideframes.select``'s ``shortfall`` uses, so a reader reconciling
-    the manifest's own numbers gets the real 600-frame target rather than
-    half of it.
+    the manifest's own numbers gets the real target rather than half of it.
+
+    Takes the quotas rather than reading the module's, so the window wave's
+    manifest states the target it was actually selected against -- a manifest
+    claiming 600 for a 196-frame run would report a 400-frame shortfall that
+    never existed.
     """
+    scene_quota = sideframes.SCENE_QUOTA if scene_quota is None else scene_quota
+    outcome_quota = (sideframes.OUTCOME_QUOTA if outcome_quota is None
+                     else outcome_quota)
     quota = {f"scene:{view}:{position}": want
              for view in ("left", "right")
-             for position, want in sideframes.SCENE_QUOTA.items()}
+             for position, want in scene_quota.items()}
     quota.update({f"outcome:{key}": want
-                  for key, want in sideframes.OUTCOME_QUOTA.items()})
+                  for key, want in outcome_quota.items()})
     return quota
 
 
@@ -343,9 +350,18 @@ def stage_select(args) -> int:
     pool = [M.side_candidate_from_json(r)
             for rows in banked.values() for r in rows]
     supply = _supply(pool)
-    chosen, shortfall = sideframes.select(pool)
+    window_wave = getattr(args, "wave", "full") == "window"
+    if window_wave:
+        scene_q = sideframes.WINDOW_SCENE_QUOTA
+        outcome_q = sideframes.WINDOW_OUTCOME_QUOTA
+        chosen, shortfall = sideframes.select(
+            pool, scene_quota=scene_q, outcome_quota=outcome_q,
+            max_per_video=sideframes.WINDOW_MAX_PER_VIDEO)
+    else:
+        scene_q, outcome_q = sideframes.SCENE_QUOTA, sideframes.OUTCOME_QUOTA
+        chosen, shortfall = sideframes.select(pool)
 
-    quota = _expand_quota()
+    quota = _expand_quota(scene_q, outcome_q)
     doc = M.build_side_manifest(
         chosen, shortfall, supply, splits, quota,
         extra={"pool": str(args.pool), "videos_file": str(args.videos)})

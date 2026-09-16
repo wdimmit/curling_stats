@@ -100,3 +100,40 @@ class TestSelect:
                 for i in range(200)]
         chosen, _short = S.select(pool)
         assert any(c.half == "scene" for c in chosen)
+
+
+class TestWindowWave:
+    """The shot-driven wave: ~200 frames from nine whole VODs, not 600 from 120."""
+
+    def test_the_caps_can_be_raised_for_a_small_corpus(self):
+        """MAX_PER_VIDEO is 8 because 600 over 120 videos averages five. Nine
+        videos and 196 frames averages 22, so the default cap would hold the
+        whole selection to 72 and report the rest as shortfall."""
+        pool = [cand(vid=f"v{i % 9}", t=float(i), clip=float(i))
+                for i in range(600)]
+        default, _ = S.select(pool)
+        assert len(default) <= 9 * S.MAX_PER_VIDEO
+        raised, _ = S.select(pool, max_per_video=S.WINDOW_MAX_PER_VIDEO)
+        assert len(raised) > len(default)
+
+    def test_the_window_quota_asks_for_no_bin_the_window_path_cannot_fill(self):
+        """`frames_for_window` emits approach/crossing/past when a proposal
+        survives on the ice and "clear" when none does -- never "occluded".
+        Measured over one real video's 619 candidates: crossing 368, approach
+        176, clear 39, past 36, occluded 0."""
+        assert "occluded" not in S.WINDOW_SCENE_QUOTA
+        assert set(S.WINDOW_SCENE_QUOTA) <= set(S.POSITIONS)
+
+    def test_the_window_wave_comes_to_about_two_hundred(self):
+        scene = 2 * sum(S.WINDOW_SCENE_QUOTA.values())
+        total = scene + sum(S.WINDOW_OUTCOME_QUOTA.values())
+        assert 180 <= total <= 220, total
+
+    def test_refusals_still_outweigh_successes_four_to_one(self):
+        found = S.WINDOW_OUTCOME_QUOTA["ok"]
+        refused = sum(v for k, v in S.WINDOW_OUTCOME_QUOTA.items() if k != "ok")
+        assert refused >= 4 * found
+
+    def test_every_window_outcome_names_a_real_refusal(self):
+        from curling_score.detect import longview
+        assert set(S.WINDOW_OUTCOME_QUOTA) <= set(longview.KEYS)
