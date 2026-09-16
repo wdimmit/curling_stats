@@ -15,6 +15,7 @@ model measured on the same held-out games can be compared; measured on two
 splits that merely look alike, they cannot.
 """
 
+import functools
 import json
 import time
 from pathlib import Path
@@ -23,6 +24,7 @@ from curling_score.harvest import build as build_mod
 from curling_score.harvest import manifest as M
 from curling_score.harvest import sideframes, sidepool, sideviews
 from curling_score.ingest import frames as F
+from curling_score import analyze
 
 MIN_PLATE_FRAMES = sideviews.MIN_PLATE_FRAMES
 
@@ -73,6 +75,32 @@ def _one_frame_per_clip(root: Path):
     return timed
 
 
+def cached_video(root: Path, vid: str):
+    """The full VOD under a pipeline cache root, or None.
+
+    Two corpora feed these stages now. ds11's is 24 s clips at
+    ``<root>/<vid>/*.mkv``; the shot-driven set needs whole VODs, because a
+    shot list comes from segmenting a whole game and a 24 s clip has no ends
+    in it. A pipeline cache root holds those at ``<root>/videos/<vid>.mp4``
+    with warm proxies and detections beside them.
+
+    Which one a root is, is answered by looking rather than by a flag: a flag
+    would let a run silently take the clip path over a cache root and produce
+    an empty corpus with a zero exit code.
+    """
+    path = root / "videos" / f"{vid}.mp4"
+    return path if path.is_file() else None
+
+
+def _plate_frames(root: Path, vid: str):
+    """Frames to fit the side views from, whichever corpus this root is."""
+    video = cached_video(root, vid)
+    if video is None:
+        return [img for _, img in _one_frame_per_clip(root / vid)]
+    return F.sample_keyframes(video, count=analyze.CALIB_FRAMES,
+                              stride=analyze.CALIB_STRIDE)
+
+
 def stage_views(args) -> int:
     if _require(args, root=args.root):
         return 2
@@ -92,14 +120,14 @@ def stage_views(args) -> int:
             continue
 
         try:
-            timed = _one_frame_per_clip(root / vid)
-            if len(timed) < MIN_PLATE_FRAMES:
-                h, w = (timed[0][1].shape[:2] if timed else (0, 0))
+            plates = _plate_frames(root, vid)
+            if len(plates) < MIN_PLATE_FRAMES:
+                h, w = (plates[0].shape[:2] if plates else (0, 0))
                 vv = sideviews.VideoViews(
                     vid, (w, h), {},
-                    f"only {len(timed)} clip frame(s), need {MIN_PLATE_FRAMES}")
+                    f"only {len(plates)} plate frame(s), need {MIN_PLATE_FRAMES}")
             else:
-                vv = sideviews.derive(vid, [img for _, img in timed])
+                vv = sideviews.derive(vid, plates)
         except Exception as exc:  # noqa: BLE001 -- one bad video must not stop the other 119
             vv = sideviews.VideoViews(vid, (0, 0), {},
                                        f"{type(exc).__name__}: {exc}")
@@ -145,6 +173,25 @@ def stage_views(args) -> int:
     return 0 if (all_both + all_one) else 1
 
 
+@functools.lru_cache(maxsize=1)
+def _build_detector(imgsz: int):
+    from curling_score import weights as weights_mod
+    from curling_score.detect import yolo
+
+    return yolo.YoloDetector(weights_mod.default_path(), conf=0.30,
+                             device=None, imgsz=imgsz)
+
+
+def _detector(args):
+    """The shot detector the window walk needs, built once per run.
+
+    Only the cached-VOD path uses one: proposing from clips never had a shot
+    list to build. Kept out of module import so the clip corpus, and every
+    test that touches these stages, still runs with no GPU and no weights.
+    """
+    return _build_detector(getattr(args, "imgsz", 448))
+
+
 def stage_propose(args) -> int:
     if _require(args, root=args.root, out=args.out):
         return 2
@@ -176,13 +223,23 @@ def stage_propose(args) -> int:
             print(f"[{i:3d}] {vid}: UNUSABLE -- {vv.error or 'no usable view'}",
                   flush=True)
             continue
-        paths = sorted((root / vid).glob("*.mkv"))
-        if not paths:
-            print(f"[{i:3d}] {vid}: no clips, skipped", flush=True)
+        views = dict(sideviews.usable_views(vv))
+        video = cached_video(root, vid)
+        paths = [] if video is not None else sorted((root / vid).glob("*.mkv"))
+        if video is None and not paths:
+            print(f"[{i:3d}] {vid}: no clips and no cached video, skipped",
+                  flush=True)
             continue
 
         try:
-            cands, stats = sidepool.build_video_pool(vid, paths, vv, out, fps=args.fps)
+            if video is not None:
+                cands, stats = sidepool.build_video_pool_from_windows(
+                    vid, video, views, out, root,
+                    detector=_detector(args), fps=args.fps,
+                    progress=lambda m: print(f"    {m}", flush=True))
+            else:
+                cands, stats = sidepool.build_video_pool(vid, paths, vv, out,
+                                                         fps=args.fps)
         except Exception as exc:  # noqa: BLE001 -- one bad video must not stop the other 119
             errors[vid] = f"{type(exc).__name__}: {exc}"
             banked[vid] = []

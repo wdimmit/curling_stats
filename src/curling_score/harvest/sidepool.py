@@ -43,6 +43,7 @@ import numpy as np
 from curling_score.detect import longview
 from curling_score.geometry import constants as C
 from curling_score.harvest import pool
+from curling_score.ingest import frames as F
 from curling_score.harvest.sideframes import SideCandidate, position_of, stem_for
 from curling_score.train import dataset
 
@@ -532,3 +533,75 @@ def frames_for_window(moments, view, window, *, n_near: int, n_far: int
 
     out.sort(key=lambda c: c.t_abs)
     return out
+
+
+# Per window. Four frames from one delivery is enough for the set to hold the
+# crossing and the approach to it without filling a bin with near duplicates
+# of a single throw -- `sideframes.MAX_PER_CLIP` caps it at 2 downstream
+# anyway, and this pool's "clip" is one window.
+N_NEAR, N_FAR = 3, 1
+
+
+def build_video_pool_from_windows(video_id, video_path, views, out_dir, root, *,
+                                  detector=None, fps: float = DETECT_FPS,
+                                  n_near: int = N_NEAR, n_far: int = N_FAR,
+                                  jpeg_quality: int = JPEG_QUALITY,
+                                  progress=None):
+    """Every candidate one video's *shot list* can offer, written out.
+
+    The counterpart to :func:`build_video_pool`, which scans 24 s clips blind.
+    That approach put ~97% of its moments somewhere no delivery was, and the
+    resulting set was almost entirely furniture and bystanders. This one asks
+    ``sideshots.windows_for_video`` where the deliveries actually were and
+    looks only there.
+
+    Returns ``(candidates, stats)`` with the same contract: ``candidates``
+    holds only moments that got a JPEG, so a frame ``sideframes.select``
+    picks always has pixels on disk.
+    """
+    import cv2
+
+    from curling_score.harvest import sideshots
+
+    out_path = Path(out_dir) / video_id
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    all_candidates: list[SideCandidate] = []
+    stats = {"windows": 0, "empty": 0, "written": 0, "refusals": {}}
+
+    windows = sideshots.windows_for_video(video_path, video_id, root, views,
+                                          detector=detector, progress=progress)
+    for window in windows:
+        view = views.get(window.camera)
+        if view is None:
+            continue
+        # bgr24 off the decoder; `longview` reads channel 0 as red, so flip.
+        moments = [(t, img[..., ::-1])
+                   for t, img in F.window(video_path, window.t0, window.t1,
+                                          fps=fps, crop=view.rect)]
+        if not moments:
+            stats["empty"] += 1
+            continue
+        stats["windows"] += 1
+
+        picked = frames_for_window(moments, view, window,
+                                   n_near=n_near, n_far=n_far)
+        if picked:
+            outcome = picked[0].outcome
+            if outcome and outcome != longview.KEY_OK:
+                stats["refusals"][outcome] = stats["refusals"].get(outcome, 0) + 1
+
+        rgb_at = {t: img for t, img in moments}
+        for c in picked:
+            rgb = rgb_at.get(c.t_abs)
+            if rgb is None:
+                continue
+            stem = stem_for(video_id, c.view, c.t_abs)
+            cv2.imwrite(str(out_path / f"{stem}.jpg"),
+                        np.ascontiguousarray(rgb[..., ::-1]),   # back to BGR
+                        [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
+            stats["written"] += 1
+            all_candidates.append(c)
+
+    all_candidates.sort(key=lambda c: (c.t_abs, c.stem))
+    return all_candidates, stats

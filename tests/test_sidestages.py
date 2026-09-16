@@ -442,3 +442,27 @@ class TestProposeSelectBuildAgreeOnWhatWasWritten:
         manifest = json.loads(manifest_path.read_text())
         assert manifest["summary"]["frames"] > 0, \
             "the pool must have offered select() something to choose"
+
+
+class TestCorpusDispatch:
+    """Two corpora feed these stages: ds11's 24 s clips, and whole VODs under
+    a pipeline cache root. A shot list comes from segmenting a whole game, and
+    a 24 s clip has no ends in it, so the window-driven path needs the VOD.
+    """
+
+    def test_a_cache_root_is_recognised_by_its_video(self, tmp_path):
+        (tmp_path / "videos").mkdir()
+        (tmp_path / "videos" / "abc123.mp4").write_bytes(b"not really an mp4")
+        assert sidestages.cached_video(tmp_path, "abc123") is not None
+
+    def test_a_clip_root_is_not_mistaken_for_one(self, tmp_path):
+        (tmp_path / "abc123").mkdir()
+        (tmp_path / "abc123" / "clip.mkv").write_bytes(b"clip")
+        assert sidestages.cached_video(tmp_path, "abc123") is None
+
+    def test_a_video_absent_from_a_cache_root_is_not_claimed(self, tmp_path):
+        """Answered by looking, not by a flag -- a flag would let a run take
+        the clip path on a cache root and bank an empty corpus with rc 0."""
+        (tmp_path / "videos").mkdir()
+        (tmp_path / "videos" / "other.mp4").write_bytes(b"x")
+        assert sidestages.cached_video(tmp_path, "abc123") is None
