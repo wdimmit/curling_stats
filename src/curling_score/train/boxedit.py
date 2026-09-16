@@ -350,8 +350,14 @@ function payload() {
   const boxes = {}, reviewed = [];
   for (const it of ITEMS) {
     const s = state[it.stem];
-    if (!s || !s.reviewed) continue;           // never export what nobody saw
-    reviewed.push(it.stem);
+    // A frame counts as worked on if it was marked reviewed OR if it carries
+    // boxes. The old rule was reviewed-only, and that was right when frames
+    // opened with the colour detector's proposals: an unreviewed frame then
+    // carried a machine guess nobody had endorsed. Frames now open EMPTY, so
+    // a box on one was put there by a person, and dropping it discards real
+    // work -- which it did, silently, on a 196-frame session.
+    if (!s || (!s.reviewed && !(s.boxes && s.boxes.length))) continue;
+    if (s.reviewed) reviewed.push(it.stem);
     boxes[it.stem] = s.boxes.map(b => [b[0], +b[1].toFixed(6), +b[2].toFixed(6),
                                        +b[3].toFixed(6), +b[4].toFixed(6)]);
   }
@@ -363,6 +369,10 @@ document.getElementById("export").onclick = () => {
 };
 document.getElementById("save").onclick = async () => {
   const p = payload();
+  if (!Object.keys(p.boxes).length) {
+    note("nothing to save: no frame has a box or is marked reviewed");
+    return;                        // never report success over an empty export
+  }
   try {
     const r = await fetch("/save", {
       method: "POST", headers: {"Content-Type": "application/json"},

@@ -190,3 +190,29 @@ class TestKeyboard:
         # Space scrolls by default; marking a frame must not also jump it away.
         after = src.split('ev.key === " " || k === "d"', 1)[1][:400]
         assert "preventDefault" in after
+
+
+class TestNothingIsSilentlyDiscarded:
+    """A 196-frame session exported as an empty file because `payload` took
+    only frames marked reviewed. That rule was right when frames opened with
+    the colour detector's proposals -- an unreviewed frame carried a machine
+    guess nobody had endorsed. Frames now open EMPTY, so a box on one was put
+    there by a person.
+    """
+
+    def test_a_frame_with_boxes_exports_even_if_not_marked_reviewed(self):
+        src = boxedit._PAGE
+        assert "if (!s || (!s.reviewed && !(s.boxes && s.boxes.length))) continue;" in src
+        assert "if (!s || !s.reviewed) continue;" not in src
+
+    def test_saving_an_empty_export_reports_failure_not_success(self):
+        src = boxedit._PAGE
+        assert "nothing to save" in src
+        before = src.split("nothing to save", 1)[0]
+        assert before.rstrip().endswith("note(") or "note(" in before[-80:]
+
+    def test_reviewed_still_records_only_frames_actually_marked(self):
+        """`labels.coverage` and `drop_unreviewed` read this list; padding it
+        with every boxed frame would claim coverage nobody gave."""
+        src = boxedit._PAGE
+        assert "if (s.reviewed) reviewed.push(it.stem);" in src
