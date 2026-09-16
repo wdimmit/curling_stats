@@ -372,3 +372,68 @@ class TestReleaseIsOptional:
         worth knowing rather than hiding behind a default."""
         sp = split.long_split(None, self._delivery(12.0), t_hog=10.0, v_hog=None)
         assert sp is not None
+
+
+class TestFarCrossingExtrapolation:
+    """The arriving panel's track often begins just below its hog line, so the
+    crossing is never observed. Reaching back for it is allowed, but only a
+    little, and the result is marked.
+
+    Measured over all 139 tracks on VXU9xwmugRg that DO cross, by hiding
+    everything above a cut: at a reach of 0.05 about 9 in 10 land inside the
+    0.15 s a crossing is judged by; at 0.14 that falls to 8 in 10 and the bias
+    grows. There is no physical threshold here -- it is a judgement about how
+    much unverifiable error to accept.
+    """
+
+    def _track(self, y0, y1, n=8, t0=10.0, dt=0.1):
+        step = (y1 - y0) / (n - 1)
+        return tuple((t0 + i * dt, 0.0, y0 + i * step) for i in range(n))
+
+    def test_an_observed_crossing_is_not_extrapolated(self):
+        tr = self._track(4.60, 4.20)
+        t, reach = split.far_crossing(tr, split.HOG_APPARENT_Y_M, max_reach=0.05)
+        assert t is not None
+        assert reach == 0.0
+
+    def test_a_track_beginning_just_below_the_line_is_reached_for(self):
+        tr = self._track(4.42, 4.10)
+        t, reach = split.far_crossing(tr, split.HOG_APPARENT_Y_M, max_reach=0.05)
+        assert t is not None
+        assert reach == pytest.approx(split.HOG_APPARENT_Y_M - 4.42, abs=1e-6)
+
+    def test_a_track_beginning_far_below_it_is_refused(self):
+        tr = self._track(4.20, 3.90)
+        t, reach = split.far_crossing(tr, split.HOG_APPARENT_Y_M, max_reach=0.05)
+        assert t is None and reach == 0.0
+
+    def test_the_reach_lands_before_the_first_sample(self):
+        """The stone reached the line before the panel had it, so the time must
+        be earlier than the track's own first point."""
+        tr = self._track(4.42, 4.10)
+        t, _ = split.far_crossing(tr, split.HOG_APPARENT_Y_M, max_reach=0.05)
+        assert t < tr[0][0]
+
+    def test_no_reach_at_all_is_the_old_behaviour(self):
+        tr = self._track(4.42, 4.10)
+        assert split.far_crossing(tr, split.HOG_APPARENT_Y_M)[0] is None
+
+    def test_a_split_records_how_far_it_reached(self):
+        # t_hog=2.0, not 5.0: the far crossing lands near 9.9 s, and over the
+        # 22.229 m baseline a 4.9 s split implies 4.54 m/s, which the pairing
+        # bound rightly refuses against a 2.5 m/s near crossing. The fixture was
+        # wrong, not the guard.
+        class D:
+            track = None
+        D.track = self._track(4.42, 4.10)
+        sp = split.long_split(None, D(), t_hog=2.0, v_hog=2.5)
+        assert sp is not None
+        assert sp.far_reach > 0
+
+    def test_an_observed_split_records_no_reach(self):
+        class D:
+            track = None
+        D.track = self._track(4.60, 4.10)
+        sp = split.long_split(None, D(), t_hog=2.0, v_hog=2.5)
+        assert sp is not None
+        assert sp.far_reach == 0.0

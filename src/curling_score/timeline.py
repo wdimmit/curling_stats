@@ -126,6 +126,14 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
                 "long_split_baseline_m": (
                     None if sp is None else round(float(sp.baseline_m), 3)
                 ),
+                # How far the far crossing was reached for, in the PANEL's y
+                # units -- 0 when it was observed. Not the old
+                # `long_split_extrapolated_m`, which was the throwing end in
+                # metres: different end, different units, and old charts still
+                # read that one.
+                "long_split_far_reach_u": (
+                    None if sp is None else round(float(sp.far_reach), 4)
+                ),
                 "thinking_time_s": (
                     None if think is None else round(float(think), 2)
                 ),
