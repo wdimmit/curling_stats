@@ -130,3 +130,63 @@ class TestUncertaintyFlagSurvives:
         assert "b.map" not in src
         assert "[b[0], +b[1].toFixed(6), +b[2].toFixed(6)," in src
         assert "+b[3].toFixed(6), +b[4].toFixed(6)]" in src
+
+
+class TestCroppedGeometry:
+    """Training frames are cropped to the ice band, so a click's y is in the
+    crop's rows. Only the intercept moves -- a translation cannot change the
+    slope of a line."""
+
+    def test_the_offset_shifts_the_intercept_only(self):
+        a = boxedit.frame_geometry(VIEW, 52.0)
+        b = boxedit.frame_geometry(VIEW, 52.0, row_offset=435)
+        assert b["k"] == a["k"]
+        assert b["yh"] == pytest.approx(a["yh"] - 435)
+
+    def test_a_row_in_the_crop_gives_the_same_width_as_in_the_view(self):
+        off = 435
+        g = boxedit.frame_geometry(VIEW, 52.0, row_offset=off)
+        for full_row in (450.0, 500.0, 520.0, 570.0):
+            in_crop = full_row - off
+            assert g["k"] * (in_crop - g["yh"]) == pytest.approx(
+                VIEW.stone_width_at(full_row, 52.0), rel=1e-9)
+
+
+class TestProposalsOff:
+    def _item(self):
+        return {"stem": "v1_l_000100_00", "image": "images/v1_l_000100_00.jpg",
+                "width": 810, "height": 200,
+                "boxes": [[0, 0.5, 0.48, 0.064, 0.02]],
+                "geom": boxedit.frame_geometry(VIEW, 52.0)}
+
+    def test_frames_open_empty_by_default(self):
+        """The colour detector's boxes were ~70% on a stone and none usable;
+        presenting them cost more in deletions than they saved."""
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            page = boxedit.render([self._item()], d, scope="s")
+            blob = page.read_text().split("const ITEMS = ", 1)[1].split(";\n", 1)[0]
+            assert json.loads(blob)[0]["boxes"] == []
+
+    def test_proposals_can_still_be_shown_for_reviewing_a_built_set(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            page = boxedit.render([self._item()], d, scope="s", proposals=True)
+            blob = page.read_text().split("const ITEMS = ", 1)[1].split(";\n", 1)[0]
+            assert len(json.loads(blob)[0]["boxes"]) == 1
+
+
+class TestKeyboard:
+    def test_r_and_y_arm_the_colours(self):
+        src = boxedit._PAGE
+        assert 'k === "r" || k === "y"' in src
+        assert "setArm(k === \"r\" ? 0 : 1)" in src
+
+    def test_reviewed_moved_off_r_and_does_not_scroll_the_page(self):
+        src = boxedit._PAGE
+        assert 'ev.key === " " || k === "d"' in src
+        # Space scrolls by default; marking a frame must not also jump it away.
+        after = src.split('ev.key === " " || k === "d"', 1)[1][:400]
+        assert "preventDefault" in after

@@ -38,22 +38,34 @@ from pathlib import Path
 HEIGHT_RATIO = 0.42
 
 
-def frame_geometry(view, width_at_hog: float) -> dict:
+def frame_geometry(view, width_at_hog: float, row_offset: int = 0) -> dict:
     """The two numbers the page needs to size a box at any row.
 
     ``stone_width_at`` is linear in the row -- ``k * (row - yh)`` -- so the
     whole perspective model reaches the browser as a slope and an intercept
     rather than as a solver.
+
+    ``row_offset`` is the first row of the image the page will show. Training
+    frames are cropped to the ice band, so a click's y is in the crop's rows,
+    not the view's; shifting the intercept is the whole correction, since the
+    slope is unchanged by a translation.
     """
     c, yh = view._map()
     from curling_score.geometry import constants as C
 
     k = width_at_hog * (view.d_m - C.TEE_TO_HOGLINE_M) / c
-    return {"k": k, "yh": yh}
+    return {"k": k, "yh": yh - row_offset}
 
 
-def render(items, out_dir, *, scope: str, title: str = "Fix the boxes") -> Path:
+def render(items, out_dir, *, scope: str, title: str = "Fix the boxes",
+           proposals: bool = False) -> Path:
     """Write the editor page.
+
+    ``proposals`` defaults to False: each frame opens EMPTY. The colour
+    detector's boxes were measured at about 70% on a stone and none of them
+    were usable, so presenting them cost a reviewer more in deleting than they
+    saved in keeping -- and with SAM a correct box is one click away. Pass True
+    only to review an existing set's labels rather than to build one.
 
     ``items`` is one dict per frame: ``stem``, ``image`` (a path relative to
     the page), ``width``, ``height``, ``boxes`` as ``[cls, cx, cy, w, h]`` in
@@ -62,6 +74,8 @@ def render(items, out_dir, *, scope: str, title: str = "Fix the boxes") -> Path:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     page = out_dir / "index.html"
+    if not proposals:
+        items = [{**it, "boxes": []} for it in items]
     data = json.dumps(items)
     page.write_text(_PAGE.replace("__DATA__", data)
                     .replace("__SCOPE__", _html.escape(scope))
@@ -110,16 +124,19 @@ _PAGE = r"""<!doctype html>
 ice where a stone is and <b>SAM segments it</b> -- the click says what it is,
 the model says where its edges are, and the perspective solve picks whichever
 of the model's readings is stone-sized at that row. Without the segmenter
-running, the box still arrives correctly sized by geometry alone. A frame turns green once you mark it <b>reviewed</b>
-(<b>R</b>); only reviewed frames are exported, because a frame nobody looked at
-still carries whatever the detector said. Work is kept in this browser as you
-go. <b>N</b>/<b>P</b> jump between frames.</p>
+running, the box still arrives correctly sized by geometry alone. <b>R</b> arms red and <b>Y</b> arms yellow, so a frame is
+r-click-y-click-space without leaving the keyboard. Frames open <b>empty</b>:
+you are adding the stones you see, not correcting a detector's guesses. Mark a
+frame reviewed with <b>space</b> and it turns green &mdash; only reviewed
+frames are exported, because a frame nobody looked at says nothing, and a
+reviewed frame with no boxes says something useful: no stone in the band.
+<b>N</b>/<b>P</b> jump between frames; work is kept in this browser as you go.</p>
 
 <div id="frames"></div>
 
 <div class="bar">
-  <button id="addr">+red</button>
-  <button id="addy">+yellow</button>
+  <button id="addr">+red (R)</button>
+  <button id="addy">+yellow (Y)</button>
   <span id="count" class="muted"></span>
   <span id="segstate" class="muted">SAM: click a stone</span>
   <button id="export">Export JSON</button>
@@ -307,23 +324,26 @@ window.addEventListener("keydown", ev => {
   if ((ev.key === "Delete" || ev.key === "Backspace") && sel) {
     st(sel.item).boxes.splice(sel.i, 1); save(); drawBoxes(sel.fig, sel.item);
     sel = null; ev.preventDefault();
-  } else if (k === "r") {
+  } else if (k === "r" || k === "y") {
+    setArm(k === "r" ? 0 : 1);
+    ev.preventDefault();
+  } else if (ev.key === " " || k === "d") {
     const item = ITEMS[cur], fig = document.getElementById("f" + cur);
     const s = st(item); s.reviewed = !s.reviewed; save(); drawBoxes(fig, item);
+    ev.preventDefault();               // space would otherwise scroll the page
   } else if (k === "n" || k === "p") {
     cur = Math.max(0, Math.min(ITEMS.length - 1, cur + (k === "n" ? 1 : -1)));
     document.getElementById("f" + cur).scrollIntoView({block: "center"});
   }
 });
 
-function armBtn(id, cls) {
-  document.getElementById(id).onclick = () => {
-    arm = (arm === cls) ? null : cls;
-    document.getElementById("addr").classList.toggle("on", arm === 0);
-    document.getElementById("addy").classList.toggle("on", arm === 1);
-  };
+function setArm(cls) {
+  arm = (arm === cls) ? null : cls;
+  document.getElementById("addr").classList.toggle("on", arm === 0);
+  document.getElementById("addy").classList.toggle("on", arm === 1);
 }
-armBtn("addr", 0); armBtn("addy", 1);
+document.getElementById("addr").onclick = () => setArm(0);
+document.getElementById("addy").onclick = () => setArm(1);
 
 function payload() {
   const boxes = {}, reviewed = [];

@@ -36,6 +36,8 @@ about 574,000 across the 1197-clip archive. Unavoidable without reaching into
 
 from __future__ import annotations
 
+import dataclasses
+
 from pathlib import Path
 
 import numpy as np
@@ -535,6 +537,41 @@ def frames_for_window(moments, view, window, *, n_near: int, n_far: int
     return out
 
 
+# How far below the hog line the written crop runs, past `ice_bounds`. A
+# delivery keeps travelling toward the camera after it crosses, and 60 rows is
+# about a second of that at the club's geometry.
+#
+# There is no matching pad ABOVE. The band's top is the tee, and the racks of
+# stones sit immediately above it -- measured rows ~365-405 against a tee at
+# ~435. Any upward padding at all walks them back into the frame, which is the
+# thing the crop exists to prevent: an unlabelled stone in a training image is
+# not neutral, it teaches the model that stones are background.
+BAND_PAD_BELOW = 60
+
+
+def band_crop(view) -> tuple[int, int]:
+    """The rows a written training frame should span.
+
+    Cropping to this is what lets a labelling session be *complete*. Out of
+    band there are parked stones, racks, the far wall and the scoreboard; a
+    reviewer either boxes all of them, which is work with no bearing on timing
+    a hog crossing, or leaves them unboxed, which poisons the set. Removing the
+    pixels removes the question.
+    """
+    top, bottom = ice_bounds(view)
+    return int(top), int(bottom + BAND_PAD_BELOW)
+
+
+def crop_label(lab, y0: int, y1: int, full_h: int):
+    """A label normalised to the full view, renormalised to the band crop."""
+    import dataclasses
+
+    cy = lab.cy * full_h
+    h = lab.h * full_h
+    band = y1 - y0
+    return dataclasses.replace(lab, cy=(cy - y0) / band, h=h / band)
+
+
 # Per window. Four frames from one delivery is enough for the set to hold the
 # crossing and the approach to it without filling a bin with near duplicates
 # of a single throw -- `sideframes.MAX_PER_CLIP` caps it at 2 downstream
@@ -592,16 +629,22 @@ def build_video_pool_from_windows(video_id, video_path, views, out_dir, root, *,
                 stats["refusals"][outcome] = stats["refusals"].get(outcome, 0) + 1
 
         rgb_at = {t: img for t, img in moments}
+        y0, y1 = band_crop(view)
         for c in picked:
             rgb = rgb_at.get(c.t_abs)
             if rgb is None:
                 continue
+            full_h = rgb.shape[0]
+            lo, hi = max(0, y0), min(full_h, y1)
             stem = stem_for(video_id, c.view, c.t_abs)
             cv2.imwrite(str(out_path / f"{stem}.jpg"),
-                        np.ascontiguousarray(rgb[..., ::-1]),   # back to BGR
+                        np.ascontiguousarray(rgb[lo:hi, :, ::-1]),  # back to BGR
                         [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
             stats["written"] += 1
-            all_candidates.append(c)
+            # The labels travel with the pixels, or they point at the old rows.
+            all_candidates.append(dataclasses.replace(
+                c, labels=tuple(crop_label(lab, lo, hi, full_h)
+                                for lab in c.labels)))
 
     all_candidates.sort(key=lambda c: (c.t_abs, c.stem))
     return all_candidates, stats

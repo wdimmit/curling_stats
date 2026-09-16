@@ -283,3 +283,43 @@ class TestFramesForWindow:
              for i in range(12)],
             VIEW, self._window(), n_near=2, n_far=0)
         assert all(c.labels for c in got), "the aspect bound rejected a stone"
+
+
+class TestBandCrop:
+    """Cropping is what lets a labelling session be COMPLETE. Out of band sit
+    parked stones, racks, the far wall; a reviewer either boxes all of them --
+    work with no bearing on timing a hog crossing -- or leaves them unboxed,
+    which teaches the model that stones are background.
+    """
+
+    def test_it_spans_the_ice_band_and_a_little_past(self):
+        top, bottom = sidepool.band_crop(VIEW)
+        ice_top, ice_bottom = sidepool.ice_bounds(VIEW)
+        assert top == ice_top
+        assert bottom == ice_bottom + sidepool.BAND_PAD_BELOW
+
+    def test_there_is_no_pad_above_because_the_racks_are_there(self):
+        """Measured on real frames: racks at rows ~365-405, tee at ~435. Any
+        upward padding walks them back into the training image."""
+        top, _ = sidepool.band_crop(VIEW)
+        for rack_row in (365.0, 385.0, 405.0):
+            assert rack_row < top
+
+    def test_the_hog_line_sits_inside_the_crop(self):
+        top, bottom = sidepool.band_crop(VIEW)
+        assert top < VIEW.hog_row < bottom
+
+    def test_a_label_moves_with_the_pixels(self):
+        from curling_score.train import dataset
+        # A box centred on the hog line in a 1080-row view.
+        lab = dataset.Label(cls=0, cx=0.5, cy=520.0 / 1080, w=0.064,
+                            h=22.0 / 1080)
+        y0, y1 = sidepool.band_crop(VIEW)
+        out = sidepool.crop_label(lab, y0, y1, 1080)
+        assert out.cy * (y1 - y0) + y0 == pytest.approx(520.0)
+        assert out.h * (y1 - y0) == pytest.approx(22.0)
+
+    def test_a_crop_is_tall_enough_to_hold_a_stone_with_room(self):
+        y0, y1 = sidepool.band_crop(VIEW)
+        at_hog = VIEW.stone_width_at(VIEW.hog_row, 52.0) * 0.42
+        assert (y1 - y0) > 6 * at_hog
