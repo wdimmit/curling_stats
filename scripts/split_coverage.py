@@ -181,6 +181,20 @@ def _shots_for_end(read_path, proxy_setups, end, from_s, detector):
     return shots, next_from
 
 
+# Set by main() when --side-weights is given: the trained side-view detector
+# stands in for the colour scan as the proposer. hogtime's `find` keyword is
+# the whole seam, so nothing in the pipeline changes to measure this.
+_SIDE_MODEL = None
+
+
+def _find_crossing(video_, view_, color, t0, t1):
+    if _SIDE_MODEL is None:
+        return longview.find_crossing(video_, view_, color, t0, t1)
+    from curling_score.detect import sidemodel
+
+    return sidemodel.find_crossing(_SIDE_MODEL, video_, view_, color, t0, t1)
+
+
 def _time_crossings(shots, video_path, view):
     """Run hogtime.time_hog_crossings, recording the Crossing behind each shot.
 
@@ -195,7 +209,7 @@ def _time_crossings(shots, video_path, view):
     got_list = []
 
     def recording_find(video_, view_, color, t0, t1):
-        got = longview.find_crossing(video_, view_, color, t0, t1)
+        got = _find_crossing(video_, view_, color, t0, t1)
         got_list.append(got)
         return got
 
@@ -436,10 +450,21 @@ def _hand_mark_agreement(video_path, views, marks_path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--cache-root", default=None)
+    ap.add_argument("--side-weights", default=None,
+                    help="a trained side-view detector to use as the crossing "
+                         "proposer instead of the colour scan (e.g. "
+                         "weights/ds13b.pt)")
     ap.add_argument("--weights", default=None)
     ap.add_argument("--videos", nargs="+", default=None,
                     help="video ids to measure (default: every *.mp4 in the cache)")
     args = ap.parse_args()
+
+    if args.side_weights:
+        from ultralytics import YOLO
+
+        global _SIDE_MODEL
+        _SIDE_MODEL = YOLO(args.side_weights)
+        print(f"crossing proposer: {args.side_weights}", flush=True)
 
     root = Path(args.cache_root) if args.cache_root else cache.default_root()
     video_dir = root / "videos"

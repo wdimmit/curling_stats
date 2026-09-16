@@ -39,6 +39,10 @@ CONF_MIN = 0.35
 # threshold on confidence alone would have caught.
 WIDTH_TOL = (0.5, 2.0)
 
+# Frames per inference call. 16 at imgsz 800 is about 230 MiB of activations,
+# which leaves room on an 8 GB card beside the overhead detector.
+BATCH = 16
+
 
 def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
     """``{track_key: [(t, edge_row, body_px), ...]}`` from a trained detector.
@@ -63,8 +67,16 @@ def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
         return tracks
 
     lo = max(0, y0)
-    for t, res in zip(times, model.predict(crops, imgsz=800, conf=conf,
-                                           verbose=False)):
+    # Chunked, not one call. A 4.5 s window at 30 fps is ~135 crops, and
+    # handing all of them to `predict` at imgsz 800 asked for 1.93 GiB in a
+    # single allocation and fell over on an 8 GB card that is also holding the
+    # overhead stone detector. The model is the same either way; only the
+    # arena differs.
+    preds = []
+    for i in range(0, len(crops), BATCH):
+        preds.extend(model.predict(crops[i:i + BATCH], imgsz=800, conf=conf,
+                                   verbose=False))
+    for t, res in zip(times, preds):
         if res.boxes is None:
             continue
         for b, c, cf in zip(res.boxes.xyxy.cpu().numpy(),
