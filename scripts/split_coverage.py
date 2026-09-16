@@ -197,6 +197,9 @@ def _shots_for_end(read_path, proxy_setups, end, from_s, detector):
 _SIDE_MODEL = None
 # Filled when --dump-refused is given; see the GATE_NO_FAR_HOG branch below.
 _REFUSED_OUT = None
+# Tracks of shots that DID publish: the only way to test an extrapolation is on
+# a track whose real crossing is known, with the tail hidden.
+_PUBLISHED_OUT = None
 
 
 def _find_crossing(video_, view_, color, t0, t1):
@@ -412,6 +415,20 @@ def measure_video(video_path, root, detector):
                 elif view is None and not getattr(shot, "missing", False):
                     stats.add_refusal("no calibrated side view for this panel", "no_side_view")
 
+                if t_hog is not None and _PUBLISHED_OUT is not None \
+                        and ss is not None and delivery is not None:
+                    tr = list(getattr(delivery, "track", ()) or ())
+                    if tr:
+                        _PUBLISHED_OUT.append({
+                            "video": vid, "end": end.number,
+                            "shot": getattr(shot, "number", None),
+                            "color": shot.color,
+                            "t_far": round(split.crossing_time(
+                                tr, split.HOG_APPARENT_Y_M) or float("nan"), 3),
+                            "track": [[round(pt[0], 3), round(pt[2], 4)]
+                                      for pt in tr],
+                        })
+
                 if t_hog is not None:
                     # FIX 2.3: longview found a crossing at all, before any of
                     # long_split's gates get a say.
@@ -495,8 +512,9 @@ def main():
     args = ap.parse_args()
 
     if args.dump_refused:
-        global _REFUSED_OUT
+        global _REFUSED_OUT, _PUBLISHED_OUT
         _REFUSED_OUT = []
+        _PUBLISHED_OUT = []
 
     if args.side_weights:
         from ultralytics import YOLO
@@ -603,6 +621,10 @@ def main():
         Path(args.dump_refused).write_text(json.dumps(_REFUSED_OUT, indent=1))
         print(f"  wrote {len(_REFUSED_OUT)} no_far_hog_crossing refusals to "
              f"{args.dump_refused}", flush=True)
+        pub = Path(args.dump_refused).with_name(
+            Path(args.dump_refused).stem + "_published.json")
+        pub.write_text(json.dumps(_PUBLISHED_OUT))
+        print(f"  wrote {len(_PUBLISHED_OUT)} published tracks to {pub}", flush=True)
 
 
 if __name__ == "__main__":
