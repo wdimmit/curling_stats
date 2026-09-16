@@ -51,6 +51,7 @@ weights/*.pt
 # the wide side view, edge-on at thirty metres, to time the hog crossing.
 # Both are live, so both are kept.
 !weights/ds13a.pt
+!weights/ds13b.pt
 
 # The frontend toolchain. Sources live in frontend/; the built bundles are
 # tracked under src/curling_score/ because `curling-score serve` has to work
