@@ -109,3 +109,29 @@ class TestEveryRealView:
         plate = synth.side_view(tee_row=430.0, hog_row=470.0)   # only 40 rows
         with pytest.raises(sideview.SideViewError):
             sideview.solve(plate, (0, 0, 810, 1080))
+
+
+class TestStoneWidthAt:
+    """One measured width pins the rest: apparent width scales with the same
+    1/(d - x) the row spacing does."""
+
+    def test_at_the_hog_line_it_returns_the_measured_width(self):
+        v = sideview.SideView(rect=(0, 0, 810, 1080), tee_row=435.0, hog_row=520.0)
+        assert v.stone_width_at(520.0, 52.0) == pytest.approx(52.0, abs=0.01)
+
+    def test_a_stone_further_away_is_narrower(self):
+        v = sideview.SideView(rect=(0, 0, 810, 1080), tee_row=435.0, hog_row=520.0)
+        assert v.stone_width_at(435.0, 52.0) < 52.0
+
+    def test_a_stone_nearer_the_camera_is_wider(self):
+        v = sideview.SideView(rect=(0, 0, 810, 1080), tee_row=435.0, hog_row=520.0)
+        assert v.stone_width_at(600.0, 52.0) > 52.0
+
+    def test_it_matches_the_depth_map_it_is_derived_from(self):
+        """Width must track 1/(d - x) exactly, since that is where it comes
+        from -- a drift here would be a second, disagreeing scale."""
+        from curling_score.geometry import constants as C
+        v = sideview.SideView(rect=(0, 0, 810, 1080), tee_row=435.0, hog_row=520.0)
+        for row in (450.0, 500.0, 560.0, 620.0):
+            ratio = ((v.d_m - C.TEE_TO_HOGLINE_M) / (v.d_m - v.metres_at(row)))
+            assert v.stone_width_at(row, 52.0) == pytest.approx(52.0 * ratio, rel=1e-9)

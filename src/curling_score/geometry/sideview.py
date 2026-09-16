@@ -98,6 +98,26 @@ class SideView:
         c, yh = self._map()
         return self.d_m - c / (row - yh)
 
+    def stone_width_at(self, row: float, width_at_hog: float) -> float:
+        """How many pixels wide a stone is when its edge sits on ``row``.
+
+        The one lateral fact this class can honestly supply. It carries no
+        lateral scale of its own -- ``row_for``/``metres_at`` are depth only --
+        but a stone's apparent width scales with the same 1/(d - x) the row
+        spacing does, so one measured width pins the rest.
+
+        Substituting ``metres_at`` into that ratio collapses to a line through
+        ``yh``::
+
+            w(row) = width_at_hog * (d - TEE_TO_HOGLINE) * (row - yh) / c
+
+        which is worth noticing: sizing a box by hand needs one multiply, not
+        a segmentation model. A reviewer who says where a stone is has, by
+        saying it, also said how big it is.
+        """
+        c, yh = self._map()
+        return width_at_hog * (self.d_m - C.TEE_TO_HOGLINE_M) * (row - yh) / c
+
 
 def _green_profile(plate, rect):
     x, y, w, h = rect

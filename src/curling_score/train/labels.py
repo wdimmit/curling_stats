@@ -19,6 +19,7 @@ they enclose.
 from __future__ import annotations
 
 import re
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -318,6 +319,11 @@ class Edits:
     add: tuple = ()
     reviewed: tuple = ()
     scope: str | None = None
+    # stem -> the boxes that frame should have, replacing whatever it had.
+    # `train/boxedit.py` exports this instead of reject/add: the three compose
+    # badly -- "reject this box and add one 4 px left" is two edits that must
+    # both land -- and a replacement is one that cannot half-land.
+    boxes: dict = dataclasses.field(default_factory=dict)
 
 
 def parse_edits(data):
@@ -341,7 +347,8 @@ def parse_edits_full(data) -> Edits:
     rejects, adds = parse_edits(data)
     reviewed = list(data.get("reviewed", [])) if isinstance(data, dict) else []
     scope = data.get("scope") if isinstance(data, dict) else None
-    return Edits(tuple(rejects), tuple(adds), tuple(reviewed), scope)
+    boxes = dict(data.get("boxes", {})) if isinstance(data, dict) else {}
+    return Edits(tuple(rejects), tuple(adds), tuple(reviewed), scope, boxes)
 
 
 def merge_edits(*payloads, scope=None) -> Edits:
@@ -353,15 +360,22 @@ def merge_edits(*payloads, scope=None) -> Edits:
     that gets applied is always a merge.
     """
     reject, add, reviewed, scopes = set(), set(), set(), set()
+    # Boxes are a statement about a whole frame, so they cannot be unioned the
+    # way keys can: two sittings that both touched a frame disagree, and the
+    # later sitting is the one that saw the earlier one's work. Last wins, in
+    # the order the caller passed them.
+    boxes: dict = {}
     for payload in payloads:
         one = payload if isinstance(payload, Edits) else parse_edits_full(payload)
         reject |= set(one.reject)
         add |= set(one.add)
         reviewed |= set(one.reviewed)
+        boxes.update(one.boxes)
         if one.scope:
             scopes.add(one.scope)
     return Edits(tuple(sorted(reject)), tuple(sorted(add)),
-                 tuple(sorted(reviewed)), scope or (scopes.pop() if len(scopes) == 1 else None))
+                 tuple(sorted(reviewed)),
+                 scope or (scopes.pop() if len(scopes) == 1 else None), boxes)
 
 
 def coverage(root, split: str, reviewed) -> tuple:
@@ -393,7 +407,8 @@ def _write_boxes(path, boxes):
 
 
 def apply_edits(root, split: str, rejects, adds=(), *, keep_empty=False,
-                box_for=None, reviewed=None, drop_unreviewed=False) -> dict:
+                box_for=None, reviewed=None, drop_unreviewed=False,
+                boxes=None) -> dict:
     """Delete and add the named boxes in a dataset's label files.
 
     Additions matter as much as removals and arguably more: a stone with no
@@ -413,6 +428,12 @@ def apply_edits(root, split: str, rejects, adds=(), *, keep_empty=False,
     ``drop_unreviewed`` removes frames absent from ``reviewed``. An unreviewed
     frame still carries whatever the detector said about it, and letting those
     in silently is what would make the whole exercise circular again.
+
+    ``boxes`` maps a stem to the boxes that frame should have, replacing what
+    it had. It is what ``train/boxedit.py`` exports, and it **wins over
+    ``rejects`` and ``adds`` for any frame it names** -- a frame cannot be both
+    wholly restated and incrementally patched, and silently combining the two
+    would apply a rejection to a box the restatement had already moved.
     """
     root = Path(root)
     lbl_dir, img_dir = root / "labels" / split, root / "images" / split
@@ -434,7 +455,25 @@ def apply_edits(root, split: str, rejects, adds=(), *, keep_empty=False,
         if sizes else (0.074, 0.043)
 
     counts = {"removed": 0, "added": 0, "rewritten": 0, "emptied": 0,
-              "kept_empty": 0, "missing_frames": 0, "unreviewed": 0}
+              "kept_empty": 0, "missing_frames": 0, "unreviewed": 0,
+              "replaced": 0}
+
+    replaced: set = set()
+    for stem, rows in (boxes or {}).items():
+        lbl = lbl_dir / f"{stem}.txt"
+        if not lbl.exists():
+            counts["missing_frames"] += 1
+            continue
+        before = len(_read_boxes(lbl))
+        new = [Box(int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]))
+               for r in rows]
+        _write_boxes(lbl, new)
+        replaced.add(stem)
+        counts["replaced"] += 1
+        counts["removed"] += max(0, before - len(new))
+        counts["added"] += max(0, len(new) - before)
+        if not new:
+            counts["emptied"] += 1
 
     if drop_unreviewed:
         seen = set(reviewed or ())
@@ -447,17 +486,23 @@ def apply_edits(root, split: str, rejects, adds=(), *, keep_empty=False,
 
     stems = {p.stem for p in lbl_dir.glob("*.txt")} | set(by_frame)
     for stem in sorted(stems):
+        # A frame the editor restated wholly is finished; patching it again
+        # would apply a rejection to a box the restatement had already moved.
+        if stem in replaced:
+            continue
         lbl = lbl_dir / f"{stem}.txt"
-        boxes = _read_boxes(lbl) if lbl.exists() else []
-        keep = [b for b in boxes if reject_key(stem, b) not in wanted]
-        counts["removed"] += len(boxes) - len(keep)
+        # Named `current`, not `boxes`: `boxes` is this function's replacement
+        # argument, and the loop used to shadow it.
+        current = _read_boxes(lbl) if lbl.exists() else []
+        keep = [b for b in current if reject_key(stem, b) not in wanted]
+        counts["removed"] += len(current) - len(keep)
         sized = box_for(stem) if box_for else None
         new_boxes = []
         for cls, cx, cy in by_frame.get(stem, ()):
             if sized:
                 w, h = sized
-            elif boxes:
-                w, h = boxes[0].w, boxes[0].h
+            elif current:
+                w, h = current[0].w, current[0].h
             else:
                 w, h = med_w, med_h
             new_boxes.append(Box(cls, cx, cy, w, h))
@@ -466,7 +511,7 @@ def apply_edits(root, split: str, rejects, adds=(), *, keep_empty=False,
             continue
         counts["added"] += len(new_boxes)
         final = keep + new_boxes
-        if final == boxes and not (keep_empty and not final and lbl.exists()):
+        if final == current and not (keep_empty and not final and lbl.exists()):
             continue
         if final:
             _write_boxes(lbl, final)
