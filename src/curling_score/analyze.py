@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from curling_score import timeline, version
+from curling_score import weights as weights_mod
 from curling_score.detect import delivery, release, sequence
 from curling_score.game import (
     endcheck,
@@ -388,7 +389,12 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         calibration=calibration,
         games=out_games,
         window=(start_s, end_s),
-        processing_version=version.processing_version(weights),
+        # The side detector is folded in: it times every throwing-end hog
+        # crossing, so it changes the timeline as surely as the overhead one.
+        # Resolved here rather than passed, because nothing upstream chooses
+        # it -- `hogtime` takes the same default.
+        processing_version=version.processing_version(
+            weights, weights_mod.side_path()),
     )
 
 

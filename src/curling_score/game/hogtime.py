@@ -10,7 +10,7 @@ Runs after the rules have settled the shot list, and like
 Nothing here can add, drop or renumber a shot.
 """
 
-from curling_score.detect import longview
+from curling_score.detect import longview, sidemodel
 
 # Which side camera watches a given panel's hog line: the one at the *other*
 # end, looking back. A camera never sees its own hog line -- that sits about
@@ -25,8 +25,16 @@ CAMERA_FOR = {"top": "left", "bottom": "right"}
 ARRIVAL_LOOKBACK_S = (8.0, 20.0)
 
 
-def time_hog_crossings(shots, video, view, *, find=longview.find_crossing) -> None:
-    """Give every shot its throwing-end hog crossing, in place."""
+def time_hog_crossings(shots, video, view, *, find=None) -> None:
+    """Give every shot its throwing-end hog crossing, in place.
+
+    ``find`` defaults to the side-view detector when one is configured, and to
+    ``longview.find_crossing`` -- the colour scan -- when none is. Resolved per
+    call rather than as a default argument value, so the model is not loaded by
+    importing this module and a test can still pass its own.
+    """
+    if find is None:
+        find = sidemodel.default_finder() or longview.find_crossing
     for shot in shots:
         if getattr(shot, "missing", False):
             continue

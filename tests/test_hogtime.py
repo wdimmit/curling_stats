@@ -5,9 +5,12 @@ Runs after the rules have settled the shot list, and like
 nothing here may add, drop or renumber a shot.
 """
 
+import types
+
 import pytest
 
 from curling_score.detect.delivery import Delivery
+from curling_score.detect import longview
 from curling_score.detect.longview import Crossing
 from curling_score.detect.release import Release
 from curling_score.game import hogtime, shots as S
@@ -85,3 +88,44 @@ class TestWhichCamera:
     def test_the_camera_at_the_far_end_watches_the_throwing_house(self):
         assert hogtime.CAMERA_FOR["top"] == "left"
         assert hogtime.CAMERA_FOR["bottom"] == "right"
+
+
+class TestTheDefaultFinder:
+    """`find` resolves per call, not as a default argument value, so importing
+    this module does not need a GPU, weights or ultralytics -- and a caller can
+    still pass its own."""
+
+    def test_an_explicit_find_is_used_unchanged(self):
+        seen = []
+
+        def find(video, view, color, t0, t1):
+            seen.append(color)
+            return longview.Crossing(t0 + 1.0, "ok", longview.KEY_OK)
+
+        shot = types.SimpleNamespace(color="red", missing=False,
+                                     release=types.SimpleNamespace(t=10.0))
+        hogtime.time_hog_crossings([shot], "v.mp4", object(), find=find)
+        assert seen == ["red"]
+        # t0 is release.t + WINDOW_S[0] = 12.0, and the stub returns t0 + 1.
+        assert shot.t_hog_s == pytest.approx(13.0)
+
+    def test_it_falls_back_to_the_colour_scan_with_no_side_model(self, monkeypatch):
+        monkeypatch.setattr(hogtime.sidemodel, "default_finder", lambda: None)
+        calls = []
+        monkeypatch.setattr(hogtime.longview, "find_crossing",
+                            lambda *a, **k: calls.append(a) or
+                            longview.Crossing(None, "no", longview.KEY_NO_CANDIDATE))
+        shot = types.SimpleNamespace(color="red", missing=False,
+                                     release=types.SimpleNamespace(t=10.0))
+        hogtime.time_hog_crossings([shot], "v.mp4", object())
+        assert calls, "the colour scan was not used as the fallback"
+
+    def test_a_side_model_is_preferred_when_configured(self, monkeypatch):
+        used = []
+        monkeypatch.setattr(hogtime.sidemodel, "default_finder",
+                            lambda: (lambda *a, **k: used.append(1) or
+                                     longview.Crossing(11.0, "ok", longview.KEY_OK)))
+        shot = types.SimpleNamespace(color="red", missing=False,
+                                     release=types.SimpleNamespace(t=10.0))
+        hogtime.time_hog_crossings([shot], "v.mp4", object())
+        assert used and shot.t_hog_s == pytest.approx(11.0)

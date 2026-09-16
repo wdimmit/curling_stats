@@ -20,6 +20,8 @@ compare them against ``view.hog_row``.
 
 from __future__ import annotations
 
+import functools
+
 import numpy as np
 
 from curling_score.detect import longview
@@ -123,3 +125,31 @@ def find_crossing(model, video, view, color: str, t0: float, t1: float,
     if not len(frames):
         return longview.Crossing(None, "no frames decoded", longview.KEY_NO_FRAMES)
     return find_in_frames(model, frames, view, color, times)
+
+
+@functools.lru_cache(maxsize=2)
+def _load(path: str):
+    from ultralytics import YOLO
+
+    return YOLO(path)
+
+
+def default_finder():
+    """A ``find`` for ``hogtime.time_hog_crossings``, or None for the colour scan.
+
+    Returns None when no side model is configured, so the caller keeps
+    ``longview.find_crossing`` -- the overhead pipeline worked before the side
+    view existed and still does. The model is loaded on the first call rather
+    than at import, because importing this module must not need a GPU, weights
+    or ultralytics.
+    """
+    from curling_score import weights as weights_mod
+
+    path = weights_mod.side_path()
+    if path is None:
+        return None
+
+    def find(video, view, color, t0, t1, fps=30.0):
+        return find_crossing(_load(str(path)), video, view, color, t0, t1, fps)
+
+    return find
