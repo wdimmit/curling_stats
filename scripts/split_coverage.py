@@ -200,6 +200,8 @@ _REFUSED_OUT = None
 # Tracks of shots that DID publish: the only way to test an extrapolation is on
 # a track whose real crossing is known, with the tail hidden.
 _PUBLISHED_OUT = None
+# Every refused side crossing with the numbers its gate turned on.
+_GATES_OUT = None
 
 
 def _find_crossing(video_, view_, color, t0, t1):
@@ -440,6 +442,30 @@ def measure_video(video_path, root, detector):
                         # side-view crossing longview was willing to report.
                         gate = attribute_side_refusal(r, delivery, t_hog)
                         stats.add_gate(gate)
+                        if _REFUSED_OUT is not None:
+                            # Every gate, with the numbers behind it, so a shot
+                            # can be asked "why not" without re-deriving it.
+                            panel_tw = split.hog_crossing(
+                                getattr(r, "track", ()) if r else ())
+                            near = (split.speed_at_line(getattr(r, "track", ()))
+                                    if r else None)
+                            far_v = split.speed_at_line(
+                                getattr(delivery, "track", ()) or ())
+                            _GATES_OUT.append({
+                                "video": vid, "game": game.index,
+                                "end": end.number,
+                                "shot": getattr(shot, "number", None),
+                                "color": shot.color, "gate": gate,
+                                "t_hog": round(t_hog, 3),
+                                "panel_tripwire": None if panel_tw is None
+                                                  else round(panel_tw, 3),
+                                "cross_check_delta": None if panel_tw is None
+                                    else round(abs(panel_tw - t_hog), 3),
+                                "cross_check_limit": split.CROSS_CHECK_S,
+                                "near_speed": None if near is None else round(near, 4),
+                                "far_speed": None if far_v is None else round(far_v, 4),
+                                "speed_limit": split.SPEED_TOLERANCE,
+                            })
                         if gate == GATE_NO_FAR_HOG and _REFUSED_OUT is not None:
                             # The arriving panel is now the largest loss, so
                             # record what its track actually did rather than
@@ -512,9 +538,10 @@ def main():
     args = ap.parse_args()
 
     if args.dump_refused:
-        global _REFUSED_OUT, _PUBLISHED_OUT
+        global _REFUSED_OUT, _PUBLISHED_OUT, _GATES_OUT
         _REFUSED_OUT = []
         _PUBLISHED_OUT = []
+        _GATES_OUT = []
 
     if args.side_weights:
         from ultralytics import YOLO
@@ -624,6 +651,10 @@ def main():
         pub = Path(args.dump_refused).with_name(
             Path(args.dump_refused).stem + "_published.json")
         pub.write_text(json.dumps(_PUBLISHED_OUT))
+        gates = Path(args.dump_refused).with_name(
+            Path(args.dump_refused).stem + "_gates.json")
+        gates.write_text(json.dumps(_GATES_OUT, indent=1))
+        print(f"  wrote {len(_GATES_OUT)} gate decisions to {gates}", flush=True)
         print(f"  wrote {len(_PUBLISHED_OUT)} published tracks to {pub}", flush=True)
 
 
