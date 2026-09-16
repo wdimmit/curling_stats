@@ -59,9 +59,21 @@ def crop_for(view_name: str, view=None):
     hog = int(round(view.hog_row))
     return (hog - CROP_ROWS_ABOVE, hog + CROP_ROWS_BELOW,
             x + int(w * 0.20), x + int(w * 0.80))
-# Measured on the club's feed: releases cross their hog line 3.3-5.0 s after
-# the panel first sees them leave the hack.
-WINDOW_S = (2.8, 5.8)
+# How much video either side of the event to offer the scrubber.
+#
+# The original (2.8, 5.8) was measured against the panel's FIRST SIGHTING of a
+# stone leaving the hack. Fed a `detect/release.py` release time instead -- as
+# the shot-driven pipeline produces -- it is too tight at both ends: on
+# AEqLTgM25Tc six of fifteen deliveries crossed outside it and a person could
+# not scroll far enough to reach the moment, and a seventh was marked on the
+# very first frame, which is the edge of what was reachable rather than a
+# judgement. Observed lags on the ones that fitted ran 2.80 to 5.33 s.
+#
+# This is `longview.WINDOW_S` (2.0, 6.5) with a second of margin at each end.
+# Frames are cheap -- 30 fps over 6 s is 180 JPEGs per delivery -- and a window
+# that cannot reach the crossing wastes the only thing that is not cheap, which
+# is a person's attention.
+WINDOW_S = (1.5, 7.5)
 
 
 def _flatten(grey: np.ndarray, k: int = 31) -> np.ndarray:

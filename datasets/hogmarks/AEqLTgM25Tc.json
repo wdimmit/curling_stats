@@ -1,0 +1,131 @@
+{
+ "video_id": "AEqLTgM25Tc",
+ "what": "Hand-marked hog crossings, second video, for testing HOG_EDGE_FRACTION out of sample.",
+ "ends": [
+  {
+   "side_view": "left",
+   "marks": [
+    {
+     "color": "yellow",
+     "release_t_s": 66.4,
+     "hog_crossing_s": 69.9
+    },
+    {
+     "color": "red",
+     "release_t_s": 457.2,
+     "hog_crossing_s": 460.3
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 2089.2,
+     "hog_crossing_s": 2092.967
+    },
+    {
+     "color": "red",
+     "release_t_s": 3460.4,
+     "hog_crossing_s": 3464.1
+    },
+    {
+     "color": "red",
+     "release_t_s": 3769.0,
+     "hog_crossing_s": 3773.2
+    },
+    {
+     "color": "red",
+     "release_t_s": 7212.4,
+     "hog_crossing_s": 7216.833
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 7558.4,
+     "hog_crossing_s": 7562.133
+    },
+    {
+     "color": "red",
+     "release_t_s": 7847.8,
+     "hog_crossing_s": 7851.5
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 9406.0,
+     "hog_crossing_s": 9410.767
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 9832.4,
+     "hog_crossing_s": 9835.967
+    },
+    {
+     "color": "red",
+     "release_t_s": 11334.033333333333,
+     "hog_crossing_s": 11339.033
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 11865.666666666666,
+     "hog_crossing_s": 11869.633
+    },
+    {
+     "color": "red",
+     "release_t_s": 12424.866666666667,
+     "hog_crossing_s": 12428.367
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 13969.133333333333,
+     "hog_crossing_s": 13973.533
+    }
+   ]
+  },
+  {
+   "side_view": "right",
+   "marks": [
+    {
+     "color": "yellow",
+     "release_t_s": 601.8,
+     "hog_crossing_s": 605.333
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 2472.7,
+     "hog_crossing_s": 2476.267
+    },
+    {
+     "color": "red",
+     "release_t_s": 4862.7,
+     "hog_crossing_s": 4866.333
+    },
+    {
+     "color": "red",
+     "release_t_s": 5116.3,
+     "hog_crossing_s": 5119.5
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 8449.633333333333,
+     "hog_crossing_s": 8454.967
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 8639.466666666667,
+     "hog_crossing_s": 8642.9
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 9017.066666666668,
+     "hog_crossing_s": 9020.533
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 10712.033333333333,
+     "hog_crossing_s": 10715.933
+    },
+    {
+     "color": "yellow",
+     "release_t_s": 10965.433333333332,
+     "hog_crossing_s": 10969.1
+    }
+   ]
+  }
+ ]
+}
