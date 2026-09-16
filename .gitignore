@@ -46,6 +46,11 @@ datasets/ds12/ds12_images.tgz
 /yolo11n.pt
 weights/*.pt
 !weights/ds11a.pt
+# ds13a does not supersede ds11a: they read different cameras. ds11a detects
+# stones in the overhead panels, looking straight down; ds13a detects them in
+# the wide side view, edge-on at thirty metres, to time the hog crossing.
+# Both are live, so both are kept.
+!weights/ds13a.pt
 
 # The frontend toolchain. Sources live in frontend/; the built bundles are
 # tracked under src/curling_score/ because `curling-score serve` has to work
