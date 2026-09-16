@@ -1,0 +1,4466 @@
+{
+ "created": "2026-09-15",
+ "quota": {
+  "scene:left:crossing": 30,
+  "scene:left:approach": 16,
+  "scene:left:past": 6,
+  "scene:left:clear": 4,
+  "scene:right:crossing": 30,
+  "scene:right:approach": 16,
+  "scene:right:past": 6,
+  "scene:right:clear": 4,
+  "outcome:ambiguous": 18,
+  "outcome:never_reached": 16,
+  "outcome:unsteady": 16,
+  "outcome:bad_speed": 10,
+  "outcome:no_candidate": 8,
+  "outcome:ok": 16
+ },
+ "summary": {
+  "videos": 9,
+  "frames": 196,
+  "train_frames": 196,
+  "val_frames": 0,
+  "target": 196,
+  "shortfall": {},
+  "supply": {
+   "outcome:ambiguous": 1690,
+   "outcome:bad_speed": 263,
+   "outcome:never_reached": 697,
+   "outcome:no_candidate": 148,
+   "outcome:ok": 1658,
+   "outcome:unsteady": 762,
+   "scene:left:approach": 777,
+   "scene:left:clear": 141,
+   "scene:left:crossing": 1584,
+   "scene:left:occluded": 0,
+   "scene:left:past": 228,
+   "scene:right:approach": 677,
+   "scene:right:clear": 123,
+   "scene:right:crossing": 1576,
+   "scene:right:occluded": 0,
+   "scene:right:past": 112
+  }
+ },
+ "videos": {
+  "4RrNWSeNnMU": {
+   "split": "train",
+   "frames": [
+    {
+     "stem": "4RrNWSeNnMU_l_002432_60",
+     "video_id": "4RrNWSeNnMU",
+     "view": "left",
+     "t_abs": 2432.6,
+     "clip_start_s": 2432.6,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 1,
+     "bin": "outcome:ok",
+     "edge_row": 470.0,
+     "labels": [
+      [
+       1,
+       0.5055624227441285,
+       0.43148148148148147,
+       0.0815822002472188,
+       0.007407407407407408
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_l_002770_80",
+     "video_id": "4RrNWSeNnMU",
+     "view": "left",
+     "t_abs": 2770.8,
+     "clip_start_s": 2768.6,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 6,
+     "bin": "scene:left:crossing",
+     "edge_row": 531.0,
+     "labels": [
+      [
+       1,
+       0.5574783683559951,
+       0.48194444444444445,
+       0.09888751545117429,
+       0.019444444444444445
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_003354_00",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 3354.0,
+     "clip_start_s": 3352.4,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "outcome:unsteady",
+     "edge_row": 540.6,
+     "labels": [
+      [
+       1,
+       0.5920889987639061,
+       0.484537037037037,
+       0.0865265760197775,
+       0.03203703703703706
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_003592_20",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 3592.2,
+     "clip_start_s": 3589.8,
+     "position": "past",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 7,
+     "bin": "scene:right:past",
+     "edge_row": 550.0,
+     "labels": [
+      [
+       0,
+       0.657601977750309,
+       0.4962962962962963,
+       0.08899876390605686,
+       0.025925925925925925
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_003594_00",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 3594.0,
+     "clip_start_s": 3589.8,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 4,
+     "bin": "outcome:ambiguous",
+     "edge_row": 462.0,
+     "labels": [
+      [
+       0,
+       0.6254635352286774,
+       0.3972222222222222,
+       0.10135970333745364,
+       0.06111111111111111
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_003817_60",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 3817.6,
+     "clip_start_s": 3815.2,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 4,
+     "bin": "scene:right:crossing",
+     "edge_row": 533.0,
+     "labels": [
+      [
+       0,
+       0.7948084054388134,
+       0.4837962962962963,
+       0.04573547589616811,
+       0.019444444444444445
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_l_004565_80",
+     "video_id": "4RrNWSeNnMU",
+     "view": "left",
+     "t_abs": 4565.8,
+     "clip_start_s": 4563.6,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:left:crossing",
+     "edge_row": 529.0,
+     "labels": [
+      [
+       1,
+       0.6205191594561187,
+       0.48009259259259257,
+       0.07045735475896168,
+       0.019444444444444445
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_l_005025_40",
+     "video_id": "4RrNWSeNnMU",
+     "view": "left",
+     "t_abs": 5025.4,
+     "clip_start_s": 5022.8,
+     "position": "crossing",
+     "outcome": "no_candidate",
+     "color": "red",
+     "crowding": 7,
+     "bin": "scene:left:crossing",
+     "edge_row": 525.5666666666667,
+     "labels": [
+      [
+       0,
+       0.35970333745364647,
+       0.4720216049382716,
+       0.06180469715698393,
+       0.029228395061728443
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_l_007945_00",
+     "video_id": "4RrNWSeNnMU",
+     "view": "left",
+     "t_abs": 7945.0,
+     "clip_start_s": 7943.4,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "outcome:ok",
+     "edge_row": 536.6848484848484,
+     "labels": [
+      [
+       1,
+       0.4103831891223733,
+       0.48272446689113346,
+       0.09023485784919653,
+       0.02841189674523003
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_008278_03",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 8278.033,
+     "clip_start_s": 8275.633,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:right:crossing",
+     "edge_row": 529.9428571428572,
+     "labels": [
+      [
+       0,
+       0.4227441285537701,
+       0.4721957671957672,
+       0.069221260815822,
+       0.036984126984127015
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_008742_87",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 8742.867,
+     "clip_start_s": 8741.467,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:right:approach",
+     "edge_row": 467.0,
+     "labels": [
+      [
+       0,
+       0.5426452410383189,
+       0.42453703703703705,
+       0.06551297898640297,
+       0.01574074074074074
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_008791_07",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 8791.067,
+     "clip_start_s": 8789.867,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "outcome:ok",
+     "edge_row": 544.32,
+     "labels": [
+      [
+       1,
+       0.584672435105068,
+       0.48625925925925934,
+       0.09517923362175525,
+       0.03548148148148153
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_l_009491_80",
+     "video_id": "4RrNWSeNnMU",
+     "view": "left",
+     "t_abs": 9491.8,
+     "clip_start_s": 9489.8,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 3,
+     "bin": "outcome:ambiguous",
+     "edge_row": 534.6,
+     "labels": [
+      [
+       0,
+       0.5611866501854141,
+       0.4475,
+       0.09765142150803462,
+       0.09500000000000001
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_l_009641_40",
+     "video_id": "4RrNWSeNnMU",
+     "view": "left",
+     "t_abs": 9641.4,
+     "clip_start_s": 9640.0,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "outcome:ok",
+     "edge_row": 538.5166666666667,
+     "labels": [
+      [
+       1,
+       0.32509270704573545,
+       0.4826466049382716,
+       0.09147095179233622,
+       0.031959876543209864
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_010157_40",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 10157.4,
+     "clip_start_s": 10151.6,
+     "position": "clear",
+     "outcome": "never_reached",
+     "color": "",
+     "crowding": 0,
+     "bin": "scene:right:clear",
+     "edge_row": null,
+     "labels": [],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_010283_70",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 10283.7,
+     "clip_start_s": 10279.5,
+     "position": "approach",
+     "outcome": "bad_speed",
+     "color": "red",
+     "crowding": 5,
+     "bin": "outcome:bad_speed",
+     "edge_row": 461.0,
+     "labels": [
+      [
+       0,
+       0.4004944375772559,
+       0.40046296296296297,
+       0.10135970333745364,
+       0.05277777777777778
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_010345_93",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 10345.933,
+     "clip_start_s": 10344.933,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:right:crossing",
+     "edge_row": 536.7433333333333,
+     "labels": [
+      [
+       1,
+       0.6081582200247219,
+       0.48275154320987657,
+       0.09270704573547589,
+       0.028466049382716054
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_010462_53",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 10462.533,
+     "clip_start_s": 10456.733,
+     "position": "clear",
+     "outcome": "no_candidate",
+     "color": "",
+     "crowding": 0,
+     "bin": "outcome:no_candidate",
+     "edge_row": null,
+     "labels": [],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_l_011266_83",
+     "video_id": "4RrNWSeNnMU",
+     "view": "left",
+     "t_abs": 11266.833,
+     "clip_start_s": 11265.233,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "outcome:ok",
+     "edge_row": 530.0,
+     "labels": [
+      [
+       1,
+       0.6217552533992583,
+       0.48518518518518516,
+       0.08281829419035847,
+       0.011111111111111112
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_l_011876_87",
+     "video_id": "4RrNWSeNnMU",
+     "view": "left",
+     "t_abs": 11876.867,
+     "clip_start_s": 11872.667,
+     "position": "approach",
+     "outcome": "no_candidate",
+     "color": "red",
+     "crowding": 1,
+     "bin": "outcome:no_candidate",
+     "edge_row": 471.0,
+     "labels": [
+      [
+       0,
+       0.519159456118665,
+       0.4300925925925926,
+       0.10135970333745364,
+       0.012037037037037037
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_012024_17",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 12024.167,
+     "clip_start_s": 12020.967,
+     "position": "crossing",
+     "outcome": "bad_speed",
+     "color": "yellow",
+     "crowding": 1,
+     "bin": "outcome:bad_speed",
+     "edge_row": 532.0,
+     "labels": [
+      [
+       1,
+       0.3980222496909765,
+       0.48333333333333334,
+       0.08899876390605686,
+       0.018518518518518517
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_012113_37",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 12113.367,
+     "clip_start_s": 12112.367,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "outcome:ok",
+     "edge_row": 501.53,
+     "labels": [
+      [
+       1,
+       0.6254635352286774,
+       0.4488564814814815,
+       0.07911001236093942,
+       0.03104629629629627
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_012162_47",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 12162.467,
+     "clip_start_s": 12161.467,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 3,
+     "bin": "outcome:unsteady",
+     "edge_row": 539.8,
+     "labels": [
+      [
+       0,
+       0.6019777503090235,
+       0.47768518518518516,
+       0.10259579728059333,
+       0.04425925925925922
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_012391_50",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 12391.5,
+     "clip_start_s": 12390.1,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "scene:right:crossing",
+     "edge_row": 534.5927272727273,
+     "labels": [
+      [
+       1,
+       0.580964153275649,
+       0.4780521885521885,
+       0.08281829419035847,
+       0.03388215488215491
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "4RrNWSeNnMU_r_012879_90",
+     "video_id": "4RrNWSeNnMU",
+     "view": "right",
+     "t_abs": 12879.9,
+     "clip_start_s": 12877.5,
+     "position": "clear",
+     "outcome": "never_reached",
+     "color": "",
+     "crowding": 0,
+     "bin": "outcome:never_reached",
+     "edge_row": null,
+     "labels": [],
+     "half": "outcome"
+    }
+   ]
+  },
+  "AEqLTgM25Tc": {
+   "split": "train",
+   "frames": [
+    {
+     "stem": "AEqLTgM25Tc_l_000023_10",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 23.1,
+     "clip_start_s": 20.3,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 0,
+     "bin": "outcome:ambiguous",
+     "edge_row": 497.0,
+     "labels": [
+      [
+       0,
+       0.4408866995073892,
+       0.4513888888888889,
+       0.09482758620689655,
+       0.017592592592592594
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_000604_80",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 604.8,
+     "clip_start_s": 603.8,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 6,
+     "bin": "scene:right:crossing",
+     "edge_row": 535.45,
+     "labels": [
+      [
+       1,
+       0.5851851851851851,
+       0.4784490740740741,
+       0.09012345679012346,
+       0.03467592592592597
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_000657_60",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 657.6,
+     "clip_start_s": 647.0,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:right:approach",
+     "edge_row": 472.0,
+     "labels": [
+      [
+       0,
+       0.671604938271605,
+       0.42407407407407405,
+       0.10123456790123457,
+       0.025925925925925925
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_000929_60",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 929.6,
+     "clip_start_s": 929.0,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 5,
+     "bin": "outcome:ambiguous",
+     "edge_row": 546.0,
+     "labels": [
+      [
+       0,
+       0.6790123456790124,
+       0.4685185185185185,
+       0.07530864197530865,
+       0.07407407407407407
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_001505_00",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 1505.0,
+     "clip_start_s": 1502.4,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:left:crossing",
+     "edge_row": 577.2888888888889,
+     "labels": [
+      [
+       0,
+       0.5529556650246306,
+       0.4867078189300411,
+       0.0960591133004926,
+       0.09563786008230453
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_001814_80",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 1814.8,
+     "clip_start_s": 1814.8,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 0,
+     "bin": "outcome:ambiguous",
+     "edge_row": 503.0,
+     "labels": [
+      [
+       0,
+       0.26354679802955666,
+       0.4587962962962963,
+       0.1022167487684729,
+       0.013888888888888888
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_002523_90",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 2523.9,
+     "clip_start_s": 2520.9,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 4,
+     "bin": "scene:right:crossing",
+     "edge_row": 547.8,
+     "labels": [
+      [
+       0,
+       0.9074074074074074,
+       0.5008333333333334,
+       0.08518518518518518,
+       0.012777777777777735
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_003614_00",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 3614.0,
+     "clip_start_s": 3613.8,
+     "position": "past",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:left:past",
+     "edge_row": 635.0272727272727,
+     "labels": [
+      [
+       1,
+       0.027093596059113302,
+       0.5791792929292929,
+       0.04556650246305419,
+       0.017617845117845095
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_007257_80",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 7257.8,
+     "clip_start_s": 7257.8,
+     "position": "approach",
+     "outcome": "no_candidate",
+     "color": "yellow",
+     "crowding": 1,
+     "bin": "scene:left:approach",
+     "edge_row": 506.0,
+     "labels": [
+      [
+       1,
+       0.5554187192118226,
+       0.4638888888888889,
+       0.09852216748768473,
+       0.009259259259259259
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_007261_40",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 7261.4,
+     "clip_start_s": 7257.8,
+     "position": "past",
+     "outcome": "no_candidate",
+     "color": "yellow",
+     "crowding": 8,
+     "bin": "scene:left:past",
+     "edge_row": 621.0,
+     "labels": [
+      [
+       1,
+       0.6120689655172413,
+       0.5699074074074074,
+       0.10098522167487685,
+       0.010185185185185186
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_009232_77",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 9232.767,
+     "clip_start_s": 9226.367,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:left:crossing",
+     "edge_row": 586.0,
+     "labels": [
+      [
+       0,
+       0.5972906403940886,
+       0.5259259259259259,
+       0.1022167487684729,
+       0.03333333333333333
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_009988_80",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 9988.8,
+     "clip_start_s": 9986.6,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 4,
+     "bin": "outcome:ambiguous",
+     "edge_row": 586.0,
+     "labels": [
+      [
+       0,
+       0.6169950738916257,
+       0.5314814814814814,
+       0.09852216748768473,
+       0.022222222222222223
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_010716_03",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 10716.033,
+     "clip_start_s": 10714.033,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 6,
+     "bin": "outcome:ambiguous",
+     "edge_row": 547.0,
+     "labels": [
+      [
+       1,
+       0.47530864197530864,
+       0.49398148148148147,
+       0.07901234567901234,
+       0.025
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_010765_23",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 10765.233,
+     "clip_start_s": 10762.433,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 6,
+     "bin": "scene:right:crossing",
+     "edge_row": 547.0,
+     "labels": [
+      [
+       0,
+       0.4111111111111111,
+       0.4930555555555556,
+       0.08641975308641975,
+       0.026851851851851852
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_011176_43",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 11176.433,
+     "clip_start_s": 11176.433,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:right:approach",
+     "edge_row": 478.0,
+     "labels": [
+      [
+       0,
+       0.5,
+       0.4324074074074074,
+       0.07160493827160494,
+       0.020370370370370372
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_012119_67",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 12119.667,
+     "clip_start_s": 12118.267,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 1,
+     "bin": "scene:left:crossing",
+     "edge_row": 581.7208333333333,
+     "labels": [
+      [
+       0,
+       0.75,
+       0.5313522376543209,
+       0.07758620689655173,
+       0.0145563271604938
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_012430_47",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 12430.467,
+     "clip_start_s": 12426.867,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 2,
+     "bin": "scene:left:approach",
+     "edge_row": 529.0,
+     "labels": [
+      [
+       0,
+       0.3916256157635468,
+       0.4736111111111111,
+       0.1022167487684729,
+       0.032407407407407406
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_012431_27",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 12431.267,
+     "clip_start_s": 12426.867,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:left:crossing",
+     "edge_row": 587.0,
+     "labels": [
+      [
+       0,
+       0.4642857142857143,
+       0.5319444444444444,
+       0.09852216748768473,
+       0.023148148148148147
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_012880_10",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 12880.1,
+     "clip_start_s": 12875.7,
+     "position": "past",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 2,
+     "bin": "scene:right:past",
+     "edge_row": 592.2888888888889,
+     "labels": [
+      [
+       0,
+       0.40987654320987654,
+       0.5093930041152263,
+       0.07160493827160494,
+       0.07804526748971194
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_013031_90",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 13031.9,
+     "clip_start_s": 13025.7,
+     "position": "clear",
+     "outcome": "no_candidate",
+     "color": "",
+     "crowding": 0,
+     "bin": "scene:right:clear",
+     "edge_row": null,
+     "labels": [],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_013439_90",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 13439.9,
+     "clip_start_s": 13431.5,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 1,
+     "bin": "outcome:ambiguous",
+     "edge_row": 547.0,
+     "labels": [
+      [
+       0,
+       0.5,
+       0.4625,
+       0.08641975308641975,
+       0.08796296296296297
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_013596_70",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 13596.7,
+     "clip_start_s": 13593.7,
+     "position": "crossing",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 1,
+     "bin": "scene:right:crossing",
+     "edge_row": 547.0,
+     "labels": [
+      [
+       0,
+       0.5049382716049383,
+       0.4847222222222222,
+       0.05308641975308642,
+       0.04351851851851852
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_r_013604_90",
+     "video_id": "AEqLTgM25Tc",
+     "view": "right",
+     "t_abs": 13604.9,
+     "clip_start_s": 13593.7,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:right:approach",
+     "edge_row": 490.0,
+     "labels": [
+      [
+       0,
+       0.8839506172839506,
+       0.4305555555555556,
+       0.10246913580246914,
+       0.046296296296296294
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_013758_30",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 13758.3,
+     "clip_start_s": 13758.3,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 0,
+     "bin": "scene:left:approach",
+     "edge_row": 508.0,
+     "labels": [
+      [
+       1,
+       0.5591133004926109,
+       0.4666666666666667,
+       0.07881773399014778,
+       0.007407407407407408
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_013759_50",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 13759.5,
+     "clip_start_s": 13758.3,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:left:crossing",
+     "edge_row": 579.2533333333333,
+     "labels": [
+      [
+       1,
+       0.7105911330049262,
+       0.5339135802469136,
+       0.0665024630541872,
+       0.004864197530864194
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_013810_50",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 13810.5,
+     "clip_start_s": 13808.1,
+     "position": "clear",
+     "outcome": "ok",
+     "color": "",
+     "crowding": 0,
+     "bin": "scene:left:clear",
+     "edge_row": null,
+     "labels": [],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_014165_93",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 14165.933,
+     "clip_start_s": 14163.933,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:left:crossing",
+     "edge_row": 595.0,
+     "labels": [
+      [
+       1,
+       0.6625615763546798,
+       0.5439814814814815,
+       0.10098522167487685,
+       0.013888888888888888
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_014213_33",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 14213.333,
+     "clip_start_s": 14209.933,
+     "position": "past",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:left:past",
+     "edge_row": 622.0,
+     "labels": [
+      [
+       0,
+       0.6194581280788177,
+       0.5592592592592592,
+       0.09852216748768473,
+       0.03333333333333333
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_014532_13",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 14532.133,
+     "clip_start_s": 14528.533,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 2,
+     "bin": "scene:left:crossing",
+     "edge_row": 586.0,
+     "labels": [
+      [
+       0,
+       0.6293103448275862,
+       0.5314814814814814,
+       0.06896551724137931,
+       0.022222222222222223
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "AEqLTgM25Tc_l_014532_53",
+     "video_id": "AEqLTgM25Tc",
+     "view": "left",
+     "t_abs": 14532.533,
+     "clip_start_s": 14528.533,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 2,
+     "bin": "scene:left:approach",
+     "edge_row": 547.1,
+     "labels": [
+      [
+       0,
+       0.2044334975369458,
+       0.48754629629629626,
+       0.07266009852216748,
+       0.03805555555555558
+      ]
+     ],
+     "half": "scene"
+    }
+   ]
+  },
+  "OcyhldUbu8A": {
+   "split": "train",
+   "frames": [
+    {
+     "stem": "OcyhldUbu8A_r_000863_20",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 863.2,
+     "clip_start_s": 863.0,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "outcome:ok",
+     "edge_row": 479.0,
+     "labels": [
+      [
+       1,
+       0.5781057810578106,
+       0.43842592592592594,
+       0.08733087330873308,
+       0.010185185185185186
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "OcyhldUbu8A_l_001652_50",
+     "video_id": "OcyhldUbu8A",
+     "view": "left",
+     "t_abs": 1652.5,
+     "clip_start_s": 1646.7,
+     "position": "clear",
+     "outcome": "never_reached",
+     "color": "",
+     "crowding": 0,
+     "bin": "outcome:never_reached",
+     "edge_row": null,
+     "labels": [],
+     "half": "outcome"
+    },
+    {
+     "stem": "OcyhldUbu8A_l_001676_70",
+     "video_id": "OcyhldUbu8A",
+     "view": "left",
+     "t_abs": 1676.7,
+     "clip_start_s": 1673.3,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 6,
+     "bin": "outcome:unsteady",
+     "edge_row": 542.0,
+     "labels": [
+      [
+       0,
+       0.6223862238622386,
+       0.49537037037037035,
+       0.09348093480934809,
+       0.012962962962962963
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_003138_00",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 3138.0,
+     "clip_start_s": 3131.8,
+     "position": "clear",
+     "outcome": "no_candidate",
+     "color": "",
+     "crowding": 0,
+     "bin": "outcome:no_candidate",
+     "edge_row": null,
+     "labels": [],
+     "half": "outcome"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_004636_20",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 4636.2,
+     "clip_start_s": 4634.6,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:right:crossing",
+     "edge_row": 552.0,
+     "labels": [
+      [
+       1,
+       0.6322263222632226,
+       0.48703703703703705,
+       0.07749077490774908,
+       0.04814814814814815
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "OcyhldUbu8A_l_005945_63",
+     "video_id": "OcyhldUbu8A",
+     "view": "left",
+     "t_abs": 5945.633,
+     "clip_start_s": 5942.433,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "scene:left:crossing",
+     "edge_row": 544.0,
+     "labels": [
+      [
+       1,
+       0.47232472324723246,
+       0.46296296296296297,
+       0.1008610086100861,
+       0.08148148148148149
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "OcyhldUbu8A_l_006068_97",
+     "video_id": "OcyhldUbu8A",
+     "view": "left",
+     "t_abs": 6068.967,
+     "clip_start_s": 6068.967,
+     "position": "past",
+     "outcome": "bad_speed",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "outcome:bad_speed",
+     "edge_row": 561.5333333333333,
+     "labels": [
+      [
+       1,
+       0.1931119311193112,
+       0.4960802469135802,
+       0.07011070110701106,
+       0.04771604938271602
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_006257_27",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 6257.267,
+     "clip_start_s": 6251.067,
+     "position": "clear",
+     "outcome": "never_reached",
+     "color": "",
+     "crowding": 0,
+     "bin": "scene:right:clear",
+     "edge_row": null,
+     "labels": [],
+     "half": "scene"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_006287_37",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 6287.367,
+     "clip_start_s": 6281.567,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 2,
+     "bin": "scene:right:crossing",
+     "edge_row": 549.0,
+     "labels": [
+      [
+       0,
+       0.6777367773677737,
+       0.48009259259259257,
+       0.0959409594095941,
+       0.05648148148148148
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_006287_57",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 6287.567,
+     "clip_start_s": 6281.567,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 3,
+     "bin": "outcome:ambiguous",
+     "edge_row": 547.8666666666667,
+     "labels": [
+      [
+       0,
+       0.6691266912669127,
+       0.4804938271604939,
+       0.0959409594095941,
+       0.05358024691358025
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_006330_87",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 6330.867,
+     "clip_start_s": 6330.867,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 7,
+     "bin": "scene:right:approach",
+     "edge_row": 480.0,
+     "labels": [
+      [
+       1,
+       0.5793357933579336,
+       0.4351851851851852,
+       0.10209102091020911,
+       0.018518518518518517
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_006375_27",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 6375.267,
+     "clip_start_s": 6371.267,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 4,
+     "bin": "outcome:never_reached",
+     "edge_row": 493.91764705882355,
+     "labels": [
+      [
+       0,
+       0.991389913899139,
+       0.4444063180827887,
+       0.05043050430504305,
+       0.025849673202614394
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_006414_07",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 6414.067,
+     "clip_start_s": 6411.667,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "outcome:ok",
+     "edge_row": 552.0,
+     "labels": [
+      [
+       1,
+       0.6543665436654367,
+       0.4962962962962963,
+       0.08364083640836409,
+       0.02962962962962963
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_006458_07",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 6458.067,
+     "clip_start_s": 6455.667,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 5,
+     "bin": "outcome:unsteady",
+     "edge_row": 485.65,
+     "labels": [
+      [
+       0,
+       0.7552275522755227,
+       0.44613425925925926,
+       0.06642066420664207,
+       0.007083333333333312
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "OcyhldUbu8A_r_006695_07",
+     "video_id": "OcyhldUbu8A",
+     "view": "right",
+     "t_abs": 6695.067,
+     "clip_start_s": 6693.267,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 6,
+     "bin": "scene:right:crossing",
+     "edge_row": 545.5375,
+     "labels": [
+      [
+       0,
+       0.6408364083640836,
+       0.4849710648148148,
+       0.06888068880688807,
+       0.04031250000000002
+      ]
+     ],
+     "half": "scene"
+    }
+   ]
+  },
+  "PGltvgB2yIM": {
+   "split": "train",
+   "frames": [
+    {
+     "stem": "PGltvgB2yIM_l_000000_30",
+     "video_id": "PGltvgB2yIM",
+     "view": "left",
+     "t_abs": 0.3,
+     "clip_start_s": -3.1,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 4,
+     "bin": "scene:left:approach",
+     "edge_row": 489.0,
+     "labels": [
+      [
+       0,
+       0.9555555555555556,
+       0.4152777777777778,
+       0.08888888888888889,
+       0.075
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "PGltvgB2yIM_l_000001_10",
+     "video_id": "PGltvgB2yIM",
+     "view": "left",
+     "t_abs": 1.1,
+     "clip_start_s": -3.1,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 2,
+     "bin": "scene:left:crossing",
+     "edge_row": 520.0,
+     "labels": [
+      [
+       0,
+       0.6580246913580247,
+       0.46574074074074073,
+       0.07654320987654321,
+       0.03148148148148148
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "PGltvgB2yIM_l_000035_80",
+     "video_id": "PGltvgB2yIM",
+     "view": "left",
+     "t_abs": 35.8,
+     "clip_start_s": 34.8,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "outcome:ok",
+     "edge_row": 470.0,
+     "labels": [
+      [
+       1,
+       0.45185185185185184,
+       0.4287037037037037,
+       0.10246913580246914,
+       0.012962962962962963
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "PGltvgB2yIM_r_000794_30",
+     "video_id": "PGltvgB2yIM",
+     "view": "right",
+     "t_abs": 794.3,
+     "clip_start_s": 791.3,
+     "position": "past",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:right:past",
+     "edge_row": 515.3,
+     "labels": [
+      [
+       1,
+       0.6420664206642066,
+       0.45893518518518517,
+       0.08856088560885608,
+       0.036388888888888846
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "PGltvgB2yIM_r_000837_40",
+     "video_id": "PGltvgB2yIM",
+     "view": "right",
+     "t_abs": 837.4,
+     "clip_start_s": 837.2,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 4,
+     "bin": "outcome:never_reached",
+     "edge_row": 411.76666666666665,
+     "labels": [
+      [
+       0,
+       0.5805658056580566,
+       0.3554475308641975,
+       0.09471094710947109,
+       0.05163580246913579
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "PGltvgB2yIM_r_000873_70",
+     "video_id": "PGltvgB2yIM",
+     "view": "right",
+     "t_abs": 873.7,
+     "clip_start_s": 867.9,
+     "position": "clear",
+     "outcome": "no_candidate",
+     "color": "",
+     "crowding": 0,
+     "bin": "scene:right:clear",
+     "edge_row": null,
+     "labels": [],
+     "half": "scene"
+    },
+    {
+     "stem": "PGltvgB2yIM_r_001598_70",
+     "video_id": "PGltvgB2yIM",
+     "view": "right",
+     "t_abs": 1598.7,
+     "clip_start_s": 1598.7,
+     "position": "approach",
+     "outcome": "bad_speed",
+     "color": "red",
+     "crowding": 7,
+     "bin": "outcome:bad_speed",
+     "edge_row": 426.88260869565215,
+     "labels": [
+      [
+       0,
+       0.6199261992619927,
+       0.3930012077294686,
+       0.07872078720787208,
+       0.004520933977455697
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "PGltvgB2yIM_l_001817_50",
+     "video_id": "PGltvgB2yIM",
+     "view": "left",
+     "t_abs": 1817.5,
+     "clip_start_s": 1816.3,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "scene:left:approach",
+     "edge_row": 466.0,
+     "labels": [
+      [
+       1,
+       0.5580246913580247,
+       0.41759259259259257,
+       0.10246913580246914,
+       0.027777777777777776
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "PGltvgB2yIM_r_002962_30",
+     "video_id": "PGltvgB2yIM",
+     "view": "right",
+     "t_abs": 2962.3,
+     "clip_start_s": 2960.3,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:right:crossing",
+     "edge_row": 484.76296296296294,
+     "labels": [
+      [
+       1,
+       0.5928659286592866,
+       0.4336865569272977,
+       0.07257072570725707,
+       0.03033607681755828
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "PGltvgB2yIM_l_005480_93",
+     "video_id": "PGltvgB2yIM",
+     "view": "left",
+     "t_abs": 5480.933,
+     "clip_start_s": 5479.533,
+     "position": "crossing",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:left:crossing",
+     "edge_row": 514.95,
+     "labels": [
+      [
+       1,
+       0.35185185185185186,
+       0.4596990740740741,
+       0.08024691358024691,
+       0.03421296296296301
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "PGltvgB2yIM_l_005605_73",
+     "video_id": "PGltvgB2yIM",
+     "view": "left",
+     "t_abs": 5605.733,
+     "clip_start_s": 5604.733,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 0,
+     "bin": "outcome:ok",
+     "edge_row": 434.0,
+     "labels": [
+      [
+       0,
+       0.980246913580247,
+       0.375,
+       0.06419753086419754,
+       0.053703703703703705
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "PGltvgB2yIM_l_006342_13",
+     "video_id": "PGltvgB2yIM",
+     "view": "left",
+     "t_abs": 6342.133,
+     "clip_start_s": 6337.733,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 8,
+     "bin": "scene:left:approach",
+     "edge_row": 502.0,
+     "labels": [
+      [
+       0,
+       0.762962962962963,
+       0.4324074074074074,
+       0.06049382716049383,
+       0.06481481481481481
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "PGltvgB2yIM_r_006669_40",
+     "video_id": "PGltvgB2yIM",
+     "view": "right",
+     "t_abs": 6669.4,
+     "clip_start_s": 6665.4,
+     "position": "past",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:right:past",
+     "edge_row": 538.0,
+     "labels": [
+      [
+       1,
+       0.3726937269372694,
+       0.48703703703703705,
+       0.1008610086100861,
+       0.022222222222222223
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "PGltvgB2yIM_r_007126_17",
+     "video_id": "PGltvgB2yIM",
+     "view": "right",
+     "t_abs": 7126.167,
+     "clip_start_s": 7115.367,
+     "position": "crossing",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 0,
+     "bin": "outcome:never_reached",
+     "edge_row": 482.0,
+     "labels": [
+      [
+       0,
+       0.6654366543665436,
+       0.40925925925925927,
+       0.08487084870848709,
+       0.07407407407407407
+      ]
+     ],
+     "half": "outcome"
+    }
+   ]
+  },
+  "VXU9xwmugRg": {
+   "split": "train",
+   "frames": [
+    {
+     "stem": "VXU9xwmugRg_l_000010_60",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 10.6,
+     "clip_start_s": 9.8,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "outcome:never_reached",
+     "edge_row": 468.0,
+     "labels": [
+      [
+       1,
+       0.44814814814814813,
+       0.42962962962962964,
+       0.0962962962962963,
+       0.007407407407407408
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_000013_00",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 13.0,
+     "clip_start_s": 9.8,
+     "position": "past",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 6,
+     "bin": "scene:left:past",
+     "edge_row": 570.0,
+     "labels": [
+      [
+       1,
+       0.42592592592592593,
+       0.5148148148148148,
+       0.0962962962962963,
+       0.025925925925925925
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_000980_00",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 980.0,
+     "clip_start_s": 977.8,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 6,
+     "bin": "scene:right:crossing",
+     "edge_row": 516.6171428571429,
+     "labels": [
+      [
+       0,
+       0.4920049200492005,
+       0.46324867724867724,
+       0.0897908979089791,
+       0.03020105820105822
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_002509_00",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 2509.0,
+     "clip_start_s": 2504.6,
+     "position": "past",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 7,
+     "bin": "outcome:unsteady",
+     "edge_row": 538.8,
+     "labels": [
+      [
+       0,
+       0.8185185185185185,
+       0.492037037037037,
+       0.03827160493827161,
+       0.013703703703703662
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_002995_40",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 2995.4,
+     "clip_start_s": 2995.4,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 7,
+     "bin": "scene:right:approach",
+     "edge_row": 476.81111111111113,
+     "labels": [
+      [
+       0,
+       0.5079950799507995,
+       0.42722736625514407,
+       0.07872078720787208,
+       0.02852880658436216
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_003231_60",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 3231.6,
+     "clip_start_s": 3228.2,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 7,
+     "bin": "outcome:never_reached",
+     "edge_row": 445.0,
+     "labels": [
+      [
+       1,
+       0.8327183271832719,
+       0.3837962962962963,
+       0.09471094710947109,
+       0.05648148148148148
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_003637_50",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 3637.5,
+     "clip_start_s": 3636.9,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 1,
+     "bin": "scene:left:approach",
+     "edge_row": 463.0,
+     "labels": [
+      [
+       1,
+       0.6197530864197531,
+       0.42268518518518516,
+       0.09382716049382717,
+       0.012037037037037037
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_004834_20",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 4834.2,
+     "clip_start_s": 4832.6,
+     "position": "crossing",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 6,
+     "bin": "outcome:never_reached",
+     "edge_row": 515.8622950819672,
+     "labels": [
+      [
+       0,
+       0.5879458794587946,
+       0.4258621736490589,
+       0.09348093480934809,
+       0.10357619914996963
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_005443_53",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 5443.533,
+     "clip_start_s": 5443.533,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:left:approach",
+     "edge_row": 471.3,
+     "labels": [
+      [
+       0,
+       0.6592592592592592,
+       0.42560185185185184,
+       0.08271604938271605,
+       0.021574074074074086
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_005764_93",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 5764.933,
+     "clip_start_s": 5763.933,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "outcome:unsteady",
+     "edge_row": 506.224,
+     "labels": [
+      [
+       1,
+       0.5839506172839506,
+       0.4519555555555555,
+       0.07777777777777778,
+       0.03354074074074073
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_007533_00",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 7533.0,
+     "clip_start_s": 7527.2,
+     "position": "clear",
+     "outcome": "never_reached",
+     "color": "",
+     "crowding": 0,
+     "bin": "scene:left:clear",
+     "edge_row": null,
+     "labels": [],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_007772_83",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 7772.833,
+     "clip_start_s": 7768.033,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:left:crossing",
+     "edge_row": 522.0,
+     "labels": [
+      [
+       1,
+       0.562962962962963,
+       0.4777777777777778,
+       0.10246913580246914,
+       0.011111111111111112
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_007876_20",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 7876.2,
+     "clip_start_s": 7874.0,
+     "position": "past",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "outcome:never_reached",
+     "edge_row": 575.0,
+     "labels": [
+      [
+       1,
+       0.519753086419753,
+       0.5152777777777777,
+       0.09876543209876543,
+       0.03425925925925926
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_008080_00",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 8080.0,
+     "clip_start_s": 8080.0,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 0,
+     "bin": "outcome:unsteady",
+     "edge_row": 444.0,
+     "labels": [
+      [
+       1,
+       0.41975308641975306,
+       0.4083333333333333,
+       0.07777777777777778,
+       0.005555555555555556
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_008201_33",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 8201.333,
+     "clip_start_s": 8201.133,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:left:approach",
+     "edge_row": 503.72,
+     "labels": [
+      [
+       0,
+       0.5938271604938271,
+       0.45172222222222225,
+       0.08271604938271605,
+       0.029370370370370397
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_009422_27",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 9422.267,
+     "clip_start_s": 9419.867,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 4,
+     "bin": "scene:right:crossing",
+     "edge_row": 512.0,
+     "labels": [
+      [
+       0,
+       0.45141451414514144,
+       0.4537037037037037,
+       0.08610086100861009,
+       0.040740740740740744
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_009423_27",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 9423.267,
+     "clip_start_s": 9419.867,
+     "position": "past",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:right:past",
+     "edge_row": 547.0,
+     "labels": [
+      [
+       0,
+       0.4194341943419434,
+       0.47453703703703703,
+       0.1008610086100861,
+       0.06388888888888888
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_009514_80",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 9514.8,
+     "clip_start_s": 9508.6,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 2,
+     "bin": "outcome:never_reached",
+     "edge_row": 464.0,
+     "labels": [
+      [
+       0,
+       0.28888888888888886,
+       0.4222222222222222,
+       0.10246913580246914,
+       0.014814814814814815
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_009609_50",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 9609.5,
+     "clip_start_s": 9598.7,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 2,
+     "bin": "outcome:unsteady",
+     "edge_row": 520.0,
+     "labels": [
+      [
+       0,
+       0.3506172839506173,
+       0.4722222222222222,
+       0.06049382716049383,
+       0.018518518518518517
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_010123_13",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 10123.133,
+     "clip_start_s": 10119.333,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 0,
+     "bin": "scene:left:approach",
+     "edge_row": 444.0,
+     "labels": [
+      [
+       0,
+       0.35802469135802467,
+       0.4027777777777778,
+       0.10246913580246914,
+       0.016666666666666666
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_010189_63",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 10189.633,
+     "clip_start_s": 10187.833,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "scene:left:crossing",
+     "edge_row": 526.0,
+     "labels": [
+      [
+       1,
+       0.016049382716049384,
+       0.4537037037037037,
+       0.0728395061728395,
+       0.06666666666666667
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_010189_83",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 10189.833,
+     "clip_start_s": 10187.833,
+     "position": "past",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:left:past",
+     "edge_row": 566.6,
+     "labels": [
+      [
+       1,
+       0.014814814814814815,
+       0.4947222222222222,
+       0.0691358024691358,
+       0.059814814814814835
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_010509_93",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 10509.933,
+     "clip_start_s": 10509.933,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "outcome:unsteady",
+     "edge_row": 447.0,
+     "labels": [
+      [
+       1,
+       0.5387453874538746,
+       0.40879629629629627,
+       0.10209102091020911,
+       0.010185185185185186
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_011062_77",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 11062.767,
+     "clip_start_s": 11061.367,
+     "position": "past",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:right:past",
+     "edge_row": 532.12,
+     "labels": [
+      [
+       1,
+       0.6260762607626076,
+       0.47690740740740734,
+       0.07134071340713408,
+       0.031592592592592596
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_011168_57",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 11168.567,
+     "clip_start_s": 11166.167,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:right:crossing",
+     "edge_row": 523.5953488372093,
+     "labels": [
+      [
+       0,
+       0.5707257072570726,
+       0.47018303186907834,
+       0.0910209102091021,
+       0.02925495262704561
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_011590_37",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 11590.367,
+     "clip_start_s": 11579.967,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 2,
+     "bin": "outcome:ambiguous",
+     "edge_row": 469.0,
+     "labels": [
+      [
+       0,
+       0.5382716049382716,
+       0.4263888888888889,
+       0.10123456790123457,
+       0.01574074074074074
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_011797_00",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 11797.0,
+     "clip_start_s": 11789.0,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 2,
+     "bin": "scene:left:crossing",
+     "edge_row": 519.0,
+     "labels": [
+      [
+       0,
+       0.45185185185185184,
+       0.45601851851851855,
+       0.07654320987654321,
+       0.049074074074074076
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_011956_80",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 11956.8,
+     "clip_start_s": 11955.4,
+     "position": "crossing",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "outcome:never_reached",
+     "edge_row": 518.0,
+     "labels": [
+      [
+       1,
+       0.5740740740740741,
+       0.46296296296296297,
+       0.09382716049382717,
+       0.03333333333333333
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "VXU9xwmugRg_l_012170_80",
+     "video_id": "VXU9xwmugRg",
+     "view": "left",
+     "t_abs": 12170.8,
+     "clip_start_s": 12168.4,
+     "position": "past",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:left:past",
+     "edge_row": 536.9846153846154,
+     "labels": [
+      [
+       0,
+       0.6098765432098765,
+       0.4800854700854701,
+       0.09506172839506173,
+       0.03424501424501424
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "VXU9xwmugRg_r_013172_23",
+     "video_id": "VXU9xwmugRg",
+     "view": "right",
+     "t_abs": 13172.233,
+     "clip_start_s": 13162.833,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:right:crossing",
+     "edge_row": 512.0,
+     "labels": [
+      [
+       1,
+       0.25092250922509224,
+       0.44351851851851853,
+       0.08733087330873308,
+       0.06111111111111111
+      ]
+     ],
+     "half": "scene"
+    }
+   ]
+  },
+  "entTaSBFK3A": {
+   "split": "train",
+   "frames": [
+    {
+     "stem": "entTaSBFK3A_l_000180_20",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 180.2,
+     "clip_start_s": 179.8,
+     "position": "approach",
+     "outcome": "no_candidate",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "outcome:no_candidate",
+     "edge_row": 480.0,
+     "labels": [
+      [
+       1,
+       0.46371463714637146,
+       0.44074074074074077,
+       0.0996309963099631,
+       0.007407407407407408
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_l_000825_60",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 825.6,
+     "clip_start_s": 824.6,
+     "position": "crossing",
+     "outcome": "bad_speed",
+     "color": "yellow",
+     "crowding": 6,
+     "bin": "outcome:bad_speed",
+     "edge_row": 535.0,
+     "labels": [
+      [
+       1,
+       0.4944649446494465,
+       0.49212962962962964,
+       0.1008610086100861,
+       0.006481481481481481
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_l_000895_80",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 895.8,
+     "clip_start_s": 893.8,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 6,
+     "bin": "scene:left:crossing",
+     "edge_row": 533.0,
+     "labels": [
+      [
+       0,
+       0.6900369003690037,
+       0.48842592592592593,
+       0.038130381303813035,
+       0.010185185185185186
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_r_001355_20",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 1355.2,
+     "clip_start_s": 1353.8,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:right:crossing",
+     "edge_row": 550.0,
+     "labels": [
+      [
+       1,
+       0.47232472324723246,
+       0.49444444444444446,
+       0.08733087330873308,
+       0.02962962962962963
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_l_001833_60",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 1833.6,
+     "clip_start_s": 1830.8,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 7,
+     "bin": "scene:left:crossing",
+     "edge_row": 529.0,
+     "labels": [
+      [
+       1,
+       0.4157441574415744,
+       0.4847222222222222,
+       0.0996309963099631,
+       0.010185185185185186
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_l_003653_40",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 3653.4,
+     "clip_start_s": 3650.4,
+     "position": "crossing",
+     "outcome": "no_candidate",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:left:crossing",
+     "edge_row": 532.0,
+     "labels": [
+      [
+       1,
+       0.4231242312423124,
+       0.487962962962963,
+       0.0984009840098401,
+       0.009259259259259259
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_l_004105_40",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 4105.4,
+     "clip_start_s": 4103.4,
+     "position": "clear",
+     "outcome": "never_reached",
+     "color": "",
+     "crowding": 0,
+     "bin": "scene:left:clear",
+     "edge_row": null,
+     "labels": [],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_l_004496_20",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 4496.2,
+     "clip_start_s": 4495.8,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 2,
+     "bin": "outcome:ambiguous",
+     "edge_row": 493.0,
+     "labels": [
+      [
+       0,
+       0.931119311193112,
+       0.43194444444444446,
+       0.08733087330873308,
+       0.049074074074074076
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_l_004545_00",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 4545.0,
+     "clip_start_s": 4545.0,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "scene:left:approach",
+     "edge_row": 486.84,
+     "labels": [
+      [
+       1,
+       0.7257072570725708,
+       0.4448333333333333,
+       0.04428044280442804,
+       0.011888888888888866
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_l_004661_60",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 4661.6,
+     "clip_start_s": 4661.4,
+     "position": "past",
+     "outcome": "no_candidate",
+     "color": "red",
+     "crowding": 1,
+     "bin": "outcome:no_candidate",
+     "edge_row": 567.0285714285715,
+     "labels": [
+      [
+       0,
+       0.5485854858548586,
+       0.5199206349206349,
+       0.04428044280442804,
+       0.010211640211640248
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_r_004702_40",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 4702.4,
+     "clip_start_s": 4702.0,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:right:approach",
+     "edge_row": 478.46,
+     "labels": [
+      [
+       0,
+       0.2177121771217712,
+       0.4335462962962963,
+       0.09471094710947109,
+       0.018944444444444427
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_l_007304_00",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 7304.0,
+     "clip_start_s": 7301.8,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:left:crossing",
+     "edge_row": 531.0,
+     "labels": [
+      [
+       0,
+       0.6506765067650676,
+       0.4837962962962963,
+       0.07134071340713408,
+       0.01574074074074074
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_r_008700_47",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 8700.467,
+     "clip_start_s": 8697.867,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "scene:right:crossing",
+     "edge_row": 549.0,
+     "labels": [
+      [
+       1,
+       0.44772447724477243,
+       0.4986111111111111,
+       0.09348093480934809,
+       0.019444444444444445
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_r_008898_47",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 8898.467,
+     "clip_start_s": 8895.667,
+     "position": "past",
+     "outcome": "bad_speed",
+     "color": "red",
+     "crowding": 6,
+     "bin": "outcome:bad_speed",
+     "edge_row": 569.8827586206896,
+     "labels": [
+      [
+       0,
+       0.4280442804428044,
+       0.5101309067688378,
+       0.0959409594095941,
+       0.0350766283524904
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_r_008967_27",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 8967.267,
+     "clip_start_s": 8967.267,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "outcome:ambiguous",
+     "edge_row": 478.0,
+     "labels": [
+      [
+       1,
+       0.4784747847478475,
+       0.4388888888888889,
+       0.08856088560885608,
+       0.007407407407407408
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_l_009161_07",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 9161.067,
+     "clip_start_s": 9160.867,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 0,
+     "bin": "scene:left:approach",
+     "edge_row": 466.0,
+     "labels": [
+      [
+       1,
+       0.5559655596555966,
+       0.4287037037037037,
+       0.08118081180811808,
+       0.005555555555555556
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_l_009748_70",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 9748.7,
+     "clip_start_s": 9747.3,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "scene:left:crossing",
+     "edge_row": 533.0,
+     "labels": [
+      [
+       1,
+       0.5522755227552275,
+       0.4875,
+       0.10209102091020911,
+       0.012037037037037037
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_r_010323_70",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 10323.7,
+     "clip_start_s": 10323.7,
+     "position": "crossing",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "outcome:never_reached",
+     "edge_row": 550.0,
+     "labels": [
+      [
+       1,
+       0.5375153751537516,
+       0.49537037037037035,
+       0.1008610086100861,
+       0.027777777777777776
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_r_010376_30",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 10376.3,
+     "clip_start_s": 10372.3,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 6,
+     "bin": "scene:right:approach",
+     "edge_row": 495.0,
+     "labels": [
+      [
+       0,
+       0.8954489544895449,
+       0.4300925925925926,
+       0.1008610086100861,
+       0.05648148148148148
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_r_010462_13",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 10462.133,
+     "clip_start_s": 10458.933,
+     "position": "past",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 5,
+     "bin": "outcome:ok",
+     "edge_row": 583.0,
+     "labels": [
+      [
+       0,
+       0.4022140221402214,
+       0.5115740740740741,
+       0.07626076260762607,
+       0.05648148148148148
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_l_011075_33",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 11075.333,
+     "clip_start_s": 11063.533,
+     "position": "approach",
+     "outcome": "no_candidate",
+     "color": "yellow",
+     "crowding": 1,
+     "bin": "scene:left:approach",
+     "edge_row": 476.0,
+     "labels": [
+      [
+       1,
+       0.9028290282902829,
+       0.4148148148148148,
+       0.06888068880688807,
+       0.05185185185185185
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_l_011122_93",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 11122.933,
+     "clip_start_s": 11116.733,
+     "position": "clear",
+     "outcome": "never_reached",
+     "color": "",
+     "crowding": 0,
+     "bin": "outcome:never_reached",
+     "edge_row": null,
+     "labels": [],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_l_011171_93",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 11171.933,
+     "clip_start_s": 11170.333,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "scene:left:crossing",
+     "edge_row": 536.74375,
+     "labels": [
+      [
+       1,
+       0.6113161131611317,
+       0.4781221064814815,
+       0.0959409594095941,
+       0.03772569444444442
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_l_011310_33",
+     "video_id": "entTaSBFK3A",
+     "view": "left",
+     "t_abs": 11310.333,
+     "clip_start_s": 11309.533,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 3,
+     "bin": "outcome:unsteady",
+     "edge_row": 483.0,
+     "labels": [
+      [
+       0,
+       0.4440344403444034,
+       0.39490740740740743,
+       0.0996309963099631,
+       0.10462962962962963
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_r_011973_07",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 11973.067,
+     "clip_start_s": 11973.067,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:right:approach",
+     "edge_row": 478.0,
+     "labels": [
+      [
+       0,
+       0.5965559655596556,
+       0.4324074074074074,
+       0.0984009840098401,
+       0.020370370370370372
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_r_011974_47",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 11974.467,
+     "clip_start_s": 11973.067,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 6,
+     "bin": "scene:right:crossing",
+     "edge_row": 534.035294117647,
+     "labels": [
+      [
+       0,
+       0.6113161131611317,
+       0.47594226579520693,
+       0.08364083640836409,
+       0.0370697167755991
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_r_012565_70",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 12565.7,
+     "clip_start_s": 12565.5,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 8,
+     "bin": "outcome:ambiguous",
+     "edge_row": 495.3272727272727,
+     "labels": [
+      [
+       1,
+       0.6088560885608856,
+       0.45339225589225585,
+       0.07872078720787208,
+       0.010488215488215475
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "entTaSBFK3A_r_012798_10",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 12798.1,
+     "clip_start_s": 12798.1,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "scene:right:approach",
+     "edge_row": 479.0,
+     "labels": [
+      [
+       1,
+       0.5965559655596556,
+       0.4412037037037037,
+       0.0984009840098401,
+       0.004629629629629629
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_r_012800_30",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 12800.3,
+     "clip_start_s": 12798.1,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "scene:right:crossing",
+     "edge_row": 550.0,
+     "labels": [
+      [
+       1,
+       0.43296432964329645,
+       0.4925925925925926,
+       0.07257072570725707,
+       0.03333333333333333
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "entTaSBFK3A_r_012898_50",
+     "video_id": "entTaSBFK3A",
+     "view": "right",
+     "t_abs": 12898.5,
+     "clip_start_s": 12894.7,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 4,
+     "bin": "outcome:ok",
+     "edge_row": 481.0,
+     "labels": [
+      [
+       0,
+       0.22263222632226323,
+       0.4134259259259259,
+       0.0984009840098401,
+       0.06388888888888888
+      ]
+     ],
+     "half": "outcome"
+    }
+   ]
+  },
+  "hOKZoeJNTpM": {
+   "split": "train",
+   "frames": [
+    {
+     "stem": "hOKZoeJNTpM_l_000555_00",
+     "video_id": "hOKZoeJNTpM",
+     "view": "left",
+     "t_abs": 555.0,
+     "clip_start_s": 549.2,
+     "position": "clear",
+     "outcome": "never_reached",
+     "color": "",
+     "crowding": 0,
+     "bin": "scene:left:clear",
+     "edge_row": null,
+     "labels": [],
+     "half": "scene"
+    },
+    {
+     "stem": "hOKZoeJNTpM_l_000899_80",
+     "video_id": "hOKZoeJNTpM",
+     "view": "left",
+     "t_abs": 899.8,
+     "clip_start_s": 896.6,
+     "position": "approach",
+     "outcome": "no_candidate",
+     "color": "yellow",
+     "crowding": 0,
+     "bin": "scene:left:approach",
+     "edge_row": 486.1777777777778,
+     "labels": [
+      [
+       1,
+       0.9876084262701363,
+       0.4473045267489712,
+       0.03469640644361834,
+       0.0057201646090535236
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "hOKZoeJNTpM_l_002038_80",
+     "video_id": "hOKZoeJNTpM",
+     "view": "left",
+     "t_abs": 2038.8,
+     "clip_start_s": 2032.4,
+     "position": "approach",
+     "outcome": "no_candidate",
+     "color": "yellow",
+     "crowding": 0,
+     "bin": "outcome:no_candidate",
+     "edge_row": 476.575,
+     "labels": [
+      [
+       1,
+       0.9814126394052045,
+       0.4289699074074074,
+       0.05947955390334572,
+       0.024606481481481472
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_l_002698_50",
+     "video_id": "hOKZoeJNTpM",
+     "view": "left",
+     "t_abs": 2698.5,
+     "clip_start_s": 2696.1,
+     "position": "clear",
+     "outcome": "ambiguous",
+     "color": "",
+     "crowding": 0,
+     "bin": "outcome:ambiguous",
+     "edge_row": null,
+     "labels": [],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_003111_60",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 3111.6,
+     "clip_start_s": 3109.8,
+     "position": "crossing",
+     "outcome": "bad_speed",
+     "color": "yellow",
+     "crowding": 1,
+     "bin": "outcome:bad_speed",
+     "edge_row": 564.0,
+     "labels": [
+      [
+       1,
+       0.5965559655596556,
+       0.5,
+       0.0971709717097171,
+       0.044444444444444446
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_003218_20",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 3218.2,
+     "clip_start_s": 3216.2,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "outcome:ok",
+     "edge_row": 564.0,
+     "labels": [
+      [
+       1,
+       0.6113161131611317,
+       0.5162037037037037,
+       0.0984009840098401,
+       0.012037037037037037
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_003390_80",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 3390.8,
+     "clip_start_s": 3388.4,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 2,
+     "bin": "scene:right:crossing",
+     "edge_row": 564.0,
+     "labels": [
+      [
+       0,
+       0.1820418204182042,
+       0.4981481481481482,
+       0.1008610086100861,
+       0.04814814814814815
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "hOKZoeJNTpM_l_004026_50",
+     "video_id": "hOKZoeJNTpM",
+     "view": "left",
+     "t_abs": 4026.5,
+     "clip_start_s": 4020.7,
+     "position": "past",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 0,
+     "bin": "outcome:never_reached",
+     "edge_row": 601.0,
+     "labels": [
+      [
+       1,
+       0.28872366790582404,
+       0.5449074074074074,
+       0.10161090458488228,
+       0.023148148148148147
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_l_004108_20",
+     "video_id": "hOKZoeJNTpM",
+     "view": "left",
+     "t_abs": 4108.2,
+     "clip_start_s": 4099.6,
+     "position": "crossing",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 1,
+     "bin": "scene:left:crossing",
+     "edge_row": 554.0,
+     "labels": [
+      [
+       1,
+       0.540272614622057,
+       0.4925925925925926,
+       0.10161090458488228,
+       0.040740740740740744
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "hOKZoeJNTpM_l_004278_80",
+     "video_id": "hOKZoeJNTpM",
+     "view": "left",
+     "t_abs": 4278.8,
+     "clip_start_s": 4278.8,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 1,
+     "bin": "outcome:unsteady",
+     "edge_row": 513.3714285714286,
+     "labels": [
+      [
+       1,
+       0.7410161090458488,
+       0.4617460317460318,
+       0.10285006195786865,
+       0.027195767195767245
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_l_004731_60",
+     "video_id": "hOKZoeJNTpM",
+     "view": "left",
+     "t_abs": 4731.6,
+     "clip_start_s": 4729.4,
+     "position": "crossing",
+     "outcome": "bad_speed",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "outcome:bad_speed",
+     "edge_row": 546.0,
+     "labels": [
+      [
+       1,
+       0.4163568773234201,
+       0.4925925925925926,
+       0.10285006195786865,
+       0.025925925925925925
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_004945_33",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 4945.333,
+     "clip_start_s": 4944.333,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 1,
+     "bin": "outcome:unsteady",
+     "edge_row": 513.0,
+     "labels": [
+      [
+       0,
+       0.5633456334563346,
+       0.4300925925925926,
+       0.10209102091020911,
+       0.08981481481481482
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_005034_73",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 5034.733,
+     "clip_start_s": 5030.333,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 2,
+     "bin": "scene:right:crossing",
+     "edge_row": 565.0,
+     "labels": [
+      [
+       0,
+       0.5596555965559655,
+       0.5032407407407408,
+       0.06765067650676507,
+       0.03981481481481482
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_005396_53",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 5396.533,
+     "clip_start_s": 5396.133,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 1,
+     "bin": "outcome:ambiguous",
+     "edge_row": 517.0,
+     "labels": [
+      [
+       0,
+       0.5178351783517835,
+       0.43472222222222223,
+       0.1008610086100861,
+       0.08796296296296297
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_005449_13",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 5449.133,
+     "clip_start_s": 5445.133,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:right:crossing",
+     "edge_row": 565.0,
+     "labels": [
+      [
+       1,
+       0.12054120541205413,
+       0.500462962962963,
+       0.08610086100861009,
+       0.04537037037037037
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_005618_87",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 5618.867,
+     "clip_start_s": 5613.067,
+     "position": "clear",
+     "outcome": "never_reached",
+     "color": "",
+     "crowding": 0,
+     "bin": "outcome:never_reached",
+     "edge_row": null,
+     "labels": [],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_007087_90",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 7087.9,
+     "clip_start_s": 7085.9,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 6,
+     "bin": "scene:right:crossing",
+     "edge_row": 581.0,
+     "labels": [
+      [
+       0,
+       0.6555965559655597,
+       0.5300925925925926,
+       0.0984009840098401,
+       0.01574074074074074
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_007137_10",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 7137.1,
+     "clip_start_s": 7137.1,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "scene:right:approach",
+     "edge_row": 506.6625,
+     "labels": [
+      [
+       1,
+       0.5116851168511685,
+       0.46234375,
+       0.06888068880688807,
+       0.01357638888888891
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_007242_30",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 7242.3,
+     "clip_start_s": 7238.7,
+     "position": "crossing",
+     "outcome": "bad_speed",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "outcome:bad_speed",
+     "edge_row": 565.0,
+     "labels": [
+      [
+       1,
+       0.16728167281672818,
+       0.5180555555555556,
+       0.0910209102091021,
+       0.010185185185185186
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "hOKZoeJNTpM_r_007314_10",
+     "video_id": "hOKZoeJNTpM",
+     "view": "right",
+     "t_abs": 7314.1,
+     "clip_start_s": 7312.3,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 6,
+     "bin": "outcome:unsteady",
+     "edge_row": 565.0,
+     "labels": [
+      [
+       0,
+       0.35178351783517836,
+       0.49212962962962964,
+       0.0910209102091021,
+       0.062037037037037036
+      ]
+     ],
+     "half": "outcome"
+    }
+   ]
+  },
+  "jgZ9wlxGYHM": {
+   "split": "train",
+   "frames": [
+    {
+     "stem": "jgZ9wlxGYHM_l_000035_60",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 35.6,
+     "clip_start_s": 35.6,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "outcome:unsteady",
+     "edge_row": 485.1,
+     "labels": [
+      [
+       1,
+       0.7195571955719557,
+       0.4403240740740741,
+       0.055350553505535055,
+       0.017685185185185207
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_000037_40",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 37.4,
+     "clip_start_s": 35.6,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 6,
+     "bin": "outcome:unsteady",
+     "edge_row": 533.0,
+     "labels": [
+      [
+       1,
+       0.6482164821648216,
+       0.4773148148148148,
+       0.0996309963099631,
+       0.032407407407407406
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_000859_00",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 859.0,
+     "clip_start_s": 858.6,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 2,
+     "bin": "outcome:unsteady",
+     "edge_row": 475.0,
+     "labels": [
+      [
+       0,
+       0.46740467404674046,
+       0.43287037037037035,
+       0.0984009840098401,
+       0.013888888888888888
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_r_001391_30",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "right",
+     "t_abs": 1391.3,
+     "clip_start_s": 1388.9,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 7,
+     "bin": "scene:right:approach",
+     "edge_row": 479.0,
+     "labels": [
+      [
+       1,
+       0.6703567035670357,
+       0.4356481481481482,
+       0.0971709717097171,
+       0.01574074074074074
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_r_001629_30",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "right",
+     "t_abs": 1629.3,
+     "clip_start_s": 1629.1,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "outcome:ok",
+     "edge_row": 516.5333333333333,
+     "labels": [
+      [
+       1,
+       0.5756457564575646,
+       0.4632098765432099,
+       0.07011070110701106,
+       0.03012345679012343
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_002297_00",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 2297.0,
+     "clip_start_s": 2295.8,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:left:crossing",
+     "edge_row": 531.0,
+     "labels": [
+      [
+       0,
+       0.6740467404674046,
+       0.4828703703703704,
+       0.0984009840098401,
+       0.017592592592592594
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_r_005525_23",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "right",
+     "t_abs": 5525.233,
+     "clip_start_s": 5524.433,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 5,
+     "bin": "scene:right:approach",
+     "edge_row": 512.7555555555556,
+     "labels": [
+      [
+       0,
+       0.6223862238622386,
+       0.46886831275720164,
+       0.04551045510455105,
+       0.011810699588477396
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_r_005881_43",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "right",
+     "t_abs": 5881.433,
+     "clip_start_s": 5880.433,
+     "position": "crossing",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "scene:right:crossing",
+     "edge_row": 542.2285714285714,
+     "labels": [
+      [
+       1,
+       0.3972939729397294,
+       0.4778835978835978,
+       0.08610086100861009,
+       0.04835978835978833
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_006107_57",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 6107.567,
+     "clip_start_s": 6101.767,
+     "position": "clear",
+     "outcome": "no_candidate",
+     "color": "",
+     "crowding": 0,
+     "bin": "outcome:no_candidate",
+     "edge_row": null,
+     "labels": [],
+     "half": "outcome"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_006409_77",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 6409.767,
+     "clip_start_s": 6407.967,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "red",
+     "crowding": 4,
+     "bin": "scene:left:crossing",
+     "edge_row": 541.0,
+     "labels": [
+      [
+       0,
+       0.4981549815498155,
+       0.4615740740740741,
+       0.0897908979089791,
+       0.0787037037037037
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_006847_37",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 6847.367,
+     "clip_start_s": 6844.767,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:left:crossing",
+     "edge_row": 530.0,
+     "labels": [
+      [
+       1,
+       0.6678966789667896,
+       0.4861111111111111,
+       0.0910209102091021,
+       0.009259259259259259
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_r_007173_20",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "right",
+     "t_abs": 7173.2,
+     "clip_start_s": 7170.6,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "outcome:ambiguous",
+     "edge_row": 552.0,
+     "labels": [
+      [
+       1,
+       0.7134071340713407,
+       0.5083333333333333,
+       0.07257072570725707,
+       0.005555555555555556
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_r_007492_80",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "right",
+     "t_abs": 7492.8,
+     "clip_start_s": 7490.8,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 4,
+     "bin": "scene:right:crossing",
+     "edge_row": 551.0,
+     "labels": [
+      [
+       0,
+       0.6174661746617466,
+       0.4652777777777778,
+       0.07995079950799508,
+       0.08981481481481482
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_r_007913_20",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "right",
+     "t_abs": 7913.2,
+     "clip_start_s": 7913.0,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "scene:right:crossing",
+     "edge_row": 542.0,
+     "labels": [
+      [
+       1,
+       0.5325953259532595,
+       0.4740740740740741,
+       0.07503075030750307,
+       0.05555555555555555
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_r_007915_20",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "right",
+     "t_abs": 7915.2,
+     "clip_start_s": 7913.0,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 6,
+     "bin": "scene:right:approach",
+     "edge_row": 479.0,
+     "labels": [
+      [
+       1,
+       0.4108241082410824,
+       0.43287037037037035,
+       0.1008610086100861,
+       0.021296296296296296
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_008103_03",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 8103.033,
+     "clip_start_s": 8103.033,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 2,
+     "bin": "outcome:ambiguous",
+     "edge_row": 482.61052631578946,
+     "labels": [
+      [
+       0,
+       0.6125461254612546,
+       0.4419493177387914,
+       0.08487084870848709,
+       0.009824561403508757
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_008244_03",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 8244.033,
+     "clip_start_s": 8241.833,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:left:crossing",
+     "edge_row": 534.0,
+     "labels": [
+      [
+       1,
+       0.4317343173431734,
+       0.4861111111111111,
+       0.10209102091020911,
+       0.016666666666666666
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_008731_47",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 8731.467,
+     "clip_start_s": 8729.267,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 3,
+     "bin": "scene:left:crossing",
+     "edge_row": 535.0,
+     "labels": [
+      [
+       0,
+       0.6309963099630996,
+       0.4912037037037037,
+       0.07626076260762607,
+       0.008333333333333333
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "jgZ9wlxGYHM_l_008976_07",
+     "video_id": "jgZ9wlxGYHM",
+     "view": "left",
+     "t_abs": 8976.067,
+     "clip_start_s": 8969.867,
+     "position": "clear",
+     "outcome": "no_candidate",
+     "color": "",
+     "crowding": 0,
+     "bin": "outcome:no_candidate",
+     "edge_row": null,
+     "labels": [],
+     "half": "outcome"
+    }
+   ]
+  },
+  "n51rf_nFlhM": {
+   "split": "train",
+   "frames": [
+    {
+     "stem": "n51rf_nFlhM_l_000057_60",
+     "video_id": "n51rf_nFlhM",
+     "view": "left",
+     "t_abs": 57.6,
+     "clip_start_s": 56.0,
+     "position": "crossing",
+     "outcome": "bad_speed",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "outcome:bad_speed",
+     "edge_row": 554.0,
+     "labels": [
+      [
+       1,
+       0.40892193308550184,
+       0.49444444444444446,
+       0.09913258983890955,
+       0.037037037037037035
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "n51rf_nFlhM_l_000096_80",
+     "video_id": "n51rf_nFlhM",
+     "view": "left",
+     "t_abs": 96.8,
+     "clip_start_s": 96.4,
+     "position": "approach",
+     "outcome": "ambiguous",
+     "color": "red",
+     "crowding": 1,
+     "bin": "outcome:ambiguous",
+     "edge_row": 527.52,
+     "labels": [
+      [
+       0,
+       0.9454770755885997,
+       0.4729259259259259,
+       0.057001239157372985,
+       0.03103703703703702
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "n51rf_nFlhM_l_000446_90",
+     "video_id": "n51rf_nFlhM",
+     "view": "left",
+     "t_abs": 446.9,
+     "clip_start_s": 445.7,
+     "position": "crossing",
+     "outcome": "ambiguous",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:left:crossing",
+     "edge_row": 551.0,
+     "labels": [
+      [
+       1,
+       0.5947955390334573,
+       0.5023148148148148,
+       0.10037174721189591,
+       0.01574074074074074
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "n51rf_nFlhM_r_001713_20",
+     "video_id": "n51rf_nFlhM",
+     "view": "right",
+     "t_abs": 1713.2,
+     "clip_start_s": 1709.6,
+     "position": "crossing",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 6,
+     "bin": "scene:right:crossing",
+     "edge_row": 565.0,
+     "labels": [
+      [
+       0,
+       0.3763837638376384,
+       0.5087962962962963,
+       0.0984009840098401,
+       0.028703703703703703
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "n51rf_nFlhM_r_002105_50",
+     "video_id": "n51rf_nFlhM",
+     "view": "right",
+     "t_abs": 2105.5,
+     "clip_start_s": 2101.5,
+     "position": "approach",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 4,
+     "bin": "scene:right:approach",
+     "edge_row": 548.0,
+     "labels": [
+      [
+       1,
+       0.4182041820418204,
+       0.5018518518518519,
+       0.08487084870848709,
+       0.011111111111111112
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "n51rf_nFlhM_r_002105_70",
+     "video_id": "n51rf_nFlhM",
+     "view": "right",
+     "t_abs": 2105.7,
+     "clip_start_s": 2101.5,
+     "position": "crossing",
+     "outcome": "unsteady",
+     "color": "yellow",
+     "crowding": 2,
+     "bin": "scene:right:crossing",
+     "edge_row": 552.0,
+     "labels": [
+      [
+       1,
+       0.4157441574415744,
+       0.5064814814814815,
+       0.10209102091020911,
+       0.009259259259259259
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "n51rf_nFlhM_l_002443_90",
+     "video_id": "n51rf_nFlhM",
+     "view": "left",
+     "t_abs": 2443.9,
+     "clip_start_s": 2443.3,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "red",
+     "crowding": 2,
+     "bin": "outcome:never_reached",
+     "edge_row": 536.0,
+     "labels": [
+      [
+       0,
+       0.79182156133829,
+       0.4703703703703704,
+       0.07930607187112763,
+       0.05185185185185185
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "n51rf_nFlhM_l_002703_50",
+     "video_id": "n51rf_nFlhM",
+     "view": "left",
+     "t_abs": 2703.5,
+     "clip_start_s": 2702.5,
+     "position": "approach",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 1,
+     "bin": "scene:left:approach",
+     "edge_row": 480.0,
+     "labels": [
+      [
+       0,
+       0.4634448574969021,
+       0.4388888888888889,
+       0.09169764560099132,
+       0.011111111111111112
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "n51rf_nFlhM_l_003250_70",
+     "video_id": "n51rf_nFlhM",
+     "view": "left",
+     "t_abs": 3250.7,
+     "clip_start_s": 3249.9,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "yellow",
+     "crowding": 5,
+     "bin": "scene:left:crossing",
+     "edge_row": 557.5354838709677,
+     "labels": [
+      [
+       1,
+       0.46716232961586124,
+       0.48682198327359616,
+       0.10037174721189591,
+       0.05882915173237751
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "n51rf_nFlhM_r_003899_10",
+     "video_id": "n51rf_nFlhM",
+     "view": "right",
+     "t_abs": 3899.1,
+     "clip_start_s": 3896.9,
+     "position": "approach",
+     "outcome": "never_reached",
+     "color": "yellow",
+     "crowding": 3,
+     "bin": "scene:right:approach",
+     "edge_row": 545.0,
+     "labels": [
+      [
+       1,
+       0.6814268142681427,
+       0.4986111111111111,
+       0.10209102091020911,
+       0.012037037037037037
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "n51rf_nFlhM_r_003993_90",
+     "video_id": "n51rf_nFlhM",
+     "view": "right",
+     "t_abs": 3993.9,
+     "clip_start_s": 3989.5,
+     "position": "past",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 6,
+     "bin": "outcome:ok",
+     "edge_row": 587.0,
+     "labels": [
+      [
+       0,
+       0.5658056580565806,
+       0.5300925925925926,
+       0.0971709717097171,
+       0.026851851851851852
+      ]
+     ],
+     "half": "outcome"
+    },
+    {
+     "stem": "n51rf_nFlhM_r_004230_50",
+     "video_id": "n51rf_nFlhM",
+     "view": "right",
+     "t_abs": 4230.5,
+     "clip_start_s": 4227.3,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 4,
+     "bin": "scene:right:crossing",
+     "edge_row": 565.0,
+     "labels": [
+      [
+       0,
+       0.42927429274292744,
+       0.5060185185185185,
+       0.0971709717097171,
+       0.03425925925925926
+      ]
+     ],
+     "half": "scene"
+    },
+    {
+     "stem": "n51rf_nFlhM_l_004797_40",
+     "video_id": "n51rf_nFlhM",
+     "view": "left",
+     "t_abs": 4797.4,
+     "clip_start_s": 4794.8,
+     "position": "crossing",
+     "outcome": "ok",
+     "color": "red",
+     "crowding": 6,
+     "bin": "outcome:ok",
+     "edge_row": 553.0,
+     "labels": [
+      [
+       0,
+       0.6555142503097894,
+       0.48564814814814816,
+       0.10285006195786865,
+       0.05277777777777778
+      ]
+     ],
+     "half": "outcome"
+    }
+   ]
+  }
+ },
+ "pool": "/data/wdd/curling/ds13_pool2",
+ "videos_file": "datasets/ds13/videos_cached.json"
+}
