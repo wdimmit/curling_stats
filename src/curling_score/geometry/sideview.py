@@ -136,6 +136,69 @@ def _crossings(sig, lo, hi, thresh):
     return out
 
 
+# Where on the paint's luminance dip the line "is". The hand marks in
+# datasets/hogmarks define a crossing as the stone's leading edge touching the
+# NEAR edge of the paint, so this is an edge locator, not a minimum finder.
+# Half-maximum is the standard convention for locating an edge in a profile
+# and is used here for that reason rather than because it fits best -- see
+# _hog_row_edge for what the alternatives cost.
+HOG_EDGE_FRACTION = 0.5
+
+
+def _hog_row_edge(lum, start, name, frac: float = HOG_EDGE_FRACTION):
+    """The near edge of the hog line's paint, to sub-pixel precision.
+
+    :func:`_hog_row` returns the row whose dip against the ice above it is
+    steepest, which coincides with the paint's near edge only when that edge is
+    sharp. Measured on VXU9xwmugRg against 23 hand-marked crossings, the two
+    cameras disagree because their edges differ in sharpness:
+
+        right  paint falls 152.5 -> 138.0 in one row; fit lands 0.14 px out
+        left   paint falls 159.6 -> 144.3 over three; fit lands 2.77 px LOW
+
+    At about 33 image rows a second near the line, 2.77 px is 0.084 s, and
+    every crossing timed through the left view ran that late.
+
+    This anchors on the deepest dip and walks UP from it to where the
+    luminance has recovered ``frac`` of the way back to the ice, interpolating
+    between the two rows that straddle that level. Anchoring matters: taking
+    the first downward threshold crossing in the search window instead put the
+    left view's line at row 476 rather than 517, because a shallower dip above
+    the paint -- the annulus's own far edge -- crossed the threshold first.
+    The deepest dip in a band that starts below the house is the hog line.
+
+    On the two views the worst error falls from 2.77 px to 0.76.
+
+    The honest caveat: that is two views of one video, 13 and 10 marks. The two
+    do not agree on a best ``frac`` -- the left wants about 0.30 and the right
+    about 0.70 -- so this takes the conventional half rather than the one that
+    minimises error over a sample of two, which would be fitting a constant to
+    n=2. More hand marks on more videos would settle it.
+    """
+    import numpy as np
+
+    stop = min(start + _HOG_SEARCH_PX, len(lum) - 6)
+    if stop <= start:
+        raise SideViewError(f"{name}: no ice below the house to look for a hog line")
+    seg = np.asarray(lum[start:stop], dtype=float)
+    i_min = int(np.argmin(seg))
+    # The ice above the paint, taken far enough up to clear the dip's shoulder.
+    above = seg[max(0, i_min - 25):max(1, i_min - 8)]
+    if not len(above):
+        raise SideViewError(f"{name}: no ice above the paint to measure against")
+    ice = float(np.median(above))
+    dark = float(seg[i_min])
+    if ice - dark < 1.0:
+        raise SideViewError(f"{name}: no luminance dip that could be a hog line")
+    thr = ice - frac * (ice - dark)
+    for i in range(i_min, 0, -1):
+        if seg[i] <= thr < seg[i - 1]:
+            span = seg[i - 1] - seg[i]
+            step = (seg[i - 1] - thr) / span if span else 0.0
+            return start + (i - 1) + step
+    raise SideViewError(f"{name}: the paint's near edge was never crossed")
+
+
 def _hog_row(lum, start, name):
     stop = min(start + _HOG_SEARCH_PX, len(lum) - 6)
     if stop <= start:

@@ -135,3 +135,59 @@ class TestStoneWidthAt:
         for row in (450.0, 500.0, 560.0, 620.0):
             ratio = ((v.d_m - C.TEE_TO_HOGLINE_M) / (v.d_m - v.metres_at(row)))
             assert v.stone_width_at(row, 52.0) == pytest.approx(52.0 * ratio, rel=1e-9)
+
+
+class TestHogRowEdge:
+    """The near edge of the paint, not the deepest row of it.
+
+    Measured on VXU9xwmugRg: the two cameras' paint edges differ in sharpness,
+    and `_hog_row`'s steepest-dip row lands 0.14 px out on the sharp one and
+    2.77 px low on the gradual one. At ~33 image rows a second near the line
+    that is 0.084 s, and every crossing through the left view ran that late.
+    """
+
+    def _profile(self, ice, dark, width, sharp):
+        """A luminance column: flat ice, a dip `width` rows wide, ice again."""
+        import numpy as np
+        lum = np.full(400, float(ice))
+        top = 200
+        if sharp:
+            lum[top:top + width] = dark
+        else:                       # a three-row ramp into the paint
+            for k, v in enumerate((ice - (ice - dark) * f
+                                   for f in (0.2, 0.6, 0.9))):
+                lum[top + k] = v
+            lum[top + 3:top + width] = dark
+        return lum
+
+    def test_it_finds_the_near_edge_of_a_sharp_line(self):
+        lum = self._profile(160, 140, 6, sharp=True)
+        got = sideview._hog_row_edge(lum, 150, "t")
+        assert got == pytest.approx(199.5, abs=0.6)
+
+    def test_a_gradual_edge_does_not_drag_it_into_the_paint(self):
+        """The failure this exists for: `_hog_row` returns the darkest row, so
+        a three-row ramp puts its answer three rows deep."""
+        lum = self._profile(160, 140, 8, sharp=False)
+        edge = sideview._hog_row_edge(lum, 150, "t")
+        argmin = sideview._hog_row(lum, 150, "t")
+        assert edge < argmin, (edge, argmin)
+        assert argmin - edge >= 1.5
+
+    def test_it_anchors_on_the_deepest_dip_not_the_first(self):
+        """Taking the first downward threshold crossing put the left view's
+        line at row 476 instead of 517, catching the annulus's far edge."""
+        lum = self._profile(160, 140, 6, sharp=True)
+        lum[170:176] = 152.0              # a shallower dip above the paint
+        got = sideview._hog_row_edge(lum, 150, "t")
+        assert got > 190, got
+
+    def test_a_flat_profile_is_refused_rather_than_guessed(self):
+        import numpy as np
+        with pytest.raises(sideview.SideViewError):
+            sideview._hog_row_edge(np.full(400, 160.0), 150, "t")
+
+    def test_it_returns_sub_pixel_positions(self):
+        lum = self._profile(160, 140, 6, sharp=False)
+        got = sideview._hog_row_edge(lum, 150, "t")
+        assert got != int(got)
