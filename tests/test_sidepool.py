@@ -158,3 +158,128 @@ class TestWriteCap:
         assert any(c.color == "yellow" and c.position == "crossing"
                   for c in kept), \
             "the yellow crossing frame was dropped in favour of a red clear row"
+
+
+class TestIceBounds:
+    """The band a delivery crossing the hog line can occupy.
+
+    The first attempt let `longview.candidates` propose anywhere in the view,
+    and the racks of stones stored beside the sheet are red and in every frame
+    -- the entire 10:1 red skew was furniture. Measured on real frames from
+    VXU9xwmugRg, the racks sit at rows ~365-405 against a tee at ~435 and a hog
+    at ~520, i.e. *above* the house, on the platform behind it.
+
+    The bound is therefore a DEPTH bound, not the lateral one the plan first
+    asked for: `SideView` models row <-> metres-along-the-sheet and carries no
+    lateral scale at all, so there is nothing to build a sideline from.
+    """
+
+    def test_the_band_runs_from_the_tee_to_past_the_hog_line(self):
+        top, bottom = sidepool.ice_bounds(VIEW)
+        assert top == pytest.approx(VIEW.tee_row, abs=1)
+        assert bottom > VIEW.hog_row
+
+    def test_the_racks_are_outside_it(self):
+        """Measured rack rows on real frames. The hack line is NOT a usable
+        top bound -- it computes to row ~398, inside that band."""
+        top, _bottom = sidepool.ice_bounds(VIEW)
+        for rack_row in (365.0, 385.0, 405.0):
+            assert rack_row < top, f"a rack at row {rack_row} is inside the ice band"
+
+    def test_a_stone_on_the_line_is_inside_it(self):
+        top, bottom = sidepool.ice_bounds(VIEW)
+        assert top < VIEW.hog_row < bottom
+
+
+class TestFramesForWindow:
+    def _window(self, t0=100.0, t1=104.5, color="red"):
+        from curling_score.harvest.sideshots import Window
+        return Window(video_id="v1", camera="left", color=color, t0=t0, t1=t1,
+                      end_number=1, shot_number=3, t_release=98.0, t_rest=None)
+
+    def test_a_rack_like_blob_above_the_ice_proposes_nothing(self):
+        """A red blob where the racks are must not become a box."""
+        plate = synth.side_view()
+        # A rack-shaped red mass on the platform behind the house.
+        plate[370:400, 60:220] = (205, 45, 45)
+        got = sidepool.frames_for_window(
+            [(100.0 + i / 5.0, plate) for i in range(12)],
+            VIEW, self._window(), n_near=3, n_far=1)
+        assert got, "the window produced no frames at all"
+        assert not any(c.labels for c in got), \
+            "a rack outside the ice band was proposed as a stone"
+
+    def test_a_window_with_no_stone_still_yields_frames(self):
+        """The shot list says a delivery was here, so the frame is worth a
+        person's eye even when the detector sees nothing."""
+        got = sidepool.frames_for_window(
+            [(100.0 + i / 5.0, synth.side_view()) for i in range(12)],
+            VIEW, self._window(), n_near=3, n_far=1)
+        assert len(got) == 3
+        assert all(c.labels == () for c in got)
+
+    def test_frames_are_chosen_by_nearness_to_the_line(self):
+        rows = [480.0, 490.0, 500.0, 512.0, 525.0, 545.0, 570.0, 600.0]
+        moments = [(100.0 + i / 5.0,
+                    synth.side_view_stone(synth.side_view(), r, width_px=52))
+                   for i, r in enumerate(rows)]
+        got = sidepool.frames_for_window(moments, VIEW, self._window(),
+                                         n_near=3, n_far=0)
+        assert len(got) == 3
+        # Nearest three of the eight are 525, 512 and 500 against a hog of 520.
+        # Asserted against the ranking rather than a pixel threshold: the
+        # detected edge sits ~0.5 row off the painted one, so any fixed cutoff
+        # here would be pinning the fixture's rendering, not the selection.
+        picked = sorted(round(c.edge_row) for c in got)
+        assert picked == [500, 512, 525], picked
+
+    def test_the_approach_is_represented_too(self):
+        rows = [470.0, 485.0, 500.0, 512.0, 520.0, 528.0]
+        moments = [(100.0 + i / 5.0,
+                    synth.side_view_stone(synth.side_view(), r, width_px=52))
+                   for i, r in enumerate(rows)]
+        got = sidepool.frames_for_window(moments, VIEW, self._window(),
+                                         n_near=2, n_far=2)
+        assert any(c.position == "approach" for c in got)
+
+    def test_one_frame_cannot_be_taken_twice(self):
+        rows = [512.0, 514.0, 516.0]
+        moments = [(100.0 + i / 5.0,
+                    synth.side_view_stone(synth.side_view(), r, width_px=52))
+                   for i, r in enumerate(rows)]
+        got = sidepool.frames_for_window(moments, VIEW, self._window(),
+                                         n_near=3, n_far=3)
+        assert len({c.stem for c in got}) == len(got)
+
+    def test_the_window_groups_the_frames_it_produced(self):
+        """`sideframes.select` caps per clip; a window is this pool's clip, so
+        MAX_PER_CLIP stops one delivery filling a bin with near duplicates."""
+        w = self._window()
+        got = sidepool.frames_for_window(
+            [(100.0 + i / 5.0, synth.side_view()) for i in range(12)],
+            VIEW, w, n_near=2, n_far=0)
+        assert {c.clip_start_s for c in got} == {w.t0}
+
+    def test_a_person_shaped_blob_on_the_ice_is_not_a_stone(self):
+        """With the racks excluded, what is left to be mistaken for a stone is
+        a player wearing the scanned colour -- and the crouching sweeper stands
+        at the very rows a delivery occupies, so no row bound separates them.
+        Measured over 492 real on-ice proposals the height:width ratio is
+        bimodal: a mode at 0.4-0.6 on the physical 0.40, a trough at 1.0-2.0,
+        a second mode at 2.0-3.0 running out past 15."""
+        plate = synth.side_view()
+        # A tall red torso standing on the ice, its foot at the hog line.
+        plate[400:520, 380:430] = (205, 45, 45)
+        got = sidepool.frames_for_window(
+            [(100.0 + i / 5.0, plate) for i in range(12)],
+            VIEW, self._window(), n_near=3, n_far=1)
+        assert not any(c.labels for c in got), \
+            "a body-shaped blob on the ice was proposed as a stone"
+
+    def test_a_real_stone_survives_the_aspect_bound(self):
+        got = sidepool.frames_for_window(
+            [(100.0 + i / 5.0,
+              synth.side_view_stone(synth.side_view(), 518.0, width_px=52))
+             for i in range(12)],
+            VIEW, self._window(), n_near=2, n_far=0)
+        assert all(c.labels for c in got), "the aspect bound rejected a stone"

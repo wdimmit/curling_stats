@@ -41,6 +41,7 @@ from pathlib import Path
 import numpy as np
 
 from curling_score.detect import longview
+from curling_score.geometry import constants as C
 from curling_score.harvest import pool
 from curling_score.harvest.sideframes import SideCandidate, position_of, stem_for
 from curling_score.train import dataset
@@ -377,3 +378,157 @@ def build_video_pool(video_id, clip_paths, video_views, out_dir, *,
 
     all_candidates.sort(key=lambda c: (c.t_abs, c.stem))
     return all_candidates, stats
+
+
+# How far past the hog line a delivery is still worth a frame. Three metres is
+# about 52 image rows at the club's fitted geometry -- enough to hold the
+# "past" bin without running down into the foreground, where perspective
+# stretches a stone across half the frame.
+PAST_HOG_M = 3.0
+
+
+def ice_bounds(view) -> tuple[int, int]:
+    """The rows a delivery crossing the hog line can occupy.
+
+    The first attempt let ``longview.candidates`` propose anywhere in the
+    view. The racks of stones stored beside the sheet are red and in every
+    frame, and they were the entire 10:1 red skew in the resulting set --
+    furniture, not play.
+
+    This is a **depth** bound, not the lateral one first proposed.
+    ``SideView`` maps image rows to metres *along* the sheet and carries no
+    lateral scale whatever, so there is no sideline to derive; but the racks
+    do not sit beside the sheet in image terms, they sit *above* the house on
+    the platform behind it. Measured on real frames from VXU9xwmugRg they run
+    rows ~365-405, against a fitted tee at ~435 and hog at ~520.
+
+    So the band runs from the tee to ``PAST_HOG_M`` past the hog line. The tee
+    is the top rather than the back line (row ~415) or the hack (row ~398)
+    because only the tee clears the racks with any margin -- the hack line
+    computes to a row *inside* the measured rack band, and would have excluded
+    nothing. It is also the right bound for what this set is for: a stone still
+    behind the house is not near the line, and this pool exists to cluster
+    frames at the line.
+    """
+    top = view.row_for(0.0)                                  # the tee
+    bottom = view.row_for(C.TEE_TO_HOGLINE_M + PAST_HOG_M)
+    return int(round(top)), int(round(bottom))
+
+
+# A stone is a squat disc: 0.114 m tall against 0.284 m across, a height to
+# width ratio of 0.40. A person standing or crouching on the ice is not, and
+# with the racks excluded they are what is left to be mistaken for one.
+#
+# Measured over 492 on-ice proposals from 30 real windows, the ratio is plainly
+# bimodal -- a mode at 0.4-0.6 sitting on the physical figure, a trough at
+# 1.0-2.0 holding 27 proposals, and a second mode at 2.0-3.0 with a long tail
+# out past 15. This sits in that trough, at 3.75x the physical ratio, so it can
+# only reject something far too tall to be granite.
+STONE_ASPECT_MAX = 1.5
+
+
+def _proposal_on_the_ice(win, color: str, view, bounds):
+    """The proposal nearest the hog line that could actually be a stone there.
+
+    Two filters, and both come from looking at real output rather than from
+    reasoning about it. The row band drops the racks of stones stored behind
+    the house. The aspect bound drops the players: with the racks gone, the
+    boxes that were still not on stones were on people wearing the scanned
+    colour -- most often the crouching sweeper, who stands at the very rows a
+    delivery occupies, so no row bound could separate them. Shape does.
+    """
+    top, bottom = bounds
+    props = [p for p in longview.candidates(win, color,
+                                            longview.STONE_WIDTH_AT_HOG_PX)
+             if top <= p.edge_row <= bottom
+             and (p.edge_row - p.top_row) <= STONE_ASPECT_MAX * p.body_px]
+    if not props:
+        return None
+    return min(props, key=lambda p: abs(p.edge_row - view.hog_row))
+
+
+def frames_for_window(moments, view, window, *, n_near: int, n_far: int
+                      ) -> list[SideCandidate]:
+    """Pick the frames worth keeping from one delivery's window.
+
+    ``moments`` is ``(t_abs, crop)`` for this window's own camera, already
+    decoded, and the crops must be **RGB** -- ``longview.colour_mask`` reads
+    channel 0 as red. ``ingest.frames`` decodes ``bgr24``, so a caller feeding
+    it straight from there must flip, exactly as ``scan_clip`` does; get this
+    backwards and every red delivery is scanned as yellow and the other way
+    about. ``window`` is a :class:`harvest.sideshots.Window`: the shot list
+    says a delivery crossed the line inside it, which is what makes this pool
+    different from the blind scan it replaces -- there, ~97% of sampled
+    moments held no delivery at all.
+
+    Frames are ranked by ``|edge_row - hog_row|``, not by time. That is what
+    makes the two window widths comparable: a release-anchored window is 4.5 s
+    and a rest-anchored fallback is 12 s, and a fixed offset into the second
+    would rarely be the crossing. ``n_near`` comes off the top of that ranking
+    and ``n_far`` off the approach -- frames short of the line, which is where
+    a detector has to commit before the paint helps it.
+
+    A window in which nothing was proposed anywhere on the ice still yields
+    ``n_near`` frames from its centre, with ``labels=()``. The shot list says a
+    stone was there; a frame the classical detector cannot read is precisely
+    the frame the replacement most needs, and dropping it would rebuild the
+    ds3 trap of validating against the old detector's opinion.
+
+    ``clip_start_s`` is the window's own ``t0``, so ``sideframes.select``'s
+    ``MAX_PER_CLIP`` treats one delivery as one clip and no single throw can
+    fill a bin with near duplicates of itself.
+    """
+    if not moments:
+        return []
+
+    bounds = ice_bounds(view)
+    shifted = _shifted(view)
+    times = [t for t, _ in moments]
+    frames = [img for _, img in moments]
+    crossing = longview.find_in_frames(frames, shifted, window.color, times)
+
+    scored = []
+    for t, img in moments:
+        win = np.asarray(img, dtype=np.float32)
+        prop = _proposal_on_the_ice(win, window.color, view, bounds)
+        if prop is None:
+            continue
+        scored.append((abs(prop.edge_row - view.hog_row), t, win, prop))
+
+    def row_for(t, win, prop):
+        if prop is None:
+            return SideCandidate(
+                video_id=window.video_id, view=window.camera, t_abs=t,
+                clip_start_s=window.t0, position="clear", outcome=crossing.key,
+                color="", crowding=0, edge_row=None, labels=())
+        return SideCandidate(
+            video_id=window.video_id, view=window.camera, t_abs=t,
+            clip_start_s=window.t0,
+            position=position_of(prop.edge_row, view.hog_row),
+            outcome=crossing.key, color=window.color,
+            crowding=crowding(win, prop.cx, prop.edge_row,
+                              longview.STONE_WIDTH_AT_HOG_PX),
+            edge_row=prop.edge_row,
+            labels=(_label_for(prop, window.color, win.shape),))
+
+    if not scored:
+        # Nothing readable anywhere on the ice: keep the window's middle.
+        mid = len(moments) // 2
+        lo = max(0, mid - n_near // 2)
+        return [row_for(t, None, None) for t, _ in moments[lo:lo + n_near]]
+
+    out: list[SideCandidate] = []
+    taken: set[float] = set()
+    for _d, t, win, prop in sorted(scored, key=lambda s: s[0])[:n_near]:
+        out.append(row_for(t, win, prop))
+        taken.add(t)
+
+    approach = [s for s in scored
+                if s[3].edge_row < view.hog_row and s[1] not in taken]
+    # Furthest back first: the frames where the stone is still short of the
+    # line, which the near pass by construction never reaches.
+    for _d, t, win, prop in sorted(approach, key=lambda s: -s[0])[:n_far]:
+        out.append(row_for(t, win, prop))
+
+    out.sort(key=lambda c: c.t_abs)
+    return out
