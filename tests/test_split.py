@@ -196,8 +196,15 @@ class TestLongSplit:
         assert split.long_split(
             r, delivery_at(), t_hog=split.hog_crossing(r.track)) is None
 
-    def test_no_release_means_no_split(self):
-        assert split.long_split(None, delivery_at(), t_hog=0.0) is None
+    def test_no_release_no_longer_means_no_split(self):
+        """Deliberately reversed. A release feeds neither end of a hog-to-hog
+        split; it fed two checks, both already conditional. Requiring one
+        refused 35 shots on VXU9xwmugRg that had both crossings -- and the
+        overhead camera losing ~40% of throws before the hog line is the whole
+        reason the side view was built. See TestReleaseIsOptional below for
+        what replaced the mispairing check it did buy.
+        """
+        assert split.long_split(None, delivery_at(), t_hog=0.0) is not None
 
     def test_no_delivery_means_no_split(self):
         r = release_at()
@@ -321,3 +328,47 @@ class TestTheSideViewIsTheSourceForTheThrowingEnd:
         assert split.hog_crossing(r.track) is None
         s = split.long_split(r, delivery_at(t0=40.0), t_hog=5.0)
         assert s is not None and s.t_start == pytest.approx(5.0)
+
+
+class TestReleaseIsOptional:
+    """`long_split` is hog to hog: the near crossing comes from the side view
+    and the far one from the arriving end's panel. A release track feeds
+    neither, only two checks -- and requiring one anyway refused 35 shots on
+    VXU9xwmugRg that had both crossings. The overhead camera losing ~40% of
+    throws before the hog line is the reason the side view exists; demanding a
+    release put that loss straight back.
+    """
+
+    def _delivery(self, t_far):
+        class D:
+            track = tuple((t_far - 1 + i * 0.5, 0.0, split.HOG_APPARENT_Y_M - 1 + i)
+                          for i in range(4))
+        return D()
+
+    def test_a_split_publishes_with_no_release_at_all(self):
+        sp = split.long_split(None, self._delivery(20.0), t_hog=10.0, v_hog=2.5)
+        assert sp is not None
+        assert sp.seconds > 0
+
+    def test_it_still_needs_both_crossings(self):
+        assert split.long_split(None, None, t_hog=10.0, v_hog=2.5) is None
+        assert split.long_split(None, self._delivery(20.0), t_hog=None) is None
+
+    def test_a_mean_speed_the_near_crossing_cannot_account_for_is_refused(self):
+        """Without a release there is no panel speed to compare against, so
+        the bound is physical: a stone only slows, so its mean speed over the
+        baseline cannot exceed the speed it crossed the first line at."""
+        # 22.229 m in 2 s is 11 m/s, against a near crossing of 2.0 m/s.
+        assert split.long_split(None, self._delivery(12.0), t_hog=10.0,
+                                v_hog=2.0) is None
+
+    def test_that_bound_does_not_fire_on_a_plausible_split(self):
+        sp = split.long_split(None, self._delivery(20.0), t_hog=10.0, v_hog=2.5)
+        assert sp is not None
+
+    def test_without_v_hog_the_bound_cannot_run_and_does_not_pretend_to(self):
+        """A split with neither a release nor a side-view speed is published
+        unchecked for pairing. That is a real gap, not an oversight -- it is
+        worth knowing rather than hiding behind a default."""
+        sp = split.long_split(None, self._delivery(12.0), t_hog=10.0, v_hog=None)
+        assert sp is not None

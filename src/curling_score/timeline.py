@@ -76,7 +76,8 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
         throw = s.throw
         dv = getattr(s, "delivery", None)
         rel = getattr(s, "release", None)
-        sp = split.long_split(rel, dv, t_hog=hogtime.crossing(s))
+        sp = split.long_split(rel, dv, t_hog=hogtime.crossing(s),
+                              v_hog=hogtime.speed_at_hog(s))
         t_tee = thinking.tee_crossing(s)
         think = clock.per_shot[i] if i < len(clock.per_shot) else None
         kind, kind_conf = classify.classify_shot(s)

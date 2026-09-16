@@ -132,17 +132,28 @@ def speed_at_line(track, y_line: float = HOG_APPARENT_Y_M) -> float | None:
     return None
 
 
-def long_split(release, delivery, *, t_hog=None) -> Split | None:
+def long_split(release, delivery, *, t_hog=None, v_hog=None) -> Split | None:
     """The split for one shot, or None when either end could not be timed.
 
-    The throwing end comes from the side view (``game/hogtime.py``): the
-    overhead panel loses about 40% of throws before the hog line. The panel's
-    own tripwire is kept only to check that answer -- never to stand in for it,
-    because two methods inside one game are not comparable with each other.
+    Hog line to hog line: ``t_hog`` is the throwing end, from the side view
+    (``game/hogtime.py``), and the far crossing is the arriving end's overhead
+    panel. The panel's own tripwire at the throwing end is kept only to check
+    that answer -- never to stand in for it, because two methods inside one
+    game are not comparable with each other.
+
+    ``release`` is OPTIONAL, and that is a deliberate loosening. It feeds
+    neither end of the arithmetic -- only two checks, both already conditional
+    on data it may not carry. Requiring it anyway refused 35 shots on
+    VXU9xwmugRg that had both crossings and would have published: the overhead
+    camera loses about 40% of throws before the hog line, which is the whole
+    reason the side view exists, and demanding a release put that loss back.
+
+    What a release does buy is the mispairing check, and without one ``v_hog``
+    stands in: the side view's speed at the near line, in real metres.
     """
-    if release is None or delivery is None or t_hog is None:
+    if delivery is None or t_hog is None:
         return None
-    panel = hog_crossing(getattr(release, "track", ()))
+    panel = hog_crossing(getattr(release, "track", ()) if release else ())
     if panel is not None and abs(panel - t_hog) > CROSS_CHECK_S:
         return None
     start = t_hog
@@ -160,9 +171,20 @@ def long_split(release, delivery, *, t_hog=None) -> Split | None:
     # up (see the module docstring), so the old form of this check -- mean
     # speed over the baseline against the slide speed -- had one side in real
     # metres and the other in the panel's, and threw away good splits.
-    near = speed_at_line(getattr(release, "track", ()))
+    near = speed_at_line(getattr(release, "track", ())) if release else None
     far = speed_at_line(getattr(delivery, "track", ()))
     if near and far and far > near * SPEED_TOLERANCE:
         return None
+    if near is None and v_hog:
+        # No release track, so no panel speed to compare the far crossing
+        # against. A stone only ever slows, so its mean speed over the baseline
+        # cannot exceed the speed it crossed the first line at -- and `v_hog`
+        # is in real metres from the side view's perspective solve, so this is
+        # a distance against a speed in the same units. A delivery mispaired
+        # with a stone that arrived earlier shows up here as a mean speed the
+        # near crossing cannot account for.
+        mean = BASELINE_M / (end - start)
+        if mean > v_hog * SPEED_TOLERANCE:
+            return None
     return Split(seconds=end - start, baseline_m=BASELINE_M,
                  t_start=start, t_end=end)

@@ -43,6 +43,9 @@ def time_hog_crossings(shots, video, view, *, find=longview.find_crossing) -> No
         got = find(video, view, shot.color, t0, t1)
         if got:
             shot.t_hog_s = got.t
+            # Carried so `split.long_split` can bound the pairing without a
+            # release track. See `speed_at_hog` below.
+            shot.v_hog_m_s = got.speed_m_s
 
 
 def crossing(shot):
@@ -53,3 +56,12 @@ def crossing(shot):
     same line from different cameras is exactly the confusion to avoid.
     """
     return getattr(shot, "t_hog_s", None)
+
+
+def speed_at_hog(shot):
+    """How fast this shot was travelling at the throwing end's hog line, m/s.
+
+    From the side view's own track through the perspective solve, so it is in
+    real metres -- which is what lets it be compared against a distance.
+    """
+    return getattr(shot, "v_hog_m_s", None)

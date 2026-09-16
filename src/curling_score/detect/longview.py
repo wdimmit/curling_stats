@@ -119,6 +119,13 @@ class Crossing:
     # this module reports -- but see WIDTH_BOUNDS' comment above before treating
     # it as evidence for those bounds: it is a sample drawn from inside them.
     width_px: float = 0.0
+    # The track's mean speed in REAL metres, from the perspective solve. Unlike
+    # width_px this is read: `split.long_split` uses it to bound a hog-to-hog
+    # split when there is no release track to check the pairing against. Real
+    # metres is what makes it usable there -- the panel's own metres are not
+    # trustworthy that far up the sheet, which is why the older check compared
+    # two panel speeds rather than a speed against a distance.
+    speed_m_s: float | None = None
 
     def __bool__(self) -> bool:
         return self.t is not None
@@ -293,6 +300,7 @@ def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
     if any(b - a < -1.0 for (_, a, _), (_, b, _) in zip(local, local[1:])):
         return Crossing(None, "the candidate did not travel steadily", KEY_UNSTEADY)
     span = track[-1][0] - track[0][0]
+    speed = None
     if span > 0:
         metres = abs(view.metres_at(track[-1][1]) - view.metres_at(track[0][1]))
         speed = metres / span
@@ -301,7 +309,9 @@ def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
     (t0, r0, _), (t1, r1, _) = track[idx], track[idx + 1]
     frac = (view.hog_row - r0) / (r1 - r0)
     t = t0 + frac * (t1 - t0) + (OFFSET_S if offset_s is None else offset_s)
-    return Crossing(t, "ok", KEY_OK, width_px=float(np.median([b for _, _, b in track])))
+    return Crossing(t, "ok", KEY_OK,
+                    width_px=float(np.median([b for _, _, b in track])),
+                    speed_m_s=speed)
 
 
 def find_in_frames(frames, view, color, times) -> Crossing:

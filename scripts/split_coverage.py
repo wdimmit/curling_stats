@@ -91,7 +91,8 @@ GATE_UNACCOUNTED = "unaccounted"         # none of the above -- would mean long_
                                          # should have published; a bug in this mirror
                                          # if it is ever nonzero, not in split.py
 
-GATES = (GATE_NO_RELEASE, GATE_NO_DELIVERY, GATE_CROSS_CHECK,
+GATES = (GATE_NO_RELEASE, GATE_NO_RELEASE + ":but_computable",
+        GATE_NO_DELIVERY, GATE_CROSS_CHECK,
         GATE_NO_FAR_HOG, GATE_SPEED_TOLERANCE, GATE_UNACCOUNTED)
 
 
@@ -103,6 +104,15 @@ def attribute_side_refusal(release, delivery, t_hog):
     order-matched checks is why, not a missing reading.
     """
     if release is None:
+        # Would this shot publish if the guard let it through? `long_split`
+        # computes start from t_hog and end from the delivery track; release
+        # feeds only two CONDITIONAL checks. So "no release" is fatal by the
+        # guard, not by the arithmetic.
+        if delivery is not None:
+            end = split.crossing_time(getattr(delivery, "track", ()) or (),
+                                      split.HOG_APPARENT_Y_M)
+            if end is not None and end > t_hog:
+                return GATE_NO_RELEASE + ":but_computable"
         return GATE_NO_RELEASE
     if delivery is None:
         return GATE_NO_DELIVERY
