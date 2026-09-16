@@ -195,6 +195,8 @@ def _shots_for_end(read_path, proxy_setups, end, from_s, detector):
 # stands in for the colour scan as the proposer. hogtime's `find` keyword is
 # the whole seam, so nothing in the pipeline changes to measure this.
 _SIDE_MODEL = None
+# Filled when --dump-refused is given; see the GATE_NO_FAR_HOG branch below.
+_REFUSED_OUT = None
 
 
 def _find_crossing(video_, view_, color, t0, t1):
@@ -419,7 +421,27 @@ def measure_video(video_path, root, detector):
                     if ss is None:
                         # FIX 1: measure, don't guess, which gate stopped a
                         # side-view crossing longview was willing to report.
-                        stats.add_gate(attribute_side_refusal(r, delivery, t_hog))
+                        gate = attribute_side_refusal(r, delivery, t_hog)
+                        stats.add_gate(gate)
+                        if gate == GATE_NO_FAR_HOG and _REFUSED_OUT is not None:
+                            # The arriving panel is now the largest loss, so
+                            # record what its track actually did rather than
+                            # only that it did not cross.
+                            tr = list(getattr(delivery, "track", ()) or ())
+                            ys = [pt[2] for pt in tr] if tr else []
+                            _REFUSED_OUT.append({
+                                "video": vid, "end": end.number,
+                                "shot": getattr(shot, "number", None),
+                                "color": shot.color, "t_hog": round(t_hog, 2),
+                                "t_enter": round(getattr(delivery, "t_enter", float("nan")), 2),
+                                "t_rest": round(getattr(delivery, "t_rest", float("nan")), 2),
+                                "track_n": len(tr),
+                                "track_t0": round(tr[0][0], 2) if tr else None,
+                                "track_t1": round(tr[-1][0], 2) if tr else None,
+                                "y_min": round(min(ys), 3) if ys else None,
+                                "y_max": round(max(ys), 3) if ys else None,
+                                "hog_apparent_y_m": split.HOG_APPARENT_Y_M,
+                            })
 
             done_ends += 1
             print(f"  {vid} game {game.index} end {end.number}: done "
@@ -460,6 +482,9 @@ def _hand_mark_agreement(video_path, views, marks_path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--cache-root", default=None)
+    ap.add_argument("--dump-refused", default=None,
+                    help="write per-shot diagnostics for no_far_hog_crossing "
+                         "refusals to this JSON path")
     ap.add_argument("--side-weights", default=None,
                     help="a trained side-view detector to use as the crossing "
                          "proposer instead of the colour scan (e.g. "
@@ -468,6 +493,10 @@ def main():
     ap.add_argument("--videos", nargs="+", default=None,
                     help="video ids to measure (default: every *.mp4 in the cache)")
     args = ap.parse_args()
+
+    if args.dump_refused:
+        global _REFUSED_OUT
+        _REFUSED_OUT = []
 
     if args.side_weights:
         from ultralytics import YOLO
@@ -569,6 +598,11 @@ def main():
     print("\n  This script only measures; the gate in the task brief "
          "(coverage >= 90%, panel agreement <= 0.25s, hand marks <= 0.1s) "
          "is reported against below, not decided here.", flush=True)
+
+    if args.dump_refused and _REFUSED_OUT is not None:
+        Path(args.dump_refused).write_text(json.dumps(_REFUSED_OUT, indent=1))
+        print(f"  wrote {len(_REFUSED_OUT)} no_far_hog_crossing refusals to "
+             f"{args.dump_refused}", flush=True)
 
 
 if __name__ == "__main__":
