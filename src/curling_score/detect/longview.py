@@ -238,16 +238,24 @@ def _crossing_index(track, hog_row):
     return None
 
 
-def find_in_frames(frames, view, color, times) -> Crossing:
-    """Time the crossing of ``view.hog_row`` in already-decoded frames."""
-    x, y, _w, _h = view.rect
-    tracks: dict[int, list] = {}
-    for frame, t in zip(frames, times):
-        win = np.asarray(frame, dtype=np.float32)[y:, x:]
-        for p in candidates(win, color, STONE_WIDTH_AT_HOG_PX):
-            key = int(p.cx // 120)        # a stone never moves 120 px sideways
-            tracks.setdefault(key, []).append((t, p.edge_row, p.body_px))
+def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
+    """Turn ``{key: [(t, edge_row, body_px), ...]}`` into a verdict.
 
+    Split out of :func:`find_in_frames` so a different *proposer* can be
+    measured against the same gates. Everything here -- what counts as moving,
+    what makes two crossers ambiguous, steadiness, the speed bound, and the
+    interpolation -- is the judgement about deliveries; only the step that says
+    "there is a stone at this row in this frame" differs between the colour
+    scan and a trained detector. Comparing the two is only meaningful if this
+    part is shared rather than reimplemented alongside it.
+
+    ``offset_s`` is the one thing that must NOT be shared. It corrects where a
+    proposer puts the stone's trailing edge against where a person judges the
+    leading edge to touch the paint, and that is a property of the proposer,
+    not of the gates. ``OFFSET_S`` is the colour scan's value; a trained
+    detector drawing the granite's own edge has a different one, and inheriting
+    this one made it read 0.073 s late on every crossing.
+    """
     moving = [tr for tr in tracks.values()
               if len(tr) >= _MIN_SAMPLES and tr[-1][1] > tr[0][1]]
     if not moving:
@@ -292,8 +300,20 @@ def find_in_frames(frames, view, color, times) -> Crossing:
             return Crossing(None, f"speed {speed:.2f} m/s is not a delivery", KEY_BAD_SPEED)
     (t0, r0, _), (t1, r1, _) = track[idx], track[idx + 1]
     frac = (view.hog_row - r0) / (r1 - r0)
-    t = t0 + frac * (t1 - t0) + OFFSET_S
+    t = t0 + frac * (t1 - t0) + (OFFSET_S if offset_s is None else offset_s)
     return Crossing(t, "ok", KEY_OK, width_px=float(np.median([b for _, _, b in track])))
+
+
+def find_in_frames(frames, view, color, times) -> Crossing:
+    """Time the crossing of ``view.hog_row`` in already-decoded frames."""
+    x, y, _w, _h = view.rect
+    tracks: dict[int, list] = {}
+    for frame, t in zip(frames, times):
+        win = np.asarray(frame, dtype=np.float32)[y:, x:]
+        for p in candidates(win, color, STONE_WIDTH_AT_HOG_PX):
+            key = int(p.cx // 120)        # a stone never moves 120 px sideways
+            tracks.setdefault(key, []).append((t, p.edge_row, p.body_px))
+    return crossing_from_tracks(tracks, view)
 
 
 def decode(video, rect, t0: float, t1: float, fps: float = 30.0):

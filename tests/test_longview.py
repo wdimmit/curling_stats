@@ -208,3 +208,45 @@ class TestAgainstHandMarkedCrossings:
                 found += bool(longview.find_crossing(primary_video, view,
                                                      m["color"], lo, hi))
         assert found / total >= 0.85, f"found {found} of {total}"
+
+
+SideView = sideview.SideView
+
+
+class TestOffsetBelongsToTheProposer:
+    """`OFFSET_S` corrects where a proposer puts a stone's trailing edge against
+    where a person judges its leading edge to touch the paint. The colour scan
+    reads early because its edge includes the contact shadow; a trained
+    detector draws the granite's own edge and does not. Sharing one constant
+    between them made the model read 0.073 s late on all 27 hand marks.
+    """
+
+    def _track(self, hog_row):
+        # 3.3 rows per 0.1 s is about 33 rows a second, which near the hog line
+        # is roughly 2.2 m/s -- mid-range for SPEED_BOUNDS_M_S. The first
+        # version of this fixture moved 10 rows a sample, which is over the
+        # bound, so `crossing_from_tracks` refused both calls and the test
+        # compared None with None and passed while proving nothing.
+        return {0: [(10.0 + i * 0.1, hog_row - 8.0 + i * 3.3, 52.0)
+                    for i in range(6)]}
+
+    def test_the_default_is_the_colour_scans_own_offset(self):
+        view = SideView(rect=(0, 0, 810, 1080), tee_row=435.0, hog_row=520.0)
+        a = longview.crossing_from_tracks(self._track(520.0), view)
+        b = longview.crossing_from_tracks(self._track(520.0), view,
+                                          offset_s=longview.OFFSET_S)
+        assert a.t is not None, a.reason
+        assert a.t == pytest.approx(b.t)
+
+    def test_a_proposer_can_supply_its_own(self):
+        view = SideView(rect=(0, 0, 810, 1080), tee_row=435.0, hog_row=520.0)
+        base = longview.crossing_from_tracks(self._track(520.0), view,
+                                             offset_s=0.0)
+        moved = longview.crossing_from_tracks(self._track(520.0), view,
+                                              offset_s=0.25)
+        assert base.t is not None and moved.t is not None, base.reason
+        assert moved.t - base.t == pytest.approx(0.25)
+
+    def test_the_model_proposer_does_not_inherit_it(self):
+        from curling_score.detect import sidemodel
+        assert sidemodel.OFFSET_S != longview.OFFSET_S
