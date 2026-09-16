@@ -67,11 +67,37 @@ SPEED_TOLERANCE = 1.4
 # That is a threshold sitting in the middle of its own distribution, which is
 # where a number does the most damage per unit of wrongness.
 #
-# What would measure it: the same script over more than one video, comparing
-# the disagreement distribution against the hand-marked crossings in
-# datasets/hogmarks, which are the only independent truth here. If the
-# disagreements are bimodal -- tight agreement plus a tail of mispairings --
-# the cut belongs in the valley, wherever that falls.
+# MEASURED, 2026-09-16, exactly as this note asked. On AEqLTgM25Tc, 60 paired
+# crossings with the side view proposed by ds13b:
+#
+#   ...0.21 0.22 0.25 0.25 0.26 0.26 0.27 0.28 0.28 0.28 0.28 0.29
+#   [ nothing whatever between 0.288 and 0.801 ]
+#   0.80 0.85 0.86 0.87 0.89 0.89 0.90 0.93 0.94 0.96 0.97 0.98
+#
+# So it IS bimodal, the valley is 0.513 s wide and empty, and 0.25 sits on the
+# near cluster's shoulder rather than in the valley: 11 of 22 refusals are
+# between 0.25 and 0.29, refused by a hair.
+#
+# And the far cluster is not a tail of mispairings. All twelve have the same
+# sign -- the panel reads 0.80-0.98 s LATE every time. Three of the refused
+# shots have an independent hand mark in datasets/hogmarks, and they say which
+# camera is wrong:
+#
+#   shot          hand mark    side view      err      panel      err
+#   e2s8 yellow    8454.967    8454.953   -0.014   8455.920   +0.953
+#   e3s7 yellow    9410.767    9410.774   +0.007   9410.496   -0.271
+#   e5s2 red      11339.033   11339.006   -0.027  11338.717   -0.316
+#
+# The side view is right to 0.03 s and the panel is wrong by up to 0.95 s. This
+# gate is therefore discarding CORRECT crossings because an unreliable camera
+# disagrees -- and the panel's tripwire sits at row 13 of a 516-row panel, at
+# the very frame edge, which is where its own docstring says the scale is
+# collapsing fastest.
+#
+# NOT CHANGED HERE. Raising the cut into the valley would recover the 11 near
+# refusals and still reject all 12 far ones, but that is a decision about what
+# ships, and the ~0.9 s panel offset wants explaining first: twelve shots all
+# late by the same amount is a bug with a cause, not scatter.
 CROSS_CHECK_S = 0.25
 
 
