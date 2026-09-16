@@ -90,6 +90,7 @@ _PAGE = r"""<!doctype html>
         cursor:move; }
   .bx.c1 { border-color:var(--yel); }
   .bx.sel { box-shadow:0 0 0 2px #fff, 0 0 0 4px #333; }
+  .bx.iffy { border-style:dashed; }
   .h { position:absolute; width:11px; height:11px; background:#fff;
        border:1px solid #333; border-radius:2px; }
   .h.nw{left:-6px;top:-6px;cursor:nwse-resize} .h.ne{right:-6px;top:-6px;cursor:nesw-resize}
@@ -106,9 +107,10 @@ _PAGE = r"""<!doctype html>
 <h1>__TITLE__ &mdash; <code>__SCOPE__</code></h1>
 <p class="muted">Drag a box to move it, a corner to resize. Click a box then
 <b>Delete</b> to remove it. With <b>+red</b> or <b>+yellow</b> armed, click the
-ice where a stone is and a box arrives already the right size for that row --
-the perspective solve knows how wide a stone is there, so sizing needs no model
-and usually no drag. A frame turns green once you mark it <b>reviewed</b>
+ice where a stone is and <b>SAM segments it</b> -- the click says what it is,
+the model says where its edges are, and the perspective solve picks whichever
+of the model's readings is stone-sized at that row. Without the segmenter
+running, the box still arrives correctly sized by geometry alone. A frame turns green once you mark it <b>reviewed</b>
 (<b>R</b>); only reviewed frames are exported, because a frame nobody looked at
 still carries whatever the detector said. Work is kept in this browser as you
 go. <b>N</b>/<b>P</b> jump between frames.</p>
@@ -119,6 +121,7 @@ go. <b>N</b>/<b>P</b> jump between frames.</p>
   <button id="addr">+red</button>
   <button id="addy">+yellow</button>
   <span id="count" class="muted"></span>
+  <span id="segstate" class="muted">SAM: click a stone</span>
   <button id="export">Export JSON</button>
   <button id="dl">Download</button>
   <textarea id="out" placeholder="export appears here"></textarea>
@@ -153,7 +156,7 @@ function drawBoxes(fig, item) {
   stage.querySelectorAll(".bx").forEach(e => e.remove());
   st(item).boxes.forEach((b, i) => {
     const d = document.createElement("div");
-    d.className = "bx c" + b[0];
+    d.className = "bx c" + b[0] + (b[5] ? " iffy" : "");
     d.style.left = (b[1] - b[3] / 2) * 100 + "%";
     d.style.top = (b[2] - b[4] / 2) * 100 + "%";
     d.style.width = b[3] * 100 + "%";
@@ -191,14 +194,54 @@ function build() {
   save();
 }
 
-// A click on bare ice with a colour armed: place a box already the right size.
-// width(row) = k * (row - yh), straight from the perspective solve.
-function place(item, nx, ny, cls) {
+// A click with a colour armed. The click says WHAT; SAM says WHERE the edges
+// are. If the segmenter is not there -- the page opened as a plain file, or
+// the server is down -- fall back to the geometric box, which is the right
+// size for that row even though it cannot know the stone's exact position.
+function placeGeometric(item, nx, ny, cls) {
   const row = ny * item.height;
   let w = item.geom.k * (row - item.geom.yh);
   if (!(w > 2)) w = 52;                      // off the map: nominal hog width
   const h = w * HEIGHT_RATIO;
   st(item).boxes.push([cls, nx, ny, w / item.width, h / item.height]);
+}
+
+let segOK = true;          // flips false the first time /segment is unreachable
+
+async function place(item, nx, ny, cls, fig) {
+  if (!segOK) { placeGeometric(item, nx, ny, cls); save(); drawBoxes(fig, item); return; }
+  const stage = fig.querySelector(".stage");
+  stage.style.cursor = "progress";
+  try {
+    const r = await fetch("/segment", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({stem: item.stem, x: nx * item.width,
+                            y: ny * item.height, cls: cls}),
+    });
+    const j = await r.json();
+    if (j.ok && j.box) {
+      const [x0, y0, x1, y1] = j.box;
+      const w = (x1 - x0 + 1) / item.width, h = (y1 - y0 + 1) / item.height;
+      // The "geometry doubts this" flag rides as a SIXTH element, not as a
+      // property on the array: JSON.stringify drops properties on arrays, so
+      // as a property it survived in memory and vanished on reload, and the
+      // dashed border silently became solid. `payload()` takes only the first
+      // five, so the export shape is unchanged.
+      st(item).boxes.push([cls, (x0 + x1 + 1) / 2 / item.width,
+                           (y0 + y1 + 1) / 2 / item.height, w, h,
+                           j.plausible ? 0 : 1]);
+    } else {
+      placeGeometric(item, nx, ny, cls);
+    }
+  } catch (e) {
+    segOK = false;                       // say so once, then stop trying
+    const n = document.getElementById("segstate");
+    if (n) n.textContent = "segmenter offline - boxes sized by geometry";
+    placeGeometric(item, nx, ny, cls);
+  } finally {
+    stage.style.cursor = "";
+    save(); drawBoxes(fig, item);
+  }
 }
 
 let drag = null;
@@ -211,7 +254,7 @@ function onDown(ev, fig, item, idx) {
   const bx = ev.target.closest(".bx");
 
   if (!bx) {
-    if (arm !== null) { place(item, nx, ny, arm); save(); drawBoxes(fig, item); }
+    if (arm !== null) { place(item, nx, ny, arm, fig); }
     sel = null;
     return;
   }

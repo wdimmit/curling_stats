@@ -1,0 +1,177 @@
+"""Click a stone, get its box: SAM behind the box editor.
+
+The review of the first fifty frames settled what the colour detector can and
+cannot do. It finds *where* something red or yellow is, which is a real skill --
+a handle is genuinely saturated against grey ice. It is bad at two other
+things, and they turned out to be the ones that mattered: deciding whether the
+thing is a stone, and saying how far it extends. ``longview.candidates`` walks
+down from the handle looking for granite and stops at whatever is darker than
+ice, so its box was always a guess, and essentially none of them were usable.
+
+A person settles identity in the time it takes to look. So let them: the click
+says *this is a red stone*, and SAM says where its edges are. Measured on an
+RTX A2000, encoding a frame costs 110 ms and each click after that about 95 ms,
+so the loop is a person clicking at their own pace, not waiting on a GPU.
+
+Geometry's job changes here, and improves. As a *filter* over colour blobs it
+was unreliable, because rejecting a thing by its aspect only works if the
+measured extent is real. As a *chooser* among SAM's own candidate masks it is
+exactly right: SAM returns several readings of one click -- the stone, the
+stone and its shadow, the stone and the hand on it -- and
+``SideView.stone_width_at`` knows which of those is stone-sized at that row.
+The model proposes, the calibration disposes.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+from functools import lru_cache
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+# Beyond these a mask is not a reading of a stone, it is a reading of the ice
+# or of a person. Deliberately wider than the bounds the pool's own filter
+# uses: there a bad box became a bad label silently, whereas here a person is
+# looking at the result and can drag or delete it.
+WIDTH_TOL = (0.45, 2.20)
+ASPECT_TOL = (0.20, 1.20)
+
+
+def _bbox(mask):
+    import numpy as np
+
+    ys, xs = np.nonzero(mask)
+    if len(xs) < 8:
+        return None
+    return int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+
+
+def score(box, geom) -> tuple[float, float, float]:
+    """How stone-like a mask's box is. Lower is better.
+
+    Scored on the log of the width ratio so that half-size and double-size are
+    equally wrong -- on a plain ratio, everything too small crowds into (0, 1)
+    and everything too large has the whole line above it, which quietly makes
+    the chooser prefer masks that are too small.
+    """
+    x0, y0, x1, y1 = box
+    w, h = float(x1 - x0 + 1), float(y1 - y0 + 1)
+    expect = geom["k"] * (y1 - geom["yh"])
+    if expect <= 1.0:
+        return math.inf, w, 0.0
+    ratio, aspect = w / expect, (h / w if w else 99.0)
+    if not (WIDTH_TOL[0] <= ratio <= WIDTH_TOL[1]):
+        return math.inf, ratio, aspect
+    if not (ASPECT_TOL[0] <= aspect <= ASPECT_TOL[1]):
+        return math.inf, ratio, aspect
+    return abs(math.log(ratio)), ratio, aspect
+
+
+class Segmenter:
+    """One SAM, with the last few frames' embeddings kept warm."""
+
+    def __init__(self, weights: str, images: Path, cache: int = 4):
+        from ultralytics import SAM
+
+        self.model = SAM(weights)
+        self.images = Path(images)
+        self._current = None
+        self._cache = cache
+
+    @lru_cache(maxsize=1)
+    def _warm(self):  # pragma: no cover - the model's own lazy build
+        return None
+
+    def _set_image(self, stem: str):
+        import cv2
+
+        if self._current == stem:
+            return True
+        path = self.images / f"{stem}.jpg"
+        if not path.is_file():
+            return False
+        img = cv2.imread(str(path))
+        if img is None:
+            return False
+        if self.model.predictor is None:
+            # The predictor only exists after one call has built it.
+            self.model(img, points=[[img.shape[1] // 2, img.shape[0] // 2]],
+                       labels=[1], verbose=False)
+        self.model.predictor.set_image(img)
+        self._current = stem
+        return True
+
+    def box_at(self, stem: str, x: float, y: float, geom: dict) -> dict:
+        """The stone-like box around ``(x, y)``, in pixels, or a reason why not."""
+        import numpy as np
+
+        if not self._set_image(stem):
+            return {"ok": False, "reason": f"no image for {stem}"}
+        res = self.model.predictor(points=np.array([[float(x), float(y)]]),
+                                   labels=np.array([1]),
+                                   multimask_output=True)
+        masks = res[0].masks
+        if masks is None:
+            return {"ok": False, "reason": "no mask"}
+
+        best = None
+        seen = []
+        for m in masks.data.cpu().numpy():
+            box = _bbox(m)
+            if box is None:
+                continue
+            s, ratio, aspect = score(box, geom)
+            seen.append({"box": box, "ratio": round(ratio, 2),
+                         "aspect": round(aspect, 2),
+                         "score": None if s == math.inf else round(s, 3)})
+            if best is None or s < best[0]:
+                best = (s, box, ratio, aspect)
+        if best is None:
+            return {"ok": False, "reason": "no usable mask", "candidates": seen}
+        s, box, ratio, aspect = best
+        # An out-of-bounds best is still returned: the person clicked, so they
+        # get something to drag rather than nothing, and `plausible` says how
+        # much to trust it.
+        return {"ok": True, "box": list(box), "ratio": round(ratio, 2),
+                "aspect": round(aspect, 2), "plausible": s != math.inf,
+                "candidates": seen}
+
+
+def make_handler(directory: Path, seg: Segmenter, geoms: dict):
+    class Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, directory=str(directory), **kw)
+
+        def log_message(self, *a):  # quiet; the editor is chatty by design
+            pass
+
+        def do_POST(self):
+            if self.path != "/segment":
+                self.send_error(404)
+                return
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                req = json.loads(self.rfile.read(n) or b"{}")
+                stem = req["stem"]
+                out = seg.box_at(stem, float(req["x"]), float(req["y"]),
+                                 geoms.get(stem) or req.get("geom") or {})
+            except Exception as exc:  # noqa: BLE001 -- a bad click must not kill the server
+                out = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+            body = json.dumps(out).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    return Handler
+
+
+def serve(directory, items, weights, port: int = 8777, host: str = "127.0.0.1"):
+    directory = Path(directory)
+    geoms = {it["stem"]: it["geom"] for it in items}
+    seg = Segmenter(weights, directory / "images")
+    httpd = ThreadingHTTPServer((host, port),
+                                make_handler(directory, seg, geoms))
+    return httpd

@@ -106,3 +106,27 @@ class TestReplacementEdits:
         e = labels.parse_edits_full({"reject": ["f1|0.5,0.5"]})
         assert e.boxes == {}
         assert e.reject == ("f1|0.5,0.5",)
+
+
+class TestUncertaintyFlagSurvives:
+    """SAM's "geometry doubts this" flag rides as a sixth array element.
+
+    As a property on the array (`b.plausible = ...`) it survived in memory and
+    vanished the moment `save()` ran `JSON.stringify`, so the dashed border
+    silently became solid on reload -- the reviewer would stop being told
+    which boxes to look at twice.
+    """
+
+    def test_the_flag_is_an_array_element_not_a_property(self):
+        src = boxedit._PAGE
+        assert "b.plausible =" not in src
+        assert "j.plausible ? 0 : 1" in src
+        assert 'b[5] ? " iffy" : ""' in src
+
+    def test_the_export_keeps_only_the_five_label_fields(self):
+        """A sixth element must not reach the label files: `apply_edits`
+        builds a Box from exactly five."""
+        src = boxedit._PAGE
+        assert "b.map" not in src
+        assert "[b[0], +b[1].toFixed(6), +b[2].toFixed(6)," in src
+        assert "+b[3].toFixed(6), +b[4].toFixed(6)]" in src
