@@ -202,6 +202,8 @@ _REFUSED_OUT = None
 _PUBLISHED_OUT = None
 # Every refused side crossing with the numbers its gate turned on.
 _GATES_OUT = None
+# Every crossing both cameras timed, so an offset below the gate is visible.
+_PAIRS_OUT = None
 
 
 def _find_crossing(video_, view_, color, t0, t1):
@@ -437,6 +439,20 @@ def measure_video(video_path, root, detector):
                     stats.side_crossings_found += 1
                     if panel_t is not None:
                         stats.diffs.append(t_hog - panel_t)
+                        if _PAIRS_OUT is not None:
+                            # Every paired crossing, passed or refused. The
+                            # refusal dump alone is a censored sample -- it
+                            # cannot show an offset smaller than the gate.
+                            _PAIRS_OUT.append({
+                                "video": vid, "game": game.index,
+                                "end": end.number,
+                                "shot": getattr(shot, "number", None),
+                                "color": shot.color,
+                                "house": end.house,
+                                "t_hog": round(t_hog, 3),
+                                "panel": round(panel_t, 3),
+                                "delta": round(t_hog - panel_t, 3),
+                            })
                     if ss is None:
                         # FIX 1: measure, don't guess, which gate stopped a
                         # side-view crossing longview was willing to report.
@@ -538,10 +554,11 @@ def main():
     args = ap.parse_args()
 
     if args.dump_refused:
-        global _REFUSED_OUT, _PUBLISHED_OUT, _GATES_OUT
+        global _REFUSED_OUT, _PUBLISHED_OUT, _GATES_OUT, _PAIRS_OUT
         _REFUSED_OUT = []
         _PUBLISHED_OUT = []
         _GATES_OUT = []
+        _PAIRS_OUT = []
 
     if args.side_weights:
         from ultralytics import YOLO
@@ -655,6 +672,10 @@ def main():
             Path(args.dump_refused).stem + "_gates.json")
         gates.write_text(json.dumps(_GATES_OUT, indent=1))
         print(f"  wrote {len(_GATES_OUT)} gate decisions to {gates}", flush=True)
+        pairs = Path(args.dump_refused).with_name(
+            Path(args.dump_refused).stem + "_pairs.json")
+        pairs.write_text(json.dumps(_PAIRS_OUT, indent=1))
+        print(f"  wrote {len(_PAIRS_OUT)} paired crossings to {pairs}", flush=True)
         print(f"  wrote {len(_PUBLISHED_OUT)} published tracks to {pub}", flush=True)
 
 
