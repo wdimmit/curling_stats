@@ -140,6 +140,7 @@ reviewed frame with no boxes says something useful: no stone in the band.
   <span id="count" class="muted"></span>
   <span id="segstate" class="muted">SAM: click a stone</span>
   <button id="export">Export JSON</button>
+  <button id="save">Save to server</button>
   <button id="dl">Download</button>
   <textarea id="out" placeholder="export appears here"></textarea>
 </div>
@@ -360,6 +361,20 @@ function payload() {
 document.getElementById("export").onclick = () => {
   document.getElementById("out").value = JSON.stringify(payload(), null, 1);
 };
+document.getElementById("save").onclick = async () => {
+  const p = payload();
+  try {
+    const r = await fetch("/save", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(p)});
+    const j = await r.json();
+    note(j.ok ? ("saved " + j.frames + " frames, " + j.boxes + " boxes -> " + j.path)
+              : ("save failed: " + j.reason));
+  } catch (e) {
+    note("save failed - no server; use Download instead");
+  }
+};
+
 document.getElementById("dl").onclick = () => {
   const blob = new Blob([JSON.stringify(payload(), null, 1)],
                         {type: "application/json"});

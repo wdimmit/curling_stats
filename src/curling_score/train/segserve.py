@@ -147,15 +147,18 @@ def make_handler(directory: Path, seg: Segmenter, geoms: dict):
             pass
 
         def do_POST(self):
-            if self.path != "/segment":
+            if self.path not in ("/segment", "/save"):
                 self.send_error(404)
                 return
             n = int(self.headers.get("Content-Length") or 0)
             try:
                 req = json.loads(self.rfile.read(n) or b"{}")
-                stem = req["stem"]
-                out = seg.box_at(stem, float(req["x"]), float(req["y"]),
-                                 geoms.get(stem) or req.get("geom") or {})
+                if self.path == "/save":
+                    out = save_edits(directory, req)
+                else:
+                    stem = req["stem"]
+                    out = seg.box_at(stem, float(req["x"]), float(req["y"]),
+                                     geoms.get(stem) or req.get("geom") or {})
             except Exception as exc:  # noqa: BLE001 -- a bad click must not kill the server
                 out = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
             body = json.dumps(out).encode()
@@ -166,6 +169,34 @@ def make_handler(directory: Path, seg: Segmenter, geoms: dict):
             self.wfile.write(body)
 
     return Handler
+
+
+def save_edits(directory, payload: dict) -> dict:
+    """Write one export beside the frames it came from.
+
+    A browser download lands wherever that browser's machine puts it, which is
+    not necessarily the machine holding the images -- the first real session
+    was labelled from a laptop and the file never reached the box that had the
+    dataset. Saving through the server puts it next to the pixels by
+    construction.
+
+    Each save is its own file, timestamped. Review happens over several
+    sittings, and ``labels.merge_edits`` exists precisely so every sitting can
+    be kept and a bad one dropped without losing the rest; overwriting one file
+    would throw that away.
+    """
+    import re
+    import time
+
+    scope = str(payload.get("scope") or "unscoped")
+    safe = re.sub(r"[^A-Za-z0-9]+", "-", scope).strip("-") or "unscoped"
+    out_dir = Path(directory) / "edits"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{safe}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    path.write_text(json.dumps(payload, indent=1) + "\n")
+    n_frames = len(payload.get("boxes") or {})
+    n_boxes = sum(len(v) for v in (payload.get("boxes") or {}).values())
+    return {"ok": True, "path": str(path), "frames": n_frames, "boxes": n_boxes}
 
 
 class StalePage(RuntimeError):

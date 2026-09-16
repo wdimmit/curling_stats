@@ -1,4 +1,7 @@
+import json
 import math
+
+from pathlib import Path
 
 import pytest
 
@@ -99,3 +102,39 @@ class TestStalePageGuard:
         from curling_score.train import boxedit
         boxedit.render([], tmp_path, scope="s")
         segserve.check_page(tmp_path)
+
+
+class TestSaveEdits:
+    """A browser download lands on the browser's machine, which need not be the
+    one holding the images: the first real session was labelled from a laptop
+    and the file never reached the box with the dataset."""
+
+    def test_it_writes_beside_the_frames(self, tmp_path):
+        out = segserve.save_edits(
+            tmp_path, {"scope": "ds13:wave1", "reviewed": ["a"],
+                       "boxes": {"a": [[0, 0.5, 0.5, 0.06, 0.03]]}})
+        assert out["ok"] and out["frames"] == 1 and out["boxes"] == 1
+        assert Path(out["path"]).is_file()
+        assert Path(out["path"]).parent == tmp_path / "edits"
+
+    def test_each_sitting_gets_its_own_file(self, tmp_path):
+        """`labels.merge_edits` exists so a bad sitting can be dropped without
+        losing the rest; overwriting one file would throw that away."""
+        import time
+        a = segserve.save_edits(tmp_path, {"scope": "s", "boxes": {}})
+        time.sleep(1.05)
+        b = segserve.save_edits(tmp_path, {"scope": "s", "boxes": {}})
+        assert a["path"] != b["path"]
+
+    def test_a_hostile_scope_cannot_escape_the_directory(self, tmp_path):
+        out = segserve.save_edits(tmp_path, {"scope": "../../etc/passwd",
+                                             "boxes": {}})
+        assert Path(out["path"]).parent == tmp_path / "edits"
+
+    def test_the_payload_round_trips_through_the_edit_parser(self, tmp_path):
+        from curling_score.train import labels
+        payload = {"scope": "ds13:wave1", "reviewed": ["a"],
+                   "boxes": {"a": [[1, 0.4, 0.5, 0.06, 0.03]]}}
+        out = segserve.save_edits(tmp_path, payload)
+        e = labels.parse_edits_full(json.loads(Path(out["path"]).read_text()))
+        assert e.boxes["a"][0][0] == 1 and e.reviewed == ("a",)
