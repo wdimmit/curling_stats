@@ -94,10 +94,15 @@ SPEED_TOLERANCE = 1.4
 # the very frame edge, which is where its own docstring says the scale is
 # collapsing fastest.
 #
-# NOT CHANGED HERE. Raising the cut into the valley would recover the 11 near
-# refusals and still reject all 12 far ones, but that is a decision about what
-# ships, and the ~0.9 s panel offset wants explaining first: twelve shots all
-# late by the same amount is a bug with a cause, not scatter.
+# NO LONGER A VETO, as of the sync pass. The ~0.9 s cluster had a cause and it
+# was the compositor: eight of the nine cached recordings have a camera pair
+# out of step. A threshold cannot tell a mispairing from a clock offset, and on
+# this evidence almost all of what it was rejecting was the latter.
+#
+# So `long_split` records the disagreement instead of obeying it, and this
+# constant is what `sync_report` calls "in sync" rather than what ships. The
+# discrepancy is being addressed on the camera side; until it is, a split
+# carries the panel's disagreement in `panel_delta` so a reader can see it.
 CROSS_CHECK_S = 0.25
 
 
@@ -113,6 +118,11 @@ class Split:
     # in the panel's y units, so a reader can tell an exact split from one that
     # cannot be checked against anything. See FAR_EXTRAPOLATION_MAX_U.
     far_reach: float = 0.0
+    # How far the panel's own tripwire was from the side view's answer, or None
+    # when the panel had no reading. Kept rather than acted on: while the
+    # composite's sources are out of step this measures the desync, not the
+    # detector, and `scripts/ds13/sync_report.py` reads it that way.
+    panel_delta: float | None = None
 
     @property
     def speed_m_s(self) -> float:
@@ -242,9 +252,16 @@ def long_split(release, delivery, *, t_hog=None, v_hog=None) -> Split | None:
     """
     if delivery is None or t_hog is None:
         return None
+    # The long camera is the primary timing source, so a disagreement with the
+    # panel is RECORDED, not obeyed. It used to refuse the split, and that was
+    # discarding correct answers: of the three refused shots on AEqLTgM25Tc
+    # that have an independent hand mark, the side view was right to 0.03 s and
+    # the panel wrong by up to 0.95 s every time. The sync pass then found the
+    # cause -- eight of nine recordings have a camera pair out of step, the
+    # right/bottom pair by a steady -0.18 to -0.32 s -- so the panel is not a
+    # second opinion about the same instant, it is a clock that disagrees.
     panel = hog_crossing(getattr(release, "track", ()) if release else ())
-    if panel is not None and abs(panel - t_hog) > CROSS_CHECK_S:
-        return None
+    panel_delta = None if panel is None else t_hog - panel
     start = t_hog
     end, far_reach = far_crossing(getattr(delivery, "track", ()) or (),
                                   HOG_APPARENT_Y_M,
@@ -278,4 +295,5 @@ def long_split(release, delivery, *, t_hog=None, v_hog=None) -> Split | None:
         if mean > v_hog * SPEED_TOLERANCE:
             return None
     return Split(seconds=end - start, baseline_m=BASELINE_M,
-                 t_start=start, t_end=end, far_reach=far_reach)
+                 t_start=start, t_end=end, far_reach=far_reach,
+                 panel_delta=panel_delta)

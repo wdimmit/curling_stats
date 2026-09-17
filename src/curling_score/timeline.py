@@ -131,6 +131,14 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
                 # `long_split_extrapolated_m`, which was the throwing end in
                 # metres: different end, different units, and old charts still
                 # read that one.
+                # The panel's own tripwire against the side view's answer, or
+                # null when the panel had no reading. While the composite's
+                # sources are out of step this measures the desync rather than
+                # the detector -- see scripts/ds13/sync_report.py.
+                "long_split_panel_delta_s": (
+                    None if sp is None or sp.panel_delta is None
+                    else round(float(sp.panel_delta), 3)
+                ),
                 "long_split_far_reach_u": (
                     None if sp is None else round(float(sp.far_reach), 4)
                 ),

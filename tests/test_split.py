@@ -302,11 +302,39 @@ class TestTheSideViewIsTheSourceForTheThrowingEnd:
         assert split.hog_crossing(r.track) is not None
         assert split.long_split(r, delivery_at(t0=40.0), t_hog=None) is None
 
-    def test_the_two_disagreeing_refuses_both(self):
+    def test_the_two_disagreeing_no_longer_refuses_both(self):
+        """Deliberately reversed. The long camera is the primary timing source
+        and a disagreement is recorded, not obeyed.
+
+        The veto was discarding correct answers: of three refused shots on
+        AEqLTgM25Tc with an independent hand mark, the side view was right to
+        0.03 s and the panel wrong by up to 0.95 s every time. The sync pass
+        then found why -- eight of nine cached recordings have a camera pair
+        out of step -- so the panel is not a second opinion about the same
+        instant, it is a clock that disagrees, and a threshold cannot tell that
+        from a mispairing.
+        """
         r = release_at(t0=0.0, speed=2.0)
         panel = split.hog_crossing(r.track)
         d = delivery_at(t0=40.0, speed=0.8)
-        assert split.long_split(r, d, t_hog=panel + split.CROSS_CHECK_S * 3) is None
+        far = split.CROSS_CHECK_S * 3
+        sp = split.long_split(r, d, t_hog=panel + far)
+        assert sp is not None
+        assert sp.panel_delta == pytest.approx(far, abs=1e-6)
+
+    def test_a_split_records_the_panel_disagreement(self):
+        r = release_at(t0=0.0, speed=2.0)
+        panel = split.hog_crossing(r.track)
+        d = delivery_at(t0=40.0, speed=0.8)
+        sp = split.long_split(r, d, t_hog=panel + 0.05)
+        assert sp.panel_delta == pytest.approx(0.05, abs=1e-6)
+
+    def test_no_panel_reading_means_no_disagreement_to_record(self):
+        """None, not zero: 'the panel did not see it' and 'the panel agreed
+        exactly' are different facts and the sync report reads them apart."""
+        d = delivery_at(t0=40.0, speed=0.8)
+        sp = split.long_split(None, d, t_hog=5.0, v_hog=2.5)
+        assert sp is not None and sp.panel_delta is None
 
     def test_a_disagreement_inside_the_tolerance_is_kept(self):
         r = release_at(t0=0.0, speed=2.0)
