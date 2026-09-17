@@ -207,13 +207,15 @@ def shot(number, color, position, **kw):
     return base
 
 
-def doc(shots, game_index=0, end_number=1):
+def doc(shots, game_index=0, end_number=1, end_id=None):
+    end = {"number": end_number, "score": {"red": 0, "yellow": 0}, "shots": shots}
+    if end_id is not None:
+        end["id"] = end_id
     return {"source": {"video_id": "v"},
             "games": [{"index": game_index, "teams": {"red": {"name": None},
                                                       "yellow": {"name": None}},
                        "final": {"red": 0, "yellow": 0},
-                       "ends": [{"number": end_number, "score": {"red": 0, "yellow": 0},
-                                 "shots": shots}]}]}
+                       "ends": [end]}]}
 
 
 SETUP = """
@@ -234,6 +236,15 @@ class TestOverrideMerge:
                                end_number=7)) +
                      "out(keyFor(g, e, e.shots[0]));")
         assert got == "0.7.1"
+
+    def test_a_trimmed_end_keys_on_the_number_it_was_detected_with(self):
+        # Trimming the practice off the front renumbers the ends that survive,
+        # so the real first end shows as 1 while its corrections stay filed
+        # under 4. timeline.end_identity is the other half of this.
+        got = run_js(setup(doc([shot(1, "red", "lead")], game_index=0,
+                               end_number=1, end_id=4)) +
+                     "out(keyFor(g, e, e.shots[0]));")
+        assert got == "0.4.1"
 
     def test_a_patch_replaces_fields_and_marks_the_shot_corrected(self):
         got = run_js(setup(doc([shot(1, "red", "lead")]),

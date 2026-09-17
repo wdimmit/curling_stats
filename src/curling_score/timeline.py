@@ -5,6 +5,7 @@ Positions are in sheet metres with the origin at the tee of the playing house,
 down-sheet.
 """
 
+from copy import deepcopy
 from datetime import datetime, timezone
 
 from curling_score.game import classify, rules, shots as shots_mod, split, thinking
@@ -275,6 +276,17 @@ def shot_identity(shot: dict) -> int:
     return int(shot.get("id", shot["number"]))
 
 
+def end_identity(end: dict) -> int:
+    """The number an end was detected with, which is what overrides key on.
+
+    Trimming the practice off the front renumbers every end that survives, so
+    the displayed ``number`` drifts from the one corrections were filed under;
+    ``id`` keeps the original where that has happened. Same bargain as
+    :func:`shot_identity`, one level up.
+    """
+    return int(end.get("id", end["number"]))
+
+
 def _reorder(shots: list) -> list:
     """Honour ``before`` on any shot: it was thrown before the shot named.
 
@@ -343,7 +355,7 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
         patches.setdefault((g, e), {})[s] = patch
     for game in document.get("games", []):
         for end in game["ends"]:
-            here = patches.get((game["index"], end["number"]), {})
+            here = patches.get((game["index"], end_identity(end)), {})
             for shot in end["shots"]:
                 patch = here.get(shot_identity(shot))
                 if patch is not None:
@@ -355,3 +367,72 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
                 _renumber(ordered, end["number"], colour_set)
                 end["shots"] = ordered
     return document
+
+
+def trim_to_start(document: dict, start_s: float | None) -> dict:
+    """Drop the pre-game practice that the submitter's start time sits behind.
+
+    Club streams open with practice: twenty minutes of players sliding rocks
+    before the first end. The sheet never sits empty for ``GAME_GAP_S`` while
+    that is going on, so :func:`segment.segment_games` cannot call it a
+    separate game, and each block of it clears ``MIN_END_S``, so it arrives as
+    leading ends -- numbered, scored, and pushing the real first end down the
+    board. "Game starts at" is the one thing we know that the profile does
+    not, and this is where it is spent.
+
+    Only *leading* ends go, and only while two things hold: the end begins
+    before ``start_s``, and it is short of a full sixteen rocks. The second is
+    the guard. A time typed into a box is a guess; sixteen delivered rocks are
+    an end, whatever the guess said, and stopping there means a start time
+    given too late leaves a fat chart rather than an amputated one. A game
+    always keeps at least one end, so a time past the whole game shows it all.
+
+    Per chart, not per run: the run's document stays pristine, and two charts
+    of the same game made from different start times each get their own view.
+    """
+    if start_s is None:
+        return document
+    document = deepcopy(document)
+    for i, game in enumerate(document.get("games", [])):
+        ends = game.get("ends") or []
+        drop = 0
+        while drop < len(ends) - 1:
+            end = ends[drop]
+            if float(end["start_s"]) >= start_s:
+                break
+            if len(end["shots"]) >= end.get("shots_expected", C.STONES_PER_END):
+                break
+            drop += 1
+        if drop == 0:
+            continue
+        kept = [dict(e) for e in ends[drop:]]
+        for number, end in enumerate(kept, start=1):
+            end["id"] = end_identity(end)
+            end["number"] = number
+            end["shots"] = [dict(s) for s in end["shots"]]
+            for s in end["shots"]:
+                s["label"] = rules.shot_label(number, s["number"])
+        # Everything a game totals -- the running score, the hammer chain, the
+        # clock -- was totalled over the practice too, so rebuild rather than
+        # patch. Keys build_game does not own (the scoreboard block) survive.
+        game = document["games"][i] = {
+            **game,
+            **build_game(game["index"], kept[0]["start_s"], kept[-1]["end_s"], kept),
+        }
+        # The board on the wall shows the game and never the practice, so a
+        # disagreement the practice caused has to clear with it. Comparing two
+        # totals already in the document; nothing re-reads the video.
+        board = game.get("scoreboard")
+        if isinstance(board, dict) and board.get("final") is not None:
+            agrees = board["final"] == game["final"]
+            game["scoreboard"] = {**board, "agrees_with_detection": agrees}
+            for end in game["ends"]:
+                end["scoreboard_agrees"] = agrees
+    return document
+
+
+def ends_trimmed(document: dict) -> int:
+    """How many leading ends :func:`trim_to_start` took off the first game."""
+    games = document.get("games") or []
+    ends = (games[0].get("ends") if games else None) or []
+    return (end_identity(ends[0]) - ends[0]["number"]) if ends else 0

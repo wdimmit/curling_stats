@@ -233,11 +233,20 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise KeyError(key)
         return json.loads(data)
 
-    def game_doc(run: Run, game_index: int | None, src: Source | None = None) -> dict:
-        """The pristine document, cut down to one game."""
+    def game_doc(run: Run, game_index: int | None, src: Source | None = None,
+                 start_s: float | None = None) -> dict:
+        """The pristine document, cut down to one game.
+
+        ``start_s`` is the time the person who made this chart said the game
+        starts at, and it trims the practice off the front -- per chart, since
+        the run's games are shared and only the chart knows what was asked
+        for. The source-level review routes below pass nothing and so keep
+        seeing the whole of what was detected.
+        """
         doc = json.loads(json.dumps(load_doc(run.timeline_key)))  # a private copy
         if game_index is not None:
             doc["games"] = [g for g in doc["games"] if g["index"] == game_index]
+        doc = timeline.trim_to_start(doc, start_s)
         game = doc["games"][0] if doc["games"] else None
         doc["source"]["start_s"] = game["start_s"] if game else None
         # Who played, if anybody has said. The names live on the source rather
@@ -250,21 +259,96 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                     game.setdefault("teams", {}).setdefault(colour, {})["name"] = name
         return doc
 
+    def learn_play_start(src: Source, run: Run) -> Source:
+        """Teach a game where its play begins, from what its charters typed.
+
+        The earliest start time anybody gave for this game, kept on the source
+        so that every view of it agrees -- the review link, the catalogue, and
+        charts made later by people who typed nothing. Earliest rather than
+        latest because the trim's own guard is what makes a time safe: it only
+        drops leading ends short of a full sixteen rocks, so a time that is
+        too early simply trims less. Taking the latest would let one careless
+        entry eat real ends out of everybody else's view of the game.
+
+        The end count is stored alongside, because the catalogue lists many
+        games and must not load a 300 KB document for each one to say "7".
+        """
+        # charts_for_run rather than a charts_for_source query: every chart of
+        # this game is pinned to this run, both repos already answer it, and
+        # it needs no new Firestore index.
+        times = [c.requested_start_s for c in repo.charts_for_run(run.id)
+                 if c.source_id == src.id and c.requested_start_s is not None]
+        start = min(times) if times else None
+        if start is None or run.timeline_key is None:
+            return src
+        try:
+            doc = game_doc(run, src.game_index, None, start)
+        except KeyError:
+            return src
+        ends = doc["games"][0]["ends"] if doc.get("games") else []
+        if not ends or timeline.ends_trimmed(doc) == 0:
+            return src
+        if src.play_start_s == float(ends[0]["start_s"]) and src.play_ends == len(ends):
+            return src
+        return repo.update_source(src.id, play_start_s=float(ends[0]["start_s"]),
+                                  play_ends=len(ends))
+
+    def learn_play_starts_for_run(run: Run) -> None:
+        for src in repo.sources_for_video(run.video_id):
+            if src.current_run_id == run.id:
+                learn_play_start(src, run)
+
+    def trim_start_for(chart: Chart, src: Source | None) -> float | None:
+        """Where this chart's game starts: the game's own answer, or its own.
+
+        The source wins once the game has one, so two charts of one game never
+        disagree about where it began. A chart whose source has not learned
+        yet still honours the time its submitter gave.
+        """
+        if src is not None and src.play_start_s is not None:
+            return src.play_start_s
+        return chart.requested_start_s
+
     def chart_doc(chart: Chart, run: Run, read_only: bool) -> dict:
         """One game, plus what the people holding this link may do with it."""
         src = repo.get_source(chart.source_id) if chart.source_id else None
-        doc = game_doc(run, chart.game_index, src)
+        doc = game_doc(run, chart.game_index, src, trim_start_for(chart, src))
         doc["chart"] = {
             "slug": chart.id,
             "share_url": None if read_only else url_for(f"/s/{chart.share_slug}/"),
             "read_only": read_only,
             "requested_start_s": chart.requested_start_s,
+            # How many leading ends the start time took off, so the viewer can
+            # say so rather than leave the charter wondering where end 1 went.
+            "ends_trimmed": timeline.ends_trimmed(doc),
             "snap_distance_s": chart.snap_distance_s,
             "game_index": chart.game_index,
             "title": run.title,
             "league": run.league,
         }
         return doc
+
+    def json_revalidated(request: Request, payload: dict, scope: str) -> Response:
+        """JSON the browser may keep, but has to ask about before using.
+
+        A chart's document changes without its URL changing: a start time
+        trims the practice off it, a team name is typed in, a reprocess moves
+        it to a newer run. The `max-age=3600` this replaces meant none of that
+        reached anybody who had the page open in the last hour, and there was
+        nothing on the page to tell them they were looking at a stale one.
+
+        The tag is a hash of the bytes actually being sent rather than of
+        anything upstream of them, so it cannot drift from what it names --
+        two charts of one game with different start times get different tags
+        because they *are* different documents. A 304 still keeps the 300 KB
+        off the wire, which is all the max-age was ever buying.
+        """
+        body = json.dumps(payload, separators=(",", ":")).encode()
+        tag = '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+        headers = {"ETag": tag, "Cache-Control": f"{scope}, no-cache"}
+        if request.headers.get("if-none-match") == tag:
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type="application/json", headers=headers)
 
     def lookup(kind: str, key: str):
         chart = repo.get_chart(key) if kind == "c" else repo.chart_by_share(key)
@@ -345,10 +429,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 here = PHASE_BUDGET_MIN[job.phase] * (1.0 - (job.fraction or 0.0))
                 out["eta_s"] = round((rest + here) * 60)
         if status == "ready" and chart.game_index is not None:
+            # The game this chart is on reports what the chart shows, warm-up
+            # already taken off; the others report what was detected, since
+            # nobody has said where their play starts.
+            src = repo.get_source(chart.source_id) if chart.source_id else None
             for g in run.games:
                 entry = {"index": g["index"], "start_s": g["start_s"],
                          "end_s": g["end_s"], "ends": g.get("ends")}
                 if g["index"] == chart.game_index:
+                    if src is not None and src.play_start_s is not None:
+                        entry |= {"start_s": src.play_start_s, "ends": src.play_ends}
                     out["game"] = {**entry, "snap_distance_s": chart.snap_distance_s}
                 else:
                     out["other_games"].append(entry)
@@ -394,6 +484,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             chart = dedupe.resolve_chart(repo, chart, run, t)
             if chart.superseded_by:                    # lost a race just now
                 return repo.get_chart(chart.superseded_by), True
+            if chart.source_id and (src := repo.get_source(chart.source_id)):
+                learn_play_start(src, run)
         return chart, False
 
     # ------------------------------------------------------------- public
@@ -448,9 +540,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 "source_id": s.id, "video_id": s.video_id, "title": s.title,
                 "sheet": s.sheet, "league": s.league, "played_at": _iso(s.played_at),
                 "team_red": s.team_red, "team_yellow": s.team_yellow,
-                "game_index": s.game_index, "start_s": s.game_start_s,
+                "game_index": s.game_index,
+                "start_s": s.play_start_s if s.play_start_s is not None else s.game_start_s,
                 "end_s": s.game_end_s, "status": run.status if run else None,
-                "ends": next((g.get("ends") for g in (run.games if run else [])
+                "ends": s.play_ends if s.play_ends is not None else
+                        next((g.get("ends") for g in (run.games if run else [])
                               if g["index"] == s.game_index), None),
             })
         # Games queued or in flight have no sources yet; list their runs too so
@@ -500,6 +594,43 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         log.info("league %r set on %s (%d games) by %s",
                  league, src.video_id, len(games), me.id)
         return {"ok": True, "league": league, "games": len(games)}
+
+    @app.post("/api/admin/games/{source_id}/play-start")
+    def admin_set_play_start(source_id: str, body: dict | None = None,
+                             authorization: str | None = Header(default=None)):
+        """Say where a game's play begins, for one charted before we asked.
+
+        `learn_play_start` only runs when a chart resolves, so a game charted
+        before any of this existed keeps its warm-up on every surface with no
+        way to shift it. Passing `start_s` trims to that time; passing null
+        clears the boundary and puts the whole detected game back.
+        """
+        require_admin(authorization)
+        src = repo.get_source(source_id)
+        if src is None:
+            raise HTTPException(404, "no such game")
+        run = repo.get_run(src.current_run_id)
+        if run is None or run.timeline_key is None:
+            raise HTTPException(409, "that game has no finished run")
+        raw = (body or {}).get("start_s")
+        if raw in (None, ""):
+            src = repo.update_source(src.id, play_start_s=None, play_ends=None)
+            return {"ok": True, "play_start_s": None, "play_ends": None}
+        try:
+            start = float(raw)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "give start_s as a number of seconds")
+        doc = game_doc(run, src.game_index, None, start)
+        ends = doc["games"][0]["ends"] if doc.get("games") else []
+        if not ends:
+            raise HTTPException(409, "that game has no ends")
+        src = repo.update_source(src.id, play_start_s=float(ends[0]["start_s"]),
+                                 play_ends=len(ends))
+        log.info("play starts at %s on %s, %d ends, %d trimmed",
+                 src.play_start_s, src.id, src.play_ends, timeline.ends_trimmed(doc))
+        return {"ok": True, "play_start_s": src.play_start_s,
+                "play_ends": src.play_ends,
+                "ends_trimmed": timeline.ends_trimmed(doc)}
 
     @app.post("/api/games/{source_id}/teams")
     def api_set_teams(source_id: str, body: dict,
@@ -927,12 +1058,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return status_payload(chart, run, read_only)
 
         @app.get(prefix + "/timeline.json")
-        def timeline_json(key: str):
+        def timeline_json(key: str, request: Request):
             chart, run, read_only = lookup(kind, key)
             if run.status != "ready" or chart.game_index is None:
                 raise HTTPException(404, "not processed yet")
-            return JSONResponse(chart_doc(chart, run, read_only),
-                                headers={"Cache-Control": "private, max-age=3600"})
+            return json_revalidated(request, chart_doc(chart, run, read_only),
+                                    "private")
 
         @app.get(prefix + "/overrides.json")
         def overrides_get(key: str, request: Request):
@@ -1061,18 +1192,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return HTMLResponse(viewer.boot_page({"mode": "review", "source": sid}))
 
     @app.get("/g/{sid}/timeline.json")
-    def review_timeline(sid: str):
+    def review_timeline(sid: str, request: Request):
         src, run = lookup_source(sid)
-        doc = game_doc(run, src.game_index, src)
+        doc = game_doc(run, src.game_index, src, src.play_start_s)
         # No slug and no share_url: this link is already the public one.
         doc["chart"] = {"read_only": True, "review": True,
-                        "title": run.title, "league": run.league}
-        return JSONResponse(doc, headers={"Cache-Control": "public, max-age=3600"})
+                        "title": run.title, "league": run.league,
+                        "ends_trimmed": timeline.ends_trimmed(doc)}
+        return json_revalidated(request, doc, "public")
 
     @app.get("/g/{sid}/export.json")
     def review_export(sid: str):
         src, run = lookup_source(sid)
-        return game_doc(run, src.game_index, src)
+        return game_doc(run, src.game_index, src, src.play_start_s)
 
     @app.get("/g/{sid}/{asset}")
     def review_asset(sid: str, asset: str):
@@ -1237,6 +1369,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.update_job(job.id, state="done", finished_at=t, phase="done", fraction=1.0)
         run = repo.get_run(run.id)
         resolved = dedupe.resolve_charts_for_run(repo, run, t)
+        learn_play_starts_for_run(run)
         return {"ok": True, "charts_resolved": resolved}
 
     @app.post("/api/worker/jobs/{job_id}/fail")

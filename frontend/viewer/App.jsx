@@ -306,7 +306,7 @@ export function App({ doc, config }) {
                      onChange={e => setPref({ leadIn: Math.max(0, +e.target.value || 0) })} />s
             </label>
           </div>
-          <Flags shot={shot} />
+          <Flags shot={shot} trimmed={ui.ei === 0 ? doc.chart?.ends_trimmed : 0} />
           <div className="shots" id="shots">
             {shots.map((sh, i) => (
               <div key={i} data-i={i} title={sh.label || ""}
@@ -381,8 +381,16 @@ export function App({ doc, config }) {
   );
 }
 
-function Flags({ shot }) {
+function Flags({ shot, trimmed }) {
   const flags = [];
+  // Asked at the first end and nowhere else: "the stream opens with practice,
+  // so where are those rocks?" Saying nothing would leave it looking like the
+  // detector lost them. No advice on how to get them back, because there is
+  // none to give: the boundary belongs to the game now, so every chart and
+  // the review link alike start here.
+  if (trimmed > 0)
+    flags.push(`${trimmed} end${trimmed === 1 ? "" : "s"} of warm-up before the `
+             + "game are not shown. This game starts at its first full end.");
   if (isBlank(shot))
     flags.push("This shot's house could not be read. Place the stones as they "
              + "were, then mark it charted — a blank here is not an empty house.");

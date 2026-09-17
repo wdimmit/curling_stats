@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
+from curling_score import timeline as timeline_mod
 from curling_score.service import dedupe, slug
 from curling_score.service.api import Settings, create_app
 from curling_score.service.records import WatchedPlaylist
@@ -887,3 +888,290 @@ class TestSubmittingALength:
         # Flat keys, which is what worker.process_job reads.
         assert job["window_start_s"] == 0.0
         assert job["window_end_s"] == 7200.0
+
+
+def practice_doc():
+    """One game the segmenter opened with practice, as sheet 1 of the Year End
+    Classic arrived: three short blocks of warm-up rocks ahead of the real
+    first end, all inside one game because the sheet never went quiet."""
+    def end(number, start_s, n_shots, score):
+        return {"number": number, "house": "top", "start_s": start_s,
+                "end_s": start_s + 300.0, "score": dict(score),
+                "running": {"red": 0, "yellow": 0}, "unplaced_shots": 0,
+                "shots_expected": 16, "shots": [
+                    {"number": i, "color": "red" if i % 2 else "yellow",
+                     "position": "lead", "rock_of_player": 1,
+                     "label": f"{number} end, shot {i}", "t_rest_s": start_s + i,
+                     "state_known": True, "missing": False, "shot_type": "guard",
+                     "stones": [], "track": []}
+                    for i in range(1, n_shots + 1)]}
+    ends = [end(1, 0.0, 6, {"red": 0, "yellow": 1}),
+            end(2, 530.0, 5, {"red": 0, "yellow": 0}),
+            end(3, 1135.0, 11, {"red": 0, "yellow": 0}),
+            end(4, 1515.0, 16, {"red": 0, "yellow": 1}),
+            end(5, 2385.0, 16, {"red": 1, "yellow": 0})]
+    return {"schema_version": 3, "processing_version": "2026.09.1+m-abc",
+            "source": {"url": "u", "video_id": VID, "sheet": 2, "duration_s": 14392.0,
+                       "window": {"start_s": None, "end_s": None}},
+            "calibration": {},
+            "games": [{"index": 0, "start_s": 0.0, "end_s": 2685.0,
+                       "teams": {"red": {"name": None}, "yellow": {"name": None}},
+                       "final": {"red": 1, "yellow": 2}, "hammer_consistent": False,
+                       "ends": ends}]}
+
+
+class TestTheStartTimeTrimsThePractice:
+    """"Game starts at" is a floor on the game, not only a pointer at one.
+
+    A stream under dedupe.MAX_WHOLE_S is analysed whole however the box was
+    filled in, and practice never leaves the sheet empty for GAME_GAP_S, so
+    the warm-up arrives as leading ends of one game. The start time is the
+    only thing that says where the game really began.
+    """
+
+    def _chart(self, world, t=1440):
+        r = submit(world, url=f"https://youtu.be/{VID}?t={t}").json()
+        work_through(world, doc=practice_doc(), games=1)
+        return world["client"].get(f"/c/{r['slug']}/timeline.json").json()
+
+    def test_the_practice_ends_are_not_served(self, world):
+        doc = self._chart(world)
+        assert [e["start_s"] for e in doc["games"][0]["ends"]] == [1515.0, 2385.0]
+
+    def test_the_real_first_end_is_end_one(self, world):
+        doc = self._chart(world)
+        ends = doc["games"][0]["ends"]
+        assert [e["number"] for e in ends] == [1, 2]
+        assert [e["id"] for e in ends] == [4, 5]
+        assert ends[0]["shots"][0]["label"] == "1st end, lead's first rock"
+
+    def test_the_score_is_the_games_and_not_the_practices(self, world):
+        doc = self._chart(world)
+        assert doc["games"][0]["final"] == {"red": 1, "yellow": 1}
+
+    def test_the_chart_says_how_much_it_took_off(self, world):
+        doc = self._chart(world)
+        assert doc["chart"]["ends_trimmed"] == 3
+        assert doc["chart"]["requested_start_s"] == 1440.0
+
+    def test_the_game_starts_at_its_first_real_end(self, world):
+        doc = self._chart(world)
+        assert doc["source"]["start_s"] == 1515.0
+
+    def test_no_start_time_leaves_the_whole_game_alone(self, world):
+        r = submit(world).json()
+        work_through(world, doc=practice_doc(), games=1)
+        doc = world["client"].get(f"/c/{r['slug']}/timeline.json").json()
+        assert [e["number"] for e in doc["games"][0]["ends"]] == [1, 2, 3, 4, 5]
+        assert doc["chart"]["ends_trimmed"] == 0
+
+    def test_grading_saved_before_the_trim_still_lands(self, world):
+        # The chart already served ends 1..5 to somebody who graded the real
+        # first end as "0.4.3". Renumbering it must not orphan that.
+        r = submit(world, url=f"https://youtu.be/{VID}?t=1440").json()
+        work_through(world, doc=practice_doc(), games=1)
+        c = world["client"]
+        assert c.post(f"/c/{r['slug']}/overrides.json?v=0",
+                      json={"0.4.3": {"user_score": 3}}).status_code == 200
+        doc = c.get(f"/c/{r['slug']}/timeline.json").json()
+        merged = timeline_mod.apply_overrides(doc, c.get(f"/c/{r['slug']}/overrides.json").json())
+        first = merged["games"][0]["ends"][0]
+        assert first["number"] == 1 and first["id"] == 4
+        assert first["shots"][2]["user_score"] == 3
+
+
+class TestTheTimelineRevalidates:
+    """A chart's document changes without its URL changing.
+
+    The practice gets trimmed off it, a team name is typed in, a reprocess
+    moves it to a newer run. `private, max-age=3600` meant none of that
+    reached anybody who had the page open in the last hour -- they saw a stale
+    chart with nothing to tell them so, which is exactly how the trim looked
+    like it had not shipped. An ETag keeps the 300 KB off the wire when
+    nothing moved, which is all the max-age was ever buying.
+    """
+
+    def _ready(self, world, t=1440):
+        r = submit(world, url=f"https://youtu.be/{VID}?t={t}").json()
+        work_through(world, doc=practice_doc(), games=1)
+        return r["slug"]
+
+    def test_the_browser_is_told_to_revalidate(self, world):
+        s = self._ready(world)
+        res = world["client"].get(f"/c/{s}/timeline.json")
+        assert "no-cache" in res.headers["cache-control"]
+        assert res.headers["etag"]
+
+    def test_an_unchanged_timeline_comes_back_304_and_empty(self, world):
+        s = self._ready(world)
+        c = world["client"]
+        tag = c.get(f"/c/{s}/timeline.json").headers["etag"]
+        again = c.get(f"/c/{s}/timeline.json", headers={"If-None-Match": tag})
+        assert again.status_code == 304
+        assert again.content == b""
+
+    def test_a_document_that_changed_underneath_gets_a_new_tag(self, world):
+        s = self._ready(world)
+        c = world["client"]
+        tag = c.get(f"/c/{s}/timeline.json").headers["etag"]
+        chart = world["repo"].get_chart(s)
+        world["repo"].update_source(chart.source_id, team_red="Thistles")
+        again = c.get(f"/c/{s}/timeline.json", headers={"If-None-Match": tag})
+        assert again.status_code == 200
+        assert again.json()["games"][0]["teams"]["red"]["name"] == "Thistles"
+
+    def test_two_charts_of_one_game_do_not_share_a_tag(self, world):
+        # Same run, same game, and since the boundary moved onto the source
+        # the same ends too -- but not the same document: each carries its own
+        # slug and share link. A tag keyed on the run, or on the game, would
+        # hand one chart the other's and leak a private share URL with it.
+        first = self._ready(world)
+        second = submit(world, ip="9.9.9.9").json()["slug"]
+        c = world["client"]
+        a = c.get(f"/c/{first}/timeline.json")
+        b = c.get(f"/c/{second}/timeline.json")
+        assert a.headers["etag"] != b.headers["etag"]
+        assert a.json()["chart"]["share_url"] != b.json()["chart"]["share_url"]
+        # Both see the game rather than the warm-up, whoever typed the time.
+        assert len(a.json()["games"][0]["ends"]) == 2
+        assert len(b.json()["games"][0]["ends"]) == 2
+
+    def test_the_review_link_revalidates_too(self, world):
+        s = self._ready(world)
+        c = world["client"]
+        sid = world["repo"].get_chart(s).source_id
+        res = c.get(f"/g/{sid}/timeline.json")
+        assert "no-cache" in res.headers["cache-control"]
+        again = c.get(f"/g/{sid}/timeline.json",
+                      headers={"If-None-Match": res.headers["etag"]})
+        assert again.status_code == 304
+
+
+class TestThePracticeBoundaryBelongsToTheGame:
+    """Where play starts is a fact about the game, not about one chart of it.
+
+    Trimming per chart left only the chart whose owner happened to type a
+    start time looking right: the public review link, the catalogue and every
+    later chart of the same game still opened with the warm-up. The earliest
+    time anybody gives is kept on the source, and every surface reads it.
+    """
+
+    def _charted(self, world, t=1440):
+        r = submit(world, url=f"https://youtu.be/{VID}?t={t}").json()
+        work_through(world, doc=practice_doc(), games=1)
+        chart = world["repo"].get_chart(r["slug"])
+        return r["slug"], chart.source_id
+
+    def test_the_game_learns_where_its_play_starts(self, world):
+        _slug, sid = self._charted(world)
+        src = world["repo"].get_source(sid)
+        assert src.play_start_s == 1515.0 and src.play_ends == 2
+
+    def test_the_review_link_drops_the_warm_up_too(self, world):
+        _slug, sid = self._charted(world)
+        doc = world["client"].get(f"/g/{sid}/timeline.json").json()
+        ends = doc["games"][0]["ends"]
+        assert [e["start_s"] for e in ends] == [1515.0, 2385.0]
+        assert doc["games"][0]["final"] == {"red": 1, "yellow": 1}
+
+    def test_the_review_export_matches_what_the_review_shows(self, world):
+        _slug, sid = self._charted(world)
+        doc = world["client"].get(f"/g/{sid}/export.json").json()
+        assert len(doc["games"][0]["ends"]) == 2
+
+    def test_the_catalogue_counts_the_game_and_not_the_warm_up(self, world):
+        _slug, sid = self._charted(world)
+        g = [x for x in world["client"].get("/api/games").json()["games"]
+             if x["source_id"] == sid][0]
+        assert g["start_s"] == 1515.0 and g["ends"] == 2
+
+    def test_the_status_page_agrees_with_the_chart(self, world):
+        slug_, _sid = self._charted(world)
+        st = world["client"].get(f"/c/{slug_}/status.json").json()
+        assert st["game"]["start_s"] == 1515.0 and st["game"]["ends"] == 2
+
+    def test_a_later_chart_that_gave_no_time_is_trimmed_as_well(self, world):
+        # The whole point of moving it off the Chart. This submitter typed
+        # nothing; they still get the game rather than the warm-up.
+        self._charted(world)
+        later = submit(world, ip="8.8.8.8").json()["slug"]
+        doc = world["client"].get(f"/c/{later}/timeline.json").json()
+        assert [e["number"] for e in doc["games"][0]["ends"]] == [1, 2]
+        assert doc["chart"]["requested_start_s"] is None
+        assert doc["chart"]["ends_trimmed"] == 3
+
+    def test_the_earliest_time_given_wins(self, world):
+        # The trim's guard is what makes a time safe -- it only drops leading
+        # ends short of sixteen rocks -- so the earliest trims least. Taking
+        # the latest would let one careless entry eat real ends from
+        # everybody else's view of the game.
+        _slug, sid = self._charted(world, t=1440)
+        submit(world, url=f"https://youtu.be/{VID}?t=3000", ip="7.7.7.7")
+        assert world["repo"].get_source(sid).play_start_s == 1515.0
+        assert len(world["client"].get(
+            f"/g/{sid}/timeline.json").json()["games"][0]["ends"]) == 2
+
+    def test_a_game_nobody_gave_a_time_for_is_left_whole(self, world):
+        submit(world)
+        work_through(world, doc=practice_doc(), games=1)
+        g = world["client"].get("/api/games").json()["games"][0]
+        assert g["start_s"] == 0.0 and g["ends"] == 5
+        doc = world["client"].get(f"/g/{g['source_id']}/timeline.json").json()
+        assert len(doc["games"][0]["ends"]) == 5
+
+
+class TestTellingAnOldGameWherePlayStarts:
+    """Games charted before any of this existed keep their warm-up otherwise."""
+
+    def _old_game(self, world):
+        submit(world)                      # no start time: nothing is learned
+        work_through(world, doc=practice_doc(), games=1)
+        return world["client"].get("/api/games").json()["games"][0]["source_id"]
+
+    def test_it_needs_the_admin_token(self, world):
+        sid = self._old_game(world)
+        assert world["client"].post(f"/api/admin/games/{sid}/play-start",
+                                    json={"start_s": 1440}).status_code == 401
+        assert world["client"].post(f"/api/admin/games/{sid}/play-start",
+                                    json={"start_s": 1440},
+                                    headers=WORKER).status_code == 401
+
+    def test_it_trims_every_surface_at_once(self, world):
+        sid = self._old_game(world)
+        c = world["client"]
+        r = c.post(f"/api/admin/games/{sid}/play-start", json={"start_s": 1440},
+                   headers=ADMIN)
+        assert r.status_code == 200 and r.json()["ends_trimmed"] == 3
+        assert r.json()["play_start_s"] == 1515.0 and r.json()["play_ends"] == 2
+        assert len(c.get(f"/g/{sid}/timeline.json").json()["games"][0]["ends"]) == 2
+        g = c.get("/api/games").json()["games"][0]
+        assert g["start_s"] == 1515.0 and g["ends"] == 2
+
+    def test_clearing_it_puts_the_whole_game_back(self, world):
+        sid = self._old_game(world)
+        c = world["client"]
+        c.post(f"/api/admin/games/{sid}/play-start", json={"start_s": 1440}, headers=ADMIN)
+        r = c.post(f"/api/admin/games/{sid}/play-start", json={}, headers=ADMIN)
+        assert r.status_code == 200 and r.json()["play_start_s"] is None
+        assert len(c.get(f"/g/{sid}/timeline.json").json()["games"][0]["ends"]) == 5
+
+    def test_a_game_that_does_not_exist_is_404(self, world):
+        assert world["client"].post("/api/admin/games/s_nope/play-start",
+                                    json={"start_s": 1440},
+                                    headers=ADMIN).status_code == 404
+
+
+class TestTheReviewLinkSaysWhatItLeftOut:
+    def test_it_reports_the_warm_up_it_dropped(self, world):
+        submit(world, url=f"https://youtu.be/{VID}?t=1440")
+        work_through(world, doc=practice_doc(), games=1)
+        sid = world["client"].get("/api/games").json()["games"][0]["source_id"]
+        doc = world["client"].get(f"/g/{sid}/timeline.json").json()
+        assert doc["chart"]["ends_trimmed"] == 3
+
+    def test_an_untrimmed_game_reports_nothing_dropped(self, world):
+        submit(world)
+        work_through(world, doc=practice_doc(), games=1)
+        sid = world["client"].get("/api/games").json()["games"][0]["source_id"]
+        doc = world["client"].get(f"/g/{sid}/timeline.json").json()
+        assert doc["chart"]["ends_trimmed"] == 0

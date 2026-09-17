@@ -17,7 +17,12 @@ import { POSITIONS, TYPICAL_GAP_S } from "./constants.mjs";
  * end, so `id` keeps the original where that has happened. */
 export const identity = s => s.id ?? s.number;
 
-export const keyFor = (g, e, s) => `${g.index}.${e.number}.${identity(s)}`;
+/* Same bargain one level up: trimming the practice off the front of a game
+ * renumbers every end that survives, so `id` keeps the number the end's
+ * corrections were filed under. Mirrors timeline.end_identity. */
+export const endIdentity = e => e.id ?? e.number;
+
+export const keyFor = (g, e, s) => `${g.index}.${endIdentity(e)}.${identity(s)}`;
 
 /* Mirror of timeline.apply_overrides, so what you see here is exactly what
  * the next analysis run will bake in. */

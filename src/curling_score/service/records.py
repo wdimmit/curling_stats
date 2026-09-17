@@ -104,6 +104,22 @@ class Source:
     # where the report has been headed "red" and "yellow" for want of them.
     team_red: str | None = None
     team_yellow: str | None = None
+    # Where the game actually starts, once somebody has told us -- and how
+    # many ends are left once the warm-up in front of it is dropped.
+    #
+    # Club streams open with practice. The sheet never sits empty for
+    # GAME_GAP_S while players are sliding rocks, so segment_games cannot call
+    # it a separate game, and each block of it clears MIN_END_S, so it arrives
+    # as leading ends of the real one. Nothing in the video says where the
+    # practice stops; the person submitting does, in "Game starts at".
+    #
+    # It lives here rather than on the Chart that carried the time because the
+    # practice belongs to the *game*. Keeping it per chart left the review
+    # link, the catalogue and every later chart of the same game still showing
+    # the warm-up, with only the one chart whose owner happened to type a time
+    # coming out clean.
+    play_start_s: float | None = None
+    play_ends: int | None = None
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

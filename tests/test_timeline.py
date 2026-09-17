@@ -291,3 +291,128 @@ class TestTimingFields:
         )
         assert end["shots"][1]["long_split_s"] is None
         assert end["shots"][1]["thinking_time_s"] is None
+
+
+class TestTrimmingThePracticeOff:
+    """A start time given at submission is a floor on the game, not a hint.
+
+    Club streams open with practice: players slide rocks for twenty minutes
+    before the first end. The sheet never sits empty long enough for
+    :func:`segment.segment_games` to call that a separate game, and each block
+    of it clears ``MIN_END_S``, so the practice arrives as leading ends with a
+    handful of shots each -- numbered, scored, and ahead of the real first end.
+    The submitter said where the game starts; this is where that gets used.
+    """
+
+    def _end(self, number, start_s, n_shots, score=None):
+        shots = [shot(i, "red" if i % 2 else "yellow", []) for i in range(1, n_shots + 1)]
+        out = timeline.build_end(number=number, house="top", start_s=start_s,
+                                 end_s=start_s + 300.0, shots=shots)
+        if score is not None:
+            out["score"] = dict(score)
+        return out
+
+    def _doc(self, ends):
+        return {"games": [timeline.build_game(0, ends[0]["start_s"],
+                                              ends[-1]["end_s"], ends)]}
+
+    def _practice_doc(self):
+        """The shape the Year End Classic chart arrived in: three, then seven."""
+        return self._doc([
+            self._end(1, 0.0, 6, {"red": 0, "yellow": 1}),
+            self._end(2, 530.0, 5),
+            self._end(3, 1135.0, 11),
+            self._end(4, 1515.0, 16, {"red": 0, "yellow": 1}),
+            self._end(5, 2385.0, 16, {"red": 1, "yellow": 0}),
+            self._end(6, 3280.0, 16),
+            self._end(7, 4210.0, 16),
+        ])
+
+    def _ends(self, doc):
+        return doc["games"][0]["ends"]
+
+    def test_leading_practice_ends_are_dropped(self):
+        got = timeline.trim_to_start(self._practice_doc(), 1440.0)
+        assert [e["start_s"] for e in self._ends(got)] == [1515.0, 2385.0, 3280.0, 4210.0]
+
+    def test_the_survivors_are_numbered_from_one(self):
+        got = timeline.trim_to_start(self._practice_doc(), 1440.0)
+        assert [e["number"] for e in self._ends(got)] == [1, 2, 3, 4]
+
+    def test_the_shots_are_relabelled_to_the_new_end(self):
+        got = timeline.trim_to_start(self._practice_doc(), 1440.0)
+        assert self._ends(got)[0]["shots"][0]["label"] == "1st end, lead's first rock"
+
+    def test_corrections_stay_filed_under_the_number_they_were_saved_with(self):
+        # What the charter graded as "0.4.3" was the fourth end when they
+        # graded it. Renumbering it to the first must not lose that work.
+        doc = timeline.trim_to_start(self._practice_doc(), 1440.0)
+        got = timeline.apply_overrides(doc, {"0.4.3": {"user_score": 3}})
+        first = self._ends(got)[0]
+        assert first["id"] == 4 and first["number"] == 1
+        assert first["shots"][2]["user_score"] == 3
+
+    def test_the_running_score_forgets_the_practice(self):
+        got = timeline.trim_to_start(self._practice_doc(), 1440.0)
+        assert got["games"][0]["final"] == {"red": 1, "yellow": 1}
+
+    def test_the_game_starts_where_its_first_real_end_does(self):
+        got = timeline.trim_to_start(self._practice_doc(), 1440.0)
+        assert got["games"][0]["start_s"] == 1515.0
+
+    def test_a_full_end_before_the_start_time_stops_the_trim(self):
+        # The guard. Sixteen rocks were thrown, so this was a real end
+        # whatever time was typed into the box -- a fat chart is recoverable,
+        # a silently amputated one is not.
+        doc = self._doc([self._end(1, 0.0, 16), self._end(2, 900.0, 16),
+                         self._end(3, 1800.0, 16)])
+        got = timeline.trim_to_start(doc, 1500.0)
+        assert [e["number"] for e in self._ends(got)] == [1, 2, 3]
+        assert "id" not in self._ends(got)[0]
+
+    def test_a_short_end_after_the_start_time_is_kept(self):
+        # Conceded, or the detector lost rocks. Either way it is the game.
+        doc = self._doc([self._end(1, 0.0, 5), self._end(2, 1600.0, 7),
+                         self._end(3, 2500.0, 16)])
+        got = timeline.trim_to_start(doc, 1440.0)
+        assert [e["start_s"] for e in self._ends(got)] == [1600.0, 2500.0]
+
+    def test_no_start_time_changes_nothing(self):
+        doc = self._practice_doc()
+        assert timeline.trim_to_start(doc, None) == doc
+
+    def test_a_start_time_before_the_first_end_changes_nothing(self):
+        doc = self._practice_doc()
+        assert timeline.trim_to_start(doc, 0.0) == doc
+
+    def test_it_never_empties_a_game(self):
+        # Every end short and the start time past all of them: the time points
+        # at nothing. One end left standing beats a chart with no game in it.
+        doc = self._doc([self._end(1, 0.0, 5), self._end(2, 600.0, 6),
+                         self._end(3, 1200.0, 4)])
+        got = timeline.trim_to_start(doc, 99999.0)
+        assert [e["number"] for e in self._ends(got)] == [1]
+        assert self._ends(got)[0]["id"] == 3
+
+    def test_trimming_twice_is_the_same_as_once(self):
+        once = timeline.trim_to_start(self._practice_doc(), 1440.0)
+        twice = timeline.trim_to_start(json.loads(json.dumps(once)), 1440.0)
+        assert once == twice
+
+    def test_it_leaves_the_pristine_document_alone(self):
+        doc = self._practice_doc()
+        before = json.dumps(doc)
+        timeline.trim_to_start(doc, 1440.0)
+        assert json.dumps(doc) == before
+
+    def test_the_scoreboard_verdict_is_recomputed_against_the_real_game(self):
+        # The board on the wall shows the game, never the practice, so a
+        # disagreement caused by practice scores has to clear when they go.
+        doc = self._practice_doc()
+        doc["games"][0]["scoreboard"] = {
+            "final": {"red": 1, "yellow": 1}, "per_end": None,
+            "agrees_with_detection": False,
+        }
+        got = timeline.trim_to_start(doc, 1440.0)
+        assert got["games"][0]["scoreboard"]["agrees_with_detection"] is True
+        assert all(e["scoreboard_agrees"] is True for e in self._ends(got))
