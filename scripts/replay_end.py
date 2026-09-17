@@ -234,9 +234,12 @@ def main():
                               getattr(sh, "delivery", None))
         if sp:
             measured += 1
-            split_txt = f"{sp.seconds:6.2f}s (est {sp.extrapolated_m:.1f} m)"
+            # The baseline is the same hog-to-hog distance for every shot, so
+            # what is worth printing beside the time is the speed it works out
+            # to -- which is the number that reads as ice speed.
+            split_txt = f"{sp.seconds:6.2f}s ({sp.speed_m_s:.2f} m/s)"
         else:
-            split_txt = "     -             "
+            split_txt = "     -            "
         clock_txt = "    -" if secs is None else f"{secs:5.1f}s"
         how = " est" if getattr(sh, "tee_estimated", False) else (
             "" if getattr(sh, "release", None) is not None else " seen")
