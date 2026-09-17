@@ -66,7 +66,9 @@ CONF_CLEAR_REST = 0.85
 CONF_BOUNDARY = 0.5
 # How close to the house edge counts as "on the boundary" for confidence.
 BOUNDARY_M = 0.15
-# Hog to hog, above this is draw weight and below it is takeout weight.
+# Hog to hog, above this is draw weight and below it is takeout weight. An
+# external standard, not a number fitted to this VOD: do not tune it against
+# our own data, and if it moves, it moves because the standard did.
 SPLIT_HIT_MAX_S = 12.5
 
 
