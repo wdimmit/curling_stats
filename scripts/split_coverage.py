@@ -294,8 +294,8 @@ class VideoStats:
             lines.append("  agreement where both fired: no shots had both readings")
         if self.diffs_published:
             adp = sorted(abs(d) for d in self.diffs_published)
-            lines.append(f"  agreement among PUBLISHED splits only, post-veto (n={len(adp)}, "
-                        f"<= {split.CROSS_CHECK_S}s by construction): "
+            lines.append(f"  agreement among PUBLISHED splits only (n={len(adp)}, "
+                        f"NOT bounded by {split.CROSS_CHECK_S}s any more -- the cross-check records rather than refuses): "
                         f"median |diff|={statistics.median(adp):.3f}s, "
                         f"worst |diff|={adp[-1]:.3f}s")
         if self.refusal_gates:
@@ -639,8 +639,8 @@ def main():
              flush=True)
     if all_diffs_published:
         adp = sorted(abs(d) for d in all_diffs_published)
-        print(f"  agreement among PUBLISHED splits only, post-veto (n={len(adp)}, "
-             f"<= {split.CROSS_CHECK_S}s by construction): "
+        print(f"  agreement among PUBLISHED splits only (n={len(adp)}, "
+             f"NOT bounded by {split.CROSS_CHECK_S}s any more -- the cross-check records rather than refuses): "
              f"median |diff|={statistics.median(adp):.3f}s, worst |diff|={adp[-1]:.3f}s",
              flush=True)
     if all_gates:
