@@ -1,14 +1,38 @@
+/* "Club": a printed scorecard rather than a dashboard.
+ *
+ * There is no accent HUE. Interaction is ink inversion and rule weight, which
+ * is what a scorecard has always used -- and it keeps the palette clear of the
+ * four colours that are already load-bearing DATA here: the red and yellow
+ * rocks, and the green 12-foot and blue 4-foot of the painted ice. The old
+ * --accent (#2b6cb0) sat a few degrees off the 4-foot blue, so "this is
+ * interactive" and "this is the four-foot" were near neighbours.
+ *
+ * --onaccent exists because --accent inverts between the modes: ink on paper,
+ * paper on oak. Every fill that used to hardcode #fff on top of --accent now
+ * reads this instead, or the dark mode would put white text on a pale fill.
+ * The #fff that sits on --red is NOT that, and stays put. */
 :root {
-  --bg:#f7f7f5; --panel:#fff; --ink:#1a1a1a; --muted:#6b6b6b;
-  --line:#e0e0dc; --accent:#2b6cb0; --red:#d13438; --yellow:#e8b400;
-  --warn:#b45309; --warnbg:#fef3c7; --ok:#15803d; --okbg:#dcfce7;
-  --ice:#fbfbfa; --iceline:#c9c9c4; --rail:#8a8a85;
+  --bg:#f3f0e7; --panel:#fffdf7; --ink:#16130c; --muted:#6d6455;
+  --line:#dcd5c3; --accent:#16130c; --onaccent:#fffdf7;
+  --red:#d13438; --yellow:#e8b400;
+  --warn:#8a4f12; --warnbg:#f3e3c6; --ok:#2f7a37; --okbg:#e2efd9;
+  --ice:#fffdf7; --iceline:#cfc8b6; --rail:#8c8472;
+  --display:"Archivo Narrow",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
+/* Warm dark: oak and charcoal, not the blue-grey it replaces, or the two modes
+   read as two different products.
+   --ice/--iceline/--rail are deliberately NOT redefined here. Nothing in either
+   stylesheet reads them -- the house is drawn from PAINT in core/constants.mjs,
+   a JS constant that cannot see prefers-color-scheme -- so overriding them
+   would be dead code claiming the ice follows the mode. It does not, and it
+   should not: a curling sheet is a lit white surface whatever the room is
+   doing, and the rings and rocks have to keep the colours they have on the ice.
+   The :root copies above are kept only to stay in step with PAINT. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg:#16171a; --panel:#1e2024; --ink:#ececec; --muted:#9aa0a6;
-    --line:#31343a; --accent:#6ea8fe; --warnbg:#3a2f12; --warn:#fbbf24;
-    --ok:#4ade80; --okbg:#14321f;
+    --bg:#17140f; --panel:#211c14; --ink:#f2ece0; --muted:#a2977f;
+    --line:#372f22; --accent:#f2ece0; --onaccent:#17140f;
+    --warn:#e0a94a; --warnbg:#3a2c11; --ok:#7fbf6a; --okbg:#1c2c16;
   }
 }
 * { box-sizing:border-box; }
@@ -17,13 +41,26 @@ body { margin:0; background:var(--bg); color:var(--ink);
 header { padding:10px 16px; border-bottom:1px solid var(--line);
          background:var(--panel); display:flex; gap:12px; align-items:center;
          flex-wrap:wrap; position:sticky; top:0; z-index:5; }
-h1 { font-size:15px; margin:0; font-weight:650; white-space:nowrap; }
+/* The condensed face carries the headings and every number; body copy stays on
+   the system sans, which is what a dense charting form wants at 13px. The stack
+   falls back to system-ui by design: the face comes from a CDN, so an offline
+   `curling-score serve` loses the character but keeps the layout. */
+h1 { font-family:var(--display); font-size:17px; margin:0; font-weight:700;
+     white-space:nowrap; text-transform:uppercase; letter-spacing:.05em; }
 /* The title reads as a title until you reach for it. */
 h1 a { text-decoration:none; color:inherit; }
 h1 a:hover { color:var(--accent); text-decoration:underline; }
-h2 { font-size:13px; margin:0 0 8px; font-weight:650; color:var(--muted);
-     text-transform:uppercase; letter-spacing:.04em; }
-h3 { font-size:13px; margin:14px 0 6px; font-weight:650; }
+h2 { font-family:var(--display); font-size:13px; margin:0 0 8px; font-weight:700;
+     color:var(--ink); text-transform:uppercase; letter-spacing:.09em; }
+h3 { font-family:var(--display); font-size:13px; margin:14px 0 6px; font-weight:700;
+     color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
+
+/* Numerals in the condensed face, everywhere a figure is meant to be compared
+   down a column: the scoreboard, the grade row, the clock totals, the rock
+   chips and the watch list. tabular-nums stays on each of them -- the face is
+   a change of voice, not a substitute for the figures lining up. */
+.shot, .scorebtns button, .pill, th, dd, table, #stoneChip,
+.wsc, .wdisc, .wsecs, .wtotals, .wen { font-family:var(--display); }
 .muted { color:var(--muted); }
 .grow { flex:1 1 auto; }
 .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
@@ -49,7 +86,7 @@ select, button, input, textarea {
 button { cursor:pointer; }
 button:hover:not(:disabled) { border-color:var(--accent); }
 button:disabled { opacity:.4; cursor:default; }
-button.on { background:var(--accent); color:#fff; border-color:transparent; }
+button.on { background:var(--accent); color:var(--onaccent); border-color:transparent; }
 textarea { width:100%; resize:vertical; min-height:44px; }
 input[type=text] { width:100%; }
 label.chk { display:flex; gap:6px; align-items:center; cursor:pointer;
@@ -94,6 +131,12 @@ label.chk { display:flex; gap:6px; align-items:center; cursor:pointer;
 .pick { display:flex; flex-wrap:wrap; gap:4px; }
 .pick button { padding:4px 8px; font-size:12px; }
 .scorebtns button { width:34px; padding:5px 0; font-variant-numeric:tabular-nums; }
+/* A score gets circled on a scorecard, not filled in. The type row above keeps
+   the ink fill, so the two selections stop reading as the same gesture -- with
+   no accent hue they were both a solid ink block and competed. (0,2,1) over
+   button.on's (0,1,1), so this wins without touching that rule. */
+.scorebtns button.on { background:var(--panel); color:var(--ink);
+                       border:2px solid var(--ink); font-weight:700; }
 dl { display:grid; grid-template-columns:auto 1fr; gap:3px 10px; margin:8px 0 0;
      font-size:13px; }
 dt { color:var(--muted); }
@@ -401,7 +444,7 @@ body[data-mode="review"] #house { cursor:default; }
     z-index: 9; left: 12px; right: 12px;
     bottom: calc(12px + env(safe-area-inset-bottom)); }
   body[data-house="edit"] #houseDone { flex: 1 1 auto; height: 46px;
-    background: var(--accent); color: #fff; border-color: transparent; }
+    background: var(--accent); color: var(--onaccent); border-color: transparent; }
   body[data-house="edit"] #recolour { flex: 0 0 56px; height: 46px; }
   /* The blank-shot "place the stones" warning in #flags is exactly the
      prompt this mode exists to act on, so it must stay above the editor
@@ -479,7 +522,7 @@ body[data-mode="review"] #house { cursor:default; }
   .transport #prev { order: 1; }
   .transport #replay { order: 2; }
   .transport #markCharted { order: 3; flex: 1 1 auto; background: var(--accent);
-                            color: #fff; border-color: transparent; }
+                            color: var(--onaccent); border-color: transparent; }
   .transport #next { order: 4; }
 
   /* touch targets */

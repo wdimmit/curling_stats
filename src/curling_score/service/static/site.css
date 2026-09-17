@@ -1,16 +1,24 @@
-:root { --bg:#f7f7f5; --panel:#fff; --ink:#1a1a1a; --muted:#6b6b6b; --line:#e0e0dc;
-        --accent:#2b6cb0; --warn:#b45309; --warnbg:#fef3c7; --ok:#15803d; --okbg:#dcfce7;
-        --red:#d13438; --yellow:#e8b400; }
+/* "Club" -- kept byte-for-byte in step with viewer/style.css, which carries the
+   reasoning. No accent hue: interaction is ink inversion, which leaves the
+   palette clear of the red/yellow rocks and the green/blue painted rings. */
+:root { --bg:#f3f0e7; --panel:#fffdf7; --ink:#16130c; --muted:#6d6455; --line:#dcd5c3;
+        --accent:#16130c; --onaccent:#fffdf7;
+        --warn:#8a4f12; --warnbg:#f3e3c6; --ok:#2f7a37; --okbg:#e2efd9;
+        --red:#d13438; --yellow:#e8b400;
+        --display:"Archivo Narrow",system-ui,-apple-system,"Segoe UI",sans-serif; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg:#16171a; --panel:#1e2024; --ink:#ececec; --muted:#9aa0a6; --line:#31343a;
-  --accent:#6ea8fe; --warnbg:#3a2f12; --warn:#fbbf24; --ok:#4ade80; --okbg:#14321f; } }
+  --bg:#17140f; --panel:#211c14; --ink:#f2ece0; --muted:#a2977f; --line:#372f22;
+  --accent:#f2ece0; --onaccent:#17140f;
+  --warnbg:#3a2c11; --warn:#e0a94a; --ok:#7fbf6a; --okbg:#1c2c16; } }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--ink);
        font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
 header { padding:12px 18px; border-bottom:1px solid var(--line); background:var(--panel);
          display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
-header h1 { font-size:16px; margin:0; }
-header a { color:var(--accent); text-decoration:none; }
+header h1 { font-family:var(--display); font-size:19px; margin:0; font-weight:700;
+            text-transform:uppercase; letter-spacing:.05em; }
+header a { color:var(--accent); text-decoration:underline;
+           text-underline-offset:3px; text-decoration-thickness:1px; }
 main { max-width:860px; margin:0 auto; padding:22px 18px; }
 .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px; }
 .muted { color:var(--muted); }
@@ -19,13 +27,13 @@ input, select, button { font:inherit; padding:8px 10px; border-radius:7px; color
                         border:1px solid var(--line); background:var(--panel); }
 input { width:100%; }
 button { cursor:pointer; }
-button.primary { background:var(--accent); color:#fff; border-color:transparent; padding:9px 16px; }
+button.primary { background:var(--accent); color:var(--onaccent); border-color:transparent; padding:9px 16px; }
 /* Watch is a plain link on purpose -- bookmarkable, middle-clickable, and the
    one action here that costs nothing -- so it needs a button's look, not a
    button's element. */
 a.btn { display:inline-block; text-decoration:none; padding:8px 10px; border-radius:7px;
         border:1px solid var(--line); background:var(--panel); color:var(--ink); }
-a.btn.primary { background:var(--accent); color:#fff; border-color:transparent; }
+a.btn.primary { background:var(--accent); color:var(--onaccent); border-color:transparent; }
 .actions { display:flex; gap:6px; white-space:nowrap; }
 /* An editable League cell has to read as text until you want to change it --
    a table of permanent inputs is a form, and this is a catalogue. */
@@ -56,11 +64,15 @@ button:disabled { opacity:.5; cursor:default; }
 .phases .done { color:var(--ok); }
 .phases .now { font-weight:650; }
 .phases .todo { color:var(--muted); }
-table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums;
+        font-family:var(--display); }
 th, td { padding:7px 8px; text-align:left; border-bottom:1px solid var(--line); font-size:14px; }
-th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
-h2 { font-size:15px; margin:22px 0 8px; }
-.pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid var(--line); }
+th { font-family:var(--display); color:var(--muted); font-weight:700; font-size:12px;
+     text-transform:uppercase; letter-spacing:.07em; }
+h2 { font-family:var(--display); font-size:15px; margin:22px 0 8px; font-weight:700;
+     text-transform:uppercase; letter-spacing:.07em; }
+.pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px;
+        border:1px solid var(--line); font-family:var(--display); }
 .pill.ready { background:var(--okbg); color:var(--ok); border-color:transparent; }
 .pill.queued, .pill.processing, .pill.pending_approval { background:var(--warnbg); color:var(--warn); border-color:transparent; }
 .sw { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }

@@ -8,10 +8,10 @@
  * in a presentation attribute is not dependable, and a house that silently
  * fails to paint is far worse than one that does not follow the theme. */
 export const PAINT = {
-  ice: "#fbfbfa", iceLine: "#c9c9c4", rail: "#8a8a85",
+  ice: "#fffdf7", iceLine: "#cfc8b6", rail: "#8c8472",
   twelve: "#3f9c47", four: "#3b4fa8", granite: "#9a9a95",
   graniteEdge: "#5f5f5b", red: "#d13438", yellow: "#e8b400",
-  warn: "#b45309", accent: "#2b6cb0", thrown: "#ffffff",
+  warn: "#8a4f12", accent: "#16130c", thrown: "#ffffff",
 };
 
 /* Metres. The SVG user-space unit is a metre, which is why none of the
