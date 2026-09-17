@@ -53,7 +53,19 @@ RUN pip install --no-cache-dir \
 # API to match, or the API refuses the worker's claim.
 ARG MODEL=ds11a.pt
 COPY weights/${MODEL} /opt/curling/weights/${MODEL}
+
+# The SIDE-view detector, which times the throwing end's hog crossing. It must
+# be shipped and pinned explicitly, because `weights.side_path()` treats a
+# MISSING side model as "fall back to the colour scan" rather than an error --
+# the overhead pipeline predates the side view and still runs without it. That
+# is the right behaviour and the wrong failure here: an image built without
+# this file would reprocess a whole archive, succeed, and quietly republish the
+# old answers. Pinning the path turns that into a startup failure instead.
+ARG SIDE_MODEL=ds13b.pt
+COPY weights/${SIDE_MODEL} /opt/curling/weights/${SIDE_MODEL}
+
 ENV CURLING_SCORE_WEIGHTS=/opt/curling/weights/${MODEL} \
+    CURLING_SCORE_SIDE_WEIGHTS=/opt/curling/weights/${SIDE_MODEL} \
     CURLING_SCORE_CACHE=/data/cache PYTHONUNBUFFERED=1
 VOLUME /data/cache
 CMD ["python", "-m", "curling_score.service.worker"]
