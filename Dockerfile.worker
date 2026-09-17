@@ -34,6 +34,12 @@ COPY src ./src
 # on the source of rocks.py, yolo.py and calibrate.py but not on library
 # versions, so a silent torch or opencv bump would change detections while
 # every cache key stayed the same.
+#
+# The client half of the proof-of-origin token setup. yt-dlp reads the
+# `youtubepot-bgutilhttp` extractor args that ingest/cache.py sets only when
+# this plugin is installed -- without it the sidecar in
+# docker-compose.worker.yml runs, answers nothing, and YouTube goes on saying
+# "Sign in to confirm you're not a bot". Pinned to match the sidecar image.
 RUN pip install --no-cache-dir \
         torch==2.5.1 torchvision==0.20.1 \
         --index-url https://download.pytorch.org/whl/cu121 \
@@ -41,7 +47,8 @@ RUN pip install --no-cache-dir \
         "ultralytics==8.4.143" "numpy==2.5.3" \
         "opencv-python-headless==5.0.0.93" "av==18.1.0" \
  && pip install --no-cache-dir --no-deps . \
- && pip install --no-cache-dir "httpx>=0.27" "yt-dlp>=2026.8.19"
+ && pip install --no-cache-dir "httpx>=0.27" "yt-dlp>=2026.8.19" \
+        "bgutil-ytdlp-pot-provider==2.0.0"
 
 # The production detector, pinned through the documented environment variable
 # so `weights.default_path()` resolves it the same way everywhere.

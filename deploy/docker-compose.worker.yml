@@ -15,7 +15,8 @@ services:
     environment:
       CURLING_SCORE_CACHE: /data/cache
       WORKER_CACHE_GB: "300"
-      # YTDLP_POT_PROVIDER: http://pot:4416     # if the pot sidecar below is enabled
+      YTDLP_POT_PROVIDER: http://pot:4416
+    depends_on: [pot]
     volumes:
       # The host's designated storage. 394 GB free there, so the 300 GB budget
       # above has room; change both together if that ever stops being true.
@@ -24,8 +25,15 @@ services:
       resources:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
-  # Only needed if YouTube starts demanding proof-of-origin tokens from this
-  # connection too. Off by default: a residential IP rarely needs it.
-  # pot:
-  #   image: brainicism/bgutil-ytdlp-pot-provider:latest
-  #   restart: unless-stopped
+  # Mints the proof-of-origin tokens YouTube demands before it will serve a
+  # video. This used to be off, on the theory that a residential IP rarely
+  # needs it; "Sign in to confirm you're not a bot" on a cold request is what
+  # that theory expiring looks like. Nothing is published to the host -- only
+  # the worker talks to it, over the compose network.
+  #
+  # Pinned to the same version as the plugin in Dockerfile.worker. The two
+  # speak a versioned protocol and refuse each other across a major bump, so
+  # :latest here would eventually break token minting on an unrelated rebuild.
+  pot:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
+    restart: unless-stopped

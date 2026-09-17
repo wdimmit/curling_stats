@@ -136,6 +136,24 @@ and the job is requeued; the caches under `/data/wdd/curling-cache` make the ret
 ~2 minute warm run. `WORKER_CACHE_GB` prunes old media (never detections); keep
 it comfortably under the free space on whatever volume holds the cache.
 
+The compose file brings up a `pot` sidecar alongside the worker, and the image
+carries the matching `bgutil-ytdlp-pot-provider` plugin. Together they mint the
+proof-of-origin tokens YouTube asks for before it will serve a video; without
+them a download fails with "Sign in to confirm you're not a bot" and
+`ensure_cached` waits out 5, 10 and 20 minutes before giving up. Both are pinned
+to 2.0.0 and must move together -- they refuse each other across a major bump.
+To check the sidecar is being used rather than merely running:
+
+```bash
+docker compose -f deploy/docker-compose.worker.yml logs pot | tail   # a line per token minted
+```
+
+Note that only the download path in `ingest/cache.py` is wired to it. Metadata
+(`ingest/source.py`), clip resolution (`harvest/clips.py`) and playlist
+enumeration (`harvest/playlist.py`) each build their own yt-dlp options with no
+token provider and no cookies, so a block that lands on one of those is not
+fixed by any of this.
+
 ## Watching a league
 
 ```bash
