@@ -1,0 +1,162 @@
+[
+ {
+  "video": "4RrNWSeNnMU",
+  "pairs": {
+   "top": {
+    "n": 47,
+    "median": 0.05,
+    "sd": 0.14,
+    "verdict": "in sync"
+   },
+   "bottom": {
+    "n": 27,
+    "median": -0.176,
+    "sd": 0.042,
+    "verdict": "OFFSET -0.18s, steady"
+   }
+  },
+  "usable": false
+ },
+ {
+  "video": "AEqLTgM25Tc",
+  "pairs": {
+   "top": {
+    "n": 36,
+    "median": 0.205,
+    "sd": 0.187,
+    "verdict": "OFFSET +0.21s, steady"
+   },
+   "bottom": {
+    "n": 24,
+    "median": -0.103,
+    "sd": 0.433,
+    "verdict": "STEPS at t=10196s: -0.90 -> -0.07"
+   }
+  },
+  "usable": false
+ },
+ {
+  "video": "OcyhldUbu8A",
+  "pairs": {
+   "top": {
+    "n": 34,
+    "median": 0.008,
+    "sd": 0.297,
+    "verdict": "STEPS at t=2127s: -0.07 -> +0.38"
+   },
+   "bottom": {
+    "n": 24,
+    "median": -0.209,
+    "sd": 0.047,
+    "verdict": "OFFSET -0.21s, steady"
+   }
+  },
+  "usable": false
+ },
+ {
+  "video": "PGltvgB2yIM",
+  "pairs": {
+   "top": {
+    "n": 19,
+    "median": -0.125,
+    "sd": 0.189,
+    "verdict": "STEPS at t=1867s: +0.30 -> -0.13"
+   },
+   "bottom": {
+    "n": 17,
+    "median": 0.035,
+    "sd": 0.374,
+    "verdict": "in sync"
+   }
+  },
+  "usable": false
+ },
+ {
+  "video": "VXU9xwmugRg",
+  "pairs": {
+   "top": {
+    "n": 49,
+    "median": 0.053,
+    "sd": 0.193,
+    "verdict": "in sync"
+   },
+   "bottom": {
+    "n": 26,
+    "median": 0.019,
+    "sd": 0.135,
+    "verdict": "in sync"
+   }
+  },
+  "usable": true
+ },
+ {
+  "video": "entTaSBFK3A",
+  "pairs": {
+   "top": {
+    "n": 17,
+    "median": -0.027,
+    "sd": 0.061,
+    "verdict": "in sync"
+   },
+   "bottom": {
+    "n": 6,
+    "median": -0.322,
+    "sd": 0.21,
+    "verdict": "OFFSET -0.32s, steady"
+   }
+  },
+  "usable": false
+ },
+ {
+  "video": "hOKZoeJNTpM",
+  "pairs": {
+   "top": {
+    "n": 7,
+    "median": -0.028,
+    "sd": 0.137,
+    "verdict": "in sync"
+   },
+   "bottom": {
+    "n": 8,
+    "median": -0.242,
+    "sd": 0.268,
+    "verdict": "OFFSET -0.24s, steady"
+   }
+  },
+  "usable": false
+ },
+ {
+  "video": "jgZ9wlxGYHM",
+  "pairs": {
+   "top": {
+    "n": 7,
+    "median": -0.034,
+    "sd": 0.053,
+    "verdict": "in sync"
+   },
+   "bottom": {
+    "n": 3,
+    "verdict": "too few crossings"
+   }
+  },
+  "usable": false
+ },
+ {
+  "video": "n51rf_nFlhM",
+  "pairs": {
+   "top": {
+    "n": 18,
+    "median": -0.052,
+    "sd": 0.022,
+    "verdict": "in sync"
+   },
+   "bottom": {
+    "n": 11,
+    "median": -0.312,
+    "sd": 0.022,
+    "verdict": "OFFSET -0.31s, steady"
+   }
+  },
+  "usable": false
+ }
+]
