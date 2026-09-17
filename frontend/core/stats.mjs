@@ -3,7 +3,7 @@
  * Everything takes the game view built by timeline.buildGameView, so one
  * relayout serves the report, the clock, the queue and the strip.
  */
-import { POSITIONS, TYPE } from "./constants.mjs";
+import { POSITIONS } from "./constants.mjs";
 import { isGraded, typeOf } from "./shots.mjs";
 
 /* mm:ss, because a thinking-time budget is quoted in minutes. */
@@ -89,9 +89,9 @@ export function cumulativeThinking(view) {
 
 /* Shooting percentages, by team and position, and broken down by shot type.
  *
- * An unscored type -- Curl Coach's "non scored shots" -- is counted as thrown
- * but never graded, so a rock thrown away does not drag a percentage down for
- * a shot nobody was trying to make. */
+ * Every rock counts once a charter has graded it, whatever its type. A rock
+ * nobody graded is counted as thrown and nothing more, which is what keeps a
+ * half-charted game from reading as a bad one. */
 export function gatherStats(view) {
   const out = {};
   for (const c of ["red", "yellow"]) {
@@ -105,7 +105,7 @@ export function gatherStats(view) {
       const id = typeOf(s);
       const row = (bucket.types[id] ||= { thrown: 0, graded: 0, sum: 0 });
       bucket.thrown++; row.thrown++;
-      if (isGraded(s) && !TYPE[id]?.unscored) {
+      if (isGraded(s)) {
         bucket.graded++; bucket.sum += s.user_score;
         row.graded++; row.sum += s.user_score;
       }

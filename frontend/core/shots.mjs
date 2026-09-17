@@ -1,10 +1,9 @@
 /* What a single shot is, and what the page says about it. */
-import { TYPE, TYPES } from "./constants.mjs";
+import { TYPES } from "./constants.mjs";
 
 export const isBlank = s => s && (s.state_known === false || s.missing);
 export const typeOf = s => (s ? (s.shot_type || "unknown") : "unknown");
 export const isGraded = s => s && typeof s.user_score === "number";
-export const isUnscoredType = s => !!TYPE[typeOf(s)]?.unscored;
 
 /* Nobody can grade a rock nobody saw. A blank's fast path is saying where it
  * was thrown and what was on the ice, so its peek carries different controls. */

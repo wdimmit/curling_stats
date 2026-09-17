@@ -313,14 +313,21 @@ class TestReportArithmetic:
                      "out(pct(gatherStats().red.lead));")
         assert pct == "—"
 
-    def test_throw_aways_are_thrown_but_never_scored(self):
-        # Curl Coach's "non scored shots": counting a throw-away as 0 would
-        # punish a deliberate one.
+    def test_every_type_counts_once_a_charter_has_scored_it(self):
+        # Curl Coach exempts its "non scored shots" from the percentage. We do
+        # not: every rock is scored, a throw-away included. Nothing starts
+        # counting that nobody graded -- a type carries no exemption of its
+        # own, so the charter pressing a number is the whole of the decision.
         got = self._stats([shot(1, "red", "skip", shot_type="through",
                                 user_score=0)])
         skip = got["red"]["skip"]
         assert skip["thrown"] == 1
-        assert skip["graded"] == 0 and skip["sum"] == 0
+        assert skip["graded"] == 1 and skip["sum"] == 0
+
+    def test_a_type_nobody_graded_is_still_only_thrown(self):
+        got = self._stats([shot(1, "red", "skip", shot_type="through")])
+        skip = got["red"]["skip"]
+        assert skip["thrown"] == 1 and skip["graded"] == 0
 
     def test_shots_are_grouped_by_type_within_a_player(self):
         got = self._stats([shot(1, "red", "lead", shot_type="guard", user_score=4),
@@ -965,6 +972,16 @@ class TestASubtypeNeverRepeatsItsCategory:
         assert run_js('out(GROUP_TYPE["Other"] ?? null);') is None
         assert run_js('out(subtypesOf("Other").map(t => t.id));') == [
             "through", "hogged", "not_thrown", "unknown"]
+
+    def test_the_two_ways_out_of_play_sit_under_the_shot_they_were(self):
+        """A rock through the house was a draw and a flash was a takeout, so
+        each refines its own group rather than landing in Other."""
+        assert run_js('out([TYPE["draw_through"]?.group ?? null, '
+                      'TYPE["flashed"]?.group ?? null]);') == ["Draw", "Hit"]
+
+    def test_no_type_is_exempt_from_the_percentage(self):
+        """Every rock is scored; the charter decides by grading it or not."""
+        assert run_js('out(TYPES.filter(t => t.unscored).map(t => t.id));') == []
 
     def test_a_type_this_table_no_longer_knows_degrades_rather_than_breaks(self):
         """Refinements get retired -- four were, none of which any of the 29

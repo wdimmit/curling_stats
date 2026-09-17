@@ -228,15 +228,19 @@ the detector could not read and grade the shot as a coach would.
   lead-in (10 s by default, adjustable in the header), so you see the call and
   the delivery rather than a stone already at rest. One embedded player is
   reused throughout — navigating never reloads it.
-- **Shot types.** The detector offers only `draw`, `guard`, `hit`, `through`,
-  `hogged` or `unknown`, from where the stone stopped, what it moved, and --
-  for a hogged rock -- from having seen it thrown and never arrive. The full
-  Curl Coach taxonomy (peel, freeze, come around, run back…) is yours to pick,
-  because those describe what was *called*.
+- **Shot types.** The detector offers only `draw`, `guard`, `hit`,
+  `draw_through`, `flashed`, `hogged` or `unknown`, from where the stone
+  stopped, what it moved, and -- for a hogged rock -- from having seen it
+  thrown and never arrive. A rock that left play is split by its long split:
+  over 12.5 s hog to hog it was a draw thrown through, under it a takeout that
+  flashed, and with no split timed it falls to the flash at half confidence.
+  The full Curl Coach taxonomy (peel, freeze, come around, run back…) is yours
+  to pick, because those describe what was *called*.
 - **Grading** is Curl Coach's 0–4 per shot, with a miss reason and a note. The
   Report view groups every player's shots by type and gives an average and a
-  shooting percentage (`points ÷ 4 × shots graded`). Ungraded shots count as
-  thrown but never as misses, and the report says how many are still ungraded.
+  shooting percentage (`points ÷ 4 × shots graded`). Every type counts once it
+  is graded, a throw-away included. Ungraded shots count as thrown but never as
+  misses, and the report says how many are still ungraded.
 - **The clock** is charted there too: each team's thinking time accumulated
   rock by rock, with the ends marked along the bottom. A team's line is flat
   through the other team's rocks, so the gap between them at any point is what

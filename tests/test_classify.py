@@ -1,9 +1,13 @@
 """What a shot was, judged from its flight and what it changed."""
 
+from dataclasses import replace
+
 import pytest
 
 from curling_score.detect.delivery import Delivery
+from curling_score.detect.release import Release
 from curling_score.game import classify
+from curling_score.game import split as split_mod
 from curling_score.geometry import constants as C
 
 
@@ -38,6 +42,30 @@ def delivery(**kw):
     )
     base.update(kw)
     return Delivery(**base)
+
+
+def climb(t_cross, speed=2.0, fps=10.0, span=1.0, x=0.0):
+    """A stone leaving the thrower's house, crossing the paint at ``t_cross``."""
+    n = max(1, int(span * fps / speed))
+    return tuple(
+        (t_cross + i / fps, x, split_mod.HOG_APPARENT_Y_M + speed * i / fps)
+        for i in range(-n, n + 1)
+    )
+
+
+def paired(split_s, near_speed=2.0, far_speed=1.2, rest_y_m=-2.5):
+    """A release and the delivery it was paired to, timed ``split_s`` apart.
+
+    Both tracks cross the hog line's paint, so the split is exact by
+    construction -- which is the whole reason it is measured there.
+    """
+    dv = delivery(track=flight(y0=5.6, y1=rest_y_m, speed=far_speed),
+                  came_to_rest=False, reason="left-view", rest_y_m=rest_y_m)
+    far = split_mod.crossing_time(dv.track, split_mod.HOG_APPARENT_Y_M)
+    near = far - split_s
+    rel = Release(color="red", t=near - 1.0, y_exit_m=5.5,
+                  speed_m_s=near_speed, track=climb(near, speed=near_speed))
+    return rel, dv
 
 
 class TestSpeedAt:
@@ -109,14 +137,21 @@ class TestRestGeometry:
         assert got == classify.GUARD
         assert conf == classify.CONF_CLEAR_REST
 
-    def test_a_stone_past_the_tee_and_outside_the_rings_is_a_deep_draw(self):
-        # Behind the tee is not in front of the house, so it cannot be a guard.
-        # Still in play, though: short of the back line at y = -1.971.
+    def test_a_stone_past_the_tee_and_outside_the_rings_is_a_guard(self):
+        # The tee line decides nothing: in the twelve-foot is a draw, and
+        # everything else still in play is a guard, in front of the house or
+        # behind it. Short of the back line at y = -1.971, so it is in play.
         dv = delivery(rest_x_m=1.5, rest_y_m=-1.8, came_to_rest=True)
         assert (dv.rest_x_m**2 + dv.rest_y_m**2) ** 0.5 > C.IN_HOUSE_MAX_D_M
         assert dv.rest_y_m > C.THROUGH_BACK_Y_M
         got, _ = classify.classify(dv, None)
-        assert got == classify.DRAW
+        assert got == classify.GUARD
+
+    def test_resting_just_outside_the_rings_is_flagged_as_uncertain_too(self):
+        got, conf = classify.classify(
+            delivery(rest_x_m=0.0, rest_y_m=C.IN_HOUSE_MAX_D_M + 0.05), None)
+        assert got == classify.GUARD
+        assert conf == classify.CONF_BOUNDARY
 
     def test_resting_on_the_house_edge_is_flagged_as_uncertain(self):
         got, conf = classify.classify(
@@ -154,19 +189,76 @@ class TestWeightDecidesNothing:
 
 
 class TestOutOfPlay:
-    def test_a_stone_that_ran_out_the_back_untouched_went_through(self):
-        got, _ = classify.classify(
+    """A rock that left play having touched nothing, named by its long split.
+
+    It was either a draw thrown far too heavy or a takeout that flashed, and
+    hog to hog those are minutes apart in kind: a takeout crosses in well under
+    12.5 s, a draw in well over. That is the one measurement that separates
+    them -- see ``TestWeightDecidesNothing`` for the one that does not.
+    """
+
+    def test_a_slow_stone_that_ran_out_the_back_was_a_draw_thrown_through(self):
+        rel, dv = paired(18.0)
+        got, conf = classify.classify(dv, None, rel)
+        assert got == classify.DRAW_THROUGH
+        assert conf == classify.CONF_CLEAR_REST
+
+    def test_a_quick_stone_that_ran_out_the_back_was_a_takeout_that_flashed(self):
+        rel, dv = paired(9.0)
+        got, conf = classify.classify(dv, None, rel)
+        assert got == classify.FLASHED
+        assert conf == classify.CONF_CLEAR_REST
+
+    def test_a_split_exactly_on_the_threshold_reads_as_a_flash(self):
+        rel, dv = paired(classify.SPLIT_HIT_MAX_S)
+        got, _ = classify.classify(dv, None, rel)
+        assert got == classify.FLASHED
+
+    def test_entry_speed_still_decides_nothing_here(self):
+        # A draw thrown through, entering the panel faster than most takeouts.
+        # The split says draw and the panel's speed is not allowed to argue.
+        rel, dv = paired(18.0, near_speed=4.0, far_speed=3.5)
+        assert dv.speed_at() > 3.0
+        got, _ = classify.classify(dv, None, rel)
+        assert got == classify.DRAW_THROUGH
+
+    def test_a_stone_that_stopped_past_the_back_line_is_out_of_play_too(self):
+        # Not every one of these leaves the panel: some are seen settling
+        # behind the back line, which is just as much out of play.
+        rel, dv = paired(9.0, rest_y_m=-2.5)
+        got, _ = classify.classify(replace(dv, reason="rest", came_to_rest=True),
+                                   None, rel)
+        assert got == classify.FLASHED
+
+    def test_without_a_split_it_is_a_flash_and_says_so(self):
+        # Most throws are never timed at both hog lines, so this is the common
+        # case. Choosing the takeout is a policy rather than evidence, and the
+        # confidence is what keeps that honest.
+        got, conf = classify.classify(
             delivery(speed=1.4, came_to_rest=False, reason="left-view",
                      rest_y_m=-2.5), None)
-        assert got == classify.THROUGH
+        assert got == classify.FLASHED
+        assert conf == classify.CONF_BOUNDARY
 
-    def test_a_fast_stone_out_of_play_is_still_only_through(self):
-        # It may well have been a takeout that missed, but nothing we can see
-        # says so, and "through" is what was observed.
-        got, _ = classify.classify(
-            delivery(speed=4.0, came_to_rest=False, reason="left-view",
-                     rest_y_m=-2.5), None)
-        assert got == classify.THROUGH
+    def test_a_release_the_camera_lost_before_the_paint_leaves_no_split(self):
+        # Followed out of the far house, but not as far as the hog line. A
+        # split is never extrapolated, so there is none, and this falls to the
+        # same default as a shot with no release at all.
+        rel, dv = paired(18.0)
+        got, conf = classify.classify(dv, None, replace(rel, track=()))
+        assert got == classify.FLASHED
+        assert conf == classify.CONF_BOUNDARY
+
+    def test_a_shot_is_classified_with_the_release_paired_to_it(self):
+        # The split is the only evidence separating a draw thrown through from
+        # a flash, and it lives on the release, not the arrival. A shot that
+        # dropped it on the way through here would always read as a flash.
+        from curling_score.game.shots import Shot
+
+        rel, dv = paired(18.0)
+        s = Shot(number=5, color="red", stones=[], t_rest_s=dv.t_rest,
+                 delivery=dv, release=rel)
+        assert classify.classify_shot(s)[0] == classify.DRAW_THROUGH
 
 
 class TestRefusingToGuess:

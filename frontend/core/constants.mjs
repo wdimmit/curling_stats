@@ -60,6 +60,8 @@ export const TYPES = [
   { id: "freeze",       name: "Freeze",          group: "Draw"  },
   { id: "split_on",     name: "Split on",        group: "Draw"  },
   { id: "tap_up",       name: "Tap up",          group: "Draw"  },
+  // Auto-tagged: out of play, but it took the time a draw takes to get there.
+  { id: "draw_through", name: "Through",         group: "Draw"  },
 
   { id: "guard",        name: "Guard",           group: "Guard", base: true },
   { id: "centre_guard", name: "Centre guard",    group: "Guard" },
@@ -74,15 +76,19 @@ export const TYPES = [
   { id: "run_back",     name: "Run back",        group: "Hit"   },
   { id: "tick",         name: "Tick",            group: "Hit"   },
   { id: "in_off",       name: "In-off",          group: "Hit"   },
+  // Auto-tagged: out of play at takeout weight, having touched nothing.
+  { id: "flashed",      name: "Flashed",         group: "Hit"   },
 
-  // Curl Coach's "non scored shots": charted, but never counted in a
-  // percentage, because there was no shot to make.
-  { id: "through",      name: "Throw away",      group: "Other", unscored: true },
+  // Curl Coach exempts these from a percentage as "non scored shots". We do
+  // not: every rock is scored. Nothing here is graded until a charter puts a
+  // number on it, so exempting a type as well only threw away a judgement
+  // somebody had deliberately made.
+  { id: "through",      name: "Throw away",      group: "Other" },
   // Seen thrown, never reached the house: the detector saw it leave the
-  // far house and nothing arrive. Scored, because there was a shot to make.
+  // far house and nothing arrive.
   { id: "hogged",       name: "Hogged",          group: "Other" },
-  { id: "not_thrown",   name: "Not thrown",      group: "Other", unscored: true },
-  { id: "unknown",      name: "Unknown",         group: "Other", unscored: true },
+  { id: "not_thrown",   name: "Not thrown",      group: "Other" },
+  { id: "unknown",      name: "Unknown",         group: "Other" },
 ];
 
 /* What the picker offers inside a group: refinements only.
