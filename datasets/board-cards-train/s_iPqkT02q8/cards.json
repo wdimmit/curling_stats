@@ -1,0 +1,17 @@
+{
+  "cards": [
+    {"game": 0, "color": "yellow", "slot": 3, "end": 1},
+    {"game": 0, "color": "yellow", "slot": 5, "end": 2},
+    {"game": 0, "color": "yellow", "slot": 8, "end": 4},
+    {"game": 0, "color": "red", "slot": 4, "end": 3},
+    {"game": 0, "color": "red", "slot": 5, "end": 5}
+  ],
+  "reject": [
+    {"frame": "board_t02700.png", "color": "red", "slots": [5, 10, 13],
+     "why": "no red card hung yet; the whole band is spectators"},
+    {"frame": "board_t04500.png", "color": "red", "slots": [5, 6, 9, 10, 11, 12, 13],
+     "why": "only the 3 on slot 4 is a card; the rest is a row of heads"},
+    {"frame": "board_t06300.png", "color": "red", "slots": [2, 6, 7, 9, 10, 11, 12, 13],
+     "why": "the 3 on slot 4 and the 5 on slot 5 are cards; the rest is heads"}
+  ]
+}

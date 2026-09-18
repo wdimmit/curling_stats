@@ -188,7 +188,19 @@ def games_of(states) -> dict:
     return out
 
 
-def expand(cards, rows, games) -> list:
+def load_hand(path: Path) -> tuple:
+    """The hand reading: the cards, and the detections that are not cards.
+
+    A plain list is all cards. The object form carries ``reject`` as well, for
+    frames where `read_slots` found a "card" that a person's head was.
+    """
+    data = json.loads(path.read_text())
+    if isinstance(data, list):
+        return data, []
+    return data["cards"], data.get("reject", [])
+
+
+def expand(cards, rows, games, reject=()) -> list:
     """Attach the hand-read digit to every row.
 
     One physical card is one ``(game, colour, slot)``: within a game a team's
@@ -197,10 +209,26 @@ def expand(cards, rows, games) -> list:
     in. That is what makes the hand reading affordable -- about a dozen cards
     per video rather than a hundred-odd rows -- and it is the propagation the
     third self-consistency check then re-tests independently.
+
+    ``reject`` is per *frame*, not per card, and it has to be: spectators lean
+    on the boards, and `is_readable` only guards the printed row, which sits
+    above them -- so a row of heads in the red band reads as a row of cards
+    while the board itself still passes as readable. On s_iPqkT02q8 that put
+    eight phantom cards in one frame. The same slot can be a phantom in one
+    frame and a real card in another (red 5 there is a head at t=4500 and a
+    genuine 5 at t=6300), so a per-card key could not express it.
+
+    Rejected windows are kept, labelled ``"no_card"``, rather than dropped.
+    They are exactly what a presence gate has to refuse, and they cost nothing:
+    a reader that wants digits filters on the label it already has to filter.
     """
     hand = {(c["game"], c["color"], c["slot"]): c["end"] for c in cards}
+    no = {(x["frame"], x["color"], s) for x in reject for s in x["slots"]}
     out, missing = [], set()
     for r in rows:
+        if (r["frame"], r["color"], r["slot"]) in no:
+            out.append({**r, "end": "no_card"})
+            continue
         key = (games.get(r["frame"]), r["color"], r["slot"])
         if key not in hand:
             missing.add(key)
@@ -230,7 +258,9 @@ def check(rows, games) -> tuple:
     that card. The errors are the ones a bad hand reading would produce.
     """
     bad, notes = [], []
-    legible = [r for r in rows if r["end"] != "illegible"]
+    # Only rows carrying an actual end number can be ordered or counted:
+    # "illegible" has no place in a sequence and "no_card" is not a card.
+    legible = [r for r in rows if isinstance(r["end"], int)]
 
     frames = sorted({r["frame"] for r in rows})
     for frame in frames:
@@ -391,13 +421,16 @@ def merge(out: Path) -> int:
             continue
         states = json.loads((vdir / "states.json").read_text())
         games = games_of(states)
-        labelled = expand(json.loads(cards_path.read_text()), rows, games)
+        hand, reject = load_hand(cards_path)
+        labelled = expand(hand, rows, games, reject)
         bad, notes = check(labelled, games)
         rows_path.write_text(json.dumps(labelled, indent=2) + "\n")
         distinct = len({(games.get(r["frame"]), r["color"], r["slot"])
-                        for r in labelled})
+                        for r in labelled if isinstance(r["end"], int)})
+        phantom = sum(1 for r in labelled if r["end"] == "no_card")
         print(f"{vdir.name}: {len(labelled)} rows, {distinct} distinct cards, "
-              f"{len(bad)} errors, {len(notes)} notes", flush=True)
+              f"{phantom} no_card, {len(bad)} errors, {len(notes)} notes",
+              flush=True)
         for b in bad:
             print(f"  ! {b}", flush=True)
         for n in notes:
