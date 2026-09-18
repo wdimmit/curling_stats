@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import pytest
 
@@ -99,6 +100,53 @@ class TestTemplates:
         geom = SB.find_board(img)
         assert geom.printed_row[0] >= geom.yellow_row[1]
         assert geom.printed_row[1] <= geom.mid_line_y
+
+
+class TestReadDigit:
+    """Correlate a card glyph against the printed row. The margin over the
+    runner-up is the confidence: on the one known occluded card it collapses
+    to near zero, which is what makes it usable as a reject gate."""
+
+    def _cards(self, img):
+        geom = SB.find_board(img)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        return geom, gray, SB.templates(img, geom), SB.read_slots(img, geom)
+
+    def test_it_reads_the_end_number_off_each_yellow_card(self, known_frame):
+        img = known_frame("board_sheet2_t11000.png")
+        geom, gray, tmpl, reading = self._cards(img)
+        got = {}
+        for slot in sorted(reading.yellow):
+            glyph = SB._card_glyph(gray, geom, "yellow", slot)
+            got[slot] = SB.read_digit(glyph, tmpl)[0]
+        # Yellow reached 1 after end 1 and 3 after end 3.
+        assert got == {1: 1, 3: 3}
+
+    def test_a_card_under_a_hand_is_never_read_as_the_wrong_end(self, known_frame):
+        """Slot 4 of this frame is behind a spectator's hand. A crude fixed-crop
+        matcher with no median stacking or ink centring called it a 9. This
+        implementation segments the tile and centres on the ink, and may
+        legitimately read the card correctly as 4 -- or it may refuse it as
+        None if the occlusion still confuses the correlation. Either is safe;
+        calling it anything else (e.g. the old 9) is the one outcome that
+        cannot be allowed."""
+        img = known_frame("board_sheet2_t11700_person.png")
+        geom, gray, tmpl, _ = self._cards(img)
+        glyph = SB._card_glyph(gray, geom, "yellow", 4)
+        digit, margin = SB.read_digit(glyph, tmpl)
+        assert digit in (None, 4), f"occluded card misread as {digit}"
+
+    def test_an_out_of_frame_slot_has_no_glyph(self, known_frame):
+        img = known_frame("board_sheet2_t11000.png")
+        geom = SB.find_board(img)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        far = SB.BoardGeometry(
+            anchor_x=geom.anchor_x, yellow_y=geom.yellow_y, red_y=geom.red_y,
+            dy=geom.dy, top_line_y=geom.top_line_y, mid_line_y=geom.mid_line_y,
+            bottom_line_y=geom.bottom_line_y,
+            slot_x=[x + 10_000 for x in geom.slot_x],
+        )
+        assert SB._card_glyph(gray, far, "yellow", 1) is None
 
 
 class TestReadSlots:

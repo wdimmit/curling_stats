@@ -273,6 +273,81 @@ def templates(image, geom: BoardGeometry) -> dict:
     return out
 
 
+# Below this margin between the best and second-best template match, the digit
+# is not called. Set in Task 6 against the labelled harvest; a wrong digit is
+# worse than no digit, so this fails closed.
+MIN_MARGIN = 0.05
+
+# The card is a bright tile inside the slot. Segmenting it beats a fixed band,
+# which clips the glyph tops -- the card sits higher in the band than the
+# presence test needs to look.
+_CARD_TILE_MARGIN = 10.0
+
+
+def _card_glyph(gray, geom: BoardGeometry, color: str, slot: int):
+    """One card's tile, cropped to its bounding box.
+
+    Returns None where the slot falls outside the frame or no bright tile is
+    found -- which is what an empty slot looks like.
+
+    Cropped to the *tile* (the white card), not further in to just its ink.
+    A printed template is the raw, loosely-framed box `templates()` reads off
+    the board -- no ink-cropping, because there is no tile to find a card by
+    against bare printed numbers. Ink-cropping only the card, then, compares
+    two glyphs at different scales: the card's digit ends up filling its box
+    edge to edge while the template's sits padded inside its own, and that
+    scale mismatch beats correlation before shape ever gets a say. Confirmed
+    by dumping both crops side by side (see task-2-3-report.md) -- the
+    ink-cropped "3" reads as a clean 3 by eye but scores every other digit
+    over its own template; matched to the tile instead, it correlates
+    correctly. The ink test below stays as a presence gate: a blank tile with
+    no ink at all is an unreadable card, not a digit.
+    """
+    row = geom.yellow_row if color == "yellow" else geom.red_row
+    y1 = int(row[1])
+    # The card's top sits above the presence band, so reach up to the rule.
+    y0 = int(geom.top_line_y) if color == "yellow" else int(geom.mid_line_y)
+    half_w = max(2, int(0.22 * geom.dy))
+    sx = geom.slot_x[slot - 1]
+    x0, x1 = int(sx) - half_w, int(sx) + half_w
+    h, w = gray.shape
+    if x0 < 0 or y0 < 0 or x1 > w or y1 > h or y1 - y0 < 6:
+        return None
+
+    box = gray[y0:y1, x0:x1].astype(np.float32)
+    level = float(np.median(box))
+    tile = box > level + _CARD_TILE_MARGIN     # the white card against the board
+    if tile.sum() < 12:
+        return None
+    ys, xs = np.nonzero(tile)
+    card = box[ys.min(): ys.max() + 1, xs.min(): xs.max() + 1]
+    if card.size < 12:
+        return None
+
+    ink = card < (float(card.max()) + float(card.min())) / 2.0
+    if ink.sum() < 4:
+        return None
+    return card
+
+
+def read_digit(glyph, tmpl: dict) -> tuple:
+    """Best-matching printed digit for a card glyph, and its margin.
+
+    The margin over the runner-up is the confidence. An occluded or clipped
+    glyph matches several templates about equally well, so its margin
+    collapses -- which is exactly the signal to refuse it.
+    """
+    if glyph is None or glyph.size < 4:
+        return None, 0.0
+    g = _normalise(glyph)
+    scored = sorted(
+        ((float((g * t).mean()), k) for k, t in tmpl.items()), reverse=True
+    )
+    best, runner = scored[0], scored[1]
+    margin = best[0] - runner[0]
+    return (best[1] if margin >= MIN_MARGIN else None), margin
+
+
 def read_slots(image, geom: BoardGeometry) -> BoardReading:
     """Which slots carry a card, judged by intra-slot brightness range."""
     gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY).astype(float)
