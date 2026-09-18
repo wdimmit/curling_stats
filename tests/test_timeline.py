@@ -4,7 +4,7 @@ import pytest
 
 from curling_score import timeline
 from curling_score.detect.rocks import Detection
-from curling_score.game import shots as S
+from curling_score.game import scoreboard as SB, shots as S
 
 
 def det(color, x, y):
@@ -18,13 +18,15 @@ def shot(n, color, stones, t=100.0, missing=False):
 
 
 class TestBuildEnd:
-    def test_scores_the_end_from_the_final_house(self):
+    def test_reads_a_detected_score_off_the_final_house(self):
+        # The detected score. The end's "score" is the board's -- see
+        # TestTheBoardIsTheScore -- and this is the figure it is checked with.
         final = [det("yellow", 0.1, 0.0), det("red", 1.0, 0.0)]
         end = timeline.build_end(
             number=1, house="top", start_s=0.0, end_s=900.0,
             shots=[shot(1, "red", []), shot(2, "yellow", final)],
         )
-        assert end["score"] == {"red": 0, "yellow": 1}
+        assert end["detected_score"] == {"red": 0, "yellow": 1}
 
     def test_reads_the_hammer_from_who_threw_first(self):
         end = timeline.build_end(
@@ -51,7 +53,7 @@ class TestBuildEnd:
             shots=[shot(1, "red", []), shot(2, "yellow", final),
                    shot(3, "red", [], missing=True)],
         )
-        assert end["score"] == {"red": 0, "yellow": 1}
+        assert end["detected_score"] == {"red": 0, "yellow": 1}
 
     def test_reports_which_shot_the_score_was_read_from(self):
         final = [det("yellow", 0.1, 0.0)]
@@ -61,9 +63,9 @@ class TestBuildEnd:
         )
         assert end["scored_from_shot"] == 1
 
-    def test_an_end_with_no_shots_is_blank(self):
+    def test_an_end_with_no_shots_detects_no_score(self):
         end = timeline.build_end(number=1, house="top", start_s=0.0, end_s=1.0, shots=[])
-        assert end["score"] == {"red": 0, "yellow": 0}
+        assert end["detected_score"] == {"red": 0, "yellow": 0}
         assert end["hammer"] is None
 
 
@@ -73,7 +75,11 @@ class TestBuildGame:
             {"number": 1, "score": {"red": 0, "yellow": 2}},
             {"number": 2, "score": {"red": 1, "yellow": 0}},
         ]
-        game = timeline.build_game(0, 0.0, 1800.0, ends)
+        board = SB.BoardScores(
+            per_end={1: ends[0]["score"], 2: ends[1]["score"]},
+            unread_ends=(), final={"red": 1, "yellow": 2},
+        )
+        game = timeline.build_game(0, 0.0, 1800.0, ends, board=board)
         assert game["final"] == {"red": 1, "yellow": 2}
         assert game["ends"][0]["running"] == {"red": 0, "yellow": 2}
         assert game["ends"][1]["running"] == {"red": 1, "yellow": 2}
@@ -293,6 +299,98 @@ class TestTimingFields:
         assert end["shots"][1]["thinking_time_s"] is None
 
 
+class TestTheBoardIsTheScore:
+    """Detected scores stay computed -- they are the only thing that can tell
+    a misread board from a correct one -- but they are not the game's score."""
+
+    def test_an_end_takes_its_score_from_the_board(self):
+        end = timeline.build_end(1, "top", 0.0, 100.0, [],
+                                 board_score={"red": 0, "yellow": 2})
+        assert end["score"] == {"red": 0, "yellow": 2}
+        assert end["score_source"] == "board"
+
+    def test_an_unread_end_has_no_score(self):
+        end = timeline.build_end(1, "top", 0.0, 100.0, [], board_score=None)
+        assert end["score"] is None
+        assert end["score_source"] is None
+
+    def test_the_detected_score_is_kept_but_set_apart(self):
+        end = timeline.build_end(1, "top", 0.0, 100.0, [], board_score=None)
+        assert "detected_score" in end
+        assert end["detected_score"] == {"red": 0, "yellow": 0}
+
+    def test_the_running_score_stops_at_the_first_unread_end(self):
+        ends = [
+            timeline.build_end(1, "top", 0.0, 10.0, [], board_score={"red": 0, "yellow": 1}),
+            timeline.build_end(2, "bottom", 10.0, 20.0, [], board_score=None),
+            timeline.build_end(3, "top", 20.0, 30.0, [], board_score={"red": 2, "yellow": 0}),
+        ]
+        game = timeline.build_game(0, 0.0, 30.0, ends)
+        assert game["ends"][0]["running"] == {"red": 0, "yellow": 1}
+        assert game["ends"][1]["running"] is None
+        assert game["ends"][2]["running"] is None
+
+    def test_a_blank_end_is_a_real_score_and_not_an_unread_one(self):
+        # The distinction the whole feature exists for: an end nobody scored
+        # was read off the board as 0-0 and must keep the running total going.
+        ends = [
+            timeline.build_end(1, "top", 0.0, 10.0, [], board_score={"red": 0, "yellow": 1}),
+            timeline.build_end(2, "bottom", 10.0, 20.0, [], board_score={"red": 0, "yellow": 0}),
+            timeline.build_end(3, "top", 20.0, 30.0, [], board_score={"red": 2, "yellow": 0}),
+        ]
+        game = timeline.build_game(0, 0.0, 30.0, ends)
+        assert game["ends"][1]["score"] == {"red": 0, "yellow": 0}
+        assert game["ends"][1]["running"] == {"red": 0, "yellow": 1}
+        assert game["ends"][2]["running"] == {"red": 2, "yellow": 1}
+
+    def test_the_final_is_unknown_when_the_board_left_an_end_unread(self):
+        board = SB.BoardScores(per_end={1: {"red": 0, "yellow": 1}},
+                               unread_ends=(2,), final=None)
+        ends = [timeline.build_end(1, "top", 0.0, 10.0, [],
+                                   board_score={"red": 0, "yellow": 1}),
+                timeline.build_end(2, "bottom", 10.0, 20.0, [], board_score=None)]
+        game = timeline.build_game(0, 0.0, 20.0, ends, board=board)
+        assert game["final"] is None
+
+    def test_the_detected_final_is_kept_for_the_agreement_check(self):
+        board = SB.BoardScores(per_end={1: {"red": 0, "yellow": 1}},
+                               unread_ends=(), final={"red": 0, "yellow": 1})
+        ends = [timeline.build_end(1, "top", 0.0, 10.0, [],
+                                   board_score={"red": 0, "yellow": 1})]
+        game = timeline.build_game(0, 0.0, 10.0, ends, board=board)
+        assert game["final"] == {"red": 0, "yellow": 1}
+        assert game["detected"]["final"] == {"red": 0, "yellow": 0}
+        assert game["detected"]["score_by_end"] == [{"red": 0, "yellow": 0}]
+
+    def test_a_game_with_no_board_has_no_score_at_all(self):
+        ends = [timeline.build_end(1, "top", 0.0, 10.0, [], board_score=None)]
+        game = timeline.build_game(0, 0.0, 10.0, ends, board=None)
+        assert game["final"] is None
+        assert game["ends"][0]["score"] is None
+        assert game["ends"][0]["running"] is None
+
+    def test_the_hammer_chain_runs_off_board_scores(self):
+        """The rules fix the hammer sequence from the scores. Those scores are
+        now the board's, so a detection mistake cannot bend the chain."""
+        ends = [
+            timeline.build_end(1, "top", 0.0, 10.0, [], board_score={"red": 0, "yellow": 1}),
+            timeline.build_end(2, "bottom", 10.0, 20.0, [], board_score={"red": 1, "yellow": 0}),
+        ]
+        ends[0]["hammer"] = "red"
+        game = timeline.build_game(0, 0.0, 20.0, ends)
+        assert game["ends"][1]["hammer_expected"] == "red"
+
+    def test_the_hammer_chain_stops_at_the_first_unread_end(self):
+        ends = [
+            timeline.build_end(1, "top", 0.0, 10.0, [], board_score={"red": 0, "yellow": 1}),
+            timeline.build_end(2, "bottom", 10.0, 20.0, [], board_score=None),
+            timeline.build_end(3, "top", 20.0, 30.0, [], board_score={"red": 1, "yellow": 0}),
+        ]
+        ends[0]["hammer"] = "red"
+        game = timeline.build_game(0, 0.0, 30.0, ends)
+        assert game["ends"][2]["hammer_expected"] is None
+
+
 class TestTrimmingThePracticeOff:
     """A start time given at submission is a floor on the game, not a hint.
 
@@ -304,13 +402,27 @@ class TestTrimmingThePracticeOff:
     The submitter said where the game starts; this is where that gets used.
     """
 
+    def _house(self, score):
+        """A final house the detector would read back as ``score``."""
+        if not score:
+            return []
+        for color in ("red", "yellow"):
+            if score.get(color):
+                other = "yellow" if color == "red" else "red"
+                return ([det(color, 0.1 * (i + 1), 0.0) for i in range(score[color])]
+                        + [det(other, 1.0, 0.0)])
+        return []
+
     def _end(self, number, start_s, n_shots, score=None):
-        shots = [shot(i, "red" if i % 2 else "yellow", []) for i in range(1, n_shots + 1)]
-        out = timeline.build_end(number=number, house="top", start_s=start_s,
-                                 end_s=start_s + 300.0, shots=shots)
-        if score is not None:
-            out["score"] = dict(score)
-        return out
+        # Board and detector agree here, so the practice is the only thing
+        # that can pull them apart -- which is what these tests are about.
+        house = self._house(score)
+        shots = [shot(i, "red" if i % 2 else "yellow",
+                      house if i == n_shots else [])
+                 for i in range(1, n_shots + 1)]
+        return timeline.build_end(number=number, house="top", start_s=start_s,
+                                  end_s=start_s + 300.0, shots=shots,
+                                  board_score=score or {"red": 0, "yellow": 0})
 
     def _doc(self, ends):
         return {"games": [timeline.build_game(0, ends[0]["start_s"],
@@ -353,8 +465,11 @@ class TestTrimmingThePracticeOff:
         assert first["shots"][2]["user_score"] == 3
 
     def test_the_running_score_forgets_the_practice(self):
+        # The practice's yellow point is gone from the running total: the
+        # kept ends are 0-1 then 1-0, so it stands at 1-1 and not 1-2.
         got = timeline.trim_to_start(self._practice_doc(), 1440.0)
-        assert got["games"][0]["final"] == {"red": 1, "yellow": 1}
+        assert [e["running"] for e in self._ends(got)][-1] == {"red": 1, "yellow": 1}
+        assert got["games"][0]["detected"]["final"] == {"red": 1, "yellow": 1}
 
     def test_the_game_starts_where_its_first_real_end_does(self):
         got = timeline.trim_to_start(self._practice_doc(), 1440.0)
@@ -416,3 +531,18 @@ class TestTrimmingThePracticeOff:
         got = timeline.trim_to_start(doc, 1440.0)
         assert got["games"][0]["scoreboard"]["agrees_with_detection"] is True
         assert all(e["scoreboard_agrees"] is True for e in self._ends(got))
+
+    def test_the_boards_final_rides_through_the_trim(self):
+        # What the wall says the game finished is a fact about the wall, not a
+        # total over the ends that survived, so dropping the practice cannot
+        # rewrite it -- and must not blank it either.
+        doc = self._practice_doc()
+        doc["games"][0]["scoreboard"] = {"final": {"red": 1, "yellow": 1},
+                                         "per_end": None}
+        doc["games"][0]["final"] = {"red": 1, "yellow": 1}
+        got = timeline.trim_to_start(doc, 1440.0)
+        assert got["games"][0]["final"] == {"red": 1, "yellow": 1}
+
+    def test_a_game_with_no_board_still_has_no_final_after_trimming(self):
+        got = timeline.trim_to_start(self._practice_doc(), 1440.0)
+        assert got["games"][0]["final"] is None

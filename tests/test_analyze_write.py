@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from curling_score import analyze, timeline
 
 
@@ -52,7 +54,21 @@ class TestPhases:
     def test_the_stages_a_progress_bar_can_show_are_named(self):
         assert analyze.PHASES[0] == "download"
         assert "detect" in analyze.PHASES
-        assert analyze.PHASES[-1] == "scoreboard"
+        assert analyze.PHASES[-1] == "rules"
+
+    def test_the_board_is_read_before_the_ends_are_built(self):
+        # The board is the score, so it cannot be a stage that runs after
+        # detection any more -- build_end has to be handed it.
+        assert analyze.PHASES.index("scoreboard") < analyze.PHASES.index("detect")
+
+    def test_the_status_page_shows_the_stages_in_the_order_they_run(self):
+        # The service keeps its own copy of the order, for the ETA. Two copies
+        # that disagree show the user a bar that runs backwards.
+        pytest.importorskip("fastapi")
+        from curling_score.service import api
+
+        assert [p for p in api.PHASE_ORDER if p in analyze.PHASES] == \
+               list(analyze.PHASES)
 
 
 class TestDownloadChatter:

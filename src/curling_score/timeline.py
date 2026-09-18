@@ -61,12 +61,22 @@ def _delta(delta) -> dict | None:
             for k in ("added", "removed", "moved")}
 
 
-def build_end(number, house, start_s, end_s, shots) -> dict:
-    """One end: its shots, the house they left, and the resulting score."""
+def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
+    """One end: its shots, the house they left, and the board's score for it.
+
+    ``board_score`` is what the wall board says this end was; ``None`` means
+    the board could not speak to it. A blank end is not that: nobody scoring
+    is a real ``{"red": 0, "yellow": 0}`` read off the board, and the two have
+    to stay tellable apart -- an unread end that came out as a zero would be
+    inference wearing the board's clothes.
+
+    The detected score is still computed, as ``detected_score``, because the
+    disagreement between the two is the only check we have on either.
+    """
     shots = list(shots)
     scoring = shots_mod.scoring_shot(shots)
     final = scoring.stones if scoring else []
-    score = rules.score_end(
+    detected_score = rules.score_end(
         [rules.Stone(color=d.color, x=d.x_m, y=d.y_m) for d in final]
     )
 
@@ -142,7 +152,12 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
         "start_s": round(float(start_s), 2),
         "end_s": round(float(end_s), 2),
         "hammer": shots_mod.hammer_from_shots(shots),
-        "score": score,
+        # The score is the board's or it is nothing. "scored_from_shot" below
+        # stays as it was: it names the shot that settled the house, which is
+        # a detection fact and not a score.
+        "score": None if board_score is None else dict(board_score),
+        "score_source": None if board_score is None else "board",
+        "detected_score": detected_score,
         "shots": out_shots,
         "shots_observed": sum(1 for s in shots if not s.missing),
         # Sixteen rocks are thrown. Where the list is shorter than that, the
@@ -164,34 +179,61 @@ def build_end(number, house, start_s, end_s, shots) -> dict:
     }
 
 
-def build_game(index, start_s, end_s, ends) -> dict:
-    """One game, with the running score carried across its ends."""
+def build_game(index, start_s, end_s, ends, board=None) -> dict:
+    """One game, with the board's running score carried across its ends.
+
+    ``board`` is the ``BoardScores`` read off the wall, or None when the board
+    could not be read at all. Nothing here falls back to the detected figures:
+    they are carried alongside, under ``detected``, purely as the check.
+    """
     ends = [dict(e) for e in ends]
+
+    # The running total is only meaningful while every end up to here is
+    # known. One unread end and everything after it is unknown too.
     running = {c: 0 for c in rules.COLORS}
+    broken = False
     for end in ends:
+        if end.get("score") is None:
+            broken = True
+        if broken:
+            end["running"] = None
+            continue
         for c in rules.COLORS:
-            running[c] += end.get("score", {}).get(c, 0)
+            running[c] += end["score"].get(c, 0)
         end["running"] = dict(running)
+
     # The rules fix the whole hammer sequence from the first end's hammer and
     # the scores, independently of having seen who threw first in each end --
     # which is where reading it from detected deliveries goes wrong. Comparing
-    # the two says whether the end structure hangs together.
-    observed = [e.get("hammer") for e in ends]
+    # the two says whether the end structure hangs together. Those scores are
+    # the board's now, so this no longer inherits a detection mistake -- but
+    # it can only run as far as the board is known.
+    known = []
+    for end in ends:
+        if end.get("score") is None:
+            break
+        known.append(end["score"])
+
+    observed = [e.get("hammer") for e in ends[:len(known)]]
     seen = [h for h in observed if h]
     consistent = None
+    for end in ends:
+        end["hammer_expected"] = None
     if seen:
         expected = rules.hammer_chain(
             seen[0] if observed[0] else rules.first_hammer_given(
-                seen[0], observed.index(seen[0]) + 1,
-                [e.get("score", {}) for e in ends],
+                seen[0], observed.index(seen[0]) + 1, known,
             ),
-            [e.get("score", {}) for e in ends],
+            known,
         )
         for end, want in zip(ends, expected):
             end["hammer_expected"] = want
         consistent = all(
             o == w for o, w in zip(observed, expected) if o
         )
+
+    detected = [e.get("detected_score") or {c: 0 for c in rules.COLORS}
+                for e in ends]
 
     clock = {c: 0.0 for c in rules.COLORS}
     measured = unmeasured = anomalies = estimated = splits = 0
@@ -218,7 +260,14 @@ def build_game(index, start_s, end_s, ends) -> dict:
             "anomalies": anomalies,
         },
         "splits_measured": splits,
-        "final": dict(running),
+        # The board's, and null unless it accounted for every end. What the
+        # detector made of the same game sits apart, under "detected", where
+        # nobody can mistake it for the score.
+        "final": dict(board.final) if board is not None and board.final else None,
+        "detected": {
+            "score_by_end": [dict(d) for d in detected],
+            "final": rules.running_total(detected),
+        },
         "hammer_consistent": consistent,
         "ends": ends,
     }
@@ -413,18 +462,25 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
             for s in end["shots"]:
                 s["label"] = rules.shot_label(number, s["number"])
         # Everything a game totals -- the running score, the hammer chain, the
-        # clock -- was totalled over the practice too, so rebuild rather than
-        # patch. Keys build_game does not own (the scoreboard block) survive.
-        game = document["games"][i] = {
-            **game,
-            **build_game(game["index"], kept[0]["start_s"], kept[-1]["end_s"], kept),
-        }
-        # The board on the wall shows the game and never the practice, so a
-        # disagreement the practice caused has to clear with it. Comparing two
-        # totals already in the document; nothing re-reads the video.
+        # clock, what the detector made of it -- was totalled over the practice
+        # too, so rebuild rather than patch. Keys build_game does not own (the
+        # scoreboard block) survive.
         board = game.get("scoreboard")
+        rebuilt = build_game(game["index"], kept[0]["start_s"], kept[-1]["end_s"],
+                             kept)
+        # The board is not rebuilt: what it says the game finished is a fact
+        # about the wall, not a total over the ends we kept, so it rides
+        # through the trim untouched.
+        if isinstance(board, dict):
+            rebuilt["final"] = deepcopy(board.get("final"))
+        game = document["games"][i] = {**game, **rebuilt}
+        # The board on the wall shows the game and never the practice, so a
+        # disagreement the practice caused has to clear with it. The board's
+        # own final does not move when ends are dropped; the detected one
+        # does, so that is what it is now compared against. Two totals already
+        # in the document; nothing re-reads the video.
         if isinstance(board, dict) and board.get("final") is not None:
-            agrees = board["final"] == game["final"]
+            agrees = board["final"] == game["detected"]["final"]
             game["scoreboard"] = {**board, "agrees_with_detection": agrees}
             for end in game["ends"]:
                 end["scoreboard_agrees"] = agrees

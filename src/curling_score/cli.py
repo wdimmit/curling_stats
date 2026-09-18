@@ -35,20 +35,23 @@ def _analyze(args) -> int:
     out = analyze_mod.write(doc, args.out)
     print(f"\nwrote {out}")
     for game in doc["games"]:
+        # The score is the board's; the detected figures are the cross-check,
+        # and are only ever shown as that.
         board = game.get("scoreboard")
-        note = ""
-        if board:
-            note = (
-                f"   [wall board: {board['final']}"
-                f"{'' if board['agrees_with_detection'] else '  MISMATCH'}]"
-            )
-        print(f"\nGame {game['index'] + 1}: {game['final']}{note}")
+        agrees = board.get("agrees_with_detection") if board else None
+        detected = (game.get("detected") or {}).get("final")
+        note = f"   [detected {detected}"
+        note += ("  MISMATCH]" if agrees is False
+                 else "  unchecked]" if agrees is None else "]")
+        final = game["final"] if game["final"] is not None else "not on the board"
+        print(f"\nGame {game['index'] + 1}: {final}{note}")
         for end in game["ends"]:
             observed = end["shots_observed"]
+            score = end["score"] if end["score"] is not None else "not posted"
             print(
                 f"  end {end['number']:2d} ({end['house']:6s}) "
                 f"hammer={end['hammer'] or '-':6s} "
-                f"score={end['score']} shots={observed}/{len(end['shots'])}"
+                f"score={score} shots={observed}/{len(end['shots'])}"
             )
     print(f"\nView with:  curling-score serve --out {args.out}")
     return 0

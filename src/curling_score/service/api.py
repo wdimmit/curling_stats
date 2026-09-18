@@ -63,8 +63,10 @@ MAX_MERGE_BYTES = 100_000
 # budget of its own rather than one of the five submissions an hour.
 CHART_RATE_FACTOR = 6
 # Minutes each stage usually takes on the home box, for the status page's ETA.
+# Insertion order is the order the status page shows them, and it mirrors
+# analyze.PHASES -- where the board is now read before the ends are built.
 PHASE_BUDGET_MIN = {"download": 3, "proxy": 9, "calibrate": 0.5, "profile": 1,
-                    "detect": 9, "rules": 1, "scoreboard": 0.5, "upload": 0.5}
+                    "scoreboard": 0.5, "detect": 9, "rules": 1, "upload": 0.5}
 PHASE_ORDER = list(PHASE_BUDGET_MIN)
 
 

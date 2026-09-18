@@ -29,8 +29,10 @@ SHOT_FPS = 10.0  # decoding dominates, so a high rate is nearly free
 
 # The stages a caller can watch, in the order they run. A hosted worker turns
 # these into a progress bar; the CLI ignores them.
-PHASES = ("download", "proxy", "calibrate", "profile", "detect", "rules",
-          "scoreboard")
+# "scoreboard" sits ahead of "detect": the board is the score, so each game's
+# board is read before any of its ends can be built.
+PHASES = ("download", "proxy", "calibrate", "profile", "scoreboard", "detect",
+          "rules")
 # Each end is played into one house and thrown from behind the other.
 OTHER_HOUSE = {"top": "bottom", "bottom": "top"}
 
@@ -205,6 +207,49 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     out_games = []
     prev_end_s = None
     for game in games:
+        # --- the wall scoreboard, read before a single end is built -------
+        # The board is the score, so it has to be in hand before build_end
+        # can be handed one. Never used for timing: the club often posts it
+        # several ends late. It is the one stage that reads the
+        # full-resolution original, so a caller that does not want to keep
+        # that file can leave it out -- and then the game simply has no
+        # score, which is the designed outcome and not an error.
+        board_block, scores = None, None
+        if skip_scoreboard:
+            phase("scoreboard", game.index / len(games), "skipped")
+        else:
+            phase("scoreboard", game.index / len(games),
+                  f"reading the wall scoreboard for game {game.index + 1}")
+            progress(f"  game {game.index + 1}: reading the wall scoreboard...")
+            got = sb.read_game_board(
+                path, game.start_s, game.end_s, len(game.ends),
+            )
+            if got is None:
+                progress(f"  game {game.index + 1}: board not read")
+            else:
+                scores = got.scores
+                board_block = {
+                    "read_at_s": round(got.read_at_s, 2),
+                    "reads": got.reads,
+                    "unread_ends": list(scores.unread_ends),
+                    "final": scores.final,
+                    "cards": {
+                        color: [
+                            {"slot": c.slot, "end": c.end,
+                             "confidence": round(c.confidence, 4)}
+                            for c in getattr(got.board, color)
+                        ]
+                        for color in sb.COLORS
+                    },
+                    "per_end": {str(k): v for k, v in sorted(scores.per_end.items())},
+                }
+                progress(
+                    f"  game {game.index + 1}: board says {scores.final} "
+                    f"in {got.reads} read(s)"
+                    + (f", ends {list(scores.unread_ends)} not posted"
+                       if scores.unread_ends else "")
+                )
+
         out_ends = []
         for end in game.ends:
             setup = read_setups[end.house]
@@ -269,7 +314,9 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             # cannot reach back into the shot list.
             thinking.time_shots(shots, far_seq, far.view_y_min_m)
             built = timeline.build_end(
-                end.number, end.house, end.start_s, end.end_s, shots
+                end.number, end.house, end.start_s, end.end_s, shots,
+                board_score=(None if scores is None
+                             else scores.per_end.get(end.number)),
             )
             built["deliveries_seen"] = len(deliveries)
             built["releases_seen"] = len(releases)
@@ -289,55 +336,28 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 f"(R{audit.thrown['red']} Y{audit.thrown['yellow']} offered"
                 f"{f', +{len(recovered)} recovered' if recovered else ''}"
                 f"{f', -{dropped} against the rules' if dropped else ''}), "
-                f"score {built['score']}"
+                + (f"board says {built['score']}" if built["score"] is not None
+                   else f"board silent, detected {built['detected_score']}")
             )
-        out_games.append(
-            timeline.build_game(game.index, game.start_s, game.end_s, out_ends)
+        out_game = timeline.build_game(
+            game.index, game.start_s, game.end_s, out_ends, board=scores
         )
+        # The board's word against the detector's, which is the only thing
+        # that can tell a misread board from a correct one. None while the
+        # board left an end unread: there is nothing to compare.
+        out_game["scoreboard"] = board_block
+        if board_block is not None:
+            agrees = (
+                None if scores.final is None
+                else scores.final == out_game["detected"]["final"]
+            )
+            out_game["scoreboard"]["agrees_with_detection"] = agrees
+            for end in out_game["ends"]:
+                end["scoreboard_agrees"] = agrees
+        out_games.append(out_game)
     phase("detect", 1.0, "all ends detected")
+    phase("scoreboard", 1.0, "skipped" if skip_scoreboard else "scoreboard read")
     phase("rules", 1.0, "timeline built")
-
-    # --- independent check against the wall scoreboard -----------------
-    # Never used for timing: the club often posts it several ends late. It is
-    # read here only to say whether the computed scores are believable -- and
-    # it is the one stage that reads the full-resolution original, so a caller
-    # that does not want to keep that file can leave it out.
-    if skip_scoreboard:
-        for out_game in out_games:
-            out_game["scoreboard"] = None
-        phase("scoreboard", 1.0, "skipped")
-    else:
-        phase("scoreboard", 0.0, "reading the wall scoreboard")
-        progress("reading the wall scoreboard...")
-        for game, out_game in zip(games, out_games):
-            got = sb.read_game_board(
-                path, game.start_s, game.end_s, len(out_game["ends"]),
-            )
-            if got is None:
-                out_game["scoreboard"] = None
-                progress(f"  game {game.index + 1}: board not read")
-                continue
-            out_game["scoreboard"] = {
-                "read_at_s": round(got.read_at_s, 2),
-                "reads": got.reads,
-                "unread_ends": list(got.scores.unread_ends),
-                "final": got.scores.final,
-                "cards": {
-                    color: [
-                        {"slot": c.slot, "end": c.end, "confidence": round(c.confidence, 4)}
-                        for c in getattr(got.board, color)
-                    ]
-                    for color in sb.COLORS
-                },
-                "per_end": {str(k): v for k, v in sorted(got.scores.per_end.items())},
-            }
-            progress(
-                f"  game {game.index + 1}: board says {got.scores.final} "
-                f"in {got.reads} read(s)"
-                + (f", ends {list(got.scores.unread_ends)} not posted"
-                   if got.scores.unread_ends else "")
-            )
-        phase("scoreboard", 1.0, "scoreboard read")
 
     calibration = {
         name: {
