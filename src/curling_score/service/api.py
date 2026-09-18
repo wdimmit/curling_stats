@@ -65,8 +65,20 @@ CHART_RATE_FACTOR = 6
 # Minutes each stage usually takes on the home box, for the status page's ETA.
 # Insertion order is the order the status page shows them, and it mirrors
 # analyze.PHASES -- where the board is now read before the ends are built.
+#
+# "scoreboard" is an estimate, not a measurement: the worker now runs this
+# pass (skip_scoreboard=False) instead of always skipping it, so a number was
+# needed with no hosted run yet to time. read_game_board stops at the first
+# usable board state, walking backwards from the game's end -- normally one
+# read, occasionally a second when a card row is occluded or the board is
+# briefly blank -- against the roughly twelve reads the old fixed-interval
+# sweep took over a game. Each read is a keyframe_sweep of at most 40 frames
+# over a bounded ~180 s window, comparable in frame count to "calibrate"'s 24
+# frames (budgeted 0.5 min) but, like calibrate, against the full-resolution
+# original rather than the cheap strip proxy every other stage reads from.
+# Call one read about as costly as calibrate and budget two of them.
 PHASE_BUDGET_MIN = {"download": 3, "proxy": 9, "calibrate": 0.5, "profile": 1,
-                    "scoreboard": 0.5, "detect": 9, "rules": 1, "upload": 0.5}
+                    "scoreboard": 1.0, "detect": 9, "rules": 1, "upload": 0.5}
 PHASE_ORDER = list(PHASE_BUDGET_MIN)
 
 

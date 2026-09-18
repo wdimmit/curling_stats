@@ -166,7 +166,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     doc = analyze_fn(
         url, root=root, weights=weights, info=info,
         start_s=job.get("window_start_s"), end_s=job.get("window_end_s"),
-        sheet=job.get("sheet"), skip_scoreboard=True, on_phase=on_phase,
+        sheet=job.get("sheet"), skip_scoreboard=False, on_phase=on_phase,
         download_attempts=1,
     )
     run_dir = out_dir / job["run_id"]

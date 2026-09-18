@@ -287,7 +287,14 @@ class TestTimingFields:
         assert game["splits_measured"] == 2 * one["splits_measured"]
 
     def test_the_schema_version_says_the_shape_changed(self):
-        assert timeline.SCHEMA_VERSION == 3
+        """4 marks more than a nullability change: `end.score` and
+        `game.final` used to hold the detector's inferred score and now hold
+        the board's -- the same fields changed *meaning*, not just shape.
+        Nothing yet reads schema_version, but the day something does, it must
+        not treat a 3 and a 4 alike: a 3 means "score" is inferred, a 4 means
+        it is the board's, and presenting one as the other is the exact
+        dishonesty this whole scoreboard-OCR effort exists to remove."""
+        assert timeline.SCHEMA_VERSION == 4
 
     def test_a_placeholder_shot_has_no_timings(self):
         end = timeline.build_end(

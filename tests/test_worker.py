@@ -58,7 +58,9 @@ JOB = {"id": "j_1", "run_id": "r_1", "video_id": "VXU9xwmugRg",
 
 
 class TestProcessJob:
-    def test_it_runs_the_pipeline_uploads_and_completes(self, tmp_path):
+    def test_it_reads_the_wall_board(self, tmp_path):
+        """The board is the only source of score, so a hosted run that skips
+        it produces a game with no score at all."""
         api = FakeApi([])
         seen = {}
 
@@ -72,7 +74,7 @@ class TestProcessJob:
         worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
                            out_dir=tmp_path / "out", analyze_fn=analyze_fn,
                            fetch_info=fake_info)
-        assert seen["skip_scoreboard"] is True and seen["download_attempts"] == 1
+        assert seen["skip_scoreboard"] is False and seen["download_attempts"] == 1
         assert seen["info"].video_id == "VXU9xwmugRg"
         assert json.loads(api.uploads["memory://timeline.json"])["games"][0]["index"] == 0
         assert api.uploads["memory://deadbeef"] == b"npz"

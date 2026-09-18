@@ -12,7 +12,7 @@ from curling_score.game import classify, rules, shots as shots_mod, split, think
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # The overhead camera only sees the last few metres of a 45 m sheet, so the
 # stone comes into view long after it left the hand. To watch the shot being
