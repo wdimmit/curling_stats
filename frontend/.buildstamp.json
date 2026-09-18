@@ -33,11 +33,11 @@
     "frontend/viewer/Charts.jsx": "ce099e9ddcf192213d5c88a364110ea3088fd2f5faf701dad8ef3a412b3e789b",
     "frontend/viewer/House.jsx": "eccd0383648cf0f7e094ab5f7a2eea822b88ff2399ef849062cf1f086266e4f0",
     "frontend/viewer/Report.jsx": "473b826e2d318393f70038ef6a42fcb0e97b285f255912922ccd7ecc4a4995c6",
-    "frontend/viewer/Watch.jsx": "548d292ddc9e82704f7b38310ef4c97360a80e5e18cc11fbadf2610463288eea",
+    "frontend/viewer/Watch.jsx": "8ce919e8e4e11f50c59f5d3be664fbeff1c36ab27fcc499157ab99795f6a8230",
     "frontend/viewer/main.jsx": "03c6d1858c606f51671b711c0ecf7c3d58260ac3d8198c0d2231b9590a605562"
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "6e4b4ee181968976d23b26da584a241d49c549eb82b38c64b1e0cd4a514dea82",
-    "src/curling_score/viewer/app.js": "d1c8ee61268acc00eb9f1f2639072793bbb327ac0c7a4ddee138e40a9f3b9b53"
+    "src/curling_score/viewer/app.js": "b0f135980391fb50458c6be51acb20e5b33bb13cbbaeed3bfca7042253caa550"
   }
 }

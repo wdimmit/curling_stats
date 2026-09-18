@@ -25,6 +25,26 @@ def _default_weights():
     return str(path) if path else None
 
 
+def _score_label(score, board):
+    """What to print for an end's score when there isn't one.
+
+    A withheld end is not an unposted one. ``settle_board_scores``
+    (timeline.py) can pull every end's score back off together when a
+    leading practice block cannot be ruled out and the board is short of
+    the detected ends -- the board *was* read, its scores just could not
+    be placed against these ends, and a start time is what places them
+    (:mod:`timeline`, ``trim_to_start``). That is recorded on
+    ``game.scoreboard.scores_withheld``, and the viewer already tells the
+    two apart on screen (Watch.jsx, ChartPanel.jsx); printing "not posted"
+    for both here would be the same confusion resurfacing on the CLI.
+    """
+    if score is not None:
+        return score
+    if board and board.get("scores_withheld"):
+        return "withheld (board read, not placed -- needs a start time)"
+    return "not posted"
+
+
 def _analyze(args) -> int:
     doc = analyze_mod.analyze(args.url, root=args.cache_root, shot_fps=args.fps,
                               use_proxy=not args.no_proxy,
@@ -47,7 +67,7 @@ def _analyze(args) -> int:
         print(f"\nGame {game['index'] + 1}: {final}{note}")
         for end in game["ends"]:
             observed = end["shots_observed"]
-            score = end["score"] if end["score"] is not None else "not posted"
+            score = _score_label(end["score"], board)
             print(
                 f"  end {end['number']:2d} ({end['house']:6s}) "
                 f"hammer={end['hammer'] or '-':6s} "

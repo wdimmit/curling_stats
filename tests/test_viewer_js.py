@@ -1264,6 +1264,26 @@ class TestAWithheldGameSaysSoOnTheEndBar:
         assert '"not posted"' in jsx
         assert "chart predates board reading" in jsx
 
+    def test_the_visible_label_itself_names_the_remedy(self):
+        """Minor 4: the tooltip is unreachable on a touch screen, and this bar
+        is a 44px strip with room for a phrase, not a sentence. So whatever
+        names the fix has to be in the label text a phone actually shows, not
+        only in the ``title`` a phone can never hover -- and it has to be a
+        remedy, not a restatement of "board read, ends unmatched" in the
+        detector's own vocabulary."""
+        jsx = (Path(__file__).resolve().parents[1]
+               / "frontend/viewer/Watch.jsx").read_text()
+        # The label's own scoresWithheld branch, right after the
+        # "chart predates board reading" branch -- not the title= tooltip,
+        # which has its own separate "scoresWithheld ?" a few lines above.
+        m = re.search(
+            r'chart predates board reading"\s*\n\s*:\s*scoresWithheld\s*\?\s*"([^"]+)"',
+            jsx)
+        assert m, "expected a plain-string scoresWithheld branch on the label"
+        label = m.group(1)
+        assert "start time" in label.lower()
+        assert label != "board read, ends unmatched"
+
 
 class TestAnOldChartShowsNoBoardScore:
     """schema_version < 4 is a chart from before the board was read at all --

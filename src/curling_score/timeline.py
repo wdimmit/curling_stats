@@ -521,20 +521,33 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
             if len(end["shots"]) >= end.get("shots_expected", C.STONES_PER_END):
                 break
             drop += 1
+        board = game.get("scoreboard")
         if drop == 0:
-            continue
-        kept = [dict(e) for e in ends[drop:]]
-        for number, end in enumerate(kept, start=1):
-            end["id"] = end_identity(end)
-            end["number"] = number
-            end["shots"] = [dict(s) for s in end["shots"]]
-            for s in end["shots"]:
-                s["label"] = rules.shot_label(number, s["number"])
+            # Nothing to amputate. But the guard just refused to drop
+            # anything for the same reason a trim would have stopped where
+            # it did: it takes this detected end to be the game's real
+            # first one. That is exactly the fact a withheld board score was
+            # waiting on -- analyze.py could not rule out a practice block
+            # in front, and now the submitter's own start time has -- so a
+            # withheld board still gets rekeyed here, just without the
+            # renumbering a genuine trim would also have done. A board that
+            # was never withheld has nothing to gain from this, and is left
+            # alone rather than rebuilt for no reason.
+            if not (isinstance(board, dict) and board.get("scores_withheld")):
+                continue
+            kept = [dict(e) for e in ends]
+        else:
+            kept = [dict(e) for e in ends[drop:]]
+            for number, end in enumerate(kept, start=1):
+                end["id"] = end_identity(end)
+                end["number"] = number
+                end["shots"] = [dict(s) for s in end["shots"]]
+                for s in end["shots"]:
+                    s["label"] = rules.shot_label(number, s["number"])
         # Everything a game totals -- the running score, the hammer chain, the
         # clock, what the detector made of it -- was totalled over the practice
         # too, so rebuild rather than patch. Keys build_game does not own (the
         # scoreboard block) survive.
-        board = game.get("scoreboard")
         # The board is keyed by the *real* end number printed on each card,
         # and :mod:`analyze` could only attach it by detected end number --
         # which the practice block in front had already shifted. Dropping the
@@ -543,6 +556,7 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
         # from the surviving board block rather than carried over. Without
         # this the shift merely becomes invisible, which is worse.
         per_end = board_per_end(board)
+        unread = None
         if per_end is not None:
             for end in kept:
                 score = per_end.get(end["number"])
@@ -550,22 +564,31 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
                     score = None
                 end["score"] = None if score is None else dict(score)
                 end["score_source"] = None if score is None else "board"
+            # Same root cause as the scores, one level up: the ends the
+            # board never posted are numbered the same way, so the key
+            # would otherwise name ends this chart does not have.
+            unread = [n for n in range(1, len(kept) + 1)
+                      if not isinstance(per_end.get(n), dict)]
         rebuilt = build_game(game["index"], kept[0]["start_s"], kept[-1]["end_s"],
                              kept)
-        # The board is not rebuilt: what it says the game finished is a fact
-        # about the wall, not a total over the ends we kept, so it rides
-        # through the trim untouched.
+        # The board is not rebuilt, so ordinarily what it says the game
+        # finished rides through the trim untouched -- it is a fact about
+        # the wall, not a total over the ends we kept. But when re-keying
+        # leaves every kept end scored, the pre-trim "final" can be a stale
+        # None: it was computed against the *detected* end count, practice
+        # included, so a board that covers every real end still came back
+        # with something left unread. The running total already in hand on
+        # the last kept end is that same sum, correctly, so use it instead.
+        # Where an end is still genuinely unread, the None stands.
         if isinstance(board, dict):
-            rebuilt["final"] = deepcopy(board.get("final"))
+            if per_end is not None and not unread:
+                rebuilt["final"] = deepcopy(rebuilt["ends"][-1]["running"])
+            else:
+                rebuilt["final"] = deepcopy(board.get("final"))
         game = document["games"][i] = {**game, **rebuilt}
         if isinstance(board, dict):
             block = {**board}
             if per_end is not None:
-                # Same root cause as the scores, one level up: the ends the
-                # board never posted are numbered the same way, so the key
-                # would otherwise name ends this chart does not have.
-                unread = [n for n in range(1, len(kept) + 1)
-                          if not isinstance(per_end.get(n), dict)]
                 block["unread_ends"] = unread
                 block["accounts_for_every_end"] = not unread
                 # Whatever the analyser could not place, a start time places.

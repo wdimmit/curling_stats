@@ -84,7 +84,7 @@ function EndBar({ summary, onStep }) {
                     + "with no need to read the board again."
                   : undefined}>
             {boardReadable === false ? "chart predates board reading"
-              : scoresWithheld ? "board read, ends unmatched"
+              : scoresWithheld ? "needs a start time"
               : "not posted"}
           </span>
         )}

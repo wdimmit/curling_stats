@@ -655,6 +655,31 @@ class TestTheBoardScoreFollowsTheEndItActuallyIs:
         ]
         assert got["games"][0]["scoreboard"]["scores_withheld"] is None
 
+    def test_a_start_time_that_trims_nothing_still_rescues_withheld_scores(self):
+        # Minor 3: a start time at or before the first detected end drops no
+        # ends, but it confirms the same fact a genuine trim would -- that
+        # this detected end really is the game's first -- so a board
+        # withheld for want of exactly that confirmation gets rekeyed here
+        # too, rather than being left withheld with nothing left to fix it.
+        doc = self._doc()
+        doc["games"][0]["scoreboard"]["scores_withheld"] = "no start time"
+        for end in doc["games"][0]["ends"]:
+            end["score"] = end["score_source"] = None
+        got = timeline.trim_to_start(doc, 0.0)
+        assert [e["start_s"] for e in self._ends(got)] == [0.0, 1515.0, 2385.0]
+        assert [e["score"] for e in self._ends(got)] == [
+            {"red": 0, "yellow": 1}, {"red": 2, "yellow": 0}, None,
+        ]
+        assert got["games"][0]["scoreboard"]["scores_withheld"] is None
+        assert got["games"][0]["scoreboard"]["unread_ends"] == [3]
+
+    def test_a_start_time_that_trims_nothing_leaves_a_settled_board_alone(self):
+        # No rescue needed, so no rebuild either: a board that was never
+        # withheld is untouched by a start time that drops no ends.
+        doc = self._doc()
+        got = timeline.trim_to_start(doc, 0.0)
+        assert got == doc
+
     def test_a_board_block_with_no_per_end_leaves_the_scores_alone(self):
         doc = self._doc()
         doc["games"][0]["scoreboard"]["per_end"] = None
@@ -662,6 +687,26 @@ class TestTheBoardScoreFollowsTheEndItActuallyIs:
         assert [e["score"] for e in self._ends(got)] == [
             {"red": 2, "yellow": 0}, None,
         ]
+
+    def test_a_correctly_re_keyed_game_still_shows_a_total(self):
+        # N1, the flagship case: the practice is trimmed off and the board
+        # covers every kept end, but the board's own "final" was computed
+        # pre-trim against the *detected* end count -- practice included --
+        # so it came back None even though nothing is actually unread once
+        # the practice is gone. The trim must not carry that stale None
+        # through: with every kept end scored, the last one's running total
+        # already *is* the final.
+        got = timeline.trim_to_start(self._doc(), 1440.0)
+        assert got["games"][0]["scoreboard"]["unread_ends"] == []
+        assert got["games"][0]["final"] == {"red": 2, "yellow": 1}
+
+    def test_a_final_still_withheld_when_an_end_stays_unread(self):
+        # The other half: when re-keying still leaves an end unread, the
+        # game's final must stay None rather than pick up a partial total.
+        doc = self._doc(per_end={"1": {"red": 0, "yellow": 1}}, unread=[2, 3])
+        got = timeline.trim_to_start(doc, 1440.0)
+        assert got["games"][0]["scoreboard"]["unread_ends"] == [2]
+        assert got["games"][0]["final"] is None
 
 
 class TestWhenTheBoardCannotBePlaced:
