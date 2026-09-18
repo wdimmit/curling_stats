@@ -1,0 +1,15 @@
+{
+  "cards": [
+    {"game": 0, "color": "yellow", "slot": 1, "end": 1},
+    {"game": 0, "color": "yellow", "slot": 3, "end": 2},
+    {"game": 0, "color": "red", "slot": 1, "end": 3},
+    {"game": 0, "color": "red", "slot": 4, "end": 4},
+    {"game": 0, "color": "yellow", "slot": 7, "end": 5},
+    {"game": 0, "color": "red", "slot": 6, "end": 6},
+    {"game": 0, "color": "red", "slot": 7, "end": 7}
+  ],
+  "reject": [
+    {"frame": "board_t02100.png", "color": "red", "slots": [5],
+     "why": "the red row is empty at t=2100 -- nothing at 1800, 2400 or 2700 either, and red's first card (slot 1) arrives at t=3000 -- and the band is full of spectators"}
+  ]
+}
