@@ -390,8 +390,21 @@ def _card_glyph(gray, geom: BoardGeometry, color: str, slot: int):
     window = card_window(gray, geom, color, slot)
     if window is None:
         return None
+    return glyph_in_window(window)
 
-    box = window.astype(np.float32)
+
+def glyph_in_window(window):
+    """Everything `_card_glyph` does *after* `card_window`.
+
+    Split out for the same reason `card_window` was: the card-digit training
+    set stores raw windows, and a model trained on those raw windows while
+    measured through `_card_glyph` is measuring a path production never takes.
+    That mistake has been made here once already and produced a confident 81.5%
+    that meant nothing. With the tail a function, the training set and
+    production run the same code over the same pixels by construction rather
+    than by two copies agreeing.
+    """
+    box = np.asarray(window, dtype=np.float32)
     level = float(np.median(box))
     tile = box > level + _CARD_TILE_MARGIN     # the white card against the board
     if tile.sum() < 12:
