@@ -346,6 +346,20 @@ sheet-mate in training. A leave-one-*sheet*-out evaluation would be a harder and
 more honest test, and the true accuracy on a board the model has never seen is
 probably below the leave-one-video-out figure.
 
+**There is now no held-out labelled data at all.** Promoting the conv reader
+trained it on everything available, including the 11 reference cards that had
+been the independent cross-season check. That is the right recipe for a shipped
+artefact — the folds existed to measure, and the model that ships should see the
+lot — but it means the test asserting those 11 cards read correctly is now a
+smoke test that the artefact loads and works, not evidence about accuracy. The
+honest generalisation figure remains the leave-one-video-out measurement: 93.9-97.0%
+coverage at the threshold where no digit is read wrong.
+
+So the focused clip should be **split before it is used**, not after: hold back a
+portion — ideally a different lighting level or a different board — as a genuine
+validation set, and never train on it. Without that there is nothing left to
+detect a regression against.
+
 What to do with new data when it arrives: keep the split by video and by sheet,
 never by card — one physical card appears in dozens of frames and a row-level
 split leaks badly. Re-run `scripts/gate_digits.py`, which reports a seed range
