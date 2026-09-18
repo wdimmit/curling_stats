@@ -1843,3 +1843,65 @@ block hints, the disk assertion trips, or the yield per video is far below the
 ~11 distinct cards the reference VOD gave.
 
 ---
+
+---
+
+### Task 6E: One CNN attempt at the per-end gate
+
+The MLP trained on 54 real cards reads held-out videos at 60.8% per card at the
+threshold where no digit is ever read wrong. Per-end scores need roughly 87%,
+because Task 5 invalidates a whole board read when any single card's digit is
+refused, and a game carries about five cards. More data is the obvious lever and
+is closed. Convolution is the remaining one: correlation and the MLP both failed
+on alignment and scale noise, which convolution addresses structurally rather
+than by augmentation alone. Ruling R11 named this as the escalation.
+
+**Files:**
+- Modify: `src/curling_score/game/digits.py` (add the conv model beside `Model`)
+- Create: `scripts/gate_digits.py` (the leave-one-video-out gate and reject sweep)
+- Test: `tests/test_digits.py`
+
+**The gate, stated before any work starts**
+
+Out-of-sample, leave-one-video-out over `datasets/board-cards-train`, measured
+per FRAME because the sampler reads one board state and classifies each card once:
+
+| | MLP today | CNN must reach |
+|---|---|---|
+| coverage at the zero-wrong threshold | 60.8% | **>= 87%** |
+| wrong reads at that threshold | 0 | **0**, not negotiable |
+
+Report the threshold, the coverage, and the wrong count. If coverage lands short
+of 87% at zero wrong, **say so plainly and stop** — that is a real result and the
+user decides what follows, not you. Do not tune the threshold, the folds or the
+augmentation to manufacture a pass.
+
+**Constraints**
+
+- **numpy only** (ruling R10). `torch` is in the `gpu` extra; a plain install has
+  none and `curling-score analyze` must keep working on base dependencies. Add no
+  dependency. Implement conv forward and backward yourself; im2col is fine.
+- **Split by VIDEO, never by card or row.** The same card appears in dozens of
+  frames of one video; any row-level split leaks and reports a flattering number.
+- **Train and evaluate through the SAME preprocessing production uses.** This has
+  already produced one confident-but-meaningless result: training on raw windows
+  from `cards.npz` while evaluating through `_card_glyph` is a mismatch, because
+  production `read_cards` calls `_card_glyph` (window, then tile segmentation,
+  then `_glyph_ink`). Put stored raw windows through the tail of `_card_glyph`.
+- Keep the `Model` API: `predict(glyph) -> (digit, confidence)` and
+  `predict_many`. Everything downstream consumes that contract.
+
+- [ ] **Step 1: Write the gate script first**, before the model, so the number is
+  produced by code that does not know which architecture it is judging.
+- [ ] **Step 2: Reproduce the MLP baseline** through it — 60.8% coverage at zero
+  wrong, 42/54 distinct cards. If you cannot reproduce that, the gate is wrong
+  and must be fixed before the CNN is written.
+- [ ] **Step 3: Implement the conv model** in numpy beside the existing `Model`.
+- [ ] **Step 4: Train and measure** against the gate, reporting a seed range
+  rather than a single run — the seed noise floor on this data is real and was
+  previously mistaken for signal.
+- [ ] **Step 5: Report**, and commit the gate script and the model with the
+  standard co-author trailer whether or not the gate passes. A measured negative
+  is worth committing.
+
+---
