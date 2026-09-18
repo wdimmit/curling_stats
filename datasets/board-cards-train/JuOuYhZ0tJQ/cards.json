@@ -1,0 +1,14 @@
+{
+  "cards": [
+    {"game": 1, "color": "red", "slot": 4, "end": 1},
+    {"game": 1, "color": "yellow", "slot": 2, "end": 2},
+    {"game": 1, "color": "red", "slot": 5, "end": 3},
+    {"game": 1, "color": "yellow", "slot": 6, "end": 4},
+    {"game": 1, "color": "red", "slot": 6, "end": 5},
+    {"game": 1, "color": "yellow", "slot": 7, "end": 6}
+  ],
+  "reject": [
+    {"frame": "board_t00600.png", "color": "red", "slots": [5, 6],
+     "why": "the board is empty in both rows at t=600 (blank at 300 and again at 900); the red band is a row of spectators' heads and shoulders, so this is a phantom game, not the tail of a real one"}
+  ]
+}
