@@ -81,7 +81,14 @@ export function rockAt(rows, t) {
  *
  * A document from before schema 4 kept the detector's inferred score in
  * these same fields, so it is gated the same way regardless of what the end
- * itself carries: no score for a chart the board never had a say in. */
+ * itself carries: no score for a chart the board never had a say in.
+ *
+ * `scoresWithheld` is the other reason a score can be missing here, and it
+ * is not "not posted": the board was read fine, but analyze.py could not
+ * tell which detected end the game's first one is (a leading practice block
+ * it cannot rule out), so every score came back off rather than risk one
+ * attached to the wrong end. `game.scoreboard` carries that verdict for the
+ * whole game, not per end, so it applies to every end alike while it holds. */
 export function endSummary(view, ei) {
   const end = view.ends[ei]?.end;
   if (!end) return null;
@@ -93,6 +100,7 @@ export function endSummary(view, ei) {
     score: readable ? (end.score ?? null) : null,
     running: readable ? (end.running ?? null) : null,
     boardReadable: readable,
+    scoresWithheld: readable && !!view.game.scoreboard?.scores_withheld,
     red: clockText(end.thinking_time?.red),
     yellow: clockText(end.thinking_time?.yellow),
   };

@@ -222,6 +222,12 @@ function Scoreboard({ game, doc }) {
         <p className="scorekey">
           This chart predates board reading &mdash; no score is shown.
         </p>
+      ) : board?.scores_withheld ? (
+        <p className="scorekey">
+          The wall board was read, but its scores could not be matched to
+          these ends. Setting this game&rsquo;s start time places them
+          &mdash; the board will not need to be read again.
+        </p>
       ) : board ? (
         <>
           <table id="score">

@@ -65,7 +65,7 @@ function RockRow({ row, current, onPick }) {
 
 function EndBar({ summary, onStep }) {
   if (!summary) return null;
-  const { number, of, running, hammer, boardReadable } = summary;
+  const { number, of, running, hammer, boardReadable, scoresWithheld } = summary;
   return (
     <div className="wendbar">
       <button type="button" onClick={() => onStep(-1)} disabled={number <= 1}
@@ -77,8 +77,15 @@ function EndBar({ summary, onStep }) {
             <i className="wdot red" />{running.red} – {running.yellow}<i className="wdot yellow" />
           </span>
         ) : (
-          <span className="wsc wsc-none">
-            {boardReadable === false ? "chart predates board reading" : "not posted"}
+          <span className="wsc wsc-none"
+                title={scoresWithheld
+                  ? "The wall board was read, but its scores could not be matched "
+                    + "to these ends. Setting the game's start time places them, "
+                    + "with no need to read the board again."
+                  : undefined}>
+            {boardReadable === false ? "chart predates board reading"
+              : scoresWithheld ? "board read, ends unmatched"
+              : "not posted"}
           </span>
         )}
         {hammer ? <span className="wham">{hammer} has hammer</span> : null}

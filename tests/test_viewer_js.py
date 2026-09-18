@@ -1209,6 +1209,62 @@ class TestTheEndSwitcher:
         assert got is None
 
 
+class TestAWithheldGameSaysSoOnTheEndBar:
+    """settle_board_scores (timeline.py) withholds a whole game's scores when
+    the board cannot be placed against the detected ends -- a leading end
+    short of a full sixteen rocks, with the board short of the ends too. That
+    is recorded on ``game.scoreboard.scores_withheld``, and the end bar has
+    to tell it apart from an end that was simply never posted: the board
+    *was* read here, so "not posted" would be the wrong story."""
+
+    def test_a_withheld_game_flags_the_end_summary(self):
+        d = end_four(hammer="yellow", score=None, running=None)
+        d["games"][0]["scoreboard"] = {"scores_withheld": "no start time"}
+        got = run_js(setup(d) + "out(endSummary().scoresWithheld);")
+        assert got is True
+
+    def test_an_ordinary_unposted_end_is_not_withheld(self):
+        d = end_four(hammer="yellow", score=None, running=None)
+        d["games"][0]["scoreboard"] = {"scores_withheld": None}
+        got = run_js(setup(d) + "out(endSummary().scoresWithheld);")
+        assert got is False
+
+    def test_a_game_with_no_scoreboard_block_at_all_is_not_withheld(self):
+        d = end_four(hammer="yellow", score=None, running=None)
+        got = run_js(setup(d) + "out(endSummary().scoresWithheld);")
+        assert got is False
+
+    def test_the_readable_gate_overrides_withheld_too(self):
+        """An old chart never even asks: schema_version < 4 means end.score
+        and game.final are the detector's old guess, and the same gate that
+        keeps that guess off the screen has to keep this flag off it too."""
+        d = end_four(hammer="yellow", score=None, running=None)
+        d["games"][0]["scoreboard"] = {"scores_withheld": "no start time"}
+        d["schema_version"] = 3
+        got = run_js(setup(d) + "out(endSummary().scoresWithheld);")
+        assert got is False
+
+    def test_the_chart_panel_explains_a_withheld_score_in_place_of_the_row(self):
+        """Same shape as "the wall board could not be read for this game": a
+        withheld game gets a sentence instead of a table full of unread
+        marks, and the sentence names the fix (a start time) rather than
+        just the problem."""
+        jsx = (Path(__file__).resolve().parents[1]
+               / "frontend/viewer/ChartPanel.jsx").read_text()
+        assert "board?.scores_withheld" in jsx
+        assert "start time" in jsx
+
+    def test_the_end_bar_names_the_fix_too(self):
+        jsx = (Path(__file__).resolve().parents[1]
+               / "frontend/viewer/Watch.jsx").read_text()
+        assert "scoresWithheld" in jsx
+        assert "start time" in jsx
+        # Distinct from the plain "not posted" case, and from the old-chart
+        # case -- three different reasons need three different words.
+        assert '"not posted"' in jsx
+        assert "chart predates board reading" in jsx
+
+
 class TestAnOldChartShowsNoBoardScore:
     """schema_version < 4 is a chart from before the board was read at all --
     end.score and game.final held the detector's own guess in those same
