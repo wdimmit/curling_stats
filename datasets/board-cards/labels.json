@@ -315,6 +315,34 @@
     "end": 2
   },
   {
+    "frame": "board_t11940.png",
+    "t_s": 11940.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t11940.png",
+    "t_s": 11940.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 3
+  },
+  {
+    "frame": "board_t11940.png",
+    "t_s": 11940.0,
+    "color": "yellow",
+    "slot": 4,
+    "end": 4
+  },
+  {
+    "frame": "board_t11940.png",
+    "t_s": 11940.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
     "frame": "board_t12000.png",
     "t_s": 12000.0,
     "color": "yellow",
