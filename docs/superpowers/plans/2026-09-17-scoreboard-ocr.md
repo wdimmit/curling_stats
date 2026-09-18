@@ -1782,3 +1782,64 @@ fields in Tasks 7, 8 and 13. `read_cards`, `read_digit`, `_card_glyph`,
 one spelling throughout. `cumulative` changes its parameter type in Task 4 and
 every later use passes a `CardBoard`. `scoreCell(score, color)` is defined in
 Task 10 and used only there.
+
+---
+
+### Task 6D: Collect labelled card data across VODs
+
+Gate 2 of Task 6B failed: the model reads printed digits at 99.3% but real cards
+at 4 of 11, and digit 2 is 0 of 17, confidently misread as 7. Both preprocessing
+explanations were ruled out by experiment (narrowing the printed crop leaves
+digit 2 at 2/17 and wrecks digit 1; widening the card crop moves it to 4/17 and
+halves overall accuracy), and `_glyph_ink` is already shared by both paths. So
+the card typeface genuinely differs from the printed one and printed glyphs alone
+cannot teach it. Real card data is required.
+
+**Files:**
+- Create: `scripts/collect_cards.py`
+- Create: `datasets/board-cards-train/<video_id>/*.png` and `labels.json`
+
+**Interfaces:**
+- Consumes: `datasets/ds12/videos.json` (and ds11 if needed), `ingest.cache.ensure_cached`,
+  the harvesting logic of `scripts/harvest_board.py`
+- Produces: `datasets/board-cards-train/labels.json`, rows
+  `{video_id, date, sheet, frame, t_s, color, slot, end}` — the same shape as
+  `datasets/board-cards/labels.json` plus the three provenance fields that make a
+  by-video, by-sheet split possible.
+
+**Constraints that bind this task**
+
+- **Disk (ruling R13).** 7.5 GB free. Process ONE video at a time: download,
+  harvest board frames, then delete that video before starting the next. Assert
+  at least 4 GB free before each download and stop cleanly if not.
+- **Never delete `~/.cache/curling_score/videos/VXU9xwmugRg.mp4`.** The slow tests
+  and other sessions depend on it. Delete only videos this task downloaded.
+- **Politeness.** One download at a time, sequentially. `ingest/cache.py` already
+  carries `BLOCK_HINTS` and `BACKOFF_S`; do not add concurrency. A burst once got
+  this IP blocked for a quarter of an hour.
+- **Splits (ruling R15).** These are TRAINING cards. The 11 in
+  `datasets/board-cards/` remain held out and must not be copied in here.
+
+- [ ] **Step 1: Select the videos.** From `datasets/ds12/videos.json`, take all
+  five sheets across at least two dates to start (10 videos), preferring the
+  shorter durations. Record the selection in the report.
+- [ ] **Step 2: Write `scripts/collect_cards.py`** implementing the
+  download/harvest/delete loop with the disk assertion and a resume capability, so
+  an interrupted run continues rather than restarting.
+- [ ] **Step 3: Run it in the background and poll.** Each video is a ~2 GB
+  download plus a board sweep, so this is tens of minutes per video.
+- [ ] **Step 4: Label the digits** the same way Task 1 did — render whole card rows
+  with the slot grid drawn on, upscaled, and read them by eye. Apply Task 1's four
+  self-consistency checks per video before accepting the labels: within a team,
+  cards sorted by end have strictly increasing slots; no end appears on both
+  teams; cards only accumulate within a game; end numbers form 1..N.
+- [ ] **Step 5: Report the yield** — distinct cards per digit class, per sheet and
+  per video — so we can see whether the thin classes (6 and above) are covered.
+- [ ] **Step 6: Commit** the script, the frames and the labels, with the standard
+  co-author trailer.
+
+**Stop and report rather than pressing on if:** downloads start failing with
+block hints, the disk assertion trips, or the yield per video is far below the
+~11 distinct cards the reference VOD gave.
+
+---
