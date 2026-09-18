@@ -1,0 +1,12 @@
+{
+  "cards": [
+    {"game": 0, "color": "red", "slot": 1, "end": 1},
+    {"game": 0, "color": "red", "slot": 5, "end": 2},
+    {"game": 0, "color": "red", "slot": 6, "end": 3},
+    {"game": 0, "color": "red", "slot": 7, "end": 4}
+  ],
+  "reject": [
+    {"frame": "board_t02700.png", "color": "yellow", "slots": [1],
+     "why": "the yellow row is empty all game; this frame is zoomed in far enough that the board's own dark left-hand frame falls inside slot 1's window, and dark-against-light is what the presence test looks for"}
+  ]
+}
