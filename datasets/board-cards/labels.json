@@ -1,0 +1,457 @@
+[
+  {
+    "frame": "board_t00900.png",
+    "t_s": 900.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t01800.png",
+    "t_s": 1800.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t02400.png",
+    "t_s": 2400.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t02400.png",
+    "t_s": 2400.0,
+    "color": "red",
+    "slot": 1,
+    "end": 2
+  },
+  {
+    "frame": "board_t02700.png",
+    "t_s": 2700.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t02700.png",
+    "t_s": 2700.0,
+    "color": "yellow",
+    "slot": 2,
+    "end": 3
+  },
+  {
+    "frame": "board_t02700.png",
+    "t_s": 2700.0,
+    "color": "red",
+    "slot": 1,
+    "end": 2
+  },
+  {
+    "frame": "board_t03600.png",
+    "t_s": 3600.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t03600.png",
+    "t_s": 3600.0,
+    "color": "yellow",
+    "slot": 2,
+    "end": 3
+  },
+  {
+    "frame": "board_t03600.png",
+    "t_s": 3600.0,
+    "color": "red",
+    "slot": 1,
+    "end": 2
+  },
+  {
+    "frame": "board_t04200.png",
+    "t_s": 4200.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t04200.png",
+    "t_s": 4200.0,
+    "color": "yellow",
+    "slot": 2,
+    "end": 3
+  },
+  {
+    "frame": "board_t04200.png",
+    "t_s": 4200.0,
+    "color": "red",
+    "slot": 1,
+    "end": 2
+  },
+  {
+    "frame": "board_t04200.png",
+    "t_s": 4200.0,
+    "color": "red",
+    "slot": 2,
+    "end": 4
+  },
+  {
+    "frame": "board_t04500.png",
+    "t_s": 4500.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t04500.png",
+    "t_s": 4500.0,
+    "color": "yellow",
+    "slot": 2,
+    "end": 3
+  },
+  {
+    "frame": "board_t04500.png",
+    "t_s": 4500.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 5
+  },
+  {
+    "frame": "board_t04500.png",
+    "t_s": 4500.0,
+    "color": "red",
+    "slot": 1,
+    "end": 2
+  },
+  {
+    "frame": "board_t04500.png",
+    "t_s": 4500.0,
+    "color": "red",
+    "slot": 2,
+    "end": 4
+  },
+  {
+    "frame": "board_t06000.png",
+    "t_s": 6000.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t06000.png",
+    "t_s": 6000.0,
+    "color": "yellow",
+    "slot": 2,
+    "end": 3
+  },
+  {
+    "frame": "board_t06000.png",
+    "t_s": 6000.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 5
+  },
+  {
+    "frame": "board_t06000.png",
+    "t_s": 6000.0,
+    "color": "red",
+    "slot": 1,
+    "end": 2
+  },
+  {
+    "frame": "board_t06000.png",
+    "t_s": 6000.0,
+    "color": "red",
+    "slot": 2,
+    "end": 4
+  },
+  {
+    "frame": "board_t06300.png",
+    "t_s": 6300.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t06300.png",
+    "t_s": 6300.0,
+    "color": "yellow",
+    "slot": 2,
+    "end": 3
+  },
+  {
+    "frame": "board_t06300.png",
+    "t_s": 6300.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 5
+  },
+  {
+    "frame": "board_t06300.png",
+    "t_s": 6300.0,
+    "color": "red",
+    "slot": 1,
+    "end": 2
+  },
+  {
+    "frame": "board_t06300.png",
+    "t_s": 6300.0,
+    "color": "red",
+    "slot": 2,
+    "end": 4
+  },
+  {
+    "frame": "board_t06300.png",
+    "t_s": 6300.0,
+    "color": "red",
+    "slot": 3,
+    "end": 6
+  },
+  {
+    "frame": "board_t08700.png",
+    "t_s": 8700.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t09600.png",
+    "t_s": 9600.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t09600.png",
+    "t_s": 9600.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
+    "frame": "board_t10200.png",
+    "t_s": 10200.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t10200.png",
+    "t_s": 10200.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
+    "frame": "board_t10500.png",
+    "t_s": 10500.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t10500.png",
+    "t_s": 10500.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 3
+  },
+  {
+    "frame": "board_t10500.png",
+    "t_s": 10500.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
+    "frame": "board_t11400.png",
+    "t_s": 11400.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t11400.png",
+    "t_s": 11400.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 3
+  },
+  {
+    "frame": "board_t11400.png",
+    "t_s": 11400.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
+    "frame": "board_t11700.png",
+    "t_s": 11700.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t11700.png",
+    "t_s": 11700.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 3
+  },
+  {
+    "frame": "board_t11700.png",
+    "t_s": 11700.0,
+    "color": "yellow",
+    "slot": 4,
+    "end": 4
+  },
+  {
+    "frame": "board_t11700.png",
+    "t_s": 11700.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
+    "frame": "board_t12000.png",
+    "t_s": 12000.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t12000.png",
+    "t_s": 12000.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 3
+  },
+  {
+    "frame": "board_t12000.png",
+    "t_s": 12000.0,
+    "color": "yellow",
+    "slot": 4,
+    "end": 4
+  },
+  {
+    "frame": "board_t12300.png",
+    "t_s": 12300.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 3
+  },
+  {
+    "frame": "board_t12300.png",
+    "t_s": 12300.0,
+    "color": "yellow",
+    "slot": 4,
+    "end": 4
+  },
+  {
+    "frame": "board_t12300.png",
+    "t_s": 12300.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
+    "frame": "board_t12600.png",
+    "t_s": 12600.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 3
+  },
+  {
+    "frame": "board_t12600.png",
+    "t_s": 12600.0,
+    "color": "yellow",
+    "slot": 4,
+    "end": 4
+  },
+  {
+    "frame": "board_t12600.png",
+    "t_s": 12600.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
+    "frame": "board_t12600.png",
+    "t_s": 12600.0,
+    "color": "red",
+    "slot": 4,
+    "end": 5
+  },
+  {
+    "frame": "board_t12900.png",
+    "t_s": 12900.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t12900.png",
+    "t_s": 12900.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 3
+  },
+  {
+    "frame": "board_t12900.png",
+    "t_s": 12900.0,
+    "color": "yellow",
+    "slot": 4,
+    "end": 4
+  },
+  {
+    "frame": "board_t12900.png",
+    "t_s": 12900.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
+    "frame": "board_t12900.png",
+    "t_s": 12900.0,
+    "color": "red",
+    "slot": 4,
+    "end": 5
+  },
+  {
+    "frame": "board_t13200.png",
+    "t_s": 13200.0,
+    "color": "yellow",
+    "slot": 1,
+    "end": 1
+  },
+  {
+    "frame": "board_t13200.png",
+    "t_s": 13200.0,
+    "color": "yellow",
+    "slot": 3,
+    "end": 3
+  },
+  {
+    "frame": "board_t13200.png",
+    "t_s": 13200.0,
+    "color": "yellow",
+    "slot": 4,
+    "end": 4
+  },
+  {
+    "frame": "board_t13200.png",
+    "t_s": 13200.0,
+    "color": "red",
+    "slot": 2,
+    "end": 2
+  },
+  {
+    "frame": "board_t13200.png",
+    "t_s": 13200.0,
+    "color": "red",
+    "slot": 4,
+    "end": 5
+  }
+]
