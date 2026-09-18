@@ -1958,3 +1958,76 @@ still runs the MLP, so this task makes the conv reader the one that ships.
 - [ ] **Step 6: Commit** with the standard co-author trailer.
 
 ---
+
+---
+
+### Task 7A: Stop reading people as cards
+
+`is_readable` guards only the printed 1-14 row, which sits ABOVE the card bands.
+Someone standing in front of the board's lower half leaves that strip untouched,
+so the check passes while `read_slots` reports their clothing as cards. On
+`datasets/board-cards-train/s_iPqkT02q8/board_t04500.png` it reports eight red
+cards — a cumulative score of 13 — where only one card is real. 22 of the 23
+labelled phantoms are in the red (lower) row, clustered at high slots where real
+cumulative scores almost never reach.
+
+A phantom is not a misread digit. It invents a scoring end, and no board
+self-check catches it, because a three-point end is perfectly legal. It corrupts
+the totals-only path as much as the per-end one.
+
+**Files:**
+- Modify: `src/curling_score/game/scoreboard.py` (`is_readable`, and a new row check)
+- Test: `tests/test_scoreboard.py`
+
+**The fix, and the evidence for it**
+
+Sample the bare board BETWEEN the printed digits — that row is already verified
+unoccluded by `_printed_digit_groups`, so it is a trusted brightness reference
+for the same board under the same lighting. Compare each card row's level
+(the median of its per-slot medians, as `read_slots` computes it) against that
+reference. A row much darker than bare board is occluded.
+
+Measured over 339 clean rows and 7 rows containing phantoms:
+
+| | min | p5 | median | p95 | max |
+|---|---|---|---|---|---|
+| clean rows | -5.0 | -1.5 | 1.5 | 7.0 | 11.5 |
+| rows with phantoms | -1.5 | 1.5 | 35.0 | 69.0 | 73.2 |
+
+At a threshold of 20 this catches 4 of the 7 bad rows and refuses **0 of 339**
+good ones. Rejection is per FRAME, not per card: in that video red slot 5 is a
+head at t=4500 and a genuine card at t=6300, so a slot cannot be blacklisted.
+If either card row is occluded the whole frame is unusable, because a board with
+one unreadable row cannot give a score, and the sampler already steps back on a
+refused read.
+
+Approaches measured and rejected, so they are not retried: colour saturation
+(catches 6/23 phantoms at a threshold keeping 99% of real cards — some people
+wear grey); the absolute `<130` wide-dark-run test reused from the printed row
+(refuses 64/339 good rows, because board brightness varies); and tile geometry
+(refuses 168/538 real cards to catch 12/22 phantoms).
+
+- [ ] **Step 1: Write the failing test** using the committed frames.
+  `board_t04500.png` must be refused; frames whose rows are clean must not be.
+  Name it for the behaviour, e.g.
+  `test_a_crowd_in_front_of_the_lower_board_is_not_eight_red_cards`.
+- [ ] **Step 2: Run it** and watch it fail — `is_readable` currently returns True
+  on that frame.
+- [ ] **Step 3: Implement** the bare-board reference and the per-row comparison,
+  and extend `is_readable` to require both card rows to pass. Explain in the
+  docstring WHY the printed row alone was insufficient, since that premise is
+  written into the current comment and will otherwise be reintroduced.
+- [ ] **Step 4: Verify no regression** across every committed frame: no frame
+  that currently yields only genuine cards may become unreadable. Report the
+  count of frames refused before and after.
+- [ ] **Step 5: Run** `./.venv/bin/pytest tests/test_scoreboard.py tests/test_digits.py tests/test_timeline.py -q`
+- [ ] **Step 6: Commit** with the standard co-author trailer.
+
+**Do not delete `consolidate()`** (Task 12 proposed to). Persistence is the
+decisive discriminator for the isolated phantoms this task does not catch: real
+cards persist across frames at 0.75-1.00 of their post-appearance frames while
+phantoms reach at most 0.63, which separates 14 of 14 phantoms from 51 of 51
+real cards. Whether to spend a second read on that is a sampler decision, taken
+after this task measures what still gets through.
+
+---
