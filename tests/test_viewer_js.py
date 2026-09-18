@@ -211,7 +211,13 @@ def doc(shots, game_index=0, end_number=1, end_id=None):
     end = {"number": end_number, "score": {"red": 0, "yellow": 0}, "shots": shots}
     if end_id is not None:
         end["id"] = end_id
-    return {"source": {"video_id": "v"},
+    # Current schema by default: this fixture stands in for an ordinary,
+    # already-analysed chart in every test that is not itself about the
+    # schema gate, and the gate now fails closed on anything else -- an
+    # undated document reads as one that predates board reading, not as one
+    # that happens to be current. Tests that want the old-schema case set
+    # `schema_version` themselves (see TestAnOldChartShowsNoBoardScore).
+    return {"schema_version": 4, "source": {"video_id": "v"},
             "games": [{"index": game_index, "teams": {"red": {"name": None},
                                                       "yellow": {"name": None}},
                        "final": {"red": 0, "yellow": 0},
@@ -1220,10 +1226,22 @@ class TestAnOldChartShowsNoBoardScore:
                      "boardReadable({schema_version: 3})]);")
         assert got == [False, False]
 
-    def test_a_document_with_no_version_at_all_is_treated_as_current(self):
-        """Every fixture in this file predates the `schema_version` field.
-        None of them is a chart that predates board reading."""
-        assert run_js("out(boardReadable({}));") is True
+    def test_a_document_with_no_version_at_all_is_refused_not_assumed_current(self):
+        """The gate must fail closed: a document we cannot date is far more
+        likely to predate board reading than not, since the field is new. An
+        undated document's `score`/`final` may still be the detector's old
+        inferred numbers, so treating "unknown" as "current" would let those
+        numbers straight through -- the exact leak this gate exists to stop.
+        (`doc.schema_version < 4` alone gets this backwards: `undefined < 4`
+        is `false`, so its negation reads an absent version as readable.)"""
+        assert run_js("out(boardReadable({}));") is False
+
+    def test_null_and_non_numeric_versions_are_also_refused(self):
+        """Whatever shape arrives over the wire in this field, only an actual
+        number of 4 or more passes -- not just "not less than 4"."""
+        got = run_js("out([boardReadable({schema_version: null}), "
+                     "boardReadable({schema_version: 'bogus'})]);")
+        assert got == [False, False]
 
     def test_the_gate_overrides_a_populated_running_score(self):
         """Not "no running score was posted" -- the field is populated, and

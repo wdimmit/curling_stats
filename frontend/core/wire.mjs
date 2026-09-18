@@ -99,7 +99,12 @@ export const chartedNotice = n =>
  * same fields -- the exact number this feature exists to stop showing. A
  * chart built by an older run gets no board score rendered at all, rather
  * than risk one being mistaken for the club's. Mirrors timeline.SCHEMA_VERSION
- * in src/curling_score/timeline.py; `undefined < 4` is false, so a document
- * with no `schema_version` at all -- every test fixture that predates this
- * field -- is treated as current, not as too old. */
-export const boardReadable = doc => !(doc.schema_version < 4);
+ * in src/curling_score/timeline.py.
+ *
+ * Fails closed: `Number(x) >= 4` is false for a missing, null, or
+ * non-numeric `schema_version`, not just a low one. A document we cannot
+ * date is more likely to predate board reading than not, so an unreadable
+ * version number is refused rather than assumed current -- the same bet
+ * `doc.schema_version < 4` got backwards, since `undefined < 4` is false
+ * and its negation waved an undated document through as readable. */
+export const boardReadable = doc => Number(doc?.schema_version) >= 4;
