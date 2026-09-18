@@ -863,3 +863,95 @@ def consolidate(readings, confirm: int = _CONFIRM_READINGS):
             }
         out.append(BoardReading(yellow=got["yellow"], red=got["red"]))
     return out
+
+
+# The board accumulates and never resets mid-game, so one good late read
+# encodes the whole game. The sampler therefore walks BACKWARDS from just
+# before the game's end and stops at the first usable state, rather than
+# sweeping the whole game or looking for a late posting after `end_s`.
+# Looking past `end_s` is unsafe: the board is cleared for the next game and
+# then repopulated by it, so a later read risks being silently attributed to
+# this one. The price is that a final end posted right at the buzzer can be
+# missed -- it then shows up as a trailing unread end, which is the safe
+# direction to fail in.
+MAX_BOARD_READS = 5
+BOARD_STEP_S = 300.0
+BOARD_LEAD_S = 60.0
+
+
+@dataclass(frozen=True)
+class GameBoard:
+    """One game's board, and what it cost to read."""
+
+    scores: BoardScores
+    read_at_s: float
+    reads: int
+    board: CardBoard
+
+
+def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
+    """The cards around a moment in the video, de-occluded by median.
+
+    Mirrors `read_board_at`, but reads cards (with their end numbers) via
+    `read_cards` rather than bare occupied slots via `read_slots`.
+    """
+    from curling_score.ingest import frames as F
+
+    lo, hi = max(0.0, t_seconds - window_s), t_seconds + window_s
+    imgs = []
+    for t, img in F.keyframe_sweep(video_path, start_s=lo, end_s=hi):
+        if t < lo:
+            continue
+        if len(imgs) >= max_frames:
+            break
+        imgs.append(img)
+    if not imgs:
+        return None
+    image = median_frame(imgs)
+    geom = find_board(image)
+    # is_readable also guards against an occluded card row, not just the
+    # printed strip -- refuse on it exactly as read_board_at does.
+    if geom is None or not is_readable(image, geom):
+        return None
+    return read_cards(image, geom)
+
+
+def read_game_board(video_path, start_s, end_s, n_ends, *, read_at=None):
+    """The latest usable board state for one game, or None.
+
+    Walks back from just before ``end_s``. Never looks past it: the board is
+    cleared for the next game, and a board repopulated by that game would be
+    read as this one's. A late final posting is therefore missed rather than
+    misattributed, and shows up as a trailing unread end.
+
+    A read is "usable" when the board is found, `is_readable` passes, the
+    card set is not blank, and `per_end_from_cards` does not raise. Raising
+    (a `ScoreboardError`) means the board contradicted itself -- two teams
+    scoring one end, or a team's total going backwards -- which is how a
+    misread digit or a phantom card surfaces; the response is to step back
+    and try another time, never to patch the reading up.
+
+    ``n_ends`` is a stopping hint only, passed straight through to
+    `per_end_from_cards`: it says whether another read is worth spending, but
+    it never gates a card or changes a score.
+
+    ``read_at`` is an injection point for tests: a callable ``(t) ->
+    CardBoard | None`` replacing `read_cards_at`, so the sampler is testable
+    without decoding any video.
+    """
+    read_at = read_at or (lambda t: read_cards_at(video_path, t))
+    t = end_s - BOARD_LEAD_S
+    for reads in range(1, MAX_BOARD_READS + 1):
+        if t < start_s:
+            break
+        board = read_at(t)
+        if board is not None and not board.is_blank():
+            try:
+                scores = per_end_from_cards(board, n_ends)
+            except ScoreboardError:
+                scores = None
+            if scores is not None:
+                return GameBoard(scores=scores, read_at_s=t,
+                                  reads=reads, board=board)
+        t -= BOARD_STEP_S
+    return None

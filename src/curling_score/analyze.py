@@ -26,7 +26,6 @@ log = logging.getLogger(__name__)
 CALIB_FRAMES = 24
 CALIB_STRIDE = 90  # keyframes apart, to spread samples across the whole video
 SHOT_FPS = 10.0  # decoding dominates, so a high rate is nearly free
-BOARD_INTERVAL_S = 450.0  # how often to read the wall scoreboard
 
 # The stages a caller can watch, in the order they run. A hosted worker turns
 # these into a progress bar; the CLI ignores them.
@@ -311,34 +310,32 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         phase("scoreboard", 0.0, "reading the wall scoreboard")
         progress("reading the wall scoreboard...")
         for game, out_game in zip(games, out_games):
-            readings = []
-            t = game.start_s
-            while t <= game.end_s:
-                r = sb.read_board_at(path, t)
-                if r is not None and not r.is_blank():
-                    readings.append(r)
-                t += BOARD_INTERVAL_S
-            if not readings:
+            got = sb.read_game_board(
+                path, game.start_s, game.end_s, len(out_game["ends"]),
+            )
+            if got is None:
                 out_game["scoreboard"] = None
+                progress(f"  game {game.index + 1}: board not read")
                 continue
-            consolidated = sb.consolidate(readings)
-            final = sb.cumulative(consolidated[-1])
-            try:
-                per_end = sb.per_end_scores(consolidated)
-            except sb.ScoreboardError:
-                per_end = None
-            agrees = final == out_game["final"]
             out_game["scoreboard"] = {
-                "final": final,
-                "per_end": per_end,
-                "agrees_with_detection": agrees,
+                "read_at_s": round(got.read_at_s, 2),
+                "reads": got.reads,
+                "unread_ends": list(got.scores.unread_ends),
+                "final": got.scores.final,
+                "cards": {
+                    color: [
+                        {"slot": c.slot, "end": c.end, "confidence": round(c.confidence, 4)}
+                        for c in getattr(got.board, color)
+                    ]
+                    for color in sb.COLORS
+                },
+                "per_end": {str(k): v for k, v in sorted(got.scores.per_end.items())},
             }
-            for end in out_game["ends"]:
-                end["scoreboard_agrees"] = agrees
             progress(
-                f"  game {game.index + 1}: board says {final}, "
-                f"detection says {out_game['final']}"
-                f"{'' if agrees else '  <-- DISAGREE'}"
+                f"  game {game.index + 1}: board says {got.scores.final} "
+                f"in {got.reads} read(s)"
+                + (f", ends {list(got.scores.unread_ends)} not posted"
+                   if got.scores.unread_ends else "")
             )
         phase("scoreboard", 1.0, "scoreboard read")
 

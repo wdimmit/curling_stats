@@ -342,6 +342,73 @@ class TestPerEndFromCards:
         assert got.final is None
 
 
+class TestReadGameBoard:
+    """Cards accumulate, so the latest usable board state is also the most
+    complete one. The sampler walks back from the end of the game and stops at
+    the first state it can use -- one read, in the ordinary case."""
+
+    def board(self, yellow=(), red=()):
+        return SB.CardBoard(
+            yellow=tuple(SB.Card(s, e, 0.5) for s, e in yellow),
+            red=tuple(SB.Card(s, e, 0.5) for s, e in red),
+        )
+
+    def test_a_complete_board_costs_one_read(self):
+        seen = []
+
+        def read_at(t):
+            seen.append(t)
+            return self.board(yellow=[(1, 1), (3, 3)], red=[(2, 2)])
+
+        got = SB.read_game_board("v", 0.0, 3000.0, n_ends=3, read_at=read_at)
+        assert got.reads == 1
+        assert len(seen) == 1
+        assert got.scores.final == {"red": 2, "yellow": 3}
+
+    def test_it_steps_back_past_a_cleared_board(self):
+        """Read too late and the board has been wiped for the next game."""
+        def read_at(t):
+            return self.board() if t > 2000.0 else self.board(yellow=[(1, 1)])
+
+        got = SB.read_game_board("v", 0.0, 3000.0, n_ends=1, read_at=read_at)
+        assert got.reads > 1
+        assert got.read_at_s <= 2000.0
+
+    def test_it_steps_back_past_an_inconsistent_read(self):
+        """A misread digit usually shows up as two teams scoring one end."""
+        def read_at(t):
+            if t > 2000.0:
+                return self.board(yellow=[(1, 2)], red=[(1, 2)])
+            return self.board(yellow=[(1, 1)])
+
+        got = SB.read_game_board("v", 0.0, 3000.0, n_ends=1, read_at=read_at)
+        assert got.scores.per_end[1] == {"red": 0, "yellow": 1}
+
+    def test_it_never_looks_past_the_end_of_the_game(self):
+        """Past end_s the board belongs to the next game: a repopulated board
+        would be silently attributed to this one."""
+        seen = []
+
+        def read_at(t):
+            seen.append(t)
+            return self.board(yellow=[(1, 1)])
+
+        SB.read_game_board("v", 0.0, 3000.0, n_ends=1, read_at=read_at)
+        assert max(seen) <= 3000.0
+
+    def test_it_gives_up_after_the_read_budget(self):
+        got = SB.read_game_board("v", 0.0, 9000.0, n_ends=3,
+                                 read_at=lambda t: None)
+        assert got is None
+
+    def test_an_incomplete_board_is_still_returned(self):
+        """Trailing ends unposted is a partial answer, not a failure."""
+        got = SB.read_game_board("v", 0.0, 3000.0, n_ends=4,
+                                 read_at=lambda t: self.board(yellow=[(1, 1)]))
+        assert got.scores.unread_ends == (2, 3, 4)
+        assert got.scores.final is None
+
+
 class TestConsolidate:
     """Cards accumulate through a game and are never taken down mid-game.
 
