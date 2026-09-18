@@ -310,6 +310,49 @@ y > 4.3" looked like a strong signal and was entirely the table's
 extrapolation. Either the table needs a second version for model boxes, or the
 gate needs to drop.
 
+## More training data for the card-digit reader
+
+The shipped card-digit reader is a small conv net trained on 2052 self-labelled
+glyphs from the board's printed 1-14 strip plus **54 hand-labelled real cards**
+from 10 videos across all five sheets. It clears its gate — out-of-sample,
+leave-one-video-out, per frame, it reads 88-97% of cards at the threshold where
+it never reads one wrong — but 54 distinct cards is a thin foundation and three
+specific gaps follow from it.
+
+**Digits 8 and 9 have never been seen, and digit 7 exists exactly once.** This is
+structural, not a sampling failure: only one team scores per end, so a video
+yields *at most one* card per digit, and "cards of digit d" is precisely "videos
+whose game ran d scoring ends". Collecting more ordinary league VODs does not
+raise the ceiling; only longer games do. Measured across the ten collected
+videos: digits 1-4 gave 10 distinct cards each, digit 5 gave 9, digit 6 gave 4,
+digit 7 gave 1.
+
+**A purpose-shot video would break that ceiling outright.** A single clip panning
+a board with every card hung in a range of slots — and ideally in both the yellow
+and red rows, at a few different lighting levels — would supply every digit many
+times over in minutes, including the 7s, 8s and 9s that league play almost never
+produces. That is worth far more per minute of footage than any number of game
+recordings, and the user has offered to shoot one. It is the single highest-value
+input this model could receive.
+
+**The validation set is thinner than the training set.** The independent check is
+11 cards from one video of a different season, about two per digit. It is a smoke
+test, not a gate, and it has already been mistaken for one once — an earlier
+"4 of 11" result drove a whole data-collection round before the noise floor was
+measured and found to span most of the metric's range.
+
+**Each sheet contributes only two videos**, so a held-out video always has its
+sheet-mate in training. A leave-one-*sheet*-out evaluation would be a harder and
+more honest test, and the true accuracy on a board the model has never seen is
+probably below the leave-one-video-out figure.
+
+What to do with new data when it arrives: keep the split by video and by sheet,
+never by card — one physical card appears in dozens of frames and a row-level
+split leaks badly. Re-run `scripts/gate_digits.py`, which reports a seed range
+rather than a single run, because the zero-wrong coverage metric is set by the
+single most confident wrong read and swings tens of points between seeds on
+identical inputs.
+
 ## Other parked ideas
 - **Hammer from the score sequence.** It is read from who threw first, which is
   wrong whenever an end's opening delivery is missed. The rules give it
