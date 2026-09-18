@@ -13,6 +13,8 @@
 ## Global Constraints
 
 - **No wrong digits.** A refused read is always better than a guessed one. Every gate fails closed.
+- **Digit reading is a trained classifier, not template correlation.** Correlation was measured and failed; see the spec's *Why template matching failed*. Tasks 2-3 survive as glyph localisation and as the training-data harvester.
+- **No new runtime dependency.** Train and infer in numpy and ship a small `.npz`. `torch` is in the `gpu` extra only, and a plain install has none.
 - **The board never times anything.** Card positions and digits only; no inference from when a reading was taken.
 - **`n_ends` is a stopping hint, never a correctness gate.** A wrong detected end count costs reads, never a wrong score.
 - **Ends 10+ are out of scope.** Two-glyph card digits are rejected as unread.
@@ -704,167 +706,162 @@ git commit -m "scoreboard: turn one board state into per-end scores"
 
 ---
 
-### Task 6: Set MIN_MARGIN from the labelled harvest
+### Task 6A: Harvest the printed row as self-labelled training data
 
-The number the design leans on. Do not guess it.
+Template matching was measured and failed: 46% on cards, 0 of 11 distinct cards
+read consistently, and 73% even on printed digits across frames. The spec section
+*Why template matching failed* carries the numbers. `read_digit` is now backed by
+a trained classifier. Its training data is free, because the printed 1-14 row is
+in every board frame whether or not cards are hung, and the digit at slot *k* is
+*k*.
 
 **Files:**
-- Modify: `src/curling_score/game/scoreboard.py` (the `MIN_MARGIN` value only)
-- Create: `tests/test_scoreboard_accuracy.py`
+- Create: `scripts/harvest_glyphs.py`
+- Create: `datasets/board-glyphs/glyphs.npz` (written by the script)
 
 **Interfaces:**
-- Consumes: `datasets/board-cards/labels.json` from Task 1, `read_cards`
-- Produces: a justified `MIN_MARGIN`, and a regression test that holds it
+- Consumes: `scoreboard.find_board`, `scoreboard.is_readable`, `scoreboard.templates`,
+  `scoreboard.median_frame`, `ingest.frames.keyframe_sweep`
+- Produces: `datasets/board-glyphs/glyphs.npz` holding `x` (N, 22, 16) float32
+  normalised glyphs, `y` (N,) int labels in 1..9, and `t_s` (N,) sample times.
+  The sample time travels with each glyph so a split can hold out whole FRAMES;
+  splitting on individual glyphs leaks augmented copies of the same glyph across
+  the split and makes the validation score meaningless.
 
-- [ ] **Step 1: Write the measurement test**
+- [ ] **Step 1: Write the harvester**
+
+Sample the cached VOD at many timestamps. The printed row needs no cards, so
+every readable board frame yields 9 labelled glyphs. Reuse `scoreboard.templates`
+for the cropping — it already extracts exactly these glyphs — and keep only slots
+1..9, because slots 10..14 hold two digits in one slot width and are not valid
+card digits.
+
+- [ ] **Step 2: Run it, targeting a few thousand glyphs**
+
+```bash
+./.venv/bin/python scripts/harvest_glyphs.py \
+  ~/.cache/curling_score/videos/VXU9xwmugRg.mp4 --step-s 60
+```
+
+Four hours at 60 s steps is ~240 samples, so ~2000 glyphs before augmentation.
+Run it in the background; each sample decodes a window of full-resolution video.
+
+- [ ] **Step 3: Sanity-check the set**
+
+Assert every label is in 1..9, that class counts are near-equal (they must be —
+each frame contributes one of each), and that no array holds NaN. Print the glyph
+count and the number of distinct frames.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add scripts/harvest_glyphs.py datasets/board-glyphs/glyphs.npz
+git commit -m "harvest: the printed row is self-labelled digit training data"
+```
+
+---
+
+### Task 6B: Train the digit classifier
+
+**Files:**
+- Create: `src/curling_score/game/digits.py`
+- Create: `scripts/train_digits.py`
+- Create: `src/curling_score/game/digit_weights.npz`
+- Test: `tests/test_digits.py`
+
+**Interfaces:**
+- Consumes: `datasets/board-glyphs/glyphs.npz`
+- Produces:
+  - `digits.augment(x, rng) -> np.ndarray` — sub-pixel shift, scale, blur, JPEG, brightness
+  - `digits.Model.load(path) -> Model`, `Model.predict(glyph) -> tuple[int, float]`
+  - `digits.WEIGHTS` — the packaged `.npz` path
+  - a trained `digit_weights.npz`
+
+Numpy only for both training and inference (ruling R10): `torch` lives in the
+`gpu` extra and a plain `pip install -e ".[dev]"` has none, so a torch inference
+path would break `curling-score analyze` on base dependencies. Start with an MLP
+over the normalised glyph (ruling R11), because correlation failed specifically on
+alignment and scale noise and augmentation attacks that by teaching invariance.
+A small CNN is the escalation, not the starting point.
+
+- [ ] **Step 1: Write the failing tests**
 
 ```python
-"""Digit accuracy against the hand-labelled harvest.
+class TestTheDigitModel:
+    """Trained on the printed row, which labels itself. The gate is the real
+    cards it never saw, because those are what it has to read."""
 
-Marked slow: it reads every harvested board frame. The bar is asymmetric on
-purpose -- a wrong digit is worse than a refused one, so accepted reads must be
-perfect while coverage is only reported.
-"""
+    def test_it_reads_held_out_printed_digits(self):
+        """The correlation matcher managed 73% here."""
 
-import json
-from pathlib import Path
+    def test_it_reads_every_distinct_real_card(self):
+        """The 11 hand-labelled cards in datasets/board-cards. Correlation read
+        0 of 11 correctly in every frame they appear in."""
 
-import cv2
-import pytest
-
-from curling_score.game import scoreboard as SB
-
-LABELS = Path(__file__).resolve().parents[1] / "datasets/board-cards/labels.json"
-
-pytestmark = pytest.mark.slow
-
-
-def _labelled():
-    if not LABELS.is_file():
-        pytest.skip("board-card harvest not present; run scripts/harvest_board.py")
-    rows = json.loads(LABELS.read_text())
-    if not rows:
-        pytest.skip("board-card harvest is empty")
-    return rows
-
-
-class TestDigitAccuracy:
-    def test_no_accepted_digit_is_wrong(self):
-        """The whole design rests on this. A refusal is fine; a wrong digit
-        silently rewrites a game's score."""
-        rows, wrong, accepted = _labelled(), [], 0
-        by_frame = {}
-        for r in rows:
-            by_frame.setdefault(r["frame"], []).append(r)
-
-        for frame, cards in by_frame.items():
-            img = cv2.imread(str(LABELS.parent / frame))
-            geom = SB.find_board(img)
-            if geom is None:
-                continue
-            board = SB.read_cards(img, geom)
-            got = {(c, k.slot): k.end for c, k in board.all_cards()}
-            for r in cards:
-                if r["end"] in (None, "illegible"):
-                    continue
-                read = got.get((r["color"], r["slot"]))
-                if read is None:
-                    continue
-                accepted += 1
-                if read != r["end"]:
-                    wrong.append((frame, r["color"], r["slot"], r["end"], read))
-
-        print(f"\naccepted {accepted} digits, {len(wrong)} wrong")
-        assert wrong == [], wrong
-
-    def test_it_refuses_the_cards_a_human_could_not_read(self):
-        rows = _labelled()
-        illegible = [r for r in rows if r["end"] == "illegible"]
-        if not illegible:
-            pytest.skip("no illegible cards in the harvest")
-        for r in illegible:
-            img = cv2.imread(str(LABELS.parent / r["frame"]))
-            board = SB.read_cards(img, SB.find_board(img))
-            got = {(c, k.slot): k.end for c, k in board.all_cards()}
-            assert got.get((r["color"], r["slot"])) is None, r
-
-    def test_coverage_is_reported(self):
-        """Not a gate -- a number to read and record in the spec."""
-        rows = _labelled()
-        legible = [r for r in rows if r["end"] not in (None, "illegible")]
-        read = 0
-        for r in legible:
-            img = cv2.imread(str(LABELS.parent / r["frame"]))
-            geom = SB.find_board(img)
-            if geom is None:
-                continue
-            board = SB.read_cards(img, geom)
-            got = {(c, k.slot): k.end for c, k in board.all_cards()}
-            read += got.get((r["color"], r["slot"])) is not None
-        print(f"\nread {read}/{len(legible)} legible cards "
-              f"({100 * read / max(1, len(legible)):.1f}%)")
+    def test_confidence_is_lower_on_an_empty_slot_than_on_a_card(self):
+        """54% of empty slots cleared the old correlation threshold, which is
+        why presence detection cannot be folded into the digit read."""
 ```
 
-- [ ] **Step 2: Run it and read the margins**
+Fill in the concrete assertions once the harvest exists; Step 3 sets the numbers.
 
-Run: `./.venv/bin/pytest tests/test_scoreboard_accuracy.py -v -s -m slow`
+- [ ] **Step 2: Implement augmentation, the model, and the training script**
 
-Then sweep the threshold to find the separation, with `MIN_MARGIN` temporarily
-set to `0.0` so every read is accepted and its margin visible:
+Hold out whole frames by `t_s`, never individual glyphs.
+
+- [ ] **Step 3: Train, and measure against the gate**
+
+Report these, and write them into the spec's Validation section:
+- accuracy on held-out printed frames — must beat 73% decisively
+- accuracy on the 11 distinct real cards, and whether each is correct in *every*
+  frame it appears in (correlation: 0 of 11)
+- the confidence distribution over the ~519 empty slot positions against cards
+
+**If the real cards do not come good, stop and report it rather than tuning.**
+The fallback is hand-labelling real cards across more VODs, which is expensive
+and is the user's decision.
+
+- [ ] **Step 4: Commit**
 
 ```bash
-./.venv/bin/python - <<'PY'
-import json, cv2
-from pathlib import Path
-from curling_score.game import scoreboard as SB
-SB.MIN_MARGIN = 0.0
-root = Path("datasets/board-cards")
-rows = json.loads((root / "labels.json").read_text())
-by = {}
-for r in rows:
-    by.setdefault(r["frame"], []).append(r)
-ok, bad = [], []
-for frame, cards in by.items():
-    img = cv2.imread(str(root / frame))
-    geom = SB.find_board(img)
-    if geom is None:
-        continue
-    got = {(c, k.slot): k for c, k in SB.read_cards(img, geom).all_cards()}
-    for r in cards:
-        k = got.get((r["color"], r["slot"]))
-        if k is None or r["end"] in (None, "illegible"):
-            continue
-        (ok if k.end == r["end"] else bad).append(k.margin)
-ok.sort(); bad.sort()
-print(f"correct  n={len(ok)}  min={min(ok, default=0):.3f}  p05={ok[len(ok)//20] if ok else 0:.3f}")
-print(f"wrong    n={len(bad)} max={max(bad, default=0):.3f}  p95={bad[len(bad)*19//20] if bad else 0:.3f}")
-PY
+git add src/curling_score/game/digits.py scripts/train_digits.py \
+        src/curling_score/game/digit_weights.npz tests/test_digits.py
+git commit -m "digits: a small classifier trained on the board's printed row"
 ```
 
-Set `MIN_MARGIN` above the wrong reads' maximum and below the correct reads'
-minimum. If those two overlap, the template approach has not separated the
-classes: **stop and report that**, because the spec's fallback is a trained
-classifier and that is a decision for the user, not a threshold to fudge.
+---
 
-- [ ] **Step 3: Write the chosen value in**
+### Task 6C: Put the classifier behind read_digit
 
-Update `MIN_MARGIN` in `scoreboard.py` with a comment giving the measured
-separation and the sample size it came from.
+The point of this task is that nothing else changes. Tasks 4, 5 and 7-13 consume
+the `read_digit` and `read_cards` *contract*, not their internals.
 
-- [ ] **Step 4: Re-run to verify it passes**
+**Files:**
+- Modify: `src/curling_score/game/scoreboard.py`
+- Modify: `tests/test_scoreboard.py`
+- Modify: `pyproject.toml`
 
-Run: `./.venv/bin/pytest tests/test_scoreboard_accuracy.py -v -s -m slow`
-Expected: PASS, with the coverage percentage printed.
+**Interfaces:**
+- Produces: `read_digit(glyph, tmpl=None) -> tuple[int | None, float]` — the same
+  shape as before. The second element is now model confidence rather than a
+  correlation margin, so `MIN_MARGIN` becomes `MIN_CONFIDENCE`, set from 6B.
 
-- [ ] **Step 5: Record the numbers in the spec and commit**
-
-Fill the two "numeric target set from the harvest" rows in the spec's Validation
-table with what was measured.
+- [ ] **Step 1: Swap the body of `read_digit`** to use the model, loading it once
+  through a module-level lazy cache, and refuse below `MIN_CONFIDENCE`.
+- [ ] **Step 2: Keep `templates()`.** It is now the training-data extractor and is
+  still used by `scripts/harvest_glyphs.py`. Say that in its docstring so the next
+  reader does not delete it as dead.
+- [ ] **Step 3: Package the weights.** Add the `.npz` to
+  `[tool.setuptools.package-data]` under `"curling_score.game"`, or an installed
+  copy cannot read its own weights.
+- [ ] **Step 4: Update `TestReadDigit`** to the new threshold name, keeping
+  `test_a_card_under_a_hand_is_never_read_as_the_wrong_end` as the safety invariant.
+- [ ] **Step 5: Run** `./.venv/bin/pytest tests/test_scoreboard.py tests/test_digits.py -v`
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/curling_score/game/scoreboard.py tests/test_scoreboard_accuracy.py \
-        docs/superpowers/specs/2026-09-17-scoreboard-ocr-design.md
-git commit -m "scoreboard: set MIN_MARGIN from the labelled harvest"
+git add src/curling_score/game/scoreboard.py tests/test_scoreboard.py pyproject.toml
+git commit -m "scoreboard: read card digits with the trained classifier"
 ```
 
 ---

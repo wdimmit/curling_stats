@@ -43,12 +43,76 @@ can.
 | Decision | Choice |
 |---|---|
 | Per-end scores | **Read the card digits.** Temporal alignment is ruled out by the module's own constraint (the club posts late, "sometimes several ends late", so the board must never time anything); assuming which ends were blank is inference. OCR is the only route where the per-end score is *read*. |
-| Digit recognition | **Template matching against the board's own printed 1-14 row.** Self-calibrating, no weights file, no new dependency, and the match margin is a confidence signal for free. |
+| Digit recognition | **A small trained classifier**, after template matching was measured and failed (see *Why template matching failed*). Trained on the printed row, which is self-labelling; numpy-only inference from a small shipped `.npz`, so no new runtime dependency. |
 | Sampling | **Adaptive: one read, widen only if the digits come up short.** The digits say which ends are covered, so completeness is checkable rather than assumed. Typical cost one read; bounded worst case. |
 | Depth of the change | **The board becomes the score.** Timeline score fields are board-sourced. Detected scores stay computed under a marked `detected` block, used only for the agreement check. The hammer chain runs off board scores. |
 | Unreadable board | **No score at all.** Score fields are `null` and the viewer says the board could not be read. Some games will show no score -- an occluded or never-posted board yields nothing rather than a guess. |
 | Hosted worker | **Runs the board pass.** `skip_scoreboard=True` comes out. At 1-2 reads instead of ~12 the cost that justified skipping it is gone, and without it every hosted game would be scoreless. |
 | Ends 10 and above | **Out of scope.** Two-glyph card digits are rejected as unread. Club games are eight ends. |
+
+## Why template matching failed
+
+The original design matched each card glyph against the board's printed 1-14 row
+by normalised intensity correlation, accepting a read only on a confident margin.
+Measured against the 69-row labelled harvest, that approach does not work:
+
+| | result |
+|---|---|
+| card digits read correctly | 32/69 = 46% |
+| distinct physical cards read correctly in every frame | **0 of 11** |
+| empty slots scoring above the 0.05 accept margin | 54% |
+| wrong reads still accepted at any threshold keeping 95% of correct reads | 28/37 |
+
+The 69 rows are only **11 distinct physical cards** photographed repeatedly, and
+the same physical card reads differently between frames -- one reads 7 six times,
+then 5, then 3, then 2 -- which points at preprocessing noise rather than glyph
+shape.
+
+The decisive measurement matched the **printed** digits, whose labels are known
+by construction, against printed templates:
+
+| | accuracy |
+|---|---|
+| same frame (identity check) | 189/189 = 100% |
+| a different frame | 138/189 = **73%** |
+
+The same font, board and camera, differing only by frame, still fails 27% of the
+time, with the same confusions it makes on cards (2->7, 3->8, 5->3, 9->6). So the
+card-versus-printed font difference was never the cause: **normalised intensity
+correlation is inadequate at 22x16 px**, and it is the matcher that is wrong, not
+the premise. The information is separable -- the identity check is perfect and a
+human reads these crops without effort.
+
+## The classifier, and where its training data comes from
+
+The printed 1-14 row is in **every** board frame whether or not any cards are
+hung, and it is **self-labelling**: the digit at slot *k* is *k*. Training data is
+therefore free, unlimited and needs no human labelling, across every sheet and
+any timestamp.
+
+| set | source | size |
+|---|---|---|
+| train | auto-harvested printed digits, augmented for sub-pixel shift, scale, blur, JPEG and brightness drift | thousands, free |
+| validate | printed digits from frames held out of training | 189 today, trivially extensible |
+| validate (real) | the 11 distinct hand-labelled cards, never trained on | 11 |
+
+That last row is what the hand-labelling was actually needed for, and it is the
+correct split: train on printed glyphs, prove it on real cards.
+
+Inference is numpy reading a small `.npz`, because `torch` lives only in the
+`gpu` extra and a plain install has none -- a torch inference path would break
+`curling-score analyze` on base dependencies. Only `analyze.py` imports
+`scoreboard`; the API and timeline do not.
+
+The model starts as an MLP over the normalised glyph, because correlation failed
+specifically on alignment and scale noise and augmentation attacks that directly
+by teaching invariance. A small CNN is the escalation, not the starting point.
+
+**Gate to pass before the rest of the pipeline is built on it:** printed
+cross-frame accuracy well above the matcher's 73%, and the 11 held-out real cards
+read correctly and consistently, against the matcher's 0 of 11. If printed glyphs
+do not transfer to card glyphs, the fallback is hand-labelling real cards across
+more VODs -- the expensive path, entered only on evidence.
 
 ## Feasibility, as measured
 
@@ -245,16 +309,20 @@ anything doubtful.
 
 ## Risks
 
-**`MIN_MARGIN` cannot be set yet.** The largest risk, and the reason the harvest
-leads the plan rather than following it. If the separation turns out not to be
-clean, the fallback is a trained digit classifier through the existing `train/`
-pipeline -- more accurate under font drift, at the cost of a labelling round and
-a versioned weights file. The template approach is tried first because it needs
-neither.
+**Transfer from printed glyphs to card glyphs is unproven.** The model trains on
+printed digits and must work on cards. The 11 held-out real cards are the check,
+and 11 is thin -- it is every card in the one cached VOD. A pass there is a
+genuine signal but not a guarantee; widening it needs more VODs.
 
 **Card font may diverge from the printed font** on a sheet other than sheet 2.
-Both known card frames are sheet 2. The harvest covers all five and will show
-it; a divergence moves us to the classifier fallback.
+Both known card frames are sheet 2. This was listed as a risk to the template
+approach and it remains one for the classifier, mitigated by augmentation and
+measured by the held-out cards.
+
+**Superseded:** the original risk here was that `MIN_MARGIN` could not be set
+until the harvest existed. The harvest was built first, exactly so this would
+surface early, and it did -- it killed the template approach before anything was
+built on top of it. That was the plan working, not failing.
 
 **Some games will show no score.** A direct consequence of the decisions taken,
 and correct, but it is a visible regression from a number always being present
