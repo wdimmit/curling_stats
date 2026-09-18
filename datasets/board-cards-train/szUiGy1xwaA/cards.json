@@ -1,0 +1,7 @@
+[
+  {"game": 0, "color": "yellow", "slot": 2, "end": 1},
+  {"game": 0, "color": "yellow", "slot": 8, "end": 3},
+  {"game": 0, "color": "yellow", "slot": 9, "end": 4},
+  {"game": 0, "color": "yellow", "slot": 14, "end": 5},
+  {"game": 0, "color": "red", "slot": 1, "end": 2}
+]

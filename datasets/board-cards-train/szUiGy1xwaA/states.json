@@ -1,0 +1,216 @@
+[
+  {
+    "t_s": 300.0,
+    "status": "blank"
+  },
+  {
+    "t_s": 600.0,
+    "status": "blank"
+  },
+  {
+    "t_s": 900.0,
+    "status": "cards",
+    "frame": "board_t00900.png",
+    "yellow": [
+      2
+    ],
+    "red": []
+  },
+  {
+    "t_s": 1200.0,
+    "status": "cards",
+    "frame": "board_t01200.png",
+    "yellow": [
+      2
+    ],
+    "red": []
+  },
+  {
+    "t_s": 1500.0,
+    "status": "obstructed"
+  },
+  {
+    "t_s": 1800.0,
+    "status": "cards",
+    "frame": "board_t01800.png",
+    "yellow": [
+      2
+    ],
+    "red": []
+  },
+  {
+    "t_s": 2100.0,
+    "status": "cards",
+    "frame": "board_t02100.png",
+    "yellow": [
+      2
+    ],
+    "red": []
+  },
+  {
+    "t_s": 2400.0,
+    "status": "cards",
+    "frame": "board_t02400.png",
+    "yellow": [],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 2700.0,
+    "status": "cards",
+    "frame": "board_t02700.png",
+    "yellow": [
+      2,
+      8
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 3000.0,
+    "status": "cards",
+    "frame": "board_t03000.png",
+    "yellow": [
+      2,
+      8
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 3300.0,
+    "status": "cards",
+    "frame": "board_t03300.png",
+    "yellow": [
+      2,
+      8
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 3600.0,
+    "status": "cards",
+    "frame": "board_t03600.png",
+    "yellow": [
+      2,
+      8
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 3900.0,
+    "status": "cards",
+    "frame": "board_t03900.png",
+    "yellow": [
+      2,
+      8
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 4200.0,
+    "status": "cards",
+    "frame": "board_t04200.png",
+    "yellow": [
+      2,
+      8
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 4500.0,
+    "status": "cards",
+    "frame": "board_t04500.png",
+    "yellow": [
+      2,
+      8
+    ],
+    "red": []
+  },
+  {
+    "t_s": 4800.0,
+    "status": "cards",
+    "frame": "board_t04800.png",
+    "yellow": [
+      2,
+      8,
+      9
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 5100.0,
+    "status": "cards",
+    "frame": "board_t05100.png",
+    "yellow": [
+      2,
+      8,
+      9,
+      14
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 5400.0,
+    "status": "cards",
+    "frame": "board_t05400.png",
+    "yellow": [
+      2,
+      8,
+      9,
+      14
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 5700.0,
+    "status": "cards",
+    "frame": "board_t05700.png",
+    "yellow": [
+      2,
+      8,
+      9,
+      14
+    ],
+    "red": [
+      1
+    ]
+  },
+  {
+    "t_s": 6000.0,
+    "status": "blank"
+  },
+  {
+    "t_s": 6300.0,
+    "status": "blank"
+  },
+  {
+    "t_s": 6600.0,
+    "status": "blank"
+  },
+  {
+    "t_s": 6900.0,
+    "status": "blank"
+  },
+  {
+    "t_s": 7200.0,
+    "status": "blank"
+  }
+]
