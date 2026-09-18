@@ -553,3 +553,168 @@ class TestTrimmingThePracticeOff:
     def test_a_game_with_no_board_still_has_no_final_after_trimming(self):
         got = timeline.trim_to_start(self._practice_doc(), 1440.0)
         assert got["games"][0]["final"] is None
+
+
+class TestTheBoardScoreFollowsTheEndItActuallyIs:
+    """C1: how detection cut the stream must never change a score.
+
+    A card's slot is the cumulative score and its digit names the *real* end
+    that produced it, so ``scoreboard.per_end`` is keyed by real end number.
+    :mod:`analyze` attaches it by *detected* end number, which is the same
+    thing only when no practice was detected ahead of the game. One practice
+    block and every end carries the next end's score; the trim then renumbers
+    the survivors and the shift becomes invisible.
+
+    The board block rides through the trim untouched and is still keyed by
+    real end number, and after the trim the first kept end *is* real end one.
+    So the trim re-derives each kept end's score from the board rather than
+    letting the analyse-time attachment ride through.
+    """
+
+    def _end(self, number, start_s, n_shots, board_score):
+        shots = [shot(i, "red" if i % 2 else "yellow", [])
+                 for i in range(1, n_shots + 1)]
+        return timeline.build_end(number=number, house="top", start_s=start_s,
+                                  end_s=start_s + 300.0, shots=shots,
+                                  board_score=board_score)
+
+    def _doc(self, per_end=None, unread=None):
+        """One practice block ahead of two real ends, scores shifted by one.
+
+        The board read real end 1 as yellow +1 and real end 2 as red +2.
+        ``analyze`` attached those to detected ends 1 and 2 -- the practice
+        block and the first real end -- and left detected end 3 unscored.
+        """
+        per_end = per_end if per_end is not None else {
+            "1": {"red": 0, "yellow": 1}, "2": {"red": 2, "yellow": 0},
+        }
+        attached = [per_end.get(str(n)) for n in (1, 2, 3)]
+        ends = [self._end(1, 0.0, 6, attached[0]),
+                self._end(2, 1515.0, 16, attached[1]),
+                self._end(3, 2385.0, 16, attached[2])]
+        doc = {"games": [timeline.build_game(0, 0.0, 2685.0, ends)]}
+        doc["games"][0]["scoreboard"] = {
+            "read_at_s": 2600.0, "reads": 1, "final": None,
+            "unread_ends": list(unread if unread is not None else [3]),
+            "per_end": per_end,
+        }
+        return doc
+
+    def _ends(self, doc):
+        return doc["games"][0]["ends"]
+
+    def test_each_displayed_end_carries_the_board_score_for_the_end_it_is(self):
+        got = timeline.trim_to_start(self._doc(), 1440.0)
+        assert [e["score"] for e in self._ends(got)] == [
+            {"red": 0, "yellow": 1}, {"red": 2, "yellow": 0},
+        ]
+
+    def test_a_re_derived_score_still_says_it_came_from_the_board(self):
+        got = timeline.trim_to_start(self._doc(), 1440.0)
+        assert [e["score_source"] for e in self._ends(got)] == ["board", "board"]
+
+    def test_the_running_total_follows_the_re_derived_scores(self):
+        got = timeline.trim_to_start(self._doc(), 1440.0)
+        assert [e["running"] for e in self._ends(got)] == [
+            {"red": 0, "yellow": 1}, {"red": 2, "yellow": 1},
+        ]
+
+    def test_the_key_cannot_name_an_end_the_chart_does_not_have(self):
+        # I3, the same root cause: unread_ends is keyed by real end number
+        # too, so it has to be renumbered with the table or the viewer's key
+        # says "ends 3 were never posted" on a chart that has only two.
+        got = timeline.trim_to_start(self._doc(), 1440.0)
+        assert got["games"][0]["scoreboard"]["unread_ends"] == []
+
+    def test_an_end_the_board_never_posted_is_still_unread_after_the_trim(self):
+        doc = self._doc(per_end={"1": {"red": 0, "yellow": 1}}, unread=[2, 3])
+        got = timeline.trim_to_start(doc, 1440.0)
+        ends = self._ends(got)
+        assert ends[0]["score"] == {"red": 0, "yellow": 1}
+        assert ends[1]["score"] is None and ends[1]["running"] is None
+        assert got["games"][0]["scoreboard"]["unread_ends"] == [2]
+
+    def test_the_trim_records_whether_the_board_covered_every_kept_end(self):
+        both = timeline.trim_to_start(self._doc(), 1440.0)
+        assert both["games"][0]["scoreboard"]["accounts_for_every_end"] is True
+        short = timeline.trim_to_start(
+            self._doc(per_end={"1": {"red": 0, "yellow": 1}}, unread=[2, 3]),
+            1440.0)
+        assert short["games"][0]["scoreboard"]["accounts_for_every_end"] is False
+
+    def test_a_board_whose_scores_were_withheld_is_placed_by_the_trim(self):
+        # Part B withholds the scores when nothing says where the game starts.
+        # A start time says exactly that, so the trim puts them back on.
+        doc = self._doc()
+        doc["games"][0]["scoreboard"]["scores_withheld"] = "no start time"
+        for end in doc["games"][0]["ends"]:
+            end["score"] = end["score_source"] = None
+        got = timeline.trim_to_start(doc, 1440.0)
+        assert [e["score"] for e in self._ends(got)] == [
+            {"red": 0, "yellow": 1}, {"red": 2, "yellow": 0},
+        ]
+        assert got["games"][0]["scoreboard"]["scores_withheld"] is None
+
+    def test_a_board_block_with_no_per_end_leaves_the_scores_alone(self):
+        doc = self._doc()
+        doc["games"][0]["scoreboard"]["per_end"] = None
+        got = timeline.trim_to_start(doc, 1440.0)
+        assert [e["score"] for e in self._ends(got)] == [
+            {"red": 2, "yellow": 0}, None,
+        ]
+
+
+class TestWhenTheBoardCannotBePlaced:
+    """Part B: with no start time the alignment is genuinely unknowable.
+
+    Nothing says how many leading blocks are practice, so attaching by
+    detected end number is only right if there is no practice at all. The
+    practice signature is the one the trim already trusts -- a leading end
+    short of a full sixteen rocks -- and a board that cannot account for
+    every detected end is the other half of the same shift. Together they
+    mean the scores cannot be placed, and this design fails closed.
+    """
+
+    def _ends(self, first_shots, n_ends=3):
+        out = []
+        for number in range(1, n_ends + 1):
+            n_shots = first_shots if number == 1 else 16
+            shots = [shot(i, "red" if i % 2 else "yellow", [])
+                     for i in range(1, n_shots + 1)]
+            out.append(timeline.build_end(
+                number=number, house="top", start_s=300.0 * number,
+                end_s=300.0 * number + 200.0, shots=shots,
+                board_score={"red": 0, "yellow": 1}))
+        return out
+
+    def test_a_short_leading_end_and_a_board_short_of_the_game_withholds(self):
+        ends, block = self._ends(6), {}
+        assert timeline.settle_board_scores(ends, block, highest_end=2) is False
+        assert [e["score"] for e in ends] == [None, None, None]
+        assert [e["score_source"] for e in ends] == [None, None, None]
+
+    def test_it_records_why_the_scores_were_withheld(self):
+        block = {}
+        timeline.settle_board_scores(self._ends(6), block, highest_end=2)
+        assert block["scores_withheld"]
+
+    def test_a_full_first_end_means_there_is_no_practice_to_shift_by(self):
+        ends, block = self._ends(16), {}
+        assert timeline.settle_board_scores(ends, block, highest_end=2) is True
+        assert ends[0]["score"] == {"red": 0, "yellow": 1}
+        assert block["scores_withheld"] is None
+
+    def test_a_board_that_covers_every_end_cannot_be_shifted(self):
+        ends, block = self._ends(6), {}
+        assert timeline.settle_board_scores(ends, block, highest_end=3) is True
+        assert ends[0]["score"] == {"red": 0, "yellow": 1}
+
+    def test_whether_the_board_covered_every_end_is_recorded_either_way(self):
+        # Part C. R22 suppresses "final" whenever an end is unread, which
+        # reads as ordinary conservatism -- and was hiding exactly this.
+        block = {}
+        timeline.settle_board_scores(self._ends(16), block, highest_end=2)
+        assert block["accounts_for_every_end"] is False
+        block = {}
+        timeline.settle_board_scores(self._ends(16), block, highest_end=3)
+        assert block["accounts_for_every_end"] is True

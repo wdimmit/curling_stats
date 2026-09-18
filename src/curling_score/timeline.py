@@ -418,6 +418,75 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
     return document
 
 
+# Why a game's board scores were left off its ends. The board is keyed by the
+# real end number on each card; detection numbers the blocks it found. Nothing
+# in the document says how many leading blocks were practice, so the two
+# numberings can only be assumed equal -- and this design does not assume.
+BOARD_ALIGNMENT_UNKNOWN = (
+    "the game opens with an end short of a full sixteen rocks, so it may be "
+    "practice, and the board does not account for every detected end -- which "
+    "end each card belongs to cannot be settled without a start time"
+)
+
+
+def board_per_end(board: dict | None) -> dict | None:
+    """A board block's per-end scores, keyed by real end number, or None.
+
+    The analyser writes the keys as strings, because JSON has no others, and
+    a document round-tripped through a file brings them back the same way.
+    Both are accepted here so a caller never has to care. None means the
+    block cannot speak to individual ends at all, and its scores are then
+    left exactly as they were.
+    """
+    per_end = (board or {}).get("per_end")
+    if not isinstance(per_end, dict):
+        return None
+    out = {}
+    for key, score in per_end.items():
+        try:
+            out[int(key)] = score
+        except (TypeError, ValueError):
+            return None
+    return out
+
+
+def settle_board_scores(ends: list, block: dict, highest_end: int) -> bool:
+    """Whether the board's scores may stay on these ends. Fails closed.
+
+    The board's numbering is the real game's; ours is whatever detection cut
+    out of the stream, practice and all. The two agree only when nothing but
+    the game was detected, and one leading practice block silently moves
+    every score one end early -- confidently wrong, which is worse than the
+    inferred score this design removed.
+
+    Two signs together say the alignment is doubtful. The first is the
+    practice signature :func:`trim_to_start` already trusts: a leading end
+    short of a full sixteen rocks. The second is a board that cannot account
+    for every detected end -- if it names an end for every block we found,
+    there is no room for a practice block in front of them. Doubtful means
+    the scores come back off: the viewer can say the board could not be
+    placed, which is true, where a plausible score would not be.
+
+    Both conditions are recorded on ``block`` either way, because "the board
+    did not account for every end" was previously visible only as a
+    suppressed ``final``, where it read as ordinary conservatism.
+    """
+    covers_every_end = int(highest_end) >= len(ends)
+    first_short = bool(ends) and (
+        len(ends[0].get("shots") or [])
+        < ends[0].get("shots_expected", C.STONES_PER_END)
+    )
+    block["accounts_for_every_end"] = covers_every_end
+    if covers_every_end or not first_short:
+        block["scores_withheld"] = None
+        return True
+    block["scores_withheld"] = BOARD_ALIGNMENT_UNKNOWN
+    for end in ends:
+        end["score"] = None
+        end["score_source"] = None
+    return False
+
+
 def trim_to_start(document: dict, start_s: float | None) -> dict:
     """Drop the pre-game practice that the submitter's start time sits behind.
 
@@ -466,6 +535,21 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
         # too, so rebuild rather than patch. Keys build_game does not own (the
         # scoreboard block) survive.
         board = game.get("scoreboard")
+        # The board is keyed by the *real* end number printed on each card,
+        # and :mod:`analyze` could only attach it by detected end number --
+        # which the practice block in front had already shifted. Dropping the
+        # practice is what settles the alignment: the first end kept here is
+        # the game's first real end, so each kept end's score is re-derived
+        # from the surviving board block rather than carried over. Without
+        # this the shift merely becomes invisible, which is worse.
+        per_end = board_per_end(board)
+        if per_end is not None:
+            for end in kept:
+                score = per_end.get(end["number"])
+                if not isinstance(score, dict):
+                    score = None
+                end["score"] = None if score is None else dict(score)
+                end["score_source"] = None if score is None else "board"
         rebuilt = build_game(game["index"], kept[0]["start_s"], kept[-1]["end_s"],
                              kept)
         # The board is not rebuilt: what it says the game finished is a fact
@@ -474,16 +558,29 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
         if isinstance(board, dict):
             rebuilt["final"] = deepcopy(board.get("final"))
         game = document["games"][i] = {**game, **rebuilt}
-        # The board on the wall shows the game and never the practice, so a
-        # disagreement the practice caused has to clear with it. The board's
-        # own final does not move when ends are dropped; the detected one
-        # does, so that is what it is now compared against. Two totals already
-        # in the document; nothing re-reads the video.
-        if isinstance(board, dict) and board.get("final") is not None:
-            agrees = board["final"] == game["detected"]["final"]
-            game["scoreboard"] = {**board, "agrees_with_detection": agrees}
-            for end in game["ends"]:
-                end["scoreboard_agrees"] = agrees
+        if isinstance(board, dict):
+            block = {**board}
+            if per_end is not None:
+                # Same root cause as the scores, one level up: the ends the
+                # board never posted are numbered the same way, so the key
+                # would otherwise name ends this chart does not have.
+                unread = [n for n in range(1, len(kept) + 1)
+                          if not isinstance(per_end.get(n), dict)]
+                block["unread_ends"] = unread
+                block["accounts_for_every_end"] = not unread
+                # Whatever the analyser could not place, a start time places.
+                block["scores_withheld"] = None
+            # The board on the wall shows the game and never the practice, so
+            # a disagreement the practice caused has to clear with it. The
+            # board's own final does not move when ends are dropped; the
+            # detected one does, so that is what it is now compared against.
+            # Two totals already in the document; nothing re-reads the video.
+            if board.get("final") is not None:
+                agrees = board["final"] == game["detected"]["final"]
+                block["agrees_with_detection"] = agrees
+                for end in game["ends"]:
+                    end["scoreboard_agrees"] = agrees
+            game["scoreboard"] = block
     return document
 
 

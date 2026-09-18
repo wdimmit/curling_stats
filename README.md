@@ -91,6 +91,19 @@ sometimes past the end of the game, so an end the board has not caught up to
 comes back unread rather than guessed, and the game's final is withheld until
 every end has one.
 
+**A card's digit is the real end number; detection counts blocks.** Club
+streams open with twenty minutes of practice that arrives as leading ends —
+numbered and scored — so the two numberings differ by however many practice
+blocks were detected, and attaching the board by block number would hand the
+first real end the *second* end's score. A start time settles it: the trim
+(`timeline.trim_to_start`) drops the practice and re-derives every kept end's
+score from the surviving board block, so how detection cut the stream cannot
+change a score. Without one, nothing says how many leading blocks are
+practice, and a game that shows the practice signature — a leading end short
+of sixteen rocks — while its board cannot account for every detected block is
+refused rather than guessed: the ends keep no board score and the scoreboard
+block records why, under `scores_withheld`.
+
 ## Coordinates
 
 Sheet metres, origin at the tee of the playing house, `+y` up-sheet toward the
