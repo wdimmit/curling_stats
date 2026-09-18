@@ -275,3 +275,134 @@ class TestWeightsRoundTrip:
         import sys
 
         assert "torch" not in sys.modules
+
+
+class TestTheConvolutionalModel:
+    """The escalation named by ruling R11, added in Task 6E.
+
+    Correlation and the MLP failed the same way, on alignment and scale noise.
+    An MLP has to learn invariance to a one-pixel shift separately at every
+    position; a convolution shares one filter across positions, so the
+    invariance is structural. These tests check that the numpy implementation
+    of that is correct -- whether it is *enough* is a measurement, not a test,
+    and it lives in `scripts/gate_digits.py`.
+    """
+
+    def test_im2col_and_col2im_are_adjoint(self):
+        """<conv(x), y> == <x, conv^T(y)> -- the identity the backward pass is.
+
+        If the scatter back onto the image is not the exact transpose of the
+        gather, every gradient below the first convolution is quietly wrong and
+        training still appears to work, just worse. Cheaper to assert than to
+        diagnose.
+        """
+        rng = np.random.default_rng(0)
+        x = rng.normal(size=(3, 2, 22, 16))
+        k, pad = 3, 1
+        cols, oh, ow = D._im2col(x, k, pad)
+        g = rng.normal(size=cols.shape)
+        back = D._col2im(g, x.shape, k, pad, oh, ow)
+        assert float((cols * g).sum()) == pytest.approx(float((x * back).sum()),
+                                                        rel=1e-9)
+
+    def test_the_gradients_match_finite_differences(self):
+        """Every parameter, against a central difference in float64.
+
+        float32 and a kink-prone ReLU make this check meaningless at single
+        precision -- an earlier run of it showed 12% "error" that was entirely
+        the step size crossing ReLU kinks -- so the weights are promoted to
+        float64 and the step is 1e-6.
+        """
+        rng = np.random.default_rng(0)
+        m = D.ConvModel.initialise(c1=4, c2=6, fc=7, rng=rng)
+        m.p = [np.asarray(v, np.float64) for v in m.p]
+        n = 6
+        X = rng.normal(size=(n, 1, *SB.GLYPH_SHAPE))
+        t = rng.integers(0, D.NCLASS, n)
+
+        def loss_and_grads():
+            logits, cache = m._forward(X)
+            p = D._softmax(logits)
+            loss = float(-np.log(p[np.arange(n), t]).sum() / n)
+            d = p.copy()
+            d[np.arange(n), t] -= 1.0
+            return loss, m._backward(cache, d / n)
+
+        _, grads = loss_and_grads()
+        eps = 1e-6
+        for i, arr in enumerate(m.p):
+            flat = arr.reshape(-1)
+            for j in rng.choice(flat.size, size=min(6, flat.size),
+                                replace=False):
+                old = float(flat[j])
+                flat[j] = old + eps
+                up, _ = loss_and_grads()
+                flat[j] = old - eps
+                down, _ = loss_and_grads()
+                flat[j] = old
+                numeric = (up - down) / (2 * eps)
+                assert numeric == pytest.approx(
+                    float(grads[i].reshape(-1)[j]), abs=1e-5, rel=1e-3)
+
+    def test_max_pooling_drops_an_odd_edge_rather_than_padding_it(self):
+        """22x16 halves to 11x8, and 11 is odd. A padded edge would invent a
+        value the glyph does not have, and pooling could then select it."""
+        x = np.zeros((1, 1, 11, 8), np.float32)
+        x[0, 0, 10, 0] = 99.0          # in the row that gets dropped
+        out, _cache = D._maxpool2(x)
+        assert out.shape == (1, 1, 5, 4)
+        assert float(out.max()) == 0.0
+
+    def test_it_keeps_the_predict_contract(self):
+        """`predict` and `predict_many` are what everything downstream
+        consumes, so the two models have to be interchangeable behind them."""
+        rng = np.random.default_rng(0)
+        m = D.ConvModel.initialise(rng=rng)
+        glyph = rng.normal(size=SB.GLYPH_SHAPE).astype(np.float32)
+        digit, conf = m.predict(glyph)
+        assert digit in D.LABELS
+        assert 0.0 <= conf <= 1.0
+        assert m.predict(None) == (None, 0.0)
+
+        batch = np.stack([D.as_input(glyph) for _ in range(4)])
+        digits, confs = m.predict_many(batch)
+        assert list(digits) == [digit] * 4
+        assert confs == pytest.approx([conf] * 4, abs=1e-6)
+
+    def test_it_learns_the_digits_it_is_shown(self):
+        """A sanity check on the whole loop, not a measurement of anything.
+
+        Nine printed glyphs, one per class, trained on without augmentation:
+        if the forward pass, the backward pass and Adam agree, this is easy,
+        and if any of them disagree it is impossible.
+        """
+        x, y = _printed_holdout()
+        one_each = [np.flatnonzero(y == k)[0] for k in D.LABELS]
+        xs = np.stack([D.as_input(x[i]) for i in one_each])
+        ys = np.asarray([y[i] for i in one_each])
+        m = D.ConvModel.initialise(rng=np.random.default_rng(0))
+        m.fit(xs, ys, epochs=60, batch=9, rng=np.random.default_rng(0))
+        pred, _conf = m.predict_many(xs)
+        assert (pred == ys).all(), pred
+
+    def test_a_saved_conv_model_reads_identically(self, tmp_path):
+        rng = np.random.default_rng(1)
+        m = D.ConvModel.initialise(rng=rng)
+        path = tmp_path / "conv.npz"
+        m.save(path)
+        again = D.ConvModel.load(path)
+        X = rng.normal(size=(5, D.NFEAT)).astype(np.float32)
+        assert np.allclose(m.probs(X), again.probs(X))
+
+    def test_the_two_model_files_do_not_load_as_each_other(self, tmp_path):
+        """A conv `.npz` and an MLP `.npz` both end in .npz and both hold
+        `labels`, so refusing the wrong one explicitly is the difference
+        between an error and a silently wrong reader."""
+        conv = tmp_path / "conv.npz"
+        D.ConvModel.initialise(rng=np.random.default_rng(0)).save(conv)
+        with pytest.raises(Exception):
+            D.Model.load(conv)
+        mlp = tmp_path / "mlp.npz"
+        D.Model.initialise(rng=np.random.default_rng(0)).save(mlp)
+        with pytest.raises(Exception):
+            D.ConvModel.load(mlp)

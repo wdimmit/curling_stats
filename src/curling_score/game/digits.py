@@ -17,6 +17,12 @@ cached VOD with no human labelling. The hand-labelled real cards in
 Everything here is numpy, training included, and the weights ship as a small
 `.npz`. `torch` lives only in the `gpu` extra, so a torch inference path would
 break `curling-score analyze` on a base install (ruling R10).
+
+Two models live here and answer the same `predict(glyph) -> (digit, confidence)`
+contract: `Model`, the MLP, and `ConvModel`, the convolutional escalation
+ruling R11 named for when augmentation alone did not close the alignment and
+scale gap. Which one is better is a measurement, and the measurement is
+`scripts/gate_digits.py`.
 """
 
 from pathlib import Path
@@ -287,6 +293,291 @@ class Model:
                         vh = v[i] / (1 - beta2 ** step_i)
                         arr -= (lr * mh / (np.sqrt(vh) + eps)).astype(np.float32)
                 step += 1
+            if on_epoch is not None:
+                on_epoch(epoch, total / max(1, seen))
+        return self
+
+
+# ------------------------------------------------------- the convolutional one
+
+def _im2col(x, k, pad):
+    """Sliding k x k patches of a (N, C, H, W) batch as a matrix.
+
+    Rows are (sample, output row, output column) in that order and columns are
+    (channel, patch row, patch column), so a convolution is one matmul against
+    a (C*k*k, filters) weight and its gradients fall out of the same matmul
+    transposed. Stride is always 1 here: a 22x16 glyph is small enough that
+    striding buys nothing and pooling is a clearer place to lose resolution.
+    """
+    n, c, h, w = x.shape
+    if pad:
+        x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)))
+    oh, ow = h + 2 * pad - k + 1, w + 2 * pad - k + 1
+    windows = np.lib.stride_tricks.sliding_window_view(x, (k, k), axis=(2, 3))
+    # (N, C, oh, ow, k, k) -> (N*oh*ow, C*k*k)
+    cols = windows.transpose(0, 2, 3, 1, 4, 5).reshape(n * oh * ow, c * k * k)
+    return np.ascontiguousarray(cols, dtype=x.dtype), oh, ow
+
+
+def _col2im(cols, shape, k, pad, oh, ow):
+    """The adjoint of `_im2col`: scatter patch gradients back onto the image.
+
+    Overlapping patches means a pixel receives a gradient from every window it
+    appeared in, so this accumulates rather than assigns. The k*k loop is over
+    25 slices at most and each one is a vectorised add, which is far cheaper
+    than `np.add.at` over the index arrays.
+    """
+    n, c, h, w = shape
+    dx = np.zeros((n, c, h + 2 * pad, w + 2 * pad), cols.dtype)
+    cols = cols.reshape(n, oh, ow, c, k, k)
+    for i in range(k):
+        for j in range(k):
+            dx[:, :, i:i + oh, j:j + ow] += cols[:, :, :, :, i, j].transpose(
+                0, 3, 1, 2)
+    return dx[:, :, pad:pad + h, pad:pad + w] if pad else dx
+
+
+def _maxpool2(x):
+    """2x2 max pooling, stride 2, and the mask needed to send gradients back.
+
+    An odd dimension drops its last row or column rather than padding it: a
+    padded edge would invent a value the glyph does not have and pooling would
+    then be able to pick it. Ties share the gradient equally, which keeps the
+    backward pass the true subgradient instead of favouring whichever index
+    `argmax` happened to return.
+    """
+    n, c, h, w = x.shape
+    h2, w2 = h - h % 2, w - w % 2
+    v = x[:, :, :h2, :w2].reshape(n, c, h2 // 2, 2, w2 // 2, 2)
+    out = v.max(axis=(3, 5))
+    mask = (v == out[:, :, :, None, :, None])
+    mask = mask / mask.sum(axis=(3, 5), keepdims=True)
+    return out, (mask.astype(x.dtype), x.shape)
+
+
+def _maxpool2_back(d, cache):
+    mask, shape = cache
+    n, c, h, w = shape
+    h2, w2 = h - h % 2, w - w % 2
+    dx = np.zeros(shape, d.dtype)
+    dx[:, :, :h2, :w2] = (mask * d[:, :, :, None, :, None]).reshape(
+        n, c, h2, w2)
+    return dx
+
+
+class ConvModel:
+    """A small convolutional net over the normalised glyph, numpy throughout.
+
+    Why this exists: template correlation (46% on cards) and the MLP (60.8%
+    coverage at the zero-wrong threshold) failed the same way, on alignment and
+    scale noise. The MLP sees 352 independent inputs, so a glyph shifted one
+    pixel is a different input vector and invariance to that has to be learned
+    separately for every position from augmented examples. A convolution shares
+    one filter across all positions, so the invariance is structural and the
+    54 real cards buy a great deal more. Ruling R11 named this as the
+    escalation if augmentation alone was not enough, and it was not.
+
+    Deliberately small -- conv 5x5x16, pool, conv 3x3x32, pool, 64 hidden, 9
+    out, about 47k weights -- because the real training set is 54 physical
+    cards plus 2052 printed glyphs, augmented. A wider net would fit the
+    augmentation, not the digits.
+
+    `torch` is in the `gpu` extra and `curling-score analyze` must run on a base
+    install (ruling R10), so the convolution, its adjoint and Adam are all here.
+    """
+
+    def __init__(self, params, spec):
+        self.p = [np.asarray(v, np.float32) for v in params]
+        self.spec = dict(spec)
+
+    @classmethod
+    def initialise(cls, c1=16, c2=32, k1=5, k2=3, fc=64, rng=None):
+        rng = rng if rng is not None else np.random.default_rng(0)
+        h, w = GLYPH_SHAPE
+        h1, w1 = h // 2, w // 2                    # after the first pool
+        h2, w2 = h1 // 2, w1 // 2                  # after the second
+        flat = c2 * h2 * w2
+        spec = dict(c1=c1, c2=c2, k1=k1, k2=k2, fc=fc, flat=flat)
+        params = [
+            _he((k1 * k1, c1), rng), np.zeros(c1, np.float32),
+            _he((c1 * k2 * k2, c2), rng), np.zeros(c2, np.float32),
+            _he((flat, fc), rng), np.zeros(fc, np.float32),
+            _he((fc, NCLASS), rng), np.zeros(NCLASS, np.float32),
+        ]
+        return cls(params, spec)
+
+    # -- inference ---------------------------------------------------------
+
+    def _as_batch(self, X):
+        """Anything a caller hands over, as (N, 1, 22, 16).
+
+        `Model` takes flat rows and `predict` hands over one; a batch of glyphs
+        arrives 3-D. All three are the same pixels in a different arrangement,
+        and the convolution needs the arrangement the MLP threw away.
+        """
+        a = np.asarray(X, np.float32)
+        if a.ndim == 1:
+            a = a.reshape(1, *GLYPH_SHAPE)
+        elif a.ndim == 2:
+            a = (a.reshape(1, *GLYPH_SHAPE) if a.shape == GLYPH_SHAPE
+                 else a.reshape(len(a), *GLYPH_SHAPE))
+        return a.reshape(len(a), 1, *GLYPH_SHAPE)
+
+    def _forward(self, X):
+        """Logits, plus everything the backward pass needs to retrace."""
+        W1, b1, W2, b2, W3, b3, W4, b4 = self.p
+        k1, k2 = self.spec["k1"], self.spec["k2"]
+        c1, c2 = self.spec["c1"], self.spec["c2"]
+        n = len(X)
+
+        cols1, oh1, ow1 = _im2col(X, k1, k1 // 2)
+        z1 = (cols1 @ W1 + b1).reshape(n, oh1, ow1, c1).transpose(0, 3, 1, 2)
+        a1 = np.maximum(z1, 0.0)
+        p1, pc1 = _maxpool2(a1)
+
+        cols2, oh2, ow2 = _im2col(p1, k2, k2 // 2)
+        z2 = (cols2 @ W2 + b2).reshape(n, oh2, ow2, c2).transpose(0, 3, 1, 2)
+        a2 = np.maximum(z2, 0.0)
+        p2, pc2 = _maxpool2(a2)
+
+        f = p2.reshape(n, -1)
+        z3 = f @ W3 + b3
+        a3 = np.maximum(z3, 0.0)
+        logits = a3 @ W4 + b4
+        cache = dict(X=X, cols1=cols1, z1=z1, a1=a1, pc1=pc1, p1=p1,
+                     cols2=cols2, z2=z2, a2=a2, pc2=pc2, p2=p2,
+                     f=f, z3=z3, a3=a3,
+                     oh1=oh1, ow1=ow1, oh2=oh2, ow2=ow2)
+        return logits, cache
+
+    def _backward(self, cache, d):
+        """Gradients for every parameter, given d(loss)/d(logits)."""
+        W1, b1, W2, b2, W3, b3, W4, b4 = self.p
+        k1, k2 = self.spec["k1"], self.spec["k2"]
+        c1, c2 = self.spec["c1"], self.spec["c2"]
+        n = len(cache["X"])
+
+        gW4 = cache["a3"].T @ d
+        gb4 = d.sum(axis=0)
+        d3 = (d @ W4.T) * (cache["z3"] > 0)
+        gW3 = cache["f"].T @ d3
+        gb3 = d3.sum(axis=0)
+
+        dp2 = (d3 @ W3.T).reshape(cache["p2"].shape)
+        da2 = _maxpool2_back(dp2, cache["pc2"]) * (cache["z2"] > 0)
+        d2 = da2.transpose(0, 2, 3, 1).reshape(-1, c2)
+        gW2 = cache["cols2"].T @ d2
+        gb2 = d2.sum(axis=0)
+
+        dcols2 = d2 @ W2.T
+        dp1 = _col2im(dcols2, cache["p1"].shape, k2, k2 // 2,
+                      cache["oh2"], cache["ow2"])
+        da1 = _maxpool2_back(dp1, cache["pc1"]) * (cache["z1"] > 0)
+        d1 = da1.transpose(0, 2, 3, 1).reshape(-1, c1)
+        gW1 = cache["cols1"].T @ d1
+        gb1 = d1.sum(axis=0)
+        return [gW1, gb1, gW2, gb2, gW3, gb3, gW4, gb4]
+
+    def logits(self, X) -> np.ndarray:
+        return self._forward(self._as_batch(X))[0]
+
+    def probs(self, X) -> np.ndarray:
+        return _softmax(self.logits(X))
+
+    def predict(self, glyph) -> tuple:
+        """The digit on one glyph and the winning class probability.
+
+        Same contract as `Model.predict`, because everything downstream --
+        `read_cards`, the reject threshold, the gate -- consumes that and must
+        not care which of the two is loaded.
+        """
+        if glyph is None:
+            return None, 0.0
+        g = np.asarray(glyph)
+        if g.ndim != 2 or g.size < 4:
+            return None, 0.0
+        p = self.probs(as_input(g))[0]
+        k = int(p.argmax())
+        return LABELS[k], float(p[k])
+
+    def predict_many(self, X):
+        p = self.probs(X)
+        k = p.argmax(axis=1)
+        return (np.asarray(LABELS)[k],
+                p[np.arange(len(p)), k].astype(np.float64))
+
+    # -- persistence -------------------------------------------------------
+
+    def save(self, path=WEIGHTS):
+        np.savez_compressed(
+            path, kind=np.str_("conv"), labels=np.asarray(LABELS, np.int16),
+            spec=np.asarray([self.spec[k] for k in
+                             ("c1", "c2", "k1", "k2", "fc", "flat")], np.int32),
+            **{f"p{i}": v for i, v in enumerate(self.p)})
+
+    @classmethod
+    def load(cls, path=WEIGHTS) -> "ConvModel":
+        with np.load(path) as z:
+            if str(z["kind"]) != "conv":
+                raise ValueError(f"{path} holds a {z['kind']} model")
+            labels = tuple(int(v) for v in z["labels"])
+            if labels != LABELS:
+                raise ValueError(f"weights are for labels {labels}, not {LABELS}")
+            keys = ("c1", "c2", "k1", "k2", "fc", "flat")
+            spec = dict(zip(keys, (int(v) for v in z["spec"])))
+            params = [z[f"p{i}"] for i in range(8)]
+        return cls(params, spec)
+
+    # -- training ----------------------------------------------------------
+
+    def fit(self, X, y, epochs=1, lr=1e-3, batch=128, weight_decay=1e-4,
+            rng=None, on_epoch=None, augment_from=None, copies=6):
+        """Adam over softmax cross-entropy, same recipe as `Model.fit`.
+
+        Same signature, same defaults and the same fresh-augmentation-per-epoch
+        behaviour, so the gate can swap one model for the other and change
+        nothing else. Anything that differs between the two runs would otherwise
+        be a candidate explanation for whatever the gate measures.
+        """
+        rng = rng if rng is not None else np.random.default_rng(0)
+        m = [np.zeros_like(v) for v in self.p]
+        v = [np.zeros_like(p) for p in self.p]
+        beta1, beta2, eps = 0.9, 0.999, 1e-8
+        step = 0
+
+        idx_of = {d: i for i, d in enumerate(LABELS)}
+        for epoch in range(epochs):
+            if augment_from is not None:
+                Xe, ye = augmented_batch(*augment_from, rng=rng, copies=copies)
+            else:
+                Xe, ye = X, y
+            Xe = np.asarray(Xe, np.float32).reshape(len(Xe), 1, *GLYPH_SHAPE)
+            t = np.asarray([idx_of[int(u)] for u in ye])
+            order = rng.permutation(len(Xe))
+            total, seen = 0.0, 0
+            for s in range(0, len(order), batch):
+                sel = order[s:s + batch]
+                xb, tb = Xe[sel], t[sel]
+                logits, cache = self._forward(xb)
+                p = _softmax(logits)
+                n = len(sel)
+                total += float(-np.log(
+                    np.maximum(p[np.arange(n), tb], 1e-12)).sum())
+                seen += n
+
+                d = p.copy()
+                d[np.arange(n), tb] -= 1.0
+                d /= n
+                grads = self._backward(cache, d)
+                step += 1
+                for i, (arr, g) in enumerate(zip(self.p, grads)):
+                    if arr.ndim > 1:
+                        g = g + weight_decay * arr
+                    m[i] = beta1 * m[i] + (1 - beta1) * g
+                    v[i] = beta2 * v[i] + (1 - beta2) * (g * g)
+                    mh = m[i] / (1 - beta1 ** step)
+                    vh = v[i] / (1 - beta2 ** step)
+                    arr -= (lr * mh / (np.sqrt(vh) + eps)).astype(np.float32)
             if on_epoch is not None:
                 on_epoch(epoch, total / max(1, seen))
         return self
