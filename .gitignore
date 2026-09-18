@@ -51,3 +51,6 @@ weights/*.pt
 # tracked under src/curling_score/ because `curling-score serve` has to work
 # after a plain pip install, with no node anywhere.
 frontend/node_modules/
+
+# Claude Code scratch: session worktrees and local agent config.
+/.claude/
