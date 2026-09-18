@@ -2,7 +2,8 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   GROUPS, GROUP_TYPE, MISS_REASONS, TALLBOX, TYPES, subtypesOf,
-  blankQueue, identity, isBlank, openGroupFor, splitText, thinkText, typeOf,
+  blankQueue, boardReadable, identity, isBlank, openGroupFor, scoreCell,
+  splitText, thinkText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 
@@ -210,29 +211,53 @@ function ClockBox({ series, here, bars, open, actions }) {
   );
 }
 
-function Scoreboard({ game }) {
+function Scoreboard({ game, doc }) {
+  const readable = boardReadable(doc);
+  const board = readable ? game.scoreboard : null;
+  const unread = board?.unread_ends ?? [];
   return (
     <details id="scoreBox">
-      <summary>Scoreboard (detected &mdash; not a goal of this tool)</summary>
-      <table id="score">
-        <tbody>
-          <tr>
-            <th className="name" />
-            {game.ends.map(e => <th key={e.number}>{e.number}</th>)}
-            <th>Tot</th>
-          </tr>
-          {["red", "yellow"].map(c => (
-            <tr key={c}>
-              <td className="name">
-                <span className="swatch" style={{ background: `var(--${c})` }} />
-                {game.teams[c].name || c}
-              </td>
-              {game.ends.map(e => <td key={e.number}>{e.score[c] || "–"}</td>)}
-              <td><strong>{game.final[c]}</strong></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <summary>Scoreboard (read from the wall board)</summary>
+      {!readable ? (
+        <p className="scorekey">
+          This chart predates board reading &mdash; no score is shown.
+        </p>
+      ) : board ? (
+        <>
+          <table id="score">
+            <tbody>
+              <tr>
+                <th className="name" />
+                {game.ends.map(e => <th key={e.number}>{e.number}</th>)}
+                <th>Tot</th>
+              </tr>
+              {["red", "yellow"].map(c => (
+                <tr key={c}>
+                  <td className="name">
+                    <span className="swatch" style={{ background: `var(--${c})` }} />
+                    {game.teams[c].name || c}
+                  </td>
+                  {game.ends.map(e => (
+                    <td key={e.number} className={e.score == null ? "unread" : ""}>
+                      {scoreCell(e.score, c)}
+                    </td>
+                  ))}
+                  <td><strong>{game.final ? game.final[c] : "·"}</strong></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="scorekey">
+            <span>&ndash; blank end</span>
+            <span>&middot; not posted</span>
+            {unread.length
+              ? <span>{`ends ${unread.join(", ")} were never posted`}</span>
+              : null}
+          </p>
+        </>
+      ) : (
+        <p className="scorekey">The wall board could not be read for this game.</p>
+      )}
     </details>
   );
 }
@@ -270,7 +295,7 @@ export function ChartPanel({ view, shot, shotKey, cursor, ui, config, series, he
       <ClockBox series={series} here={here} bars={ui.clockBars}
                 open={ui.clockOpen} actions={actions} />
 
-      <Scoreboard game={view.game} />
+      <Scoreboard game={view.game} doc={view.doc} />
 
       {/* No `hidden`: a live region only announces from inside the
           accessibility tree, so it stays there and only its text changes. */}

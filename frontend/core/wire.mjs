@@ -93,3 +93,13 @@ export function unloadBeacon(config, overrides, dirty) {
 
 export const chartedNotice = n =>
   `Someone else charted ${n} shot${n === 1 ? "" : "s"}`;
+
+/* Schema 4 is where `end.score` and `game.final` became the board's own
+ * figures. Before that they held the detector's *inferred* score in those
+ * same fields -- the exact number this feature exists to stop showing. A
+ * chart built by an older run gets no board score rendered at all, rather
+ * than risk one being mistaken for the club's. Mirrors timeline.SCHEMA_VERSION
+ * in src/curling_score/timeline.py; `undefined < 4` is false, so a document
+ * with no `schema_version` at all -- every test fixture that predates this
+ * field -- is treated as current, not as too old. */
+export const boardReadable = doc => !(doc.schema_version < 4);

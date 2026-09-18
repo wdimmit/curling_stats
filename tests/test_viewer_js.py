@@ -290,6 +290,26 @@ class TestBlanks:
         assert got is False
 
 
+class TestTheScoreboardShowsOnlyWhatWasRead:
+    """Blank and unread are different facts: one says nobody scored, the
+    other says nobody posted. One mark for both would be the same dishonesty
+    in a new place."""
+
+    def test_a_blank_end_and_an_unread_end_read_differently(self):
+        got = run_js(
+            "out([scoreCell({red: 0, yellow: 0}, 'red'), scoreCell(null, 'red')]);"
+        )
+        assert got[0] != got[1]
+
+    def test_a_scored_end_shows_its_number(self):
+        got = run_js("out(scoreCell({red: 2, yellow: 0}, 'red'));")
+        assert got == "2"
+
+    def test_a_blank_end_is_not_shown_as_a_score(self):
+        got = run_js("out(scoreCell({red: 0, yellow: 0}, 'red'));")
+        assert got != "0"
+
+
 class TestReportArithmetic:
     """Shooting percentage is Curl Coach's: the points scored out of 4 a shot."""
 
@@ -1175,6 +1195,29 @@ class TestTheEndSwitcher:
                      "const s = endSummary();"
                      "out([s.number, s.of, s.hammer, s.running, s.red, s.yellow]);")
         assert got == [4, 1, "yellow", {"red": 7, "yellow": 1}, "3:14", "5:12"]
+
+
+class TestAnOldChartShowsNoBoardScore:
+    """schema_version < 4 is a chart from before the board was read at all --
+    end.score and game.final held the detector's own guess in those same
+    fields back then. Gating on the version, not on whether a score happens
+    to be present, is what keeps that old guess from ever being redrawn as
+    though the board had said it."""
+
+    def test_a_current_document_is_readable(self):
+        got = run_js("out([boardReadable({schema_version: 4}), "
+                     "boardReadable({schema_version: 5})]);")
+        assert got == [True, True]
+
+    def test_an_old_document_is_not(self):
+        got = run_js("out([boardReadable({schema_version: 1}), "
+                     "boardReadable({schema_version: 3})]);")
+        assert got == [False, False]
+
+    def test_a_document_with_no_version_at_all_is_treated_as_current(self):
+        """Every fixture in this file predates the `schema_version` field.
+        None of them is a chart that predates board reading."""
+        assert run_js("out(boardReadable({}));") is True
 
 
 class TestAWatchLinkOnAPhoneShowsSomething:

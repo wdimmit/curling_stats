@@ -30,6 +30,11 @@ export function shotVideoTime(s, leadIn) {
   return null;
 }
 
+/* One cell of the score table. An end with no board score is not a zero: the
+ * board never spoke to it. "–" is a read blank end, "·" is an unread one. */
+export const scoreCell = (score, color) =>
+  score == null ? "·" : (score[color] ? String(score[color]) : "–");
+
 /* Every rock still needing a person, in throwing order, plus the count of
  * rocks detection could not place at all. Both drive the header pill: one is
  * work you can do, the other is work nobody can. */

@@ -46,6 +46,8 @@ export const shotKey = () => {
 
 export const isBlank = core.isBlank;
 export const isGraded = core.isGraded;
+export const scoreCell = core.scoreCell;
+export const boardReadable = core.boardReadable;
 export const typeOf = core.typeOf;
 export const peekMode = core.peekMode;
 export const renumberNotice = core.renumberNotice;
