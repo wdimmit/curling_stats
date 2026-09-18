@@ -307,12 +307,80 @@ Success criteria, to be measured on that set and reported:
 The bar is asymmetric on purpose, and matches the decision above: refuse
 anything doubtful.
 
+### The classifier, measured against the gate
+
+Harvest: 2052 printed glyphs over 228 readable board frames of the one cached
+VOD, exactly 228 per class, self-labelled, no human labelling. Model: a
+352-256-128-9 ReLU MLP, softmax cross-entropy, Adam, trained in numpy on eight
+freshly augmented copies of every training glyph per epoch for 60 epochs
+(~2 minutes on this box); ~465 KB of weights in a `.npz`. Split by whole blocks
+of frames with a buffer wider than the median-stacking window, so no held-out
+glyph shares a source frame with anything trained on.
+
+| gate | correlation | classifier |
+|---|---|---|
+| held-out printed frames | 73% | **99.3%** (447/450) |
+| printed digits in the 21 card frames | 73% cross-frame | **99.5%** (188/189) |
+| labelled card rows | 46% (32/69) | 62% (43/69) |
+| distinct physical cards right in every frame | 0 of 11 | **4 of 11** |
+| empty slots reaching the digit read at all | 54% cleared the margin | 3.5% (18/519) |
+
+**Gate 1 passes decisively and gate 2 does not.** The representation was indeed
+the problem for cross-frame instability: on printed glyphs the classifier goes
+from 73% to 99.3%, and unlike correlation it reads a given physical card the
+same way in every frame. But the printed-to-card gap the Risks section names is
+real and it is concentrated:
+
+| true digit | rows | correct | misread as |
+|---|---|---|---|
+| 1 | 19 | 18 | 5 (x1) |
+| 2 | 17 | **0** | **7 (x15)**, 9, 5 |
+| 3 | 15 | 13 | 1, 2 |
+| 4 | 11 | 8 | 9 (x2), 3 |
+| 5 | 6 | 3 | 9 (x3) |
+| 6 | 1 | 1 | -- |
+
+Every card carrying a 2 is misread, almost always as a 7, and confidently
+(0.79-0.97). The printed 2 in the *same frames* reads correctly, so this is not
+lighting, camera, occlusion or the crop: a human reads all 69 card crops without
+effort. 2->7 is also one of the confusions correlation made on cards, so the MLP
+inherited it rather than introducing it. The colour split -- yellow 40/44, red
+3/25 -- is an artefact of which digits each row happened to carry, not of the
+row geometry.
+
+Two probes locate the failure. 1-NN against the 2052 raw printed glyphs scores
+49/69 on the cards, *better* than the trained MLP's 43/69, and 5/17 on the twos;
+class-mean correlation scores 30/69, reproducing the original matcher's 46%. So
+the printed manifold holds some card-2 signal and the MLP's decision boundary
+discards it: the model is overfitting the printed distribution, not running out
+of capacity. A card 2's nearest printed neighbour is a 7 in 9 of 17 cases, so
+more augmentation of printed glyphs is unlikely to close it either.
+
+Gate 3 is answered, but not by the model. 501 of the 519 empty slot positions
+are refused by `_card_glyph` before the classifier is asked -- no bright card
+tile means nothing to read -- against 54% of empty slots clearing the old
+correlation margin. Of the 18 that do reach it, confidence is useless as a
+presence test: median 0.946 empty against 0.991 card, and the empty distribution
+reaches 1.0. Presence therefore stays with `read_slots`, as decided.
+
+**Consequence: the classifier is not wired into `read_digit`, and nothing is
+built on it.** The fallback the Risks section names -- hand-labelling real cards
+across more VODs -- is now the evidenced path rather than a precaution, and it
+is the user's call. A domain-adaptation route exists too (train on printed
+glyphs and the labelled cards jointly, or synthesise card-like glyphs), but any
+route needs card labels that are not also the validation set, because 11 cards
+cannot both tune and prove.
+
 ## Risks
 
-**Transfer from printed glyphs to card glyphs is unproven.** The model trains on
-printed digits and must work on cards. The 11 held-out real cards are the check,
-and 11 is thin -- it is every card in the one cached VOD. A pass there is a
-genuine signal but not a guarantee; widening it needs more VODs.
+**Transfer from printed glyphs to card glyphs has been measured, and it does
+not hold.** 4 of the 11 held-out cards read correctly in every frame, with every
+card carrying a 2 misread as a 7 while the printed 2 in the same frame reads
+correctly. This was the top risk on the list and it is the one that fired; see
+*The classifier, measured against the gate* for the numbers and the two probes
+that locate it. 11 cards is also thin -- it is every card in the one cached VOD
+-- but thin was never the problem: the failure is systematic and per-digit, not
+a matter of sample size.
 
 **Card font may diverge from the printed font** on a sheet other than sheet 2.
 Both known card frames are sheet 2. This was listed as a risk to the template
