@@ -1905,3 +1905,56 @@ augmentation to manufacture a pass.
   is worth committing.
 
 ---
+
+---
+
+### Task 6F: Promote the conv reader to production
+
+The conv model cleared its gate and was independently re-measured: 3 seeds,
+leave-one-video-out, per frame, coverage 93.9-97.0% at the lowest threshold with
+zero wrong reads, 47-48 of 54 distinct cards correct in every frame. Production
+still runs the MLP, so this task makes the conv reader the one that ships.
+
+**Files:**
+- Modify: `src/curling_score/game/scoreboard.py` (`read_digit`, `MIN_CONFIDENCE`)
+- Modify: `src/curling_score/game/digits.py` (default model loading)
+- Replace: `src/curling_score/game/digit_weights.npz` (conv weights)
+- Modify: `pyproject.toml` if the package-data entry is not already there
+- Test: `tests/test_digits.py`, `tests/test_scoreboard.py`
+
+**Interfaces:**
+- `read_digit(glyph, tmpl=None) -> (int | None, float)` — unchanged shape. The
+  second element is model confidence. `MIN_MARGIN` becomes `MIN_CONFIDENCE`.
+
+**Decisions that bind this task**
+
+- **Ruling R19 — ship at 0.9999, not 0.999.** The tighter threshold buys about
+  five points of coverage but lets a phantom card through, and a phantom invents
+  a scoring end that no board self-check catches. 0.9999 gives zero wrong digits
+  AND zero phantoms accepted at 88.3% coverage, still above the 87% gate. The
+  per-fold "tight" threshold is fitted on the measured set; the coarse grid value
+  is the one that generalises. Choose any threshold **inside** the fold, never on
+  the evaluation set.
+- **Inference stays numpy** (ruling R10). Nothing under `src/curling_score/game/`
+  may import torch. Training on the GPU box is fine and already done.
+- **Keep `check_equivalence`** as a test: the numpy forward must match the torch
+  forward to a tight tolerance. That is what stops a training/serving skew, and
+  it must skip cleanly where torch is absent.
+
+- [ ] **Step 1: Train the shipping model** on ALL data — the printed glyphs plus
+  all 54 real cards — on the GPU box, and export numpy weights. No fold is held
+  out here; the folds were for measuring, and the shipped model should see
+  everything. Record the training command in the commit message.
+- [ ] **Step 2: Point `read_digit` at the conv model**, rename `MIN_MARGIN` to
+  `MIN_CONFIDENCE` with the value from R19, and update its docstring to say the
+  second return value is a probability rather than a correlation margin.
+- [ ] **Step 3: Update the tests** in `TestReadDigit` for the new threshold name,
+  keeping `test_a_card_under_a_hand_is_never_read_as_the_wrong_end` as the safety
+  invariant. Add a test that the shipped weights load and classify the reference
+  cards with zero wrong reads.
+- [ ] **Step 4: Confirm the package data entry** so a built wheel carries the
+  `.npz`, and that a fresh install with no torch can still read a digit.
+- [ ] **Step 5: Run** `./.venv/bin/pytest tests/test_digits.py tests/test_scoreboard.py tests/test_timeline.py -q`
+- [ ] **Step 6: Commit** with the standard co-author trailer.
+
+---
