@@ -402,11 +402,18 @@ def samples(rows, out: Path, per_video: int = 2) -> None:
     them different from each other, where three consecutive samples of one
     unchanged state would have shown the same thing three times.
 
+    Written as JPEG, which is the one place in this dataset where lossy is the
+    right answer: these exist to be looked at, and 20 of them as PNG came to
+    21 MB -- as much as the frame dump this whole arrangement was meant to
+    avoid. At q90 they are about a tenth of that and no different to the eye.
+    The pixels anything is *measured* from are the lossless windows in
+    cards.npz, never these.
+
     Everything else is regenerable from the VOD and is gitignored.
     """
     dest = out / "samples"
     dest.mkdir(exist_ok=True)
-    for old in dest.glob("*.png"):
+    for old in (*dest.glob("*.png"), *dest.glob("*.jpg")):
         old.unlink()
     by_video = {}
     for r in rows:
@@ -418,8 +425,10 @@ def samples(rows, out: Path, per_video: int = 2) -> None:
         if per_video > 1:
             chosen.add(order[0][0])                # and the sparsest
         for frame in sorted(chosen)[:per_video]:
-            shutil.copyfile(out / vid / frame, dest / f"{vid}_{frame}")
-    print(f"{len(list(dest.glob('*.png')))} sample frames in {dest}")
+            img = cv2.imread(str(out / vid / frame))
+            name = f"{vid}_{Path(frame).stem}.jpg"
+            cv2.imwrite(str(dest / name), img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    print(f"{len(list(dest.glob('*.jpg')))} sample frames in {dest}")
 
 
 def merge(out: Path) -> int:

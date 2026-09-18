@@ -56,7 +56,6 @@ weights/*.pt
 #   ./.venv/bin/python scripts/collect_cards.py \
 #       --dates 2026-04-13,2026-04-27 --step-s 300 --force
 datasets/board-cards-train/**/*.png
-!datasets/board-cards-train/samples/*.png
 
 # The frontend toolchain. Sources live in frontend/; the built bundles are
 # tracked under src/curling_score/ because `curling-score serve` has to work
