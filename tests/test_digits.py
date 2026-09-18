@@ -20,11 +20,21 @@ CORRELATION_CARDS_CONSISTENT = 0
 
 @pytest.fixture(scope="module")
 def model():
+    """The MLP frozen as it stood at the end of Task 6B.
+
+    `digits.WEIGHTS` (the packaged `.npz`) holds `digits.ConvModel` now --
+    Task 6F promoted it to production -- so the MLP this module's historical
+    gate tests measure is no longer the shipped weights and is loaded from a
+    frozen copy kept only so those measurements keep meaning what they said
+    when they were written. See `TestShippedModel` below for the model
+    `scoreboard.read_digit` actually predicts with.
+    """
     from pathlib import Path
 
-    if not Path(D.WEIGHTS).is_file():
-        pytest.skip(f"{D.WEIGHTS} not trained; run scripts/train_digits.py")
-    return D.Model.load()
+    path = Path(__file__).parent / "fixtures" / "legacy_mlp_digit_weights.npz"
+    if not path.is_file():
+        pytest.skip(f"{path} missing")
+    return D.Model.load(path)
 
 
 @pytest.fixture(scope="module")
@@ -259,7 +269,10 @@ class TestTheDigitModel:
 
 
 class TestWeightsRoundTrip:
-    def test_the_packaged_weights_load_and_read_a_glyph(self, model, cards):
+    """Round-tripping the frozen MLP fixture (`model`), not the shipped
+    weights -- see `TestShippedModel` for those."""
+
+    def test_the_frozen_mlp_weights_load_and_read_a_glyph(self, model, cards):
         digit, conf = model.predict(cards[0][0])
         assert digit in D.LABELS
         assert 0.0 <= conf <= 1.0
@@ -270,6 +283,51 @@ class TestWeightsRoundTrip:
         again = D.Model.load(path)
         X = np.stack([D.as_input(g) for g, _, _ in cards])
         assert np.allclose(model.probs(X), again.probs(X))
+
+    def test_it_needs_no_torch(self):
+        import sys
+
+        assert "torch" not in sys.modules
+
+
+@pytest.fixture(scope="module")
+def shipped_model():
+    from pathlib import Path
+
+    if not Path(D.WEIGHTS).is_file():
+        pytest.skip(f"{D.WEIGHTS} not trained")
+    return D.ConvModel.load(D.WEIGHTS)
+
+
+class TestShippedModel:
+    """The weights `scoreboard.read_digit` actually loads and predicts with:
+    `digits.ConvModel`, packaged at `digits.WEIGHTS`, promoted to production
+    in Task 6F.
+
+    The 11 reference cards in `datasets/board-cards` were the smoke test for
+    transfer through Task 6E, held out of every training run up to and
+    including the leave-one-video-out gate. This shipping run does not hold
+    them out -- `scripts/train_conv_torch.py`'s default folds them into
+    training, because the model that ships should see everything available
+    and no fold is held out for it. So the test below is no longer a transfer
+    measurement: reading a card the model was trained on is the expected
+    outcome, not evidence the model generalises. It is a smoke test that the
+    packaged artefact -- this exact `.npz`, loaded the way production loads
+    it -- loads and reads correctly, nothing more. An earlier round of this
+    work (Task 6A/6B) mistook a number from this same 11-card set, measured
+    when it genuinely was held out, for a gate; it is not one here either,
+    for the opposite reason.
+    """
+
+    def test_the_packaged_weights_load_as_the_conv_model(self, shipped_model):
+        assert isinstance(shipped_model, D.ConvModel)
+
+    def test_it_reads_the_reference_cards_with_zero_wrong(
+            self, shipped_model, cards):
+        wrong = [(meta["frame"], meta["color"], meta["slot"], end, pred)
+                 for g, end, meta in cards
+                 for pred, _conf in [shipped_model.predict(g)] if pred != end]
+        assert wrong == []
 
     def test_it_needs_no_torch(self):
         import sys
@@ -451,6 +509,34 @@ class TestTrainingOnTheGpuAndReadingWithNumpy:
         code = ("import sys; import curling_score.game.digits as D; "
                 "D.ConvModel.initialise(); "
                 "assert 'torch' not in sys.modules; print('ok')")
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                             text=True)
+        assert out.returncode == 0, out.stderr
+        assert "ok" in out.stdout
+
+    def test_read_digit_works_end_to_end_with_no_torch_installed(self):
+        """The actual call `curling-score analyze` makes, in a fresh process,
+        with no torch importable at all -- not merely unimported. `gpu` is an
+        extra, so a base install has no torch on `sys.path`; this simulates
+        that by simply never installing it in this venv (see
+        `pyproject.toml`), rather than only checking `sys.modules`.
+        """
+        import subprocess
+        import sys
+
+        code = (
+            "import sys;"
+            "import numpy as np;"
+            "from curling_score.game import scoreboard as SB;"
+            "from curling_score.game import digits as D;"
+            "rng = np.random.default_rng(0);"
+            "glyph = rng.normal(size=SB.GLYPH_SHAPE).astype(np.float32);"
+            "digit, conf = SB.read_digit(glyph);"
+            "assert digit is None or digit in D.LABELS;"
+            "assert 0.0 <= conf <= 1.0;"
+            "assert 'torch' not in sys.modules;"
+            "print('ok')"
+        )
         out = subprocess.run([sys.executable, "-c", code], capture_output=True,
                              text=True)
         assert out.returncode == 0, out.stderr

@@ -176,6 +176,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--glyphs", default="datasets/board-glyphs/glyphs.npz")
     ap.add_argument("--cards", default="datasets/board-cards-train/cards.npz")
+    ap.add_argument("--ref-cards", default="datasets/board-cards",
+                     help="the 11 different-season reference cards; folded "
+                          "into training for the shipping model (Task 6F) "
+                          "since no fold is held out for it. Pass '' to "
+                          "reproduce the measured (held-out) recipe instead.")
     ap.add_argument("--out", default=None, help="write the weights here")
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--copies", type=int, default=8)
@@ -186,12 +191,30 @@ def main():
     sys.path.insert(0, "scripts")
     import gate_digits as G
 
+    from curling_score.game import scoreboard as SB
+
     xp, yp = G.load_printed(args.glyphs)
     rows, _ph = G.load_cards(args.cards)
     x = np.concatenate([xp, np.stack([r[0] for r in rows])])
     y = np.concatenate([yp, np.array([int(r[1]) for r in rows], int)])
-    print(f"training on {len(xp)} printed glyphs and {len(rows)} card rows",
-          flush=True)
+    n_ref = 0
+    if args.ref_cards:
+        # These are the 11 hand-labelled reference cards from a different
+        # season (`datasets/board-cards`). They sit in no fold of
+        # `gate_digits.py` and were never trained on through Task 6E -- that
+        # is what made them useful as a smoke test of transfer. The model
+        # that *ships* holds nothing back, so they join training here; the
+        # smoke test this run makes possible checks that the packaged
+        # artefact loads and reads correctly, not that it generalises.
+        ref = D.card_glyphs(args.ref_cards)
+        ref_glyphs = [(SB._normalise(g), int(end)) for g, end, _meta in ref
+                      if g is not None]
+        n_ref = len(ref_glyphs)
+        if ref_glyphs:
+            x = np.concatenate([x, np.stack([g for g, _ in ref_glyphs])])
+            y = np.concatenate([y, np.array([e for _, e in ref_glyphs], int)])
+    print(f"training on {len(xp)} printed glyphs, {len(rows)} card rows, "
+          f"and {n_ref} reference-card rows", flush=True)
 
     t0 = time.time()
     model = fit(x, y, args.seed, epochs=args.epochs, copies=args.copies,

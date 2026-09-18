@@ -317,6 +317,12 @@ def _normalise(patch) -> "np.ndarray":
 def templates(image, geom: BoardGeometry) -> dict:
     """The printed 1-14 glyphs, as normalised correlation templates.
 
+    Not dead code: `read_digit` stopped consuming these in Task 6F -- it reads
+    with a trained classifier now -- but this is also the self-labelling
+    training-data extractor `scripts/harvest_glyphs.py` calls (the digit at
+    slot *k* is *k*), and `tests/test_digits.py` reads templates from the card
+    frames themselves as a printed-digit comparison. Kept for that.
+
     Built per read rather than shipped: this tracks the board's own lighting,
     the sheet's own camera and any change to the board itself for free.
     """
@@ -334,10 +340,15 @@ def templates(image, geom: BoardGeometry) -> dict:
     return out
 
 
-# Below this margin between the best and second-best template match, the digit
-# is not called. Set in Task 6 against the labelled harvest; a wrong digit is
-# worse than no digit, so this fails closed.
-MIN_MARGIN = 0.05
+# Below this class probability, the digit is not called. Ruling R19: the coarse
+# grid value, not the per-fold "tight" threshold that the leave-one-video-out
+# measurement fits to the very data it is scored on. At 0.9999 the measured
+# run showed zero wrong digits *and* zero of 19 phantom (no-card) frames
+# accepted, at 88.3% coverage -- still above the 87% gate. 0.999 buys about
+# five more points of coverage but let a phantom through, and a phantom
+# invents a scoring end no board self-check can catch (a 3-point end is legal).
+# A wrong digit is worse than no digit, so this fails closed.
+MIN_CONFIDENCE = 0.9999
 
 # The card is a bright tile inside the slot. Segmenting it beats a fixed band,
 # which clips the glyph tops -- the card sits higher in the band than the
@@ -420,22 +431,26 @@ def glyph_in_window(window):
     return _glyph_ink(card)
 
 
-def read_digit(glyph, tmpl: dict) -> tuple:
-    """Best-matching printed digit for a card glyph, and its margin.
+def read_digit(glyph, tmpl: dict | None = None) -> tuple:
+    """Best-matching card digit for a glyph, and the model's confidence.
 
-    The margin over the runner-up is the confidence. An occluded or clipped
-    glyph matches several templates about equally well, so its margin
-    collapses -- which is exactly the signal to refuse it.
+    Backed by the trained classifier in `digits` (`digits.ConvModel`, promoted
+    to production in Task 6F). ``tmpl`` is accepted only so callers built
+    against the old correlation matcher still type-check; it is unused --
+    the model needs no per-read printed-row templates, only the glyph itself.
+
+    The second element is the winning class *probability*, not a correlation
+    margin: an occluded or clipped glyph spreads its probability mass over
+    several classes, so its top probability collapses towards uniform, which
+    is exactly the signal to refuse it below `MIN_CONFIDENCE`.
     """
     if glyph is None or glyph.size < 4:
         return None, 0.0
-    g = _normalise(glyph)
-    scored = sorted(
-        ((float((g * t).mean()), k) for k, t in tmpl.items()), reverse=True
-    )
-    best, runner = scored[0], scored[1]
-    margin = best[0] - runner[0]
-    return (best[1] if margin >= MIN_MARGIN else None), margin
+    from curling_score.game import digits as D  # deferred: digits imports
+                                                  # this module at load time
+
+    digit, conf = D.load_default_model().predict(glyph)
+    return (digit if conf >= MIN_CONFIDENCE else None), conf
 
 
 def read_slots(image, geom: BoardGeometry) -> BoardReading:

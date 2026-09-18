@@ -2,7 +2,8 @@
 
 The digits are filled in by hand afterwards: this writes every card it finds
 with ``"end": null`` and a contact sheet to read them off. That labelled set is
-what MIN_MARGIN is set from -- the five-frame probe in the spec is not enough.
+what the digit reader's reject threshold (`scoreboard.MIN_CONFIDENCE`) is set
+from -- the five-frame probe in the spec is not enough.
 """
 
 import argparse

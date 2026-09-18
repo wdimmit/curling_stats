@@ -39,8 +39,32 @@ LABELS = tuple(range(1, 10))
 NCLASS = len(LABELS)
 NFEAT = GLYPH_SHAPE[0] * GLYPH_SHAPE[1]
 
-# The packaged weights, trained by `scripts/train_digits.py`.
+# The packaged weights: a `ConvModel`, trained on the GPU by
+# `scripts/train_conv_torch.py` and exported to numpy (Task 6F). `Model`, the
+# MLP, stays in this module for `scripts/gate_digits.py`'s comparison and for
+# the frozen historical measurements in `tests/test_digits.py`, but it is no
+# longer what ships or what this path holds.
 WEIGHTS = Path(__file__).with_name("digit_weights.npz")
+
+_default_model = None  # (path, ConvModel), cached so a read does not reload
+                       # the weights every call
+
+
+def load_default_model(path=WEIGHTS) -> "ConvModel":
+    """The model `scoreboard.read_digit` actually predicts with.
+
+    `ConvModel` is the shipped architecture: the escalation ruling R11 named,
+    promoted to production once it cleared the leave-one-video-out gate at
+    88.3-96.5% coverage with zero wrong reads, against the MLP's 45.2-81.4%
+    (`scripts/gate_digits.py`, `.superpowers/sdd/2026-09-17-scoreboard-ocr/
+    task-6E-report.md`). Cached at module scope: `scoreboard.read_digit` is
+    called once per card, and reloading the `.npz` on every call would be
+    needless disk I/O on the hot path.
+    """
+    global _default_model
+    if _default_model is None or _default_model[0] != path:
+        _default_model = (path, ConvModel.load(path))
+    return _default_model[1]
 
 
 def as_input(glyph) -> np.ndarray:
