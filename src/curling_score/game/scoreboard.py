@@ -13,8 +13,14 @@ several ends late, so it must never be used to time anything.
 
 from dataclasses import dataclass
 
+from curling_score.geometry import constants as C
+
 SLOTS = 14
 COLORS = ("red", "yellow")
+# A team throws eight rocks, so eight is the most it can ever score in one
+# end. A bigger step between two of its cards is physically impossible and
+# says a card or a digit was misread.
+MAX_SCORE_PER_END = C.STONES_PER_TEAM_PER_END
 
 
 class ScoreboardError(RuntimeError):
@@ -549,10 +555,18 @@ def per_end_from_cards(board: CardBoard, n_ends: int) -> BoardScores:
     a card: the board is the score, so a card past the detected end count is
     still read.
 
-    Two physical facts are the only defence against a misread digit silently
-    rewriting a score: an end number appears at most once across both teams,
-    and within a team slots strictly increase with end number. Either
-    violated raises `ScoreboardError` rather than return something wrong.
+    Three physical facts are checked, and a violation raises `ScoreboardError`
+    rather than return something wrong: an end number appears at most once
+    across both teams; within a team slots strictly increase with end number;
+    and a team's step from one card to the next is at most
+    `MAX_SCORE_PER_END`, since only eight rocks a side are thrown.
+
+    They are necessary and nowhere near sufficient, so do not read them as a
+    net. A board with one card per team passes all three trivially, and a
+    single yellow card at slot 2 whose digit is misread as 5 passes them while
+    reporting ends 1-4 as *read blank* -- four certainties manufactured out of
+    one misread. `MIN_CONFIDENCE` on the digit itself is what actually keeps
+    misreads out; these checks are the cheap backstop behind it.
     """
     for color, card in board.all_cards():
         if card.end is None:
@@ -576,6 +590,11 @@ def per_end_from_cards(board: CardBoard, n_ends: int) -> BoardScores:
             if card.slot <= prev:
                 raise ScoreboardError(
                     f"{color} total went backwards: {prev} -> {card.slot}"
+                )
+            if card.slot - prev > MAX_SCORE_PER_END:
+                raise ScoreboardError(
+                    f"{color} cannot score {card.slot - prev} in one end: "
+                    f"{prev} -> {card.slot}"
                 )
             per_end[card.end] = {
                 **{c: 0 for c in COLORS}, color: card.slot - prev,
@@ -783,6 +802,16 @@ def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
     full-resolution video per read, and a game needs a dozen or more. The board
     only changes once an end, so the ~1 frame per 5 s that keyframes give is
     ample, and vastly cheaper.
+
+    Memory, for whoever sizes the container: this pass is the pipeline's peak,
+    because it is the only one reading full-resolution frames. ``max_frames``
+    of them are held at once -- 40 x 1080p BGR is ~250 MB -- `median_frame`
+    stacks them into another ~250 MB, `np.median` partitions a third copy, and
+    the median itself comes back float64 (~50 MB at 1080p) before it is cast
+    down. Measured at ~3x the frame bytes, so ~0.8 GB transient per read at
+    1080p and proportionally more at 4K. That was free while the hosted worker
+    always skipped this pass; it no longer skips it. ``max_frames`` is the dial
+    if it has to come down.
     """
     from curling_score.ingest import frames as F
 

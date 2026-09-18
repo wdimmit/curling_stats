@@ -277,6 +277,24 @@ class TestPerEndFromCards:
             SB.per_end_from_cards(
                 self.board(yellow=[(3, 1), (2, 2)]), n_ends=2)
 
+    def test_rejects_a_step_no_team_could_have_scored(self):
+        """Eight rocks a side, so nine in one end is physically impossible.
+
+        The cheapest defence there is against a phantom card at a high slot,
+        which the slot-must-increase check lets straight through.
+        """
+        with pytest.raises(SB.ScoreboardError, match="cannot score"):
+            SB.per_end_from_cards(self.board(yellow=[(9, 1)]), n_ends=1)
+
+    def test_rejects_a_step_no_team_could_have_scored_mid_board(self):
+        with pytest.raises(SB.ScoreboardError, match="cannot score"):
+            SB.per_end_from_cards(
+                self.board(yellow=[(2, 1), (11, 2)]), n_ends=2)
+
+    def test_an_eight_ender_is_still_read(self):
+        got = SB.per_end_from_cards(self.board(yellow=[(8, 1)]), n_ends=1)
+        assert got.per_end[1] == {"red": 0, "yellow": 8}
+
     def test_a_blank_board_reads_every_end_as_unread(self):
         got = SB.per_end_from_cards(self.board(), n_ends=2)
         assert got.unread_ends == (1, 2)
