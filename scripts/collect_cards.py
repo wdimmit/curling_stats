@@ -211,16 +211,25 @@ def expand(cards, rows, games) -> list:
     return out
 
 
-def check(rows, games) -> list:
-    """The four self-consistency checks. Returns a list of complaints.
+def check(rows, games) -> tuple:
+    """The four self-consistency checks. Returns (errors, notes).
 
     A wrong label is worse than a missing one: it does not just fail to teach,
     it teaches the wrong thing, and nothing downstream can tell it from a right
     one. These are cheap and they catch the two mistakes a human reading 20 px
     digits actually makes -- reading the slot instead of the digit, and reading
     a neighbour's glyph.
+
+    A card that vanishes for one sample and comes back is a *note*, not an
+    error, and the distinction is not a convenience. `read_slots` judges a slot
+    occupied by its intra-slot brightness range, so a spectator standing in
+    front of a card flattens that range and the card goes unread -- checked by
+    eye on L7mK9r5gio0 t=2700, where the red 2 is plainly still hanging behind
+    somebody's yellow jacket. No mislabelling can cause a dropout and a dropout
+    cannot put a wrong digit in the set: the frame simply contributes no row for
+    that card. The errors are the ones a bad hand reading would produce.
     """
-    bad = []
+    bad, notes = [], []
     legible = [r for r in rows if r["end"] != "illegible"]
 
     frames = sorted({r["frame"] for r in rows})
@@ -261,14 +270,18 @@ def check(rows, games) -> list:
                                f"{seen[k]} -> {r['end']}")
             gone = prev_keys - keys
             if gone:
-                bad.append(f"game {game} t={t:.0f}: card(s) {sorted(gone)} "
-                           f"disappeared")
+                notes.append(f"game {game} t={t:.0f}: card(s) {sorted(gone)} "
+                             f"not detected (occlusion; still hung)")
             prev_keys |= keys
         # 4: the ends of a game are 1..N with nothing missing.
         ends = sorted({r["end"] for r in mine})
         if ends and ends != list(range(1, len(ends) + 1)):
+            # A blanked end scores nothing and so hangs no card, which would
+            # leave a real gap. Flagged as an error anyway, because the far
+            # likelier cause is a misread digit and the two are told apart by
+            # looking, not by assuming.
             bad.append(f"game {game}: ends {ends} are not 1..N")
-    return bad
+    return bad, notes
 
 
 def pack(rows, out: Path) -> None:
@@ -379,14 +392,16 @@ def merge(out: Path) -> int:
         states = json.loads((vdir / "states.json").read_text())
         games = games_of(states)
         labelled = expand(json.loads(cards_path.read_text()), rows, games)
-        bad = check(labelled, games)
+        bad, notes = check(labelled, games)
         rows_path.write_text(json.dumps(labelled, indent=2) + "\n")
         distinct = len({(games.get(r["frame"]), r["color"], r["slot"])
                         for r in labelled})
         print(f"{vdir.name}: {len(labelled)} rows, {distinct} distinct cards, "
-              f"{len(bad)} complaints", flush=True)
+              f"{len(bad)} errors, {len(notes)} notes", flush=True)
         for b in bad:
             print(f"  ! {b}", flush=True)
+        for n in notes:
+            print(f"  - {n}", flush=True)
         failed = failed or bool(bad)
         all_rows.extend(labelled)
 
