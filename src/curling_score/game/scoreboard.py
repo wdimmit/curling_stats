@@ -572,6 +572,78 @@ def read_cards(image, geom: BoardGeometry) -> CardBoard:
     return CardBoard(yellow=out["yellow"], red=out["red"])
 
 
+@dataclass(frozen=True)
+class BoardScores:
+    """What the board says, end by end."""
+
+    per_end: dict          # end number -> {"red": int, "yellow": int}
+    unread_ends: tuple     # ends the board cannot speak to, ascending
+    final: "dict | None"   # None while any end is unread
+
+
+def per_end_from_cards(board: CardBoard, n_ends: int) -> BoardScores:
+    """Turn one board state into the score of each end.
+
+    Within a team the cards are cumulative, so an end's score is the step
+    from the previous card. An end with no card anywhere was blank -- but
+    only if a *later* end is posted; past the last card, blank and
+    not-yet-posted look identical and the end is reported unread instead.
+
+    ``n_ends`` only extends how far we look for unread ends. It never gates
+    a card: the board is the score, so a card past the detected end count is
+    still read.
+
+    Two physical facts are the only defence against a misread digit silently
+    rewriting a score: an end number appears at most once across both teams,
+    and within a team slots strictly increase with end number. Either
+    violated raises `ScoreboardError` rather than return something wrong.
+    """
+    for color, card in board.all_cards():
+        if card.end is None:
+            raise ScoreboardError(
+                f"{color} card at slot {card.slot}: end number could not be read"
+            )
+
+    seen = {}
+    for color, card in board.all_cards():
+        if card.end in seen:
+            raise ScoreboardError(
+                f"both teams cannot score in one end: end {card.end}"
+            )
+        seen[card.end] = color
+
+    per_end = {}
+    for color in COLORS:
+        cards = sorted(getattr(board, color), key=lambda c: c.end)
+        prev = 0
+        for card in cards:
+            if card.slot <= prev:
+                raise ScoreboardError(
+                    f"{color} total went backwards: {prev} -> {card.slot}"
+                )
+            per_end[card.end] = {
+                **{c: 0 for c in COLORS}, color: card.slot - prev,
+            }
+            prev = card.slot
+
+    highest = board.highest_end()
+    span = max(n_ends, highest)
+    unread = []
+    for end in range(1, span + 1):
+        if end in per_end:
+            continue
+        if end < highest:
+            per_end[end] = {c: 0 for c in COLORS}   # read as blank
+        else:
+            unread.append(end)
+
+    return BoardScores(
+        per_end=per_end,
+        unread_ends=tuple(unread),
+        final=None if unread else cumulative(board),
+    )
+
+
 _MIN_PRINTED_DIGITS = 11
 
 

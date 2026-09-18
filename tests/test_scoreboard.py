@@ -271,6 +271,77 @@ class TestReadCards:
         assert board.highest_end() == 1
 
 
+class TestPerEndFromCards:
+    """A card's slot is the cumulative total and its digit is the end that
+    produced it, so one board state is a whole game -- except for ends after
+    the last card, which may be blank or may simply not be posted yet."""
+
+    def board(self, yellow=(), red=()):
+        return SB.CardBoard(
+            yellow=tuple(SB.Card(s, e, 0.5) for s, e in yellow),
+            red=tuple(SB.Card(s, e, 0.5) for s, e in red),
+        )
+
+    def test_one_board_state_gives_every_end(self):
+        # The reference frame: Y+1 in end 1, R+2 in end 2, Y+2 in end 3.
+        got = SB.per_end_from_cards(
+            self.board(yellow=[(1, 1), (3, 3)], red=[(2, 2)]), n_ends=3)
+        assert got.per_end == {
+            1: {"red": 0, "yellow": 1},
+            2: {"red": 2, "yellow": 0},
+            3: {"red": 0, "yellow": 2},
+        }
+        assert got.unread_ends == ()
+        assert got.final == {"red": 2, "yellow": 3}
+
+    def test_an_interior_end_with_no_card_was_blank(self):
+        """A later end is posted, so end 2 was genuinely passed over. This is
+        read, not inferred, and it is the common case."""
+        got = SB.per_end_from_cards(
+            self.board(yellow=[(1, 1), (2, 3)]), n_ends=3)
+        assert got.per_end[2] == {"red": 0, "yellow": 0}
+        assert got.unread_ends == ()
+
+    def test_ends_after_the_last_card_are_unread_not_blank(self):
+        """Nothing distinguishes 'blank' from 'not posted yet' up here, so it
+        is reported as unknown rather than guessed at zero."""
+        got = SB.per_end_from_cards(self.board(yellow=[(1, 1)]), n_ends=4)
+        assert got.unread_ends == (2, 3, 4)
+        assert 2 not in got.per_end
+
+    def test_the_final_is_unknown_while_any_end_is_unread(self):
+        got = SB.per_end_from_cards(self.board(yellow=[(1, 1)]), n_ends=4)
+        assert got.final is None
+
+    def test_a_board_beyond_the_detected_end_count_is_still_honoured(self):
+        """n_ends is a stopping hint. The board is the score, so a card past
+        the detected end count is read, not discarded."""
+        got = SB.per_end_from_cards(
+            self.board(yellow=[(1, 1)], red=[(2, 5)]), n_ends=2)
+        assert got.per_end[5] == {"red": 2, "yellow": 0}
+        assert got.unread_ends == ()
+
+    def test_rejects_an_unread_digit(self):
+        with pytest.raises(SB.ScoreboardError, match="could not be read"):
+            SB.per_end_from_cards(self.board(yellow=[(1, None)]), n_ends=1)
+
+    def test_rejects_both_teams_scoring_in_one_end(self):
+        with pytest.raises(SB.ScoreboardError, match="both teams"):
+            SB.per_end_from_cards(
+                self.board(yellow=[(1, 2)], red=[(1, 2)]), n_ends=2)
+
+    def test_rejects_a_team_whose_total_goes_backwards(self):
+        with pytest.raises(SB.ScoreboardError, match="backwards"):
+            SB.per_end_from_cards(
+                self.board(yellow=[(3, 1), (2, 2)]), n_ends=2)
+
+    def test_a_blank_board_reads_every_end_as_unread(self):
+        got = SB.per_end_from_cards(self.board(), n_ends=2)
+        assert got.unread_ends == (1, 2)
+        assert got.per_end == {}
+        assert got.final is None
+
+
 class TestConsolidate:
     """Cards accumulate through a game and are never taken down mid-game.
 
