@@ -1,6 +1,8 @@
 """The parts of ``analyze`` that can be checked without a video."""
 
 import json
+import logging
+from types import SimpleNamespace
 
 import pytest
 
@@ -130,3 +132,36 @@ class TestTheRunUpStartsWhereThePreviousEndClosed:
     def test_it_never_goes_before_the_start_of_the_video(self):
         assert analyze.run_up_from(None, 10.0) == 0.0
         assert analyze.run_up_from(None, 135.0) == 0.0
+
+
+class TestTheBoardPassCannotAbortTheJob:
+    """I5: by the time the board is read, the job has paid for the download,
+    the proxy and the profile. Every other way the read can fail returns None
+    and the game simply has no score; a decode or geometry exception has to
+    degrade the same way rather than throw all of that away.
+    """
+
+    def _game(self):
+        return SimpleNamespace(index=0, start_s=0.0, end_s=3000.0,
+                               ends=[SimpleNamespace(number=1)])
+
+    def test_an_exception_degrades_to_no_score_for_the_game(self, monkeypatch):
+        def boom(*a, **k):
+            raise RuntimeError("cv2 fell over")
+
+        monkeypatch.setattr(analyze.sb, "read_game_board", boom)
+        assert analyze.read_board("v.mp4", self._game(), progress=lambda m: None) is None
+
+    def test_the_failure_is_logged_rather_than_swallowed(self, monkeypatch, caplog):
+        def boom(*a, **k):
+            raise RuntimeError("cv2 fell over")
+
+        monkeypatch.setattr(analyze.sb, "read_game_board", boom)
+        with caplog.at_level(logging.ERROR):
+            analyze.read_board("v.mp4", self._game(), progress=lambda m: None)
+        assert "cv2 fell over" in caplog.text
+
+    def test_a_good_read_is_handed_straight_back(self, monkeypatch):
+        monkeypatch.setattr(analyze.sb, "read_game_board",
+                            lambda *a, **k: "the board")
+        assert analyze.read_board("v.mp4", self._game()) == "the board"

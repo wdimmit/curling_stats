@@ -113,6 +113,27 @@ def run_up_from(prev_end_s, start_s: float, *, crossed_games: bool = False) -> f
     return max(0.0, min(lookback, floor))
 
 
+def read_board(path, game, progress=log.info):
+    """One game's wall board, or None if it could not be read. Never raises.
+
+    By the time this runs the job has already paid for the download, the
+    proxy and the activity profile, and a hosted run will have paid for some
+    of the detection too. Every other way the read can fail -- no board found,
+    the frame occluded, the cards contradicting each other -- already returns
+    None and leaves the game without a score, which is a designed outcome. A
+    decode or geometry exception is no different in kind, so it degrades the
+    same way instead of throwing the whole job away. Logged with its
+    traceback, because "the board was not read" and "OpenCV fell over" want
+    different responses from whoever reads the logs.
+    """
+    try:
+        return sb.read_game_board(path, game.start_s, game.end_s, len(game.ends))
+    except Exception:
+        log.exception("game %s: the wall scoreboard pass failed", game.index + 1)
+        progress(f"  game {game.index + 1}: board read failed, see the log")
+        return None
+
+
 def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             use_proxy: bool = True, weights=None, imgsz: int = 448,
             device=None, *, start_s=None, end_s=None, sheet=None,
@@ -221,9 +242,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             phase("scoreboard", game.index / len(games),
                   f"reading the wall scoreboard for game {game.index + 1}")
             progress(f"  game {game.index + 1}: reading the wall scoreboard...")
-            got = sb.read_game_board(
-                path, game.start_s, game.end_s, len(game.ends),
-            )
+            got = read_board(path, game, progress=progress)
             if got is None:
                 progress(f"  game {game.index + 1}: board not read")
             else:
@@ -339,6 +358,19 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 + (f"board says {built['score']}" if built["score"] is not None
                    else f"board silent, detected {built['detected_score']}")
             )
+        # The scores above were attached by *detected* end number, which is
+        # the board's real end number only when nothing but the game was
+        # detected. Now that the ends are built we can see the practice
+        # signature -- a leading end short of sixteen rocks -- and ask whether
+        # the board accounted for every block we found. Doubtful means the
+        # scores come back off the ends: a chart that says the board could not
+        # be placed is honest, and one end out of step is not. The block keeps
+        # "per_end", so a start time typed later puts them back (trim_to_start).
+        if board_block is not None and not timeline.settle_board_scores(
+                out_ends, board_block, got.board.highest_end()):
+            progress(f"  game {game.index + 1}: board scores withheld -- "
+                     "leading practice, and the board is short of the ends")
+            scores = None
         out_game = timeline.build_game(
             game.index, game.start_s, game.end_s, out_ends, board=scores
         )
@@ -347,9 +379,10 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         # board left an end unread: there is nothing to compare.
         out_game["scoreboard"] = board_block
         if board_block is not None:
+            final = board_block.get("final")
             agrees = (
-                None if scores.final is None
-                else scores.final == out_game["detected"]["final"]
+                None if final is None
+                else final == out_game["detected"]["final"]
             )
             out_game["scoreboard"]["agrees_with_detection"] = agrees
             for end in out_game["ends"]:
