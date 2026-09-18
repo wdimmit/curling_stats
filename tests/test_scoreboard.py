@@ -244,6 +244,33 @@ class TestObstruction:
         assert SB.is_readable(img, geom) is False
 
 
+class TestReadCards:
+    def test_it_reads_every_card_with_its_end_and_confidence(self, known_frame):
+        img = known_frame("board_sheet2_t11000.png")
+        board = SB.read_cards(img, SB.find_board(img))
+        assert [(c.slot, c.end) for c in board.yellow] == [(1, 1), (3, 3)]
+        assert [(c.slot, c.end) for c in board.red] == [(2, 2)]
+        assert all(c.confidence > 0 for c in board.yellow)
+
+    def test_cumulative_is_the_highest_slot_per_team(self, known_frame):
+        img = known_frame("board_sheet2_t11000.png")
+        board = SB.read_cards(img, SB.find_board(img))
+        assert SB.cumulative(board) == {"yellow": 3, "red": 2}
+
+    def test_an_empty_board_is_blank(self, known_frame):
+        img = known_frame("board_sheet2_t7200.png")   # between games
+        board = SB.read_cards(img, SB.find_board(img))
+        assert board.is_blank()
+        assert SB.cumulative(board) == {"yellow": 0, "red": 0}
+
+    def test_highest_end_ignores_cards_whose_digit_was_refused(self, known_frame):
+        """An unread digit cannot extend how far the board is known to go."""
+        board = SB.CardBoard(
+            yellow=(SB.Card(1, 1, 0.3), SB.Card(4, None, 0.01)), red=(),
+        )
+        assert board.highest_end() == 1
+
+
 class TestConsolidate:
     """Cards accumulate through a game and are never taken down mid-game.
 

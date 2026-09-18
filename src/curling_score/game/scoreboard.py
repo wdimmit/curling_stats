@@ -34,14 +34,21 @@ class BoardReading:
         return (frozenset(self.yellow), frozenset(self.red))
 
 
-def cumulative(reading: BoardReading) -> dict:
+def cumulative(board) -> dict:
     """The running total each team has reached.
 
-    Cards accumulate left to right, so only the rightmost one matters.
+    Cards accumulate left to right, so only the rightmost one matters. Works
+    over a raw `BoardReading` (slots are bare ints) or over a `CardBoard`
+    (slots are `Card`s, defined below): either way a card whose digit was
+    refused still counts here, since where it sits is read straight off the
+    board and does not depend on the glyph.
     """
+    def _slot(x):
+        return x.slot if isinstance(x, Card) else x
+
     return {
-        "yellow": max(reading.yellow, default=0),
-        "red": max(reading.red, default=0),
+        "yellow": max((_slot(x) for x in board.yellow), default=0),
+        "red": max((_slot(x) for x in board.red), default=0),
     }
 
 
@@ -508,6 +515,61 @@ def read_slots(image, geom: BoardGeometry) -> BoardReading:
                 slots.add(k)
         found[name] = slots
     return BoardReading(yellow=found["yellow"], red=found["red"])
+
+
+@dataclass(frozen=True)
+class Card:
+    """One hung card: where it sits, which end it records, how sure we are.
+
+    ``confidence`` is the trained classifier's winning class probability (see
+    `read_digit`), not a correlation margin -- the field predates the switch
+    to a trained model in Task 6F and is named for what it holds now.
+    """
+
+    slot: int           # the cumulative score this card marks
+    end: "int | None"   # the end that produced it; None when not read
+    confidence: float
+
+
+@dataclass(frozen=True)
+class CardBoard:
+    """Every card on the board, per team, in slot order."""
+
+    yellow: tuple
+    red: tuple
+
+    def is_blank(self) -> bool:
+        return not self.yellow and not self.red
+
+    def all_cards(self) -> list:
+        return ([("yellow", c) for c in self.yellow]
+                + [("red", c) for c in self.red])
+
+    def highest_end(self) -> int:
+        """The latest end the board is known to record. 0 if none is."""
+        return max((c.end for _, c in self.all_cards() if c.end is not None),
+                    default=0)
+
+
+def read_cards(image, geom: BoardGeometry) -> CardBoard:
+    """Every card on the board, with the end number each one records.
+
+    Finds the occupied slots with `read_slots`, then reads each one's glyph
+    straight off the image and hands it to `read_digit` alone. `read_digit`
+    is backed by a trained classifier (Task 6F) and ignores its old `tmpl`
+    argument, so there is no per-read exemplar table to build here -- that
+    was only needed by the correlation matcher `read_digit` replaced.
+    """
+    gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY)
+    present = read_slots(image, geom)
+    out = {}
+    for color, slots in (("yellow", present.yellow), ("red", present.red)):
+        cards = []
+        for slot in sorted(slots):
+            end, confidence = read_digit(_card_glyph(gray, geom, color, slot))
+            cards.append(Card(slot=slot, end=end, confidence=confidence))
+        out[color] = tuple(cards)
+    return CardBoard(yellow=out["yellow"], red=out["red"])
 
 
 _MIN_PRINTED_DIGITS = 11
