@@ -102,13 +102,15 @@ def harvest(video_path, vid, date, sheet, out_dir, sheets_dir, times):
     games a VOD usually holds, and the accumulation check has to be applied
     within a game, so the blanks are recorded rather than dropped.
     """
-    rows, states = [], []
+    rows, states, first = [], [], None
     for t0 in times:
         img = HB.sample(video_path, t0)
         if img is None:
             states.append({"t_s": t0, "status": "no_frames"})
             print(f"  t={int(t0):05d}: no frames", flush=True)
             continue
+        if first is None:
+            first = img
         geom = SB.find_board(img)
         if geom is None:
             states.append({"t_s": t0, "status": "no_board"})
@@ -138,6 +140,18 @@ def harvest(video_path, vid, date, sheet, out_dir, sheets_dir, times):
                              "slot": slot, "end": None})
         print(f"  {name}: yellow={sorted(reading.yellow)} "
               f"red={sorted(reading.red)}", flush=True)
+
+    # A video that yields nothing is the one case where the evidence is about
+    # to be deleted: w_idtwUuEpM returned "no board" on all 23 samples and the
+    # VOD was gone before anyone could ask why. One downscaled JPEG answers
+    # "is the board out of shot, or is `find_board` missing it?" for 40 KB
+    # instead of a 1.5 GB re-download.
+    if not rows and first is not None:
+        small = cv2.resize(first, None, fx=0.5, fy=0.5,
+                           interpolation=cv2.INTER_AREA)
+        cv2.imwrite(str(out_dir / "nothing-found.jpg"), small,
+                    [cv2.IMWRITE_JPEG_QUALITY, 70])
+        print("  wrote nothing-found.jpg", flush=True)
     return rows, states
 
 
@@ -491,6 +505,7 @@ def main():
           + ", ".join(f"{v['video_id']}({v['date']} s{v['sheet']})"
                       for v in todo), flush=True)
 
+    failures = 0
     for i, v in enumerate(todo, start=1):
         vid = v["video_id"]
         vdir = out / vid
@@ -527,6 +542,21 @@ def main():
             print(f"BLOCKED on {vid}: {exc}\n"
                   f"Stopping. {len(todo) - i + 1} videos unfetched.", flush=True)
             return 3
+        except Exception as exc:  # noqa: BLE001 - yt-dlp raises many kinds
+            # Not a bot check -- a 403 part-way through a fragment, most
+            # likely. Move on to the next video rather than lose the run to
+            # one bad fetch, but never re-ask for the same one, and give up
+            # entirely after two in a row: at that point it is not this video,
+            # it is us, and asking a third time is how an address gets blocked.
+            failures += 1
+            print(f"FAILED on {vid} ({failures} in a row): "
+                  f"{type(exc).__name__}: {exc}", flush=True)
+            if failures >= 2:
+                print(f"Two consecutive download failures; stopping with "
+                      f"{len(todo) - i} videos unfetched.", flush=True)
+                return 4
+            continue
+        failures = 0
 
         try:
             vdir.mkdir(parents=True, exist_ok=True)
