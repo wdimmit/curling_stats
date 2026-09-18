@@ -373,6 +373,36 @@ cannot both tune and prove.
 
 ## Risks
 
+**The board's end numbers are aligned to detection's by position, and one case
+can still shift them.** The board numbers the real game's ends; detection
+numbers whatever it cut out of the stream, practice included. `settle_board_scores`
+withholds the scores when both the practice signature (a leading end short of
+sixteen rocks) and an incomplete board (its highest end below the detected end
+count) are present, because together those leave room for a practice block in
+front. That reasoning holds only while detection finds every real end: with `P`
+practice blocks and `K` entirely missed real ends, the guard passes whenever
+`K >= P`, and every score then shifts by one end while `unread_ends` comes back
+empty and `final` is populated — a document that looks healthy and is wrong.
+
+The tighter rule — withhold whenever a leading end is short and no start time was
+given — was measured and rejected. On the reference VOD, game 0's first end has
+16 of 16 rocks and game 1's has 15 of 16; that single missing rock is a missed
+detection, not practice, and game 1's board read (Y4 R2 rising to Y4 R4) is
+independently confirmed. The strict rule would withhold a known-good read on half
+the available sample.
+
+The residual therefore depends entirely on how often detection drops a *whole*
+end, as opposed to rocks within one. **The project has seen no case of an entire
+end being dropped incorrectly** (confirmed 2026-09-18), and every end examined
+here was detected at 12-16 rocks — missed shots, never a missed end. If that ever
+changes, the guard needs the stricter rule, and this is the first place to look
+when a chart's scores look shifted by one end.
+
+A second, narrower variant: if practice were ever fitted as a full sixteen-rock
+block the short-leading-end signature never fires at all. That is consistent with
+`trim_to_start`'s deliberate stance that "sixteen delivered rocks are an end,
+whatever the guess said", so it is existing behaviour rather than a new hole.
+
 **Transfer from printed glyphs to card glyphs has been measured, and it does
 not hold.** 4 of the 11 held-out cards read correctly in every frame, with every
 card carrying a 2 misread as a 7 while the printed 2 in the same frame reads
