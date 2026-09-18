@@ -173,11 +173,17 @@ def games_of(states) -> dict:
     blank board ends a game: an obstructed or unfound board says nothing about
     whether the cards are still hanging, so it cannot be a boundary.
     """
-    game, out = 0, {}
+    game, wiped, out = 0, False, {}
     for s in states:
         if s["status"] == "blank":
-            game += 1
+            wiped = True
         elif s["status"] == "cards":
+            # Bumped when play resumes, not on each blank sample: a wipe is
+            # sampled several times over, and counting each one would number
+            # the games 0, 4, 9 and make the index unreadable.
+            if wiped and out:
+                game += 1
+            wiped = False
             out[s["frame"]] = game
     return out
 
@@ -265,6 +271,100 @@ def check(rows, games) -> list:
     return bad
 
 
+def pack(rows, out: Path) -> None:
+    """Cut every labelled row's raw card window out of its frame into one npz.
+
+    The frames themselves are not what training consumes -- the model sees a
+    ~24x22 px window -- and Task 1's 21 committed 1080p PNGs were already
+    25 MB, so ten videos of them would put a quarter of a gigabyte into git for
+    ever. The windows are four orders of magnitude smaller for the same
+    training value.
+
+    Raw, not normalised: `card_window` is what `_card_glyph` starts from, so a
+    later change to the tile segmentation, the ink localisation or
+    GLYPH_SHAPE -- all three of which have moved once already -- can be applied
+    to this set without re-downloading 15 GB of video.
+
+    Windows vary in height by a pixel or two between frames, so they are
+    zero-padded into one array with an explicit ``shape`` column: patch *i* is
+    ``patches[i][:shape[i, 0], :shape[i, 1]]``. Padded rather than an object
+    array so the file loads without ``allow_pickle``.
+    """
+    import numpy as np
+
+    geoms, grays, patches, kept = {}, {}, [], []
+    for r in rows:
+        key = (r["video_id"], r["frame"])
+        if key not in grays:
+            img = cv2.imread(str(out / r["video_id"] / r["frame"]))
+            if img is None:
+                raise SystemExit(f"missing frame {key}; re-harvest before --merge")
+            grays[key] = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            geoms[key] = SB.find_board(img)
+        window = SB.card_window(grays[key], geoms[key], r["color"], r["slot"])
+        if window is None:
+            print(f"  ! no window for {key} {r['color']}{r['slot']}", flush=True)
+            continue
+        patches.append(np.ascontiguousarray(window))
+        kept.append(r)
+
+    h = max(p.shape[0] for p in patches)
+    w = max(p.shape[1] for p in patches)
+    stack = np.zeros((len(patches), h, w), np.uint8)
+    shapes = np.zeros((len(patches), 2), np.int16)
+    for i, p in enumerate(patches):
+        stack[i, :p.shape[0], :p.shape[1]] = p
+        shapes[i] = p.shape
+
+    def col(name, dtype):
+        return np.array([r[name] for r in kept], dtype=dtype)
+
+    np.savez_compressed(
+        out / "cards.npz",
+        patches=stack, shape=shapes,
+        video_id=col("video_id", "<U11"), date=col("date", "<U10"),
+        sheet=col("sheet", np.int16), frame=col("frame", "<U24"),
+        t_s=col("t_s", np.float32), color=col("color", "<U6"),
+        slot=col("slot", np.int16),
+        # A string column, because "illegible" is a real label here: those
+        # rows are what a reject gate has to catch.
+        end=np.array([str(r["end"]) for r in kept], dtype="<U9"),
+    )
+    size = (out / "cards.npz").stat().st_size
+    print(f"{len(kept)} patches up to {h}x{w} px -> {out / 'cards.npz'} "
+          f"({size / 1024:.0f} KiB)")
+
+
+def samples(rows, out: Path, per_video: int = 2) -> None:
+    """Keep a couple of whole frames per video in git for checking by eye.
+
+    Two, not more: a 1080p board frame is ~1.3 MB, so this is the one part of
+    the set whose size is worth counting. The two are the *fullest* frame, which
+    carries every card that video ever posted, and the *sparsest*, which shows
+    an early board -- picking the two by card count rather than by time keeps
+    them different from each other, where three consecutive samples of one
+    unchanged state would have shown the same thing three times.
+
+    Everything else is regenerable from the VOD and is gitignored.
+    """
+    dest = out / "samples"
+    dest.mkdir(exist_ok=True)
+    for old in dest.glob("*.png"):
+        old.unlink()
+    by_video = {}
+    for r in rows:
+        counts = by_video.setdefault(r["video_id"], {})
+        counts[r["frame"]] = counts.get(r["frame"], 0) + 1
+    for vid, frames in sorted(by_video.items()):
+        order = sorted(frames.items(), key=lambda kv: (kv[1], kv[0]))
+        chosen = {order[-1][0]}                    # the fullest
+        if per_video > 1:
+            chosen.add(order[0][0])                # and the sparsest
+        for frame in sorted(chosen)[:per_video]:
+            shutil.copyfile(out / vid / frame, dest / f"{vid}_{frame}")
+    print(f"{len(list(dest.glob('*.png')))} sample frames in {dest}")
+
+
 def merge(out: Path) -> int:
     """Expand every video's hand reading, check it, and write the dataset."""
     all_rows, failed = [], False
@@ -292,6 +392,9 @@ def merge(out: Path) -> int:
 
     (out / "labels.json").write_text(json.dumps(all_rows, indent=2) + "\n")
     print(f"\n{len(all_rows)} rows written to {out / 'labels.json'}")
+    if all_rows:
+        pack(all_rows, out)
+        samples(all_rows, out)
     return 1 if failed else 0
 
 

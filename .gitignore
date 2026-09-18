@@ -47,6 +47,17 @@ datasets/ds12/ds12_images.tgz
 weights/*.pt
 !weights/ds11a.pt
 
+# Harvested board frames for the card-digit training set. What training
+# consumes is the ~24x22 px card window, and those are committed in
+# datasets/board-cards-train/cards.npz -- a few hundred kilobytes for the same
+# content. The 1080p frames they are cut from are ~1.2 MB each and would be a
+# quarter of a gigabyte in git across ten videos, so only a handful under
+# samples/ are kept, for spot-checking by eye. Regenerate the rest with:
+#   ./.venv/bin/python scripts/collect_cards.py \
+#       --dates 2026-04-13,2026-04-27 --step-s 300 --force
+datasets/board-cards-train/**/*.png
+!datasets/board-cards-train/samples/*.png
+
 # The frontend toolchain. Sources live in frontend/; the built bundles are
 # tracked under src/curling_score/ because `curling-score serve` has to work
 # after a plain pip install, with no node anywhere.

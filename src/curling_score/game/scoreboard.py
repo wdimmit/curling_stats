@@ -346,6 +346,30 @@ _CARD_TILE_MARGIN = 10.0
 _MIN_TILE_SUPPORT = 2   # rows/cols need this many bright pixels to count
 
 
+def card_window(gray, geom: BoardGeometry, color: str, slot: int):
+    """The raw slot window a card's glyph is found inside, or None off-frame.
+
+    Split out of `_card_glyph` so the card-digit training set can store the
+    *untouched* window rather than a processed glyph. Tile segmentation, ink
+    localisation and GLYPH_SHAPE have each already been changed once in
+    response to a measurement, and each change invalidates anything stored
+    downstream of it; a stored window survives all three, so the set can be
+    re-derived without re-downloading 15 GB of video. Public for that reason,
+    and shared with `_card_glyph` so the two can never drift apart.
+    """
+    row = geom.yellow_row if color == "yellow" else geom.red_row
+    y1 = int(row[1])
+    # The card's top sits above the presence band, so reach up to the rule.
+    y0 = int(geom.top_line_y) if color == "yellow" else int(geom.mid_line_y)
+    half_w = max(2, int(0.22 * geom.dy))
+    sx = geom.slot_x[slot - 1]
+    x0, x1 = int(sx) - half_w, int(sx) + half_w
+    h, w = gray.shape
+    if x0 < 0 or y0 < 0 or x1 > w or y1 > h or y1 - y0 < 6:
+        return None
+    return gray[y0:y1, x0:x1]
+
+
 def _card_glyph(gray, geom: BoardGeometry, color: str, slot: int):
     """One card's ink, localised the same way `templates()` localises a
     printed number.
@@ -363,18 +387,11 @@ def _card_glyph(gray, geom: BoardGeometry, color: str, slot: int):
     that correlation reads as a real difference before digit shape gets a
     say.
     """
-    row = geom.yellow_row if color == "yellow" else geom.red_row
-    y1 = int(row[1])
-    # The card's top sits above the presence band, so reach up to the rule.
-    y0 = int(geom.top_line_y) if color == "yellow" else int(geom.mid_line_y)
-    half_w = max(2, int(0.22 * geom.dy))
-    sx = geom.slot_x[slot - 1]
-    x0, x1 = int(sx) - half_w, int(sx) + half_w
-    h, w = gray.shape
-    if x0 < 0 or y0 < 0 or x1 > w or y1 > h or y1 - y0 < 6:
+    window = card_window(gray, geom, color, slot)
+    if window is None:
         return None
 
-    box = gray[y0:y1, x0:x1].astype(np.float32)
+    box = window.astype(np.float32)
     level = float(np.median(box))
     tile = box > level + _CARD_TILE_MARGIN     # the white card against the board
     if tile.sum() < 12:
