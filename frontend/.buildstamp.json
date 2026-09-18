@@ -11,7 +11,7 @@
     "frontend/core/shots.mjs": "7bbae170388975b0f70afd6c3588083b4f2baf6a32bb8a839a52086bf7a60310",
     "frontend/core/stats.mjs": "082788646c0784a7ab0dbb6d0eae6d1efca155772a8fc58cba47371bc78a75a0",
     "frontend/core/timeline.mjs": "7b4696ac4a0e937b824be62004ec0925dd5ef14e29cf8c933f7e85b005a08109",
-    "frontend/core/watch.mjs": "9d4436e36e091df449606238d2b639c2b96176737e84ec2e55dee20e100850d5",
+    "frontend/core/watch.mjs": "4bdfeee00a12b7c9bbc27008af4a6c8209f7c73c27e0b0925d1e5cdfa98a5acc",
     "frontend/core/wire.mjs": "65b282e8e08e71ad249eb5e2f716a2fadb20d303a3e53c9a656b1eaa6207b161",
     "frontend/runtime/bodyState.mjs": "3406f0db2a7f1c57944df52b370eade2be81a1b65fc4f64382ee56b27eb315ea",
     "frontend/runtime/dragStore.mjs": "39cf427077c473e916a74c5e95b62ac0fd8eacde6b56f4fe8b4f1cc6d516d778",
@@ -33,11 +33,11 @@
     "frontend/viewer/Charts.jsx": "ce099e9ddcf192213d5c88a364110ea3088fd2f5faf701dad8ef3a412b3e789b",
     "frontend/viewer/House.jsx": "eccd0383648cf0f7e094ab5f7a2eea822b88ff2399ef849062cf1f086266e4f0",
     "frontend/viewer/Report.jsx": "473b826e2d318393f70038ef6a42fcb0e97b285f255912922ccd7ecc4a4995c6",
-    "frontend/viewer/Watch.jsx": "f8ce6386402ec4c4d4e7194d0e27b7446dc64abb6cce163f9f85df7538904184",
+    "frontend/viewer/Watch.jsx": "5de5a362286717d5ebf78a9a7706eb1dffa29ad63ce4108e47e1c99d1caf7ca9",
     "frontend/viewer/main.jsx": "03c6d1858c606f51671b711c0ecf7c3d58260ac3d8198c0d2231b9590a605562"
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "6e4b4ee181968976d23b26da584a241d49c549eb82b38c64b1e0cd4a514dea82",
-    "src/curling_score/viewer/app.js": "12bff5932c85399af8074a13582ea87e06b0c753f8092a4b2cd6373bc2b2645a"
+    "src/curling_score/viewer/app.js": "c0deafa1e3af4fa49681386a90670b086e67d9e0ac2b378b9b9b0fb5caa337a8"
   }
 }

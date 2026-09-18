@@ -65,16 +65,22 @@ function RockRow({ row, current, onPick }) {
 
 function EndBar({ summary, onStep }) {
   if (!summary) return null;
-  const { number, of, running, hammer } = summary;
+  const { number, of, running, hammer, boardReadable } = summary;
   return (
     <div className="wendbar">
       <button type="button" onClick={() => onStep(-1)} disabled={number <= 1}
               aria-label="Previous end">◀</button>
       <div className="wendmid">
         <span className="wen">End {number} of {of}</span>
-        <span className="wsc">
-          <i className="wdot red" />{running.red} – {running.yellow}<i className="wdot yellow" />
-        </span>
+        {running ? (
+          <span className="wsc">
+            <i className="wdot red" />{running.red} – {running.yellow}<i className="wdot yellow" />
+          </span>
+        ) : (
+          <span className="wsc wsc-none">
+            {boardReadable === false ? "chart predates board reading" : "not posted"}
+          </span>
+        )}
         {hammer ? <span className="wham">{hammer} has hammer</span> : null}
       </div>
       <button type="button" onClick={() => onStep(1)} disabled={number >= of}

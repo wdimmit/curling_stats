@@ -9,6 +9,7 @@
 import { TYPE } from "./constants.mjs";
 import { isBlank, shotVideoTime, typeOf } from "./shots.mjs";
 import { clockText } from "./stats.mjs";
+import { boardReadable } from "./wire.mjs";
 
 /* The rows of one end.
  *
@@ -73,17 +74,25 @@ export function rockAt(rows, t) {
 }
 
 /* The end switcher's line: whose end it is so far, and who throws last. The
- * running score is the one the end closed on, which is what a viewer reading
- * down the game wants; `end.score` alone would say nothing about the game. */
+ * running score is the board's -- the one the end closed on, which is what a
+ * viewer reading down the game wants -- and an end the board never reached
+ * has none: `null`, not the zero that `end.score || {...}` used to hand back,
+ * which turned "the board never said" into "nobody scored".
+ *
+ * A document from before schema 4 kept the detector's inferred score in
+ * these same fields, so it is gated the same way regardless of what the end
+ * itself carries: no score for a chart the board never had a say in. */
 export function endSummary(view, ei) {
   const end = view.ends[ei]?.end;
   if (!end) return null;
+  const readable = boardReadable(view.doc);
   return {
     number: end.number,
     of: view.ends.length,
     hammer: end.hammer || null,
-    score: end.score || { red: 0, yellow: 0 },
-    running: end.running || { red: 0, yellow: 0 },
+    score: readable ? (end.score ?? null) : null,
+    running: readable ? (end.running ?? null) : null,
+    boardReadable: readable,
     red: clockText(end.thinking_time?.red),
     yellow: clockText(end.thinking_time?.yellow),
   };

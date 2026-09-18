@@ -630,6 +630,7 @@ body[data-mode="review"] #house { cursor:default; }
   .wen { font-weight: 650; }
   .wsc { display: flex; align-items: center; gap: 6px;
          font-variant-numeric: tabular-nums; }
+  .wsc-none { opacity: 0.55; font-size: 12px; }
   .wham { font-size: 10px; color: var(--muted); letter-spacing: .05em; }
   .wdot { width: 11px; height: 11px; border-radius: 50%; display: inline-block;
           flex: none; }

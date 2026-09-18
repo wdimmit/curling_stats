@@ -1186,8 +1186,9 @@ class TestTheListFollowsTheVideo:
 
 
 class TestTheEndSwitcher:
-    def test_it_reads_the_running_score_not_the_end_s_own(self):
-        """Someone reading down the game wants to know who is winning."""
+    def test_it_reads_the_board_s_running_score(self):
+        """Someone reading down the game wants to know who is winning -- and
+        wants it to be the score the club posted, not one we worked out."""
         got = run_js(setup(end_four(hammer="yellow",
                                     score={"red": 3, "yellow": 0},
                                     running={"red": 7, "yellow": 1},
@@ -1195,6 +1196,11 @@ class TestTheEndSwitcher:
                      "const s = endSummary();"
                      "out([s.number, s.of, s.hammer, s.running, s.red, s.yellow]);")
         assert got == [4, 1, "yellow", {"red": 7, "yellow": 1}, "3:14", "5:12"]
+
+    def test_an_end_the_board_never_reached_has_no_running_score(self):
+        got = run_js(setup(end_four(hammer="yellow", score=None, running=None)) +
+                     "out(endSummary().running);")
+        assert got is None
 
 
 class TestAnOldChartShowsNoBoardScore:
@@ -1218,6 +1224,17 @@ class TestAnOldChartShowsNoBoardScore:
         """Every fixture in this file predates the `schema_version` field.
         None of them is a chart that predates board reading."""
         assert run_js("out(boardReadable({}));") is True
+
+    def test_the_gate_overrides_a_populated_running_score(self):
+        """Not "no running score was posted" -- the field is populated, and
+        still must not reach the screen, because on this document it is the
+        detector's guess wearing the board's name."""
+        d = end_four(hammer="yellow", score={"red": 3, "yellow": 0},
+                    running={"red": 7, "yellow": 1})
+        d["schema_version"] = 3
+        got = run_js(setup(d) + "const s = endSummary();"
+                     "out([s.score, s.running, s.boardReadable]);")
+        assert got == [None, None, False]
 
 
 class TestAWatchLinkOnAPhoneShowsSomething:
