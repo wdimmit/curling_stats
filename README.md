@@ -33,7 +33,7 @@ strip down the middle of the frame. Everything is read from those two panels.
 | Rules | `game/rules.py` | Scoring, hammer, shot→player — pure logic, no CV |
 | Split | `game/split.py` | Time a stone down the sheet — the long split |
 | Clock | `game/thinking.py` | Thinking time per team, and the tee crossings it is read from |
-| Validate | `game/scoreboard.py` | Read the wall scoreboard as an independent check |
+| Score | `game/scoreboard.py` | Read the wall board's hung cards — the game's actual score, not a check on it |
 
 Four decisions carry most of the weight:
 
@@ -60,22 +60,36 @@ seconds at a time, so no sliding window short enough to track play can smooth
 that away. Instead each stone is tracked across the whole end: an occluded stone
 comes back to the same place, a removed one never does.
 
-**The wall scoreboard is read without OCR.** The club board is the traditional
-design: a fixed strip of numbers 1–14 that is the *cumulative* score, with the
-end number on a card hung above it (yellow) or below (red). A card's position is
-therefore the running total, so the score can be read purely by asking which
-slots are occupied.
+**The wall scoreboard is the score, read one digit at a time.** The club board
+is the traditional design: a fixed strip of numbers 1–14 that is the
+*cumulative* score, with the end number written on a card hung above the strip
+(yellow) or below it (red). A card's slot alone already gives the running
+total — that part needs no OCR, only asking which slots are occupied. What
+changed is reading the digit printed on each card too: that names the *end*
+that produced the total sitting at that slot, so a single read of a board late
+in the game, with every card's digit decoded, hands back the score of every
+end posted so far in one pass. Presence alone can never do that — it can only
+ever say what the total is, never which end brought it there — which is why
+the original presence-only design (see `BACKLOG.md`) was retired once the
+digit reader existed.
 
-Three details make that reliable. The board is found from its two team-colour
-markers, which also fix its scale — every sheet hangs its board somewhere
-different. A card is identified as both *brighter* and *darker* than the board
-around it: a spectator standing in front has just as much internal contrast, but
-is never brighter, which is what separates them (measured: cards +22..+29
-brighter, people 59–105 darker). And because cards accumulate through a game and
-are never taken down, a slot seen once and then gone is discarded as noise.
+Three details make the board itself reliable to find and read. It is located
+from its two team-colour markers, which also fix its scale — every sheet hangs
+its board somewhere different. A card is identified as both *brighter* and
+*darker* than the board around it: a spectator standing in front has just as
+much internal contrast, but is never brighter, which is what separates them
+(measured: cards +22..+29 brighter, people 59–105 darker). And the digit
+itself is decoded by a small trained classifier, not a correlation match
+against the printed strip's own numbers — it refuses to call a digit below a
+0.9999 class-probability threshold (measured: zero wrong digits and zero
+false reads across 19 blank-slot frames at that bar), and a refused digit
+invalidates the whole read rather than being guessed, so the sampler simply
+steps back to an earlier moment and tries again.
 
-It is **never used for timing** — the club often posts it several ends late. It
-is read only to say whether the computed scores are believable.
+It is **never used for timing** — the club often posts it several ends late,
+sometimes past the end of the game, so an end the board has not caught up to
+comes back unread rather than guessed, and the game's final is withheld until
+every end has one.
 
 ## Coordinates
 
@@ -170,10 +184,20 @@ it is meant to find. The lower quartile is used instead.
   VOD, 50% of deliveries are found with colour thresholding and 60% with a
   trained YOLO model. Ends built from 5–8 deliveries have unreliable scores.
   `curling-score review` exists to attack this.
-- **Scores are not yet trustworthy.** Against the wall scoreboard on game 1,
-  colour thresholding matched 0 of 8 ends and YOLO matched 2 of 8. The structural
-  bug that scored an end from the post-end staging is fixed — end 4 now reads
-  `red 1`, matching the board — but recall still dominates the error.
+- **The score is the board's, and the board has real limits.** A per-end score
+  comes from a small trained classifier reading a ~20 px digit off the hung
+  card; it refuses to call a digit it is not confident about, and a single
+  refused digit invalidates that whole read, so the sampler falls back to an
+  earlier moment rather than publish a guess. An end the club never posted
+  comes back unread and withholds the game's final rather than infer one — in
+  practice this happens often, since the club regularly posts several ends
+  late. Card digits 8 and 9 have never appeared in any training data (no
+  recorded game has run that many scoring ends), so a card showing either is
+  read against a model that has never seen its class. Detection's own inferred
+  score is still computed for every end (`detected_score`, and `detected` at
+  the game level) and carried alongside the board's as a diagnostic, not a
+  fallback — the two disagreeing is now the interesting signal, not the score
+  itself.
 - **The hammer is wrong whenever an end's first delivery is missed**, since it is
   read from who threw first.
 - **Positions far up-sheet are approximate.** The oblique view compresses the
@@ -203,8 +227,6 @@ it is meant to find. The lower quartile is used instead.
   those intervals are marked `(est.)` and counted in `estimated_shots`.
 - **The hammer chain does not yet self-validate.** It is read from who threw
   first, which is wrong when an end's opening deliveries are missed.
-- **Scoreboard validation is not implemented** (the board sits at a different
-  place on each sheet's wall).
 - Archived VODs only — not live streams.
 
 Corrections go in `out/overrides.json`, keyed `"<game>.<end>.<shot>"`, and are
@@ -217,9 +239,10 @@ curling-score analyze <url> --out out
 curling-score serve --out out
 ```
 
-The viewer is a charting tool, not a scoreboard. For each shot it shows the
-video, the house it left behind, and the path the stone took; you fill in what
-the detector could not read and grade the shot as a coach would.
+The viewer is a charting tool, and the score it shows is the wall board's, not
+anything computed from the charted shots. For each shot it shows the video,
+the house it left behind, and the path the stone took; you fill in what the
+detector could not read and grade the shot as a coach would.
 
 - **Blanks are explicit.** A shot whose house we could not read is hatched and
   labelled `STATE UNKNOWN` — never drawn as an empty house. The header counts
@@ -254,10 +277,15 @@ Everything you enter is written to `out/overrides.json` as you go (the viewer
 POSTs it back to its own server; `⬇` downloads it if the server is gone).
 Re-running `analyze` layers the same file back over fresh detections.
 
-**Scoring is deliberately de-emphasised.** Computed end scores are still
-produced and shown in a collapsed panel, but precise measurement and the
-occlusion that comes with players clearing rocks make them unreliable, and they
-are not what this tool is for.
+**Computed scoring is deliberately de-emphasised; the board's is not.** A
+collapsed "Scoreboard" panel shows the wall board's own end-by-end score —
+blank and unread ends visibly distinct from each other and from a real zero,
+and a game total that is withheld until every end has one. What the detector
+makes of the same ends (`detected_score` per end, `detected` per game) is
+still computed and written to the timeline, but it is not surfaced anywhere in
+the viewer: precise measurement and the occlusion that comes with players
+clearing rocks make it unreliable on its own, and showing it next to the
+board's real score risked the two being mistaken for each other.
 
 ## Hosting it
 

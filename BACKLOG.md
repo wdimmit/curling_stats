@@ -367,6 +367,28 @@ rather than a single run, because the zero-wrong coverage metric is set by the
 single most confident wrong read and swings tens of points between seeds on
 identical inputs.
 
+## Two-digit card numbers, for ends 10 and above
+
+`read_digit` classifies one glyph per card and `card_window`/`glyph_in_window`
+localise exactly one ink blob inside the card's tile -- both built around the
+single-digit end numbers that cover a normal eight-end game. An extra end
+called to break a tie hangs a card reading "10", "11" or higher, which is two
+glyphs in one tile, not one. Nothing crashes: the classifier's top class
+probability collapses toward uniform against a shape none of its training
+classes look like, `MIN_CONFIDENCE` refuses it the same way it refuses an
+occluded glyph, and the end comes back unread rather than misread -- the same
+fail-closed behaviour the confidence gate exists for. So it is safe today, but
+it is a real gap: any game that goes to an extra end currently loses board
+scoring for every end from 10 on, silently, because "refused" and "never
+called" look identical from outside `per_end_from_cards`.
+
+Currently out of scope and rejected as unread. Fixing it needs the card
+window widened to fit two glyphs, a segmentation step that splits the tile
+into its digits before classifying either one, and training data for it --
+which the reference VOD's two games do not supply, since neither ran past six
+or seven ends. The purpose-shot video proposed above for digits 8 and 9 could
+supply this too, if it hangs a card reading "10" or higher in a slot.
+
 ## Persistence as the next defence against phantom cards
 
 A person standing in front of the board can read as a card: it is a bright
