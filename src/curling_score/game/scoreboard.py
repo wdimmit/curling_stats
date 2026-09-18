@@ -144,6 +144,15 @@ class BoardGeometry:
         gap = self.bottom_line_y - self.mid_line_y
         return (self.mid_line_y + 0.16 * gap, self.mid_line_y + 0.75 * gap)
 
+    @property
+    def printed_row(self):
+        """The printed 1-14 numbers, under the yellow cards in the same band.
+
+        Same bounds `_printed_digit_groups` already uses to count them.
+        """
+        gap = self.mid_line_y - self.top_line_y
+        return (self.top_line_y + 0.58 * gap, self.mid_line_y - 0.03 * gap)
+
 
 def _blobs(mask, min_area=_MIN_MARKER_AREA):
     n, _, stats, cent = cv2.connectedComponentsWithStats(mask, 8)
@@ -232,6 +241,36 @@ def find_board(image) -> "BoardGeometry | None":
         top_line_y=top_line, mid_line_y=mid_line, bottom_line_y=bottom_line,
         slot_x=slot_x,
     )
+
+
+# Glyphs are normalised to a fixed box before correlating, so a card and a
+# printed number are compared on shape alone rather than on size or exposure.
+GLYPH_SHAPE = (22, 16)  # (rows, cols)
+
+
+def _normalise(patch) -> "np.ndarray":
+    """Resize to GLYPH_SHAPE, mean-centre, scale to unit standard deviation."""
+    g = cv2.resize(patch.astype(np.float32), (GLYPH_SHAPE[1], GLYPH_SHAPE[0]),
+                   interpolation=cv2.INTER_AREA)
+    g -= g.mean()
+    sd = float(g.std())
+    return g / sd if sd > 1e-6 else g
+
+
+def templates(image, geom: BoardGeometry) -> dict:
+    """The printed 1-14 glyphs, as normalised correlation templates.
+
+    Built per read rather than shipped: this tracks the board's own lighting,
+    the sheet's own camera and any change to the board itself for free.
+    """
+    gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY)
+    y0, y1 = (int(v) for v in geom.printed_row)
+    half_w = max(2, int(0.22 * geom.dy))
+    out = {}
+    for k, sx in enumerate(geom.slot_x, start=1):
+        x0, x1 = int(sx) - half_w, int(sx) + half_w
+        out[k] = _normalise(gray[y0:y1, x0:x1])
+    return out
 
 
 def read_slots(image, geom: BoardGeometry) -> BoardReading:

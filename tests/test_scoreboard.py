@@ -77,6 +77,30 @@ class TestFindBoard:
         assert SB.find_board(blank) is None
 
 
+class TestTemplates:
+    """The printed 1-14 row is the exemplar set for the card digits: same
+    font, same scale, same lighting, same frame. Nothing is shipped or
+    trained, so these have to come out of the image itself."""
+
+    def test_it_yields_one_normalised_glyph_per_slot(self, known_frame):
+        img = known_frame("board_sheet2_t11000.png")
+        geom = SB.find_board(img)
+        t = SB.templates(img, geom)
+        assert sorted(t) == list(range(1, 15))
+        for g in t.values():
+            assert g.shape == SB.GLYPH_SHAPE
+            assert abs(float(g.mean())) < 1e-5
+            assert abs(float(g.std()) - 1.0) < 1e-5
+
+    def test_the_printed_row_sits_below_the_cards(self, known_frame):
+        """Cards hang above the printed numbers in the same band. Reading the
+        card band as the template source would match cards against cards."""
+        img = known_frame("board_sheet2_t11000.png")
+        geom = SB.find_board(img)
+        assert geom.printed_row[0] >= geom.yellow_row[1]
+        assert geom.printed_row[1] <= geom.mid_line_y
+
+
 class TestReadSlots:
     """Ground truth read by eye from the reference VOD."""
 
