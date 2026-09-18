@@ -1,0 +1,61 @@
+{
+ "created": "2026-09-15",
+ "note": "the nine VODs cached whole on the worker, with warm proxies. ds13's shot-driven wave is built from these rather than from ds11's 24 s clips: a shot list comes from segmenting a whole game and a clip has no ends in it. NARROW BY CONSTRUCTION -- nine nights against ds11's 120 videos over 24 dates and five sheets. Recorded as debt in the design doc; the plan is a focused first model, then a wider second wave proposed by it.",
+ "videos": [
+  {
+   "video_id": "4RrNWSeNnMU",
+   "date": "unknown",
+   "split": "train",
+   "date_source": "not recoverable offline"
+  },
+  {
+   "video_id": "AEqLTgM25Tc",
+   "date": "2025-11-04",
+   "split": "train",
+   "date_source": "ds11/videos.json"
+  },
+  {
+   "video_id": "entTaSBFK3A",
+   "date": "2026-03-03",
+   "split": "train",
+   "date_source": "ds11/videos.json"
+  },
+  {
+   "video_id": "hOKZoeJNTpM",
+   "date": "unknown",
+   "split": "train",
+   "date_source": "not recoverable offline"
+  },
+  {
+   "video_id": "jgZ9wlxGYHM",
+   "date": "unknown",
+   "split": "train",
+   "date_source": "not recoverable offline"
+  },
+  {
+   "video_id": "n51rf_nFlhM",
+   "date": "unknown",
+   "split": "train",
+   "date_source": "not recoverable offline"
+  },
+  {
+   "video_id": "OcyhldUbu8A",
+   "date": "unknown",
+   "split": "train",
+   "date_source": "not recoverable offline"
+  },
+  {
+   "video_id": "PGltvgB2yIM",
+   "date": "unknown",
+   "split": "train",
+   "date_source": "not recoverable offline"
+  },
+  {
+   "video_id": "VXU9xwmugRg",
+   "date": "unknown",
+   "split": "train",
+   "date_source": "not recoverable offline"
+  }
+ ],
+ "no_val_split": "DELIBERATE. Seven of these nine are not in ds11/videos.json and the cache carries no metadata -- out/ timelines are root-owned and unreadable, the mp4 mtimes are all a bogus 2001 date, and nothing else on disk names the night. Without real dates a train/val split here would leak by date, which ds11's README documents as how this project got detectors that scored well and saw poorly. So every video is train and NO VALIDATION NUMBER MAY BE REPORTED FROM THIS WAVE. The model it trains is a labelling aid for the next wave, not a detector to trust; the wider wave comes from ds11's catalogued videos, which do have dates and can be split properly."
+}

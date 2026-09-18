@@ -56,3 +56,20 @@ def harvested_frames():
         return [cv2.imread(str(p)) for p in paths]
 
     return _load
+
+
+@pytest.fixture(scope="session")
+def side_plate(harvested_frames):
+    """A clean plate of one validation video, for side-view calibration.
+
+    The median over sampled frames removes players and stones and leaves the
+    paint. Production calibrates on ``analyze.CALIB_FRAMES`` (24) frames; the
+    harvested set is thinner, so this is the harder case on purpose.
+    """
+    import numpy as np
+
+    def _plate(vid, minimum=8):
+        frames = harvested_frames(vid, minimum=minimum)
+        return np.median(np.stack([f.astype(np.float32) for f in frames]), axis=0)
+
+    return _plate

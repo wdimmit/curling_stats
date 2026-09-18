@@ -50,6 +50,61 @@ BASELINE_M = C.TEE_TO_TEE_M - 2 * (C.TEE_TO_HOGLINE_M - C.STONE_RADIUS_M)
 # taken 20 s apart from different cameras at different sample rates.
 SPEED_TOLERANCE = 1.4
 
+# How far the side view and the panel may disagree about the same crossing
+# before both are disbelieved. They are independent cameras timing one painted
+# line, so a real disagreement means one of them found the wrong object and
+# nothing here can say which.
+#
+# UNMEASURED, and worth knowing that before trusting it. 0.25 was chosen as the
+# acceptance bar in the design doc -- "no |t_hog - panel| above 0.25 s on the
+# overlap" -- and then reused here as a runtime veto, which is not the same
+# job: a bar says what would be good enough, a veto decides what ships.
+#
+# It is now the single largest source of refusals. scripts/split_coverage.py
+# measured 25 of 55 unpublished crossings lost to this gate on one video, and
+# the pre-veto disagreement over 48 paired crossings had a median of 0.261 s --
+# just above the threshold, so roughly half the comparable population fails it.
+# That is a threshold sitting in the middle of its own distribution, which is
+# where a number does the most damage per unit of wrongness.
+#
+# MEASURED, 2026-09-16, exactly as this note asked. On AEqLTgM25Tc, 60 paired
+# crossings with the side view proposed by ds13b:
+#
+#   ...0.21 0.22 0.25 0.25 0.26 0.26 0.27 0.28 0.28 0.28 0.28 0.29
+#   [ nothing whatever between 0.288 and 0.801 ]
+#   0.80 0.85 0.86 0.87 0.89 0.89 0.90 0.93 0.94 0.96 0.97 0.98
+#
+# So it IS bimodal, the valley is 0.513 s wide and empty, and 0.25 sits on the
+# near cluster's shoulder rather than in the valley: 11 of 22 refusals are
+# between 0.25 and 0.29, refused by a hair.
+#
+# And the far cluster is not a tail of mispairings. All twelve have the same
+# sign -- the panel reads 0.80-0.98 s LATE every time. Three of the refused
+# shots have an independent hand mark in datasets/hogmarks, and they say which
+# camera is wrong:
+#
+#   shot          hand mark    side view      err      panel      err
+#   e2s8 yellow    8454.967    8454.953   -0.014   8455.920   +0.953
+#   e3s7 yellow    9410.767    9410.774   +0.007   9410.496   -0.271
+#   e5s2 red      11339.033   11339.006   -0.027  11338.717   -0.316
+#
+# The side view is right to 0.03 s and the panel is wrong by up to 0.95 s. This
+# gate is therefore discarding CORRECT crossings because an unreliable camera
+# disagrees -- and the panel's tripwire sits at row 13 of a 516-row panel, at
+# the very frame edge, which is where its own docstring says the scale is
+# collapsing fastest.
+#
+# NO LONGER A VETO, as of the sync pass. The ~0.9 s cluster had a cause and it
+# was the compositor: eight of the nine cached recordings have a camera pair
+# out of step. A threshold cannot tell a mispairing from a clock offset, and on
+# this evidence almost all of what it was rejecting was the latter.
+#
+# So `long_split` records the disagreement instead of obeying it, and this
+# constant is what `sync_report` calls "in sync" rather than what ships. The
+# discrepancy is being addressed on the camera side; until it is, a split
+# carries the panel's disagreement in `panel_delta` so a reader can see it.
+CROSS_CHECK_S = 0.25
+
 
 @dataclass(frozen=True)
 class Split:
@@ -59,6 +114,15 @@ class Split:
     baseline_m: float
     t_start: float       # crossing the throwing end's hog line
     t_end: float         # crossing the playing end's hog line
+    # 0.0 when the far crossing was observed. Positive when it was reached for,
+    # in the panel's y units, so a reader can tell an exact split from one that
+    # cannot be checked against anything. See FAR_EXTRAPOLATION_MAX_U.
+    far_reach: float = 0.0
+    # How far the panel's own tripwire was from the side view's answer, or None
+    # when the panel had no reading. Kept rather than acted on: while the
+    # composite's sources are out of step this measures the desync, not the
+    # detector, and `scripts/ds13/sync_report.py` reads it that way.
+    panel_delta: float | None = None
 
     @property
     def speed_m_s(self) -> float:
@@ -78,6 +142,65 @@ def crossing_time(track, y_line: float) -> float | None:
         if (y0 - y_line) * (y1 - y_line) <= 0 and y0 != y1:
             return t0 + (y_line - y0) * (t1 - t0) / (y1 - y0)
     return None
+
+
+# How far past the end of a track the far hog crossing may be reached for, in
+# the panel's own y units. NOT metres -- the along-sheet scale falls to about a
+# third by the top of the frame, and it was taking those units for metres that
+# made the previous extrapolation overshoot the paint by a second (b4fd75b).
+#
+# Measured over all 139 tracks on VXU9xwmugRg that DO cross the line, by hiding
+# everything above a cut and scoring the extrapolation against the answer:
+#
+#     reach    median   p90     worst   within 0.15 s
+#     0.011    0.028    0.110   0.653      92%
+#     0.041    0.047    0.166   0.653      87%
+#     0.061    0.059    0.181   0.653      82%
+#     0.141    0.066    0.213   0.653      82%
+#
+# 0.05 keeps the reach where 9 in 10 land inside the 0.15 s a crossing is
+# judged by. It is a judgement about how much unverifiable error to accept, not
+# a threshold with a physical meaning: an extrapolated crossing has nothing to
+# check it against, unlike the observed ones the panel tripwire corroborates.
+FAR_EXTRAPOLATION_MAX_U = 0.05
+
+# Points used for the fit. Four is what a truncated track reliably has near the
+# line, and more made the tail worse rather than better -- a quadratic over ten
+# reached a 1.65 s worst case against this fit's 0.65 s.
+_FAR_FIT_POINTS = 4
+
+
+def far_crossing(track, y_line: float, *, max_reach: float = 0.0):
+    """``(t, reach)`` for a track crossing ``y_line``, extrapolating a little.
+
+    ``reach`` is 0.0 when the crossing was observed -- the track bracketed the
+    line and the time is interpolated between two real samples. It is positive
+    when the track began below the line and the time was extrapolated back up
+    to it, and then it says how far, so a caller can mark the result.
+
+    Returns ``(None, 0.0)`` when the line is further than ``max_reach`` beyond
+    the track's far end, which is the same refusal as before for anything the
+    gate does not cover.
+    """
+    seen = crossing_time(track, y_line)
+    if seen is not None:
+        return seen, 0.0
+    pts = sorted(((float(t), float(y)) for t, _x, y in track),
+                 key=lambda p: -p[1])
+    if len(pts) < _FAR_FIT_POINTS:
+        return None, 0.0
+    reach = y_line - pts[0][1]
+    if not 0.0 < reach <= max_reach:
+        return None, 0.0
+    near = pts[:_FAR_FIT_POINTS]
+    n = len(near)
+    my = sum(p[1] for p in near) / n
+    mt = sum(p[0] for p in near) / n
+    den = sum((p[1] - my) ** 2 for p in near)
+    if den == 0:
+        return None, 0.0
+    slope = sum((p[1] - my) * (p[0] - mt) for p in near) / den    # dt/dy
+    return mt + (y_line - my) * slope, reach
 
 
 def hog_crossing(track) -> float | None:
@@ -108,17 +231,42 @@ def speed_at_line(track, y_line: float = HOG_APPARENT_Y_M) -> float | None:
     return None
 
 
-def long_split(release, delivery) -> Split | None:
+def long_split(release, delivery, *, t_hog=None, v_hog=None) -> Split | None:
     """The split for one shot, or None when either end could not be timed.
 
-    Never guessed. A shot the throwing camera lost before the hog line, or one
-    that entered the playing panel already past it, has no split.
+    Hog line to hog line: ``t_hog`` is the throwing end, from the side view
+    (``game/hogtime.py``), and the far crossing is the arriving end's overhead
+    panel. The panel's own tripwire at the throwing end is kept only to check
+    that answer -- never to stand in for it, because two methods inside one
+    game are not comparable with each other.
+
+    ``release`` is OPTIONAL, and that is a deliberate loosening. It feeds
+    neither end of the arithmetic -- only two checks, both already conditional
+    on data it may not carry. Requiring it anyway refused 35 shots on
+    VXU9xwmugRg that had both crossings and would have published: the overhead
+    camera loses about 40% of throws before the hog line, which is the whole
+    reason the side view exists, and demanding a release put that loss back.
+
+    What a release does buy is the mispairing check, and without one ``v_hog``
+    stands in: the side view's speed at the near line, in real metres.
     """
-    if release is None or delivery is None:
+    if delivery is None or t_hog is None:
         return None
-    start = hog_crossing(getattr(release, "track", ()))
-    end = crossing_time(getattr(delivery, "track", ()) or (), HOG_APPARENT_Y_M)
-    if start is None or end is None or end <= start:
+    # The long camera is the primary timing source, so a disagreement with the
+    # panel is RECORDED, not obeyed. It used to refuse the split, and that was
+    # discarding correct answers: of the three refused shots on AEqLTgM25Tc
+    # that have an independent hand mark, the side view was right to 0.03 s and
+    # the panel wrong by up to 0.95 s every time. The sync pass then found the
+    # cause -- eight of nine recordings have a camera pair out of step, the
+    # right/bottom pair by a steady -0.18 to -0.32 s -- so the panel is not a
+    # second opinion about the same instant, it is a clock that disagrees.
+    panel = hog_crossing(getattr(release, "track", ()) if release else ())
+    panel_delta = None if panel is None else t_hog - panel
+    start = t_hog
+    end, far_reach = far_crossing(getattr(delivery, "track", ()) or (),
+                                  HOG_APPARENT_Y_M,
+                                  max_reach=FAR_EXTRAPOLATION_MAX_U)
+    if end is None or end <= start:
         return None
     # The pairing behind this is only as good as a 6-30 s arrival window, and
     # on real ends it puts draws against a release 10 s earlier where the clean
@@ -131,9 +279,21 @@ def long_split(release, delivery) -> Split | None:
     # up (see the module docstring), so the old form of this check -- mean
     # speed over the baseline against the slide speed -- had one side in real
     # metres and the other in the panel's, and threw away good splits.
-    near = speed_at_line(getattr(release, "track", ()))
+    near = speed_at_line(getattr(release, "track", ())) if release else None
     far = speed_at_line(getattr(delivery, "track", ()))
     if near and far and far > near * SPEED_TOLERANCE:
         return None
+    if near is None and v_hog:
+        # No release track, so no panel speed to compare the far crossing
+        # against. A stone only ever slows, so its mean speed over the baseline
+        # cannot exceed the speed it crossed the first line at -- and `v_hog`
+        # is in real metres from the side view's perspective solve, so this is
+        # a distance against a speed in the same units. A delivery mispaired
+        # with a stone that arrived earlier shows up here as a mean speed the
+        # near crossing cannot account for.
+        mean = BASELINE_M / (end - start)
+        if mean > v_hog * SPEED_TOLERANCE:
+            return None
     return Split(seconds=end - start, baseline_m=BASELINE_M,
-                 t_start=start, t_end=end)
+                 t_start=start, t_end=end, far_reach=far_reach,
+                 panel_delta=panel_delta)

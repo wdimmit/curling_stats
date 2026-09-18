@@ -174,10 +174,23 @@ class TestFfmpegLogsBypassPython:
         return any("are you there" in r.message for r in caplog.records)
 
     def test_the_python_callback_is_what_torchvision_leaves_behind(self, caplog):
+        """The hazard, still real inside PyAV.
+
+        `frames._seal_logging_callback` rebinds `av.logging.set_level`, so the
+        name torchvision calls no longer reaches this -- which is the whole
+        point of the seal, and also why this test has to go through the handle
+        the seal keeps rather than through the module attribute.
+        """
         import av
 
-        av.logging.set_level(av.logging.ERROR)     # what torchvision.io does on import
-        assert self._python_sees_ffmpeg_logs(caplog)
+        from curling_score.ingest import frames
+
+        frames._seal_logging_callback()
+        frames._real_set_level(av.logging.ERROR)   # what torchvision.io does on import
+        try:
+            assert self._python_sees_ffmpeg_logs(caplog)
+        finally:
+            av.logging.restore_default_callback()
 
     def test_opening_a_video_puts_ffmpeg_s_own_callback_back(self, caplog, tmp_path):
         import av
@@ -198,3 +211,53 @@ class TestFfmpegLogsBypassPython:
         opens = src.count("with av.open(")
         assert opens >= 2
         assert src.count("_quiet_ffmpeg()\n    with av.open(") == opens
+
+
+class TestLoggingCallbackSeal:
+    """The PyAV deadlock that hung a whole-video run on 2026-09-15.
+
+    Re-asserting the safe callback at every open -- the previous fix -- is one
+    step too early. `torchvision.io` is what calls `av.logging.set_level`, and
+    it is imported not when the detector is built but on its **first predict**.
+    Measured on the worker: absent from `sys.modules` before the constructor,
+    absent after it returns, present after one `predict`. Every detection loop
+    here consumes a lazy frame generator, so that predict lands *inside* the
+    `av.open` block: safe callback at open, dangerous one installed mid-decode,
+    deadlock at close. Restoring it again before the close would not help --
+    a thread already inside the old callback stays blocked -- so the callback
+    must never be installed at all.
+    """
+
+    def _python_sees_ffmpeg_logs(self, caplog):
+        import logging
+
+        import av
+
+        with caplog.at_level(logging.ERROR, logger="libav.probe"):
+            av.logging.log(av.logging.ERROR, "probe", "are you there")
+        return any("are you there" in r.message for r in caplog.records)
+
+    def test_a_torchvision_style_call_cannot_reinstall_the_callback(self, caplog):
+        import av
+
+        from curling_score.ingest import frames
+
+        frames._quiet_ffmpeg()
+        caplog.clear()
+        # Exactly the line torchvision/io/video.py runs on import.
+        av.logging.set_level(av.logging.ERROR)
+        assert not self._python_sees_ffmpeg_logs(caplog), (
+            "torchvision's call still installed the Python callback, so a "
+            "decoder thread can still deadlock the close")
+
+    def test_the_seal_still_honours_the_level_it_is_given(self, monkeypatch):
+        """Silencing the callback must not silence libav's own level."""
+        import av
+
+        from curling_score.ingest import frames
+
+        frames._seal_logging_callback()
+        seen = []
+        monkeypatch.setattr(av.logging, "set_libav_level", seen.append)
+        av.logging.set_level(av.logging.ERROR)
+        assert seen == [av.logging.ERROR]

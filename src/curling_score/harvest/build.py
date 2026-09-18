@@ -18,8 +18,15 @@ from curling_score.harvest import manifest as M
 from curling_score.train import dataset
 
 
-def build(doc, pool_dir, out_dir, splits=("train", "val")) -> dict:
-    """Write images and label files for every frame the manifest names."""
+def build(doc, pool_dir, out_dir, splits=("train", "val"), iter_frames=None) -> dict:
+    """Write images and label files for every frame the manifest names.
+
+    ``iter_frames`` defaults to :func:`curling_score.harvest.manifest.
+    iter_frames`, the overhead-set reader. A caller walking a different
+    manifest shape -- ``manifest.side_iter_frames`` for the side-view set --
+    passes that instead; everything else about the tree it writes is
+    unchanged.
+    """
     pool_dir, out_dir = Path(pool_dir), Path(out_dir)
     for split in splits:
         for kind in ("images", "labels"):
@@ -29,7 +36,7 @@ def build(doc, pool_dir, out_dir, splits=("train", "val")) -> dict:
             d.mkdir(parents=True, exist_ok=True)
 
     stats = {"written": 0, "missing": 0, "labels": 0, "empty": 0}
-    for split, cand in M.iter_frames(doc):
+    for split, cand in (iter_frames or M.iter_frames)(doc):
         src = pool_dir / cand.video_id / f"{cand.stem}.jpg"
         if not src.is_file():
             stats["missing"] += 1

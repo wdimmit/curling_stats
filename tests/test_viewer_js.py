@@ -702,6 +702,25 @@ class TestTimingDisplay:
         assert got[0] == "17.4 s (2.3 m est.)"
         assert got[1] == "17.4 s"
 
+    def test_a_reached_for_far_crossing_says_so(self):
+        """`long_split_far_reach_u` is the ARRIVING end in the panel's own y
+        units, set when that crossing was extrapolated rather than seen. A
+        different quantity from `long_split_extrapolated_m`, which is the
+        THROWING end in metres and belongs to timelines made before both lines
+        were timed at the paint -- so both must render, and neither may be
+        mistaken for the other."""
+        got = run_js(
+            "out([splitText({long_split_s:13.2, long_split_far_reach_u:0.031}),"
+            "     splitText({long_split_s:13.2, long_split_far_reach_u:0})])")
+        assert got[0] == "13.2 s (est.)"
+        assert got[1] == "13.2 s"
+
+    def test_the_two_estimate_markers_do_not_collide(self):
+        got = run_js(
+            "out(splitText({long_split_s:17.4, long_split_extrapolated_m:2.3,"
+            "               long_split_far_reach_u:0.03}))")
+        assert got == "17.4 s (2.3 m est.)", got
+
     def test_an_unmeasured_split_is_a_dash(self):
         assert run_js("out(splitText({long_split_s:null}))") == "—"
         assert run_js("out(splitText(null))") == "—"

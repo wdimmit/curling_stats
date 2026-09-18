@@ -46,8 +46,18 @@ where = ["src"]
 "curling_score.service" = ["static/*.html", "static/*.js", "static/*.css"]
 
 [tool.pytest.ini_options]
+# Test the checkout you are standing in. The package is installed editable
+# against one working tree, so in a git worktree every `import curling_score`
+# would otherwise reach back to the original -- tests would pass while
+# exercising the wrong source, and a module added in the worktree would not
+# import at all.
+pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-q"
+# Already quiet. Do NOT add another -q on the command line: pytest sums them,
+# and -qq drops the "N passed, M failed" summary line entirely -- the run still
+# reports its real exit status, but the counts vanish. Three separate sessions
+# have read that silence as lost output and gone looking for a flush bug.
 markers = [
     "slow: touches the full cached VOD; deselect with -m 'not slow'",
 ]

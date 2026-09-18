@@ -12,7 +12,12 @@ from pathlib import Path
 # Bump when a code change alters what the timeline says -- new fields, changed
 # rules, different acceptance thresholds. Not for refactors that leave the
 # document byte-identical.
-PIPELINE_VERSION = "2026.09.10"
+# 2026.09.16: the side-view detector became the default crossing proposer, a
+# release is no longer required for a hog-to-hog split, and the far crossing
+# may be reached for within FAR_EXTRAPOLATION_MAX_U -- with `long_split_far_
+# reach_u` added to say when it was. Different rules and a new field, so
+# timelines from before this are not comparable and must not be reused.
+PIPELINE_VERSION = "2026.09.16"
 
 
 def model_id(weights) -> str:
@@ -31,6 +36,17 @@ def model_id(weights) -> str:
     return f"{path.stem}-{h.hexdigest()[:8]}"
 
 
-def processing_version(weights) -> str:
-    """The full identity of one analysis configuration."""
-    return f"{PIPELINE_VERSION}+{model_id(weights)}"
+def processing_version(weights, side_weights=None) -> str:
+    """The full identity of one analysis configuration.
+
+    ``side_weights`` is folded in because the side-view detector changes the
+    timeline as surely as the overhead one does -- it is what times every
+    throwing-end hog crossing, and so every split. Leaving it out would let a
+    timeline made with the colour scan be reused for one made with a trained
+    detector, which is exactly the quiet mixing this string exists to prevent.
+
+    Omitted entirely when there is no side model, so every timeline produced
+    before there was one keeps the identity it was published with.
+    """
+    base = f"{PIPELINE_VERSION}+{model_id(weights)}"
+    return base if side_weights is None else f"{base}+side-{model_id(side_weights)}"

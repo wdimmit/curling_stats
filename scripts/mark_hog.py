@@ -33,10 +33,47 @@ FPS = 30.0
 # Which side camera sees a given panel's hog line: the one at the other end,
 # looking back down the sheet. The same alternation as ``OTHER_HOUSE``.
 CAMERA_FOR = {"top": "left", "bottom": "right"}
+# Fallback only, measured on VXU9xwmugRg. The hog line's row moves with the
+# camera -- 520 on that video's left view against 514 on its right, and other
+# nights differ again -- so a fixed window can miss the paint entirely on a
+# video it was not measured on. `crop_for` derives it from the fitted view
+# instead; this remains for callers with no calibration to hand.
 CROPS = {"left": (470, 570, 330, 700), "right": (470, 570, 1320, 1740)}
-# Measured on the club's feed: releases cross their hog line 3.3-5.0 s after
-# the panel first sees them leave the hack.
-WINDOW_S = (2.8, 5.8)
+
+# How much ice to show either side of the paint. The judgement being made is
+# "has the stone's leading edge touched the near side of the line", so the
+# window wants the line near its middle with room for the stone to arrive.
+CROP_ROWS_ABOVE, CROP_ROWS_BELOW = 50, 50
+
+
+def crop_for(view_name: str, view=None):
+    """``(y0, y1, x0, x1)`` in FULL-FRAME coordinates for the scrubber.
+
+    With a fitted ``view`` the rows follow its own hog row and the columns
+    follow its rect, narrowed to the middle where a delivery actually travels;
+    the outer thirds are the neighbouring sheets and the wall.
+    """
+    if view is None:
+        return CROPS[view_name]
+    x, _y, w, _h = view.rect
+    hog = int(round(view.hog_row))
+    return (hog - CROP_ROWS_ABOVE, hog + CROP_ROWS_BELOW,
+            x + int(w * 0.20), x + int(w * 0.80))
+# How much video either side of the event to offer the scrubber.
+#
+# The original (2.8, 5.8) was measured against the panel's FIRST SIGHTING of a
+# stone leaving the hack. Fed a `detect/release.py` release time instead -- as
+# the shot-driven pipeline produces -- it is too tight at both ends: on
+# AEqLTgM25Tc six of fifteen deliveries crossed outside it and a person could
+# not scroll far enough to reach the moment, and a seventh was marked on the
+# very first frame, which is the edge of what was reachable rather than a
+# judgement. Observed lags on the ones that fitted ran 2.80 to 5.33 s.
+#
+# This is `longview.WINDOW_S` (2.0, 6.5) with a second of margin at each end.
+# Frames are cheap -- 30 fps over 6 s is 180 JPEGs per delivery -- and a window
+# that cannot reach the crossing wastes the only thing that is not cheap, which
+# is a person's attention.
+WINDOW_S = (1.5, 7.5)
 
 
 def _flatten(grey: np.ndarray, k: int = 31) -> np.ndarray:
@@ -59,8 +96,8 @@ def _flatten(grey: np.ndarray, k: int = 31) -> np.ndarray:
     return np.clip((grey - box) / 26.0 * 128 + 128, 0, 255).astype(np.uint8)
 
 
-def extract(video, view, t0, t1, dest, stem):
-    y0, y1, x0, x1 = CROPS[view]
+def extract(video, view, t0, t1, dest, stem, crop=None):
+    y0, y1, x0, x1 = crop if crop is not None else CROPS[view]
     raw = subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{t0}", "-i", str(video),
          "-t", f"{t1 - t0 + 0.05}", "-vf", f"fps={FPS}", "-f", "rawvideo",
@@ -195,18 +232,33 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--prepared", action="store_true", help="skip extraction")
+    ap.add_argument("--views", help="banked sideviews json; the scrubber's "
+                                    "window then follows the fitted hog row "
+                                    "rather than a window measured on one video")
+    ap.add_argument("--video-id", help="which entry of --views to use")
     args = ap.parse_args()
 
     root = Path(args.out)
     root.mkdir(parents=True, exist_ok=True)
     view = CAMERA_FOR[args.panel]
+    crop = None
+    if args.views:
+        from curling_score.harvest import sideviews as SV
+
+        vid = args.video_id or Path(args.video).stem
+        banked = json.loads(Path(args.views).read_text())[vid]
+        fitted = dict(SV.usable_views(SV.from_json(banked)))[view]
+        crop = crop_for(view, fitted)
+        print(f"  {view} view: hog row {fitted.hog_row:.1f}, "
+              f"scrubber rows {crop[0]}..{crop[1]}")
     if not args.prepared:
         events = json.loads(Path(args.events).read_text())
         index = []
         for n, e in enumerate(events):
             t0, t1 = e["t"] + WINDOW_S[0], e["t"] + WINDOW_S[1]
             print(f"  extracting {n + 1}/{len(events)}: {e['color']} at {e['t']:.1f}")
-            frames = extract(args.video, view, t0, t1, root, f"d{n:02d}")
+            frames = extract(args.video, view, t0, t1, root, f"d{n:02d}",
+                             crop=crop)
             index.append({"id": f"d{n:02d}", "color": e["color"],
                           "release": e["t"], "view": view, "frames": frames})
         (root / "index.json").write_text(json.dumps(index, indent=1))

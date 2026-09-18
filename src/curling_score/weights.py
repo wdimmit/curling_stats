@@ -26,12 +26,28 @@ from pathlib import Path
 DEFAULT_NAME = "ds11a.pt"
 ENV_VAR = "CURLING_SCORE_WEIGHTS"
 
+# The SIDE-view detector, which times the throwing end's hog crossing. A
+# different camera and a different job from DEFAULT_NAME: that one reads the
+# overhead panels looking straight down, this one reads a disc edge-on at
+# thirty metres.
+#
+# Standardised on ds13b as of 2026-09-16. Against the colour scan it replaced,
+# on one whole game (208 shots) through the same gates: raw crossings 47.6% ->
+# 93.3%, published splits 21.2% -> 77.9%, and on the 27 crossings marked by
+# hand it times 25 against 9 with a median error of 0.018 s against 0.079 s.
+#
+# `none` selects the colour scan, and so does a missing file -- the side view
+# is an improvement on a pipeline that worked without it, not a dependency of
+# it. Unlike DEFAULT_NAME, absence here is not an error.
+SIDE_NAME = "ds13b.pt"
+SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 
-def _candidates():
+
+def _candidates(name=DEFAULT_NAME):
     here = Path(__file__).resolve()
     # src/curling_score/weights.py -> repo root, and the installed layout above.
     for base in (here.parents[2], here.parents[1], Path.cwd()):
-        yield base / "weights" / DEFAULT_NAME
+        yield base / "weights" / name
 
 
 def default_path():
@@ -54,3 +70,31 @@ def default_path():
         f"no {DEFAULT_NAME} found in a weights/ directory near "
         f"{Path(__file__).resolve().parents[2]}. Set {ENV_VAR} to a weights "
         f"file, or to 'none' for the classical colour detector.")
+
+
+def side_path():
+    """The side-view detector, or None to time crossings by colour scan.
+
+    Resolved like :func:`default_path`, with one deliberate difference: a
+    missing file is not an error. The overhead pipeline predates the side view
+    and still runs without it; falling back is a worse answer, not a broken
+    one, and `version.processing_version` records which was used either way.
+
+    A path that is SET but missing still raises. That is a deployment saying it
+    wants a particular model and not getting it, which is worth stopping for.
+    """
+    chosen = os.environ.get(SIDE_ENV_VAR)
+    if chosen:
+        if chosen.strip().lower() in ("none", "classical", ""):
+            return None
+        path = Path(chosen)
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"{SIDE_ENV_VAR}={chosen} does not exist. Set it to a weights "
+                f"file, or to 'none' to time crossings by colour scan.")
+        return path
+
+    for path in _candidates(SIDE_NAME):
+        if path.is_file():
+            return path
+    return None

@@ -6,11 +6,15 @@ import os
 import tempfile
 from pathlib import Path
 
+import numpy as np
+
 from curling_score import timeline, version
+from curling_score import weights as weights_mod
 from curling_score.detect import delivery, release, sequence
 from curling_score.game import (
     endcheck,
     fit,
+    hogtime,
     profile,
     scoreboard as sb,
     secondpass,
@@ -18,7 +22,7 @@ from curling_score.game import (
     shots as shots_mod,
     thinking,
 )
-from curling_score.geometry import layout
+from curling_score.geometry import layout, sideview
 from curling_score.ingest import cache, frames as F, proxy, source
 
 log = logging.getLogger(__name__)
@@ -137,7 +141,8 @@ def read_board(path, game, progress=log.info):
 def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             use_proxy: bool = True, weights=None, imgsz: int = 448,
             device=None, *, start_s=None, end_s=None, sheet=None,
-            skip_scoreboard: bool = False, on_phase=None, info=None,
+            skip_scoreboard: bool = False, skip_longview: bool = False,
+            on_phase=None, info=None,
             download_attempts=None) -> dict:
     """Analyse a club VOD and return the timeline document.
 
@@ -148,8 +153,10 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     detection time, which is what dominates, not the download.
 
     ``sheet`` overrides the number read from the title. ``skip_scoreboard``
-    leaves out the wall-board pass, which is the only stage that needs the
-    full-resolution original. ``on_phase(name, fraction, message)`` is called as
+    leaves out the wall-board pass, and ``skip_longview`` leaves out the side
+    views that time the throwing end's hog crossing -- both are stages that
+    need the full-resolution original, for a caller that does not keep it.
+    ``on_phase(name, fraction, message)`` is called as
     the stages run, for a caller that wants to show progress. ``info`` lets a
     caller that already fetched the metadata pass it in rather than ask
     YouTube twice.
@@ -186,6 +193,20 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             f"{name} panel {setup.rect} {setup.calib.px_per_m:.1f} px/m "
             f"(residual {setup.calib.residual_m * 100:.2f} cm)"
         )
+    # The two wide side views. They watch the far end's hog line, which the
+    # overhead panel loses on about 40% of throws, and they are read straight
+    # from the original -- like the scoreboard, and for the same reason.
+    sideviews = None
+    if not skip_longview:
+        h, w = calib_frames[0].shape[:2]
+        plate = np.median(
+            np.stack([f.astype("float32") for f in calib_frames]), axis=0)
+        try:
+            rects = sideview.locate(panels, width=w, height=h)
+            sideviews = {n: sideview.solve(plate, r, name=n)
+                         for n, r in rects.items()}
+        except sideview.SideViewError as exc:
+            progress(f"side views unusable, so this video has no splits: {exc}")
     phase("calibrate", 1.0, "calibrated")
 
     # Every later pass decodes only the overhead strip, which is about a
@@ -332,6 +353,9 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             # weaker thing to ask of the same footage than a release was, and
             # cannot reach back into the shot list.
             thinking.time_shots(shots, far_seq, far.view_y_min_m)
+            if sideviews is not None:
+                hogtime.time_hog_crossings(
+                    shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
             built = timeline.build_end(
                 end.number, end.house, end.start_s, end.end_s, shots,
                 board_score=(None if scores is None
@@ -393,14 +417,19 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     phase("rules", 1.0, "timeline built")
 
     calibration = {
-        name: {
-            "rect": list(s.rect),
-            "px_per_m": round(s.calib.px_per_m, 3),
-            "center_px": [round(v, 2) for v in s.calib.center_px],
-            "residual_m": round(s.calib.residual_m, 5),
-            "flipped": s.calib.flipped,
-        }
-        for name, s in setups.items()
+        **{
+            name: {
+                "rect": list(s.rect),
+                "px_per_m": round(s.calib.px_per_m, 3),
+                "center_px": [round(v, 2) for v in s.calib.center_px],
+                "residual_m": round(s.calib.residual_m, 5),
+                "flipped": s.calib.flipped,
+            }
+            for name, s in setups.items()
+        },
+        **{name: {"rect": list(v.rect), "tee_row": round(v.tee_row, 2),
+                  "hog_row": round(v.hog_row, 2)}
+           for name, v in (sideviews or {}).items()},
     }
     return timeline.build_document(
         video_id=info.video_id,
@@ -410,7 +439,12 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         calibration=calibration,
         games=out_games,
         window=(start_s, end_s),
-        processing_version=version.processing_version(weights),
+        # The side detector is folded in: it times every throwing-end hog
+        # crossing, so it changes the timeline as surely as the overhead one.
+        # Resolved here rather than passed, because nothing upstream chooses
+        # it -- `hogtime` takes the same default.
+        processing_version=version.processing_version(
+            weights, weights_mod.side_path()),
     )
 
 

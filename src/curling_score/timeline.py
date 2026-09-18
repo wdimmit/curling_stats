@@ -8,7 +8,7 @@ down-sheet.
 from copy import deepcopy
 from datetime import datetime, timezone
 
-from curling_score.game import classify, rules, shots as shots_mod, split, thinking
+from curling_score.game import classify, hogtime, rules, shots as shots_mod, split, thinking
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
@@ -87,7 +87,8 @@ def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
         throw = s.throw
         dv = getattr(s, "delivery", None)
         rel = getattr(s, "release", None)
-        sp = split.long_split(rel, dv)
+        sp = split.long_split(rel, dv, t_hog=hogtime.crossing(s),
+                              v_hog=hogtime.speed_at_hog(s))
         t_tee = thinking.tee_crossing(s)
         think = clock.per_shot[i] if i < len(clock.per_shot) else None
         kind, kind_conf = classify.classify_shot(s)
@@ -135,6 +136,22 @@ def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
                 ),
                 "long_split_baseline_m": (
                     None if sp is None else round(float(sp.baseline_m), 3)
+                ),
+                # How far the far crossing was reached for, in the PANEL's y
+                # units -- 0 when it was observed. Not the old
+                # `long_split_extrapolated_m`, which was the throwing end in
+                # metres: different end, different units, and old charts still
+                # read that one.
+                # The panel's own tripwire against the side view's answer, or
+                # null when the panel had no reading. While the composite's
+                # sources are out of step this measures the desync rather than
+                # the detector -- see scripts/ds13/sync_report.py.
+                "long_split_panel_delta_s": (
+                    None if sp is None or sp.panel_delta is None
+                    else round(float(sp.panel_delta), 3)
+                ),
+                "long_split_far_reach_u": (
+                    None if sp is None else round(float(sp.far_reach), 4)
                 ),
                 "thinking_time_s": (
                     None if think is None else round(float(think), 2)

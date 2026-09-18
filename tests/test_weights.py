@@ -28,3 +28,27 @@ class TestDefaultPath:
     def test_can_be_asked_for_nothing_at_all(self, monkeypatch):
         monkeypatch.setenv("CURLING_SCORE_WEIGHTS", "none")
         assert weights.default_path() is None
+
+
+class TestTheWorkerImageShipsBothDetectors:
+    """A worker image built without the side model would reprocess an archive,
+    succeed, and quietly republish the old answers -- because `side_path`
+    treats a missing file as "use the colour scan", which is right in general
+    and wrong for a deployment that asked for the model."""
+
+    def _dockerfile(self):
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1] / "Dockerfile.worker").read_text()
+
+    def test_it_copies_the_side_model(self):
+        assert "COPY weights/${SIDE_MODEL}" in self._dockerfile()
+
+    def test_it_pins_the_side_model_by_environment(self):
+        """Pinned, not left to resolution: an explicitly set path that is
+        missing raises, where an unset one silently falls back."""
+        df = self._dockerfile()
+        assert "CURLING_SCORE_SIDE_WEIGHTS=/opt/curling/weights/${SIDE_MODEL}" in df
+
+    def test_the_default_matches_what_the_repo_ships(self):
+        from curling_score import weights
+        assert f"ARG SIDE_MODEL={weights.SIDE_NAME}" in self._dockerfile()

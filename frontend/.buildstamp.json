@@ -9,7 +9,7 @@
     "frontend/core/index.mjs": "d40dcd7029389f3fadcf9c4cf590a30b52d7ba9b24d6e29c7af2b479f2403b9c",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
     "frontend/core/shots.mjs": "7bbae170388975b0f70afd6c3588083b4f2baf6a32bb8a839a52086bf7a60310",
-    "frontend/core/stats.mjs": "082788646c0784a7ab0dbb6d0eae6d1efca155772a8fc58cba47371bc78a75a0",
+    "frontend/core/stats.mjs": "cd81927a50176b699daa09e861ec8ada69ceaec5517d370656177c9a3c431a5b",
     "frontend/core/timeline.mjs": "7b4696ac4a0e937b824be62004ec0925dd5ef14e29cf8c933f7e85b005a08109",
     "frontend/core/watch.mjs": "0c5a98b69b4ed50064a72a716d0300278cba2880ae929930c299e5f31d421286",
     "frontend/core/wire.mjs": "25a1330110de4c01aa30e24439e8fcdeb3eccc6f964bfdf640831c2878bdb1f7",
@@ -38,6 +38,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "6e4b4ee181968976d23b26da584a241d49c549eb82b38c64b1e0cd4a514dea82",
-    "src/curling_score/viewer/app.js": "b0f135980391fb50458c6be51acb20e5b33bb13cbbaeed3bfca7042253caa550"
+    "src/curling_score/viewer/app.js": "5a7c65e7902fe67f97a34e0a58d1ede4a244f29e4a027f22b5a20f40a478c743"
   }
 }

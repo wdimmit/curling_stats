@@ -28,8 +28,16 @@ export function thinkText(s) {
  * looking exact -- a chart pins its run, so old ones keep their old numbers. */
 export function splitText(s) {
   if (s?.long_split_s == null) return "—";
+  /* Two different qualifiers, from two eras, and they must not be confused.
+   * `long_split_extrapolated_m` is the THROWING end in metres, carried by
+   * timelines analysed before both hog lines were timed at the paint.
+   * `long_split_far_reach_u` is the ARRIVING end in the panel's own y units,
+   * set when that crossing was reached for rather than seen. Either way the
+   * split is not exact and says so. */
   const extra = s.long_split_extrapolated_m;
-  const note = extra > 0.05 ? ` (${extra.toFixed(1)} m est.)` : "";
+  const reach = s.long_split_far_reach_u;
+  const note = extra > 0.05 ? ` (${extra.toFixed(1)} m est.)`
+             : reach > 0 ? " (est.)" : "";
   return `${s.long_split_s.toFixed(1)} s${note}`;
 }
 

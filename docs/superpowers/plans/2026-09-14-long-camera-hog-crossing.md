@@ -153,7 +153,7 @@ EOF
 **Interfaces:**
 - Consumes: `sideview.Rect` from Task 1.
 - Produces:
-  - `sideview.SideView` — frozen dataclass with `rect: Rect`, `tee_row: float`, `hog_row: float`, and properties `rows_tee_to_hog: float` and `row_for(x_m: float) -> float`.
+  - `sideview.SideView` — frozen dataclass with `rect: Rect`, `tee_row: float`, `hog_row: float`, `d_m: float`, the property `rows_tee_to_hog: float`, and the methods `row_for(x_m: float) -> float` and `metres_at(row: float) -> float` (inverse of `row_for`; Task 4's speed gate uses it).
   - `sideview.solve(plate, rect, name="side") -> SideView`, raising `SideViewError`.
   - `synth.side_view(tee_row=..., hog_row=..., w=..., h=...) -> np.ndarray` (BGR) and `synth.side_view_stone(img, row, width_px, color) -> np.ndarray`.
 
@@ -186,6 +186,11 @@ def side_view(tee_row=430.0, hog_row=520.0, w=810, h=1080, d_m=40.233,
               noise=0.0, seed=0):
     """An oblique view down the sheet at the far end's house.
 
+    Returns **RGB**, unlike ``house_panel`` above, which is BGR for cv2. These
+    feed ``detect/longview.py``, which reads frames ffmpeg decoded as rgb24,
+    and its colour mask takes channel 0 as red. ``sideview.solve`` is unaffected
+    either way -- greenness and luminance are channel-order agnostic.
+
     Renders only what ``sideview.solve`` reads: the green 12-ft annulus as two
     bands either side of the tee, and the hog line as a darker row. Positions
     come from the same perspective map the fit inverts, so a correct fit
@@ -215,7 +220,7 @@ def side_view(tee_row=430.0, hog_row=520.0, w=810, h=1080, d_m=40.233,
 
 
 def side_view_stone(img, row, width_px=52, color="red", x=None):
-    """Paint a stone on a side view: a grey body with a coloured handle."""
+    """Paint a stone on a side view: a grey body with a coloured handle. RGB."""
     import numpy as np
 
     out = img.copy()
@@ -226,9 +231,9 @@ def side_view_stone(img, row, width_px=52, color="red", x=None):
     x0, x1 = cx - width_px // 2, cx + width_px // 2
     out[max(0, r - body_h):r, max(0, x0):x1] = (150, 150, 150)
     hw = max(3, width_px // 4)
-    bgr = (40, 40, 210) if color == "red" else (40, 210, 230)
+    rgb = (210, 40, 40) if color == "red" else (230, 210, 40)
     out[max(0, r - body_h - hw // 2):max(0, r - body_h) + 1,
-        cx - hw:cx + hw] = bgr
+        cx - hw:cx + hw] = rgb
     return out
 ```
 
@@ -612,42 +617,52 @@ import numpy as np
 import pytest
 
 from curling_score.detect import longview
-from curling_score.geometry import sideview
+from curling_score.geometry import constants as C, sideview
 from tests import synth
 
 VIEW = sideview.SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0)
 
 
-def travelling(start_row=470.0, end_row=560.0, n=30, color="red",
-               width_px=52, x=None):
-    """A stone crossing the hog line at a steady rate, one frame per sample."""
-    rows = np.linspace(start_row, end_row, n)
-    return ([synth.side_view_stone(synth.side_view(), r, width_px, color, x=x)
-             for r in rows],
-            [i / 30.0 for i in range(n)])
+def travelling(speed_m_s=2.0, t_cross=0.5, span_s=1.0, fps=30.0, color="red",
+               width_px=52, x=None, view=VIEW):
+    """A stone crossing the hog line at ``speed_m_s``, timed to cross at
+    ``t_cross``.
+
+    Rows come from ``view.row_for`` rather than from a hand-picked pixel range,
+    so a fixture cannot drift out of the speed gate's range without the test
+    saying which bound it broke.
+    """
+    times = [i / fps for i in range(int(span_s * fps) + 1)]
+    frames = [synth.side_view_stone(
+                  synth.side_view(),
+                  view.row_for(C.TEE_TO_HOGLINE_M + (t - t_cross) * speed_m_s),
+                  width_px, color, x=x)
+              for t in times]
+    return frames, times
 
 
 class TestFindingTheCrossing:
     def test_it_times_the_frame_the_stone_reaches_the_line(self):
-        frames, times = travelling(start_row=470.0, end_row=560.0, n=31)
+        frames, times = travelling(speed_m_s=2.0, t_cross=0.5)
         got = longview.find_in_frames(frames, VIEW, "red", times)
         assert got, got.reason
-        # 470 -> 560 over 1.0 s, so row 520 falls halfway
-        assert got.t == pytest.approx(0.5, abs=0.05)
+        assert got.t == pytest.approx(0.5, abs=0.04)
 
     def test_it_interpolates_between_frames_rather_than_snapping(self):
-        frames, times = travelling(start_row=500.0, end_row=540.0, n=21)
+        frames, times = travelling(speed_m_s=2.0, t_cross=0.517)
         got = longview.find_in_frames(frames, VIEW, "red", times)
+        assert got.t == pytest.approx(0.517, abs=0.04)
         assert got.t not in times
 
     def test_it_finds_a_yellow_stone_too(self):
-        frames, times = travelling(color="yellow")
+        frames, times = travelling(color="yellow")   # RGB fixture, see synth
         assert longview.find_in_frames(frames, VIEW, "yellow", times)
 
 
 class TestWhatItRefuses:
     def test_a_stone_that_stops_short_of_the_line(self):
-        frames, times = travelling(start_row=460.0, end_row=505.0)
+        # crosses at t = 3.0 s, well past the end of a 1 s window
+        frames, times = travelling(speed_m_s=2.0, t_cross=3.0)
         got = longview.find_in_frames(frames, VIEW, "red", times)
         assert not got and "never reached" in got.reason
 
@@ -660,45 +675,45 @@ class TestWhatItRefuses:
     def test_two_stones_crossing_in_the_same_window(self):
         """One is the throw and one is a rock already in play being cleared.
         Nothing here can tell which, so it refuses rather than pick."""
-        rows = np.linspace(470.0, 560.0, 31)
-        frames = []
-        for r in rows:
-            f = synth.side_view_stone(synth.side_view(), r, 52, "red", x=250)
-            frames.append(synth.side_view_stone(f, r + 6, 52, "red", x=560))
-        got = longview.find_in_frames(frames, VIEW, "red",
-                                      [i / 30 for i in range(31)])
+        left, times = travelling(speed_m_s=2.0, t_cross=0.5, x=250)
+        right, _ = travelling(speed_m_s=2.0, t_cross=0.55, x=560)
+        frames = [synth.side_view_stone(a, VIEW.hog_row, 0, "red")  # keep a copy
+                  if False else a for a in left]
+        for i, f in enumerate(right):
+            frames[i] = np.where(f != synth.SIDE_ICE, f, frames[i])
+        got = longview.find_in_frames(frames, VIEW, "red", times)
         assert not got and "two candidates" in got.reason
 
     def test_a_broom_pad_with_no_stone_under_it(self):
-        frames = []
-        for r in np.linspace(470.0, 560.0, 31):
-            f = synth.side_view()
-            f = synth.side_view_stone(f, r, 52, "red")
-            # erase the granite body, leaving only the coloured pad
-            f[int(r) - 22:int(r), 379:431] = synth.SIDE_ICE
-            frames.append(f)
-        got = longview.find_in_frames(frames, VIEW, "red",
-                                      [i / 30 for i in range(31)])
+        frames, times = travelling(speed_m_s=2.0, t_cross=0.5)
+        stripped = []
+        for f, t in zip(frames, times):
+            r = int(VIEW.row_for(C.TEE_TO_HOGLINE_M + (t - 0.5) * 2.0))
+            g = f.copy()
+            g[max(0, r - 22):r, 379:431] = synth.SIDE_ICE   # erase the granite
+            stripped.append(g)
+        got = longview.find_in_frames(stripped, VIEW, "red", times)
         assert not got and "no candidate" in got.reason
 
     def test_a_blob_far_too_wide_to_be_a_stone(self):
-        frames = []
-        for r in np.linspace(470.0, 560.0, 31):
-            frames.append(synth.side_view_stone(synth.side_view(), r, 160, "red"))
-        got = longview.find_in_frames(frames, VIEW, "red",
-                                      [i / 30 for i in range(31)])
-        assert not got
+        frames, times = travelling(speed_m_s=2.0, t_cross=0.5, width_px=160)
+        assert not longview.find_in_frames(frames, VIEW, "red", times)
 
     def test_a_stone_crawling_too_slowly_to_be_a_delivery(self):
         """A stone being nudged aside by a sweeper, or one already at rest that
         the tracker drifted onto. A delivery crosses its hog line between
         1.2 and 3.2 m/s -- the range the 27 hand marks imply."""
-        frames, times = travelling(start_row=515.0, end_row=525.0, n=60)
+        frames, times = travelling(speed_m_s=0.3, t_cross=1.0, span_s=2.0)
+        got = longview.find_in_frames(frames, VIEW, "red", times)
+        assert not got and "speed" in got.reason
+
+    def test_a_blur_far_too_fast_to_be_a_stone(self):
+        frames, times = travelling(speed_m_s=6.0, t_cross=0.5)
         got = longview.find_in_frames(frames, VIEW, "red", times)
         assert not got and "speed" in got.reason
 
     def test_a_stone_drifting_the_wrong_way(self):
-        frames, times = travelling(start_row=560.0, end_row=470.0)
+        frames, times = travelling(speed_m_s=-2.0, t_cross=0.5)
         got = longview.find_in_frames(frames, VIEW, "red", times)
         assert not got
 

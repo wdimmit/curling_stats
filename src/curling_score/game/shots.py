@@ -48,6 +48,10 @@ class Shot:
     # rather than anything seen. Travels with the shot so that no total can
     # quietly absorb a guess.
     tee_estimated: bool = False
+    # When this rock crossed the *throwing* end's hog line, read from the
+    # side view -- see ``hogtime.time_hog_crossings``. None whenever the
+    # detector would not commit to a crossing; nothing stands in for it.
+    t_hog_s: float | None = None
     # Whether we believe the house we are showing. False means we could not
     # read it and a person has to fill it in -- which is a different statement
     # from an empty house, and must never be rendered as one.

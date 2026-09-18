@@ -36,12 +36,59 @@ def _quiet_ffmpeg():
 
     PyAV itself installs a callback that does nothing. The dangerous one is
     installed by ``av.logging.set_level``, and torchvision calls that on
-    import -- which happens when the YOLO detector is built, long after this
-    module loaded. So restoring the default once at import was undone before
-    the first frame was decoded; it has to be re-asserted at every open.
+    import. Re-asserting the default at every open was the previous fix, and
+    it is one step too early -- see :func:`_seal_logging_callback`.
     """
+    _seal_logging_callback()
     av.logging.restore_default_callback()
     av.logging.set_libav_level(av.logging.ERROR)
+
+
+_logging_sealed = False
+_real_set_level = None
+
+
+def _seal_logging_callback():
+    """Stop anything from ever installing the Python log callback.
+
+    Re-asserting the default at open is too early, because the import that
+    installs the callback lands *after* it. ``torchvision.io`` is what calls
+    ``av.logging.set_level``, and it is not imported when the YOLO detector is
+    built -- it is imported on the detector's **first predict**. Measured on the
+    worker: ``torchvision.io`` is absent from ``sys.modules`` before the
+    detector is constructed and still absent after its constructor returns, and
+    one ``predict`` call brings it in.
+
+    Every detection loop here consumes a lazy frame generator, so that first
+    predict happens *inside* the ``av.open`` block. The safe callback is
+    installed at open, replaced mid-decode by the import, and the container then
+    closes with the dangerous one in place -- precisely the interleaving the
+    deadlock needs, which is why it was always seen on a fresh process's first
+    end. Observed again on 2026-09-15: 16 ``av:h264:df*`` decoder threads and the
+    main thread all parked in ``futex_do_wait``, GPU allocated and 0% busy, no
+    CPU time accruing over 45 s.
+
+    Restoring the default again just before the close would not close the race:
+    a decoder thread already blocked inside the old callback stays blocked. So
+    the callback must never be installed at all. ``set_level`` is looked up on
+    the module at each call site -- torchvision's line is
+    ``av.logging.set_level(av.logging.ERROR)`` -- so rebinding the attribute to
+    a shim that keeps the level and drops the callback is enough.
+    """
+    global _logging_sealed, _real_set_level
+    if _logging_sealed:
+        return
+    # Kept so the hazard itself stays testable: PyAV's own `set_level` still
+    # installs the callback, and a test that could no longer reach it could no
+    # longer show what this seal is for.
+    _real_set_level = av.logging.set_level
+
+    def _set_level_without_callback(level=None):
+        if level is not None:
+            av.logging.set_libav_level(level)
+
+    av.logging.set_level = _set_level_without_callback
+    _logging_sealed = True
 
 
 @dataclass(frozen=True)

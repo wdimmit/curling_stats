@@ -75,6 +75,8 @@ class TestProcessJob:
                            out_dir=tmp_path / "out", analyze_fn=analyze_fn,
                            fetch_info=fake_info)
         assert seen["skip_scoreboard"] is False and seen["download_attempts"] == 1
+        assert seen["skip_longview"] is False, \
+            "the side views must run unless a caller asks otherwise"
         assert seen["info"].video_id == "VXU9xwmugRg"
         assert json.loads(api.uploads["memory://timeline.json"])["games"][0]["index"] == 0
         assert api.uploads["memory://deadbeef"] == b"npz"
@@ -99,6 +101,21 @@ class TestProcessJob:
                            out_dir=tmp_path / "out", analyze_fn=analyze_fn,
                            fetch_info=fake_info)
         assert (seen["start_s"], seen["end_s"], seen["sheet"]) == (19400.0, 34400.0, 4)
+
+    def test_skip_longview_reaches_the_pipeline_when_set(self, tmp_path):
+        """A deployment that sets SKIP_LONGVIEW must actually turn the side
+        views off -- FIX I4: the parameter used to have no caller at all."""
+        api = FakeApi([])
+        seen = {}
+
+        def analyze_fn(url, **kw):
+            seen.update(kw)
+            return fake_doc()
+
+        worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
+                           out_dir=tmp_path / "out", skip_longview=True,
+                           analyze_fn=analyze_fn, fetch_info=fake_info)
+        assert seen["skip_longview"] is True
 
     def test_a_detcache_hit_is_not_reuploaded(self, tmp_path):
         det = tmp_path / "detections"
@@ -174,6 +191,20 @@ class TestResolveWeights:
         with caplog.at_level("WARNING"):
             assert worker.resolve_weights() is None
         assert "classical" in caplog.text
+
+
+class TestResolveSkipLongview:
+    def test_unset_means_the_side_views_run(self, monkeypatch):
+        monkeypatch.delenv("SKIP_LONGVIEW", raising=False)
+        assert worker.resolve_skip_longview() is False
+
+    def test_set_to_1_skips_them(self, monkeypatch):
+        monkeypatch.setenv("SKIP_LONGVIEW", "1")
+        assert worker.resolve_skip_longview() is True
+
+    def test_anything_else_still_means_the_side_views_run(self, monkeypatch):
+        monkeypatch.setenv("SKIP_LONGVIEW", "true")
+        assert worker.resolve_skip_longview() is False
 
 
 class TestProgressIsBestEffort:

@@ -179,7 +179,7 @@ class TestLongSplit:
     def test_measures_between_the_two_crossings(self):
         r = release_at(t0=0.0, speed=2.0)
         d = delivery_at(t0=30.0, speed=0.8)
-        s = split.long_split(r, d)
+        s = split.long_split(r, d, t_hog=split.hog_crossing(r.track))
         assert s is not None
         assert s.baseline_m == pytest.approx(split.BASELINE_M, abs=1e-6)
         assert s.t_start == pytest.approx(split.crossing_time(r.track, LINE), abs=1e-9)
@@ -189,22 +189,33 @@ class TestLongSplit:
     def test_an_arrival_first_seen_below_the_line_is_unmeasured(self):
         r = release_at()
         d = delivery_at(t0=30.0, y0=3.0, y1=0.2)
-        assert split.long_split(r, d) is None
+        assert split.long_split(r, d, t_hog=split.hog_crossing(r.track)) is None
 
     def test_a_throw_lost_before_the_line_is_unmeasured(self):
-        assert split.long_split(release_at(y1=1.0), delivery_at()) is None
+        r = release_at(y1=1.0)
+        assert split.long_split(
+            r, delivery_at(), t_hog=split.hog_crossing(r.track)) is None
 
-    def test_no_release_means_no_split(self):
-        assert split.long_split(None, delivery_at()) is None
+    def test_no_release_no_longer_means_no_split(self):
+        """Deliberately reversed. A release feeds neither end of a hog-to-hog
+        split; it fed two checks, both already conditional. Requiring one
+        refused 35 shots on VXU9xwmugRg that had both crossings -- and the
+        overhead camera losing ~40% of throws before the hog line is the whole
+        reason the side view was built. See TestReleaseIsOptional below for
+        what replaced the mispairing check it did buy.
+        """
+        assert split.long_split(None, delivery_at(), t_hog=0.0) is not None
 
     def test_no_delivery_means_no_split(self):
-        assert split.long_split(release_at(), None) is None
+        r = release_at()
+        assert split.long_split(
+            r, None, t_hog=split.hog_crossing(r.track)) is None
 
     def test_a_backwards_split_is_refused(self):
         """An arrival timed before its own throw is a pairing error, not a split."""
         r = release_at(t0=100.0)
         d = delivery_at(t0=10.0)
-        assert split.long_split(r, d) is None
+        assert split.long_split(r, d, t_hog=split.hog_crossing(r.track)) is None
 
 
 class TestItRefusesAPhysicallyImpossibleSplit:
@@ -240,12 +251,14 @@ class TestItRefusesAPhysicallyImpossibleSplit:
         start = split.hog_crossing(r.track)
         d = self._arrival_crossing_at(start + 12.0, speed=2.0)
         assert split.speed_at_line(d.track) > split.speed_at_line(r.track)
-        assert split.long_split(r, d) is None
+        assert split.long_split(r, d, t_hog=start) is None
 
     def test_a_stone_that_slowed_on_the_way_down_is_kept(self):
         r = release_at(t0=0.0, speed=2.0)
         start = split.hog_crossing(r.track)
-        s = split.long_split(r, self._arrival_crossing_at(start + split.BASELINE_M / 1.5))
+        s = split.long_split(
+            r, self._arrival_crossing_at(start + split.BASELINE_M / 1.5),
+            t_hog=start)
         assert s is not None
         assert s.speed_m_s == pytest.approx(1.5, abs=0.05)
 
@@ -255,7 +268,8 @@ class TestItRefusesAPhysicallyImpossibleSplit:
         start = split.hog_crossing(r.track)
         assert split.long_split(
             r, self._arrival_crossing_at(start + split.BASELINE_M / 2.5,
-                                         speed=2.5)) is not None
+                                         speed=2.5),
+            t_hog=start) is not None
 
     def test_the_tolerance_forgives_measurement_noise_only(self):
         assert 1.0 < split.SPEED_TOLERANCE <= 1.5
@@ -263,6 +277,191 @@ class TestItRefusesAPhysicallyImpossibleSplit:
     def test_the_split_reports_its_own_mean_speed(self):
         r = release_at(t0=0.0, speed=2.0)
         start = split.hog_crossing(r.track)
-        s = split.long_split(r, self._arrival_crossing_at(start + split.BASELINE_M / 1.6))
+        s = split.long_split(
+            r, self._arrival_crossing_at(start + split.BASELINE_M / 1.6),
+            t_hog=start)
         assert s.speed_m_s == pytest.approx(1.6, abs=0.05)
         assert s.speed_m_s == pytest.approx(s.baseline_m / s.seconds, abs=1e-9)
+
+
+class TestTheSideViewIsTheSourceForTheThrowingEnd:
+    """The panel keeps timing the target end, and cross-checks the other one."""
+
+    def test_the_throwing_end_comes_from_the_side_view_when_given(self):
+        r = release_at(t0=0.0, speed=2.0)
+        d = delivery_at(t0=40.0, speed=0.8)
+        panel = split.hog_crossing(r.track)
+        s = split.long_split(r, d, t_hog=panel + 0.1)
+        assert s.t_start == pytest.approx(panel + 0.1, abs=1e-9)
+
+    def test_without_one_there_is_no_split_even_if_the_panel_saw_it(self):
+        """One method per game: a shot the side view refused has no split,
+        rather than a second-best number that cannot be compared with its
+        neighbours."""
+        r = release_at(t0=0.0, speed=2.0)
+        assert split.hog_crossing(r.track) is not None
+        assert split.long_split(r, delivery_at(t0=40.0), t_hog=None) is None
+
+    def test_the_two_disagreeing_no_longer_refuses_both(self):
+        """Deliberately reversed. The long camera is the primary timing source
+        and a disagreement is recorded, not obeyed.
+
+        The veto was discarding correct answers: of three refused shots on
+        AEqLTgM25Tc with an independent hand mark, the side view was right to
+        0.03 s and the panel wrong by up to 0.95 s every time. The sync pass
+        then found why -- eight of nine cached recordings have a camera pair
+        out of step -- so the panel is not a second opinion about the same
+        instant, it is a clock that disagrees, and a threshold cannot tell that
+        from a mispairing.
+        """
+        r = release_at(t0=0.0, speed=2.0)
+        panel = split.hog_crossing(r.track)
+        d = delivery_at(t0=40.0, speed=0.8)
+        far = split.CROSS_CHECK_S * 3
+        sp = split.long_split(r, d, t_hog=panel + far)
+        assert sp is not None
+        assert sp.panel_delta == pytest.approx(far, abs=1e-6)
+
+    def test_a_split_records_the_panel_disagreement(self):
+        r = release_at(t0=0.0, speed=2.0)
+        panel = split.hog_crossing(r.track)
+        d = delivery_at(t0=40.0, speed=0.8)
+        sp = split.long_split(r, d, t_hog=panel + 0.05)
+        assert sp.panel_delta == pytest.approx(0.05, abs=1e-6)
+
+    def test_no_panel_reading_means_no_disagreement_to_record(self):
+        """None, not zero: 'the panel did not see it' and 'the panel agreed
+        exactly' are different facts and the sync report reads them apart."""
+        d = delivery_at(t0=40.0, speed=0.8)
+        sp = split.long_split(None, d, t_hog=5.0, v_hog=2.5)
+        assert sp is not None and sp.panel_delta is None
+
+    def test_a_disagreement_inside_the_tolerance_is_kept(self):
+        r = release_at(t0=0.0, speed=2.0)
+        panel = split.hog_crossing(r.track)
+        d = delivery_at(t0=40.0, speed=0.8)
+        assert split.long_split(r, d, t_hog=panel + split.CROSS_CHECK_S / 2)
+
+    def test_a_disagreement_of_exactly_the_tolerance_is_kept(self):
+        """The check is a strict ``>``, so a disagreement of exactly
+        ``CROSS_CHECK_S`` is a decision, not an accident: pin it down."""
+        r = release_at(t0=0.0, speed=2.0)
+        panel = split.hog_crossing(r.track)
+        d = delivery_at(t0=40.0, speed=0.8)
+        assert split.long_split(r, d, t_hog=panel + split.CROSS_CHECK_S)
+
+    def test_a_throw_the_panel_never_saw_still_gets_a_split(self):
+        """This is the whole point: 40% of throws are lost before the line."""
+        r = release_at(t0=0.0, speed=2.0, y1=2.5)     # lost well short
+        assert split.hog_crossing(r.track) is None
+        s = split.long_split(r, delivery_at(t0=40.0), t_hog=5.0)
+        assert s is not None and s.t_start == pytest.approx(5.0)
+
+
+class TestReleaseIsOptional:
+    """`long_split` is hog to hog: the near crossing comes from the side view
+    and the far one from the arriving end's panel. A release track feeds
+    neither, only two checks -- and requiring one anyway refused 35 shots on
+    VXU9xwmugRg that had both crossings. The overhead camera losing ~40% of
+    throws before the hog line is the reason the side view exists; demanding a
+    release put that loss straight back.
+    """
+
+    def _delivery(self, t_far):
+        class D:
+            track = tuple((t_far - 1 + i * 0.5, 0.0, split.HOG_APPARENT_Y_M - 1 + i)
+                          for i in range(4))
+        return D()
+
+    def test_a_split_publishes_with_no_release_at_all(self):
+        sp = split.long_split(None, self._delivery(20.0), t_hog=10.0, v_hog=2.5)
+        assert sp is not None
+        assert sp.seconds > 0
+
+    def test_it_still_needs_both_crossings(self):
+        assert split.long_split(None, None, t_hog=10.0, v_hog=2.5) is None
+        assert split.long_split(None, self._delivery(20.0), t_hog=None) is None
+
+    def test_a_mean_speed_the_near_crossing_cannot_account_for_is_refused(self):
+        """Without a release there is no panel speed to compare against, so
+        the bound is physical: a stone only slows, so its mean speed over the
+        baseline cannot exceed the speed it crossed the first line at."""
+        # 22.229 m in 2 s is 11 m/s, against a near crossing of 2.0 m/s.
+        assert split.long_split(None, self._delivery(12.0), t_hog=10.0,
+                                v_hog=2.0) is None
+
+    def test_that_bound_does_not_fire_on_a_plausible_split(self):
+        sp = split.long_split(None, self._delivery(20.0), t_hog=10.0, v_hog=2.5)
+        assert sp is not None
+
+    def test_without_v_hog_the_bound_cannot_run_and_does_not_pretend_to(self):
+        """A split with neither a release nor a side-view speed is published
+        unchecked for pairing. That is a real gap, not an oversight -- it is
+        worth knowing rather than hiding behind a default."""
+        sp = split.long_split(None, self._delivery(12.0), t_hog=10.0, v_hog=None)
+        assert sp is not None
+
+
+class TestFarCrossingExtrapolation:
+    """The arriving panel's track often begins just below its hog line, so the
+    crossing is never observed. Reaching back for it is allowed, but only a
+    little, and the result is marked.
+
+    Measured over all 139 tracks on VXU9xwmugRg that DO cross, by hiding
+    everything above a cut: at a reach of 0.05 about 9 in 10 land inside the
+    0.15 s a crossing is judged by; at 0.14 that falls to 8 in 10 and the bias
+    grows. There is no physical threshold here -- it is a judgement about how
+    much unverifiable error to accept.
+    """
+
+    def _track(self, y0, y1, n=8, t0=10.0, dt=0.1):
+        step = (y1 - y0) / (n - 1)
+        return tuple((t0 + i * dt, 0.0, y0 + i * step) for i in range(n))
+
+    def test_an_observed_crossing_is_not_extrapolated(self):
+        tr = self._track(4.60, 4.20)
+        t, reach = split.far_crossing(tr, split.HOG_APPARENT_Y_M, max_reach=0.05)
+        assert t is not None
+        assert reach == 0.0
+
+    def test_a_track_beginning_just_below_the_line_is_reached_for(self):
+        tr = self._track(4.42, 4.10)
+        t, reach = split.far_crossing(tr, split.HOG_APPARENT_Y_M, max_reach=0.05)
+        assert t is not None
+        assert reach == pytest.approx(split.HOG_APPARENT_Y_M - 4.42, abs=1e-6)
+
+    def test_a_track_beginning_far_below_it_is_refused(self):
+        tr = self._track(4.20, 3.90)
+        t, reach = split.far_crossing(tr, split.HOG_APPARENT_Y_M, max_reach=0.05)
+        assert t is None and reach == 0.0
+
+    def test_the_reach_lands_before_the_first_sample(self):
+        """The stone reached the line before the panel had it, so the time must
+        be earlier than the track's own first point."""
+        tr = self._track(4.42, 4.10)
+        t, _ = split.far_crossing(tr, split.HOG_APPARENT_Y_M, max_reach=0.05)
+        assert t < tr[0][0]
+
+    def test_no_reach_at_all_is_the_old_behaviour(self):
+        tr = self._track(4.42, 4.10)
+        assert split.far_crossing(tr, split.HOG_APPARENT_Y_M)[0] is None
+
+    def test_a_split_records_how_far_it_reached(self):
+        # t_hog=2.0, not 5.0: the far crossing lands near 9.9 s, and over the
+        # 22.229 m baseline a 4.9 s split implies 4.54 m/s, which the pairing
+        # bound rightly refuses against a 2.5 m/s near crossing. The fixture was
+        # wrong, not the guard.
+        class D:
+            track = None
+        D.track = self._track(4.42, 4.10)
+        sp = split.long_split(None, D(), t_hog=2.0, v_hog=2.5)
+        assert sp is not None
+        assert sp.far_reach > 0
+
+    def test_an_observed_split_records_no_reach(self):
+        class D:
+            track = None
+        D.track = self._track(4.60, 4.10)
+        sp = split.long_split(None, D(), t_hog=2.0, v_hog=2.5)
+        assert sp is not None
+        assert sp.far_reach == 0.0

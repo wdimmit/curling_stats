@@ -165,18 +165,106 @@ Run over every end of all eight catalogued videos and report:
 - agreement with the 27 hand marks
 
 Ship when coverage is >= 90%, no disagreement with the panel exceeds 0.25 s,
-and the hand marks are matched within 0.1 s. Fail any of those and the seam
-means swapping in a trained detector touches `detect/longview.py` alone.
+and the hand marks are matched within 0.1 s.
+
+Fail any of those and a trained detector goes in behind the seam
+`game/hogtime.py` establishes. **In production that seam is one symbol wide**:
+`hogtime` imports `longview` only for `WINDOW_S` and the default
+`find=longview.find_crossing`, so the pipeline changes by passing a different
+`find`.
+
+It is *not* true that a trained detector touches `detect/longview.py` alone --
+this document said so, and ds13 has since made it wrong.
+`harvest/sidepool.py` depends on eight of that module's symbols (`candidates`,
+`find_in_frames`, `colour_mask`, `runs`, `BODY_DARKER_THAN_ICE`,
+`STONE_WIDTH_AT_HOG_PX`, `Proposal`, `KEY_OK`), and `harvest/sideframes.py`'s
+refusal quota is keyed on `longview.KEYS`' members -- not by importing them,
+but pinned by `tests/test_sideframes.py`, which asserts the quota's keys are a
+subset of that frozenset. That is deliberate: ds13 exists to mine
+the classical detector's *refusals*, so it needs the classical detector to go
+on existing. Rewriting `longview.py` in place would break it. Adding the
+trained detector beside it and pointing `hogtime`'s `find=` at the new one
+would not.
 
 ## Known risks
 
-- **Side-view calibration is not yet robust.** On 12-frame plates it fits 7 of
-  10 views; sheet 1's left view fits at 40 px against 78-90 elsewhere, and
-  sheets 2 and 5's right views find an odd number of ring edges. Production
-  would have 24 frames and cleaner medians, so these are plausibly thin-plate
-  artefacts -- but that is unproven and is the first thing to settle.
-- **The classical detector is exercised on one video.** That is what the gate
-  above is for.
+- ~~**Side-view calibration is not yet robust.**~~ **CLOSED.** It fitted 7 of
+  10 views on 12-frame plates when this was written. All 10 now fit, on those
+  same thin plates. Two commits did it: `c051a0c` fits the tee from the
+  annulus's outermost pair only -- the edge counts across the ten views are
+  `[4,4,4,4,4,6,4,4,4,4]`, and with six edges the second and second-to-last are
+  not the 8-ft boundary -- and `e7d6839` set `_GREEN_THRESHOLD` from the real
+  plates' measured annulus peaks (6.44-13.27) rather than from a synthetic
+  fixture. Pinned by `tests/test_sideview.py::TestEveryRealView` and
+  `tests/test_sideviews.py::test_real_videos_calibrate_both_views`, both of
+  which run against all five sheets.
+- **The classical detector is measured on one video** (`VXU9xwmugRg`, sheet
+  2 -- the only video cached where this was run; the other seven catalogued
+  videos live in the worker box's cache). `scripts/split_coverage.py` runs
+  the gate above over all 13 ends (208 shots) of that video and none of the
+  three bars hold, but the shape of the shortfall matters as much as the
+  headline number:
+  - **Raw detection is 47.6% (99/208), published coverage is 21.2% (44/208).**
+    The side-view detector finds *some* crossing on nearly half of all shots,
+    before any downstream gate gets a say; more than half of those finds
+    (55 of 99) are then refused. Of those 55: 25 by the panel cross-check, 15
+    because the shot had no release track at all (a separate failure from a
+    missing panel reading -- `long_split` requires a release unconditionally),
+    13 because the delivery track never reached (or reached only
+    non-increasingly) the far hog line, and 2 by the speed-tolerance veto.
+    Panel-only coverage recomputed on the same inputs is 28.4% (59/208, not
+    the 46% the design doc previously quoted from memory -- see below).
+  - **27 of the 44 published splits (61%) were never cross-checked against
+    anything.** The cross-check only runs when the panel's own tripwire has a
+    reading (`panel is not None`); when it does not, `long_split` skips the
+    check entirely and publishes uncorroborated. Only 17 of 44 (39%) were
+    ever compared against an independent reading. This matters directly for
+    a detector-replacement decision: on the panel-blind shots the feature
+    exists to rescue, the cross-check is inactive by construction, so most of
+    today's published coverage carries no corroboration at all.
+  - **Two different agreement numbers, two different populations -- do not
+    conflate them.** Wherever both a side-view and a panel reading exist,
+    whether or not a split was published (n=48, a population that both
+    includes shots that can never be published and excludes 27 of the 44
+    published splits): median |diff| = 0.261 s, worst 0.787 s, against a
+    <= 0.25 s bar. Restricted to the 17 published splits that did have a
+    panel reading (post-veto, n=17): median |diff| = 0.052 s, worst 0.231 s.
+    The second number is **not independent evidence of accuracy** -- it is
+    <= 0.25 s by construction, since a published split's panel reading (when
+    one exists) is definitionally the one that survived the cross-check.
+  - Hand-mark agreement: 20 of 27 found, worst error 0.619 s among those,
+    against a <= 0.1 s bar.
+
+  An earlier version of this risk (and of `task-8-report.md`) said the 57
+  crossings `longview` found but did not publish were all vetoed by the
+  panel cross-check. That was arithmetically impossible -- only 48 shots ever
+  had a panel reading to check against -- and has been superseded by the
+  measured breakdown above (25/15/13/2 of 55, not 57). This report does not
+  draw a ship/no-ship conclusion from these numbers; that adjudication was
+  made on other grounds before this task ran. Full tables in
+  `.superpowers/sdd/2026-09-14-long-camera-hog-crossing/task-8-report.md`.
+- **The 46% -> 28.4% gap has two candidate causes; only one is measured.**
+  Recomputing panel-only coverage across all 13 ends of the identical video
+  with the identical current pipeline gives 28.4% (59/208), not the 46% this
+  doc previously quoted from memory. Candidate cause 1, **measured**: the 46%
+  figure was computed on a hand-picked ~3-end/48-shot subset, not the whole
+  13-end game -- a much smaller and differently-composed population, and this
+  alone would produce a different number. Candidate cause 2, **not measured**:
+  `src/curling_score/game/split.py` (lines 139-144) documents that the
+  speed-tolerance check changed form since 46% was measured -- the old
+  version compared mean speed over the baseline in real metres against slide
+  speed in the panel's own (distorted) units, a mismatch that "threw away
+  good splits"; the current version compares two crossing-time speeds read in
+  the panel's own units directly. The 28.4% figure runs today's algorithm,
+  not the one that produced 46%, so some of the gap could come from the
+  check itself changing rather than only from the population changing. This
+  was not settled by re-running the original subset: that subset is not
+  reproducible from anything in this repository (no script, dataset, or
+  commit predating the coverage measurement records which three ends or how
+  the 48 shots were chosen; the only hand-identified ends in the repo,
+  `datasets/hogmarks/VXU9xwmugRg.json`, are ends 5 and 6, 27 marks, a
+  different and smaller set used for a different measurement). Both
+  candidates stand; do not treat either as settled on its own.
 - **`HOG_APPARENT_Y_M` was measured on sheet 2 only.** It is the panel
   tripwire's constant, so it governs the cross-check rule; if it does not
   transfer, the cross-check will fire spuriously on other sheets. Marking one
