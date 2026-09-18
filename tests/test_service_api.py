@@ -895,8 +895,11 @@ def practice_doc():
     Classic arrived: three short blocks of warm-up rocks ahead of the real
     first end, all inside one game because the sheet never went quiet."""
     def end(number, start_s, n_shots, score):
+        # The board and the detector agreed on every end they both saw, so the
+        # practice is the only thing that can pull the two totals apart.
         return {"number": number, "house": "top", "start_s": start_s,
                 "end_s": start_s + 300.0, "score": dict(score),
+                "score_source": "board", "detected_score": dict(score),
                 "running": {"red": 0, "yellow": 0}, "unplaced_shots": 0,
                 "shots_expected": 16, "shots": [
                     {"number": i, "color": "red" if i % 2 else "yellow",
@@ -910,13 +913,27 @@ def practice_doc():
             end(3, 1135.0, 11, {"red": 0, "yellow": 0}),
             end(4, 1515.0, 16, {"red": 0, "yellow": 1}),
             end(5, 2385.0, 16, {"red": 1, "yellow": 0})]
-    return {"schema_version": 3, "processing_version": "2026.09.1+m-abc",
+    # The wall board shows the game and never the practice: it finished 1-1.
+    # The detector, counting the practice too, made it 1-2 -- so the board and
+    # the detection disagree until the warm-up ends come off. per_end is in
+    # the document's end numbering, which is what analyze writes.
+    board = {"final": {"red": 1, "yellow": 1},
+             "per_end": {"4": {"red": 0, "yellow": 1},
+                         "5": {"red": 1, "yellow": 0}},
+             "agrees_with_detection": False}
+    return {"schema_version": 4, "processing_version": "2026.09.1+m-abc",
             "source": {"url": "u", "video_id": VID, "sheet": 2, "duration_s": 14392.0,
                        "window": {"start_s": None, "end_s": None}},
             "calibration": {},
             "games": [{"index": 0, "start_s": 0.0, "end_s": 2685.0,
                        "teams": {"red": {"name": None}, "yellow": {"name": None}},
-                       "final": {"red": 1, "yellow": 2}, "hammer_consistent": False,
+                       # The score is the board's; what the detector made of
+                       # the same video sits apart, under "detected".
+                       "final": {"red": 1, "yellow": 1},
+                       "detected": {"score_by_end": [dict(e["detected_score"])
+                                                     for e in ends],
+                                    "final": {"red": 1, "yellow": 2}},
+                       "scoreboard": board, "hammer_consistent": False,
                        "ends": ends}]}
 
 
@@ -946,8 +963,20 @@ class TestTheStartTimeTrimsThePractice:
         assert ends[0]["shots"][0]["label"] == "1st end, lead's first rock"
 
     def test_the_score_is_the_games_and_not_the_practices(self, world):
-        doc = self._chart(world)
-        assert doc["games"][0]["final"] == {"red": 1, "yellow": 1}
+        """The score is the board's, and the board never saw the practice.
+
+        So the board's final rides through the trim untouched, even though
+        the ends underneath it changed. What the practice did inflate is the
+        detected total, and that comes back down to meet the board once the
+        warm-up ends are dropped -- which is the disagreement clearing.
+        """
+        game = self._chart(world)["games"][0]
+        assert game["final"] == {"red": 1, "yellow": 1}
+        assert game["scoreboard"]["final"] == {"red": 1, "yellow": 1}
+        # 1-2 before the trim: the practice's yellow point was in there.
+        assert game["detected"]["final"] == {"red": 1, "yellow": 1}
+        assert game["scoreboard"]["agrees_with_detection"] is True
+        assert all(e["scoreboard_agrees"] is True for e in game["ends"])
 
     def test_the_chart_says_how_much_it_took_off(self, world):
         doc = self._chart(world)
@@ -1072,7 +1101,10 @@ class TestThePracticeBoundaryBelongsToTheGame:
         doc = world["client"].get(f"/g/{sid}/timeline.json").json()
         ends = doc["games"][0]["ends"]
         assert [e["start_s"] for e in ends] == [1515.0, 2385.0]
+        # The board's final, carried through the trim; the detected total the
+        # practice inflated has come down to agree with it.
         assert doc["games"][0]["final"] == {"red": 1, "yellow": 1}
+        assert doc["games"][0]["detected"]["final"] == {"red": 1, "yellow": 1}
 
     def test_the_review_export_matches_what_the_review_shows(self, world):
         _slug, sid = self._charted(world)
