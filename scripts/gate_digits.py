@@ -58,6 +58,7 @@ import argparse                                                  # noqa: E402
 import collections                                               # noqa: E402
 import json                                                      # noqa: E402
 import multiprocessing as mp                                     # noqa: E402
+import sys                                                       # noqa: E402
 import time                                                      # noqa: E402
 
 import cv2                                                       # noqa: E402
@@ -127,14 +128,31 @@ def _fit_mlp(x, y, seed, epochs, copies):
 
 
 def _fit_cnn(x, y, seed, epochs, copies):
-    """The escalation: `digits.ConvModel`, convolutional, same numpy."""
+    """The escalation: a conv net trained on the GPU, read back through numpy.
+
+    Training runs in torch because hand-written conv gradients are the kind of
+    thing that is wrong in a way that looks like "convolution does not help".
+    What comes back is a `digits.ConvModel`, so everything the gate measures
+    goes through the numpy forward pass production will run, and
+    `train_conv_torch.check_equivalence` asserts those two agree before the
+    model is handed over. Needs the `gpu` extra; `cnn_numpy` is the same
+    architecture family trained without it.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import train_conv_torch
+
+    return train_conv_torch.fit(x, y, seed, epochs=epochs, copies=copies)
+
+
+def _fit_cnn_numpy(x, y, seed, epochs, copies):
+    """`digits.ConvModel` trained by its own numpy backward pass, no torch."""
     rng = np.random.default_rng(seed)
     model = D.ConvModel.initialise(rng=rng)
     return model.fit(None, None, epochs=epochs, rng=rng,
                      augment_from=(x, y), copies=copies)
 
 
-ARCHITECTURES = {"mlp": _fit_mlp, "cnn": _fit_cnn}
+ARCHITECTURES = {"mlp": _fit_mlp, "cnn": _fit_cnn, "cnn_numpy": _fit_cnn_numpy}
 
 
 # ------------------------------------------------------------------- the folds

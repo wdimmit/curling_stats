@@ -406,3 +406,52 @@ class TestTheConvolutionalModel:
         D.Model.initialise(rng=np.random.default_rng(0)).save(mlp)
         with pytest.raises(Exception):
             D.ConvModel.load(mlp)
+
+
+class TestTrainingOnTheGpuAndReadingWithNumpy:
+    """Training is torch on a GPU; inference is the numpy forward pass that
+    ships. Those are two implementations of one function, and this is what
+    stops them drifting apart -- a skew would show up as a worse gate number
+    and read as "convolution does not help" (ruling R10 as amended: inference
+    must be numpy because `curling-score analyze` runs on base dependencies;
+    training ships nothing and may use whatever the box has).
+
+    Skips without torch, which is the `gpu` extra and is deliberately absent
+    from the venv the suite normally runs in.
+    """
+
+    def _trainer(self):
+        import importlib.util
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[1] / "scripts" / "train_conv_torch.py"
+        if not path.is_file():
+            pytest.skip("scripts/train_conv_torch.py missing")
+        spec = importlib.util.spec_from_file_location("train_conv_torch", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_numpy_forward_matches_the_torch_one(self):
+        torch = pytest.importorskip("torch")
+        trainer = self._trainer()
+        net = trainer._net(trainer.ARCH, 0.3, torch.device("cpu"))
+        model = trainer.to_numpy_model(net, trainer.ARCH)
+        # Measured 1.5e-6 on this architecture with TF32 disabled; the
+        # tolerance is float32 accumulation order, not a layout that nearly
+        # matches. A transposed weight or a flatten in the wrong order lands
+        # at order 1, not 1e-6.
+        assert trainer.check_equivalence(net, model) < 2e-4
+
+    def test_nothing_the_reader_imports_needs_torch(self):
+        """The shipped path must not reach torch even transitively."""
+        import subprocess
+        import sys
+
+        code = ("import sys; import curling_score.game.digits as D; "
+                "D.ConvModel.initialise(); "
+                "assert 'torch' not in sys.modules; print('ok')")
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                             text=True)
+        assert out.returncode == 0, out.stderr
+        assert "ok" in out.stdout
