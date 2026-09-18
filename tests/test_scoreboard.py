@@ -219,6 +219,30 @@ class TestObstruction:
         img[int(geom.top_line_y) : int(geom.bottom_line_y), x : x + 70] = 30
         assert SB.read_board(img) is None
 
+    def test_a_crowd_in_front_of_the_lower_board_is_not_eight_red_cards(self):
+        """The printed 1-14 row sits ABOVE the red card band, so someone
+        standing in front of only the board's lower half leaves that row
+        completely clear -- the printed-row check alone has nothing to
+        object to.
+
+        On this frame `read_slots` reports red cards at slots
+        [4, 5, 6, 9, 10, 11, 12, 13] -- a cumulative score of 13 -- where
+        only the "3" at slot 3 is a real card; the rest is three or four
+        people's clothing across the red row. `is_readable` must catch what
+        the printed-row check misses.
+        """
+        img = cv2.imread("datasets/board-cards-train/s_iPqkT02q8/board_t04500.png")
+        assert img is not None, "fixture frame missing"
+        geom = SB.find_board(img)
+        assert geom is not None
+
+        # Document the bug this guards against: read_slots really does see
+        # a crowd as eight cards.
+        got = SB.read_slots(img, geom)
+        assert sorted(got.red) == [4, 5, 6, 9, 10, 11, 12, 13]
+
+        assert SB.is_readable(img, geom) is False
+
 
 class TestConsolidate:
     """Cards accumulate through a game and are never taken down mid-game.

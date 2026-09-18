@@ -453,31 +453,50 @@ def read_digit(glyph, tmpl: dict | None = None) -> tuple:
     return (digit if conf >= MIN_CONFIDENCE else None), conf
 
 
+def _row_boxes(gray, row_bounds, slot_x, half_w):
+    """Each slot's raw window in one row, or None where it falls off-frame.
+
+    Split out of `read_slots` so `is_readable` can compute the same row
+    level it does -- checking a *different* quantity from the one that ends
+    up trusted would let the two silently drift apart.
+    """
+    y0, y1 = int(row_bounds[0]), int(row_bounds[1])
+    h, w = gray.shape
+    boxes = []
+    for sx in slot_x:
+        x0, x1 = int(sx) - half_w, int(sx) + half_w
+        if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
+            boxes.append(None)
+        else:
+            box = gray[y0:y1, x0:x1]
+            boxes.append(box if box.size >= 12 else None)
+    return boxes
+
+
+def _row_level(boxes) -> "float | None":
+    """Median of a row's per-slot medians, or None if nothing is in-frame.
+
+    Most slots are empty, so this is a robust read of that row's own bare
+    board brightness -- and it adapts to lighting drift over an evening.
+    """
+    present = [b for b in boxes if b is not None]
+    if not present:
+        return None
+    return float(np.median([np.median(b) for b in present]))
+
+
 def read_slots(image, geom: BoardGeometry) -> BoardReading:
     """Which slots carry a card, judged by intra-slot brightness range."""
     gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY).astype(float)
-    h, w = gray.shape
     half_w = max(2, int(0.14 * geom.dy))
 
     found = {}
-    for name, (ry0, ry1) in (("yellow", geom.yellow_row), ("red", geom.red_row)):
-        y0, y1 = int(ry0), int(ry1)
-        boxes = []
-        for sx in geom.slot_x:
-            x0, x1 = int(sx) - half_w, int(sx) + half_w
-            if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
-                boxes.append(None)
-            else:
-                box = gray[y0:y1, x0:x1]
-                boxes.append(box if box.size >= 12 else None)
-
-        present = [b for b in boxes if b is not None]
-        if not present:
+    for name, row_bounds in (("yellow", geom.yellow_row), ("red", geom.red_row)):
+        boxes = _row_boxes(gray, row_bounds, geom.slot_x, half_w)
+        level = _row_level(boxes)
+        if level is None:
             found[name] = set()
             continue
-        # Most slots are empty, so the median slot is a robust read of the bare
-        # board's brightness -- and it adapts to lighting drift over an evening.
-        level = float(np.median([np.median(b) for b in present]))
 
         slots = set()
         for k, box in enumerate(boxes, start=1):
@@ -491,22 +510,31 @@ def read_slots(image, geom: BoardGeometry) -> BoardReading:
     return BoardReading(yellow=found["yellow"], red=found["red"])
 
 
-# The printed 1-14 row is the board's own integrity check: it is always there,
-# so if it cannot be seen, something is standing in front of the board.
 _MIN_PRINTED_DIGITS = 11
 
 
-def _printed_digit_groups(image, geom: BoardGeometry) -> int:
-    """Count the digit groups visible in the printed 1-14 row."""
-    gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY)
+def _printed_band(gray, geom: BoardGeometry):
+    """The pixel band the printed 1-14 row lives in, or None off-frame.
+
+    Shared by `_printed_digit_groups` and `_printed_row_level` so the two
+    can never disagree about which pixels "the printed row" means.
+    """
     gap = geom.mid_line_y - geom.top_line_y
     y0, y1 = int(geom.top_line_y + 0.58 * gap), int(geom.mid_line_y - 0.03 * gap)
     x0, x1 = int(geom.slot_x[0] - 0.3 * geom.dy), int(geom.slot_x[-1] + 0.3 * geom.dy)
     h, w = gray.shape
     if y0 < 0 or y1 > h or x0 < 0 or x1 > w or y1 - y0 < 4:
+        return None
+    return gray[y0:y1, x0:x1]
+
+
+def _printed_digit_groups(image, geom: BoardGeometry) -> int:
+    """Count the digit groups visible in the printed 1-14 row."""
+    gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY)
+    band = _printed_band(gray, geom)
+    if band is None:
         return 0
 
-    band = gray[y0:y1, x0:x1]
     dark = (band < 130).mean(axis=0) > 0.20
     # A person is a wide solid block; real digits are narrow with gaps between.
     groups, run = 0, 0
@@ -527,11 +555,100 @@ def _printed_digit_groups(image, geom: BoardGeometry) -> int:
     return groups
 
 
+def _printed_row_level(gray, geom: BoardGeometry) -> "float | None":
+    """Median brightness of bare board *between* the printed digits.
+
+    `_printed_digit_groups` establishes that this strip is unoccluded --
+    that is the only thing it checks -- so once it has passed, the board
+    pixels here (excluding the digit ink itself, which is not "bare") are a
+    trustworthy read of this frame's board brightness under this frame's
+    lighting. `is_readable` compares each card row's own level against this
+    one, because the printed row can pass while a card row is covered (see
+    `is_readable` for why that happens and why it matters).
+    """
+    band = _printed_band(gray, geom)
+    if band is None:
+        return None
+    dark_cols = (band < 130).mean(axis=0) > 0.20
+    bare = band[:, ~dark_cols]
+    if bare.size == 0:
+        return None
+    return float(np.median(bare))
+
+
+# How far below the bare-board reference a card row's own level can read
+# before it counts as occluded rather than merely holding real cards.
+# Measured over 339 clean rows and 7 rows containing a phantom (Task 7A):
+# clean rows ranged -5.0..11.5 (median 1.5, p95 7.0); rows with a phantom
+# ranged -1.5..73.2 (median 35.0, p5 1.5). 20 catches 4 of the 7 bad rows
+# and refuses 0 of the 339 good ones -- it is a low bar on purpose, because a
+# card row wrongly refused makes the whole frame unreadable (see below).
+_ROW_OCCLUSION_MARGIN = 20.0
+
+
+def _row_occluded(gray, geom: BoardGeometry, row_bounds, reference_level: float) -> bool:
+    """Whether one card row reads too dark against the bare-board reference
+    to trust, rather than merely holding real (bright) cards.
+
+    Uses `_row_level` over the exact boxes `read_slots` builds for this row,
+    so this check and the read it gates are always measuring the same
+    quantity -- a row that passes here is a row `read_slots` would compute
+    the same level for.
+    """
+    half_w = max(2, int(0.14 * geom.dy))
+    boxes = _row_boxes(gray, row_bounds, geom.slot_x, half_w)
+    level = _row_level(boxes)
+    if level is None:
+        return True  # off-frame or otherwise unreadable -- can't vouch for it
+    return reference_level - level >= _ROW_OCCLUSION_MARGIN
+
+
 def is_readable(image, geom: BoardGeometry) -> bool:
-    """Whether the board is unobstructed enough to trust a reading."""
+    """Whether the board is unobstructed enough to trust a reading.
+
+    Checking only the printed 1-14 row -- as this function used to, on the
+    premise that the row is "always there, so if it cannot be seen,
+    something is standing in front of the board" -- misses half the board.
+    That premise is false: the printed row sits ABOVE the red card band, in
+    the gap between the two colour markers, so someone standing in front of
+    only the board's *lower* half leaves the printed row completely clear.
+    The check would pass while `read_slots` reads their clothing as cards.
+    This is not hypothetical -- on `board_t04500.png` in
+    `datasets/board-cards-train/s_iPqkT02q8/` that is exactly what happens:
+    the printed row reads clean, `_printed_digit_groups` is satisfied, and
+    `read_slots` reports eight red "cards" (a cumulative score of 13) where
+    three or four people are standing in front of the red row and only one
+    card is real. A phantom card is not a misread digit that a confidence
+    threshold can catch downstream: it invents a scoring end, and no board
+    self-check can catch it after the fact, because a three-point end is
+    perfectly legal.
+
+    So each card row is checked too, against a reference level sampled from
+    the printed row itself -- the bare board *between* the digits, not the
+    ink -- because that row has just been confirmed unoccluded above and is
+    therefore a trustworthy brightness reference for this same board under
+    this same lighting. A card row that comes back much darker than that
+    reference is occluded. The check is per ROW, not per card or per slot:
+    a slot cannot be blacklisted, because the same slot is a head in one
+    frame of a video and a real card in another. And if either row fails,
+    the whole frame is refused -- a board with one unreadable row cannot
+    give a trustworthy cumulative score, and callers such as `read_board_at`
+    already step back and resample on a refused read.
+    """
     if geom is None:
         return False
-    return _printed_digit_groups(image, geom) >= _MIN_PRINTED_DIGITS
+    if _printed_digit_groups(image, geom) < _MIN_PRINTED_DIGITS:
+        return False
+
+    gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY).astype(float)
+    reference = _printed_row_level(gray, geom)
+    if reference is None:
+        return False
+    if _row_occluded(gray, geom, geom.yellow_row, reference):
+        return False
+    if _row_occluded(gray, geom, geom.red_row, reference):
+        return False
+    return True
 
 
 def read_board(image, geom: BoardGeometry | None = None) -> "BoardReading | None":
