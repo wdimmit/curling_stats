@@ -134,7 +134,7 @@ class TestReadDigit:
         geom, gray, tmpl, _ = self._cards(img)
         glyph = SB._card_glyph(gray, geom, "yellow", 4)
         digit, margin = SB.read_digit(glyph, tmpl)
-        assert digit in (None, 4), f"occluded card misread as {digit}"
+        assert digit in (None, 4), f"occluded card misread as {digit} (margin {margin:.3f})"
 
     def test_an_out_of_frame_slot_has_no_glyph(self, known_frame):
         img = known_frame("board_sheet2_t11000.png")

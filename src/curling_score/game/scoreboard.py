@@ -248,10 +248,67 @@ def find_board(image) -> "BoardGeometry | None":
 GLYPH_SHAPE = (22, 16)  # (rows, cols)
 
 
+def _min_count_bbox(mask, min_count):
+    """Bounding box of `mask`, requiring several hits before a row or column
+    counts.
+
+    A single stray pixel -- a reflection, adjacent-slot bleed, a rule's
+    anti-aliasing -- can be the only lit pixel in its row or column, yet a
+    plain bbox-of-nonzero accepts it and stretches all the way out to it,
+    which is a bigger box than the pixel earned. Real ink or a real card tile
+    lights up several pixels together, not one, so requiring a minimum count
+    per row and per column tells the two apart.
+    """
+    rows = np.flatnonzero(mask.sum(axis=1) >= min_count)
+    cols = np.flatnonzero(mask.sum(axis=0) >= min_count)
+    if rows.size == 0 or cols.size == 0:
+        return None
+    return rows.min(), rows.max() + 1, cols.min(), cols.max() + 1
+
+
+# Ink reads at least this much darker than the window's own median -- true
+# for a digit against bare board or against a white card alike.
+_INK_MARGIN = 12.0
+_MIN_INK_SUPPORT = 3   # rows/cols need this many ink pixels to count
+_MIN_INK_PIXELS = 6    # fewer than this many ink pixels total is noise
+
+
+def _glyph_ink(patch):
+    """Localise a digit's ink within a raw window.
+
+    Shared by `templates()` and `_card_glyph()` so a card and a printed
+    number are localised exactly the same way before either is ever fitted
+    into GLYPH_SHAPE and compared. Returns None where there isn't enough ink
+    to trust -- a blank tile or an empty stretch of board.
+    """
+    level = float(np.median(patch))
+    ink = patch < level - _INK_MARGIN
+    if ink.sum() < _MIN_INK_PIXELS:
+        return None
+    bbox = _min_count_bbox(ink, _MIN_INK_SUPPORT)
+    if bbox is None:
+        return None
+    y0, y1, x0, x1 = bbox
+    return patch[y0:y1, x0:x1]
+
+
 def _normalise(patch) -> "np.ndarray":
-    """Resize to GLYPH_SHAPE, mean-centre, scale to unit standard deviation."""
-    g = cv2.resize(patch.astype(np.float32), (GLYPH_SHAPE[1], GLYPH_SHAPE[0]),
-                   interpolation=cv2.INTER_AREA)
+    """Fit to GLYPH_SHAPE preserving aspect ratio, mean-centre, unit std.
+
+    Padded onto the fixed box rather than stretched to fill it: stretching a
+    tight crop erases the one cue that tells a narrow "1" from a wide "3" --
+    their relative width -- before correlation ever sees it.
+    """
+    pad_value = float(np.median(patch))
+    ph, pw = patch.shape
+    th, tw = GLYPH_SHAPE
+    scale = min(th / ph, tw / pw)
+    nh, nw = max(1, round(ph * scale)), max(1, round(pw * scale))
+    resized = cv2.resize(patch.astype(np.float32), (nw, nh),
+                          interpolation=cv2.INTER_AREA)
+    g = np.full(GLYPH_SHAPE, pad_value, dtype=np.float32)
+    y0, x0 = (th - nh) // 2, (tw - nw) // 2
+    g[y0: y0 + nh, x0: x0 + nw] = resized
     g -= g.mean()
     sd = float(g.std())
     return g / sd if sd > 1e-6 else g
@@ -269,7 +326,11 @@ def templates(image, geom: BoardGeometry) -> dict:
     out = {}
     for k, sx in enumerate(geom.slot_x, start=1):
         x0, x1 = int(sx) - half_w, int(sx) + half_w
-        out[k] = _normalise(gray[y0:y1, x0:x1])
+        box = gray[y0:y1, x0:x1].astype(np.float32)
+        glyph = _glyph_ink(box)
+        # A printed digit is always there; fall back to the raw box rather
+        # than dropping a slot outright if the ink test somehow comes up dry.
+        out[k] = _normalise(glyph if glyph is not None else box)
     return out
 
 
@@ -282,26 +343,25 @@ MIN_MARGIN = 0.05
 # which clips the glyph tops -- the card sits higher in the band than the
 # presence test needs to look.
 _CARD_TILE_MARGIN = 10.0
+_MIN_TILE_SUPPORT = 2   # rows/cols need this many bright pixels to count
 
 
 def _card_glyph(gray, geom: BoardGeometry, color: str, slot: int):
-    """One card's tile, cropped to its bounding box.
+    """One card's ink, localised the same way `templates()` localises a
+    printed number.
 
-    Returns None where the slot falls outside the frame or no bright tile is
-    found -- which is what an empty slot looks like.
-
-    Cropped to the *tile* (the white card), not further in to just its ink.
-    A printed template is the raw, loosely-framed box `templates()` reads off
-    the board -- no ink-cropping, because there is no tile to find a card by
-    against bare printed numbers. Ink-cropping only the card, then, compares
-    two glyphs at different scales: the card's digit ends up filling its box
-    edge to edge while the template's sits padded inside its own, and that
-    scale mismatch beats correlation before shape ever gets a say. Confirmed
-    by dumping both crops side by side (see task-2-3-report.md) -- the
-    ink-cropped "3" reads as a clean 3 by eye but scores every other digit
-    over its own template; matched to the tile instead, it correlates
-    correctly. The ink test below stays as a presence gate: a blank tile with
-    no ink at all is an unreadable card, not a digit.
+    Returns None where the slot falls outside the frame, no bright tile is
+    found (an empty slot), or no ink is found inside the tile (a blank
+    card). The card is found by its tile first -- a printed number has no
+    tile to find it by, but a card does, and a spectator's hand never
+    brightens anything -- and then its ink is localised inside that tile with
+    the same `_glyph_ink` that localises a printed number's ink in its own
+    raw window. Localising both the same way, and fitting both into
+    GLYPH_SHAPE the same way, keeps a card and its template at the same
+    effective scale: cropping one tighter than the other -- or stretching
+    one to fill the box and not the other -- puts them at different scales
+    that correlation reads as a real difference before digit shape gets a
+    say.
     """
     row = geom.yellow_row if color == "yellow" else geom.red_row
     y1 = int(row[1])
@@ -319,15 +379,15 @@ def _card_glyph(gray, geom: BoardGeometry, color: str, slot: int):
     tile = box > level + _CARD_TILE_MARGIN     # the white card against the board
     if tile.sum() < 12:
         return None
-    ys, xs = np.nonzero(tile)
-    card = box[ys.min(): ys.max() + 1, xs.min(): xs.max() + 1]
+    bbox = _min_count_bbox(tile, _MIN_TILE_SUPPORT)
+    if bbox is None:
+        return None
+    ty0, ty1, tx0, tx1 = bbox
+    card = box[ty0:ty1, tx0:tx1]
     if card.size < 12:
         return None
 
-    ink = card < (float(card.max()) + float(card.min())) / 2.0
-    if ink.sum() < 4:
-        return None
-    return card
+    return _glyph_ink(card)
 
 
 def read_digit(glyph, tmpl: dict) -> tuple:
