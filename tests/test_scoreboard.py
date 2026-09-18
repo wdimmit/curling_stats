@@ -7,52 +7,14 @@ from curling_score.game import scoreboard as SB
 
 class TestCumulative:
     def test_the_rightmost_card_gives_the_running_total(self):
-        r = SB.BoardReading(yellow={1, 3}, red={2})
-        assert SB.cumulative(r) == {"yellow": 3, "red": 2}
+        board = SB.CardBoard(
+            yellow=(SB.Card(1, 1, 0.5), SB.Card(3, 3, 0.5)),
+            red=(SB.Card(2, 2, 0.5),),
+        )
+        assert SB.cumulative(board) == {"yellow": 3, "red": 2}
 
     def test_an_empty_board_is_nil_all(self):
-        assert SB.cumulative(SB.BoardReading(set(), set())) == {"yellow": 0, "red": 0}
-
-    def test_only_the_highest_slot_matters(self):
-        # Cards are hung cumulatively, so the lower ones are history.
-        assert SB.cumulative(SB.BoardReading({1, 2, 5}, set()))["yellow"] == 5
-
-
-class TestPerEndScores:
-    def test_turns_a_sequence_of_boards_into_end_by_end_scores(self):
-        readings = [
-            SB.BoardReading({1}, set()),          # end 1: yellow 1
-            SB.BoardReading({1}, {2}),            # end 2: red 2
-            SB.BoardReading({1, 3}, {2}),         # end 3: yellow 2
-        ]
-        assert SB.per_end_scores(readings) == [
-            {"red": 0, "yellow": 1},
-            {"red": 2, "yellow": 0},
-            {"red": 0, "yellow": 2},
-        ]
-
-    def test_ignores_repeated_readings_of_an_unchanged_board(self):
-        readings = [SB.BoardReading({1}, set())] * 5
-        assert SB.per_end_scores(readings) == [{"red": 0, "yellow": 1}]
-
-    def test_a_board_that_never_changes_from_empty_yields_nothing(self):
-        assert SB.per_end_scores([SB.BoardReading(set(), set())] * 4) == []
-
-    def test_a_reset_to_empty_starts_a_new_game(self):
-        readings = [
-            SB.BoardReading({1}, set()),
-            SB.BoardReading(set(), set()),
-            SB.BoardReading({2}, set()),
-        ]
-        games = SB.split_games(readings)
-        assert len(games) == 2
-        assert SB.per_end_scores(games[1]) == [{"red": 0, "yellow": 2}]
-
-    def test_rejects_a_board_that_goes_backwards(self):
-        # Cumulative scores cannot decrease within one game.
-        readings = [SB.BoardReading({3}, set()), SB.BoardReading({1}, set())]
-        with pytest.raises(SB.ScoreboardError):
-            SB.per_end_scores(readings)
+        assert SB.cumulative(SB.CardBoard((), ())) == {"yellow": 0, "red": 0}
 
 
 class TestFindBoard:
@@ -183,17 +145,6 @@ class TestReadSlots:
             {"yellow": 3, "red": 2},
         ]
 
-    def test_sparse_sampling_is_reported_rather_than_guessed_at(self, known_frame):
-        # Two ends elapsed between t=900 and t=3600, so the jump shows both
-        # teams scoring. That is impossible in one end, and it means the board
-        # was sampled too rarely -- worth saying so rather than inventing a split.
-        readings = []
-        for name in ("board_sheet2_t0900.png", "board_sheet2_t3600.png"):
-            img = known_frame(name)
-            readings.append(SB.read_slots(img, SB.find_board(img)))
-        with pytest.raises(SB.ScoreboardError, match="both teams"):
-            SB.per_end_scores(readings)
-
 
 class TestObstruction:
     """People walk in front of the board constantly."""
@@ -209,15 +160,6 @@ class TestObstruction:
         x = int(geom.slot_x[5])
         img[int(geom.top_line_y) : int(geom.bottom_line_y), x : x + 70] = 30
         assert SB.is_readable(img, geom) is False
-
-    def test_reading_an_obstructed_board_gives_nothing_rather_than_nonsense(
-        self, known_frame
-    ):
-        img = known_frame("board_sheet2_t3600.png").copy()
-        geom = SB.find_board(img)
-        x = int(geom.slot_x[5])
-        img[int(geom.top_line_y) : int(geom.bottom_line_y), x : x + 70] = 30
-        assert SB.read_board(img) is None
 
     def test_a_crowd_in_front_of_the_lower_board_is_not_eight_red_cards(self):
         """The printed 1-14 row sits ABOVE the red card band, so someone
@@ -409,67 +351,6 @@ class TestReadGameBoard:
         assert got.scores.final is None
 
 
-class TestConsolidate:
-    """Cards accumulate through a game and are never taken down mid-game.
-
-    A slot that shows up in one reading and is gone from the next was noise --
-    typically someone standing in front of the lower half of the board.
-    """
-
-    def test_drops_a_slot_that_appears_only_once(self):
-        readings = [
-            SB.BoardReading({1}, {1}),
-            SB.BoardReading({1}, {1, 7}),   # 7 is a false positive
-            SB.BoardReading({1}, {1}),
-            SB.BoardReading({1}, {1}),
-        ]
-        got = SB.consolidate(readings)
-        assert all(r.red == {1} for r in got)
-
-    def test_keeps_a_slot_that_persists(self):
-        readings = [
-            SB.BoardReading({1}, set()),
-            SB.BoardReading({1}, {2}),
-            SB.BoardReading({1}, {2}),
-            SB.BoardReading({1}, {2}),
-        ]
-        got = SB.consolidate(readings)
-        assert got[-1].red == {2}
-
-    def test_a_card_once_established_stays_even_if_a_frame_misses_it(self):
-        readings = [
-            SB.BoardReading({1}, set()),
-            SB.BoardReading({1}, set()),
-            SB.BoardReading(set(), set()),  # obscured for one reading
-            SB.BoardReading({1}, set()),
-        ]
-        got = SB.consolidate(readings)
-        assert all(r.yellow == {1} for r in got)
-
-    def test_the_result_only_ever_grows(self):
-        readings = [
-            SB.BoardReading({1}, set()),
-            SB.BoardReading({1, 2}, {1}),
-            SB.BoardReading({1, 2, 3}, {1}),
-        ]
-        got = SB.consolidate(readings)
-        for a, b in zip(got, got[1:]):
-            assert a.yellow <= b.yellow
-            assert a.red <= b.red
-
-    def test_noise_in_the_real_sweep_is_cleaned_up(self):
-        # Taken from the reference VOD: yellow was clean, red flickered.
-        readings = [
-            SB.BoardReading({1, 2, 3}, {1, 2}),
-            SB.BoardReading({1, 2, 3}, {1, 2, 7, 8}),
-            SB.BoardReading({1, 2, 3}, {1, 2}),
-            SB.BoardReading({1, 2, 3}, {1, 2, 3, 6}),
-        ]
-        got = SB.consolidate(readings)
-        assert got[-1].red == {1, 2}
-        assert got[-1].yellow == {1, 2, 3}
-
-
 class TestPersonInFrontOfTheBoard:
     """A card is a white tile with a black digit; a person is just dark.
 
@@ -493,26 +374,3 @@ class TestPersonInFrontOfTheBoard:
         img = known_frame("board_sheet2_t11700_person.png")
         r = SB.read_slots(img, SB.find_board(img))
         assert SB.cumulative(r) == {"yellow": 4, "red": 2}
-
-
-class TestReadingIsCheap:
-    """Board reads must not decode the whole neighbourhood at full rate.
-
-    Each read medians a few-minute window to remove people walking past. Doing
-    that with a fixed frame rate decodes every frame in the window at full
-    resolution -- about 180 s of 1080p per read, and a game needs a dozen or
-    more. The board changes once an end, so keyframes are ample.
-    """
-
-    @pytest.mark.slow
-    def test_a_board_read_is_much_faster_than_the_window_it_spans(
-        self, primary_video
-    ):
-        import time
-
-        t0 = time.time()
-        reading = SB.read_board_at(primary_video, 3600, window_s=75)
-        elapsed = time.time() - t0
-        assert reading is not None, "expected a readable board at t=3600"
-        # 150 s of video: decoding it frame by frame takes far longer than this.
-        assert elapsed < 12.0, f"board read took {elapsed:.1f}s"

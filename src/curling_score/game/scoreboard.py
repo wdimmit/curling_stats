@@ -2,9 +2,10 @@
 
 The board is the traditional club design: a fixed strip of numbers 1-14 that is
 the *cumulative* score, with the end number written on a card hung above it
-(yellow) or below it (red). So a card's position is the running total and its
-digit is which end produced it -- which means the running total can be read
-without any OCR at all, just by asking which slots are occupied.
+(yellow) or below it (red). So a card's slot is the cumulative total it
+records, and the digit on the card names the end that produced it -- which
+means one late read of the board, with each card's digit decoded, carries the
+score of every end that has been posted so far.
 
 This is **validation only**. The club often updates the board late, sometimes
 several ends late, so it must never be used to time anything.
@@ -50,51 +51,6 @@ def cumulative(board) -> dict:
         "yellow": max((_slot(x) for x in board.yellow), default=0),
         "red": max((_slot(x) for x in board.red), default=0),
     }
-
-
-def split_games(readings):
-    """Split a run of readings wherever the board is cleared for a new game."""
-    games, current = [], []
-    for r in readings:
-        if r.is_blank():
-            if current:
-                games.append(current)
-                current = []
-            continue
-        current.append(r)
-    if current:
-        games.append(current)
-    return games
-
-
-def per_end_scores(readings) -> list[dict]:
-    """Convert a sequence of board states into the score for each end.
-
-    Consecutive identical readings are the same posted state seen twice, so
-    only changes count. Each change is one end's score.
-    """
-    out: list[dict] = []
-    prev = {"yellow": 0, "red": 0}
-    last_key = None
-    for reading in readings:
-        if reading.key() == last_key:
-            continue
-        last_key = reading.key()
-        now = cumulative(reading)
-        delta = {c: now[c] - prev[c] for c in COLORS}
-        if all(v == 0 for v in delta.values()):
-            continue
-        if any(v < 0 for v in delta.values()):
-            raise ScoreboardError(
-                f"cumulative score went backwards: {prev} -> {now}"
-            )
-        if all(v > 0 for v in delta.values()):
-            raise ScoreboardError(
-                f"both teams cannot score in one end: {prev} -> {now}"
-            )
-        out.append(delta)
-        prev = now
-    return out
 
 
 import cv2
@@ -766,7 +722,7 @@ def is_readable(image, geom: BoardGeometry) -> bool:
     a slot cannot be blacklisted, because the same slot is a head in one
     frame of a video and a real card in another. And if either row fails,
     the whole frame is refused -- a board with one unreadable row cannot
-    give a trustworthy cumulative score, and callers such as `read_board_at`
+    give a trustworthy cumulative score, and callers such as `read_cards_at`
     already step back and resample on a refused read.
     """
     if geom is None:
@@ -785,14 +741,6 @@ def is_readable(image, geom: BoardGeometry) -> bool:
     return True
 
 
-def read_board(image, geom: BoardGeometry | None = None) -> "BoardReading | None":
-    """Find and read the board, or return None if it cannot be trusted."""
-    geom = geom if geom is not None else find_board(image)
-    if geom is None or not is_readable(image, geom):
-        return None
-    return read_slots(image, geom)
-
-
 def median_frame(frames):
     """Median of several frames: removes anyone walking past the board.
 
@@ -801,68 +749,6 @@ def median_frame(frames):
     """
     stack = np.stack([np.asarray(f) for f in frames])
     return np.median(stack, axis=0).astype(np.uint8)
-
-
-def read_board_at(video_path, t_seconds, window_s=90.0, max_frames=40):
-    """Read the board around a moment in the video, de-occluded by median.
-
-    Samples keyframes rather than a fixed frame rate. A fixed rate still makes
-    the decoder reconstruct every frame in the window -- roughly 180 s of
-    full-resolution video per read, and a game needs a dozen or more. The board
-    only changes once an end, so the ~1 frame per 5 s that keyframes give is
-    ample, and vastly cheaper.
-    """
-    from curling_score.ingest import frames as F
-
-    lo, hi = max(0.0, t_seconds - window_s), t_seconds + window_s
-    imgs = []
-    for t, img in F.keyframe_sweep(video_path, start_s=lo, end_s=hi):
-        if t < lo:
-            continue
-        if len(imgs) >= max_frames:
-            break
-        imgs.append(img)
-    if not imgs:
-        return None
-    return read_board(median_frame(imgs))
-
-
-# How many readings a slot must appear in before it is believed.
-_CONFIRM_READINGS = 2
-
-
-def consolidate(readings, confirm: int = _CONFIRM_READINGS):
-    """Enforce the physical constraint that cards only accumulate.
-
-    Within a game a card is hung and stays hung, so the occupied set can only
-    grow. A slot seen once and then gone was noise -- usually someone standing
-    in front of the lower half of the board, which is why the red row flickers
-    far more than the yellow one. Requiring a slot to be seen ``confirm`` times
-    before it is believed, and keeping it thereafter, removes that flicker
-    without discarding a card that a single frame happens to miss.
-    """
-    readings = list(readings)
-    counts = {"yellow": {}, "red": {}}
-    first = {"yellow": {}, "red": {}}
-    for i, r in enumerate(readings):
-        for name, slots in (("yellow", r.yellow), ("red", r.red)):
-            for k in slots:
-                counts[name][k] = counts[name].get(k, 0) + 1
-                first[name].setdefault(k, i)
-
-    # A confirmed card was already hanging the first time we saw it, so credit
-    # it from that reading onward rather than from the one that confirmed it.
-    out = []
-    for i in range(len(readings)):
-        got = {}
-        for name in ("yellow", "red"):
-            got[name] = {
-                k
-                for k, n in counts[name].items()
-                if n >= confirm and first[name][k] <= i
-            }
-        out.append(BoardReading(yellow=got["yellow"], red=got["red"]))
-    return out
 
 
 # The board accumulates and never resets mid-game, so one good late read
@@ -892,8 +778,11 @@ class GameBoard:
 def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
     """The cards around a moment in the video, de-occluded by median.
 
-    Mirrors `read_board_at`, but reads cards (with their end numbers) via
-    `read_cards` rather than bare occupied slots via `read_slots`.
+    Samples keyframes rather than a fixed frame rate. A fixed rate still makes
+    the decoder reconstruct every frame in the window -- roughly 180 s of
+    full-resolution video per read, and a game needs a dozen or more. The board
+    only changes once an end, so the ~1 frame per 5 s that keyframes give is
+    ample, and vastly cheaper.
     """
     from curling_score.ingest import frames as F
 
@@ -910,7 +799,7 @@ def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
     image = median_frame(imgs)
     geom = find_board(image)
     # is_readable also guards against an occluded card row, not just the
-    # printed strip -- refuse on it exactly as read_board_at does.
+    # printed strip -- refuse the frame and let the caller resample.
     if geom is None or not is_readable(image, geom):
         return None
     return read_cards(image, geom)

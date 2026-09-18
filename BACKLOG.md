@@ -367,6 +367,45 @@ rather than a single run, because the zero-wrong coverage metric is set by the
 single most confident wrong read and swings tens of points between seeds on
 identical inputs.
 
+## Persistence as the next defence against phantom cards
+
+A person standing in front of the board can read as a card: it is a bright
+tile with internal contrast, exactly what `glyph_in_window` looks for. Two
+layers currently stand between that and a wrong score. `is_readable`'s
+row-occlusion check catches 20 of 23 labelled phantoms by requiring each card
+row to read close to the printed row's own brightness (see
+`_ROW_OCCLUSION_MARGIN`); the digit reader's confidence gate (`MIN_CONFIDENCE`)
+then refuses the other 3, because whatever gets localised as "ink" inside a
+phantom's tile never lands a class probability above 0.9999. Measured, zero of
+23 labelled phantoms reach a score today.
+
+**The measurement, because it is the valuable part.** Cards are hung and stay
+hung; people move. Tracked as the fraction of sampled frames a slot holds a
+card across the frames *after* it is first seen, real cards appear in
+0.75-1.00 of them, while phantoms reach at most 0.63 -- a clear margin that
+separates 14 of 14 labelled phantoms from 51 of 51 real cards. Bare "did it
+ever disappear from a frame" does **not** separate them: 19% of real cards also
+vanish from a frame or two through ordinary missed detection (a hand, a bad
+median window). It is the persistence *fraction*, not a single disappearance,
+that does the work.
+
+**What it would cost.** A second board read per game, checked against the
+current one -- `read_game_board` costs one read in the ordinary case, and a
+persistence check needs the board sampled and compared across time, which
+roughly doubles the read cost of every game. That is why it was not spent now:
+the two layers already in place measure zero phantoms reaching a score, so the
+second read buys defence against an error class not currently observed to
+occur.
+
+**Where the old implementation went.** `consolidate` enforced this same
+physical invariant -- a slot seen once and then gone was noise -- for the
+retired presence-only design, requiring a slot to be seen `_CONFIRM_READINGS`
+times running before it was believed. It operated on raw `BoardReading` sweeps,
+not on `read_cards`' `CardBoard`, so it could not simply be kept and reused
+here; it, `per_end_scores`, `split_games`, `read_board` and `read_board_at`
+were deleted with the presence-only path in the commit that retired it. The
+implementation and its tests remain in git history for whoever picks this up.
+
 ## Other parked ideas
 - **Hammer from the score sequence.** It is read from who threw first, which is
   wrong whenever an end's opening delivery is missed. The rules give it
