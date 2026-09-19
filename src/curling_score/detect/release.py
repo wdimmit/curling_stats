@@ -14,7 +14,10 @@ travel 4.5-6.7 m before the tracker loses them among the sweepers; a red-
 jacketed sweeper running beside a release is also picked up moving up-sheet,
 but starts mid-panel, which is what the entry test refuses.
 
-A release is timed from the stone's first sighting at the back edge, which is
+A release is timed from the stone's first sighting, close to the back edge but
+no longer pinned there -- the entry gate now admits anything below
+STAGE1_Y_M, up to about 1.1 m further up the panel than the old back-edge
+gate allowed, so this can read up to ~0.55 s later at 2 m/s. Either way it is
 the start of the slide rather than the hand, some 8 m before the hog line. The
 club puts hand-release to arrival at 6 s at the fastest and usually 10-15 s;
 measured from the slide it was 11-24 s across three ends, so the window runs
@@ -119,7 +122,8 @@ class Release:
     """A stone seen leaving the thrower's house."""
 
     color: str
-    t: float           # first sighting, at the back edge of the view
+    t: float           # first sighting -- anywhere below STAGE1_Y_M, not
+                       # pinned to the back edge; see the module docstring
     y_exit_m: float    # how far up the panel it was followed
     speed_m_s: float
     # The climb itself, as ``(t, x, y)``. A release is a line crossing waiting

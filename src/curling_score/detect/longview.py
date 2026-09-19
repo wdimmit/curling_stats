@@ -21,6 +21,15 @@ import numpy as np
 # Measured by hand on 27 deliveries (``datasets/hogmarks``): a stone crosses
 # its hog line between 2.83 s and 5.43 s after the panel first sees it leave
 # the hack. The window is wider at both ends than every mark observed.
+#
+# "First sees it leave the hack" was measured under the old entry gate, which
+# pinned a release's first sighting within 0.6 m of the panel's back edge
+# (``release.py``, throw-stage-1). That gate is gone: a release's ``t`` can
+# now read up to ~1.1 m, ~0.55 s at 2 m/s, later than it used to for the same
+# physical release. This window was NOT re-derived against the new anchor.
+# The hog crossing itself is unaffected -- it is timed off paint, not off
+# ``t`` -- so a later anchor only shrinks the gap between the two, putting
+# the LOWER bound (2.0 s) at risk first; the upper bound has margin to spare.
 WINDOW_S = (2.0, 6.5)
 
 # How wide a stone reads at the hog line, and how far from that a candidate may
