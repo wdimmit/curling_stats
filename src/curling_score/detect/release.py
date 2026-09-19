@@ -67,6 +67,12 @@ MAX_SPEED_M_S = 4.5
 # behind the stone on the centre line (x = +0.24 against the stone's +0.25).
 # Nothing lateral can; that one needs the detector retrained.
 CENTRE_FRACTION = 0.35
+# Two tracks closer than this laterally, overlapping or touching in time, are
+# one stone the detector fragmented rather than two objects. Measured on
+# AEqLTgM25Tc: the one pair that is genuinely two objects (e6 s6) sits 0.60 m
+# apart, and the one pair that is one stone (e2 s8) sits 0.02 m apart. There is
+# nothing in between, so the threshold is not delicate.
+MERGE_LATERAL_M = 0.3
 # Release to arrival in the far house.
 MIN_LAG_S = 6.0
 MAX_LAG_S = 30.0
@@ -107,6 +113,63 @@ def on_centre_line(x_m: float, view_x_limit_m: float | None) -> bool:
     return abs(x_m) <= view_x_limit_m * CENTRE_FRACTION
 
 
+def _mean_x(track) -> float:
+    return sum(track.xs) / len(track.xs)
+
+
+def _join(a, b):
+    """One track from two, preferring the better-sampled one where they collide.
+
+    Where both tracks hold a sample at the same instant they disagree about
+    where the stone was, and the better-sampled track is the one to believe: on
+    e1 s1 the two boxes were y = -0.87 and y = -1.19, and interpolating that
+    stone's neighbours puts it at -0.85.
+    """
+    long_, short_ = (a, b) if len(a.ts) >= len(b.ts) else (b, a)
+    by_t = {round(t, 3): (x, y)
+            for t, x, y in zip(short_.ts, short_.xs, short_.ys)}
+    by_t.update({round(t, 3): (x, y)
+                 for t, x, y in zip(long_.ts, long_.xs, long_.ys)})
+    ts = sorted(by_t)
+    out = D._Track(a.color, ts[0], *by_t[ts[0]])
+    for t in ts[1:]:
+        out.add(t, *by_t[t])
+    return out
+
+
+def _merge_fragments(tracks):
+    """Join tracks that are one stone the detector split.
+
+    A duplicate box in a single frame is enough to split a delivery, and each
+    half on its own can fail stage 1 from opposite directions -- one stops
+    short of the line, the other is first seen above it.
+
+    Restarts after every join so a stone broken into three pieces collapses to
+    one. There are a handful of tracks in a release window, so the quadratic
+    scan costs nothing worth avoiding.
+    """
+    out = sorted(tracks, key=lambda tr: tr.ts[0])
+    joined = True
+    while joined:
+        joined = False
+        for i in range(len(out)):
+            for j in range(i + 1, len(out)):
+                a, b = out[i], out[j]
+                if a.color != b.color:
+                    continue
+                if max(a.ts[0], b.ts[0]) > min(a.ts[-1], b.ts[-1]):
+                    continue                    # a gap between them in time
+                if abs(_mean_x(a) - _mean_x(b)) > MERGE_LATERAL_M:
+                    continue                    # too far apart to be one stone
+                out[i] = _join(a, b)
+                del out[j]
+                joined = True
+                break
+            if joined:
+                break
+    return out
+
+
 def find_releases(frames, view_y_min_m: float,
                   view_x_limit_m: float | None = None) -> list[Release]:
     """Every stone that left the panel up-sheet the way a delivery does.
@@ -127,7 +190,7 @@ def find_releases(frames, view_y_min_m: float,
     if not frames:
         return []
     out: list[Release] = []
-    for track in D._build_tracks(frames):
+    for track in _merge_fragments(D._build_tracks(frames)):
         if len(track.ts) < 4:
             continue
         if track.ys[0] > view_y_min_m + ENTRY_MARGIN_M:

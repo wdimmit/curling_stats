@@ -46,6 +46,83 @@ def arrival(color, t):
                     rest_x_m=0.0, rest_y_m=0.0, travel_m=4.5)
 
 
+def track(color, samples):
+    """A `_Track` from `(t, x, y)` samples, as `_build_tracks` would build it."""
+    from curling_score.detect import delivery as D
+
+    (t0, x0, y0), *rest = samples
+    tk = D._Track(color, t0, x0, y0)
+    for t, x, y in rest:
+        tk.add(t, x, y)
+    return tk
+
+
+class TestMergingFragments:
+    """One stone the detector split in two is one track, not two.
+
+    These drive `_merge_fragments` directly rather than through
+    `find_releases`, and that is deliberate. Coaxing `_build_tracks` into
+    splitting a synthetic trace is not reliable -- it re-acquires across a
+    0.4 s gap and a 1.4 m jump, so a trace built to look fragmented comes
+    back already joined and the test passes whether the merge exists or
+    not. The samples below are e1 s1's real ones.
+    """
+
+    def test_two_fragments_of_one_stone_merge(self):
+        low = track("red", [(17.0, 0.13, -1.88), (17.2, 0.11, -1.39),
+                            (17.4, 0.13, -1.19)])
+        high = track("red", [(17.4, 0.11, -0.87), (17.6, 0.10, -0.30),
+                             (17.8, 0.12, 0.05), (18.2, 0.08, 1.33),
+                             (18.4, 0.08, 1.86)])
+        (merged,) = release._merge_fragments([low, high])
+        assert merged.ys[0] == -1.88
+        assert merged.ys[-1] == 1.86
+        assert len(merged.ts) == 7          # 3 + 5, less the clash at 17.4
+
+    def test_the_better_sampled_box_wins_a_collision(self):
+        # Both fragments hold a sample at 17.4 and disagree: -0.87 against
+        # -1.19. Interpolating the stone's neighbours puts it at -0.85.
+        low = track("red", [(17.0, 0.13, -1.88), (17.2, 0.11, -1.39),
+                            (17.4, 0.13, -1.19)])
+        high = track("red", [(17.4, 0.11, -0.87), (17.6, 0.10, -0.30),
+                             (17.8, 0.12, 0.05), (18.2, 0.08, 1.33),
+                             (18.4, 0.08, 1.86)])
+        (merged,) = release._merge_fragments([low, high])
+        assert -0.87 in merged.ys
+        assert -1.19 not in merged.ys
+
+    def test_tracks_far_apart_laterally_do_not_merge(self):
+        # e6 s6: 0.60 m apart and overlapping in time, genuinely two objects.
+        a = track("red", [(4566.3, 0.00, -2.07), (4566.9, 0.00, -0.50),
+                          (4568.1, 0.00, 1.82)])
+        b = track("red", [(4566.9, -0.60, -1.14), (4568.9, -0.60, 2.97)])
+        assert len(release._merge_fragments([a, b])) == 2
+
+    def test_tracks_with_a_gap_between_them_do_not_merge(self):
+        a = track("red", [(100.0, 0.05, -2.0), (100.4, 0.05, -1.0),
+                          (100.8, 0.05, 0.0)])
+        b = track("red", [(400.0, 0.05, -2.0), (400.4, 0.05, -1.0),
+                          (400.8, 0.05, 0.0)])
+        assert len(release._merge_fragments([a, b])) == 2
+
+    def test_two_different_objects_do_not_merge(self):
+        # 0.6 m apart laterally is e6 s6: a real delivery and something else
+        # crossing beside it. Merging those would invent a track neither had.
+        real = leaving("red", 100.0, y0=-2.0, y1=2.4, x=0.00)
+        other = leaving("red", 100.2, y0=-1.1, y1=1.0, x=0.60)
+        got = release.find_releases(frames(real, other), VIEW_Y_MIN)
+        assert len(got) == 1
+        assert len(got[0].track) == len(real)
+
+    def test_a_gap_in_time_is_not_a_fragment(self):
+        # Two separate throws on the centre line, minutes apart. Same stone
+        # colour, same lane, and nothing to do with each other.
+        first = leaving("red", 100.0, y0=-2.0, y1=2.4, x=0.05)
+        second = leaving("red", 400.0, y0=-2.0, y1=2.4, x=0.05)
+        got = release.find_releases(frames(first, second), VIEW_Y_MIN)
+        assert len(got) == 2
+
+
 class TestFindingReleases:
     def test_a_stone_climbing_from_the_back_edge_is_a_release(self):
         got = release.find_releases(frames(leaving("red", 100.0)), VIEW_Y_MIN)
