@@ -122,6 +122,40 @@ class TestMergingFragments:
         got = release.find_releases(frames(first, second), VIEW_Y_MIN)
         assert len(got) == 2
 
+    def test_a_long_interferer_cannot_erase_a_short_delivery(self):
+        """The failure this guard exists for.
+
+        `_join` gives every collision to the longer track, and both tracks sit
+        on the same 5 fps grid, so without a y-agreement test a long blob in
+        the same lane takes every instant and the delivery's own samples are
+        gone -- the merged track is flat, fails the stage-1 line, and the throw
+        is lost. Before merging existed the delivery survived on its own.
+        """
+        delivery = track("red", [(100.0, 0.25, -2.0), (100.2, 0.25, -1.25),
+                                 (100.4, 0.25, -0.5), (100.6, 0.25, 0.25),
+                                 (100.8, 0.25, 1.0)])
+        blob = track("red", [(100.0 + i * 0.2, 0.05, -1.10) for i in range(15)])
+        out = release._merge_fragments([delivery, blob])
+        assert len(out) == 2, "two objects in one lane are not one stone"
+        assert any(tr.ys[-1] == 1.0 for tr in out), "the delivery must survive"
+
+    def test_no_merged_track_implies_an_impossible_speed(self):
+        """A sweeper acquired mid-delivery must not be grafted on.
+
+        The graft reads 3.4 m in 0.2 s, passes every gate, and leaves
+        `y_exit_m` describing where the sweeper went rather than the stone.
+        """
+        delivery = track("red", [(100.0 + i * 0.2, 0.25, -2.0 + i * 0.44)
+                                 for i in range(8)])
+        sweeper = track("red", [(101.4 + i * 0.2, 0.45, 4.5 + i * 0.1)
+                                for i in range(6)])
+        for tr in release._merge_fragments([delivery, sweeper]):
+            steps = [(b - a) / (tb - ta) for (ta, a), (tb, b)
+                     in zip(zip(tr.ts, tr.ys), zip(tr.ts[1:], tr.ys[1:]))
+                     if tb > ta]
+            assert all(abs(v) <= release.MAX_SPEED_M_S for v in steps), (
+                "a merged track must stay physically possible")
+
 
 class TestFindingReleases:
     def test_a_stone_climbing_from_the_back_edge_is_a_release(self):

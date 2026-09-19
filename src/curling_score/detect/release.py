@@ -91,6 +91,16 @@ CENTRE_FRACTION = 0.35
 # apart, and the one pair that is one stone (e2 s8) sits 0.02 m apart. There is
 # nothing in between, so the threshold is not delicate.
 MERGE_LATERAL_M = 0.3
+# Two tracks of one stone agree about where it is. Where they hold samples at
+# the same instant, disagreement beyond this means two objects sharing a lane,
+# and joining those destroys the better of them: `_join` gives every collision
+# to the longer track, so a long interferer erases a short delivery outright.
+#
+# The one genuine fragment pair measured -- e1 s1's two boxes at the same
+# frame, y = -0.87 and y = -1.19 -- disagrees by 0.32 m, a little over a
+# stone's 0.284 m diameter. The erasure case disagrees by up to 2.10 m. 0.5
+# sits between, with about 1.6x margin on the real pair.
+MERGE_AGREE_M = 0.5
 # Release to arrival in the far house.
 MIN_LAG_S = 6.0
 MAX_LAG_S = 30.0
@@ -155,6 +165,38 @@ def _join(a, b):
     return out
 
 
+def _agree(a, b) -> bool:
+    """Whether two tracks describe the same stone where both hold a sample.
+
+    Compared on ``round(t, 3)``, the same key `_join` uses to detect a
+    collision. Any instant where the two disagree by more than
+    ``MERGE_AGREE_M`` is two objects sharing a lane, not one stone in pieces.
+    """
+    by_t_a = {round(t, 3): y for t, y in zip(a.ts, a.ys)}
+    by_t_b = {round(t, 3): y for t, y in zip(b.ts, b.ys)}
+    for t, ya in by_t_a.items():
+        yb = by_t_b.get(t)
+        if yb is not None and abs(ya - yb) > MERGE_AGREE_M:
+            return False
+    return True
+
+
+def _plausible(track) -> bool:
+    """Whether a track's samples describe motion a stone could make.
+
+    A join fabricates a jump if it grafts a second track on where the first
+    left off: two fragments of one stone were never far apart, so a step no
+    real stone could take marks the join as wrong, not the stone as fast.
+    """
+    pairs = zip(zip(track.ts, track.ys), zip(track.ts[1:], track.ys[1:]))
+    for (t0, y0), (t1, y1) in pairs:
+        if t1 <= t0:
+            continue
+        if abs((y1 - y0) / (t1 - t0)) > MAX_SPEED_M_S:
+            return False
+    return True
+
+
 def _merge_fragments(tracks):
     """Join tracks that are one stone the detector split.
 
@@ -179,7 +221,12 @@ def _merge_fragments(tracks):
                     continue                    # a gap between them in time
                 if abs(_mean_x(a) - _mean_x(b)) > MERGE_LATERAL_M:
                     continue                    # too far apart to be one stone
-                out[i] = _join(a, b)
+                if not _agree(a, b):
+                    continue                    # disagree where both hold a sample
+                candidate = _join(a, b)
+                if not _plausible(candidate):
+                    continue                    # the join implies an impossible speed
+                out[i] = candidate
                 del out[j]
                 joined = True
                 break
