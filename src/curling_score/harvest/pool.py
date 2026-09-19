@@ -133,6 +133,8 @@ def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
     # from a sweeper who started mid-panel. Computed once per panel, not per
     # clip -- it depends only on the crop and its calibration.
     back_edge = {name: p.setup().view_y_min_m for name, p in panels.items()}
+    # Same reason, for the lateral bound `release.CENTRE_FRACTION` applies.
+    x_limit = {name: p.setup().view_x_limit_m for name, p in panels.items()}
 
     for clip_path in clip_paths:
         from curling_score.ingest import frames as F
@@ -155,7 +157,7 @@ def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
             seq = list(zip(times, dets))
 
             flights = motion.find_flights(seq)
-            throws = motion.find_throws(seq, back_edge[name])
+            throws = motion.find_throws(seq, back_edge[name], x_limit[name])
             stats["flights"] += len(flights)
             stats["throws"] += len(throws)
             wanted = {}  # t -> (kind, flight_id)

@@ -332,6 +332,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 release.RELEASE_FPS, detector))
             releases, thrown_by, unaccounted = release.find_and_pair(
                 far_seq, far.view_y_min_m, deliveries, seq, since=from_s,
+                view_x_limit_m=far.view_x_limit_m,
             )
             if unaccounted:
                 deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)

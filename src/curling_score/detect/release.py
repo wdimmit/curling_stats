@@ -45,6 +45,28 @@ ENTRY_MARGIN_M = 0.6
 MIN_TRAVEL_M = 3.0
 MIN_SPEED_M_S = 1.0
 MAX_SPEED_M_S = 4.5
+# How far off the centre line a delivery may run, as a fraction of the panel's
+# half-width. A thrower starts in the hack, which is on the centre line, and
+# measured over all 88 deliveries of AEqLTgM25Tc that the panel follows past
+# the tee, the widest ran |x| = 0.32 m. Everything else this panel offers runs
+# wider -- stones parked at the edges between ends, and the delivering player's
+# own arm and shoulder as they slide up-sheet -- a median of 1.10 m over the
+# 265 other tracks in that game.
+#
+# 0.35 of the half-width is 0.65 m on the club's bottom panel and 0.76 m on its
+# top, so it keeps all 88 with twice the margin of the widest and culls 66% of
+# the rest.
+#
+# 0.50 WAS TRIED FIRST AND IS NOT ENOUGH. It culls stones parked at the edges
+# (those sit at 1.2-1.6 m) but not the thrower, who reads at x = 0.78-0.85
+# during the slide, inside a 0.93 m bound -- and `_build_tracks` then joins
+# those boxes to the real delivery, so the track runs on past where the stone
+# actually went. Frames in datasets/ds11/hardneg.
+#
+# It does NOT catch a box on the thrower's trailing arm, which sits directly
+# behind the stone on the centre line (x = +0.24 against the stone's +0.25).
+# Nothing lateral can; that one needs the detector retrained.
+CENTRE_FRACTION = 0.35
 # Release to arrival in the far house.
 MIN_LAG_S = 6.0
 MAX_LAG_S = 30.0
@@ -72,9 +94,36 @@ class Release:
     track: tuple[tuple[float, float, float], ...] = ()
 
 
-def find_releases(frames, view_y_min_m: float) -> list[Release]:
-    """Every stone that left the panel up-sheet the way a delivery does."""
-    frames = [(t, list(d)) for t, d in frames]
+def on_centre_line(x_m: float, view_x_limit_m: float | None) -> bool:
+    """Whether a detection is near enough the centre line to be a delivery.
+
+    ``view_x_limit_m`` of None means no bound, which is what a caller with no
+    panel to hand gets -- a test building frames by hand, and the pre-existing
+    callers that never had a lateral limit to pass. Every production caller
+    passes ``PanelSetup.view_x_limit_m``; see CENTRE_FRACTION.
+    """
+    if view_x_limit_m is None:
+        return True
+    return abs(x_m) <= view_x_limit_m * CENTRE_FRACTION
+
+
+def find_releases(frames, view_y_min_m: float,
+                  view_x_limit_m: float | None = None) -> list[Release]:
+    """Every stone that left the panel up-sheet the way a delivery does.
+
+    Detections off the centre line are dropped BEFORE tracking, not after.
+    Dropping whole tracks afterwards does not work: a box on the delivering
+    player is picked up by ``_build_tracks`` and joined to the stone's own
+    track, so by the time there is a track to judge, the bad samples are
+    already inside a good one.
+
+    THROWING SIDE ONLY. The arriving house must never be bounded this way -- a
+    stone comes to rest wherever it is played, and these two panels swap roles
+    every end, so the crop that is a delivery lane in one end is a house in the
+    next.
+    """
+    frames = [(t, [d for d in dets if on_centre_line(d.x_m, view_x_limit_m)])
+              for t, dets in frames]
     if not frames:
         return []
     out: list[Release] = []
@@ -187,7 +236,8 @@ def settle(release: Release, frames) -> D.Delivery:
 
 
 def find_and_pair(frames, view_y_min_m: float, deliveries, house_frames=(),
-                  since: float | None = None):
+                  since: float | None = None,
+                  view_x_limit_m: float | None = None):
     """The whole throwing-end pass: find, pair, and settle what did not arrive.
 
     Returns ``(releases, matched, unaccounted)``. Three callers need exactly
@@ -198,7 +248,7 @@ def find_and_pair(frames, view_y_min_m: float, deliveries, house_frames=(),
     ``since`` drops releases from before an end's run-up, which every caller
     did by hand between the two calls.
     """
-    releases = find_releases(frames, view_y_min_m)
+    releases = find_releases(frames, view_y_min_m, view_x_limit_m)
     if since is not None:
         releases = [r for r in releases if r.t >= since]
     pairing = pair(releases, deliveries)

@@ -14,6 +14,8 @@ from curling_score.detect.delivery import Delivery
 from curling_score.detect.rocks import Detection
 
 VIEW_Y_MIN = -2.25
+# The club's bottom panel. Its centre-line bound is 1.85 * 0.35 = 0.647 m.
+VIEW_X_LIMIT = 1.85
 
 
 def det(color, x, y):
@@ -73,6 +75,60 @@ class TestFindingReleases:
         got = release.find_releases(both, VIEW_Y_MIN)
         assert len(got) == 1
         assert got[0].y_exit_m > 4.0   # the one followed further
+
+
+class TestTheCentreLineBound:
+    """`CENTRE_FRACTION`: a thrower starts in the hack, on the centre line.
+
+    Measured over 88 deliveries on AEqLTgM25Tc the widest ran |x| = 0.32 m,
+    against a median of 1.10 m for everything else the panel offers.
+    """
+
+    def test_a_delivery_on_the_centre_line_survives_the_bound(self):
+        got = release.find_releases(frames(leaving("red", 100.0, x=0.32)),
+                                    VIEW_Y_MIN, VIEW_X_LIMIT)
+        assert len(got) == 1, "the widest real delivery measured must still pass"
+
+    def test_a_stone_parked_at_the_edge_is_refused(self):
+        # Spare rocks sit at the sides of the throwing view between ends; on
+        # AEqLTgM25Tc end 6 they read at x = 1.45 and -1.58.
+        got = release.find_releases(frames(leaving("red", 100.0, x=1.45)),
+                                    VIEW_Y_MIN, VIEW_X_LIMIT)
+        assert got == []
+
+    def test_the_thrower_sliding_up_sheet_is_refused(self):
+        # The failure 0.50 was not tight enough for: boxes on the delivering
+        # player's arm and shoulder at x = 0.78-0.85. See datasets/ds11/hardneg.
+        got = release.find_releases(frames(leaving("red", 100.0, x=0.82)),
+                                    VIEW_Y_MIN, VIEW_X_LIMIT)
+        assert got == [], "0.82 m is inside a 0.50 bound and must be outside this one"
+
+    def test_a_wide_box_cannot_extend_a_good_track(self):
+        """The reason the bound filters detections rather than whole tracks.
+
+        A real delivery, and boxes on the thrower continuing up-sheet after the
+        stone has gone. `_build_tracks` joins the two, so judging the track
+        afterwards would judge one that already has the bad samples in it.
+        """
+        contaminated = frames(leaving("red", 100.0, y0=-2.2, y1=1.5, x=0.25),
+                              leaving("red", 101.85, y0=1.5, y1=3.4, x=0.82))
+        loose = release.find_releases(contaminated, VIEW_Y_MIN)
+        bounded = release.find_releases(contaminated, VIEW_Y_MIN, VIEW_X_LIMIT)
+        assert len(loose) == 1 and len(bounded) == 1
+        assert loose[0].y_exit_m > 3.0, "unbounded, the track runs on past the stone"
+        assert bounded[0].y_exit_m < 2.0, "bounded, it stops where the stone did"
+
+    def test_no_limit_means_no_bound(self):
+        # Every pre-existing caller passes nothing, and must be unaffected.
+        wide = frames(leaving("red", 100.0, x=1.45))
+        assert release.find_releases(wide, VIEW_Y_MIN) != []
+        assert release.on_centre_line(99.0, None) is True
+
+    def test_find_and_pair_threads_the_limit_through(self):
+        fs = frames(leaving("red", 100.0, x=1.45))
+        rels, _matched, _un = release.find_and_pair(
+            fs, VIEW_Y_MIN, [arrival("red", 118.0)], view_x_limit_m=VIEW_X_LIMIT)
+        assert rels == [], "the bound must reach find_releases through find_and_pair"
 
 
 class TestPairing:

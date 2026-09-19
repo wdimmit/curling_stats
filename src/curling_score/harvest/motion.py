@@ -76,7 +76,8 @@ def find_flights(sequence, min_seconds: float = MIN_FLIGHT_S) -> list[Flight]:
     return found
 
 
-def find_throws(sequence, view_y_min_m: float) -> list[Flight]:
+def find_throws(sequence, view_y_min_m: float,
+                view_x_limit_m: float | None = None) -> list[Flight]:
     """Every stone seen *leaving* the thrower's house in one sequence.
 
     The counterpart to :func:`find_flights`, and the frames the harvest has
@@ -94,8 +95,12 @@ def find_throws(sequence, view_y_min_m: float) -> list[Flight]:
     red-jacketed sweeper running up-sheet beside it.
 
     ``sequence`` is ``(absolute_t, detections)`` in time order, and
-    ``view_y_min_m`` is the panel's back edge -- the same value
-    ``find_releases`` is given in the analysis pipeline.
+    ``view_y_min_m`` is the panel's back edge and ``view_x_limit_m`` the edge
+    of its lateral view -- the same two values ``find_releases`` is given in
+    the analysis pipeline. Passing the second matters for the reason this
+    function delegates at all: if the pipeline bounds a delivery to the centre
+    line and the training selector does not, the set is built from throws the
+    pipeline would now refuse.
     """
     from curling_score.detect import release
 
@@ -105,7 +110,7 @@ def find_throws(sequence, view_y_min_m: float) -> list[Flight]:
                ts=tuple(t for t, _x, _y in r.track),
                xs=tuple(x for _t, x, _y in r.track),
                ys=tuple(y for _t, _x, y in r.track))
-        for r in release.find_releases(window, view_y_min_m)
+        for r in release.find_releases(window, view_y_min_m, view_x_limit_m)
         if r.track
     ]
     found.sort(key=lambda f: f.ts[0])
