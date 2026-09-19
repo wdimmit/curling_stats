@@ -79,14 +79,33 @@ def _changed(delta) -> bool:
     return bool(delta.get("removed") or delta.get("moved"))
 
 
-def classify(delivery, house_delta=None, release=None):
+def classify(delivery, house_delta=None, release=None, *,
+             t_hog=None, v_hog=None):
     """Return ``(category, confidence)`` for one delivery.
 
     ``house_delta`` is the before/after diff from :func:`shots.house_delta`;
     pass None when it could not be computed, which costs the hit evidence but
-    not the geometry. ``release`` is the throw this arrival was paired to, and
-    is only ever read to time the long split; pass None and every shot that
-    left play reads as a flash.
+    not the geometry.
+
+    ``t_hog`` is when the side view saw this stone cross the THROWING end's hog
+    line and ``v_hog`` how fast it was crossing (``game/hogtime.py``). Together
+    they are what times the long split. ``release`` no longer is: the throwing
+    end's own overhead tripwire used to start the split and does not any more,
+    because the composite's camera pairs are out of step and it reads up to
+    0.95 s late. The release is still read, for the mispairing check inside
+    ``split.long_split``, but it cannot supply the near crossing.
+
+    Pass no ``t_hog`` and there is no split, so every shot that left play reads
+    as a flash. That is the common case and deliberately so -- most shots are
+    not timed at both hog lines -- but it is a policy, not evidence, and
+    ``CONF_BOUNDARY`` is what admits it.
+
+    Passing ``release`` alone USED to be enough and silently stopped being: for
+    a while after the long-camera merge this called ``long_split(release,
+    delivery)`` with no ``t_hog``, which returns None unconditionally, so
+    ``DRAW_THROUGH`` became unreachable and every out-of-play rock read as a
+    flash. Hence the keyword-only arguments: a caller that has not thought
+    about the side view cannot now pass one by position and appear to work.
     """
     if delivery is None:
         return UNKNOWN, 0.0
@@ -113,7 +132,7 @@ def classify(delivery, house_delta=None, release=None):
     # shots do not have one -- those fall to the takeout, which is the commoner
     # way to end up here, at a confidence that admits it was not measured.
     if delivery.reason == "left-view" or rest_y <= C.THROUGH_BACK_Y_M:
-        sp = split.long_split(release, delivery)
+        sp = split.long_split(release, delivery, t_hog=t_hog, v_hog=v_hog)
         if sp is None:
             return FLASHED, CONF_BOUNDARY
         if sp.seconds > SPLIT_HIT_MAX_S:
@@ -132,7 +151,18 @@ def classify(delivery, house_delta=None, release=None):
 
 
 def classify_shot(shot):
-    """Classify a :class:`shots.Shot`, which may be a placeholder."""
+    """Classify a :class:`shots.Shot`, which may be a placeholder.
+
+    This is where the side view's crossing reaches the classifier. A shot that
+    dropped it here would read every draw thrown through as a flash, which is
+    exactly what happened between the long-camera merge and this line existing.
+    """
     if shot.missing or shot.delivery is None:
         return UNKNOWN, 0.0
-    return classify(shot.delivery, shot.house_delta, shot.release)
+    # Imported here, not at module scope: ``hogtime`` reaches the side view's
+    # detectors, and deciding what a shot was must not need numpy or weights.
+    from curling_score.game import hogtime
+
+    return classify(shot.delivery, shot.house_delta, shot.release,
+                    t_hog=hogtime.crossing(shot),
+                    v_hog=hogtime.speed_at_hog(shot))
