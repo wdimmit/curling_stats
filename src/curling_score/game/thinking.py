@@ -10,10 +10,17 @@ now asks only that the stone crossed ``STAGE1_Y_M``, a foot BEHIND the tee,
 because the three-metre climb was costing a quarter of all throws. A release
 may now stop short of the tee line entirely.
 
-Nothing here depended on that guarantee, which is why this is a docstring
-change and not a code one: the gates below are this module's own and are
-deliberately weaker, and ``TRACK_TEE_GAP_M`` already carries a track that
-dies below the tee the rest of the way.
+Something here did depend on that guarantee. A shot that already carries a
+release used to be skipped by :func:`time_shots` outright, on the assumption
+that pairing was always the better evidence -- true while every release had
+crossed y = 0, false now that one can stop at, say, y = -0.20. Read off such a
+release directly, :func:`tee_crossing` got ``None``: not "unmeasured", just
+silently absent, because ``crossing_time`` cannot bracket a line the track
+never reached. ``time_shots`` now still builds its own estimate for a shot
+like that, from the thrower's own frames, so :func:`tee_crossing` has
+something of this module's own to fall back to. See
+``tests/test_thinking.py``'s release-that-stops-short case for the shape of
+the failure this replaces.
 
 The clock starts when the previous stone comes to rest, plus a grace period for
 the players to clear the ice. That grace is not in the rulebook; it stands in
@@ -140,8 +147,16 @@ def time_shots(shots, frames, view_y_min_m: float) -> None:
     """
     seen = _sightings(frames, view_y_min_m)
     for shot in shots:
-        if getattr(shot, "release", None) is not None or shot.missing:
+        if shot.missing:
             continue
+        r = getattr(shot, "release", None)
+        if r is not None and split.crossing_time(
+                getattr(r, "track", ()), TEE_LINE_Y_M) is not None:
+            continue  # the release already answers this; it is the better evidence
+        # A release with a track no longer means it crossed the tee (see the
+        # module docstring), so a shot must not be skipped just for carrying
+        # one -- without this estimate, `tee_crossing` would have nothing to
+        # fall back to for it.
         delivery = getattr(shot, "delivery", None)
         if delivery is None:
             continue
@@ -192,11 +207,16 @@ def tee_crossing(shot) -> float | None:
     """When this shot's stone crossed the delivering end's tee line.
 
     Read off the paired release where there is one, and otherwise off
-    whatever :func:`time_shots` could establish.
+    whatever :func:`time_shots` could establish. A release is no longer
+    guaranteed to have crossed the tee -- ``STAGE1_Y_M`` sits a foot short of
+    it -- so a release track that never brackets y = 0 falls back to
+    ``shot.tee_s`` the same as a shot with no release at all.
     """
     r = getattr(shot, "release", None)
     if r is not None and getattr(r, "track", ()):
-        return split.crossing_time(r.track, TEE_LINE_Y_M)
+        crossed = split.crossing_time(r.track, TEE_LINE_Y_M)
+        if crossed is not None:
+            return crossed
     return getattr(shot, "tee_s", None)
 
 
