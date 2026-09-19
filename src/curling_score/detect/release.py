@@ -238,11 +238,18 @@ def find_releases(frames, view_y_min_m: float,
         ))
     out.sort(key=lambda r: r.t)
     # One throw at a time: of two sightings inside the separation, keep the
-    # one followed further, which is the stone rather than the broom beside it.
+    # better-sampled one, which is the stone rather than whatever crossed
+    # beside it.
+    #
+    # This used to keep the one followed FURTHEST, which worked while a release
+    # had to climb three metres and stopped working when it did not. On e6 s6
+    # the real delivery carries eight samples and reaches y = +1.82 while the
+    # thing 0.60 m beside it carries two and reaches +2.97, so distance now
+    # picks the wrong one and sample count picks the right one.
     kept: list[Release] = []
     for r in out:
         if kept and r.t - kept[-1].t < MIN_SEPARATION_S:
-            if r.y_exit_m > kept[-1].y_exit_m:
+            if len(r.track) > len(kept[-1].track):
                 kept[-1] = r
             continue
         kept.append(r)

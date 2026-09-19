@@ -252,6 +252,18 @@ class TestTheStage1Line:
             release.find_releases(frames(leaving("red", 100.0)),
                                   view_y_min_m=0.5)
 
+    def test_the_better_sampled_rival_wins_not_the_one_followed_furthest(self):
+        # e6 s6 on AEqLTgM25Tc: the real delivery carries eight samples and
+        # reaches y = +1.82; the thing crossing 0.60 m beside it carries two
+        # and reaches +2.97. Keeping the larger y_exit_m picks the wrong one.
+        real = leaving("red", 100.0, y0=-2.0, y1=1.9, x=0.0)    # 10 samples
+        rival = leaving("red", 100.2, y0=-0.6, y1=2.0, x=0.6)   # 7, but higher
+        assert len(real) > len(rival)
+        got = release.find_releases(frames(real, rival), VIEW_Y_MIN)
+        assert len(got) == 1
+        assert len(got[0].track) == len(real)
+        assert got[0].y_exit_m < 1.7        # the real one does not reach as far
+
 
 class TestPairing:
     def _rel(self, color, t):
