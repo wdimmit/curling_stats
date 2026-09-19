@@ -12,7 +12,9 @@ no arrival in the far house is a hogged rock. Measured on the club's feed:
 releases enter within 0.1 m of the back edge of the view at 1.5-2.1 m/s and
 travel 4.5-6.7 m before the tracker loses them among the sweepers; a red-
 jacketed sweeper running beside a release is also picked up moving up-sheet,
-but starts mid-panel, which is what the entry test refuses.
+starting mid-panel -- and the entry test refuses that only when it starts
+above STAGE1_Y_M. One acquired below the line, mid-panel like the sweeper but
+still on the delivery's side of it, passes the same as a real release would.
 
 A release is timed from the stone's first sighting, close to the back edge but
 no longer pinned there -- the entry gate now admits anything below

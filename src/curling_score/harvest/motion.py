@@ -91,8 +91,10 @@ def find_throws(sequence, view_y_min_m: float,
     to :func:`curling_score.detect.release.find_releases` rather than restating
     what a departing stone looks like -- one definition that the pipeline and
     the training set share, instead of two that drift apart. That also buys the
-    entry test, which is the only thing separating a delivery from the
-    red-jacketed sweeper running up-sheet beside it.
+    entry test, which is no longer what separates a delivery from the
+    red-jacketed sweeper running up-sheet beside it -- STAGE1_Y_M refuses only
+    a track first seen above the line, and a sweeper acquired below it, well
+    into the panel, passes the same as a delivery would.
 
     ``sequence`` is ``(absolute_t, detections)`` in time order, and
     ``view_y_min_m`` is the panel's back edge and ``view_x_limit_m`` the edge

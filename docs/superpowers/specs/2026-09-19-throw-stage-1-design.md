@@ -135,7 +135,7 @@ repairing a track the detector fragmented.
 | constant | today | after |
 | --- | --- | --- |
 | `MIN_TRAVEL_M` | 3.0 m of climb | gone |
-| `ENTRY_MARGIN_M` | first seen within 0.6 m of the back edge | subsumed by "begins below the line" |
+| `ENTRY_MARGIN_M` | first seen within 0.6 m of the back edge | not subsumed -- strictly weaker: "begins below the line" admits anything below STAGE1_Y_M, up to ~1.1 m further up the panel than the old 0.6 m margin allowed |
 | `MIN_SPEED_M_S`, `MAX_SPEED_M_S` | 1.0-4.5 m/s | kept, unchanged |
 
 `MIN_SPEED_M_S` survives because it is a real discriminator rather than a

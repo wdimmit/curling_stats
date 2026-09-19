@@ -129,9 +129,12 @@ def build_video_pool(video_id, clip_paths, setup, detector, out_dir, *,
     rects = {name: tuple(p.rect) for name, p in panels.items()}
     found, stats = [], {"clips": 0, "moments": 0, "flights": 0, "throws": 0,
                         "written": 0}
-    # The panel's back edge, which is what tells a delivery leaving the hack
-    # from a sweeper who started mid-panel. Computed once per panel, not per
-    # clip -- it depends only on the crop and its calibration.
+    # The panel's back edge. `view_y_min_m` no longer separates a delivery
+    # from a sweeper who started mid-panel -- `release.find_releases`'s entry
+    # gate is STAGE1_Y_M now, not this -- so it is passed through only for
+    # `find_throws` to raise ValueError on a panel that cannot see the hack.
+    # Computed once per panel, not per clip -- it depends only on the crop
+    # and its calibration.
     back_edge = {name: p.setup().view_y_min_m for name, p in panels.items()}
     # Same reason, for the lateral bound `release.CENTRE_FRACTION` applies.
     x_limit = {name: p.setup().view_x_limit_m for name, p in panels.items()}
