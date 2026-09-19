@@ -95,6 +95,13 @@ A shot's stage 1 is a track on the throwing end's overhead panel that
    commit `44d2119`);
 3. begins below `STAGE1_Y_M = -0.3048` and reaches it; and
 4. climbs at delivery speed, `MIN_SPEED_M_S <= v <= MAX_SPEED_M_S`.
+5. carries at least `MIN_SAMPLES = 3` samples.
+
+Three rather than four: e2 s12 is a real delivery the panel caught exactly
+three times -- y -2.16 -> +0.57 at 2.73 m/s on the centre line -- and a
+minimum of four costs that rock and no other, taking the result to 87 of 90.
+Stage 1 establishes that a throw happened; it times nothing, so a thin track
+is weaker evidence than a thick one but not worse evidence of the wrong kind.
 
 Nothing about how far it then travels, and nothing about the hog line. Stage 2
 watches the hog line from a camera that can actually see it.

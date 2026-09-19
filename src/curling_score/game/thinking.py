@@ -3,10 +3,17 @@
 Each team's clock runs while it is deciding, and stops once the stone is on its
 way. World Curling stops it when the delivered stone crosses the tee line at
 the delivering end, and that happens to be the one moment of a delivery this
-footage can be relied on to show: ``release.find_releases`` only accepts a
-track that entered within ``ENTRY_MARGIN_M`` of a back edge near -2.0 m and
-climbed ``MIN_TRAVEL_M`` = 3.0 m, so an accepted release has always crossed
-y = 0 -- by 0.92 m in the worst case the gate allows.
+footage can be relied on to show -- though no longer by way of
+``release.find_releases``, which used to demand a three-metre climb and so
+guaranteed every accepted release had crossed y = 0 by at least 0.92 m. It
+now asks only that the stone crossed ``STAGE1_Y_M``, a foot BEHIND the tee,
+because the three-metre climb was costing a quarter of all throws. A release
+may now stop short of the tee line entirely.
+
+Nothing here depended on that guarantee, which is why this is a docstring
+change and not a code one: the gates below are this module's own and are
+deliberately weaker, and ``TRACK_TEE_GAP_M`` already carries a track that
+dies below the tee the rest of the way.
 
 The clock starts when the previous stone comes to rest, plus a grace period for
 the players to clear the ice. That grace is not in the rulebook; it stands in

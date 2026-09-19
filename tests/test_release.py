@@ -142,8 +142,19 @@ class TestFindingReleases:
         got = release.find_releases(frames(leaving("red", 100.0, speed=0.4)), VIEW_Y_MIN)
         assert got == []
 
-    def test_a_short_climb_is_not(self):
-        got = release.find_releases(frames(leaving("red", 100.0, y1=0.0)), VIEW_Y_MIN)
+    def test_a_climb_that_stops_just_past_the_tee_is_a_release(self):
+        # The 63 -> 88 change. MIN_TRAVEL_M used to demand three metres, which
+        # finishes about a metre past the T-line, and on 30% of throws the
+        # sweepers close over the stone before it gets there. Measured on
+        # AEqLTgM25Tc: the rocks with no release have a median top-of-track of
+        # y = 1.02 m, against 3.48 m for the rocks that do produce one.
+        got = release.find_releases(frames(leaving("red", 100.0, y1=0.0)),
+                                    VIEW_Y_MIN)
+        assert len(got) == 1
+
+    def test_a_climb_that_stops_short_of_the_line_is_not(self):
+        got = release.find_releases(frames(leaving("red", 100.0, y1=-0.8)),
+                                    VIEW_Y_MIN)
         assert got == []
 
     def test_two_sightings_inside_the_separation_are_one_throw(self):
@@ -206,6 +217,40 @@ class TestTheCentreLineBound:
         rels, _matched, _un = release.find_and_pair(
             fs, VIEW_Y_MIN, [arrival("red", 118.0)], view_x_limit_m=VIEW_X_LIMIT)
         assert rels == [], "the bound must reach find_releases through find_and_pair"
+
+
+class TestTheStage1Line:
+    """A throw's first event: the stone leaves the hack and crosses the line."""
+
+    def test_three_samples_are_enough(self):
+        # e2 s12 on AEqLTgM25Tc is a real delivery the panel caught exactly
+        # three times -- y -2.16 -> +0.57 at 2.73 m/s on the centre line. A
+        # minimum of four discards it and costs the 88th rock.
+        got = release.find_releases(
+            frames(leaving("red", 100.0, y0=-1.0, y1=0.0)), VIEW_Y_MIN)
+        assert len(got) == 1
+        assert len(got[0].track) == 3
+
+    def test_two_samples_are_not(self):
+        got = release.find_releases(
+            frames(leaving("red", 100.0, y0=-0.6, y1=0.0)), VIEW_Y_MIN)
+        assert got == []
+
+    def test_a_stone_crossing_faster_than_any_delivery_is_not_one(self):
+        # 4.8 m/s across the line. MIN_SPEED and MAX_SPEED stay exactly as
+        # they were: among tracks acquired above the T-line, deliveries run
+        # 1.47-2.15 m/s and everything else 0.12-0.61, a gap with nothing in
+        # it. They are discriminators, not fitted thresholds.
+        got = release.find_releases(
+            frames(leaving("red", 100.0, speed=4.8)), VIEW_Y_MIN)
+        assert got == []
+
+    def test_a_panel_that_cannot_see_behind_the_tee_is_an_error(self):
+        # Stage 1 is unmeasurable on a crop that does not reach the hack, and
+        # silently returning nothing would look like a game with no throws.
+        with pytest.raises(ValueError, match="stage-1 line"):
+            release.find_releases(frames(leaving("red", 100.0)),
+                                  view_y_min_m=0.5)
 
 
 class TestPairing:
@@ -340,15 +385,21 @@ def test_a_release_keeps_the_track_it_was_found_from():
     ys = [y for _t, _x, y in r.track]
     assert ts == sorted(ts)
     assert ts[0] == r.t
-    assert ys[0] <= VIEW_Y_MIN + release.ENTRY_MARGIN_M
+    assert ys[0] < release.STAGE1_Y_M
     assert ys[-1] == pytest.approx(r.y_exit_m)
 
 
-def test_the_track_spans_the_whole_climb():
+def test_the_track_spans_the_climb_across_the_line():
+    """From below the stage-1 line to at or above it.
+
+    It used to assert a climb of at least MIN_TRAVEL_M. There is no such
+    minimum now: a release is a line crossing, and how far the stone then
+    ran is the hog line's business, not this panel's.
+    """
     fs = frames(leaving("yellow", 50.0, y0=-2.2, y1=2.4, speed=2.0, fps=5.0))
     [r] = release.find_releases(fs, VIEW_Y_MIN)
     ys = [y for _t, _x, y in r.track]
-    assert ys[-1] - ys[0] >= release.MIN_TRAVEL_M
+    assert ys[0] < release.STAGE1_Y_M <= ys[-1]
 
 
 def test_find_and_pair_agrees_with_the_two_calls_it_replaces():

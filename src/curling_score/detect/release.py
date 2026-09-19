@@ -38,11 +38,29 @@ from curling_score.geometry import constants as C
 # Half the rate the houses are watched at: a stone leaving at 2 m/s still
 # moves only 0.4 m between samples, well inside the tracker's bootstrap gate.
 RELEASE_FPS = 5.0
-# First seen this close to the back edge of the view, or it did not come from
-# the hack.
-ENTRY_MARGIN_M = 0.6
-# A release crosses most of the panel before the sweepers close over it.
-MIN_TRAVEL_M = 3.0
+# Stage 1 of a throw: the stone leaves the hack and crosses this line. One foot
+# behind the tee, in sheet metres -- the tee is y = 0 by calibration, so it is
+# the same number on every panel.
+#
+# This replaces a travel minimum of 3.0 m, which from a back edge at y = -2.01
+# (top panel) or -2.21 (bottom) finished at y = +0.79 to +0.99, about a metre
+# PAST the T-line. That metre is the one the sweepers take away: measured over
+# AEqLTgM25Tc, the 27 rocks with no release have a median top-of-track of
+# y = 1.02 m against 3.48 m for the rocks that produce one. The gate asked for
+# exactly the evidence that stops being available, and 25 of those 27 rocks
+# were refused within a metre of passing.
+#
+# Coverage is flat at 88 of 90 anywhere between the tee and 2.75 ft behind it,
+# because no track that exists fails to REACH the line -- every failure is a
+# track acquired above it already. What moves is clearance: worst-case margin
+# is 0.170 m at the tee, 0.475 m here, 0.489 m at 1.25 ft, and 0.006 m at 3 ft.
+# 1.25 ft is the optimum and this is within 3% of it on a round number.
+STAGE1_Y_M = -0.3048
+# Fewest samples a track may have and still be a throw. Three, not four,
+# because e2 s12 on AEqLTgM25Tc is a real delivery the panel caught exactly
+# three times -- y -2.16 -> +0.57 at 2.73 m/s, on the centre line -- and four
+# costs that rock and no other.
+MIN_SAMPLES = 3
 MIN_SPEED_M_S = 1.0
 MAX_SPEED_M_S = 4.5
 # How far off the centre line a delivery may run, as a fraction of the panel's
@@ -172,7 +190,12 @@ def _merge_fragments(tracks):
 
 def find_releases(frames, view_y_min_m: float,
                   view_x_limit_m: float | None = None) -> list[Release]:
-    """Every stone that left the panel up-sheet the way a delivery does.
+    """Every stone seen leaving the hack and crossing the stage-1 line.
+
+    Stage 1 of a throw, and nothing more: it does not ask how far the stone
+    then travelled, because the overhead panel loses about 30% of deliveries
+    within a metre of the T-line and the hog line is stage 2's job, watched
+    from a camera that can actually see it.
 
     Detections off the centre line are dropped BEFORE tracking, not after.
     Dropping whole tracks afterwards does not work: a box on the delivering
@@ -189,15 +212,22 @@ def find_releases(frames, view_y_min_m: float,
               for t, dets in frames]
     if not frames:
         return []
+    if view_y_min_m >= STAGE1_Y_M:
+        raise ValueError(
+            f"this panel sees down to y={view_y_min_m:.2f} m, which is above "
+            f"the stage-1 line at {STAGE1_Y_M:.4f} m: it cannot watch a stone "
+            f"leave the hack, so no throw here could ever be confirmed")
     out: list[Release] = []
     for track in _merge_fragments(D._build_tracks(frames)):
-        if len(track.ts) < 4:
+        if len(track.ts) < MIN_SAMPLES:
             continue
-        if track.ys[0] > view_y_min_m + ENTRY_MARGIN_M:
-            continue  # started mid-panel: a sweeper, or a stone already in play
+        if track.ys[0] >= STAGE1_Y_M:
+            continue  # first seen above the line: not watched leaving the hack
+        if track.ys[-1] < STAGE1_Y_M:
+            continue  # never reached it
         up = track.ys[-1] - track.ys[0]
         dur = track.ts[-1] - track.ts[0]
-        if up < MIN_TRAVEL_M or dur <= 0:
+        if dur <= 0:
             continue
         speed = up / dur
         if not MIN_SPEED_M_S <= speed <= MAX_SPEED_M_S:

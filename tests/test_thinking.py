@@ -202,7 +202,7 @@ class TestTimingAShotWithNoRelease:
         assert shots[1].tee_estimated is False
 
     def test_a_climb_too_short_to_be_called_a_throw_still_times_it(self):
-        """2.0 m: under ``release.MIN_TRAVEL_M``, over the clock's own floor."""
+        """2.0 m: over the clock's own floor, and no longer a release gate."""
         shots = [arriving(1, "red", 80.0, 70.0),
                  arriving(2, "yellow", 160.0, 117.0)]
         thinking.time_shots(shots, frames(leaving("yellow", 100.0, y1=0.05)),
