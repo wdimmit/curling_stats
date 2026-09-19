@@ -205,31 +205,58 @@ It is not established that this holds generally.
 
 ## Not in scope
 
-**Turning a stage-1 pass into a release on a shot.** This spec measures whether
-the panel SEES the throw, and 88 of 90 is that number. It is not the number of
-rocks that end up carrying a release: that also needs `pair()` to bind the
-release to a delivery and `fit.fit_end` to keep that delivery, and on the
-reference game two rocks clear stage 1 and fall there. e1 s5 is the clean
-example -- the panel offers two near-duplicate red arrivals 0.4 s apart, the
-release binds to the first, and the fit keeps the second. Measured after
-implementation: 86 of 90 rocks carry a release, against 63 before.
+### Two numbers, and the words for them
 
-That gap is the pairing-versus-fit ORDERING, not the association window below,
-and it is equally out of scope here. Closing it means pairing after the fit, or
-re-binding orphaned releases.
+This section used to say "the one stage-1 failure" in one place and "none of
+these is a stage-1 problem" in another, which cannot both be true. The phrase
+was doing two jobs. Split, and used only this way from here on:
 
-**The association window.** e2 s16 is the one stage-1 failure that this spec
-does not fix and is not about geometry: the stone leaves the hack 30.5 s before
-its arrival, against `MAX_LAG_S = 30`, and is excluded by half a second. That
-is the same class as e6 #7's crossing missed by 0.052 s at `WINDOW_S`'s edge.
-Both belong to a separate decision about how a throw is associated with its
-arrival, which is where the remaining tuning in this pipeline appears to live.
+- **the stage-1 predicate** -- the five conditions under "The definition".
+  Whether a qualifying track exists at all.
+- **the search window** -- where we look for it: back from the arrival, bounded
+  by `release.MAX_LAG_S = 30`. Association, not geometry.
+- **attachment** -- `pair()` binding the release to a delivery and
+  `fit.fit_end` keeping that delivery, so a shot ends up carrying it.
 
-**e6 s2.** No red delivery exists on the panel at all, and the shot itself is
-doubtful -- shot 1 rests at 4367.3 and shot 2 supposedly enters at 4370.0, 2.7 s
-apart against `MIN_SEPARATION_S = 10`, recovered by `gap-search` on ten arrival
-samples. Stage 1 did not fail here so much as decline to invent a throw, which
-is the behaviour wanted. Whether the rock is real is a rules question.
+Two different counts follow, and this spec quotes both:
+
+| count | value | what it means |
+| --- | --- | --- |
+| stage 1 satisfied, inside the window | **88 / 90** | a qualifying track was found |
+| release attached to a shot | **86 / 90** | ...and it survived pairing and the fit |
+
+Against 63 of 90 before this work, on either measure.
+
+**Nothing in the stage-1 predicate refuses any of the four.** They divide two
+and two, and both halves are association:
+
+**The window costs two: e2 s16 and e6 s2.**
+
+- **e2 s16** has a qualifying track -- 14 samples, y -2.17 to +3.38 at 1.63 m/s
+  -- and it starts 30.5 s before the arrival, against `MAX_LAG_S = 30`. Excluded
+  by half a second. The predicate is satisfied; we do not look there. Same class
+  as e6 #7's crossing missed by 0.052 s at `WINDOW_S`'s edge.
+- **e6 s2** has no red track anywhere near, in the window or out of it. There is
+  nothing for the predicate to accept or refuse. The shot itself is doubtful:
+  shot 1 rests at 4367.3 and shot 2 supposedly enters at 4370.0, 2.7 s apart
+  against `MIN_SEPARATION_S = 10`, recovered by `gap-search` on ten arrival
+  samples. Stage 1 declined to invent a throw, which is the behaviour wanted.
+
+**Attachment costs two more: e1 s5 and e4 s16.** Both pass the predicate, both
+get a release, and both lose it to the same ordering -- `pair()` runs over every
+delivery offered, before `fit.fit_end` prunes them, so a release can bind to a
+duplicate the rules then discard. Instrumented, both of them:
+
+| rock | release | deliveries offered | bound to | fit kept |
+| --- | --- | --- | --- | --- |
+| e1 s5 | red t=205.4 | 220.0 `house-add` travel 0.56 m; 220.4 `rest` travel 2.15 m | 220.0 | 220.4 |
+| e4 s16 | red t=3306.7 | 3321.7 `house-remove` travel 6.16 m; 3325.0 `rest` travel 5.16 m | 3321.7 | 3325.0 |
+
+One rock seen twice, each time; the release binds to whichever arrival comes
+first and the fit keeps the other. Neither rock carried a release before this
+branch either, so neither is a regression. Closing it means pairing after the
+fit, or re-binding orphaned releases -- an association change, out of scope
+here, and the same place the window sits.
 
 **Stage 4.** Unchecked today, unmeasured, and the honest reason this spec stops
 at stage 1.

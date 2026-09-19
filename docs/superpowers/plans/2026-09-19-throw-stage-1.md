@@ -701,15 +701,14 @@ missing: ['e1s5', 'e2s16', 'e4s16', 'e6s2']
 
 86 against the 63 this started at. If the count is 87, `MIN_SAMPLES` did not reach 3 and e2 s12 was dropped. If a rock other than these four is missing, something in Tasks 1-3 is refusing a throw the measurement says is there: report which rock rather than adjusting a threshold to make the number come out.
 
-**86, not the 88 the spec measures, and the difference is not a defect.** The spec's 88 is STAGE-1 SATISFIABILITY -- does a qualifying track exist on the panel. This step counts something strictly narrower: releases ATTACHED TO SHOTS, which also needs `pair()` to bind the release to a delivery and `fit.fit_end` to keep that delivery. Two rocks clear stage 1 and fall at that second hurdle.
+**86, not the 88 the spec measures, and the difference is not a defect.** They are two different counts, and the spec's "Two numbers, and the words for them" section defines both: 88 of 90 rocks have a qualifying track found inside the search window; 86 of those releases survive `pair()` binding them to a delivery and `fit.fit_end` keeping that delivery.
 
-None of the four is a stage-1 problem:
+**Nothing in the stage-1 predicate refuses any of the four.** They divide two and two, and both halves are association:
 
-- **e2 s16** leaves the hack 30.5 s before its arrival against `MAX_LAG_S = 30` -- the association window, explicitly out of this spec's scope.
-- **e6 s2** has no red delivery on the panel at all, and is a doubtful shot in the first place: shot 1 rests at 4367.3 and shot 2 supposedly enters at 4370.0, 2.7 s apart against `MIN_SEPARATION_S = 10`.
-- **e1 s5 and e4 s16** are the pairing-versus-fit ordering. `pair()` runs over every delivery offered, before `fit.fit_end` prunes them. On e1 s5 the panel offers two near-duplicate red arrivals -- `t_enter` 220.0 (`house-add`, travel 0.56 m) and 220.4 (`rest`, travel 2.15 m), the same rock seen twice. The release at 205.4 binds to 220.0 because it comes first in time order; `fit_end` then keeps 220.4 and discards 220.0, stranding the release on a delivery no shot carries. Both rocks lacked a release before this branch too, so neither is a regression.
+- **The window costs e2 s16 and e6 s2.** e2 s16 has a qualifying 14-sample track that starts 30.5 s before its arrival, against `MAX_LAG_S = 30` -- excluded by half a second, so we never look there. e6 s2 has no red track at all, in the window or out of it, and the shot itself is doubtful: shot 1 rests at 4367.3 and shot 2 supposedly enters at 4370.0, 2.7 s apart against `MIN_SEPARATION_S = 10`.
+- **Attachment costs e1 s5 and e4 s16.** `pair()` runs over every delivery offered, before `fit.fit_end` prunes them, so a release can bind to a duplicate the rules then discard. e1 s5: release t=205.4, arrivals offered 220.0 (`house-add`, travel 0.56 m) and 220.4 (`rest`, travel 2.15 m); bound to 220.0, fit kept 220.4. e4 s16: release t=3306.7, arrivals 3321.7 (`house-remove`, travel 6.16 m) and 3325.0 (`rest`, travel 5.16 m); bound to 3321.7, fit kept 3325.0. One rock seen twice in each case. Neither carried a release before this branch either, so neither is a regression.
 
-Fixing that would mean pairing after the fit, or re-binding orphaned releases to kept deliveries. Both are association changes, which this spec puts out of scope.
+Fixing either half means changing association -- widening the window, or pairing after the fit -- which this spec puts out of scope.
 
 - [ ] **Step 4: Check the extra 25 releases did not mispair**
 
