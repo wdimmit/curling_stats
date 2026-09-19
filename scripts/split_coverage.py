@@ -181,7 +181,8 @@ def _shots_for_end(read_path, proxy_setups, end, from_s, detector):
     far_seq = list(sequence.detect_span(read_path, far, from_s, end.end_s,
                                         release.RELEASE_FPS, detector))
     releases, thrown_by, unaccounted = release.find_and_pair(
-        far_seq, far.view_y_min_m, deliveries, seq, since=from_s)
+        far_seq, far.view_y_min_m, deliveries, seq, since=from_s,
+        view_x_limit_m=far.view_x_limit_m)
     if unaccounted:
         deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)
     kept = fit.fit_end(deliveries)
