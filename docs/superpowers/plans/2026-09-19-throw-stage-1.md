@@ -251,8 +251,9 @@ This is the change that takes coverage from 63 to 88. `MIN_TRAVEL_M = 3.0` finis
 
 **Files:**
 - Modify: `src/curling_score/detect/release.py`
+- Modify: `src/curling_score/game/thinking.py` (module docstring only)
 - Modify: `docs/superpowers/specs/2026-09-19-throw-stage-1-design.md`
-- Test: `tests/test_release.py`
+- Test: `tests/test_release.py`, `tests/test_thinking.py` (one docstring)
 
 **Interfaces:**
 - Consumes: `release._merge_fragments` from Task 1.
@@ -423,13 +424,84 @@ Replace the first line of the docstring, `"""Every stone that left the panel up-
 
 leaving the rest of the docstring as it is.
 
-- [ ] **Step 7: Run the tests**
+- [ ] **Step 7: Fix the three places that name the deleted constants**
+
+Found in the pre-flight scan; without these, Step 9 fails with `AttributeError`.
+
+**(a)** `tests/test_release.py`, in `test_a_release_keeps_the_track_it_was_found_from`, replace
+
+```python
+    assert ys[0] <= VIEW_Y_MIN + release.ENTRY_MARGIN_M
+```
+
+with
+
+```python
+    assert ys[0] < release.STAGE1_Y_M
+```
+
+**(b)** `tests/test_release.py`, replace the whole of `test_the_track_spans_the_whole_climb` -- its premise was that a release climbed at least `MIN_TRAVEL_M`, and that is exactly what this task removes:
+
+```python
+def test_the_track_spans_the_climb_across_the_line():
+    """From below the stage-1 line to at or above it.
+
+    It used to assert a climb of at least MIN_TRAVEL_M. There is no such
+    minimum now: a release is a line crossing, and how far the stone then
+    ran is the hog line's business, not this panel's.
+    """
+    fs = frames(leaving("yellow", 50.0, y0=-2.2, y1=2.4, speed=2.0, fps=5.0))
+    [r] = release.find_releases(fs, VIEW_Y_MIN)
+    ys = [y for _t, _x, y in r.track]
+    assert ys[0] < release.STAGE1_Y_M <= ys[-1]
+```
+
+**(c)** `tests/test_thinking.py`, the docstring at roughly line 205 reading
+
+```python
+        """2.0 m: under ``release.MIN_TRAVEL_M``, over the clock's own floor."""
+```
+
+becomes
+
+```python
+        """2.0 m: over the clock's own floor, and no longer a release gate."""
+```
+
+- [ ] **Step 8: Correct `thinking.py`'s module docstring**
+
+Its opening paragraph justifies the whole module with a guarantee this task withdraws. In `src/curling_score/game/thinking.py`, replace
+
+```
+footage can be relied on to show: ``release.find_releases`` only accepts a
+track that entered within ``ENTRY_MARGIN_M`` of a back edge near -2.0 m and
+climbed ``MIN_TRAVEL_M`` = 3.0 m, so an accepted release has always crossed
+y = 0 -- by 0.92 m in the worst case the gate allows.
+```
+
+with
+
+```
+footage can be relied on to show -- though no longer by way of
+``release.find_releases``, which used to demand a three-metre climb and so
+guaranteed every accepted release had crossed y = 0 by at least 0.92 m. It
+now asks only that the stone crossed ``STAGE1_Y_M``, a foot BEHIND the tee,
+because the three-metre climb was costing a quarter of all throws. A release
+may now stop short of the tee line entirely.
+
+Nothing here depended on that guarantee, which is why this is a docstring
+change and not a code one: the gates below are this module's own and are
+deliberately weaker, and ``TRACK_TEE_GAP_M`` already carries a track that
+dies below the tee the rest of the way.
+```
+
+- [ ] **Step 9: Run the tests**
 
 Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_release.py tests/test_motion.py tests/test_thinking.py tests/test_pool.py tests/test_sideshots.py -p no:cacheprovider -rf`
 
-Expected: all pass, including Task 1's `test_two_fragments_of_one_stone_become_one_release`.
+Expected: all pass. `tests/test_thinking.py` passing matters most here -- it is the evidence that the guarantee withdrawn in Step 8 was not load-bearing.
 
-- [ ] **Step 8: Amend the spec**
+- [ ] **Step 10: Amend the spec**
 
 The spec does not mention a sample minimum, and keeping the old value of 4 would have produced 87 of 90 rather than the 88 the spec claims. In `docs/superpowers/specs/2026-09-19-throw-stage-1-design.md`, in the `## The definition` section, after item 4 (`climbs at delivery speed...`), add:
 
@@ -443,10 +515,11 @@ Stage 1 establishes that a throw happened; it times nothing, so a thin track
 is weaker evidence than a thick one but not worse evidence of the wrong kind.
 ```
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add src/curling_score/detect/release.py tests/test_release.py \
+git add src/curling_score/detect/release.py src/curling_score/game/thinking.py \
+        tests/test_release.py tests/test_thinking.py \
         docs/superpowers/specs/2026-09-19-throw-stage-1-design.md
 git commit -m "release: a throw is a stone crossing the line behind the tee
 
@@ -466,6 +539,12 @@ becomes the precondition it always implied.
 MIN_SAMPLES is 3 rather than the old literal 4, because e2 s12 is a real
 delivery caught exactly three times and four costs that rock and no
 other. Spec amended to match; it had been silent on the minimum.
+
+thinking.py's module docstring justified itself with the guarantee this
+withdraws -- that an accepted release has always crossed y = 0 by 0.92 m.
+Its code never relied on it: its gates are its own and deliberately
+weaker, and TRACK_TEE_GAP_M already carries a track that dies below the
+tee. Docstring corrected; tests/test_thinking.py is the evidence.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
@@ -616,13 +695,21 @@ print('missing:', ['e%ds%d' % (e, s['shot']) for e, s in shots
 Expected, exactly:
 
 ```
-shots 90 with a release 88
-missing: ['e2s16', 'e6s2']
+shots 90 with a release 86
+missing: ['e1s5', 'e2s16', 'e4s16', 'e6s2']
 ```
 
-88 against the 63 this started at. If the count is 87, `MIN_SAMPLES` did not reach 3 and e2 s12 was dropped. If a rock other than e2 s16 or e6 s2 is missing, something in Tasks 1-3 is refusing a throw the measurement says is there: report which rock rather than adjusting a threshold to make the number come out.
+86 against the 63 this started at. If the count is 87, `MIN_SAMPLES` did not reach 3 and e2 s12 was dropped. If a rock other than these four is missing, something in Tasks 1-3 is refusing a throw the measurement says is there: report which rock rather than adjusting a threshold to make the number come out.
 
-Neither remaining failure is a stage-1 problem. e2 s16 leaves the hack 30.5 s before its arrival against `MAX_LAG_S = 30`, which is the association window and explicitly out of this spec's scope. e6 s2 has no red delivery on the panel at all and is a doubtful shot in the first place -- shot 1 rests at 4367.3 and shot 2 supposedly enters at 4370.0, 2.7 s apart against `MIN_SEPARATION_S = 10`.
+**86, not the 88 the spec measures, and the difference is not a defect.** The spec's 88 is STAGE-1 SATISFIABILITY -- does a qualifying track exist on the panel. This step counts something strictly narrower: releases ATTACHED TO SHOTS, which also needs `pair()` to bind the release to a delivery and `fit.fit_end` to keep that delivery. Two rocks clear stage 1 and fall at that second hurdle.
+
+None of the four is a stage-1 problem:
+
+- **e2 s16** leaves the hack 30.5 s before its arrival against `MAX_LAG_S = 30` -- the association window, explicitly out of this spec's scope.
+- **e6 s2** has no red delivery on the panel at all, and is a doubtful shot in the first place: shot 1 rests at 4367.3 and shot 2 supposedly enters at 4370.0, 2.7 s apart against `MIN_SEPARATION_S = 10`.
+- **e1 s5 and e4 s16** are the pairing-versus-fit ordering. `pair()` runs over every delivery offered, before `fit.fit_end` prunes them. On e1 s5 the panel offers two near-duplicate red arrivals -- `t_enter` 220.0 (`house-add`, travel 0.56 m) and 220.4 (`rest`, travel 2.15 m), the same rock seen twice. The release at 205.4 binds to 220.0 because it comes first in time order; `fit_end` then keeps 220.4 and discards 220.0, stranding the release on a delivery no shot carries. Both rocks lacked a release before this branch too, so neither is a regression.
+
+Fixing that would mean pairing after the fit, or re-binding orphaned releases to kept deliveries. Both are association changes, which this spec puts out of scope.
 
 - [ ] **Step 4: Check the extra 25 releases did not mispair**
 

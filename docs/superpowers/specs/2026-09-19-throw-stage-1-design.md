@@ -205,6 +205,19 @@ It is not established that this holds generally.
 
 ## Not in scope
 
+**Turning a stage-1 pass into a release on a shot.** This spec measures whether
+the panel SEES the throw, and 88 of 90 is that number. It is not the number of
+rocks that end up carrying a release: that also needs `pair()` to bind the
+release to a delivery and `fit.fit_end` to keep that delivery, and on the
+reference game two rocks clear stage 1 and fall there. e1 s5 is the clean
+example -- the panel offers two near-duplicate red arrivals 0.4 s apart, the
+release binds to the first, and the fit keeps the second. Measured after
+implementation: 86 of 90 rocks carry a release, against 63 before.
+
+That gap is the pairing-versus-fit ORDERING, not the association window below,
+and it is equally out of scope here. Closing it means pairing after the fit, or
+re-binding orphaned releases.
+
 **The association window.** e2 s16 is the one stage-1 failure that this spec
 does not fix and is not about geometry: the stone leaves the hack 30.5 s before
 its arrival, against `MAX_LAG_S = 30`, and is excluded by half a second. That
