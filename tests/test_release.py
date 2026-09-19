@@ -176,10 +176,12 @@ class TestFindingReleases:
         got = release.find_releases(frames(leaving("red", 100.0, speed=0.4)), VIEW_Y_MIN)
         assert got == []
 
-    def test_a_climb_that_stops_just_past_the_tee_is_a_release(self):
-        # The 63 -> 88 change. MIN_TRAVEL_M used to demand three metres, which
-        # finishes about a metre past the T-line, and on 30% of throws the
-        # sweepers close over the stone before it gets there. Measured on
+    def test_a_climb_that_stops_just_past_the_stage1_line_is_a_release(self):
+        # The 63 -> 88 change. This trace's last sample is y = -0.2, a foot
+        # BEHIND the tee -- past STAGE1_Y_M but well short of the T-line.
+        # MIN_TRAVEL_M used to demand three metres of climb, which finishes
+        # about a metre PAST the T-line, and on 30% of throws the sweepers
+        # close over the stone before it gets there. Measured on
         # AEqLTgM25Tc: the rocks with no release have a median top-of-track of
         # y = 1.02 m, against 3.48 m for the rocks that do produce one.
         got = release.find_releases(frames(leaving("red", 100.0, y1=0.0)),
@@ -196,7 +198,8 @@ class TestFindingReleases:
         both = frames(leaving("red", 100.0, x=0.1, y1=4.4), leaving("red", 100.4, x=0.9, y1=1.5))
         got = release.find_releases(both, VIEW_Y_MIN)
         assert len(got) == 1
-        assert got[0].y_exit_m > 4.0   # the one followed further
+        assert got[0].y_exit_m > 4.0   # kept because it carries more samples,
+                                       # not because it went further
 
 
 class TestTheCentreLineBound:
