@@ -1,15 +1,15 @@
 #!/usr/bin/env python
-"""Why each rock in an end has, or has not, a hog-to-hog split.
+"""What the OVERHEAD panels saw of each rock in an end.
 
-``game/split.py`` needs three things and publishes nothing without all of
-them: a release tracked out past the throwing end's hog line, an arrival
-picked up before the playing end's hog line, and the two crossings agreeing
-that the stone did not speed up in between. The served timeline shows only
-the answer, and for the release side not even the track -- so a rock with no
-split is unexplained from the outside.
+Reports the release and arrival tracks each overhead panel followed, the
+panel tripwire crossings, the bracket gap either crossing was interpolated
+across, and the speeds read at the line -- everything computable from the
+overhead tracks alone. It does NOT report hog-to-hog splits: those need the
+side-view pass (``hogtime.time_hog_crossings``), which reads the full-frame
+video this script never opens. ``scripts/split_coverage.py`` runs that pass.
 
 This replays an end exactly as ``analyze`` does (cache hit, no GPU pass) and
-prints, for every shot the rules kept, which of the three it failed and by how
+prints, for every shot the rules kept, what each overhead panel saw and by how
 much. Written for the split audit of ``AEqLTgM25Tc``; it is the same shape as
 ``scripts/replay_end.py``, which explains a missing *shot* rather than a
 missing *timing*.
@@ -24,7 +24,7 @@ from pathlib import Path
 
 from curling_score import analyze as A, weights as weights_mod
 from curling_score.detect import release, sequence, yolo
-from curling_score.game import (fit, hogtime, secondpass, segment,
+from curling_score.game import (fit, secondpass, segment,
                                 shots as shots_mod, split)
 from curling_score.ingest import proxy
 
@@ -97,7 +97,7 @@ def audit_end(doc, e, root, detector, setups, panels):
             "arrival_n": len(dt),
             "arrival_crossed": split.crossing_time(dt, split.HOG_APPARENT_Y_M) is not None,
             "reason": None if dv is None else dv.reason,
-            "near_speed": None, "far_speed": None, "split_s": None,
+            "near_speed": None, "far_speed": None,
             "t_start_s": None, "t_end_s": None,
             "release_y0_m": None if not rt else round(float(rt[0][2]), 3),
             "release_dur_s": None if len(rt) < 2 else round(float(rt[-1][0] - rt[0][0]), 1),
@@ -119,10 +119,6 @@ def audit_end(doc, e, root, detector, setups, panels):
         for k in ("near_speed", "far_speed"):
             if rec[k] is not None:
                 rec[k] = round(float(rec[k]), 3)
-        sp = split.long_split(rel, dv, t_hog=hogtime.crossing(s),
-                              v_hog=hogtime.speed_at_hog(s))
-        if sp:
-            rec["split_s"] = round(sp.seconds, 2)
         out.append(rec)
     return {"end": e["number"], "house": e["house"],
             "releases_seen": len(releases), "shots": out,
