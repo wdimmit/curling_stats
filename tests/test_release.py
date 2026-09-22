@@ -156,6 +156,34 @@ class TestMergingFragments:
             assert all(abs(v) <= release.MAX_SPEED_M_S for v in steps), (
                 "a merged track must stay physically possible")
 
+    def test_a_fast_first_step_inside_a_fragment_does_not_block_its_merge(self):
+        """The guard judges the join, not the fragments it joins.
+
+        `_build_tracks` bootstraps a track's second sample with a 1.0 m gate at
+        5 fps -- 5.0 m/s, above MAX_SPEED_M_S -- so a freshly acquired fragment
+        can carry a step faster than any delivery. Judging that inherited step
+        refused every merge the fragment was offered, forever.
+        """
+        low = track("red", [(16.8, 0.13, -2.88), (17.0, 0.13, -1.88),
+                            (17.2, 0.11, -1.39), (17.4, 0.13, -1.19)])
+        high = track("red", [(17.4, 0.11, -0.87), (17.6, 0.10, -0.30),
+                             (17.8, 0.12, 0.05), (18.2, 0.08, 1.33),
+                             (18.4, 0.08, 1.86)])
+        (merged,) = release._merge_fragments([low, high])
+        assert merged.ys[0] == -2.88
+        assert merged.ys[-1] == 1.86
+
+    def test_a_jump_the_join_itself_makes_is_still_refused(self):
+        """Interleaved samples, no shared instant, so y-agreement is vacuous.
+
+        Only the plausibility guard stands between these and a track that
+        leaps 4.2 m in 0.2 s at the seam.
+        """
+        delivery = track("red", [(100.0, 0.25, -2.0), (100.4, 0.25, -1.2),
+                                 (100.8, 0.25, -0.4)])
+        interloper = track("red", [(100.6, 0.30, 3.0), (101.0, 0.30, 3.4)])
+        assert len(release._merge_fragments([delivery, interloper])) == 2
+
 
 class TestFindingReleases:
     def test_a_stone_climbing_from_the_back_edge_is_a_release(self):

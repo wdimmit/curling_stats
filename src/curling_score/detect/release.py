@@ -187,15 +187,36 @@ def _agree(a, b) -> bool:
     return True
 
 
-def _plausible(track) -> bool:
-    """Whether a track's samples describe motion a stone could make.
+def _adjacent_pairs(track):
+    """The track's consecutive samples, keyed on ``(round(t, 3), y)``.
+
+    The same key `_join` uses to detect a collision, so a sample whose y was
+    replaced by collision resolution reads as a different sample, not the
+    same one carried over.
+    """
+    keyed = list(zip((round(t, 3) for t in track.ts), track.ys))
+    return set(zip(keyed, keyed[1:]))
+
+
+def _plausible(candidate, a, b) -> bool:
+    """Whether the steps the join itself introduced describe motion a stone could make.
 
     A join fabricates a jump if it grafts a second track on where the first
-    left off: two fragments of one stone were never far apart, so a step no
-    real stone could take marks the join as wrong, not the stone as fast.
+    left off, so only the pairs of adjacent samples the join actually
+    produced may be judged. A pair already adjacent in ``a`` or in ``b`` is
+    *inherited*: it was there before the join and says nothing about it.
+    That distinction matters because `_build_tracks` bootstraps a track's
+    second sample with a gate of ``MATCH_BASE_M + BOOTSTRAP_SPEED_M_S * dt``
+    -- 1.0 m at 5 fps, i.e. 5.0 m/s, above ``MAX_SPEED_M_S`` -- so a freshly
+    acquired fragment can carry an inherited step faster than any delivery.
+    Judging that step would refuse every merge the fragment is offered.
     """
-    pairs = zip(zip(track.ts, track.ys), zip(track.ts[1:], track.ys[1:]))
-    for (t0, y0), (t1, y1) in pairs:
+    inherited = _adjacent_pairs(a) | _adjacent_pairs(b)
+    keyed = list(zip((round(t, 3) for t in candidate.ts), candidate.ys))
+    for p0, p1 in zip(keyed, keyed[1:]):
+        if (p0, p1) in inherited:
+            continue                    # a step from before the join
+        (t0, y0), (t1, y1) = p0, p1
         if t1 <= t0:
             continue
         if abs((y1 - y0) / (t1 - t0)) > MAX_SPEED_M_S:
@@ -230,7 +251,7 @@ def _merge_fragments(tracks):
                 if not _agree(a, b):
                     continue                    # disagree where both hold a sample
                 candidate = _join(a, b)
-                if not _plausible(candidate):
+                if not _plausible(candidate, a, b):
                     continue                    # the join implies an impossible speed
                 out[i] = candidate
                 del out[j]
