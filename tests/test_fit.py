@@ -203,3 +203,79 @@ class TestARockMissedBetweenTwoOfTheSameColour:
         slow = self._end(16, gap=80.0)
         assert fit.missed_gap_s(slow) == pytest.approx(1.6 * 80.0)
         assert fit.missed_gap_s([]) == float("inf")
+
+
+class TestClearingTheHouse:
+    """Stones moved while the house is cleared after an end's last shot.
+
+    Both seen: AEqLTgM25Tc end 1 (a red pushed out at 564.8 s) and hOKZoeJNTpM
+    end 3 (a yellow carried off at 2764.7 s). Each left the view with no
+    release and an empty house behind it, and the second pushed the end's real
+    first shot out of a full end.
+    """
+
+    @staticmethod
+    def house(t0, t1, stones, step=0.5):
+        from curling_score.detect.rocks import Detection
+        n = int((t1 - t0) / step) + 1
+        return [(t0 + i * step, [Detection(color=c, x_m=x, y_m=y, x_px=0.0, y_px=0.0,
+                                           area_px=150.0, confidence=0.9)
+                                 for c, x, y in stones]) for i in range(n)]
+
+    def end_with_tail(self, tail_reason="left-view", tail_released=False,
+                      house_after=(), tail_rests=False):
+        found = alternating(10)
+        tail = Delivery(color="red", t_enter=560.0, t_rest=563.0, entry_y_m=4.0,
+                        rest_x_m=-1.9, rest_y_m=-1.9, travel_m=6.0,
+                        came_to_rest=tail_rests, reason=tail_reason)
+        released = {id(d) for d in found}
+        if tail_released:
+            released.add(id(tail))
+        frames = self.house(0.0, 580.0, house_after)
+        return found, tail, frames, released
+
+    def test_an_unreleased_stone_leaving_an_emptied_house_is_dropped(self):
+        found, tail, frames, released = self.end_with_tail()
+        assert fit.drop_clearing(found + [tail], frames, released) == found
+
+    def test_a_released_last_shot_is_kept(self):
+        found, tail, frames, released = self.end_with_tail(tail_released=True)
+        assert fit.drop_clearing(found + [tail], frames, released)[-1] is tail
+
+    def test_a_stone_that_came_to_rest_is_kept(self):
+        found, tail, frames, released = self.end_with_tail(tail_reason="rest", tail_rests=True)
+        assert fit.drop_clearing(found + [tail], frames, released)[-1] is tail
+
+    def test_a_house_still_holding_stones_is_not_being_cleared(self):
+        full = (("red", 0.0, 0.5), ("yellow", 0.3, -0.4), ("red", -0.5, 1.0))
+        found, tail, frames, released = self.end_with_tail(house_after=full)
+        assert fit.drop_clearing(found + [tail], frames, released)[-1] is tail
+
+    def test_only_the_tail_after_the_last_release_is_judged(self):
+        """An unreleased stone leaving mid-end is not clearing: the end goes on."""
+        found = alternating(10)
+        mid = Delivery(color="red", t_enter=225.0, t_rest=230.0, entry_y_m=4.0,
+                       rest_x_m=-1.9, rest_y_m=-1.9, travel_m=6.0,
+                       came_to_rest=False, reason="left-view")
+        released = {id(d) for d in found}
+        frames = self.house(0.0, 520.0, ())
+        got = fit.drop_clearing(found + [mid], frames, released)
+        assert mid in got
+
+    def test_without_any_release_evidence_nothing_is_dropped(self):
+        found, tail, frames, _released = self.end_with_tail()
+        assert fit.drop_clearing(found + [tail], frames, set()) == found + [tail]
+
+    def test_it_frees_the_slot_a_real_first_shot_needs(self):
+        """hOKZ end 3: sixteen real shots plus the clearing stone is seventeen,
+        and the weakest-attested real one -- the first, seen only appearing --
+        was the one fit_end let go."""
+        found = [dv("yellow" if i % 2 == 0 else "red", 50.0 * i + 10) for i in range(16)]
+        found[0] = dv("yellow", 10.0, reason="house-appear")
+        tail = Delivery(color="yellow", t_enter=900.0, t_rest=902.0, entry_y_m=3.0,
+                        rest_x_m=-1.5, rest_y_m=-0.4, travel_m=3.4,
+                        came_to_rest=False, reason="left-view")
+        released = {id(d) for d in found[1:]}
+        frames = self.house(0.0, 920.0, ())
+        kept = fit.fit_end(fit.drop_clearing(found + [tail], frames, released))
+        assert kept[0] is found[0] and tail not in kept and len(kept) == 16

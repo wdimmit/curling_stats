@@ -97,7 +97,7 @@ def replay_game(timeline_path, root, video, weights=None):
         rels, tb, un = release.find_and_pair(far_seq, far.view_y_min_m, ds, seq, since=from_s, **kw)
         if un:
             ds = sorted(ds + un, key=lambda d: d.t_enter)
-        kept = fit.fit_end(ds)
+        kept = fit.fit_end(fit.drop_clearing(ds, seq, fit.released_ids(tb, un)))
         shots = shots_mod.from_deliveries(kept, seq, thrown_by={id(d): r for r, d in tb.items()})
         hogtime.time_hog_crossings(shots, video, views[hogtime.CAMERA_FOR[A.OTHER_HOUSE[e["house"]]]])
         # ``setup`` is the destination panel, ``far`` the throwing panel --

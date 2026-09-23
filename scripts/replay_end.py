@@ -247,7 +247,8 @@ def main():
     # What the two derived timings make of this end. Both are best-effort by
     # construction, so the counts matter as much as the numbers.
     thrown_by = {id(d): r for r, d in matched.items()}
-    built = shots_mod.from_deliveries(fit.fit_end(ds), frames, thrown_by=thrown_by)
+    cleared = fit.drop_clearing(ds, frames, fit.released_ids(matched, settled))
+    built = shots_mod.from_deliveries(fit.fit_end(cleared), frames, thrown_by=thrown_by)
     thinking.time_shots(built, far_seq, far.view_y_min_m)
     # `setup` is the house being played to; `far` is the throwing house.
     fartime.time_far_crossings(built, near_line=far.hog_line, far_line=setup.hog_line)
@@ -284,7 +285,8 @@ def main():
     print("  thinking time: "
           + ", ".join(f"{c} {v:.0f}s" for c, v in clock.by_color.items()))
 
-    kept = fit.fit_end(ds)
+    show("CLEARING", [d for d in ds if d not in cleared], end.start_s)
+    kept = fit.fit_end(cleared)
     print(f"\n== fit_end kept {len(kept)}, dropped {len(ds) - len(kept)}")
     show("DROP", [d for d in ds if d not in kept], end.start_s)
     print("== kept:"); show("keep", kept, end.start_s)

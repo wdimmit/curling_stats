@@ -157,3 +157,60 @@ def fit_end(deliveries, per_end: int = C.STONES_PER_END,
 
     _count, _wsum, chain = max(best.values(), key=lambda v: (v[0], v[1]))
     return [items[i] for i in chain]
+
+
+# What a stone moved while the house is being cleared looks like, once the
+# end's last shot is over: it leaves the view or knocks a stone out rather than
+# settling, nothing was seen releasing it, and it leaves the house (nearly)
+# empty. Every test of one track in isolation passes it -- a stone really is
+# moving down-sheet -- which is why `MIN_SEPARATION_S` above was the first rule
+# against it; that one only catches the players who start within ten seconds.
+#
+# Seen on AEqLTgM25Tc end 1 (a red pushed out at 564.8 s, 13 s after the last
+# shot) and hOKZoeJNTpM end 3 (a yellow carried off at 2764.7 s, which made a
+# full end seventeen long and pushed out its real first shot). Both appeared
+# when a better overhead model saw stones among the players' feet that ds11a
+# had not; the rules, not the detector, have to hold the line.
+CLEARING_REASONS = frozenset({"left-view", "house-remove"})
+# At most this many stones left in the house once it stops. A cleared house
+# is empty; one straggler is allowed for a stone still being pushed.
+CLEARING_HOUSE_MAX = 1
+
+
+def drop_clearing(deliveries, frames, released) -> list:
+    """Drop stones moved while the house is cleared after the end's last shot.
+
+    ``released`` holds ``id(delivery)`` for every candidate paired with a
+    release seen leaving the thrower's house. Only candidates after the last
+    released one are judged, since clearing only ever follows the end. With no
+    release evidence in the end at all nothing is dropped: an unreleased stone
+    then says nothing about the house being cleared.
+    """
+    from curling_score.detect.rest import stones_in_window
+    from curling_score.game.shots import SETTLE_WINDOW_S
+
+    items = sorted(deliveries, key=lambda d: d.t_enter)
+    released_at = [i for i, d in enumerate(items) if id(d) in released]
+    if not released_at:
+        return items
+    frames = list(frames)
+    keep = items[: released_at[-1] + 1]
+    for d in items[released_at[-1] + 1:]:
+        if (getattr(d, "reason", "") in CLEARING_REASONS
+                and not getattr(d, "came_to_rest", False)
+                and id(d) not in released):
+            window = [(t, s) for t, s in frames
+                      if d.t_rest <= t <= d.t_rest + SETTLE_WINDOW_S]
+            if len(stones_in_window(window)) <= CLEARING_HOUSE_MAX:
+                continue
+        keep.append(d)
+    return keep
+
+
+def released_ids(pairing, unaccounted=()) -> set:
+    """``id``s of the candidates a release accounts for, for `drop_clearing`.
+
+    ``pairing`` is ``release.find_and_pair``'s release -> delivery map, and
+    ``unaccounted`` its releases standing in for an arrival never seen.
+    """
+    return {id(d) for d in pairing.values()} | {id(d) for d in unaccounted}
