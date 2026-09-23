@@ -14,7 +14,8 @@ much. Written for the split audit of ``AEqLTgM25Tc``; it is the same shape as
 ``scripts/replay_end.py``, which explains a missing *shot* rather than a
 missing *timing*.
 
-    python scripts/split_audit.py timeline.json --cache-root ~/.cache/curling_replay
+    python scripts/split_audit.py timeline.json --cache-root ~/.cache/curling_replay \
+        --video ~/.cache/curling_score/videos/AEqLTgM25Tc.mp4 --out audit.json
 """
 
 import argparse

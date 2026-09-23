@@ -20,5 +20,6 @@ carries the release track the overhead panel reported, so the constant can be
 re-derived from the file alone without touching the video.
 
 Adding a sheet: run `scripts/mark_hog.py` over one end thrown from each panel
-and save the result here under the video id. `HOG_APPARENT_Y_M` in
-`game/split.py` was measured on sheet 2 only.
+and save the result here under the video id. The far tripwire was once a
+global 4.441 in `game/split.py`, measured on sheet 2 only; each panel's painted
+line (`geometry/hogpaint.py`) replaced it on 2026-09-22.

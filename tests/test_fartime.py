@@ -69,6 +69,21 @@ def test_the_throwing_panel_is_timed_from_the_house_side_not_the_arrival_edge():
     assert fc.t_near_panel < split.line_crossing(leaving(), NEAR)
 
 
+def test_each_panel_is_timed_against_its_own_line_not_the_other():
+    """Distinct lines pin the orientation: the arrival is timed at the
+    destination panel's paint and the release at the throwing panel's."""
+    near, far = line_at(4.30), line_at(4.60)
+    s = shot(arrival=arriving(), release=leaving())
+    fartime.time_far_crossings([s], near_line=near, far_line=far)
+    fc = fartime.crossing(s)
+    assert fc.t == pytest.approx(split.line_crossing(arriving(), far))
+    assert fc.t == pytest.approx(split.far_crossing(arriving(), far,
+                                                    max_reach=split.FAR_REACH_MAX_U)[0])
+    assert abs(fc.t - split.line_crossing(arriving(), near)) > 0.2
+    assert fc.t_near_panel == pytest.approx(split.line_crossing(leaving(), near, departing=True))
+    assert abs(fc.t_near_panel - split.line_crossing(leaving(), far, departing=True)) > 0.1
+
+
 def test_a_panel_with_no_line_times_nothing_there():
     s = shot(arrival=arriving(), release=leaving())
     fartime.time_far_crossings([s], near_line=None, far_line=None)
