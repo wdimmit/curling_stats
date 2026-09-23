@@ -49,7 +49,9 @@ def _proxy_setups(setups, strip):
     """
     return {
         name: profile.PanelSetup(
-            rect=proxy.translate(s.rect, strip), calib=s.calib
+            rect=proxy.translate(s.rect, strip), calib=s.calib,
+            # The line is in panel pixels, so moving the panel does not move it.
+            hog_line=s.hog_line, hog_line_error=s.hog_line_error,
         )
         for name, s in setups.items()
     }
@@ -425,6 +427,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 "center_px": [round(v, 2) for v in s.calib.center_px],
                 "residual_m": round(s.calib.residual_m, 5),
                 "flipped": s.calib.flipped,
+                "hog_line": None if s.hog_line is None else s.hog_line.to_json(),
+                "hog_line_error": s.hog_line_error,
             }
             for name, s in setups.items()
         },
