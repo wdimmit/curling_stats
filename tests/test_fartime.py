@@ -54,8 +54,19 @@ def test_the_throwing_panel_gives_its_own_crossing_and_speed():
     s = shot(arrival=arriving(), release=leaving())
     fartime.time_far_crossings([s], near_line=NEAR, far_line=FAR)
     fc = fartime.crossing(s)
-    assert fc.t_near_panel == pytest.approx(split.line_crossing(leaving(), NEAR))
+    assert fc.t_near_panel == pytest.approx(
+        split.line_crossing(leaving(), NEAR, departing=True))
     assert fc.v_near == pytest.approx(2.0, abs=0.01)
+
+
+def test_the_throwing_panel_is_timed_from_the_house_side_not_the_arrival_edge():
+    """A departing stone meets the paint's inside edge first, well before an
+    arrival's tripwire on the far side of the same paint -- so timing it with
+    the wrong edge fires late, not early."""
+    s = shot(arrival=arriving(), release=leaving())
+    fartime.time_far_crossings([s], near_line=NEAR, far_line=FAR)
+    fc = fartime.crossing(s)
+    assert fc.t_near_panel < split.line_crossing(leaving(), NEAR)
 
 
 def test_a_panel_with_no_line_times_nothing_there():

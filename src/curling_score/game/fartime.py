@@ -34,8 +34,10 @@ def time_far_crossings(shots, *, near_line, far_line) -> None:
             v_far = split.speed_at_line(arriving, far_line)
         t_near, v_near = None, None
         if leaving and near_line is not None:
-            t_near = split.line_crossing(leaving, near_line)
-            v_near = split.speed_at_line(leaving, near_line)
+            # The throwing panel's line is crossed from the house side, not
+            # the side an arrival meets it from.
+            t_near = split.line_crossing(leaving, near_line, departing=True)
+            v_near = split.speed_at_line(leaving, near_line, departing=True)
         shot.far_crossing = split.FarCrossing(t=t, reach=reach, v_far=v_far,
                                               t_near_panel=t_near, v_near=v_near)
 

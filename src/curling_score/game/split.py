@@ -150,16 +150,22 @@ class FarCrossing:
     v_near: float | None = None
 
 
-def line_crossing(track, line) -> float | None:
+def line_crossing(track, line, *, departing: bool = False) -> float | None:
     """When a track's centre passed a panel's hog line, or None if it never did.
 
     ``line`` is a ``geometry.hogpaint.HogLine``, read at each sample's own
     lateral position: the paint bows in these lenses, and a curled stone
     crosses it well off the centre line.
+
+    ``departing=True`` is the throwing panel's line, crossed from the house
+    side: a departing stone's leading edge meets the paint's inside edge
+    first, not the outer edge an arrival meets, so its tripwire is
+    ``line.departure_y_at`` rather than ``line.y_at``.
     """
+    tripwire = line.departure_y_at if departing else line.y_at
     pts = [(float(t), float(x), float(y)) for t, x, y in track or ()]
     for (t0, x0, y0), (t1, x1, y1) in zip(pts, pts[1:]):
-        d0, d1 = y0 - line.y_at(x0), y1 - line.y_at(x1)
+        d0, d1 = y0 - tripwire(x0), y1 - tripwire(x1)
         if d0 * d1 <= 0 and d0 != d1:
             return t0 + d0 / (d0 - d1) * (t1 - t0)
     return None
@@ -220,16 +226,20 @@ def far_crossing(track, line, *, max_reach: float):
     return mt + (y_line - my) * slope, reach
 
 
-def speed_at_line(track, line) -> float | None:
+def speed_at_line(track, line, *, departing: bool = False) -> float | None:
     """How fast a track was crossing ``line``, in the panel's own units per second.
 
     Not metres per second, deliberately: both hog lines are read in their own
     panel's units, so two speeds measured there are distorted alike and can be
     compared without converting either.
+
+    ``departing=True`` is the throwing panel's line, crossed from the house
+    side -- see ``line_crossing``.
     """
+    tripwire = line.departure_y_at if departing else line.y_at
     pts = [(float(t), float(x), float(y)) for t, x, y in track or ()]
     for (t0, x0, y0), (t1, x1, y1) in zip(pts, pts[1:]):
-        d0, d1 = y0 - line.y_at(x0), y1 - line.y_at(x1)
+        d0, d1 = y0 - tripwire(x0), y1 - tripwire(x1)
         if d0 * d1 <= 0 and d0 != d1 and t1 > t0:
             return abs(y1 - y0) / (t1 - t0)
     return None

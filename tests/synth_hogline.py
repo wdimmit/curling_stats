@@ -44,4 +44,4 @@ def line_at(y_tripwire, calib=TOP):
     y_outer = y_tripwire - hogpaint.LEADING_EDGE_OFFSET_U
     row = calib.to_pixels(0.0, y_outer)[1]
     return hogpaint.HogLine(coef=(0.0, 0.0, float(row)), calib=calib,
-                            columns=300, scatter_px=0.0)
+                            columns=300, scatter_px=0.0, width_px=4.0)

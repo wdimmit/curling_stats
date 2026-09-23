@@ -63,7 +63,7 @@ class TestLineCrossing:
         """These lenses bow the paint, and a curled stone crosses it well off
         the centre line: the tripwire it meets is the one at its own x."""
         bowed = hogpaint.HogLine(coef=(0.0004, -0.12, 525.0), calib=TOP,
-                                 columns=300, scatter_px=0.0)
+                                 columns=300, scatter_px=0.0, width_px=4.0)
         assert bowed.y_at(1.0) > bowed.y_at(0.0) + 0.02
         tr = arriving(t0=20.0, y0=4.8, speed=1.0, fps=10.0, x=1.0)
         t = split.line_crossing(tr, bowed)
@@ -73,6 +73,16 @@ class TestLineCrossing:
         assert split.line_crossing(arriving(y0=4.0), LINE) is None
         assert split.line_crossing((), LINE) is None
         assert split.line_crossing(None, LINE) is None
+
+    def test_a_departing_track_is_timed_at_the_inside_edge(self):
+        """A departing stone meets the paint from the house side, at
+        ``departure_y_at`` -- well before the outer edge ``y_at`` reads, which
+        is what an arrival meets."""
+        tr = climbing(t0=0.0, y0=-2.0, y1=4.8, speed=2.0, fps=5.0)
+        y_line = LINE.departure_y_at(0.05)
+        t = split.line_crossing(tr, LINE, departing=True)
+        assert t == pytest.approx((y_line - (-2.0)) / 2.0, abs=0.02)
+        assert t < split.line_crossing(tr, LINE)
 
 
 class TestFarCrossing:

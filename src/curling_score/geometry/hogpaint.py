@@ -4,7 +4,7 @@ The panels cannot say where a hog line is in metres -- ``geometry/calibrate.py``
 fits one ``px_per_m`` from the house rings, and by the top of the frame the real
 scale has fallen to about a third of it -- so a crossing is timed against where
 the paint sits in the panel's own coordinates. That used to be one number for
-every panel of every video (``split.HOG_APPARENT_Y_M = 4.441``), and hand marks
+every panel of every video (a global 4.441), and hand marks
 read in the overhead panels put the paint anywhere from 4.39 to 4.75: top panels
 fired 0.17-0.57 s late and bottom panels 0.06-0.17 s early, on all three games
 measured (``datasets/hogmarks/receiving-controls.json``).
@@ -60,6 +60,7 @@ class HogLine:
     calib: PanelCalib
     columns: int
     scatter_px: float
+    width_px: float
 
     def outer_edge_y(self, x_m: float) -> float:
         """The paint's outer edge in panel coordinates, at lateral position ``x_m``."""
@@ -71,10 +72,27 @@ class HogLine:
         leading edge first touches the paint."""
         return self.outer_edge_y(x_m) + LEADING_EDGE_OFFSET_U
 
+    def inside_edge_y(self, x_m: float) -> float:
+        """The paint's inside edge (the side nearest the house) in panel
+        coordinates, at lateral position ``x_m``."""
+        return self.outer_edge_y(x_m) - self.width_px / self.calib.px_per_m
+
+    def departure_y_at(self, x_m: float) -> float:
+        """The tripwire for a stone LEAVING the house, at ``x_m``.
+
+        Where a departing stone's tracked centre is when its leading edge
+        first touches the paint -- coming from the house side, so it meets
+        the inside edge first, not the outer edge ``y_at`` reads. The offset
+        is the same one measured on arrivals, reused: it is a stone-geometry
+        constant, not a property of which edge it meets.
+        """
+        return self.inside_edge_y(x_m) - LEADING_EDGE_OFFSET_U
+
     def to_json(self) -> dict:
         return {"outer_edge_row_coef": [round(float(c), 8) for c in self.coef],
                 "columns": self.columns,
                 "scatter_px": round(float(self.scatter_px), 3),
+                "width_px": round(float(self.width_px), 2),
                 "offset_u": LEADING_EDGE_OFFSET_U}
 
 
@@ -90,19 +108,22 @@ def find_hog_line(plate, calib: PanelCalib) -> HogLine:
     b, g, r = img[..., 0], img[..., 1], img[..., 2]
     red = (r - np.maximum(g, b) > REDNESS_MIN) & (r > RED_MIN)
     lo, hi = (0, min(BAND_ROWS, h)) if calib.flipped else (max(0, h - BAND_ROWS), h)
-    cols, outer = [], []
+    cols, outer, inner = [], [], []
     for c in range(w):
         rows = np.nonzero(red[lo:hi, c])[0]
         if len(rows) >= 2:
             cols.append(c)
             # The edge away from the house is the one nearest the frame's far edge.
             outer.append(lo + (rows.min() if calib.flipped else rows.max()))
+            # The edge nearest the house is the opposite one.
+            inner.append(lo + (rows.max() if calib.flipped else rows.min()))
     if len(cols) < MIN_COLUMNS:
         raise HogPaintError(
             f"red paint in only {len(cols)} of {w} columns within {BAND_ROWS} "
             f"rows of the far edge (need {MIN_COLUMNS})")
     cols = np.asarray(cols, dtype=float)
     outer = np.asarray(outer, dtype=float)
+    inner = np.asarray(inner, dtype=float)
     coef = np.polyfit(cols, outer, 2)
     keep = np.abs(outer - np.polyval(coef, cols)) < OUTLIER_PX
     if int(keep.sum()) < MIN_COLUMNS:
@@ -114,8 +135,14 @@ def find_hog_line(plate, calib: PanelCalib) -> HogLine:
         raise HogPaintError(
             f"the paint's edge scatters {scatter:.2f} px about its fit "
             f"(limit {MAX_SCATTER_PX})")
+    # The painted band's width, in pixels: the outer edge is a fitted curve,
+    # but the inner edge is read straight off the same columns, so this is
+    # just their per-column gap, typical over the kept columns. +1 because a
+    # single-row band (rows = {r}) has outer == inner but is one row wide.
+    width_px = float(np.median(np.abs(outer - inner)[keep])) + 1.0
     line = HogLine(coef=tuple(float(c) for c in coef), calib=calib,
-                   columns=int(keep.sum()), scatter_px=scatter)
+                   columns=int(keep.sum()), scatter_px=scatter,
+                   width_px=width_px)
     centre = line.outer_edge_y(0.0)
     if not PLAUSIBLE_Y[0] <= centre <= PLAUSIBLE_Y[1]:
         raise HogPaintError(

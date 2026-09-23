@@ -94,5 +94,25 @@ class TestTheTripwire:
 
     def test_it_publishes_what_it_found(self):
         got = hogpaint.find_hog_line(plate_with_line(), TOP).to_json()
-        assert set(got) == {"outer_edge_row_coef", "columns", "scatter_px", "offset_u"}
+        assert set(got) == {"outer_edge_row_coef", "columns", "scatter_px",
+                            "width_px", "offset_u"}
         assert got["offset_u"] == hogpaint.LEADING_EDGE_OFFSET_U
+
+    @pytest.mark.parametrize("calib,plate", [
+        (TOP, plate_with_line()),
+        (BOTTOM, plate_with_line(h=516, flipped=True, outer_row=15.0)),
+    ], ids=["top", "flipped-bottom"])
+    def test_the_painted_band_s_width_is_measured(self, calib, plate):
+        """The synthetic plates paint a 4-row-thick line (``plate_with_line``'s
+        default ``thick=4``), on both a top panel and a flipped one."""
+        line = hogpaint.find_hog_line(plate, calib)
+        assert line.width_px == pytest.approx(4.0, abs=0.5)
+
+    def test_departure_y_at_reads_the_inside_edge(self):
+        line = hogpaint.find_hog_line(plate_with_line(), TOP)
+        assert line.departure_y_at(0.0) == pytest.approx(
+            line.outer_edge_y(0.0) - line.width_px / TOP.px_per_m
+            - hogpaint.LEADING_EDGE_OFFSET_U)
+        # A departing stone's tripwire sits well below an arriving one's: the
+        # width of the paint plus the leading-edge offset on both edges.
+        assert line.departure_y_at(0.0) < line.y_at(0.0) - 2 * hogpaint.LEADING_EDGE_OFFSET_U
