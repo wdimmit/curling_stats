@@ -1085,6 +1085,36 @@ class TestAStoneCreepingInAtTheEdge:
         assert got[0].travel_m > 0.9
 
 
+class TestAStoneCrawlingInAtTheFarEdge:
+    """hOKZoeJNTpM end 3's first yellow, seen continuously by a better model.
+
+    It crept in at the top of the panel -- 4.51 to 4.48 in 0.4 s, 4.39 a
+    second later -- and ran on to stop at 3.84 five seconds after that. The
+    panel's scale is compressed there, so 0.09 panel units a second is a stone
+    plainly moving that still passes "at most 0.1 in a second". Called at rest
+    at its second sighting, it travelled 0.04 m, fell below MIN_TRAVEL_M and
+    became a stone that merely appeared; the rules then had it lose a full
+    end's last slot to a stone moved while the house was cleared.
+    """
+
+    def _guard(self):
+        tr = interp([(0.0, -0.30, 4.51), (0.4, -0.30, 4.48), (1.4, -0.26, 4.39),
+                     (2.5, -0.19, 4.24), (5.4, 0.02, 3.84)], fps=10.0, color="yellow")
+        return tr + resting("yellow", 0.02, 3.84, 5.5, 60.0)
+
+    def test_it_rests_where_it_stopped_not_where_it_crawled(self):
+        got = delivery.find_deliveries(merge(self._guard()))
+        assert len(got) == 1
+        assert got[0].rest_y_m == pytest.approx(3.84, abs=0.1)
+        assert got[0].travel_m > 0.5
+        assert got[0].reason == "rest"
+
+    def test_a_stone_that_really_stops_still_rests_at_once(self):
+        tr = interp([(0.0, 0.0, 4.4), (3.0, 0.0, 2.9)], fps=10.0, color="red")
+        got = delivery.find_deliveries(merge(tr + resting("red", 0.0, 2.9, 3.1, 60.0)))
+        assert got[0].t_rest == pytest.approx(3.0, abs=0.3)
+
+
 class TestAParkedStoneAnnexedByAPassingOne:
     """Game 3 end 4 again, the red lead's first guard -- the one the chart
     called rock 1's predecessor and never listed.

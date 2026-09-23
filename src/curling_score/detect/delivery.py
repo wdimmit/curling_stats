@@ -109,6 +109,13 @@ LINK_ACCEL_GAP_S = 0.5
 # It must settle: this much movement per second or less, held this long.
 REST_SPEED_M_S = 0.10
 REST_HOLD_S = 1.0
+# And having settled, it must still be there a while later. The panel's scale
+# is compressed toward its far edge, so a stone crawling in there moves under
+# REST_SPEED_M_S in panel units while plainly moving: hOKZoeJNTpM end 3's first
+# yellow crept 4.51 -> 4.39 in its first 1.4 s and stopped at 3.84 four seconds
+# on. A stone at rest is not a stone 0.4 m further along three seconds later.
+REST_CONFIRM_S = 3.0
+REST_CONFIRM_M = 0.2
 # Requiring the *delivered* stone to be seen coming to rest is wrong twice over,
 # and both cases are common. A collision breaks it: the shooter stops dead while
 # the stone it struck carries on the way the shot was going, and since a stone
@@ -476,6 +483,8 @@ def _rest_index(track):
     on was called at rest from its first sighting -- game 3 end 4's yellow
     guard, first seen with its box clipped against the top of the panel. A
     stone at rest is exactly where it was after the gap; a moving one is not.
+    Nor is it somewhere else ``REST_CONFIRM_S`` later, which catches the slow
+    crawl at the far edge that stays under ``REST_SPEED_M_S`` with no gap.
     """
     n = len(track.ts)
     for i in range(n):
@@ -493,7 +502,12 @@ def _rest_index(track):
             for k in range(i, j + 1)
         )
         if span <= REST_SPEED_M_S * REST_HOLD_S:
-            return i
+            drift = max(
+                ((track.xs[k] - track.xs[i]) ** 2 + (track.ys[k] - track.ys[i]) ** 2) ** 0.5
+                for k in range(i, n) if track.ts[k] - track.ts[i] <= REST_CONFIRM_S
+            )
+            if drift <= REST_CONFIRM_M:
+                return i
     return None
 
 
