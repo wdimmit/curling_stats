@@ -13,6 +13,7 @@ from curling_score import weights as weights_mod
 from curling_score.detect import delivery, release, sequence
 from curling_score.game import (
     endcheck,
+    fartime,
     fit,
     hogtime,
     profile,
@@ -359,6 +360,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             if sideviews is not None:
                 hogtime.time_hog_crossings(
                     shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+            # Stage 3, the destination hog line, from that panel's painted line.
+            # In this block ``setup`` is the destination panel and ``far`` is
+            # the THROWING panel -- far from the house being played to.
+            fartime.time_far_crossings(shots, near_line=far.hog_line,
+                                       far_line=setup.hog_line)
             built = timeline.build_end(
                 end.number, end.house, end.start_s, end.end_s, shots,
                 board_score=(None if scores is None

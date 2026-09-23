@@ -14,10 +14,16 @@ from pathlib import Path
 # document byte-identical.
 # 2026.09.16: the side-view detector became the default crossing proposer, a
 # release is no longer required for a hog-to-hog split, and the far crossing
-# may be reached for within FAR_EXTRAPOLATION_MAX_U -- with `long_split_far_
+# may be reached for within a 0.05-unit cap -- with `long_split_far_
 # reach_u` added to say when it was. Different rules and a new field, so
 # timelines from before this are not comparable and must not be reused.
-PIPELINE_VERSION = "2026.09.16"
+# 2026.09.22: the destination hog line is placed per panel from its paint
+# rather than the global 4.441, the far crossing may be reached for up to 0.20
+# panel units, and BASELINE_M is the 21.843 m a stone's leading edge covers.
+# Also covers the stage-1 release changes (db182cf), which altered releases,
+# splits and thinking times without bumping this. Split values move by up to
+# ~0.57 s on some panels; timelines from before this must not be reused.
+PIPELINE_VERSION = "2026.09.22"
 
 
 def model_id(weights) -> str:
