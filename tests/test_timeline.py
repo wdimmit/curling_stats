@@ -214,7 +214,8 @@ class TestMovingAShot:
 class TestTimingFields:
     """The split and the clock reach the document, and say when they cannot."""
 
-    def _shot(self, n, color, t_rest, t_rel=None, y_enter=4.5, side_view_saw_it=True):
+    def _shot(self, n, color, t_rest, t_rel=None, y_enter=4.5, side_view_saw_it=True,
+              far_seen=True):
         from curling_score.detect.delivery import Delivery
         from curling_score.detect.release import Release
         tr, t, y = [], t_rest - 6.0, y_enter
@@ -228,26 +229,22 @@ class TestTimingFields:
         rel = None
         if t_rel is not None:
             rt, tt, yy = [], t_rel, -2.0
-            # Past the hog line's paint at ``split.HOG_APPARENT_Y_M``: a throw
-            # the camera loses short of it has no split, by design.
             while yy <= 4.8:
                 rt.append((round(tt, 3), 0.05, round(yy, 4)))
                 yy += 0.4
                 tt += 0.2
             rel = Release(color=color, t=rt[0][0], y_exit_m=rt[-1][2],
                           speed_m_s=2.0, track=tuple(rt))
-        # The side view agreeing with the panel, standing in for a real
-        # ``hogtime.time_hog_crossings`` pass: ``long_split`` now takes the
-        # throwing end from there, never the panel alone. ``side_view_saw_it``
-        # can turn that off to model a throw the panel tracked but the side
-        # view refused -- t_hog_s stays None even though the release track
-        # still crosses the panel's own hog line.
-        if rel is not None and side_view_saw_it:
-            t_hog = split.hog_crossing(rel.track)
-        else:
-            t_hog = None
+        # Standing in for the two passes analyze runs after the rules: the side
+        # view's throwing-end crossing (``hogtime``), ~3.2 s after the release
+        # at this track's pace, and the destination crossing (``fartime``) just
+        # after the arrival is first seen. ``side_view_saw_it`` and
+        # ``far_seen`` turn each off.
+        t_hog = t_rel + 3.2 if rel is not None and side_view_saw_it else None
+        far = split.FarCrossing(t=tr[0][0] + 0.1) if far_seen else None
         return S.Shot(number=n, color=color, stones=[det(color, 0.1, 0.2)],
-                      t_rest_s=t_rest, delivery=dv, release=rel, t_hog_s=t_hog)
+                      t_rest_s=t_rest, delivery=dv, release=rel, t_hog_s=t_hog,
+                      far_crossing=far)
 
     def test_a_measured_shot_carries_its_split_and_clock(self):
         end = timeline.build_end(
@@ -264,11 +261,11 @@ class TestTimingFields:
 
     def test_a_panel_crossing_with_no_side_view_hog_has_no_split(self):
         """One method per game: even though the release track crosses the
-        panel's own hog line (``split.hog_crossing`` would return a time for
-        it), the side view refusing to report ``t_hog_s`` must leave this
+        panel's own hog line (the throwing panel's own tripwire would see it),
+        the side view refusing to report ``t_hog_s`` must leave this
         shot unmeasured. The panel must never step in as a per-shot
         fallback -- catches a revert of the ``timeline.py`` call site back to
-        ``split.hog_crossing(rel.track)``."""
+        the panel's own crossing."""
         end = timeline.build_end(
             number=1, house="top", start_s=0.0, end_s=900.0,
             shots=[self._shot(1, "red", 100.0, t_rel=70.0,
@@ -276,6 +273,13 @@ class TestTimingFields:
         )
         shot = end["shots"][0]
         assert shot["long_split_s"] is None
+        assert end["splits_measured"] == 0
+
+    def test_a_shot_with_no_far_crossing_has_no_split(self):
+        end = timeline.build_end(
+            number=1, house="top", start_s=0.0, end_s=900.0,
+            shots=[self._shot(1, "red", 100.0, t_rel=70.0, far_seen=False)])
+        assert end["shots"][0]["long_split_s"] is None
         assert end["splits_measured"] == 0
 
     def test_a_shot_with_no_release_reports_none_rather_than_zero(self):

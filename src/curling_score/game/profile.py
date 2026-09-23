@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from curling_score.detect import rocks
 from curling_score.game.segment import Sample
-from curling_score.geometry import calibrate, layout, lighting
+from curling_score.geometry import calibrate, hogpaint, layout, lighting
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,14 @@ class PanelSetup:
 
     rect: tuple[int, int, int, int]
     calib: calibrate.PanelCalib
+    # The panel's own hog line, found in its paint (``geometry/hogpaint.py``),
+    # or None with the reason in ``hog_line_error``. The destination crossing,
+    # and the throwing panel's cross-check, are timed against it; there is no
+    # fallback. Defaulted so a setup pickled before this existed still loads --
+    # though it then has no line, which ``scripts/replay_end.setups_for``
+    # treats as stale.
+    hog_line: hogpaint.HogLine | None = None
+    hog_line_error: str | None = None
 
     def crop(self, frame):
         x, y, w, h = self.rect
@@ -56,6 +64,23 @@ class PanelSetup:
 PANEL_SIDES = (("top", "bottom"), ("bottom", "top"))
 
 
+def panel_median(frames, rect, name: str = "panel"):
+    """The idle house's median over well-lit frames, BGR, cropped to ``rect``.
+
+    What the rings and the hog line's paint are both read from. Split out of
+    ``calibrate_panel`` so a test fixture can be built from exactly the image
+    the pipeline sees.
+    """
+    import numpy as np
+
+    x, y, w, h = rect
+    lit = [f[y : y + h, x : x + w] for f in frames]
+    lit = [p for p in lit if lighting.is_calibratable(p)]
+    if not lit:
+        raise calibrate.CalibrationError(f"{name} panel: no well-lit frames")
+    return np.median(np.stack(lit), axis=0).astype("uint8")
+
+
 def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> PanelSetup:
     """Calibrate one panel from the best-lit, cleanest frames available.
 
@@ -67,15 +92,16 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> Pa
     other one's lights are out. The club kills the lights on a sheet as it
     finishes while others play on, so that is a normal night, not a broken one.
     """
-    import numpy as np
-
-    x, y, w, h = rect
-    lit = [f[y : y + h, x : x + w] for f in frames]
-    lit = [p for p in lit if lighting.is_calibratable(p)]
-    if not lit:
-        raise calibrate.CalibrationError(f"{name} panel: no well-lit frames")
-    median = np.median(np.stack(lit), axis=0).astype("uint8")
-    return PanelSetup(rect=rect, calib=calibrate.solve(median, delivery_side))
+    median = panel_median(frames, rect, name)
+    calib = calibrate.solve(median, delivery_side)
+    # The same median the rings were read from shows the hog line's paint. A
+    # panel whose paint cannot be trusted keeps its calibration and says why;
+    # it simply times no far crossings.
+    try:
+        line, err = hogpaint.find_hog_line(median, calib), None
+    except hogpaint.HogPaintError as exc:
+        line, err = None, f"{name} panel: {exc}"
+    return PanelSetup(rect=rect, calib=calib, hog_line=line, hog_line_error=err)
 
 
 def calibrate_panels(frames, panels: layout.PanelLayout):

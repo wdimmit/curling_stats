@@ -52,6 +52,11 @@ class Shot:
     # side view -- see ``hogtime.time_hog_crossings``. None whenever the
     # detector would not commit to a crossing; nothing stands in for it.
     t_hog_s: float | None = None
+    # When this rock's leading edge reached the DESTINATION hog line, from that
+    # end's panel, with the throwing panel's own reading beside it -- a
+    # ``split.FarCrossing`` attached by ``fartime.time_far_crossings``. None
+    # until that pass has run.
+    far_crossing: object = None
     # Whether we believe the house we are showing. False means we could not
     # read it and a person has to fill it in -- which is a different statement
     # from an empty house, and must never be rendered as one.

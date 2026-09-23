@@ -260,6 +260,24 @@ fails.
 acquires late at the far edge. Extrapolation covers most of them; it does not
 make the detector see them.
 
+**The departure tripwire is unvalidated.** The throwing panel's line is crossed
+from the house side, so it is timed at the paint's inside edge, less the same
+0.080 leading-edge offset -- an offset measured on arrivals and never checked
+against release marks. It feeds only `panel_delta`, which is diagnostic: no
+published split reads it.
+
+**Paint width is barely resolved.** `width_px` measured 2.0 px on all six real
+panels. At 1 px quantisation that is about 0.0125 u of doubt in where the
+inside edge sits, and so in the departure tripwire.
+
+**`FAR_LEAD_MAX_S` is a gap, not a model.** Reach-backs fit the track's first
+four samples in time, and are refused when that fit puts the crossing more than
+1.0 s before the first sighting, or more than one frame (0.1 s) after it; a fit
+inside that frame is timed at the first sighting.
+Hand-marked leads reach 0.57 s; replayed leads run continuously to 0.81 s, then
+jump to 1.11 s and beyond on dwelling or jittery tracks. A genuinely slow
+arrival past 1.0 s would be refused too.
+
 ## Not in scope
 
 **Retraining `ds11a`** on red stones at the panel's far edge -- the root cause of

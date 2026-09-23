@@ -25,21 +25,43 @@ from pathlib import Path
 
 from curling_score import analyze as analyze_mod, weights as weights_mod
 from curling_score.detect import delivery as D, release, sequence, yolo
-from curling_score.game import (endcheck, fit, profile, secondpass, segment,
-                                shots as shots_mod, split, thinking)
+from curling_score.game import (endcheck, fartime, fit, profile, secondpass,
+                                segment, shots as shots_mod, split, thinking)
 from curling_score.geometry import layout
 from curling_score.ingest import cache, frames as F, proxy
 
 
-def setups_for(video, vid, root):
-    """Panel calibration, computed once per video and kept beside the caches."""
-    pkl = Path(root) / f"setups-{vid}.pkl"
-    if pkl.exists():
-        return pickle.loads(pkl.read_bytes())
+def _compute_setups(video):
     calib_frames = F.sample_keyframes(video, count=analyze_mod.CALIB_FRAMES,
                                       stride=analyze_mod.CALIB_STRIDE)
     panels = layout.detect_panels(calib_frames)
-    setups = profile.calibrate_panels(calib_frames, panels)
+    return profile.calibrate_panels(calib_frames, panels), panels
+
+
+def _has_hog_lines(setups) -> bool:
+    """False for a pickle written before panels carried their painted hog line:
+    such a setup loads with neither a line nor a reason, and would silently
+    time no far crossings at all."""
+    return all(getattr(s, "hog_line", None) is not None
+               or getattr(s, "hog_line_error", None) for s in setups.values())
+
+
+def setups_for(video, vid, root):
+    """Panel calibration, computed once per video and kept beside the caches.
+
+    Kept as ``setups-<vid>.hogline.pkl``, never the older ``setups-<vid>.pkl``:
+    these setups carry a ``geometry.hogpaint.HogLine``, a module main's code
+    does not have, so a setup pickled under the shared name would stop every
+    replay tool on main from unpickling it. The old file stays main's; this
+    code neither reads nor writes it. A ``.hogline.pkl`` without hog lines
+    (see ``_has_hog_lines``) is recomputed like a missing one.
+    """
+    pkl = Path(root) / f"setups-{vid}.hogline.pkl"
+    if pkl.exists():
+        setups, panels = pickle.loads(pkl.read_bytes())
+        if _has_hog_lines(setups):
+            return setups, panels
+    setups, panels = _compute_setups(video)
     pkl.write_bytes(pickle.dumps((setups, panels)))
     return setups, panels
 
@@ -227,6 +249,8 @@ def main():
     thrown_by = {id(d): r for r, d in matched.items()}
     built = shots_mod.from_deliveries(fit.fit_end(ds), frames, thrown_by=thrown_by)
     thinking.time_shots(built, far_seq, far.view_y_min_m)
+    # `setup` is the house being played to; `far` is the throwing house.
+    fartime.time_far_crossings(built, near_line=far.hog_line, far_line=setup.hog_line)
     clock = thinking.for_end(built)
     print("\n== timings")
     # The throwing end's crossing now comes from the side view
@@ -240,8 +264,8 @@ def main():
           "view that the throwing end now comes from -- see game/hogtime.py)")
     measured = 0
     for sh, secs in zip(built, clock.per_shot):
-        sp = split.long_split(getattr(sh, "release", None),
-                              getattr(sh, "delivery", None))
+        sp = split.long_split(getattr(sh, "delivery", None), t_hog=None,
+                              v_hog=None, far=fartime.crossing(sh))
         if sp:
             measured += 1
             # The baseline is the same hog-to-hog distance for every shot, so

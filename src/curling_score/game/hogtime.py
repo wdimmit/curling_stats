@@ -59,9 +59,9 @@ def time_hog_crossings(shots, video, view, *, find=None) -> None:
 def crossing(shot):
     """When this shot crossed the throwing end's hog line, if it was seen to.
 
-    Not named ``hog_crossing``: ``split.hog_crossing`` already means the panel's
-    own tripwire and takes a track, and two functions of that name timing the
-    same line from different cameras is exactly the confusion to avoid.
+    Not named ``hog_crossing``: the panels time their own hog lines too
+    (``split.line_crossing``), and two functions of one name timing the same
+    line from different cameras is exactly the confusion to avoid.
     """
     return getattr(shot, "t_hog_s", None)
 

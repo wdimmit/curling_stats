@@ -5,7 +5,6 @@ from dataclasses import replace
 import pytest
 
 from curling_score.detect.delivery import Delivery
-from curling_score.detect.release import Release
 from curling_score.game import classify
 from curling_score.game import split as split_mod
 from curling_score.geometry import constants as C
@@ -44,30 +43,20 @@ def delivery(**kw):
     return Delivery(**base)
 
 
-def climb(t_cross, speed=2.0, fps=10.0, span=1.0, x=0.0):
-    """A stone leaving the thrower's house, crossing the paint at ``t_cross``."""
-    n = max(1, int(span * fps / speed))
-    return tuple(
-        (t_cross + i / fps, x, split_mod.HOG_APPARENT_Y_M + speed * i / fps)
-        for i in range(-n, n + 1)
-    )
-
-
 def paired(split_s, near_speed=2.0, far_speed=1.2, rest_y_m=-2.5):
-    """A release, its arrival, and the side view's near crossing.
+    """An arrival, its side-view crossing, and its far crossing, ``split_s`` apart.
 
-    Returns ``(release, delivery, t_hog)`` timed ``split_s`` apart. ``t_hog``
-    is returned rather than left to be dug out of the release's track because
-    that is where the near crossing now comes from: the side view times it,
-    and the release's own overhead tripwire does not (see ``classify``).
+    Returns ``(delivery, t_hog, far)``. The far crossing is what
+    ``game/fartime.py`` attaches to a shot; the panel speeds are carried in it
+    for the pairing check.
     """
     dv = delivery(track=flight(y0=5.6, y1=rest_y_m, speed=far_speed),
                   came_to_rest=False, reason="left-view", rest_y_m=rest_y_m)
-    far = split_mod.crossing_time(dv.track, split_mod.HOG_APPARENT_Y_M)
-    near = far - split_s
-    rel = Release(color="red", t=near - 1.0, y_exit_m=5.5,
-                  speed_m_s=near_speed, track=climb(near, speed=near_speed))
-    return rel, dv, near
+    far_t = dv.track[1][0]
+    t_hog = far_t - split_s
+    far = split_mod.FarCrossing(t=far_t, v_far=far_speed, v_near=near_speed,
+                                t_near_panel=t_hog)
+    return dv, t_hog, far
 
 
 class TestSpeedAt:
@@ -200,92 +189,81 @@ class TestOutOfPlay:
     """
 
     def test_a_slow_stone_that_ran_out_the_back_was_a_draw_thrown_through(self):
-        rel, dv, t_hog = paired(18.0)
-        got, conf = classify.classify(dv, None, rel, t_hog=t_hog)
+        dv, t_hog, far = paired(18.0)
+        got, conf = classify.classify(dv, None, t_hog=t_hog, far=far)
         assert got == classify.DRAW_THROUGH
         assert conf == classify.CONF_CLEAR_REST
 
     def test_a_quick_stone_that_ran_out_the_back_was_a_takeout_that_flashed(self):
-        rel, dv, t_hog = paired(9.0)
-        got, conf = classify.classify(dv, None, rel, t_hog=t_hog)
+        dv, t_hog, far = paired(9.0)
+        got, conf = classify.classify(dv, None, t_hog=t_hog, far=far)
         assert got == classify.FLASHED
         assert conf == classify.CONF_CLEAR_REST
 
     def test_a_split_exactly_on_the_threshold_reads_as_a_flash(self):
-        rel, dv, t_hog = paired(classify.SPLIT_HIT_MAX_S)
-        got, _ = classify.classify(dv, None, rel, t_hog=t_hog)
+        dv, t_hog, far = paired(classify.SPLIT_HIT_MAX_S)
+        got, _ = classify.classify(dv, None, t_hog=t_hog, far=far)
         assert got == classify.FLASHED
 
     def test_entry_speed_still_decides_nothing_here(self):
-        # A draw thrown through, entering the panel faster than most takeouts.
-        # The split says draw and the panel's speed is not allowed to argue.
-        rel, dv, t_hog = paired(18.0, near_speed=4.0, far_speed=3.5)
+        dv, t_hog, far = paired(18.0, near_speed=4.0, far_speed=3.5)
         assert dv.speed_at() > 3.0
-        got, _ = classify.classify(dv, None, rel, t_hog=t_hog)
+        got, _ = classify.classify(dv, None, t_hog=t_hog, far=far)
         assert got == classify.DRAW_THROUGH
 
     def test_a_stone_that_stopped_past_the_back_line_is_out_of_play_too(self):
-        # Not every one of these leaves the panel: some are seen settling
-        # behind the back line, which is just as much out of play.
-        rel, dv, t_hog = paired(9.0, rest_y_m=-2.5)
+        dv, t_hog, far = paired(9.0, rest_y_m=-2.5)
         got, _ = classify.classify(replace(dv, reason="rest", came_to_rest=True),
-                                   None, rel, t_hog=t_hog)
+                                   None, t_hog=t_hog, far=far)
         assert got == classify.FLASHED
 
     def test_without_a_split_it_is_a_flash_and_says_so(self):
-        # Most throws are never timed at both hog lines, so this is the common
-        # case. Choosing the takeout is a policy rather than evidence, and the
-        # confidence is what keeps that honest.
         got, conf = classify.classify(
             delivery(speed=1.4, came_to_rest=False, reason="left-view",
                      rest_y_m=-2.5), None)
         assert got == classify.FLASHED
         assert conf == classify.CONF_BOUNDARY
 
-    def test_a_side_view_that_never_timed_the_near_line_leaves_no_split(self):
-        # A split is never extrapolated, so with no near crossing there is
-        # none, and this falls to the same default as a shot with no release.
-        rel, dv, _t_hog = paired(18.0)
-        got, conf = classify.classify(dv, None, rel, t_hog=None)
-        assert got == classify.FLASHED
-        assert conf == classify.CONF_BOUNDARY
+    def test_no_side_view_crossing_leaves_no_split(self):
+        dv, _t_hog, far = paired(18.0)
+        assert classify.classify(dv, None, t_hog=None, far=far) == (
+            classify.FLASHED, classify.CONF_BOUNDARY)
 
-    def test_losing_the_release_track_no_longer_costs_the_split(self):
-        # It used to: the near crossing came from the release's own overhead
-        # tripwire, so a release the panel lost before the paint had no split.
-        # The side view times that line now, and it is the reason `long_split`
-        # stopped requiring a release at all.
-        rel, dv, t_hog = paired(18.0)
-        got, _ = classify.classify(dv, None, replace(rel, track=()), t_hog=t_hog)
-        assert got == classify.DRAW_THROUGH
+    def test_no_far_crossing_leaves_no_split(self):
+        dv, t_hog, _far = paired(18.0)
+        assert classify.classify(dv, None, t_hog=t_hog, far=None) == (
+            classify.FLASHED, classify.CONF_BOUNDARY)
 
-    def test_a_shot_is_classified_with_the_release_paired_to_it(self):
-        # The split is the only evidence separating a draw thrown through from
-        # a flash, and it lives on the release, not the arrival. A shot that
-        # dropped it on the way through here would always read as a flash.
+    def test_the_split_needs_no_release(self):
+        dv, t_hog, far = paired(18.0)
+        bare = split_mod.FarCrossing(t=far.t)
+        assert classify.classify(dv, None, t_hog=t_hog, far=bare)[0] == classify.DRAW_THROUGH
+
+    def test_a_shot_is_classified_with_both_crossings_it_carries(self):
         from curling_score.game.shots import Shot
 
-        rel, dv, t_hog = paired(18.0)
-        s = Shot(number=5, color="red", stones=[], t_rest_s=dv.t_rest,
-                 delivery=dv, release=rel)
+        dv, t_hog, far = paired(18.0)
+        s = Shot(number=5, color="red", stones=[], t_rest_s=dv.t_rest, delivery=dv)
         s.t_hog_s = t_hog
+        s.far_crossing = far
         assert classify.classify_shot(s)[0] == classify.DRAW_THROUGH
 
-    def test_a_shot_that_drops_the_side_views_crossing_reads_as_a_flash(self):
-        """The regression this threading exists to prevent.
-
-        Between the long-camera merge and `classify_shot` passing `t_hog`,
-        every shot took this path: `long_split` returns None without a near
-        crossing, so DRAW_THROUGH was unreachable and a draw thrown through
-        was published as a flash.
-        """
+    def test_a_shot_that_drops_the_side_view_crossing_reads_as_a_flash(self):
         from curling_score.game.shots import Shot
 
-        rel, dv, _t_hog = paired(18.0)
-        s = Shot(number=5, color="red", stones=[], t_rest_s=dv.t_rest,
-                 delivery=dv, release=rel)          # no t_hog_s set
-        assert classify.classify_shot(s) == (classify.FLASHED,
-                                             classify.CONF_BOUNDARY)
+        dv, _t_hog, far = paired(18.0)
+        s = Shot(number=5, color="red", stones=[], t_rest_s=dv.t_rest, delivery=dv)
+        s.far_crossing = far
+        assert classify.classify_shot(s) == (classify.FLASHED, classify.CONF_BOUNDARY)
+
+    def test_a_shot_that_drops_the_far_crossing_reads_as_a_flash(self):
+        """The stage-3 version of the regression classify_shot exists to stop."""
+        from curling_score.game.shots import Shot
+
+        dv, t_hog, _far = paired(18.0)
+        s = Shot(number=5, color="red", stones=[], t_rest_s=dv.t_rest, delivery=dv)
+        s.t_hog_s = t_hog
+        assert classify.classify_shot(s) == (classify.FLASHED, classify.CONF_BOUNDARY)
 
 
 class TestRefusingToGuess:

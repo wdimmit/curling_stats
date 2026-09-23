@@ -4,7 +4,9 @@ After the release guard came off, `no_far_hog_crossing` is the largest single
 loss: 40 of the 55 unpublished crossings on VXU9xwmugRg. The diagnostics say
 something very specific about them. Every one of the 40 has a delivery track --
 median 54 points -- and every one of those tracks STARTS at its far end,
-0.058 m short of `split.HOG_APPARENT_Y_M` on median.
+0.058 m short of that panel's own painted hog line (`geometry/hogpaint.HogLine`,
+found per panel -- this measurement predates it and was taken against the old
+global `split.HOG_APPARENT_Y_M`) on median.
 
 So the stone is not lost. It appears in the panel already past the line, by
 about four tenths of a stone's radius. The crossing happens just outside the
@@ -20,6 +22,9 @@ import json
 import sys
 from pathlib import Path
 
+# ``replay_end.py`` lives under ``scripts/``, one level up from this script.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -27,24 +32,22 @@ def main() -> int:
     ap.add_argument("--refused", required=True, help="no_far_hog.json")
     ap.add_argument("--out", required=True)
     ap.add_argument("--limit", type=int, default=6)
+    ap.add_argument("--cache-root", default=None)
     args = ap.parse_args()
 
     import cv2
     import numpy as np
 
-    from curling_score import analyze as A
-    from curling_score.game import profile, split
-    from curling_score.geometry import layout
-    from curling_score.ingest import frames as F
+    from curling_score.ingest import cache, frames as F
+    import replay_end
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     rows = json.loads(Path(args.refused).read_text())[:args.limit]
 
-    plates = F.sample_keyframes(args.video, count=A.CALIB_FRAMES,
-                                stride=A.CALIB_STRIDE)
-    panels = layout.detect_panels(plates)
-    setups = profile.calibrate_panels(plates, panels)
+    root = Path(args.cache_root) if args.cache_root else cache.default_root()
+    vid = Path(args.video).stem
+    setups, panels = replay_end.setups_for(args.video, vid, root)
     print(f"panels: top {panels.top} bottom {panels.bottom}", flush=True)
 
     for r in rows:
@@ -59,18 +62,17 @@ def main() -> int:
             if not imgs:
                 continue
             row = np.hstack(imgs)
-            # Where the calibration puts the hog line in this panel's pixels.
-            try:
-                y_px = int(round(setup.to_pixels(0.0, split.HOG_APPARENT_Y_M)[1]))
-            except Exception:
-                y_px = None
-            if y_px is not None and 0 <= y_px < row.shape[0]:
-                cv2.line(row, (0, y_px), (row.shape[1], y_px), (0, 0, 255), 2)
-                cv2.putText(row, "hog", (4, max(14, y_px - 6)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            line = setup.hog_line
+            if line is not None:
+                pts = [(int(c), int(round(np.polyval(line.coef, c)))) for c in range(0, rect[2], 4)]
+                for k in range(len(imgs)):
+                    off = k * rect[2]
+                    for (c0, r0), (c1, r1) in zip(pts, pts[1:]):
+                        cv2.line(row, (off + c0, r0), (off + c1, r1), (0, 0, 255), 1)
+                cv2.putText(row, "hog (paint outer edge)", (4, 14),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
             else:
-                cv2.putText(row, f"hog line at y={split.HOG_APPARENT_Y_M} m is "
-                                 f"outside this panel", (6, 18),
+                cv2.putText(row, f"no hog line: {setup.hog_line_error}", (6, 18),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1)
             lab = np.full((20, row.shape[1], 3), 20, np.uint8)
             cv2.putText(lab, f"{name} panel", (4, 14),
@@ -85,8 +87,7 @@ def main() -> int:
         img = np.vstack(strips)
         cap = np.full((24, img.shape[1], 3), 20, np.uint8)
         cv2.putText(cap, f"e{r['end']}s{r['shot']} {r['color']}  track starts "
-                         f"y={r['y_max']:.3f} m, {split.HOG_APPARENT_Y_M - r['y_max']:.3f} m "
-                         f"short of the line", (4, 17),
+                         f"y={r['y_max']:.3f} m, first sighting", (4, 17),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (230, 230, 230), 1)
         cv2.imwrite(str(out / f"e{r['end']}s{r['shot']}_{r['color']}.jpg"),
                     np.vstack([img, cap]), [cv2.IMWRITE_JPEG_QUALITY, 88])

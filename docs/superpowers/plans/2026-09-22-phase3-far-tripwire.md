@@ -701,7 +701,7 @@ class TestFarCrossing:
 
     def test_the_cap_is_0_20_units(self):
         assert split.FAR_REACH_MAX_U == 0.20
-        inside = arriving(t0=20.0, y0=4.441, speed=1.0, fps=10.0)     # reach 0.199
+        inside = arriving(t0=20.0, y0=4.241, speed=1.0, fps=10.0)     # reach 0.199
         outside = arriving(t0=20.0, y0=4.239, speed=1.0, fps=10.0)    # reach 0.201
         assert split.far_crossing(inside, LINE, max_reach=0.20)[0] is not None
         assert split.far_crossing(outside, LINE, max_reach=0.20) == (None, 0.0)

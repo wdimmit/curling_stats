@@ -13,6 +13,7 @@ from curling_score import weights as weights_mod
 from curling_score.detect import delivery, release, sequence
 from curling_score.game import (
     endcheck,
+    fartime,
     fit,
     hogtime,
     profile,
@@ -49,7 +50,9 @@ def _proxy_setups(setups, strip):
     """
     return {
         name: profile.PanelSetup(
-            rect=proxy.translate(s.rect, strip), calib=s.calib
+            rect=proxy.translate(s.rect, strip), calib=s.calib,
+            # The line is in panel pixels, so moving the panel does not move it.
+            hog_line=s.hog_line, hog_line_error=s.hog_line_error,
         )
         for name, s in setups.items()
     }
@@ -357,6 +360,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             if sideviews is not None:
                 hogtime.time_hog_crossings(
                     shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+            # Stage 3, the destination hog line, from that panel's painted line.
+            # In this block ``setup`` is the destination panel and ``far`` is
+            # the THROWING panel -- far from the house being played to.
+            fartime.time_far_crossings(shots, near_line=far.hog_line,
+                                       far_line=setup.hog_line)
             built = timeline.build_end(
                 end.number, end.house, end.start_s, end.end_s, shots,
                 board_score=(None if scores is None
@@ -425,6 +433,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 "center_px": [round(v, 2) for v in s.calib.center_px],
                 "residual_m": round(s.calib.residual_m, 5),
                 "flipped": s.calib.flipped,
+                "hog_line": None if s.hog_line is None else s.hog_line.to_json(),
+                "hog_line_error": s.hog_line_error,
             }
             for name, s in setups.items()
         },
