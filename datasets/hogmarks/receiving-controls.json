@@ -1,0 +1,577 @@
+{
+ "what": "The frame at which an arriving stone's leading edge (the side heading into the house) touched the red hog line at the DESTINATION end, read in that end's overhead panel with scripts/mark_hog.py's page. crossing_s null = skipped as unreadable.",
+ "why": "Controls for phase 3: every rock here is first seen by the panel at least 0.05 units before its tripwire, so the tripwire's own crossing is observed. Tripwire minus mark measures where the global HOG_APPARENT_Y_M lands against the paint, per panel and per game.",
+ "marked_on": "2026-09-22",
+ "marks": [
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 2,
+   "shot": 2,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 664.2,
+   "crossing_s": 664.067,
+   "note": "control; reach -0.179 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 2,
+   "shot": 10,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 1045.8,
+   "crossing_s": 1045.5,
+   "note": "control; reach -0.103 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 4,
+   "shot": 2,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 2537.5,
+   "crossing_s": 2537.267,
+   "note": "control; reach -0.217 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 4,
+   "shot": 10,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 2945.8,
+   "crossing_s": 2945.333,
+   "note": "control; reach -0.145 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 4,
+   "shot": 16,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 3325.0,
+   "crossing_s": 3324.467,
+   "note": "control; reach -0.103 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 2,
+   "shot": 1,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 617.6,
+   "crossing_s": null,
+   "note": "control; reach -1.064 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 2,
+   "shot": 9,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 987.1,
+   "crossing_s": null,
+   "note": "control; reach -1.079 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 4,
+   "shot": 1,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 2488.3,
+   "crossing_s": null,
+   "note": "control; reach -1.066 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 4,
+   "shot": 11,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 2991.8,
+   "crossing_s": 2993.267,
+   "note": "control; reach -1.079 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 6,
+   "shot": 3,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 4451.5,
+   "crossing_s": 4452.4,
+   "note": "control; reach -0.779 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 1,
+   "shot": 1,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 30.9,
+   "crossing_s": 31.267,
+   "note": "control; reach -0.051 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 3,
+   "shot": 11,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2028.2,
+   "crossing_s": 2028.567,
+   "note": "control; reach -0.070 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 5,
+   "shot": 3,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 3479.0,
+   "crossing_s": 3479.867,
+   "note": "control; reach -0.115 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 5,
+   "shot": 11,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 3914.6,
+   "crossing_s": 3914.967,
+   "note": "control; reach -0.083 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 1,
+   "shot": 2,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 82.4,
+   "crossing_s": 82.967,
+   "note": "control; reach -0.107 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 1,
+   "shot": 8,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 408.3,
+   "crossing_s": 408.667,
+   "note": "control; reach -0.097 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 3,
+   "shot": 4,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 1657.4,
+   "crossing_s": 1658.233,
+   "note": "control; reach -0.097 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 3,
+   "shot": 12,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2105.9,
+   "crossing_s": 2106.467,
+   "note": "control; reach -0.102 u"
+  },
+  {
+   "video": "AEqLTgM25Tc",
+   "end": 5,
+   "shot": 2,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 3430.6,
+   "crossing_s": 3431.4,
+   "note": "control; reach -0.123 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 4,
+   "shot": 14,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 3423.3,
+   "crossing_s": 3423.5,
+   "note": "control; reach -0.136 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 6,
+   "shot": 12,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 5149.233333333334,
+   "crossing_s": 5149.3,
+   "note": "control; reach -0.121 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 6,
+   "shot": 16,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 5396.233333333334,
+   "crossing_s": 5396.333,
+   "note": "control; reach -0.155 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 2,
+   "shot": 3,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 951.7,
+   "crossing_s": 951.867,
+   "note": "control; reach -0.149 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 2,
+   "shot": 11,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 1390.8,
+   "crossing_s": 1390.933,
+   "note": "control; reach -0.142 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 4,
+   "shot": 3,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 2750.5,
+   "crossing_s": 2750.567,
+   "note": "control; reach -0.136 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 4,
+   "shot": 11,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 3239.6,
+   "crossing_s": 3239.667,
+   "note": "control; reach -0.128 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 6,
+   "shot": 7,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 4805.533333333334,
+   "crossing_s": 4805.6,
+   "note": "control; reach -0.121 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 1,
+   "shot": 3,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 71.4,
+   "crossing_s": 72.367,
+   "note": "control; reach -0.121 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 3,
+   "shot": 1,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 1777.1,
+   "crossing_s": 1777.933,
+   "note": "control; reach -0.120 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 3,
+   "shot": 11,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2278.9,
+   "crossing_s": 2279.6,
+   "note": "control; reach -0.108 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 5,
+   "shot": 7,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 3888.7,
+   "crossing_s": 3889.467,
+   "note": "control; reach -0.119 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 7,
+   "shot": 3,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 5556.933333333333,
+   "crossing_s": 5557.6,
+   "note": "control; reach -0.104 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 1,
+   "shot": 2,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 24.9,
+   "crossing_s": 25.533,
+   "note": "control; reach -0.087 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 3,
+   "shot": 2,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 1818.3,
+   "crossing_s": 1818.567,
+   "note": "control; reach -0.052 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 5,
+   "shot": 2,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 3653.0,
+   "crossing_s": 3653.667,
+   "note": "control; reach -0.087 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 5,
+   "shot": 12,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 4206.8,
+   "crossing_s": 4207.1,
+   "note": "control; reach -0.083 u"
+  },
+  {
+   "video": "VXU9xwmugRg",
+   "end": 7,
+   "shot": 8,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 5775.633333333333,
+   "crossing_s": 5776.067,
+   "note": "control; reach -0.092 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 4,
+   "shot": 13,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 3404.1,
+   "crossing_s": 3404.3,
+   "note": "control; reach -0.124 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 6,
+   "shot": 1,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 4960.033333333334,
+   "crossing_s": 4960.4,
+   "note": "control; reach -0.151 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 6,
+   "shot": 5,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 5149.633333333333,
+   "crossing_s": 5150,
+   "note": "control; reach -0.169 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 6,
+   "shot": 7,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 5240.033333333334,
+   "crossing_s": 5240.367,
+   "note": "control; reach -0.160 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 6,
+   "shot": 11,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 5406.633333333333,
+   "crossing_s": 5406.833,
+   "note": "control; reach -0.177 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 2,
+   "shot": 3,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 1187.7,
+   "crossing_s": 1188.267,
+   "note": "control; reach -0.173 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 2,
+   "shot": 15,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 1776.1,
+   "crossing_s": 1776.533,
+   "note": "control; reach -0.173 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 4,
+   "shot": 10,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 3227.9,
+   "crossing_s": 3228.1,
+   "note": "control; reach -0.151 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 6,
+   "shot": 4,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 5098.633333333333,
+   "crossing_s": 5099.033,
+   "note": "control; reach -0.173 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 6,
+   "shot": 14,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 5620.733333333334,
+   "crossing_s": 5621.2,
+   "note": "control; reach -0.199 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 3,
+   "shot": 8,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2256.7,
+   "crossing_s": 2257.367,
+   "note": "control; reach -0.070 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 3,
+   "shot": 12,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2434.3,
+   "crossing_s": 2434.967,
+   "note": "control; reach -0.080 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 3,
+   "shot": 14,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2571.1,
+   "crossing_s": 2571.4,
+   "note": "control; reach -0.071 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 3,
+   "shot": 16,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2705.2,
+   "crossing_s": 2705.567,
+   "note": "control; reach -0.077 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 5,
+   "shot": 5,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 4158.7,
+   "crossing_s": 4159.3,
+   "note": "control; reach -0.075 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 1,
+   "shot": 7,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 469.7,
+   "crossing_s": 470.467,
+   "note": "control; reach -0.075 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 3,
+   "shot": 3,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2043.2,
+   "crossing_s": 2043.633,
+   "note": "control; reach -0.055 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 3,
+   "shot": 7,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2214.8,
+   "crossing_s": 2215.1,
+   "note": "control; reach -0.071 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 3,
+   "shot": 13,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2509.6,
+   "crossing_s": 2510.2,
+   "note": "control; reach -0.073 u"
+  },
+  {
+   "video": "hOKZoeJNTpM",
+   "end": 5,
+   "shot": 6,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 4202.8,
+   "crossing_s": 4203.167,
+   "note": "control; reach -0.062 u"
+  }
+ ]
+}
