@@ -114,6 +114,10 @@ REST_HOLD_S = 1.0
 # REST_SPEED_M_S in panel units while plainly moving: hOKZoeJNTpM end 3's first
 # yellow crept 4.51 -> 4.39 in its first 1.4 s and stopped at 3.84 four seconds
 # on. A stone at rest is not a stone 0.4 m further along three seconds later.
+# The same false rest hid AEqLTgM25Tc end 5's yellow through-stone: slowed
+# (in panel units) just after striking a guard at the far edge, it was "at
+# rest" at (-1.42, 3.65), so its travel read sideways and the track was
+# refused as too lateral, though it ran on out the back.
 REST_CONFIRM_S = 3.0
 REST_CONFIRM_M = 0.2
 # Requiring the *delivered* stone to be seen coming to rest is wrong twice over,
