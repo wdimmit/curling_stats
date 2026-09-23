@@ -272,7 +272,8 @@ inside edge sits, and so in the departure tripwire.
 
 **`FAR_LEAD_MAX_S` is a gap, not a model.** Reach-backs fit the track's first
 four samples in time, and are refused when that fit puts the crossing more than
-1.0 s before the first sighting, or after it.
+1.0 s before the first sighting, or more than one frame (0.1 s) after it; a fit
+inside that frame is timed at the first sighting.
 Hand-marked leads reach 0.57 s; replayed leads run continuously to 0.81 s, then
 jump to 1.11 s and beyond on dwelling or jittery tracks. A genuinely slow
 arrival past 1.0 s would be refused too.

@@ -199,6 +199,16 @@ FAR_REACH_MAX_U = 0.20
 # or jittered near one y, so dt/dy blew up. 1.0 sits in that gap.
 FAR_LEAD_MAX_S = 1.0
 
+# How far AFTER the first sample a fit may land and still be kept, in seconds:
+# one frame at the 10 fps the panels are read at. A stone first seen a few
+# thousandths of a unit short of the tripwire is on the line, and a four-point
+# fit through its noise can put the crossing a few hundredths late. On the
+# three replayed games five such stones sat at -0.01 to -0.03 s; refusing them
+# lost good splits. The crossing is then the first sighting itself -- a stone
+# seen past the line cannot have crossed it later. A wrong-sign slope lands
+# well over a frame late and is still refused.
+FAR_LEAD_SLACK_S = 0.1
+
 # Points used for the fit. Four is what a truncated track reliably has near the
 # line, and more made the tail worse rather than better -- a quadratic over ten
 # reached a 1.65 s worst case against this fit's 0.65 s.
@@ -216,9 +226,11 @@ def far_crossing(track, line, *, max_reach: float):
 
     ``(None, 0.0)`` when the line is further back than ``max_reach``, when there
     is too little track to fit, or when the fit puts the crossing anything but
-    a little before the first sample: not after it (a slope of the wrong sign),
-    and not more than ``FAR_LEAD_MAX_S`` before it (a stone that dwelt or
-    jittered, whose nearly flat fit reaches back seconds).
+    a little before the first sample: not more than a frame after it
+    (``FAR_LEAD_SLACK_S``; beyond that the slope has the wrong sign), and not
+    more than ``FAR_LEAD_MAX_S`` before it (a stone that dwelt or jittered,
+    whose nearly flat fit reaches back seconds). A fit inside the slack is
+    timed at the first sample.
     """
     seen = line_crossing(track, line)
     if seen is not None:
@@ -242,9 +254,9 @@ def far_crossing(track, line, *, max_reach: float):
     slope = sum((p[2] - my) * (p[0] - mt) for p in early) / den    # dt/dy
     t_line = mt + (y_line - my) * slope
     lead = t_first - t_line
-    if not 0.0 < lead <= FAR_LEAD_MAX_S:
+    if not -FAR_LEAD_SLACK_S < lead <= FAR_LEAD_MAX_S:
         return None, 0.0
-    return t_line, reach
+    return min(t_line, t_first), reach
 
 
 def speed_at_line(track, line, *, departing: bool = False) -> float | None:

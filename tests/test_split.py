@@ -135,6 +135,16 @@ class TestFarCrossing:
         tr = tuple((round(10.0 + i / 10.0, 3), 0.0, y) for i, y in enumerate(ys))
         assert split.far_crossing(tr, line, max_reach=split.FAR_REACH_MAX_U) == (None, 0.0)
 
+    def test_a_stone_first_seen_on_the_line_keeps_its_crossing(self):
+        """Seen 0.005 u short of the tripwire, a noisy fit can land a few
+        hundredths after the first sighting. Within a frame that is noise, not a
+        wrong-sign slope, and the crossing is the first sighting itself."""
+        assert split.FAR_LEAD_SLACK_S == 0.1
+        tr = ((20.0, 0.0, 4.435), (20.1, 0.0, 4.42), (20.2, 0.0, 4.33), (20.3, 0.0, 4.23))
+        t, reach = split.far_crossing(tr, LINE, max_reach=split.FAR_REACH_MAX_U)
+        assert t == pytest.approx(20.0)
+        assert reach == pytest.approx(0.005, abs=1e-6)
+
     def test_the_lead_cap_is_one_second(self):
         """A clean but slow arrival: 0.1 u/s, so reach 0.09 is a 0.9 s lead
         and reach 0.12 a 1.2 s one."""
