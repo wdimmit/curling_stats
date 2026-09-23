@@ -1,0 +1,88 @@
+{
+ "video_id": "hOKZoeJNTpM",
+ "what": "The frame at which an arriving stone's leading edge (the side heading into the house) touched the red hog line at the DESTINATION end, read in that end's overhead panel by a person using scripts/mark_hog.py's page over frames cropped to the panel's hog-line band.",
+ "why": "Phase 3 of a throw. The destination panel sees only 0.12-0.23 units past its tripwire and ds11a picks red stones up late there, so 63 of 74 far crossings missed on three games were red. These marks judge back-extrapolation and weak-box continuation against the moment itself. 'control' rows are rocks whose panel track does bracket the tripwire, to fix the marking convention's offset.",
+ "marked_on": "2026-09-22",
+ "marks": [
+  {
+   "end": 1,
+   "shot": 1,
+   "color": "yellow",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 234.2,
+   "crossing_s": 234.867,
+   "kind": "control",
+   "note": "control: panel sees the crossing; reach -0.065 u; panel crossing at +0.48 s"
+  },
+  {
+   "end": 1,
+   "shot": 2,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 273.5,
+   "crossing_s": 272.3,
+   "kind": "problem",
+   "note": "problem: no box above the line; reach +0.265 u"
+  },
+  {
+   "end": 1,
+   "shot": 4,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 344.1,
+   "crossing_s": 343.167,
+   "kind": "problem",
+   "note": "problem: weak boxes above the line; reach +0.272 u"
+  },
+  {
+   "end": 2,
+   "shot": 1,
+   "color": "yellow",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 1096.7,
+   "crossing_s": 1097.367,
+   "kind": "control",
+   "note": "control: panel sees the crossing; reach -0.164 u; panel crossing at +0.92 s"
+  },
+  {
+   "end": 2,
+   "shot": 2,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 1136.4,
+   "crossing_s": 1135.5,
+   "kind": "problem",
+   "note": "problem: no box above the line; reach +0.224 u"
+  },
+  {
+   "end": 2,
+   "shot": 6,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 1335.0,
+   "crossing_s": 1334.567,
+   "kind": "problem",
+   "note": "problem: weak boxes above the line; reach +0.111 u"
+  },
+  {
+   "end": 3,
+   "shot": 6,
+   "color": "red",
+   "destination_panel": "bottom",
+   "panel_first_sighting_s": 2175.9,
+   "crossing_s": 2176.3,
+   "kind": "control",
+   "note": "control: panel sees the crossing; reach -0.078 u; panel crossing at +0.18 s"
+  },
+  {
+   "end": 4,
+   "shot": 3,
+   "color": "red",
+   "destination_panel": "top",
+   "panel_first_sighting_s": 2899.1,
+   "crossing_s": 2898.533,
+   "kind": "problem",
+   "note": "problem: weak boxes above the line; reach +0.134 u"
+  }
+ ]
+}
