@@ -104,7 +104,9 @@ def main():
     root = Path(args.cache_root).expanduser()
     doc = json.loads(Path(args.timeline).read_text())
     vid = doc["source"]["video_id"]
-    setups, panels = pickle.loads((root / f"setups-{vid}.pkl").read_bytes())
+    # The branch's own setups, with painted hog lines (scripts/replay_end.py's
+    # setups_for writes them); main's setups-<vid>.pkl carries none.
+    setups, panels = pickle.loads((root / f"setups-{vid}.hogline.pkl").read_bytes())
     strip = proxy.strip_rect(panels.top, panels.bottom)
     rp = proxy.proxy_path(vid, strip, root)
     rs = A._proxy_setups(setups, strip)
@@ -154,6 +156,8 @@ def main():
     # throwing panel's line is crossed from the house side (departure_y_at);
     # the destination panel's is crossed by an arrival (y_at).
     def bracket(track, line, departing):
+        if line is None:
+            return None, None
         tripwire = line.departure_y_at if departing else line.y_at
         p = [(float(t), float(x), float(y)) for t, x, y in track]
         for (t0, x0, y0), (t1, x1, y1) in zip(p, p[1:]):
@@ -168,8 +172,21 @@ def main():
     (ft0, fx0, fy0), (ft1, fx1, fy1) = (far_b if far_b[0] is not None
                                         else ((None, None, None), (None, None, None)))
 
-    hog_throw = row_for_y_m(throw_setup, throw_setup.hog_line.departure_y_at(0.0))
-    hog_play = row_for_y_m(play_setup, play_setup.hog_line.y_at(0.0))
+    # A panel whose paint was not found has no tripwire to draw; say why,
+    # as scripts/ds13/review_no_far_hog.py does, and draw the other one.
+    tripwires = []      # (strip row, apparent y) per panel that has a line
+    hog_throw = hog_play = None
+    for name, s_, departing in ((thr, throw_setup, True), (house, play_setup, False)):
+        if s_.hog_line is None:
+            print(f"{name} panel: no hog line: {s_.hog_line_error}")
+            continue
+        y_val = s_.hog_line.departure_y_at(0.0) if departing else s_.hog_line.y_at(0.0)
+        row = row_for_y_m(s_, y_val)
+        tripwires.append((row, y_val))
+        if departing:
+            hog_throw = row
+        else:
+            hog_play = row
     tee_throw = row_for_y_m(throw_setup, 0.0)
     tee_play = row_for_y_m(play_setup, 0.0)
     play_edge = play_setup.rect[1] if play_setup.calib.flipped else play_setup.rect[1] + play_setup.rect[3]
@@ -212,8 +229,7 @@ def main():
         for row in (tee_throw, tee_play):
             dashed(canvas, (X(row), 0), (X(row), top), GREY, 1, 14)
             put(canvas, "tee", (X(row) - 12, top - 14), 0.42, GREY)
-        for row, y_val in ((hog_throw, throw_setup.hog_line.departure_y_at(0.0)),
-                          (hog_play, play_setup.hog_line.y_at(0.0))):
+        for row, y_val in tripwires:
             cv2.line(canvas, (X(row), 0), (X(row), top), CYAN, 2, cv2.LINE_AA)
             put(canvas, "hog tripwire (paint)", (X(row) - 100, 26), 0.46, CYAN)
             put(canvas, f"apparent y = {y_val:.3f}", (X(row) - 100, 46), 0.4, CYAN)
@@ -301,8 +317,8 @@ def main():
         # flash each crossing as the panel itself records it
         for ct, lbl, cc in ((fc.t_near_panel if fc else None, "near hog crossing recorded here", MAGENTA),
                             (fc.t if fc else None, "far hog crossing recorded here", (120, 230, 120))):
-            if ct is not None and 0 <= t - ct < 0.45:
-                row = hog_throw if cc is MAGENTA else hog_play
+            row = hog_throw if cc is MAGENTA else hog_play
+            if ct is not None and row is not None and 0 <= t - ct < 0.45:
                 cv2.line(canvas, (X(row), 0), (X(row), top), cc, 4, cv2.LINE_AA)
                 put(canvas, lbl, (X(row) - 110, top - 64), 0.5, cc, 2)
         put(canvas, f"detections this sample - throwing panel: {n_throw}    "

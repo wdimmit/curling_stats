@@ -47,8 +47,16 @@ def _has_hog_lines(setups) -> bool:
 
 
 def setups_for(video, vid, root):
-    """Panel calibration, computed once per video and kept beside the caches."""
-    pkl = Path(root) / f"setups-{vid}.pkl"
+    """Panel calibration, computed once per video and kept beside the caches.
+
+    Kept as ``setups-<vid>.hogline.pkl``, never the older ``setups-<vid>.pkl``:
+    these setups carry a ``geometry.hogpaint.HogLine``, a module main's code
+    does not have, so a setup pickled under the shared name would stop every
+    replay tool on main from unpickling it. The old file stays main's; this
+    code neither reads nor writes it. A ``.hogline.pkl`` without hog lines
+    (see ``_has_hog_lines``) is recomputed like a missing one.
+    """
+    pkl = Path(root) / f"setups-{vid}.hogline.pkl"
     if pkl.exists():
         setups, panels = pickle.loads(pkl.read_bytes())
         if _has_hog_lines(setups):
