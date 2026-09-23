@@ -19,27 +19,19 @@ missing *timing*.
 
 import argparse
 import json
-import pickle
+import sys
 from pathlib import Path
 
 from curling_score import analyze as A, weights as weights_mod
 from curling_score.detect import release, sequence, yolo
-from curling_score.game import (fit, secondpass, segment,
+from curling_score.game import (fartime, fit, secondpass, segment,
                                 shots as shots_mod, split)
 from curling_score.ingest import proxy
 
+# ``replay_end.py`` lives beside this script, not under a ``scripts`` package.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-def setups_for(vid, root):
-    return pickle.loads((Path(root) / f"setups-{vid}.pkl").read_bytes())
-
-
-def _bracket_gap(track, y_line):
-    """Seconds between the two samples the crossing is interpolated across."""
-    pts = [(float(a), float(c)) for a, _b, c in track or ()]
-    for (t0, y0), (t1, y1) in zip(pts, pts[1:]):
-        if (y0 - y_line) * (y1 - y_line) <= 0 and y0 != y1:
-            return round(t1 - t0, 2)
-    return None
+import replay_end
 
 
 def audit_end(doc, e, root, detector, setups, panels):
@@ -77,12 +69,14 @@ def audit_end(doc, e, root, detector, setups, panels):
         ds = sorted(ds + unaccounted, key=lambda d: d.t_enter)
     kept = fit.fit_end(ds)
     shots = shots_mod.from_deliveries(kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()})
+    fartime.time_far_crossings(shots, near_line=far.hog_line, far_line=setup.hog_line)
 
     out = []
     for s in shots:
         rel, dv = getattr(s, "release", None), getattr(s, "delivery", None)
         rt = list(getattr(rel, "track", ()) or ())
         dt = list(getattr(dv, "track", ()) or ())
+        fc = fartime.crossing(s)
         rec = {
             "shot": s.number, "color": s.color,
             "t_release_s": None if rel is None else round(float(rel.t), 1),
@@ -91,31 +85,22 @@ def audit_end(doc, e, root, detector, setups, panels):
             # the tripwire it has to reach.
             "release_y_exit_m": None if rel is None else round(float(rel.y_exit_m), 3),
             "release_n": len(rt),
-            "release_crossed": None if rel is None else split.hog_crossing(rt) is not None,
+            "release_crossed": None if fc is None else fc.t_near_panel is not None,
             "t_enter_s": None if dv is None else round(float(dv.t_enter), 1),
             "arrival_y0_m": None if not dt else round(float(dt[0][2]), 3),
             "arrival_n": len(dt),
-            "arrival_crossed": split.crossing_time(dt, split.HOG_APPARENT_Y_M) is not None,
+            "arrival_crossed": fc is not None and fc.t is not None and fc.reach == 0.0,
             "reason": None if dv is None else dv.reason,
-            "near_speed": None, "far_speed": None,
-            "t_start_s": None, "t_end_s": None,
+            "near_speed": None if fc is None else fc.v_near,
+            "far_speed": None if fc is None else fc.v_far,
+            "t_start_s": None if fc is None or fc.t_near_panel is None
+                        else round(float(fc.t_near_panel), 2),
+            "t_end_s": None if fc is None or fc.t is None else round(float(fc.t), 2),
+            "far_reach_u": None if fc is None else fc.reach,
             "release_y0_m": None if not rt else round(float(rt[0][2]), 3),
             "release_dur_s": None if len(rt) < 2 else round(float(rt[-1][0] - rt[0][0]), 1),
             "arrival_y_last_m": None if not dt else round(float(dt[-1][2]), 3),
         }
-        ts = split.hog_crossing(rt)
-        te = split.crossing_time(dt, split.HOG_APPARENT_Y_M)
-        rec["t_start_s"] = None if ts is None else round(float(ts), 2)
-        rec["t_end_s"] = None if te is None else round(float(te), 2)
-        # ``crossing_time`` interpolates between the two samples either side of
-        # the line with no cap on how far apart they are. Record that spacing:
-        # a crossing bracketed by a multi-second hole is a straight line drawn
-        # through a hole, not a timing.
-        rec["near_gap_s"] = _bracket_gap(rt, split.HOG_APPARENT_Y_M)
-        rec["far_gap_s"] = _bracket_gap(dt, split.HOG_APPARENT_Y_M)
-        if rel is not None:
-            rec["near_speed"] = split.speed_at_line(rt)
-        rec["far_speed"] = split.speed_at_line(dt)
         for k in ("near_speed", "far_speed"):
             if rec[k] is not None:
                 rec[k] = round(float(rec[k]), 3)
@@ -126,7 +111,8 @@ def audit_end(doc, e, root, detector, setups, panels):
                 {"color": r.color, "t": round(r.t, 1),
                  "y_exit_m": round(float(r.y_exit_m), 3),
                  "speed": round(float(r.speed_m_s), 2),
-                 "crossed": split.hog_crossing(list(r.track)) is not None,
+                 "crossed": far.hog_line is not None
+                           and split.line_crossing(r.track, far.hog_line) is not None,
                  "paired": r in thrown_by}
                 for r in releases]}
 
@@ -135,13 +121,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("timeline")
     ap.add_argument("--cache-root", required=True)
+    ap.add_argument("--video", required=True,
+                    help="path to the cached video, e.g. "
+                         "~/.cache/curling_score/videos/<id>.mp4")
     ap.add_argument("--ends", type=int, nargs="*")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     doc = json.loads(Path(args.timeline).read_text())
     root = Path(args.cache_root)
-    setups, panels = setups_for(doc["source"]["video_id"], root)
+    vid = doc["source"]["video_id"]
+    setups, panels = replay_end.setups_for(Path(args.video), vid, root)
     detector = yolo.YoloDetector(weights_mod.default_path(), conf=0.30, device=None, imgsz=448)
     detector.model.overrides["half"] = True
 

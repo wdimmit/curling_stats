@@ -27,7 +27,7 @@ import numpy as np
 
 from curling_score import analyze as A, weights as weights_mod
 from curling_score.detect import release, sequence, yolo
-from curling_score.game import fit, secondpass, segment, shots as shots_mod, split
+from curling_score.game import fartime, fit, secondpass, segment, shots as shots_mod, split
 from curling_score.ingest import frames as F, proxy
 
 SCALE = 1.5
@@ -140,23 +140,36 @@ def main():
     if un:
         ds = sorted(ds + un, key=lambda d: d.t_enter)
     shots = shots_mod.from_deliveries(fit.fit_end(ds), seq, thrown_by={id(d): r for r, d in tb.items()})
+    fartime.time_far_crossings(shots, near_line=throw_setup.hog_line, far_line=play_setup.hog_line)
     shot = next(s for s in shots if s.number == args.shot)
     rt, dt = list(shot.release.track), list(shot.delivery.track)
-    sp = split.long_split(shot.release, shot.delivery)
-    HOG = split.HOG_APPARENT_Y_M
+    fc = fartime.crossing(shot)
+    # Unmeasured on purpose: this render never runs the side view the
+    # throwing end's crossing now comes from (see game/hogtime.py), same as
+    # scripts/replay_end.py. What each panel itself saw is drawn from ``fc``.
+    sp = split.long_split(shot.delivery, t_hog=None, v_hog=None, far=fc)
 
-    # The two samples the near crossing is interpolated between.
-    def bracket(track):
+    # The two samples either crossing is interpolated between, against each
+    # panel's own painted line -- mirrors split.line_crossing's loop. The
+    # throwing panel's line is crossed from the house side (departure_y_at);
+    # the destination panel's is crossed by an arrival (y_at).
+    def bracket(track, line, departing):
+        tripwire = line.departure_y_at if departing else line.y_at
         p = [(float(t), float(x), float(y)) for t, x, y in track]
         for (t0, x0, y0), (t1, x1, y1) in zip(p, p[1:]):
-            if (y0 - HOG) * (y1 - HOG) <= 0 and y0 != y1:
+            d0, d1 = y0 - tripwire(x0), y1 - tripwire(x1)
+            if d0 * d1 <= 0 and d0 != d1:
                 return (t0, x0, y0), (t1, x1, y1)
         return None, None
-    (nt0, nx0, ny0), (nt1, nx1, ny1) = bracket(rt)
-    (ft0, fx0, fy0), (ft1, fx1, fy1) = bracket(dt)
+    near = bracket(rt, throw_setup.hog_line, True)
+    far_b = bracket(dt, play_setup.hog_line, False)
+    (nt0, nx0, ny0), (nt1, nx1, ny1) = (near if near[0] is not None
+                                        else ((None, None, None), (None, None, None)))
+    (ft0, fx0, fy0), (ft1, fx1, fy1) = (far_b if far_b[0] is not None
+                                        else ((None, None, None), (None, None, None)))
 
-    hog_throw = row_for_y_m(throw_setup, HOG)
-    hog_play = row_for_y_m(play_setup, HOG)
+    hog_throw = row_for_y_m(throw_setup, throw_setup.hog_line.departure_y_at(0.0))
+    hog_play = row_for_y_m(play_setup, play_setup.hog_line.y_at(0.0))
     tee_throw = row_for_y_m(throw_setup, 0.0)
     tee_play = row_for_y_m(play_setup, 0.0)
     play_edge = play_setup.rect[1] if play_setup.calib.flipped else play_setup.rect[1] + play_setup.rect[3]
@@ -199,10 +212,11 @@ def main():
         for row in (tee_throw, tee_play):
             dashed(canvas, (X(row), 0), (X(row), top), GREY, 1, 14)
             put(canvas, "tee", (X(row) - 12, top - 14), 0.42, GREY)
-        for row in (hog_throw, hog_play):
+        for row, y_val in ((hog_throw, throw_setup.hog_line.departure_y_at(0.0)),
+                          (hog_play, play_setup.hog_line.y_at(0.0))):
             cv2.line(canvas, (X(row), 0), (X(row), top), CYAN, 2, cv2.LINE_AA)
-            put(canvas, "hog tripwire", (X(row) - 100, 26), 0.46, CYAN)
-            put(canvas, "apparent y = 4.441", (X(row) - 100, 46), 0.4, CYAN)
+            put(canvas, "hog tripwire (paint)", (X(row) - 100, 26), 0.46, CYAN)
+            put(canvas, f"apparent y = {y_val:.3f}", (X(row) - 100, 46), 0.4, CYAN)
         # the playing panel clears the tripwire by 13 px and no more
         cv2.line(canvas, (X(play_edge), 0), (X(play_edge), top), (90, 160, 255), 1, cv2.LINE_AA)
         put(canvas, "panel edge - 13 px of margin", (X(play_edge) + 8, top - 40), 0.42, (90, 160, 255))
@@ -227,8 +241,9 @@ def main():
         draw_track(rt, throw_setup, (90, 200, 90), t)
         draw_track(dt, play_setup, (90, 200, 90), t)
 
-        # the straight line split.crossing_time drew through the hole
-        if nt1 - nt0 > 0.3:
+        # the straight line the near crossing is interpolated through, when
+        # the release track ever bracketed the throwing panel's line
+        if nt0 is not None and nt1 - nt0 > 0.3:
             r0, c0 = sheet_to_strip(throw_setup, nx0, ny0)
             r1, c1 = sheet_to_strip(throw_setup, nx1, ny1)
             dashed(canvas, (X(r0), Y(c0)), (X(r1), Y(c1)), MAGENTA, 2, 11)
@@ -236,7 +251,7 @@ def main():
                 f = (t - nt0) / (nt1 - nt0)
                 gr, gc = r0 + (r1 - r0) * f, c0 + (c1 - c0) * f
                 cv2.circle(canvas, (X(gr), Y(gc)), int(11 * SCALE), MAGENTA, 2, cv2.LINE_AA)
-                put(canvas, "split.py has the stone here", (X(gr) - 95, Y(gc) - 30), 0.44, MAGENTA)
+                put(canvas, "the panel has the stone here", (X(gr) - 95, Y(gc) - 30), 0.44, MAGENTA)
 
         # detections, drawn as the box area the detector returned
         def draw_dets(dets, setup, tag, tol):
@@ -261,11 +276,15 @@ def main():
         # HUD
         cv2.rectangle(canvas, (0, top), (W, H), (18, 18, 22), -1)
         put(canvas, f"t = {t:7.2f} s", (16, top + 32), 0.72, WHITE, 2)
+        split_txt = (f"{sp.seconds:.2f} s" if sp is not None else
+                    "unmeasured (no side view in this render)")
         put(canvas, f"end {args.end} shot {args.shot} ({shot.color})    published split "
-                    f"{sp.seconds:.2f} s", (250, top + 32), 0.62, WHITE, 1)
+                    f"{split_txt}", (250, top + 32), 0.62, WHITE, 1)
         first_t = rt[0][0]
         if t < first_t:
             msg, col = "before the release", GREY
+        elif nt0 is None:
+            msg, col = "release tracked down the throwing panel (never crossed its line)", (120, 230, 120)
         elif t < nt0:
             msg, col = "release tracked down the throwing panel", (120, 230, 120)
         elif t < nt1 - 1e-6:
@@ -274,25 +293,29 @@ def main():
         elif abs(t - nt1) < 1e-6:
             msg, col = ("the one detection that closed the hole: 0.33 confidence, 96 px "
                         "- a quarter of a stone", (80, 120, 255))
-        elif t < ft0 - 0.5:
+        elif ft0 is not None and t < ft0 - 0.5:
             msg, col = "stone in flight, seen by neither panel", GREY
         else:
             msg, col = "arrival, playing panel", (120, 230, 120)
         put(canvas, msg, (16, top + 62), 0.58, col, 2)
-        # flash each crossing as the code records it
-        for ct, lbl, cc in ((sp.t_start, "near hog crossing recorded here", MAGENTA),
-                            (sp.t_end, "far hog crossing recorded here", (120, 230, 120))):
-            if 0 <= t - ct < 0.45:
+        # flash each crossing as the panel itself records it
+        for ct, lbl, cc in ((fc.t_near_panel if fc else None, "near hog crossing recorded here", MAGENTA),
+                            (fc.t if fc else None, "far hog crossing recorded here", (120, 230, 120))):
+            if ct is not None and 0 <= t - ct < 0.45:
                 row = hog_throw if cc is MAGENTA else hog_play
                 cv2.line(canvas, (X(row), 0), (X(row), top), cc, 4, cv2.LINE_AA)
                 put(canvas, lbl, (X(row) - 110, top - 64), 0.5, cc, 2)
         put(canvas, f"detections this sample - throwing panel: {n_throw}    "
                     f"playing panel: {n_play}", (16, top + 92), 0.5, WHITE)
-        put(canvas, f"near crossing interpolated between t={nt0:.2f} (y={ny0:.3f}) and "
-                    f"t={nt1:.2f} (y={ny1:.3f})  ->  crosses at t={sp.t_start:.2f}",
-            (16, top + 120), 0.48, MAGENTA)
-        put(canvas, f"far crossing between t={ft0:.2f} (y={fy0:.3f}) and t={ft1:.2f} "
-                    f"(y={fy1:.3f})  ->  crosses at t={sp.t_end:.2f}", (16, top + 144), 0.48, (120, 230, 120))
+        if nt0 is not None:
+            near_t = "?" if fc is None or fc.t_near_panel is None else f"{fc.t_near_panel:.2f}"
+            put(canvas, f"near crossing interpolated between t={nt0:.2f} (y={ny0:.3f}) and "
+                        f"t={nt1:.2f} (y={ny1:.3f})  ->  crosses at t={near_t}",
+                (16, top + 120), 0.48, MAGENTA)
+        if ft0 is not None:
+            far_t = "?" if fc is None or fc.t is None else f"{fc.t:.2f}"
+            put(canvas, f"far crossing between t={ft0:.2f} (y={fy0:.3f}) and t={ft1:.2f} "
+                        f"(y={fy1:.3f})  ->  crosses at t={far_t}", (16, top + 144), 0.48, (120, 230, 120))
         put(canvas, "box label = confidence / area px.   a real stone images ~350-400 px",
             (16, top + 170), 0.46, WHITE)
         for want in args.dump_at:

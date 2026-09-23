@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from curling_score import analyze as analyze_mod, weights as weights_mod
 from curling_score.detect import delivery as D, longview, release, sequence, yolo
-from curling_score.game import fit, hogtime, profile, secondpass, segment, shots as shots_mod, split
+from curling_score.game import fartime, fit, hogtime, profile, secondpass, segment, shots as shots_mod, split
 from curling_score.geometry import sideview
 from curling_score.ingest import cache, frames as F, proxy
 from replay_end import setups_for
@@ -56,77 +56,45 @@ GROUND_TRUTH = REPO_ROOT / "validation" / "ground_truth.json"
 # trivially agrees with itself, so long_split runs the same speed-tolerance
 # and end-crossing logic it always does, sourced from the panel alone.
 def panel_only_split(shot):
-    r = getattr(shot, "release", None)
-    if r is None:
+    fc = fartime.crossing(shot)
+    if fc is None or fc.t_near_panel is None:
         return None
-    panel_t = split.hog_crossing(getattr(r, "track", ()))
-    if panel_t is None:
-        return None
-    return split.long_split(r, getattr(shot, "delivery", None), t_hog=panel_t)
+    return split.long_split(getattr(shot, "delivery", None), t_hog=fc.t_near_panel,
+                            v_hog=None, far=fc)
 
 
 def side_split(shot):
-    return split.long_split(getattr(shot, "release", None),
-                            getattr(shot, "delivery", None),
-                            t_hog=hogtime.crossing(shot))
+    return split.long_split(getattr(shot, "delivery", None),
+                            t_hog=hogtime.crossing(shot),
+                            v_hog=hogtime.speed_at_hog(shot),
+                            far=fartime.crossing(shot))
 
 
-# Stable attribution for a side-view crossing longview *did* find (t_hog is
-# not None) that split.long_split still declined to publish. This mirrors
-# long_split's own control flow, in the same order, so it says which one of
-# its checks was the reason -- it does not change split.py, and none of its
-# own thresholds are altered or duplicated loosely: they are read straight
-# off ``split`` (``split.CROSS_CHECK_S``, ``split.HOG_APPARENT_Y_M``,
-# ``split.SPEED_TOLERANCE``). See FIX 1 in the task brief: an earlier report
-# attributed all 57 non-published-but-longview-found crossings to the
-# cross-check alone, which is arithmetically impossible (only 48 shots had a
-# panel reading to cross-check against at all) -- this replaces the guess
-# with a measurement.
-GATE_NO_RELEASE = "no_release"           # long_split needs a release track too
-GATE_NO_DELIVERY = "no_delivery"         # long_split needs a delivery too
-GATE_CROSS_CHECK = "cross_check"         # panel reading disagreed by > CROSS_CHECK_S
-GATE_NO_FAR_HOG = "no_far_hog_crossing"  # delivery track never crossed (or non-increasing)
-GATE_SPEED_TOLERANCE = "speed_tolerance"  # far crossing looked faster than the near one
-GATE_UNACCOUNTED = "unaccounted"         # none of the above -- would mean long_split
-                                         # should have published; a bug in this mirror
-                                         # if it is ever nonzero, not in split.py
+GATE_NO_DELIVERY = "no_delivery"         # long_split needs a delivery
+GATE_NO_FAR_HOG = "no_far_hog_crossing"  # no far crossing, or not after t_hog
+GATE_SPEED_TOLERANCE = "speed_tolerance"  # far line crossed faster than the near
+GATE_MEAN_SPEED = "mean_speed"           # no near panel speed; mean beyond v_hog
+GATE_UNACCOUNTED = "unaccounted"         # none of the above: a bug in this mirror
 
-GATES = (GATE_NO_RELEASE, GATE_NO_RELEASE + ":but_computable",
-        GATE_NO_DELIVERY, GATE_CROSS_CHECK,
-        GATE_NO_FAR_HOG, GATE_SPEED_TOLERANCE, GATE_UNACCOUNTED)
+GATES = (GATE_NO_DELIVERY, GATE_NO_FAR_HOG, GATE_SPEED_TOLERANCE,
+         GATE_MEAN_SPEED, GATE_UNACCOUNTED)
 
 
-def attribute_side_refusal(release, delivery, t_hog):
-    """Which gate in split.long_split stopped a side-view crossing we have.
+def attribute_side_refusal(delivery, t_hog, fc, v_hog):
+    """Which check in split.long_split stopped a side-view crossing we have.
 
-    Call only when ``t_hog is not None`` (longview found a crossing) and
-    ``side_split(shot)`` was ``None`` for the same shot -- i.e. one of these
-    order-matched checks is why, not a missing reading.
+    Mirrors long_split's control flow in the same order, reading its
+    thresholds off ``split``. Call only when ``t_hog is not None`` and
+    ``side_split`` returned None for the shot.
     """
-    if release is None:
-        # Would this shot publish if the guard let it through? `long_split`
-        # computes start from t_hog and end from the delivery track; release
-        # feeds only two CONDITIONAL checks. So "no release" is fatal by the
-        # guard, not by the arithmetic.
-        if delivery is not None:
-            end = split.crossing_time(getattr(delivery, "track", ()) or (),
-                                      split.HOG_APPARENT_Y_M)
-            if end is not None and end > t_hog:
-                return GATE_NO_RELEASE + ":but_computable"
-        return GATE_NO_RELEASE
     if delivery is None:
         return GATE_NO_DELIVERY
-    panel = split.hog_crossing(getattr(release, "track", ()))
-    if panel is not None and abs(panel - t_hog) > split.CROSS_CHECK_S:
-        return GATE_CROSS_CHECK
-    end = split.crossing_time(getattr(delivery, "track", ()) or (),
-                              split.HOG_APPARENT_Y_M)
-    if end is None or end <= t_hog:
+    if fc is None or fc.t is None or fc.t <= t_hog:
         return GATE_NO_FAR_HOG
-    near = split.speed_at_line(getattr(release, "track", ()))
-    far = split.speed_at_line(getattr(delivery, "track", ()))
-    if near and far and far > near * split.SPEED_TOLERANCE:
+    if fc.v_near and fc.v_far and fc.v_far > fc.v_near * split.SPEED_TOLERANCE:
         return GATE_SPEED_TOLERANCE
+    if fc.v_near is None and v_hog and split.BASELINE_M / (fc.t - t_hog) > v_hog * split.SPEED_TOLERANCE:
+        return GATE_MEAN_SPEED
     return GATE_UNACCOUNTED
 
 
@@ -390,12 +358,18 @@ def measure_video(video_path, root, detector):
                      flush=True)
                 crossing_by_id = _time_crossings(shots, video_path, view)
 
+            setup = proxy_setups[end.house]                       # destination panel
+            far = proxy_setups[analyze_mod.OTHER_HOUSE[end.house]]  # throwing panel
+            fartime.time_far_crossings(shots, near_line=far.hog_line,
+                                       far_line=setup.hog_line)
+
             end_side_splits = end_panel_splits = 0
             for shot in shots:
                 r = getattr(shot, "release", None)
                 delivery = getattr(shot, "delivery", None)
                 t_hog = hogtime.crossing(shot)
-                panel_t = split.hog_crossing(getattr(r, "track", ())) if r else None
+                fc = fartime.crossing(shot)
+                panel_t = fc.t_near_panel if fc else None
 
                 ss = side_split(shot)
                 if ss is not None:
@@ -428,8 +402,7 @@ def measure_video(video_path, root, detector):
                             "video": vid, "end": end.number,
                             "shot": getattr(shot, "number", None),
                             "color": shot.color,
-                            "t_far": round(split.crossing_time(
-                                tr, split.HOG_APPARENT_Y_M) or float("nan"), 3),
+                            "t_far": round((fc.t if fc else None) or float("nan"), 3),
                             "track": [[round(pt[0], 3), round(pt[2], 4)]
                                       for pt in tr],
                         })
@@ -457,30 +430,27 @@ def measure_video(video_path, root, detector):
                     if ss is None:
                         # FIX 1: measure, don't guess, which gate stopped a
                         # side-view crossing longview was willing to report.
-                        gate = attribute_side_refusal(r, delivery, t_hog)
+                        gate = attribute_side_refusal(delivery, t_hog, fc,
+                                                      hogtime.speed_at_hog(shot))
                         stats.add_gate(gate)
                         if _REFUSED_OUT is not None:
                             # Every gate, with the numbers behind it, so a shot
                             # can be asked "why not" without re-deriving it.
-                            panel_tw = split.hog_crossing(
-                                getattr(r, "track", ()) if r else ())
-                            near = (split.speed_at_line(getattr(r, "track", ()))
-                                    if r else None)
-                            far_v = split.speed_at_line(
-                                getattr(delivery, "track", ()) or ())
                             _GATES_OUT.append({
                                 "video": vid, "game": game.index,
                                 "end": end.number,
                                 "shot": getattr(shot, "number", None),
                                 "color": shot.color, "gate": gate,
                                 "t_hog": round(t_hog, 3),
-                                "panel_tripwire": None if panel_tw is None
-                                                  else round(panel_tw, 3),
-                                "cross_check_delta": None if panel_tw is None
-                                    else round(abs(panel_tw - t_hog), 3),
+                                "panel_tripwire": None if panel_t is None
+                                                  else round(panel_t, 3),
+                                "cross_check_delta": None if panel_t is None
+                                    else round(abs(panel_t - t_hog), 3),
                                 "cross_check_limit": split.CROSS_CHECK_S,
-                                "near_speed": None if near is None else round(near, 4),
-                                "far_speed": None if far_v is None else round(far_v, 4),
+                                "near_speed": None if fc is None or fc.v_near is None
+                                             else round(fc.v_near, 4),
+                                "far_speed": None if fc is None or fc.v_far is None
+                                            else round(fc.v_far, 4),
                                 "speed_limit": split.SPEED_TOLERANCE,
                             })
                         if gate == GATE_NO_FAR_HOG and _REFUSED_OUT is not None:
@@ -500,7 +470,7 @@ def measure_video(video_path, root, detector):
                                 "track_t1": round(tr[-1][0], 2) if tr else None,
                                 "y_min": round(min(ys), 3) if ys else None,
                                 "y_max": round(max(ys), 3) if ys else None,
-                                "hog_apparent_y_m": split.HOG_APPARENT_Y_M,
+                                "far_reach_u": fc.reach if fc else None,
                             })
 
             done_ends += 1
