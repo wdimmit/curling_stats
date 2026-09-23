@@ -1,10 +1,14 @@
 """Which detector runs when nobody says.
 
-Standardised on **ds11a** as of 2026-09-11. It is trained on 1,304 frames whose
-labels a person checked, and against a second league it holds mAP50 0.992 where
-ds10_stratified drops to 0.952 -- on moving stones, 0.935 recall against 0.810.
-It is a fifth the training data of ds10 and better on every measure of both
-benchmarks. See `validation/EXPERIMENTS.md`.
+Standardised on **ds15a** as of 2026-09-23. It is ds11a's recipe and ds11's
+1,304 reviewed frames, plus ds15: 234 reviewed frames of arriving stones that
+ds11a found late at the panel's far edge (`datasets/ds15/`). It holds ds11a's
+benchmarks (ds11 val mAP50 0.994, ds12 0.988 against 0.992). Held out by
+game, it finds that late stone 82% of the time against ds11a's 34%, and on 13
+games it never saw it raised measured splits from 84% to 92% of 1,389 rocks.
+Its shot lists differ from ds11a's in 3 of 108 ends.
+
+ds11a (2026-09-11 to 2026-09-23) stays in the repository as that baseline.
 
 Changing this changes ``version.processing_version``, so cached timelines are
 invalidated rather than quietly mixed -- which is the point of hashing the
@@ -23,7 +27,7 @@ saying so would leave every downstream number quietly incomparable.
 import os
 from pathlib import Path
 
-DEFAULT_NAME = "ds11a.pt"
+DEFAULT_NAME = "ds15a.pt"
 ENV_VAR = "CURLING_SCORE_WEIGHTS"
 
 # The SIDE-view detector, which times the throwing end's hog crossing. A

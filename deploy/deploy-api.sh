@@ -70,7 +70,7 @@ fi
 sed -e "s|PROJECT_ID|${PROJECT_ID}|g" \
     -e "s|REGION-docker|${REGION}-docker|g" \
     -e "s|api:latest|api:${TAG}|" \
-    -e "s|value: \"ds11a-27fe3faa\"|value: \"${MODEL_ID}\"|" \
+    -e "/name: MODEL_ID,/s|value: \"[^\"]*\"|value: \"${MODEL_ID}\"|" \
     -e "s|https://chart.example.org|${PUBLIC_BASE_URL:-}|" \
     ${FB[@]+"${FB[@]}"} \
     deploy/cloudrun.yaml > "$WORK/service.yaml"

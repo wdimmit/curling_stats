@@ -46,6 +46,9 @@ datasets/ds12/ds12_images.tgz
 /yolo11n.pt
 weights/*.pt
 !weights/ds11a.pt
+# ds15a supersedes ds11a as the overhead detector (2026-09-23); ds11a is kept
+# as the baseline every ds15 comparison was measured against.
+!weights/ds15a.pt
 # ds13a does not supersede ds11a: they read different cameras. ds11a detects
 # stones in the overhead panels, looking straight down; ds13a detects them in
 # the wide side view, edge-on at thirty metres, to time the hog crossing.

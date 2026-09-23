@@ -30,7 +30,7 @@ spec:
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'
-            - { name: MODEL_ID,           value: "ds11a-27fe3faa" }
+            - { name: MODEL_ID,           value: "ds15a-25e65755" }
             - { name: MAX_QUEUED,         value: "10" }
             # Accounts. All three are public identifiers -- the apiKey ships
             # in the source of every Firebase web app there has ever been, so

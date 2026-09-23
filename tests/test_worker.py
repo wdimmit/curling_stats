@@ -176,11 +176,11 @@ class TestResolveWeights:
         assert worker.resolve_weights() is None
 
     def test_unset_means_the_project_default(self, monkeypatch):
-        # Standardised on ds11a: unset used to mean the colour detector.
+        # Standardised on ds15a (ds11a before 2026-09-23): unset used to mean the colour detector.
         monkeypatch.delenv("WEIGHTS", raising=False)
         monkeypatch.delenv("CURLING_SCORE_WEIGHTS", raising=False)
         got = worker.resolve_weights()
-        assert got is not None and got.endswith("ds11a.pt")
+        assert got is not None and got.endswith("ds15a.pt")
 
     def test_a_missing_default_falls_back_loudly_not_silently(
             self, tmp_path, monkeypatch, caplog):

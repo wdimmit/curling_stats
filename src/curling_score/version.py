@@ -23,7 +23,14 @@ from pathlib import Path
 # Also covers the stage-1 release changes (db182cf), which altered releases,
 # splits and thinking times without bumping this. Split values move by up to
 # ~0.57 s on some panels; timelines from before this must not be reused.
-PIPELINE_VERSION = "2026.09.22"
+# 2026.09.23: the shot-list rules no longer bend to a detector's small
+# differences. Stones moved while the house is cleared are dropped
+# (`fit.drop_clearing`), a rest must hold three seconds (`REST_CONFIRM_S`), a
+# one-sample track's gate is capped (`BOOTSTRAP_MAX_M`), and an arrival paired
+# with its release wins a tie (`fit.PAIRED_BONUS`). Shipped with ds15a, whose
+# own model id changes processing_version too. 8 of 108 ends change on ds11a
+# alone. See datasets/ds15/README.md.
+PIPELINE_VERSION = "2026.09.23"
 
 
 def model_id(weights) -> str:
