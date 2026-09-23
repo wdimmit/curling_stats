@@ -66,3 +66,36 @@ A different detector changes more than the far edge: it changes releases, pairin
 On VXU9, 12 rocks moved from observed to reached-for with reach ≤ 0.02 u and
 the same first sighting. The fold model places the stone's centre a hair
 nearer the house, which is harmless.
+
+## Result, 2026-09-23: sixteen games, after the rule fixes
+
+Every game on the hosted service was replayed three ways and compared end by end, with rocks matched by arrival or release time, never by shot number (`scripts/ds15/compare_shotlists.py`). That is 108 ends, 16 games, with 13 of the games never seen in training.
+- **Published:** the published run, ds11a on the old rules.
+- **ds11a on the new rules.**
+- **`ds15-all` on the new rules.**
+
+The shot-list faults a better detector exposed were in the rules, not the model. Five changes fixed them:
+
+1. `fit.drop_clearing` drops stones moved while the house is cleared after the last shot. A stone first seen at the far edge is exempt.
+2. A rest point must still hold `REST_CONFIRM_S` later. At the far edge a crawling stone passes the speed test.
+3. A one-sample track's gate is capped (`BOOTSTRAP_MAX_M`), so a one-frame phantom can no longer claim an arrival.
+4. An arrival paired with its release wins a tie in `fit_end`.
+5. (2) also fixed AEqL end 5, where a false rest at a collision refused the whole track.
+
+**Published vs ds11a on the new rules: 8 of 108 ends differ, and all 8 are improvements.**
+- In six, a rock paired with its release replaces an unpaired account of it.
+- One drops a clearing stone.
+- One recovers a missing red (_OGo end 6, 15 → 16).
+- In -f3R end 1, the new rules restore the end's first shot (paired, 170.3 s) that a clearing stone (967.5 s) had displaced.
+
+**ds11a vs ds15-all on the new rules: 3 of 108 ends differ.**
+- -f3R end 4: ds15-all is better (paired).
+- VXU9 game 2 end 3: ds11a is better; ds15-all never produced the paired arrival.
+- AEqL end 2: neutral, the same rock first seen 3.7 s apart.
+
+**The far hog line on the 13 held-out games (1,389 rocks):**
+
+| | observed | reached for | none | splits |
+|---|---|---|---|---|
+| ds11a | 967 | 258 | 164 | 1,166 (84%) |
+| ds15-all | 1,222 | 125 | 42 | 1,282 (92%) |
