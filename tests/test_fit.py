@@ -251,6 +251,16 @@ class TestClearingTheHouse:
         found, tail, frames, released = self.end_with_tail(house_after=full)
         assert fit.drop_clearing(found + [tail], frames, released)[-1] is tail
 
+    def test_a_stone_seen_coming_in_at_the_far_edge_was_thrown(self):
+        """hOKZ end 8's last yellow: its release was missed and it took the
+        last stones out, but it entered at y = 4.62 like every thrown stone.
+        A stone being cleared starts in the house."""
+        found, tail, frames, released = self.end_with_tail()
+        thrown = Delivery(color="red", t_enter=560.0, t_rest=568.0, entry_y_m=4.62,
+                          rest_x_m=-1.34, rest_y_m=0.14, travel_m=4.47,
+                          came_to_rest=False, reason="left-view")
+        assert fit.drop_clearing(found + [thrown], frames, released)[-1] is thrown
+
     def test_only_the_tail_after_the_last_release_is_judged(self):
         """An unreleased stone leaving mid-end is not clearing: the end goes on."""
         found = alternating(10)

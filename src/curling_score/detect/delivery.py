@@ -85,6 +85,14 @@ TRACK_TIMEOUT_S = 2.5
 # 1.5-3 m/s, which at 5 fps is 0.3-0.6 m between frames -- far outside the
 # steady-state gate. Narrow it again as soon as a velocity exists.
 BOOTSTRAP_SPEED_M_S = 3.5
+# But only across a short gap. A one-sample track that is not seen again at
+# once is usually a phantom, and left to grow at BOOTSTRAP_SPEED_M_S its gate
+# spans the sheet within two seconds -- where, being older than the real
+# stone's own track, it claims that stone first. -f3R1D3bQ0E end 5 lost a red
+# that way to a single false sighting at the back of the house, 6.5 m from
+# where the red came in. Two metres still covers a 3.5 m/s takeout across
+# half a second of missed frames.
+BOOTSTRAP_MAX_M = 2.0
 # A stone struck by a takeout goes from still to several metres a second between
 # one frame and the next, which snaps its track: the gate is scaled by the
 # track's own speed, and that is zero while it sits there. The fragment then
@@ -339,7 +347,7 @@ def _build_tracks(frames):
                 continue
             px, py = track.predict(t)
             if len(track.ts) < 2:
-                gate = MATCH_BASE_M + BOOTSTRAP_SPEED_M_S * dt
+                gate = min(MATCH_BASE_M + BOOTSTRAP_SPEED_M_S * dt, BOOTSTRAP_MAX_M)
             else:
                 speed = (track.vx**2 + track.vy**2) ** 0.5
                 gate = min(MATCH_BASE_M + MATCH_SPEED_SLACK * speed * dt, MATCH_MAX_M)

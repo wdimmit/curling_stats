@@ -1115,6 +1115,39 @@ class TestAStoneCrawlingInAtTheFarEdge:
         assert got[0].t_rest == pytest.approx(3.0, abs=0.3)
 
 
+class TestAOneFramePhantomDoesNotStealAnArrival:
+    """-f3R1D3bQ0E end 5's red at 4218.6, lost to ds15-all's one-frame phantom.
+
+    The model reported a red once at the back of the house, (+1.13, -2.02) at
+    4217.0. A one-sample track has no velocity, so its gate grew at the
+    bootstrap speed -- seven metres by 4218.9 -- and, being older, it claimed
+    the real red arriving at the far edge before the real red's own three-
+    sample track could. The joined track "entered" behind the house and was
+    refused; the stub was too short to keep. The shot became a blank.
+    """
+
+    def _frames(self):
+        phantom = [(4217.0, det("red", 1.13, -2.02))]
+        shot = interp([(4218.6, -0.46, 4.47), (4222.0, -0.9, 2.2), (4226.6, -1.18, 1.16)],
+                      fps=10.0, color="red")
+        return merge(phantom, shot + resting("red", -1.18, 1.16, 4226.7, 4260.0))
+
+    def test_the_arrival_is_still_a_delivery(self):
+        got = delivery.find_deliveries(self._frames())
+        assert len(got) == 1
+        assert got[0].t_enter == pytest.approx(4218.6, abs=0.2)
+        assert got[0].entry_y_m == pytest.approx(4.47, abs=0.05)
+
+    def test_a_fast_stone_missed_for_a_frame_is_still_followed(self):
+        """The bootstrap gate exists for a takeout's second sighting; capping
+        it must not cost that -- 3 m/s across a 0.4 s gap is 1.2 m."""
+        first = [(10.0, det("yellow", 0.0, 1.0))]
+        rest = interp([(10.4, 0.0, -0.2), (11.0, 0.0, -1.9)], fps=10.0, color="yellow")
+        frames = merge(first, rest)
+        tracks = list(delivery._build_tracks(frames))
+        assert len(tracks) == 1 and tracks[0].ts[0] == 10.0
+
+
 class TestAParkedStoneAnnexedByAPassingOne:
     """Game 3 end 4 again, the red lead's first guard -- the one the chart
     called rock 1's predecessor and never listed.

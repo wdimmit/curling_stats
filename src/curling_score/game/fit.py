@@ -175,6 +175,12 @@ CLEARING_REASONS = frozenset({"left-view", "house-remove"})
 # At most this many stones left in the house once it stops. A cleared house
 # is empty; one straggler is allowed for a stone still being pushed.
 CLEARING_HOUSE_MAX = 1
+# A stone first seen this far up the panel came in over the far edge, which
+# is what a thrown stone does and a cleared one does not: the clearing stones
+# seen so far were first sighted at y = 4.07, 3.16, 2.96 and 2.83, deliveries
+# entering at 4.26-4.63. hOKZoeJNTpM end 8's last yellow (entered 4.62, its
+# release missed, the house emptied behind it) is the real shot this spares.
+CLEARING_ENTRY_MAX_Y_M = 4.2
 
 
 def drop_clearing(deliveries, frames, released) -> list:
@@ -182,7 +188,8 @@ def drop_clearing(deliveries, frames, released) -> list:
 
     ``released`` holds ``id(delivery)`` for every candidate paired with a
     release seen leaving the thrower's house. Only candidates after the last
-    released one are judged, since clearing only ever follows the end. With no
+    released one are judged, since clearing only ever follows the end, and a
+    stone first seen at the far edge is exempt: it came in thrown. With no
     release evidence in the end at all nothing is dropped: an unreleased stone
     then says nothing about the house being cleared.
     """
@@ -198,6 +205,7 @@ def drop_clearing(deliveries, frames, released) -> list:
     for d in items[released_at[-1] + 1:]:
         if (getattr(d, "reason", "") in CLEARING_REASONS
                 and not getattr(d, "came_to_rest", False)
+                and getattr(d, "entry_y_m", 0.0) < CLEARING_ENTRY_MAX_Y_M
                 and id(d) not in released):
             window = [(t, s) for t, s in frames
                       if d.t_rest <= t <= d.t_rest + SETTLE_WINDOW_S]
