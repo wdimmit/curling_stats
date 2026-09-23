@@ -47,7 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import replay_end
 
 
-def replay_game(timeline_path, root, video):
+def replay_game(timeline_path, root, video, weights=None):
     """Replay every end of the timeline's first game, as ``analyze`` would.
 
     Returns ``(video_id, per_end, setups)``. ``per_end`` is a list of
@@ -61,7 +61,8 @@ def replay_game(timeline_path, root, video):
     strip = proxy.strip_rect(panels.top, panels.bottom)
     rp = proxy.proxy_path(vid, strip, root)
     rs = A._proxy_setups(setups, strip)
-    det = yolo.YoloDetector(weights_mod.default_path(), conf=0.30, device=None, imgsz=448)
+    det = yolo.YoloDetector(weights or weights_mod.default_path(), conf=0.30, device=None,
+                            imgsz=448)
     det.model.overrides["half"] = True
     bounded = "view_x_limit_m" in inspect.signature(release.find_and_pair).parameters
     calib = F.sample_keyframes(video, count=A.CALIB_FRAMES, stride=A.CALIB_STRIDE)
@@ -206,10 +207,12 @@ def main():
     ap.add_argument("--out", default=None,
                     help="write the per-rock JSON here, in the same shape as --before, "
                          "so a future run can compare against it")
+    ap.add_argument("--weights", default=None,
+                    help="overhead detector weights (default: the pipeline's, ds11a)")
     args = ap.parse_args()
 
     root, video = Path(args.cache_root), Path(args.video)
-    video_id, per_end, setups = replay_game(Path(args.timeline), root, video)
+    video_id, per_end, setups = replay_game(Path(args.timeline), root, video, args.weights)
 
     if args.out:
         Path(args.out).write_text(json.dumps(per_end, indent=1))
