@@ -289,3 +289,39 @@ class TestClearingTheHouse:
         frames = self.house(0.0, 920.0, ())
         kept = fit.fit_end(fit.drop_clearing(found + [tail], frames, released))
         assert kept[0] is found[0] and tail not in kept and len(kept) == 16
+
+
+class TestAPairedArrivalOutranksAnUnpairedOne:
+    """A release matched to an arrival is the strongest evidence a candidate
+    was the thrown stone, and fit_end used to ignore it. Seen three times
+    with ds15-all, once in the published run:
+
+    - PGlt end 7: one yellow tracked twice, 4 s apart; the flight paired with
+      its release lost to the fragment that saw it settle (rest > house-add).
+    - Ocyh end 8: a paired 47-sample arrival lost to a 3-sample "rest" 19 s on.
+    - 4RrN game 2 end 4: a paired red and yellow lost to an unpaired pair.
+    """
+
+    def test_the_paired_one_of_two_views_of_one_stone_is_kept(self):
+        before = alternating(5)
+        flight = dv("red", 305.0, reason="house-add")
+        fragment = dv("red", 309.0, reason="rest")
+        paired = {id(flight)}
+        kept = fit.fit_end(before + [flight, fragment], paired=paired)
+        assert flight in kept and fragment not in kept
+
+    def test_a_paired_pair_beats_a_better_rated_unpaired_pair(self):
+        before = alternating(6, first="yellow")        # ... Y R at 250
+        r1 = dv("yellow", 300.0, reason="left-view")
+        y1 = dv("red", 376.0, reason="house-appear")
+        r2 = dv("yellow", 377.2, reason="rest")
+        y2 = dv("red", 389.5, reason="house-appear")
+        kept = fit.fit_end(before + [r1, y1, r2, y2], paired={id(r1), id(y1)})
+        assert r1 in kept and y1 in kept and r2 not in kept and y2 not in kept
+
+    def test_without_pairing_the_evidence_ranking_is_unchanged(self):
+        before = alternating(5)
+        flight = dv("red", 305.0, reason="house-add")
+        fragment = dv("red", 309.0, reason="rest")
+        kept = fit.fit_end(before + [flight, fragment])
+        assert fragment in kept and flight not in kept

@@ -154,7 +154,8 @@ def _shots_for_end(read_path, proxy_setups, end, from_s, detector):
         view_x_limit_m=far.view_x_limit_m)
     if unaccounted:
         deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)
-    kept = fit.fit_end(fit.drop_clearing(deliveries, seq, fit.released_ids(thrown_by, unaccounted)))
+    kept = fit.fit_end(fit.drop_clearing(deliveries, seq, fit.released_ids(thrown_by, unaccounted)),
+                       paired=fit.paired_ids(thrown_by))
     shots = shots_mod.from_deliveries(
         kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()})
     next_from = min(end.end_s, kept[-1].t_rest) if kept else end.end_s

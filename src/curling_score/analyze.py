@@ -349,7 +349,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             # Stones moved while the house is cleared after the last shot
             # look like deliveries in every way but one: nothing released them.
             kept = fit.fit_end(fit.drop_clearing(
-                deliveries, seq, fit.released_ids(thrown_by, unaccounted)))
+                deliveries, seq, fit.released_ids(thrown_by, unaccounted)),
+                paired=fit.paired_ids(thrown_by))
             dropped = len(deliveries) - len(kept)
             # The next end's run-up begins when this end's last rock stopped.
             prev_end_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s

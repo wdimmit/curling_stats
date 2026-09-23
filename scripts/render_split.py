@@ -141,7 +141,8 @@ def main():
                                           view_x_limit_m=throw_setup.view_x_limit_m)
     if un:
         ds = sorted(ds + un, key=lambda d: d.t_enter)
-    shots = shots_mod.from_deliveries(fit.fit_end(fit.drop_clearing(ds, seq, fit.released_ids(tb, un))),
+    shots = shots_mod.from_deliveries(fit.fit_end(fit.drop_clearing(ds, seq, fit.released_ids(tb, un)),
+                                                  paired=fit.paired_ids(tb)),
                                       seq, thrown_by={id(d): r for r, d in tb.items()})
     fartime.time_far_crossings(shots, near_line=throw_setup.hog_line, far_line=play_setup.hog_line)
     shot = next(s for s in shots if s.number == args.shot)

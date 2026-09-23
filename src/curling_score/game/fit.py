@@ -91,8 +91,19 @@ MIN_SEPARATION_S = 10.0
 MISSED_GAP_FACTOR = 1.6
 
 
-def weight(dv) -> float:
-    return WEIGHT_BY_REASON.get(getattr(dv, "reason", ""), DEFAULT_WEIGHT)
+# Worth more than the whole spread of WEIGHT_BY_REASON, so where the rules
+# leave a choice, an arrival matched to a release it was seen leaving with
+# beats any unmatched account -- including one ranked higher by its route.
+# ds15-all lost three paired arrivals to unpaired ones before this: a track
+# fragment that saw the stone settle, a three-sample "rest", and an unpaired
+# red-yellow pair. Only real pairings count; a release standing in for an
+# arrival never seen stays ranked below every seen arrival, as above.
+PAIRED_BONUS = 1.0
+
+
+def weight(dv, paired=frozenset()) -> float:
+    w = WEIGHT_BY_REASON.get(getattr(dv, "reason", ""), DEFAULT_WEIGHT)
+    return w + (PAIRED_BONUS if id(dv) in paired else 0.0)
 
 
 def missed_gap_s(items, factor: float = MISSED_GAP_FACTOR,
@@ -108,7 +119,7 @@ def missed_gap_s(items, factor: float = MISSED_GAP_FACTOR,
 
 def fit_end(deliveries, per_end: int = C.STONES_PER_END,
             per_team: int = C.STONES_PER_TEAM_PER_END,
-            min_separation_s: float = MIN_SEPARATION_S):
+            min_separation_s: float = MIN_SEPARATION_S, paired=frozenset()):
     """The longest run of candidates that the rules permit, in time order.
 
     Ties on length are broken by evidence, so where the rules leave a choice
@@ -116,6 +127,9 @@ def fit_end(deliveries, per_end: int = C.STONES_PER_END,
     may follow one another only when the time between them has room for the
     other team's unseen rock, which is then counted against that team's eight
     and the end's sixteen; :func:`shots.from_deliveries` shows it as a blank.
+
+    ``paired`` holds ``id(delivery)`` for the arrivals matched to a release
+    (see :func:`paired_ids`); they win a tie over anything unmatched.
     """
     items = sorted(deliveries, key=lambda d: d.t_enter)
     if not items:
@@ -150,7 +164,7 @@ def fit_end(deliveries, per_end: int = C.STONES_PER_END,
                     or thrown["red"] + thrown["yellow"] > per_end):
                 continue
             key = (i, thrown["red"], thrown["yellow"])
-            cand = (count + 1, wsum + weight(dv), chain + (i,))
+            cand = (count + 1, wsum + weight(dv, paired), chain + (i,))
             have = best.get(key)
             if have is None or (cand[0], cand[1]) > (have[0], have[1]):
                 best[key] = cand
@@ -222,3 +236,8 @@ def released_ids(pairing, unaccounted=()) -> set:
     ``unaccounted`` its releases standing in for an arrival never seen.
     """
     return {id(d) for d in pairing.values()} | {id(d) for d in unaccounted}
+
+
+def paired_ids(pairing) -> set:
+    """``id``s of the arrivals ``release.find_and_pair`` matched to a release."""
+    return {id(d) for d in pairing.values()}

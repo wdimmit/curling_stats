@@ -248,7 +248,8 @@ def main():
     # construction, so the counts matter as much as the numbers.
     thrown_by = {id(d): r for r, d in matched.items()}
     cleared = fit.drop_clearing(ds, frames, fit.released_ids(matched, settled))
-    built = shots_mod.from_deliveries(fit.fit_end(cleared), frames, thrown_by=thrown_by)
+    built = shots_mod.from_deliveries(fit.fit_end(cleared, paired=fit.paired_ids(matched)),
+                                      frames, thrown_by=thrown_by)
     thinking.time_shots(built, far_seq, far.view_y_min_m)
     # `setup` is the house being played to; `far` is the throwing house.
     fartime.time_far_crossings(built, near_line=far.hog_line, far_line=setup.hog_line)
@@ -286,7 +287,7 @@ def main():
           + ", ".join(f"{c} {v:.0f}s" for c, v in clock.by_color.items()))
 
     show("CLEARING", [d for d in ds if d not in cleared], end.start_s)
-    kept = fit.fit_end(cleared)
+    kept = fit.fit_end(cleared, paired=fit.paired_ids(matched))
     print(f"\n== fit_end kept {len(kept)}, dropped {len(ds) - len(kept)}")
     show("DROP", [d for d in ds if d not in kept], end.start_s)
     print("== kept:"); show("keep", kept, end.start_s)

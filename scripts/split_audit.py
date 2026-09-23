@@ -68,7 +68,8 @@ def audit_end(doc, e, root, detector, setups, panels):
         view_x_limit_m=far.view_x_limit_m)
     if unaccounted:
         ds = sorted(ds + unaccounted, key=lambda d: d.t_enter)
-    kept = fit.fit_end(fit.drop_clearing(ds, seq, fit.released_ids(thrown_by, unaccounted)))
+    kept = fit.fit_end(fit.drop_clearing(ds, seq, fit.released_ids(thrown_by, unaccounted)),
+                       paired=fit.paired_ids(thrown_by))
     shots = shots_mod.from_deliveries(kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()})
     fartime.time_far_crossings(shots, near_line=far.hog_line, far_line=setup.hog_line)
 
