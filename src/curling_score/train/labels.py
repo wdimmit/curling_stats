@@ -589,11 +589,13 @@ def _card(frame, out_dir, meta=None):
         thumbs = f'<div class="nb">{near}</div>'
     classes = "motion" if info.kind == "motion" else ""
     empty = " &middot; <b>no labels</b>" if not frame.boxes else ""
+    note = (f' <span class="note">{_html.escape(info.note)}</span>'
+            if info.note else "")
 
     return (f'<figure class="{classes}" data-stem="{_html.escape(frame.image.stem)}">'
             f'<figcaption><label><input type="checkbox" class="seen"> done</label> '
             f'<code>{_html.escape(frame.seq)}</code> '
-            f'{frame.t:.1f}s &middot; {len(frame.boxes)} labels{empty}{link}</figcaption>'
+            f'{frame.t:.1f}s &middot; {len(frame.boxes)} labels{empty}{link}{note}</figcaption>'
             f'<div class="wrap" data-stem="{_html.escape(frame.image.stem)}"'
             f' data-w="{w:.6f}" data-h="{h:.6f}">'
             f'<img src="{name}" loading="lazy" alt="">'
@@ -623,6 +625,7 @@ _CLICK_CSS = """
                display:flex; gap:6px; align-items:baseline; flex-wrap:nowrap;
                white-space:nowrap; overflow:hidden; }
   figcaption code { overflow:hidden; text-overflow:ellipsis; }
+  figcaption .note { color:#b8860b; font-weight:600; }
   figcaption label { display:flex; gap:3px; align-items:center; cursor:pointer; }
   .wrap { position:relative; line-height:0; }
   img { width:100%; height:auto; border-radius:4px; }

@@ -202,6 +202,15 @@ class TestClickablePage:
         assert "left:45.000%;top:45.000%;width:10.000%;height:10.000%" in \
             page.read_text()
 
+    def test_a_frame_s_note_is_shown_and_escaped(self, tmp_path):
+        """A frame picked because the detector missed something says where to
+        look -- the reviewer's job there is adding a box, not checking one."""
+        write(tmp_path, "train", "g1e1_b_000100_00", [])
+        frames = labels.load_split(tmp_path, "train")["g1e1_b"]
+        meta = {"g1e1_b_000100_00": labels.FrameMeta(note="red <here> col 150")}
+        page, _n = labels.render_clickable(frames, tmp_path / "fix", meta=meta)
+        assert '<span class="note">red &lt;here&gt; col 150</span>' in page.read_text()
+
     def test_the_image_is_copied_beside_the_page(self, tmp_path):
         write(tmp_path, "train", "g1e1_b_000100_00", [box()])
         frames = labels.load_split(tmp_path, "train")["g1e1_b"]
