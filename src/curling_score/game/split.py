@@ -189,6 +189,16 @@ def line_crossing(track, line, *, departing: bool = False) -> float | None:
 # frame edge. Eleven cases is a small sample -- see the spec's known risks.
 FAR_REACH_MAX_U = 0.20
 
+# How long before the track's first sample a reached-for crossing may be put,
+# in seconds. The reach cap bounds how far back in y; this bounds how far back
+# in time, which is what goes wrong when the fit's slope is nearly flat.
+#
+# Hand-marked reach-backs led their first sighting by at most 0.57 s. On three
+# replayed games the reach-back leads formed a continuum up to 0.81 s, then
+# outliers at 1.11, 1.18, 1.95, 7.48 and 39 s -- every one a track that dwelt
+# or jittered near one y, so dt/dy blew up. 1.0 sits in that gap.
+FAR_LEAD_MAX_S = 1.0
+
 # Points used for the fit. Four is what a truncated track reliably has near the
 # line, and more made the tail worse rather than better -- a quadratic over ten
 # reached a 1.65 s worst case against this fit's 0.65 s.
@@ -199,31 +209,42 @@ def far_crossing(track, line, *, max_reach: float):
     """``(t, reach)`` for an arrival crossing ``line``, reaching back a little.
 
     ``reach`` is 0.0 when the crossing was observed. Otherwise the track began
-    past the line, and the time is extrapolated back to it from the four
-    samples nearest it, with ``reach`` saying how far, so the split is marked.
-    ``(None, 0.0)`` when the line is further back than ``max_reach`` or there is
-    too little track to fit.
+    past the line, and the time is extrapolated back to it with a straight line
+    through the track's first four samples in time, with ``reach`` -- how far
+    the first sample was past the line, read at its own lateral position --
+    saying how far, so the split is marked.
+
+    ``(None, 0.0)`` when the line is further back than ``max_reach``, when there
+    is too little track to fit, or when the fit puts the crossing anything but
+    a little before the first sample: not after it (a slope of the wrong sign),
+    and not more than ``FAR_LEAD_MAX_S`` before it (a stone that dwelt or
+    jittered, whose nearly flat fit reaches back seconds).
     """
     seen = line_crossing(track, line)
     if seen is not None:
         return seen, 0.0
     pts = sorted(((float(t), float(x), float(y)) for t, x, y in track or ()),
-                 key=lambda p: -p[2])
+                 key=lambda p: p[0])
     if len(pts) < _FAR_FIT_POINTS:
         return None, 0.0
-    y_line = line.y_at(pts[0][1])
-    reach = y_line - pts[0][2]
+    t_first, x_first, y_first = pts[0]
+    y_line = line.y_at(x_first)
+    reach = y_line - y_first
     if not 0.0 < reach <= max_reach:
         return None, 0.0
-    near = pts[:_FAR_FIT_POINTS]
-    n = len(near)
-    my = sum(p[2] for p in near) / n
-    mt = sum(p[0] for p in near) / n
-    den = sum((p[2] - my) ** 2 for p in near)
+    early = pts[:_FAR_FIT_POINTS]
+    n = len(early)
+    my = sum(p[2] for p in early) / n
+    mt = sum(p[0] for p in early) / n
+    den = sum((p[2] - my) ** 2 for p in early)
     if den == 0:
         return None, 0.0
-    slope = sum((p[2] - my) * (p[0] - mt) for p in near) / den    # dt/dy
-    return mt + (y_line - my) * slope, reach
+    slope = sum((p[2] - my) * (p[0] - mt) for p in early) / den    # dt/dy
+    t_line = mt + (y_line - my) * slope
+    lead = t_first - t_line
+    if not 0.0 < lead <= FAR_LEAD_MAX_S:
+        return None, 0.0
+    return t_line, reach
 
 
 def speed_at_line(track, line, *, departing: bool = False) -> float | None:
@@ -271,9 +292,11 @@ def long_split(delivery, *, t_hog, v_hog, far) -> Split | None:
     # stone. Both speeds are in their own panel's units, distorted alike.
     if far.v_near and far.v_far and far.v_far > far.v_near * SPEED_TOLERANCE:
         return None
-    if far.v_near is None and v_hog:
-        # No throwing-panel speed, so bound the mean speed over the baseline by
-        # the side view's speed at the near line -- both in real metres.
+    if v_hog and (far.v_near is None or far.v_far is None):
+        # The panel check above could not run -- no throwing-panel speed, or a
+        # reached-for crossing with no far speed -- so bound the mean speed over
+        # the baseline by the side view's speed at the near line, both in real
+        # metres. A stone only slows, so this holds for any split.
         mean = BASELINE_M / (end - start)
         if mean > v_hog * SPEED_TOLERANCE:
             return None

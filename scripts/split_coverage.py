@@ -16,7 +16,7 @@ handful of seconds it takes to walk the cached results back into shots.
 This is a read-mostly measurement, but not a read-only one: ``proxy.ensure_proxy``
 builds a proxy if one is missing, ``detect_end``/``detect_span`` write a
 detection miss to the cache by default (``use_cache=True``), and ``setups_for``
-writes ``setups-<vid>.pkl``. All additive, none corrupting -- but point
+writes ``setups-<vid>.hogline.pkl``. All additive, none corrupting -- but point
 ``--cache-root`` somewhere disposable rather than a shared cache root if you
 would rather this script not write to it.
 """
@@ -73,7 +73,7 @@ def side_split(shot):
 GATE_NO_DELIVERY = "no_delivery"         # long_split needs a delivery
 GATE_NO_FAR_HOG = "no_far_hog_crossing"  # no far crossing, or not after t_hog
 GATE_SPEED_TOLERANCE = "speed_tolerance"  # far line crossed faster than the near
-GATE_MEAN_SPEED = "mean_speed"           # no near panel speed; mean beyond v_hog
+GATE_MEAN_SPEED = "mean_speed"           # a panel speed missing; mean beyond v_hog
 GATE_UNACCOUNTED = "unaccounted"         # none of the above: a bug in this mirror
 
 GATES = (GATE_NO_DELIVERY, GATE_NO_FAR_HOG, GATE_SPEED_TOLERANCE,
@@ -93,7 +93,8 @@ def attribute_side_refusal(delivery, t_hog, fc, v_hog):
         return GATE_NO_FAR_HOG
     if fc.v_near and fc.v_far and fc.v_far > fc.v_near * split.SPEED_TOLERANCE:
         return GATE_SPEED_TOLERANCE
-    if fc.v_near is None and v_hog and split.BASELINE_M / (fc.t - t_hog) > v_hog * split.SPEED_TOLERANCE:
+    if (v_hog and (fc.v_near is None or fc.v_far is None)
+            and split.BASELINE_M / (fc.t - t_hog) > v_hog * split.SPEED_TOLERANCE):
         return GATE_MEAN_SPEED
     return GATE_UNACCOUNTED
 

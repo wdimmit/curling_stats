@@ -110,6 +110,41 @@ class TestFarCrossing:
         tr = arriving(t0=20.0, y0=4.34, y1=4.10, speed=1.0, fps=10.0)[:3]
         assert split.far_crossing(tr, LINE, max_reach=0.20) == (None, 0.0)
 
+    def test_the_fit_is_the_earliest_samples_in_time(self):
+        """A stone that dwells after it arrives must not steer the fit: the
+        four highest-y samples would be the dwell, not the approach."""
+        approach = arriving(t0=20.0, y0=4.34, y1=4.04, speed=1.0, fps=10.0)
+        dwell = tuple((round(20.4 + i / 10.0, 3), 0.0, 4.34 - 0.001 * i) for i in range(1, 4))
+        tr = tuple(sorted(approach + dwell))
+        t, reach = split.far_crossing(tr, LINE, max_reach=split.FAR_REACH_MAX_U)
+        assert reach == pytest.approx(0.10, abs=1e-6)
+        assert t == pytest.approx(19.90, abs=0.01)
+
+    def test_a_dwelling_track_is_refused(self):
+        """Nearly still at first sighting, so dt/dy is huge and a straight
+        line through it reaches back seconds -- 14 s here."""
+        tr = tuple((round(20.0 + i / 10.0, 3), 0.0, round(4.30 - 0.001 * i, 4)) for i in range(8))
+        assert split.far_crossing(tr, LINE, max_reach=split.FAR_REACH_MAX_U) == (None, 0.0)
+
+    def test_a_fit_that_lands_after_the_first_sighting_is_refused(self):
+        """A jittery track drifting the wrong way has a fit slope of the wrong
+        sign, so it extrapolates forward, past its own first sample -- the
+        highest-y fit timed this one at 12.97, three seconds after 10.0."""
+        line = line_at(4.55)
+        ys = (4.40, 4.41, 4.40, 4.42, 4.41, 4.43, 4.42, 4.44, 4.43)
+        tr = tuple((round(10.0 + i / 10.0, 3), 0.0, y) for i, y in enumerate(ys))
+        assert split.far_crossing(tr, line, max_reach=split.FAR_REACH_MAX_U) == (None, 0.0)
+
+    def test_the_lead_cap_is_one_second(self):
+        """A clean but slow arrival: 0.1 u/s, so reach 0.09 is a 0.9 s lead
+        and reach 0.12 a 1.2 s one."""
+        assert split.FAR_LEAD_MAX_S == 1.0
+        inside = arriving(t0=20.0, y0=4.35, speed=0.1, fps=10.0, y1=4.2)
+        outside = arriving(t0=20.0, y0=4.32, speed=0.1, fps=10.0, y1=4.2)
+        t, reach = split.far_crossing(inside, LINE, max_reach=split.FAR_REACH_MAX_U)
+        assert t == pytest.approx(19.10, abs=0.01) and reach == pytest.approx(0.09, abs=1e-6)
+        assert split.far_crossing(outside, LINE, max_reach=split.FAR_REACH_MAX_U) == (None, 0.0)
+
 
 class TestSpeedAtLine:
     def test_reads_the_rate_across_the_paint(self):
@@ -221,3 +256,10 @@ class TestItRefusesAPhysicallyImpossibleSplit:
         s = split.long_split(DELIVERY, t_hog=10.0, v_hog=None,
                              far=far(reach=0.1, v_far=None, v_near=2.0))
         assert s is not None and s.far_reach == 0.1
+
+    def test_an_extrapolated_crossing_is_still_bounded_by_the_side_view_speed(self):
+        """A reached-for crossing escapes the panel check, so the mean-speed
+        bound runs even with a throwing-panel speed: 21.843 m in 2 s is
+        ~10.9 m/s against a 2.0 m/s near crossing."""
+        assert split.long_split(DELIVERY, t_hog=10.0, v_hog=2.0,
+                                far=far(t=12.0, reach=0.1, v_far=None, v_near=2.0)) is None
