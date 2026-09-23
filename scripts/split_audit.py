@@ -112,7 +112,7 @@ def audit_end(doc, e, root, detector, setups, panels):
                  "y_exit_m": round(float(r.y_exit_m), 3),
                  "speed": round(float(r.speed_m_s), 2),
                  "crossed": far.hog_line is not None
-                           and split.line_crossing(r.track, far.hog_line) is not None,
+                           and split.line_crossing(r.track, far.hog_line, departing=True) is not None,
                  "paired": r in thrown_by}
                 for r in releases]}
 
