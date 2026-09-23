@@ -8,7 +8,7 @@
  */
 import { TYPE } from "./constants.mjs";
 import { isBlank, shotVideoTime, typeOf } from "./shots.mjs";
-import { clockText } from "./stats.mjs";
+import { clockText, splitText } from "./stats.mjs";
 import { boardReadable } from "./wire.mjs";
 
 /* The rows of one end.
@@ -47,6 +47,9 @@ export function rockRows(view, ei, leadIn = 0) {
       estimated: !!s.t_tee_estimated,
       unmeasured: secs[i] == null,
       frac: secs[i] == null || longest <= 0 ? 0 : secs[i] / longest,
+      // The desktop panel's own words, estimate and all. A rock with no split
+      // is null rather than a dash: every hogged rock would otherwise carry one.
+      splitText: typeof s.long_split_s === "number" ? splitText(s) : null,
       blank: !!isBlank(s),
       tRest: typeof s.t_rest_s === "number" ? s.t_rest_s : null,
       tVideo: shotVideoTime(s, leadIn),

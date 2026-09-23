@@ -653,8 +653,16 @@ body[data-mode="review"] #house { cursor:default; }
   .wdisc.red { background: var(--red); color: #fff; }
   .wdisc.yellow { background: var(--yellow); color: #3a2d00; }
   .wmid { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-  .wname { font-size: 15px; font-weight: 650; line-height: 1.1;
+  /* The type and its long split share the row's top line. When they do not
+     fit, the name ellipsises and the number stays whole: a flex child keeps
+     its content width unless given min-width: 0, and flex: none holds the
+     split at its own. */
+  .whead { display: flex; align-items: baseline; gap: 6px; min-width: 0;
+           line-height: 1.1; }
+  .wname { font-size: 15px; font-weight: 650; line-height: 1.1; min-width: 0;
            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wsplit { flex: none; font-size: 13px; color: var(--muted);
+            font-variant-numeric: tabular-nums; white-space: nowrap; }
   /* The bar is this rock's interval over the end's longest. A rock nobody
      could time gets the empty track and an em dash, never a zero-width bar --
      that would read as a rock thrown instantly. */

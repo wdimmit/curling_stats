@@ -49,7 +49,15 @@ function RockRow({ row, current, onPick }) {
             onClick={() => onPick(row.i)}>
       <span className={`wdisc ${row.color}`}>{row.number}</span>
       <span className="wmid">
-        <span className="wname">{row.name}</span>
+        <span className="whead">
+          <span className="wname">{row.name}</span>
+          {row.splitText ? (
+            <span className="wsplit" title="Long split: hog line to hog line">
+              <span aria-hidden="true">·</span>{" "}
+              <span className="sr">long split </span>{row.splitText}
+            </span>
+          ) : null}
+        </span>
         <span className="wtrack">
           {row.unmeasured ? null
             : <i className={row.color} style={{ width: `${Math.max(4, row.frac * 100)}%` }} />}

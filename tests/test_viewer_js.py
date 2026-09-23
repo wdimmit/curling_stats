@@ -1210,6 +1210,47 @@ class TestTheListFollowsTheVideo:
         assert got == 5
 
 
+class TestARowCarriesItsSplit:
+    """The long split beside the shot type, now that most rocks have one."""
+
+    def test_a_timed_rock_carries_its_split(self):
+        got = run_js(setup(doc([shot(1, "red", "lead", long_split_s=14.24)],
+                               end_number=4)) +
+                     "out(rockRows()[0].splitText);")
+        assert got == "14.2 s"
+
+    def test_a_reached_for_crossing_says_so_in_the_panel_s_words(self):
+        """The phone and the desktop detail list are one formatter, so an
+        estimate reads the same wherever it is read."""
+        got = run_js(setup(doc([shot(1, "red", "lead", long_split_s=13.2,
+                                     long_split_far_reach_u=0.03)],
+                               end_number=4)) +
+                     "out([rockRows()[0].splitText,"
+                     "     splitText(state.doc.games[0].ends[0].shots[0])]);")
+        assert got == ["13.2 s (est.)", "13.2 s (est.)"]
+
+    def test_a_rock_with_no_split_carries_nothing_rather_than_a_dash(self):
+        """A hogged rock never crosses the far line. A dash beside every one
+        would be noise, and a zero would read as a split that was timed."""
+        rows = run_js(setup(end_four()) + "out(rockRows().map(r => r.splitText));")
+        assert rows == [None] * 16
+        got = run_js(setup(doc([shot(1, "red", "lead", long_split_s=None)],
+                               end_number=4)) +
+                     "out(rockRows()[0].splitText);")
+        assert got is None
+
+    def test_a_long_type_name_gives_way_before_the_split_does(self):
+        """The name ellipsises and the number never does. A flex child keeps
+        its content width unless told otherwise, so the name needs
+        min-width: 0 to shrink and the split needs flex: none to hold."""
+        block = TestAWatchLinkOnAPhoneShowsSomething().phone_block()
+        rules = block.split("}")
+        split = next(r for r in rules if ".wsplit {" in r)
+        name = next(r for r in rules if ".wname {" in r)
+        assert "flex: none" in split
+        assert "min-width: 0" in name
+
+
 class TestTheEndSwitcher:
     def test_it_reads_the_board_s_running_score(self):
         """Someone reading down the game wants to know who is winning -- and
