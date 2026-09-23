@@ -14,6 +14,8 @@ from curling_score.detect.delivery import Delivery
 from curling_score.detect.rocks import Detection
 
 VIEW_Y_MIN = -2.25
+# The club's bottom panel. Its centre-line bound is 1.85 * 0.35 = 0.647 m.
+VIEW_X_LIMIT = 1.85
 
 
 def det(color, x, y):
@@ -44,6 +46,145 @@ def arrival(color, t):
                     rest_x_m=0.0, rest_y_m=0.0, travel_m=4.5)
 
 
+def track(color, samples):
+    """A `_Track` from `(t, x, y)` samples, as `_build_tracks` would build it."""
+    from curling_score.detect import delivery as D
+
+    (t0, x0, y0), *rest = samples
+    tk = D._Track(color, t0, x0, y0)
+    for t, x, y in rest:
+        tk.add(t, x, y)
+    return tk
+
+
+class TestMergingFragments:
+    """One stone the detector split in two is one track, not two.
+
+    These drive `_merge_fragments` directly rather than through
+    `find_releases`, and that is deliberate. Coaxing `_build_tracks` into
+    splitting a synthetic trace is not reliable -- it re-acquires across a
+    0.4 s gap and a 1.4 m jump, so a trace built to look fragmented comes
+    back already joined and the test passes whether the merge exists or
+    not. The samples below are e1 s1's real ones.
+    """
+
+    def test_two_fragments_of_one_stone_merge(self):
+        low = track("red", [(17.0, 0.13, -1.88), (17.2, 0.11, -1.39),
+                            (17.4, 0.13, -1.19)])
+        high = track("red", [(17.4, 0.11, -0.87), (17.6, 0.10, -0.30),
+                             (17.8, 0.12, 0.05), (18.2, 0.08, 1.33),
+                             (18.4, 0.08, 1.86)])
+        (merged,) = release._merge_fragments([low, high])
+        assert merged.ys[0] == -1.88
+        assert merged.ys[-1] == 1.86
+        assert len(merged.ts) == 7          # 3 + 5, less the clash at 17.4
+
+    def test_the_better_sampled_box_wins_a_collision(self):
+        # Both fragments hold a sample at 17.4 and disagree: -0.87 against
+        # -1.19. Interpolating the stone's neighbours puts it at -0.85.
+        low = track("red", [(17.0, 0.13, -1.88), (17.2, 0.11, -1.39),
+                            (17.4, 0.13, -1.19)])
+        high = track("red", [(17.4, 0.11, -0.87), (17.6, 0.10, -0.30),
+                             (17.8, 0.12, 0.05), (18.2, 0.08, 1.33),
+                             (18.4, 0.08, 1.86)])
+        (merged,) = release._merge_fragments([low, high])
+        assert -0.87 in merged.ys
+        assert -1.19 not in merged.ys
+
+    def test_tracks_far_apart_laterally_do_not_merge(self):
+        # e6 s6: 0.60 m apart and overlapping in time, genuinely two objects.
+        a = track("red", [(4566.3, 0.00, -2.07), (4566.9, 0.00, -0.50),
+                          (4568.1, 0.00, 1.82)])
+        b = track("red", [(4566.9, -0.60, -1.14), (4568.9, -0.60, 2.97)])
+        assert len(release._merge_fragments([a, b])) == 2
+
+    def test_tracks_with_a_gap_between_them_do_not_merge(self):
+        a = track("red", [(100.0, 0.05, -2.0), (100.4, 0.05, -1.0),
+                          (100.8, 0.05, 0.0)])
+        b = track("red", [(400.0, 0.05, -2.0), (400.4, 0.05, -1.0),
+                          (400.8, 0.05, 0.0)])
+        assert len(release._merge_fragments([a, b])) == 2
+
+    def test_two_different_objects_do_not_merge(self):
+        # 0.6 m apart laterally is e6 s6: a real delivery and something else
+        # crossing beside it. Merging those would invent a track neither had.
+        real = leaving("red", 100.0, y0=-2.0, y1=2.4, x=0.00)
+        other = leaving("red", 100.2, y0=-1.1, y1=1.0, x=0.60)
+        got = release.find_releases(frames(real, other), VIEW_Y_MIN)
+        assert len(got) == 1
+        assert len(got[0].track) == len(real)
+
+    def test_a_gap_in_time_is_not_a_fragment(self):
+        # Two separate throws on the centre line, minutes apart. Same stone
+        # colour, same lane, and nothing to do with each other.
+        first = leaving("red", 100.0, y0=-2.0, y1=2.4, x=0.05)
+        second = leaving("red", 400.0, y0=-2.0, y1=2.4, x=0.05)
+        got = release.find_releases(frames(first, second), VIEW_Y_MIN)
+        assert len(got) == 2
+
+    def test_a_long_interferer_cannot_erase_a_short_delivery(self):
+        """The failure this guard exists for.
+
+        `_join` gives every collision to the longer track, and both tracks sit
+        on the same 5 fps grid, so without a y-agreement test a long blob in
+        the same lane takes every instant and the delivery's own samples are
+        gone -- the merged track is flat, fails the stage-1 line, and the throw
+        is lost. Before merging existed the delivery survived on its own.
+        """
+        delivery = track("red", [(100.0, 0.25, -2.0), (100.2, 0.25, -1.25),
+                                 (100.4, 0.25, -0.5), (100.6, 0.25, 0.25),
+                                 (100.8, 0.25, 1.0)])
+        blob = track("red", [(100.0 + i * 0.2, 0.05, -1.10) for i in range(15)])
+        out = release._merge_fragments([delivery, blob])
+        assert len(out) == 2, "two objects in one lane are not one stone"
+        assert any(tr.ys[-1] == 1.0 for tr in out), "the delivery must survive"
+
+    def test_no_merged_track_implies_an_impossible_speed(self):
+        """A sweeper acquired mid-delivery must not be grafted on.
+
+        The graft reads 3.4 m in 0.2 s, passes every gate, and leaves
+        `y_exit_m` describing where the sweeper went rather than the stone.
+        """
+        delivery = track("red", [(100.0 + i * 0.2, 0.25, -2.0 + i * 0.44)
+                                 for i in range(8)])
+        sweeper = track("red", [(101.4 + i * 0.2, 0.45, 4.5 + i * 0.1)
+                                for i in range(6)])
+        for tr in release._merge_fragments([delivery, sweeper]):
+            steps = [(b - a) / (tb - ta) for (ta, a), (tb, b)
+                     in zip(zip(tr.ts, tr.ys), zip(tr.ts[1:], tr.ys[1:]))
+                     if tb > ta]
+            assert all(abs(v) <= release.MAX_SPEED_M_S for v in steps), (
+                "a merged track must stay physically possible")
+
+    def test_a_fast_first_step_inside_a_fragment_does_not_block_its_merge(self):
+        """The guard judges the join, not the fragments it joins.
+
+        `_build_tracks` bootstraps a track's second sample with a 1.0 m gate at
+        5 fps -- 5.0 m/s, above MAX_SPEED_M_S -- so a freshly acquired fragment
+        can carry a step faster than any delivery. Judging that inherited step
+        refused every merge the fragment was offered, forever.
+        """
+        low = track("red", [(16.8, 0.13, -2.88), (17.0, 0.13, -1.88),
+                            (17.2, 0.11, -1.39), (17.4, 0.13, -1.19)])
+        high = track("red", [(17.4, 0.11, -0.87), (17.6, 0.10, -0.30),
+                             (17.8, 0.12, 0.05), (18.2, 0.08, 1.33),
+                             (18.4, 0.08, 1.86)])
+        (merged,) = release._merge_fragments([low, high])
+        assert merged.ys[0] == -2.88
+        assert merged.ys[-1] == 1.86
+
+    def test_a_jump_the_join_itself_makes_is_still_refused(self):
+        """Interleaved samples, no shared instant, so y-agreement is vacuous.
+
+        Only the plausibility guard stands between these and a track that
+        leaps 4.2 m in 0.2 s at the seam.
+        """
+        delivery = track("red", [(100.0, 0.25, -2.0), (100.4, 0.25, -1.2),
+                                 (100.8, 0.25, -0.4)])
+        interloper = track("red", [(100.6, 0.30, 3.0), (101.0, 0.30, 3.4)])
+        assert len(release._merge_fragments([delivery, interloper])) == 2
+
+
 class TestFindingReleases:
     def test_a_stone_climbing_from_the_back_edge_is_a_release(self):
         got = release.find_releases(frames(leaving("red", 100.0)), VIEW_Y_MIN)
@@ -63,8 +204,21 @@ class TestFindingReleases:
         got = release.find_releases(frames(leaving("red", 100.0, speed=0.4)), VIEW_Y_MIN)
         assert got == []
 
-    def test_a_short_climb_is_not(self):
-        got = release.find_releases(frames(leaving("red", 100.0, y1=0.0)), VIEW_Y_MIN)
+    def test_a_climb_that_stops_just_past_the_stage1_line_is_a_release(self):
+        # The 63 -> 88 change. This trace's last sample is y = -0.2, a foot
+        # BEHIND the tee -- past STAGE1_Y_M but well short of the T-line.
+        # MIN_TRAVEL_M used to demand three metres of climb, which finishes
+        # about a metre PAST the T-line, and on 30% of throws the sweepers
+        # close over the stone before it gets there. Measured on
+        # AEqLTgM25Tc: the rocks with no release have a median top-of-track of
+        # y = 1.02 m, against 3.48 m for the rocks that do produce one.
+        got = release.find_releases(frames(leaving("red", 100.0, y1=0.0)),
+                                    VIEW_Y_MIN)
+        assert len(got) == 1
+
+    def test_a_climb_that_stops_short_of_the_line_is_not(self):
+        got = release.find_releases(frames(leaving("red", 100.0, y1=-0.8)),
+                                    VIEW_Y_MIN)
         assert got == []
 
     def test_two_sightings_inside_the_separation_are_one_throw(self):
@@ -72,7 +226,108 @@ class TestFindingReleases:
         both = frames(leaving("red", 100.0, x=0.1, y1=4.4), leaving("red", 100.4, x=0.9, y1=1.5))
         got = release.find_releases(both, VIEW_Y_MIN)
         assert len(got) == 1
-        assert got[0].y_exit_m > 4.0   # the one followed further
+        assert got[0].y_exit_m > 4.0   # kept because it carries more samples,
+                                       # not because it went further
+
+
+class TestTheCentreLineBound:
+    """`CENTRE_FRACTION`: a thrower starts in the hack, on the centre line.
+
+    Measured over 88 deliveries on AEqLTgM25Tc the widest ran |x| = 0.32 m,
+    against a median of 1.10 m for everything else the panel offers.
+    """
+
+    def test_a_delivery_on_the_centre_line_survives_the_bound(self):
+        got = release.find_releases(frames(leaving("red", 100.0, x=0.32)),
+                                    VIEW_Y_MIN, VIEW_X_LIMIT)
+        assert len(got) == 1, "the widest real delivery measured must still pass"
+
+    def test_a_stone_parked_at_the_edge_is_refused(self):
+        # Spare rocks sit at the sides of the throwing view between ends; on
+        # AEqLTgM25Tc end 6 they read at x = 1.45 and -1.58.
+        got = release.find_releases(frames(leaving("red", 100.0, x=1.45)),
+                                    VIEW_Y_MIN, VIEW_X_LIMIT)
+        assert got == []
+
+    def test_the_thrower_sliding_up_sheet_is_refused(self):
+        # The failure 0.50 was not tight enough for: boxes on the delivering
+        # player's arm and shoulder at x = 0.78-0.85. See datasets/ds11/hardneg.
+        got = release.find_releases(frames(leaving("red", 100.0, x=0.82)),
+                                    VIEW_Y_MIN, VIEW_X_LIMIT)
+        assert got == [], "0.82 m is inside a 0.50 bound and must be outside this one"
+
+    def test_a_wide_box_cannot_extend_a_good_track(self):
+        """The reason the bound filters detections rather than whole tracks.
+
+        A real delivery, and boxes on the thrower continuing up-sheet after the
+        stone has gone. `_build_tracks` joins the two, so judging the track
+        afterwards would judge one that already has the bad samples in it.
+        """
+        contaminated = frames(leaving("red", 100.0, y0=-2.2, y1=1.5, x=0.25),
+                              leaving("red", 101.85, y0=1.5, y1=3.4, x=0.82))
+        loose = release.find_releases(contaminated, VIEW_Y_MIN)
+        bounded = release.find_releases(contaminated, VIEW_Y_MIN, VIEW_X_LIMIT)
+        assert len(loose) == 1 and len(bounded) == 1
+        assert loose[0].y_exit_m > 3.0, "unbounded, the track runs on past the stone"
+        assert bounded[0].y_exit_m < 2.0, "bounded, it stops where the stone did"
+
+    def test_no_limit_means_no_bound(self):
+        # Every pre-existing caller passes nothing, and must be unaffected.
+        wide = frames(leaving("red", 100.0, x=1.45))
+        assert release.find_releases(wide, VIEW_Y_MIN) != []
+        assert release.on_centre_line(99.0, None) is True
+
+    def test_find_and_pair_threads_the_limit_through(self):
+        fs = frames(leaving("red", 100.0, x=1.45))
+        rels, _matched, _un = release.find_and_pair(
+            fs, VIEW_Y_MIN, [arrival("red", 118.0)], view_x_limit_m=VIEW_X_LIMIT)
+        assert rels == [], "the bound must reach find_releases through find_and_pair"
+
+
+class TestTheStage1Line:
+    """A throw's first event: the stone leaves the hack and crosses the line."""
+
+    def test_three_samples_are_enough(self):
+        # e2 s12 on AEqLTgM25Tc is a real delivery the panel caught exactly
+        # three times -- y -2.16 -> +0.57 at 2.73 m/s on the centre line. A
+        # minimum of four discards it and costs the 88th rock.
+        got = release.find_releases(
+            frames(leaving("red", 100.0, y0=-1.0, y1=0.0)), VIEW_Y_MIN)
+        assert len(got) == 1
+        assert len(got[0].track) == 3
+
+    def test_two_samples_are_not(self):
+        got = release.find_releases(
+            frames(leaving("red", 100.0, y0=-0.6, y1=0.0)), VIEW_Y_MIN)
+        assert got == []
+
+    def test_a_stone_crossing_faster_than_any_delivery_is_not_one(self):
+        # 4.8 m/s across the line. MIN_SPEED and MAX_SPEED stay exactly as
+        # they were: among tracks acquired above the T-line, deliveries run
+        # 1.47-2.15 m/s and everything else 0.12-0.61, a gap with nothing in
+        # it. They are discriminators, not fitted thresholds.
+        got = release.find_releases(
+            frames(leaving("red", 100.0, speed=4.8)), VIEW_Y_MIN)
+        assert got == []
+
+    def test_a_panel_that_cannot_see_behind_the_tee_is_an_error(self):
+        # Stage 1 is unmeasurable on a crop that does not reach the hack, and
+        # silently returning nothing would look like a game with no throws.
+        with pytest.raises(ValueError, match="stage-1 line"):
+            release.find_releases(frames(leaving("red", 100.0)),
+                                  view_y_min_m=0.5)
+
+    def test_the_better_sampled_rival_wins_not_the_one_followed_furthest(self):
+        # e6 s6 on AEqLTgM25Tc: the real delivery carries eight samples and
+        # reaches y = +1.82; the thing crossing 0.60 m beside it carries two
+        # and reaches +2.97. Keeping the larger y_exit_m picks the wrong one.
+        real = leaving("red", 100.0, y0=-2.0, y1=1.9, x=0.0)    # 10 samples
+        rival = leaving("red", 100.2, y0=-0.6, y1=2.0, x=0.6)   # 7, but higher
+        assert len(real) > len(rival)
+        got = release.find_releases(frames(real, rival), VIEW_Y_MIN)
+        assert len(got) == 1
+        assert len(got[0].track) == len(real)
+        assert got[0].y_exit_m < 1.7        # the real one does not reach as far
 
 
 class TestPairing:
@@ -207,15 +462,21 @@ def test_a_release_keeps_the_track_it_was_found_from():
     ys = [y for _t, _x, y in r.track]
     assert ts == sorted(ts)
     assert ts[0] == r.t
-    assert ys[0] <= VIEW_Y_MIN + release.ENTRY_MARGIN_M
+    assert ys[0] < release.STAGE1_Y_M
     assert ys[-1] == pytest.approx(r.y_exit_m)
 
 
-def test_the_track_spans_the_whole_climb():
+def test_the_track_spans_the_climb_across_the_line():
+    """From below the stage-1 line to at or above it.
+
+    It used to assert a climb of at least MIN_TRAVEL_M. There is no such
+    minimum now: a release is a line crossing, and how far the stone then
+    ran is the hog line's business, not this panel's.
+    """
     fs = frames(leaving("yellow", 50.0, y0=-2.2, y1=2.4, speed=2.0, fps=5.0))
     [r] = release.find_releases(fs, VIEW_Y_MIN)
     ys = [y for _t, _x, y in r.track]
-    assert ys[-1] - ys[0] >= release.MIN_TRAVEL_M
+    assert ys[0] < release.STAGE1_Y_M <= ys[-1]
 
 
 def test_find_and_pair_agrees_with_the_two_calls_it_replaces():

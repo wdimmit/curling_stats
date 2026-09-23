@@ -73,6 +73,16 @@ def crop_for(view_name: str, view=None):
 # Frames are cheap -- 30 fps over 6 s is 180 JPEGs per delivery -- and a window
 # that cannot reach the crossing wastes the only thing that is not cheap, which
 # is a person's attention.
+#
+# Overridable with `--window LO HI`, because a margin of one second is only a
+# margin against the lags that have been *seen*. The 50 marks in
+# `datasets/hogmarks` run 2.83 s to 5.43 s, and every one of them was found by
+# a run whose window already covered that range -- so the set cannot say what
+# happens below it. Measured over 291 timed shots the pipeline reaches 2.33 s,
+# and end 6 shot 7 of AEqLTgM25Tc reads 1.95 s. Marking a throw that fast with
+# this default would clip the very moment being adjudicated, and the mark would
+# land on the first reachable frame rather than on the paint -- which is the
+# failure the paragraph above describes, one second further in.
 WINDOW_S = (1.5, 7.5)
 
 
@@ -232,10 +242,19 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--prepared", action="store_true", help="skip extraction")
+    ap.add_argument("--extract-only", action="store_true",
+                    help="write the frames and exit without serving. The video "
+                         "lives on the GPU box and the person marking does not, "
+                         "so extraction and serving want to happen in different "
+                         "places; --extract-only there, --prepared here.")
     ap.add_argument("--views", help="banked sideviews json; the scrubber's "
                                     "window then follows the fitted hog row "
                                     "rather than a window measured on one video")
     ap.add_argument("--video-id", help="which entry of --views to use")
+    ap.add_argument("--window", type=float, nargs=2, metavar=("LO", "HI"),
+                    default=None,
+                    help="seconds either side of each event to offer the "
+                         f"scrubber (default {WINDOW_S[0]} {WINDOW_S[1]})")
     args = ap.parse_args()
 
     root = Path(args.out)
@@ -253,17 +272,26 @@ def main():
               f"scrubber rows {crop[0]}..{crop[1]}")
     if not args.prepared:
         events = json.loads(Path(args.events).read_text())
+        window = tuple(args.window) if args.window else WINDOW_S
+        print(f"  scrubber window: {window[0]} .. {window[1]} s after each event")
         index = []
         for n, e in enumerate(events):
-            t0, t1 = e["t"] + WINDOW_S[0], e["t"] + WINDOW_S[1]
+            t0, t1 = e["t"] + window[0], e["t"] + window[1]
             print(f"  extracting {n + 1}/{len(events)}: {e['color']} at {e['t']:.1f}")
             frames = extract(args.video, view, t0, t1, root, f"d{n:02d}",
                              crop=crop)
             index.append({"id": f"d{n:02d}", "color": e["color"],
-                          "release": e["t"], "view": view, "frames": frames})
+                          "release": e["t"], "view": view, "frames": frames,
+                          # Carried so a mark can be traced back to the shot it
+                          # came from without re-deriving it from the timestamp.
+                          **{k: e[k] for k in ("video", "end", "shot", "note")
+                             if k in e}})
         (root / "index.json").write_text(json.dumps(index, indent=1))
         if not (root / "marks.json").exists():
             (root / "marks.json").write_text("{}")
+    if args.extract_only:
+        print(f"  extracted to {root}; serve it elsewhere with --prepared")
+        return
     serve(root, args.port)
 
 

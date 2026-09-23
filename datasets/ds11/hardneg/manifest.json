@@ -1,0 +1,228 @@
+{
+ "why": "ds11 hard negatives: false positives on the thrower's trailing arm and on objects off the centre line during a delivery. Boxes below are what the SHIPPED detector returned, not ground truth -- they are what needs correcting.",
+ "source_video": "AEqLTgM25Tc",
+ "panel": "bottom",
+ "panel_rect": [
+  0,
+  543,
+  298,
+  516
+ ],
+ "detector": "/home/tcuser/src/curling_score/weights/ds11a.pt",
+ "conf": 0.3,
+ "imgsz": 448,
+ "contested": [
+  {
+   "t_s": 1426.4,
+   "box_conf": 0.32,
+   "y_m": 0.14,
+   "claim": "false positive on the thrower's trailing arm; the stone is the conf-0.42 box at y=+0.67, which interpolates correctly between y=+0.22 at 1426.2 and y=+1.09 at 1426.6"
+  },
+  {
+   "t_s": [
+    1427.6,
+    1428.0,
+    1428.4
+   ],
+   "box_conf": [
+    0.31,
+    0.32,
+    0.31
+   ],
+   "x_m": [
+    0.85,
+    0.81,
+    0.78
+   ],
+   "claim": "CONFIRMED false positives on the THROWER, not a sweeper. By 1427.6 the stone has left the panel and these three boxes sit on the delivering player's arm and shoulder as they slide up-sheet. The track builder joined them to the real delivery, so the track reported as y -2.17 -> +3.38 is the stone only as far as y=+1.50 at t=1426.8; everything above that is the player.",
+   "note": "These sit at x=+0.78..+0.85. A middle-50% lateral bound on the bottom panel is |x| <= 0.925 and would NOT cull them; middle-35% (|x| <= 0.647) would. The widest of all 88 real deliveries is |x| = 0.32."
+  }
+ ],
+ "frames": [
+  {
+   "file": "images/AEqLTgM25Tc-bottom-e2s16-1426_00.jpg",
+   "t_s": 1426.0,
+   "video": "AEqLTgM25Tc",
+   "panel": "bottom",
+   "panel_rect": [
+    0,
+    543,
+    298,
+    516
+   ],
+   "end": 2,
+   "shot": 16,
+   "boxes": [
+    {
+     "color": "red",
+     "conf": 0.883,
+     "x_px": 123.1,
+     "y_px": 364.5,
+     "area_px": 429.8,
+     "y_m": -0.219,
+     "x_m": 0.218
+    }
+   ]
+  },
+  {
+   "file": "images/AEqLTgM25Tc-bottom-e2s16-1426_20.jpg",
+   "t_s": 1426.2,
+   "video": "AEqLTgM25Tc",
+   "panel": "bottom",
+   "panel_rect": [
+    0,
+    543,
+    298,
+    516
+   ],
+   "end": 2,
+   "shot": 16,
+   "boxes": [
+    {
+     "color": "red",
+     "conf": 0.842,
+     "x_px": 121.9,
+     "y_px": 331.1,
+     "area_px": 435.8,
+     "y_m": 0.224,
+     "x_m": 0.233
+    }
+   ]
+  },
+  {
+   "file": "images/AEqLTgM25Tc-bottom-e2s16-1426_40.jpg",
+   "t_s": 1426.4,
+   "video": "AEqLTgM25Tc",
+   "panel": "bottom",
+   "panel_rect": [
+    0,
+    543,
+    298,
+    516
+   ],
+   "end": 2,
+   "shot": 16,
+   "boxes": [
+    {
+     "color": "red",
+     "conf": 0.424,
+     "x_px": 120.9,
+     "y_px": 297.4,
+     "area_px": 457.1,
+     "y_m": 0.671,
+     "x_m": 0.247
+    },
+    {
+     "color": "red",
+     "conf": 0.316,
+     "x_px": 121.5,
+     "y_px": 337.2,
+     "area_px": 429.8,
+     "y_m": 0.144,
+     "x_m": 0.239
+    }
+   ]
+  },
+  {
+   "file": "images/AEqLTgM25Tc-bottom-e2s16-1426_60.jpg",
+   "t_s": 1426.6,
+   "video": "AEqLTgM25Tc",
+   "panel": "bottom",
+   "panel_rect": [
+    0,
+    543,
+    298,
+    516
+   ],
+   "end": 2,
+   "shot": 16,
+   "boxes": [
+    {
+     "color": "red",
+     "conf": 0.839,
+     "x_px": 120.9,
+     "y_px": 266.1,
+     "area_px": 438.8,
+     "y_m": 1.087,
+     "x_m": 0.247
+    }
+   ]
+  },
+  {
+   "file": "images/AEqLTgM25Tc-bottom-e2s16-1427_60.jpg",
+   "t_s": 1427.6,
+   "video": "AEqLTgM25Tc",
+   "panel": "bottom",
+   "panel_rect": [
+    0,
+    543,
+    298,
+    516
+   ],
+   "end": 2,
+   "shot": 16,
+   "boxes": [
+    {
+     "color": "red",
+     "conf": 0.312,
+     "x_px": 75.4,
+     "y_px": 164.4,
+     "area_px": 400.3,
+     "y_m": 2.434,
+     "x_m": 0.849
+    }
+   ]
+  },
+  {
+   "file": "images/AEqLTgM25Tc-bottom-e2s16-1428_00.jpg",
+   "t_s": 1428.0,
+   "video": "AEqLTgM25Tc",
+   "panel": "bottom",
+   "panel_rect": [
+    0,
+    543,
+    298,
+    516
+   ],
+   "end": 2,
+   "shot": 16,
+   "boxes": [
+    {
+     "color": "red",
+     "conf": 0.316,
+     "x_px": 78.6,
+     "y_px": 123.8,
+     "area_px": 411.6,
+     "y_m": 2.972,
+     "x_m": 0.807
+    }
+   ]
+  },
+  {
+   "file": "images/AEqLTgM25Tc-bottom-e2s16-1428_40.jpg",
+   "t_s": 1428.4,
+   "video": "AEqLTgM25Tc",
+   "panel": "bottom",
+   "panel_rect": [
+    0,
+    543,
+    298,
+    516
+   ],
+   "end": 2,
+   "shot": 16,
+   "boxes": [
+    {
+     "color": "red",
+     "conf": 0.308,
+     "x_px": 80.6,
+     "y_px": 92.8,
+     "area_px": 400.2,
+     "y_m": 3.383,
+     "x_m": 0.782
+    }
+   ]
+  }
+ ],
+ "box_caveat": "x_px/y_px/area_px are all Detection carries -- it has no width or height -- so preview/ draws a square of side sqrt(area_px) centred on the detection. Indicative only; re-run the detector if exact boxes are needed."
+}

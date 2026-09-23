@@ -143,7 +143,8 @@ def _review(args) -> int:
             _releases, _thrown_by, unaccounted = release.find_and_pair(
                 sequence.detect_span(read_path, far, from_s, end.end_s,
                                      release.RELEASE_FPS, detector),
-                far.view_y_min_m, offered, seq, since=from_s)
+                far.view_y_min_m, offered, seq, since=from_s,
+                view_x_limit_m=far.view_x_limit_m)
             offered = sorted(offered + unaccounted, key=lambda d: d.t_enter)
             # The rules trim the candidate list before anything is built from
             # it, so the review has to review what survives -- otherwise it

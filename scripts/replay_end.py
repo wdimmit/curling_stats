@@ -208,7 +208,8 @@ def main():
     far_seq = list(sequence.detect_span(read_path, far, from_s, end.end_s,
                                         release.RELEASE_FPS, detector))
     releases, matched, settled = release.find_and_pair(
-        far_seq, far.view_y_min_m, ds, frames, since=from_s)
+        far_seq, far.view_y_min_m, ds, frames, since=from_s,
+        view_x_limit_m=far.view_x_limit_m)
     print(f"\n== releases seen leaving the {analyze_mod.OTHER_HOUSE[e['house']]} house: {len(releases)}")
     for r in releases:
         to = matched.get(r)

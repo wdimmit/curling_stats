@@ -202,7 +202,7 @@ class TestTimingAShotWithNoRelease:
         assert shots[1].tee_estimated is False
 
     def test_a_climb_too_short_to_be_called_a_throw_still_times_it(self):
-        """2.0 m: under ``release.MIN_TRAVEL_M``, over the clock's own floor."""
+        """2.0 m: over the clock's own floor, and no longer a release gate."""
         shots = [arriving(1, "red", 80.0, 70.0),
                  arriving(2, "yellow", 160.0, 117.0)]
         thinking.time_shots(shots, frames(leaving("yellow", 100.0, y1=0.05)),
@@ -297,6 +297,39 @@ class TestWhatTheTimingPassLeavesAlone:
         thinking.time_shots(shots, frames(leaving("yellow", 100.0)), VIEW_Y_MIN)
         assert shots[1].tee_s is None
         assert thinking.tee_crossing(shots[1]) == pytest.approx(141.0, abs=0.02)
+
+    def test_a_release_that_stops_short_of_the_tee_still_gets_a_crossing(self):
+        """STAGE1_Y_M lets a paired release stop before the tee line.
+
+        ``rel()`` above always climbs from y = -2.0 to +2.0 and so cannot
+        express this: a release that clears the stage-1 line (a foot behind
+        the tee) but never reaches the tee itself. Read off that release
+        alone, `tee_crossing` returns None -- `crossing_time` cannot bracket
+        a line the track never touched -- so before this fix `time_shots`
+        skipping any shot with a release meant the shot was silently
+        unmeasured. It must instead build the same estimate a release-less
+        shot would get, so `tee_crossing` has something to fall back to.
+        """
+        # -1.8 -> -0.2 m at 2 m/s: a real stage-1 pass (STAGE1_Y_M = -0.3048)
+        # that tops out a foot short of the tee line.
+        stub_track = tuple(
+            (100.0 + i * 0.2, 0.05, -1.8 + i * 0.4) for i in range(5))
+        assert stub_track[-1][2] == pytest.approx(-0.2)
+        stub = Release(color="yellow", t=stub_track[0][0],
+                       y_exit_m=stub_track[-1][2], speed_m_s=2.0,
+                       track=stub_track)
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 arriving(2, "yellow", 160.0, 117.0, release=stub)]
+        thinking.time_shots(
+            shots, frames(leaving("yellow", 100.0, y0=-1.8, y1=-0.1)),
+            VIEW_Y_MIN)
+        assert shots[1].tee_s is not None, "skipped despite never reaching the tee"
+        assert shots[1].tee_estimated is False, "a real sighting, not the blind guess"
+        assert thinking.tee_crossing(shots[1]) == pytest.approx(100.9, abs=0.02)
+
+        end = thinking.for_end(shots)
+        assert end.measured_shots == 1
+        assert end.by_color["yellow"] > 0.0
 
     def test_a_blank_is_never_given_a_time(self):
         blank = Shot(2, "yellow", missing=True)
