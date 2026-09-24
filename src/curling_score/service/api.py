@@ -27,7 +27,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from curling_score import timeline, version, viewer
 from curling_score.ingest import source
@@ -51,6 +51,36 @@ VIEWER_ASSETS = {"app.js": "application/javascript", "style.css": "text/css"}
 # "every script a page asks for is actually served" exists for.
 STATIC_ASSETS = {"site.js": "application/javascript",
                  "site.css": "text/css"}
+
+
+@lru_cache(maxsize=16)
+def _asset_bytes(path: Path, mtime_ns: int, size: int) -> tuple[bytes, str]:
+    """A shipped file and a tag of its bytes. The stat is part of the key so
+    a file rebuilt under a running server is read again, not served stale."""
+    body = path.read_bytes()
+    return body, '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+
+
+def asset_revalidated(request: Request, path: Path, media_type: str) -> Response:
+    """The viewer's code, which the browser may keep but has to ask about.
+
+    A deploy changes app.js without changing its URL. FileResponse sent it
+    with a Last-Modified and no Cache-Control, which leaves the browser to
+    guess a lifetime -- a tenth of the file's age -- and a reload re-asks for
+    the page but takes a still-fresh script from cache. So a deploy reached a
+    new browser and not a reloaded one. no-cache makes every load ask.
+
+    FileResponse also answers If-None-Match with the whole file, so the tag
+    is checked here, as json_revalidated does for the timeline. It is a hash
+    of the bytes rather than FileResponse's mtime tag: every image stamps a
+    new mtime, which would cost a download on every deploy, changed or not.
+    """
+    st = path.stat()
+    body, tag = _asset_bytes(path, st.st_mtime_ns, st.st_size)
+    headers = {"ETag": tag, "Cache-Control": "public, no-cache"}
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers=headers)
+    return Response(body, media_type=media_type, headers=headers)
 # A whole-document save, and a merge patch. The first was 10 MB, which is ten
 # times what Firestore will hold in one document -- the commit fails with an
 # InvalidArgument the API turns into a bare 500, and MemoryRepo never
@@ -522,10 +552,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return page("join.html")
 
     @app.get("/static/{name}")
-    def static_asset(name: str):
+    def static_asset(name: str, request: Request):
         if name not in STATIC_ASSETS:
             raise HTTPException(404)
-        return FileResponse(STATIC_DIR / name, media_type=STATIC_ASSETS[name])
+        return asset_revalidated(request, STATIC_DIR / name, STATIC_ASSETS[name])
 
     # Under /api/ deliberately: Google's frontend reserves /healthz and answers
     # it with its own 404 before the request reaches this container.
@@ -1169,12 +1199,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return timeline.apply_overrides(chart_doc(chart, run, read_only), chart.overrides)
 
         @app.get(prefix + "/{asset}")
-        def chart_asset(key: str, asset: str):
+        def chart_asset(key: str, asset: str, request: Request):
             lookup(kind, key)
             if asset in VIEWER_ASSETS:
-                return FileResponse(VIEWER_DIR / asset, media_type=VIEWER_ASSETS[asset])
+                return asset_revalidated(request, VIEWER_DIR / asset, VIEWER_ASSETS[asset])
             if asset in STATIC_ASSETS:
-                return FileResponse(STATIC_DIR / asset, media_type=STATIC_ASSETS[asset])
+                return asset_revalidated(request, STATIC_DIR / asset, STATIC_ASSETS[asset])
             raise HTTPException(404)
 
     register_chart_routes("c")
@@ -1221,12 +1251,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return game_doc(run, src.game_index, src, src.play_start_s)
 
     @app.get("/g/{sid}/{asset}")
-    def review_asset(sid: str, asset: str):
+    def review_asset(sid: str, asset: str, request: Request):
         lookup_source(sid)
         if asset in VIEWER_ASSETS:
-            return FileResponse(VIEWER_DIR / asset, media_type=VIEWER_ASSETS[asset])
+            return asset_revalidated(request, VIEWER_DIR / asset, VIEWER_ASSETS[asset])
         if asset in STATIC_ASSETS:
-            return FileResponse(STATIC_DIR / asset, media_type=STATIC_ASSETS[asset])
+            return asset_revalidated(request, STATIC_DIR / asset, STATIC_ASSETS[asset])
         raise HTTPException(404)
 
     # ------------------------------------------------------------- worker

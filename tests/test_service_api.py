@@ -6,6 +6,7 @@ each other's grading; the catalogue lists the game; the watcher queues a league
 night. Every external system is its in-memory twin.
 """
 
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -1074,6 +1075,60 @@ class TestTheTimelineRevalidates:
         again = c.get(f"/g/{sid}/timeline.json",
                       headers={"If-None-Match": res.headers["etag"]})
         assert again.status_code == 304
+
+
+class TestTheViewerCodeRevalidates:
+    """A deploy changes app.js and style.css without changing their URLs.
+
+    They went out with a Last-Modified and no Cache-Control, which leaves the
+    browser to guess a lifetime -- a tenth of the file's age -- and a reload
+    re-asks for the page but takes a still-fresh script from cache. So a
+    deploy reached a new browser and not a reloaded one: the long split
+    shipped and a reload did not show it. no-cache makes every load ask, and
+    a tag of the bytes keeps the answer a 304 until the bytes change.
+    """
+
+    def _urls(self, world):
+        r = submit(world).json()
+        work_through(world, games=1)
+        s = r["slug"]
+        sid = world["repo"].get_chart(s).source_id
+        return [f"/c/{s}/app.js", f"/c/{s}/style.css", f"/c/{s}/site.js",
+                f"/g/{sid}/app.js", f"/g/{sid}/style.css", "/static/site.js"]
+
+    def test_the_browser_is_told_to_ask_before_using_its_copy(self, world):
+        c = world["client"]
+        for url in self._urls(world):
+            res = c.get(url)
+            assert res.status_code == 200, url
+            assert "no-cache" in res.headers.get("cache-control", ""), url
+            assert res.headers.get("etag"), url
+
+    def test_an_unchanged_file_comes_back_304_and_empty(self, world):
+        c = world["client"]
+        for url in self._urls(world):
+            tag = c.get(url).headers["etag"]
+            again = c.get(url, headers={"If-None-Match": tag})
+            assert again.status_code == 304, url
+            assert again.content == b"", url
+
+    def test_a_copy_from_before_a_deploy_gets_the_whole_file(self, world):
+        c = world["client"]
+        for url in self._urls(world):
+            fresh = c.get(url)
+            stale = c.get(url, headers={"If-None-Match": '"from-the-last-deploy"'})
+            assert stale.status_code == 200, url
+            assert stale.content == fresh.content and stale.content, url
+
+    def test_the_tag_names_the_bytes_rather_than_the_deploy(self, world):
+        """A rebuild that leaves a file alone must not cost everyone a
+        download, and one that changes it must never keep its old tag. A tag
+        of the mtime does both wrong: every image stamps a new one."""
+        c = world["client"]
+        for url in self._urls(world):
+            res = c.get(url)
+            want = '"' + hashlib.sha256(res.content).hexdigest()[:32] + '"'
+            assert res.headers["etag"] == want, url
 
 
 class TestThePracticeBoundaryBelongsToTheGame:
