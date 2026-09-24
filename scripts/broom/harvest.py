@@ -50,6 +50,14 @@ def view_for(entry: dict, frames=None) -> sideview.SideView:
     return dataclasses.replace(sideview.solve_lateral(plate, own), rect=view.rect)
 
 
+def proposals(pads, top: int, width: int, height: int) -> list:
+    """A model's pads as the editor's rows, normalised to the crop."""
+    return [[0, round((p.x0 + p.x1) / 2 / width, 6),
+             round(((p.y0 + p.y1) / 2 - top) / height, 6),
+             round((p.x1 - p.x0) / width, 6), round((p.y1 - p.y0) / height, 6)]
+            for p in pads]
+
+
 def manifest_row(side: sideview.SideView, **fields) -> dict:
     """A frame's manifest entry: what it is, plus everything ``to_house`` needs."""
     return {**fields, "rect": list(side.rect), "tee_row": side.tee_row,
@@ -65,9 +73,11 @@ def main() -> int:
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--scope", required=True)
     ap.add_argument("--every", type=int, default=1)
+    ap.add_argument("--weights", help="pre-label each frame with this model; "
+                    "the page then opens with its boxes to correct")
     args = ap.parse_args()
 
-    from curling_score.detect import longview
+    from curling_score.detect import broommodel, longview
     from curling_score.harvest.sideframes import stem_for
     from curling_score.train import boxedit
 
@@ -77,6 +87,11 @@ def main() -> int:
     video = Path(args.video).expanduser()
     out = Path(args.out).expanduser()
     (out / "images").mkdir(parents=True, exist_ok=True)
+
+    model = None
+    if args.weights:
+        from ultralytics import YOLO
+        model = YOLO(str(Path(args.weights).expanduser()))
 
     shots = [(e, s) for g in doc["games"] for e in g["ends"] for s in e["shots"]
              if not s.get("missing") and s.get("t_tee_s") is not None]
@@ -112,12 +127,17 @@ def main() -> int:
                 skipped += 1        # past the end of the video, or a bad seek
                 continue
             crop = cv2.cvtColor(frames[0][top:bot], cv2.COLOR_RGB2BGR)
+            # Low floor on purpose: a reviewer deletes a wrong box in one key,
+            # and a missed pad costs a click and a look.
+            boxes = [] if model is None else proposals(
+                broommodel.find(model, [frames[0]], view, conf=0.05)[0],
+                top, crop.shape[1], crop.shape[0])
             stem = stem_for(vid, name, t)
             cv2.imwrite(str(out / "images" / f"{stem}.jpg"), crop,
                         [cv2.IMWRITE_JPEG_QUALITY, 92])
             items.append({"stem": stem, "image": f"images/{stem}.jpg",
                           "width": crop.shape[1], "height": crop.shape[0],
-                          "boxes": [], "geom": geom})
+                          "boxes": boxes, "geom": geom})
             manifest.append(manifest_row(
                 view, stem=stem, video_id=vid, view=name, t_abs=t,
                 t_tee=shot["t_tee_s"], offset=off,
@@ -129,7 +149,8 @@ def main() -> int:
     (out / "items.json").write_text(json.dumps(items))
     Path(args.manifest).write_text(json.dumps(manifest, indent=1) + "\n")
     page = boxedit.render(items, out, scope=args.scope, kind="broom",
-                          title=f"Broom heads -- {vid}")
+                          title=f"Broom heads -- {vid}",
+                          proposals=model is not None)
     n_shots = len({(m["end"], m["shot"]) for m in manifest})
     print(f"\n{len(items)} frames from {n_shots} shots"
           f"{f', {skipped} skipped (outside the video)' if skipped else ''}; "

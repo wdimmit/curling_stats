@@ -66,3 +66,15 @@ class TestCropRows:
         v = SideView(rect=(0, 0, 810, 550), tee_row=100.0, hog_row=540.0)
         top, bot = harvest.crop_rows(v)
         assert (top, bot) == (0, 550)
+
+
+class TestProposals:
+    def test_a_pad_in_view_pixels_becomes_a_normalised_crop_box(self):
+        from curling_score.detect.broommodel import Pad
+        p = Pad(col=400.0, row=450.0, conf=0.9, x0=385.0, y0=430.0, x1=415.0, y1=450.0)
+        got = harvest.proposals([p], top=300, width=810, height=235)
+        assert got == [[0, round(400 / 810, 6), round(140 / 235, 6),
+                        round(30 / 810, 6), round(20 / 235, 6)]]
+
+    def test_no_pads_no_boxes(self):
+        assert harvest.proposals([], top=300, width=810, height=235) == []
