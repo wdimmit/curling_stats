@@ -66,7 +66,7 @@ def main() -> int:
                     break
             if pair is None:
                 continue
-            (t0, r0, _), (t1, r1, _) = pair
+            (t0, r0, *_), (t1, r1, *_) = pair
             row = r0 + (truth - t0) / (t1 - t0) * (r1 - r0)
             by_view.setdefault(name, []).append(row)
 

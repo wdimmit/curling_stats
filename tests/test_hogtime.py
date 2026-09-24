@@ -129,3 +129,17 @@ class TestTheDefaultFinder:
                                      release=types.SimpleNamespace(t=10.0))
         hogtime.time_hog_crossings([shot], "v.mp4", object())
         assert used and shot.t_hog_s == pytest.approx(11.0)
+
+
+def test_the_crossing_is_kept_on_the_shot_even_when_refused():
+    from types import SimpleNamespace
+    from curling_score.detect import longview
+    from curling_score.game import hogtime
+    from curling_score.geometry.sideview import SideView
+    view = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0)
+    refused = longview.Crossing(None, "speed 3.44 m/s is not a delivery", longview.KEY_BAD_SPEED,
+                                track_key=3, samples=((1.0, 300.0, 510.0, 52.0),))
+    shot = SimpleNamespace(missing=False, release=SimpleNamespace(t=0.0), delivery=None,
+                           color="red", t_hog_s=None, v_hog_m_s=None, hog_crossing=None)
+    hogtime.time_hog_crossings([shot], "v.mp4", view, find=lambda *a: refused)
+    assert shot.hog_crossing is refused and shot.t_hog_s is None

@@ -49,6 +49,8 @@ def time_hog_crossings(shots, video, view, *, find=None) -> None:
             t0 = delivery.t_enter - ARRIVAL_LOOKBACK_S[1]
             t1 = delivery.t_enter - ARRIVAL_LOOKBACK_S[0]
         got = find(video, view, shot.color, t0, t1)
+        if getattr(got, "samples", ()):
+            shot.hog_crossing = got
         if got:
             shot.t_hog_s = got.t
             # Carried so `split.long_split` can bound the pairing without a

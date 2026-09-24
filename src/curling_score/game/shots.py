@@ -52,6 +52,10 @@ class Shot:
     # side view -- see ``hogtime.time_hog_crossings``. None whenever the
     # detector would not commit to a crossing; nothing stands in for it.
     t_hog_s: float | None = None
+    # hogtime's whole verdict on the side view, samples included -- kept even
+    # when it refused to time the crossing, because the line pass
+    # (`linetime`) measures a big-weight hit the speed bound turns away.
+    hog_crossing: object = None
     # When this rock's leading edge reached the DESTINATION hog line, from that
     # end's panel, with the throwing panel's own reading beside it -- a
     # ``split.FarCrossing`` attached by ``fartime.time_far_crossings``. None

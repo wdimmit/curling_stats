@@ -20,6 +20,7 @@ compare them against ``view.hog_row``.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 
 import numpy as np
@@ -47,7 +48,7 @@ BATCH = 16
 
 
 def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
-    """``{track_key: [(t, edge_row, body_px), ...]}`` from a trained detector.
+    """``{track_key: [(t, edge_row, body_px, cx), ...]}`` from a trained detector.
 
     Shaped exactly like the dict ``longview.find_in_frames`` builds, so the
     same gates can read it.
@@ -95,7 +96,7 @@ def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
                 continue
             cx = (bx0 + bx1) / 2
             key = int(cx // 120)      # a stone never moves 120 px sideways
-            tracks.setdefault(key, []).append((t, edge_row, body_px))
+            tracks.setdefault(key, []).append((t, edge_row, body_px, cx))
     return tracks
 
 
@@ -112,10 +113,19 @@ OFFSET_S = 0.0
 
 def find_in_frames(model, frames, view, color: str, times,
                    offset_s: float = None) -> longview.Crossing:
-    """Time the crossing of ``view.hog_row`` with the model as proposer."""
-    return longview.crossing_from_tracks(
-        propose(model, frames, view, color, times), view,
-        offset_s=OFFSET_S if offset_s is None else offset_s)
+    """Time the crossing of ``view.hog_row`` with the model as proposer, and
+    keep every sample -- the column included -- for the line pass."""
+    tracks = propose(model, frames, view, color, times)
+    got = longview.crossing_from_tracks(
+        tracks, view, offset_s=OFFSET_S if offset_s is None else offset_s)
+    samples = tuple(sorted((p[0], p[3], p[1], p[2]) for tr in tracks.values() for p in tr))
+    if got.track_key is None and samples:
+        # A refusal still names the stone's key -- the longest rising track --
+        # so the line pass can find it, e.g. a big-weight hit over the speed bound.
+        rising = [(len(tr), k) for k, tr in tracks.items() if tr[-1][1] > tr[0][1]]
+        if rising:
+            got = dataclasses.replace(got, track_key=max(rising)[1])
+    return dataclasses.replace(got, samples=samples)
 
 
 def find_crossing(model, video, view, color: str, t0: float, t1: float,
@@ -132,6 +142,38 @@ def _load(path: str):
     from ultralytics import YOLO
 
     return YOLO(path)
+
+
+def detect_band(model, frames, times, lo, hi, color, *, imgsz=800, conf=CONF_MIN):
+    """Every box of ``color`` in rows ``lo:hi`` of each frame, in view rows:
+    per frame, a list of (cx, bottom_row, width, conf). The line pass reads the
+    hack, the window past hogtime's and the destination camera through this."""
+    want = _CLASS_FOR[color]
+    lo = max(0, int(lo))
+    crops = []
+    for frame in frames:
+        arr = np.asarray(frame)
+        crops.append(np.ascontiguousarray(arr[lo:min(arr.shape[0], int(hi)), :, ::-1]))
+    out = []
+    for i in range(0, len(crops), BATCH):
+        for res in model.predict(crops[i:i + BATCH], imgsz=imgsz, conf=conf, verbose=False):
+            boxes = []
+            if res.boxes is not None:
+                for b, c, cf in zip(res.boxes.xyxy.cpu().numpy(), res.boxes.cls.cpu().numpy(),
+                                    res.boxes.conf.cpu().numpy()):
+                    if int(c) != want or float(cf) < conf:
+                        continue
+                    bx0, _by0, bx1, by1 = (float(v) for v in b)
+                    boxes.append(((bx0 + bx1) / 2, by1 + lo, bx1 - bx0, float(cf)))
+            out.append(boxes)
+    return out
+
+
+def default_model():
+    """The side-view detector itself, or None when none is configured."""
+    from curling_score import weights as weights_mod
+    path = weights_mod.side_path()
+    return None if path is None else _load(str(path))
 
 
 def default_finder():
