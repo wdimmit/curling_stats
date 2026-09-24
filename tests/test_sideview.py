@@ -191,3 +191,47 @@ class TestHogRowEdge:
         lum = self._profile(160, 140, 6, sharp=False)
         got = sideview._hog_row_edge(lum, 150, "t")
         assert got != int(got)
+
+
+class TestLateralMap:
+    """Across the sheet. A row is a line of constant depth -- the hog line is
+    flat, which the depth fit already relies on -- so a metre across spans a
+    number of pixels that scales with the same 1/(d - x) as the rows do."""
+
+    V = sideview.SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
+                          centre_col=390.0, lat_px_per_m_at_tee=148.0)
+
+    def test_the_tee_is_the_origin(self):
+        assert self.V.to_house(390.0, 430.0) == pytest.approx((0.0, 0.0), abs=1e-9)
+
+    def test_the_12ft_ring_s_sides_on_the_tee_row_are_its_radius(self):
+        for sign in (-1, 1):
+            x, y = self.V.to_house(390.0 + sign * C.R_12FT_M * 148.0, 430.0)
+            assert x == pytest.approx(sign * C.R_12FT_M, abs=1e-9)
+            assert y == pytest.approx(0.0, abs=1e-9)
+
+    def test_image_right_is_the_thrower_s_right(self):
+        assert self.V.to_house(500.0, 430.0)[0] > 0
+
+    def test_nearer_the_camera_is_up_sheet(self):
+        assert self.V.to_house(390.0, 450.0)[1] > 0
+
+    def test_it_round_trips(self):
+        for x, y in ((-1.5, -1.2), (0.7, 0.4), (1.9, 2.5), (0.0, -1.829)):
+            col, row = self.V.to_image(x, y)
+            assert self.V.to_house(col, row) == pytest.approx((x, y), abs=1e-9)
+
+    def test_a_metre_across_shrinks_with_distance_as_a_stone_does(self):
+        for y in (-1.829, 0.0, 1.829, 3.0):
+            row = self.V.row_for(y)
+            assert (self.V.lateral_px_per_m(row) / 148.0 == pytest.approx(
+                self.V.stone_width_at(row, 52.0)
+                / self.V.stone_width_at(430.0, 52.0)))
+
+    def test_a_view_without_lateral_calibration_says_so(self):
+        v = sideview.SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0)
+        assert not v.has_lateral
+        with pytest.raises(sideview.SideViewError):
+            v.to_house(390.0, 430.0)
+        with pytest.raises(sideview.SideViewError):
+            v.to_image(0.0, 0.0)

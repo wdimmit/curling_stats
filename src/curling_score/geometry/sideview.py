@@ -79,6 +79,50 @@ class SideView:
     tee_row: float
     hog_row: float
     d_m: float = CAMERA_TO_FAR_TEE_M
+    # Where the far house's centre sits on the tee row, in the view's own
+    # columns, and how many pixels one metre across the sheet spans there. Both
+    # come from `solve_lateral`. A view without them can still time a hog
+    # crossing -- that is depth alone -- but cannot place anything across the
+    # sheet.
+    centre_col: float | None = None
+    lat_px_per_m_at_tee: float | None = None
+
+    @property
+    def has_lateral(self) -> bool:
+        return self.centre_col is not None and self.lat_px_per_m_at_tee is not None
+
+    def lateral_px_per_m(self, row: float) -> float:
+        """Pixels per metre across the sheet on ``row``.
+
+        The same 1/(d - x) law as ``stone_width_at``, so it too is a line
+        through ``yh``.
+        """
+        self._need_lateral()
+        _c, yh = self._map()
+        return self.lat_px_per_m_at_tee * (row - yh) / (self.tee_row - yh)
+
+    def to_house(self, col: float, row: float) -> tuple[float, float]:
+        """A point ON THE ICE, from view pixels to house metres.
+
+        Timeline axes: +y up-sheet toward the thrower, which is toward this
+        camera; +x the thrower's right, which is image right -- the view is not
+        mirrored. Anything standing up must be read at its foot: a stone's body
+        rises about 17 px above its footprint at the tee.
+        """
+        self._need_lateral()
+        return ((col - self.centre_col) / self.lateral_px_per_m(row),
+                self.metres_at(row))
+
+    def to_image(self, x_m: float, y_m: float) -> tuple[float, float]:
+        """The view pixel ``(col, row)`` of a point on the ice."""
+        self._need_lateral()
+        row = self.row_for(y_m)
+        return self.centre_col + x_m * self.lateral_px_per_m(row), row
+
+    def _need_lateral(self):
+        if not self.has_lateral:
+            raise SideViewError("this view has no lateral calibration; "
+                                "run solve_lateral first")
 
     @property
     def rows_tee_to_hog(self) -> float:
