@@ -37,6 +37,16 @@ from pathlib import Path
 WIDTH_TOL = (0.45, 2.20)
 ASPECT_TOL = (0.20, 1.20)
 
+# What a click is expected to be, by the class the page armed. A broom head
+# lies on the same ice as a stone, so the same perspective line bounds it,
+# scaled to its size: about 30 px against a stone's ~44 at the tee (Phase 0,
+# 2026-09-23). Its aspect is loose because a pad is held across the line or
+# along it.
+SHAPES = {
+    "stone": {"scale": 1.0, "width": WIDTH_TOL, "aspect": ASPECT_TOL},
+    "broom": {"scale": 0.70, "width": (0.35, 2.0), "aspect": (0.10, 1.60)},
+}
+
 
 def _bbox(mask):
     import numpy as np
@@ -47,23 +57,24 @@ def _bbox(mask):
     return int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
 
 
-def score(box, geom) -> tuple[float, float, float]:
-    """How stone-like a mask's box is. Lower is better.
+def score(box, geom, shape="stone") -> tuple[float, float, float]:
+    """How like a ``shape`` -- a stone by default -- a mask's box is. Lower is better.
 
     Scored on the log of the width ratio so that half-size and double-size are
     equally wrong -- on a plain ratio, everything too small crowds into (0, 1)
     and everything too large has the whole line above it, which quietly makes
     the chooser prefer masks that are too small.
     """
+    sh = SHAPES[shape]
     x0, y0, x1, y1 = box
     w, h = float(x1 - x0 + 1), float(y1 - y0 + 1)
-    expect = geom["k"] * (y1 - geom["yh"])
+    expect = sh["scale"] * geom["k"] * (y1 - geom["yh"])
     if expect <= 1.0:
         return math.inf, w, 0.0
     ratio, aspect = w / expect, (h / w if w else 99.0)
-    if not (WIDTH_TOL[0] <= ratio <= WIDTH_TOL[1]):
+    if not (sh["width"][0] <= ratio <= sh["width"][1]):
         return math.inf, ratio, aspect
-    if not (ASPECT_TOL[0] <= aspect <= ASPECT_TOL[1]):
+    if not (sh["aspect"][0] <= aspect <= sh["aspect"][1]):
         return math.inf, ratio, aspect
     return abs(math.log(ratio)), ratio, aspect
 
@@ -102,7 +113,8 @@ class Segmenter:
         self._current = stem
         return True
 
-    def box_at(self, stem: str, x: float, y: float, geom: dict) -> dict:
+    def box_at(self, stem: str, x: float, y: float, geom: dict,
+               shape: str = "stone") -> dict:
         """The stone-like box around ``(x, y)``, in pixels, or a reason why not."""
         import numpy as np
 
@@ -121,7 +133,7 @@ class Segmenter:
             box = _bbox(m)
             if box is None:
                 continue
-            s, ratio, aspect = score(box, geom)
+            s, ratio, aspect = score(box, geom, shape)
             seen.append({"box": box, "ratio": round(ratio, 2),
                          "aspect": round(aspect, 2),
                          "score": None if s == math.inf else round(s, 3)})
@@ -138,7 +150,22 @@ class Segmenter:
                 "candidates": seen}
 
 
-def make_handler(directory: Path, seg: Segmenter, geoms: dict):
+def segment_request(seg, req: dict, geoms: dict, shapes) -> dict:
+    """One /segment call: which frame, where, and what the click says it is.
+
+    The page sends the armed class index; ``shapes`` names what each index is.
+    An index the page should not have is treated as a stone, the editor's
+    original meaning, rather than failing a person mid-session.
+    """
+    stem = req["stem"]
+    cls = int(req.get("cls") or 0)
+    shape = shapes[cls] if 0 <= cls < len(shapes) else "stone"
+    return seg.box_at(stem, float(req["x"]), float(req["y"]),
+                      geoms.get(stem) or req.get("geom") or {}, shape=shape)
+
+
+def make_handler(directory: Path, seg: Segmenter, geoms: dict,
+                 shapes=("stone", "stone")):
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=str(directory), **kw)
@@ -156,9 +183,7 @@ def make_handler(directory: Path, seg: Segmenter, geoms: dict):
                 if self.path == "/save":
                     out = save_edits(directory, req)
                 else:
-                    stem = req["stem"]
-                    out = seg.box_at(stem, float(req["x"]), float(req["y"]),
-                                     geoms.get(stem) or req.get("geom") or {})
+                    out = segment_request(seg, req, geoms, shapes)
             except Exception as exc:  # noqa: BLE001 -- a bad click must not kill the server
                 out = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
             body = json.dumps(out).encode()
@@ -224,11 +249,12 @@ def check_page(directory) -> None:
             f"with boxedit.render().")
 
 
-def serve(directory, items, weights, port: int = 8777, host: str = "127.0.0.1"):
+def serve(directory, items, weights, port: int = 8777, host: str = "127.0.0.1",
+          shapes=("stone", "stone")):
     directory = Path(directory)
     check_page(directory)
     geoms = {it["stem"]: it["geom"] for it in items}
     seg = Segmenter(weights, directory / "images")
     httpd = ThreadingHTTPServer((host, port),
-                                make_handler(directory, seg, geoms))
+                                make_handler(directory, seg, geoms, shapes))
     return httpd

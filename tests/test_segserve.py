@@ -138,3 +138,49 @@ class TestSaveEdits:
         out = segserve.save_edits(tmp_path, payload)
         e = labels.parse_edits_full(json.loads(Path(out["path"]).read_text()))
         assert e.boxes["a"][0][0] == 1 and e.reviewed == ("a",)
+
+
+class TestBroomShape:
+    ROW = 440.0
+
+    def _expect(self):
+        return GEOM["k"] * (self.ROW - GEOM["yh"])
+
+    def test_a_pad_held_along_the_line_is_a_broom_not_a_stone(self):
+        """Narrow and nearly square: a stone's width rule rejects it, a broom's
+        does not. ~30 px against a stone's ~44 at the tee (Phase 0)."""
+        box = box_of(0.27 * self._expect(), 1.1, self.ROW)
+        assert segserve.score(box, GEOM)[0] == math.inf
+        assert segserve.score(box, GEOM, shape="broom")[0] < math.inf
+
+    def test_a_pad_across_the_line_scores_best_at_its_own_size(self):
+        exact = box_of(0.70 * self._expect(), 0.33, self.ROW)
+        wide = box_of(1.8 * 0.70 * self._expect(), 0.2, self.ROW)
+        assert (segserve.score(exact, GEOM, shape="broom")[0]
+                < segserve.score(wide, GEOM, shape="broom")[0])
+        assert segserve.score(exact, GEOM, shape="broom")[0] == pytest.approx(0.0, abs=0.02)
+
+
+class TestSegmentRequest:
+    class Seen:
+        def box_at(self, stem, x, y, geom, shape="stone"):
+            self.call = (stem, x, y, geom, shape)
+            return {"ok": True}
+
+    def test_the_armed_class_picks_the_shape(self):
+        seg = self.Seen()
+        segserve.segment_request(seg, {"stem": "s", "x": 1, "y": 2, "cls": 0},
+                                 {"s": {"k": 1, "yh": 0}}, ("broom",))
+        assert seg.call == ("s", 1.0, 2.0, {"k": 1, "yh": 0}, "broom")
+
+    def test_a_stone_page_is_unchanged(self):
+        seg = self.Seen()
+        segserve.segment_request(seg, {"stem": "s", "x": 1, "y": 2, "cls": 1},
+                                 {}, ("stone", "stone"))
+        assert seg.call[-1] == "stone"
+
+    def test_a_class_the_page_does_not_have_falls_back_to_stone(self):
+        seg = self.Seen()
+        segserve.segment_request(seg, {"stem": "s", "x": 1, "y": 2, "cls": 7},
+                                 {}, ("broom",))
+        assert seg.call[-1] == "stone"
