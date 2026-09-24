@@ -41,10 +41,11 @@ ASPECT_TOL = (0.20, 1.20)
 # lies on the same ice as a stone, so the same perspective line bounds it,
 # scaled to its size: about 30 px against a stone's ~44 at the tee (Phase 0,
 # 2026-09-23). Its aspect is loose because a pad is held across the line or
-# along it.
+# along it, and one pointing at the camera stands taller than it is wide: the
+# first real click, a yellow pad end-on, boxed at 14 x 30 px (aspect 2.14).
 SHAPES = {
     "stone": {"scale": 1.0, "width": WIDTH_TOL, "aspect": ASPECT_TOL},
-    "broom": {"scale": 0.70, "width": (0.35, 2.0), "aspect": (0.10, 1.60)},
+    "broom": {"scale": 0.70, "width": (0.35, 2.0), "aspect": (0.10, 2.80)},
 }
 
 

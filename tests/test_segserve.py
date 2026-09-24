@@ -161,6 +161,13 @@ class TestBroomShape:
         assert segserve.score(exact, GEOM, shape="broom")[0] == pytest.approx(0.0, abs=0.02)
 
 
+    def test_a_pad_seen_end_on_is_still_a_broom(self):
+        """Measured on the first real click (VXU9 r 459.97): SAM's tight box on
+        a yellow pad pointing at the camera was 14 x 30 px, 0.46 of a broom's
+        expected width, standing more than twice as tall as it is wide."""
+        box = box_of(0.46 * 0.70 * self._expect(), 2.14, self.ROW)
+        assert segserve.score(box, GEOM, shape="broom")[0] < math.inf
+
 class TestSegmentRequest:
     class Seen:
         def box_at(self, stem, x, y, geom, shape="stone"):
