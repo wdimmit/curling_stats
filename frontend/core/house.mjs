@@ -28,6 +28,19 @@ export function shouldCrop({ phone, editing, width, height }) {
   return !!phone && !editing && width > 0 && height > 0 && height < width * 1.3;
 }
 
+/* Where the skip's broom was held, and the stone this shot left, or null. The
+ * field is absent on every chart from before schema 5 and null on a shot with
+ * no pad held still; both draw nothing rather than a pad somewhere invented. */
+export function broomMark(shot) {
+  const b = shot?.target_broom;
+  if (!b || typeof b.x !== "number" || typeof b.y !== "number") return null;
+  const i = shot.delivered_stone_index;
+  const st = Number.isInteger(i) ? shot.stones?.[i] : null;
+  const to = st && typeof st.x === "number" && typeof st.y === "number"
+    ? { x: st.x, y: st.y } : null;
+  return { x: b.x, y: b.y, to };
+}
+
 export function stoneAt(x, y, color) {
   const d = Math.hypot(x, y);
   return { color, x, y, distance_to_tee: d, in_house: d <= R.inHouse,

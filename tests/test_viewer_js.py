@@ -1453,3 +1453,40 @@ class TestAWatchLinkOnAPhoneShowsSomething:
         rule = next(r for r in block.split("}")
                     if 'body[data-mode="review"] main > *' in r)
         assert ":not(#playCard)" in rule
+
+
+class TestTheSkipsBroom:
+    """Drawn only from numbers the timeline actually has: an old chart, or a
+    shot with no held pad, draws nothing rather than a pad at the tee."""
+
+    def mark(self, s):
+        return run_js(f"out(broomMark({json.dumps(s)}));")
+
+    def test_a_broom_links_to_the_stone_this_shot_left(self):
+        s = shot(3, "red", "lead", target_broom={"x": 0.6, "y": -0.2},
+                 stones=[{"color": "yellow", "x": 1.0, "y": 1.0},
+                         {"color": "red", "x": 0.3, "y": 0.4}],
+                 delivered_stone_index=1)
+        assert self.mark(s) == {"x": 0.6, "y": -0.2, "to": {"x": 0.3, "y": 0.4}}
+
+    def test_no_delivered_stone_is_a_broom_with_no_link(self):
+        s = shot(3, "red", "lead", target_broom={"x": 0.6, "y": -0.2})
+        assert self.mark(s) == {"x": 0.6, "y": -0.2, "to": None}
+
+    def test_an_old_chart_or_a_null_broom_draws_nothing(self):
+        assert self.mark(shot(3, "red", "lead")) is None
+        assert self.mark(shot(3, "red", "lead", target_broom=None)) is None
+
+    def test_a_malformed_broom_draws_nothing(self):
+        assert self.mark(shot(3, "red", "lead", target_broom={"x": "0.6", "y": 1})) is None
+
+    def test_a_guard_call_past_the_house_view_is_not_clamped(self):
+        """houseViewBox stops at y = 6.0; a pad near the hog line is drawn
+        where it was, outside the box, never moved onto the ice."""
+        s = shot(3, "red", "lead", target_broom={"x": 0.1, "y": 6.2})
+        assert self.mark(s) == {"x": 0.1, "y": 6.2, "to": None}
+
+    def test_the_house_draws_it_with_the_track_and_under_the_stones(self):
+        src = (Path(__file__).resolve().parents[1] / "frontend/viewer/House.jsx").read_text()
+        i_broom, i_stones = src.index("<Broom shot={shot}"), src.index("<Stones shot={shot}")
+        assert "showTrack && <Broom" in src and i_broom < i_stones

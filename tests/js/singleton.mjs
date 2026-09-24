@@ -63,6 +63,7 @@ export const endSummary = () => core.endSummary(view(), state.ei);
 export const houseViewBox = core.houseViewBox;
 export const shouldCrop = core.shouldCrop;
 export const stoneAt = core.stoneAt;
+export const broomMark = core.broomMark;
 
 export const clockText = core.clockText;
 export const thinkText = core.thinkText;

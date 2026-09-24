@@ -2,7 +2,7 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   DRAG_MIN_M, PAINT, PHONE_QUERY, R,
-  clampX, clampY, houseViewBox, isBlank, onSheet, shouldCrop, stoneAt,
+  broomMark, clampX, clampY, houseViewBox, isBlank, onSheet, shouldCrop, stoneAt,
 } from "../core/index.mjs";
 import * as dragStore from "../runtime/dragStore.mjs";
 import { writeBodyState } from "../runtime/bodyState.mjs";
@@ -68,6 +68,32 @@ function Track({ shot }) {
       ))}
       <circle cx={pts[0][1]} cy={pts[0][2]} r={0.06} fill="none"
               stroke={color} strokeWidth={0.025} opacity={0.5} />
+    </g>
+  );
+}
+
+/* The skip's broom, where it was held in the second before the thrower crossed
+ * the tee, and a faint line to where the delivered stone finished -- the call
+ * and the result side by side. On a draw the pad is the aim, not the intended
+ * rest spot, so the tooltip claims no more than that. Not clipped to the ice: a
+ * pad just behind the back line is still worth showing. The pad keeps pointer
+ * events for its tooltip; a click on it is still "not a stone" to the editor,
+ * so editing behaves exactly as if it were ice. */
+function Broom({ shot }) {
+  const m = broomMark(shot);
+  if (!m) return null;
+  const color = shot.color === "red" ? PAINT.red : PAINT.yellow;
+  return (
+    <g className="broom">
+      {m.to && (
+        <line x1={m.x} y1={m.y} x2={m.to.x} y2={m.to.y} stroke={PAINT.accent}
+              strokeWidth={0.02} strokeDasharray="0.08 0.06" opacity={0.5}
+              pointerEvents="none" />
+      )}
+      <rect x={m.x - 0.11} y={m.y - 0.04} width={0.22} height={0.08} rx={0.025}
+            fill={PAINT.accent} stroke={color} strokeWidth={0.02}>
+        <title>skip's broom</title>
+      </rect>
     </g>
   );
 }
@@ -209,6 +235,7 @@ export function House({ shot, shotKey, selStone, houseMode, showTrack, readOnly,
       ))}
       <line x1={0} y1={R.back} x2={0} y2={R.hog} stroke={PAINT.rail} strokeWidth={0.015} />
       {showTrack && <Track shot={shot} />}
+      {showTrack && <Broom shot={shot} />}
       <Stones shot={shot} selStone={selStone} />
       {isBlank(shot) && <Unknown />}
     </svg>
