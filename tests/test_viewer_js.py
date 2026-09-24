@@ -1486,6 +1486,13 @@ class TestTheSkipsBroom:
         s = shot(3, "red", "lead", target_broom={"x": 0.1, "y": 6.2})
         assert self.mark(s) == {"x": 0.1, "y": 6.2, "to": None}
 
+    def test_the_pad_is_drawn_upright(self):
+        """The user's call: the pad stands vertical on the house diagram --
+        narrow across the sheet, long along it -- centred on the broom point."""
+        src = (Path(__file__).resolve().parents[1] / "frontend/viewer/House.jsx").read_text()
+        broom = src[src.index("function Broom("):src.index("function Stones(")]
+        assert "x={m.x - 0.04} y={m.y - 0.11} width={0.08} height={0.22}" in broom
+
     def test_the_house_draws_it_with_the_track_and_under_the_stones(self):
         src = (Path(__file__).resolve().parents[1] / "frontend/viewer/House.jsx").read_text()
         i_broom, i_stones = src.index("<Broom shot={shot}"), src.index("<Stones shot={shot}")
