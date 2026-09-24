@@ -37,6 +37,43 @@ from pathlib import Path
 # granite's top rather than the handle's, so this stays near the physical 0.40.
 HEIGHT_RATIO = 0.42
 
+# The broom page: one class, armed with B. SAM, dragging and export are already
+# class-blind, so this restates only the parts of the page that name red and
+# yellow. Each old text must occur exactly once in _PAGE -- a template edit that
+# moved one would otherwise ship a page whose B key does nothing, silently --
+# and a test holds that.
+_BROOM_EDITS = (
+    ("--red:#e03c3c;", "--red:#d02ad0;"),       # magenta: nothing on the ice is
+    ('<button id="addr">+red (R)</button>\n  <button id="addy">+yellow (Y)</button>',
+     '<button id="addr">+broom head (B)</button>\n'
+     '  <button id="addy" hidden>+yellow (Y)</button>'),
+    ("SAM: click a stone", "SAM: click a broom head"),
+    ('k === "r" || k === "y"', 'k === "b"'),
+    ('setArm(k === "r" ? 0 : 1)', "setArm(0)"),
+    # The fallback box when SAM is unreachable: a pad is ~0.7 of a stone's width.
+    ("let w = item.geom.k * (row - item.geom.yh);",
+     "let w = 0.70 * item.geom.k * (row - item.geom.yh);"),
+)
+_BROOM_HELP = (
+    '<p class="muted">Box <b>every broom head resting on the ice</b>, the '
+    "skip's and anyone else's; one held in the air is not boxed. Press "
+    "<b>B</b> to arm, click the pad, and SAM finds its edges. Drag or resize "
+    "if it is off, <b>Delete</b> to remove. Mark each frame reviewed with "
+    "<b>space</b> -- a reviewed frame with no box says no broom was down. "
+    "<b>N</b>/<b>P</b> move between frames; <b>Save to server</b> writes "
+    "the session beside the images.</p>")
+
+
+def _as_broom(page: str) -> str:
+    import re
+
+    for old, new in _BROOM_EDITS:
+        page = page.replace(old, new, 1)
+    page, n = re.subn(r'<p class="muted">.*?</p>', _BROOM_HELP, page,
+                      count=1, flags=re.S)
+    assert n == 1
+    return page
+
 
 def frame_geometry(view, width_at_hog: float, row_offset: int = 0) -> dict:
     """The two numbers the page needs to size a box at any row.
@@ -58,7 +95,7 @@ def frame_geometry(view, width_at_hog: float, row_offset: int = 0) -> dict:
 
 
 def render(items, out_dir, *, scope: str, title: str = "Fix the boxes",
-           proposals: bool = False) -> Path:
+           proposals: bool = False, kind: str = "stone") -> Path:
     """Write the editor page.
 
     ``proposals`` defaults to False: each frame opens EMPTY. The colour
@@ -70,16 +107,21 @@ def render(items, out_dir, *, scope: str, title: str = "Fix the boxes",
     ``items`` is one dict per frame: ``stem``, ``image`` (a path relative to
     the page), ``width``, ``height``, ``boxes`` as ``[cls, cx, cy, w, h]`` in
     normalised coordinates, and ``geom`` from :func:`frame_geometry`.
+
+    ``kind="broom"`` renders the one-class broom-head page.
     """
+    if kind not in ("stone", "broom"):
+        raise ValueError(f"no editor for {kind!r}")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     page = out_dir / "index.html"
     if not proposals:
         items = [{**it, "boxes": []} for it in items]
     data = json.dumps(items)
-    page.write_text(_PAGE.replace("__DATA__", data)
-                    .replace("__SCOPE__", _html.escape(scope))
-                    .replace("__TITLE__", _html.escape(title)))
+    html = (_PAGE.replace("__DATA__", data)
+            .replace("__SCOPE__", _html.escape(scope))
+            .replace("__TITLE__", _html.escape(title)))
+    page.write_text(_as_broom(html) if kind == "broom" else html)
     return page
 
 

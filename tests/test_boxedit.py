@@ -245,3 +245,37 @@ class TestMarkAllReviewed:
     def test_it_says_so_when_there_is_nothing_to_do(self):
         src = boxedit._PAGE
         assert "already marked reviewed" in src
+
+
+def _one_item():
+    return [{"stem": "v_l_000010_00", "image": "images/v_l_000010_00.jpg",
+             "width": 810, "height": 245, "boxes": [],
+             "geom": {"k": 0.9, "yh": -300.0}}]
+
+
+class TestBroomPage:
+    def test_the_stone_page_is_exactly_what_it_was(self, tmp_path):
+        page = boxedit.render(_one_item(), tmp_path, scope="s").read_text()
+        assert page == (boxedit._PAGE.replace("__DATA__", json.dumps(_one_item()))
+                        .replace("__SCOPE__", "s")
+                        .replace("__TITLE__", "Fix the boxes"))
+
+    def test_b_arms_the_one_class(self, tmp_path):
+        page = boxedit.render(_one_item(), tmp_path, scope="broom:w1",
+                              kind="broom").read_text()
+        assert 'k === "b"' in page and "setArm(0)" in page
+        assert '+broom head (B)' in page
+        assert 'k === "r" || k === "y"' not in page
+
+    def test_it_still_calls_the_segmenter(self, tmp_path):
+        from curling_score.train import segserve
+        boxedit.render(_one_item(), tmp_path, scope="broom:w1", kind="broom")
+        segserve.check_page(tmp_path)          # raises if "/segment" went missing
+
+    def test_every_edit_finds_its_text_in_the_template(self):
+        for old, _new in boxedit._BROOM_EDITS:
+            assert boxedit._PAGE.count(old) == 1, old
+
+    def test_an_unknown_kind_is_refused(self, tmp_path):
+        with pytest.raises(ValueError):
+            boxedit.render(_one_item(), tmp_path, scope="s", kind="sweeper")
