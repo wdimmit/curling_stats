@@ -51,6 +51,18 @@ class TestPickTarget:
         got = broomtime.pick_target(pts, 10)
         assert (got.x_m, got.y_m) == pytest.approx((0.60, -0.20))
 
+    def test_a_short_decode_cannot_make_one_detection_a_marker(self):
+        """A window that decodes one or two frames is not a second of video:
+        the fraction is taken over the window, not over what happened to decode."""
+        assert broomtime.pick_target([s(0, 0.5, 0.2)], 1) is None
+        assert broomtime.pick_target([s(0, 0.5, 0.2), s(1, 0.5, 0.2)], 2) is None
+
+    def test_exactly_half_the_window_is_not_held_still(self):
+        """One pad that moves mid-window splits into two halves; neither half
+        is a pad held still, so there is no call -- not a coin toss between them."""
+        pts = [s(i, 0.6, -0.2) for i in range(5)] + [s(i, 0.9, -0.2) for i in range(5, 10)]
+        assert broomtime.pick_target(pts, 10) is None
+
     def test_nothing_seen_is_no_call(self):
         assert broomtime.pick_target([], 10) is None
 

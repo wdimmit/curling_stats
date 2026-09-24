@@ -4,7 +4,7 @@ The skip holds the pad on the ice as the aim for the whole delivery. Phase 0
 found it down and still across t_tee -2.0..+0.5 s on 45 of 49 shots, so the
 second before the tee crossing (the user's window) sits well inside the hold,
 even with the camera and the panel up to ~0.9 s out of step. What counts is a
-pad held STILL: a cluster seen in at least half the frames. A pad that moves
+pad held STILL: a cluster seen in more than half the window. A pad that moves
 or lifts gives no marker, never an average of where it went. Two held pads --
 the skip's and one resting by the sideline -- go to the one nearest the tee.
 
@@ -24,7 +24,12 @@ from curling_score.geometry import constants as C
 
 WINDOW_S = 1.0
 FPS = 10
+# More than half of the window, counted against the frames a full window holds:
+# a decode that comes back with one or two frames is not a second of video, and
+# one stray detection in it must not become a marker. Strictly more than half,
+# so a pad moved mid-window cannot split into two halves that both qualify.
 MIN_SEEN = 0.5
+EXPECTED_FRAMES = round(WINDOW_S * FPS)
 CLUSTER_M = 0.15
 X_MAX_M = 2.2                   # inside the sheet's 2.375 half-width
 BEHIND_M = 0.15                 # past the back line is the other skip's ground
@@ -65,8 +70,8 @@ def pick_target(samples, n_frames: int) -> TargetBroom | None:
     best = None
     for c in clusters:
         frames_in = len({q[0] for q in c})
-        seen = frames_in / max(1, n_frames)
-        if seen < MIN_SEEN:
+        seen = frames_in / max(n_frames, EXPECTED_FRAMES)
+        if seen <= MIN_SEEN:
             continue
         x = float(np.median([q[1] for q in c]))
         y = float(np.median([q[2] for q in c]))
