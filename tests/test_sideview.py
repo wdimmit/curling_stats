@@ -6,6 +6,7 @@ line is about half a metre beneath it, out of frame. So the throwing end's
 crossing is seen by the camera at the target end.
 """
 
+import numpy as np
 import pytest
 
 from curling_score.geometry import constants as C
@@ -235,3 +236,91 @@ class TestLateralMap:
             v.to_house(390.0, 430.0)
         with pytest.raises(sideview.SideViewError):
             v.to_image(0.0, 0.0)
+
+
+def _depth_only(tee=430.0, hog=520.0, w=810):
+    return sideview.SideView(rect=(0, 0, w, 1080), tee_row=tee, hog_row=hog)
+
+
+class TestSolveLateral:
+    def test_it_recovers_the_centre_and_scale_it_was_drawn_with(self):
+        plate = synth.side_view_house(centre_col=390.0, lat_px_per_m=148.0)
+        got = sideview.solve_lateral(plate, _depth_only())
+        assert got.centre_col == pytest.approx(390.0, abs=1.0)
+        assert got.lat_px_per_m_at_tee == pytest.approx(148.0, rel=0.015)
+
+    def test_it_works_off_centre_and_at_the_other_scales_measured(self):
+        # VXU9's right view (Phase 0), and a nearer, wider framing.
+        for tee, hog, centre, lat in ((436.45, 514.0, 414.7, 128.4),
+                                      (452.0, 533.0, 420.0, 180.0)):
+            plate = synth.side_view_house(tee_row=tee, hog_row=hog,
+                                          centre_col=centre, lat_px_per_m=lat)
+            got = sideview.solve_lateral(plate, _depth_only(tee, hog))
+            assert got.centre_col == pytest.approx(centre, abs=1.0), (centre, lat)
+            assert got.lat_px_per_m_at_tee == pytest.approx(lat, rel=0.015)
+
+    def test_the_depth_calibration_is_left_exactly_as_it_was(self):
+        view = _depth_only()
+        got = sideview.solve_lateral(synth.side_view_house(), view)
+        assert (got.rect, got.tee_row, got.hog_row, got.d_m) == \
+            (view.rect, view.tee_row, view.hog_row, view.d_m)
+
+    def test_a_far_band_half_as_green_still_fits(self):
+        """A fixed threshold fails here: each band's edges sit at half its own peak."""
+        plate = synth.side_view_house(far_green=(120, 138, 120), noise=4.0)
+        got = sideview.solve_lateral(plate, _depth_only())
+        assert got.centre_col == pytest.approx(390.0, abs=1.5)
+        assert got.lat_px_per_m_at_tee == pytest.approx(148.0, rel=0.02)
+
+    def test_the_neighbouring_sheet_s_ring_at_the_edge_is_not_this_house(self):
+        plate = synth.side_view_house()
+        plate[:, 785:810] = synth.GREEN_PAINT      # VXU9 left: crossings at 790-797
+        got = sideview.solve_lateral(plate, _depth_only())
+        assert got.centre_col == pytest.approx(390.0, abs=1.0)
+
+    def test_a_player_across_a_few_rows_costs_those_rows_only(self):
+        plate = synth.side_view_house()
+        plate[426:429, 100:220] = (40, 40, 40)     # dark trousers over the near band
+        got = sideview.solve_lateral(plate, _depth_only())
+        assert got.lat_px_per_m_at_tee == pytest.approx(148.0, rel=0.015)
+
+    def test_ice_with_no_house_is_refused(self):
+        plate = np.full((1080, 810, 3), synth.SIDE_ICE, np.uint8)
+        with pytest.raises(sideview.SideViewError):
+            sideview.solve_lateral(plate, _depth_only())
+
+    def test_a_far_band_too_faint_to_see_is_refused_not_guessed(self):
+        plate = synth.side_view_house(far_green=(236, 239, 236))
+        with pytest.raises(sideview.SideViewError):
+            sideview.solve_lateral(plate, _depth_only())
+
+    def test_an_implausible_scale_is_refused(self):
+        plate = synth.side_view_house(lat_px_per_m=60.0)
+        with pytest.raises(sideview.SideViewError):
+            sideview.solve_lateral(plate, _depth_only())
+
+    def test_a_view_offset_in_the_composite_reads_its_own_columns(self):
+        big = np.full((1080, 1920, 3), synth.SIDE_ICE, np.uint8)
+        big[:, 1107:1107 + 810] = synth.side_view_house()
+        view = sideview.SideView(rect=(1107, 0, 810, 1080), tee_row=430.0,
+                                 hog_row=520.0)
+        got = sideview.solve_lateral(big, view)
+        assert got.centre_col == pytest.approx(390.0, abs=1.0)
+
+
+@pytest.mark.slow
+class TestEveryRealViewLateral:
+    """Both side views of all five sheets, across the sheet this time."""
+
+    @pytest.mark.parametrize("sheet,vid", sorted(VALIDATION_VIDS.items()))
+    def test_both_views_calibrate_across(self, side_plate, sheet, vid):
+        plate = side_plate(vid)
+        h, w = plate.shape[:2]
+        rects = sideview.locate(a_layout(), width=w, height=h)
+        for name, rect in rects.items():
+            label = f"sheet{sheet}-{name}"
+            view = sideview.solve_lateral(
+                plate, sideview.solve(plate, rect, name=label), name=label)
+            lo, hi = sideview.PLAUSIBLE_LAT_PX_PER_M
+            assert lo <= view.lat_px_per_m_at_tee <= hi, label
+            assert 0.2 * rect[2] <= view.centre_col <= 0.8 * rect[2], label

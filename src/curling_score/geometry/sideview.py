@@ -13,6 +13,8 @@ stone with the thrower and sweepers standing over it. From the end of the
 sheet the sweepers are beside the stone, not on top of it.
 """
 
+import dataclasses
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -301,3 +303,102 @@ def solve(plate, rect: Rect, name: str = "side") -> SideView:
             f"outside the {PLAUSIBLE_ROWS[0]:.0f}-{PLAUSIBLE_ROWS[1]:.0f} px "
             f"every sheet falls in -- the fit found the wrong row")
     return view
+
+
+
+# The lateral fit, measured on VXU9's two views on 2026-09-23. Along the tee row
+# bare ice reads -6..+5 in greenness while the near band peaks ~22 and the far
+# band only ~10, so a fixed threshold finds noise: each band is found above a
+# low floor, then its edges are placed at half its own peak.
+_BAND_FLOOR = 5.0
+_BAND_MIN_PX = 10
+_BAND_SMOOTH_PX = 7
+# Rows either side of the tee that are read. The tee line's own rows (within
+# 1.5 of it) are skipped; each row is corrected for the chord it crosses the
+# ring on, which is shorter than the diameter away from the tee.
+_LATERAL_ROWS = 4
+_LATERAL_MIN_ROWS = 3
+# The 8-ft span over the 12-ft span, against the chords' own ratio. Paint bleed
+# moves it by a few hundredths; a mispaired band moves it by far more.
+_RATIO_TOL = 0.08
+# Pixels per metre across the sheet at the far tee. The club's views measured
+# 128-149 (Phase 0) and the ring spans ~480-555 px of an ~810 px view; this is
+# wide enough for any sheet's framing and narrow enough to refuse a fit that
+# took one band for both.
+PLAUSIBLE_LAT_PX_PER_M = (90.0, 220.0)
+
+
+def _bands(prof):
+    """The two green bands along one row, left then right, as (start, stop)."""
+    runs, start = [], None
+    for i, on in enumerate(np.append(prof > _BAND_FLOOR, False)):
+        if on and start is None:
+            start = i
+        elif not on and start is not None:
+            runs.append((start, i))
+            start = None
+    runs = [r for r in runs if r[1] - r[0] >= _BAND_MIN_PX]
+    if len(runs) < 2:
+        return None
+    # The two longest: the neighbouring sheet's ring, where it shows at the
+    # view's edge, is a sliver beside either of these.
+    return sorted(sorted(runs, key=lambda r: r[1] - r[0])[-2:])
+
+
+def _band_edges(prof, run):
+    a, b = run
+    half = float(prof[a:b].max()) / 2
+    xs = _crossings(prof, max(0, a - 30), min(len(prof), b + 30), half)
+    return (xs[0], xs[-1]) if len(xs) >= 2 else None
+
+
+def solve_lateral(plate, view: SideView, name: str = "side") -> SideView:
+    """Fit the far house's centre column and lateral scale from paint alone.
+
+    A row is a line of constant depth, so where it cuts the green annulus its
+    two bands' outer edges are the 12-ft ring's chord at that depth and their
+    inner edges the 8-ft's. Summing the two spans cancels paint erosion, which
+    narrows the outer span by as much as it widens the inner. Each row is
+    divided by its own chords and by its own lateral factor before the median,
+    so rows off the tee do not bias the scale low.
+    """
+    x0, y0, w, h = view.rect
+    img = np.asarray(plate, dtype=np.float32)[y0:y0 + h, x0:x0 + w]
+    green = img[:, :, 1] - (img[:, :, 0] + img[:, :, 2]) / 2
+    kernel = np.ones(_BAND_SMOOTH_PX) / _BAND_SMOOTH_PX
+    _c, yh = view._map()
+    lats, centres = [], []
+    t = int(round(view.tee_row))
+    for r in range(t - _LATERAL_ROWS, t + _LATERAL_ROWS + 1):
+        if abs(r - view.tee_row) < 1.5 or not 0 <= r < h:
+            continue
+        prof = np.convolve(green[r], kernel, mode="same")
+        runs = _bands(prof)
+        if runs is None:
+            continue
+        left, right = _band_edges(prof, runs[0]), _band_edges(prof, runs[1])
+        if left is None or right is None:
+            continue
+        (l12, l8), (r8, r12) = left, right
+        y = view.metres_at(r)
+        a12 = math.sqrt(C.R_12FT_M ** 2 - y ** 2)
+        a8 = math.sqrt(C.R_8FT_M ** 2 - y ** 2)
+        outer, inner = r12 - l12, r8 - l8
+        if outer <= 0 or inner <= 0 or abs(inner / outer - a8 / a12) > _RATIO_TOL:
+            continue
+        factor = (r - yh) / (view.tee_row - yh)
+        lats.append((outer + inner) / (2 * (a12 + a8)) / factor)
+        centres.append((l12 + l8 + r8 + r12) / 4)
+    if len(lats) < _LATERAL_MIN_ROWS:
+        raise SideViewError(
+            f"{name}: the ring's two sides were read on only {len(lats)} rows "
+            f"near the tee, need {_LATERAL_MIN_ROWS}")
+    lat, centre = float(np.median(lats)), float(np.median(centres))
+    if not PLAUSIBLE_LAT_PX_PER_M[0] <= lat <= PLAUSIBLE_LAT_PX_PER_M[1]:
+        raise SideViewError(
+            f"{name}: {lat:.1f} px/m across the sheet is outside the "
+            f"{PLAUSIBLE_LAT_PX_PER_M[0]:.0f}-{PLAUSIBLE_LAT_PX_PER_M[1]:.0f} "
+            f"any framing gives -- the fit paired the wrong bands")
+    if not 0.2 * w <= centre <= 0.8 * w:
+        raise SideViewError(f"{name}: house centre at column {centre:.0f} of {w}")
+    return dataclasses.replace(view, centre_col=centre, lat_px_per_m_at_tee=lat)

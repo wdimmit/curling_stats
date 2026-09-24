@@ -113,6 +113,41 @@ def side_view(tee_row=430.0, hog_row=520.0, w=810, h=1080, d_m=40.233,
     return img
 
 
+
+def side_view_house(tee_row=430.0, hog_row=520.0, centre_col=390.0,
+                    lat_px_per_m=148.0, w=810, h=1080, d_m=40.233,
+                    far_green=GREEN_PAINT, noise=0.0, seed=0):
+    """The far house as the side camera sees it, for the LATERAL fit.
+
+    ``side_view`` paints the annulus as two flat bands, which is all the depth
+    fit reads. Here it is the ellipse perspective makes of the ring, so a row
+    through the tee has a left band and a right band with real edges. Positions
+    come from the same map ``SideView.to_image`` inverts, so a correct fit
+    recovers ``centre_col`` and ``lat_px_per_m`` exactly. ``far_green`` paints
+    the right-hand band, which on real plates is often half as green as the
+    left (VXU9's left view: peaks ~22 and ~10). RGB.
+    """
+    img = np.full((h, w, 3), SIDE_ICE, dtype=np.uint8)
+    u = (hog_row - tee_row) * (d_m - C.TEE_TO_HOGLINE_M) / C.TEE_TO_HOGLINE_M
+    c, yh = d_m * u, tee_row - u
+    cols = np.arange(w)
+    top = int(yh + c / (d_m + C.R_12FT_M)) - 1
+    bot = int(yh + c / (d_m - C.R_12FT_M)) + 2
+    for r in range(top, bot):
+        y = d_m - c / (r - yh)
+        x = (cols - centre_col) / (lat_px_per_m * (r - yh) / (tee_row - yh))
+        rho = np.hypot(x, y)
+        ring = (rho >= C.R_8FT_M) & (rho <= C.R_12FT_M)
+        img[r, ring & (cols < centre_col)] = GREEN_PAINT
+        img[r, ring & (cols >= centre_col)] = far_green
+    rr = int(round(hog_row))
+    img[rr - 1:rr + 2] = SIDE_LINE
+    if noise:
+        rng = np.random.default_rng(seed)
+        img = np.clip(img.astype(np.float32) + rng.normal(0, noise, img.shape),
+                      0, 255).astype(np.uint8)
+    return img
+
 def composite_strip(width, height, bar_px=4, bar_color=(90, 90, 90)):
     """The grey overhead strip framing two house panels, with its 3 bars.
 
