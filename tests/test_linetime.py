@@ -151,3 +151,22 @@ class TestHogTrack:
                               track_key=2,
                               samples=((9.0, 300.0, sidepool.band_crop(HOG_VIEW)[1] - 2.0, 52.0),))
         assert L.hog_track(c, HOG_VIEW) == []
+
+
+class TestPickStart:
+    def box_at(self, x_dest, behind_tee_m):
+        yp = -behind_tee_m
+        rc = HOG_VIEW.row_for(yp)
+        cx = HOG_VIEW.centre_col_at(rc) + (-x_dest) * HOG_VIEW.lateral_px_per_m(rc)
+        return (cx, HOG_VIEW.row_for(yp + C.STONE_RADIUS_M), 40.0, 0.9)
+
+    def test_the_stone_in_front_of_the_left_hack(self):
+        got = L.pick_start([self.box_at(-0.15, 3.2)] * 5, HOG_VIEW)
+        assert got == (pytest.approx(-0.15, abs=1e-6), pytest.approx(TEE + 3.2, abs=1e-6))
+
+    def test_the_slide_and_the_far_side_are_ignored(self):
+        boxes = [self.box_at(-0.15, 3.2)] * 3 + [self.box_at(-0.1, 1.0)] * 4 + [self.box_at(0.9, 3.2)] * 4
+        assert L.pick_start(boxes, HOG_VIEW)[0] == pytest.approx(-0.15, abs=1e-6)
+
+    def test_fewer_than_three_sightings_is_no_start(self):
+        assert L.pick_start([self.box_at(-0.15, 3.2)] * 2, HOG_VIEW) is None

@@ -197,3 +197,38 @@ def hog_track(crossing, view, extra=()):
     t_seed = crossing.t if crossing.t is not None else samples[len(samples) // 2][0]
     return [(t, *to_destination(view, cx, row)) for t, cx, row, _w in
             relink(samples, crossing.track_key, t_seed)]
+
+
+START_WINDOW_S = (-3.0, -0.2)       # before the release: the stone at rest in front of the hack
+START_FPS = 5.0
+START_BEHIND_TEE_M = (C.TEE_TO_HACKLINE_M - 1.6, C.TEE_TO_HACKLINE_M + 0.6)
+START_MAX_X_M = 0.6
+START_MIN_N = 3
+
+
+def pick_start(boxes, view):
+    """The median of the stones sitting in front of the hack, or None."""
+    lo, hi = -START_BEHIND_TEE_M[1], -START_BEHIND_TEE_M[0]
+    xs, ys = [], []
+    for cx, row, _w, _c in boxes:
+        yp = view.metres_at(row) - C.STONE_RADIUS_M
+        if not lo <= yp <= hi:
+            continue
+        x_view = view.lateral_x(cx, view.row_for(yp))
+        if abs(x_view) > START_MAX_X_M:
+            continue
+        xs.append(-x_view); ys.append(TEE_Y - yp)
+    if len(xs) < START_MIN_N:
+        return None
+    return float(np.median(xs)), float(np.median(ys))
+
+
+def find_start(model, video, view, color, t_release, *, decode, detect):
+    """Read the stone at rest before the push, behind the throwing tee."""
+    frames, times = decode(video, view.rect, t_release + START_WINDOW_S[0],
+                           t_release + START_WINDOW_S[1], START_FPS)
+    if not len(frames):
+        return None
+    top = int(view.row_for(-(C.TEE_TO_HACKLINE_M + 1.0))) - 30
+    bot = int(view.tee_row) + 10
+    return pick_start([b for per in detect(model, frames, times, top, bot, color) for b in per], view)
