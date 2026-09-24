@@ -10,13 +10,14 @@ import numpy as np
 
 from curling_score import timeline, version
 from curling_score import weights as weights_mod
-from curling_score.detect import broommodel, delivery, release, sequence
+from curling_score.detect import broommodel, delivery, release, sequence, sidemodel
 from curling_score.game import (
     broomtime,
     endcheck,
     fartime,
     fit,
     hogtime,
+    linetime,
     profile,
     scoreboard as sb,
     secondpass,
@@ -178,6 +179,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             use_proxy: bool = True, weights=None, imgsz: int = 448,
             device=None, *, start_s=None, end_s=None, sheet=None,
             skip_scoreboard: bool = False, skip_longview: bool = False,
+            skip_line: bool = False,
             on_phase=None, info=None,
             download_attempts=None) -> dict:
     """Analyse a club VOD and return the timeline document.
@@ -192,6 +194,9 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     leaves out the wall-board pass, and ``skip_longview`` leaves out the side
     views that time the throwing end's hog crossing -- both are stages that
     need the full-resolution original, for a caller that does not keep it.
+    ``skip_line`` leaves out measuring each rock's thrown line against the
+    broom, which otherwise runs whenever ``skip_longview`` did not already
+    rule it out.
     ``on_phase(name, fraction, message)`` is called as
     the stages run, for a caller that wants to show progress. ``info`` lets a
     caller that already fetched the metadata pass it in rather than ask
@@ -276,6 +281,9 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     broom_model = None if skip_longview else broommodel.default_model()
     if broom_model is not None:
         progress(f"finding target brooms with {weights_mod.broom_path()}")
+    # The rock's thrown line against the broom: the side model again, which
+    # hogtime has already loaded (`sidemodel._load` is cached).
+    line_model = None if (skip_longview or skip_line) else sidemodel.default_model()
 
     phase("profile", 0.0, "finding games and ends")
     progress("building activity profile...")
@@ -409,6 +417,12 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 broomtime.time_target_brooms(
                     shots, path, sideviews[hogtime.CAMERA_FOR[end.house]],
                     model=broom_model)
+                # Where the rock's thrown line passed the skip's broom -- the
+                # hog-crossing camera for the line, the destination camera for
+                # where it went. Needs hogtime's crossing and broomtime's broom.
+                linetime.time_lines(
+                    shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
+                    sideviews[hogtime.CAMERA_FOR[end.house]], model=line_model)
             # Stage 3, the destination hog line, from that panel's painted line.
             # In this block ``setup`` is the destination panel and ``far`` is
             # the THROWING panel -- far from the house being played to.

@@ -65,6 +65,10 @@ class Shot:
     # crossed the throwing end's tee -- a `broomtime.TargetBroom` in house
     # metres -- or None when no pad was held still, or there is no model.
     target_broom: object = None
+    # Where this rock's thrown line passed the skip's broom, where it sat
+    # before the push and where it went -- a `linetime.Line` -- or None when
+    # it could not be measured.
+    line: object = None
     # Whether we believe the house we are showing. False means we could not
     # read it and a person has to fill it in -- which is a different statement
     # from an empty house, and must never be rendered as one.

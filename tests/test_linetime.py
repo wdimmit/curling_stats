@@ -1,8 +1,11 @@
 """Was the rock thrown at the broom: the line past the hog line, against it."""
+from types import SimpleNamespace
+
 import pytest
 
 from curling_score.detect import longview
 from curling_score.game import linetime as L
+from curling_score.game.broomtime import TargetBroom
 from curling_score.geometry import constants as C
 from curling_score.geometry.sideview import SideView
 from curling_score.harvest import sidepool
@@ -203,9 +206,82 @@ class TestChain:
     def test_a_lone_false_start_is_skipped(self):
         times, per = self.frames(stray_first=True)
         path = L.chain(times, per, self.FIT)
-        assert len(path) > 40
         assert len(path) > 40 and path[0][0] > 22.0
 
     def test_nothing_near_the_line_is_no_path(self):
         times = [0.0, 0.2]
         assert L.chain(times, [[(0.0, 2.0, 20.0, 0, 0, 0.9)], []], self.FIT) == []
+
+
+DEST_VIEW = SideView(rect=(1110, 0, 810, 1080), tee_row=465.0, hog_row=547.0,
+                     centre_col=411.0, lat_px_per_m_at_tee=140.0, centre_line=(411.0, 0.0))
+
+
+class TestTimeLines:
+    def shot(self, crossing, **kw):
+        base = dict(missing=False, color="red", release=SimpleNamespace(t=100.0),
+                    hog_crossing=crossing, t_hog_s=103.8, t_rest_s=120.0,
+                    target_broom=TargetBroom(1.0, 0.0, 1.0, 0.9), stones=[],
+                    delivered_stone_index=None, line=None)
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def stone_to(self, hi_yp):
+        n = int((hi_yp - 3.0) / 0.12)
+        return [sample_at(HOG_VIEW, 0.0 + 0.026 * (3.0 + 0.12 * i), 3.0 + 0.12 * i, 100.0 + i / 30)
+                for i in range(n)]
+
+    def run(self, shots, extra=()):
+        decoded = []
+
+        def decode(video, rect, t0, t1, fps):
+            decoded.append((round(t0 - 100.0, 2), round(t1 - 100.0, 2), fps))
+            return [object()] * 3, [t0, t0 + 0.1, t0 + 0.2]
+
+        def detect(model, frames, times, lo, hi, color, imgsz=800, conf=0.35):
+            return [list(extra) if i == 0 else [] for i in range(len(frames))]
+
+        L.time_lines(shots, "v.mp4", HOG_VIEW, DEST_VIEW, model=object(),
+                     decode=decode, detect=detect)
+        return decoded
+
+    def test_a_shot_with_a_crossing_and_a_broom_gets_a_line(self):
+        s = self.shot(crossing_for(self.stone_to(11.5)))
+        self.run([s])
+        assert s.line is not None and s.line.fit_n >= 15
+
+    def test_the_window_is_extended_only_for_a_track_that_stops_short(self):
+        long_, short = self.shot(crossing_for(self.stone_to(11.5))), self.shot(crossing_for(self.stone_to(8.7)))
+        assert (6.5, 9.0, 30.0) not in self.run([long_])
+        assert (6.5, 9.0, 30.0) in self.run([short])
+
+    def test_a_refused_crossing_with_samples_is_still_measured(self):
+        c = crossing_for(self.stone_to(11.5))
+        refused = longview.Crossing(None, "speed 3.44 m/s is not a delivery", longview.KEY_BAD_SPEED,
+                                    track_key=c.track_key, samples=c.samples)
+        s = self.shot(refused)
+        self.run([s])
+        assert s.line is not None
+
+    def test_no_broom_no_release_missing_or_no_model_means_no_line(self):
+        c = crossing_for(self.stone_to(11.5))
+        shots = [self.shot(c, target_broom=None), self.shot(c, release=None), self.shot(c, missing=True)]
+        self.run(shots)
+        assert all(s.line is None for s in shots)
+        s = self.shot(c)
+        L.time_lines([s], "v.mp4", HOG_VIEW, DEST_VIEW, model=None)
+        assert s.line is None
+
+
+class TestAnalyzeCallsIt:
+    def test_it_runs_after_the_broom_with_both_cameras(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/curling_score/analyze.py").read_text()
+        assert src.index("linetime.time_lines(") > src.index("broomtime.time_target_brooms(")
+        call = src[src.index("linetime.time_lines("):][:260]
+        assert "sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]]" in call
+        assert "sideviews[hogtime.CAMERA_FOR[end.house]]" in call
+
+    def test_a_shot_starts_with_no_line(self):
+        from curling_score.game.shots import Shot
+        assert Shot(number=1, color="red", stones=[], t_rest_s=0.0).line is None

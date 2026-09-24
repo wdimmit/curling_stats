@@ -319,3 +319,63 @@ def find_path(model, video, view, color, t_hog, t_rest, fit, *, decode, detect):
                         imgsz=416, conf=PATH_CONF)
     boxes = [a + b for a, b in zip(far, near_boxes)]
     return chain(times, path_points(boxes, times, view), fit)
+
+
+EXTEND_WINDOW_S = (6.5, 9.0)        # after the release, past hogtime's window
+EXTEND_IF_SHORT_OF_M = 10.0         # ...for a track that stops short of here
+
+
+def _rest(shot):
+    i = getattr(shot, "delivered_stone_index", None)
+    stones = getattr(shot, "stones", None) or []
+    if i is None or not 0 <= i < len(stones):
+        return None
+    s = stones[i]
+    return float(s.x_m), float(s.y_m)
+
+
+def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, detect=None) -> None:
+    """Give each shot its ``line``, in place. A no-op without a model or a
+    laterally calibrated hog-camera view; a shot it cannot measure keeps None."""
+    if model is None or hog_view is None or not hog_view.has_lateral:
+        return
+    if decode is None:
+        from curling_score.detect import longview
+        decode = longview.decode
+    if detect is None:
+        from curling_score.detect import sidemodel
+        detect = sidemodel.detect_band
+    for shot in shots:
+        broom = getattr(shot, "target_broom", None)
+        rel = getattr(shot, "release", None)
+        crossing = getattr(shot, "hog_crossing", None)
+        if getattr(shot, "missing", False) or broom is None or rel is None or crossing is None:
+            continue
+        track = hog_track(crossing, hog_view)
+        if track and max(p[3] for p in track) < EXTEND_IF_SHORT_OF_M:
+            extra = _extend_for(shot, hog_view, video, rel.t, model, decode, detect)
+            track = hog_track(crossing, hog_view, extra)
+        fit = fit_line(track)
+        if fit is None:
+            continue
+        start = find_start(model, video, hog_view, shot.color, rel.t, decode=decode, detect=detect)
+        path = find_path(model, video, dest_view, shot.color, getattr(shot, "t_hog_s", None),
+                         getattr(shot, "t_rest_s", None), fit, decode=decode, detect=detect)
+        shot.line = measure(fit, track, start, (broom.x_m, broom.y_m), rest=_rest(shot), path=path)
+
+
+def _extend_for(shot, view, video, t_release, model, decode, detect):
+    """Detections in the seconds past hogtime's window, as proposer samples."""
+    from curling_score.detect import longview, sidemodel
+    frames, times = decode(video, view.rect, t_release + EXTEND_WINDOW_S[0],
+                           t_release + EXTEND_WINDOW_S[1], 30.0)
+    if not len(frames):
+        return []
+    lo, hi = sidepool.band_crop(view)
+    out = []
+    for t, boxes in zip(times, detect(model, frames, times, lo, hi, shot.color)):
+        for cx, row, w, _c in boxes:
+            expect = view.stone_width_at(row, longview.STONE_WIDTH_AT_HOG_PX)
+            if expect > 1 and sidemodel.WIDTH_TOL[0] <= w / expect <= sidemodel.WIDTH_TOL[1]:
+                out.append((t, cx, row, w))
+    return out
