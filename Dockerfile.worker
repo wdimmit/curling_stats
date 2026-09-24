@@ -71,8 +71,16 @@ COPY weights/${MODEL} /opt/curling/weights/${MODEL}
 ARG SIDE_MODEL=ds13b.pt
 COPY weights/${SIDE_MODEL} /opt/curling/weights/${SIDE_MODEL}
 
+# The broom-head detector: the skip's target broom, read in the side view that
+# looks at the destination house. Pinned for the side model's reason --
+# `weights.broom_path()` treats a missing file as "no brooms", so an unpinned
+# image would publish every shot with a null broom and call it success.
+ARG BROOM_MODEL=broom1.pt
+COPY weights/${BROOM_MODEL} /opt/curling/weights/${BROOM_MODEL}
+
 ENV CURLING_SCORE_WEIGHTS=/opt/curling/weights/${MODEL} \
     CURLING_SCORE_SIDE_WEIGHTS=/opt/curling/weights/${SIDE_MODEL} \
+    CURLING_SCORE_BROOM_WEIGHTS=/opt/curling/weights/${BROOM_MODEL} \
     CURLING_SCORE_CACHE=/data/cache PYTHONUNBUFFERED=1
 VOLUME /data/cache
 CMD ["python", "-m", "curling_score.service.worker"]

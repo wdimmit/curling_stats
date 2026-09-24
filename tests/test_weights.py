@@ -53,6 +53,16 @@ class TestTheWorkerImageShipsBothDetectors:
         from curling_score import weights
         assert f"ARG SIDE_MODEL={weights.SIDE_NAME}" in self._dockerfile()
 
+    def test_it_ships_and_pins_the_broom_model(self):
+        """Same failure, same cure: `broom_path` treats a missing file as "no
+        brooms", so an image without it would reprocess the archive and publish
+        every shot with a null broom. Pinned, a missing file is a failure."""
+        from curling_score import weights
+        df = self._dockerfile()
+        assert f"ARG BROOM_MODEL={weights.BROOM_NAME}" in df
+        assert "COPY weights/${BROOM_MODEL}" in df
+        assert "CURLING_SCORE_BROOM_WEIGHTS=/opt/curling/weights/${BROOM_MODEL}" in df
+
 
 class TestBroomPath:
     """No broom model means no brooms, never a broken run."""
