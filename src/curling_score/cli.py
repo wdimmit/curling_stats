@@ -389,7 +389,8 @@ def _labels(args) -> int:
         c = labels.apply_edits(args.dataset, args.split, edits.reject, edits.add,
                                keep_empty=args.keep_empty,
                                reviewed=edits.reviewed,
-                               drop_unreviewed=args.drop_unreviewed)
+                               drop_unreviewed=args.drop_unreviewed,
+                               boxes=edits.boxes)
         print(f"{c['removed']} labels removed, {c['added']} added, "
               f"across {c['rewritten']} files")
         if c["kept_empty"]:
@@ -398,6 +399,8 @@ def _labels(args) -> int:
             print(f"  {c['emptied']} frame(s) left with no labels and dropped")
         if c["unreviewed"]:
             print(f"  {c['unreviewed']} frame(s) dropped: nobody reviewed them")
+        if c.get("replaced"):
+            print(f"  {c['replaced']} frame(s) restated by the box editor")
         if c["missing_frames"]:
             print(f"  {c['missing_frames']} addition(s) skipped: the frame is "
                   f"no longer in the set")

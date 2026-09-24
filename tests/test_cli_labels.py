@@ -30,6 +30,15 @@ def session(path, **kw):
 
 
 class TestApply:
+    def test_a_box_editor_session_replaces_the_frame_s_boxes(self, tmp_path, dataset):
+        a = session(tmp_path / "a.json",
+                    boxes={"v_t_000000_00": [[0, 0.25, 0.75, 0.1, 0.05]]},
+                    reviewed=["v_t_000000_00"])
+        assert cli.main(["labels", str(dataset), "--split", "train",
+                         "--apply", a, "--keep-empty"]) == 0
+        got = (dataset / "labels" / "train" / "v_t_000000_00.txt").read_text()
+        assert got.split() == ["0", "0.250000", "0.750000", "0.100000", "0.050000"]
+
     def test_several_sessions_merge(self, tmp_path, dataset):
         # Review happens over sittings, each exporting its own file, so the
         # documented form is a shell glob over a directory of them.
