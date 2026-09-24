@@ -46,3 +46,23 @@ class TestManifestRow:
         view = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
                         centre_col=390.0, lat_px_per_m_at_tee=148.0)
         assert harvest.manifest_row(view, view="left")["view"] == "left"
+
+
+class TestCropRows:
+    VIEW = SideView(rect=(0, 0, 810, 1080), tee_row=429.95, hog_row=520.0)
+
+    def test_the_crop_reaches_past_the_hog_line(self):
+        """A skip calling a guard crouches in front of the house: on VXU9 e6 s6
+        the pad sat ~4 m up-sheet, rows 477-511, below the old 3 m crop."""
+        top, bot = harvest.crop_rows(self.VIEW)
+        assert bot > self.VIEW.hog_row
+        assert bot > 511
+
+    def test_the_skip_s_legs_stay_above_the_house(self):
+        top, bot = harvest.crop_rows(self.VIEW)
+        assert top == int(self.VIEW.tee_row - harvest.ABOVE_TEE_ROWS)
+
+    def test_the_crop_stays_inside_the_frame(self):
+        v = SideView(rect=(0, 0, 810, 550), tee_row=100.0, hog_row=540.0)
+        top, bot = harvest.crop_rows(v)
+        assert (top, bot) == (0, 550)

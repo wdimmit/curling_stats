@@ -141,8 +141,11 @@ Read by eye from contact sheets of the destination-facing camera at t_tee −2.0
   never its centre.
 - The existing depth model matches the paint down the centre column to about 1
   row: back 12-ft, back 4-ft, button, front 4-ft and front 12-ft.
-- **Crop for the detector:** rows `tee_row − 130 … row_for(3.0) + 15`, full
-  view width. Every pad seen sat between about tee−20 and tee+30.
+- **Crop for the detector:** rows `tee_row − 130 … row_for(6.401) + 15`, full
+  view width, down past the hog line. Phase 0's pads all sat between about
+  tee−20 and tee+30. Round 1 then found a skip calling a guard from in front of
+  the house, with the pad about 4 m up-sheet, below a crop that stopped at 3 m
+  (VXU9 e6 s6). The user says this happens occasionally.
 
 ## Phase 1 — Lateral calibration of the side view
 
@@ -231,7 +234,8 @@ In `geometry/sideview.py`, leave `solve()` and the tripwire untouched.
   each box maps through `view.to_house` at its bottom-centre (the pad touches
   the ice).
   1. Drop samples with `|x| > 2.2`, behind the back line (`y < R.back − 0.15`,
-     where the opposing skip stands), or at `y > 3.0`.
+     where the opposing skip stands), or past the hog line (`y > 6.401`). A
+     guard call puts the pad in front of the house.
   2. Cluster within 0.15 m.
   3. Among clusters seen in at least `MIN_SEEN = 0.5` of the frames, the one
      seen in the most frames wins, with ties going to the one nearest the tee.

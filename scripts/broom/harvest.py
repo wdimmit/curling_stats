@@ -22,12 +22,16 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from curling_score.geometry import constants as C
 from curling_score.geometry import sideview
 
 OFFSETS_S = (-1.0, -0.3)
 CAMERA_FOR = {"top": "left", "bottom": "right"}     # game/hogtime.CAMERA_FOR
 ABOVE_TEE_ROWS = 130        # the skip's legs and the shaft, above the house
-PAST_Y_M, BELOW_PAD = 3.0, 15   # down to 3 m in front of the tee, and a margin
+# Down to the hog line, and a margin. A skip calling a guard crouches in front
+# of the house: on VXU9 e6 s6 the pad sat ~4 m up-sheet, below a crop that
+# stopped at 3 m (wave 1, 2026-09-23).
+PAST_Y_M, BELOW_PAD = C.TEE_TO_HOGLINE_M, 15
 PLATE_FRAMES = 24           # analyze.CALIB_FRAMES: frames medianed into a plate
 
 
@@ -49,6 +53,14 @@ def view_for(entry: dict, frames=None) -> sideview.SideView:
     plate = np.median(np.stack([np.asarray(f, np.float32) for f in frames]), axis=0)
     own = dataclasses.replace(view, rect=(0, 0, view.rect[2], view.rect[3]))
     return dataclasses.replace(sideview.solve_lateral(plate, own), rect=view.rect)
+
+
+def crop_rows(view: sideview.SideView) -> tuple[int, int]:
+    """The rows cut: the skip's legs and the shaft above the house, down past
+    the hog line; clipped to the frame."""
+    top = max(0, int(view.tee_row - ABOVE_TEE_ROWS))
+    bot = min(view.rect[3], int(view.row_for(PAST_Y_M) + BELOW_PAD))
+    return top, bot
 
 
 def manifest_row(side: sideview.SideView, **fields) -> dict:
@@ -100,8 +112,7 @@ def main() -> int:
             continue
         name = CAMERA_FOR[end["house"]]
         view = views[name]
-        top = max(0, int(view.tee_row - ABOVE_TEE_ROWS))
-        bot = min(view.rect[3], int(view.row_for(PAST_Y_M) + BELOW_PAD))
+        top, bot = crop_rows(view)
         geom = boxedit.frame_geometry(view, longview.STONE_WIDTH_AT_HOG_PX,
                                       row_offset=top)
         for off in OFFSETS_S:

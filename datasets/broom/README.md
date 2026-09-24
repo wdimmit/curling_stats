@@ -12,9 +12,16 @@ anyone else's. A broom held in the air is not boxed. A reviewed frame with no
 box says no broom was down. The pass that uses the model picks the target by
 position and stillness, so the labels do not try to.
 
-Crops are the full view width, from `tee_row − 130` down to `row_for(3.0) + 15`,
-so the skip's legs and the shaft are above the house and 3 m of ice in front of
-the tee is below it. `manifest-<wave>.json` carries each frame's view calibration -- the depth rows
+Crops are the full view width, from `tee_row − 130` down past the hog line
+(`row_for(6.401) + 15`): the skip's legs and the shaft are above the house, and
+a skip calling a guard from in front of the house is still in frame.
+
+The first labelling pass (`wave1`) was cut to only 3 m in front of the tee,
+which clipped exactly that case (VXU9 e6 s6, pad ~4 m up-sheet). `wave1b` is the
+same 222 frames on the taller crop. Its boxes are wave 1's, restated by
+`scripts/broom/recrop_edits.py`: the top row did not move, so every box keeps
+its pixels. The original session file stays untouched beside the restated one.
+**Train from `wave1b`.** `manifest-<wave>.json` carries each frame's view calibration -- the depth rows
 and the lateral scale (`centre_col`, `lat_px_per_m_at_tee`), fitted by the
 harvest from 24 frames when the timeline predates lateral calibration -- and its
 crop offset. That is what maps a box back to the house: rebuild the `SideView`
