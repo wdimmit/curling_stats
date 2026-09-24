@@ -1,8 +1,11 @@
 """Was the rock thrown at the broom: the line past the hog line, against it."""
 import pytest
 
+from curling_score.detect import longview
 from curling_score.game import linetime as L
 from curling_score.geometry import constants as C
+from curling_score.geometry.sideview import SideView
+from curling_score.harvest import sidepool
 
 TEE = C.TEE_TO_TEE_M
 
@@ -99,10 +102,6 @@ class TestThin:
         assert len(got) == 21 and got[-1] == pts[-1]
 
 
-from curling_score.detect import longview
-from curling_score.geometry.sideview import SideView
-from curling_score.harvest import sidepool
-
 HOG_VIEW = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
                     centre_col=390.0, lat_px_per_m_at_tee=150.0, centre_line=(386.0, 0.004))
 
@@ -146,3 +145,9 @@ class TestHogTrack:
 
     def test_a_colour_scan_crossing_has_no_track(self):
         assert L.hog_track(longview.Crossing(10.0, "ok", longview.KEY_OK), HOG_VIEW) == []
+
+    def test_a_refused_crossing_with_only_crop_edge_samples_has_no_track(self):
+        c = longview.Crossing(None, "speed 3.44 m/s is not a delivery", longview.KEY_BAD_SPEED,
+                              track_key=2,
+                              samples=((9.0, 300.0, sidepool.band_crop(HOG_VIEW)[1] - 2.0, 52.0),))
+        assert L.hog_track(c, HOG_VIEW) == []

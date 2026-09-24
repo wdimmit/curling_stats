@@ -192,6 +192,8 @@ def hog_track(crossing, view, extra=()):
         return []
     edge = sidepool.band_crop(view)[1] - CROP_EDGE_ROWS
     samples = [s for s in list(crossing.samples) + list(extra) if s[2] < edge]
+    if not samples:
+        return []
     t_seed = crossing.t if crossing.t is not None else samples[len(samples) // 2][0]
     return [(t, *to_destination(view, cx, row)) for t, cx, row, _w in
             relink(samples, crossing.track_key, t_seed)]
