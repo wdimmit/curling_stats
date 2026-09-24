@@ -97,3 +97,52 @@ class TestThin:
         pts = [(20.0 - 0.1 * i, 0.0) for i in range(100)]
         got = L.thin(pts)
         assert len(got) == 21 and got[-1] == pts[-1]
+
+
+from curling_score.detect import longview
+from curling_score.geometry.sideview import SideView
+from curling_score.harvest import sidepool
+
+HOG_VIEW = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
+                    centre_col=390.0, lat_px_per_m_at_tee=150.0, centre_line=(386.0, 0.004))
+
+
+def sample_at(view, x_dest, yp_centre, t):
+    """The (t, cx, edge_row, body_px) the proposer gives for a stone centred at
+    destination x and yp metres past the throwing tee."""
+    edge = view.row_for(yp_centre + C.STONE_RADIUS_M)
+    rc = view.row_for(yp_centre)
+    cx = view.centre_col_at(rc) + (-x_dest) * view.lateral_px_per_m(rc)
+    return (t, cx, edge, 52.0)
+
+
+def crossing_for(samples, t=10.3, key=None):
+    key = int(samples[len(samples) // 2][1] // 120) if key is None else key
+    return longview.Crossing(t, "ok", longview.KEY_OK, track_key=key, samples=tuple(samples))
+
+
+class TestHogTrack:
+    def stone(self, n=60, x0=-0.2, dx=-0.03):
+        return [sample_at(HOG_VIEW, x0 + dx * (3.0 + 0.12 * i), 3.0 + 0.12 * i, 9.0 + i / 30)
+                for i in range(n)]
+
+    def test_it_recovers_the_stone_in_the_destination_frame(self):
+        track = L.hog_track(crossing_for(self.stone()), HOG_VIEW)
+        _t, x, y, yp = track[10]
+        assert yp == pytest.approx(3.0 + 0.12 * 10, abs=1e-6)
+        assert y == pytest.approx(TEE - yp, abs=1e-6)
+        assert x == pytest.approx(-0.2 - 0.03 * yp, abs=1e-6)
+
+    def test_another_stone_far_across_is_not_linked(self):
+        other = [sample_at(HOG_VIEW, 1.5, 5.0, 9.0 + i / 30) for i in range(60)]
+        track = L.hog_track(crossing_for(self.stone() + other, key=int(self.stone()[30][1] // 120)), HOG_VIEW)
+        assert all(x < 0.5 for _t, x, _y, _yp in track)
+
+    def test_samples_at_the_crop_s_bottom_edge_are_dropped(self):
+        bottom = sidepool.band_crop(HOG_VIEW)[1]
+        edge = (99.0, 300.0, bottom - 2.0, 52.0)
+        track = L.hog_track(crossing_for(self.stone() + [edge]), HOG_VIEW)
+        assert all(t != 99.0 for t, *_ in track)
+
+    def test_a_colour_scan_crossing_has_no_track(self):
+        assert L.hog_track(longview.Crossing(10.0, "ok", longview.KEY_OK), HOG_VIEW) == []

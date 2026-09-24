@@ -21,6 +21,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from curling_score.geometry import constants as C
+from curling_score.harvest import sidepool
 
 TEE_Y = C.TEE_TO_TEE_M                          # the throwing tee
 HOG_Y = C.TEE_TO_TEE_M - C.TEE_TO_HOGLINE_M     # the throwing hog line
@@ -136,3 +137,61 @@ def measure(fit: Fit, track, start, broom, rest=None, path=()) -> Line:
                 confirmed=confirmed_by(list(path), fit),
                 hog_path=thin([(y, x) for _t, x, y, _yp in track]),
                 path=thin(list(path)), fit_n=fit.n, fit_rms=fit.rms)
+
+
+CROP_EDGE_ROWS = 6          # the box is clipped at the band's bottom edge
+
+
+def to_destination(view, cx: float, edge_row: float):
+    """A hog-camera box's bottom-centre as the stone's centre, in the
+    destination frame, with its distance past the throwing tee. The camera
+    faces the thrower: its image-left is the thrower's right, so x flips."""
+    yp = view.metres_at(edge_row) - C.STONE_RADIUS_M
+    x_view = view.lateral_x(cx, view.row_for(yp))
+    return -x_view, TEE_Y - yp, yp
+
+
+def relink(samples, key, t_seed, fps: float = 30.0, max_gap: int = 6):
+    """The stone's samples frame to frame by continuity, both ways from the
+    one nearest ``t_seed`` in column key ``key`` -- not by key, which a stone
+    drifting across the sheet leaves."""
+    by_t: dict = {}
+    for s in samples:
+        by_t.setdefault(round(s[0], 4), []).append(s)
+    ts = sorted(by_t)
+    seeds = [s for s in samples if int(s[1] // 120) == key]
+    if not seeds:
+        return []
+    seed = min(seeds, key=lambda s: abs(s[0] - t_seed))
+    chain = [seed]
+    for direction in (1, -1):
+        cur, i, gap = seed, ts.index(round(seed[0], 4)), 0
+        while 0 <= i + direction < len(ts):
+            i += direction
+            steps = abs(ts[i] - cur[0]) * fps
+            ok = [s for s in by_t[ts[i]]
+                  if abs(s[1] - cur[1]) <= 8 + 3 * steps
+                  and -3 * steps <= (s[2] - cur[2]) * direction <= 8 * steps + 4]
+            if not ok:
+                gap += 1
+                if gap > max_gap:
+                    break
+                continue
+            gap = 0
+            cur = min(ok, key=lambda s: abs(s[1] - cur[1]) + abs(s[2] - cur[2]))
+            chain.append(cur)
+    return sorted(chain)
+
+
+def hog_track(crossing, view, extra=()):
+    """The rock through the throwing hog line as [(t, x, y, y_past_tee)]."""
+    # `is None`, not `not crossing`: a refused crossing is falsy (no time) but
+    # may still carry the stone's samples -- a big-weight hit over the speed bound.
+    if crossing is None or getattr(crossing, "track_key", None) is None \
+            or not getattr(crossing, "samples", ()):
+        return []
+    edge = sidepool.band_crop(view)[1] - CROP_EDGE_ROWS
+    samples = [s for s in list(crossing.samples) + list(extra) if s[2] < edge]
+    t_seed = crossing.t if crossing.t is not None else samples[len(samples) // 2][0]
+    return [(t, *to_destination(view, cx, row)) for t, cx, row, _w in
+            relink(samples, crossing.track_key, t_seed)]
