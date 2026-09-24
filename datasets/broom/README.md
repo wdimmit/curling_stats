@@ -14,9 +14,11 @@ position and stillness, so the labels do not try to.
 
 Crops are the full view width, from `tee_row − 130` down to `row_for(3.0) + 15`,
 so the skip's legs and the shaft are above the house and 3 m of ice in front of
-the tee is below it. `manifest-<wave>.json` carries each frame's view
-calibration and crop offset, which is what maps a box back to the house
-(`SideView.to_house`, at the box's bottom edge).
+the tee is below it. `manifest-<wave>.json` carries each frame's view calibration -- the depth rows
+and the lateral scale (`centre_col`, `lat_px_per_m_at_tee`), fitted by the
+harvest from 24 frames when the timeline predates lateral calibration -- and its
+crop offset. That is what maps a box back to the house: rebuild the `SideView`
+from the row and call `to_house` at the box's bottom edge, `crop_top` added.
 
 ## Where things are
 
