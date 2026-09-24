@@ -25,3 +25,22 @@ class TestTheSideModelIsPartOfTheIdentity:
         identity they were published with, or every one of them looks stale."""
         a = tmp_path / "over.pt"; a.write_bytes(b"overhead")
         assert version.processing_version(a, None) == version.processing_version(a)
+
+
+class TestTheBroomModelIsPartOfTheIdentity:
+    """The broom model adds a field to every shot. A timeline made without it
+    must not pass for one made with it -- and every timeline made before it
+    existed keeps the identity it was published with."""
+
+    def test_a_broom_model_changes_the_version(self, tmp_path):
+        a = tmp_path / "over.pt"; a.write_bytes(b"overhead")
+        s = tmp_path / "side.pt"; s.write_bytes(b"sideview")
+        b = tmp_path / "broom1.pt"; b.write_bytes(b"broom")
+        with_b = version.processing_version(a, s, b)
+        assert with_b.startswith(version.processing_version(a, s))
+        assert "+broom-broom1-" in with_b
+
+    def test_no_broom_model_keeps_the_old_identity(self, tmp_path):
+        a = tmp_path / "over.pt"; a.write_bytes(b"overhead")
+        s = tmp_path / "side.pt"; s.write_bytes(b"sideview")
+        assert version.processing_version(a, s, None) == version.processing_version(a, s)

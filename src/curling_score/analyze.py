@@ -10,8 +10,9 @@ import numpy as np
 
 from curling_score import timeline, version
 from curling_score import weights as weights_mod
-from curling_score.detect import delivery, release, sequence
+from curling_score.detect import broommodel, delivery, release, sequence
 from curling_score.game import (
+    broomtime,
     endcheck,
     fartime,
     fit,
@@ -261,6 +262,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                                      imgsz=imgsz)
         detector.model.overrides["half"] = True
         progress(f"detecting with {weights} at imgsz={imgsz}")
+    # The skip's target broom, read in the camera that sees the destination
+    # house. None without a model -- no brooms, the same timeline otherwise.
+    broom_model = None if skip_longview else broommodel.default_model()
+    if broom_model is not None:
+        progress(f"finding target brooms with {weights_mod.broom_path()}")
 
     phase("profile", 0.0, "finding games and ends")
     progress("building activity profile...")
@@ -389,6 +395,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             if sideviews is not None:
                 hogtime.time_hog_crossings(
                     shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+                # The skip's target broom, from the camera that sees the
+                # destination house -- the OTHER camera from hogtime's.
+                broomtime.time_target_brooms(
+                    shots, path, sideviews[hogtime.CAMERA_FOR[end.house]],
+                    model=broom_model)
             # Stage 3, the destination hog line, from that panel's painted line.
             # In this block ``setup`` is the destination panel and ``far`` is
             # the THROWING panel -- far from the house being played to.
@@ -482,7 +493,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         # Resolved here rather than passed, because nothing upstream chooses
         # it -- `hogtime` takes the same default.
         processing_version=version.processing_version(
-            weights, weights_mod.side_path()),
+            weights, weights_mod.side_path(), weights_mod.broom_path()),
     )
 
 

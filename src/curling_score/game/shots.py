@@ -57,6 +57,10 @@ class Shot:
     # ``split.FarCrossing`` attached by ``fartime.time_far_crossings``. None
     # until that pass has run.
     far_crossing: object = None
+    # Where the skip held the target broom in the second before this rock
+    # crossed the throwing end's tee -- a `broomtime.TargetBroom` in house
+    # metres -- or None when no pad was held still, or there is no model.
+    target_broom: object = None
     # Whether we believe the house we are showing. False means we could not
     # read it and a person has to fill it in -- which is a different statement
     # from an empty house, and must never be rendered as one.

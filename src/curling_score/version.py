@@ -49,7 +49,7 @@ def model_id(weights) -> str:
     return f"{path.stem}-{h.hexdigest()[:8]}"
 
 
-def processing_version(weights, side_weights=None) -> str:
+def processing_version(weights, side_weights=None, broom_weights=None) -> str:
     """The full identity of one analysis configuration.
 
     ``side_weights`` is folded in because the side-view detector changes the
@@ -60,6 +60,11 @@ def processing_version(weights, side_weights=None) -> str:
 
     Omitted entirely when there is no side model, so every timeline produced
     before there was one keeps the identity it was published with.
+
+    ``broom_weights`` likewise: the broom model adds a field to every shot, so
+    it is named when present and omitted when not, which keeps every timeline
+    made without one at the identity it was published with.
     """
     base = f"{PIPELINE_VERSION}+{model_id(weights)}"
-    return base if side_weights is None else f"{base}+side-{model_id(side_weights)}"
+    out = base if side_weights is None else f"{base}+side-{model_id(side_weights)}"
+    return out if broom_weights is None else f"{out}+broom-{model_id(broom_weights)}"

@@ -52,3 +52,26 @@ class TestTheWorkerImageShipsBothDetectors:
     def test_the_default_matches_what_the_repo_ships(self):
         from curling_score import weights
         assert f"ARG SIDE_MODEL={weights.SIDE_NAME}" in self._dockerfile()
+
+
+class TestBroomPath:
+    """No broom model means no brooms, never a broken run."""
+
+    def test_absent_is_no_brooms_not_an_error(self, monkeypatch):
+        monkeypatch.delenv(weights.BROOM_ENV_VAR, raising=False)
+        monkeypatch.setattr(weights, "_candidates", lambda name=None: iter(()))
+        assert weights.broom_path() is None
+
+    def test_none_switches_it_off(self, monkeypatch):
+        monkeypatch.setenv(weights.BROOM_ENV_VAR, "none")
+        assert weights.broom_path() is None
+
+    def test_a_set_but_missing_path_raises(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(weights.BROOM_ENV_VAR, str(tmp_path / "nope.pt"))
+        with pytest.raises(FileNotFoundError):
+            weights.broom_path()
+
+    def test_a_set_path_is_used(self, monkeypatch, tmp_path):
+        p = tmp_path / "b.pt"; p.write_bytes(b"x")
+        monkeypatch.setenv(weights.BROOM_ENV_VAR, str(p))
+        assert weights.broom_path() == p

@@ -124,3 +124,21 @@ class TestTimeTargetBrooms:
         broomtime.time_target_brooms([shot], "v.mp4", None, model=object(),
                                      decode=lambda *a: ([], []))
         assert shot.target_broom is None
+
+
+class TestShotField:
+    def test_a_shot_starts_with_no_broom(self):
+        from curling_score.game.shots import Shot
+        assert Shot(number=1, color="red", stones=[], t_rest_s=0.0).target_broom is None
+
+
+class TestAnalyzeCallsIt:
+    def test_the_destination_camera_is_the_other_one_from_hogtime_s(self):
+        """Wired beside hogtime with the camera that SEES the destination house:
+        CAMERA_FOR[end.house], where hogtime uses CAMERA_FOR[OTHER_HOUSE[...]]."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/curling_score/analyze.py").read_text()
+        assert "broomtime.time_target_brooms(" in src
+        call = src[src.index("broomtime.time_target_brooms("):][:200]
+        assert "sideviews[hogtime.CAMERA_FOR[end.house]]" in call
+        assert "weights_mod.broom_path()" in src
