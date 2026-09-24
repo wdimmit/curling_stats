@@ -46,6 +46,12 @@ ENV_VAR = "CURLING_SCORE_WEIGHTS"
 SIDE_NAME = "ds13b.pt"
 SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 
+# The broom-head detector, which finds the skip's target broom in the camera
+# looking at the destination house. Like SIDE_NAME it is optional: a missing
+# file means no brooms, not a broken run. See `detect/broommodel.py`.
+BROOM_NAME = "broom1.pt"
+BROOM_ENV_VAR = "CURLING_SCORE_BROOM_WEIGHTS"
+
 
 def _candidates(name=DEFAULT_NAME):
     here = Path(__file__).resolve()
@@ -99,6 +105,29 @@ def side_path():
         return path
 
     for path in _candidates(SIDE_NAME):
+        if path.is_file():
+            return path
+    return None
+
+
+def broom_path():
+    """The broom-head detector, or None: no model means no brooms, not an error.
+
+    Resolved like :func:`side_path`: ``none`` or unset-and-absent gives None,
+    and a path that is set but missing raises -- a deployment asking for a
+    model and not getting it is worth stopping for.
+    """
+    chosen = os.environ.get(BROOM_ENV_VAR)
+    if chosen:
+        if chosen.strip().lower() in ("none", ""):
+            return None
+        path = Path(chosen)
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"{BROOM_ENV_VAR}={chosen} does not exist. Set it to a weights "
+                f"file, or to 'none' for no brooms.")
+        return path
+    for path in _candidates(BROOM_NAME):
         if path.is_file():
             return path
     return None
