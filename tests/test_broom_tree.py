@@ -56,3 +56,18 @@ class TestWriteTree:
         assert (out / "images/val/b.jpg").exists()
         y = (out / "data.yaml").read_text()
         assert f"path: {out}" in y and "0: broom_head" in y
+
+
+class TestKeepFor:
+    """A pre-labelled wave opens with a model's boxes on every frame, so a box
+    there is not proof anyone looked: only reviewed frames count. A wave that
+    opened empty keeps every frame someone put a box on."""
+
+    def test_a_wave_that_opened_empty_keeps_every_touched_frame(self):
+        rows = {"a": {}, "b": {}}
+        assert tree.keep_for(rows, {"a": [[0, .5, .5, .1, .1]], "b": []}, reviewed=[]) == {"a", "b"}
+
+    def test_a_pre_labelled_wave_keeps_only_reviewed_frames(self):
+        rows = {"a": {"proposed": True}, "b": {"proposed": True}}
+        boxes = {"a": [[0, .5, .5, .1, .1]], "b": [[0, .2, .2, .1, .1]]}
+        assert tree.keep_for(rows, boxes, reviewed=["b"]) == {"b"}

@@ -69,8 +69,11 @@ def main() -> int:
     model = YOLO(str(Path(args.weights).expanduser()))
     edits = labels.merge_edits(*(json.loads(Path(f).read_text())
                                  for f in sorted(glob.glob(args.edits))))
-    rows = [r for r in json.loads(Path(args.manifest).read_text())
-            if r["offset"] == -0.3 and r["stem"] in edits.boxes]
+    manifest = json.loads(Path(args.manifest).read_text())
+    # A pre-labelled wave counts only what a person marked reviewed.
+    proposed = any(r.get("proposed") for r in manifest)
+    keep = set(edits.boxes) & set(edits.reviewed) if proposed else set(edits.boxes)
+    rows = [r for r in manifest if r["offset"] == -0.3 and r["stem"] in keep]
     results = []
     for r in rows:
         v = _view(r)

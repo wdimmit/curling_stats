@@ -78,3 +78,10 @@ class TestProposals:
 
     def test_no_pads_no_boxes(self):
         assert harvest.proposals([], top=300, width=810, height=235) == []
+
+
+class TestProposedFlag:
+    def test_a_pre_labelled_frame_says_so_in_the_manifest(self):
+        view = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
+                        centre_col=390.0, lat_px_per_m_at_tee=148.0)
+        assert harvest.manifest_row(view, stem="s", proposed=True)["proposed"] is True

@@ -27,6 +27,19 @@ def labelled(items, boxes: dict):
     return [(it, boxes[it["stem"]]) for it in items if it["stem"] in boxes]
 
 
+def keep_for(rows: dict, boxes: dict, reviewed) -> set:
+    """The stems a wave may contribute.
+
+    A wave that opened empty keeps every frame someone put a box on. A wave
+    pre-labelled by a model (its manifest rows say ``proposed``) opened with
+    boxes on every frame, so a box there proves nothing: only frames marked
+    reviewed count, or an unreviewed guess would become a label.
+    """
+    if any(rows.get(s, {}).get("proposed") for s in boxes):
+        return set(boxes) & set(reviewed)
+    return set(boxes)
+
+
 def role_for(row: dict, role: str, val_fraction: float) -> str:
     if role in ("train", "val"):
         return role
@@ -68,7 +81,11 @@ def main() -> int:
         edits = labels.merge_edits(*(json.loads(Path(f).read_text()) for f in files))
         rows = {r["stem"]: r for r in json.loads(Path(manifest).read_text())}
         items = json.loads((wdir / "items.json").read_text())
-        for it, boxes in labelled(items, edits.boxes):
+        keep = keep_for(rows, edits.boxes, edits.reviewed)
+        if len(keep) < len(edits.boxes):
+            print(f"{wdir.name}: {len(edits.boxes) - len(keep)} pre-labelled "
+                  f"frame(s) left out: nobody marked them reviewed")
+        for it, boxes in labelled(items, {s: b for s, b in edits.boxes.items() if s in keep}):
             split = role_for(rows[it["stem"]], role, args.val_fraction)
             entries.append((wdir / it["image"], it["stem"], boxes, split))
             tally[split][0] += 1

@@ -143,7 +143,8 @@ def main() -> int:
                 t_tee=shot["t_tee_s"], offset=off,
                 tee_estimated=bool(shot.get("t_tee_estimated")),
                 end=end["number"], shot=shot["number"], color=shot["color"],
-                crop_top=top, width=crop.shape[1], height=crop.shape[0]))
+                crop_top=top, width=crop.shape[1], height=crop.shape[0],
+                proposed=model is not None))
         print(f"\r{i + 1}/{len(shots)} shots", end="", flush=True)
 
     (out / "items.json").write_text(json.dumps(items))
