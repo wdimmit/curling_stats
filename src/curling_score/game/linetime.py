@@ -232,3 +232,90 @@ def find_start(model, video, view, color, t_release, *, decode, detect):
     top = int(view.row_for(-(C.TEE_TO_HACKLINE_M + 1.0))) - 30
     bot = int(view.tee_row) + 10
     return pick_start([b for per in detect(model, frames, times, top, bot, color) for b in per], view)
+
+
+PATH_FPS = 5.0
+PATH_SPLIT_ROW = 640            # the far part at imgsz 800, the near part at 416
+PATH_CONF = 0.3
+PATH_WIDTH = (0.65, 1.5)        # x 0.291 m x lateral_px_per_m(row)
+PATH_GAP_S = 8.0                # the delivery team can hide the rock for 6 s
+PATH_SEED_Y = 21.5
+PATH_START_GAP_S = 1.0          # a start whose next sighting is over a second
+                                 # later is a lone false detection (a sweeper's
+                                 # broom, a glint), not the rock
+
+
+def path_points(boxes, times, view):
+    """Destination-camera boxes as (t, x, y, cx, row, conf) per frame. The rock
+    moves away from this camera, so its centre is behind the box bottom."""
+    out = []
+    for t, frame_boxes in zip(times, boxes):
+        pts = []
+        for cx, row, w, conf in frame_boxes:
+            if not PATH_WIDTH[0] < w / (0.291 * view.lateral_px_per_m(row)) < PATH_WIDTH[1]:
+                continue
+            y = view.metres_at(row) - C.STONE_RADIUS_M
+            pts.append((t, view.lateral_x(cx, view.row_for(y)), y, cx, row, conf))
+        out.append(pts)
+    return out
+
+
+def _follow(times, per, is_seed, near, max_gap_s):
+    path, cur, vel, last_t = [], None, -2.0, None
+    for t, dets in zip(times, per):
+        if cur is None:
+            c = [d for d in dets if is_seed(d)]
+            if c:
+                cur = min(c, key=near); path.append(cur); last_t = t
+            continue
+        dt = t - last_t
+        if dt > max_gap_s:
+            break
+        ypred = cur[2] + vel * dt
+        c = [d for d in dets if abs(d[2] - ypred) < 0.6 + 0.5 * dt
+             and abs(d[1] - cur[1]) < 0.12 + 0.12 * dt and d[2] <= cur[2] + 0.2]
+        if not c:
+            continue
+        nxt = min(c, key=lambda d: abs(d[2] - ypred) + abs(d[1] - cur[1]))
+        vel = 0.6 * vel + 0.4 * (nxt[2] - cur[2]) / dt
+        cur = nxt; path.append(cur); last_t = t
+    return path
+
+
+def chain(times, per, fit: Fit):
+    """The rock's path to rest as [(y, x)], started from the detection nearest
+    the fitted line -- first where the rock enters this camera's view, then
+    anywhere -- and moved on to the next candidate when a start leads nowhere
+    (a sweeper's broom, a resting stone near the line)."""
+    near = lambda d: abs(d[1] - fit.x(d[2]))
+    rules = (lambda d: abs(d[2] - PATH_SEED_Y) < 2.5 and near(d) < 0.35,
+             lambda d: 3.0 < d[2] < 24.0 and near(d) < 0.45)
+    best = []
+    for rule in rules:
+        for i, dets in enumerate(per):
+            if not any(rule(d) for d in dets):
+                continue
+            got = _follow(times[i:], per[i:], rule, near, PATH_GAP_S)
+            if len(got) >= 2 and got[1][0] - got[0][0] > PATH_START_GAP_S:
+                continue
+            if len(got) > len(best):
+                best = got
+            if len(got) >= 5:
+                return [(d[2], d[1]) for d in got]
+    return [(d[2], d[1]) for d in best] if len(best) >= 5 else []
+
+
+def find_path(model, video, view, color, t_hog, t_rest, fit, *, decode, detect):
+    """Where the rock went, seen from behind the thrower."""
+    if view is None or not view.has_lateral or t_hog is None:
+        return []
+    t1 = (t_rest if t_rest is not None else t_hog + 24.0) + 1.0
+    frames, times = decode(video, view.rect, t_hog + 1.0, t1, PATH_FPS)
+    if not len(frames):
+        return []
+    far = detect(model, frames, times, int(view.tee_row) - 80, PATH_SPLIT_ROW + 20, color,
+                 imgsz=800, conf=PATH_CONF)
+    near_boxes = detect(model, frames, times, PATH_SPLIT_ROW - 20, view.rect[3], color,
+                        imgsz=416, conf=PATH_CONF)
+    boxes = [a + b for a, b in zip(far, near_boxes)]
+    return chain(times, path_points(boxes, times, view), fit)

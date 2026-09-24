@@ -170,3 +170,42 @@ class TestPickStart:
 
     def test_fewer_than_three_sightings_is_no_start(self):
         assert L.pick_start([self.box_at(-0.15, 3.2)] * 2, HOG_VIEW) is None
+
+
+class TestChain:
+    FIT = L.Fit(a=0.3, b=0.02, n=40, rms=0.002)
+
+    def frames(self, n=80, gap=(), static=None, stray_first=False):
+        times = [i * 0.2 for i in range(n)]
+        per = []
+        for i, t in enumerate(times):
+            dets = []
+            y = 23.5 - 2.2 * t + 0.05 * t * t                  # slowing down
+            if y > 1.0 and i not in gap:
+                dets.append((t, self.FIT.x(y) - 0.002 * t * t, y, 0, 0, 0.9))
+            if static is not None:
+                dets.append((t, *static, 0, 0, 0.8))
+            if stray_first and i == 0:
+                dets = [(t, self.FIT.x(21.0), 21.0, 0, 0, 0.6)]
+            per.append(dets)
+        return times, per
+
+    def test_it_follows_the_moving_stone_not_one_at_rest_near_the_line(self):
+        times, per = self.frames(static=(self.FIT.x(20.0) + 0.2, 20.0))
+        path = L.chain(times, per, self.FIT)
+        ys = [y for y, _x in path]
+        assert len(path) > 40 and ys == sorted(ys, reverse=True) and ys[-1] < 5.0
+
+    def test_it_carries_on_across_a_four_second_gap(self):
+        times, per = self.frames(gap=range(20, 40))
+        assert L.chain(times, per, self.FIT)[-1][0] < 5.0
+
+    def test_a_lone_false_start_is_skipped(self):
+        times, per = self.frames(stray_first=True)
+        path = L.chain(times, per, self.FIT)
+        assert len(path) > 40
+        assert len(path) > 40 and path[0][0] > 22.0
+
+    def test_nothing_near_the_line_is_no_path(self):
+        times = [0.0, 0.2]
+        assert L.chain(times, [[(0.0, 2.0, 20.0, 0, 0, 0.9)], []], self.FIT) == []
