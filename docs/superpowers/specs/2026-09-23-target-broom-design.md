@@ -218,6 +218,40 @@ In `geometry/sideview.py`, leave `solve()` and the tripwire untouched.
     broom boxed.
 - **Ship candidate:** train on all three games and save as `weights/broom1.pt`.
 
+### Phase 3 result (2026-09-23)
+
+Labels, all boxed with SAM by the user and committed in `datasets/broom/edits/`:
+
+| wave | frames | boxes | notes |
+| --- | --- | --- | --- |
+| VXU9 `wave1b` | 220 of 222 | 231 | round 1, from scratch; the crop reaches the hog line |
+| AEqL `wave2-aeql` | 180 | 180 | round 2, corrected from v0's proposals (17 frames changed) |
+| hOKZ `wave2-hokz` | 256 | 269 | round 2, corrected from v0 (6 changed); the held-out game |
+
+Models: yolo11s on ds13b's recipe (`scripts/broom/train_on_worker.sh`).
+
+| model | trained on | its val | pass on held-out hOKZ (128 shots) |
+| --- | --- | --- | --- |
+| v0 | VXU9 | mAP50 0.995 (VXU9 shots) | 127/127 within 0.30 m, 0 wild |
+| heldout | VXU9 + AEqL | mAP50 0.995, mAP50-95 0.916 (AEqL shots) | **127/127 within 0.30 m, 0 wild**; error median 0.029 m, p90 0.076, max 0.134; every marker seen in 10/10 frames; the one shot with no pad boxed gets no marker |
+| **broom1** (`weights/broom1.pt`) | VXU9 + AEqL + hOKZ | mAP50 0.974, mAP50-95 0.849, P 0.998, R 0.953 (80 AEqL+hOKZ val frames; the misses are second brooms resting by the sideline) | in-sample only: hOKZ 127/127, AEqL 87/88 within 0.30 m, 0 wild -- a no-regression check, not a measure |
+
+**The bar is met**: at least 80% within 0.30 m and at most 5% wild.
+
+Two caveats:
+- **Anchoring.** Round-2 truth was corrected from v0's proposals, so it leans
+  toward where v0 put the box. The error above is agreement between the pass
+  (the median over the window) and the user's box on the `t_tee − 0.3` frame.
+- **Mapping error is separate.** Pixel-to-metre mapping adds the ~0.1-0.3 m
+  depth error measured in Phase 0.
+
+**Attach-only was verified on VXU9** (`analyze --end 3000 --no-scoreboard`). A
+no-broom run and a broom run agree on every field except `target_broom`,
+`schema_version` and `processing_version`. A first run's end boundaries moved
+by one keyframe (5 s), but a second no-broom run reproduces the broom run's
+boundaries exactly, so that drift predates this work. With v0, 54 of 55 real
+shots carry a broom (98%).
+
 ## Phase 4 — Pipeline pass
 
 **`detect/broommodel.py`** (pattern: `detect/sidemodel.py`)

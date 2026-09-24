@@ -51,3 +51,19 @@ from the row and call `to_house` at the box's bottom edge, `crop_top` added.
 # after each sitting
 cp ~/curling-work/broom/wave1/edits/*.json datasets/broom/edits/ && git add datasets/broom/edits
 ```
+
+## Results
+
+Round 1 was VXU9 (`wave1b`), labelled from scratch. Round 2 was AEqL
+(`wave2-aeql`) and hOKZ (`wave2-hokz`), corrected from v0's proposals; hOKZ is
+the held-out game. The model trained on VXU9 + AEqL scores **127/127 hOKZ
+shots within 0.30 m** of the boxed pad (median 0.029 m, max 0.134 m) with 0
+wild markers. `weights/broom1.pt` is trained on all three games
+(`tree-all`: VXU9 train, AEqL and hOKZ shot-split 85/15). The full table and
+caveats are in the spec's "Phase 3 result".
+
+```bash
+# score a model on a held-out wave
+./.venv/bin/python scripts/broom/eval_heldout.py --weights <best.pt> --video <video.mp4> \
+    --manifest datasets/broom/manifest-wave2-hokz.json --edits 'datasets/broom/edits/broom-wave2-hokz-*.json'
+```
