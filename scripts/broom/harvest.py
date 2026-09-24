@@ -50,6 +50,15 @@ def view_for(entry: dict, frames=None) -> sideview.SideView:
     return dataclasses.replace(sideview.solve_lateral(plate, own), rect=view.rect)
 
 
+def pick_shots(doc: dict, without_broom: bool = False) -> list:
+    """``(end, shot)`` for every real shot with a tee crossing -- or, with
+    ``without_broom``, only those the published timeline left without a broom,
+    which is where a new wave teaches the model something."""
+    return [(e, s) for g in doc["games"] for e in g["ends"] for s in e["shots"]
+            if not s.get("missing") and s.get("t_tee_s") is not None
+            and not (without_broom and s.get("target_broom"))]
+
+
 def proposals(pads, top: int, width: int, height: int) -> list:
     """A model's pads as the editor's rows, normalised to the crop."""
     return [[0, round((p.x0 + p.x1) / 2 / width, 6),
@@ -75,6 +84,8 @@ def main() -> int:
     ap.add_argument("--every", type=int, default=1)
     ap.add_argument("--weights", help="pre-label each frame with this model; "
                     "the page then opens with its boxes to correct")
+    ap.add_argument("--without-broom", action="store_true",
+                    help="only shots the timeline left without a broom")
     args = ap.parse_args()
 
     from curling_score.detect import broommodel, longview
@@ -93,8 +104,7 @@ def main() -> int:
         from ultralytics import YOLO
         model = YOLO(str(Path(args.weights).expanduser()))
 
-    shots = [(e, s) for g in doc["games"] for e in g["ends"] for s in e["shots"]
-             if not s.get("missing") and s.get("t_tee_s") is not None]
+    shots = pick_shots(doc, without_broom=args.without_broom)
     ts = [s["t_tee_s"] for _, s in shots]
     views = {}
     for n in ("left", "right"):

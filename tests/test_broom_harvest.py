@@ -85,3 +85,22 @@ class TestProposedFlag:
         view = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
                         centre_col=390.0, lat_px_per_m_at_tee=148.0)
         assert harvest.manifest_row(view, stem="s", proposed=True)["proposed"] is True
+
+
+class TestPickShots:
+    DOC = {"games": [{"ends": [{"number": 1, "house": "top", "shots": [
+        {"number": 1, "t_tee_s": 10.0, "target_broom": {"x": 0.1, "y": 0.2}},
+        {"number": 2, "t_tee_s": 20.0, "target_broom": None},
+        {"number": 3, "t_tee_s": None, "target_broom": None},
+        {"number": 4, "t_tee_s": 40.0, "missing": True},
+        {"number": 5, "t_tee_s": 50.0}]}]}]}
+
+    def test_every_timed_real_shot_by_default(self):
+        got = [s["number"] for _, s in harvest.pick_shots(self.DOC)]
+        assert got == [1, 2, 5]
+
+    def test_without_broom_takes_only_the_misses(self):
+        """Round 3 goes after what the model does not see: shots the published
+        timeline left without a broom (an old timeline with no key counts too)."""
+        got = [s["number"] for _, s in harvest.pick_shots(self.DOC, without_broom=True)]
+        assert got == [2, 5]
