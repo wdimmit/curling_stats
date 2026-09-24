@@ -49,7 +49,12 @@ SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 # The broom-head detector, which finds the skip's target broom in the camera
 # looking at the destination house. Like SIDE_NAME it is optional: a missing
 # file means no brooms, not a broken run. See `detect/broommodel.py`.
-BROOM_NAME = "broom1.pt"
+#
+# broom2 as of 2026-09-24: broom1 plus round 3, 163 frames of the red pads
+# broom1 never saw. On 6/18 Sheet 4, a red-pad game it did not train on, a
+# model built the same way found a broom on 128/128 shots against broom1's
+# 70, and held hOKZ at 127/127 within 0.30 m. See datasets/broom/README.md.
+BROOM_NAME = "broom2.pt"
 BROOM_ENV_VAR = "CURLING_SCORE_BROOM_WEIGHTS"
 
 

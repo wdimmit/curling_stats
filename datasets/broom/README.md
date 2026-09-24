@@ -67,3 +67,10 @@ caveats are in the spec's "Phase 3 result".
 ./.venv/bin/python scripts/broom/eval_heldout.py --weights <best.pt> --video <video.mp4> \
     --manifest datasets/broom/manifest-wave2-hokz.json --edits 'datasets/broom/edits/broom-wave2-hokz-*.json'
 ```
+
+**Round 3 / broom2 (2026-09-24).** `wave3` is the 274 hosted shots broom1 left
+without a broom, from six videos, which were mostly red pads. It was harvested
+on the worker with `--without-broom` and pre-labelled by broom1; 163 frames
+were reviewed. `weights/broom2.pt` is trained on all four waves. Coverage on
+the weak videos rose from 55-67% to 96-99%; the spec's "Round 3 and broom2"
+has the checks.

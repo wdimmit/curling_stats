@@ -252,6 +252,23 @@ by one keyframe (5 s), but a second no-broom run reproduces the broom run's
 boundaries exactly, so that drift predates this work. With v0, 54 of 55 real
 shots carry a broom (98%).
 
+### Round 3 and broom2 (2026-09-24)
+
+broom1 shipped and all 16 hosted games were reprocessed: 1,429 of 1,718 shots
+(83%) carried a broom. Coverage ran 96-99% on five videos and 55-83% on six.
+The misses were **red broom pads**, which the first two rounds barely
+contained; broom1 did not fire on them at all.
+
+Round 3 (`wave3`) took the 274 shots broom1 left empty on those six videos,
+harvested on the worker where the videos are cached. The user reviewed 163
+frames (159 pads). Only reviewed frames count in a pre-labelled wave
+(`make_tree.keep_for`).
+
+| model | trained on | check |
+| --- | --- | --- |
+| b2check | VXU9 + AEqL + wave3 without 6/18 Sheet 4 | hOKZ 127/127 within 0.30 m, 0 wild (held out); 6/18 Sheet 4 (red pads, held out) 128/128 shots with a broom against broom1's 70, with 69 of broom1's 70 markers unchanged; 8 new markers drawn back on their frames sit on the pads |
+| **broom2** (`weights/broom2.pt`) | all four waves | val mAP50 0.964, P 1.000, R 0.957; coverage 6/18 Sheet 4 55% → 99%, 11/24 Sheet 3 (game 1) 60% → 97%, 5/14 Sheet 5 67% → 96%, no broom1 marker lost; hOKZ 126/127 (in-sample) |
+
 ## Phase 4 — Pipeline pass
 
 **`detect/broommodel.py`** (pattern: `detect/sidemodel.py`)

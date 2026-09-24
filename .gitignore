@@ -76,3 +76,6 @@ frontend/node_modules/
 # broom1 is a third camera job, not a replacement: it finds the skip's broom
 # head in the side view that looks at the destination house (2026-09-23).
 !weights/broom1.pt
+# broom2 supersedes broom1 (2026-09-24): round 3 added the red pads broom1 never
+# saw. broom1 is kept as the baseline broom2 was measured against.
+!weights/broom2.pt
