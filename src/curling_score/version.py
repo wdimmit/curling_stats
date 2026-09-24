@@ -30,7 +30,11 @@ from pathlib import Path
 # with its release wins a tie (`fit.PAIRED_BONUS`). Shipped with ds15a, whose
 # own model id changes processing_version too. 8 of 108 ends change on ds11a
 # alone. See datasets/ds15/README.md.
-PIPELINE_VERSION = "2026.09.23"
+# 2026.09.24: every shot carries `line`, the thrown line against the
+# broom (schema 6); the side views measure across the sheet from the painted
+# centre line, which moves `target_broom.x` by up to 3 cm; a stone split
+# across a column key at the hog row is timed, not lost.
+PIPELINE_VERSION = "2026.09.24"
 
 
 def model_id(weights) -> str:
@@ -49,7 +53,7 @@ def model_id(weights) -> str:
     return f"{path.stem}-{h.hexdigest()[:8]}"
 
 
-def processing_version(weights, side_weights=None, broom_weights=None) -> str:
+def processing_version(weights, side_weights=None, broom_weights=None, line=False) -> str:
     """The full identity of one analysis configuration.
 
     ``side_weights`` is folded in because the side-view detector changes the
@@ -64,7 +68,11 @@ def processing_version(weights, side_weights=None, broom_weights=None) -> str:
     ``broom_weights`` likewise: the broom model adds a field to every shot, so
     it is named when present and omitted when not, which keeps every timeline
     made without one at the identity it was published with.
+
+    ``line`` is named when the line model ran. The line is measured per shot,
+    so it changes the timeline when present and is named to say so.
     """
     base = f"{PIPELINE_VERSION}+{model_id(weights)}"
     out = base if side_weights is None else f"{base}+side-{model_id(side_weights)}"
-    return out if broom_weights is None else f"{out}+broom-{model_id(broom_weights)}"
+    out = out if broom_weights is None else f"{out}+broom-{model_id(broom_weights)}"
+    return f"{out}+line" if line and side_weights is not None else out

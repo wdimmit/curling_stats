@@ -516,7 +516,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         # Resolved here rather than passed, because nothing upstream chooses
         # it -- `hogtime` takes the same default.
         processing_version=version.processing_version(
-            weights, weights_mod.side_path(), weights_mod.broom_path()),
+            weights, weights_mod.side_path(), weights_mod.broom_path(),
+            line=line_model is not None),
     )
 
 

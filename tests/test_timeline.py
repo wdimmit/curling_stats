@@ -327,8 +327,10 @@ class TestTimingFields:
         dishonesty this whole scoreboard-OCR effort exists to remove.
 
         5 adds `target_broom` to every shot: where the skip held the broom, or
-        null. A 4 has no such key at all, which readers must treat as null."""
-        assert timeline.SCHEMA_VERSION == 5
+        null. A 4 has no such key at all, which readers must treat as null.
+        6 adds `line` to every shot: where the rock's thrown line passed the broom,
+        or null. A 5 has no such key, which readers must treat as not measured."""
+        assert timeline.SCHEMA_VERSION == 6
 
     def test_a_placeholder_shot_has_no_timings(self):
         end = timeline.build_end(
@@ -815,3 +817,28 @@ class TestTargetBroom:
     def test_no_broom_is_null_not_absent(self):
         shot = self._end(None)["shots"][0]
         assert "target_broom" in shot and shot["target_broom"] is None
+
+
+class TestLine:
+    def _end(self, line):
+        s = S.Shot(number=1, color="red", stones=[], t_rest_s=10.0)
+        s.line = line
+        return timeline.build_end(number=1, house="top", start_s=0.0, end_s=900.0, shots=[s])
+
+    def test_a_measured_line_is_published_in_house_metres(self):
+        from curling_score.game.linetime import Line
+        line = Line(start=(-0.23151, 38.0712), at_hog_x=-0.75712, at_hog_offset=-0.16333,
+                    at_broom_x=-2.35912, miss=-0.71234, curl="right", side="wide",
+                    confirmed=True, hog_path=((28.3461, -0.75712),), path=((20.0124, -1.18049),),
+                    fit_n=53, fit_rms=0.00412)
+        got = self._end(line)["shots"][0]["line"]
+        assert got == {"start": {"x": -0.2315, "y": 38.071},
+                       "at_hog": {"x": -0.7571, "offset_m": -0.1633},
+                       "at_broom": {"x": -2.3591, "miss_m": -0.7123},
+                       "side": "wide", "curl": "right", "confirmed": True,
+                       "hog_path": [[28.35, -0.757]], "path": [[20.01, -1.18]],
+                       "fit": {"n": 53, "rms_m": 0.0041}}
+
+    def test_no_line_is_null_not_absent(self):
+        shot = self._end(None)["shots"][0]
+        assert "line" in shot and shot["line"] is None

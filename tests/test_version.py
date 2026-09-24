@@ -44,3 +44,13 @@ class TestTheBroomModelIsPartOfTheIdentity:
         a = tmp_path / "over.pt"; a.write_bytes(b"overhead")
         s = tmp_path / "side.pt"; s.write_bytes(b"sideview")
         assert version.processing_version(a, s, None) == version.processing_version(a, s)
+
+
+def test_the_line_pass_is_named_when_it_ran(tmp_path):
+    from curling_score import version
+    w, side, broom = (tmp_path / n for n in ("w.pt", "side.pt", "broom.pt"))
+    for i, f in enumerate((w, side, broom)):
+        f.write_bytes(bytes([i]))           # model_id hashes the file
+    assert version.processing_version(w, side, broom, line=True).endswith("+line")
+    assert not version.processing_version(w, side, broom).endswith("+line")
+    assert not version.processing_version(w, None, None, line=True).endswith("+line")

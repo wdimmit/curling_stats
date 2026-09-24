@@ -12,7 +12,7 @@ from curling_score.game import classify, fartime, hogtime, rules, shots as shots
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # The overhead camera only sees the last few metres of a 45 m sheet, so the
 # stone comes into view long after it left the hand. To watch the shot being
@@ -27,6 +27,20 @@ def _broom(b):
     return {"x": round(float(b.x_m), 4), "y": round(float(b.y_m), 4),
             "seen": round(float(b.seen), 2),
             "confidence": round(float(b.confidence), 3)}
+
+
+def _line(l):
+    """A `linetime.Line` in house metres, or None."""
+    if l is None:
+        return None
+    r = lambda v, n=4: None if v is None else round(float(v), n)
+    return {"start": None if l.start is None else {"x": r(l.start[0]), "y": r(l.start[1], 3)},
+            "at_hog": {"x": r(l.at_hog_x), "offset_m": r(l.at_hog_offset)},
+            "at_broom": {"x": r(l.at_broom_x), "miss_m": r(l.miss)},
+            "side": l.side, "curl": l.curl, "confirmed": l.confirmed,
+            "hog_path": [[r(y, 2), r(x, 3)] for y, x in l.hog_path],
+            "path": [[r(y, 2), r(x, 3)] for y, x in l.path],
+            "fit": {"n": int(l.fit_n), "rms_m": r(l.fit_rms)}}
 
 
 def _stone(d) -> dict:
@@ -174,6 +188,9 @@ def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
                 # tee, in house metres; null when no pad was held still, or the
                 # timeline was made without a broom model.
                 "target_broom": _broom(getattr(s, "target_broom", None)),
+                # Where the rock's thrown line passed the broom, where it sat
+                # before the push and where it went; null when not measured.
+                "line": _line(getattr(s, "line", None)),
             }
         )
 
