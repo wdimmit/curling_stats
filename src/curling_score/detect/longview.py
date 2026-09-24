@@ -136,6 +136,13 @@ class Crossing:
     # trustworthy that far up the sheet, which is why the older check compared
     # two panel speeds rather than a speed against a distance.
     speed_m_s: float | None = None
+    # Which key of the tracks dict was timed -- the left one when two
+    # neighbours were joined. Read by `game/linetime.py` to find the stone
+    # again among all the samples.
+    track_key: int | None = None
+    # Every accepted detection of the rock's colour in the window, as
+    # (t, cx, edge_row, body_px), for the trained proposer only (Task 3).
+    samples: tuple = ()
 
     def __bool__(self) -> bool:
         return self.t is not None
@@ -249,10 +256,18 @@ def _sub_row(rows, wide, lower):
 
 def _crossing_index(track, hog_row):
     """Index ``i`` such that ``track[i], track[i + 1]`` straddle ``hog_row``."""
-    for i, ((_, r0, _), (_, r1, _)) in enumerate(zip(track, track[1:])):
+    for i, (a, b) in enumerate(zip(track, track[1:])):
+        r0, r1 = a[1], b[1]
         if r0 <= hog_row <= r1 and r1 != r0:
             return i
     return None
+
+
+def _moving_and_crossed(tracks, view):
+    moving = [(k, tr) for k, tr in tracks.items()
+              if len(tr) >= _MIN_SAMPLES and tr[-1][1] > tr[0][1]]
+    crossed = [(k, tr) for k, tr in moving if tr[0][1] <= view.hog_row <= tr[-1][1]]
+    return moving, crossed
 
 
 def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
@@ -273,12 +288,19 @@ def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
     detector drawing the granite's own edge has a different one, and inheriting
     this one made it read 0.073 s late on every crossing.
     """
-    moving = [tr for tr in tracks.values()
-              if len(tr) >= _MIN_SAMPLES and tr[-1][1] > tr[0][1]]
+    moving, crossed = _moving_and_crossed(tracks, view)
+    if not crossed:
+        # A stone's column can cross one of the 120-px keys' boundaries right
+        # at the hog row -- AEqL game 2, end 3, rock 3 did, at column 480 --
+        # and then neither half of its track straddles the line. Only when
+        # nothing crossed, join each key to its neighbour and ask again; a
+        # join that finds exactly one crosser is that stone.
+        joined = {k: sorted(tracks[k] + tracks[k + 1]) for k in tracks if k + 1 in tracks}
+        m2, c2 = _moving_and_crossed(joined, view)
+        if len(c2) == 1:
+            moving, crossed = m2, c2
     if not moving:
         return Crossing(None, "no candidate that could be a stone in flight", KEY_NO_CANDIDATE)
-    crossed = [tr for tr in moving
-               if tr[0][1] <= view.hog_row <= tr[-1][1]]
     if len(crossed) > 1:
         # Step 3 of this task's brief suggested picking the crosser whose
         # body width best matches STONE_WIDTH_AT_HOG_PX and refusing only
@@ -293,7 +315,7 @@ def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
         return Crossing(None, f"two candidates crossed the line ({len(crossed)})", KEY_AMBIGUOUS)
     if not crossed:
         return Crossing(None, "the stone never reached the line", KEY_NEVER_REACHED)
-    track = crossed[0]
+    key, track = crossed[0]
 
     idx = _crossing_index(track, view.hog_row)
     if idx is None:
@@ -307,21 +329,21 @@ def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
     # nowhere near the row being measured.
     lo = max(0, idx - (_MIN_SAMPLES - 2))
     local = track[lo:idx + 2]
-    if any(b - a < -1.0 for (_, a, _), (_, b, _) in zip(local, local[1:])):
-        return Crossing(None, "the candidate did not travel steadily", KEY_UNSTEADY)
+    if any(q[1] - p[1] < -1.0 for p, q in zip(local, local[1:])):
+        return Crossing(None, "the candidate did not travel steadily", KEY_UNSTEADY, track_key=key)
     span = track[-1][0] - track[0][0]
     speed = None
     if span > 0:
         metres = abs(view.metres_at(track[-1][1]) - view.metres_at(track[0][1]))
         speed = metres / span
         if not SPEED_BOUNDS_M_S[0] <= speed <= SPEED_BOUNDS_M_S[1]:
-            return Crossing(None, f"speed {speed:.2f} m/s is not a delivery", KEY_BAD_SPEED)
-    (t0, r0, _), (t1, r1, _) = track[idx], track[idx + 1]
+            return Crossing(None, f"speed {speed:.2f} m/s is not a delivery", KEY_BAD_SPEED, track_key=key)
+    (t0, r0), (t1, r1) = track[idx][:2], track[idx + 1][:2]
     frac = (view.hog_row - r0) / (r1 - r0)
     t = t0 + frac * (t1 - t0) + (OFFSET_S if offset_s is None else offset_s)
     return Crossing(t, "ok", KEY_OK,
-                    width_px=float(np.median([b for _, _, b in track])),
-                    speed_m_s=speed)
+                    width_px=float(np.median([p[2] for p in track])),
+                    speed_m_s=speed, track_key=key)
 
 
 def find_in_frames(frames, view, color, times) -> Crossing:

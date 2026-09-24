@@ -250,3 +250,33 @@ class TestOffsetBelongsToTheProposer:
     def test_the_model_proposer_does_not_inherit_it(self):
         from curling_score.detect import sidemodel
         assert sidemodel.OFFSET_S != longview.OFFSET_S
+
+
+class TestATrackSplitAtABinBoundary:
+    """AEqL game 2, end 3, rock 3: the stone's column crossed 480 -- a 120-px
+    key boundary -- exactly on the hog row, so its track came apart there and
+    neither half straddled the line. It was timed "never reached" and the
+    shot lost its split."""
+
+    def _halves(self):
+        pts = [(10.0 + i * 0.1, 504.0 + i * 3.3, 52.0) for i in range(12)]
+        return {3: [p for p in pts if p[1] < 520.0], 4: [p for p in pts if p[1] >= 520.0]}
+
+    def test_the_halves_are_joined_and_timed(self):
+        got = longview.crossing_from_tracks(self._halves(), VIEW, offset_s=0.0)
+        assert got.key == longview.KEY_OK, got.reason
+        assert got.t == pytest.approx(10.0 + 0.4 + (520.0 - 517.2) / 3.3 * 0.1, abs=1e-6)
+        assert got.track_key == 3
+
+    def test_the_later_half_alone_still_never_reaches(self):
+        got = longview.crossing_from_tracks({4: self._halves()[4]}, VIEW, offset_s=0.0)
+        assert got.key == longview.KEY_NEVER_REACHED
+
+    def test_a_crossing_within_one_key_is_timed_from_it_alone(self):
+        one = {3: [(10.0 + i * 0.1, 504.0 + i * 3.3, 52.0) for i in range(12)]}
+        got = longview.crossing_from_tracks(one, VIEW, offset_s=0.0)
+        assert got.key == longview.KEY_OK and got.track_key == 3
+
+    def test_entries_may_carry_a_column_after_the_width(self):
+        one = {3: [(10.0 + i * 0.1, 504.0 + i * 3.3, 52.0, 300.0 + i) for i in range(12)]}
+        assert longview.crossing_from_tracks(one, VIEW, offset_s=0.0).key == longview.KEY_OK
