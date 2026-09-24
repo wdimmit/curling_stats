@@ -324,8 +324,11 @@ class TestTimingFields:
         Nothing yet reads schema_version, but the day something does, it must
         not treat a 3 and a 4 alike: a 3 means "score" is inferred, a 4 means
         it is the board's, and presenting one as the other is the exact
-        dishonesty this whole scoreboard-OCR effort exists to remove."""
-        assert timeline.SCHEMA_VERSION == 4
+        dishonesty this whole scoreboard-OCR effort exists to remove.
+
+        5 adds `target_broom` to every shot: where the skip held the broom, or
+        null. A 4 has no such key at all, which readers must treat as null."""
+        assert timeline.SCHEMA_VERSION == 5
 
     def test_a_placeholder_shot_has_no_timings(self):
         end = timeline.build_end(
@@ -794,3 +797,21 @@ class TestWhenTheBoardCannotBePlaced:
         block = {}
         timeline.settle_board_scores(self._ends(16), block, highest_end=3)
         assert block["accounts_for_every_end"] is True
+
+
+class TestTargetBroom:
+    def _end(self, broom):
+        from curling_score.game.broomtime import TargetBroom
+        s = S.Shot(number=1, color="red", stones=[], t_rest_s=10.0)
+        s.target_broom = None if broom is None else TargetBroom(*broom)
+        return timeline.build_end(number=1, house="top", start_s=0.0,
+                                  end_s=900.0, shots=[s])
+
+    def test_a_held_broom_is_published_in_house_metres(self):
+        shot = self._end((0.61234, -0.20456, 0.9, 0.8123))["shots"][0]
+        assert shot["target_broom"] == {"x": 0.6123, "y": -0.2046,
+                                        "seen": 0.9, "confidence": 0.812}
+
+    def test_no_broom_is_null_not_absent(self):
+        shot = self._end(None)["shots"][0]
+        assert "target_broom" in shot and shot["target_broom"] is None

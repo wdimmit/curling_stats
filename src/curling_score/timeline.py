@@ -12,12 +12,21 @@ from curling_score.game import classify, fartime, hogtime, rules, shots as shots
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # The overhead camera only sees the last few metres of a 45 m sheet, so the
 # stone comes into view long after it left the hand. To watch the shot being
 # called and thrown you have to start this far back from where we first see it.
 VIDEO_LEAD_IN_S = 10.0
+
+
+def _broom(b):
+    """A `broomtime.TargetBroom` in house metres, or None."""
+    if b is None:
+        return None
+    return {"x": round(float(b.x_m), 4), "y": round(float(b.y_m), 4),
+            "seen": round(float(b.seen), 2),
+            "confidence": round(float(b.confidence), 3)}
 
 
 def _stone(d) -> dict:
@@ -161,6 +170,10 @@ def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
                 "house_delta": _delta(getattr(s, "house_delta", None)),
                 "delivered_stone_index": getattr(s, "delivered_stone_index", None),
                 "stones": [_stone(d) for d in s.stones],
+                # Where the skip held the broom before the rock crossed the
+                # tee, in house metres; null when no pad was held still, or the
+                # timeline was made without a broom model.
+                "target_broom": _broom(getattr(s, "target_broom", None)),
             }
         )
 
