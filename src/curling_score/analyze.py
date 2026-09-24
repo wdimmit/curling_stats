@@ -42,6 +42,29 @@ PHASES = ("download", "proxy", "calibrate", "profile", "scoreboard", "detect",
 OTHER_HOUSE = {"top": "bottom", "bottom": "top"}
 
 
+def _with_lateral(plate, view, name, progress):
+    """``view`` with its across-the-sheet calibration, or unchanged if the ring's
+    sides could not be read -- which costs that view its brooms and nothing
+    else. The hog tripwire is depth alone and never waits on this."""
+    try:
+        return sideview.solve_lateral(plate, view, name=name)
+    except sideview.SideViewError as exc:
+        progress(f"{name} view has no lateral calibration, so no brooms from it: {exc}")
+        return view
+
+
+def _side_calibration(sideviews) -> dict:
+    out = {}
+    for name, v in (sideviews or {}).items():
+        d = {"rect": list(v.rect), "tee_row": round(v.tee_row, 2),
+             "hog_row": round(v.hog_row, 2)}
+        if v.has_lateral:
+            d["centre_col"] = round(v.centre_col, 2)
+            d["lat_px_per_m_at_tee"] = round(v.lat_px_per_m_at_tee, 3)
+        out[name] = d
+    return out
+
+
 def _proxy_setups(setups, strip):
     """The same calibrations, with panel rects moved into proxy coordinates.
 
@@ -208,6 +231,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             rects = sideview.locate(panels, width=w, height=h)
             sideviews = {n: sideview.solve(plate, r, name=n)
                          for n, r in rects.items()}
+            sideviews = {n: _with_lateral(plate, v, n, progress)
+                         for n, v in sideviews.items()}
         except sideview.SideViewError as exc:
             progress(f"side views unusable, so this video has no splits: {exc}")
     phase("calibrate", 1.0, "calibrated")
@@ -442,9 +467,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             }
             for name, s in setups.items()
         },
-        **{name: {"rect": list(v.rect), "tee_row": round(v.tee_row, 2),
-                  "hog_row": round(v.hog_row, 2)}
-           for name, v in (sideviews or {}).items()},
+        **_side_calibration(sideviews),
     }
     return timeline.build_document(
         video_id=info.video_id,
