@@ -89,14 +89,18 @@ def is_usable(v: VideoViews) -> bool:
 def _view_to_json(v: sideview.SideView | None):
     if v is None:
         return None
-    return {"tee_row": v.tee_row, "hog_row": v.hog_row, "d_m": v.d_m}
+    return {"tee_row": v.tee_row, "hog_row": v.hog_row, "d_m": v.d_m,
+            "centre_col": v.centre_col,
+            "lat_px_per_m_at_tee": v.lat_px_per_m_at_tee}
 
 
 def _view_from_json(d, rect: tuple):
     if d is None:
         return None
     return sideview.SideView(
-        rect=rect, tee_row=d["tee_row"], hog_row=d["hog_row"], d_m=d["d_m"])
+        rect=rect, tee_row=d["tee_row"], hog_row=d["hog_row"], d_m=d["d_m"],
+        centre_col=d.get("centre_col"),
+        lat_px_per_m_at_tee=d.get("lat_px_per_m_at_tee"))
 
 
 def to_json(v: VideoViews) -> dict:

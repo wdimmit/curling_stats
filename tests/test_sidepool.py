@@ -323,3 +323,15 @@ class TestBandCrop:
         y0, y1 = sidepool.band_crop(VIEW)
         at_hog = VIEW.stone_width_at(VIEW.hog_row, 52.0) * 0.42
         assert (y1 - y0) > 6 * at_hog
+
+
+class TestShiftedKeepsLateral:
+    def test_moving_the_origin_keeps_the_across_calibration(self):
+        from curling_score.geometry.sideview import SideView
+        from curling_score.harvest import sidepool
+        v = SideView(rect=(1107, 0, 813, 1080), tee_row=436.45, hog_row=514.0,
+                     centre_col=414.7, lat_px_per_m_at_tee=128.4)
+        got = sidepool._shifted(v)
+        assert got.rect == (0, 0, 813, 1080)
+        # centre_col is in the view's own columns, so a shift leaves it alone
+        assert (got.centre_col, got.lat_px_per_m_at_tee) == (414.7, 128.4)

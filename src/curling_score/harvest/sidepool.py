@@ -94,8 +94,7 @@ def _shifted(view):
     would put the hog line at the wrong row and mistime every crossing in the
     clip, silently.
     """
-    return type(view)(rect=(0, 0, view.rect[2], view.rect[3]),
-                      tee_row=view.tee_row, hog_row=view.hog_row, d_m=view.d_m)
+    return dataclasses.replace(view, rect=(0, 0, view.rect[2], view.rect[3]))
 
 
 def _label_for(prop: longview.Proposal, color: str, shape) -> dataset.Label:

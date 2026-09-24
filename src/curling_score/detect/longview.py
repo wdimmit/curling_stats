@@ -13,6 +13,7 @@ crossing has to survive every gate below or it does not exist.
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 from dataclasses import dataclass
 
@@ -361,6 +362,5 @@ def find_crossing(video, view, color: str, t0: float, t1: float,
     frames, times = decode(video, view.rect, t0, t1, fps)
     if not len(frames):
         return Crossing(None, "no frames decoded", KEY_NO_FRAMES)
-    shifted = type(view)(rect=(0, 0, view.rect[2], view.rect[3]),
-                         tee_row=view.tee_row, hog_row=view.hog_row, d_m=view.d_m)
+    shifted = dataclasses.replace(view, rect=(0, 0, view.rect[2], view.rect[3]))
     return find_in_frames(frames, shifted, color, times)

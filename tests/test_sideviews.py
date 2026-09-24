@@ -64,3 +64,18 @@ def test_real_videos_calibrate_both_views(harvested_frames, sheet, vid):
     assert got.error is None, got.error
     assert len(sideviews.usable_views(got)) == 2, {
         n: got.views[n].error for n in got.views}
+
+
+class TestViewJsonLateral:
+    def test_the_across_calibration_round_trips(self):
+        from curling_score.geometry.sideview import SideView
+        from curling_score.harvest import sideviews as SV
+        v = SideView(rect=(0, 0, 810, 1080), tee_row=429.95, hog_row=520.0,
+                     centre_col=390.1, lat_px_per_m_at_tee=148.5)
+        assert SV._view_from_json(SV._view_to_json(v), v.rect) == v
+
+    def test_json_from_before_it_existed_still_loads(self):
+        from curling_score.harvest import sideviews as SV
+        got = SV._view_from_json({"tee_row": 430.0, "hog_row": 520.0,
+                                  "d_m": 40.2335}, (0, 0, 810, 1080))
+        assert got.centre_col is None and not got.has_lateral
