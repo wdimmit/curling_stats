@@ -50,8 +50,9 @@ BATCH = 16
 def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
     """``{track_key: [(t, edge_row, body_px, cx), ...]}`` from a trained detector.
 
-    Shaped exactly like the dict ``longview.find_in_frames`` builds, so the
-    same gates can read it.
+    Entries carry the column ``cx`` as a fourth element, which
+    ``longview.crossing_from_tracks`` ignores -- reading the first three is
+    enough for the same gates to work over this dict as over the colour scan's.
     """
     want = _CLASS_FOR[color]
     y0, y1 = sidepool.band_crop(view)
@@ -120,9 +121,12 @@ def find_in_frames(model, frames, view, color: str, times,
         tracks, view, offset_s=OFFSET_S if offset_s is None else offset_s)
     samples = tuple(sorted((p[0], p[3], p[1], p[2]) for tr in tracks.values() for p in tr))
     if got.track_key is None and samples:
-        # A refusal still names the stone's key -- the longest rising track --
-        # so the line pass can find it, e.g. a big-weight hit over the speed bound.
-        rising = [(len(tr), k) for k, tr in tracks.items() if tr[-1][1] > tr[0][1]]
+        # A refusal still names the stone's key, so the line pass can find it,
+        # e.g. a big-weight hit over the speed bound. Picked by ROW TRAVEL, not
+        # by sample count: a stone at rest in a neighbouring sheet's house sits
+        # in the band all window long, so it has the longest track, but it
+        # barely moves. The one that travelled furthest is the delivery.
+        rising = [(tr[-1][1] - tr[0][1], k) for k, tr in tracks.items() if tr[-1][1] > tr[0][1]]
         if rising:
             got = dataclasses.replace(got, track_key=max(rising)[1])
     return dataclasses.replace(got, samples=samples)

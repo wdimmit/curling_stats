@@ -271,7 +271,11 @@ def _moving_and_crossed(tracks, view):
 
 
 def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
-    """Turn ``{key: [(t, edge_row, body_px), ...]}`` into a verdict.
+    """Turn ``{key: [(t, edge_row, body_px, ...), ...]}`` into a verdict.
+
+    Entries carry 3 or more elements and are read by index (``[0]``, ``[1]``,
+    ``[2]``); a trained proposer's fourth element, the column, is never read
+    here.
 
     Split out of :func:`find_in_frames` so a different *proposer* can be
     measured against the same gates. Everything here -- what counts as moving,

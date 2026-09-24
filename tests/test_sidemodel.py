@@ -73,6 +73,41 @@ class TestItKeepsTheColumn:
         assert (t, cx, row) == pytest.approx((10.0, 300.0, 504.0))
 
 
+class TestRefusalNamesTheStoneThatMoved:
+    """A refusal still has to name a track for the line pass, and the track
+    seen in the most frames is not necessarily the one that moved: a stone
+    already at rest in a neighbouring sheet's house sits in the band the
+    whole window, so it racks up the most samples while barely travelling."""
+
+    def test_the_fallback_key_is_the_track_that_travelled_furthest(self):
+        n = 40
+        lo = max(0, sidepool.band_crop(VIEW)[0])
+        times = [10.0 + i * 0.1 for i in range(n)]
+        frames = [np.zeros((1080, 810, 3), np.uint8)] * n
+        per = []
+        for i in range(n):
+            boxes = []
+            # Parked in a far column: present every frame, rises 1 px total --
+            # the longest track by far, but not a delivery.
+            park_row = 480.0 + i / (n - 1)
+            pw = VIEW.stone_width_at(park_row, longview.STONE_WIDTH_AT_HOG_PX)
+            pcx = 650.0
+            boxes.append([pcx - pw / 2, park_row - lo - 30, pcx + pw / 2,
+                         park_row - lo, 0, 0.9])
+            # Moving, in its own column: only the first 20 frames, rising well
+            # short of the hog row (520) -- fewer samples, far more travel.
+            if i < 20:
+                mv_row = 440.0 + i * (500.0 - 440.0) / 19
+                mw = VIEW.stone_width_at(mv_row, longview.STONE_WIDTH_AT_HOG_PX)
+                mcx = 100.0
+                boxes.append([mcx - mw / 2, mv_row - lo - 30, mcx + mw / 2,
+                             mv_row - lo, 0, 0.9])
+            per.append(boxes)
+        got = sidemodel.find_in_frames(FakeModel(per), frames, VIEW, "red", times)
+        assert got.key == longview.KEY_NEVER_REACHED, got.reason
+        assert got.track_key == 0          # int(100 // 120): the mover, not the park
+
+
 class TestDetectBand:
     def test_boxes_come_back_per_frame_in_view_rows_for_the_colour_asked(self):
         frames = [np.zeros((1080, 810, 3), np.uint8)] * 2
