@@ -100,6 +100,50 @@ clock pairs are in sync.
 window, or if the stone overlay misses. Otherwise present the findings and get
 a go.
 
+### Phase 0 findings (2026-09-23)
+
+Read by eye from contact sheets of the destination-facing camera at t_tee −2.0,
+−1.0, −0.5, 0.0 and +0.5 s. The timelines were the 2026.09.22 ones in
+`~/curling-work/ds15/games/timelines/`.
+
+| game | shots | pad on the ice, still across −2.0…+0.5 s | exceptions |
+| --- | --- | --- | --- |
+| VXU9xwmugRg | 37 (every 3rd shot) | 35 | 1 skip crouched mid-house with the broom across the knees, not on the ice; 1 unclear |
+| AEqLTgM25Tc | 12 (every 8th shot) | 10–11 | 1 unclear (dark pad against the skip's shoes) |
+
+- **The window is right.** Wherever a pad was down, it stayed still for the
+  whole 2.5 s shown, so `[t_tee − 1.0, t_tee]` sits well inside the hold. That
+  held on AEqL too, whose other camera pairs run 0.2–0.9 s out of step. No
+  occlusion by the thrower or sweepers was seen, because they are below this
+  crop at that moment.
+- **Pads** are mostly yellow or orange, with some green, white or black. At
+  full resolution one is about 30 px wide and 10 px tall, at the skip's feet,
+  with the shaft rising to the hands. Colour is not a usable class signal.
+- **Other brooms.** Sometimes a second broom rests on the ice near the
+  sideline (VXU9 e5 s4) or is held up in the air. **Tie-break:** among
+  clusters that pass `MIN_SEEN`, take the one seen in the most frames, then the
+  one nearest the tee.
+- **Lateral mapping works from paint alone.** A fixed greenness threshold along
+  the tee row fails, because the ice swings −6…+5 and the far-side band is half
+  as green. The fix is to find the two green bands, then place each band's
+  edges at half its own peak. The 8-ft/12-ft ratio reads 0.625–0.635 against
+  0.667 (edge erosion), so the scale uses the summed spans, (12-ft + 8-ft) /
+  6.096 m:
+  - VXU9 left camera: 148.5 px/m, centre col 390.1;
+  - VXU9 right camera: 128.4 px/m, centre col 414.7.
+- **Checked against the overhead camera** on VXU9 e2 s13, whose 5 stones were
+  confirmed by drawing them on the overhead panel itself. Projected into the
+  side view, each lands on its stone within a few px laterally. Its footprint
+  lands within 1–3 rows (about 0.1–0.3 m) of the silhouette's lowest row,
+  measured by differencing against a clean plate. From this angle a stone's
+  body stands about 17 px *above* its footprint, because height is not
+  foreshortened the way depth is. So the contact row is the bottom of the box,
+  never its centre.
+- The existing depth model matches the paint down the centre column to about 1
+  row: back 12-ft, back 4-ft, button, front 4-ft and front 12-ft.
+- **Crop for the detector:** rows `tee_row − 130 … row_for(3.0) + 15`, full
+  view width. Every pad seen sat between about tee−20 and tee+30.
+
 ## Phase 1 — Lateral calibration of the side view
 
 In `geometry/sideview.py`, leave `solve()` and the tripwire untouched.
@@ -189,8 +233,9 @@ In `geometry/sideview.py`, leave `solve()` and the tripwire untouched.
   1. Drop samples with `|x| > 2.2`, behind the back line (`y < R.back − 0.15`,
      where the opposing skip stands), or at `y > 3.0`.
   2. Cluster within 0.15 m.
-  3. The cluster seen in the most frames wins if it appears in at least
-     `MIN_SEEN = 0.5` of them, and its position is the median.
+  3. Among clusters seen in at least `MIN_SEEN = 0.5` of the frames, the one
+     seen in the most frames wins, with ties going to the one nearest the tee.
+     Its position is the median.
   4. Otherwise the result is None.
 - `time_target_brooms(shots, video, view, finder, fps=10)` attaches
   `shot.target_broom` in place. It is a no-op when the view has no lateral
