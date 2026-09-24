@@ -71,7 +71,8 @@ class TestViewJsonLateral:
         from curling_score.geometry.sideview import SideView
         from curling_score.harvest import sideviews as SV
         v = SideView(rect=(0, 0, 810, 1080), tee_row=429.95, hog_row=520.0,
-                     centre_col=390.1, lat_px_per_m_at_tee=148.5)
+                     centre_col=390.1, lat_px_per_m_at_tee=148.5,
+                     centre_line=(380.0, 0.01))
         assert SV._view_from_json(SV._view_to_json(v), v.rect) == v
 
     def test_json_from_before_it_existed_still_loads(self):

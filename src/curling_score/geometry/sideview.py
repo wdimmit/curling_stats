@@ -88,6 +88,12 @@ class SideView:
     # sheet.
     centre_col: float | None = None
     lat_px_per_m_at_tee: float | None = None
+    # The painted centre line, col = a + b*row, traced below the house by
+    # `solve_centre_line`. The ring fit's centre is a column only on the tee
+    # row, and on VXU9's left camera it sits 4.5 px (3 cm) off the paint; the
+    # line itself leans up to 13 px over the rows below the house. None falls
+    # back to `centre_col` everywhere.
+    centre_line: tuple[float, float] | None = None
 
     @property
     def has_lateral(self) -> bool:
@@ -103,6 +109,20 @@ class SideView:
         _c, yh = self._map()
         return self.lat_px_per_m_at_tee * (row - yh) / (self.tee_row - yh)
 
+    def centre_col_at(self, row: float) -> float:
+        """The centre line's column on ``row``: the paint where it was traced,
+        else the ring's centre."""
+        if self.centre_line is not None:
+            a, b = self.centre_line
+            return a + b * row
+        self._need_lateral()
+        return self.centre_col
+
+    def lateral_x(self, col: float, row: float) -> float:
+        """Metres across the sheet of a point on the ice at (col, row)."""
+        self._need_lateral()
+        return (col - self.centre_col_at(row)) / self.lateral_px_per_m(row)
+
     def to_house(self, col: float, row: float) -> tuple[float, float]:
         """A point ON THE ICE, from view pixels to house metres.
 
@@ -112,14 +132,13 @@ class SideView:
         rises about 17 px above its footprint at the tee.
         """
         self._need_lateral()
-        return ((col - self.centre_col) / self.lateral_px_per_m(row),
-                self.metres_at(row))
+        return self.lateral_x(col, row), self.metres_at(row)
 
     def to_image(self, x_m: float, y_m: float) -> tuple[float, float]:
         """The view pixel ``(col, row)`` of a point on the ice."""
         self._need_lateral()
         row = self.row_for(y_m)
-        return self.centre_col + x_m * self.lateral_px_per_m(row), row
+        return self.centre_col_at(row) + x_m * self.lateral_px_per_m(row), row
 
     def _need_lateral(self):
         if not self.has_lateral:
@@ -402,3 +421,74 @@ def solve_lateral(plate, view: SideView, name: str = "side") -> SideView:
     if not 0.2 * w <= centre <= 0.8 * w:
         raise SideViewError(f"{name}: house centre at column {centre:.0f} of {w}")
     return dataclasses.replace(view, centre_col=centre, lat_px_per_m_at_tee=lat)
+
+
+# The painted centre line below the house. Measured 2026-09-24 on the club's
+# sheets 1, 2, 3 and 5: a straight image line to under 1 px (the side cameras
+# have no lens distortion to bend it), leaning up to 13 px over the rows below
+# the house, and interrupted on sheet 3 by a centre-ice logo. Traced twice:
+# widely around the ring's centre, then narrowly around that first fit.
+_CL_BELOW_TEE_ROWS = 40
+_CL_STEP_ROWS = 2
+_CL_WIDE_PX = 16
+_CL_NARROW_PX = 4
+_CL_MARGIN_PX = 12
+_CL_MIN_DIP = 3.0
+_CL_OUTLIER_PX = 1.5
+_CL_MIN_ROWS = 100
+_CL_MAX_RMS_PX = 1.5
+_CL_MAX_SLOPE = 0.03
+
+
+def _trace_dips(lum, rows, guide, half):
+    """On each row, the darkest sub-pixel column within ``half`` of ``guide(row)``."""
+    rs, cs = [], []
+    w = lum.shape[1]
+    kernel = np.ones(21) / 21
+    for r in rows:
+        g = int(round(guide(r)))
+        lo, hi = g - half - _CL_MARGIN_PX, g + half + _CL_MARGIN_PX + 1
+        if lo < 0 or hi > w:
+            continue
+        band = lum[r - 1:r + 2, lo:hi].mean(axis=0)
+        seg = (band - np.convolve(band, kernel, mode="same"))[_CL_MARGIN_PX:-_CL_MARGIN_PX]
+        i = int(np.argmin(seg))
+        if seg[i] > -_CL_MIN_DIP or i in (0, len(seg) - 1):
+            continue
+        a, b, c = seg[i - 1], seg[i], seg[i + 1]
+        den = a - 2 * b + c
+        rs.append(r)
+        cs.append(lo + _CL_MARGIN_PX + i + (0.5 * (a - c) / den if den else 0.0))
+    return np.array(rs, float), np.array(cs, float)
+
+
+def _robust_line(rs, cs):
+    keep = np.ones(len(rs), bool)
+    q = None
+    for _ in range(5):
+        if keep.sum() < 2:
+            return None, keep
+        q = np.polyfit(rs[keep], cs[keep], 1)
+        keep = np.abs(cs - np.polyval(q, rs)) < _CL_OUTLIER_PX
+    return q, keep
+
+
+def solve_centre_line(plate, view: SideView, name: str = "side") -> SideView:
+    """Trace the painted centre line below the house and fit it as a line."""
+    view._need_lateral()
+    x0, y0, w, h = view.rect
+    lum = np.asarray(plate, dtype=np.float32)[y0:y0 + h, x0:x0 + w].mean(axis=2)
+    rows = np.arange(int(view.tee_row) + _CL_BELOW_TEE_ROWS, h - 2, _CL_STEP_ROWS)
+    rs, cs = _trace_dips(lum, rows, lambda r: view.centre_col, _CL_WIDE_PX)
+    q, _ = _robust_line(rs, cs)
+    if q is None:
+        raise SideViewError(f"{name}: no painted centre line near column {view.centre_col:.0f}")
+    rs, cs = _trace_dips(lum, rows, lambda r: np.polyval(q, r), _CL_NARROW_PX)
+    q, keep = _robust_line(rs, cs)
+    if q is None or keep.sum() < _CL_MIN_ROWS:
+        raise SideViewError(f"{name}: the centre line was traced on only "
+                            f"{int(keep.sum())} rows, need {_CL_MIN_ROWS}")
+    rms = float(np.std(cs[keep] - np.polyval(q, rs[keep])))
+    if rms > _CL_MAX_RMS_PX or abs(q[0]) > _CL_MAX_SLOPE:
+        raise SideViewError(f"{name}: centre line fit {rms:.2f} px RMS, slope {q[0]:.4f}")
+    return dataclasses.replace(view, centre_line=(float(q[1]), float(q[0])))

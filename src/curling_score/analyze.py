@@ -45,12 +45,19 @@ OTHER_HOUSE = {"top": "bottom", "bottom": "top"}
 
 def _with_lateral(plate, view, name, progress):
     """``view`` with its across-the-sheet calibration, or unchanged if the ring's
-    sides could not be read -- which costs that view its brooms and nothing
-    else. The hog tripwire is depth alone and never waits on this."""
+    sides could not be read -- which costs that view its brooms and lines and
+    nothing else. The hog tripwire is depth alone and never waits on this.
+    The painted centre line is then traced; a view whose line cannot be read
+    keeps the ring's centre."""
     try:
-        return sideview.solve_lateral(plate, view, name=name)
+        view = sideview.solve_lateral(plate, view, name=name)
     except sideview.SideViewError as exc:
         progress(f"{name} view has no lateral calibration, so no brooms from it: {exc}")
+        return view
+    try:
+        return sideview.solve_centre_line(plate, view, name=name)
+    except sideview.SideViewError as exc:
+        progress(f"{name} view: no painted centre line, lateral figures from the ring's centre: {exc}")
         return view
 
 
@@ -62,6 +69,8 @@ def _side_calibration(sideviews) -> dict:
         if v.has_lateral:
             d["centre_col"] = round(v.centre_col, 2)
             d["lat_px_per_m_at_tee"] = round(v.lat_px_per_m_at_tee, 3)
+            if v.centre_line is not None:
+                d["centre_line"] = [round(v.centre_line[0], 3), round(v.centre_line[1], 6)]
         out[name] = d
     return out
 

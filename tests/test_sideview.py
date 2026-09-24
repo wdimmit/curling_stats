@@ -11,6 +11,7 @@ import pytest
 
 from curling_score.geometry import constants as C
 from curling_score.geometry import layout, sideview
+from curling_score.geometry.sideview import SideView
 from tests import synth
 from tests.conftest import VALIDATION_VIDS
 
@@ -324,3 +325,61 @@ class TestEveryRealViewLateral:
             lo, hi = sideview.PLAUSIBLE_LAT_PX_PER_M
             assert lo <= view.lat_px_per_m_at_tee <= hi, label
             assert 0.2 * rect[2] <= view.centre_col <= 0.8 * rect[2], label
+
+
+def _plate_with_centre_line(a=380.0, b=0.01, side_px=200.0, logo=True, line=True, seed=0):
+    """A grey plate with the painted centre line col = a + b*row below the house,
+    a parallel line side_px to its right, and optionally a noisy centre-ice logo."""
+    rng = np.random.default_rng(seed)
+    plate = np.full((1080, 1920, 3), 150.0) + rng.normal(0, 2.0, (1080, 1920, 3))
+    for row in range(470, 1080):
+        for col in ((a + b * row, a + b * row + side_px) if line else ()):
+            c = int(round(col))
+            plate[row, c - 1:c + 2, :] -= 14.0
+    if logo:
+        plate[700:800, 280:520, :] = 150.0 + rng.normal(0, 18.0, (100, 240, 3))
+    return plate
+
+
+class TestSolveCentreLine:
+    VIEW = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
+                    centre_col=384.0, lat_px_per_m_at_tee=150.0)
+
+    def test_it_recovers_the_painted_line_through_a_logo(self):
+        got = sideview.solve_centre_line(_plate_with_centre_line(), self.VIEW)
+        a, b = got.centre_line
+        for row in (500.0, 1000.0):
+            assert a + b * row == pytest.approx(380.0 + 0.01 * row, abs=0.6)
+
+    def test_ice_with_no_line_is_refused(self):
+        with pytest.raises(sideview.SideViewError):
+            sideview.solve_centre_line(_plate_with_centre_line(line=False), self.VIEW)
+
+    def test_a_view_without_lateral_calibration_is_refused(self):
+        flat = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0)
+        with pytest.raises(sideview.SideViewError):
+            sideview.solve_centre_line(_plate_with_centre_line(), flat)
+
+    def test_the_rest_of_the_calibration_is_left_as_it_was(self):
+        got = sideview.solve_centre_line(_plate_with_centre_line(), self.VIEW)
+        assert (got.tee_row, got.hog_row, got.centre_col, got.lat_px_per_m_at_tee) == (
+            430.0, 520.0, 384.0, 150.0)
+
+
+class TestLateralFromThePaint:
+    V = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
+                 centre_col=384.0, lat_px_per_m_at_tee=150.0, centre_line=(380.0, 0.01))
+
+    def test_the_centre_line_is_x_zero_on_every_row(self):
+        for row in (450.0, 700.0, 1050.0):
+            assert self.V.lateral_x(380.0 + 0.01 * row, row) == pytest.approx(0.0, abs=1e-9)
+
+    def test_without_a_centre_line_the_ring_centre_is_used(self):
+        v = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
+                     centre_col=384.0, lat_px_per_m_at_tee=150.0)
+        assert v.centre_col_at(900.0) == 384.0
+
+    def test_to_house_and_to_image_round_trip_with_the_line(self):
+        col, row = self.V.to_image(0.7, 5.0)
+        x, y = self.V.to_house(col, row)
+        assert (x, y) == pytest.approx((0.7, 5.0), abs=1e-6)
