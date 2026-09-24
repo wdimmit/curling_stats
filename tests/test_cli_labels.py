@@ -30,6 +30,19 @@ def session(path, **kw):
 
 
 class TestApply:
+    def test_a_frame_restated_to_no_boxes_is_reported_kept_not_dropped(
+            self, tmp_path, dataset, capfd):
+        a = session(tmp_path / "a.json", boxes={"v_t_000000_00": [],
+                                                "v_t_000001_00": [[0, .3, .3, .1, .05]]},
+                    reviewed=["v_t_000000_00", "v_t_000001_00"])
+        assert cli.main(["labels", str(dataset), "--split", "train",
+                         "--apply", a]) == 0
+        out = capfd.readouterr().out
+        assert "dropped" not in out
+        assert "1 frame(s) kept as confirmed-empty" in out
+        assert "across 1 files" in out
+        assert (dataset / "images" / "train" / "v_t_000000_00.jpg").exists()
+
     def test_a_box_editor_session_replaces_the_frame_s_boxes(self, tmp_path, dataset):
         a = session(tmp_path / "a.json",
                     boxes={"v_t_000000_00": [[0, 0.25, 0.75, 0.1, 0.05]]},

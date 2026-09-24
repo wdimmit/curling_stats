@@ -82,10 +82,13 @@ class TestReplacementEdits:
         assert counts["replaced"] == 1
         assert (root / "labels/train/f1.txt").read_text().strip()
 
-    def test_a_restatement_to_nothing_empties_the_frame(self, tmp_path):
+    def test_a_restatement_to_nothing_keeps_the_frame_as_a_negative(self, tmp_path):
+        """`emptied` means dropped -- label and image deleted -- and the CLI says
+        so. A frame restated to no boxes is kept with an empty label file, a
+        reviewed negative, so it must be counted as kept, not dropped."""
         root = self._tree(tmp_path)
         counts = labels.apply_edits(root, "train", rejects=(), boxes={"f1": []})
-        assert counts["emptied"] == 1
+        assert (counts["kept_empty"], counts["emptied"]) == (1, 0)
         assert (root / "labels/train/f1.txt").read_text().strip() == ""
 
     def test_the_export_round_trips_through_parse(self):

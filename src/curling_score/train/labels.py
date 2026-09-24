@@ -472,8 +472,14 @@ def apply_edits(root, split: str, rejects, adds=(), *, keep_empty=False,
         counts["replaced"] += 1
         counts["removed"] += max(0, before - len(new))
         counts["added"] += max(0, len(new) - before)
-        if not new:
-            counts["emptied"] += 1
+        # Restated to nothing is a reviewed negative, and its label file stays:
+        # that is `kept_empty`. `emptied` means dropped -- label and image gone
+        # -- and the CLI reports it as such, which once told a reviewer their
+        # "no broom down" frames had been thrown away when every one was kept.
+        if new:
+            counts["rewritten"] += 1
+        else:
+            counts["kept_empty"] += 1
 
     if drop_unreviewed:
         seen = set(reviewed or ())
