@@ -3,12 +3,10 @@
  * The charting phone layout is a bottom sheet holding a grade row, and the
  * read-only surfaces inherited it with the grading cut out -- a 256px empty
  * panel under a video. This replaces it on /s/ and /g/ with the thing a
- * viewer actually wants: three tabs: House, Detail and Timing.
- *
- * Each row carries its own thinking-time bar, so the list *is* the per-rock
- * chart, turned on its side. That matters more than it sounds: the clock is
- * the one statistic that works on a game nobody has charted, because it comes
- * out of detection rather than out of grading.
+ * viewer actually wants: a pager over the current rock, a pane for whichever
+ * of House, Detail or Timing is open, and the tab bar that switches between
+ * them. The pane's own file owns what it draws -- this is the shell, and the
+ * following that keeps it all pointed at the video as it plays.
  *
  * This renders no video slot. #playCard stays exactly where it is inside
  * <main> and CSS decides who is visible -- crossing the phone gate on a

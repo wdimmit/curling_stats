@@ -181,10 +181,13 @@ export function trackPoints(shot) {
   return Array.isArray(t) && t.length >= 2 ? t.map(q => [q[1], q[2]]) : [];
 }
 
-/* The Detail strip in pixels, from house metres. null without a line. */
+/* The Detail strip in pixels, from house metres. null only without a shot:
+ * spec §5 wants the sheet, the other stones and the broom drawn even when
+ * there is no line to put on it, so the pane never goes blank just because
+ * one camera missed one rock. */
 export function stripGeometry(shot, box = STRIPBOX) {
-  const l = shot?.line, b = shot?.target_broom;
-  if (!l || !b) return null;
+  if (shot == null) return null;
+  const l = shot.line, b = shot.target_broom;
   const { w, h, y0, y1, half } = box;
   const kx = w / (2 * half), ky = h / (y1 - y0);
   const px = x => w / 2 + x * kx, py = y => (y - y0) * ky;
@@ -195,23 +198,30 @@ export function stripGeometry(shot, box = STRIPBOX) {
   const own = shot.delivered_stone_index;
   const stones = (shot.stones || []).filter((_, i) => i !== own)
     .map(s => ({ cx: +px(s.x).toFixed(1), cy: +py(s.y).toFixed(1), color: s.color }));
-  const hp = (l.hog_path || []).map(([y, x]) => [x, y]);
-  const lastY = hp.length ? hp[hp.length - 1][1] : HOG_Y - 3.6;
-  const miss = l.at_broom.miss_m;
   const rest = restOf(shot);
-  return {
+  const sheet = {
     w, h, rings,
     hogs: [+py(R.hog).toFixed(1), +py(HOG_Y).toFixed(1)],
     tees: [+py(0).toFixed(1), +py(TEE_Y).toFixed(1)],
     backs: [+py(R.back).toFixed(1), +py(TEE_Y - R.back).toFixed(1)],
     hack: +py(HACK_Y).toFixed(1),
     stones,
+    broom: b ? pt(b.x, b.y) : null,
+    rest: rest ? pt(rest.x, rest.y) : null,
+  };
+  // The line parts all need the broom too: an aim line, an extension or a
+  // miss distance all measure against it, and there is nothing to measure
+  // without one.
+  if (!l || !b) return { ...sheet, aim: null, thrown: null, ext: null, path: null, start: null, miss: null };
+  const hp = (l.hog_path || []).map(([y, x]) => [x, y]);
+  const lastY = hp.length ? hp[hp.length - 1][1] : HOG_Y - 3.6;
+  const miss = l.at_broom.miss_m;
+  return {
+    ...sheet,
     aim: l.start ? pts([[l.start.x, l.start.y], [b.x, b.y]]) : null,
     thrown: pts(hp),
     ext: pts([[lineX(shot, lastY), lastY], [lineX(shot, b.y), b.y]]),
     path: l.path?.length >= 2 ? pts(l.path.map(([y, x]) => [x, y])) : null,
-    broom: pt(b.x, b.y),
-    rest: rest ? pt(rest.x, rest.y) : null,
     start: l.start ? pt(l.start.x, l.start.y) : null,
     miss: Math.abs(miss) < ON_M ? null
       : { x1: +px(b.x).toFixed(1), x2: +px(l.at_broom.x).toFixed(1), y: +(py(b.y) - 7).toFixed(1), label: `${cm5(miss)} cm` },

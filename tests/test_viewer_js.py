@@ -1657,8 +1657,16 @@ class TestStripAndTrack:
         assert last_y == pytest.approx(g["broom"]["y"], abs=0.1)
         assert g["miss"]["label"] == "70 cm"
 
-    def test_no_line_draws_no_strip(self):
-        assert run_js(f"out(stripGeometry({json.dumps(shot(1, 'red', 'lead'))}));") is None
+    def test_no_line_still_draws_the_sheet_broom_and_rest(self):
+        s = shot(1, "red", "lead", target_broom={"x": 0.5, "y": 0.2}, delivered_stone_index=0,
+                 stones=[{"color": "red", "x": 0.3, "y": 1.0}], line=None)
+        g = run_js(f"out(stripGeometry({json.dumps(s)}));")
+        assert g["thrown"] is None and g["ext"] is None
+        assert g["broom"] is not None and g["rest"] is not None
+        assert len(g["rings"]) == 8
+
+    def test_no_shot_draws_nothing(self):
+        assert run_js("out(stripGeometry(null));") is None
 
     def test_the_house_draws_the_path_from_behind_the_thrower_when_there_is_one(self):
         assert run_js(f"out(trackPoints({json.dumps(self.SHOT)}));") == [[-1.18, 20.0], [-1.15, 1.35]]
@@ -1703,6 +1711,15 @@ class TestTheAppKnowsItsTab:
         src = self.APP.read_text()
         assert "if (phone()) actions.step(d)" in src and "!phone()" in src
 
+    def test_a_restored_cursor_seeks_the_player_once_on_mount(self):
+        src = self.APP.read_text()
+        assert "player.seek(shotVideoTime(" in src and ", false)" in src
+
+    def test_a_step_follows_the_video_again(self):
+        src = self.APP.read_text()
+        assert "setFollowing(true); goTo(n.ei, n.si);" in src
+        assert 'setPref({ tab });' in src
+
 
 class TestTheTabShell:
     JSX = Path(__file__).resolve().parents[1] / "frontend/viewer"
@@ -1746,6 +1763,11 @@ class TestTheTimingTab:
         src = self.SRC.read_text()
         assert "actions.setFollowing(true); actions.goTo(k, i);" in src
         assert "setTab" not in src
+
+    def test_the_row_is_measured_against_the_list_not_the_fixed_shell(self):
+        src = self.SRC.read_text()
+        assert "getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop" in src
+        assert "STICKY_H" in src
 
 
 class TestThePhoneTabsCss:

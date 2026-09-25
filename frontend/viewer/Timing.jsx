@@ -67,15 +67,19 @@ function EndHead({ summary }) {
 export function Timing({ view, ui, series, think, here, actions }) {
   const listRef = useRef(null);
 
-  /* Keep the current row in view while following. Deliberately not
-   * scrollIntoView: that scrolls every scrollable ancestor, and the phone
-   * shell is a stack of fixed boxes that must not move. */
+  /* Keep the current row in view. Deliberately not scrollIntoView: that
+   * scrolls every scrollable ancestor, and the phone shell is a stack of
+   * fixed boxes that must not move.
+   *
+   * Rows are measured against the list itself: their offsetParent is the
+   * fixed #watch, whose offsets also count the chart above the list. */
+  const STICKY_H = 30;   // .tend's height in style.css: it covers the list's top
   useEffect(() => {
     const el = listRef.current;
     const cur = el?.querySelector(".wrow[aria-current]");
-    if (!el || !cur || ui.following === false) return;
-    const top = cur.offsetTop;
-    if (top < el.scrollTop || top + ROW_H > el.scrollTop + el.clientHeight)
+    if (!el || !cur) return;
+    const top = cur.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+    if (top < el.scrollTop + STICKY_H || top + ROW_H > el.scrollTop + el.clientHeight)
       el.scrollTop = Math.max(0, top - el.clientHeight / 2 + ROW_H / 2);
   }, [ui.ei, ui.si, ui.following]);
 

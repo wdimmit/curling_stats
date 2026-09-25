@@ -55,6 +55,10 @@ export function App({ doc, config, cursor }) {
       gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
       sheet: "peek", houseMode: "", menu: undefined, reporting: false, notice: null,
       following: true,
+      // A link or a restored session names a rock the video is not at yet:
+      // seen once, on mount, to seek the player there (below). Not a pref
+      // and not part of the saved cursor -- it says nothing once used.
+      restored: !!(linked ?? saved),
       ...prefs,
       ...(linked ?? saved ?? {}),
       tab: hash.tab ?? prefs.tab,
@@ -124,6 +128,11 @@ export function App({ doc, config, cursor }) {
     savePrefs({ ...ui, ...patchObj });
   }, [ui]);
 
+  // Its own callback, not just a property of `actions`: `step` and `setTab`
+  // below need to call it too, and an object literal cannot see its own
+  // other properties while it is being built.
+  const setFollowing = useCallback(on => dispatch({ type: "set", patch: { following: on } }), []);
+
   const actions = useMemo(() => ({
     goTo,
     patch,
@@ -173,9 +182,12 @@ export function App({ doc, config, cursor }) {
        already there -- it is what said so -- and seeking to where you already
        are would stutter the playback once a second. */
     followTo: si => dispatch({ type: "goTo", ei: ui.ei, si }),
-    setFollowing: on => dispatch({ type: "set", patch: { following: on } }),
-    step: d => { const n = stepRock(view, ui.ei, ui.si, d); if (n) goTo(n.ei, n.si); },
-    setTab: tab => setPref({ tab }),
+    setFollowing,
+    // A step seeks the video to the new rock (goTo, via seekSoon), so
+    // following should resume, the same as a tap on a Timing row: House and
+    // Detail have no "Back to rock" chip to turn it on again by hand.
+    step: d => { const n = stepRock(view, ui.ei, ui.si, d); if (n) { setFollowing(true); goTo(n.ei, n.si); } },
+    setTab: tab => { setPref({ tab }); if (tab !== "timing") setFollowing(true); },
     goToBarFromReport: b => {
       // A bar in the report is still a rock you can go and watch; going there
       // closes the report rather than leaving it over the shot it just
@@ -183,8 +195,8 @@ export function App({ doc, config, cursor }) {
       dispatch({ type: "set", patch: { reporting: false } });
       goTo(b.ei, b.si);
     },
-  }), [goTo, patch, setPref, raw, shot, shotKey, doc, ui.gi, ui.ei, ui.si, ui.sheet, notify,
-       view]);
+  }), [goTo, patch, setPref, setFollowing, raw, shot, shotKey, doc, ui.gi, ui.ei, ui.si, ui.sheet,
+       notify, view]);
 
   const houseSwipe = useSwipe(d => { if (phone()) actions.step(d); });
 
@@ -199,6 +211,20 @@ export function App({ doc, config, cursor }) {
 
   useEffect(() => { saveCursor(config.slug, { gi: ui.gi, ei: ui.ei, si: ui.si }); },
             [config.slug, ui.gi, ui.ei, ui.si]);
+
+  /* A linked or restored rock is where the video is, not at 0:00 -- seek there
+   * once, on mount, without playing: the first press of play should choose to
+   * play, not spend itself catching the video up to a cursor it never asked
+   * to move. Empty deps: this is a one-time reconciliation of the video with
+   * the cursor the reducer was seeded with, not a response to the cursor
+   * moving afterward -- that is what stepping and seekSoon are for. */
+  useEffect(() => {
+    if (!ui.restored) return;
+    const s = view.ends[ui.ei]?.shots[ui.si];
+    if (typeof shotVideoTime(s, ui.leadIn) === "number")
+      player.seek(shotVideoTime(s, ui.leadIn), false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The read-only surfaces keep their tab and rock in the URL, so a shared link
   // opens where it was sent from. replaceState: stepping rocks is not history.

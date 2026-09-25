@@ -28,8 +28,8 @@ function Strip({ shot }) {
                 fillOpacity={0.6} stroke={PAINT.graniteEdge} strokeWidth={0.6} />
       ))}
       {g.aim ? <polyline points={g.aim} fill="none" stroke={MUTED} strokeWidth={1.4} strokeDasharray="4 3" /> : null}
-      <polyline points={g.ext} fill="none" stroke={PAINT.accent} strokeWidth={1.2} strokeDasharray="2 2.5" />
-      <polyline points={g.thrown} fill="none" stroke={PAINT.accent} strokeWidth={2.4} />
+      {g.ext ? <polyline points={g.ext} fill="none" stroke={PAINT.accent} strokeWidth={1.2} strokeDasharray="2 2.5" /> : null}
+      {g.thrown ? <polyline points={g.thrown} fill="none" stroke={PAINT.accent} strokeWidth={2.4} /> : null}
       {g.path ? <polyline points={g.path} fill="none" stroke={GOLD} strokeWidth={2.2} strokeLinejoin="round" /> : null}
       {g.miss ? (
         <g>
@@ -38,8 +38,10 @@ function Strip({ shot }) {
                 textAnchor="middle" fill={PAINT.accent}>{g.miss.label}</text>
         </g>
       ) : null}
-      <rect x={g.broom.x - 5} y={g.broom.y - 2} width={10} height={4} rx={1}
-            fill={PAINT.accent} stroke={own} strokeWidth={1}><title>skip&apos;s broom</title></rect>
+      {g.broom ? (
+        <rect x={g.broom.x - 5} y={g.broom.y - 2} width={10} height={4} rx={1}
+              fill={PAINT.accent} stroke={own} strokeWidth={1}><title>skip&apos;s broom</title></rect>
+      ) : null}
       {g.rest ? <circle cx={g.rest.x} cy={g.rest.y} r={4.2} fill={own} stroke={PAINT.accent} strokeWidth={1.2} /> : null}
       {g.start ? <circle cx={g.start.x} cy={g.start.y} r={3.2} fill={PAINT.accent} /> : null}
     </svg>
