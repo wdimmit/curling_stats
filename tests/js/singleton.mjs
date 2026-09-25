@@ -57,6 +57,7 @@ export const shotVideoTime = s => core.shotVideoTime(s, state.leadIn);
 
 /* The watching surface reads the same view every other panel reads. */
 export const rockRows = () => core.rockRows(view(), state.ei, state.leadIn);
+export const rockSpan = core.rockSpan;
 export const rockAt = core.rockAt;
 export const endSummary = () => core.endSummary(view(), state.ei);
 

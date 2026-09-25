@@ -1223,6 +1223,16 @@ class TestTheListFollowsTheVideo:
                      "out(rockAt(r, r[2].tRest + 1));")
         assert got == 4
 
+    def test_a_missing_rock_shares_its_interval_with_the_next_rock_seen(self):
+        got = run_js(setup(end_four()) +
+                     "const r = rockRows(); r[0].tRest = null; r[3].tRest = null;"
+                     "out([rockSpan(r, 0), rockSpan(r, r[2].tRest + 1), rockSpan(r, r[5].tRest + 1)]);")
+        assert got == [[0, 1], [3, 4], [6, 6]]
+
+    def test_following_leaves_the_rock_alone_while_the_playhead_is_in_its_span(self):
+        src = (Path(__file__).resolve().parents[1] / "frontend/viewer/Watch.jsx").read_text()
+        assert "rockSpan(rows, player.currentTime())" in src and "si < span[0] || si > span[1]" in src
+
 
 class TestARowCarriesItsSplit:
     """The long split beside the shot type, now that most rocks have one."""

@@ -17,7 +17,7 @@
  * second <House> would put a second id="house" in the document.
  */
 import { useEffect, useMemo } from "react";
-import { houseCaption, rockAt, rockRows, stepRock } from "../core/index.mjs";
+import { houseCaption, rockSpan, rockRows, stepRock } from "../core/index.mjs";
 import * as player from "../runtime/player.mjs";
 import { Detail } from "./Detail.jsx";
 import { Pager, useSwipe } from "./Pager.jsx";
@@ -34,8 +34,8 @@ function useFollow(rows, following, si, actions) {
     if (!following || !rows.length) return undefined;
     const tick = () => {
       if (!player.isPlaying()) return;
-      const at = rockAt(rows, player.currentTime());
-      if (at !== null && at !== si) actions.followTo(at);
+      const span = rockSpan(rows, player.currentTime());
+      if (span && (si < span[0] || si > span[1])) actions.followTo(span[1]);
     };
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);

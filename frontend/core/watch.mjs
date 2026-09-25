@@ -58,6 +58,23 @@ export function rockRows(view, ei, leadIn = 0) {
   });
 }
 
+/* The rows the playhead could be "in" at time t, as [lo, hi]: lo is the row
+ * after the last rest passed, and a rock never seen has no rest to end its
+ * interval, so it shares that interval with the next rock that was seen (hi).
+ * While following, either is right.
+ */
+export function rockSpan(rows, t) {
+  if (!rows.length || typeof t !== "number") return null;
+  let lo = 0;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].tRest == null) continue;
+    if (t > rows[i].tRest) lo = Math.min(i + 1, rows.length - 1);
+  }
+  let hi = lo;
+  while (hi < rows.length - 1 && rows[hi].tRest == null) hi++;
+  return [lo, hi];
+}
+
 /* Which row the playhead is in, for a list that follows the video.
  *
  * A rock "is" the current one from the moment the previous rock stopped until
@@ -67,18 +84,8 @@ export function rockRows(view, ei, leadIn = 0) {
  * treated as zero, which would drag the answer back to the top of the end.
  */
 export function rockAt(rows, t) {
-  if (!rows.length || typeof t !== "number") return null;
-  let at = 0;
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].tRest == null) continue;
-    if (t > rows[i].tRest) at = Math.min(i + 1, rows.length - 1);
-  }
-  // A rock never seen has no rest to end its interval, so the playhead is
-  // never "in" it: that interval belongs to the next rock that was seen.
-  // Otherwise stepping onto the rock after a missing one snaps straight back
-  // to the missing one while the video plays.
-  while (at < rows.length - 1 && rows[at].tRest == null) at++;
-  return at;
+  const span = rockSpan(rows, t);
+  return span && span[1];
 }
 
 /* The end switcher's line: whose end it is so far, and who throws last. The
