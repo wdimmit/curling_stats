@@ -1,0 +1,176 @@
+# Shot detail on the desktop
+
+**Status:** design approved section by section, 2026-09-24, and ready for an
+implementation plan. One change since approval is marked in §1.
+
+**Mockups:** [Shot Detail on the Desktop](https://claude.ai/artifact/LdbRUpSE7PGJ86EHAaUgR7).
+Artboard A is the chosen design. B (a Detail tab on the house card) and C (the
+strip beside the house, the figures under the video) were not chosen. All three
+show the edit page at 1440 × 900 on end 1 rock 3 of s_0ZIRyB57JW0Q7dOu2.
+
+## Context
+
+The phone viewer's Detail pane shows whether a rock was thrown at the skip's
+broom: the whole sheet as a strip, and six figures (see
+`2026-09-24-shot-line-detail-design.md`). The desktop has none of it. Desktop
+is for everyone equally: the charter on `/c/` and viewers on `/s/` and `/g/`.
+
+At 1440 × 900 the space under the video (column 1, below the shot chips) is
+about 700 × 280 px and empty on every surface. The house and chart columns are
+full.
+
+**Success:** step through rocks on a laptop and see, at a glance and without
+scrolling, whether each one was thrown at the broom, next to the video and the
+house.
+
+## Scope
+
+**In scope**
+- A shot-detail card on the desktop layout of `/c/`, `/s/` and `/g/`.
+- Three label changes in the chart panel's detail list (§2).
+
+**Unchanged**
+- Both phone layouts, and the phone Detail pane's drawing and figures.
+- The house card, the chart panel's grading, and every keyboard shortcut.
+- The pipeline and the timeline format. No new data.
+
+## 1. Where it goes (approved)
+
+- A new card, `#detailCard`, a direct child of `<main>` immediately after
+  `#playCard`, on every surface. It is always mounted. CSS decides where it
+  shows, the same rule the player follows (it must never be reparented).
+- `<main>` gets named grid areas. Each card takes its area: `#playCard` play,
+  `#detailCard` detail, `#houseCard` house, `#chart` chart.
+  - **Above 1180 px (three columns, unchanged widths):**
+    `"play house chart" "detail house chart"`, rows `auto 1fr`. The house and
+    the chart panel run the full height of their columns.
+  - **820–1180 px (two columns):** `"play house" "detail house" "chart house"`,
+    rows `auto auto 1fr`. The details sit under the video, the chart panel under
+    the details, and the house runs down column 2.
+    **Changed since approval:** §1 was approved with the chart panel under the
+    house. At these widths the house card is usually taller than the video card
+    (at 900 px by about 160 px), so the details could not start until below the
+    house, leaving a gap under the video. Keeping the chart panel in column 1,
+    where it sits today, avoids it.
+  - **820 px and below (one column):** `"play" "detail" "house" "chart"`.
+  - **640 px and below (the phone layouts):** `grid-template-areas: none`, so
+    both phone layouts see exactly the grid they see today, and `#detailCard`
+    is `display: none`.
+- **Fold.** At 1440 × 900 the card ends about 6 px above the bottom of the
+  screen. At 1280 × 800 it runs about 10 px below. The video is not capped to
+  force it.
+- A chart from before line measurement (schema below 6) gets a one-line card,
+  "This chart predates line measurement", as the phone does. It never shows an
+  empty drawing.
+
+## 2. The strip and the figures (approved)
+
+**The strip**
+- The sheet lies on its side: the hack at the left, the far house at the
+  right. The thrower's left is the top edge.
+- It draws everything the phone strip draws: the rings, both hog lines, the
+  tee, back and hack lines, the centre line, the other stones, the dashed aim
+  line, the thrown line and its dotted extension, the rock's gold path, the
+  broom, where the rock started and where it stopped.
+- **×1.5 across**, where the phone uses ×3. `DESKBOX = { w: 114, h: 660, y0:
+  -2.3, y1: 38.9, half: 2.375 }` is the box before the turn: 24 px/m across
+  and 16 px/m along. The SVG's viewBox is 660 × 114 at `width: 100%`, so its
+  height is about a sixth of the card's width (118 px at 1440, 92 px at 1280).
+- **The broom marker lies along the sheet**, so it is 10 wide × 4 tall here:
+  the same marker as the phone's upright 4 × 10, turned with the sheet.
+- **The miss bracket** runs across the sheet (up and down on screen), 7 px past
+  the broom on the far side, as on the phone. Its label ("6 ft 1 in") sits 4 px
+  to the bracket's right, vertically centred, at 11 px so it stays readable
+  once the drawing scales down.
+- **Caption:** "Sheet from above, thrower at the left · across ×1.5 · figures
+  ±4 in · wide = the side away from the curl".
+
+**The figures**
+- The same six, in the same words and the same feet and inches as the phone
+  (`lineFigures`): At the broom, Hack, At the hog line in the first row;
+  Weight, Curl, Came to rest in the second. The confirmation keeps its green
+  check.
+- A rock with no line: the strip still draws the sheet, the stones, the broom
+  and where the rock stopped. The figures show "–" with the reason, as on the
+  phone.
+
+**The chart panel's list** (shared by the desktop and the phone edit page's
+bottom sheet)
+- "Long split" goes: the Weight figure shows it now.
+- "Weight" (m/s) becomes "Entry speed".
+- "House: 1 in" becomes "1 stone in", because "in" now reads as inches. The
+  other counts follow suit: "2 stones out", "1 stone moved".
+
+## 3. How it is built (approved)
+
+- **`frontend/core/line.mjs`**, all pure and tested in node:
+  - `stripShapes(g)` turns `stripGeometry`'s output into explicit shapes: rings
+    with `cx, cy, rx, ry, kind`; every line as a segment with a `kind` (hog,
+    tee, back, hack, centre); the aim, thrown, extension and path lines as
+    point lists; the stones; the broom as a rect `{x, y, w, h}`; the rest and
+    start points; the miss as a segment plus a label anchor `{tx, ty, anchor}`.
+  - `sideways(shapes)` turns shapes a quarter turn: every point `(x, y)` goes to
+    `(H − y, x)`, where `H` is the strip's length. The frame's width and height
+    swap, as do each ring's radii and the broom's `w` and `h`. The miss label
+    anchor moves beside the bracket, start-anchored.
+  - `DESKBOX` joins `STRIPBOX` in `constants.mjs`.
+- **`frontend/viewer/Detail.jsx`**
+  - `Strip` draws shapes and nothing else, so the phone and the desktop share
+    one renderer. The lines the phone strip draws across itself (hog, tee,
+    back, hack) come from the shapes instead of from `g.w`.
+  - `Figures` is split out of `Detail`, with a `cols` prop.
+  - `Detail` (the phone) keeps its markup and draws the same marks at the same
+    coordinates.
+  - New `DeskDetail`: the turned strip, the figures at `cols={3}` and the
+    caption, or the one-line reason when the chart predates line measurement.
+- **`frontend/viewer/App.jsx`** mounts
+  `<section className="card" id="detailCard"><DeskDetail shot={shot} doc={doc} /></section>`
+  immediately after `#playCard`.
+- **`src/curling_score/viewer/style.css`**: the grid areas at each width, the
+  phone reset and hide, and the desktop figure grid.
+- **`frontend/viewer/ChartPanel.jsx`**: the list's three changes.
+
+## 4. Testing (approved)
+
+**Node (`tests/test_viewer_js.py`)**
+- `sideways`: the hack lands at the left (small x), the thrower's left at the
+  top, a ring's `rx`/`ry` swap, the broom rect is 10 × 4, and the miss bracket
+  is vertical and 7 px past the broom with its label to the right.
+- `stripShapes` on the phone box reproduces today's coordinates. The existing
+  `stripGeometry` tests pass unchanged.
+- The new list labels, including the singular and plural stone counts.
+
+**Source and CSS assertions**, in the suite's usual style
+- `#detailCard` follows `#playCard` in `App.jsx`.
+- The areas exist at each width.
+- The card is hidden, and the areas are reset, at 640 px and below.
+
+**Headless Chrome** (`scripts/devserve.py` plus `scripts/cdp.mjs`, on a
+schema-6 timeline)
+- At 1440 × 900 the card's bottom is at most 900.
+- At 1280 × 800, record how far past 800 it runs.
+- At 1000 px, the card starts within 14 px of the play card's bottom, and the
+  chart panel is under it in column 1.
+- At 700 px, the order is video, details, house, chart.
+- At 390 × 844 (phone, touch on), the card is not visible, and the phone
+  strip's SVG markup is unchanged from before the change.
+- A rock with no line, and a schema-5 chart, show their reasons.
+
+## Risks
+
+- **Two orientations side by side.** The sheet lies sideways, while the house
+  next to it stands thrower-at-bottom. Accepted when choosing A.
+- **A thin fold margin.** Anything that grows the play card pushes the card
+  below the fold: the warning rows in `#flags` (a blank or unseen rock, an
+  inferred colour, the first end's warm-up notice). These are exceptional
+  rocks, and the page still scrolls.
+- **Phone regressions.** The phone layouts are position-fixed and select on
+  `main > …`. The reset to `grid-template-areas: none` and the hide at 640 px
+  and below are what keep them as they are. Both are pinned by tests and the
+  390 px check.
+
+## Out of scope
+
+- A desktop Timing view, or changes to the report.
+- Clicking or hovering the strip.
+- Changes to the house card or the phone layouts.
