@@ -106,18 +106,24 @@ main { display:grid; gap:14px; padding:14px;
 #detailCard .dstrip { display: block; width: 100%; height: auto; background: var(--ice);
                       border: 1px solid var(--line); border-radius: 4px; }
 #detailCard .dstrip-none { aspect-ratio: 660 / 114; }
-#detailCard .dfigs { margin: 8px 0 0; display: grid; gap: 0 18px;
+/* At 1440 x 900 the video's natural height leaves only ~300 px under it, so
+   these six rows are tighter than the phone's: less row padding and a closer
+   line-height, not a smaller number (font-size stays 19px, matching the
+   mockup) and not fewer columns. Frees ~34 px, enough for the card to clear
+   the fold with the ~6 px margin the design calls for. */
+#detailCard .dfigs { margin: 4px 0 0; display: grid; gap: 0 18px;
                      grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#detailCard .dfig { padding: 7px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+#detailCard .dfig { padding: 3px 0; border-bottom: 1px solid var(--line); min-width: 0;
+                    line-height: 1.3; }
 #detailCard .dfig dt { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
                        color: var(--muted); font-weight: 600; }
 #detailCard .dfig .dval { margin: 0; font-family: var(--display); font-size: 19px; font-weight: 700;
-                          line-height: 1.15; white-space: nowrap; font-variant-numeric: tabular-nums; }
+                          line-height: 1.05; white-space: nowrap; font-variant-numeric: tabular-nums; }
 #detailCard .dfig .dnote { margin: 0; font-size: 11.5px; color: var(--muted);
                            display: flex; align-items: center; gap: 5px; }
 #detailCard .dfig.dim .dval { color: var(--muted); }
 #detailCard .dnote.confirmed svg { flex: none; stroke: var(--ok); }
-#detailCard .dcap { font-size: 11px; color: var(--muted); margin: 6px 0 0; }
+#detailCard .dcap { font-size: 11px; color: var(--muted); margin: 3px 0 0; }
 #detailCard .dnone { font-size: 14px; color: var(--muted); margin: 0; }
 .card { background:var(--panel); border:1px solid var(--line);
         border-radius:10px; padding:12px; }
