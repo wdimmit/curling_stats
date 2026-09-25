@@ -1657,6 +1657,78 @@ class TestLineFigures:
         assert f["hog"]["value"] == "–"
 
 
+class TestCurlStopsAtAHit:
+    """Curl is measured to where the rock stopped, or to where it hit a stone
+    its throw disturbed -- whichever came first."""
+
+    def figs(self, s):
+        return {f["key"]: f for f in run_js(f"out(lineFigures({json.dumps(s)}, {{schema_version: 6}}));")["figures"]}
+
+    def s_0NOn_e1_s14(self, **kw):
+        """A hit on the broom (s_0NOnuMHZoSp23r6n4, end 1, rock 14): on its line
+        until it took out the red at (0.18, 2.31), then rolled 0.9 m right."""
+        base = dict(
+            target_broom={"x": 0.3442, "y": 2.5778}, delivered_stone_index=0,
+            stones=[{"color": "yellow", "x": 1.2298, "y": 2.1359}],
+            house_delta={"added": [{"color": "yellow", "x": 1.2298, "y": 2.1359}],
+                         "removed": [{"color": "red", "x": -0.2534, "y": 1.5078},
+                                     {"color": "red", "x": 0.1764, "y": 2.3061}], "moved": []},
+            track=[[833.8, 0.208, 3.002], [833.9, 0.214, 2.839], [834.0, 0.221, 2.663],
+                   [834.1, 0.236, 2.513], [834.2, 0.278, 2.494], [834.3, 0.323, 2.481]],
+            line={"start": {"x": -0.0619, "y": 38.035}, "at_hog": {"x": 0.0536, "offset_m": 0.0045},
+                  "at_broom": {"x": 0.3391, "miss_m": -0.0051}, "side": "wide", "curl": "right",
+                  "confirmed": None, "hog_path": [], "path": [[7.63, 0.243], [2.23, 0.308]]})
+        base.update(kw)
+        return shot(14, "yellow", "skip", **base)
+
+    def test_a_hit_is_measured_to_just_before_it_touched(self):
+        # 833.9 s is the last sample more than two radii and 10 cm from the red.
+        f = self.figs(self.s_0NOn_e1_s14())
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("5 in", "from its line to where it hit a stone")
+
+    def test_without_the_hit_it_would_be_measured_to_rest(self):
+        f = self.figs(self.s_0NOn_e1_s14(house_delta=None))
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("2 ft 11 in", "from its line to where it stopped")
+
+    def test_a_stone_it_never_reached_is_not_a_hit(self):
+        far = {"added": [], "removed": [{"color": "red", "x": -1.4, "y": 0.5}], "moved": []}
+        f = self.figs(self.s_0NOn_e1_s14(house_delta=far))
+        assert f["curl"]["note"] == "from its line to where it stopped"
+
+    def test_a_moved_stone_counts_from_where_it_sat(self):
+        moved = {"added": [], "removed": [], "moved": [
+            {"color": "red", "x": 0.0, "y": 0.9, "from_x": 0.1764, "from_y": 2.3061, "distance_m": 1.4}]}
+        f = self.figs(self.s_0NOn_e1_s14(house_delta=moved))
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("5 in", "from its line to where it hit a stone")
+
+    def test_without_a_track_the_path_from_behind_the_thrower_finds_it(self):
+        # The path's point at 2.23 m is already on the red; the one before is
+        # 7.63 m out, 4 cm left of the line.
+        f = self.figs(self.s_0NOn_e1_s14(track=None))
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("2 in", "from its line to where it hit a stone")
+
+    def test_a_hit_before_the_rock_was_seen_has_no_curl(self):
+        f = self.figs(self.s_0NOn_e1_s14(track=[[834.1, 0.236, 2.513], [834.2, 0.278, 2.494]],
+                                         line=dict(self.s_0NOn_e1_s14()["line"], path=[])))
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("–", "hit a stone before it was seen")
+
+    def test_the_turn_comes_from_before_the_hit_too(self):
+        """Its line misses the broom 30 cm left. The pipeline read the turn off
+        the roll after the hit (right, so wide); before the hit it had curled
+        4 in left, so the miss is on the side it curls toward."""
+        line = {"start": {"x": 0.0, "y": 38.0}, "at_hog": {"x": 0.0536, "offset_m": 0.0},
+                "at_broom": {"x": 0.0442, "miss_m": -0.30}, "curl": "right", "confirmed": None,
+                "hog_path": [], "path": []}
+        s = shot(9, "red", "third", target_broom={"x": 0.3442, "y": 2.5778}, line=line,
+                 delivered_stone_index=0, stones=[{"color": "red", "x": 1.0, "y": 2.1}],
+                 house_delta={"added": [], "removed": [{"color": "yellow", "x": -0.10, "y": 2.10}], "moved": []},
+                 track=[[0.0, -0.02, 4.0], [0.1, -0.04, 3.4], [0.2, -0.056, 2.7],
+                        [0.3, -0.06, 2.4], [0.4, 0.3, 2.3], [0.5, 0.8, 2.2]])
+        f = self.figs(s)
+        assert (f["curl"]["value"], f["broom"]["value"]) == ("4 in", "1 ft narrow")
+        assert self.figs(dict(s, house_delta=None))["broom"]["value"] == "1 ft wide"
+
+
 def lined(number, color, slot, x, curl=None):
     """A rock whose stone sat at `x` before the push."""
     return shot(number, color, "lead", thrower_slot=slot, target_broom={"x": 0.0, "y": 0.0},
@@ -1679,6 +1751,21 @@ class TestPlayerHacks:
         """Stones that curl right sit further to the thrower's left, whichever
         hack: five curl-left rocks must not outvote the one curl-right one."""
         shots = [lined(n, "red", 3, 0.02, "left") for n in (9, 11, 25, 27, 41)] + [lined(43, "red", 3, -0.03, "right")]
+        got = self.hacks(shots)["red|3"]
+        assert got["side"] == "left" and got["x"] == pytest.approx(-0.005)
+
+    def test_a_hit_counts_with_the_turn_it_had_before_the_hit(self):
+        """The pipeline read this hit as curling right off its roll after the
+        hit; before the hit it curled left. Counted right, the player would
+        be called right."""
+        hit = shot(9, "red", "third", thrower_slot=3, target_broom={"x": 0.3442, "y": 2.5778},
+                   line={"start": {"x": -0.08, "y": 38.0}, "curl": "right",
+                         "at_hog": {"x": 0.0536, "offset_m": 0.0}, "at_broom": {"x": 0.0442, "miss_m": -0.30},
+                         "path": []},
+                   house_delta={"added": [], "removed": [{"color": "yellow", "x": -0.10, "y": 2.10}], "moved": []},
+                   track=[[0.0, -0.02, 4.0], [0.1, -0.04, 3.4], [0.2, -0.056, 2.7], [0.3, -0.06, 2.4]])
+        shots = [hit, lined(11, "red", 3, 0.01, "left"), lined(25, "red", 3, 0.02, "right"),
+                 lined(27, "red", 3, 0.03, "right")]
         got = self.hacks(shots)["red|3"]
         assert got["side"] == "left" and got["x"] == pytest.approx(-0.005)
 

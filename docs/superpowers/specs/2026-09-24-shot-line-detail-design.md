@@ -113,7 +113,9 @@ The artboard "A · The line on the sheet".
 2. **Hack:** "Left", with "stone set 9 in left of centre".
 3. **At the hog line:** "8 in wide", with "of the hack-to-broom line".
 4. **Weight:** the long split, "13.8 s", with "hog line to hog line".
-5. **Curl:** "3 ft 9 in", with "from its line to where it stopped".
+5. **Curl:** "3 ft 9 in", with "from its line to where it stopped". After a
+   hit, "from its line to where it hit a stone" (amended 2026-09-25: see
+   below).
 6. **Came to rest:** "12-foot", with "1.8 m from the button".
 
 **The hack and the two line figures (amended 2026-09-25).**
@@ -146,6 +148,37 @@ The artboard "A · The line on the sheet".
 - **Replays:** the hog-line median moved from 8–12 cm wide (from the stone) to
   11–13 cm (from the hack). "On the line" went from 40–50% of rocks to
   31–34%.
+
+**Curl stops at a hit (amended 2026-09-25).** Curl is measured to where the
+rock stopped, or to where it hit something, whichever came first. The user's
+example: s_0NOnuMHZoSp23r6n4 end 1 rock 14 is a hit on the broom that rolled
+0.9 m after impact. It read "2 ft 11 in" and now reads "5 in".
+- **A hit** is the first point where the rock comes within two stone radii
+  plus 10 cm (0.384 m) of a stone its throw disturbed. Those stones are
+  `house_delta`'s removed stones, and its moved stones at their `from`
+  positions.
+- **Where the curl is read:** the rock's last sample before that point.
+  - The overhead `track` is tried first: it samples ten times a second, from
+    the camera that placed the stones.
+  - Then `line.path` from behind the thrower.
+  - The nearer of the two to the stone wins.
+- **A rock already touching when first seen** reads "–", with "hit a stone
+  before it was seen".
+- **A rock that never comes near a disturbed stone** counts as not having hit
+  one, and is measured to rest as before. The house diff also moves stones a
+  rock never touched: detection dropouts, and stones knocked on.
+- **The turn after a hit** (wide or narrow in At the broom and At the hog line)
+  is read at the same point. The pipeline's `curl` field takes it from the
+  rest position, which a hit-and-roll can flip. Without a hit, the viewer keeps
+  the pipeline's `curl`.
+- **The hack call's turn balance** uses the same turns (`turnOf`). On the
+  replays and s_0NOn this changed no player's call. AEqL2's red third moved
+  from −0.3 to −1.0 cm: still Left, and a little further from the line.
+- **Replays and s_0NOn:**
+  - 135 of 326 lined rocks are hits;
+  - their median curl moved from 20.5–29.5 in to 17–23.5 in;
+  - 25 At-the-broom words changed, all 12 in s_0NOn toward "wide";
+  - no figure changed on a rock without a hit.
 
 **Caption:** "Sheet from above, thrower at the bottom · across ×3 · figures ±4
 in". It also defines "wide = the side away from the curl" once. There is no
@@ -248,6 +281,8 @@ Each shot gets `line`, an object or `null`. This raises the timeline to schema
   - `miss_m` is `x − target_broom.x`, signed.
 - **`curl`.** The direction curl moved the rock: the sign of
   `x_rest − fit(y_rest)`. It is `null` without a rest position or a path.
+  Since 2026-09-25, after a hit the viewer reads the turn from just before the
+  hit instead (§1).
 - **`side`.**
   - `"wide"` when the miss is on the side away from the curl, which is
     `sign(miss) == −sign(curl)`. `"narrow"` otherwise.

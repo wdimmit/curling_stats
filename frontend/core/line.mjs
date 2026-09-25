@@ -56,7 +56,7 @@ export function playerHacks(shots) {
     if (s?.missing || typeof x !== "number" || s.thrower_slot == null) continue;
     const k = `${s.color}|${s.thrower_slot}`;
     if (!by.has(k)) by.set(k, []);
-    by.get(k).push({ x, curl: s.line.curl });
+    by.get(k).push({ x, curl: turnOf(s) });
   }
   const out = {};
   for (const [k, rocks] of by) {
@@ -83,6 +83,68 @@ export function hackAimX(shot, y) {
   if (!side || !b) return null;
   const hx = side === "left" ? -HACK_X_M : HACK_X_M;
   return hx + (b.x - hx) * (y - HACK_Y) / (b.y - HACK_Y);
+}
+
+// A rock this close to a stone its throw disturbed has hit it: two radii
+// centre to centre, and 10 cm for the positions' own error.
+const CONTACT_M = 2 * R.stone + 0.10;
+const CURL_MIN_M = 0.05;                  // as linetime.CURL_MIN_M
+
+/* The stones this rock's throw disturbed, where they sat before it. */
+export function struckStones(shot) {
+  const d = shot?.house_delta;
+  return [...(d?.removed ?? []).map(s => ({ x: s.x, y: s.y })),
+          ...(d?.moved ?? []).map(s => ({ x: s.from_x, y: s.from_y }))]
+    .filter(p => typeof p.x === "number" && typeof p.y === "number");
+}
+
+/* Where curl stops being measured: the rock's last position before it came
+ * within reach of a stone its throw disturbed, else where it came to rest.
+ * The overhead track is tried first -- ten a second, from the camera that
+ * placed those stones -- then the path from behind the thrower. A rock that
+ * never came near any of them is taken not to have hit one: the house diff
+ * also moves stones a rock never touched (a detection dropout, a stone it
+ * knocked on). `hit` without a position: it was already touching when first
+ * seen. null: nothing to measure to. */
+export function curlEnd(shot) {
+  const hits = struckStones(shot);
+  if (hits.length) {
+    const reach = p => Math.min(...hits.map(h => Math.hypot(p.x - h.x, p.y - h.y)));
+    const sources = [
+      (Array.isArray(shot.track) ? shot.track : []).map(([, x, y]) => ({ x, y })),
+      (Array.isArray(shot.line?.path) ? shot.line.path : []).map(([y, x]) => ({ x, y })),
+    ];
+    let touched = false, best = null;
+    for (const pts of sources) {
+      const i = pts.findIndex(p => reach(p) <= CONTACT_M);
+      if (i < 0) continue;
+      touched = true;
+      if (i > 0 && (!best || reach(pts[i - 1]) < reach(best))) best = pts[i - 1];
+    }
+    if (touched) return best ? { x: best.x, y: best.y, hit: true } : { hit: true };
+  }
+  const path = shot?.line?.path;
+  const end = restOf(shot) ?? (path?.length ? { x: path[path.length - 1][1], y: path[path.length - 1][0] } : null);
+  return end ? { ...end, hit: false } : null;
+}
+
+/* How far the rock had curled off its thrown line by `curlEnd`, and which
+ * way; null without a line or an end to measure to. */
+function curlOf(shot) {
+  const end = curlEnd(shot);
+  if (!end) return null;
+  const lx = typeof end.x === "number" ? lineX(shot, end.y) : null;
+  if (lx == null) return { hit: end.hit, m: null, dir: null };
+  const m = end.x - lx;
+  return { hit: end.hit, m, dir: Math.abs(m) < CURL_MIN_M ? null : m > 0 ? "right" : "left" };
+}
+
+/* Which way the rock curled. After a hit it is read where curl is measured:
+ * the pipeline's `curl` takes it from the rest position, which is after the
+ * hit, and a hit-and-roll flips it. */
+export function turnOf(shot) {
+  const c = curlOf(shot);
+  return c?.hit ? c.dir : shot?.line?.curl ?? null;
 }
 
 /* Wide is the side away from the curl, narrow the side it curls toward; with
@@ -147,12 +209,14 @@ export function lineFigures(shot, doc) {
       weight, fig("curl", "Curl", "–", ""), restFig] };
   }
   const miss = l.at_broom.miss_m;
+  const c = curlOf(shot);
+  const turn = turnOf(shot);
   const tick = l.confirmed === true ? "confirmed" : l.confirmed === false ? "disagrees" : "unseen";
   const tickNote = { confirmed: "confirmed from behind the thrower",
                      unseen: "not confirmed: hidden from behind the thrower",
                      disagrees: "the camera behind the thrower disagrees" }[tick];
   const broom = fig("broom", "At the broom",
-                    Math.abs(miss) < ON_M ? "On the broom" : `${feetInches(miss)} ${sideWord(miss, l.curl)}`,
+                    Math.abs(miss) < ON_M ? "On the broom" : `${feetInches(miss)} ${sideWord(miss, turn)}`,
                     tickNote, { tick, dim: tick === "disagrees" });
   const hack = hackFig(shot);
   // The same two lines as At the broom, read at the hog line: the thrown line,
@@ -162,13 +226,11 @@ export function lineFigures(shot, doc) {
   const off = aim == null || typeof l.at_hog?.x !== "number" ? null : l.at_hog.x - aim;
   const hog = off == null ? fig("hog", "At the hog line", "–", "needs the hack")
     : fig("hog", "At the hog line",
-          Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, l.curl)}`,
+          Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, turn)}`,
           "of the hack-to-broom line");
-  const end = rest ?? (l.path?.length ? { x: l.path[l.path.length - 1][1], y: l.path[l.path.length - 1][0] } : null);
-  const lx = end ? lineX(shot, end.y) : null;
-  const curl = end && lx != null
-    ? fig("curl", "Curl", feetInches(end.x - lx), "from its line to where it stopped")
-    : fig("curl", "Curl", "–", "no rest position");
+  const curl = c?.m != null
+    ? fig("curl", "Curl", feetInches(c.m), c.hit ? "from its line to where it hit a stone" : "from its line to where it stopped")
+    : fig("curl", "Curl", "–", c?.hit ? "hit a stone before it was seen" : "no rest position");
   return { predates, reason, figures: [broom, hack, hog, weight, curl, restFig] };
 }
 
