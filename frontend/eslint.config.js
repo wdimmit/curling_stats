@@ -12,7 +12,7 @@
 import reactHooks from "eslint-plugin-react-hooks";
 
 const BROWSER = [
-  "document", "window", "navigator", "location", "console", "fetch", "alert",
+  "document", "window", "navigator", "location", "history", "console", "fetch", "alert",
   "prompt", "print", "matchMedia", "getComputedStyle", "addEventListener",
   "removeEventListener", "dispatchEvent", "localStorage", "sessionStorage",
   "setTimeout", "clearTimeout", "setInterval", "clearInterval",
@@ -58,7 +58,7 @@ export default [
     languageOptions: { globals: {} },
     rules: {
       "no-restricted-globals": ["error",
-        ...["document", "window", "navigator", "location", "localStorage",
+        ...["document", "window", "navigator", "location", "history", "localStorage",
             "sessionStorage", "matchMedia", "fetch"].map(name => ({
           name,
           message: "frontend/core is imported under bare node by the Python "

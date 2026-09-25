@@ -1649,3 +1649,25 @@ class TestStripAndTrack:
                      f"endSpan({json.dumps(geom)}, 1, {{padL: 46}}), endSpan({json.dumps(geom)}, 5, {{padL: 46}})]);")
         assert got == [{"x0": 46, "x1": 100, "y1": 8, "y2": 188},
                        {"x0": 100, "x1": 200, "y1": 8, "y2": 188}, None]
+
+
+class TestTheAppKnowsItsTab:
+    APP = Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx"
+
+    def test_the_tab_and_rock_are_written_to_the_hash(self):
+        src = self.APP.read_text()
+        assert "history.replaceState(" in src and "formatHash(" in src
+
+    def test_a_link_s_rock_is_restored_before_the_session_s(self):
+        src = self.APP.read_text()
+        assert "cursorFromHash(" in src and "export function App({ doc, config, cursor })" in src
+
+    def test_the_house_re_measures_its_crop_when_the_tab_changes(self):
+        assert "cropDeps={[ui.sheet, ui.houseMode, ui.ei, ui.si, ui.gi, ui.tab]}" in self.APP.read_text()
+
+    def test_the_house_card_swipes_on_the_read_only_surfaces(self):
+        assert "{...(config.readOnly ? houseSwipe : {})}" in self.APP.read_text()
+
+    def test_the_last_tab_is_remembered(self):
+        prefs = (Path(__file__).resolve().parents[1] / "frontend/runtime/prefs.mjs").read_text()
+        assert 'tab: "detail"' in prefs

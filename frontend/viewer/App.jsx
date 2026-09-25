@@ -15,6 +15,7 @@ import {
   buildGameView, cumulativeThinking, cursor as cursorOf, gatherStats, gatherThinking,
   identity, isBlank, isGraded, nextBlankAfter, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
+  stepRock, parseHash, formatHash, cursorFromHash,
 } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
@@ -24,6 +25,7 @@ import { House } from "./House.jsx";
 import { ChartPanel } from "./ChartPanel.jsx";
 import { Report } from "./Report.jsx";
 import { Watch } from "./Watch.jsx";
+import { useSwipe } from "./Pager.jsx";
 
 const phone = () => matchMedia(PHONE_QUERY).matches;
 
@@ -39,13 +41,23 @@ function reducer(s, a) {
   }
 }
 
-export function App({ doc, config }) {
-  const [ui, dispatch] = useReducer(reducer, null, () => ({
-    gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
-    sheet: "peek", houseMode: "", menu: undefined, reporting: false, notice: null,
-    watch: "", following: true,
-    ...loadPrefs(),
-  }));
+export function App({ doc, config, cursor }) {
+  const [ui, dispatch] = useReducer(reducer, null, () => {
+    const prefs = loadPrefs();
+    const hash = config.readOnly ? parseHash(location.hash) : {};
+    // A link names its rock; failing that, where this tab last was. A hash or
+    // cursor naming a rock the document no longer has is ignored.
+    const linked = cursorFromHash(hash, gi => buildGameView(doc, gi, {}), doc.games.length);
+    const saved = cursor && doc.games[cursor.gi] ? cursor : null;
+    return {
+      gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
+      sheet: "peek", houseMode: "", menu: undefined, reporting: false, notice: null,
+      following: true,
+      ...prefs,
+      ...(linked ?? saved ?? {}),
+      tab: hash.tab ?? prefs.tab,
+    };
+  });
 
   const overrides = useSyncExternalStore(store.subscribe, store.getOverrides);
   const status = useSyncExternalStore(store.subscribe, store.getStatus);
@@ -72,7 +84,7 @@ export function App({ doc, config }) {
     mode: config.review ? "review" : config.readOnly ? "view" : "",
     peek: peekMode(shot), sheet: ui.sheet, house: ui.houseMode,
     menu: ui.menu, reporting: ui.reporting,
-    watch: config.readOnly ? ui.watch : "",
+    watch: config.readOnly ? ui.tab : "",
   };
 
   const noticeTimer = useRef(null);
@@ -160,7 +172,8 @@ export function App({ doc, config }) {
        are would stutter the playback once a second. */
     followTo: si => dispatch({ type: "goTo", ei: ui.ei, si }),
     setFollowing: on => dispatch({ type: "set", patch: { following: on } }),
-    openWatch: kind => dispatch({ type: "set", patch: { watch: kind } }),
+    step: d => { const n = stepRock(view, ui.ei, ui.si, d); if (n) goTo(n.ei, n.si); },
+    setTab: tab => setPref({ tab }),
     goToBarFromReport: b => {
       // A bar in the report is still a rock you can go and watch; going there
       // closes the report rather than leaving it over the shot it just
@@ -168,7 +181,10 @@ export function App({ doc, config }) {
       dispatch({ type: "set", patch: { reporting: false } });
       goTo(b.ei, b.si);
     },
-  }), [goTo, patch, setPref, raw, shot, shotKey, doc, ui.gi, ui.ei, ui.si, ui.sheet, notify]);
+  }), [goTo, patch, setPref, raw, shot, shotKey, doc, ui.gi, ui.ei, ui.si, ui.sheet, notify,
+       view]);
+
+  const houseSwipe = useSwipe(d => actions.step(d));
 
   /* ---------------------------------------------------------------- effects */
 
@@ -181,6 +197,15 @@ export function App({ doc, config }) {
 
   useEffect(() => { saveCursor(config.slug, { gi: ui.gi, ei: ui.ei, si: ui.si }); },
             [config.slug, ui.gi, ui.ei, ui.si]);
+
+  // The read-only surfaces keep their tab and rock in the URL, so a shared link
+  // opens where it was sent from. replaceState: stepping rocks is not history.
+  useEffect(() => {
+    if (!config.readOnly) return;
+    const e = view.ends[ui.ei]?.end?.number, s = view.ends[ui.ei]?.shots[ui.si]?.number;
+    if (e == null || s == null) return;
+    history.replaceState(null, "", formatHash({ tab: ui.tab, g: ui.gi + 1, e, s }));
+  }, [config.readOnly, view, ui.tab, ui.gi, ui.ei, ui.si]);
 
   /* The crop is measured, so it has to be re-measured when the box changes --
    * and a rotation that leaves the phone gate has to put the editor and the
@@ -319,7 +344,7 @@ export function App({ doc, config }) {
           </div>
         </section>
 
-        <section className="card" id="houseCard">
+        <section className="card" id="houseCard" {...(config.readOnly ? houseSwipe : {})}>
           <div className="tools">
             <button className={`swatchbtn red${ui.placeColor === "red" ? " on" : ""}`}
                     id="pickRed" title="Place red (r)"
@@ -348,7 +373,7 @@ export function App({ doc, config }) {
                  houseMode={ui.houseMode} showTrack={ui.showTrack}
                  readOnly={config.readOnly} placeColor={ui.placeColor}
                  bodyFlags={bodyFlags} actions={actions}
-                 cropDeps={[ui.sheet, ui.houseMode, ui.ei, ui.si, ui.gi]} />
+                 cropDeps={[ui.sheet, ui.houseMode, ui.ei, ui.si, ui.gi, ui.tab]} />
           <div className="housebar">
             <button id="recolour" title="Swap the selected stone's colour (c)"
                     hidden={config.readOnly}
