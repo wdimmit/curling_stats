@@ -9,31 +9,22 @@ from curling_score.geometry import constants as C
 class ThrowInfo:
     """Who throws a given stone of an end, by delivery slot."""
 
-    shot_number: int  # 1..16 across both teams
+    shot_number: int  # 1.. across both teams, delivered stones only
     has_hammer: bool  # the hammer team throws the even-numbered stones
-    team_stone_number: int  # 1..8, this team's k-th stone of the end
-    position_slot: int  # 1=lead 2=second 3=third 4=skip
-    rock_of_player: int  # 1 or 2
+    team_stone_number: int  # this team's k-th delivered stone of the end
+    position_slot: int  # the player: 1=lead..4=skip in fours, 1=A 2=B in doubles
+    rock_of_player: int  # this player's n-th rock of the end
 
 
-def throw_info(shot_number: int) -> ThrowInfo:
+def throw_info(shot_number: int, fmt=None) -> ThrowInfo:
     """Decompose a stone's position in the delivery order.
 
-    Teams alternate; the hammer team throws the even-numbered stones, so stone 16
-    is the hammer. Each player throws two consecutive stones for their team.
+    Four-player unless ``fmt`` (a :class:`format.GameFormat`) says otherwise;
+    the arithmetic lives there, so both formats read from one table.
     """
-    if not 1 <= shot_number <= C.STONES_PER_END:
-        raise ValueError(
-            f"shot_number must be 1..{C.STONES_PER_END}, got {shot_number}"
-        )
-    k = (shot_number + 1) // 2
-    return ThrowInfo(
-        shot_number=shot_number,
-        has_hammer=shot_number % 2 == 0,
-        team_stone_number=k,
-        position_slot=(k + 1) // 2,
-        rock_of_player=(k - 1) % 2 + 1,
-    )
+    from curling_score.game.format import FOURS
+
+    return (fmt or FOURS).throw_info(shot_number)
 
 
 def ordinal(n: int) -> str:
@@ -45,12 +36,11 @@ def ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
-def shot_label(end: int, shot_number: int) -> str:
+def shot_label(end: int, shot_number: int, fmt=None) -> str:
     """Render a shot the way a curler says it: "3rd end, second's first rock"."""
-    t = throw_info(shot_number)
-    position = C.POSITION_NAMES[t.position_slot]
-    nth = "first" if t.rock_of_player == 1 else "second"
-    return f"{ordinal(end)} end, {position}'s {nth} rock"
+    from curling_score.game.format import FOURS
+
+    return (fmt or FOURS).shot_label(end, shot_number)
 
 
 COLORS = ("red", "yellow")
