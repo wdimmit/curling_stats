@@ -1769,6 +1769,21 @@ class TestTheStripOnItsSide:
     def test_no_shot_draws_nothing(self):
         assert run_js("out(sideways(stripShapes(stripGeometry(null, DESKBOX))));") is None
 
+
+class TestTheChartPanelList:
+    SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/ChartPanel.jsx"
+
+    def test_the_house_counts_stones_not_inches(self):
+        got = run_js('out([houseDeltaText({added: [1]}), houseDeltaText({removed: [1, 2], moved: [3]}),'
+                     ' houseDeltaText({added: []}), houseDeltaText(null)]);')
+        assert got == ["1 stone in", "2 stones out, 1 stone moved", "no change", "—"]
+
+    def test_the_list_names_the_entry_speed_and_drops_the_long_split(self):
+        src = self.SRC.read_text()
+        assert '["Entry speed",' in src and '"Long split"' not in src and '["Weight",' not in src
+        assert '["House", houseDeltaText(shot?.house_delta)]' in src
+
+
 class TestTheAppKnowsItsTab:
     APP = Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx"
 

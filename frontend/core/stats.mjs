@@ -41,6 +41,16 @@ export function splitText(s) {
   return `${s.long_split_s.toFixed(1)} s${note}`;
 }
 
+/* What the house did on this throw, in stones: a bare "1 in" now reads as an
+ * inch, since the Detail figures are in feet and inches. */
+export function houseDeltaText(d) {
+  if (!d) return "—";
+  const n = (k, word) => `${k} stone${k === 1 ? "" : "s"} ${word}`;
+  return [d.removed?.length && n(d.removed.length, "out"),
+          d.added?.length && n(d.added.length, "in"),
+          d.moved?.length && n(d.moved.length, "moved")].filter(Boolean).join(", ") || "no change";
+}
+
 /* Per team: the clock, and how much of the game it was read from. Ends carry
  * the totals already, so this is a sum rather than a re-derivation. */
 export function gatherThinking(view) {

@@ -76,6 +76,7 @@ export const restOf = core.restOf;
 export const clockText = core.clockText;
 export const thinkText = core.thinkText;
 export const splitText = core.splitText;
+export const houseDeltaText = core.houseDeltaText;
 export const pct = core.pct;
 export const avg = core.avg;
 export const gatherStats = () => core.gatherStats(view());

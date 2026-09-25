@@ -3,7 +3,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import {
   GROUPS, GROUP_TYPE, MISS_REASONS, TALLBOX, TYPES, subtypesOf,
   blankQueue, boardReadable, identity, isBlank, openGroupFor, scoreCell,
-  splitText, thinkText, typeOf,
+  houseDeltaText, thinkText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 
@@ -157,18 +157,14 @@ function Grading({ shot, shotKey, openGroup, readOnly, others, actions }) {
 }
 
 function Detail({ shot }) {
-  const d = shot?.house_delta;
-  const delta = !d ? "—"
-    : [d.removed?.length && `${d.removed.length} out`,
-       d.added?.length && `${d.added.length} in`,
-       d.moved?.length && `${d.moved.length} moved`].filter(Boolean).join(", ") || "no change";
+  // The long split is the Detail card's Weight figure now, so it is not
+  // repeated here; this m/s number is the speed the rock entered the house at.
   const rows = [
     ["Thrower", `${shot?.position ?? "—"}${shot ? ` (rock ${shot.rock_of_player})` : ""}`],
-    ["Weight", shot?.entry_speed_m_s != null ? `${shot.entry_speed_m_s.toFixed(2)} m/s` : "—"],
+    ["Entry speed", shot?.entry_speed_m_s != null ? `${shot.entry_speed_m_s.toFixed(2)} m/s` : "—"],
     ["Travel", shot?.travel_m != null ? `${shot.travel_m.toFixed(2)} m` : "—"],
-    ["Long split", splitText(shot)],
     ["Thinking", thinkText(shot)],
-    ["House", delta],
+    ["House", houseDeltaText(shot?.house_delta)],
     ["Evidence", shot?.reason ?? "—"],
     ["Stones", String(shot?.stones?.length ?? 0)],
   ];
