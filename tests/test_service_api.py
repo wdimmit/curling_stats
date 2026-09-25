@@ -1262,3 +1262,67 @@ class TestTheReviewLinkSaysWhatItLeftOut:
         sid = world["client"].get("/api/games").json()["games"][0]["source_id"]
         doc = world["client"].get(f"/g/{sid}/timeline.json").json()
         assert doc["chart"]["ends_trimmed"] == 0
+
+
+DOUBLES_VID = "brMO74e6ZZU"
+
+
+def add_doubles_video(w):
+    w["yt"].add(VideoMeta(DOUBLES_VID,
+                          "3/19 - Sheet 1 - Thursday Mixed Doubles League 2025-2026",
+                          CLUB, 6001.0, "none", T0))
+
+
+class TestFormat:
+    def test_a_doubles_title_queues_a_doubles_run(self, world):
+        add_doubles_video(world)
+        assert submit(world, url=f"https://youtu.be/{DOUBLES_VID}").status_code == 201
+        (run,) = world["repo"].runs_for_video(DOUBLES_VID)
+        assert run.format == "doubles"
+
+    def test_the_form_beats_the_title(self, world):
+        add_doubles_video(world)
+        submit(world, url=f"https://youtu.be/{DOUBLES_VID}", format="fours")
+        (run,) = world["repo"].runs_for_video(DOUBLES_VID)
+        assert run.format == "fours"
+
+    def test_an_unknown_format_is_a_400(self, world):
+        assert submit(world, format="quads").status_code == 400
+
+    def test_the_claim_carries_the_format(self, world):
+        add_doubles_video(world)
+        submit(world, url=f"https://youtu.be/{DOUBLES_VID}")
+        r = world["client"].post("/api/worker/claim", headers=WORKER,
+                                 json={"worker_id": "home", "model_id": "m-abc"})
+        assert r.json()["job"]["format"] == "doubles"
+
+    def test_a_doubles_request_does_not_reuse_a_fours_run(self, world):
+        submit(world)                                   # fours, from the title
+        r = submit(world, format="doubles", ip="5.6.7.8")
+        assert r.json()["reused"] is False
+        assert sorted(run.format for run in world["repo"].runs_for_video(VID)) \
+            == ["doubles", "fours"]
+
+    def test_an_old_worker_cannot_complete_a_doubles_run(self, world):
+        add_doubles_video(world)
+        submit(world, url=f"https://youtu.be/{DOUBLES_VID}")
+        c = world["client"]
+        job = c.post("/api/worker/claim", headers=WORKER,
+                     json={"worker_id": "home", "model_id": "m-abc"}).json()["job"]
+        plan = c.post(f"/api/worker/jobs/{job['id']}/artifacts", headers=WORKER,
+                      json={"worker_id": "home",
+                            "files": [{"name": "timeline.json", "bytes": 10},
+                                      {"name": "meta.json", "bytes": 5}],
+                            "detcache": []}).json()
+        for up in plan["uploads"]:
+            world["store"].put_bytes(up["key"], json.dumps(sample_doc(1)).encode())
+        r = c.post(f"/api/worker/jobs/{job['id']}/complete", headers=WORKER,
+                   json={"worker_id": "home", "games": [], "detcache_digests": []})
+        assert r.status_code == 409
+        assert "format" in r.json()["detail"]
+
+    def test_a_fours_run_still_completes_without_a_format(self, world):
+        submit(world)
+        work_through(world)                             # sends no "format"
+        (run,) = world["repo"].runs_for_video(VID)
+        assert run.status == "ready"

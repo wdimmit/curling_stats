@@ -30,6 +30,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from curling_score import timeline, version, viewer
+from curling_score.game import format as format_mod
 from curling_score.ingest import source
 from curling_score.service import dedupe, playlists, slug
 from curling_score.service.auth import NoAuth
@@ -590,6 +591,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 "ends": s.play_ends if s.play_ends is not None else
                         next((g.get("ends") for g in (run.games if run else [])
                               if g["index"] == s.game_index), None),
+                "format": s.format or "fours",
             })
         # Games queued or in flight have no sources yet; list their runs too so
         # a person can make a link now and have it fill in.
@@ -602,6 +604,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 "played_at": _iso(run.published_at), "game_index": None,
                 "start_s": run.window_start_s, "end_s": run.window_end_s,
                 "status": run.status, "ends": None,
+                "format": run.format or "fours",
             })
         leagues = sorted({g["league"] for g in out if g["league"]})
         return {"games": out, "leagues": leagues}
@@ -769,6 +772,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 raise HTTPException(400, "the length must be more than zero")
         sheet = body.get("sheet")
         sheet = None if sheet in (None, "") else int(sheet)
+        fmt_name = body.get("format")
+        if fmt_name in (None, "", "auto"):
+            fmt_name = None
+        elif fmt_name not in format_mod.FORMATS:
+            raise HTTPException(400, f"format must be one of {sorted(format_mod.FORMATS)}")
         t = now()
         iph = ip_hash(request)
         team_id = body.get("team_id") or None
@@ -784,9 +792,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                                        settings.max_hours)
         except SubmissionError as exc:
             raise HTTPException(exc.status, exc.message)
+        fmt_name = fmt_name or source.format_from_title(meta.title)
 
         run = dedupe.find_reusable_run(repo.runs_for_video(link.video_id),
-                                       settings.processing_version, start_s)
+                                       settings.processing_version, start_s,
+                                       game_format=fmt_name)
         reused = run is not None
         if run is None:
             if repo.count_queued() >= settings.max_queued:
@@ -806,7 +816,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                       # Nothing queued this from a playlist, so there is no
                       # label to take; the club's titles carry the league in
                       # the same breath as the sheet.
-                      league=source.league_from_title(meta.title))
+                      league=source.league_from_title(meta.title),
+                      format=fmt_name)
             repo.put_run(run)
             if status == "queued":
                 repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued",
@@ -1289,6 +1300,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             "id": job.id, "run_id": run.id, "video_id": run.video_id,
             "window_start_s": run.window_start_s, "window_end_s": run.window_end_s,
             "sheet": run.sheet, "processing_version": run.processing_version,
+            "format": run.format or "fours",
             "attempt": job.attempts, "lease_s": settings.lease_s,
         }}
 
@@ -1394,6 +1406,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if job.state == "done":
             return {"ok": True, "charts_resolved": 0, "already": True}
         owned_job(job_id, body.get("worker_id"))
+        # A worker that predates formats sends none and builds fours whatever
+        # it was asked; storing that as a doubles reading would be wrong in
+        # every end. Old fours runs are unaffected.
+        want = run.format or "fours"
+        got = body.get("format") or "fours"
+        if got != want:
+            raise HTTPException(409, f"this run's format is {want}, but the worker "
+                                     f"built {got} -- update the worker")
         tkey = timeline_key(run.video_id, run.id)
         if not store.exists(tkey):
             raise HTTPException(409, "timeline.json has not been uploaded")
@@ -1505,6 +1525,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                   sheet=base.sheet if base else None,
                   published_at=base.published_at if base else None,
                   league=base.league if base else None,
+                  format=base.format if base else None,
                   playlist_id=base.playlist_id if base else None)
         repo.put_run(run)
         repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t, run_after=t))

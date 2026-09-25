@@ -40,6 +40,8 @@ class Run:
     games: list = field(default_factory=list)   # [{index, start_s, end_s, ends}]
     playlist_id: str | None = None
     league: str | None = None
+    # "fours" or "doubles"; None is a record from before formats, read as fours
+    format: str | None = None
     timeline_key: str | None = None
     meta_key: str | None = None
     error: str | None = None
@@ -97,6 +99,8 @@ class Source:
     title: str | None = None
     sheet: int | None = None
     league: str | None = None
+    # "fours" or "doubles"; None is a record from before formats, read as fours
+    format: str | None = None
     played_at: datetime | None = None
     # Who played, by the colour they threw. Per game rather than per video:
     # the league is the same all night, the teams are not. Set by hand -- the

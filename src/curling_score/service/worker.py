@@ -167,7 +167,8 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     doc = analyze_fn(
         url, root=root, weights=weights, info=info,
         start_s=job.get("window_start_s"), end_s=job.get("window_end_s"),
-        sheet=job.get("sheet"), skip_scoreboard=False,
+        sheet=job.get("sheet"), game_format=job.get("format"),
+        skip_scoreboard=False,
         skip_longview=skip_longview, on_phase=on_phase,
         download_attempts=1,
     )
@@ -181,12 +182,14 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
 
     games = [{"index": g["index"], "start_s": g["start_s"], "end_s": g["end_s"],
               "ends": len(g["ends"])} for g in doc["games"]]
+    fmt_name = (doc.get("format") or {}).get("name", "fours")
     meta = {
         "video_id": info.video_id, "title": info.title, "channel_id": info.channel_id,
         "duration_s": info.duration_s, "sheet": doc["source"].get("sheet"),
         "games": games, "processing_version": doc.get("processing_version"),
         "worker_id": worker_id, "timings_s": timings,
         "total_s": round(clock() - t_start, 1),
+        "format": fmt_name,
     }
     meta_bytes = json.dumps(meta, indent=1).encode()
 
@@ -205,7 +208,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
         "title": info.title, "channel_id": info.channel_id,
         "duration_s": info.duration_s, "sheet": doc["source"].get("sheet"),
         "games": games, "detcache_digests": [d["digest"] for d in detcache],
-        "timings": timings,
+        "timings": timings, "format": fmt_name,
     })
 
 

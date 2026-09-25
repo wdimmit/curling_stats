@@ -127,6 +127,28 @@ class TestProcessJob:
                            fetch_info=fake_info)
         assert "memory://old" not in api.uploads
 
+    def test_the_format_reaches_the_pipeline_and_comes_back(self, tmp_path):
+        api = FakeApi([])
+        seen = {}
+
+        def analyze_fn(url, **kw):
+            seen.update(kw)
+            return {**fake_doc(), "format": {"name": "doubles"}}
+
+        worker.process_job({**JOB, "format": "doubles"}, api, "home", root=tmp_path,
+                           weights=None, out_dir=tmp_path / "out",
+                           analyze_fn=analyze_fn, fetch_info=fake_info)
+        assert seen["game_format"] == "doubles"
+        assert json.loads(api.uploads["memory://meta.json"])["format"] == "doubles"
+        assert api.completed[0]["format"] == "doubles"
+
+    def test_a_fours_document_reports_fours(self, tmp_path):
+        api = FakeApi([])
+        worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
+                           out_dir=tmp_path / "out",
+                           analyze_fn=lambda url, **kw: fake_doc(), fetch_info=fake_info)
+        assert api.completed[0]["format"] == "fours"
+
 
 class TestClassifyingFailures:
     def test_blocked(self):

@@ -61,12 +61,17 @@ def window_for(duration_s: float, start_s: float | None,
 
 
 def find_reusable_run(runs: list[Run], processing_version: str,
-                      start_s: float | None) -> Run | None:
-    """An existing run of the current version whose window holds ``start_s``."""
+                      start_s: float | None, game_format: str = "fours") -> Run | None:
+    """An existing run of the current version and format whose window holds ``start_s``.
+
+    The format is part of the key: a doubles reading of a video that was run
+    as fours is a different analysis, not a cached one.
+    """
     live = ("pending_approval", "queued", "processing", "ready")
     candidates = [
         r for r in runs
         if r.processing_version == processing_version and r.status in live
+        and (r.format or "fours") == game_format
         and r.covers(start_s)
     ]
     # Prefer one that is already done, then the most recent.
@@ -126,6 +131,7 @@ def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
         title=run.title,
         sheet=run.sheet,
         league=run.league,
+        format=run.format,
         played_at=run.published_at,
     )
     repo.put_source(source)

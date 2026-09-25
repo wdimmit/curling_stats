@@ -8,6 +8,7 @@ week" without a weekly schedule that would have to know the fixture list.
 
 from datetime import datetime
 
+from curling_score.ingest import source
 from curling_score.service import slug
 from curling_score.service.records import Job, Run, WatchedPlaylist
 from curling_score.service.youtube import SubmissionError, validate_submission
@@ -65,6 +66,7 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                 created_at=now, title=meta.title, channel_id=meta.channel_id,
                 duration_s=meta.duration_s, published_at=meta.published_at,
                 playlist_id=pl.playlist_id, league=pl.label,
+                format=source.format_from_title(meta.title),
             )
             repo.put_run(run)
             if initial_status == "queued":

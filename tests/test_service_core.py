@@ -264,6 +264,16 @@ class TestReusableRun:
         ready = run(id="r_r", status="ready", created_at=at(0))
         assert dedupe.find_reusable_run([queued, ready], "p+m", None) is ready
 
+    def test_a_run_of_another_format_is_not_reused(self):
+        r = run(status="ready")
+        r.format = "doubles"
+        assert dedupe.find_reusable_run([r], "p+m", 3000.0) is None
+        assert dedupe.find_reusable_run([r], "p+m", 3000.0, game_format="doubles") is r
+
+    def test_a_run_from_before_formats_is_fours(self):
+        r = run(status="ready")          # format left as None
+        assert dedupe.find_reusable_run([r], "p+m", 3000.0, game_format="fours") is r
+
 
 class TestSnapping:
     GAMES = [{"index": 0, "start_s": 100.0, "end_s": 6400.0},
