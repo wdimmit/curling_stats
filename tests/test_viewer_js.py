@@ -1807,6 +1807,9 @@ class TestTheDetailPane:
                        'className="dcap"', "f.predates"):
             assert needle in src, needle
 
+    def test_the_broom_marker_stands_upright(self):
+        assert "<rect x={g.broom.x - 2} y={g.broom.y - 5} width={4} height={10}" in self.SRC.read_text()
+
     def test_the_caption_is_the_spec_s(self):
         assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±4 in · "
                 "wide = the side away from the curl") in self.SRC.read_text()

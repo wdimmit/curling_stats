@@ -39,7 +39,7 @@ function Strip({ shot }) {
         </g>
       ) : null}
       {g.broom ? (
-        <rect x={g.broom.x - 5} y={g.broom.y - 2} width={10} height={4} rx={1}
+        <rect x={g.broom.x - 2} y={g.broom.y - 5} width={4} height={10} rx={1}
               fill={PAINT.accent} stroke={own} strokeWidth={1}><title>skip&apos;s broom</title></rect>
       ) : null}
       {g.rest ? <circle cx={g.rest.x} cy={g.rest.y} r={4.2} fill={own} stroke={PAINT.accent} strokeWidth={1.2} /> : null}
