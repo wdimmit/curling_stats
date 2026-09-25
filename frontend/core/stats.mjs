@@ -22,6 +22,15 @@ export function thinkText(s) {
   return clockText(s.thinking_time_s) + (s.t_tee_estimated ? " (est.)" : "");
 }
 
+/* Whether this shot's long split is an estimate rather than a full paint
+ * measurement, in either era's sense -- see splitText just below for what
+ * the two fields mean. Its one home, so splitText and the Detail pane's
+ * weight figure (line.mjs's lineFigures) cannot drift apart on what counts
+ * as estimated. */
+export function isSplitEstimated(s) {
+  return s?.long_split_extrapolated_m > 0.05 || s?.long_split_far_reach_u > 0;
+}
+
 /* A split is now hog line to hog line, both ends observed, so there is nothing
  * to qualify. Timelines analysed before that carry how much of the throwing
  * end had been extrapolated instead, and those still say so rather than
@@ -35,9 +44,8 @@ export function splitText(s) {
    * set when that crossing was reached for rather than seen. Either way the
    * split is not exact and says so. */
   const extra = s.long_split_extrapolated_m;
-  const reach = s.long_split_far_reach_u;
   const note = extra > 0.05 ? ` (${extra.toFixed(1)} m est.)`
-             : reach > 0 ? " (est.)" : "";
+             : isSplitEstimated(s) ? " (est.)" : "";
   return `${s.long_split_s.toFixed(1)} s${note}`;
 }
 

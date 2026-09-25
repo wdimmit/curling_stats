@@ -3,6 +3,7 @@
  * the camera behind the thrower saw it go. Pure -- core/** may not touch the
  * DOM. See docs/superpowers/specs/2026-09-24-shot-line-detail-design.md. */
 import { R, STRIPBOX } from "./constants.mjs";
+import { isSplitEstimated } from "./stats.mjs";
 
 export const LINE_SCHEMA = 6;
 export const HOG_Y = 34.747 - 6.401;      // the throwing hog line, house metres
@@ -72,7 +73,8 @@ export function lineFigures(shot, doc) {
   const predates = reason === "This chart predates line measurement";
   const l = reason ? null : shot.line;
   const weight = typeof shot?.long_split_s === "number"
-    ? fig("weight", "Weight", `${shot.long_split_s.toFixed(1)} s`, "hog line to hog line")
+    ? fig("weight", "Weight", `${shot.long_split_s.toFixed(1)} s`,
+          isSplitEstimated(shot) ? "hog line to hog line, estimated" : "hog line to hog line")
     : fig("weight", "Weight", "–", "not timed");
   const rest = restOf(shot);
   const restFig = rest
@@ -273,10 +275,12 @@ const r1 = v => +(+v).toFixed(1);
  * still mean what they say. */
 export function sideways(s) {
   if (!s) return null;
-  const L = s.h, W = s.h, H = s.w;
-  const t = (x, y) => [r1(L - y), r1(x)];
+  const S = s.h, H = s.w;
+  const t = (x, y) => [r1(S - y), r1(x)];
   const pt = p => { const [x, y] = t(p.x, p.y); return { ...p, x, y }; };
-  const pts = str => str == null ? null
+  // stripGeometry gives an empty string, not null, when there is nothing to
+  // draw (an empty hog_path, say); either one means "nothing here".
+  const pts = str => (str == null || str === "") ? null
     : str.split(" ").map(q => t(...q.split(",").map(Number)).join(",")).join(" ");
   let broom = null;
   if (s.broom) {
@@ -293,7 +297,7 @@ export function sideways(s) {
              tx: r1(x1 - 16), ty: r1(Math.min(Math.max((y1 + y2) / 2 + 4, 11), H - 3)) };
   }
   return {
-    w: W, h: H,
+    w: S, h: H,
     rings: s.rings.map(r => { const [cx, cy] = t(r.cx, r.cy); return { ...r, cx, cy, rx: r.ry, ry: r.rx }; }),
     lines: s.lines.map(l => {
       const [x1, y1] = t(l.x1, l.y1), [x2, y2] = t(l.x2, l.y2);

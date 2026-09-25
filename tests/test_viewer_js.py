@@ -1555,6 +1555,23 @@ class TestLineFigures:
         assert (f["weight"]["value"], f["curl"]["value"]) == ("13.8 s", "3 ft 9 in")
         assert (f["rest"]["value"], f["rest"]["note"]) == ("12-foot", "1.8 m from the button")
 
+    def test_an_estimated_split_says_so_in_the_weight_note(self):
+        # long_split_far_reach_u > 0: the arriving end was reached for, not seen.
+        reach = dict(self.measured(), long_split_far_reach_u=0.4)
+        f = self.by_key(self.figs(reach))
+        assert (f["weight"]["value"], f["weight"]["note"]) == (
+            "13.8 s", "hog line to hog line, estimated")
+
+        # long_split_extrapolated_m > 0.05: the throwing end was extrapolated.
+        extrap = dict(self.measured(), long_split_extrapolated_m=0.8)
+        f = self.by_key(self.figs(extrap))
+        assert (f["weight"]["value"], f["weight"]["note"]) == (
+            "13.8 s", "hog line to hog line, estimated")
+
+        # Neither field set: the split reads as measured, same as before.
+        f = self.by_key(self.figs(self.measured()))
+        assert (f["weight"]["value"], f["weight"]["note"]) == ("13.8 s", "hog line to hog line")
+
     def test_an_offset_is_in_feet_and_inches_to_the_nearest_inch(self):
         got = run_js('out([0.0254, -0.3048, 0.712, 0.3302, 2.4892].map(feetInches));')
         assert got == ["1 in", "1 ft", "2 ft 4 in", "1 ft 1 in", "8 ft 2 in"]
@@ -1708,7 +1725,6 @@ class TestStripAndTrack:
                        {"x0": 100, "x1": 200, "y1": 8, "y2": 188}, None]
 
 
-
 class TestTheStripOnItsSide:
     """The desktop draws the phone's strip turned a quarter: hack at the left."""
 
@@ -1765,6 +1781,30 @@ class TestTheStripOnItsSide:
         t = self.turned(s)
         assert t["miss"] is None and t["aim"] is None
         assert t["broom"] is not None and t["rest"] is not None and len(t["rings"]) == 8
+
+    def test_an_empty_hog_path_does_not_turn_into_nan(self):
+        # stripGeometry gives thrown: "" when hog_path is empty; sideways's
+        # pts() used to check only == null, so "" fell through to "NaN,0".
+        s = dict(self.SHOT, line=dict(self.SHOT["line"], hog_path=[]))
+        t = self.turned(s)
+        assert t["thrown"] is None
+
+    def test_the_clamp_at_the_thrower_s_left_edge(self):
+        # target_broom.x = -2.2 (near the left edge), at_broom.x = -2.35: a
+        # small (0.15 m) miss. Unclamped this lands at ty ~= 6.4, below the
+        # low clamp, so it clamps UP to 11.
+        s = dict(self.SHOT, target_broom={"x": -2.2, "y": 0.17},
+                 line=dict(self.SHOT["line"], at_broom={"x": -2.35, "miss_m": -0.15}))
+        m = self.turned(s)["miss"]
+        assert m["ty"] == 11
+
+    def test_the_clamp_at_the_thrower_s_right_edge(self):
+        # The mirror: target_broom.x = 2.2, at_broom.x = 2.35. Unclamped this
+        # lands at ty ~= 115.6, above the high clamp, so it clamps DOWN to 111.
+        s = dict(self.SHOT, target_broom={"x": 2.2, "y": 0.17},
+                 line=dict(self.SHOT["line"], at_broom={"x": 2.35, "miss_m": 0.15}))
+        m = self.turned(s)["miss"]
+        assert m["ty"] == 111
 
     def test_no_shot_draws_nothing(self):
         assert run_js("out(sideways(stripShapes(stripGeometry(null, DESKBOX))));") is None
