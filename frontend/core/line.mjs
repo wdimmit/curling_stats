@@ -152,11 +152,21 @@ export function parseHash(hash) {
   return out;
 }
 
+/* No tab when none is given: only the phone's watching layout has tabs, and a
+ * link made anywhere else should open on the recipient's own last tab rather
+ * than on one its sender never saw. */
 export function formatHash({ tab, g, e, s }) {
-  const parts = [`tab=${tab}`];
+  const parts = tab ? [`tab=${tab}`] : [];
   if (g && g > 1) parts.push(`g=${g}`);
   parts.push(`e=${e}`, `s=${s}`);
   return `#${parts.join("&")}`;
+}
+
+/* A URL carrying this hash instead of whatever fragment it had. */
+export function withHash(url, hash) {
+  const bare = String(url ?? "").split("#")[0];
+  const h = String(hash ?? "").replace(/^#/, "");
+  return h ? `${bare}#${h}` : bare;
 }
 
 /* A parsed hash to a cursor: game by position (1-based), end and rock by

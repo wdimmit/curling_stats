@@ -15,7 +15,7 @@ import {
   buildGameView, cumulativeThinking, cursor as cursorOf, gatherStats, gatherThinking,
   identity, isBlank, isGraded, nextBlankAfter, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
-  stepRock, parseHash, formatHash, cursorFromHash,
+  stepRock, parseHash, formatHash, cursorFromHash, withHash,
 } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
@@ -28,6 +28,15 @@ import { Watch } from "./Watch.jsx";
 import { useSwipe } from "./Pager.jsx";
 
 const phone = () => matchMedia(PHONE_QUERY).matches;
+
+/* The rock a hash names, in the game as it is now charted. The hash is written
+ * from the view with the overrides applied, so it is read back against the
+ * same: after a rock is moved under Order, its number in a link is its new
+ * number, not the one the detector gave it. */
+function linked(doc, hash) {
+  const ov = store.getOverrides();
+  return cursorFromHash(hash, gi => buildGameView(doc, gi, ov), doc.games.length);
+}
 
 function reducer(s, a) {
   switch (a.type) {
@@ -44,12 +53,14 @@ function reducer(s, a) {
 export function App({ doc, config, cursor }) {
   const [ui, dispatch] = useReducer(reducer, null, () => {
     const prefs = loadPrefs();
-    const hash = config.readOnly ? parseHash(location.hash) : {};
+    const hash = parseHash(location.hash);
     // A link names its rock; failing that, where this tab last was. A hash or
     // session cursor naming a rock the document no longer has is ignored --
     // the session's cursor is checked against the built view the same way.
-    const linked = cursorFromHash(hash, gi => buildGameView(doc, gi, {}), doc.games.length);
-    const savedView = cursor && doc.games[cursor.gi] ? buildGameView(doc, cursor.gi, {}) : null;
+    // store.start has already run (main.jsx), so the overrides are in.
+    const link = linked(doc, hash);
+    const savedView = cursor && doc.games[cursor.gi]
+      ? buildGameView(doc, cursor.gi, store.getOverrides()) : null;
     const saved = savedView?.ends[cursor.ei]?.shots[cursor.si] ? cursor : null;
     return {
       gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
@@ -58,9 +69,9 @@ export function App({ doc, config, cursor }) {
       // A link or a restored session names a rock the video is not at yet:
       // seen once, on mount, to seek the player there (below). Not a pref
       // and not part of the saved cursor -- it says nothing once used.
-      restored: !!(linked ?? saved),
+      restored: !!(link ?? saved),
       ...prefs,
-      ...(linked ?? saved ?? {}),
+      ...(link ?? saved ?? {}),
       tab: hash.tab ?? prefs.tab,
     };
   });
@@ -226,14 +237,42 @@ export function App({ doc, config, cursor }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The read-only surfaces keep their tab and rock in the URL, so a shared link
-  // opens where it was sent from. replaceState: stepping rocks is not history.
+  // Every surface keeps its rock in the URL, so a copied link -- or the address
+  // bar -- opens where it was sent from. Only the phone's watching layout has
+  // tabs, so only it names one. replaceState: stepping rocks is not history,
+  // and it fires no hashchange for the listener below to answer.
+  const written = useRef("");
   useEffect(() => {
-    if (!config.readOnly || !phone()) return;
     const e = view.ends[ui.ei]?.end?.number, s = view.ends[ui.ei]?.shots[ui.si]?.number;
     if (e == null || s == null) return;
-    history.replaceState(null, "", formatHash({ tab: ui.tab, g: ui.gi + 1, e, s }));
+    const tab = config.readOnly && phone() ? ui.tab : undefined;
+    written.current = formatHash({ tab, g: ui.gi + 1, e, s });
+    history.replaceState(null, "", written.current);
   }, [config.readOnly, view, ui.tab, ui.gi, ui.ei, ui.si]);
+
+  /* A link to this chart opened in a tab already showing it changes only the
+   * fragment: no reload, so nothing above runs again. Go to its rock, and put
+   * the video there without playing -- the same as a link opened fresh. A
+   * hash naming no rock we have leaves the cursor where it is, and the URL
+   * goes back to naming it: otherwise the next Copy link would copy the
+   * rock that is not there. */
+  useEffect(() => {
+    const onHash = () => {
+      const hash = parseHash(location.hash);
+      const to = linked(doc, hash);
+      if (!to) {
+        history.replaceState(null, "", written.current || location.pathname + location.search);
+        return;
+      }
+      dispatch({ type: "set", patch: { ...to, selStone: null, following: true,
+                                        ...(hash.tab ? { tab: hash.tab } : {}) } });
+      const s = buildGameView(doc, to.gi, store.getOverrides()).ends[to.ei].shots[to.si];
+      const t = shotVideoTime(s, ui.leadIn);
+      if (typeof t === "number") player.seek(t, false);
+    };
+    addEventListener("hashchange", onHash);
+    return () => removeEventListener("hashchange", onHash);
+  }, [doc, ui.leadIn]);
 
   /* The crop is measured, so it has to be re-measured when the box changes --
    * and a rotation that leaves the phone gate has to put the editor and the
@@ -502,10 +541,11 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
             <option key={i} value={i}>{`End ${e.number} (${e.house})`}</option>
           ))}
         </select>
-        <CopyButton id="copyLink" title="Copy this page's link" label="Copy link"
+        <CopyButton id="copyLink" title="Copy a link to this rock" label="Copy link"
                     text={() => location.href} />
-        <CopyButton id="shareLink" title="Copy a link others can view but not edit"
-                    label="View-only link" text={() => doc.chart.share_url}
+        <CopyButton id="shareLink" title="Copy a view-only link to this rock"
+                    label="View-only link"
+                    text={() => withHash(doc.chart.share_url, location.hash)}
                     hidden={!(doc.chart?.share_url && !config.readOnly)} />
         <button id="download" title="Save overrides.json to disk" hidden={config.readOnly}
                 onClick={() => store.download()}>⬇</button>

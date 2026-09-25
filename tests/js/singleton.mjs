@@ -89,6 +89,7 @@ export const cursorFromHash = parsed => core.cursorFromHash(
   parsed, gi => core.buildGameView(state.doc, gi, state.overrides), state.doc.games.length);
 export const parseHash = core.parseHash;
 export const formatHash = core.formatHash;
+export const withHash = core.withHash;
 export const swipeStep = core.swipeStep;
 export const stripGeometry = core.stripGeometry;
 export const trackPoints = core.trackPoints;

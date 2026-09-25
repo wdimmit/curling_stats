@@ -1631,6 +1631,27 @@ class TestSteppingAndTheHash:
             'out([cursorFromHash(parseHash("#tab=timing&e=9&s=1")), parseHash("#tab=bogus&e=x")]);'))
         assert got == [None, {}]
 
+    def test_a_link_made_off_the_phone_names_no_tab(self):
+        got = run_js(setup(two_ends()) + (
+            'const h = formatHash({g: 1, e: 2, s: 1});'
+            'out([h, parseHash(h), cursorFromHash(parseHash(h))]);'))
+        assert got == ["#e=2&s=1", {"e": 2, "s": 1}, {"gi": 0, "ei": 1, "si": 0}]
+
+    def test_a_link_made_after_a_move_opens_the_moved_rock(self):
+        shots = [shot(i, "red" if i % 2 else "yellow", "lead") for i in range(1, 7)]
+        got = run_js(setup(doc(shots, end_number=4), {"0.4.5": {"before": 1}}) + (
+            'const c = cursorFromHash(parseHash(formatHash({e: 4, s: 1})));'
+            'state.si = c.si; out([c, rawShot().number]);'))
+        assert got == [{"gi": 0, "ei": 0, "si": 0}, 5]
+
+    def test_the_view_only_link_carries_the_rock(self):
+        got = run_js(
+            'out([withHash("https://x/s/ab/", "#e=3&s=5"),'
+            ' withHash("https://x/s/ab/#e=1&s=1", "#tab=house&e=3&s=5"),'
+            ' withHash("https://x/s/ab/#e=1&s=1", "")]);')
+        assert got == ["https://x/s/ab/#e=3&s=5", "https://x/s/ab/#tab=house&e=3&s=5",
+                       "https://x/s/ab/"]
+
 
 class TestSwipe:
     def step(self, dx, dy, x0=200):
@@ -1713,9 +1734,30 @@ class TestTheAppKnowsItsTab:
     def test_a_saved_rock_that_is_gone_is_ignored(self):
         assert ".shots[cursor.si]" in self.APP.read_text()
 
-    def test_the_swipe_and_the_hash_are_phone_only(self):
+    def test_the_swipe_is_phone_only_and_the_hash_is_everywhere(self):
+        """A link to a rock is shared from the desktop and the edit page too,
+        so every surface reads the hash and keeps it current; only a tab is
+        the phone's alone."""
         src = self.APP.read_text()
-        assert "if (phone()) actions.step(d)" in src and "!phone()" in src
+        assert "if (phone()) actions.step(d)" in src
+        assert "!config.readOnly || !phone()" not in src
+        assert "config.readOnly ? parseHash" not in src
+        assert "const tab = config.readOnly && phone() ? ui.tab : undefined;" in src
+
+    def test_a_link_is_read_against_the_game_as_charted(self):
+        src = self.APP.read_text()
+        assert "buildGameView(doc, gi, ov)" in src and "const ov = store.getOverrides();" in src
+        assert "buildGameView(doc, gi, {})" not in src
+
+    def test_a_link_opened_in_a_tab_already_on_the_chart_goes_to_its_rock(self):
+        src = self.APP.read_text()
+        assert 'addEventListener("hashchange", onHash)' in src
+        assert "if (typeof t === \"number\") player.seek(t, false);" in src
+        # A link naming no rock puts the URL back on the one being shown.
+        assert 'history.replaceState(null, "", written.current ||' in src
+
+    def test_the_view_only_link_names_the_rock(self):
+        assert "withHash(doc.chart.share_url, location.hash)" in self.APP.read_text()
 
     def test_a_restored_cursor_seeks_the_player_once_on_mount(self):
         src = self.APP.read_text()
