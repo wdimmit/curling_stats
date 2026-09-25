@@ -559,10 +559,11 @@ class TestHouseViewBox:
         falls off the bottom. Centred means what is lost is lost evenly, and
         that nothing is drawn where the sheet would cover it. The ring itself
         survives only while the band's aspect stays at or below RING_ASPECT --
-        see the two tests below, which pin that boundary.
+        see the two tests below, which pin that boundary. A band tall enough to
+        reach past the back of the ice is not centred; see the last test here.
         """
         x, y, w, h = (float(v) for v in
-                      run_js('out(houseViewBox("crop", 390/321));').split())
+                      run_js('out(houseViewBox("crop", 390/250));').split())
         assert y == pytest.approx(-h / 2, abs=1e-3)
 
     # The crop always spans the sheet's 5.2 m of width, and the twelve-foot
@@ -599,6 +600,17 @@ class TestHouseViewBox:
         x, y, w, h = (float(v) for v in
                       run_js('out(houseViewBox("crop", 0.2));').split())
         assert h == 8.6
+
+    def test_a_box_taller_than_it_is_wide_keeps_the_back_of_the_ice_at_the_top(self):
+        # The ice starts at the back line, 1.829 m behind the tee. The House
+        # tab's box on a 390x844 phone is 366x457, and centring that crop on
+        # the tee put 1.4 m of nothing between the pager and the ice. It now
+        # starts behind the back line by the sides' own 0.225 m margin, and the
+        # extra height goes in front of the house instead.
+        x, y, w, h = (float(v) for v in
+                      run_js('out(houseViewBox("crop", 366/457));').split())
+        assert y == pytest.approx(-1.829 - 0.225, abs=1e-3)
+        assert w / h == pytest.approx(366 / 457, abs=1e-3)
 
 
 class TestShouldCrop:

@@ -7,7 +7,8 @@ import { isBlank } from "./shots.mjs";
 
 /* The phone cannot show the sheet's whole length beside the video, so it shows
  * the house centred on the tee and lets the guards fall off the bottom.
- * Centring is what keeps the 12-foot whole however short the band gets.
+ * Centring is what keeps the 12-foot whole however short the band gets; a band
+ * tall enough to reach past the back line starts just behind it instead.
  * `aspect` is the rendered box's width over its height; desktop passes nothing
  * that matters, because "full" is always the view it has always had. */
 export function houseViewBox(mode, aspect) {
@@ -15,8 +16,14 @@ export function houseViewBox(mode, aspect) {
   // A box taller than the whole sheet is capped, and the result is then
   // letterboxed -- its centring is the box's, no longer the sheet's.
   const h = Math.min(5.2 / aspect, 8.6);
+  // Centred until that would reach past the back of the ice; a taller box
+  // spends the rest in front instead. Behind the back line it keeps the same
+  // margin as the sides, so the ice is evenly framed and the dark band the
+  // full view's 2.6 m left above it is gone. A stone past the back line is
+  // cut off: those are rare, and the house is what this view is for.
+  const y = Math.max(-h / 2, R.back - (2.6 - R.halfWidth));
   const n = x => String(+x.toFixed(3));
-  return `-2.6 ${n(-h / 2)} 5.2 ${n(h)}`;
+  return `-2.6 ${n(y)} 5.2 ${n(h)}`;
 }
 
 /* Whether the house band shows the crop rather than the whole sheet. Pure, and
