@@ -57,9 +57,18 @@ house.
   - **640 px and below (the phone layouts):** `grid-template-areas: none`, so
     both phone layouts see exactly the grid they see today, and `#detailCard`
     is `display: none`.
-- **Fold.** At 1440 × 900 the card ends about 6 px above the bottom of the
-  screen. At 1280 × 800 it runs about 10 px below. The video is not capped to
-  force it.
+- **Fold.** Measured headless at 1440 × 900 and 1280 × 800 on end 1 rock 3 of
+  s_0ZIRyB57JW0Q7dOu2 (`/c/`, schema 6): at 1440 × 900 the card box ends about
+  885 px down, 15 px above the fold, on a confirmed rock, and about 900 px
+  down on an unconfirmed one, whose broom note wraps to a second line. Either
+  way the card's content through the caption (`#detailCard .dcap`) stays on
+  screen -- 872 px and 887 px respectively -- and only the card's own bottom
+  padding/border can fall past 900 px. At 1280 × 800 it ends about 877 px
+  down, 77 px below the fold, with the strip and the first figure row still
+  above it. The video is not capped to force any of this. A real 1440 × 900
+  laptop's browser viewport is shorter than 900 px once its own chrome (the
+  tab strip, the address bar) is subtracted, so these numbers are a
+  conservative floor, not what a laptop actually shows.
 - A chart from before line measurement (schema below 6) gets a one-line card,
   "This chart predates line measurement", as the phone does. It never shows an
   empty drawing.
@@ -101,9 +110,34 @@ house.
 - A rock with no line: the strip still draws the sheet, the stones, the broom
   and where the rock stopped. The figures show "–" with the reason, as on the
   phone.
+- **Amends §Unchanged, for this one note.** The Weight figure's note reads
+  "hog line to hog line, estimated" rather than plain "hog line to hog line"
+  when the split is an estimate -- `long_split_extrapolated_m > 0.05` or
+  `long_split_far_reach_u > 0`, the same condition `splitText` already used
+  for the chart panel's "(est.)"/"(x.x m est.)" suffix (`isSplitEstimated` in
+  `stats.mjs`, shared by both). This is true on the phone Detail pane and the
+  desktop card alike: an estimated split reading as measured was Ruling 10 in
+  the final review, not a desktop-only fix.
+- **Narrow-width value step.** `#detailCard` is a `container-type:
+  inline-size` container; below a card width of 500 px, `.dfig .dval` steps
+  from 19 px down to 15 px. The three `.dfigs` columns are `minmax(0,1fr)`,
+  so their width comes from the card's own width, not the viewport's, and
+  `<main>`'s grid-template-columns change at 1180 px and 820 px resets it --
+  the card is narrowest just past each of those breakpoints (measured ~440 px
+  at 1181 px wide, ~444 px at 821 px wide) rather than at either viewport
+  extreme. There a 19 px "6 ft 1 in narrow" already overflows its ~126 px
+  column, and 16 px (tried first) still overflows a 17-character value like
+  "1 ft 10 in narrow" by 3-4 px; 15 px clears it with 4-5 px to spare. 500 px
+  sits between the card widths that still overflow at 19 px (up to ~487 px)
+  and the ones that already clear it (from ~502 px), so it catches both
+  narrow points while leaving 1280 px and 1440 px wide viewports (card ~554
+  px, ~699 px) at the full 19 px.
 
-**The chart panel's list** (shared by the desktop and the phone edit page's
-bottom sheet)
+**The chart panel's list**
+- Shown on the desktop and, on the phone, only in the short-screen layout
+  (`(max-width: 640px) and (max-height: 520px)`); the tall phone layout
+  (`(max-width: 640px) and (min-height: 521px)`, `PHONE_QUERY`) hides
+  `#chart dl` outright, so the list is not something the two surfaces share.
 - "Long split" goes: the Weight figure shows it now.
 - "Weight" (m/s) becomes "Entry speed".
 - "House: 1 in" becomes "1 stone in", because "in" now reads as inches. The
