@@ -9,7 +9,8 @@ from curling_score.service.records import Chart, Job, Run, Source, WatchedPlayli
 from curling_score.service.repo import MemoryRepo, worker_online
 from curling_score.service.store import MemoryStore, detcache_key, timeline_key
 from curling_score.service.youtube import (
-    FakeYouTube, SubmissionError, VideoMeta, parse_duration, validate_submission,
+    FakeYouTube, SubmissionError, VideoMeta, YouTubeClient, parse_duration,
+    validate_submission,
 )
 
 T0 = datetime(2026, 9, 11, 12, 0, tzinfo=timezone.utc)
@@ -353,6 +354,24 @@ class TestValidation:
         assert parse_duration("P1DT1H") == 90000.0
         with pytest.raises(ValueError):
             parse_duration("3:59:52")
+
+    def test_a_stream_is_dated_by_when_it_went_live(self):
+        # Real numbers from a 6/18 league game: live at 7 pm Pacific, the
+        # recording posted near noon the next day.
+        class Http:
+            def get(self, url, params):
+                item = {"id": "v", "contentDetails": {"duration": "PT4H"},
+                        "snippet": {"title": "6/18 - Sheet 4", "channelId": "UCclub",
+                                    "liveBroadcastContent": "none",
+                                    "publishedAt": "2026-06-19T18:45:24Z"}}
+                if "live" in params.get("id"):
+                    item["liveStreamingDetails"] = {"actualStartTime": "2026-06-19T02:00:21Z"}
+                return type("R", (), {"raise_for_status": lambda s: None,
+                                      "json": lambda s: {"items": [item]}})()
+
+        yt = YouTubeClient("key", http=Http())
+        assert yt.video("live").published_at == datetime(2026, 6, 19, 2, 0, 21, tzinfo=timezone.utc)
+        assert yt.video("upload").published_at == datetime(2026, 6, 19, 18, 45, 24, tzinfo=timezone.utc)
 
 
 class TestPlaylistWatcher:

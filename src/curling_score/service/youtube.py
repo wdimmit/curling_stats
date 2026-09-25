@@ -68,16 +68,21 @@ class YouTubeClient:
         out = []
         for i in range(0, len(video_ids), 50):
             chunk = video_ids[i:i + 50]
-            data = self._get("videos", part="snippet,contentDetails",
+            data = self._get("videos", part="snippet,contentDetails,liveStreamingDetails",
                              id=",".join(chunk), maxResults=50)
             for item in data.get("items", []):
                 sn, cd = item["snippet"], item["contentDetails"]
+                # publishedAt is when the recording was posted, which for a
+                # club stream can be the next afternoon. When the stream went
+                # live is when the game was played.
+                live = item.get("liveStreamingDetails") or {}
                 out.append(VideoMeta(
                     video_id=item["id"], title=sn.get("title", ""),
                     channel_id=sn.get("channelId", ""),
                     duration_s=parse_duration(cd.get("duration", "PT0S")),
                     live_status=sn.get("liveBroadcastContent", "none"),
-                    published_at=_parse_ts(sn.get("publishedAt")),
+                    published_at=_parse_ts(live.get("actualStartTime")
+                                           or sn.get("publishedAt")),
                 ))
         return out
 
@@ -170,7 +175,8 @@ class YtDlpYouTube:
             video_id=info.video_id, title=info.title, channel_id=info.channel_id or "",
             duration_s=info.duration_s,
             live_status="live" if info.is_live else "none",
-            published_at=(datetime.strptime(info.upload_date, "%Y%m%d").replace(tzinfo=timezone.utc)
+            published_at=(datetime.fromtimestamp(info.timestamp, timezone.utc) if info.timestamp
+                          else datetime.strptime(info.upload_date, "%Y%m%d").replace(tzinfo=timezone.utc)
                           if info.upload_date else None),
         )
 

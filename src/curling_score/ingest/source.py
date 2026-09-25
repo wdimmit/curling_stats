@@ -121,6 +121,10 @@ class VideoInfo:
     upload_date: str | None
     sheet: int | None
     channel_id: str | None = None
+    # Seconds since the epoch: when a stream started, else when it went up.
+    # upload_date is that same moment's date in UTC, a day ahead for any
+    # evening game in North America.
+    timestamp: float | None = None
 
 
 def fetch_info(url: str, timeout_s: float = 60.0) -> VideoInfo:
@@ -150,4 +154,5 @@ def fetch_info(url: str, timeout_s: float = 60.0) -> VideoInfo:
         upload_date=info.get("upload_date"),
         sheet=sheet_from_title(title),
         channel_id=info.get("channel_id"),
+        timestamp=info.get("release_timestamp") or info.get("timestamp"),
     )

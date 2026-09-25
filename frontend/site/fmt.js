@@ -15,7 +15,19 @@ export function mmss(s) {
   return m ? `${m}m ${String(x).padStart(2, "0")}s` : `${x}s`;
 }
 
-export const day = iso => (iso || "").slice(0, 10) || "—";
+/* The calendar day a timestamp falls on where the reader is, as YYYY-MM-DD.
+ *
+ * played_at is YouTube's publish time, in UTC. Slicing the date off the ISO
+ * text put every evening game in North America on the next day, since 7 pm
+ * Central is already past midnight UTC. Null when there is no date. */
+export function localDay(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+       + `-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export const day = iso => localDay(iso) || "—";
 
 /** Seconds from "1:52:30", "6750" or "2:15". Null when it is not a time. */
 export function parseClock(text) {

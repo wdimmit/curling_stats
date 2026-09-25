@@ -7,7 +7,7 @@
  */
 import { useState } from "react";
 import { authedFetch } from "./auth.js";
-import { hms } from "./fmt.js";
+import { hms, localDay } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Header, TeamPicker, useCommitOnExit } from "./ui.jsx";
 
@@ -179,7 +179,7 @@ export function Games() {
 
   const shown = all.filter(g => !league || g.league === league);
   const byDate = {};
-  for (const g of shown) (byDate[(g.played_at || "").slice(0, 10) || "undated"] ||= []).push(g);
+  for (const g of shown) (byDate[localDay(g.played_at) || "undated"] ||= []).push(g);
 
   return (
     <>
