@@ -234,16 +234,6 @@ export function lineFigures(shot, doc) {
   return { predates, reason, figures: [broom, hack, hog, weight, curl, restFig] };
 }
 
-/* The House tab's caption. */
-export function houseCaption(shot) {
-  const rest = restOf(shot);
-  if (!rest) return null;
-  const z = zone(rest);
-  const where = z === "Button" ? "on the button" : z === "In front" ? "in front of the house"
-    : z === "Behind" ? "behind the tee" : `in the ${z}`;
-  return `Stopped ${Math.hypot(rest.x, rest.y).toFixed(1)} m from the button, ${where}`;
-}
-
 const SWIPE_MIN_PX = 50;
 const SWIPE_EDGE_PX = 20;          // the browser's own back gesture lives here
 

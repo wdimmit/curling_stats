@@ -70,7 +70,6 @@ export const ghostStones = core.ghostStones;
 export const lineFigures = core.lineFigures;
 export const feetInches = core.feetInches;
 export const lineReason = core.lineReason;
-export const houseCaption = core.houseCaption;
 export const lineX = core.lineX;
 export const restOf = core.restOf;
 export const playerHacks = core.playerHacks;

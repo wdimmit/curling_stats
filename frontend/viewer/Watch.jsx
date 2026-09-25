@@ -15,7 +15,7 @@
  * second <House> would put a second id="house" in the document.
  */
 import { useEffect, useMemo } from "react";
-import { ghostStones, houseCaption, rockSpan, rockRows, stepRock } from "../core/index.mjs";
+import { rockSpan, rockRows, stepRock } from "../core/index.mjs";
 import * as player from "../runtime/player.mjs";
 import { Detail } from "./Detail.jsx";
 import { Pager, useSwipe } from "./Pager.jsx";
@@ -48,8 +48,6 @@ export function Watch({ view, ui, config, series, think, here, actions }) {
   const swipe = useSwipe(d => actions.step(d));
   const row = rows[ui.si] || null;
   const shot = view.ends[ui.ei]?.shots[ui.si] ?? null;
-  const caption = houseCaption(shot);
-  const ghosts = ui.showTrack && ghostStones(shot).length > 0;
   const ends = useMemo(() => view.ends.map(x => ({
     number: x.end?.number, house: x.end?.house, rocks: x.shots.length,
   })), [view]);
@@ -63,14 +61,8 @@ export function Watch({ view, ui, config, series, think, here, actions }) {
       {ui.tab === "detail" ? (
         <div className="wpane" {...swipe}><Detail shot={shot} doc={view.doc} /></div>
       ) : null}
-      {/* #houseCard itself is promoted by CSS between the pager and this
-          caption: one <House> in the page, so one #house. */}
-      {ui.tab === "house" ? (
-        <div className="whouse">
-          {(caption ?? "Dark pad: the skip's broom · ringed: this rock")
-           + (ghosts ? " · dashed: where hit stones sat" : "")}
-        </div>
-      ) : null}
+      {/* The House tab has no element of its own: #houseCard is promoted by CSS
+          between the pager and the tabs -- one <House> in the page, so one #house. */}
       {ui.tab === "timing" ? (
         <Timing view={view} ui={ui} series={series} think={think} here={here} actions={actions} />
       ) : null}

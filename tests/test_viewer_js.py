@@ -1680,10 +1680,6 @@ class TestLineFigures:
             assert (got["predates"], got["reason"], f["broom"]["value"], f["broom"]["note"]) == (False, why, "–", why)
             assert (f["hog"]["value"], f["hog"]["note"]) == ("–", why)
 
-    def test_the_house_caption_says_where_it_stopped(self):
-        assert run_js(f"out(houseCaption({json.dumps(self.measured())}));") == (
-            "Stopped 1.8 m from the button, in the 12-foot")
-
     def test_there_is_no_centre_hack(self):
         f = self.by_key(self.figs(self.measured(start={"x": -0.08, "y": 38.07})))
         assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "stone set 3 in left of centre")

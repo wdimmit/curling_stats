@@ -691,9 +691,10 @@ body[data-mode="review"] #house { cursor:default; }
            bottom: 0; z-index: 4; flex-direction: column;
            background: var(--bg); }
 
-  /* Three tabs at the thumb. */
+  /* Three tabs at the thumb. 52px, not taller: every pixel here is one the
+     House tab's house does not get, and 52 still clears a 44px target. */
   .wtabs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 9;
-           height: calc(64px + env(safe-area-inset-bottom));
+           height: calc(52px + env(safe-area-inset-bottom));
            padding-bottom: env(safe-area-inset-bottom);
            display: flex; background: var(--panel);
            border-top: 1px solid var(--line); }
@@ -734,7 +735,7 @@ body[data-mode="review"] #house { cursor:default; }
   /* Detail: the sheet strip beside its figures. pan-y keeps the pane's own
      vertical scroll and hands horizontal drags to the swipe. */
   .wpane { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y;
-           padding: 12px 16px calc(76px + env(safe-area-inset-bottom)); }
+           padding: 12px 16px calc(64px + env(safe-area-inset-bottom)); }
   .dbody { display: flex; gap: 16px; align-items: flex-start; }
   .dstrip { flex: none; display: block; background: var(--ice);
             border: 1px solid var(--line); border-radius: 4px; }
@@ -752,15 +753,12 @@ body[data-mode="review"] #house { cursor:default; }
   .dcap { font-size: 11px; color: var(--muted); margin: 8px 0 0; }
   .dnone { font-size: 14px; color: var(--muted); margin: 24px 16px; text-align: center; }
 
-  /* House: #houseCard promoted between the pager and this caption. */
-  .whouse { position: absolute; left: 0; right: 0; z-index: 9; height: 44px;
-            bottom: calc(64px + env(safe-area-inset-bottom));
-            display: flex; align-items: center; padding: 0 16px;
-            font-size: 13px; color: var(--muted); background: var(--panel);
-            border-top: 1px solid var(--line); }
+  /* House: #houseCard promoted between the pager and the tabs. No caption:
+     the house is the point of the tab, and where the rock stopped is on
+     Detail already. */
   body[data-watch="house"] main > #houseCard { display: block; position: fixed;
     left: 0; right: 0; top: calc(48px + 56.25vw + 56px);
-    bottom: calc(108px + env(safe-area-inset-bottom));
+    bottom: calc(52px + env(safe-area-inset-bottom));
     z-index: 8; margin: 0; border: 0; border-radius: 0;
     background: var(--panel); padding: 6px 12px; }
   body[data-watch="house"] #houseCard .tools,
@@ -769,7 +767,7 @@ body[data-mode="review"] #house { cursor:default; }
 
   /* Timing: the whole game's clock pinned above every rock, by end. */
   .tpane { flex: 1; min-height: 0; display: flex; flex-direction: column;
-           padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+           padding-bottom: calc(52px + env(safe-area-inset-bottom)); }
   .tchart { flex: none; padding: 8px 16px; background: var(--panel);
             border-bottom: 1px solid var(--line); }
   .tchart .wtotals { margin-top: 6px; }
@@ -826,7 +824,7 @@ body[data-mode="review"] #house { cursor:default; }
   .wnow { font-size: 11px; color: var(--accent); font-weight: 600; white-space: nowrap; }
 
   .wback { position: absolute; left: 50%; transform: translateX(-50%);
-           bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 6;
+           bottom: calc(64px + env(safe-area-inset-bottom)); z-index: 6;
            height: 36px; padding: 0 16px; border-radius: 999px;
            border: 1px solid var(--line); background: var(--panel);
            color: var(--accent); font: inherit; font-size: 13px;
