@@ -1035,7 +1035,7 @@ Pass `game_format=fmt_name` to `dedupe.find_reusable_run(...)` and `format=fmt_n
 
 Claim: add `"format": run.format or "fours",` to the returned job dict.
 
-Complete: after `run = repo.get_run(job.run_id)` and the `done` early return, add:
+Complete: right after `owned_job(job_id, body.get("worker_id"))`, add:
 
 ```python
         # A worker that predates formats sends none and builds fours whatever
@@ -1044,8 +1044,8 @@ Complete: after `run = repo.get_run(job.run_id)` and the `done` early return, ad
         want = run.format or "fours"
         got = body.get("format") or "fours"
         if got != want:
-            raise HTTPException(409, f"this run is {want}, but the worker built "
-                                     f"{got} -- update the worker")
+            raise HTTPException(409, f"this run's format is {want}, but the worker "
+                                     f"built {got} -- update the worker")
 ```
 
 Reprocess: add `format=base.format if base else None,` to the `Run(...)`.
@@ -1159,7 +1159,7 @@ case $1 in
 run)
   LABEL=$2 SHA=$3 EXTRA=${4:-}
   ssh $HOST "mkdir -p $REMOTE/code-$SHA $REMOTE/out"
-  git archive $SHA src scripts/doubles | ssh $HOST "tar -x -C $REMOTE/code-$SHA"
+  git archive $SHA src | ssh $HOST "tar -x -C $REMOTE/code-$SHA"
   for vid in $VIDS; do
     ssh $HOST "cd /data/wdd/curling_score/deploy && docker compose -f docker-compose.worker.yml run --rm --no-deps \
       -v $REMOTE/code-$SHA:/code:ro -v $REMOTE/out:/parity -e PYTHONPATH=/code/src worker \
