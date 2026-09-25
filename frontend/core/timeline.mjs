@@ -12,6 +12,7 @@
  * dependency and made one `render()` cost O(ends x shots) relayouts.
  */
 import { POSITIONS, TYPICAL_GAP_S } from "./constants.mjs";
+import { playerHacks } from "./line.mjs";
 
 /* A shot is known by the number detection gave it. Moving one renumbers the
  * end, so `id` keeps the original where that has happened. */
@@ -125,6 +126,15 @@ export function buildGameView(doc, gi, overrides) {
     const { shots, raws } = layout(game, e, overrides);
     return { end: e, shots, raws };
   });
+  // A player throws from one hack all game, so each rock is given its
+  // player's -- after the overrides, which can change who threw it.
+  const hacks = playerHacks(ends.flatMap(x => x.shots));
+  for (const { shots } of ends) {
+    for (const s of shots) {
+      const h = hacks[`${s.color}|${s.thrower_slot}`];
+      if (h) s.hack = h;
+    }
+  }
   return { doc, gi, game, ends };
 }
 

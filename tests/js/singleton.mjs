@@ -72,6 +72,9 @@ export const lineReason = core.lineReason;
 export const houseCaption = core.houseCaption;
 export const lineX = core.lineX;
 export const restOf = core.restOf;
+export const playerHacks = core.playerHacks;
+export const hackOf = core.hackOf;
+export const gameView = () => view();
 
 export const clockText = core.clockText;
 export const thinkText = core.thinkText;

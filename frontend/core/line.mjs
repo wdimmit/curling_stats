@@ -10,7 +10,9 @@ export const HOG_Y = 34.747 - 6.401;      // the throwing hog line, house metres
 export const TEE_Y = 34.747;              // the throwing tee
 export const HACK_Y = 34.747 + 3.658;     // the hack line
 const ON_M = 0.10;                        // inside the measurement's own error
-const HACK_CENTRE_M = 0.08;
+// A foothold's centre. WCF R1: each hack's inside edge is 76 mm from the
+// centre line and a hack is at most 152 mm wide. There is no centre hack.
+export const HACK_X_M = 0.152;
 
 /* An offset as a curler says it: feet and inches, to the nearest inch. The
  * sign is the caller's business -- it says which side in words. */
@@ -34,6 +36,53 @@ export function lineX(shot, y) {
   if (!l || !b || l.at_hog?.x == null || l.at_broom?.x == null) return null;
   const k = (l.at_broom.x - l.at_hog.x) / (b.y - HOG_Y);
   return l.at_hog.x + k * (y - HOG_Y);
+}
+
+const median = xs => {
+  const s = [...xs].sort((a, b) => a - b), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/* Each player's hack for a game, keyed "color|slot": a player throws from one
+ * hack all game. Where their stones sat before the push says which, but the
+ * turn moves it too -- a rock that curls right is set 5-10 cm further to the
+ * thrower's left than one that curls left, on either hack -- so each turn's
+ * median counts once, however many of each the player threw. Dead centre is
+ * the left hack, which nearly everyone uses (22 of 24 players, 2026-09-25). */
+export function playerHacks(shots) {
+  const by = new Map();
+  for (const s of shots || []) {
+    const x = s?.line?.start?.x;
+    if (s?.missing || typeof x !== "number" || s.thrower_slot == null) continue;
+    const k = `${s.color}|${s.thrower_slot}`;
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push({ x, curl: s.line.curl });
+  }
+  const out = {};
+  for (const [k, rocks] of by) {
+    const turn = c => rocks.filter(r => r.curl === c).map(r => r.x);
+    const l = turn("left"), r = turn("right");
+    const x = l.length && r.length ? (median(l) + median(r)) / 2 : median(rocks.map(q => q.x));
+    out[k] = { side: x <= 0 ? "left" : "right", x };
+  }
+  return out;
+}
+
+/* This rock's hack: its player's, which buildGameView sets, else the side its
+ * own stone sat on. */
+export function hackOf(shot) {
+  if (shot?.hack?.side) return shot.hack.side;
+  const x = shot?.line?.start?.x;
+  return typeof x === "number" ? (x <= 0 ? "left" : "right") : null;
+}
+
+/* The hack-to-broom line's x at depth y: from the foothold this rock was
+ * thrown from to the skip's broom. */
+export function hackAimX(shot, y) {
+  const side = hackOf(shot), b = shot?.target_broom;
+  if (!side || !b) return null;
+  const hx = side === "left" ? -HACK_X_M : HACK_X_M;
+  return hx + (b.x - hx) * (y - HACK_Y) / (b.y - HACK_Y);
 }
 
 /* Wide is the side away from the curl, narrow the side it curls toward; with
@@ -68,6 +117,17 @@ export function lineReason(shot, doc) {
 const fig = (key, label, value, note, extra = {}) =>
   ({ key, label, value, note, tick: null, dim: false, ...extra });
 
+/* Left or Right, with where this rock's own stone sat. */
+function hackFig(shot) {
+  const side = hackOf(shot);
+  if (!side) return fig("hack", "Hack", "–", "not seen before the push");
+  const x = shot?.line?.start?.x;
+  const note = typeof x !== "number" ? "as on this player's other rocks"
+    : Math.round(Math.abs(x) * 100 / 2.54) === 0 ? "stone set on the centre line"
+    : `stone set ${feetInches(x)} ${x < 0 ? "left" : "right"} of centre`;
+  return fig("hack", "Hack", side === "left" ? "Left" : "Right", note);
+}
+
 export function lineFigures(shot, doc) {
   const reason = lineReason(shot, doc);
   const predates = reason === "This chart predates line measurement";
@@ -83,7 +143,7 @@ export function lineFigures(shot, doc) {
   if (!l) {
     return { predates, reason, figures: [
       fig("broom", "At the broom", "–", reason),
-      fig("hack", "Hack", "–", ""), fig("hog", "At the hog line", "–", reason),
+      hackFig(shot), fig("hog", "At the hog line", "–", reason),
       weight, fig("curl", "Curl", "–", ""), restFig] };
   }
   const miss = l.at_broom.miss_m;
@@ -94,15 +154,12 @@ export function lineFigures(shot, doc) {
   const broom = fig("broom", "At the broom",
                     Math.abs(miss) < ON_M ? "On the broom" : `${feetInches(miss)} ${sideWord(miss, l.curl)}`,
                     tickNote, { tick, dim: tick === "disagrees" });
-  let hack = fig("hack", "Hack", "–", "not seen before the push");
-  if (l.start) {
-    const x = l.start.x;
-    hack = Math.abs(x) <= HACK_CENTRE_M
-      ? fig("hack", "Hack", "Centre", "stone set on the centre line")
-      : fig("hack", "Hack", x < 0 ? "Left" : "Right",
-            `stone set ${feetInches(x)} ${x < 0 ? "left" : "right"} of centre`);
-  }
-  const off = l.at_hog?.offset_m;
+  const hack = hackFig(shot);
+  // The same two lines as At the broom, read at the hog line: the thrown line,
+  // and the line from this rock's hack to the broom. Not the pipeline's
+  // `offset_m`, which starts that line at the stone instead.
+  const aim = hackAimX(shot, HOG_Y);
+  const off = aim == null || typeof l.at_hog?.x !== "number" ? null : l.at_hog.x - aim;
   const hog = off == null ? fig("hog", "At the hog line", "–", "needs the hack")
     : fig("hog", "At the hog line",
           Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, l.curl)}`,
@@ -235,9 +292,11 @@ export function stripGeometry(shot, box = STRIPBOX) {
   const hp = (l.hog_path || []).map(([y, x]) => [x, y]);
   const lastY = hp.length ? hp[hp.length - 1][1] : HOG_Y - 3.6;
   const miss = l.at_broom.miss_m;
+  const side = hackOf(shot);
   return {
     ...sheet,
-    aim: l.start ? pts([[l.start.x, l.start.y], [b.x, b.y]]) : null,
+    // The intended line runs from the hack, as the hog-line figure measures it.
+    aim: side ? pts([[side === "left" ? -HACK_X_M : HACK_X_M, HACK_Y], [b.x, b.y]]) : null,
     thrown: pts(hp),
     ext: pts([[lineX(shot, lastY), lastY], [lineX(shot, b.y), b.y]]),
     path: l.path?.length >= 2 ? pts(l.path.map(([y, x]) => [x, y])) : null,

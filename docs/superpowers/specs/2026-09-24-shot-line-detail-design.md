@@ -97,7 +97,7 @@ The artboard "A · The line on the sheet".
 - Stretched about 3× across the sheet so that the lines separate.
 - Drawn in `PAINT` colours. It shows:
   - where the stone sat before push-off (a dot);
-  - the intended line, from the start to the broom (muted, dashed);
+  - the intended line, from the rock's hack to the broom (muted, dashed);
   - the thrown line: solid ink where the hog camera measured it, dotted from
     there to the broom's depth;
   - the stone's path from the camera behind the thrower (gold, `#a07a00`,
@@ -111,10 +111,41 @@ The artboard "A · The line on the sheet".
 1. **At the broom:** "2 ft 4 in wide", with "✓ confirmed from behind the thrower"
    under it.
 2. **Hack:** "Left", with "stone set 9 in left of centre".
-3. **At the hog line:** "6 in wide", with "of the hack-to-broom line".
+3. **At the hog line:** "8 in wide", with "of the hack-to-broom line".
 4. **Weight:** the long split, "13.8 s", with "hog line to hog line".
 5. **Curl:** "3 ft 9 in", with "from its line to where it stopped".
 6. **Came to rest:** "12-foot", with "1.8 m from the button".
+
+**The hack and the two line figures (amended 2026-09-25).**
+- **The hack is always Left or Right.** There is no centre hack, and
+  "Centre" is gone.
+  - A player throws from one hack all game, so the viewer calls it once per
+    player (team colour and throwing position) per game, in `buildGameView`.
+    That is after the charter's corrections.
+  - The call is the sign of a turn-balanced median of where the player's
+    stones sat. The turn moves the stone: a rock that curls right is set
+    5–10 cm further to the thrower's left than one that curls left, on
+    either hack. So the median of each turn counts once. Dead centre is the
+    left hack.
+  - On the replays, 23 of 24 players had every stone on one side. The two
+    hOKZ skips are on the right. AEqL2's red third sets the stone on the
+    centre line; the call is Left by 3 mm, which the user confirmed.
+- **The note** still gives this rock's own stone:
+  - "stone set 3 in left of centre", or "stone set on the centre line";
+  - "as on this player's other rocks" when this rock's start was not seen,
+    including a rock with no line.
+- **The hack-to-broom line** runs from the hack's foothold centre, 0.152 m
+  off the centre line on the hack line, to the broom. WCF R1: each inside
+  edge is 76 mm from the centre line, and a hack is at most 152 mm wide.
+- **Both line figures read the same two lines at two depths:** the thrown line
+  and the hack-to-broom line.
+  - At the hog line is their gap at the hog line.
+  - At the broom is their gap at the broom's depth. The hack-to-broom line
+    ends at the pad, so this is the thrown line's miss of the pad, whatever the
+    line's back end. It did not change.
+- **Replays:** the hog-line median moved from 8–12 cm wide (from the stone) to
+  11–13 cm (from the hack). "On the line" went from 40–50% of rocks to
+  31–34%.
 
 **Caption:** "Sheet from above, thrower at the bottom · across ×3 · figures ±4
 in". It also defines "wide = the side away from the curl" once. There is no
@@ -209,6 +240,9 @@ Each shot gets `line`, an object or `null`. This raises the timeline to schema
 - **`at_hog`.**
   - `x` is the fitted line at the throwing hog line, y = 28.346.
   - `offset_m` is `x` minus the start-to-broom line at that depth.
+    Since 2026-09-25 the viewer does not show it. The hog-line figure is
+    measured from the hack-to-broom line instead (§1). The field stays in the
+    data, so nothing needs reprocessing.
 - **`at_broom`.**
   - `x` is the fitted line at `target_broom.y`.
   - `miss_m` is `x − target_broom.x`, signed.
@@ -308,8 +342,8 @@ The artboard "Detail: every state of the verdict".
   is greyed.
 
 **When `line` is `null`**
-- The pane shows what exists: broom, rest, the path if there is one, hack if
-  the start was found, weight.
+- The pane shows what exists: broom, rest, the path if there is one, the
+  player's hack if any of their starts was seen, and the weight.
 - The two line figures read "–", with the reason underneath:
   - "The hog-line camera lost this rock"
   - "No broom was held still before the release"

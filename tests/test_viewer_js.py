@@ -1551,7 +1551,9 @@ class TestLineFigures:
         assert (f["broom"]["value"], f["broom"]["note"], f["broom"]["tick"]) == (
             "2 ft 4 in wide", "confirmed from behind the thrower", "confirmed")
         assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "stone set 9 in left of centre")
-        assert (f["hog"]["value"], f["hog"]["note"]) == ("6 in wide", "of the hack-to-broom line")
+        # From the left hack's foothold, (-0.152, 38.405), to the broom: that
+        # line is at x -0.545 at the hog line, and the rock at -0.757.
+        assert (f["hog"]["value"], f["hog"]["note"]) == ("8 in wide", "of the hack-to-broom line")
         assert (f["weight"]["value"], f["curl"]["value"]) == ("13.8 s", "3 ft 9 in")
         assert (f["rest"]["value"], f["rest"]["note"]) == ("12-foot", "1.8 m from the button")
 
@@ -1616,6 +1618,94 @@ class TestLineFigures:
     def test_the_house_caption_says_where_it_stopped(self):
         assert run_js(f"out(houseCaption({json.dumps(self.measured())}));") == (
             "Stopped 1.8 m from the button, in the 12-foot")
+
+    def test_there_is_no_centre_hack(self):
+        f = self.by_key(self.figs(self.measured(start={"x": -0.08, "y": 38.07})))
+        assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "stone set 3 in left of centre")
+
+    def test_a_stone_on_the_centre_line_still_names_the_player_s_hack(self):
+        s = dict(self.measured(start={"x": 0.01, "y": 38.07}), hack={"side": "left", "x": -0.003})
+        f = self.by_key(self.figs(s))
+        assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "stone set on the centre line")
+
+    def test_the_right_hack_measures_the_hog_line_from_the_right_foothold(self):
+        # (0.152, 38.405) to the broom (0.5, 0.2) is at x 0.244 at the hog
+        # line; the rock at 0.40 is 6 in off it, away from a curl to the left.
+        s = dict(self.measured(start={"x": 0.15, "y": 38.07}, at_hog={"x": 0.40, "offset_m": 0.0},
+                               at_broom={"x": 0.9, "miss_m": 0.4}, curl="left", side="wide"),
+                 target_broom={"x": 0.5, "y": 0.2}, hack={"side": "right", "x": 0.15})
+        f = self.by_key(self.figs(s))
+        assert (f["hack"]["value"], f["hack"]["note"]) == ("Right", "stone set 6 in right of centre")
+        assert f["hog"]["value"] == "6 in wide"
+
+    def test_a_rock_not_seen_before_the_push_takes_its_player_s_hack(self):
+        s = dict(self.measured(start=None), hack={"side": "left", "x": -0.2})
+        f = self.by_key(self.figs(s))
+        assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "as on this player's other rocks")
+        assert f["hog"]["value"] == "8 in wide"
+
+    def test_without_a_hack_neither_figure_is_guessed(self):
+        f = self.by_key(self.figs(self.measured(start=None)))
+        assert (f["hack"]["value"], f["hack"]["note"]) == ("–", "not seen before the push")
+        assert (f["hog"]["value"], f["hog"]["note"]) == ("–", "needs the hack")
+
+    def test_a_rock_with_no_line_still_shows_its_player_s_hack(self):
+        s = shot(3, "red", "lead", target_broom={"x": 0.5, "y": 0.0}, line=None,
+                 hack={"side": "right", "x": 0.12})
+        f = self.by_key(self.figs(s))
+        assert (f["hack"]["value"], f["hack"]["note"]) == ("Right", "as on this player's other rocks")
+        assert f["hog"]["value"] == "–"
+
+
+def lined(number, color, slot, x, curl=None):
+    """A rock whose stone sat at `x` before the push."""
+    return shot(number, color, "lead", thrower_slot=slot, target_broom={"x": 0.0, "y": 0.0},
+                line={"start": {"x": x, "y": 38.0}, "curl": curl,
+                      "at_hog": {"x": 0.0, "offset_m": 0.0}, "at_broom": {"x": 0.0, "miss_m": 0.0}})
+
+
+class TestPlayerHacks:
+    """One hack per player per game, from where their stones sat."""
+
+    def hacks(self, shots):
+        return run_js(f"out(playerHacks({json.dumps(shots)}));")
+
+    def test_each_player_is_called_on_their_own_stones(self):
+        got = self.hacks([lined(1, "red", 1, -0.10), lined(3, "red", 1, -0.12),
+                          lined(2, "yellow", 1, 0.15), lined(5, "red", 2, 0.10)])
+        assert {k: v["side"] for k, v in got.items()} == {"red|1": "left", "yellow|1": "right", "red|2": "right"}
+
+    def test_the_turns_are_weighed_equally(self):
+        """Stones that curl right sit further to the thrower's left, whichever
+        hack: five curl-left rocks must not outvote the one curl-right one."""
+        shots = [lined(n, "red", 3, 0.02, "left") for n in (9, 11, 25, 27, 41)] + [lined(43, "red", 3, -0.03, "right")]
+        got = self.hacks(shots)["red|3"]
+        assert got["side"] == "left" and got["x"] == pytest.approx(-0.005)
+
+    def test_one_turn_only_is_its_plain_median(self):
+        got = self.hacks([lined(1, "red", 1, x, "right") for x in (-0.02, 0.01, 0.03)])["red|1"]
+        assert got["side"] == "right" and got["x"] == pytest.approx(0.01)
+
+    def test_rocks_without_a_start_are_not_counted(self):
+        shots = [lined(1, "red", 1, 0.2), dict(lined(3, "red", 1, 0.0), line=None),
+                 dict(lined(5, "red", 1, 0.0), missing=True), shot(7, "red", "lead", thrower_slot=1)]
+        assert self.hacks(shots) == {"red|1": {"side": "right", "x": 0.2}}
+
+    def test_dead_centre_is_the_left_hack(self):
+        assert self.hacks([lined(1, "red", 1, 0.0)])["red|1"]["side"] == "left"
+
+    def test_the_game_view_gives_every_rock_its_player_s_hack(self):
+        shots = [lined(1, "red", 1, -0.1), lined(2, "yellow", 1, 0.2),
+                 dict(lined(3, "red", 1, 0.0), line=None), shot(4, "yellow", "lead", thrower_slot=1)]
+        got = run_js(setup(doc(shots)) + "out(gameView().ends[0].shots.map(s => s.hack?.side ?? null));")
+        assert got == ["left", "right", "left", "right"]
+
+    def test_a_player_is_called_across_the_whole_game(self):
+        d = doc([lined(1, "red", 1, -0.1)])
+        first = d["games"][0]["ends"][0]
+        d["games"][0]["ends"].append(dict(first, number=2, shots=[shot(1, "red", "lead", thrower_slot=1)]))
+        got = run_js(setup(d) + "out(gameView().ends[1].shots[0].hack);")
+        assert got == {"side": "left", "x": -0.1}
 
 
 def two_ends():
@@ -1699,6 +1789,12 @@ class TestStripAndTrack:
         assert last_y == pytest.approx(g["broom"]["y"], abs=0.1)
         assert g["miss"]["label"] == "2 ft 4 in"
 
+    def test_the_intended_line_starts_at_the_hack_not_the_stone(self):
+        g = run_js(f"out(stripGeometry({json.dumps(self.SHOT)}));")
+        first = [float(v) for v in g["aim"].split()[0].split(",")]
+        assert first == pytest.approx([75 - 0.152 * 150 / 4.75, (38.405 + 2.3) * 420 / 41.2], abs=0.05)
+        assert g["start"]["x"] == pytest.approx(75 - 0.23 * 150 / 4.75, abs=0.05)
+
     def test_no_line_still_draws_the_sheet_broom_and_rest(self):
         s = shot(1, "red", "lead", target_broom={"x": 0.5, "y": 0.2}, delivered_stone_index=0,
                  stones=[{"color": "red", "x": 0.3, "y": 1.0}], line=None)
@@ -1744,7 +1840,8 @@ class TestTheStripOnItsSide:
         s = self.turned()
         assert (s["w"], s["h"]) == (660, 114)
         assert s["start"] == {"x": 13.3, "y": 51.5}
-        assert s["aim"].split()[0] == "13.3,51.5"
+        # The intended line starts at the left hack's foothold, (-0.152, 38.405).
+        assert s["aim"].split()[0] == "7.9,53.4"
 
     def test_the_thrower_s_left_is_the_top_edge(self):
         # The broom is at x = -1.647, the thrower's left: it lands above the centre line.
