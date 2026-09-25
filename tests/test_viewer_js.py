@@ -1571,3 +1571,81 @@ class TestLineFigures:
     def test_the_house_caption_says_where_it_stopped(self):
         assert run_js(f"out(houseCaption({json.dumps(self.measured())}));") == (
             "Stopped 1.8 m from the button, in the 12-foot")
+
+
+def two_ends():
+    d = doc([shot(i, "red" if i % 2 else "yellow", "lead") for i in range(1, 4)])
+    first = d["games"][0]["ends"][0]
+    d["games"][0]["ends"].append(dict(first, number=2, shots=[shot(i, "red", "lead") for i in (1, 2)]))
+    return d
+
+
+class TestSteppingAndTheHash:
+    def test_a_step_off_the_end_s_last_rock_is_the_next_end_s_first(self):
+        got = run_js(setup(two_ends()) + "state.si = 2; out(stepRock(1));")
+        assert got == {"ei": 1, "si": 0}
+
+    def test_a_step_back_from_an_end_s_first_is_the_last_before_it(self):
+        assert run_js(setup(two_ends()) + "state.ei = 1; state.si = 0; out(stepRock(-1));") == {"ei": 0, "si": 2}
+
+    def test_past_the_game_s_last_rock_there_is_nowhere_to_go(self):
+        assert run_js(setup(two_ends()) + "state.ei = 1; state.si = 1; out(stepRock(1));") is None
+
+    def test_an_empty_end_is_stepped_over(self):
+        view = {"ends": [{"shots": [1, 2, 3]}, {"shots": []}, {"shots": [1, 2]}]}
+        got = run_js(f"out([stepRockIn({json.dumps(view)}, 0, 2, 1), stepRockIn({json.dumps(view)}, 2, 0, -1)]);")
+        assert got == [{"ei": 2, "si": 0}, {"ei": 0, "si": 2}]
+
+    def test_the_tab_and_rock_round_trip_through_the_hash(self):
+        got = run_js(setup(two_ends()) + (
+            'const h = formatHash({tab: "detail", g: 1, e: 2, s: 2});'
+            'out([h, cursorFromHash(parseHash(h))]);'))
+        assert got == ["#tab=detail&e=2&s=2", {"gi": 0, "ei": 1, "si": 1}]
+
+    def test_a_hash_naming_no_such_rock_or_tab_is_ignored(self):
+        got = run_js(setup(two_ends()) + (
+            'out([cursorFromHash(parseHash("#tab=timing&e=9&s=1")), parseHash("#tab=bogus&e=x")]);'))
+        assert got == [None, {}]
+
+
+class TestSwipe:
+    def step(self, dx, dy, x0=200):
+        return run_js(f"out(swipeStep({dx}, {dy}, {x0}));")
+
+    def test_left_is_the_next_rock_and_right_the_one_before(self):
+        assert (self.step(-80, 5), self.step(80, 5)) == (1, -1)
+
+    def test_a_vertical_scroll_is_not_a_swipe(self):
+        assert (self.step(60, 70), self.step(30, 0)) == (0, 0)
+
+    def test_the_browser_s_back_gesture_edge_is_left_alone(self):
+        assert self.step(80, 0, x0=12) == 0
+
+
+class TestStripAndTrack:
+    SHOT = TestLineFigures().measured()
+
+    def test_the_broom_and_the_line_s_end_land_where_the_metres_say(self):
+        g = run_js(f"out(stripGeometry({json.dumps(self.SHOT)}));")
+        assert g["broom"]["x"] == pytest.approx(75 + (-1.647) * 150 / 4.75, abs=0.05)
+        assert g["broom"]["y"] == pytest.approx((0.17 + 2.3) * 420 / 41.2, abs=0.05)
+        last_y = float(g["ext"].split()[-1].split(",")[1])
+        assert last_y == pytest.approx(g["broom"]["y"], abs=0.1)
+        assert g["miss"]["label"] == "70 cm"
+
+    def test_no_line_draws_no_strip(self):
+        assert run_js(f"out(stripGeometry({json.dumps(shot(1, 'red', 'lead'))}));") is None
+
+    def test_the_house_draws_the_path_from_behind_the_thrower_when_there_is_one(self):
+        assert run_js(f"out(trackPoints({json.dumps(self.SHOT)}));") == [[-1.18, 20.0], [-1.15, 1.35]]
+
+    def test_otherwise_the_panel_s_track_as_before(self):
+        s = shot(1, "red", "lead", track=[[1.0, 0.1, 4.0], [2.0, 0.2, 1.0]])
+        assert run_js(f"out(trackPoints({json.dumps(s)}));") == [[0.1, 4.0], [0.2, 1.0]]
+
+    def test_the_current_end_s_span_on_the_clock_chart(self):
+        geom = {"ticks": [{"x": 100, "y1": 8, "y2": 188}, {"x": 200, "y1": 8, "y2": 188}]}
+        got = run_js(f"out([endSpan({json.dumps(geom)}, 0, {{padL: 46}}), "
+                     f"endSpan({json.dumps(geom)}, 1, {{padL: 46}}), endSpan({json.dumps(geom)}, 5, {{padL: 46}})]);")
+        assert got == [{"x0": 46, "x1": 100, "y1": 8, "y2": 188},
+                       {"x0": 100, "x1": 200, "y1": 8, "y2": 188}, None]

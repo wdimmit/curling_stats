@@ -82,6 +82,17 @@ export const cumulativeThinking = () => core.cumulativeThinking(view());
 export const chartGeometry = core.chartGeometry;
 export const barsGeometry = core.barsGeometry;
 
+export const stepRock = d => core.stepRock(view(), state.ei, state.si, d);
+export const stepRockIn = core.stepRock;
+export const cursorFromHash = parsed => core.cursorFromHash(
+  parsed, gi => core.buildGameView(state.doc, gi, state.overrides), state.doc.games.length);
+export const parseHash = core.parseHash;
+export const formatHash = core.formatHash;
+export const swipeStep = core.swipeStep;
+export const stripGeometry = core.stripGeometry;
+export const trackPoints = core.trackPoints;
+export const endSpan = core.endSpan;
+
 export const dirtyPayload = core.dirtyPayload;
 export const saveUrl = () => core.saveUrl(config, state.version);
 export const unloadBeacon = () => core.unloadBeacon(config, state.overrides, state.dirty);

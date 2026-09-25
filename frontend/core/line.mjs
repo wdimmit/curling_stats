@@ -2,7 +2,7 @@
  * thrown line passed the skip's broom, where it sat before the push, and where
  * the camera behind the thrower saw it go. Pure -- core/** may not touch the
  * DOM. See docs/superpowers/specs/2026-09-24-shot-line-detail-design.md. */
-import { R } from "./constants.mjs";
+import { R, STRIPBOX } from "./constants.mjs";
 
 export const LINE_SCHEMA = 6;
 export const HOG_Y = 34.747 - 6.401;      // the throwing hog line, house metres
@@ -114,4 +114,106 @@ export function houseCaption(shot) {
   const where = z === "Button" ? "on the button" : z === "In front" ? "in front of the house"
     : z === "Behind" ? "behind the tee" : `in the ${z}`;
   return `Stopped ${Math.hypot(rest.x, rest.y).toFixed(1)} m from the button, ${where}`;
+}
+
+const SWIPE_MIN_PX = 50;
+const SWIPE_EDGE_PX = 20;          // the browser's own back gesture lives here
+
+/* A drag as a rock step: left for the next, right for the one before. */
+export function swipeStep(dx, dy, x0) {
+  if (x0 < SWIPE_EDGE_PX) return 0;
+  if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= 1.5 * Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
+/* The rock `d` steps from (ei, si), across ends and over empty ones; null
+ * past either end of the game. */
+export function stepRock(view, ei, si, d) {
+  const ends = view?.ends ?? [];
+  let e = ei, s = si + d;
+  while (e >= 0 && e < ends.length) {
+    const n = ends[e].shots.length;
+    if (s >= 0 && s < n) return { ei: e, si: s };
+    if (s < 0) { e -= 1; if (e >= 0) s = ends[e].shots.length - 1; }
+    else { e += 1; s = 0; }
+  }
+  return null;
+}
+
+const TABS = ["house", "detail", "timing"];
+
+export function parseHash(hash) {
+  const out = {};
+  for (const part of String(hash || "").replace(/^#/, "").split("&")) {
+    const [k, v] = part.split("=");
+    if (k === "tab" && TABS.includes(v)) out.tab = v;
+    else if ((k === "g" || k === "e" || k === "s") && /^\d+$/.test(v ?? "")) out[k] = Number(v);
+  }
+  return out;
+}
+
+export function formatHash({ tab, g, e, s }) {
+  const parts = [`tab=${tab}`];
+  if (g && g > 1) parts.push(`g=${g}`);
+  parts.push(`e=${e}`, `s=${s}`);
+  return `#${parts.join("&")}`;
+}
+
+/* A parsed hash to a cursor: game by position (1-based), end and rock by
+ * their numbers as the view now has them. null when any of it is gone. */
+export function cursorFromHash(parsed, viewOf, gameCount) {
+  if (parsed?.e == null || parsed?.s == null) return null;
+  const gi = parsed.g ? parsed.g - 1 : 0;
+  if (gi < 0 || gi >= gameCount) return null;
+  const view = viewOf(gi);
+  const ei = view.ends.findIndex(x => x.end?.number === parsed.e);
+  if (ei < 0) return null;
+  const si = view.ends[ei].shots.findIndex(x => x.number === parsed.s);
+  return si < 0 ? null : { gi, ei, si };
+}
+
+/* What House draws as the rock's path, [x, y] in house metres: the camera
+ * behind the thrower's where there is one, else the overhead panel's. */
+export function trackPoints(shot) {
+  const p = shot?.line?.path;
+  if (Array.isArray(p) && p.length >= 2) return p.map(([y, x]) => [x, y]);
+  const t = shot?.track;
+  return Array.isArray(t) && t.length >= 2 ? t.map(q => [q[1], q[2]]) : [];
+}
+
+/* The Detail strip in pixels, from house metres. null without a line. */
+export function stripGeometry(shot, box = STRIPBOX) {
+  const l = shot?.line, b = shot?.target_broom;
+  if (!l || !b) return null;
+  const { w, h, y0, y1, half } = box;
+  const kx = w / (2 * half), ky = h / (y1 - y0);
+  const px = x => w / 2 + x * kx, py = y => (y - y0) * ky;
+  const pt = (x, y) => ({ x: +px(x).toFixed(1), y: +py(y).toFixed(1) });
+  const pts = list => list.map(([x, y]) => `${px(x).toFixed(1)},${py(y).toFixed(1)}`).join(" ");
+  const rings = [0, TEE_Y].flatMap(ty => [[R.twelve, "twelve"], [R.eight, "eight"], [R.four, "four"], [R.button, "button"]]
+    .map(([r, kind]) => ({ cy: +py(ty).toFixed(1), rx: +(r * kx).toFixed(1), ry: +(r * ky).toFixed(1), kind })));
+  const own = shot.delivered_stone_index;
+  const stones = (shot.stones || []).filter((_, i) => i !== own)
+    .map(s => ({ cx: +px(s.x).toFixed(1), cy: +py(s.y).toFixed(1), color: s.color }));
+  const hp = (l.hog_path || []).map(([y, x]) => [x, y]);
+  const lastY = hp.length ? hp[hp.length - 1][1] : HOG_Y - 3.6;
+  const miss = l.at_broom.miss_m;
+  const rest = restOf(shot);
+  return {
+    w, h, rings,
+    hogs: [+py(R.hog).toFixed(1), +py(HOG_Y).toFixed(1)],
+    tees: [+py(0).toFixed(1), +py(TEE_Y).toFixed(1)],
+    backs: [+py(R.back).toFixed(1), +py(TEE_Y - R.back).toFixed(1)],
+    hack: +py(HACK_Y).toFixed(1),
+    stones,
+    aim: l.start ? pts([[l.start.x, l.start.y], [b.x, b.y]]) : null,
+    thrown: pts(hp),
+    ext: pts([[lineX(shot, lastY), lastY], [lineX(shot, b.y), b.y]]),
+    path: l.path?.length >= 2 ? pts(l.path.map(([y, x]) => [x, y])) : null,
+    broom: pt(b.x, b.y),
+    rest: rest ? pt(rest.x, rest.y) : null,
+    start: l.start ? pt(l.start.x, l.start.y) : null,
+    miss: Math.abs(miss) < ON_M ? null
+      : { x1: +px(b.x).toFixed(1), x2: +px(l.at_broom.x).toFixed(1), y: +(py(b.y) - 7).toFixed(1), label: `${cm5(miss)} cm` },
+  };
 }

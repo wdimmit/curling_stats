@@ -111,3 +111,11 @@ export function barsGeometry(series, at = null, BOX = CHARTBOX) {
     you: marker(at, n, x, BOX),
   };
 }
+
+/* The x-span of end `k` on a chart made by chartGeometry, for shading it. */
+export function endSpan(geom, k, BOX) {
+  const at = geom?.ticks?.[k];
+  if (!at) return null;
+  const x0 = k ? geom.ticks[k - 1].x : BOX.padL;
+  return { x0, x1: at.x, y1: at.y1, y2: at.y2 };
+}
