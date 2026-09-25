@@ -111,6 +111,19 @@ def league_from_title(title: str) -> str | None:
     return None
 
 
+_DOUBLES_RE = re.compile(r"\bdoubles\b", re.IGNORECASE)
+
+
+def format_from_title(title: str | None) -> str:
+    """"doubles" when the stream's title says so, else "fours".
+
+    The club names its doubles leagues in the title ("Thursday Mixed Doubles
+    League"). Only a default: the submit form and the ``--format`` flag
+    override it, and the pipeline checks the ice for the placed stones.
+    """
+    return "doubles" if _DOUBLES_RE.search(title or "") else "fours"
+
+
 @dataclass(frozen=True)
 class VideoInfo:
     video_id: str

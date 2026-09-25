@@ -41,3 +41,24 @@ class TestNoLongviewFlag:
         assert rc == 0
         assert seen["skip_scoreboard"] is False
         assert seen["skip_longview"] is True
+
+
+class TestFormatFlag:
+    def test_the_format_flag_reaches_analyze(self, monkeypatch, tmp_path):
+        rc, seen = _run(monkeypatch, tmp_path, ["--format", "doubles"])
+        assert rc == 0
+        assert seen["game_format"] == "doubles"
+
+    def test_no_flag_leaves_it_to_the_title(self, monkeypatch, tmp_path):
+        rc, seen = _run(monkeypatch, tmp_path)
+        assert rc == 0
+        assert seen["game_format"] is None
+
+
+def test_the_form_beats_the_title():
+    from curling_score import analyze as A
+    from curling_score.game import format as F
+
+    assert A.resolve_format("fours", "x - Sheet 1 - Mixed Doubles") is F.FOURS
+    assert A.resolve_format(None, "x - Sheet 1 - Mixed Doubles") is F.DOUBLES
+    assert A.resolve_format(None, "x - Sheet 1 - League") is F.FOURS

@@ -25,6 +25,7 @@ from curling_score.game import (
     shots as shots_mod,
     thinking,
 )
+from curling_score.game import format as format_mod
 from curling_score.geometry import layout, sideview
 from curling_score.ingest import cache, frames as F, proxy, source
 
@@ -175,9 +176,15 @@ def read_board(path, game, progress=log.info):
         return None
 
 
+def resolve_format(game_format: str | None, title: str | None):
+    """The format to analyse as: the one asked for, else what the title says."""
+    return format_mod.by_name(game_format or source.format_from_title(title))
+
+
 def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             use_proxy: bool = True, weights=None, imgsz: int = 448,
             device=None, *, start_s=None, end_s=None, sheet=None,
+            game_format: str | None = None,
             skip_scoreboard: bool = False, skip_longview: bool = False,
             skip_line: bool = False,
             on_phase=None, info=None,
@@ -190,10 +197,12 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     every timestamp and change the detection cache's keys -- so this saves the
     detection time, which is what dominates, not the download.
 
-    ``sheet`` overrides the number read from the title. ``skip_scoreboard``
-    leaves out the wall-board pass, and ``skip_longview`` leaves out the side
-    views that time the throwing end's hog crossing -- both are stages that
-    need the full-resolution original, for a caller that does not keep it.
+    ``sheet`` overrides the number read from the title. ``game_format`` is
+    ``"fours"`` or ``"doubles"``; ``None`` reads it from the title instead
+    (see :func:`resolve_format`). ``skip_scoreboard`` leaves out the
+    wall-board pass, and ``skip_longview`` leaves out the side views that time
+    the throwing end's hog crossing -- both are stages that need the
+    full-resolution original, for a caller that does not keep it.
     ``skip_line`` leaves out measuring each rock's thrown line against the
     broom, which otherwise runs whenever ``skip_longview`` did not already
     rule it out.
@@ -205,7 +214,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     phase = on_phase or _no_phase
     info = info or source.fetch_info(url)
     sheet = sheet if sheet is not None else info.sheet
-    progress(f"{info.title} ({info.duration_s / 3600:.2f} h, sheet {sheet})")
+    fmt = resolve_format(game_format, info.title)
+    progress(f"{info.title} ({info.duration_s / 3600:.2f} h, sheet {sheet}, {fmt.name})")
 
     phase("download", 0.0, "downloading video")
     download_kwargs = {}
@@ -294,7 +304,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     if start_s is not None or end_s is not None:
         sweep = F.keyframe_sweep(read_path, start_s=start_s, end_s=end_s)
     samples = profile.build_profile(read_path, read_setups, sweep=sweep)
-    games = segment.segment_games(samples)
+    games = segment.segment_games(
+        samples, min_end_s=fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S)
     progress(f"{len(games)} game(s), {[len(g.ends) for g in games]} ends")
     phase("profile", 1.0, f"{len(games)} game(s)")
 
@@ -367,7 +378,9 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             # it is in hand the rules say where the gaps are and what colour
             # belongs in them, so a second look can be far more permissive
             # without letting phantoms in everywhere else.
-            gaps = secondpass.gaps_to_search(deliveries, end.start_s, end.end_s)
+            gaps = secondpass.gaps_to_search(
+                deliveries, end.start_s, end.end_s,
+                per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
             recovered = secondpass.search(seq, gaps, deliveries)
             if recovered:
                 deliveries = sorted(
@@ -392,21 +405,24 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)
             # Audit what detection actually offered, before the rules trim
             # it -- that is the honest measure of how well detection did.
-            audit = endcheck.check(deliveries)
-            # An end holds sixteen deliveries thrown strictly in turn, so a
-            # longer or doubled candidate list is provably wrong. Without this
-            # an over-counted end does not merely score badly, it cannot be
-            # built at all: shot 17 has no thrower.
+            audit = endcheck.check(deliveries, per_end=fmt.delivered_per_end,
+                                   per_team=fmt.delivered_per_team)
+            # An end holds its format's deliveries thrown strictly in turn, so
+            # a longer or doubled candidate list is provably wrong. Without
+            # this an over-counted end does not merely score badly, it cannot
+            # be built at all: the last shot has no thrower.
             # Stones moved while the house is cleared after the last shot
             # look like deliveries in every way but one: nothing released them.
             kept = fit.fit_end(fit.drop_clearing(
                 deliveries, seq, fit.released_ids(thrown_by, unaccounted)),
-                paired=fit.paired_ids(thrown_by))
+                paired=fit.paired_ids(thrown_by),
+                per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
             dropped = len(deliveries) - len(kept)
             # The next end's run-up begins when this end's last rock stopped.
             prev_end_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
             shots = shots_mod.from_deliveries(
-                kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()})
+                kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()},
+                fmt=fmt)
             # Only now that the rules have settled which rocks exist: the
             # clock wants a tee crossing for each of them, which is a far
             # weaker thing to ask of the same footage than a release was, and
@@ -436,6 +452,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 end.number, end.house, end.start_s, end.end_s, shots,
                 board_score=(None if scores is None
                              else scores.per_end.get(end.number)),
+                fmt=fmt,
             )
             built["deliveries_seen"] = len(deliveries)
             built["releases_seen"] = len(releases)
@@ -451,7 +468,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             out_ends.append(built)
             done_ends += 1
             progress(
-                f"    {len(kept)}/16 deliveries "
+                f"    {len(kept)}/{fmt.delivered_per_end} deliveries "
                 f"(R{audit.thrown['red']} Y{audit.thrown['yellow']} offered"
                 f"{f', +{len(recovered)} recovered' if recovered else ''}"
                 f"{f', -{dropped} against the rules' if dropped else ''}), "
@@ -472,7 +489,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                      "leading practice, and the board is short of the ends")
             scores = None
         out_game = timeline.build_game(
-            game.index, game.start_s, game.end_s, out_ends, board=scores
+            game.index, game.start_s, game.end_s, out_ends, board=scores,
+            fmt=fmt,
         )
         # The board's word against the detector's, which is the only thing
         # that can tell a misread board from a correct one. None while the
@@ -522,6 +540,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         processing_version=version.processing_version(
             weights, weights_mod.side_path(), weights_mod.broom_path(),
             line=line_model is not None and sideviews is not None),
+        fmt=fmt,
     )
 
 

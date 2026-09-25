@@ -8,6 +8,7 @@ from pathlib import Path
 
 from curling_score import analyze as analyze_mod
 from curling_score import weights as weights_mod
+from curling_score.game import format as format_mod
 from curling_score.ingest import cache, source
 
 
@@ -51,6 +52,7 @@ def _analyze(args) -> int:
                               weights=args.weights, imgsz=args.imgsz,
                               device=args.device, start_s=args.start,
                               end_s=args.end, sheet=args.sheet,
+                              game_format=args.format,
                               skip_scoreboard=args.no_scoreboard,
                               skip_longview=args.no_longview,
                               skip_line=args.no_line)
@@ -605,6 +607,8 @@ def main(argv=None) -> int:
                    help="...up to this many seconds")
     p.add_argument("--sheet", type=int, default=None,
                    help="sheet number, when the title does not say")
+    p.add_argument("--format", choices=sorted(format_mod.FORMATS), default=None,
+                   help="fours or doubles (default: read from the video's title)")
     p.add_argument("--no-scoreboard", action="store_true",
                    help="skip reading the wall board (the only pass that needs "
                         "the full-resolution original)")

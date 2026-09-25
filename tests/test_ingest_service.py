@@ -296,3 +296,20 @@ class TestTheLeagueInTheTitle:
         """Only a segment that is *just* "Sheet N" splits the title."""
         assert source.league_from_title("Sheet 2 warm-up - Sheet 2 - Friday Night") \
             == "Friday Night"
+
+
+class TestFormatFromTitle:
+    @pytest.mark.parametrize("title", [
+        "3/19 - Sheet 1 - Thursday Mixed Doubles League 2025-2026",
+        "Sunday open doubles - Sheet 3 - Open Doubles",
+        "DOUBLES - Sheet 2 - Friday",
+    ])
+    def test_doubles_anywhere_is_doubles(self, title):
+        assert source.format_from_title(title) == "doubles"
+
+    @pytest.mark.parametrize("title", [
+        "4/30 - Sheet 2 - Spring Skip's Choice League 2026", "", None,
+        "Doubleshot Coffee Cup - Sheet 1 - Bonspiel",
+    ])
+    def test_everything_else_is_fours(self, title):
+        assert source.format_from_title(title) == "fours"
