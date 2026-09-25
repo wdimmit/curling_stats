@@ -232,6 +232,22 @@ The video is never reparented. That is the same rule as today
   panel, which is squeezed toward the centre line near its far edge and can
   start with a glitched point (VXU9 e1 s8).
 - A caption says where the rock stopped, with a one-line legend.
+- **Ghosts of hit stones (amended 2026-09-25).** Every house view (desktop
+  card, phone band, watch House tab) draws where the stones this rock
+  disturbed sat before it.
+  - The data is `house_delta`: its moved stones at their `from` positions, and
+    its removed stones.
+  - Each ghost is a dashed ring with a faint core in the stone's colour.
+  - A moved stone also gets a dashed link to where it went. A stone knocked out
+    of view gets no link.
+  - Ghosts show and hide with the track toggle, together with the path and the
+    broom. They don't take pointer events.
+  - `house_delta` is not recomputed when the house is edited by hand, so an
+    entry the current stones contradict is dropped (`ghostStones`, 0.30 m, the
+    pipeline's `MOVED_MIN_M`). That covers a move whose stone is no longer
+    where it went, and a removal whose stone is still there.
+  - Knock-ons and detection dropouts are in the diff too, so they get ghosts.
+  - The watch caption adds "dashed: where hit stones sat" when any are drawn.
 - There is no gesture conflict. These surfaces are read-only, so stones are not
   draggable and a horizontal swipe is free.
 

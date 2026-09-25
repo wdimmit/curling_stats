@@ -3,6 +3,7 @@
  * Metres throughout, matching the SVG's user space.
  */
 import { LIMIT, R } from "./constants.mjs";
+import { isBlank } from "./shots.mjs";
 
 /* The phone cannot show the sheet's whole length beside the video, so it shows
  * the house centred on the tee and lets the guards fall off the bottom.
@@ -39,6 +40,31 @@ export function broomMark(shot) {
   const to = st && typeof st.x === "number" && typeof st.y === "number"
     ? { x: st.x, y: st.y } : null;
   return { x: b.x, y: b.y, to };
+}
+
+// As game/shots.py MOVED_MIN_M: closer than this, a stone has not moved.
+const GHOST_MATCH_M = 0.30;
+
+/* Where the stones this shot disturbed sat before it: a moved stone with `to`,
+ * where it went, and a stone knocked out of the view with `to` null. From
+ * `house_delta`, which is the pipeline's diff and is not redone when the house
+ * is edited by hand -- so an entry the current stones contradict is dropped: a
+ * move whose stone is no longer where it went, a removal whose stone is still
+ * there. Knock-ons and detection dropouts are in the diff too; they moved. */
+export function ghostStones(shot) {
+  const d = shot?.house_delta;
+  if (!d || isBlank(shot)) return [];
+  const num = (...v) => v.every(n => typeof n === "number" && Number.isFinite(n));
+  const stones = (shot.stones ?? []).filter(s => num(s.x, s.y));
+  const near = (color, x, y) =>
+    stones.some(s => s.color === color && Math.hypot(s.x - x, s.y - y) < GHOST_MATCH_M);
+  const moved = (d.moved ?? [])
+    .filter(s => num(s.x, s.y, s.from_x, s.from_y) && near(s.color, s.x, s.y))
+    .map(s => ({ color: s.color, x: s.from_x, y: s.from_y, to: { x: s.x, y: s.y } }));
+  const removed = (d.removed ?? [])
+    .filter(s => num(s.x, s.y) && !near(s.color, s.x, s.y))
+    .map(s => ({ color: s.color, x: s.x, y: s.y, to: null }));
+  return [...moved, ...removed];
 }
 
 export function stoneAt(x, y, color) {

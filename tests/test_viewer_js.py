@@ -1523,6 +1523,71 @@ class TestTheSkipsBroom:
         assert "showTrack && <Broom" in src and i_broom < i_stones
 
 
+class TestGhostStones:
+    """The house draws where the stones a rock disturbed sat before it, from
+    `house_delta` -- but only what the house as it stands still agrees with."""
+
+    def ghosts(self, s):
+        return run_js(f"out(ghostStones({json.dumps(s)}));")
+
+    def hit(self, **kw):
+        """s_0NOnuMHZoSp23r6n4 end 1 rock 14: took out two reds, rolled on."""
+        base = dict(
+            delivered_stone_index=0,
+            stones=[{"color": "yellow", "x": 1.2298, "y": 2.1359}],
+            house_delta={"added": [{"color": "yellow", "x": 1.2298, "y": 2.1359}],
+                         "removed": [{"color": "red", "x": -0.2534, "y": 1.5078},
+                                     {"color": "red", "x": 0.1764, "y": 2.3061}], "moved": []})
+        base.update(kw)
+        return shot(14, "yellow", "skip", **base)
+
+    def test_a_stone_knocked_out_is_a_ghost_with_nowhere_to_go(self):
+        assert self.ghosts(self.hit()) == [
+            {"color": "red", "x": -0.2534, "y": 1.5078, "to": None},
+            {"color": "red", "x": 0.1764, "y": 2.3061, "to": None}]
+
+    def test_a_moved_stone_is_a_ghost_where_it_sat_linked_to_where_it_went(self):
+        s = self.hit(stones=[{"color": "red", "x": 0.0, "y": 0.9}],
+                     house_delta={"added": [], "removed": [], "moved": [
+                         {"color": "red", "x": 0.0, "y": 0.9, "from_x": 0.18, "from_y": 2.31,
+                          "distance_m": 1.42}]})
+        assert self.ghosts(s) == [{"color": "red", "x": 0.18, "y": 2.31, "to": {"x": 0.0, "y": 0.9}}]
+
+    def test_nothing_without_a_diff_or_on_a_blank(self):
+        assert self.ghosts(self.hit(house_delta=None)) == []
+        assert self.ghosts(self.hit(state_known=False)) == []
+        assert run_js("out(ghostStones(null));") == []
+
+    def test_a_move_the_edited_house_no_longer_shows_is_dropped(self):
+        s = self.hit(stones=[{"color": "red", "x": 1.5, "y": 0.2}],
+                     house_delta={"added": [], "removed": [], "moved": [
+                         {"color": "red", "x": 0.0, "y": 0.9, "from_x": 0.18, "from_y": 2.31,
+                          "distance_m": 1.42}]})
+        assert self.ghosts(s) == []
+
+    def test_a_removal_whose_stone_is_back_by_hand_is_dropped(self):
+        s = self.hit(stones=[{"color": "yellow", "x": 1.2298, "y": 2.1359},
+                             {"color": "red", "x": 0.2, "y": 2.3, "source": "manual"}])
+        assert self.ghosts(s) == [{"color": "red", "x": -0.2534, "y": 1.5078, "to": None}]
+
+    def test_the_other_colour_on_the_spot_does_not_count(self):
+        s = self.hit(stones=[{"color": "yellow", "x": 0.18, "y": 2.3}])
+        assert len(self.ghosts(s)) == 2
+
+    def test_entries_without_numbers_are_skipped(self):
+        s = self.hit(stones=[{"color": "red", "x": 1.2, "y": 2.1}], house_delta={"added": [], "moved": [
+            {"color": "red", "x": 1.2, "y": 2.1, "from_x": None, "from_y": 2.0}],
+            "removed": [{"color": "red", "x": "0.2", "y": 1.0}]})
+        assert self.ghosts(s) == []
+
+    def test_the_house_draws_them_with_the_track_and_under_the_stones(self):
+        src = (Path(__file__).resolve().parents[1] / "frontend/viewer/House.jsx").read_text()
+        i_ghosts, i_stones = src.index("<Ghosts shot={shot}"), src.index("<Stones shot={shot}")
+        assert "showTrack && <Ghosts" in src and i_ghosts < i_stones
+        ghosts = src[src.index("function Ghosts("):src.index("function Stones(")]
+        assert 'pointerEvents="none"' in ghosts
+
+
 class TestLineFigures:
     """The Detail pane's six figures, from schema 6's `line`."""
 

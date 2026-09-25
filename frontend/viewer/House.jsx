@@ -2,7 +2,7 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   DRAG_MIN_M, PAINT, PHONE_QUERY, R,
-  broomMark, clampX, clampY, houseViewBox, isBlank, onSheet, shouldCrop, stoneAt, trackPoints,
+  broomMark, clampX, clampY, ghostStones, houseViewBox, isBlank, onSheet, shouldCrop, stoneAt, trackPoints,
 } from "../core/index.mjs";
 import * as dragStore from "../runtime/dragStore.mjs";
 import { writeBodyState } from "../runtime/bodyState.mjs";
@@ -97,6 +97,43 @@ function Broom({ shot }) {
             fill={PAINT.accent} stroke={color} strokeWidth={0.02}>
         <title>skip's broom</title>
       </rect>
+    </g>
+  );
+}
+
+/* Where the stones this rock disturbed sat before it: a dashed ring and a faint
+ * core, so it reads as that stone, earlier, and never as one in play. A moved
+ * stone gets a dashed link to where it went, cut back to the two rims so it
+ * crosses neither disc. A wash of ice under each keeps it the same ghost on
+ * the green as on the white. Drawn under the stones, and pointer-transparent: a tap
+ * on a ghost is a tap on the ice, as on the broom's link. */
+function Ghosts({ shot }) {
+  const ghosts = ghostStones(shot);
+  if (!ghosts.length) return null;
+  return (
+    <g className="ghosts" pointerEvents="none">
+      {ghosts.map((g, i) => {
+        const color = g.color === "red" ? PAINT.red : PAINT.yellow;
+        const d = g.to ? Math.hypot(g.to.x - g.x, g.to.y - g.y) : 0;
+        const link = d > 2 * R.stone && {
+          ux: (g.to.x - g.x) / d, uy: (g.to.y - g.y) / d,
+        };
+        return (
+          <g key={i}>
+            {link && (
+              <line x1={g.x + link.ux * R.stone} y1={g.y + link.uy * R.stone}
+                    x2={g.to.x - link.ux * R.stone} y2={g.to.y - link.uy * R.stone}
+                    stroke={color} strokeWidth={0.02} strokeDasharray="0.08 0.06"
+                    opacity={0.5} />
+            )}
+            <circle cx={g.x} cy={g.y} r={R.stone} fill={PAINT.ice} opacity={0.6} />
+            <circle cx={g.x} cy={g.y} r={R.stone * 0.55} fill={color} opacity={0.3} />
+            <circle cx={g.x} cy={g.y} r={R.stone} fill="none" stroke={color}
+                    strokeWidth={0.025} strokeDasharray="0.06 0.05" opacity={0.55} />
+            <title>{`${g.color}, ${g.to ? "before this shot" : "knocked out by this shot"}`}</title>
+          </g>
+        );
+      })}
     </g>
   );
 }
@@ -238,6 +275,7 @@ export function House({ shot, shotKey, selStone, houseMode, showTrack, readOnly,
       ))}
       <line x1={0} y1={R.back} x2={0} y2={R.hog} stroke={PAINT.rail} strokeWidth={0.015} />
       {showTrack && <Track shot={shot} />}
+      {showTrack && <Ghosts shot={shot} />}
       {showTrack && <Broom shot={shot} />}
       <Stones shot={shot} selStone={selStone} />
       {isBlank(shot) && <Unknown />}

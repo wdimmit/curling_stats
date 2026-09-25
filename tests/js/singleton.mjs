@@ -65,6 +65,7 @@ export const houseViewBox = core.houseViewBox;
 export const shouldCrop = core.shouldCrop;
 export const stoneAt = core.stoneAt;
 export const broomMark = core.broomMark;
+export const ghostStones = core.ghostStones;
 
 export const lineFigures = core.lineFigures;
 export const feetInches = core.feetInches;

@@ -15,7 +15,7 @@
  * second <House> would put a second id="house" in the document.
  */
 import { useEffect, useMemo } from "react";
-import { houseCaption, rockSpan, rockRows, stepRock } from "../core/index.mjs";
+import { ghostStones, houseCaption, rockSpan, rockRows, stepRock } from "../core/index.mjs";
 import * as player from "../runtime/player.mjs";
 import { Detail } from "./Detail.jsx";
 import { Pager, useSwipe } from "./Pager.jsx";
@@ -49,6 +49,7 @@ export function Watch({ view, ui, config, series, think, here, actions }) {
   const row = rows[ui.si] || null;
   const shot = view.ends[ui.ei]?.shots[ui.si] ?? null;
   const caption = houseCaption(shot);
+  const ghosts = ui.showTrack && ghostStones(shot).length > 0;
   const ends = useMemo(() => view.ends.map(x => ({
     number: x.end?.number, house: x.end?.house, rocks: x.shots.length,
   })), [view]);
@@ -66,7 +67,8 @@ export function Watch({ view, ui, config, series, think, here, actions }) {
           caption: one <House> in the page, so one #house. */}
       {ui.tab === "house" ? (
         <div className="whouse">
-          {caption ?? "Dark pad: the skip's broom · ringed: this rock"}
+          {(caption ?? "Dark pad: the skip's broom · ringed: this rock")
+           + (ghosts ? " · dashed: where hit stones sat" : "")}
         </div>
       ) : null}
       {ui.tab === "timing" ? (
