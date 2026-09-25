@@ -67,3 +67,14 @@ class TestNoDeliveries:
         r = endcheck.check([])
         assert r.complete is False
         assert r.thrown == {"yellow": 0, "red": 0}
+
+
+class TestDoublesCounts:
+    def test_ten_alternating_rocks_are_a_whole_doubles_end(self):
+        r = endcheck.check(alternating(10), per_end=10, per_team=5)
+        assert r.complete is True and r.problems == []
+        assert r.confidence == 1.0
+
+    def test_six_of_one_colour_is_too_many(self):
+        r = endcheck.check(alternating(12), per_end=10, per_team=5)
+        assert any("more than the 5" in p for p in r.problems)

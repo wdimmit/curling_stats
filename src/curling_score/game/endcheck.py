@@ -34,30 +34,31 @@ class EndCheck:
     problems: list = field(default_factory=list)
     missed_after: list = field(default_factory=list)  # indices to insert after
     long_gaps: list = field(default_factory=list)  # (index, seconds)
+    expected: int = C.STONES_PER_END
 
     @property
     def confidence(self) -> float:
         """How much of the end was actually observed, 0 to 1."""
         seen = sum(self.thrown.values())
-        return min(1.0, seen / C.STONES_PER_END)
+        return min(1.0, seen / self.expected)
 
 
-def check(deliveries, long_gap_s: float = LONG_GAP_S) -> EndCheck:
+def check(deliveries, long_gap_s: float = LONG_GAP_S,
+          per_end: int = C.STONES_PER_END,
+          per_team: int = C.STONES_PER_TEAM_PER_END) -> EndCheck:
     """Compare a detected end against what the rules require of one."""
     deliveries = sorted(deliveries, key=lambda d: d.t_enter)
     thrown = {c: sum(1 for d in deliveries if d.color == c) for c in COLORS}
 
     problems: list[str] = []
     total = len(deliveries)
-    if total != C.STONES_PER_END:
-        problems.append(
-            f"saw {total} deliveries, an end has {C.STONES_PER_END}"
-        )
+    if total != per_end:
+        problems.append(f"saw {total} deliveries, an end has {per_end}")
     for color in COLORS:
-        if thrown[color] > C.STONES_PER_TEAM_PER_END:
+        if thrown[color] > per_team:
             problems.append(
                 f"{color} threw {thrown[color]}, more than the "
-                f"{C.STONES_PER_TEAM_PER_END} a team has"
+                f"{per_team} a team has"
             )
 
     missed_after = [
@@ -78,4 +79,5 @@ def check(deliveries, long_gap_s: float = LONG_GAP_S) -> EndCheck:
         problems=problems,
         missed_after=missed_after,
         long_gaps=long_gaps,
+        expected=per_end,
     )

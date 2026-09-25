@@ -717,3 +717,33 @@ class TestTheReleaseThatThrewIt:
         built = shots.from_deliveries([dv], self._frames(dv),
                                       thrown_by={id(dv): r})
         assert all(s.release is None for s in built if s.missing)
+
+
+class TestDoublesEnds:
+    def _dv(self, color, t):
+        return TestShotsFromDeliveries()._dv(color, t)
+
+    def _frames(self, at):
+        return TestShotsFromDeliveries()._frames(at)
+
+    def _alternating(self, n):
+        return [self._dv("yellow" if i % 2 == 0 else "red", 10 + 30 * i) for i in range(n)]
+
+    def test_eight_rocks_in_is_two_short_of_a_doubles_end(self):
+        from curling_score.game import format as F
+
+        got = shots.from_deliveries(self._alternating(8), self._frames({0: []}),
+                                    fmt=F.DOUBLES)
+        assert len(got) == 10
+        assert [s.missing for s in got[8:]] == [True, True]
+
+    def test_the_same_eight_are_too_few_to_fill_in_fours(self):
+        got = shots.from_deliveries(self._alternating(8), self._frames({0: []}))
+        assert len(got) == 8
+
+    def test_a_doubles_end_stops_at_ten(self):
+        from curling_score.game import format as F
+
+        got = shots.from_deliveries(self._alternating(12), self._frames({0: []}),
+                                    fmt=F.DOUBLES)
+        assert len(got) == 10

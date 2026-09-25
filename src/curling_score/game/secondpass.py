@@ -46,15 +46,16 @@ def _other(color):
     return "red" if color == "yellow" else "yellow"
 
 
-def gaps_to_search(found, start_s, end_s):
+def gaps_to_search(found, start_s, end_s, per_end: int = C.STONES_PER_END,
+                   per_team: int = C.STONES_PER_TEAM_PER_END):
     """Windows where the rules say a delivery must be, with its colour."""
     ds = sorted(found, key=lambda d: d.t_enter)
     if not ds:
         return [Gap(start_s, end_s, None)]
 
     thrown = {c: sum(1 for d in ds if d.color == c) for c in COLORS}
-    # A team that has already thrown its eight cannot own a missing delivery.
-    exhausted = {c for c in COLORS if thrown[c] >= C.STONES_PER_TEAM_PER_END}
+    # A team that has already thrown its share cannot own a missing delivery.
+    exhausted = {c for c in COLORS if thrown[c] >= per_team}
 
     out: list[Gap] = []
     for a, b in zip(ds, ds[1:]):
@@ -64,7 +65,7 @@ def gaps_to_search(found, start_s, end_s):
         out.append(Gap(a.t_rest, b.t_enter,
                        None if want in exhausted else want))
 
-    if len(ds) < C.STONES_PER_END and len(exhausted) == 1:
+    if len(ds) < per_end and len(exhausted) == 1:
         # Only one team can still be throwing, so every remaining gap is theirs.
         want = next(c for c in COLORS if c not in exhausted)
         out = [Gap(g.start_s, g.end_s, want) for g in out]

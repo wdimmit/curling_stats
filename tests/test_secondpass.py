@@ -95,3 +95,12 @@ class TestDoesNotRefindWhatIsAlreadyThere:
         frames = flight("red", 100.0)
         gaps = [secondpass.Gap(start_s=94.0, end_s=99.0, expected_color="red")]
         assert secondpass.search(frames, gaps, [dv("red", 400.0)]) != []
+
+
+class TestDoublesCounts:
+    def test_a_team_at_five_is_done_in_doubles(self):
+        # Red has thrown its five; the only rock that can be missing is yellow's.
+        found = [dv(c, 50 * i) for i, c in enumerate(
+            ["red", "yellow", "red", "yellow", "red", "yellow", "red", "red"])]
+        gaps = secondpass.gaps_to_search(found, 0.0, 900.0, per_end=10, per_team=5)
+        assert [g.expected_color for g in gaps] == ["yellow"]

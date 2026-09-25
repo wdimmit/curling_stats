@@ -493,7 +493,7 @@ def _with_placeholders(deliveries):
 
 
 def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S,
-                    thrown_by=None):
+                    thrown_by=None, fmt=None):
     """Build the shot list from observed deliveries.
 
     This replaces inferring shots from how the house changed. That approach
@@ -508,13 +508,16 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
 
     ``thrown_by`` maps ``id(delivery)`` to the ``Release`` it was paired with,
     keyed by identity because two deliveries of a colour can compare equal.
+    ``fmt`` sets how many rocks an end holds; four-player unless told.
     """
     from curling_score.detect.rest import stones_in_window, until_disturbed
+    from curling_score.game.format import FOURS
 
     deliveries = sorted(deliveries, key=lambda d: d.t_enter)
     frames = list(frames)
     if not deliveries or not frames:
         return []
+    per_end = (fmt or FOURS).delivered_per_end
 
     houses: dict[int, list] = {}
     for i, dv in enumerate(deliveries):
@@ -540,10 +543,10 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     out: list[Shot] = []
     previous: list = []
     seen = 0
-    plan = _fill_short_end(_with_placeholders(deliveries), C.STONES_PER_END,
+    plan = _fill_short_end(_with_placeholders(deliveries), per_end,
                            house_sizes=[len(houses[i]) for i in range(len(deliveries))])
     for color, dv in plan:
-        if len(out) >= C.STONES_PER_END:
+        if len(out) >= per_end:
             break
         if dv is None:
             # A delivery we never saw. Its house is unknown -- not empty -- and

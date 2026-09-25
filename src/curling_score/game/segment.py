@@ -99,7 +99,7 @@ def _runs(active, samples):
     return out
 
 
-def segment_games(samples) -> list[GameSegment]:
+def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
     """Group an activity profile into games, each holding its ends in order."""
     samples = list(samples)
     if not samples:
@@ -135,7 +135,7 @@ def segment_games(samples) -> list[GameSegment]:
         ends = [
             EndSegment(number=0, house=h, start_s=samples[i0].t, end_s=samples[i1 - 1].t)
             for h, i0, i1 in merged
-            if span(i0, i1) >= MIN_END_S
+            if span(i0, i1) >= min_end_s
         ]
         if not ends:
             continue

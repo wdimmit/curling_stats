@@ -135,3 +135,13 @@ class TestTooShortToBeAnEnd:
         samples = profile([(180, 3, 0), (2, 0, 0), (180, 0, 3)])
         games = segment.segment_games(samples)
         assert sum(len(g.ends) for g in games) == 2
+
+
+class TestTheFloorIsAParameter:
+    def test_a_shorter_floor_keeps_a_shorter_end(self):
+        # 200 s of play: too short for a sixteen-rock end, long enough for ten.
+        samples = profile([(40, 3, 0), (2, 0, 0), (180, 0, 3)])
+        four = segment.segment_games(samples)
+        two = segment.segment_games(samples, min_end_s=10 * segment.MIN_DELIVERY_GAP_S)
+        assert [e.house for g in four for e in g.ends] == ["bottom"]
+        assert [e.house for g in two for e in g.ends] == ["top", "bottom"]
