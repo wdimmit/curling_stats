@@ -18,3 +18,22 @@ export function useSwipe(onStep) {
     onPointerCancel: () => { start.current = null; },
   };
 }
+
+export function Pager({ row, count, index, end, canPrev, canNext, onStep }) {
+  const sub = [row.color, row.position, row.name].filter(Boolean).join(" · ");
+  return (
+    <div className="wpager">
+      <button type="button" aria-label="Previous rock" disabled={!canPrev} onClick={() => onStep(-1)}>‹</button>
+      <div className="wpmid">
+        <div className="wptop">
+          <span className={`wdisc ${row.color}`}>{row.number}</span>
+          <span>End {end} · {sub}</span>
+        </div>
+        <div className="wpdots" aria-hidden="true">
+          {Array.from({ length: count }, (_, i) => <i key={i} className={i === index ? "on" : undefined} />)}
+        </div>
+      </div>
+      <button type="button" aria-label="Next rock" disabled={!canNext} onClick={() => onStep(1)}>›</button>
+    </div>
+  );
+}

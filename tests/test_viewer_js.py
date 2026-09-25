@@ -1678,3 +1678,18 @@ class TestTheAppKnowsItsTab:
     def test_the_swipe_and_the_hash_are_phone_only(self):
         src = self.APP.read_text()
         assert "if (phone()) actions.step(d)" in src and "!phone()" in src
+
+
+class TestTheTabShell:
+    JSX = Path(__file__).resolve().parents[1] / "frontend/viewer"
+
+    def test_three_tabs_and_the_panes_they_show(self):
+        src = (self.JSX / "Watch.jsx").read_text()
+        for needle in ('className="wtabs"', "actions.setTab(", "<Detail ", "<Timing ", "<Pager "):
+            assert needle in src, needle
+        assert "openWatch" not in src and "ui.watch" not in src
+
+    def test_the_house_draws_its_path_through_track_points(self):
+        src = (self.JSX / "House.jsx").read_text()
+        body = src[src.index("function Track("):src.index("function Broom(")]
+        assert "trackPoints(shot)" in body and "shot?.track" not in body

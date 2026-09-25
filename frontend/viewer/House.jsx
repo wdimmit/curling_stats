@@ -2,7 +2,7 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   DRAG_MIN_M, PAINT, PHONE_QUERY, R,
-  broomMark, clampX, clampY, houseViewBox, isBlank, onSheet, shouldCrop, stoneAt,
+  broomMark, clampX, clampY, houseViewBox, isBlank, onSheet, shouldCrop, stoneAt, trackPoints,
 } from "../core/index.mjs";
 import * as dragStore from "../runtime/dragStore.mjs";
 import { writeBodyState } from "../runtime/bodyState.mjs";
@@ -54,19 +54,21 @@ function sheetPoint(evt, svg) {
 
 /* The flight, drawn as a tail that fades in from where the camera first saw
  * the stone to where it stopped. Segments rather than one polyline so the
- * opacity can ramp without a gradient along the path. */
+ * opacity can ramp without a gradient along the path. Where the camera behind
+ * the thrower followed the rock, its path; otherwise the overhead panel's
+ * track, as before. */
 function Track({ shot }) {
-  const pts = shot?.track;
-  if (!pts || pts.length < 2) return null;
+  const pts = trackPoints(shot);
+  if (pts.length < 2) return null;
   const color = shot.color === "red" ? PAINT.red : PAINT.yellow;
   return (
     <g clipPath="url(#sheetClip)" pointerEvents="none">
       {pts.slice(0, -1).map((p, i) => (
-        <line key={i} x1={p[1]} y1={p[2]} x2={pts[i + 1][1]} y2={pts[i + 1][2]}
+        <line key={i} x1={p[0]} y1={p[1]} x2={pts[i + 1][0]} y2={pts[i + 1][1]}
               stroke={color} strokeWidth={0.045} strokeLinecap="round"
               opacity={(0.12 + 0.78 * (i / Math.max(1, pts.length - 2))).toFixed(3)} />
       ))}
-      <circle cx={pts[0][1]} cy={pts[0][2]} r={0.06} fill="none"
+      <circle cx={pts[0][0]} cy={pts[0][1]} r={0.06} fill="none"
               stroke={color} strokeWidth={0.025} opacity={0.5} />
     </g>
   );

@@ -3,7 +3,7 @@
  * The charting phone layout is a bottom sheet holding a grade row, and the
  * read-only surfaces inherited it with the grading cut out -- a 256px empty
  * panel under a video. This replaces it on /s/ and /g/ with the thing a
- * viewer actually wants: the end as a list of its sixteen rocks.
+ * viewer actually wants: three tabs: House, Detail and Timing.
  *
  * Each row carries its own thinking-time bar, so the list *is* the per-rock
  * chart, turned on its side. That matters more than it sounds: the clock is
@@ -16,13 +16,12 @@
  * sheet is the existing #houseCard promoted by CSS for the same reason: a
  * second <House> would put a second id="house" in the document.
  */
-import { useEffect, useMemo, useRef } from "react";
-import { clockText, endSummary, rockAt, rockRows } from "../core/index.mjs";
+import { useEffect, useMemo } from "react";
+import { houseCaption, rockAt, rockRows, stepRock } from "../core/index.mjs";
 import * as player from "../runtime/player.mjs";
-import { ThinkingChart } from "./Charts.jsx";
-import { TALLBOX } from "../core/constants.mjs";
-
-const ROW_H = 56;
+import { Detail } from "./Detail.jsx";
+import { Pager, useSwipe } from "./Pager.jsx";
+import { Timing } from "./Timing.jsx";
 
 /* Follow the video, and hand control back the moment a thumb disagrees.
  *
@@ -43,167 +42,41 @@ function useFollow(rows, following, si, actions) {
   }, [rows, following, si, actions]);
 }
 
-function RockRow({ row, current, onPick }) {
-  return (
-    <button type="button" className="wrow" aria-current={current || undefined}
-            onClick={() => onPick(row.i)}>
-      <span className={`wdisc ${row.color}`}>{row.number}</span>
-      <span className="wmid">
-        <span className="whead">
-          <span className="wname">{row.name}</span>
-          {row.splitText ? (
-            <span className="wsplit" title="Long split: hog line to hog line">
-              <span aria-hidden="true">·</span>{" "}
-              <span className="sr">long split </span>{row.splitText}
-            </span>
-          ) : null}
-        </span>
-        <span className="wtrack">
-          {row.unmeasured ? null
-            : <i className={row.color} style={{ width: `${Math.max(4, row.frac * 100)}%` }} />}
-        </span>
-      </span>
-      <span className="wright">
-        {current ? <span className="wnow">▶ playing</span> : null}
-        <span className="wsecs">{row.text}{row.estimated && !row.unmeasured ? " est." : ""}</span>
-      </span>
-    </button>
-  );
-}
-
-function EndBar({ summary, onStep }) {
-  if (!summary) return null;
-  const { number, of, running, hammer, boardReadable, scoresWithheld } = summary;
-  return (
-    <div className="wendbar">
-      <button type="button" onClick={() => onStep(-1)} disabled={number <= 1}
-              aria-label="Previous end">◀</button>
-      <div className="wendmid">
-        <span className="wen">End {number} of {of}</span>
-        {running ? (
-          <span className="wsc">
-            <i className="wdot red" />{running.red} – {running.yellow}<i className="wdot yellow" />
-          </span>
-        ) : (
-          <span className="wsc wsc-none"
-                title={scoresWithheld
-                  ? "The wall board was read, but its scores could not be matched "
-                    + "to these ends. Setting the game's start time places them, "
-                    + "with no need to read the board again."
-                  : undefined}>
-            {boardReadable === false ? "chart predates board reading"
-              : scoresWithheld ? "needs a start time"
-              : "not posted"}
-          </span>
-        )}
-        {hammer ? <span className="wham">{hammer} has hammer</span> : null}
-      </div>
-      <button type="button" onClick={() => onStep(1)} disabled={number >= of}
-              aria-label="Next end">▶</button>
-    </div>
-  );
-}
-
-/* The cumulative clock across the whole game. The same chart the aside draws,
- * which on a phone has never been reachable at all. */
-function GameSheet({ series, think, here, onClose, actions }) {
-  return (
-    <>
-      <div className="wsheethead">
-        <span className="wgrip" />
-        <span className="wst">Thinking time</span>
-        <button type="button" onClick={onClose} aria-label="Close">✕</button>
-      </div>
-      <div className="wsheetbody">
-        <ThinkingChart series={series} at={here} box={TALLBOX} />
-        <div className="wtotals">
-          <span><i className="wdot red" />red {clockText(series.red)}</span>
-          <span><i className="wdot yellow" />yellow {clockText(series.yellow)}</span>
-        </div>
-        <p className="wcaveat">
-          Read from {think.measured} of {think.measured + think.unmeasured} rocks
-          {think.estimated ? `, ${think.estimated} estimated` : ""}. A rock with no
-          interval is one nobody could time, not one thrown instantly.
-        </p>
-      </div>
-    </>
-  );
-}
+const TABS = [["house", "House"], ["detail", "Detail"], ["timing", "Timing"]];
 
 export function Watch({ view, ui, config, series, think, here, actions }) {
-  const rows = useMemo(() => rockRows(view, ui.ei, ui.leadIn),
-                       [view, ui.ei, ui.leadIn]);
-  const summary = useMemo(() => endSummary(view, ui.ei), [view, ui.ei]);
-  const listRef = useRef(null);
-
-  useFollow(rows, ui.following !== false && !ui.watch, ui.si, actions);
-
-  /* Keep the current row in view while following. Deliberately not
-   * scrollIntoView: that scrolls every scrollable ancestor, and the phone
-   * shell is a stack of fixed boxes that must not move. */
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el || ui.following === false) return;
-    const top = ui.si * ROW_H;
-    if (top < el.scrollTop || top + ROW_H > el.scrollTop + el.clientHeight)
-      el.scrollTop = Math.max(0, top - el.clientHeight / 2 + ROW_H / 2);
-  }, [ui.si, ui.following, ui.ei]);
-
-  /* A gesture, not a scroll event: the effect above scrolls this same
-   * element, and a scroll listener could not tell the two apart. */
-  const yield_ = () => { if (ui.following !== false) actions.setFollowing(false); };
-
-  const step = d => {
-    const next = ui.ei + d;
-    if (next < 0 || next >= view.ends.length) return;
-    actions.goTo(next, 0);
-  };
-
+  const rows = useMemo(() => rockRows(view, ui.ei, ui.leadIn), [view, ui.ei, ui.leadIn]);
+  useFollow(rows, ui.following !== false, ui.si, actions);
+  const swipe = useSwipe(d => actions.step(d));
   const row = rows[ui.si] || null;
+  const shot = view.ends[ui.ei]?.shots[ui.si] ?? null;
+  const caption = houseCaption(shot);
   return (
-    <section id="watch" aria-label="Rocks in this end">
-      <EndBar summary={summary} onStep={step} />
-      <div className="wlist" ref={listRef} onWheel={yield_} onTouchMove={yield_}>
-        {rows.map(r => (
-          <RockRow key={r.i} row={r} current={r.i === ui.si}
-                   onPick={i => { actions.setFollowing(true); actions.goTo(ui.ei, i); }} />
-        ))}
-      </div>
-      {ui.following === false
-        ? <button type="button" className="wback"
-                  onClick={() => { actions.setFollowing(true); actions.goTo(ui.ei, ui.si); }}>
-            ↓ Back to rock {row ? row.number : ""}
-          </button>
-        : null}
-      <div className="wbar">
-        <button type="button" onClick={() => actions.openWatch("house")}>⌂ House</button>
-        <button type="button" onClick={() => actions.openWatch("game")}>◷ Whole game</button>
-      </div>
-
-      {/* The house sheet's chrome only. #houseCard itself is promoted into the
-          gap between these two by CSS, so there is one <House> in the page. */}
-      {ui.watch === "house" && row ? (
-        <>
-          <div className="wsheethead">
-            <span className="wgrip" />
-            <span className="wst">Rock {row.number} · {row.color}
-              {row.position ? ` · ${row.position}` : ""}</span>
-            <button type="button" onClick={() => actions.openWatch("")}
-                    aria-label="Close">✕</button>
-          </div>
-          <div className="wsheetfoot">
-            {row.name}
-            {row.unmeasured ? "" : ` · ${row.text} thinking`}
-          </div>
-        </>
+    <section id="watch" aria-label="This game's rocks">
+      {ui.tab !== "timing" && row ? (
+        <Pager row={row} count={rows.length} index={ui.si} end={view.ends[ui.ei]?.end?.number}
+               canPrev={!!stepRock(view, ui.ei, ui.si, -1)} canNext={!!stepRock(view, ui.ei, ui.si, 1)}
+               onStep={actions.step} />
       ) : null}
-
-      {ui.watch === "game" ? (
-        <div className="wsheet">
-          <GameSheet series={series} think={think} here={here}
-                     onClose={() => actions.openWatch("")} actions={actions} />
+      {ui.tab === "detail" ? (
+        <div className="wpane" {...swipe}><Detail shot={shot} doc={view.doc} /></div>
+      ) : null}
+      {/* #houseCard itself is promoted by CSS between the pager and this
+          caption: one <House> in the page, so one #house. */}
+      {ui.tab === "house" ? (
+        <div className="whouse">
+          {caption ?? "Dark pad: the skip's broom · ringed: this rock"}
         </div>
       ) : null}
+      {ui.tab === "timing" ? (
+        <Timing view={view} ui={ui} series={series} think={think} here={here} actions={actions} />
+      ) : null}
+      <nav className="wtabs" aria-label="Views">
+        {TABS.map(([k, label]) => (
+          <button key={k} type="button" aria-current={ui.tab === k ? "page" : undefined}
+                  onClick={() => actions.setTab(k)}>{label}</button>
+        ))}
+      </nav>
     </section>
   );
 }
