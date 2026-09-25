@@ -17,7 +17,7 @@
     "frontend/runtime/bodyState.mjs": "3406f0db2a7f1c57944df52b370eade2be81a1b65fc4f64382ee56b27eb315ea",
     "frontend/runtime/dragStore.mjs": "39cf427077c473e916a74c5e95b62ac0fd8eacde6b56f4fe8b4f1cc6d516d778",
     "frontend/runtime/overridesStore.mjs": "f50dacacca0a3d9ab487fa5b385de8ae4df916756fbceefce291e300ab8589e7",
-    "frontend/runtime/player.mjs": "26a9b618741275fa1af77f90df7e02c07479e4cae7f189ca97387ebc08c67dba",
+    "frontend/runtime/player.mjs": "6fea60197a05c0994abcf3f179c2be83901609d9980d938dd1d64854065dd34e",
     "frontend/runtime/prefs.mjs": "8fd39bb740719fe04d942b18aa5b513df8fad3e9279ff9743186df0d60c72f4d",
     "frontend/site/Games.jsx": "c79af026f49274dc1bf17d32cbb06a4317641854a50cc5140a7f671d75d7a848",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
@@ -42,6 +42,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "6e4b4ee181968976d23b26da584a241d49c549eb82b38c64b1e0cd4a514dea82",
-    "src/curling_score/viewer/app.js": "5f92810bb3fad239b399611d79ec197784c2fdc4854448bc317e82a7e572ccc9"
+    "src/curling_score/viewer/app.js": "292eeb7293d9be3188c8cdabd0b19e81982b083512d953576d64c6cb533b2686"
   }
 }

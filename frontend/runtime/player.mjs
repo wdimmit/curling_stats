@@ -14,7 +14,7 @@
  */
 let player = null;           // the YT.Player, or "none" once it has failed
 let ready = false;
-let pending = null;          // a seek asked for before the player could take it
+let pending = null;          // a seek asked for before the player could take it: {t, autoplay}
 let container = null;
 
 /* Written into #video rather than rendered by React. `.fallback` is styled
@@ -48,7 +48,11 @@ export function mount(el, videoId, { autoplay = () => true } = {}) {
       events: {
         onReady: () => {
           ready = true;
-          if (pending !== null) { const t = pending; pending = null; seek(t, autoplay()); }
+          if (pending !== null) {
+            const { t, autoplay: play } = pending;
+            pending = null;
+            seek(t, play ?? autoplay());
+          }
         },
         onError: e => fail(`player error ${e.data}`),
       },
@@ -64,7 +68,10 @@ export function mount(el, videoId, { autoplay = () => true } = {}) {
 
 export function seek(t, autoplay) {
   if (player === "none") return;
-  if (!ready) { pending = t; return; }
+  // Queued with the caller's own autoplay: a rock restored from a link or the
+  // session seeks before the iframe is ready and asks not to start playing,
+  // which the "play on jump" preference must not override.
+  if (!ready) { pending = { t, autoplay }; return; }
   player.seekTo(t, true);
   if (autoplay) player.playVideo();
 }

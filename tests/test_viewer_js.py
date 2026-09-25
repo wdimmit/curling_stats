@@ -1686,6 +1686,12 @@ class TestStripAndTrack:
 class TestTheAppKnowsItsTab:
     APP = Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx"
 
+    def test_a_seek_queued_before_the_player_is_ready_keeps_its_own_autoplay(self):
+        """A restored rock seeks on load with autoplay off, before the iframe
+        is ready; the queue must not swap that for the "play on jump" pref."""
+        src = (Path(__file__).resolve().parents[1] / "frontend/runtime/player.mjs").read_text()
+        assert "pending = { t, autoplay }" in src and "play ?? autoplay()" in src
+
     def test_the_tab_and_rock_are_written_to_the_hash(self):
         src = self.APP.read_text()
         assert "history.replaceState(" in src and "formatHash(" in src
