@@ -1722,3 +1722,21 @@ class TestTheTimingTab:
         src = self.SRC.read_text()
         assert "actions.setFollowing(true); actions.goTo(k, i);" in src
         assert "setTab" not in src
+
+
+class TestThePhoneTabsCss:
+    def test_the_tabs_the_pager_and_the_panes_have_rules(self):
+        css = (VIEWER / "style.css").read_text()
+        for sel in (".wtabs {", ".wpager {", ".wpane {", ".dstrip {", ".tend {", ".tlist {",
+                    'body[data-watch="house"] main > #houseCard'):
+            assert sel in css, sel
+
+    def test_the_detail_pane_hands_horizontal_drags_to_the_swipe(self):
+        css = (VIEWER / "style.css").read_text()
+        rule = css[css.index(".wpane {"):css.index("}", css.index(".wpane {"))]
+        assert "touch-action: pan-y" in rule
+
+    def test_the_old_sheets_are_gone(self):
+        css = (VIEWER / "style.css").read_text()
+        for gone in (".wsheethead {", ".wbar {", ".wendbar {"):
+            assert gone not in css, gone

@@ -621,13 +621,83 @@ body[data-mode="review"] #house { cursor:default; }
            bottom: 0; z-index: 4; flex-direction: column;
            background: var(--bg); }
 
-  .wendbar { height: 44px; flex: none; display: flex; align-items: center;
-             justify-content: space-between; background: var(--panel);
-             border-bottom: 1px solid var(--line); }
-  .wendbar > button { width: 44px; height: 44px; border: 0; background: none;
-                      color: var(--accent); font-size: 17px; padding: 0; }
-  .wendbar > button:disabled { color: var(--muted); opacity: .35; }
-  .wendmid { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+  /* Three tabs at the thumb. */
+  .wtabs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 9;
+           height: calc(64px + env(safe-area-inset-bottom));
+           padding-bottom: env(safe-area-inset-bottom);
+           display: flex; background: var(--panel);
+           border-top: 1px solid var(--line); }
+  .wtabs button { flex: 1; border: 0; border-top: 3px solid transparent;
+                  background: none; font: inherit; font-size: 13px;
+                  color: var(--muted); }
+  .wtabs button[aria-current] { color: var(--accent); font-weight: 700;
+                                border-top-color: var(--accent); }
+
+  /* The rock you are on, and the way to the next. */
+  .wpager { height: 56px; flex: none; display: flex; align-items: center;
+            padding: 0 4px; background: var(--panel);
+            border-bottom: 1px solid var(--line); }
+  .wpager > button { width: 44px; height: 44px; border: 0; background: none;
+                     font-size: 22px; color: var(--accent); flex: none; }
+  .wpager > button:disabled { color: var(--muted); opacity: .35; }
+  .wpmid { flex: 1; min-width: 0; display: flex; flex-direction: column;
+           align-items: center; gap: 5px; }
+  .wptop { display: flex; align-items: center; gap: 8px; font-size: 13px;
+           font-weight: 600; min-width: 0; white-space: nowrap; }
+  .wptop .wdisc { width: 22px; height: 22px; font-size: 12px; }
+  .wpdots { display: flex; gap: 3px; }
+  .wpdots i { width: 5px; height: 5px; border-radius: 3px;
+              background: color-mix(in srgb, var(--muted) 45%, transparent); }
+  .wpdots i.on { width: 14px; background: var(--accent); }
+
+  /* Detail: the sheet strip beside its figures. pan-y keeps the pane's own
+     vertical scroll and hands horizontal drags to the swipe. */
+  .wpane { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y;
+           padding: 12px 16px calc(76px + env(safe-area-inset-bottom)); }
+  .dbody { display: flex; gap: 16px; align-items: flex-start; }
+  .dstrip { flex: none; display: block; background: var(--ice);
+            border: 1px solid var(--line); border-radius: 4px; }
+  .dstrip-none { width: 150px; height: 420px; }
+  .dfigs { flex: 1; min-width: 0; margin: 0; display: flex; flex-direction: column; }
+  .dfig { padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .dfig dt { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+             color: var(--muted); font-weight: 600; }
+  .dfig .dval { margin: 0; font-family: var(--display); font-size: 22px;
+                font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .dfig .dnote { margin: 0; font-size: 11.5px; color: var(--muted);
+                 display: flex; align-items: center; gap: 5px; }
+  .dfig.dim .dval { color: var(--muted); }
+  .dnote.confirmed svg { flex: none; stroke: var(--ok); }
+  .dcap { font-size: 11px; color: var(--muted); margin: 8px 0 0; }
+  .dnone { font-size: 14px; color: var(--muted); margin: 24px 16px; text-align: center; }
+
+  /* House: #houseCard promoted between the pager and this caption. */
+  .whouse { position: absolute; left: 0; right: 0; z-index: 9; height: 44px;
+            bottom: calc(64px + env(safe-area-inset-bottom));
+            display: flex; align-items: center; padding: 0 16px;
+            font-size: 13px; color: var(--muted); background: var(--panel);
+            border-top: 1px solid var(--line); }
+  body[data-watch="house"] main > #houseCard { display: block; position: fixed;
+    left: 0; right: 0; top: calc(48px + 56.25vw + 56px);
+    bottom: calc(108px + env(safe-area-inset-bottom));
+    z-index: 8; margin: 0; border: 0; border-radius: 0;
+    background: var(--panel); padding: 6px 12px; }
+  body[data-watch="house"] #houseCard .tools,
+  body[data-watch="house"] #houseCard .housebar,
+  body[data-watch="house"] #houseCard .muted { display: none; }
+
+  /* Timing: the whole game's clock pinned above every rock, by end. */
+  .tpane { flex: 1; min-height: 0; display: flex; flex-direction: column;
+           padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .tchart { flex: none; padding: 8px 16px; background: var(--panel);
+            border-bottom: 1px solid var(--line); }
+  .tchart .wtotals { margin-top: 6px; }
+  .tchart .wcaveat { margin-top: 4px; }
+  .tlist { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+  .tend { position: sticky; top: 0; z-index: 1; height: 30px; display: flex;
+          align-items: center; gap: 12px; padding: 0 16px;
+          background: var(--bg); border-bottom: 1px solid var(--line);
+          font-size: 13px; }
   .wen { font-weight: 650; }
   .wsc { display: flex; align-items: center; gap: 6px;
          font-variant-numeric: tabular-nums; }
@@ -637,9 +707,6 @@ body[data-mode="review"] #house { cursor:default; }
           flex: none; }
   .wdot.red { background: var(--red); } .wdot.yellow { background: var(--yellow); }
 
-  .wlist { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
-  /* 56px exactly: Watch.jsx scrolls the current row into view by multiplying
-     it, because scrollIntoView would scroll the fixed shell around it. */
   .wrow { height: 56px; width: 100%; display: grid; gap: 12px; padding: 0 16px;
           grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center;
           border: 0; border-bottom: 1px solid var(--line); background: none;
@@ -678,61 +745,15 @@ body[data-mode="review"] #house { cursor:default; }
   .wnow { font-size: 11px; color: var(--accent); font-weight: 600; white-space: nowrap; }
 
   .wback { position: absolute; left: 50%; transform: translateX(-50%);
-           bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 6;
+           bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 6;
            height: 36px; padding: 0 16px; border-radius: 999px;
            border: 1px solid var(--line); background: var(--panel);
            color: var(--accent); font: inherit; font-size: 13px;
            box-shadow: 0 2px 10px rgb(0 0 0 / .14); }
-
-  .wbar { height: calc(56px + env(safe-area-inset-bottom)); flex: none;
-          display: flex; background: var(--panel);
-          border-top: 1px solid var(--line);
-          padding-bottom: env(safe-area-inset-bottom); }
-  .wbar button { flex: 1; border: 0; background: none; font: inherit;
-                 font-size: 14px; color: var(--accent); }
-  .wbar button + button { border-left: 1px solid var(--line); }
-
-  /* Sheets. The house one is #houseCard promoted into the gap between the
-     header and the footer below -- one <House> in the page, so one #house. */
-  .wsheethead { position: fixed; left: 0; right: 0; top: calc(48px + 56.25vw);
-                height: 72px; z-index: 8; background: var(--panel);
-                border-radius: 16px 16px 0 0; border-bottom: 1px solid var(--line);
-                display: grid; grid-template-columns: 1fr auto;
-                grid-template-rows: 28px 44px; align-items: center;
-                padding: 0 16px; column-gap: 10px; }
-  .wgrip { grid-column: 1 / -1; width: 36px; height: 4px; border-radius: 2px;
-           background: var(--line); justify-self: center; }
-  .wst { font-size: 14px; font-weight: 650; }
-  .wsheethead button { border: 0; background: none; font-size: 18px;
-                       color: var(--muted); width: 44px; height: 44px; }
-  .wsheetfoot { position: fixed; left: 0; right: 0;
-                bottom: calc(56px + env(safe-area-inset-bottom));
-                height: 44px; z-index: 8; display: flex; align-items: center;
-                padding: 0 16px; font-size: 13px; color: var(--muted);
-                background: var(--panel); border-top: 1px solid var(--line); }
-
-  body[data-watch="house"] #watch .wlist,
-  body[data-watch="house"] #watch .wback { visibility: hidden; }
-  body[data-watch="house"] main > #houseCard { display: block; position: fixed;
-    left: 0; right: 0; top: calc(48px + 56.25vw + 72px);
-    bottom: calc(100px + env(safe-area-inset-bottom));
-    z-index: 8; margin: 0; border: 0; border-radius: 0;
-    background: var(--panel); padding: 6px 12px; }
-  body[data-watch="house"] #houseCard .tools,
-  body[data-watch="house"] #houseCard .housebar,
-  body[data-watch="house"] #houseCard .muted { display: none; }
-
-  .wsheet { position: absolute; left: 0; right: 0; top: 0; bottom: 0;
-            z-index: 7; background: var(--panel);
-            border-radius: 16px 16px 0 0; display: flex; flex-direction: column; }
-  .wsheet .wsheethead { position: static; height: auto; }
-  .wsheetbody { flex: 1; overflow-y: auto; padding: 12px 16px
-                calc(16px + env(safe-area-inset-bottom)); }
-  .wtotals { display: flex; gap: 20px; align-items: center; margin-top: 12px;
+  .wtotals { display: flex; gap: 20px; align-items: center;
              font-size: 14px; font-variant-numeric: tabular-nums; }
   .wtotals span { display: flex; align-items: center; gap: 7px; }
-  .wcaveat { font-size: 12px; color: var(--muted); line-height: 1.5;
-             margin: 12px 0 0; }
+  .wcaveat { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0; }
 }
 
 /* --- short screens ------------------------------------------------------ */
