@@ -48,7 +48,9 @@ function zone(p) {
 }
 
 export function lineReason(shot, doc) {
-  if (Number(doc?.schema_version) < LINE_SCHEMA) return "This chart predates line measurement";
+  // Fail closed: undefined < 6 is false, so undated charts would pass through.
+  // See boardReadable in wire.mjs for the same convention.
+  if (!(Number(doc?.schema_version) >= LINE_SCHEMA)) return "This chart predates line measurement";
   if (shot?.missing) return "This rock was never seen";
   if (!shot?.target_broom) return "No broom was held still before the release";
   if (!shot?.line) return "The hog-line camera lost this rock";
@@ -72,7 +74,7 @@ export function lineFigures(shot, doc) {
   if (!l) {
     return { predates, reason, figures: [
       fig("broom", "At the broom", "–", reason),
-      fig("hack", "Hack", "–", ""), fig("hog", "At the hog line", "–", ""),
+      fig("hack", "Hack", "–", ""), fig("hog", "At the hog line", "–", reason),
       weight, fig("curl", "Curl", "–", ""), restFig] };
   }
   const miss = l.at_broom.miss_m;

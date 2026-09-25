@@ -1505,7 +1505,7 @@ class TestLineFigures:
     DOC6 = {"schema_version": 6}
 
     def figs(self, s, doc=None):
-        return run_js(f"out(lineFigures({json.dumps(s)}, {json.dumps(doc or self.DOC6)}));")
+        return run_js(f"out(lineFigures({json.dumps(s)}, {json.dumps(doc if doc is not None else self.DOC6)}));")
 
     def measured(self, **line):
         base = {"start": {"x": -0.23, "y": 38.07},
@@ -1553,6 +1553,10 @@ class TestLineFigures:
         got = self.figs(self.measured(), {"schema_version": 5})
         assert (got["predates"], got["reason"]) == (True, "This chart predates line measurement")
 
+    def test_a_chart_with_no_schema_version_predates_it_too(self):
+        got = self.figs(self.measured(), {})
+        assert (got["predates"], got["reason"]) == (True, "This chart predates line measurement")
+
     def test_each_reason_for_no_line(self):
         cases = [(shot(1, "red", "lead", missing=True, target_broom={"x": 0, "y": 0}), "This rock was never seen"),
                  (shot(1, "red", "lead"), "No broom was held still before the release"),
@@ -1562,6 +1566,7 @@ class TestLineFigures:
             got = self.figs(s)
             f = self.by_key(got)
             assert (got["predates"], got["reason"], f["broom"]["value"], f["broom"]["note"]) == (False, why, "–", why)
+            assert (f["hog"]["value"], f["hog"]["note"]) == ("–", why)
 
     def test_the_house_caption_says_where_it_stopped(self):
         assert run_js(f"out(houseCaption({json.dumps(self.measured())}));") == (
