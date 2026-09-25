@@ -19,7 +19,12 @@ export function useSwipe(onStep) {
   };
 }
 
-export function Pager({ row, count, index, end, canPrev, canNext, onStep }) {
+/* The middle of the pager is also the way to another end: a native <select>
+ * laid over it, invisible, so a tap opens the phone's own picker rather than
+ * one we would have to draw, scroll and dismiss. An end with no rocks is
+ * listed but cannot be picked -- the pager has nothing to show there, and
+ * without a pager there is no way back but the menu. */
+export function Pager({ row, count, index, ends, ei, canPrev, canNext, onStep, onEnd }) {
   const sub = [row.color, row.position, row.name].filter(Boolean).join(" · ");
   return (
     <div className="wpager">
@@ -27,8 +32,17 @@ export function Pager({ row, count, index, end, canPrev, canNext, onStep }) {
       <div className="wpmid">
         <div className="wptop">
           <span className={`wdisc ${row.color}`}>{row.number}</span>
-          <span>End {end} · {sub}</span>
+          <span>End {ends[ei]?.number} · {sub}</span>
+          <span className="wpcaret" aria-hidden="true">▾</span>
         </div>
+        <select className="wpend" aria-label="Go to end" value={ei}
+                onChange={e => onEnd(+e.target.value)}>
+          {ends.map((x, i) => (
+            <option key={i} value={i} disabled={!x.rocks}>
+              {`End ${x.number}${x.house ? ` (${x.house})` : ""}${x.rocks ? "" : " · no rocks"}`}
+            </option>
+          ))}
+        </select>
         <div className="wpdots" aria-hidden="true">
           {Array.from({ length: count }, (_, i) => <i key={i} className={i === index ? "on" : undefined} />)}
         </div>

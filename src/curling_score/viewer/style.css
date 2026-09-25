@@ -641,9 +641,20 @@ body[data-mode="review"] #house { cursor:default; }
                      font-size: 22px; color: var(--accent); flex: none; }
   .wpager > button:disabled { color: var(--muted); opacity: .35; }
   .wpmid { flex: 1; min-width: 0; display: flex; flex-direction: column;
-           align-items: center; gap: 5px; }
+           align-items: center; gap: 5px; position: relative; align-self: stretch;
+           justify-content: center; border-radius: 8px; }
   .wptop { display: flex; align-items: center; gap: 8px; font-size: 13px;
            font-weight: 600; min-width: 0; white-space: nowrap; }
+  .wpcaret { margin-left: -4px; font-size: 11px; color: var(--accent); }
+  /* The end picker: the whole middle of the pager is its tap target, and the
+     select itself is invisible over it. 16px because iOS zooms the page into
+     any focused control with smaller type. */
+  .wpend { position: absolute; inset: 0; width: 100%; height: 100%;
+           opacity: 0; font-size: 16px; cursor: pointer; }
+  /* A ring for the keyboard only: after a tap the select keeps focus, and a
+     ring that stayed round the pager until the next tap would look stuck. */
+  .wpmid:has(.wpend:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .wpmid:active { background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .wptop .wdisc { width: 22px; height: 22px; font-size: 12px; }
   .wpdots { display: flex; gap: 3px; }
   .wpdots i { width: 5px; height: 5px; border-radius: 3px;

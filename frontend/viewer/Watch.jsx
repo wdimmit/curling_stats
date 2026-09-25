@@ -49,12 +49,15 @@ export function Watch({ view, ui, config, series, think, here, actions }) {
   const row = rows[ui.si] || null;
   const shot = view.ends[ui.ei]?.shots[ui.si] ?? null;
   const caption = houseCaption(shot);
+  const ends = useMemo(() => view.ends.map(x => ({
+    number: x.end?.number, house: x.end?.house, rocks: x.shots.length,
+  })), [view]);
   return (
     <section id="watch" aria-label="This game's rocks">
       {ui.tab !== "timing" && row ? (
-        <Pager row={row} count={rows.length} index={ui.si} end={view.ends[ui.ei]?.end?.number}
+        <Pager row={row} count={rows.length} index={ui.si} ends={ends} ei={ui.ei}
                canPrev={!!stepRock(view, ui.ei, ui.si, -1)} canNext={!!stepRock(view, ui.ei, ui.si, 1)}
-               onStep={actions.step} />
+               onStep={actions.step} onEnd={actions.goToEnd} />
       ) : null}
       {ui.tab === "detail" ? (
         <div className="wpane" {...swipe}><Detail shot={shot} doc={view.doc} /></div>

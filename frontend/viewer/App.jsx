@@ -198,6 +198,8 @@ export function App({ doc, config, cursor }) {
     // following should resume, the same as a tap on a Timing row: House and
     // Detail have no "Back to rock" chip to turn it on again by hand.
     step: d => { const n = stepRock(view, ui.ei, ui.si, d); if (n) { setFollowing(true); goTo(n.ei, n.si); } },
+    // The pager's end picker: the end's first rock, and the video with it.
+    goToEnd: ei => { if (view.ends[ei]?.shots.length) { setFollowing(true); goTo(ei, 0); } },
     setTab: tab => { setPref({ tab }); if (tab !== "timing") setFollowing(true); },
     goToBarFromReport: b => {
       // A bar in the report is still a rock you can go and watch; going there

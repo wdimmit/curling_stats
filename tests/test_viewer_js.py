@@ -1778,6 +1778,16 @@ class TestTheTabShell:
             assert needle in src, needle
         assert "openWatch" not in src and "ui.watch" not in src
 
+    def test_tapping_the_pager_s_end_and_rock_picks_an_end(self):
+        pager = (self.JSX / "Pager.jsx").read_text()
+        assert 'className="wpend"' in pager and "onEnd(+e.target.value)" in pager
+        # An end with nothing in it cannot be picked: no pager there, no way back.
+        assert "disabled={!x.rocks}" in pager
+        watch = (self.JSX / "Watch.jsx").read_text()
+        assert "onEnd={actions.goToEnd}" in watch and "ends={ends} ei={ui.ei}" in watch
+        app = (self.JSX / "App.jsx").read_text()
+        assert "goToEnd: ei => { if (view.ends[ei]?.shots.length) { setFollowing(true); goTo(ei, 0); } }" in app
+
     def test_the_house_draws_its_path_through_track_points(self):
         src = (self.JSX / "House.jsx").read_text()
         body = src[src.index("function Track("):src.index("function Broom(")]
@@ -1824,6 +1834,14 @@ class TestThePhoneTabsCss:
         for sel in (".wtabs {", ".wpager {", ".wpane {", ".dstrip {", ".tend {", ".tlist {",
                     'body[data-watch="house"] main > #houseCard'):
             assert sel in css, sel
+
+    def test_the_end_picker_covers_the_pager_s_middle_invisibly(self):
+        css = (VIEWER / "style.css").read_text()
+        rule = css[css.index(".wpend {"):css.index("}", css.index(".wpend {"))]
+        for decl in ("position: absolute", "inset: 0", "opacity: 0", "font-size: 16px"):
+            assert decl in rule, decl
+        mid = css[css.index(".wpmid {"):css.index("}", css.index(".wpmid {"))]
+        assert "position: relative" in mid
 
     def test_the_detail_pane_hands_horizontal_drags_to_the_swipe(self):
         css = (VIEWER / "style.css").read_text()
