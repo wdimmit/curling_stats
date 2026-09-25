@@ -1883,12 +1883,27 @@ class TestTheDetailPane:
                        'className="dcap"', "f.predates"):
             assert needle in src, needle
 
-    def test_the_broom_marker_stands_upright(self):
-        assert "<rect x={g.broom.x - 2} y={g.broom.y - 5} width={4} height={10}" in self.SRC.read_text()
+    def test_the_broom_marker_is_drawn_from_its_shape(self):
+        # Upright 4 x 10 on the phone, 10 x 4 on its side: TestTheStripOnItsSide pins both.
+        assert "width={s.broom.w} height={s.broom.h}" in self.SRC.read_text()
 
     def test_the_caption_is_the_spec_s(self):
         assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±4 in · "
                 "wide = the side away from the curl") in self.SRC.read_text()
+
+    def test_the_desktop_turns_the_strip_and_shares_the_figures(self):
+        src = self.SRC.read_text()
+        assert "sideways(stripShapes(stripGeometry(shot, DESKBOX)))" in src
+        assert "stripShapes(stripGeometry(shot))" in src
+        assert src.count("<Figures figures={f.figures} />") == 2
+        assert ("Sheet from above, thrower at the left · across ×1.5 · figures ±4 in · "
+                "wide = the side away from the curl") in src
+
+    def test_an_empty_end_says_so_rather_than_blaming_the_broom(self):
+        assert 'if (!shot) return <p className="dnone">No rocks were detected in this end</p>;' in self.SRC.read_text()
+
+    def test_the_label_halo_is_ice_under_the_text(self):
+        assert '{ stroke: PAINT.ice, strokeWidth: 3, paintOrder: "stroke" }' in self.SRC.read_text()
 
 
 class TestTheTimingTab:

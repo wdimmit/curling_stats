@@ -1,49 +1,53 @@
-/* Detail: was this rock thrown at the skip's broom? The whole sheet as a strip,
- * thrower at the bottom, beside six figures. Everything it draws comes from
- * core/line.mjs; this file only turns it into markup. */
-import { lineFigures, stripGeometry } from "../core/index.mjs";
+/* Detail: was this rock thrown at the skip's broom? The whole sheet as a strip
+ * beside (the phone) or above (the desktop) six figures. Everything it draws
+ * comes from core/line.mjs; this file only turns it into markup. */
+import { DESKBOX, lineFigures, sideways, stripGeometry, stripShapes } from "../core/index.mjs";
 import { PAINT } from "../core/constants.mjs";
 
 const RING = { twelve: PAINT.twelve, eight: PAINT.ice, four: PAINT.four, button: PAINT.ice };
 const GOLD = "#a07a00";      // the rock's path: #e8b400 is unreadable on the ice
 const MUTED = "#6d6455";
+const LINE = { hog: [PAINT.red, 1.2] };
+const PAINTED = [PAINT.iceLine, 0.8];   // tee, back, hack and centre lines
 
-function Strip({ shot }) {
-  const g = stripGeometry(shot);
-  if (!g) return <div className="dstrip dstrip-none" aria-hidden="true" />;
+/* One renderer for both orientations. `fluid` leaves the size to CSS: the
+ * desktop card scales the drawing to its own width through the viewBox. The
+ * attribute order below is the phone's markup, character for character. */
+function Strip({ shot, shapes: s, label, fluid }) {
+  if (!s) return <div className="dstrip dstrip-none" aria-hidden="true" />;
   const own = shot.color === "red" ? PAINT.red : PAINT.yellow;
   return (
-    <svg className="dstrip" width={g.w} height={g.h} viewBox={`0 0 ${g.w} ${g.h}`} role="img"
-         aria-label="The sheet from above, thrower at the bottom: the intended line, the thrown line and where the rock went">
-      {g.rings.map((r, i) => (
-        <ellipse key={i} cx={g.w / 2} cy={r.cy} rx={r.rx} ry={r.ry} fill={RING[r.kind]} fillOpacity={0.55} />
+    <svg className="dstrip" {...(fluid ? {} : { width: s.w, height: s.h })} viewBox={`0 0 ${s.w} ${s.h}`}
+         role="img" aria-label={label}>
+      {s.rings.map((r, i) => (
+        <ellipse key={i} cx={r.cx} cy={r.cy} rx={r.rx} ry={r.ry} fill={RING[r.kind]} fillOpacity={0.55} />
       ))}
-      {g.hogs.map((y, i) => <line key={`h${i}`} x1={0} y1={y} x2={g.w} y2={y} stroke={PAINT.red} strokeWidth={1.2} />)}
-      {[...g.tees, ...g.backs, g.hack].map((y, i) => (
-        <line key={`l${i}`} x1={0} y1={y} x2={g.w} y2={y} stroke={PAINT.iceLine} strokeWidth={0.8} />
-      ))}
-      <line x1={g.w / 2} y1={0} x2={g.w / 2} y2={g.h} stroke={PAINT.iceLine} strokeWidth={0.8} />
-      {g.stones.map((s, i) => (
-        <circle key={`s${i}`} cx={s.cx} cy={s.cy} r={3.2} fill={s.color === "red" ? PAINT.red : PAINT.yellow}
+      {s.lines.map((l, i) => {
+        const [stroke, width] = LINE[l.kind] ?? PAINTED;
+        return <line key={`l${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={stroke} strokeWidth={width} />;
+      })}
+      {s.stones.map((t, i) => (
+        <circle key={`s${i}`} cx={t.x} cy={t.y} r={3.2} fill={t.color === "red" ? PAINT.red : PAINT.yellow}
                 fillOpacity={0.6} stroke={PAINT.graniteEdge} strokeWidth={0.6} />
       ))}
-      {g.aim ? <polyline points={g.aim} fill="none" stroke={MUTED} strokeWidth={1.4} strokeDasharray="4 3" /> : null}
-      {g.ext ? <polyline points={g.ext} fill="none" stroke={PAINT.accent} strokeWidth={1.2} strokeDasharray="2 2.5" /> : null}
-      {g.thrown ? <polyline points={g.thrown} fill="none" stroke={PAINT.accent} strokeWidth={2.4} /> : null}
-      {g.path ? <polyline points={g.path} fill="none" stroke={GOLD} strokeWidth={2.2} strokeLinejoin="round" /> : null}
-      {g.miss ? (
+      {s.aim ? <polyline points={s.aim} fill="none" stroke={MUTED} strokeWidth={1.4} strokeDasharray="4 3" /> : null}
+      {s.ext ? <polyline points={s.ext} fill="none" stroke={PAINT.accent} strokeWidth={1.2} strokeDasharray="2 2.5" /> : null}
+      {s.thrown ? <polyline points={s.thrown} fill="none" stroke={PAINT.accent} strokeWidth={2.4} /> : null}
+      {s.path ? <polyline points={s.path} fill="none" stroke={GOLD} strokeWidth={2.2} strokeLinejoin="round" /> : null}
+      {s.miss ? (
         <g>
-          <line x1={g.miss.x1} y1={g.miss.y} x2={g.miss.x2} y2={g.miss.y} stroke={PAINT.accent} strokeWidth={1} />
-          <text x={(g.miss.x1 + g.miss.x2) / 2} y={g.miss.y - 4} fontSize={9} fontWeight={700}
-                textAnchor="middle" fill={PAINT.accent}>{g.miss.label}</text>
+          <line x1={s.miss.x1} y1={s.miss.y1} x2={s.miss.x2} y2={s.miss.y2} stroke={PAINT.accent} strokeWidth={1} />
+          <text x={s.miss.tx} y={s.miss.ty} fontSize={s.miss.size} fontWeight={700}
+                textAnchor={s.miss.anchor} fill={PAINT.accent}
+                {...(s.miss.halo ? { stroke: PAINT.ice, strokeWidth: 3, paintOrder: "stroke" } : {})}>{s.miss.label}</text>
         </g>
       ) : null}
-      {g.broom ? (
-        <rect x={g.broom.x - 2} y={g.broom.y - 5} width={4} height={10} rx={1}
+      {s.broom ? (
+        <rect x={s.broom.x} y={s.broom.y} width={s.broom.w} height={s.broom.h} rx={1}
               fill={PAINT.accent} stroke={own} strokeWidth={1}><title>skip&apos;s broom</title></rect>
       ) : null}
-      {g.rest ? <circle cx={g.rest.x} cy={g.rest.y} r={4.2} fill={own} stroke={PAINT.accent} strokeWidth={1.2} /> : null}
-      {g.start ? <circle cx={g.start.x} cy={g.start.y} r={3.2} fill={PAINT.accent} /> : null}
+      {s.rest ? <circle cx={s.rest.x} cy={s.rest.y} r={4.2} fill={own} stroke={PAINT.accent} strokeWidth={1.2} /> : null}
+      {s.start ? <circle cx={s.start.x} cy={s.start.y} r={3.2} fill={PAINT.accent} /> : null}
     </svg>
   );
 }
@@ -53,26 +57,53 @@ const Check = () => (
        style={{ fill: "none", strokeWidth: 2.6 }}><path d="M4 12 L10 18 L20 6" /></svg>
 );
 
+/* The six figures. The phone stacks them; the desktop card's CSS lays them
+ * out three across. */
+export function Figures({ figures }) {
+  return (
+    <dl className="dfigs">
+      {figures.map(x => (
+        <div key={x.key} className={x.dim ? "dfig dim" : "dfig"}>
+          <dt>{x.label}</dt>
+          <dd className="dval">{x.value}</dd>
+          <dd className={x.tick ? `dnote ${x.tick}` : "dnote"}>
+            {x.tick === "confirmed" ? <Check /> : null}{x.note}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function Detail({ shot, doc }) {
   const f = lineFigures(shot, doc);
   if (f.predates) return <p className="dnone">{f.reason}</p>;
   return (
     <>
       <div className="dbody">
-        <Strip shot={shot} />
-        <dl className="dfigs">
-          {f.figures.map(x => (
-            <div key={x.key} className={x.dim ? "dfig dim" : "dfig"}>
-              <dt>{x.label}</dt>
-              <dd className="dval">{x.value}</dd>
-              <dd className={x.tick ? `dnote ${x.tick}` : "dnote"}>
-                {x.tick === "confirmed" ? <Check /> : null}{x.note}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <Strip shot={shot} shapes={stripShapes(stripGeometry(shot))}
+               label="The sheet from above, thrower at the bottom: the intended line, the thrown line and where the rock went" />
+        <Figures figures={f.figures} />
       </div>
       <p className="dcap">Sheet from above, thrower at the bottom · across ×3 · figures ±4 in · wide = the side away from the curl</p>
+    </>
+  );
+}
+
+/* The desktop card under the video: the same strip on its side, the same
+ * figures below it. */
+export function DeskDetail({ shot, doc }) {
+  // An end where detection found nothing has no rock to describe, and
+  // lineFigures would blame a broom that was never the problem.
+  if (!shot) return <p className="dnone">No rocks were detected in this end</p>;
+  const f = lineFigures(shot, doc);
+  if (f.predates) return <p className="dnone">{f.reason}</p>;
+  return (
+    <>
+      <Strip shot={shot} shapes={sideways(stripShapes(stripGeometry(shot, DESKBOX)))} fluid
+             label="The sheet from above, thrower at the left: the intended line, the thrown line and where the rock went" />
+      <Figures figures={f.figures} />
+      <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±4 in · wide = the side away from the curl</p>
     </>
   );
 }
