@@ -65,6 +65,12 @@ export const shouldCrop = core.shouldCrop;
 export const stoneAt = core.stoneAt;
 export const broomMark = core.broomMark;
 
+export const lineFigures = core.lineFigures;
+export const lineReason = core.lineReason;
+export const houseCaption = core.houseCaption;
+export const lineX = core.lineX;
+export const restOf = core.restOf;
+
 export const clockText = core.clockText;
 export const thinkText = core.thinkText;
 export const splitText = core.splitText;

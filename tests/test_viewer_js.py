@@ -1497,3 +1497,72 @@ class TestTheSkipsBroom:
         src = (Path(__file__).resolve().parents[1] / "frontend/viewer/House.jsx").read_text()
         i_broom, i_stones = src.index("<Broom shot={shot}"), src.index("<Stones shot={shot}")
         assert "showTrack && <Broom" in src and i_broom < i_stones
+
+
+class TestLineFigures:
+    """The Detail pane's six figures, from schema 6's `line`."""
+
+    DOC6 = {"schema_version": 6}
+
+    def figs(self, s, doc=None):
+        return run_js(f"out(lineFigures({json.dumps(s)}, {json.dumps(doc or self.DOC6)}));")
+
+    def measured(self, **line):
+        base = {"start": {"x": -0.23, "y": 38.07},
+                "at_hog": {"x": -0.757, "offset_m": -0.163},
+                "at_broom": {"x": -2.359, "miss_m": -0.712},
+                "side": "wide", "curl": "right", "confirmed": True,
+                "hog_path": [[28.35, -0.757], [25.0, -0.95]],
+                "path": [[20.0, -1.18], [1.35, -1.15]], "fit": {"n": 53, "rms_m": 0.004}}
+        base.update(line)
+        return shot(11, "yellow", "third", target_broom={"x": -1.647, "y": 0.17},
+                    long_split_s=13.79, delivered_stone_index=0,
+                    stones=[{"color": "yellow", "x": -1.1529, "y": 1.3486}], line=base)
+
+    def by_key(self, got):
+        return {f["key"]: f for f in got["figures"]}
+
+    def test_a_wide_throw_confirmed_from_behind_the_thrower(self):
+        f = self.by_key(self.figs(self.measured()))
+        assert (f["broom"]["value"], f["broom"]["note"], f["broom"]["tick"]) == (
+            "70 cm wide", "confirmed from behind the thrower", "confirmed")
+        assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "stone set 23 cm left of centre")
+        assert (f["hog"]["value"], f["hog"]["note"]) == ("15 cm wide", "of the hack-to-broom line")
+        assert (f["weight"]["value"], f["curl"]["value"]) == ("13.8 s", "1.1 m")
+        assert (f["rest"]["value"], f["rest"]["note"]) == ("12-foot", "1.8 m from the button")
+
+    def test_within_ten_centimetres_is_on_the_broom(self):
+        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.06})))
+        assert f["broom"]["value"] == "On the broom"
+
+    def test_hidden_from_behind_the_thrower_keeps_the_number_and_says_so(self):
+        f = self.by_key(self.figs(self.measured(confirmed=None)))
+        assert (f["broom"]["value"], f["broom"]["note"], f["broom"]["tick"], f["broom"]["dim"]) == (
+            "70 cm wide", "not confirmed: hidden from behind the thrower", "unseen", False)
+
+    def test_a_check_that_disagrees_greys_the_number(self):
+        f = self.by_key(self.figs(self.measured(confirmed=False)))
+        assert (f["broom"]["note"], f["broom"]["dim"]) == ("the camera behind the thrower disagrees", True)
+
+    def test_no_curl_direction_says_left_or_right(self):
+        f = self.by_key(self.figs(self.measured(side=None, curl=None,
+                                                at_broom={"x": -1.35, "miss_m": 0.30})))
+        assert f["broom"]["value"] == "30 cm right"
+
+    def test_an_older_chart_predates_the_measurement(self):
+        got = self.figs(self.measured(), {"schema_version": 5})
+        assert (got["predates"], got["reason"]) == (True, "This chart predates line measurement")
+
+    def test_each_reason_for_no_line(self):
+        cases = [(shot(1, "red", "lead", missing=True, target_broom={"x": 0, "y": 0}), "This rock was never seen"),
+                 (shot(1, "red", "lead"), "No broom was held still before the release"),
+                 (shot(1, "red", "lead", target_broom={"x": 0.5, "y": 0.0}, line=None),
+                  "The hog-line camera lost this rock")]
+        for s, why in cases:
+            got = self.figs(s)
+            f = self.by_key(got)
+            assert (got["predates"], got["reason"], f["broom"]["value"], f["broom"]["note"]) == (False, why, "–", why)
+
+    def test_the_house_caption_says_where_it_stopped(self):
+        assert run_js(f"out(houseCaption({json.dumps(self.measured())}));") == (
+            "Stopped 1.8 m from the button, in the 12-foot")

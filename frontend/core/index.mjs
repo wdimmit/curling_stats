@@ -12,3 +12,4 @@ export * from "./charts.mjs";
 export * from "./watch.mjs";
 export * from "./wire.mjs";
 export * as overrides from "./overrides.mjs";
+export * from "./line.mjs";
