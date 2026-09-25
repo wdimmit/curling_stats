@@ -1708,6 +1708,67 @@ class TestStripAndTrack:
                        {"x0": 100, "x1": 200, "y1": 8, "y2": 188}, None]
 
 
+
+class TestTheStripOnItsSide:
+    """The desktop draws the phone's strip turned a quarter: hack at the left."""
+
+    SHOT = TestLineFigures().measured()
+
+    def turned(self, s=None):
+        return run_js(f"out(sideways(stripShapes(stripGeometry({json.dumps(s or self.SHOT)}, DESKBOX))));")
+
+    def test_upright_shapes_are_the_phone_strip_s_own_numbers(self):
+        got = run_js(f"const g = stripGeometry({json.dumps(self.SHOT)}); const s = stripShapes(g);"
+                     "out([s.lines[0], s.rings[0], s.broom, s.aim === g.aim, s.lines.length, s.miss.anchor, s.miss.size]);")
+        assert got == [{"x1": 0, "y1": 88.7, "x2": 150, "y2": 88.7, "kind": "hog"},
+                       {"cx": 75, "cy": 23.4, "rx": 57.8, "ry": 18.6, "kind": "twelve"},
+                       {"x": 21, "y": 20.2, "w": 4, "h": 10}, True, 8, "middle", 9]
+
+    def test_the_frame_turns_and_the_hack_is_at_the_left(self):
+        s = self.turned()
+        assert (s["w"], s["h"]) == (660, 114)
+        assert s["start"] == {"x": 13.3, "y": 51.5}
+        assert s["aim"].split()[0] == "13.3,51.5"
+
+    def test_the_thrower_s_left_is_the_top_edge(self):
+        # The broom is at x = -1.647, the thrower's left: it lands above the centre line.
+        s = self.turned()
+        centre = s["lines"][-1]
+        assert centre == {"x1": 660, "y1": 57, "x2": 0, "y2": 57, "kind": "centre"}
+        assert s["broom"]["y"] + s["broom"]["h"] / 2 < 57
+
+    def test_a_ring_s_radii_swap_and_the_broom_lies_along_the_sheet(self):
+        s = self.turned()
+        assert s["rings"][0] == {"cx": 623.2, "cy": 57, "rx": 29.3, "ry": 43.9, "kind": "twelve"}
+        assert s["broom"] == {"x": 615.4, "y": 15.5, "w": 10, "h": 4}
+
+    def test_the_hog_lines_run_across_the_sheet(self):
+        assert self.turned()["lines"][0] == {"x1": 520.6, "y1": 0, "x2": 520.6, "y2": 114, "kind": "hog"}
+
+    def test_the_miss_bracket_stands_7_px_past_the_broom_labelled_before_it(self):
+        s = self.turned()
+        m, b = s["miss"], s["broom"]
+        assert m["x1"] == m["x2"] == pytest.approx(b["x"] + b["w"] / 2 + 7, abs=0.15)
+        assert (m["label"], m["anchor"], m["size"], m["halo"]) == ("2 ft 4 in", "end", 11, True)
+        assert m["tx"] == pytest.approx(m["x1"] - 16, abs=0.05)
+
+    def test_the_label_stays_inside_the_frame_on_a_huge_miss(self):
+        big = dict(self.SHOT, target_broom={"x": 1.9, "y": 0.0},
+                   line=dict(self.SHOT["line"], at_broom={"x": -1.5, "miss_m": 3.4}))
+        m = self.turned(big)["miss"]
+        assert m["label"] == "11 ft 2 in"
+        assert 11 <= m["ty"] <= 111 and m["tx"] < m["x1"]
+
+    def test_no_line_still_turns_the_sheet(self):
+        s = shot(1, "red", "lead", target_broom={"x": 0.5, "y": 0.2}, delivered_stone_index=0,
+                 stones=[{"color": "red", "x": 0.3, "y": 1.0}], line=None)
+        t = self.turned(s)
+        assert t["miss"] is None and t["aim"] is None
+        assert t["broom"] is not None and t["rest"] is not None and len(t["rings"]) == 8
+
+    def test_no_shot_draws_nothing(self):
+        assert run_js("out(sideways(stripShapes(stripGeometry(null, DESKBOX))));") is None
+
 class TestTheAppKnowsItsTab:
     APP = Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx"
 

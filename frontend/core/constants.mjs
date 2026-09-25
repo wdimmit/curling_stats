@@ -40,6 +40,9 @@ export const PHONE_QUERY = "(max-width: 640px) and (min-height: 521px)";
  * a 150x420 px box -- about 3x wider across than along. Metres y0..y1 from
  * the destination tee. */
 export const STRIPBOX = { w: 150, h: 420, y0: -2.3, y1: 38.9, half: 2.375 };
+/* The desktop strip before it is turned on its side: ×1.5 across (24 px/m
+ * against 16 px/m along), so the whole sheet fits under the video. */
+export const DESKBOX = { w: 114, h: 660, y0: -2.3, y1: 38.9, half: 2.375 };
 /* The whole-game clock above Timing's list: short, so the list keeps the room. */
 export const TIMINGBOX = { w: 640, h: 200, padL: 60, padR: 12, padT: 10, padB: 30 };
 

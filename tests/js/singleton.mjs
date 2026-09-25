@@ -93,6 +93,8 @@ export const formatHash = core.formatHash;
 export const withHash = core.withHash;
 export const swipeStep = core.swipeStep;
 export const stripGeometry = core.stripGeometry;
+export const stripShapes = core.stripShapes;
+export const sideways = core.sideways;
 export const trackPoints = core.trackPoints;
 export const endSpan = core.endSpan;
 

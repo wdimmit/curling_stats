@@ -244,3 +244,63 @@ export function stripGeometry(shot, box = STRIPBOX) {
       : { x1: +px(b.x).toFixed(1), x2: +px(l.at_broom.x).toFixed(1), y: +(py(b.y) - 7).toFixed(1), label: feetInches(miss) },
   };
 }
+
+/* stripGeometry's output as explicit shapes, so one renderer draws the strip
+ * upright (the phone) or on its side (the desktop). Numbers and point strings
+ * pass through untouched: the phone's markup must not change by a character. */
+export function stripShapes(g) {
+  if (!g) return null;
+  const across = (y, kind) => ({ x1: 0, y1: y, x2: g.w, y2: y, kind });
+  return {
+    w: g.w, h: g.h,
+    rings: g.rings.map(r => ({ cx: g.w / 2, cy: r.cy, rx: r.rx, ry: r.ry, kind: r.kind })),
+    lines: [...g.hogs.map(y => across(y, "hog")), ...g.tees.map(y => across(y, "tee")),
+            ...g.backs.map(y => across(y, "back")), across(g.hack, "hack"),
+            { x1: g.w / 2, y1: 0, x2: g.w / 2, y2: g.h, kind: "centre" }],
+    stones: g.stones.map(s => ({ x: s.cx, y: s.cy, color: s.color })),
+    aim: g.aim, thrown: g.thrown, ext: g.ext, path: g.path,
+    broom: g.broom ? { x: g.broom.x - 2, y: g.broom.y - 5, w: 4, h: 10 } : null,
+    rest: g.rest, start: g.start,
+    miss: g.miss ? { x1: g.miss.x1, y1: g.miss.y, x2: g.miss.x2, y2: g.miss.y, label: g.miss.label,
+                     tx: (g.miss.x1 + g.miss.x2) / 2, ty: g.miss.y - 4, anchor: "middle", size: 9 } : null,
+  };
+}
+
+const r1 = v => +(+v).toFixed(1);
+
+/* A quarter turn, (x, y) -> (length - y, x): the hack at the left and the
+ * thrower's left along the top. A rotation, not a mirror, so wide and narrow
+ * still mean what they say. */
+export function sideways(s) {
+  if (!s) return null;
+  const L = s.h, W = s.h, H = s.w;
+  const t = (x, y) => [r1(L - y), r1(x)];
+  const pt = p => { const [x, y] = t(p.x, p.y); return { ...p, x, y }; };
+  const pts = str => str == null ? null
+    : str.split(" ").map(q => t(...q.split(",").map(Number)).join(",")).join(" ");
+  let broom = null;
+  if (s.broom) {
+    const [cx, cy] = t(s.broom.x + s.broom.w / 2, s.broom.y + s.broom.h / 2);
+    broom = { x: r1(cx - s.broom.h / 2), y: r1(cy - s.broom.w / 2), w: s.broom.h, h: s.broom.w };
+  }
+  let miss = null;
+  if (s.miss) {
+    const [x1, y1] = t(s.miss.x1, s.miss.y1), [x2, y2] = t(s.miss.x2, s.miss.y2);
+    // The far house is ~30 px from the right edge, so the label cannot go
+    // right of the bracket. It goes left of the broom marker (which spans
+    // x1-12 .. x1-2), at the bracket's middle, haloed in ice by the renderer.
+    miss = { x1, y1, x2, y2, label: s.miss.label, anchor: "end", size: 11, halo: true,
+             tx: r1(x1 - 16), ty: r1(Math.min(Math.max((y1 + y2) / 2 + 4, 11), H - 3)) };
+  }
+  return {
+    w: W, h: H,
+    rings: s.rings.map(r => { const [cx, cy] = t(r.cx, r.cy); return { ...r, cx, cy, rx: r.ry, ry: r.rx }; }),
+    lines: s.lines.map(l => {
+      const [x1, y1] = t(l.x1, l.y1), [x2, y2] = t(l.x2, l.y2);
+      return { ...l, x1, y1, x2, y2 };
+    }),
+    stones: s.stones.map(pt),
+    aim: pts(s.aim), thrown: pts(s.thrown), ext: pts(s.ext), path: pts(s.path),
+    broom, rest: s.rest && pt(s.rest), start: s.start && pt(s.start), miss,
+  };
+}
