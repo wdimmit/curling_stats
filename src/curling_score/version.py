@@ -34,7 +34,13 @@ from pathlib import Path
 # broom (schema 6); the side views measure across the sheet from the painted
 # centre line, which moves `target_broom.x` by up to 3 cm; a stone split
 # across a column key at the hog row is timed, not lost.
-PIPELINE_VERSION = "2026.09.24"
+# 2026.09.25: the last rock's house is read only until the players start
+# clearing it (`rest.until_disturbed`), and a house diff pairs stones so the
+# pairing as a whole moves them least, with only the thrown rock allowed to
+# arrive (`shots.house_delta`). On the 16 harness games the final house agrees
+# with the scoreboard in 40 of 54 ends instead of 29, and diffs that add a
+# stone of the colour that did not throw fall from 97 to 17.
+PIPELINE_VERSION = "2026.09.25"
 
 
 def model_id(weights) -> str:

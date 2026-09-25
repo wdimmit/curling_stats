@@ -12,6 +12,7 @@ insert it rather than let every later shot shift by one -- which would misname
 the thrower for the rest of the end.
 """
 
+import functools
 from dataclasses import dataclass
 
 from curling_score.game import rules
@@ -246,7 +247,9 @@ MOVED_MIN_M = 0.30
 # Beyond this, two same-coloured stones are different stones rather than one
 # that moved. A stone driven right out of the house travels much further than
 # this, but so does the gap between two unrelated rocks, and calling a removal
-# plus an arrival a "move" would invent a collision that did not happen.
+# plus an arrival a "move" would invent a collision that did not happen. Only
+# where arrivals are unknown: given the thrower, nothing else can arrive, and a
+# struck stone is paired however far it went (see `house_delta`).
 ASSOCIATE_MAX_M = 1.50
 
 
@@ -266,34 +269,67 @@ def _pos(stone) -> dict:
     return {"color": _color(stone), "x": x, "y": y}
 
 
-def house_delta(before, after, moved_min_m: float = MOVED_MIN_M) -> dict:
+def _pairing(before, after, unmatched_before: float, unmatched_after: float):
+    """The pairing of `before` with `after` stones of one colour that costs least.
+
+    A pair costs the distance between the two; a stone left unpaired costs
+    `unmatched_before` or `unmatched_after`. Exhaustive over which `before`
+    stones are taken -- a colour has eight stones at most, so a few hundred
+    states -- which is what makes it the best pairing overall rather than the
+    closest pair first, the way a crowded house needs it.
+    """
+    d = [[((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+          for (bx, by) in map(_xy, before)] for (ax, ay) in map(_xy, after)]
+
+    @functools.lru_cache(maxsize=None)
+    def best(j, taken):
+        if j == len(after):
+            return unmatched_before * (len(before) - bin(taken).count("1")), ()
+        cost, rest = best(j + 1, taken)
+        out = (cost + unmatched_after, (None,) + rest)
+        for i in range(len(before)):
+            if not taken >> i & 1:
+                cost, rest = best(j + 1, taken | 1 << i)
+                if cost + d[j][i] < out[0]:
+                    out = (cost + d[j][i], (i,) + rest)
+        return out
+
+    return [(i, j, d[j][i]) for j, i in enumerate(best(0, 0)[1]) if i is not None]
+
+
+def house_delta(before, after, moved_min_m: float = MOVED_MIN_M,
+                thrower: str | None = None, delivered: int | None = None) -> dict:
     """What one delivery did to the house.
 
-    Stones are matched to their nearest same-coloured counterpart, closest pair
-    first, so a crowded house does not hand an arrival to the wrong rock the way
-    matching in list order would. Whatever is left over on each side genuinely
-    came or went.
+    Stones are paired with same-coloured counterparts so the pairing as a whole
+    moves the stones least -- not closest pair first, which in a crowded house
+    takes a nudged stone's new place for another stone that never moved and
+    sends the one that was struck across the house to fill the gap.
+
+    Nothing arrives on the sheet but the thrown rock. So given the `thrower`,
+    a stone of the other colour that is not where one was before is one that
+    was struck, however far it went -- and so is one of the thrower's own, once
+    the thrown stone itself is known (`delivered`, an index into `after`).
+    Without that, two stones further apart than ASSOCIATE_MAX_M are taken for a
+    removal and an arrival rather than inventing a collision.
     """
     before, after = list(before), list(after)
-    pairs = sorted(
-        (
-            (((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5, i, j)
-            for i, b in enumerate(before)
-            for j, a in enumerate(after)
-            if _color(b) == _color(a)
-            for (bx, by), (ax, ay) in [(_xy(b), _xy(a))]
-        ),
-        key=lambda p: p[0],
-    )
+    pairs = []
+    for color in sorted({_color(s) for s in before + after}):
+        bi = [i for i, s in enumerate(before) if _color(s) == color]
+        ai = [j for j, s in enumerate(after) if _color(s) == color and j != delivered]
+        known = thrower is not None and (color != thrower or delivered is not None)
+        # Leaving a stone unpaired costs half the cap on each side, so a pair
+        # further apart than the cap is never worth making; with the arrivals
+        # known, an unpaired "after" stone costs more than any pairing can.
+        cost = (0.0, 1e6) if known else (ASSOCIATE_MAX_M / 2, ASSOCIATE_MAX_M / 2)
+        pairs += [(bi[i], ai[j], dist) for i, j, dist in _pairing(
+            [before[i] for i in bi], [after[j] for j in ai], *cost)]
 
-    took_b: set[int] = set()
-    took_a: set[int] = set()
+    took_b = {i for i, _, _ in pairs}
+    took_a = {j for _, j, _ in pairs}
     moved = []
-    for dist, i, j in pairs:
-        if dist > ASSOCIATE_MAX_M or i in took_b or j in took_a:
-            continue
-        took_b.add(i)
-        took_a.add(j)
+    for i, j, dist in sorted(pairs, key=lambda p: p[2]):
         if dist >= moved_min_m:
             fx, fy = _xy(before[i])
             moved.append({**_pos(after[j]), "from_x": fx, "from_y": fy,
@@ -306,19 +342,30 @@ def house_delta(before, after, moved_min_m: float = MOVED_MIN_M) -> dict:
     }
 
 
-def _delivered_index(stones, dv, tol_m: float = 0.45) -> int | None:
+# A rock that strikes a stone stops at least a stone's width (0.28 m) from
+# where that stone sat; one read closer than this to a stone already there of
+# its colour is that stone, unmoved. Raises measured 0.19-0.30 m on the harness
+# games; a misread rest 0.00-0.08 m.
+SAME_SPOT_M = 0.15
+
+
+def _delivered_index(stones, dv, previous=(), tol_m: float = 0.45) -> int | None:
     """Which stone in the house is the one just thrown.
 
     The nearest stone of the delivery's own colour to where it was last seen.
     A shooter that rolled out, or a rest position taken from a house change
     rather than from the stone itself, can leave nothing close enough -- in
-    which case we say so rather than pointing at a bystander.
+    which case we say so rather than pointing at a bystander. A stone that was
+    already on that spot before the shot, in `previous`, is a bystander too.
     """
+    sat = [_xy(p) for p in previous if _color(p) == dv.color]
     best, best_d = None, tol_m
     for i, s in enumerate(stones):
         if _color(s) != dv.color:
             continue
         x, y = _xy(s)
+        if any(((x - px) ** 2 + (y - py) ** 2) ** 0.5 < SAME_SPOT_M for px, py in sat):
+            continue
         d = ((x - dv.rest_x_m) ** 2 + (y - dv.rest_y_m) ** 2) ** 0.5
         if d <= best_d:
             best, best_d = i, d
@@ -462,7 +509,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     ``thrown_by`` maps ``id(delivery)`` to the ``Release`` it was paired with,
     keyed by identity because two deliveries of a colour can compare equal.
     """
-    from curling_score.detect.rest import stones_in_window
+    from curling_score.detect.rest import stones_in_window, until_disturbed
 
     deliveries = sorted(deliveries, key=lambda d: d.t_enter)
     frames = list(frames)
@@ -480,6 +527,14 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
             window = [
                 (t, d) for t, d in frames if start <= t <= start + settle_window_s
             ]
+        # The last rock's window has nothing to end it but the clock, and runs
+        # on into the players clearing the house (s_0kdoX2XVKN5e2lBUF end 4:
+        # four seconds after rock 16 stopped), so it ends where a settled stone
+        # is first moved by hand. Between rocks the vote over the window stays
+        # as it was: a stone lifted off there -- out of play at the side -- is
+        # outvoted, where a cut would hand its removal to the next rock.
+        if window and i + 1 == len(deliveries):
+            window = until_disturbed(window)
         houses[i] = stones_in_window(window) if window else []
 
     out: list[Shot] = []
@@ -509,6 +564,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
             continue
         stones = houses[seen]
         seen += 1
+        thrown = _delivered_index(stones, dv, previous)
         out.append(
             Shot(
                 number=len(out) + 1,
@@ -525,8 +581,9 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
                 # stone that ran out of play, which legitimately leaves the
                 # house exactly as it found it, empty included.
                 state_known=bool(stones) or not dv.came_to_rest,
-                house_delta=house_delta(previous, stones),
-                delivered_stone_index=_delivered_index(stones, dv),
+                house_delta=house_delta(previous, stones, thrower=dv.color,
+                                        delivered=thrown),
+                delivered_stone_index=thrown,
             )
         )
         previous = stones

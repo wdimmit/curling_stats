@@ -164,6 +164,51 @@ class TestShotsFromDeliveries:
         got = shots.from_deliveries(dvs, self._frames({0: [], 19: a}))
         assert len(got[0].stones) == 1
 
+    def test_the_last_rock_is_read_before_the_players_clear_the_house(self):
+        # Nothing follows the last rock, so its whole twelve-second window is
+        # read -- and six seconds in, the red is pushed off the back. That house
+        # is the red where it lay, not somewhere along the push.
+        y, r = det("yellow", 0.2, 0.3), det("red", -0.4, 0.5)
+        dvs = [self._dv("yellow", 10)]  # rests at t=18
+        frames = []
+        for k in range(400):
+            t = round(k * 0.1, 1)
+            if t < 19:
+                cur = []
+            elif t < 24:
+                cur = [y, r]
+            elif t < 27:
+                u = (t - 24) / 3
+                cur = [y, det("red", -0.4 + 1.9 * u, 0.5 - 2.4 * u)]
+            else:
+                cur = [y]
+            frames.append((t, cur))
+        got = shots.from_deliveries(dvs, frames)[0]
+        red = [s for s in got.stones if s.color == "red"]
+        assert len(red) == 1
+        assert (red[0].x_m, red[0].y_m) == pytest.approx((-0.4, 0.5), abs=0.02)
+
+    def test_a_house_mid_end_is_read_over_its_whole_window(self):
+        # A stone moved by hand between rocks -- one out of play at the side,
+        # lifted off -- is outvoted over the window, as before; cutting there
+        # would hand its removal to the next rock.
+        y, r = det("yellow", 0.2, 0.3), det("red", 1.9, 0.5)
+        dvs = [self._dv("yellow", 10), self._dv("red", 60)]  # rests at 18, 68
+        frames = []
+        for k in range(1000):
+            t = round(k * 0.1, 1)
+            if t < 19:
+                cur = []
+            elif t < 22:
+                cur = [y, r]
+            elif t < 23:
+                cur = [y, det("red", 1.9 + (t - 22) * 0.9, 0.5)]
+            else:
+                cur = [y]
+            frames.append((t, cur))
+        got = shots.from_deliveries(dvs, frames)[0]
+        assert [s.color for s in got.stones] == ["yellow"]
+
     def test_the_colour_of_an_observed_shot_is_never_inferred(self):
         # Two yellows running: a red went unseen between them. The red is
         # marked as a blank for someone to chart, but neither yellow has its
@@ -286,6 +331,44 @@ class TestHouseDelta:
         assert len(got["removed"]) == 1 and len(got["added"]) == 1
         assert got["moved"] == []
 
+    def test_the_best_pairing_overall_beats_the_closest_pair_first(self):
+        # s_0kdoX2XVKN5e2lBUF end 4 rock 16: the red rubbed the yellow at the
+        # top of the house, which went 0.69 m and nudged the next yellow
+        # 0.31 m. Closest pair first matched the nudged stone's new place to
+        # the other yellow (0.28 m, "did not move") and sent the one that was
+        # hit 1.18 m across to where the nudged one ended up.
+        before = [det("yellow", -0.313, 2.840), det("yellow", 0.199, 2.090)]
+        after = [det("yellow", -0.058, 2.199), det("yellow", 0.361, 1.825)]
+        got = shots.house_delta(before, after)
+        moves = sorted((m["from_x"], m["from_y"], m["x"], m["y"]) for m in got["moved"])
+        assert moves == [(-0.313, 2.840, -0.058, 2.199), (0.199, 2.090, 0.361, 1.825)]
+
+    def test_the_colour_that_did_not_throw_cannot_gain_a_stone(self):
+        # OcyhldUbu8A end 5 rock 16: yellow's last rock sent a red 3.2 m to the
+        # back of the house. Nothing but the thrown rock arrives, so the red
+        # that "appeared" is the one that left, however far it went.
+        before = [det("red", -0.53, 1.96)]
+        after = [det("red", -1.60, -1.08), det("yellow", -0.08, 0.95)]
+        got = shots.house_delta(before, after, thrower="yellow", delivered=1)
+        assert [(m["from_x"], m["x"]) for m in got["moved"]] == [(-0.53, -1.60)]
+        assert [a["color"] for a in got["added"]] == ["yellow"]
+        assert got["removed"] == []
+
+    def test_the_thrown_stone_is_the_arrival_of_its_own_colour(self):
+        # Once the thrown stone is known, the thrower's other stones cannot
+        # arrive either: this red was knocked 2 m, it did not appear.
+        before = [det("red", 1.0, 3.0)]
+        after = [det("red", 0.4, 1.1), det("red", 0.1, 0.0)]
+        got = shots.house_delta(before, after, thrower="red", delivered=1)
+        assert [(a["x"], a["y"]) for a in got["added"]] == [(0.1, 0.0)]
+        assert [(m["from_x"], m["x"]) for m in got["moved"]] == [(1.0, 0.4)]
+
+    def test_without_the_thrown_stone_its_colour_keeps_the_distance_rule(self):
+        before = [det("red", 2.0, 3.0)]
+        after = [det("red", -2.0, -1.5)]
+        got = shots.house_delta(before, after, thrower="red", delivered=None)
+        assert len(got["removed"]) == 1 and len(got["added"]) == 1
+
     def test_colours_are_never_matched_across(self):
         before = [det("red", 0.2, 0.3)]
         after = [det("yellow", 0.2, 0.3)]
@@ -320,6 +403,18 @@ class TestDeliveredStone:
         got = shots.from_deliveries(dvs, TestShotsFromDeliveries()._frames(
             {0: [], 19: a}))
         assert got[0].delivered_stone_index is None
+
+    def test_it_never_points_at_a_stone_that_was_already_there(self):
+        # The delivery's rest was read on top of a stone that sat there before
+        # the shot. A rock that struck it would have stopped a stone's width
+        # short, so that is the old stone, unmoved -- a bystander.
+        old = det("red", 0.1, 0.05)
+        dvs = [self._dv("red", 10, x=0.1, y=0.0), self._dv("red", 60, x=0.1, y=0.0)]
+        got = shots.from_deliveries(dvs, TestShotsFromDeliveries()._frames(
+            {0: [], 19: [old], 69: [old, det("red", -1.2, 0.4)]}))
+        assert got[-1].delivered_stone_index is None
+        assert [a["x"] for a in got[-1].house_delta["added"]] == [-1.2]
+        assert got[-1].house_delta["moved"] == []
 
     def test_a_shooter_that_is_not_in_the_house_leaves_it_unset(self):
         a = [det("red", -2.0, 3.0)]

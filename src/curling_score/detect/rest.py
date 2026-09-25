@@ -134,6 +134,104 @@ def build_tracks(frames, tolerance: float = MATCH_TOLERANCE_M) -> list[_Track]:
     return tracks
 
 
+# A stone has settled once it has held within STILL_M of one place for
+# SETTLED_HOLD_S; it has been disturbed once it then leaves that place by more
+# than DISTURBED_M. Jitter is a few centimetres and a stone is 0.28 m across.
+SETTLED_HOLD_S = 1.5
+STILL_M = 0.10
+DISTURBED_M = 0.25
+# A settled stone that a moving stone came this close to in the moment before
+# it left was struck: two radii, and 16 cm for a fast stone's frame-to-frame
+# step. Measured on s_0kdoX2XVKN5e2lBUF end 4 rock 11, where the struck stone
+# was last seen 0.30 m away, the frame before the stone it hit moved.
+STRUCK_M = 0.45
+STRUCK_WITHIN_S = 0.5
+# A stone of that colour still at the place in more than this share of the
+# frames after it "left" never left: its track followed a stray detection off
+# while a player stood over it. Nine of thirteen mid-end cuts over sixteen
+# games were that.
+VACATED_MAX_SHARE = 0.2
+
+
+def _leavings(tr, ts, hold_s, still_m, moved_m):
+    """(sighting, home) each time this track settles and is then moved away.
+
+    A stone still rolling at the start of the window has no home until it
+    stops; one knocked to a new place by a later hit gets a new home there.
+    """
+    n, k0 = len(ts), 0
+    while k0 < n and ts[-1] >= ts[k0] + hold_s:
+        held = [k for k in range(k0, n) if ts[k] <= ts[k0] + hold_s]
+        hx = sum(tr.xs[k] for k in held) / len(held)
+        hy = sum(tr.ys[k] for k in held) / len(held)
+        dist = [((tr.xs[k] - hx) ** 2 + (tr.ys[k] - hy) ** 2) ** 0.5 for k in range(n)]
+        if any(dist[k] > still_m for k in held):
+            k0 += 1                        # not settled here yet
+            continue
+        leave = next((k for k in range(held[-1] + 1, n) if dist[k] > still_m), None)
+        if leave is None:
+            return
+        if max(dist[leave:]) > moved_m:
+            yield leave, (hx, hy)
+        k0 = leave
+
+
+def until_disturbed(frames, hold_s: float = SETTLED_HOLD_S,
+                    still_m: float = STILL_M, moved_m: float = DISTURBED_M):
+    """The frames up to the first moment a settled stone is moved by hand.
+
+    After the last rock of an end nothing is thrown, but the house does not
+    stay put: the players push the stones off a few seconds after it stops,
+    and averaging over that reads a house that never existed. A pushed stone
+    keeps its track -- a broom moves it a few centimetres a frame -- so the
+    clearing shows as a stone that had settled leaving its place, with no
+    stone moving beside it: the thing pushing it is not a stone.
+
+    What does not end the window: an occluded stone, which comes back to the
+    same place, as does a track that wandered off after a stray detection while
+    the stone stayed put; a struck stone still rolling when the shooter stopped, which
+    never settled before it moved; and a settled stone that such a stone runs
+    into, which is still the shot.
+    """
+    frames = [(t, list(d)) for t, d in frames]
+    tracks = build_tracks(frames)
+    times = [[frames[i][0] for i in tr.indices] for tr in tracks]
+
+    def moving(tr, k):
+        # Too fast to track is a string of short tracks; tracked, it has moved
+        # in the last three sightings.
+        if len(tr.indices) < MIN_TRACK_FRAMES:
+            return True
+        j = max(0, k - 3)
+        return ((tr.xs[k] - tr.xs[j]) ** 2 + (tr.ys[k] - tr.ys[j]) ** 2) ** 0.5 > still_m
+
+    def vacated(home, i, color):
+        after = frames[i:]
+        stayed = sum(any(d.color == color and ((d.x_m - home[0]) ** 2
+                                               + (d.y_m - home[1]) ** 2) ** 0.5 <= still_m
+                         for d in dets) for _, dets in after)
+        return stayed <= VACATED_MAX_SHARE * len(after)
+
+    def struck(tr, home, t):
+        for other, ts in zip(tracks, times):
+            if other is tr:
+                continue
+            for k, tk in enumerate(ts):
+                if (t - STRUCK_WITHIN_S <= tk <= t and moving(other, k)
+                        and ((other.xs[k] - home[0]) ** 2
+                             + (other.ys[k] - home[1]) ** 2) ** 0.5 <= STRUCK_M):
+                    return True
+        return False
+
+    cut = len(frames)
+    for tr, ts in zip(tracks, times):
+        for k, home in _leavings(tr, ts, hold_s, still_m, moved_m):
+            if vacated(home, tr.indices[k], tr.color) and not struck(tr, home, ts[k]):
+                cut = min(cut, tr.indices[k])
+                break
+    return frames[:cut]
+
+
 def find_rest_states(
     frames,
     tolerance: float = MATCH_TOLERANCE_M,
