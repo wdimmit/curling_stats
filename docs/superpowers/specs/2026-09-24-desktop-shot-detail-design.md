@@ -1,7 +1,8 @@
 # Shot detail on the desktop
 
 **Status:** design approved section by section, 2026-09-24, and ready for an
-implementation plan. One change since approval is marked in §1.
+implementation plan. Two changes since approval are marked: the two-column
+layout (§1) and where the miss label sits (§2).
 
 **Mockups:** [Shot Detail on the Desktop](https://claude.ai/artifact/LdbRUpSE7PGJ86EHAaUgR7).
 Artboard A is the chosen design. B (a Detail tab on the house card) and C (the
@@ -79,9 +80,16 @@ house.
 - **The broom marker lies along the sheet**, so it is 10 wide × 4 tall here:
   the same marker as the phone's upright 4 × 10, turned with the sheet.
 - **The miss bracket** runs across the sheet (up and down on screen), 7 px past
-  the broom on the far side, as on the phone. Its label ("6 ft 1 in") sits 4 px
-  to the bracket's right, vertically centred, at 11 px so it stays readable
-  once the drawing scales down.
+  the broom on the far side, as on the phone. Its label ("6 ft 1 in") is 11 px
+  bold, so it stays readable once the drawing scales down. It sits left of the
+  broom marker, end-anchored 16 px before the bracket at the bracket's middle
+  (kept 11–111 px down the frame), with a 3 px ice halo so it reads over the
+  lines it crosses.
+  **Changed while planning:** approved as "4 px to the bracket's right". The far
+  house is only about 30 px from the drawing's right edge, so a label there runs
+  off it on every rock. A prototype on four real rocks (end 1 rocks 1 and 3,
+  end 2 rock 6, end 3 rock 10) showed the left placement readable at every miss
+  from 8 in to 6 ft 1 in.
 - **Caption:** "Sheet from above, thrower at the left · across ×1.5 · figures
   ±4 in · wide = the side away from the curl".
 
@@ -112,17 +120,20 @@ bottom sheet)
   - `sideways(shapes)` turns shapes a quarter turn: every point `(x, y)` goes to
     `(H − y, x)`, where `H` is the strip's length. The frame's width and height
     swap, as do each ring's radii and the broom's `w` and `h`. The miss label
-    anchor moves beside the bracket, start-anchored.
+    moves left of the broom marker, end-anchored, with a halo (§2).
   - `DESKBOX` joins `STRIPBOX` in `constants.mjs`.
 - **`frontend/viewer/Detail.jsx`**
   - `Strip` draws shapes and nothing else, so the phone and the desktop share
     one renderer. The lines the phone strip draws across itself (hog, tee,
     back, hack) come from the shapes instead of from `g.w`.
-  - `Figures` is split out of `Detail`, with a `cols` prop.
+  - `Figures` is split out of `Detail`. The card's CSS gives it three columns;
+    it takes no layout prop.
   - `Detail` (the phone) keeps its markup and draws the same marks at the same
     coordinates.
-  - New `DeskDetail`: the turned strip, the figures at `cols={3}` and the
-    caption, or the one-line reason when the chart predates line measurement.
+  - New `DeskDetail`: the turned strip, the figures and the caption, or one
+    line instead: the reason when the chart predates line measurement, or "No
+    rocks were detected in this end" when there is no rock at all (the phone's
+    reasons would otherwise blame the broom).
 - **`frontend/viewer/App.jsx`** mounts
   `<section className="card" id="detailCard"><DeskDetail shot={shot} doc={doc} /></section>`
   immediately after `#playCard`.
@@ -134,8 +145,9 @@ bottom sheet)
 
 **Node (`tests/test_viewer_js.py`)**
 - `sideways`: the hack lands at the left (small x), the thrower's left at the
-  top, a ring's `rx`/`ry` swap, the broom rect is 10 × 4, and the miss bracket
-  is vertical and 7 px past the broom with its label to the right.
+  top, a ring's `rx`/`ry` swap, the broom rect is 10 × 4, the miss bracket is
+  vertical and 7 px past the broom, and its label stays inside the frame on a
+  huge miss.
 - `stripShapes` on the phone box reproduces today's coordinates. The existing
   `stripGeometry` tests pass unchanged.
 - The new list labels, including the singular and plural stone counts.
