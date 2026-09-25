@@ -329,8 +329,10 @@ class TestTimingFields:
         5 adds `target_broom` to every shot: where the skip held the broom, or
         null. A 4 has no such key at all, which readers must treat as null.
         6 adds `line` to every shot: where the rock's thrown line passed the broom,
-        or null. A 5 has no such key, which readers must treat as not measured."""
-        assert timeline.SCHEMA_VERSION == 6
+        or null. A 5 has no such key, which readers must treat as not measured.
+        7 adds the document-level `format` block, present only when the game is
+        not four-player; a document without one is fours."""
+        assert timeline.SCHEMA_VERSION == 7
 
     def test_a_placeholder_shot_has_no_timings(self):
         end = timeline.build_end(
@@ -842,3 +844,68 @@ class TestLine:
     def test_no_line_is_null_not_absent(self):
         shot = self._end(None)["shots"][0]
         assert "line" in shot and shot["line"] is None
+
+
+from curling_score.game import format as F
+
+
+class TestTheFormatIsRecorded:
+    def test_a_fours_document_has_no_format_block(self):
+        doc = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[])
+        assert "format" not in doc
+        assert doc["schema_version"] == 7
+
+    def test_a_doubles_document_says_so(self):
+        doc = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[],
+                                      fmt=F.DOUBLES)
+        assert doc["format"] == F.DOUBLES.to_json()
+
+    def test_a_doubles_end_expects_ten_and_labels_by_player(self):
+        end = timeline.build_end(1, "top", 0.0, 900.0,
+                                 [shot(n, "yellow" if n % 2 else "red", [], t=10.0 * n)
+                                  for n in range(1, 9)],
+                                 fmt=F.DOUBLES)
+        assert (end["shots_expected"], end["unplaced_shots"]) == (10, 2)
+        third = end["shots"][2]
+        assert (third["position"], third["thrower_slot"], third["rock_of_player"]) == ("B", 2, 1)
+        assert third["label"] == "1st end, B's first rock"
+
+    def test_a_doubles_game_passes_the_hammer_on_a_blank(self):
+        ends = [
+            {"number": 1, "score": {"red": 0, "yellow": 0}, "hammer": "red"},
+            {"number": 2, "score": {"red": 0, "yellow": 1}, "hammer": "yellow"},
+        ]
+        game = timeline.build_game(0, 0.0, 900.0, ends, fmt=F.DOUBLES)
+        assert game["hammer_consistent"] is True
+        assert [e["hammer_expected"] for e in game["ends"]] == ["red", "yellow"]
+
+
+class TestReorderingByFormat:
+    def _doc(self, fmt_block=None):
+        doc = TestMovingAShot()._doc()
+        if fmt_block is not None:
+            doc["format"] = fmt_block
+        return doc
+
+    def test_a_document_without_a_format_block_reorders_as_fours(self):
+        got = timeline.apply_overrides(self._doc(), {"0.4.5": {"before": 1}})
+        assert got["games"][0]["ends"][0]["shots"][2]["position"] == "lead"
+
+    def test_a_doubles_reorder_uses_the_doubles_table(self):
+        got = timeline.apply_overrides(self._doc(F.DOUBLES.to_json()),
+                                       {"0.4.5": {"before": 1}, "0.4.6": {"before": 1}})
+        shots_ = got["games"][0]["ends"][0]["shots"]
+        assert [s["position"] for s in shots_] == ["A", "A", "B", "B", "B", "B"]
+        assert shots_[2]["label"] == "4th end, B's first rock"
+
+    def test_trimming_a_doubles_document_relabels_with_doubles_names(self):
+        doc = {"format": F.DOUBLES.to_json(), "games": [{"index": 0, "ends": [
+            {"number": 1, "start_s": 0.0, "end_s": 50.0, "shots_expected": 10,
+             "shots": [{"number": 1, "label": "x"}]},
+            {"number": 2, "start_s": 100.0, "end_s": 900.0, "shots_expected": 10,
+             "shots": [{"number": n, "label": "x"} for n in range(1, 11)]},
+        ]}]}
+        got = timeline.trim_to_start(doc, 90.0)
+        kept = got["games"][0]["ends"]
+        assert len(kept) == 1 and kept[0]["number"] == 1
+        assert kept[0]["shots"][8]["label"] == "1st end, A's second rock"

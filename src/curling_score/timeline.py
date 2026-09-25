@@ -9,10 +9,11 @@ from copy import deepcopy
 from datetime import datetime, timezone
 
 from curling_score.game import classify, fartime, hogtime, rules, shots as shots_mod, split, thinking
+from curling_score.game import format as format_mod
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # The overhead camera only sees the last few metres of a 45 m sheet, so the
 # stone comes into view long after it left the hand. To watch the shot being
@@ -84,7 +85,7 @@ def _delta(delta) -> dict | None:
             for k in ("added", "removed", "moved")}
 
 
-def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
+def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None) -> dict:
     """One end: its shots, the house they left, and the board's score for it.
 
     ``board_score`` is what the wall board says this end was; ``None`` means
@@ -95,7 +96,11 @@ def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
 
     The detected score is still computed, as ``detected_score``, because the
     disagreement between the two is the only check we have on either.
+
+    ``fmt`` is the :class:`format.GameFormat` this end was played under;
+    ``None`` means fours, which is every chart made before doubles existed.
     """
+    fmt = fmt or format_mod.FOURS
     shots = list(shots)
     scoring = shots_mod.scoring_shot(shots)
     final = scoring.stones if scoring else []
@@ -107,7 +112,7 @@ def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
 
     out_shots = []
     for i, s in enumerate(shots):
-        throw = s.throw
+        throw = fmt.throw_info(s.number)
         dv = getattr(s, "delivery", None)
         rel = getattr(s, "release", None)
         sp = split.long_split(dv, t_hog=hogtime.crossing(s),
@@ -123,9 +128,9 @@ def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
                 "color": s.color,
                 "has_hammer": throw.has_hammer,
                 "thrower_slot": throw.position_slot,
-                "position": C.POSITION_NAMES[throw.position_slot],
+                "position": fmt.positions[throw.position_slot - 1],
                 "rock_of_player": throw.rock_of_player,
-                "label": rules.shot_label(number, s.number),
+                "label": fmt.shot_label(number, s.number),
                 "t_rest_s": None if s.missing else round(float(s.t_rest_s), 2),
                 "t_enter_s": t_enter,
                 # Where to start the video to see the shot being called and
@@ -208,11 +213,11 @@ def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
         "detected_score": detected_score,
         "shots": out_shots,
         "shots_observed": sum(1 for s in shots if not s.missing),
-        # Sixteen rocks are thrown. Where the list is shorter than that, the
-        # missing ones could not even be placed, and the viewer has to say so
-        # rather than present a short end as a whole one.
-        "shots_expected": C.STONES_PER_END,
-        "unplaced_shots": max(0, C.STONES_PER_END - len(shots)),
+        # Every rock an end holds was thrown. Where the list is shorter than
+        # that, the missing ones could not even be placed, and the viewer has
+        # to say so rather than present a short end as a whole one.
+        "shots_expected": fmt.delivered_per_end,
+        "unplaced_shots": max(0, fmt.delivered_per_end - len(shots)),
         "splits_measured": sum(1 for o in out_shots if o["long_split_s"] is not None),
         "thinking_time": {
             **{c: round(v, 2) for c, v in clock.by_color.items()},
@@ -227,13 +232,17 @@ def build_end(number, house, start_s, end_s, shots, board_score=None) -> dict:
     }
 
 
-def build_game(index, start_s, end_s, ends, board=None) -> dict:
+def build_game(index, start_s, end_s, ends, board=None, fmt=None) -> dict:
     """One game, with the board's running score carried across its ends.
 
     ``board`` is the ``BoardScores`` read off the wall, or None when the board
     could not be read at all. Nothing here falls back to the detected figures:
     they are carried alongside, under ``detected``, purely as the check.
+
+    ``fmt`` is the :class:`format.GameFormat` this game was played under; it
+    only matters for whether a blank end passes the hammer.
     """
+    blank = (fmt or format_mod.FOURS).blank_passes_hammer
     ends = [dict(e) for e in ends]
 
     # The running total is only meaningful while every end up to here is
@@ -270,9 +279,9 @@ def build_game(index, start_s, end_s, ends, board=None) -> dict:
     if seen:
         expected = rules.hammer_chain(
             seen[0] if observed[0] else rules.first_hammer_given(
-                seen[0], observed.index(seen[0]) + 1, known,
+                seen[0], observed.index(seen[0]) + 1, known, blank_passes=blank,
             ),
-            known,
+            known, blank_passes=blank,
         )
         for end, want in zip(ends, expected):
             end["hammer_expected"] = want
@@ -322,13 +331,15 @@ def build_game(index, start_s, end_s, ends, board=None) -> dict:
 
 
 def build_document(video_id, url, sheet, duration_s, calibration, games,
-                   window=None, processing_version=None) -> dict:
+                   window=None, processing_version=None, fmt=None) -> dict:
     """The whole analysis, ready to write to ``timeline.json``.
 
     ``window`` is the ``(start_s, end_s)`` of the stream that was analysed when
     the caller asked for only part of it; ``processing_version`` names the
     pipeline and model that produced this, so two documents for one video can
-    be told apart.
+    be told apart. ``fmt`` is the :class:`format.GameFormat` the game was
+    played under; a fours document writes no ``format`` block at all, and a
+    document without one reads as fours.
     """
     games = [dict(g) for g in games]
     for game in games:
@@ -344,7 +355,7 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
                     watch_url_at(video_id, t) if t is not None else None
                 )
     start_s, end_s = window if window else (None, None)
-    return {
+    doc = {
         "schema_version": SCHEMA_VERSION,
         "processing_version": processing_version,
         "source": {
@@ -361,6 +372,12 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
         "calibration": calibration,
         "games": games,
     }
+    fmt = fmt or format_mod.FOURS
+    if fmt is not format_mod.FOURS:
+        # Written only when it says something: a four-player timeline stays
+        # byte-for-byte what it was, and a missing block reads as fours.
+        doc["format"] = fmt.to_json()
+    return doc
 
 
 def shot_identity(shot: dict) -> int:
@@ -409,7 +426,7 @@ def _reorder(shots: list) -> list:
     return out
 
 
-def _renumber(shots: list, end_number: int, patched: set) -> None:
+def _renumber(shots: list, end_number: int, patched: set, fmt=None) -> None:
     """Give a reordered end its numbers, throwers and labels afresh.
 
     Everything a shot's number implies follows it: who threw it, which of
@@ -417,18 +434,22 @@ def _renumber(shots: list, end_number: int, patched: set) -> None:
     from the alternation around them, since that colour was only ever
     inferred; a detected rock keeps the colour it was seen with, and so does
     any shot whose colour the charter set by hand.
+
+    ``fmt`` is the :class:`format.GameFormat` the end was played under; ``None``
+    means fours.
     """
+    fmt = fmt or format_mod.FOURS
     anchors = [(i, s["color"]) for i, s in enumerate(shots)
                if not s.get("color_inferred") or shot_identity(s) in patched]
     for i, s in enumerate(shots):
         s["id"] = shot_identity(s)
         s["number"] = i + 1
-        t = rules.throw_info(i + 1)
+        t = fmt.throw_info(i + 1)
         s["has_hammer"] = t.has_hammer
         s["thrower_slot"] = t.position_slot
-        s["position"] = C.POSITION_NAMES[t.position_slot]
+        s["position"] = fmt.positions[t.position_slot - 1]
         s["rock_of_player"] = t.rock_of_player
-        s["label"] = rules.shot_label(end_number, i + 1)
+        s["label"] = fmt.shot_label(end_number, i + 1)
         if s.get("color_inferred") and anchors and shot_identity(s) not in patched:
             j, color = min(anchors, key=lambda a: abs(a[0] - i))
             s["color"] = color if (i - j) % 2 == 0 else rules.other_color(color)
@@ -443,6 +464,7 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
     in that order and renumbered, with the original numbers kept in ``id`` so
     the keys still resolve.
     """
+    fmt = format_mod.of_document(document)
     patches: dict[tuple[int, int], dict[int, dict]] = {}
     for key, patch in (overrides or {}).items():
         try:
@@ -461,7 +483,7 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
             ordered = _reorder(end["shots"])
             if ordered is not end["shots"]:
                 colour_set = {s for s, p in here.items() if "color" in p}
-                _renumber(ordered, end["number"], colour_set)
+                _renumber(ordered, end["number"], colour_set, fmt)
                 end["shots"] = ordered
     return document
 
@@ -559,6 +581,7 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
     if start_s is None:
         return document
     document = deepcopy(document)
+    fmt = format_mod.of_document(document)
     for i, game in enumerate(document.get("games", [])):
         ends = game.get("ends") or []
         drop = 0
@@ -591,7 +614,7 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
                 end["number"] = number
                 end["shots"] = [dict(s) for s in end["shots"]]
                 for s in end["shots"]:
-                    s["label"] = rules.shot_label(number, s["number"])
+                    s["label"] = fmt.shot_label(number, s["number"])
         # Everything a game totals -- the running score, the hammer chain, the
         # clock, what the detector made of it -- was totalled over the practice
         # too, so rebuild rather than patch. Keys build_game does not own (the
@@ -618,7 +641,7 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
             unread = [n for n in range(1, len(kept) + 1)
                       if not isinstance(per_end.get(n), dict)]
         rebuilt = build_game(game["index"], kept[0]["start_s"], kept[-1]["end_s"],
-                             kept)
+                             kept, fmt=fmt)
         # The board is not rebuilt, so ordinarily what it says the game
         # finished rides through the trim untouched -- it is a fact about
         # the wall, not a total over the ends we kept. But when re-keying
