@@ -251,14 +251,35 @@ class TestTimeLines:
         def detect(model, frames, times, lo, hi, color, imgsz=800, conf=0.35):
             return [list(extra) if i == 0 else [] for i in range(len(frames))]
 
-        L.time_lines(shots, "v.mp4", HOG_VIEW, DEST_VIEW, model=object(),
-                     decode=decode, detect=detect)
+        self.n = L.time_lines(shots, "v.mp4", HOG_VIEW, DEST_VIEW, model=object(),
+                              decode=decode, detect=detect)
         return decoded
 
     def test_a_shot_with_a_crossing_and_a_broom_gets_a_line(self):
         s = self.shot(crossing_for(self.stone_to(11.5)))
         self.run([s])
         assert s.line is not None and s.line.fit_n >= 15
+        assert self.n == 1
+
+    def test_a_failure_measuring_one_shot_leaves_it_without_a_line_and_does_not_raise(self):
+        # The start-window decode raises for `bad` (release at t=100) only;
+        # `ok` (release at t=200) still gets its line in the same call.
+        bad = self.shot(crossing_for(self.stone_to(11.5)), release=SimpleNamespace(t=100.0))
+        ok = self.shot(crossing_for(self.stone_to(11.5)), release=SimpleNamespace(t=200.0))
+
+        def decode(video, rect, t0, t1, fps):
+            if round(t0, 2) == 97.0:
+                raise RuntimeError("boom")
+            return [object()] * 3, [t0, t0 + 0.1, t0 + 0.2]
+
+        def detect(model, frames, times, lo, hi, color, imgsz=800, conf=0.35):
+            return [[] for _ in frames]
+
+        n = L.time_lines([bad, ok], "v.mp4", HOG_VIEW, DEST_VIEW, model=object(),
+                         decode=decode, detect=detect)
+        assert bad.line is None
+        assert ok.line is not None
+        assert n == 1
 
     def test_the_window_is_extended_only_for_a_track_that_stops_short(self):
         long_, short = self.shot(crossing_for(self.stone_to(11.5))), self.shot(crossing_for(self.stone_to(8.7)))

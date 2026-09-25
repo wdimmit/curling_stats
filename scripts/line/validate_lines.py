@@ -47,6 +47,9 @@ def diff(doc, base):
             continue
         if _unstamped(doc.get(k)) != _unstamped(base.get(k)):
             print(f"  top-level {k} differs"); bad += 1
+    n_doc, n_base = len(list(shots(doc))), len(list(shots(base)))
+    if n_doc != n_base:
+        print(f"  shot counts differ: {n_doc} vs {n_base}"); bad += 1
     for (g, e, s), (_g, _e, b) in zip(shots(doc), shots(base)):
         for k in set(s) | set(b):
             if k in LINE_KEYS:

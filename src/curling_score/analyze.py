@@ -282,8 +282,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     if broom_model is not None:
         progress(f"finding target brooms with {weights_mod.broom_path()}")
     # The rock's thrown line against the broom: the side model again, which
-    # hogtime has already loaded (`sidemodel._load` is cached).
-    line_model = None if (skip_longview or skip_line) else sidemodel.default_model()
+    # hogtime has already loaded (`sidemodel._load` is cached). No broom
+    # model means no brooms, so there is nothing for a line to be measured
+    # against either.
+    line_model = (None if (skip_longview or skip_line or broom_model is None)
+                  else sidemodel.default_model())
 
     phase("profile", 0.0, "finding games and ends")
     progress("building activity profile...")
@@ -420,9 +423,10 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 # Where the rock's thrown line passed the skip's broom -- the
                 # hog-crossing camera for the line, the destination camera for
                 # where it went. Needs hogtime's crossing and broomtime's broom.
-                linetime.time_lines(
+                n_lines = linetime.time_lines(
                     shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
                     sideviews[hogtime.CAMERA_FOR[end.house]], model=line_model)
+                progress(f"    end {end.number}: lines {n_lines}/{len(shots)}")
             # Stage 3, the destination hog line, from that panel's painted line.
             # In this block ``setup`` is the destination panel and ``far`` is
             # the THROWING panel -- far from the house being played to.
@@ -517,7 +521,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         # it -- `hogtime` takes the same default.
         processing_version=version.processing_version(
             weights, weights_mod.side_path(), weights_mod.broom_path(),
-            line=line_model is not None),
+            line=line_model is not None and sideviews is not None),
     )
 
 

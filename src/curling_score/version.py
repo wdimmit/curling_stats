@@ -69,8 +69,10 @@ def processing_version(weights, side_weights=None, broom_weights=None, line=Fals
     it is named when present and omitted when not, which keeps every timeline
     made without one at the identity it was published with.
 
-    ``line`` is named when the line model ran. The line is measured per shot,
-    so it changes the timeline when present and is named to say so.
+    ``line`` is named only when the line pass ran AND a side model was named:
+    without a side model there is no hog-line split to measure the line from,
+    so the suffix would say nothing true. The line is measured per shot, so
+    when it did run it changes the timeline, and is named to say so.
     """
     base = f"{PIPELINE_VERSION}+{model_id(weights)}"
     out = base if side_weights is None else f"{base}+side-{model_id(side_weights)}"

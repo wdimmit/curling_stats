@@ -16,12 +16,15 @@ Attach-only, like ``hogtime`` and ``broomtime``: it may give a shot a
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import numpy as np
 
 from curling_score.geometry import constants as C
 from curling_score.harvest import sidepool
+
+log = logging.getLogger(__name__)
 
 TEE_Y = C.TEE_TO_TEE_M                          # the throwing tee
 HOG_Y = C.TEE_TO_TEE_M - C.TEE_TO_HOGLINE_M     # the throwing hog line
@@ -341,34 +344,47 @@ def _rest(shot):
     return float(s.x_m), float(s.y_m)
 
 
-def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, detect=None) -> None:
-    """Give each shot its ``line``, in place. A no-op without a model or a
-    laterally calibrated hog-camera view; a shot it cannot measure keeps None."""
+def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, detect=None) -> int:
+    """Give each shot its ``line``, in place; return how many it gave one.
+
+    A no-op without a model or a laterally calibrated hog-camera view; a shot
+    it cannot measure keeps None. Attach-only, like ``hogtime`` and
+    ``broomtime``: a decode or detector error on one rock is caught and
+    logged, and costs that rock its line, not the game its analysis -- the
+    same reasoning as ``analyze.read_board``.
+    """
     if model is None or hog_view is None or not hog_view.has_lateral:
-        return
+        return 0
     if decode is None:
         from curling_score.detect import longview
         decode = longview.decode
     if detect is None:
         from curling_score.detect import sidemodel
         detect = sidemodel.detect_band
+    n = 0
     for shot in shots:
         broom = getattr(shot, "target_broom", None)
         rel = getattr(shot, "release", None)
         crossing = getattr(shot, "hog_crossing", None)
         if getattr(shot, "missing", False) or broom is None or rel is None or crossing is None:
             continue
-        track = hog_track(crossing, hog_view)
-        if track and max(p[3] for p in track) < EXTEND_IF_SHORT_OF_M:
-            extra = _extend_for(shot, hog_view, video, rel.t, model, decode, detect)
-            track = hog_track(crossing, hog_view, extra)
-        fit = fit_line(track)
-        if fit is None:
-            continue
-        start = find_start(model, video, hog_view, shot.color, rel.t, decode=decode, detect=detect)
-        path = find_path(model, video, dest_view, shot.color, getattr(shot, "t_hog_s", None),
-                         getattr(shot, "t_rest_s", None), fit, decode=decode, detect=detect)
-        shot.line = measure(fit, track, start, (broom.x_m, broom.y_m), rest=_rest(shot), path=path)
+        try:
+            track = hog_track(crossing, hog_view)
+            if track and max(p[3] for p in track) < EXTEND_IF_SHORT_OF_M:
+                extra = _extend_for(shot, hog_view, video, rel.t, model, decode, detect)
+                track = hog_track(crossing, hog_view, extra)
+            fit = fit_line(track)
+            if fit is None:
+                continue
+            start = find_start(model, video, hog_view, shot.color, rel.t, decode=decode, detect=detect)
+            path = find_path(model, video, dest_view, shot.color, getattr(shot, "t_hog_s", None),
+                             getattr(shot, "t_rest_s", None), fit, decode=decode, detect=detect)
+            shot.line = measure(fit, track, start, (broom.x_m, broom.y_m), rest=_rest(shot), path=path)
+            n += 1
+        except Exception:
+            log.exception("line pass failed on shot %s; it keeps no line",
+                          getattr(shot, "number", "?"))
+    return n
 
 
 def _extend_for(shot, view, video, t_release, model, decode, detect):
