@@ -91,17 +91,19 @@ def other_color(color: str) -> str:
     return COLORS[1] if color == COLORS[0] else COLORS[0]
 
 
-def next_hammer(hammer: str, end_score: dict[str, int]) -> str:
-    """Which colour holds the hammer in the following end (R5(a)).
+def next_hammer(hammer: str, end_score: dict[str, int], blank_passes: bool = False) -> str:
+    """Which colour holds the hammer in the following end.
 
     The team that scores delivers first in the next end, so it gives up the
-    hammer. A blank end leaves the order — and therefore the hammer — unchanged.
+    hammer (R5(a)). A blank end leaves the order unchanged in fours; in doubles
+    the team that threw first gets the placement decision (R17) and is expected
+    to take the hammer with it, which ``blank_passes`` says.
     """
     scorers = [c for c in COLORS if end_score.get(c, 0) > 0]
     if len(scorers) > 1:
         raise ValueError(f"both teams cannot score in one end: {end_score}")
     if not scorers:
-        return hammer
+        return other_color(hammer) if blank_passes else hammer
     return other_color(scorers[0])
 
 
@@ -114,7 +116,7 @@ def running_total(end_scores) -> dict[str, int]:
     return total
 
 
-def hammer_chain(first_hammer: str, end_scores) -> list[str]:
+def hammer_chain(first_hammer: str, end_scores, blank_passes: bool = False) -> list[str]:
     """Who holds the hammer in each end, given the first end's hammer.
 
     Derived from the scores alone, so it does not depend on having seen who
@@ -124,23 +126,25 @@ def hammer_chain(first_hammer: str, end_scores) -> list[str]:
     out, cur = [], first_hammer
     for end in end_scores:
         out.append(cur)
-        cur = next_hammer(cur, end)
+        cur = next_hammer(cur, end, blank_passes)
     return out
 
 
-def first_hammer_given(hammer: str, end_number: int, earlier_scores) -> str:
+def first_hammer_given(hammer: str, end_number: int, earlier_scores, blank_passes: bool = False) -> str:
     """Work backwards to the opening hammer from a later, observed one.
 
-    A blank end passes the hammer along unchanged and a scored end swaps it, so
-    the chain is reversible: each step back is the same rule applied in reverse.
+    A blank end leaves the hammer unchanged in fours; in doubles it passes it
+    along. A scored end swaps it, so the chain is reversible: each step back is
+    the same rule applied in reverse.
     """
     if end_number < 1:
         raise ValueError(f"end_number must be 1 or more, got {end_number}")
     cur = hammer
     for end in reversed(list(earlier_scores)[: end_number - 1]):
         scorers = [c for c in COLORS if end.get(c, 0) > 0]
-        if scorers:
-            # Whoever scored gave the hammer away, so before that end the
-            # hammer sat with the team that did not score.
+        # Whoever scored gave the hammer away, so before that end the hammer
+        # sat with the team that did not score. In doubles a blank moved it
+        # too, so stepping back over one moves it back.
+        if scorers or blank_passes:
             cur = other_color(cur)
     return cur

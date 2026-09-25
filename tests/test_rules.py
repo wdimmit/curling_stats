@@ -164,3 +164,32 @@ class TestFirstHammerFromChain:
     def test_an_out_of_range_end_is_rejected(self):
         with pytest.raises(ValueError):
             rules.first_hammer_given("red", 0, [])
+
+
+BLANK = {"red": 0, "yellow": 0}
+
+
+class TestDoublesHammer:
+    """R17: after a blank the team that threw first decides the placement,
+    and takes the house stone -- the hammer. After a score the team that did
+    not score decides, exactly as fours hands it the hammer."""
+
+    def test_a_blank_passes_the_hammer(self):
+        assert rules.next_hammer("red", BLANK, blank_passes=True) == "yellow"
+
+    def test_a_blank_still_keeps_it_in_fours(self):
+        assert rules.next_hammer("red", BLANK) == "red"
+
+    def test_a_score_goes_to_the_team_that_did_not_score(self):
+        assert rules.next_hammer("red", {"red": 2, "yellow": 0}, blank_passes=True) == "yellow"
+        assert rules.next_hammer("red", {"red": 0, "yellow": 1}, blank_passes=True) == "red"
+
+    def test_the_chain(self):
+        got = rules.hammer_chain("red", [BLANK, {"red": 0, "yellow": 1}, BLANK],
+                                 blank_passes=True)
+        assert got == ["red", "yellow", "red"]
+
+    def test_stepping_back_undoes_the_chain(self):
+        earlier = [BLANK, {"red": 0, "yellow": 1}]
+        assert rules.first_hammer_given("red", 3, earlier, blank_passes=True) == "red"
+        assert rules.hammer_chain("red", earlier, blank_passes=True) == ["red", "yellow"]
