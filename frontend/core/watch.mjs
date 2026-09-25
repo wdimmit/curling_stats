@@ -73,6 +73,11 @@ export function rockAt(rows, t) {
     if (rows[i].tRest == null) continue;
     if (t > rows[i].tRest) at = Math.min(i + 1, rows.length - 1);
   }
+  // A rock never seen has no rest to end its interval, so the playhead is
+  // never "in" it: that interval belongs to the next rock that was seen.
+  // Otherwise stepping onto the rock after a missing one snaps straight back
+  // to the missing one while the video plays.
+  while (at < rows.length - 1 && rows[at].tRest == null) at++;
   return at;
 }
 

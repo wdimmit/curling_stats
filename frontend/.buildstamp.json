@@ -12,7 +12,7 @@
     "frontend/core/shots.mjs": "7bbae170388975b0f70afd6c3588083b4f2baf6a32bb8a839a52086bf7a60310",
     "frontend/core/stats.mjs": "cd81927a50176b699daa09e861ec8ada69ceaec5517d370656177c9a3c431a5b",
     "frontend/core/timeline.mjs": "7b4696ac4a0e937b824be62004ec0925dd5ef14e29cf8c933f7e85b005a08109",
-    "frontend/core/watch.mjs": "c6c1ad4c09a5b16ee0af29b0487b69af707160dbdf5c6bad7816f1d9ee363865",
+    "frontend/core/watch.mjs": "57a4fc231a9846b3b2500b24f2e6e46f85ce5ff691c747470241255b1617f448",
     "frontend/core/wire.mjs": "25a1330110de4c01aa30e24439e8fcdeb3eccc6f964bfdf640831c2878bdb1f7",
     "frontend/runtime/bodyState.mjs": "3406f0db2a7f1c57944df52b370eade2be81a1b65fc4f64382ee56b27eb315ea",
     "frontend/runtime/dragStore.mjs": "39cf427077c473e916a74c5e95b62ac0fd8eacde6b56f4fe8b4f1cc6d516d778",
@@ -42,6 +42,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "6e4b4ee181968976d23b26da584a241d49c549eb82b38c64b1e0cd4a514dea82",
-    "src/curling_score/viewer/app.js": "f3d13d95095260c24515acf0608e7491e24cbf6cae08a8d617ea35c0273b9699"
+    "src/curling_score/viewer/app.js": "86cd8566adc4e1cdbe973970d65209ffe4544ed6724e235ebdc4b2683e18a4a1"
   }
 }

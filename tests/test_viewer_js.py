@@ -1209,6 +1209,20 @@ class TestTheListFollowsTheVideo:
                      "out(rockAt(r, r[4].tRest + 1));")
         assert got == 5
 
+    def test_the_playhead_is_never_in_a_rock_that_was_never_seen(self):
+        """A missing first rock has no rest: before the second rock's rest the
+        playhead is on the second rock, not the missing one."""
+        got = run_js(setup(end_four()) +
+                     "const r = rockRows(); r[0].tRest = null;"
+                     "out([rockAt(r, 0), rockAt(r, r[1].tRest - 5)]);")
+        assert got == [1, 1]
+
+    def test_after_a_missing_rock_mid_end_it_is_the_next_rock_seen(self):
+        got = run_js(setup(end_four()) +
+                     "const r = rockRows(); r[3].tRest = null;"
+                     "out(rockAt(r, r[2].tRest + 1));")
+        assert got == 4
+
 
 class TestARowCarriesItsSplit:
     """The long split beside the shot type, now that most rocks have one."""
