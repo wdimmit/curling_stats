@@ -1671,3 +1671,10 @@ class TestTheAppKnowsItsTab:
     def test_the_last_tab_is_remembered(self):
         prefs = (Path(__file__).resolve().parents[1] / "frontend/runtime/prefs.mjs").read_text()
         assert 'tab: "detail"' in prefs
+
+    def test_a_saved_rock_that_is_gone_is_ignored(self):
+        assert ".shots[cursor.si]" in self.APP.read_text()
+
+    def test_the_swipe_and_the_hash_are_phone_only(self):
+        src = self.APP.read_text()
+        assert "if (phone()) actions.step(d)" in src and "!phone()" in src

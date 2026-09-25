@@ -46,9 +46,11 @@ export function App({ doc, config, cursor }) {
     const prefs = loadPrefs();
     const hash = config.readOnly ? parseHash(location.hash) : {};
     // A link names its rock; failing that, where this tab last was. A hash or
-    // cursor naming a rock the document no longer has is ignored.
+    // session cursor naming a rock the document no longer has is ignored --
+    // the session's cursor is checked against the built view the same way.
     const linked = cursorFromHash(hash, gi => buildGameView(doc, gi, {}), doc.games.length);
-    const saved = cursor && doc.games[cursor.gi] ? cursor : null;
+    const savedView = cursor && doc.games[cursor.gi] ? buildGameView(doc, cursor.gi, {}) : null;
+    const saved = savedView?.ends[cursor.ei]?.shots[cursor.si] ? cursor : null;
     return {
       gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
       sheet: "peek", houseMode: "", menu: undefined, reporting: false, notice: null,
@@ -184,7 +186,7 @@ export function App({ doc, config, cursor }) {
   }), [goTo, patch, setPref, raw, shot, shotKey, doc, ui.gi, ui.ei, ui.si, ui.sheet, notify,
        view]);
 
-  const houseSwipe = useSwipe(d => actions.step(d));
+  const houseSwipe = useSwipe(d => { if (phone()) actions.step(d); });
 
   /* ---------------------------------------------------------------- effects */
 
@@ -201,7 +203,7 @@ export function App({ doc, config, cursor }) {
   // The read-only surfaces keep their tab and rock in the URL, so a shared link
   // opens where it was sent from. replaceState: stepping rocks is not history.
   useEffect(() => {
-    if (!config.readOnly) return;
+    if (!config.readOnly || !phone()) return;
     const e = view.ends[ui.ei]?.end?.number, s = view.ends[ui.ei]?.shots[ui.si]?.number;
     if (e == null || s == null) return;
     history.replaceState(null, "", formatHash({ tab: ui.tab, g: ui.gi + 1, e, s }));
