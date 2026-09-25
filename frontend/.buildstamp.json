@@ -29,7 +29,7 @@
     "frontend/site/main.jsx": "3ae012ef5bf5845a1bfa2fd195cc7b4bd154746f3e861cf15619abf8ab6fe9d7",
     "frontend/site/ui.jsx": "5f54667ec87c4dc31e393f5f804bec5cd1c4667833c966b07297db35623e0e58",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
-    "frontend/viewer/App.jsx": "3bbf063e5468d18f99000e5a151d0197741c42f07251b5326c06cec8dc333768",
+    "frontend/viewer/App.jsx": "5ead5da0715e26f1bbcb1441733d7b9dd2b5646535b9a51273d2be9ff387f7e6",
     "frontend/viewer/ChartPanel.jsx": "2660c5657187a15bd196a3cd00a0449166d078ffde65e2e6bc0c69952bd4cf56",
     "frontend/viewer/Charts.jsx": "61c1954d1796105a11ab9516a3b1aadd27d5ac57eccd32d2040ec43ab415bdd6",
     "frontend/viewer/Detail.jsx": "ef3886bdee076e8990703d69dc72563ba19c7bbe044618e57827a78e58e73bde",
@@ -42,6 +42,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "6e4b4ee181968976d23b26da584a241d49c549eb82b38c64b1e0cd4a514dea82",
-    "src/curling_score/viewer/app.js": "9e55acdddab5e048bcdde5949fb5f1d49675d5d8646e404ce82845b920b03dcb"
+    "src/curling_score/viewer/app.js": "c78b7c425f86964e8613b69d460e95b2099f5efeedb4fb0865412912cf25edac"
   }
 }

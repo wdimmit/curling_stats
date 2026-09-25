@@ -1874,6 +1874,42 @@ class TestTheTabShell:
         assert "trackPoints(shot)" in body and "shot?.track" not in body
 
 
+class TestTheDesktopDetailCard:
+    APP = Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx"
+
+    def css(self):
+        return (VIEWER / "style.css").read_text()
+
+    def test_the_card_follows_the_play_card(self):
+        src = self.APP.read_text()
+        i_play, i_card, i_house = (src.index('id="playCard"'), src.index('id="detailCard"'),
+                                   src.index('id="houseCard"'))
+        assert i_play < i_card < i_house
+        assert "<DeskDetail shot={shot} doc={doc} />" in src
+
+    def test_the_grid_is_laid_out_by_area_at_every_width(self):
+        css = self.css()
+        for needle in ('grid-template-areas: "play house chart" "detail house chart";',
+                       'grid-template-areas: "play house" "detail house" "chart house";',
+                       'grid-template-areas: "play" "detail" "house" "chart";',
+                       "#detailCard { grid-area: detail; }", "#chart { grid-area: chart; }"):
+            assert needle in css, needle
+
+    def test_the_phones_get_their_own_grid_back_and_no_card(self):
+        assert ("@media (max-width:640px){\n"
+                "  main { grid-template-areas: none; }\n"
+                "  #playCard, #houseCard, #chart { grid-area: auto; }\n"
+                "  #detailCard { display: none; }\n"
+                "}") in self.css()
+
+    def test_the_strip_scales_to_the_card_and_the_figures_go_three_across(self):
+        css = self.css()
+        strip = css[css.index("#detailCard .dstrip {"):css.index("}", css.index("#detailCard .dstrip {"))]
+        assert "width: 100%" in strip and "height: auto" in strip
+        figs = css[css.index("#detailCard .dfigs {"):css.index("}", css.index("#detailCard .dfigs {"))]
+        assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in figs
+
+
 class TestTheDetailPane:
     SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/Detail.jsx"
 

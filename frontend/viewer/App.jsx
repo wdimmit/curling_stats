@@ -22,6 +22,7 @@ import * as player from "../runtime/player.mjs";
 import { writeBodyState } from "../runtime/bodyState.mjs";
 import { loadPrefs, savePrefs, saveCursor } from "../runtime/prefs.mjs";
 import { House } from "./House.jsx";
+import { DeskDetail } from "./Detail.jsx";
 import { ChartPanel } from "./ChartPanel.jsx";
 import { Report } from "./Report.jsx";
 import { Watch } from "./Watch.jsx";
@@ -411,6 +412,12 @@ export function App({ doc, config, cursor }) {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* Always mounted: CSS decides who is visible (hidden on phones), the
+            same rule that keeps the player from ever being reparented. */}
+        <section className="card" id="detailCard" aria-label="Shot detail">
+          <DeskDetail shot={shot} doc={doc} />
         </section>
 
         <section className="card" id="houseCard" {...(config.readOnly ? houseSwipe : {})}>
