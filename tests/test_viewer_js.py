@@ -1693,3 +1693,17 @@ class TestTheTabShell:
         src = (self.JSX / "House.jsx").read_text()
         body = src[src.index("function Track("):src.index("function Broom(")]
         assert "trackPoints(shot)" in body and "shot?.track" not in body
+
+
+class TestTheDetailPane:
+    SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/Detail.jsx"
+
+    def test_it_draws_the_strip_and_the_six_figures_from_the_core(self):
+        src = self.SRC.read_text()
+        for needle in ("lineFigures(shot, doc)", "stripGeometry(shot)", 'className="dstrip"',
+                       'className="dcap"', "f.predates"):
+            assert needle in src, needle
+
+    def test_the_caption_is_the_spec_s(self):
+        assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±10 cm · "
+                "wide = the side away from the curl") in self.SRC.read_text()
