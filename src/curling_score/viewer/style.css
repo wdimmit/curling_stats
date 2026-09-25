@@ -179,6 +179,7 @@ body.reporting main { display:none; }
               overflow:visible; }
 .clockchart .ln { fill:none; stroke-width:2; vector-effect:non-scaling-stroke;
                   stroke-linejoin:round; }
+.clockchart .endshade { fill:var(--accent); fill-opacity:.06; }
 .clockchart .ln.red { stroke:var(--red); }
 .clockchart .ln.yellow { stroke:var(--yellow); }
 .clockchart .g { stroke:var(--line); stroke-width:1;

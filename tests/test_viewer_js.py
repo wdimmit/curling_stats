@@ -1314,9 +1314,9 @@ class TestAWithheldGameSaysSoOnTheEndBar:
         assert "board?.scores_withheld" in jsx
         assert "start time" in jsx
 
-    def test_the_end_bar_names_the_fix_too(self):
+    def test_the_end_header_names_the_fix_too(self):
         jsx = (Path(__file__).resolve().parents[1]
-               / "frontend/viewer/Watch.jsx").read_text()
+               / "frontend/viewer/Timing.jsx").read_text()
         assert "scoresWithheld" in jsx
         assert "start time" in jsx
         # Distinct from the plain "not posted" case, and from the old-chart
@@ -1332,7 +1332,7 @@ class TestAWithheldGameSaysSoOnTheEndBar:
         remedy, not a restatement of "board read, ends unmatched" in the
         detector's own vocabulary."""
         jsx = (Path(__file__).resolve().parents[1]
-               / "frontend/viewer/Watch.jsx").read_text()
+               / "frontend/viewer/Timing.jsx").read_text()
         # The label's own scoresWithheld branch, right after the
         # "chart predates board reading" branch -- not the title= tooltip,
         # which has its own separate "scoresWithheld ?" a few lines above.
@@ -1436,14 +1436,14 @@ class TestAWatchLinkOnAPhoneShowsSomething:
             assert "#watch" not in part and ".wlist" not in part
 
     def test_the_list_row_height_matches_what_the_component_scrolls_by(self):
-        """Watch.jsx scrolls the current row into view by multiplying its
-        index, because scrollIntoView would scroll the fixed shell around it.
-        If the two disagree, following drifts a row further out every rock."""
+        """Timing.jsx keeps the current row in view with ROW_H, because
+        scrollIntoView would scroll the fixed shell around it. If the two
+        disagree, following drifts a row further out every rock."""
         block = self.phone_block()
         rule = next(r for r in block.split("}") if ".wrow {" in r)
         assert "height: 56px" in rule
         js = (Path(__file__).resolve().parents[1]
-              / "frontend/viewer/Watch.jsx").read_text()
+              / "frontend/viewer/Timing.jsx").read_text()
         assert "const ROW_H = 56;" in js
 
     def test_the_player_is_the_one_thing_the_layout_leaves_alone(self):
@@ -1707,3 +1707,18 @@ class TestTheDetailPane:
     def test_the_caption_is_the_spec_s(self):
         assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±10 cm · "
                 "wide = the side away from the curl") in self.SRC.read_text()
+
+
+class TestTheTimingTab:
+    SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/Timing.jsx"
+
+    def test_every_end_of_the_game_with_its_header(self):
+        src = self.SRC.read_text()
+        for needle in ("view.ends.map(", "endSummary(view, k)", "rockRows(view, k, ui.leadIn)",
+                       'className="tend"', "shadeEnd={ui.ei}", "TIMINGBOX"):
+            assert needle in src, needle
+
+    def test_a_tap_stays_on_timing_and_follows_the_video_again(self):
+        src = self.SRC.read_text()
+        assert "actions.setFollowing(true); actions.goTo(k, i);" in src
+        assert "setTab" not in src

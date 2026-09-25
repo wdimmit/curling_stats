@@ -6,7 +6,8 @@
  * report's bars were drawn with no handlers at all until somebody clicked one.
  */
 import { Fragment } from "react";
-import { barsGeometry, chartGeometry, clockText } from "../core/index.mjs";
+import { barsGeometry, chartGeometry, clockText, endSpan } from "../core/index.mjs";
+import { CHARTBOX } from "../core/constants.mjs";
 
 const n = v => v.toFixed(1);
 
@@ -34,12 +35,15 @@ function Grid({ geom }) {
   );
 }
 
-export function ThinkingChart({ series, at = null, box }) {
+export function ThinkingChart({ series, at = null, box, shadeEnd = null }) {
   const geom = chartGeometry(series, at, box);
   if (!geom) return null;
+  const shade = shadeEnd == null ? null : endSpan(geom, shadeEnd, box ?? CHARTBOX);
   return (
     <svg className="clockchart" viewBox={geom.viewBox} role="img" aria-label={geom.aria}>
       <Grid geom={geom} />
+      {shade ? <rect className="endshade" x={n(shade.x0)} y={n(shade.y1)}
+                     width={n(shade.x1 - shade.x0)} height={n(shade.y2 - shade.y1)} /> : null}
       {geom.lines.map(l => (
         <polyline key={l.color} className={`ln ${l.color}`}
                   points={l.points.map(([x, y]) => `${n(x)},${n(y)}`).join(" ")} />
