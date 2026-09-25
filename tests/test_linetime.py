@@ -97,6 +97,16 @@ class TestConfirmedBy:
         assert L.confirmed_by(self.path(top=10.0), self.FIT) is None
         assert L.confirmed_by([], self.FIT) is None
 
+    def test_a_path_first_seen_near_the_house_after_it_curled_says_nothing(self):
+        # first seen 16 m out, already 30 cm off the thrown line: that is curl
+        late = [(y, self.FIT.x(y) + 0.30) for y in [16.0 - 0.25 * i for i in range(40)]]
+        assert L.confirmed_by(late, self.FIT) is None
+
+    def test_only_the_window_is_compared_not_where_it_curled_later(self):
+        on_then_curls = [(y, self.FIT.x(y) + (0.0 if y >= 19.0 else 0.4)) for y in
+                         [23.5 - 0.25 * i for i in range(60)]]
+        assert L.confirmed_by(on_then_curls, self.FIT) is True
+
 
 class TestThin:
     def test_about_one_point_per_half_metre_and_the_last_kept(self):

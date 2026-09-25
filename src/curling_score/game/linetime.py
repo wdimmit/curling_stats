@@ -30,8 +30,12 @@ HOG_Y = C.TEE_TO_TEE_M - C.TEE_TO_HOGLINE_M     # the throwing hog line
 FIT_PAST_TEE_M = (C.TEE_TO_HOGLINE_M, 10.0)
 FIT_MIN_N = 15
 FIT_MIN_SPAN_M = 2.5
-CONFIRM_FROM_M = 12.0       # the path must be seen at least this far out
-CONFIRM_FIRST_M = 4.0       # ...and its first this-many metres compared
+# The camera behind the thrower checks the line only where the rock has barely
+# begun to curl: 5.3-9.3 m past the throwing hog line, where the spike found it
+# on the fitted line to about 4 cm (2026-09-24). Nearer the house the rock has
+# curled 10-36 cm off its thrown line, and comparing there measures the curl.
+CONFIRM_WINDOW_Y = (19.0, 23.0)
+CONFIRM_MIN_N = 3
 CONFIRM_TOL_M = 0.10
 CURL_MIN_M = 0.05
 THIN_M = 0.5
@@ -102,11 +106,14 @@ def side_of(miss: float, curl: str | None) -> str | None:
 
 
 def confirmed_by(path, fit: Fit) -> bool | None:
-    """Does the camera behind the thrower see the rock on the fitted line?"""
-    if not path or path[0][0] < CONFIRM_FROM_M:
+    """Does the camera behind the thrower see the rock on the fitted line,
+    where the rock has not yet curled away from it? None when it did not see
+    the rock there."""
+    lo, hi = CONFIRM_WINDOW_Y
+    seen = [(y, x) for y, x in path if lo <= y <= hi]
+    if len(seen) < CONFIRM_MIN_N:
         return None
-    first = [(y, x) for y, x in path if y >= path[0][0] - CONFIRM_FIRST_M]
-    dev = float(np.median([abs(x - fit.x(y)) for y, x in first]))
+    dev = float(np.median([abs(x - fit.x(y)) for y, x in seen]))
     return dev <= CONFIRM_TOL_M
 
 

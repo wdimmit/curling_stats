@@ -219,10 +219,14 @@ Each shot gets `line`, an object or `null`. This raises the timeline to schema
     `sign(miss) == −sign(curl)`. `"narrow"` otherwise.
   - `null` when `curl` is `null`, and the viewer then says left or right.
 - **`confirmed`.**
-  - `true` when the path from behind the thrower was seen from at least 12 m
-    out and its first 4 m lie within 10 cm of the fitted line.
-  - `false` when it was seen but disagrees.
-  - `null` when it was not seen.
+  - `true` when the path from behind the thrower was seen at least 3 times
+    between 19 and 23 m out (5.3–9.3 m past the throwing hog line, before the
+    rock curls away from its line) and lies within 10 cm of the fitted line
+    there (median). Amended 2026-09-24 from "seen from 12 m out, first 4 m":
+    replaying VXU9, that rule compared paths first seen 14–18 m out, where the
+    rock had already curled 10–36 cm, and called 18 of 52 rocks disagreements.
+  - `false` when it was seen there but disagrees.
+  - `null` when it was not seen there.
 - **`hog_path` and `path`.** `[y, x]` pairs thinned to about one per 0.5 m,
   roughly 60 points in all, a few hundred bytes per shot.
 - **Precision.** Rounding and the "On the broom" rule belong to the viewer, so
