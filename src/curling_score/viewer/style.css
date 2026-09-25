@@ -103,6 +103,7 @@ main { display:grid; gap:14px; padding:14px;
 /* --- shot detail (desktop) ---------------------------------------------- */
 /* The phone's Detail rules live inside its media query; these are the
    desktop card's own. The strip scales to the card through its viewBox. */
+#detailCard { container-type: inline-size; }
 #detailCard .dstrip { display: block; width: 100%; height: auto; background: var(--ice);
                       border: 1px solid var(--line); border-radius: 4px; }
 #detailCard .dstrip-none { aspect-ratio: 660 / 114; }
@@ -119,6 +120,27 @@ main { display:grid; gap:14px; padding:14px;
                        color: var(--muted); font-weight: 600; }
 #detailCard .dfig .dval { margin: 0; font-family: var(--display); font-size: 19px; font-weight: 700;
                           line-height: 1.05; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* The three .dfigs columns are minmax(0,1fr): their width comes from the
+   card's own width, not the viewport's, and the grid-template-columns
+   change at each of main's breakpoints resets it, so the card is narrowest
+   right after 1180px and right after 820px rather than at the viewport
+   extremes. Measured at 1181x900 and 821x900 (card 440px/444px, columns
+   126px/127.3px, 18px gap): a 19px "6 ft 1 in narrow" (16 chars) already
+   overflows there, and a 17-char value ("1 ft 10 in narrow") measures
+   130.3px at 16px -- the reviewer's suggested step -- which still overflows
+   both columns (by 4.3px and 3.0px). 15px measures 122.2px, clearing both
+   with 3.8px and 5.2px to spare (measured with a DOM Range, since scrollWidth
+   floors at clientWidth once nothing overflows and cannot show the margin).
+   500px sits between the card widths that still overflow at 19px (up to
+   ~487px, measured at 864x900) and the ones that already clear it (from
+   ~502px, measured at 1228x900), so it catches both narrow points while
+   leaving 1280x900 (554px) and 1440x900 (699px) at the full size. This rule
+   must stay after the plain .dval rule above: same specificity, so source
+   order decides, and a container query earlier in the file loses the
+   cascade. */
+@container (max-width: 500px) {
+  #detailCard .dfig .dval { font-size: 15px; }
+}
 #detailCard .dfig .dnote { margin: 0; font-size: 11.5px; color: var(--muted);
                            display: flex; align-items: center; gap: 5px; }
 #detailCard .dfig.dim .dval { color: var(--muted); }
