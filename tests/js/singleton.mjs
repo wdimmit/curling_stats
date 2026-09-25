@@ -67,6 +67,7 @@ export const stoneAt = core.stoneAt;
 export const broomMark = core.broomMark;
 
 export const lineFigures = core.lineFigures;
+export const feetInches = core.feetInches;
 export const lineReason = core.lineReason;
 export const houseCaption = core.houseCaption;
 export const lineX = core.lineX;

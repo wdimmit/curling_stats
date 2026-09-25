@@ -7,7 +7,7 @@
     "frontend/core/constants.mjs": "714d8c54bc6a84ebff5aa9363be37fb55fbceecd4d329b341a6f37ce494ff3c8",
     "frontend/core/house.mjs": "6f86c576ce178b9ccab7de2923e2dea57779984b5dd93c39df86484a303b060a",
     "frontend/core/index.mjs": "f2a80061eae0f8e60f5f3183c9178cde123bb61e3edb2c1fff9069edf6421303",
-    "frontend/core/line.mjs": "0445144dffa15d14d9778e1591dfa76261623446ed20da47a34a26dbad0bdfc8",
+    "frontend/core/line.mjs": "7b9a134740e517eccef9770c9a3749944b9ce214781b29075afd1ba8d57bf68c",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
     "frontend/core/shots.mjs": "7bbae170388975b0f70afd6c3588083b4f2baf6a32bb8a839a52086bf7a60310",
     "frontend/core/stats.mjs": "cd81927a50176b699daa09e861ec8ada69ceaec5517d370656177c9a3c431a5b",
@@ -32,7 +32,7 @@
     "frontend/viewer/App.jsx": "3bbf063e5468d18f99000e5a151d0197741c42f07251b5326c06cec8dc333768",
     "frontend/viewer/ChartPanel.jsx": "cfd6a3b930d01df3660ac6004645905686b49033aaed66afe706f83bfdfdc954",
     "frontend/viewer/Charts.jsx": "61c1954d1796105a11ab9516a3b1aadd27d5ac57eccd32d2040ec43ab415bdd6",
-    "frontend/viewer/Detail.jsx": "9f4eed5acc3d17e9eb516ef91886e1d1ce11d14e6e19948588ab868208fd4199",
+    "frontend/viewer/Detail.jsx": "840d3ee0bfdaa798e7ed491e47612836a6e3ed4eaf985411a3595aed4940956e",
     "frontend/viewer/House.jsx": "1e8080d79d5b972e5fde7e029df1ed17743fb7dd2998c352ce80505cff20502e",
     "frontend/viewer/Pager.jsx": "40664bd07ba9f11388b2d40e1fb8e232cba15c6f6e23a1d8f30a77d369dbe80c",
     "frontend/viewer/Report.jsx": "473b826e2d318393f70038ef6a42fcb0e97b285f255912922ccd7ecc4a4995c6",
@@ -42,6 +42,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "6e4b4ee181968976d23b26da584a241d49c549eb82b38c64b1e0cd4a514dea82",
-    "src/curling_score/viewer/app.js": "a104b848a28e650e0d59f3a881d3085fded9accc7ca0d9ed5999556f3537b446"
+    "src/curling_score/viewer/app.js": "e52489931332058ac070fae45092b40314f94903170505a4b50fde6d3f547fd3"
   }
 }

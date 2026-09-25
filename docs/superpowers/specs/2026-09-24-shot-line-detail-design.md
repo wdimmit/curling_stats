@@ -108,16 +108,16 @@ The artboard "A · The line on the sheet".
   - a small bracket labelled with the miss at the broom.
 
 **Figures** (right, top to bottom)
-1. **At the broom:** "70 cm wide", with "✓ confirmed from behind the thrower"
+1. **At the broom:** "2 ft 4 in wide", with "✓ confirmed from behind the thrower"
    under it.
-2. **Hack:** "Left", with "stone set 23 cm left of centre".
-3. **At the hog line:** "16 cm wide", with "of the hack-to-broom line".
+2. **Hack:** "Left", with "stone set 9 in left of centre".
+3. **At the hog line:** "6 in wide", with "of the hack-to-broom line".
 4. **Weight:** the long split, "13.8 s", with "hog line to hog line".
-5. **Curl:** "1.1 m", with "from its line to where it stopped".
+5. **Curl:** "3 ft 9 in", with "from its line to where it stopped".
 6. **Came to rest:** "12-foot", with "1.8 m from the button".
 
-**Caption:** "Sheet from above, thrower at the bottom · across ×3 · figures ±10
-cm". It also defines "wide = the side away from the curl" once. There is no
+**Caption:** "Sheet from above, thrower at the bottom · across ×3 · figures ±4
+in". It also defines "wide = the side away from the curl" once. There is no
 glossary.
 
 ## 2. Shell and navigation (approved)
@@ -296,8 +296,9 @@ The artboard "Detail: every state of the verdict".
 
 **At the broom**
 - Within 10 cm: "On the broom", with no number.
-- Otherwise: rounded to 5 cm, as wide or narrow; left or right when `side` is
-  `null`.
+- Otherwise: in feet and inches to the nearest inch (changed from 5 cm steps on
+  2026-09-24), as wide or narrow; left or right when `side` is `null`. The hack,
+  the hog line and the curl use the same feet and inches.
 
 **The confirmation line under it**
 - `confirmed: true`: ✓ "confirmed from behind the thrower".

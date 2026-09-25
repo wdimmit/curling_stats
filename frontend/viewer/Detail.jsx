@@ -72,7 +72,7 @@ export function Detail({ shot, doc }) {
           ))}
         </dl>
       </div>
-      <p className="dcap">Sheet from above, thrower at the bottom · across ×3 · figures ±10 cm · wide = the side away from the curl</p>
+      <p className="dcap">Sheet from above, thrower at the bottom · across ×3 · figures ±4 in · wide = the side away from the curl</p>
     </>
   );
 }

@@ -11,7 +11,14 @@ export const HACK_Y = 34.747 + 3.658;     // the hack line
 const ON_M = 0.10;                        // inside the measurement's own error
 const HACK_CENTRE_M = 0.08;
 
-const cm5 = m => 5 * Math.round((Math.abs(m) * 100) / 5);
+/* An offset as a curler says it: feet and inches, to the nearest inch. The
+ * sign is the caller's business -- it says which side in words. */
+export function feetInches(m) {
+  const all = Math.round(Math.abs(m) * 100 / 2.54);
+  const ft = Math.floor(all / 12), inch = all % 12;
+  if (!ft) return `${inch} in`;
+  return inch ? `${ft} ft ${inch} in` : `${ft} ft`;
+}
 
 /* Where this rock came to rest, when the house says which stone it was. */
 export function restOf(shot) {
@@ -83,7 +90,7 @@ export function lineFigures(shot, doc) {
                      unseen: "not confirmed: hidden from behind the thrower",
                      disagrees: "the camera behind the thrower disagrees" }[tick];
   const broom = fig("broom", "At the broom",
-                    Math.abs(miss) < ON_M ? "On the broom" : `${cm5(miss)} cm ${sideWord(miss, l.curl)}`,
+                    Math.abs(miss) < ON_M ? "On the broom" : `${feetInches(miss)} ${sideWord(miss, l.curl)}`,
                     tickNote, { tick, dim: tick === "disagrees" });
   let hack = fig("hack", "Hack", "–", "not seen before the push");
   if (l.start) {
@@ -91,17 +98,17 @@ export function lineFigures(shot, doc) {
     hack = Math.abs(x) <= HACK_CENTRE_M
       ? fig("hack", "Hack", "Centre", "stone set on the centre line")
       : fig("hack", "Hack", x < 0 ? "Left" : "Right",
-            `stone set ${Math.round(Math.abs(x) * 100)} cm ${x < 0 ? "left" : "right"} of centre`);
+            `stone set ${feetInches(x)} ${x < 0 ? "left" : "right"} of centre`);
   }
   const off = l.at_hog?.offset_m;
   const hog = off == null ? fig("hog", "At the hog line", "–", "needs the hack")
     : fig("hog", "At the hog line",
-          Math.abs(off) < ON_M ? "On the line" : `${cm5(off)} cm ${sideWord(off, l.curl)}`,
+          Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, l.curl)}`,
           "of the hack-to-broom line");
   const end = rest ?? (l.path?.length ? { x: l.path[l.path.length - 1][1], y: l.path[l.path.length - 1][0] } : null);
   const lx = end ? lineX(shot, end.y) : null;
   const curl = end && lx != null
-    ? fig("curl", "Curl", `${Math.abs(end.x - lx).toFixed(1)} m`, "from its line to where it stopped")
+    ? fig("curl", "Curl", feetInches(end.x - lx), "from its line to where it stopped")
     : fig("curl", "Curl", "–", "no rest position");
   return { predates, reason, figures: [broom, hack, hog, weight, curl, restFig] };
 }
@@ -234,6 +241,6 @@ export function stripGeometry(shot, box = STRIPBOX) {
     path: l.path?.length >= 2 ? pts(l.path.map(([y, x]) => [x, y])) : null,
     start: l.start ? pt(l.start.x, l.start.y) : null,
     miss: Math.abs(miss) < ON_M ? null
-      : { x1: +px(b.x).toFixed(1), x2: +px(l.at_broom.x).toFixed(1), y: +(py(b.y) - 7).toFixed(1), label: `${cm5(miss)} cm` },
+      : { x1: +px(b.x).toFixed(1), x2: +px(l.at_broom.x).toFixed(1), y: +(py(b.y) - 7).toFixed(1), label: feetInches(miss) },
   };
 }

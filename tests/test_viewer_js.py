@@ -1549,11 +1549,15 @@ class TestLineFigures:
     def test_a_wide_throw_confirmed_from_behind_the_thrower(self):
         f = self.by_key(self.figs(self.measured()))
         assert (f["broom"]["value"], f["broom"]["note"], f["broom"]["tick"]) == (
-            "70 cm wide", "confirmed from behind the thrower", "confirmed")
-        assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "stone set 23 cm left of centre")
-        assert (f["hog"]["value"], f["hog"]["note"]) == ("15 cm wide", "of the hack-to-broom line")
-        assert (f["weight"]["value"], f["curl"]["value"]) == ("13.8 s", "1.1 m")
+            "2 ft 4 in wide", "confirmed from behind the thrower", "confirmed")
+        assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "stone set 9 in left of centre")
+        assert (f["hog"]["value"], f["hog"]["note"]) == ("6 in wide", "of the hack-to-broom line")
+        assert (f["weight"]["value"], f["curl"]["value"]) == ("13.8 s", "3 ft 9 in")
         assert (f["rest"]["value"], f["rest"]["note"]) == ("12-foot", "1.8 m from the button")
+
+    def test_an_offset_is_in_feet_and_inches_to_the_nearest_inch(self):
+        got = run_js('out([0.0254, -0.3048, 0.712, 0.3302, 2.4892].map(feetInches));')
+        assert got == ["1 in", "1 ft", "2 ft 4 in", "1 ft 1 in", "8 ft 2 in"]
 
     def test_within_ten_centimetres_is_on_the_broom(self):
         f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.06})))
@@ -1562,7 +1566,7 @@ class TestLineFigures:
     def test_hidden_from_behind_the_thrower_keeps_the_number_and_says_so(self):
         f = self.by_key(self.figs(self.measured(confirmed=None)))
         assert (f["broom"]["value"], f["broom"]["note"], f["broom"]["tick"], f["broom"]["dim"]) == (
-            "70 cm wide", "not confirmed: hidden from behind the thrower", "unseen", False)
+            "2 ft 4 in wide", "not confirmed: hidden from behind the thrower", "unseen", False)
 
     def test_a_check_that_disagrees_greys_the_number(self):
         f = self.by_key(self.figs(self.measured(confirmed=False)))
@@ -1571,7 +1575,7 @@ class TestLineFigures:
     def test_no_curl_direction_says_left_or_right(self):
         f = self.by_key(self.figs(self.measured(side=None, curl=None,
                                                 at_broom={"x": -1.35, "miss_m": 0.30})))
-        assert f["broom"]["value"] == "30 cm right"
+        assert f["broom"]["value"] == "1 ft right"
 
     def test_an_older_chart_predates_the_measurement(self):
         got = self.figs(self.measured(), {"schema_version": 5})
@@ -1676,7 +1680,7 @@ class TestStripAndTrack:
         assert g["broom"]["y"] == pytest.approx((0.17 + 2.3) * 420 / 41.2, abs=0.05)
         last_y = float(g["ext"].split()[-1].split(",")[1])
         assert last_y == pytest.approx(g["broom"]["y"], abs=0.1)
-        assert g["miss"]["label"] == "70 cm"
+        assert g["miss"]["label"] == "2 ft 4 in"
 
     def test_no_line_still_draws_the_sheet_broom_and_rest(self):
         s = shot(1, "red", "lead", target_broom={"x": 0.5, "y": 0.2}, delivered_stone_index=0,
@@ -1804,7 +1808,7 @@ class TestTheDetailPane:
             assert needle in src, needle
 
     def test_the_caption_is_the_spec_s(self):
-        assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±10 cm · "
+        assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±4 in · "
                 "wide = the side away from the curl") in self.SRC.read_text()
 
 
