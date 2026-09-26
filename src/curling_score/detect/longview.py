@@ -16,6 +16,7 @@ from __future__ import annotations
 import dataclasses
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -362,6 +363,29 @@ def find_in_frames(frames, view, color, times) -> Crossing:
     return crossing_from_tracks(tracks, view)
 
 
+# How far before a window an MPEG-TS recording is entered. Its keyframes are
+# at most 5 s apart on these streams, so this always reaches the one before.
+TS_LEAD_S = 10.0
+
+
+def _seek(video, t0: float) -> list:
+    """ffmpeg arguments that open ``video`` at exactly ``t0``.
+
+    A finished MP4 is indexed, and an input seek lands on the keyframe before
+    ``t0`` and decodes forward to it. A live recording is MPEG-TS, which has
+    no index: the input seek can land past that keyframe, and the decoder then
+    drops everything up to the next one -- measured on a live recording, a 4 s
+    window came back starting 2 s late with 62 of its 122 frames. So a
+    recording is entered well before ``t0`` and trimmed exactly on the output
+    side, which gives the same frames the MP4 does. Only the recording pays
+    for the extra decode.
+    """
+    if Path(video).suffix.lower() != ".ts":
+        return ["-ss", f"{t0}", "-i", str(video)]
+    start = max(0.0, t0 - TS_LEAD_S)
+    return ["-ss", f"{start}", "-i", str(video), "-ss", f"{t0 - start}"]
+
+
 def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
     """Frames of one window, cropped to the side view. About 0.25 s a call."""
     x, y, w, h = rect
@@ -373,8 +397,8 @@ def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
     # at rect width 813, and the reshape below failed on the size mismatch.
     # exact=1 crops to the exact pixel count regardless of chroma alignment.
     raw = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{t0}",
-         "-i", str(video), "-t", f"{t1 - t0 + 0.05}",
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", *_seek(video, t0),
+         "-t", f"{t1 - t0 + 0.05}",
          "-vf", f"crop={w}:{h}:{x}:{y}:exact=1,fps={fps}",
          "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
         capture_output=True).stdout
