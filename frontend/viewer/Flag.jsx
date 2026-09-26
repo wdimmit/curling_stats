@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NOTE_MAX, noteProblem } from "../core/index.mjs";
 import { sendFlag, whoIsFlagging } from "../runtime/flag.mjs";
+import * as store from "../runtime/overridesStore.mjs";
 
 export function FlagDialog({ flagging, onClose }) {
   const ref = useRef(null);
@@ -34,8 +35,11 @@ export function FlagDialog({ flagging, onClose }) {
 }
 
 function FlagForm({ flagging, onClose }) {
+  const formRef = useRef(null);
   const [note, setNote] = useState("");
-  const [who, setWho] = useState(undefined);      // undefined: still asking
+  // "asking" until the first answer; then {email, token}, null for nobody,
+  // or undefined when sign-in was too slow to say.
+  const [who, setWho] = useState("asking");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [sent, setSent] = useState(false);
@@ -52,12 +56,27 @@ function FlagForm({ flagging, onClose }) {
     return () => clearTimeout(t);
   }, [sent, onClose]);
 
+  // Mid-send, Escape would close the dialog while the flag is stored anyway,
+  // leaving the reporter sure they had cancelled it. Cancel is disabled too.
+  useEffect(() => {
+    if (!sending) return undefined;
+    const d = formRef.current?.closest("dialog");
+    const stop = e => e.preventDefault();
+    d?.addEventListener("cancel", stop);
+    return () => d?.removeEventListener("cancel", stop);
+  }, [sending]);
+
   const send = async ev => {
     ev.preventDefault();
     if (sending || noteProblem(note)) return;
     setSending(true);
     setError(null);
-    const w = who === undefined ? await whoIsFlagging() : who;
+    // The charter's unsaved edits first, so the version the flag records is
+    // the one on screen -- a renumbering still in its save debounce included.
+    if (store.isDirty()) await store.save();
+    // Asked again, not reused: a slow first answer may have arrived since,
+    // and the token is fresh rather than the one from when the dialog opened.
+    const w = await whoIsFlagging();
     const res = await sendFlag(
       { path: location.pathname, place: flagging.place, note: note.trim() }, w?.token);
     setSending(false);
@@ -67,12 +86,13 @@ function FlagForm({ flagging, onClose }) {
 
   if (sent) return <p className="flagThanks">Thanks, flagged.</p>;
 
-  const from = who === undefined ? "Checking sign-in…"
+  const from = who === "asking" ? "Checking sign-in…"
+    : who === undefined ? "Sign-in is slow to answer; it is checked again when you send."
     : who ? `From ${who.email ?? "your account"}`
     : "Sent without your name. Sign in on the site to attach your account.";
 
   return (
-    <form onSubmit={send}>
+    <form ref={formRef} onSubmit={send}>
       <h2 id="flagTitle">Flag an issue</h2>
       <p className="flagPlace">{flagging.text}</p>
       <textarea id="flagNote" rows={5} maxLength={NOTE_MAX} value={note}
@@ -81,7 +101,7 @@ function FlagForm({ flagging, onClose }) {
       <p className="flagWho">{from}</p>
       {error && <p className="flagError" role="alert">{error}</p>}
       <div className="flagButtons">
-        <button type="button" onClick={onClose}>Cancel</button>
+        <button type="button" disabled={sending} onClick={onClose}>Cancel</button>
         <button type="submit" className="on" disabled={sending || !!noteProblem(note)}>
           {sending ? "Sending…" : "Send"}
         </button>

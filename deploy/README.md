@@ -28,6 +28,10 @@ gcloud firestore indexes composite create --collection-group=vod_runs \
   --field-config=field-path=video_id,order=ascending --field-config=field-path=created_at,order=descending
 gcloud firestore indexes composite create --collection-group=vod_runs \
   --field-config=field-path=status,order=ascending --field-config=field-path=created_at,order=descending
+# Flags: newest first within a status. Create it before deploying the API
+# that lists them, or the admin list fails until the index has built.
+gcloud firestore indexes composite create --collection-group=flags \
+  --field-config=field-path=status,order=ascending --field-config=field-path=created_at,order=descending
 gcloud firestore fields ttls update expires_at --collection-group=rate_limits --enable-ttl
 gcloud firestore fields ttls update expires_at --collection-group=invites --enable-ttl
 # Two maps nothing ever queries. Left alone, Firestore indexes every subfield

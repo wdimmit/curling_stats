@@ -11,6 +11,7 @@ Composite indexes this needs (``deploy/firestore.indexes.json``):
     vod_runs  (video_id ASC, created_at DESC)
     sources   (league ASC, played_at DESC)
     charts    (run_id ASC)
+    flags     (status ASC, created_at DESC)
 
 Field-index exemptions the same file carries: charts.overrides and
 charts.overrides_meta are maps whose every subfield Firestore would otherwise
@@ -399,10 +400,12 @@ class FirestoreRepo:
         self._col(FLAGS).document(flag.id).set(flag.to_dict())
 
     def list_flags(self, status=None, limit=200):
-        # Equality only, sorted here: few flags, and no composite index to add.
+        # Ordered and limited in Firestore, not here: resolved flags pile up
+        # for good, and streaming them all to return the newest 200 is paid
+        # for per document. The status filter needs the composite index.
         q = self._col(FLAGS) if status is None else self._where(FLAGS, "status", "==", status)
-        docs = [Flag.from_dict(d.to_dict()) for d in q.stream()]
-        return sorted(docs, key=lambda f: f.created_at, reverse=True)[:limit]
+        q = q.order_by("created_at", direction=self._fs.Query.DESCENDING).limit(limit)
+        return [Flag.from_dict(d.to_dict()) for d in q.stream()]
 
     def resolve_flag(self, flag_id, now):
         ref = self._col(FLAGS).document(flag_id)

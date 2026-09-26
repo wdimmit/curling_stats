@@ -499,3 +499,20 @@ def test_restore_revives_a_flags_times():
                               "resolved_at": "2026-09-25T13:00:00+00:00"}]})
     f = repo.list_flags("resolved")[0]
     assert f.created_at.hour == 12 and f.resolved_at.hour == 13
+
+
+def test_the_flags_query_has_its_index():
+    """list_flags filters on status and orders by time in Firestore, which
+    needs a composite index -- declared in both places the deploy reads."""
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    indexes = json.loads((root / "deploy/firestore.indexes.json").read_text())["indexes"]
+    assert {"collectionGroup": "flags", "queryScope": "COLLECTION", "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"}]} in indexes
+    readme = (root / "deploy/README.md").read_text()
+    assert ("--collection-group=flags \\\n  --field-config=field-path=status,order=ascending "
+            "--field-config=field-path=created_at,order=descending") in readme
+

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """List and resolve the flags people have sent from the viewer.
 
-    ADMIN_TOKEN=... python scripts/flags.py list [--status open|resolved|all] [--json]
+    ADMIN_TOKEN=... python scripts/flags.py list [--status open|resolved|all] [--limit N] [--json]
     ADMIN_TOKEN=... python scripts/flags.py resolve f_abc f_def
 
 BASE_URL defaults to https://curling.dimmit.net. The admin token is the
@@ -20,19 +20,32 @@ import json
 import os
 import sys
 import unicodedata
+import urllib.error
 import urllib.request
 from datetime import datetime
 
 PAGES = {"c": ("/c/", "chart_id"), "s": ("/s/", "share_slug"), "g": ("/g/", "source_id")}
 
+# The characters that change what a terminal does or shows: controls (an
+# escape code runs), lone surrogates, and the bidi overrides that reorder
+# what follows. Not every category-C character: ZWJ (Cf) holds emoji
+# together, and Cn only means "newer than this Python's Unicode tables".
+_BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A))
+
+
+def _unsafe(ch: str) -> bool:
+    if ch in "\n\t":
+        return False
+    return unicodedata.category(ch) in ("Cc", "Cs") or ord(ch) in _BIDI
+
 
 def _safe(text: str) -> str:
-    """Every control or format character but a newline, escaped.
+    """`text` with anything that could drive the terminal escaped.
 
-    The server strips them on the way in; this is the second guard, because
+    The server strips these on the way in; this is the second guard, because
     a stored escape code printed raw runs in the terminal reading it."""
-    return "".join(ch if ch == "\n" or not unicodedata.category(ch).startswith("C")
-                   else ch.encode("unicode_escape").decode() for ch in text)
+    return "".join(ch.encode("unicode_escape", "backslashreplace").decode() if _unsafe(ch)
+                   else ch for ch in text)
 
 
 def rock_link(flag: dict, base: str) -> str:
@@ -55,7 +68,11 @@ def describe(flag: dict, base: str) -> str:
     when = datetime.fromisoformat(flag["created_at"]).astimezone().strftime("%Y-%m-%d %H:%M")
     who = (flag.get("user") or {}).get("email") or "anonymous"
     game = place.get("game_index")
-    at = f"Game {game + 1 if game is not None else '?'} · End {place.get('end')}"
+    # The game's number in the video. The reporter's dialog shows no game
+    # number when the page holds one game, so the two never disagree.
+    at = f"Game {game + 1 if game is not None else '?'}"
+    if place.get("end") is not None:
+        at += f" · End {place['end']}"
     if place.get("rock") is not None:
         at += f" · Rock {place['rock']}" + (f" ({place['label']})" if place.get("label") else "")
     lines = [f"{flag['id']}  {flag['status']}  {when}  {who}",
@@ -78,11 +95,23 @@ def _call(method: str, url: str, token: str):
         return json.load(r)
 
 
+def _why(err: Exception) -> str:
+    """An HTTP or network failure as one line: the status and the API's detail."""
+    if isinstance(err, urllib.error.HTTPError):
+        try:
+            detail = json.loads(err.read() or b"{}").get("detail")
+        except ValueError:
+            detail = None
+        return f"{err.code} {detail or err.reason}"
+    return str(getattr(err, "reason", err))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     ls = sub.add_parser("list")
     ls.add_argument("--status", default="open", choices=("open", "resolved", "all"))
+    ls.add_argument("--limit", type=int, default=200)
     ls.add_argument("--json", action="store_true")
     rs = sub.add_parser("resolve")
     rs.add_argument("ids", nargs="+")
@@ -93,16 +122,30 @@ def main(argv=None) -> int:
         return 2
     base = os.environ.get("BASE_URL", "https://curling.dimmit.net").rstrip("/")
     if args.cmd == "list":
-        got = _call("GET", f"{base}/api/admin/flags?status={args.status}", token)["flags"]
+        try:
+            got = _call("GET", f"{base}/api/admin/flags?status={args.status}"
+                               f"&limit={args.limit}", token)["flags"]
+        except OSError as err:          # URLError and HTTPError are OSErrors
+            print(f"could not list flags: {_why(err)}", file=sys.stderr)
+            return 1
         if args.json:
             print(json.dumps(got, indent=1))
         else:
             print("\n\n".join(describe(f, base) for f in got) or "no flags")
+            if len(got) >= args.limit:
+                print(f"\n{len(got)} shown; there may be more (raise --limit)")
         return 0
+    # Each id on its own: one typo must not leave the rest unresolved.
+    failed = 0
     for fid in args.ids:
-        f = _call("POST", f"{base}/api/admin/flags/{fid}/resolve", token)
+        try:
+            f = _call("POST", f"{base}/api/admin/flags/{fid}/resolve", token)
+        except OSError as err:
+            print(f"{fid}: {_why(err)}", file=sys.stderr)
+            failed += 1
+            continue
         print(f"{f['id']} resolved")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

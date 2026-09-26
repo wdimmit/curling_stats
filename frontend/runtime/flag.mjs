@@ -10,13 +10,27 @@ import { settleWithin, settledUser } from "../core/index.mjs";
 
 export const SIGN_IN_WAIT_MS = 3000;
 
-export function whoIsFlagging() {
-  return settleWithin((async () => {
-    const auth = await import("../site/auth.js");
-    const u = await settledUser(auth.onUser);
-    if (!u) return null;
-    return { email: u.email ?? null, token: await u.getIdToken() };
-  })(), SIGN_IN_WAIT_MS, null);
+// One wait for auth to decide, shared by every call: a second call after a
+// slow first one picks up the answer that has arrived since.
+let settled = null;
+
+async function signedIn() {
+  const auth = await import("../site/auth.js");
+  await (settled ??= settledUser(auth.onUser));
+  return auth.currentUser();
+}
+
+/* {email, token} for a signed-in person, null for nobody, undefined when auth
+ * has not answered within `ms`. The dialog asks again at Send, so a slow
+ * first answer costs the display, never the attribution. The token is asked
+ * for on every call: Firebase hands back a fresh one when it is near expiry,
+ * and a dialog left open past the hour would otherwise send a dead token,
+ * which the server can only read as anonymous. */
+export async function whoIsFlagging(ms = SIGN_IN_WAIT_MS) {
+  const u = await settleWithin(signedIn(), ms, undefined);
+  if (!u) return u;
+  const token = await settleWithin(u.getIdToken(), ms, null);
+  return token ? { email: u.email ?? null, token } : undefined;
 }
 
 const FAILED = "Could not send. Try again.";

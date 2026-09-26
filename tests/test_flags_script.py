@@ -66,3 +66,66 @@ def test_describe_never_prints_a_control_character():
     text = flags.describe(f, BASE)
     assert "\x1b" not in text and "\x07" not in text
     assert "\\x1b" in text and "> second" in text
+
+
+def _http_error(url, code, detail):
+    import io
+    import urllib.error
+    return urllib.error.HTTPError(url, code, "x", {}, io.BytesIO(
+        ('{"detail": "%s"}' % detail).encode()))
+
+
+def test_resolve_keeps_going_past_a_bad_id(monkeypatch, capsys):
+    calls = []
+
+    def fake_call(method, url, token):
+        calls.append(url)
+        if "f_typo" in url:
+            raise _http_error(url, 404, "no such flag")
+        return {"id": url.split("/")[-2], "status": "resolved"}
+
+    monkeypatch.setattr(flags, "_call", fake_call)
+    monkeypatch.setenv("ADMIN_TOKEN", "t")
+    assert flags.main(["resolve", "f_typo", "f_a", "f_b"]) == 1
+    out = capsys.readouterr()
+    assert [u.split("/")[-2] for u in calls] == ["f_typo", "f_a", "f_b"]
+    assert "f_a resolved" in out.out and "f_b resolved" in out.out
+    assert "f_typo: 404 no such flag" in out.err
+
+
+def test_a_failed_list_says_why_without_a_traceback(monkeypatch, capsys):
+    def fake_call(method, url, token):
+        raise _http_error(url, 401, "bad admin token")
+
+    monkeypatch.setattr(flags, "_call", fake_call)
+    monkeypatch.setenv("ADMIN_TOKEN", "t")
+    assert flags.main(["list"]) == 1
+    assert "401 bad admin token" in capsys.readouterr().err
+
+
+def test_list_asks_for_a_limit_and_says_when_it_may_be_cut(monkeypatch, capsys):
+    seen = []
+
+    def fake_call(method, url, token):
+        seen.append(url)
+        return {"flags": [flag(id=f"f_{i}") for i in range(3)]}
+
+    monkeypatch.setattr(flags, "_call", fake_call)
+    monkeypatch.setenv("ADMIN_TOKEN", "t")
+    assert flags.main(["list", "--limit", "3"]) == 0
+    assert "limit=3" in seen[0]
+    assert "3 shown; there may be more (raise --limit)" in capsys.readouterr().out
+
+
+def test_safe_keeps_joiners_tabs_and_newer_characters():
+    text = flags._safe("\U0001f468‍\U0001f469\tok \U0001fae9 \x1b[31m ‮")
+    assert "‍" in text and "\t" in text and "\U0001fae9" in text
+    assert "\x1b" not in text and "‮" not in text
+    assert "\\x1b" in text and "\\u202e" in text
+
+
+def test_a_place_without_an_end_names_the_game_only():
+    f = flag(place={**flag()["place"], "end": None, "end_id": None, "rock": None,
+                    "rock_id": None, "key": None})
+    text = flags.describe(f, BASE)
+    assert "End None" not in text and "Game 1" in text

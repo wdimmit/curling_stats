@@ -2,38 +2,40 @@
  *
  * Plain ESM with no React and no DOM, so the Python suite can run it under
  * bare node -- see tests/test_viewer_js.py. */
+import { NOTE_MAX, VIDEO_LEAD_IN_S } from "./constants.mjs";
 import { shotVideoTime } from "./shots.mjs";
-import { endIdentity, identity, keyFor } from "./timeline.mjs";
-
-export const NOTE_MAX = 2000;   // api.MAX_FLAG_NOTE
-const VIDEO_LEAD_IN_S = 10;     // timeline.VIDEO_LEAD_IN_S
+import { cursor, endIdentity, identity } from "./timeline.mjs";
 
 /* The rock the cursor is on, as a flag records it, and the line the dialog
- * shows. An end with no rocks is still somewhere to flag: its rock is null.
+ * shows. An end with no rocks is still somewhere to flag, and so is a game
+ * with no ends -- nothing detected is the failure most worth reporting.
  * Identities are sent as text -- the detector's number unless a charter
- * renumbered -- so a flag still finds its rock after the display moves. */
+ * renumbered -- so a flag still finds its rock after the display moves.
+ *
+ * The rock comes from `cursor()`, the editor's own reading of it, so the key
+ * a flag records is the one an edit to that rock is saved under. */
 export function flagPlace(view, ei, si) {
-  const at = view.ends[ei];
-  if (!at) return null;
-  const e = at.end;
-  const raw = at.raws[si] ?? null;
-  const shot = at.shots[si] ?? null;
+  const { end: e, shot, raw, key } = cursor(view, ei, si);
   const label = shot ? [shot.color, shot.position].filter(Boolean).join(", ") || null : null;
   const place = {
     game_index: view.game.index ?? null,
-    end: e.number ?? null,
-    end_id: String(endIdentity(e)),
+    end: e ? e.number ?? null : null,
+    end_id: e ? String(endIdentity(e)) : null,
     rock: shot ? shot.number : null,
     rock_id: raw ? String(identity(raw)) : null,
-    key: raw ? keyFor(view.game, e, raw) : null,
-    // A rock never seen arriving has no t_video_s; it still has the time the
-    // viewer seeks to, and those are the rocks most likely to be flagged.
-    t_video_s: typeof shot?.t_video_s === "number" ? shot.t_video_s
-      : shotVideoTime(shot, VIDEO_LEAD_IN_S),
+    key,
+    // The time the viewer seeks to: t_enter less the lead-in, as the
+    // pipeline's t_video_s, and for a rock never seen arriving, its rest or
+    // its guess -- those are the rocks most likely to be flagged.
+    t_video_s: shotVideoTime(shot, VIDEO_LEAD_IN_S),
     label,
   };
-  const text = `Game ${(view.gi ?? 0) + 1} · End ${place.end}`
-    + (shot ? ` · Rock ${place.rock}${label ? ` (${label})` : ""}` : "");
+  // A hosted page holds one game, whose number here would be 1 whichever game
+  // of the video it is; the owner's list numbers games within the video. So
+  // name the game only where the page has a choice of them.
+  const game = view.doc?.games?.length > 1 ? `Game ${(place.game_index ?? view.gi) + 1} · ` : "";
+  const text = !e ? "No ends in this game"
+    : `${game}End ${place.end}` + (shot ? ` · Rock ${place.rock}${label ? ` (${label})` : ""}` : "");
   return { place, text };
 }
 

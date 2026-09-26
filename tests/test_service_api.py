@@ -1451,3 +1451,28 @@ class TestFlags:
                       headers={"Content-Type": "application/json"}).status_code == 201
         assert world["repo"].list_flags()[0].note == "ok"
         assert c.get("/api/admin/flags", headers=ADMIN).status_code == 200
+
+    def test_a_whole_number_too_big_for_a_float_is_refused(self, world):
+        """JSON parses it to an int, and math.isfinite on it overflows."""
+        ch = self.chart(world)
+        raw = ('{"path": "/c/%s/", "note": "x", "place": {"t_video_s": %s}}'
+               % (ch.id, "1" * 400)).encode()
+        r = world["client"].post("/api/flags", content=raw,
+                                 headers={"Content-Type": "application/json"})
+        assert r.status_code == 422
+        assert world["repo"].list_flags() == []
+
+    def test_a_forged_forwarded_for_does_not_buy_a_fresh_budget(self, world):
+        """Cloud Run's front end appends the address it saw; whatever the
+        caller wrote before it is the caller's to invent."""
+        ch = self.chart(world)
+        codes = [self.flag(world, f"/c/{ch.id}/", ip=f"10.0.0.{i}, 9.9.9.9").status_code
+                 for i in range(21)]
+        assert codes[:20] == [201] * 20 and codes[20] == 429
+
+    def test_behind_a_load_balancer_the_second_to_last_entry_is_the_caller(self, world):
+        ch = self.chart(world)
+        world["settings"].proxy_hops = 2
+        codes = [self.flag(world, f"/c/{ch.id}/", ip=f"10.0.0.{i}, 9.9.9.9, 35.1.1.{i}").status_code
+                 for i in range(21)]
+        assert codes[20] == 429

@@ -15,6 +15,9 @@
       { "fieldPath": "created_at", "order": "DESCENDING" } ] },
     { "collectionGroup": "vod_runs", "queryScope": "COLLECTION", "fields": [
       { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "created_at", "order": "DESCENDING" } ] },
+    { "collectionGroup": "flags", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" },
       { "fieldPath": "created_at", "order": "DESCENDING" } ] }
   ],
   "fieldOverrides": [

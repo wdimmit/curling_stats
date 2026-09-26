@@ -20,7 +20,6 @@ import hashlib
 import hmac
 import json
 import logging
-import math
 import os
 import re
 import unicodedata
@@ -104,6 +103,8 @@ FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
 _PLACE_INTS = ("game_index", "end", "rock")
 _PLACE_TEXT = {"end_id": 40, "rock_id": 40, "key": 40, "label": 80}
 PLACE_INT_MAX = 1_000_000
+# Two days: past the longest video we accept (Settings.max_hours).
+FLAG_VIDEO_S_MAX = 172_800
 # Starting a chart on a game we already hold queues no work, so it gets a
 # budget of its own rather than one of the five submissions an hour.
 CHART_RATE_FACTOR = 6
@@ -142,6 +143,10 @@ class Settings:
     max_queued: int = 10
     rate_hour: int = 5
     rate_day: int = 20
+    # How many proxies append to X-Forwarded-For before us: 1 for Cloud Run
+    # (a domain mapping included), 2 behind an external HTTPS load balancer,
+    # which appends its own address after the caller's. See client_ip.
+    proxy_hops: int = 1
     ip_salt: str = "curling"
     lease_s: float = LEASE_S
     # Firebase's web config. None of it is secret -- the apiKey is a public
@@ -172,6 +177,7 @@ class Settings:
             max_queued=int(env("MAX_QUEUED", "10")),
             rate_hour=int(env("RATE_HOUR", "5")),
             rate_day=int(env("RATE_DAY", "20")),
+            proxy_hops=int(env("PROXY_HOPS", "1")),
             ip_salt=env("IP_SALT", "curling"),
             firebase_project=env("FIREBASE_PROJECT", ""),
             firebase_api_key=env("FIREBASE_API_KEY", ""),
@@ -214,11 +220,14 @@ def clean_place(place) -> dict:
             raise ValueError(f"place.{k} must be text of at most {most} characters")
         out[k] = v
     t = place.get("t_video_s")
-    # Finite, because one stored inf (1e400 parses to it) makes every later
-    # admin list and backup fail to serialise.
+    # A range check rather than math.isfinite: it refuses inf (1e400 parses
+    # to it), whose storage makes every later admin list and backup fail to
+    # serialise, and NaN (every comparison with it is false), and a 400-digit
+    # int, which isfinite cannot even convert. Python compares int and float
+    # exactly, so none of these overflow here.
     if t is not None and (isinstance(t, bool) or not isinstance(t, (int, float))
-                          or not math.isfinite(t)):
-        raise ValueError("place.t_video_s must be a number")
+                          or not 0 <= t <= FLAG_VIDEO_S_MAX):
+        raise ValueError("place.t_video_s must be a number of seconds")
     out["t_video_s"] = None if t is None else float(t)
     return out
 
@@ -334,9 +343,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return bool(user and team_id and user.id in repo.team_members(team_id))
 
     def client_ip(request: Request) -> str:
+        """The caller's address, as our own proxies saw it.
+
+        Cloud Run's front end appends the address it saw to whatever
+        X-Forwarded-For the caller sent, so only the entries our proxies
+        appended are facts -- the last `proxy_hops` of them -- and anything
+        before is the caller's to invent. Taking the first entry, as this
+        used to, gave anyone a fresh rate-limit budget per forged header.
+        """
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
-            return fwd.split(",")[0].strip()
+            hops = [h.strip() for h in fwd.split(",") if h.strip()]
+            if hops:
+                return hops[-min(max(settings.proxy_hops, 1), len(hops))]
         return request.client.host if request.client else "unknown"
 
     def ip_hash(request: Request) -> str:

@@ -81,8 +81,11 @@ is what is sent.
 **The dialog** (`Flag.jsx`, a native `<dialog>` opened with `showModal()`, which
 brings focus handling, Escape and a backdrop):
 - Title "Flag an issue".
-- The place, e.g. "Game 1 · End 4 · Rock 16 (red, skip)". "End 4" alone when
-  the end has no rocks.
+- The place, e.g. "End 4 · Rock 16 (red, skip)". "End 4" alone when the end
+  has no rocks, and "No ends in this game" when detection found none, which is
+  still flaggable. The game is named ("Game 2 · …", by its number in the
+  video) only when the page holds more than one. A hosted page holds one, where
+  the number would always read 1 and disagree with the owner's list.
 - A textarea, required, `maxlength` 2,000, focused on open.
 - One line saying who the flag is from:
   - "From *email*" when signed in;
@@ -141,8 +144,10 @@ It fails soft:
 
 **`GET /api/admin/flags?status=open|resolved|all&limit=200`**, behind
 `require_admin`, returns `{"flags": [...]}` newest first. `status` defaults to
-`open`. Filtering is on `status` equality with sorting in Python, as
-`charts_for_owner` does, so no new Firestore index is needed.
+`open`. Firestore orders and limits the query itself, because resolved flags
+pile up and are billed per document read. That needs a composite index,
+`flags (status ASC, created_at DESC)`, declared in `deploy/firestore.indexes.json`
+and `deploy/README.md`. Create it before deploying.
 
 **`POST /api/admin/flags/{id}/resolve`**, behind `require_admin`, sets `status`
 and `resolved_at` and returns the flag, or 404.
@@ -237,12 +242,15 @@ and `resolved_at` and returns the flag, or 404.
   worsens the leak. The fix is its own change.
 - **Spam.** Anyone can flag. The 2,000-character cap and admin-only reading
   bound the harm. There is no captcha.
-  - The rate limit does **not** bound it yet. `client_ip` trusts the first
-    `X-Forwarded-For` entry, which the client controls, so a spoofed header
-    gets a fresh budget. That bug predates flags and weakens the submission
-    limit too. The fix is its own change: take the entry Google's front end
-    appends, after confirming the deployed setup.
-  - If abuse shows up, `ip_hash` still groups honest clients.
+  - The rate limit bounds it, now that `client_ip` takes the address our own
+    proxies appended to `X-Forwarded-For`: the last entry for Cloud Run and
+    its domain mapping (`Settings.proxy_hops`, env `PROXY_HOPS`, default 1).
+    It used to take the first entry, which the caller writes, so any forged
+    header bought a fresh budget. That affected the submission limit too.
+  - Behind an external HTTPS load balancer, set `PROXY_HOPS=2`: the balancer
+    appends its own address after the caller's.
+  - To check on the live service, send 21 flags with 21 different forged
+    first entries. The 21st must get 429.
 - **Hostile text.** Notes and place fields are read in the owner's terminal.
   The server strips control characters (except newline and tab), bidi
   overrides and lone surrogates. It refuses NaN, Infinity, non-finite and

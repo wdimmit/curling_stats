@@ -2288,23 +2288,33 @@ class TestThePhoneTabsCss:
 class TestFlagPlace:
     """What a flag records about the rock it was sent from."""
 
-    def place(self, d, ei=0, si=0):
-        return run_js(f"out(flagPlace(buildGameView({json.dumps(d)}, 0, {{}}), {ei}, {si}));")
+    def place(self, d, ei=0, si=0, gi=0):
+        return run_js(f"out(flagPlace(buildGameView({json.dumps(d)}, {gi}, {{}}), {ei}, {si}));")
 
     def test_a_rock(self):
-        d = doc([shot(1, "red", "lead", t_video_s=812.5), shot(2, "yellow", "lead")],
+        """A hosted page holds one game, so the dialog names no game: its
+        number there would be 1 whichever game of the video it was, and the
+        owner's list numbers games within the video."""
+        d = doc([shot(1, "red", "lead", t_enter_s=822.5), shot(2, "yellow", "lead")],
                 end_number=4)
         got = self.place(d)
         assert got["place"] == {"game_index": 0, "end": 4, "end_id": "4", "rock": 1,
                                 "rock_id": "1", "key": "0.4.1", "t_video_s": 812.5,
                                 "label": "red, lead"}
-        assert got["text"] == "Game 1 · End 4 · Rock 1 (red, lead)"
+        assert got["text"] == "End 4 · Rock 1 (red, lead)"
+
+    def test_a_page_with_two_games_names_the_game(self):
+        d = doc([shot(1, "red", "lead")])
+        d["games"].append({**d["games"][0], "index": 1})
+        got = self.place(d, gi=1)
+        assert got["place"]["game_index"] == 1
+        assert got["text"] == "Game 2 · End 1 · Rock 1 (red, lead)"
 
     def test_an_end_with_no_rocks(self):
         got = self.place(doc([], end_number=3))
         assert got["place"]["rock"] is None and got["place"]["key"] is None
         assert got["place"]["t_video_s"] is None and got["place"]["label"] is None
-        assert got["text"] == "Game 1 · End 3"
+        assert got["text"] == "End 3"
 
     def test_a_rock_without_a_video_time(self):
         got = self.place(doc([shot(1, "red", "lead")]))
@@ -2331,8 +2341,38 @@ class TestFlagPlace:
         got = self.place(doc([shot(1, "red", "lead")], game_index=1))
         assert got["place"]["game_index"] == 1 and got["place"]["key"] == "1.1.1"
 
-    def test_past_the_last_end_there_is_nothing_to_flag(self):
-        assert self.place(doc([shot(1, "red", "lead")]), ei=5) is None
+    def test_a_game_with_no_ends_can_still_be_flagged(self):
+        """Nothing detected at all is the failure most worth reporting."""
+        d = doc([])
+        d["games"][0]["ends"] = []
+        got = self.place(d)
+        assert got["place"] == {"game_index": 0, "end": None, "end_id": None, "rock": None,
+                                "rock_id": None, "key": None, "t_video_s": None,
+                                "label": None}
+        assert got["text"] == "No ends in this game"
+
+    def test_it_reads_the_cursor_it_does_not_redo_it(self):
+        src = (Path(__file__).resolve().parents[1] / "frontend/core/flag.mjs").read_text()
+        assert "cursor(view, ei, si)" in src and "at.raws[si]" not in src
+        assert "shotVideoTime(shot, VIDEO_LEAD_IN_S)" in src and "shot?.t_video_s" not in src
+
+
+class TestFlagConstants:
+    """Numbers the viewer and the server must agree on, where the frontend keeps
+    them (core/constants.mjs), checked against the Python they mirror."""
+
+    def test_they_match_the_server(self):
+        from curling_score import timeline
+        from curling_score.service import api
+        assert run_js("out([NOTE_MAX, VIDEO_LEAD_IN_S]);") == [
+            api.MAX_FLAG_NOTE, timeline.VIDEO_LEAD_IN_S]
+
+    def test_they_live_in_constants(self):
+        root = Path(__file__).resolve().parents[1] / "frontend/core"
+        consts = (root / "constants.mjs").read_text()
+        assert "export const NOTE_MAX" in consts and "export const VIDEO_LEAD_IN_S" in consts
+        flag = (root / "flag.mjs").read_text()
+        assert "const NOTE_MAX" not in flag and "const VIDEO_LEAD_IN_S" not in flag
 
 
 class TestNoteProblem:
@@ -2422,6 +2462,29 @@ class TestTheFlagButton:
         app = self.src("frontend/viewer/App.jsx")
         on_key = app[app.index("const onKey = ev =>"):]
         assert on_key.index('getElementById("flagDialog")?.open') < on_key.index("switch (ev.key)")
+
+    def test_send_asks_who_again_with_a_fresh_token(self):
+        """A slow first answer must cost the display, never the attribution,
+        and a dialog left open past the token's hour must not send a dead one."""
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "const w = await whoIsFlagging();" in flag
+        assert "who === undefined ? await" not in flag
+        assert "checked again when you send" in flag
+        run = self.src("frontend/runtime/flag.mjs")
+        assert "settled ??= settledUser(auth.onUser)" in run
+        assert "u.getIdToken()" in run[run.index("export async function whoIsFlagging"):]
+
+    def test_a_send_in_flight_cannot_be_cancelled_into_a_lie(self):
+        """Cancel mid-send used to close the dialog while the flag was stored."""
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert 'disabled={sending} onClick={onClose}' in flag
+        assert 'addEventListener("cancel", stop)' in flag
+
+    def test_unsaved_edits_are_saved_before_the_flag(self):
+        """The flag's overrides version must include what the charter sees."""
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "if (store.isDirty()) await store.save();" in flag
+        assert flag.index("await store.save()") < flag.index("await sendFlag(")
 
     def test_send_cannot_fire_twice(self):
         flag = self.src("frontend/viewer/Flag.jsx")
