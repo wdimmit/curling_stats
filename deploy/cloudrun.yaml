@@ -27,6 +27,11 @@ spec:
             - { name: PUBLIC_BASE_URL,    value: https://chart.example.org }
             - { name: ALLOWED_CHANNEL_IDS, value: UC81pcWoRJbdnK77B3WS0zjg }
             - { name: REQUIRE_APPROVAL,   value: "0" }
+            # DOUBLES_ENABLED ("1", "true" or "yes") lets submissions, the
+            # playlist poller and admin reprocess make mixed doubles runs.
+            # Unset is off -- asking for doubles is a 400 and a doubles title
+            # is read as fours -- and it stays unset until the viewer can
+            # chart a doubles game. The worker is not gated by it.
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'

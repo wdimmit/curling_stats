@@ -120,6 +120,12 @@ class Settings:
     admin_token: str = ""
     allowed_channels: set = field(default_factory=set)
     require_approval: bool = False
+    # Whether a submission, the playlist poller or a reprocess may make a
+    # mixed doubles run. Off until the viewer can chart one: while off, asking
+    # for doubles is refused and a doubles title is read as fours, so the
+    # service behaves exactly as it did before formats. The worker is not
+    # gated -- it builds whatever format the job it claimed says.
+    doubles_enabled: bool = False
     model_id: str = "classical"
     # A hard sanity cap on what we will look at at all. Streams longer than
     # dedupe.MAX_WHOLE_S (5 h) are still accepted -- with a start time, and
@@ -153,6 +159,7 @@ class Settings:
             admin_token=env("ADMIN_TOKEN", ""),
             allowed_channels=chans,
             require_approval=env("REQUIRE_APPROVAL", "0") in ("1", "true", "yes"),
+            doubles_enabled=env("DOUBLES_ENABLED", "0") in ("1", "true", "yes"),
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
             max_queued=int(env("MAX_QUEUED", "10")),
@@ -277,6 +284,27 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if data is None:
             raise KeyError(key)
         return json.loads(data)
+
+    def requested_format(value) -> str | None:
+        """The format a request asked for, or None to let the title decide.
+
+        Anything but a known name is a 400, and so is doubles while the
+        service has it switched off (``Settings.doubles_enabled``).
+        """
+        if value in (None, "", "auto"):
+            return None
+        if value not in format_mod.FORMATS:
+            raise HTTPException(400, f"format must be one of {sorted(format_mod.FORMATS)}")
+        if value != "fours" and not settings.doubles_enabled:
+            raise HTTPException(400, "doubles games are not supported yet")
+        return value
+
+    def allowed_format(name: str | None) -> str | None:
+        """``name``, unless it is a format the service has switched off, which
+        is read as fours -- what every run was before formats existed."""
+        if name not in (None, "fours") and not settings.doubles_enabled:
+            return "fours"
+        return name
 
     def game_doc(run: Run, game_index: int | None, src: Source | None = None,
                  start_s: float | None = None) -> dict:
@@ -772,11 +800,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 raise HTTPException(400, "the length must be more than zero")
         sheet = body.get("sheet")
         sheet = None if sheet in (None, "") else int(sheet)
-        fmt_name = body.get("format")
-        if fmt_name in (None, "", "auto"):
-            fmt_name = None
-        elif fmt_name not in format_mod.FORMATS:
-            raise HTTPException(400, f"format must be one of {sorted(format_mod.FORMATS)}")
+        fmt_name = requested_format(body.get("format"))
         t = now()
         iph = ip_hash(request)
         team_id = body.get("team_id") or None
@@ -792,7 +816,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                                        settings.max_hours)
         except SubmissionError as exc:
             raise HTTPException(exc.status, exc.message)
-        fmt_name = fmt_name or source.format_from_title(meta.title)
+        fmt_name = fmt_name or allowed_format(source.format_from_title(meta.title))
 
         run = dedupe.find_reusable_run(repo.runs_for_video(link.video_id),
                                        settings.processing_version, start_s,
@@ -1534,7 +1558,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                   sheet=base.sheet if base else None,
                   published_at=base.published_at if base else None,
                   league=base.league if base else None,
-                  format=base.format if base else None,
+                  format=allowed_format(base.format if base else None),
                   playlist_id=base.playlist_id if base else None)
         repo.put_run(run)
         repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t, run_after=t))
@@ -1576,6 +1600,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             allowed_channels=settings.allowed_channels or None,
             max_hours=min(settings.max_hours, dedupe.MAX_WHOLE_S / 3600),
             initial_status="pending_approval" if settings.require_approval else "queued",
+            doubles_enabled=settings.doubles_enabled,
         )
         return result
 

@@ -23,8 +23,13 @@ DISABLE_AFTER_FAILURES = 3
 
 def poll(repo, youtube, *, processing_version: str, now: datetime,
          allowed_channels: set[str] | None = None, max_hours: float = 5.0,
-         max_new: int = MAX_AUTO_PER_POLL, initial_status: str = "queued") -> dict:
-    """Look at every enabled playlist once. Returns what happened, for the log."""
+         max_new: int = MAX_AUTO_PER_POLL, initial_status: str = "queued",
+         doubles_enabled: bool = False) -> dict:
+    """Look at every enabled playlist once. Returns what happened, for the log.
+
+    A run's format comes from its title, and a doubles title is read as fours
+    unless ``doubles_enabled`` says the service makes doubles runs yet.
+    """
     created, skipped, errors = [], [], []
     for pl in repo.list_playlists():
         if not pl.enabled:
@@ -66,7 +71,8 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                 created_at=now, title=meta.title, channel_id=meta.channel_id,
                 duration_s=meta.duration_s, published_at=meta.published_at,
                 playlist_id=pl.playlist_id, league=pl.label,
-                format=source.format_from_title(meta.title),
+                format=(source.format_from_title(meta.title) if doubles_enabled
+                        else "fours"),
             )
             repo.put_run(run)
             if initial_status == "queued":

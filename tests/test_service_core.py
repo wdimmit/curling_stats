@@ -458,6 +458,20 @@ class TestPlaylistWatcher:
         playlists.poll(repo, yt, processing_version="p+m", now=at(10))
         assert yt.calls == calls
 
+    def test_a_doubles_title_is_fours_unless_doubles_is_on(self):
+        repo, yt = self._setup()
+        yt.add(VideoMeta("vidA", "3/19 - Sheet 1 - Thursday Mixed Doubles League",
+                         "UCclub", 6000.0, "none", at(-3600)))
+        playlists.poll(repo, yt, processing_version="p+m", now=T0)
+        assert {r.video_id: r.format for r in repo.list_runs()} \
+            == {"vidA": "fours", "vidB": "fours"}
+        on = MemoryRepo()
+        on.put_playlist(WatchedPlaylist(id="p", playlist_id="PL1", label="Thursday",
+                                        created_at=T0))
+        playlists.poll(on, yt, processing_version="p+m", now=T0, doubles_enabled=True)
+        assert {r.video_id: r.format for r in on.list_runs()} \
+            == {"vidA": "doubles", "vidB": "fours"}
+
     def test_a_video_already_processed_is_not_reprocessed(self):
         repo, yt = self._setup()
         repo.put_run(run(id="r_x", video_id="vidA", processing_version="p+m", status="ready"))
