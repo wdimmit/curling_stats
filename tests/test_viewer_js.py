@@ -2067,7 +2067,25 @@ class TestBroomlessLine:
         assert run_js(f"out(lineX({json.dumps(self.broomless())}, 0));") == pytest.approx(-1.5)
         got, f = self.figs(self.broomless())
         assert got["reason"] is None
-        assert (f["curl"]["value"], f["curl"]["note"]) == ("1 ft", "from its line to where it stopped")
+        # base's confirmed defaults to True.
+        assert (f["curl"]["value"], f["curl"]["note"]) == (
+            "1 ft", "from its line to where it stopped · confirmed from behind the thrower")
+
+    def test_the_curl_figure_carries_the_camera_behind_the_thrower_s_check(self):
+        # M1: no other figure carries `line.confirmed` for a broomless rock,
+        # so the curl figure does -- the broom figure stays a dash, untouched.
+        _, f = self.figs(self.broomless(confirmed=True))
+        assert (f["curl"]["tick"], f["curl"]["dim"]) == ("confirmed", False)
+        assert f["curl"]["note"].endswith("· confirmed from behind the thrower")
+        assert (f["broom"]["tick"], f["broom"]["value"]) == (None, "–")
+
+        _, f = self.figs(self.broomless(confirmed=False))
+        assert (f["curl"]["tick"], f["curl"]["dim"]) == ("disagrees", True)
+        assert f["curl"]["note"].endswith("· the camera behind the thrower disagrees")
+
+        _, f = self.figs(self.broomless(confirmed=None))
+        assert (f["curl"]["tick"], f["curl"]["dim"]) == ("unseen", False)
+        assert f["curl"]["note"].endswith("· not confirmed: hidden from behind the thrower")
 
     def test_broom_figures_are_dashes_and_the_rest_are_measured(self):
         _, f = self.figs(self.broomless())
@@ -2095,7 +2113,8 @@ class TestBroomlessLine:
         s = self.broomless(path=[])
         s["delivered_stone_index"] = None
         _, f = self.figs(s)
-        assert (f["curl"]["value"], f["curl"]["note"]) == ("–", "no rest position")
+        assert (f["curl"]["value"], f["curl"]["note"]) == (
+            "–", "no rest position · confirmed from behind the thrower")
 
     def test_a_broomless_line_without_at_tee_draws_no_line(self):
         s = self.broomless(at_tee=None)
@@ -2360,16 +2379,23 @@ class TestTheDetailPane:
         assert "width={s.broom.w} height={s.broom.h}" in self.SRC.read_text()
 
     def test_the_caption_is_the_spec_s(self):
-        assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±4 in · "
-                "wide = the side away from the curl") in self.SRC.read_text()
+        assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±4 in") in self.SRC.read_text()
 
     def test_the_desktop_turns_the_strip_and_shares_the_figures(self):
         src = self.SRC.read_text()
         assert "sideways(stripShapes(stripGeometry(shot, DESKBOX)))" in src
         assert "stripShapes(stripGeometry(shot))" in src
         assert src.count("<Figures figures={f.figures} />") == 2
-        assert ("Sheet from above, thrower at the left · across ×1.5 · figures ±4 in · "
-                "wide = the side away from the curl") in src
+        assert ("Sheet from above, thrower at the left · across ×1.5 · figures ±4 in") in src
+
+    def test_a_broomless_rock_drops_the_intended_line_and_the_wide_gloss(self):
+        # M2: a doubles rock nobody held a broom for has no intended line to
+        # show and no curl direction to call "wide" against.
+        src = self.SRC.read_text()
+        assert '"the thrown line and where the rock went"' in src
+        assert '"the intended line, the thrown line and where the rock went"' in src
+        assert '" · wide = the side away from the curl"' in src
+        assert "isBroomless" in src and "!shot?.target_broom" in src
 
     def test_an_empty_end_says_so_rather_than_blaming_the_broom(self):
         assert 'if (!shot) return <p className="dnone">No rocks were detected in this end</p>;' in self.SRC.read_text()

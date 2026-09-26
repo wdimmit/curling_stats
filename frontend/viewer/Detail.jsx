@@ -52,6 +52,13 @@ function Strip({ shot, shapes: s, label, fluid }) {
   );
 }
 
+// A doubles rock nobody held a broom for has no intended line to show
+// against the thrown one, and no curl direction to call "wide" against.
+const isBroomless = shot => !shot?.target_broom && shot?.line?.at_tee != null;
+const stripWords = shot => isBroomless(shot)
+  ? { seen: "the thrown line and where the rock went", wideGloss: "" }
+  : { seen: "the intended line, the thrown line and where the rock went", wideGloss: " · wide = the side away from the curl" };
+
 const Check = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"
        style={{ fill: "none", strokeWidth: 2.6 }}><path d="M4 12 L10 18 L20 6" /></svg>
@@ -78,14 +85,15 @@ export function Figures({ figures }) {
 export function Detail({ shot, doc }) {
   const f = lineFigures(shot, doc);
   if (f.predates) return <p className="dnone">{f.reason}</p>;
+  const { seen, wideGloss } = stripWords(shot);
   return (
     <>
       <div className="dbody">
         <Strip shot={shot} shapes={stripShapes(stripGeometry(shot))}
-               label="The sheet from above, thrower at the bottom: the intended line, the thrown line and where the rock went" />
+               label={`The sheet from above, thrower at the bottom: ${seen}`} />
         <Figures figures={f.figures} />
       </div>
-      <p className="dcap">Sheet from above, thrower at the bottom · across ×3 · figures ±4 in · wide = the side away from the curl</p>
+      <p className="dcap">Sheet from above, thrower at the bottom · across ×3 · figures ±4 in{wideGloss}</p>
     </>
   );
 }
@@ -98,12 +106,13 @@ export function DeskDetail({ shot, doc }) {
   if (!shot) return <p className="dnone">No rocks were detected in this end</p>;
   const f = lineFigures(shot, doc);
   if (f.predates) return <p className="dnone">{f.reason}</p>;
+  const { seen, wideGloss } = stripWords(shot);
   return (
     <>
       <Strip shot={shot} shapes={sideways(stripShapes(stripGeometry(shot, DESKBOX)))} fluid
-             label="The sheet from above, thrower at the left: the intended line, the thrown line and where the rock went" />
+             label={`The sheet from above, thrower at the left: ${seen}`} />
       <Figures figures={f.figures} />
-      <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±4 in · wide = the side away from the curl</p>
+      <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±4 in{wideGloss}</p>
     </>
   );
 }

@@ -207,6 +207,17 @@ const curlFig = c => c?.m != null
   ? fig("curl", "Curl", feetInches(c.m), c.hit ? "from its line to where it hit a stone" : "from its line to where it stopped")
   : fig("curl", "Curl", "–", c?.hit ? "hit a stone before it was seen" : "no rest position");
 
+/* Whether the camera behind the thrower confirmed this line, and the note
+ * that says so -- shared by the broom figure (broom path) and the curl
+ * figure (broomless path, where nothing else carries `line.confirmed`). */
+function confirmTick(l) {
+  const tick = l.confirmed === true ? "confirmed" : l.confirmed === false ? "disagrees" : "unseen";
+  const note = { confirmed: "confirmed from behind the thrower",
+                 unseen: "not confirmed: hidden from behind the thrower",
+                 disagrees: "the camera behind the thrower disagrees" }[tick];
+  return { tick, note };
+}
+
 export function lineFigures(shot, doc) {
   const reason = lineReason(shot, doc);
   const predates = reason === "This chart predates line measurement";
@@ -227,20 +238,22 @@ export function lineFigures(shot, doc) {
   }
   if (!shot.target_broom) {
     // A doubles rock nobody held a broom for: nothing measures against one,
-    // but the hack, the weight, the curl and the rest do not need it.
+    // but the hack, the weight, the rest and the curl's own note do not need
+    // it. The curl figure still carries whether the camera behind the
+    // thrower confirmed this line, since nothing else here can.
+    const { tick, note: tickNote } = confirmTick(l);
+    const curlBase = curlFig(curlOf(shot));
+    const curl = { ...curlBase, tick, dim: tick === "disagrees", note: `${curlBase.note} · ${tickNote}` };
     return { predates, reason, figures: [
       fig("broom", "At the broom", "–", "no broom held in the house"),
       hackFig(shot),
       fig("hog", "At the hog line", "–", "no broom to aim at"),
-      weight, curlFig(curlOf(shot)), restFig] };
+      weight, curl, restFig] };
   }
   const miss = l.at_broom.miss_m;
   const c = curlOf(shot);
   const turn = turnOf(shot);
-  const tick = l.confirmed === true ? "confirmed" : l.confirmed === false ? "disagrees" : "unseen";
-  const tickNote = { confirmed: "confirmed from behind the thrower",
-                     unseen: "not confirmed: hidden from behind the thrower",
-                     disagrees: "the camera behind the thrower disagrees" }[tick];
+  const { tick, note: tickNote } = confirmTick(l);
   const broom = fig("broom", "At the broom",
                     Math.abs(miss) < ON_M ? "On the broom" : `${feetInches(miss)} ${sideWord(miss, turn)}`,
                     tickNote, { tick, dim: tick === "disagrees" });
