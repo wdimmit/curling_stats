@@ -59,8 +59,9 @@ One `Flag` record per flag, in a new `flags` collection:
   a chart stays on its run. `source_id` plus `t_video_s` finds the same rock in
   a later run, where end and rock numbers may differ.
 - `where` comes from the server because the browser does not know its run or
-  source on `/c/` and `/s/`, and because `window.CHART.slug` is not evidence of
-  anything (see Risks).
+  source on `/c/` and `/s/`, and because nothing the browser sends is evidence
+  of which chart it is on. A view-only page carries no chart id at all (fixed
+  in `d380961`).
 - Flags are in `export_all` and `import_all`, so the nightly backup and
   `restore` carry them. `resolved_at` joins `restore._TIME_FIELDS`.
 
@@ -232,14 +233,13 @@ and `resolved_at` and returns the flag, or 404.
 
 ## Risks
 
-- **A view-only link reveals the edit key.** Found while designing this and
-  separate from it:
-  - `/s/<share>/` boots with `window.CHART.slug = chart.id` (`api.py:1092`);
-  - its `timeline.json` carries `chart.slug = chart.id` (`api.py:360`);
-  - so anyone holding a view link can open `/c/<id>/` and edit.
-
-  This design never trusts the browser's slug, so it neither depends on nor
-  worsens the leak. The fix is its own change.
+- **A view-only link revealed the edit key (fixed).** Found while designing
+  this: `/s/<share>/` booted with `window.CHART.slug = chart.id`, and its
+  `timeline.json` carried `chart.slug = chart.id`, so anyone holding a view
+  link could open `/c/<id>/` and edit. Fixed separately in `d380961`: a
+  view-only page keys its cursor on its share key and its document carries
+  `slug: null`. Edit keys already read out of a view link before that stay
+  exposed; there is no way to rotate a chart's key.
 - **Spam.** Anyone can flag. The 2,000-character cap and admin-only reading
   bound the harm. There is no captcha.
   - The rate limit bounds it, now that `client_ip` takes the address our own
