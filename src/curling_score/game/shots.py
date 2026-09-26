@@ -381,7 +381,7 @@ MAX_FILL = 4
 
 
 def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL,
-                    house_sizes=None):
+                    house_sizes=None, base: int = 0):
     """Mark the deliveries an end is missing, and where they went.
 
     ``fit_end`` enforces strict alternation by dropping candidates, so by the
@@ -409,6 +409,8 @@ def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL,
     the first one we saw leaves no gap between deliveries at all, and the
     blanks for it used to be appended to the end of the end, where they named
     the wrong throwers for every shot in between.
+    ``base`` counts stones that were on the sheet before any rock was thrown,
+    which doubles places there.
     """
     short = per_end - len(seq)
     if not 0 < short <= max_fill:
@@ -421,7 +423,7 @@ def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL,
         while p < len(seq):
             color, dv = seq[p]
             if dv is not None:
-                need = next(sizes, 0) - (p + 1)
+                need = next(sizes, 0) - base - (p + 1)
                 if need > 0 and p == 0:
                     # Before the first rock seen there is no neighbour to
                     # alternate against, so any number of blanks fits: the
@@ -489,7 +491,7 @@ def _with_placeholders(deliveries):
 
 
 def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S,
-                    thrown_by=None, fmt=None):
+                    thrown_by=None, fmt=None, before=(), base: int = 0):
     """Build the shot list from observed deliveries.
 
     This replaces inferring shots from how the house changed. That approach
@@ -505,6 +507,8 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     ``thrown_by`` maps ``id(delivery)`` to the ``Release`` it was paired with,
     keyed by identity because two deliveries of a colour can compare equal.
     ``fmt`` sets how many rocks an end holds; four-player unless told.
+    ``before`` is the house rock 1 was thrown into (doubles' placed stones), and
+    ``base`` how many of those the house reads count.
     """
     from curling_score.detect.rest import stones_in_window, until_disturbed
     from curling_score.game.format import FOURS
@@ -537,10 +541,11 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
         houses[i] = stones_in_window(window) if window else []
 
     out: list[Shot] = []
-    previous: list = []
+    previous: list = list(before)
     seen = 0
     plan = _fill_short_end(_with_placeholders(deliveries), per_end,
-                           house_sizes=[len(houses[i]) for i in range(len(deliveries))])
+                           house_sizes=[len(houses[i]) for i in range(len(deliveries))],
+                           base=base)
     for color, dv in plan:
         if len(out) >= per_end:
             break

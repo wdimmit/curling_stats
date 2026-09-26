@@ -755,3 +755,61 @@ class TestAShotDoesNotKnowItsThrowerAlone:
         it must not answer with the four-player table. ``timeline.build_end``
         asks the format instead."""
         assert not hasattr(shots.Shot, "throw")
+
+
+class TestPlacedStones:
+    """Doubles: two stones sit in the house before rock 1 is thrown."""
+
+    PLACED = [det("yellow", 0.0, -0.5), det("red", 0.0, 3.4)]
+
+    def _dv(self, color, t, x, y):
+        from curling_score.detect.delivery import Delivery
+
+        return Delivery(color=color, t_enter=t, t_rest=t + 8.0, entry_y_m=4.0,
+                        rest_x_m=x, rest_y_m=y, travel_m=3.0)
+
+    def _frames(self, at):
+        return TestShotsFromDeliveries()._frames(at)
+
+    def _end(self, n, first=0):
+        """n rocks, red first, from rock index ``first``; each house read holds
+        the placed stones plus every rock thrown so far, seen or not."""
+        rocks = [det("red" if i % 2 == 0 else "yellow", -1.0 + 0.2 * i, 1.0) for i in range(first + n)]
+        dvs = [self._dv(r.color, 10 + 18 * i, r.x_m, r.y_m) for i, r in enumerate(rocks) if i >= first]
+        at = {0: list(self.PLACED)}
+        for i in range(first + n):
+            at[10 + 18 * i + 8] = list(self.PLACED) + rocks[:i + 1]
+        return dvs, self._frames(at)
+
+    def test_rock_1_adds_only_itself(self):
+        from curling_score.game import format as F
+
+        dvs, fr = self._end(3)
+        got = shots.from_deliveries(dvs, fr, fmt=F.DOUBLES, before=self.PLACED, base=2)
+        added = got[0].house_delta["added"]
+        assert len(added) == 1 and added[0]["color"] == "red"
+        assert got[0].stones[got[0].delivered_stone_index].x_m == pytest.approx(-1.0)
+
+    def test_the_placed_stones_add_no_leading_blanks(self):
+        from curling_score.game import format as F
+
+        dvs, fr = self._end(8)
+        got = shots.from_deliveries(dvs, fr, fmt=F.DOUBLES, before=self.PLACED, base=2)
+        assert len(got) == 10
+        assert [s.missing for s in got[:2]] == [False, False]
+        assert [s.missing for s in got[8:]] == [True, True]
+
+    def test_without_the_base_they_would_invent_blanks(self):
+        from curling_score.game import format as F
+
+        dvs, fr = self._end(8)
+        got = shots.from_deliveries(dvs, fr, fmt=F.DOUBLES)
+        assert [s.missing for s in got[:2]] == [True, True]
+
+    def test_a_missed_rock_1_still_gets_its_blank(self):
+        from curling_score.game import format as F
+
+        dvs, fr = self._end(7, first=1)      # rock 1 thrown, never seen
+        got = shots.from_deliveries(dvs, fr, fmt=F.DOUBLES, before=self.PLACED, base=2)
+        assert got[0].missing is True and got[1].missing is False
+        assert got[0].color == "red" and got[1].color == "yellow"

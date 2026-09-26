@@ -171,3 +171,31 @@ def read_before(frames, placed: Placement, t_first: float) -> Placement:
     use = again if again is not None else placed
     return Placement(t_s=placed.t_s, house=use.house, guard=use.guard,
                      power_play=use.power_play, seed=seed)
+
+
+def exclude(deliveries, placed: Placement | None):
+    """Split candidates into (kept, dropped) by the placement.
+
+    Dropped: anything that settled before the placement had held for
+    ``SETTLE_S``. Those are the placement stones themselves (slid, carried or
+    set down) and whatever was slid before the game. By time alone: a later
+    hit and stick on a placed stone's spot.
+    """
+    if placed is None:
+        return list(deliveries), []
+    cut = placed.t_s + SETTLE_S
+    kept = [d for d in deliveries if d.t_rest >= cut]
+    dropped = [d for d in deliveries if d.t_rest < cut]
+    return kept, dropped
+
+
+def fill_base(placed: Placement | None, fmt) -> int:
+    """How many stones rock 1 found already in the panel's view.
+
+    The placed stones that were seen. When no placement was found in a format
+    that places stones, assume all of them, the conservative choice: they are
+    on the ice either way, and counting them as thrown rocks invents blanks.
+    """
+    if placed is not None:
+        return len(placed.stones)
+    return 2 * fmt.placed_per_team

@@ -109,3 +109,53 @@ class TestReadBefore:
         found = P.find(fr, 0, 400)
         read = P.read_before(fr, found, t_first=5000.0)
         assert (read.hammer, read.guard, read.seed) == (found.hammer, found.guard, ())
+
+
+from curling_score.detect.delivery import Delivery
+from curling_score.game import format as F
+
+
+def dv(color, t_rest, x=0.3, y=1.0):
+    return Delivery(color=color, t_enter=t_rest - 8.0, t_rest=t_rest, entry_y_m=4.0,
+                    rest_x_m=x, rest_y_m=y, travel_m=3.0)
+
+
+PLACED = P.Placement(t_s=200.0, house=("yellow", 0.0, -0.5), guard=("red", 0.0, 3.4),
+                     power_play=None)
+
+
+class TestExclude:
+    def test_nothing_is_dropped_without_a_placement(self):
+        ds = [dv("red", 100.0), dv("yellow", 300.0)]
+        assert P.exclude(ds, None) == (ds, [])
+
+    def test_a_slid_placement_stone_is_dropped(self):
+        slid = dv("yellow", 166.0, x=0.01, y=-0.5)      # ih59 end 1's house stone
+        guard = dv("red", 205.0, x=0.0, y=3.4)          # settles as the pattern completes
+        rock1 = dv("red", 260.0, x=0.2, y=2.9)
+        kept, dropped = P.exclude([slid, guard, rock1], PLACED)
+        assert kept == [rock1] and dropped == [slid, guard]
+
+    def test_a_pre_game_slide_is_dropped(self):
+        stray = dv("red", 120.0, x=1.8, y=-0.76)
+        assert P.exclude([stray], PLACED) == ([], [stray])
+
+    def test_a_later_rock_on_a_placed_spot_is_kept(self):
+        # A hit and stick on the house stone, well after rock 1.
+        stick = dv("red", 900.0, x=0.0, y=-0.5)
+        assert P.exclude([stick], PLACED) == ([stick], [])
+
+
+class TestFillBase:
+    def test_a_complete_placement_is_two_stones(self):
+        assert P.fill_base(PLACED, F.DOUBLES) == 2
+
+    def test_an_unseen_guard_is_not_counted(self):
+        alone = P.Placement(t_s=1.0, house=("red", 0.0, -0.5), guard=None, power_play=None)
+        assert P.fill_base(alone, F.DOUBLES) == 1
+
+    def test_no_placement_in_doubles_assumes_two(self):
+        assert P.fill_base(None, F.DOUBLES) == 2
+
+    def test_fours_places_nothing(self):
+        assert P.fill_base(None, F.FOURS) == 0
