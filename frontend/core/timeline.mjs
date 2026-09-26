@@ -13,7 +13,7 @@
  */
 import { TYPICAL_GAP_S } from "./constants.mjs";
 import { playerHacks } from "./line.mjs";
-import { FOURS, formatOf, ordinalOf, shotLabel, throwInfo } from "./format.mjs";
+import { FOURS, formatOf, shotLabel, throwInfo } from "./format.mjs";
 
 /* A shot is known by the number detection gave it. Moving one renumbers the
  * end, so `id` keeps the original where that has happened. */
@@ -34,9 +34,6 @@ export function merge(g, e, s, overrides) {
   if (!patch) return s;
   return { ...s, ...patch, corrected: true };
 }
-
-// Kept for existing callers: they import `ordinal` from here, not format.mjs.
-export const ordinal = ordinalOf;
 
 /* The key of an end-level correction: a doubles team swapping roles. */
 export const endKey = (g, e) => `${g.index}.${endIdentity(e)}`;

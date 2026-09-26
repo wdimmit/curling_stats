@@ -49,8 +49,6 @@ export const DESKBOX = { w: 114, h: 660, y0: -2.3, y1: 38.9, half: 2.375 };
 /* The whole-game clock above Timing's list: short, so the list keeps the room. */
 export const TIMINGBOX = { w: 640, h: 200, padL: 60, padR: 12, padT: 10, padB: 30 };
 
-export const POSITIONS = ["lead", "second", "third", "skip"];
-
 /* Curl Coach's taxonomy, in two levels.
  *
  * The four coarse categories are what the detector offers, and a charter may
