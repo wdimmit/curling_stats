@@ -75,6 +75,7 @@ h2 { font-family:var(--display); font-size:15px; margin:22px 0 8px; font-weight:
         border:1px solid var(--line); font-family:var(--display); }
 .pill.ready { background:var(--okbg); color:var(--ok); border-color:transparent; }
 .pill.queued, .pill.processing, .pill.pending_approval { background:var(--warnbg); color:var(--warn); border-color:transparent; }
+.pill.doubles { background:var(--okbg); color:var(--ok); border-color:transparent; margin-left:6px; }
 .sw { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 footer { max-width:860px; margin:30px auto; padding:0 18px 30px; color:var(--muted); font-size:12px; }
 code { background:var(--line); padding:1px 5px; border-radius:4px; }

@@ -1781,3 +1781,10 @@ class TestFlags:
         codes = [self.flag(world, f"/c/{ch.id}/", ip=f"10.0.0.{i}, 9.9.9.9, 35.1.1.{i}").status_code
                  for i in range(21)]
         assert codes[20] == 429
+
+
+def test_the_site_learns_whether_doubles_is_on(world):
+    r = world["client"].get("/api/features")
+    assert r.status_code == 200 and r.json() == {"doubles": False}
+    world["settings"].doubles_enabled = True
+    assert world["client"].get("/api/features").json() == {"doubles": True}

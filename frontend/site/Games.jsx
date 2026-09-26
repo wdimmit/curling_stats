@@ -44,7 +44,12 @@ function LeagueCell({ game, games, editable, onSaved }) {
   const exit = useCommitOnExit(save, () => setEditing(false));
 
   if (!editable)
-    return <td className="league">{game.league || <span className="muted">&mdash;</span>}</td>;
+    return (
+      <td className="league">
+        {game.league || <span className="muted">&mdash;</span>}
+        {game.format === "doubles" ? <> <span className="pill doubles">doubles</span></> : null}
+      </td>
+    );
   if (!editing)
     return (
       <td className="league">
@@ -52,6 +57,7 @@ function LeagueCell({ game, games, editable, onSaved }) {
                 onClick={() => { setText(game.league || ""); setEditing(true); }}>
           {game.league || <span className="muted">set league</span>}
         </button>
+        {game.format === "doubles" ? <> <span className="pill doubles">doubles</span></> : null}
       </td>
     );
   return (

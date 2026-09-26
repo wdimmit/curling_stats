@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { authedFetch } from "./auth.js";
 import { describe, parseClock } from "./fmt.js";
 import { Card, Header, TeamPicker, Warn } from "./ui.jsx";
@@ -9,8 +9,14 @@ export function Submit() {
   const [length, setLength] = useState("");
   const [sheet, setSheet] = useState("");
   const [team, setTeam] = useState("");
+  const [format, setFormat] = useState("");
+  const [doubles, setDoubles] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/features").then(r => r.json()).then(f => setDoubles(!!f.doubles)).catch(() => {});
+  }, []);
 
   const lengthSecs = parseClock(length);
   const lengthEcho = !length.trim() ? ""
@@ -32,6 +38,7 @@ export function Submit() {
     if (lengthSecs !== null) body.duration_s = lengthSecs;
     if (sheet) body.sheet = parseInt(sheet, 10);
     if (team) body.team_id = team;
+    if (format) body.format = format;
 
     setBusy(true);
     setMsg(<div className="muted" style={{ marginTop: 12 }}>Checking the video…</div>);
@@ -84,6 +91,16 @@ export function Submit() {
                        placeholder="from title" value={sheet}
                        onChange={e => setSheet(e.target.value)} />
               </div>
+              {doubles ? (
+                <div style={{ width: 150 }}>
+                  <label htmlFor="format">Game</label>
+                  <select id="format" value={format} onChange={e => setFormat(e.target.value)}>
+                    <option value="">from title</option>
+                    <option value="fours">4-player</option>
+                    <option value="doubles">Doubles</option>
+                  </select>
+                </div>
+              ) : null}
             </div>
             <TeamPicker value={team} onChange={setTeam} />
             <div className="row" style={{ marginTop: 16 }}>

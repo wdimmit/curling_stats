@@ -1041,6 +1041,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             ]
         return out
 
+    @app.get("/api/features")
+    def features():
+        """What the site pages may offer. Doubles stays off until the viewer and
+        pipeline are ready for it, and the submit form only shows the choice
+        when it is on."""
+        return JSONResponse({"doubles": bool(settings.doubles_enabled)},
+                            headers={"Cache-Control": "public, max-age=300"})
+
     @app.get("/api/auth/config")
     def auth_config():
         """What the browser needs to start a sign-in, or that it cannot.
