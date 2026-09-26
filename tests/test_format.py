@@ -82,3 +82,13 @@ class TestLookup:
             "positions": ["A", "B"], "throw_table": [1, 2, 2, 2, 1],
             "blank_passes_hammer": True, "swappable": True,
         }
+
+
+class TestLineWithoutBroom:
+    def test_only_doubles_draws_a_line_without_a_broom(self):
+        assert F.DOUBLES.line_without_broom is True
+        assert F.FOURS.line_without_broom is False
+
+    def test_the_document_block_does_not_carry_it(self):
+        assert "line_without_broom" not in F.DOUBLES.to_json()
+        assert "line_without_broom" not in F.FOURS.to_json()

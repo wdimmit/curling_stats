@@ -876,6 +876,28 @@ class TestLine:
         shot = self._end(None)["shots"][0]
         assert "line" in shot and shot["line"] is None
 
+    def test_a_broomless_line_publishes_no_broom_and_its_tee_point(self):
+        from curling_score.game.linetime import Line
+        line = Line(start=(-0.23151, 38.0712), at_hog_x=-0.75712, at_hog_offset=None,
+                    at_broom_x=None, miss=None, curl="right", side=None,
+                    confirmed=None, hog_path=((28.3461, -0.75712),), path=(),
+                    fit_n=41, fit_rms=0.00312, at_tee_x=-1.50049)
+        got = self._end(line)["shots"][0]["line"]
+        assert got == {"start": {"x": -0.2315, "y": 38.071},
+                       "at_hog": {"x": -0.7571, "offset_m": None},
+                       "at_broom": None,
+                       "side": None, "curl": "right", "confirmed": None,
+                       "hog_path": [[28.35, -0.757]], "path": [],
+                       "fit": {"n": 41, "rms_m": 0.0031},
+                       "at_tee": {"x": -1.5005}}
+
+    def test_a_broom_line_has_no_tee_key(self):
+        from curling_score.game.linetime import Line
+        line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
+                    at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
+                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01)
+        assert "at_tee" not in self._end(line)["shots"][0]["line"]
+
 
 from curling_score.game import format as F
 

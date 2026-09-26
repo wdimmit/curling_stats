@@ -38,13 +38,19 @@ def _line(l):
     if l is None:
         return None
     r = lambda v, n=4: None if v is None else round(float(v), n)
-    return {"start": None if l.start is None else {"x": r(l.start[0]), "y": r(l.start[1], 3)},
-            "at_hog": {"x": r(l.at_hog_x), "offset_m": r(l.at_hog_offset)},
-            "at_broom": {"x": r(l.at_broom_x), "miss_m": r(l.miss)},
-            "side": l.side, "curl": l.curl, "confirmed": l.confirmed,
-            "hog_path": [[r(y, 2), r(x, 3)] for y, x in l.hog_path],
-            "path": [[r(y, 2), r(x, 3)] for y, x in l.path],
-            "fit": {"n": int(l.fit_n), "rms_m": r(l.fit_rms)}}
+    out = {"start": None if l.start is None else {"x": r(l.start[0]), "y": r(l.start[1], 3)},
+           "at_hog": {"x": r(l.at_hog_x), "offset_m": r(l.at_hog_offset)},
+           # null, not absent: a doubles rock nobody held a broom for.
+           "at_broom": None if l.at_broom_x is None else {"x": r(l.at_broom_x), "miss_m": r(l.miss)},
+           "side": l.side, "curl": l.curl, "confirmed": l.confirmed,
+           "hog_path": [[r(y, 2), r(x, 3)] for y, x in l.hog_path],
+           "path": [[r(y, 2), r(x, 3)] for y, x in l.path],
+           "fit": {"n": int(l.fit_n), "rms_m": r(l.fit_rms)}}
+    # Only a broomless line has one; a four-player line is unchanged.
+    tee = getattr(l, "at_tee_x", None)
+    if tee is not None:
+        out["at_tee"] = {"x": r(tee)}
+    return out
 
 
 def _stone(d) -> dict:

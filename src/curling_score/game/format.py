@@ -30,6 +30,12 @@ class GameFormat:
     positions: tuple[str, ...]    # player slot 1.. -> what a curler calls them
     blank_passes_hammer: bool     # does a blank end move the hammer?
     swappable: bool               # may a team's two players swap roles per end?
+    # Does a rock nobody held a broom for still get its thrown line? In
+    # doubles the partner is usually sweeping, not holding a broom in the
+    # house (phase 0: 44 of 45 rocks of brMO74e6ZZU), so the start, the line,
+    # the path and the curl are measured without one. Not in the document:
+    # it is what this code does with a format, not a fact about the game.
+    line_without_broom: bool = False
 
     @property
     def delivered_per_team(self) -> int:
@@ -103,6 +109,7 @@ DOUBLES = GameFormat(
     positions=("A", "B"),
     blank_passes_hammer=True,
     swappable=True,
+    line_without_broom=True,
 )
 FORMATS = {f.name: f for f in (FOURS, DOUBLES)}
 

@@ -13,6 +13,13 @@ Attach-only, like ``hogtime`` and ``broomtime``: it may give a shot a
 ``line`` and can never add, drop or renumber one. Measured on four games on
 2026-09-24 (``~/curling-work/line-spike``): the line fits straight to
 0.2-0.4 cm and the camera behind the thrower agrees with it to about 4 cm.
+
+In doubles the partner is usually sweeping rather than holding a broom in the
+house, and a rock nobody held a broom for is still measured: its start, line,
+path and curl need none. Only the figures that measure against a broom -- the
+offset at the hog line, the miss, wide or narrow -- are None, and the line is
+pinned instead by where it crosses the destination tee. Four-player games keep
+asking for a broom (``without_broom`` is the game format's call).
 """
 from __future__ import annotations
 
@@ -60,8 +67,8 @@ class Line:
     start: tuple | None          # (x, y): the stone before push-off
     at_hog_x: float
     at_hog_offset: float | None  # at_hog_x less the start-to-broom line there
-    at_broom_x: float
-    miss: float                  # at_broom_x - broom x, signed
+    at_broom_x: float | None     # None: nobody held a broom (doubles)
+    miss: float | None           # at_broom_x - broom x, signed
     curl: str | None             # "left" | "right"
     side: str | None             # "wide" | "narrow"
     confirmed: bool | None
@@ -69,6 +76,7 @@ class Line:
     path: tuple                  # ((y, x), ...) thinned, travel order
     fit_n: int
     fit_rms: float
+    at_tee_x: float | None = None  # the line's x at the destination tee, only without a broom
 
 
 def fit_line(track) -> Fit | None:
@@ -134,19 +142,29 @@ def thin(points, step: float = THIN_M) -> tuple:
 
 
 def measure(fit: Fit, track, start, broom, rest=None, path=()) -> Line:
-    """Everything the Detail pane says about one rock, from its pieces."""
-    bx, by = broom
+    """Everything the Detail pane says about one rock, from its pieces.
+
+    ``broom`` None is a rock nobody held a broom for (doubles): the offset at
+    the hog line, the miss and the side are None, and ``at_tee_x`` pins the
+    line in their place."""
     at_hog_x = fit.x(HOG_Y)
-    offset = None if start is None else at_hog_x - aim_x(start, broom, HOG_Y)
-    at_broom_x = fit.x(by)
-    miss = at_broom_x - bx
     end = rest if rest is not None else ((path[-1][1], path[-1][0]) if path else None)
     curl = curl_of(fit, end)
+    if broom is None:
+        offset = at_broom_x = miss = side = None
+        at_tee_x = fit.x(0.0)
+    else:
+        bx, by = broom
+        offset = None if start is None else at_hog_x - aim_x(start, broom, HOG_Y)
+        at_broom_x = fit.x(by)
+        miss = at_broom_x - bx
+        side = side_of(miss, curl)
+        at_tee_x = None
     return Line(start=start, at_hog_x=at_hog_x, at_hog_offset=offset,
-                at_broom_x=at_broom_x, miss=miss, curl=curl, side=side_of(miss, curl),
+                at_broom_x=at_broom_x, miss=miss, curl=curl, side=side,
                 confirmed=confirmed_by(list(path), fit),
                 hog_path=thin([(y, x) for _t, x, y, _yp in track]),
-                path=thin(list(path)), fit_n=fit.n, fit_rms=fit.rms)
+                path=thin(list(path)), fit_n=fit.n, fit_rms=fit.rms, at_tee_x=at_tee_x)
 
 
 CROP_EDGE_ROWS = 6          # the box is clipped at the band's bottom edge
@@ -344,14 +362,16 @@ def _rest(shot):
     return float(s.x_m), float(s.y_m)
 
 
-def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, detect=None) -> int:
+def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, detect=None,
+               without_broom=False) -> int:
     """Give each shot its ``line``, in place; return how many it gave one.
 
     A no-op without a model or a laterally calibrated hog-camera view; a shot
-    it cannot measure keeps None. Attach-only, like ``hogtime`` and
-    ``broomtime``: a decode or detector error on one rock is caught and
-    logged, and costs that rock its line, not the game its analysis -- the
-    same reasoning as ``analyze.read_board``.
+    it cannot measure keeps None. ``without_broom`` measures a rock nobody
+    held a broom for too (doubles); otherwise such a rock keeps None.
+    Attach-only, like ``hogtime`` and ``broomtime``: a decode or detector
+    error on one rock is caught and logged, and costs that rock its line, not
+    the game its analysis -- the same reasoning as ``analyze.read_board``.
     """
     if model is None or hog_view is None or not hog_view.has_lateral:
         return 0
@@ -366,7 +386,9 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
         broom = getattr(shot, "target_broom", None)
         rel = getattr(shot, "release", None)
         crossing = getattr(shot, "hog_crossing", None)
-        if getattr(shot, "missing", False) or broom is None or rel is None or crossing is None:
+        if getattr(shot, "missing", False) or rel is None or crossing is None:
+            continue
+        if broom is None and not without_broom:
             continue
         try:
             track = hog_track(crossing, hog_view)
@@ -379,7 +401,9 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
             start = find_start(model, video, hog_view, shot.color, rel.t, decode=decode, detect=detect)
             path = find_path(model, video, dest_view, shot.color, getattr(shot, "t_hog_s", None),
                              getattr(shot, "t_rest_s", None), fit, decode=decode, detect=detect)
-            shot.line = measure(fit, track, start, (broom.x_m, broom.y_m), rest=_rest(shot), path=path)
+            shot.line = measure(fit, track, start,
+                                None if broom is None else (broom.x_m, broom.y_m),
+                                rest=_rest(shot), path=path)
             n += 1
         except Exception:
             log.exception("line pass failed on shot %s; it keeps no line",

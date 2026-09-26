@@ -456,9 +456,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 # Where the rock's thrown line passed the skip's broom -- the
                 # hog-crossing camera for the line, the destination camera for
                 # where it went. Needs hogtime's crossing and broomtime's broom.
+                # In doubles, a rock nobody held a broom for is measured too.
                 n_lines = linetime.time_lines(
                     shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
-                    sideviews[hogtime.CAMERA_FOR[end.house]], model=line_model)
+                    sideviews[hogtime.CAMERA_FOR[end.house]], model=line_model,
+                    without_broom=fmt.line_without_broom)
                 progress(f"    end {end.number}: lines {n_lines}/{len(shots)}")
             # Stage 3, the destination hog line, from that panel's painted line.
             # In this block ``setup`` is the destination panel and ``far`` is

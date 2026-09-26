@@ -80,6 +80,25 @@ class TestMeasure:
         line = L.measure(L.fit_line(track), track, self.START, self.BROOM)
         assert (line.curl, line.side) == (None, None)
 
+    def test_no_broom_is_a_line_with_no_broom_figures(self):
+        track = self.aimed(0.30)
+        fit = L.fit_line(track)
+        line = L.measure(fit, track, self.START, None, rest=(0.2, 0.5))
+        assert (line.at_broom_x, line.miss, line.at_hog_offset, line.side) == (None, None, None, None)
+        assert line.curl == "left"
+        assert line.at_hog_x == pytest.approx(fit.x(L.HOG_Y))
+        assert line.at_tee_x == pytest.approx(fit.x(0.0))
+        assert line.fit_n == 40
+
+    def test_no_broom_and_no_start_is_still_a_line(self):
+        track = self.aimed()
+        line = L.measure(L.fit_line(track), track, None, None)
+        assert line.start is None and line.at_tee_x is not None
+
+    def test_a_broom_line_has_no_tee_point(self):
+        track = self.aimed()
+        assert L.measure(L.fit_line(track), track, self.START, self.BROOM).at_tee_x is None
+
 
 class TestConfirmedBy:
     FIT = L.Fit(a=0.5, b=0.01, n=40, rms=0.002)
@@ -241,7 +260,7 @@ class TestTimeLines:
         return [sample_at(HOG_VIEW, 0.0 + 0.026 * (3.0 + 0.12 * i), 3.0 + 0.12 * i, 100.0 + i / 30)
                 for i in range(n)]
 
-    def run(self, shots, extra=()):
+    def run(self, shots, extra=(), **kw):
         decoded = []
 
         def decode(video, rect, t0, t1, fps):
@@ -252,7 +271,7 @@ class TestTimeLines:
             return [list(extra) if i == 0 else [] for i in range(len(frames))]
 
         self.n = L.time_lines(shots, "v.mp4", HOG_VIEW, DEST_VIEW, model=object(),
-                              decode=decode, detect=detect)
+                              decode=decode, detect=detect, **kw)
         return decoded
 
     def test_a_shot_with_a_crossing_and_a_broom_gets_a_line(self):
@@ -302,6 +321,38 @@ class TestTimeLines:
         s = self.shot(c)
         L.time_lines([s], "v.mp4", HOG_VIEW, DEST_VIEW, model=None)
         assert s.line is None
+
+    def test_without_broom_a_shot_with_no_broom_gets_a_broomless_line(self):
+        s = self.shot(crossing_for(self.stone_to(11.5)), target_broom=None)
+        self.run([s], without_broom=True)
+        assert s.line is not None
+        assert s.line.at_broom_x is None and s.line.at_tee_x is not None
+        assert self.n == 1
+
+    def test_by_default_no_broom_is_still_no_line(self):
+        s = self.shot(crossing_for(self.stone_to(11.5)), target_broom=None)
+        self.run([s])
+        assert s.line is None and self.n == 0
+
+    def test_a_doubles_rock_with_a_broom_keeps_the_broom_line(self):
+        c = crossing_for(self.stone_to(11.5))
+        plain, doubles = self.shot(c), self.shot(c)
+        self.run([plain])
+        self.run([doubles], without_broom=True)
+        assert doubles.line == plain.line
+        assert doubles.line.at_tee_x is None
+
+    def test_without_broom_still_needs_a_release_and_a_seen_rock(self):
+        c = crossing_for(self.stone_to(11.5))
+        shots = [self.shot(c, target_broom=None, release=None),
+                 self.shot(c, target_broom=None, missing=True)]
+        self.run(shots, without_broom=True)
+        assert all(s.line is None for s in shots)
+
+    def test_the_pipeline_asks_for_broomless_lines_by_format(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/curling_score/analyze.py").read_text()
+        assert "without_broom=fmt.line_without_broom" in src
 
 
 class TestAnalyzeCallsIt:
