@@ -25,7 +25,7 @@ down-sheet. The gates come from 17 ends measured in phase 0 and 23 read by eye
 (datasets/doubles/marks/placements.json).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from curling_score.detect import delivery as D
 
@@ -57,12 +57,29 @@ SETTLE_S = 10.0
 # its way (phase 0: no one holding a broom there on nearly every rock).
 READ_S = 8.0
 READ_GAP_S = 1.0
+# Candidate reasons that mean a stone flew down-sheet into view: a throw.
+# "house-appear" (arrived already stopped) is how a carried guard shows up.
+# Phase 0's guards were pushed from behind or carried, never thrown.
+THROWN_REASONS = ("rest", "left-view", "late-entry")
 
 
 def _cxy(s):
     if isinstance(s, tuple):
         return s
     return (s.color, float(s.x_m), float(s.y_m))
+
+
+def _near(stone, others) -> bool:
+    """Whether a stone of the same colour lies within the finder's tolerance."""
+    c, x, y = stone
+    return any(oc == c and ((ox - x) ** 2 + (oy - y) ** 2) ** 0.5 <= D.CHANGE_TOLERANCE_M
+               for oc, ox, oy in others)
+
+
+def thrown_from(deliveries) -> list:
+    """The (color, x, y) rest positions of the candidates that were thrown."""
+    return [(d.color, float(d.rest_x_m), float(d.rest_y_m))
+            for d in deliveries if d.reason in THROWN_REASONS]
 
 
 @dataclass(frozen=True)
@@ -72,6 +89,7 @@ class Placement:
     guard: tuple | None             # (color, x, y), or None when not seen
     power_play: str | None          # "left"/"right": the house stone's side
     seed: tuple = ()                # the still house just before rock 1
+    house_s: float | None = None    # when the house stone first held
 
     @property
     def hammer(self) -> str:
@@ -104,41 +122,85 @@ def _guards(x, y, side) -> bool:
     return (x < 0) == (side == "left") and abs(abs(x) - PP_GUARD_X_M) <= PP_GUARD_TOL_M
 
 
-def classify(stones, t_s: float = 0.0) -> Placement | None:
+def classify(stones, t_s: float = 0.0, *, thrown=()) -> Placement | None:
     """The placement these settled stones show, or None.
 
     Exactly one stone on a house spot, centre or power play. The guard is the
     one stone of the other colour on the matching guard spot, or None when it
     is not seen. Anything more ambiguous is not a placement.
+
+    ``thrown`` is the (color, x, y) rest positions of thrown rocks. A stone
+    on the guard spot lying on one of its colour is that rock, not the guard,
+    and is left out. The house stone is never refused this way: ih59's first
+    house stone was slid the length of the sheet.
     """
     cxy = [_cxy(s) for s in stones or ()]
+    thrown = [_cxy(s) for s in thrown]
     houses = [((c, x, y), side) for c, x, y in cxy
               if (side := _house_side(x, y)) is not False]
     if len(houses) != 1:
         return None
     (house, side), = houses
-    guards = [(c, x, y) for c, x, y in cxy if c != house[0] and _guards(x, y, side)]
+    guards = [(c, x, y) for c, x, y in cxy
+              if c != house[0] and _guards(x, y, side) and not _near((c, x, y), thrown)]
     if len(guards) > 1:
         return None
     return Placement(t_s=t_s, house=house, guard=guards[0] if guards else None,
                      power_play=side)
 
 
-def find(frames, t0: float, t1: float) -> Placement | None:
+def _held(frames, t0: float, t1: float) -> list:
+    """Every stone settled in any window from ``t0`` to ``t1``."""
+    out, t = [], t0
+    while t <= t1:
+        out += D._settled_stones(frames, t, t + WINDOW_S) or []
+        t += STEP_S
+    return out
+
+
+def _play_began(settled, alone: Placement, before, thrown) -> bool:
+    """Whether a stone has settled that the placement cannot account for.
+
+    Not the house stone, not already there when the house stone held, and not
+    a stone of the guard's colour on the guard spot, which may yet be the
+    guard (unless it lies on a thrown rock's rest position).
+    """
+    for s in settled or ():
+        c, x, y = s
+        if _near(s, [alone.house]) or _near(s, before):
+            continue
+        if c != alone.hammer and _guards(x, y, alone.power_play) and not _near(s, thrown):
+            continue
+        return True
+    return False
+
+
+def find(frames, t0: float, t1: float, *, thrown=()) -> Placement | None:
     """The first moment in [t0, t1] the placement holds still, or None.
 
     "Holds" means the same hammer colour and power-play side in every window
     for ``HOLD_S``. A complete placement, with its guard, is what is looked for.
     If the guard is never seen, the first held house stone alone is returned,
-    with ``complete`` False.
+    with ``complete`` False. ``house_s`` is when the house stone first held.
+
+    The guard is looked for only until play begins: once the house stone has
+    held, a stone that settles anywhere else but the guard spot is a rock, and
+    so is any stone lying on a ``thrown`` rest position ((color, x, y), see
+    :func:`thrown_from`). Searching on past that let a later rock settle on the
+    guard spot and become "the guard", and every real rock before it was then
+    dropped as part of the placement.
     """
+    thrown = [_cxy(s) for s in thrown]
     frames = [(t, d) for t, d in frames if t0 <= t <= t1 + WINDOW_S]
     found = {True: None, False: None}
     run = {True: None, False: None}
+    before = []      # what was already settled while the house stone held
     t = t0
     while t <= t1 and found[True] is None:
         settled = D._settled_stones(frames, t, t + WINDOW_S)
-        p = classify(settled, t) if settled else None
+        if found[False] is not None and _play_began(settled, found[False], before, thrown):
+            break
+        p = classify(settled, t, thrown=thrown) if settled else None
         for complete in (True, False):
             ok = p is not None and (p.complete or not complete)
             key = (p.hammer, p.power_play) if ok else None
@@ -146,12 +208,17 @@ def find(frames, t0: float, t1: float) -> Placement | None:
             if ok and start is not None and start[1] == key:
                 if t - start[0].t_s >= HOLD_S and found[complete] is None:
                     found[complete] = start[0]
+                    if not complete:
+                        before = _held(frames, start[0].t_s, t)
             elif ok:
                 run[complete] = (p, key)
             else:
                 run[complete] = None
         t += STEP_S
-    return found[True] or found[False]
+    got = found[True] or found[False]
+    if got is None:
+        return None
+    return replace(got, house_s=(found[False] or got).t_s)
 
 
 def read_before(frames, placed: Placement, t_first: float) -> Placement:
@@ -161,6 +228,13 @@ def read_before(frames, placed: Placement, t_first: float) -> Placement:
     ``READ_GAP_S`` before ``t_first``. A power play set up in two steps shows
     its final shape there. ``seed`` is set to that house, for rock 1's house
     diff. When the re-read shows no placement, the found arrangement stands.
+
+    The re-read asks more of a stone (half the frames over ``READ_S``) than
+    :func:`find` does (40% over ``WINDOW_S``), so a guard seen in between drops
+    out of it. When the re-read shows the same hammer and side with no guard,
+    the found guard is kept: losing it would make rock 1's fill base one
+    short, and a leading blank renumbers every shot. A two-step power play
+    still switches, because its side differs.
     """
     from curling_score.detect.rest import stones_in_window
 
@@ -169,8 +243,11 @@ def read_before(frames, placed: Placement, t_first: float) -> Placement:
     seed = tuple(stones_in_window(window)) if window else ()
     again = classify(seed, placed.t_s) if seed else None
     use = again if again is not None else placed
-    return Placement(t_s=placed.t_s, house=use.house, guard=use.guard,
-                     power_play=use.power_play, seed=seed)
+    guard = use.guard
+    if guard is None and (use.hammer, use.power_play) == (placed.hammer, placed.power_play):
+        guard = placed.guard
+    return Placement(t_s=placed.t_s, house=use.house, guard=guard,
+                     power_play=use.power_play, seed=seed, house_s=placed.house_s)
 
 
 def exclude(deliveries, placed: Placement | None):

@@ -367,10 +367,6 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                                  crossed_games=end is game.ends[0])
             seq = sequence.detect_end(read_path, setup, end, shot_fps,
                                       detector, from_s=from_s)
-            # Doubles: every delivery of the end comes after its placement is
-            # complete, so find that moment before anything is counted.
-            placed = (placement.find(seq, from_s, end.end_s)
-                      if fmt.placed_per_team else None)
             # Anything thrown since the previous end closed is this end's;
             # anything earlier on this panel is not.
             deliveries = [
@@ -380,6 +376,12 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 )
                 if d.t_enter >= from_s
             ]
+            # Doubles: every delivery of the end comes after its placement is
+            # complete, so find that moment before anything is counted. A
+            # candidate that flew in is a throw, and never the guard.
+            placed = (placement.find(seq, from_s, end.end_s,
+                                     thrown=placement.thrown_from(deliveries))
+                      if fmt.placed_per_team else None)
             deliveries, before_placement = placement.exclude(deliveries, placed)
             # The first pass has to be strict or sweepers count as stones. Once
             # it is in hand the rules say where the gaps are and what colour

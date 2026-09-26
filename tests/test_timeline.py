@@ -963,6 +963,12 @@ class TestPlacementInTheTimeline:
         assert (end["hammer"], end["hammer_source"]) == ("yellow", "placement")
         assert p["agrees_with_shots"] is True
 
+    def test_the_placement_block_says_when_the_house_stone_held(self):
+        from dataclasses import replace
+        end = timeline.build_end(1, "top", 0.0, 900.0, self._shots(), fmt=F.DOUBLES,
+                                 placement=replace(PLACED, house_s=61.234))
+        assert (end["placement"]["t_s"], end["placement"]["house_s"]) == (100.0, 61.23)
+
     def test_a_first_shot_of_the_wrong_colour_disagrees(self):
         end = timeline.build_end(1, "top", 0.0, 900.0, self._shots(first="yellow"),
                                  fmt=F.DOUBLES, placement=PLACED)
