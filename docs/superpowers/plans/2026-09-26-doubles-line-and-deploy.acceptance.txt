@@ -435,3 +435,36 @@ viewer is comments only). Four streams each, on the worker's CPU venv:
   cmp of the 16 per-rock outputs: identical=16 differ=0
 
 Every shot list, end by end, is byte-identical to the deployed pipeline's.
+
+--------------------------------------------------------------------------------
+Task 5: deploy, doubles on, and one doubles game charted live (2026-09-26)
+--------------------------------------------------------------------------------
+Deployed commit: fc4d2a2 (main), from the clean worktree deploy-fc4d2a2.
+  MODEL_ID ds15a-25e65755 (= live); PIPELINE_VERSION 2026.09.25 (unchanged).
+Worker: idle before the swap (claims 204); rsync without --delete, worker.env
+  kept, no .git; `docker compose up -d --build` -> deploy-worker-1 recreated;
+  in the running container DOUBLES.line_without_broom = True.
+API: deploy-api.sh -> Cloud Build api:fc4d2a2 SUCCESS, new revision serving;
+  "accounts: sign-in is live"; GET /api/features -> {"doubles":true};
+  live /g/<sid>/app.js sha256 ee59dbd8...fe26 = frontend/.buildstamp.json.
+  (The deploy also shipped the viewer phases 4-5 and 0890d10, the phone watch
+  house, which were on main but not yet live: live app.js was 047eecf's.)
+Live submission: POST /api/submissions {url 8J3r5FhFFd4, format doubles}
+  -> slug 5eFAHyvb3mSui54QyaJ242, job j_0GCsFaIgAEcx8ReJr, run
+  r_103bDqFuzvPJ73ixk. The cached video and proxy were hard-linked into the
+  worker cache first; the log shows "video at /data/cache/videos/..." and no
+  download. Title read as doubles. Done in 5 min: every end 10/10 deliveries
+  (R5 Y5), placement found in all 7, power plays red e5 left and yellow e7
+  right, lines 68/70.
+Chart checks (timeline.json from the share link) against Task 3's p6 run:
+  schema 7, format doubles, format.check looks_like doubles, no warning;
+  7 ends x 10 shots; hammer, colours, release times and placement identical in
+  every end; power_plays {red: [5], yellow: [7]} identical; all 70 line
+  objects identical. Board scores kept for ends 1-6 (end 7: board silent).
+Headless phone check (live /s/ link, 390x844, touch): end 3 rock 2 Detail --
+  At the broom "–" / no broom held in the house; Hack Left / stone set 4 in
+  left of centre; At the hog line "–" / no broom to aim at; Weight 13.4 s;
+  Curl 4 ft 3 in / from its line to where it stopped · confirmed from behind
+  the thrower (check mark); strip labelled "the thrown line and where the rock
+  went"; pager "End 3 · red · player A · Draw"; power-play badges
+  "power play · red, left" and "power play · yellow, right".
