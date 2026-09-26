@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   GROUPS, GROUP_TYPE, MISS_REASONS, TALLBOX, TYPES, subtypesOf,
-  blankQueue, boardReadable, identity, isBlank, openGroupFor, scoreCell,
+  blankQueue, boardReadable, endSummary, identity, isBlank, openGroupFor, scoreCell,
   houseDeltaText, thinkText, throwerText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
@@ -264,6 +264,37 @@ function Scoreboard({ game, doc }) {
   );
 }
 
+/* The end's hammer and any power play, plus the swap checkboxes -- the
+ * former read in every mode (a desktop viewer or a review link never reaches
+ * Timing/EndHead, which is phone-watch only), the latter only where a
+ * charter can act on them. */
+function EndBox({ view, cursor, config, actions }) {
+  const at = view.ends[cursor.ei];
+  const s = endSummary(view, cursor.ei);
+  const name = c => view.game.teams[c]?.name || c;
+  return (
+    <div id="endBox">
+      <h3>End {at?.end.number}</h3>
+      {s ? (
+        <div className="endfacts">
+          {s.hammer ? <span>{`${name(s.hammer)} has hammer`
+            + `${s.hammerSource === "placement" ? " (from the placement)" : ""}`}</span> : null}
+          {s.powerPlay
+            ? <span className="wpp">power play · {s.powerPlay.color}, {s.powerPlay.side}</span>
+            : null}
+        </div>
+      ) : null}
+      {!config.readOnly && ["red", "yellow"].map(c => (
+        <label key={c} className="chk">
+          <input type="checkbox" checked={!!at?.swapped?.[c]}
+                 onChange={e => actions.setSwapped(c, e.target.checked)} />
+          {` ${name(c)} swapped roles (player B threw first and last)`}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export function ChartPanel({ view, shot, shotKey, cursor, ui, config, series, here,
                              notice, actions }) {
   const { items } = blankQueue(view);
@@ -283,17 +314,8 @@ export function ChartPanel({ view, shot, shotKey, cursor, ui, config, series, he
 
       <Detail shot={shot} format={view.format} />
 
-      {view.format.swappable && !config.readOnly ? (
-        <div id="endBox">
-          <h3>End {view.ends[cursor.ei]?.end.number}</h3>
-          {["red", "yellow"].map(c => (
-            <label key={c} className="chk">
-              <input type="checkbox" checked={!!view.ends[cursor.ei]?.swapped?.[c]}
-                     onChange={e => actions.setSwapped(c, e.target.checked)} />
-              {` ${view.game.teams[c]?.name || c} swapped roles (player B threw first and last)`}
-            </label>
-          ))}
-        </div>
+      {view.format.swappable ? (
+        <EndBox view={view} cursor={cursor} config={config} actions={actions} />
       ) : null}
 
       <details id="queueBox">
