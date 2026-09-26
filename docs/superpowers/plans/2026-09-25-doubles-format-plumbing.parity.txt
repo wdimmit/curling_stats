@@ -1,0 +1,208 @@
+Four-player parity check (Task 7, plan 2026-09-25-doubles-format-plumbing)
+============================================================================
+
+SHAs:
+  BASE = a63495b1b4a0439d14913d4a41dfa85a60300c15  (merge-base of doubles with main)
+  HEAD = 52ed513e759573672f90e8f162adfac168bf7836  (branch tip at time of this run)
+
+Videos: VXU9xwmugRg, hOKZoeJNTpM, AEqLTgM25Tc (three warm-cache four-player games
+on the GPU worker, administrator@10.0.0.182, cache at /data/wdd/curling-cache).
+
+Labels (each is `curling-score analyze` run inside the worker container, code
+mounted read-only over the installed package, output under
+/data/wdd/curling/doubles-parity/out/<label>/<video>/timeline.json):
+  base-a, base-b   = BASE run twice, full pipeline (longview + broom/line + scoreboard)
+  base-nl-a, base-nl-b = BASE run twice with --no-longview
+  head             = HEAD, full pipeline
+  head-nl          = HEAD with --no-longview
+
+Comparisons (via scripts/doubles/compare_docs.py, which strips schema_version,
+processing_version and source.analysed_at before diffing):
+
+------------------------------------------------------------------------------
+1) base-a vs base-b (noise floor, full pipeline)
+------------------------------------------------------------------------------
+Result: NOT identical. Two runs of the exact same BASE code differ on all three
+videos: end/game start_s and end_s boundaries shift by +/-5s, one shot's
+line-detection path and release speed jitter slightly (VXU9xwmugRg), and on
+AEqLTgM25Tc one end's final-stones/scored_from_shot/house_delta disagree
+outright (a real scoring divergence between two runs of identical code). This
+is GPU/model nondeterminism in the longview and/or line/scoreboard passes, as
+the brief anticipated.
+
+== VXU9xwmugRg
+.games[0].ends[0].end_s: 860.0 != 865.0
+.games[0].ends[1].start_s: 865.0 != 870.0
+.games[0].ends[2].end_s: 2640.0 != 2645.0
+.games[0].ends[3].start_s: 2645.0 != 2650.0
+.games[0].ends[4].end_s: 4525.0 != 4530.0
+.games[0].ends[5].start_s: 4530.0 != 4535.0
+.games[1].end_s: 13465.0 != 13455.0
+.games[1].ends[0].start_s: 7595.0 != 7590.0
+.games[1].ends[1].end_s: 9475.0 != 9470.0
+.games[1].ends[2].shots[5].line.at_hog.offset_m: 0.14 != 0.1401
+.games[1].ends[2].shots[5].line.hog_path[0][0]: 32.67 != 32.57
+.games[1].ends[2].shots[5].line.hog_path[0][1]: 0.113 != 0.118
+.games[1].ends[2].shots[5].line.hog_path[1][0]: 32.1 != 31.99
+.games[1].ends[2].shots[5].line.hog_path[1][1]: 0.133 != 0.137
+.games[1].ends[2].shots[5].line.hog_path[2][0]: 31.57 != 31.48
+.games[1].ends[2].shots[5].line.hog_path[2][1]: 0.156 != 0.162
+.games[1].ends[2].shots[5].line.hog_path[17][0]: 23.7 != 23.64
+.games[1].ends[2].shots[5].line.start.x: -0.0914 != -0.0919
+.games[1].ends[2].shots[5].line.start.y: 37.977 != 37.988
+.games[1].ends[2].shots[5].release_speed_m_s: 1.623 != 1.628
+20+ differences
+== hOKZoeJNTpM
+.games[0].ends[0].start_s: 235.0 != 230.0
+.games[0].ends[1].end_s: 1960.0 != 1955.0
+.games[0].ends[2].start_s: 1965.0 != 1960.0
+.games[0].start_s: 235.0 != 230.0
+4+ differences
+== AEqLTgM25Tc
+.games[0].ends[1].end_s: 1470.0 != 1465.0
+.games[0].ends[1].final_stones: 7 items != 2
+.games[0].ends[1].final_stones[0].confidence: 0.945 != 0.936
+.games[0].ends[1].final_stones[0].distance_to_tee: 1.0032 != 2.0419
+.games[0].ends[1].final_stones[0].in_house: True != False
+.games[0].ends[1].final_stones[0].x: 0.5796 != -1.6243
+.games[0].ends[1].final_stones[0].y: -0.8188 != -1.2374
+.games[0].ends[1].final_stones[1].confidence: 0.925 != 0.93
+.games[0].ends[1].final_stones[1].distance_to_tee: 0.3941 != 1.1936
+.games[0].ends[1].final_stones[1].x: -0.3936 != 0.6374
+.games[0].ends[1].final_stones[1].y: -0.0207 != -1.0091
+.games[0].ends[1].scored_from_shot: 15 != 16
+.games[0].ends[1].shots[15].entry_speed_m_s: 0.0 != 1.089
+.games[0].ends[1].shots[15].house_delta.moved: 0 items != 1
+.games[0].ends[1].shots[15].house_delta.removed: 7 items != 5
+.games[0].ends[1].shots[15].house_delta.removed[1].color: 'red' != 'yellow'
+.games[0].ends[1].shots[15].house_delta.removed[1].x: -0.3936 != -0.9879
+.games[0].ends[1].shots[15].house_delta.removed[1].y: -0.0207 != -0.383
+.games[0].ends[1].shots[15].house_delta.removed[2].color: 'yellow' != 'red'
+.games[0].ends[1].shots[15].house_delta.removed[2].x: -0.9879 != -1.7957
+20+ differences
+
+------------------------------------------------------------------------------
+2) base-nl-a vs base-nl-b (noise floor, --no-longview)
+------------------------------------------------------------------------------
+Result: NOT identical, and NOT eliminated by --no-longview as the brief
+expected. The same class of noise persists: +/-5s end boundaries on all three
+videos, a small release_speed_m_s/t_release_s jitter on VXU9xwmugRg, and the
+same AEqLTgM25Tc end-scoring divergence (final_stones/scored_from_shot/
+house_delta) seen in comparison (1). This means the nondeterminism is not
+confined to the longview pass; --no-longview does not by itself give a clean
+noise floor for these three videos. (Flagged as a concern below.)
+
+== VXU9xwmugRg
+.games[1].end_s: 13455.0 != 13465.0
+.games[1].ends[0].start_s: 7590.0 != 7595.0
+.games[1].ends[1].end_s: 9470.0 != 9475.0
+.games[1].ends[2].shots[5].release_speed_m_s: 1.628 != 1.623
+.games[1].ends[2].shots[5].t_release_s: 9719.23 != 9719.2
+.games[1].ends[2].start_s: 9475.0 != 9480.0
+.games[1].ends[5].end_s: 13455.0 != 13465.0
+.games[1].scoreboard.read_at_s: 13395.0 != 13405.0
+.games[1].start_s: 7590.0 != 7595.0
+9+ differences
+== hOKZoeJNTpM
+.games[0].ends[0].start_s: 235.0 != 230.0
+.games[0].ends[1].end_s: 1960.0 != 1955.0
+.games[0].ends[2].start_s: 1965.0 != 1960.0
+.games[0].start_s: 235.0 != 230.0
+4+ differences
+== AEqLTgM25Tc
+.games[0].ends[1].end_s: 1465.0 != 1470.0
+.games[0].ends[1].final_stones: 2 items != 7
+.games[0].ends[1].final_stones[0].confidence: 0.936 != 0.945
+.games[0].ends[1].final_stones[0].distance_to_tee: 2.0419 != 1.0032
+.games[0].ends[1].final_stones[0].in_house: False != True
+.games[0].ends[1].final_stones[0].x: -1.6243 != 0.5796
+.games[0].ends[1].final_stones[0].y: -1.2374 != -0.8188
+.games[0].ends[1].final_stones[1].confidence: 0.93 != 0.925
+.games[0].ends[1].final_stones[1].distance_to_tee: 1.1936 != 0.3941
+.games[0].ends[1].final_stones[1].x: 0.6374 != -0.3936
+.games[0].ends[1].final_stones[1].y: -1.0091 != -0.0207
+.games[0].ends[1].scored_from_shot: 16 != 15
+.games[0].ends[1].shots[15].entry_speed_m_s: 1.089 != 0.0
+.games[0].ends[1].shots[15].house_delta.moved: 1 items != 0
+.games[0].ends[1].shots[15].house_delta.removed: 5 items != 7
+.games[0].ends[1].shots[15].house_delta.removed[1].color: 'yellow' != 'red'
+.games[0].ends[1].shots[15].house_delta.removed[1].x: -0.9879 != -0.3936
+.games[0].ends[1].shots[15].house_delta.removed[1].y: -0.383 != -0.0207
+.games[0].ends[1].shots[15].house_delta.removed[2].color: 'red' != 'yellow'
+.games[0].ends[1].shots[15].house_delta.removed[2].x: -1.7957 != -0.9879
+20+ differences
+
+------------------------------------------------------------------------------
+3) base-a vs head (full pipeline, the parity question)
+------------------------------------------------------------------------------
+Result: for VXU9xwmugRg and hOKZoeJNTpM, the differing paths and values are
+BYTE-IDENTICAL, line for line, to comparison (1)'s base-a-vs-base-b diff
+(verified with `diff` between the saved outputs). For AEqLTgM25Tc, base-a vs
+head is `identical` outright (head matches base-a exactly, avoiding the
+divergence base-b had). In other words: head's output for every video is one
+of the two outcomes already observed between two BASE runs. No new or
+different divergence appears anywhere. Tasks 1-6 introduce zero attributable
+change to four-player output beyond the pre-existing noise floor.
+
+== VXU9xwmugRg
+.games[0].ends[0].end_s: 860.0 != 865.0
+.games[0].ends[1].start_s: 865.0 != 870.0
+.games[0].ends[2].end_s: 2640.0 != 2645.0
+.games[0].ends[3].start_s: 2645.0 != 2650.0
+.games[0].ends[4].end_s: 4525.0 != 4530.0
+.games[0].ends[5].start_s: 4530.0 != 4535.0
+.games[1].end_s: 13465.0 != 13455.0
+.games[1].ends[0].start_s: 7595.0 != 7590.0
+.games[1].ends[1].end_s: 9475.0 != 9470.0
+.games[1].ends[2].shots[5].line.at_hog.offset_m: 0.14 != 0.1401
+.games[1].ends[2].shots[5].line.hog_path[0][0]: 32.67 != 32.57
+.games[1].ends[2].shots[5].line.hog_path[0][1]: 0.113 != 0.118
+.games[1].ends[2].shots[5].line.hog_path[1][0]: 32.1 != 31.99
+.games[1].ends[2].shots[5].line.hog_path[1][1]: 0.133 != 0.137
+.games[1].ends[2].shots[5].line.hog_path[2][0]: 31.57 != 31.48
+.games[1].ends[2].shots[5].line.hog_path[2][1]: 0.156 != 0.162
+.games[1].ends[2].shots[5].line.hog_path[17][0]: 23.7 != 23.64
+.games[1].ends[2].shots[5].line.start.x: -0.0914 != -0.0919
+.games[1].ends[2].shots[5].line.start.y: 37.977 != 37.988
+.games[1].ends[2].shots[5].release_speed_m_s: 1.623 != 1.628
+20+ differences
+== hOKZoeJNTpM
+.games[0].ends[0].start_s: 235.0 != 230.0
+.games[0].ends[1].end_s: 1960.0 != 1955.0
+.games[0].ends[2].start_s: 1965.0 != 1960.0
+.games[0].start_s: 235.0 != 230.0
+4+ differences
+== AEqLTgM25Tc
+identical
+
+------------------------------------------------------------------------------
+4) base-nl-a vs head-nl (--no-longview, the clean parity question)
+------------------------------------------------------------------------------
+Result: `identical` for all three videos, with no stripping needed beyond the
+three volatile fields. This is the cleanest evidence available: with the
+noisiest passes disabled, HEAD and BASE produce byte-identical four-player
+timelines.
+
+== VXU9xwmugRg
+identical
+== hOKZoeJNTpM
+identical
+== AEqLTgM25Tc
+identical
+
+------------------------------------------------------------------------------
+Verdict
+------------------------------------------------------------------------------
+Four-player output is unchanged by Tasks 1-6. Every difference seen between
+BASE and HEAD (comparison 3) is also present, path-for-path and value-for-
+value, between two independent runs of BASE alone (comparison 1) -- it is
+pre-existing GPU/model nondeterminism in the longview/line/scoreboard passes,
+not a regression. With that nondeterminism disabled (--no-longview), HEAD and
+BASE match exactly (comparison 4).
+
+Caveat: the noise floor did not vanish under --no-longview as the brief
+expected (comparison 2) -- the same end-boundary and AEqLTgM25Tc scoring jitter
+recurred, meaning the source of nondeterminism is not confined to the longview
+pass. This is a pre-existing property of the pipeline on this GPU worker, out
+of scope for this task to fix, and worth the controller's attention separately
+from the doubles-format-plumbing parity question.
