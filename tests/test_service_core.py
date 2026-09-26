@@ -487,3 +487,15 @@ class TestThePagesAreShipped:
         globs = tomllib.loads((root / "pyproject.toml").read_text())[
             "tool"]["setuptools"]["package-data"]["curling_score.viewer"]
         assert {".html", ".js", ".css"} <= {Path(g).suffix for g in globs}
+
+
+def test_restore_revives_a_flags_times():
+    from curling_score.service.repo import MemoryRepo
+    from curling_score.service.restore import restore
+
+    repo = MemoryRepo()
+    restore(repo, {"flags": [{"id": "f_1", "note": "n", "status": "resolved",
+                              "created_at": "2026-09-25T12:00:00+00:00",
+                              "resolved_at": "2026-09-25T13:00:00+00:00"}]})
+    f = repo.list_flags("resolved")[0]
+    assert f.created_at.hour == 12 and f.resolved_at.hour == 13
