@@ -801,6 +801,9 @@ body[data-mode="review"] #house { cursor:default; }
          font-variant-numeric: tabular-nums; }
   .wsc-none { opacity: 0.55; font-size: 12px; }
   .wham { font-size: 10px; color: var(--muted); letter-spacing: .05em; }
+  .wpp { font-size:12px; padding:1px 7px; border-radius:999px; background:var(--warnbg); color:var(--warn); white-space:nowrap; }
+  #endBox { margin-top:12px; }
+  #endBox label { display:block; margin:4px 0; }
   .wdot { width: 11px; height: 11px; border-radius: 50%; display: inline-block;
           flex: none; }
   .wdot.red { background: var(--red); } .wdot.yellow { background: var(--yellow); }

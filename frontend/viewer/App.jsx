@@ -12,7 +12,8 @@ import {
 } from "react";
 import {
   PHONE_QUERY,
-  buildGameView, cumulativeThinking, cursor as cursorOf, flagPlace, gatherStats, gatherThinking,
+  buildGameView, cumulativeThinking, cursor as cursorOf, endKey, flagPlace, gatherStats,
+  gatherThinking, formatWarning,
   identity, isBlank, isGraded, nextBlankAfter, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash,
@@ -138,6 +139,15 @@ export function App({ doc, config, cursor }) {
     store.apply(edit.patch(store.getOverrides(), shotKey, fields), shotKey);
   }, [config.readOnly, shotKey]);
 
+  const setSwapped = useCallback((color, on) => {
+    const at = view.ends[ui.ei];
+    if (config.readOnly || !at || !view.format.swappable) return;
+    const key = endKey(view.game, at.end);
+    const cur = store.getOverrides()[key]?.roles_swapped || {};
+    store.apply(edit.patch(store.getOverrides(), key,
+                           { roles_swapped: { ...cur, [color]: on } }), key);
+  }, [config.readOnly, view, ui.ei]);
+
   const setPref = useCallback(patchObj => {
     dispatch({ type: "set", patch: patchObj });
     savePrefs({ ...ui, ...patchObj });
@@ -151,6 +161,7 @@ export function App({ doc, config, cursor }) {
   const actions = useMemo(() => ({
     goTo,
     patch,
+    setSwapped,
     setBusy: store.setBusy,
     rawType: () => raw?.shot_type || "unknown",
     openGroup: g => dispatch({ type: "set", patch: { openGroup: g } }),
@@ -212,8 +223,8 @@ export function App({ doc, config, cursor }) {
       dispatch({ type: "set", patch: { reporting: false } });
       goTo(b.ei, b.si);
     },
-  }), [goTo, patch, setPref, setFollowing, raw, shot, shotKey, doc, ui.gi, ui.ei, ui.si, ui.sheet,
-       notify, view]);
+  }), [goTo, patch, setSwapped, setPref, setFollowing, raw, shot, shotKey, doc, ui.gi, ui.ei, ui.si,
+       ui.sheet, notify, view]);
 
   const houseSwipe = useSwipe(d => { if (phone()) actions.step(d); });
 
@@ -374,6 +385,7 @@ export function App({ doc, config, cursor }) {
               view={view} shot={shot} dispatch={dispatch} goTo={goTo} />
 
       <main>
+        {formatWarning(doc) ? <div className="warn" id="formatWarning">{formatWarning(doc)}</div> : null}
         <section className="card" id="playCard">
           {/* Zero React children: YT.Player replaces what it is given, so if
               React held a child for that slot one reconciliation would remove

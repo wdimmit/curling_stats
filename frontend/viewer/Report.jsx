@@ -8,7 +8,7 @@
  * and #report.show.
  */
 import { Fragment } from "react";
-import { GROUPS, POSITIONS, TYPE, avg, clockText, pct } from "../core/index.mjs";
+import { GROUPS, TYPE, avg, clockText, pct, roleText } from "../core/index.mjs";
 import { ThinkingBars, ThinkingChart } from "./Charts.jsx";
 
 function TypeRows({ bucket }) {
@@ -33,20 +33,23 @@ function TypeRows({ bucket }) {
   });
 }
 
-function TeamCard({ colour, name, stats, thinking }) {
+function TeamCard({ colour, name, stats, thinking, format }) {
+  const positions = Object.keys(stats);
   const total = { thrown: 0, graded: 0, sum: 0 };
-  for (const p of POSITIONS) {
+  for (const p of positions) {
     total.thrown += stats[p].thrown;
     total.graded += stats[p].graded;
     total.sum += stats[p].sum;
   }
-  const players = POSITIONS.filter(p => stats[p].thrown);
+  const players = positions.filter(p => stats[p].thrown);
   return (
     <div className="card">
       <h2><span className="swatch" style={{ background: `var(--${colour})` }} />{name}</h2>
       {players.length ? players.map(p => (
         <Fragment key={p}>
-          <h3>{p}</h3>
+          <h3>{format.swappable && format.positions.includes(p)
+                ? `${p} · ${roleText(format, format.positions.indexOf(p) + 1)}`
+                : p}</h3>
           <table>
             <tbody>
               <tr>
@@ -78,9 +81,9 @@ function TeamCard({ colour, name, stats, thinking }) {
 
 export function Report({ view, stats, think, series, actions }) {
   const total = ["red", "yellow"].reduce(
-    (n, c) => n + POSITIONS.reduce((m, p) => m + stats[c][p].thrown, 0), 0);
+    (n, c) => n + Object.keys(stats[c]).reduce((m, p) => m + stats[c][p].thrown, 0), 0);
   const graded = ["red", "yellow"].reduce(
-    (n, c) => n + POSITIONS.reduce((m, p) => m + stats[c][p].graded, 0), 0);
+    (n, c) => n + Object.keys(stats[c]).reduce((m, p) => m + stats[c][p].graded, 0), 0);
 
   return (
     <>
@@ -126,7 +129,7 @@ export function Report({ view, stats, think, series, actions }) {
       <div className="reportgrid" style={{ marginTop: 12 }}>
         {["red", "yellow"].map(c => (
           <TeamCard key={c} colour={c} name={view.game.teams[c].name || c}
-                    stats={stats[c]} thinking={think[c]} />
+                    stats={stats[c]} thinking={think[c]} format={view.format} />
         ))}
       </div>
     </>

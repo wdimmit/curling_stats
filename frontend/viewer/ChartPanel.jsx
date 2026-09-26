@@ -3,7 +3,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import {
   GROUPS, GROUP_TYPE, MISS_REASONS, TALLBOX, TYPES, subtypesOf,
   blankQueue, boardReadable, identity, isBlank, openGroupFor, scoreCell,
-  houseDeltaText, thinkText, typeOf,
+  houseDeltaText, thinkText, throwerText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 
@@ -156,11 +156,11 @@ function Grading({ shot, shotKey, openGroup, readOnly, others, actions }) {
   );
 }
 
-function Detail({ shot }) {
+function Detail({ shot, format }) {
   // The long split is the Detail card's Weight figure now, so it is not
   // repeated here; this m/s number is the speed the rock entered the house at.
   const rows = [
-    ["Thrower", `${shot?.position ?? "—"}${shot ? ` (rock ${shot.rock_of_player})` : ""}`],
+    ["Thrower", throwerText(shot, format)],
     ["Entry speed", shot?.entry_speed_m_s != null ? `${shot.entry_speed_m_s.toFixed(2)} m/s` : "—"],
     ["Travel", shot?.travel_m != null ? `${shot.travel_m.toFixed(2)} m` : "—"],
     ["Thinking", thinkText(shot)],
@@ -281,7 +281,20 @@ export function ChartPanel({ view, shot, shotKey, cursor, ui, config, series, he
       <Grading key={shotKey} shot={shot} shotKey={shotKey} openGroup={ui.openGroup}
                readOnly={config.readOnly} others={others} actions={actions} />
 
-      <Detail shot={shot} />
+      <Detail shot={shot} format={view.format} />
+
+      {view.format.swappable && !config.readOnly ? (
+        <div id="endBox">
+          <h3>End {view.ends[cursor.ei]?.end.number}</h3>
+          {["red", "yellow"].map(c => (
+            <label key={c} className="chk">
+              <input type="checkbox" checked={!!view.ends[cursor.ei]?.swapped?.[c]}
+                     onChange={e => actions.setSwapped(c, e.target.checked)} />
+              {` ${view.game.teams[c]?.name || c} swapped roles (player B threw first and last)`}
+            </label>
+          ))}
+        </div>
+      ) : null}
 
       <details id="queueBox">
         <summary>Needs charting (<span id="queueCount">{items.length}</span>)</summary>
