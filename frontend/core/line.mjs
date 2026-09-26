@@ -1,9 +1,12 @@
 /* What the Detail pane says about one rock, from schema 6's `line`: where its
  * thrown line passed the skip's broom, where it sat before the push, and where
- * the camera behind the thrower saw it go. Pure -- core/** may not touch the
- * DOM. See docs/superpowers/specs/2026-09-24-shot-line-detail-design.md. */
+ * the camera behind the thrower saw it go. In doubles a rock nobody held a
+ * broom for has a line too, pinned where it crosses the tee (`at_tee`) instead
+ * of at the broom. Pure -- core/** may not touch the DOM. See
+ * docs/superpowers/specs/2026-09-24-shot-line-detail-design.md. */
 import { R, STRIPBOX } from "./constants.mjs";
 import { isSplitEstimated } from "./stats.mjs";
+import { formatOf, lineWithoutBroom } from "./format.mjs";
 
 export const LINE_SCHEMA = 6;
 export const HOG_Y = 34.747 - 6.401;      // the throwing hog line, house metres
@@ -30,12 +33,21 @@ export function restOf(shot) {
   return s && typeof s.x === "number" && typeof s.y === "number" ? { x: s.x, y: s.y } : null;
 }
 
-/* The thrown line's x at depth y, through the two points the timeline gives. */
+/* The thrown line's x at depth y, through the two points the timeline gives:
+ * the hog line and the broom -- or, for a doubles rock nobody held a broom
+ * for, the hog line and the tee. */
 export function lineX(shot, y) {
   const l = shot?.line, b = shot?.target_broom;
-  if (!l || !b || l.at_hog?.x == null || l.at_broom?.x == null) return null;
-  const k = (l.at_broom.x - l.at_hog.x) / (b.y - HOG_Y);
-  return l.at_hog.x + k * (y - HOG_Y);
+  if (!l || l.at_hog?.x == null) return null;
+  if (b && l.at_broom?.x != null) {
+    const k = (l.at_broom.x - l.at_hog.x) / (b.y - HOG_Y);
+    return l.at_hog.x + k * (y - HOG_Y);
+  }
+  if (!b && l.at_tee?.x != null) {
+    const k = (l.at_tee.x - l.at_hog.x) / (0 - HOG_Y);
+    return l.at_hog.x + k * (y - HOG_Y);
+  }
+  return null;
 }
 
 const median = xs => {
@@ -171,7 +183,8 @@ export function lineReason(shot, doc) {
   // See boardReadable in wire.mjs for the same convention.
   if (!(Number(doc?.schema_version) >= LINE_SCHEMA)) return "This chart predates line measurement";
   if (shot?.missing) return "This rock was never seen";
-  if (!shot?.target_broom) return "No broom was held still before the release";
+  // A doubles rock nobody held a broom for still has its line.
+  if (!shot?.target_broom && !lineWithoutBroom(formatOf(doc))) return "No broom was held still before the release";
   if (!shot?.line) return "The hog-line camera lost this rock";
   return null;
 }
@@ -190,6 +203,10 @@ function hackFig(shot) {
   return fig("hack", "Hack", side === "left" ? "Left" : "Right", note);
 }
 
+const curlFig = c => c?.m != null
+  ? fig("curl", "Curl", feetInches(c.m), c.hit ? "from its line to where it hit a stone" : "from its line to where it stopped")
+  : fig("curl", "Curl", "–", c?.hit ? "hit a stone before it was seen" : "no rest position");
+
 export function lineFigures(shot, doc) {
   const reason = lineReason(shot, doc);
   const predates = reason === "This chart predates line measurement";
@@ -207,6 +224,15 @@ export function lineFigures(shot, doc) {
       fig("broom", "At the broom", "–", reason),
       hackFig(shot), fig("hog", "At the hog line", "–", reason),
       weight, fig("curl", "Curl", "–", ""), restFig] };
+  }
+  if (!shot.target_broom) {
+    // A doubles rock nobody held a broom for: nothing measures against one,
+    // but the hack, the weight, the curl and the rest do not need it.
+    return { predates, reason, figures: [
+      fig("broom", "At the broom", "–", "no broom held in the house"),
+      hackFig(shot),
+      fig("hog", "At the hog line", "–", "no broom to aim at"),
+      weight, curlFig(curlOf(shot)), restFig] };
   }
   const miss = l.at_broom.miss_m;
   const c = curlOf(shot);
@@ -228,9 +254,7 @@ export function lineFigures(shot, doc) {
     : fig("hog", "At the hog line",
           Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, turn)}`,
           "of the hack-to-broom line");
-  const curl = c?.m != null
-    ? fig("curl", "Curl", feetInches(c.m), c.hit ? "from its line to where it hit a stone" : "from its line to where it stopped")
-    : fig("curl", "Curl", "–", c?.hit ? "hit a stone before it was seen" : "no rest position");
+  const curl = curlFig(c);
   return { predates, reason, figures: [broom, hack, hog, weight, curl, restFig] };
 }
 
@@ -337,12 +361,22 @@ export function stripGeometry(shot, box = STRIPBOX) {
     broom: b ? pt(b.x, b.y) : null,
     rest: rest ? pt(rest.x, rest.y) : null,
   };
-  // The line parts all need the broom too: an aim line, an extension or a
-  // miss distance all measure against it, and there is nothing to measure
-  // without one.
-  if (!l || !b) return { ...sheet, aim: null, thrown: null, ext: null, path: null, start: null, miss: null };
+  // The aim line, the extension to the broom and the miss all measure against
+  // the broom. A doubles rock nobody held a broom for still has its thrown
+  // line, extended to the tee (`at_tee`), and where it went.
+  const broomless = l && !b && l.at_tee?.x != null;
+  if (!l || (!b && !broomless)) return { ...sheet, aim: null, thrown: null, ext: null, path: null, start: null, miss: null };
   const hp = (l.hog_path || []).map(([y, x]) => [x, y]);
   const lastY = hp.length ? hp[hp.length - 1][1] : HOG_Y - 3.6;
+  if (broomless) {
+    return {
+      ...sheet, aim: null, miss: null,
+      thrown: pts(hp),
+      ext: pts([[lineX(shot, lastY), lastY], [lineX(shot, 0), 0]]),
+      path: l.path?.length >= 2 ? pts(l.path.map(([y, x]) => [x, y])) : null,
+      start: l.start ? pt(l.start.x, l.start.y) : null,
+    };
+  }
   const miss = l.at_broom.miss_m;
   const side = hackOf(shot);
   return {

@@ -2035,6 +2035,91 @@ class TestStripAndTrack:
                        {"x0": 100, "x1": 200, "y1": 8, "y2": 188}, None]
 
 
+DOUBLES_FORMAT = {"name": "doubles", "stones_per_team": 6, "placed_per_team": 1,
+                  "delivered_per_team": 5, "delivered_per_end": 10,
+                  "positions": ["A", "B"], "throw_table": [1, 2, 2, 2, 1],
+                  "blank_passes_hammer": True, "swappable": True}
+DOUBLES7 = {"schema_version": 7, "format": DOUBLES_FORMAT}
+
+
+class TestBroomlessLine:
+    """A doubles rock nobody held a broom for: its line, pinned at the tee."""
+
+    def broomless(self, **line):
+        base = {"start": {"x": -0.23, "y": 38.07},
+                "at_hog": {"x": -0.757, "offset_m": None},
+                "at_broom": None, "at_tee": {"x": -1.5},
+                "side": None, "curl": "right", "confirmed": True,
+                "hog_path": [[28.35, -0.757], [25.0, -0.85]],
+                "path": [[20.0, -1.0], [1.35, -1.15]], "fit": {"n": 41, "rms_m": 0.003}}
+        base.update(line)
+        return shot(4, "red", "B", target_broom=None, long_split_s=13.79,
+                    delivered_stone_index=0,
+                    stones=[{"color": "red", "x": -1.1529, "y": 1.3486}], line=base)
+
+    def figs(self, s, doc=DOUBLES7):
+        got = run_js(f"out(lineFigures({json.dumps(s)}, {json.dumps(doc)}));")
+        return got, {f["key"]: f for f in got["figures"]}
+
+    def test_the_line_runs_through_the_hog_line_and_the_tee(self):
+        # From (-0.757, 28.346) to (-1.5, 0): at the rest's depth 1.3486 the
+        # line is at -1.4647, and the rock stopped 0.3118 m to its right.
+        assert run_js(f"out(lineX({json.dumps(self.broomless())}, 0));") == pytest.approx(-1.5)
+        got, f = self.figs(self.broomless())
+        assert got["reason"] is None
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("1 ft", "from its line to where it stopped")
+
+    def test_broom_figures_are_dashes_and_the_rest_are_measured(self):
+        _, f = self.figs(self.broomless())
+        assert (f["broom"]["value"], f["broom"]["note"], f["broom"]["tick"]) == (
+            "–", "no broom held in the house", None)
+        assert (f["hog"]["value"], f["hog"]["note"]) == ("–", "no broom to aim at")
+        assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "stone set 9 in left of centre")
+        assert f["weight"]["value"] == "13.8 s"
+        assert f["rest"]["value"] == "12-foot"
+
+    def test_a_doubles_rock_with_no_line_blames_the_camera_not_the_broom(self):
+        s = self.broomless()
+        s["line"] = None
+        got, _ = self.figs(s)
+        assert got["reason"] == "The hog-line camera lost this rock"
+
+    def test_a_fours_line_without_a_broom_is_still_refused(self):
+        got, f = self.figs(self.broomless(), {"schema_version": 7})
+        assert got["reason"] == "No broom was held still before the release"
+        assert f["curl"]["value"] == "–"
+        g = run_js(f"out(stripGeometry({json.dumps(dict(self.broomless(), line=dict(self.broomless()['line'], at_tee=None)))}));")
+        assert g["thrown"] is None
+
+    def test_a_broomless_line_with_nowhere_to_measure_to(self):
+        s = self.broomless(path=[])
+        s["delivered_stone_index"] = None
+        _, f = self.figs(s)
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("–", "no rest position")
+
+    def test_a_broomless_line_without_at_tee_draws_no_line(self):
+        s = self.broomless(at_tee=None)
+        _, f = self.figs(s)
+        assert f["curl"]["value"] == "–"
+        g = run_js(f"out(stripGeometry({json.dumps(s)}));")
+        assert (g["thrown"], g["ext"], g["aim"], g["miss"]) == (None, None, None, None)
+
+    def test_the_strip_draws_the_line_to_the_tee_and_nothing_about_a_broom(self):
+        g = run_js(f"out(stripGeometry({json.dumps(self.broomless())}));")
+        assert g["broom"] is None and g["aim"] is None and g["miss"] is None
+        assert g["thrown"] and g["path"] and g["start"] is not None
+        last_y = float(g["ext"].split()[-1].split(",")[1])
+        assert last_y == pytest.approx((0 + 2.3) * 420 / 41.2, abs=0.1)
+
+    def test_a_player_s_hack_comes_from_broomless_starts(self):
+        a = self.broomless(start={"x": -0.2, "y": 38.07})
+        b = self.broomless(start={"x": -0.25, "y": 38.07})
+        for s in (a, b):
+            s["thrower_slot"] = 2
+        got = run_js(f"out(playerHacks({json.dumps([a, b])}));")
+        assert got["red|2"]["side"] == "left"
+
+
 class TestTheStripOnItsSide:
     """The desktop draws the phone's strip turned a quarter: hack at the left."""
 

@@ -27,6 +27,12 @@ export function formatOf(doc) {
   return FOURS;
 }
 
+/* Whether a rock nobody held a broom for still gets its thrown line: doubles
+ * only, where the partner is usually sweeping rather than holding a broom in
+ * the house. Mirrors GameFormat.line_without_broom, which the document does
+ * not carry -- so it goes by the format's name. */
+export const lineWithoutBroom = fmt => fmt?.name === "doubles";
+
 /* Who throws the end's n-th delivered rock. `swapped` says this team's two
  * players traded roles this end: the slot then names the person, and
  * rock_of_player still counts within the role. */
