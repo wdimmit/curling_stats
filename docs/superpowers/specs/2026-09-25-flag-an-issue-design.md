@@ -1,8 +1,10 @@
 # Flag an issue
 
-**Status:** design approved in chat 2026-09-25, with one change at review: no
-contact field. A flag carries an account only when the person is signed in.
-Awaiting review of this written spec, then an implementation plan.
+**Status:** built on branch `flag-an-issue` (2026-09-25), from
+`docs/superpowers/plans/2026-09-25-flag-an-issue.md`. Checked in headless
+Chrome on `/c/`, `/s/` and `/g/` at desktop and phone widths. The design was
+approved in chat with one change at review: no contact field. A flag carries
+an account only when the person is signed in.
 
 ## Context
 
