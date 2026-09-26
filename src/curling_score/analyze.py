@@ -18,6 +18,7 @@ from curling_score.game import (
     fit,
     hogtime,
     linetime,
+    placement,
     profile,
     scoreboard as sb,
     secondpass,
@@ -109,7 +110,8 @@ def run_up_from(prev_end_s, start_s: float, *, crossed_games: bool = False) -> f
     Both were detected and both were discarded as belonging to the run-up.
 
     Between the previous end closing and this one opening, this panel holds
-    nothing but this end's first stones: the previous end was played into the
+    nothing but this end's stones: in doubles its two placed stones, then its
+    first deliveries: the previous end was played into the
     other house, and its stones are cleared toward the hack behind it, away
     from here. So everything from that close onward is this end's, bounded by
     the gap that would have split the games. The first end of a game has no
@@ -365,6 +367,10 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                                  crossed_games=end is game.ends[0])
             seq = sequence.detect_end(read_path, setup, end, shot_fps,
                                       detector, from_s=from_s)
+            # Doubles: every delivery of the end comes after its placement is
+            # complete, so find that moment before anything is counted.
+            placed = (placement.find(seq, from_s, end.end_s)
+                      if fmt.placed_per_team else None)
             # Anything thrown since the previous end closed is this end's;
             # anything earlier on this panel is not.
             deliveries = [
@@ -374,14 +380,18 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 )
                 if d.t_enter >= from_s
             ]
+            deliveries, before_placement = placement.exclude(deliveries, placed)
             # The first pass has to be strict or sweepers count as stones. Once
             # it is in hand the rules say where the gaps are and what colour
             # belongs in them, so a second look can be far more permissive
             # without letting phantoms in everywhere else.
+            gap_from = (end.start_s if placed is None
+                        else max(end.start_s, placed.t_s + placement.SETTLE_S))
             gaps = secondpass.gaps_to_search(
-                deliveries, end.start_s, end.end_s,
+                deliveries, gap_from, end.end_s,
                 per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
-            recovered = secondpass.search(seq, gaps, deliveries)
+            recovered, recovered_early = placement.exclude(
+                secondpass.search(seq, gaps, deliveries), placed)
             if recovered:
                 deliveries = sorted(
                     deliveries + recovered, key=lambda d: d.t_enter
@@ -398,7 +408,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 read_path, far, from_s, end.end_s,
                 release.RELEASE_FPS, detector))
             releases, thrown_by, unaccounted = release.find_and_pair(
-                far_seq, far.view_y_min_m, deliveries, seq, since=from_s,
+                far_seq, far.view_y_min_m, deliveries, seq,
+                since=from_s if placed is None else max(from_s, placed.t_s),
                 view_x_limit_m=far.view_x_limit_m,
             )
             if unaccounted:
@@ -418,11 +429,17 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 paired=fit.paired_ids(thrown_by),
                 per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
             dropped = len(deliveries) - len(kept)
+            # The arrangement as it stood when rock 1 was on its way: a power
+            # play set up in two steps shows its final shape here.
+            if placed is not None and kept:
+                placed = placement.read_before(seq, placed, kept[0].t_enter)
             # The next end's run-up begins when this end's last rock stopped.
             prev_end_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
             shots = shots_mod.from_deliveries(
                 kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()},
-                fmt=fmt)
+                fmt=fmt,
+                before=placed.seed if placed is not None else (),
+                base=placement.fill_base(placed, fmt))
             # Only now that the rules have settled which rocks exist: the
             # clock wants a tee crossing for each of them, which is a far
             # weaker thing to ask of the same footage than a release was, and
@@ -453,7 +470,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 board_score=(None if scores is None
                              else scores.per_end.get(end.number)),
                 fmt=fmt,
+                placement=placed,
             )
+            if built.get("placement") is not None:
+                built["placement"]["candidates_dropped"] = (
+                    len(before_placement) + len(recovered_early))
             built["deliveries_seen"] = len(deliveries)
             built["releases_seen"] = len(releases)
             built["releases_unaccounted"] = len(unaccounted)
@@ -467,11 +488,16 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             built["detection_confidence"] = round(audit.confidence, 3)
             out_ends.append(built)
             done_ends += 1
+            p = built.get("placement")
+            placed_note = "" if not p else (
+                f"placement {p['hammer']}"
+                + (f" power play {p['power_play']}" if p["power_play"] else "") + ", ")
             progress(
                 f"    {len(kept)}/{fmt.delivered_per_end} deliveries "
                 f"(R{audit.thrown['red']} Y{audit.thrown['yellow']} offered"
                 f"{f', +{len(recovered)} recovered' if recovered else ''}"
                 f"{f', -{dropped} against the rules' if dropped else ''}), "
+                + placed_note
                 + (f"board says {built['score']}" if built["score"] is not None
                    else f"board silent, detected {built['detected_score']}")
             )
@@ -525,6 +551,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         },
         **_side_calibration(sideviews),
     }
+    check = timeline.format_check(out_games, fmt)
     return timeline.build_document(
         video_id=info.video_id,
         url=source.canonical_url(url),
@@ -541,6 +568,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             weights, weights_mod.side_path(), weights_mod.broom_path(),
             line=line_model is not None and sideviews is not None),
         fmt=fmt,
+        check=check,
     )
 
 
