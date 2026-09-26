@@ -32,6 +32,12 @@ MIN_END_S = C.STONES_PER_END * MIN_DELIVERY_GAP_S
 GAME_GAP_S = 240.0
 # A player standing over the stones hides them briefly; smooth that away.
 SMOOTH_SAMPLES = 5
+# How far past the rule's own threshold a stretch of play or of empty sheet
+# must run before a stream still being recorded treats it as settled. The
+# smoothing can still relabel the last couple of samples, which can take a
+# stretch that only just cleared ``MIN_END_S`` back under it; a minute is many
+# samples even at the sparsest keyframes seen.
+CONFIRM_MARGIN_S = 60.0
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,9 @@ class GameSegment:
     start_s: float
     end_s: float
     ends: list[EndSegment] = field(default_factory=list)
+    # Whether the game can take no more ends. Only a stream still being
+    # recorded ever has an open one; see `settled_ends`.
+    closed: bool = True
 
 
 def _active_house(samples) -> list[str | None]:
@@ -150,3 +159,52 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
             )
         )
     return games
+
+
+def settled_ends(samples, min_end_s: float = MIN_END_S, *,
+                 ended: bool = False) -> list[GameSegment]:
+    """The ends of a stream still being recorded that no later footage can move.
+
+    Each game keeps only its settled ends, and a game with none is left out.
+    An end has settled once the end after it has run ``min_end_s`` plus
+    ``CONFIRM_MARGIN_S`` -- long enough that it will survive the ``min_end_s``
+    filter whatever comes next, so nothing can merge across it -- or once its
+    game is closed: a later game has begun, or the sheet has sat empty for
+    ``GAME_GAP_S`` plus the margin, or ``ended`` says the stream is over.
+
+    Every settled end is exactly the end ``segment_games`` gives for the whole
+    video, including the boundaries, which is what lets a live timeline post
+    an end without ever taking it back.
+    """
+    samples = list(samples)
+    games = segment_games(samples, min_end_s)
+    if not games:
+        return []
+    if ended:
+        for game in games:
+            game.closed = True
+        return games
+
+    runs = _runs(_smooth(_active_house(samples)), samples)
+    house, i0, _ = runs[-1]
+    empty_tail_s = samples[-1].t - samples[i0].t if house is None else 0.0
+
+    out = []
+    for game in games:
+        if game is not games[-1] or empty_tail_s >= GAME_GAP_S + CONFIRM_MARGIN_S:
+            game.closed = True
+            out.append(game)
+            continue
+        # The last end is still being played. The one before it has settled
+        # once the last one has run long enough; every earlier end is
+        # followed by an end that is itself finished.
+        last = game.ends[-1]
+        keep = len(game.ends) - 1
+        if keep and last.end_s - last.start_s < min_end_s + CONFIRM_MARGIN_S:
+            keep -= 1
+        if keep:
+            game.ends = game.ends[:keep]
+            game.end_s = game.ends[-1].end_s
+            game.closed = False
+            out.append(game)
+    return out
