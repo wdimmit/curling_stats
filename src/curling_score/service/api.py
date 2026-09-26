@@ -377,11 +377,24 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return f"{settings.public_base_url}{path}"
 
     @lru_cache(maxsize=64)
-    def load_doc(key: str) -> dict:
+    def load_doc(key: str, version: str | None = None) -> dict:
+        """The parsed timeline at `key`, as it stood at `version`.
+
+        A retry runs a run again in place, and the worker uploads the new
+        timeline over the old one at the same key. Cached by key alone, every
+        instance that had served the game went on serving the old document --
+        to the review link, every chart, and the thinking summary computed
+        from it. The run's `ready_at` changes each time it completes, so it
+        goes in the key the way the stat does in `_asset_bytes`.
+        """
         data = store.get_bytes(key)
         if data is None:
             raise KeyError(key)
         return json.loads(data)
+
+    def run_doc(run: Run) -> dict:
+        return load_doc(run.timeline_key,
+                        run.ready_at.isoformat() if run.ready_at else None)
 
     def requested_format(value) -> str | None:
         """The format a request asked for, or None to let the title decide.
@@ -416,7 +429,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         for. The source-level review routes below pass nothing and so keep
         seeing the whole of what was detected.
         """
-        doc = json.loads(json.dumps(load_doc(run.timeline_key)))  # a private copy
+        doc = json.loads(json.dumps(run_doc(run)))  # a private copy
         if game_index is not None:
             doc["games"] = [g for g in doc["games"] if g["index"] == game_index]
         doc = timeline.trim_to_start(doc, start_s)
@@ -1835,6 +1848,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if run is None:
             raise HTTPException(404)
         t = now()
+        # A ready run retried is read again in place, so what its games'
+        # thinking summaries were read from is about to be replaced. Drop them
+        # and the report counts the games as pending until /complete writes
+        # new ones, rather than showing numbers nothing backs any more.
+        for src in repo.sources_for_video(run.video_id):
+            if src.current_run_id == run.id and src.thinking is not None:
+                repo.update_source(src.id, thinking=None)
         repo.update_run(run.id, status="queued", error=None)
         repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t, run_after=t))
         return {"ok": True}

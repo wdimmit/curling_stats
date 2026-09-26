@@ -243,3 +243,15 @@ def test_a_new_chart_repairs_a_summary_the_game_moved_out_from_under(world):
     assert report(world)["pending"] == 1
     assert submit(world, ip="5.6.7.8").status_code in (200, 201)
     assert report(world)["pending"] == 0 and game_row(world)[1]["red_s"] == 90.0
+
+
+def test_a_retry_drops_the_summary_until_the_run_is_read_again(world):
+    submit(world)
+    work_through(world, doc=with_thinking(sample_doc(1)), games=1)
+    run_id = the_source(world).current_run_id
+    assert world["client"].post(f"/api/admin/runs/{run_id}/retry", headers=ADMIN).status_code == 200
+    assert report(world)["pending"] == 1 and report(world)["leagues"] == []
+    world["clock"].advance(600)
+    work_through(world, doc=with_thinking(sample_doc(1), [(30.0, 120.0)]), games=1)
+    assert report(world)["pending"] == 0
+    assert (game_row(world)[1]["red_s"], game_row(world)[1]["yellow_s"]) == (30.0, 120.0)

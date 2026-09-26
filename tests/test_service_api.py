@@ -612,6 +612,23 @@ class TestCatalogueAndAdmin:
         assert world["client"].post(f"/api/admin/runs/{run_id}/retry", headers=ADMIN).status_code == 200
         assert world["client"].get(f"/c/{s}/status.json").json()["status"] == "queued"
 
+    def test_a_ready_run_retried_in_place_serves_its_new_timeline(self, world):
+        """A retry has the worker upload over the old timeline at the same key.
+        Whatever was cached from before must not outlive it."""
+        submit(world)
+        work_through(world, doc=sample_doc(1), games=1)
+        c = world["client"]
+        sid = c.get("/api/games").json()["games"][0]["source_id"]
+        shot = lambda: c.get(f"/g/{sid}/timeline.json").json()["games"][0]["ends"][0]["shots"][0]
+        assert shot()["shot_type"] == "guard"             # and now in the cache
+        run_id = world["repo"].get_source(sid).current_run_id
+        assert c.post(f"/api/admin/runs/{run_id}/retry", headers=ADMIN).status_code == 200
+        world["clock"].advance(600)
+        again = sample_doc(1)
+        again["games"][0]["ends"][0]["shots"][0]["shot_type"] = "draw"
+        work_through(world, doc=again, games=1)
+        assert shot()["shot_type"] == "draw"
+
     def test_approval_mode(self, world):
         world["settings"].require_approval = True
         s = submit(world).json()["slug"]
