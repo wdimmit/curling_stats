@@ -12,8 +12,8 @@ import {
 } from "react";
 import {
   PHONE_QUERY,
-  buildGameView, cumulativeThinking, cursor as cursorOf, endKey, flagPlace, gatherStats,
-  gatherThinking, formatWarning,
+  buildGameView, chartedNotice, cumulativeThinking, cursor as cursorOf, endKey, flagPlace,
+  gatherStats, gatherThinking, formatWarning,
   identity, isBlank, isGraded, nextBlankAfter, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash,
@@ -233,8 +233,7 @@ export function App({ doc, config, cursor }) {
   useLayoutEffect(() => { writeBodyState(bodyFlags); });
 
   useEffect(() => {
-    store.setNotice(n => notify(
-      `Someone else charted ${n} shot${n === 1 ? "" : "s"}`));
+    store.setNotice(keys => notify(chartedNotice(keys)));
   }, [notify]);
 
   useEffect(() => { saveCursor(config.slug, { gi: ui.gi, ei: ui.ei, si: ui.si }); },

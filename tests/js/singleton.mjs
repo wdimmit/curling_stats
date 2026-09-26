@@ -58,6 +58,7 @@ export const boardReadable = core.boardReadable;
 export const typeOf = core.typeOf;
 export const peekMode = core.peekMode;
 export const renumberNotice = core.renumberNotice;
+export const chartedNotice = core.chartedNotice;
 export const openGroupFor = core.openGroupFor;
 export const subtypesOf = core.subtypesOf;
 export const shotVideoTime = s => core.shotVideoTime(s, state.leadIn);

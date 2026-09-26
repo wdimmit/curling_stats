@@ -725,6 +725,32 @@ class TestRenumberNotice:
         assert run_js('out(renumberNotice({number:3}, null));') is None
 
 
+class TestChartedNotice:
+    """What a poll that brought a teammate's work says. A shot key has three
+    parts (game.end.rock); a two-part end key is a doubles role swap, which
+    is not a charted shot."""
+
+    def test_shots_are_counted(self):
+        assert run_js('out(chartedNotice(["0.3.1"]));') == "Someone else charted 1 shot"
+        assert run_js('out(chartedNotice(["0.3.1", "0.4.2"]));') == "Someone else charted 2 shots"
+
+    def test_a_swap_alone_says_who_threw_changed(self):
+        assert run_js('out(chartedNotice(["0.3"]));') == "Someone else changed who threw in an end"
+        assert run_js('out(chartedNotice(["0.3", "0.4"]));') == (
+            "Someone else changed who threw in 2 ends")
+
+    def test_only_shot_keys_are_counted_as_shots(self):
+        assert run_js('out(chartedNotice(["0.3", "0.3.1", "0.4"]));') == (
+            "Someone else charted 1 shot")
+
+    def test_the_store_hands_the_view_the_keys(self):
+        root = Path(__file__).resolve().parents[1] / "frontend"
+        store = (root / "runtime/overridesStore.mjs").read_text()
+        assert store.count("onNotice(r.touched);") == 2 and "onNotice(r.touched.length)" not in store
+        assert "store.setNotice(keys => notify(chartedNotice(keys)));" in (
+            root / "viewer/App.jsx").read_text()
+
+
 class TestTimingDisplay:
     """A split and a clock a player reads off and believes."""
 

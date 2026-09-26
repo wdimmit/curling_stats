@@ -65,7 +65,8 @@ export const busyKey = () =>
 
 export function setBusy(key) { busyOn = key; }
 
-/* Registered by the view once it has somewhere to put the message. */
+/* Registered by the view once it has somewhere to put the message. It is
+ * handed the keys that moved, not a count: a shot and an end are different news. */
 export function setNotice(fn) { onNotice = fn || (() => {}); }
 
 /* ------------------------------------------------------------------ edits */
@@ -118,7 +119,7 @@ export async function save() {
     if (body.overrides) {                       // we were behind; catch up
       const r = reconcile(overrides, dirty, busyKey(), body.overrides);
       overrides = r.overrides;
-      if (r.touched.length) { announce(); onNotice(r.touched.length); }
+      if (r.touched.length) { announce(); onNotice(r.touched); }
     }
     const t = new Date();
     setStatus("saved", `saved ${String(t.getHours()).padStart(2, "0")}:`
@@ -153,7 +154,7 @@ function poll() {
       if (tag) { const n = parseInt(tag.replace(/"/g, ""), 10); if (!isNaN(n)) version = n; }
       const r = reconcile(overrides, dirty, busyKey(), await res.json());
       overrides = r.overrides;
-      if (r.touched.length) { announce(); onNotice(r.touched.length); }
+      if (r.touched.length) { announce(); onNotice(r.touched); }
     } catch { /* offline: the next tick asks again */ }
   }, POLL_MS);
 }

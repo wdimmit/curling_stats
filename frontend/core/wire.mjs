@@ -91,8 +91,17 @@ export function unloadBeacon(config, overrides, dirty) {
   };
 }
 
-export const chartedNotice = n =>
-  `Someone else charted ${n} shot${n === 1 ? "" : "s"}`;
+/* What a poll or a save that brought a teammate's work says, from the keys
+ * that moved. Only a shot key -- three parts, game.end.rock -- is a shot
+ * somebody charted; a two-part end key is a doubles team's role swap, and
+ * calling that "charted 1 shot" names a shot nobody touched. */
+export function chartedNotice(keys) {
+  const shots = keys.filter(k => String(k).split(".").length === 3).length;
+  if (shots) return `Someone else charted ${shots} shot${shots === 1 ? "" : "s"}`;
+  const ends = keys.length;
+  return ends === 1 ? "Someone else changed who threw in an end"
+                    : `Someone else changed who threw in ${ends} ends`;
+}
 
 /* Schema 4 is where `end.score` and `game.final` became the board's own
  * figures. Before that they held the detector's *inferred* score in those
