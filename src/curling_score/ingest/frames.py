@@ -224,6 +224,28 @@ def sample_keyframes(path, count: int = 24, stride: int = 90, with_times: bool =
     return out
 
 
+def spread_keyframes(path, until_s: float, count: int = 24,
+                     with_times: bool = False):
+    """``count`` keyframes spread evenly over ``[0, until_s]``, or all of them
+    when there are fewer.
+
+    A live stream is calibrated from what has been recorded so far, not from a
+    whole video, so the spacing comes from how many keyframes that span holds.
+    Two sweeps, the first of them without decoding, so only the chosen frames
+    are ever held.
+    """
+    n = sum(1 for _ in keyframe_sweep(path, decode=False, end_s=until_s))
+    stride = max(1, n // count)
+    out = []
+    for i, (t, img) in enumerate(keyframe_sweep(path, end_s=until_s)):
+        if i % stride:
+            continue
+        out.append((t, img) if with_times else img)
+        if len(out) >= count:
+            break
+    return out
+
+
 def chunked(path, start_s, end_s, fps, size=64, crop=None):
     """Yield frames in batches, so a long span never sits in memory at once.
 
