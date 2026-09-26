@@ -22,7 +22,7 @@ const phone = () => matchMedia(PHONE_QUERY).matches;
  * running a sibling's layout effect before this one. Both writes are
  * idempotent, so the second costs nothing.
  */
-function useHouseCrop(svgRef, { editing, bodyFlags, deps }) {
+function useHouseCrop(svgRef, { editing, watching, bodyFlags, deps }) {
   const [box, setBox] = useState({ crop: false, aspect: 0 });
 
   useLayoutEffect(() => {
@@ -43,7 +43,10 @@ function useHouseCrop(svgRef, { editing, bodyFlags, deps }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  return houseViewBox(box.crop ? "crop" : "full", box.aspect);
+  // Watching on a phone -- a view-only or review link -- shows everything in
+  // play. Charting keeps the crop: its band is too short for the whole sheet
+  // to stay legible.
+  return houseViewBox(watching && phone() ? "inplay" : box.crop ? "crop" : "full", box.aspect);
 }
 
 function sheetPoint(evt, svg) {
@@ -186,7 +189,7 @@ export function House({ shot, shotKey, selStone, houseMode, showTrack, readOnly,
   const svgRef = useRef(null);
   const drag = useRef(null);
   const viewBox = useHouseCrop(svgRef, {
-    editing: houseMode === "edit", bodyFlags, deps: cropDeps,
+    editing: houseMode === "edit", watching: readOnly, bodyFlags, deps: cropDeps,
   });
 
   /* The gesture lives in a ref, never in state: a drag that re-rendered the
