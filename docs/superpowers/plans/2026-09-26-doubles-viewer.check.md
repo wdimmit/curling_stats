@@ -155,3 +155,73 @@ Also checked:
   scoped to the tall-phone query, so they do nothing. F2 needs no rule for it.
 - All four `devserve.py` instances and each headless Chrome were killed by
   PID after use. `ps` showed none left, and nothing else was touched.
+
+### F7: an opaque band under the phone transport (5c05164)
+
+Item 3's failure, fixed in general rather than by moving the End box. On a
+phone, `.transport::before` paints the bar's band opaque: from 8 px above the
+buttons to the bottom of the screen, across the sheet's full width, in the
+sheet's own colour (`var(--panel)`, computed rgb(33, 28, 20), the same as
+`#chart`). It sits at z-index -1 inside `.transport`'s stacking context, so it
+is under the buttons and over the sheet. Taps in the gaps now land on the bar
+and do nothing.
+
+Re-measured on phone `/c/`, 390×844, with a fresh profile per run and the same
+tools. The same two charts were checked before and after F7. The band spans
+764-844 and the transport bar 772-820. The grid probe covers the band every
+12 px across and every 6 px down (462 points). The V1 probe set is the same
+28 points as item 3.
+
+| Check | Before F7 | After F7 |
+|---|---|---|
+| Doubles, open sheet, `scrollTop` 0: swap-label hits in the band | 124 / 462 grid points and 15 / 28 V1 probes, all on the yellow label | **0 / 462** and **0 / 28**. The grid hits `#transport` 239 times and a button 223 times. |
+| Doubles, open sheet, scrolled to the end (`scrollTop` 81): End box reachable, labels clear the bar | labels 646.9-699.4 and 703.4-755.9 | Unchanged: labels 646.9-699.4 and 703.4-755.9. That is 16.1 px clear of the bar and 8.1 px clear of the band's top. Each checkbox's centre hit-tests to its own label. |
+| Doubles, peek | `#endBox` `display: none`, 0 / 29 | Unchanged: `#endBox` `display: none`. 0 swap hits, 462 grid points and 28 V1 probes. |
+| Four-player `/c/` peek, full-frame screenshot | -- | 14015 device px differ, all inside CSS x 12.0-377.5, y 772.0-820.0: the bar's own box, meaning its buttons |
+| Four-player `/c/` open, full-frame screenshot | -- | the same 14015 px, in the same box |
+
+Why the four-player screenshots differ, and why only inside the bar's box:
+- Two before-F7 runs were pixel-identical, so the capture itself is
+  deterministic, YouTube iframe included.
+- The rest of the band (764-772, 820-844, and the side margins) is
+  pixel-identical, because the backing is exactly the sheet's colour.
+- Inside the bar, 10652 px differ by one level: the disabled ← button's
+  opacity now blends against the backing inside the bar's layer rather than
+  against the sheet at composite time. The remaining ~3360 px (2925 of them
+  by more than 10 levels) are the button labels' glyph edges. Before, they
+  were grey-antialiased. After, they have colour fringes: subpixel (LCD)
+  text, which Chrome allows once the fixed layer has an opaque background.
+- Confirmed by injecting `.transport::before { background: transparent }`,
+  and separately `display: none`, over the after-F7 page. Both matched the
+  before screenshots pixel for pixel.
+- Headless desktop Chrome does LCD text at DPR 2. A phone's own Chrome is not
+  expected to, so the fringes should not appear on a device.
+
+The band hides with the bar:
+- In the house editor (entered via `#placeStones`), `#transport` has
+  `display: none`, and the band's grid hits the editor's own controls
+  (`#houseDone` 175, `#recolour` 35, swatches) and never the bar.
+- On `/s/`, `data-mode=view`, the transport is `display: none`, and the grid
+  hits the watch list.
+
+The short-screen query (≤520 px tall) does scroll content under its bar. The
+page is 2601 px tall at 600×400 and 2216 px at 390×500. The bar's own padded
+card already covered its box. But the 12 px margins beside and below the card
+exposed what was scrolled there:
+- at 600×400, with the End box under the bar, 204 of 1350 band points hit the
+  swap label or its checkbox;
+- with the grading form under it, 45 hit grade buttons.
+
+So it gets the same band (5c05164), in the page's colour `var(--bg)` since
+there is no sheet. The card moves to `::after` so it still paints over the
+band: a z-index -1 child paints over its parent's own background. After the
+change:
+- at both 600×400 and 390×500, every band point hits `#transport` or a
+  button (0 content hits);
+- the screenshots differ only inside CSS x 12-588, y 328-400 (600×400) and
+  x 12-378, y 428-500 (390×500). That is the bar, plus the strip below it,
+  where content had shown through and is now covered; the card itself looks
+  the same.
+
+Both devserve instances and each headless Chrome were killed by PID. `ps` shows
+none left.
