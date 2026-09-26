@@ -1,6 +1,6 @@
 /* The phone viewer's rock pager and the swipe that drives it. */
 import { useRef } from "react";
-import { swipeStep } from "../core/index.mjs";
+import { positionText, swipeStep } from "../core/index.mjs";
 
 /* Pointer handlers that turn a horizontal drag into a rock step. The pane they
  * go on needs `touch-action: pan-y` (or none, as #house has) so the browser
@@ -24,8 +24,8 @@ export function useSwipe(onStep) {
  * one we would have to draw, scroll and dismiss. An end with no rocks is
  * listed but cannot be picked -- the pager has nothing to show there, and
  * without a pager there is no way back but the menu. */
-export function Pager({ row, count, index, ends, ei, canPrev, canNext, onStep, onEnd }) {
-  const sub = [row.color, row.position, row.name].filter(Boolean).join(" · ");
+export function Pager({ row, format, count, index, ends, ei, canPrev, canNext, onStep, onEnd }) {
+  const sub = [row.color, positionText(row.position, format), row.name].filter(Boolean).join(" · ");
   return (
     <div className="wpager">
       <button type="button" aria-label="Previous rock" disabled={!canPrev} onClick={() => onStep(-1)}>‹</button>

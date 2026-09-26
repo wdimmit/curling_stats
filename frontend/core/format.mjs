@@ -58,6 +58,12 @@ export function roleText(fmt, slot) {
   return ks.map(k => NUM[k - 1]).join(" & ");
 }
 
+/* A position where a line of text names it: "lead" in fours, as it always
+ * read; "player B" where a team is two players, because a bare "B" between
+ * a colour and a shot type reads as nothing at all. */
+export const positionText = (position, fmt = FOURS) =>
+  (position && fmt.swappable ? `player ${position}` : position);
+
 /* The Detail row: "second (rock 1)" in fours, as it always read; "Player B
  * (rock 2 of 3)" where a team is two players. */
 export function throwerText(shot, fmt = FOURS) {

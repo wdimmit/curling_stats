@@ -591,7 +591,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
         <button id="flagBtn" title="Flag an issue with this rock" hidden={!config.hosted}
                 onClick={() => {
                   // `opened` keys the dialog's form, so every opening starts fresh.
-                  const at = flagPlace(view, ui.ei, ui.si);
+                  const at = flagPlace(view, ui.ei, ui.si, view.format);
                   if (at) dispatch({ type: "set",
                     patch: { flagging: { ...at, opened: Date.now() } } });
                 }}>

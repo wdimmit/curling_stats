@@ -3,6 +3,7 @@
  * Plain ESM with no React and no DOM, so the Python suite can run it under
  * bare node -- see tests/test_viewer_js.py. */
 import { NOTE_MAX, VIDEO_LEAD_IN_S } from "./constants.mjs";
+import { FOURS, positionText } from "./format.mjs";
 import { shotVideoTime } from "./shots.mjs";
 import { cursor, endIdentity, identity } from "./timeline.mjs";
 
@@ -13,10 +14,14 @@ import { cursor, endIdentity, identity } from "./timeline.mjs";
  * renumbered -- so a flag still finds its rock after the display moves.
  *
  * The rock comes from `cursor()`, the editor's own reading of it, so the key
- * a flag records is the one an edit to that rock is saved under. */
-export function flagPlace(view, ei, si) {
+ * a flag records is the one an edit to that rock is saved under. `fmt` is the
+ * chart's format, which only changes how the thrower reads: "red, player B"
+ * in doubles, "red, lead" as ever in fours. */
+export function flagPlace(view, ei, si, fmt = FOURS) {
   const { end: e, shot, raw, key } = cursor(view, ei, si);
-  const label = shot ? [shot.color, shot.position].filter(Boolean).join(", ") || null : null;
+  const label = shot
+    ? [shot.color, positionText(shot.position, fmt)].filter(Boolean).join(", ") || null
+    : null;
   const place = {
     game_index: view.game.index ?? null,
     end: e ? e.number ?? null : null,

@@ -41,6 +41,7 @@ export const shotLabel = core.shotLabel;
 export const roleText = core.roleText;
 export const throwerText = core.throwerText;
 export const formatWarning = core.formatWarning;
+export const positionText = core.positionText;
 export const endKey = core.endKey;
 export const layout = e => core.layout(game(), e, state.overrides, core.formatOf(state.doc));
 export const mergedShots = e => layout(e).shots;

@@ -54,7 +54,7 @@ export function Watch({ view, ui, config, series, think, here, actions }) {
   return (
     <section id="watch" aria-label="This game's rocks">
       {ui.tab !== "timing" && row ? (
-        <Pager row={row} count={rows.length} index={ui.si} ends={ends} ei={ui.ei}
+        <Pager row={row} format={view.format} count={rows.length} index={ui.si} ends={ends} ei={ui.ei}
                canPrev={!!stepRock(view, ui.ei, ui.si, -1)} canNext={!!stepRock(view, ui.ei, ui.si, 1)}
                onStep={actions.step} onEnd={actions.goToEnd} />
       ) : null}

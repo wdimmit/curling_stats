@@ -2405,6 +2405,22 @@ class TestFlagPlace:
                                 "label": None}
         assert got["text"] == "No ends in this game"
 
+    def test_a_doubles_rock_names_the_player_and_a_fours_rock_its_position(self):
+        """A bare "B" reads as nothing; "player B" says who threw. The format
+        comes from the caller, and four-player text is what it always was."""
+        d = doubles_doc(doubles_shots())
+        got = run_js(f"const v = buildGameView({json.dumps(d)}, 0, {{}});"
+                     "out([flagPlace(v, 0, 2, v.format), flagPlace(v, 0, 1, v.format)]);")
+        assert got[0]["place"]["label"] == "red, player B"
+        assert got[0]["text"] == "End 3 · Rock 3 (red, player B)"
+        assert got[1]["place"]["label"] == "yellow, player A"
+        fours = doc([shot(1, "red", "lead")])
+        got = run_js(f"const v = buildGameView({json.dumps(fours)}, 0, {{}});"
+                     "out([flagPlace(v, 0, 0, v.format), flagPlace(v, 0, 0)]);")
+        assert got[0] == got[1]
+        assert got[0]["place"]["label"] == "red, lead"
+        assert got[0]["text"] == "End 1 · Rock 1 (red, lead)"
+
     def test_it_reads_the_cursor_it_does_not_redo_it(self):
         src = (Path(__file__).resolve().parents[1] / "frontend/core/flag.mjs").read_text()
         assert "cursor(view, ei, si)" in src and "at.raws[si]" not in src
@@ -2500,7 +2516,7 @@ class TestTheFlagButton:
 
     def test_the_place_is_a_snapshot_taken_on_open(self):
         app = self.src("frontend/viewer/App.jsx")
-        assert "const at = flagPlace(view, ui.ei, ui.si);" in app
+        assert "const at = flagPlace(view, ui.ei, ui.si, view.format);" in app
         assert "flagging: { ...at, opened: Date.now() }" in app
         flag = self.src("frontend/viewer/Flag.jsx")
         assert "flagging.place" in flag and "ui." not in flag
@@ -2623,6 +2639,14 @@ class TestDoublesFormat:
                      "const f = formatOf(state.doc);"
                      "out([throwerText(mergedShots(e)[4], f), throwerText(mergedShots(e)[8], f)]);")
         assert got == ["Player B (rock 2 of 3)", "Player A (rock 2 of 2)"]
+
+    def test_a_position_in_a_line_of_text(self):
+        """The pager ("red · player B · Draw") and the flag label read it."""
+        got = run_js(setup(doubles_doc(doubles_shots())) +
+                     "const f = formatOf(state.doc);"
+                     "out([positionText('B', f), positionText('A', f), positionText(null, f),"
+                     " positionText('lead'), positionText('skip', formatOf({}))]);")
+        assert got == ["player B", "player A", None, "lead", "skip"]
 
     def test_fours_thrower_text_is_unchanged(self):
         got = run_js(setup(doc([{"number": 3, "color": "red", "position": "second",
