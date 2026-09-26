@@ -62,6 +62,11 @@ class TestReviewPage:
         assert world["client"].get(f"/g/{sid}/style.css").status_code == 200
         assert world["client"].get(f"/g/{sid}/nope.js").status_code == 404
 
+    def test_the_flag_button_is_in_the_bundle(self, world):
+        sid = a_source(world)["source_id"]
+        app = world["client"].get(f"/g/{sid}/app.js").text
+        assert "flagBtn" in app and "flagDialog" in app and "/api/flags" in app
+
 
 class TestReviewTimeline:
     def test_it_serves_only_that_game(self, world):
@@ -91,3 +96,10 @@ class TestReviewIsReadOnly:
         world["client"].get(f"/g/{sid}/")
         world["client"].get(f"/g/{sid}/timeline.json")
         assert len(world["repo"].charts) == before
+
+
+def test_a_flag_is_not_a_route_under_the_review_link(world):
+    """Flags go to /api/flags; the review link keeps carrying no POST route."""
+    sid = a_source(world)["source_id"]
+    r = world["client"].post(f"/g/{sid}/flag", json={"note": "n"})
+    assert r.status_code == 405

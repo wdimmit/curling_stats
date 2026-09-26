@@ -29,6 +29,9 @@ export const DRAG_MIN_M = 0.03;   // below this a pointer gesture is a click
 export const SAVE_DEBOUNCE_MS = 800;
 export const TYPICAL_GAP_S = 45;  // a club delivery about every 45 s
 export const POLL_MS = 15000;
+// Mirrors of the server's numbers, pinned equal by TestFlagConstants.
+export const NOTE_MAX = 2000;       // api.MAX_FLAG_NOTE: longest flag note
+export const VIDEO_LEAD_IN_S = 10;  // timeline.VIDEO_LEAD_IN_S: t_video_s's lead-in
 
 /* Must stay byte-identical to the phone block in style.css. The JS gate and
  * the stylesheet gate being the same string is what keeps the behaviour that

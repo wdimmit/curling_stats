@@ -263,3 +263,29 @@ class WatchedPlaylist:
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class Flag:
+    """Somebody pointed at a rock and said what is wrong with it.
+
+    `where` is worked out by the server from the link the flag was sent from
+    -- chart, source, run, video, pipeline version -- and is never taken from
+    the browser; `place` is what the browser showed. Kept out of the chart
+    entirely: overrides flow into export.json and on into training labels,
+    and a complaint about a chart is not a label.
+    """
+
+    id: str
+    created_at: datetime
+    note: str
+    where: dict = field(default_factory=dict)
+    place: dict = field(default_factory=dict)
+    status: str = "open"                  # "open" | "resolved"
+    resolved_at: datetime | None = None
+    overrides_version: int | None = None
+    user: dict | None = None              # {"uid", "email"} when signed in
+    ip_hash: str | None = None
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)

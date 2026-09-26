@@ -1,8 +1,10 @@
 # Flag an issue
 
-**Status:** design approved in chat 2026-09-25, with one change at review: no
-contact field. A flag carries an account only when the person is signed in.
-Awaiting review of this written spec, then an implementation plan.
+**Status:** built on branch `flag-an-issue` (2026-09-25), from
+`docs/superpowers/plans/2026-09-25-flag-an-issue.md`. Checked in headless
+Chrome on `/c/`, `/s/` and `/g/` at desktop and phone widths. The design was
+approved in chat with one change at review: no contact field. A flag carries
+an account only when the person is signed in.
 
 ## Context
 
@@ -57,8 +59,9 @@ One `Flag` record per flag, in a new `flags` collection:
   a chart stays on its run. `source_id` plus `t_video_s` finds the same rock in
   a later run, where end and rock numbers may differ.
 - `where` comes from the server because the browser does not know its run or
-  source on `/c/` and `/s/`, and because `window.CHART.slug` is not evidence of
-  anything (see Risks).
+  source on `/c/` and `/s/`, and because nothing the browser sends is evidence
+  of which chart it is on. A view-only page carries no chart id at all (fixed
+  in `d380961`).
 - Flags are in `export_all` and `import_all`, so the nightly backup and
   `restore` carry them. `resolved_at` joins `restore._TIME_FIELDS`.
 
@@ -79,8 +82,11 @@ is what is sent.
 **The dialog** (`Flag.jsx`, a native `<dialog>` opened with `showModal()`, which
 brings focus handling, Escape and a backdrop):
 - Title "Flag an issue".
-- The place, e.g. "Game 1 · End 4 · Rock 16 (red, skip)". "End 4" alone when
-  the end has no rocks.
+- The place, e.g. "End 4 · Rock 16 (red, skip)". "End 4" alone when the end
+  has no rocks, and "No ends in this game" when detection found none, which is
+  still flaggable. The game is named ("Game 2 · …", by its number in the
+  video) only when the page holds more than one. A hosted page holds one, where
+  the number would always read 1 and disagree with the owner's list.
 - A textarea, required, `maxlength` 2,000, focused on open.
 - One line saying who the flag is from:
   - "From *email*" when signed in;
@@ -97,8 +103,12 @@ typing a note cannot step rocks or toggle panels.
 
 **Sign-in, without Firebase in the viewer.** The viewer deliberately does not
 load Firebase (`frontend/site/auth.js`, lines 1–12). The dialog loads it only
-when it opens: `await import("../site/auth.js")`, then `whenReady()` and
-`currentUser()`. The SDK itself stays on the gstatic CDN, as on the site pages.
+when it opens: `await import("../site/auth.js")`, then it waits for
+`onUser` to report `ready` (`settledUser` in `core/flag.mjs`). Not
+`whenReady()` then `currentUser()`, as first written here: `whenReady()`
+settles once the state listener is registered, before Firebase restores the
+session, so a signed-in person's first flag went anonymous (found in the final
+review). The SDK itself stays on the gstatic CDN, as on the site pages.
 The Firebase session is per origin, so someone signed in on the site is signed
 in here. When they are, the request carries `Authorization: Bearer <ID token>`.
 
@@ -135,8 +145,10 @@ It fails soft:
 
 **`GET /api/admin/flags?status=open|resolved|all&limit=200`**, behind
 `require_admin`, returns `{"flags": [...]}` newest first. `status` defaults to
-`open`. Filtering is on `status` equality with sorting in Python, as
-`charts_for_owner` does, so no new Firestore index is needed.
+`open`. Firestore orders and limits the query itself, because resolved flags
+pile up and are billed per document read. That needs a composite index,
+`flags (status ASC, created_at DESC)`, declared in `deploy/firestore.indexes.json`
+and `deploy/README.md`. Create it before deploying.
 
 **`POST /api/admin/flags/{id}/resolve`**, behind `require_admin`, sets `status`
 and `resolved_at` and returns the flag, or 404.
@@ -221,17 +233,30 @@ and `resolved_at` and returns the flag, or 404.
 
 ## Risks
 
-- **A view-only link reveals the edit key.** Found while designing this and
-  separate from it:
-  - `/s/<share>/` boots with `window.CHART.slug = chart.id` (`api.py:1092`);
-  - its `timeline.json` carries `chart.slug = chart.id` (`api.py:360`);
-  - so anyone holding a view link can open `/c/<id>/` and edit.
-
-  This design never trusts the browser's slug, so it neither depends on nor
-  worsens the leak. The fix is its own change.
-- **Spam.** Anyone can flag. The rate limit, the 2,000-character cap and
-  admin-only reading bound the harm. There is no captcha. If abuse shows up,
-  `ip_hash` lets it be found and the limit tightened.
+- **A view-only link revealed the edit key (fixed).** Found while designing
+  this: `/s/<share>/` booted with `window.CHART.slug = chart.id`, and its
+  `timeline.json` carried `chart.slug = chart.id`, so anyone holding a view
+  link could open `/c/<id>/` and edit. Fixed separately in `d380961`: a
+  view-only page keys its cursor on its share key and its document carries
+  `slug: null`. Edit keys already read out of a view link before that stay
+  exposed; there is no way to rotate a chart's key.
+- **Spam.** Anyone can flag. The 2,000-character cap and admin-only reading
+  bound the harm. There is no captcha.
+  - The rate limit bounds it, now that `client_ip` takes the address our own
+    proxies appended to `X-Forwarded-For`: the last entry for Cloud Run and
+    its domain mapping (`Settings.proxy_hops`, env `PROXY_HOPS`, default 1).
+    It used to take the first entry, which the caller writes, so any forged
+    header bought a fresh budget. That affected the submission limit too.
+  - Behind an external HTTPS load balancer, set `PROXY_HOPS=2`: the balancer
+    appends its own address after the caller's.
+  - To check on the live service, send 21 flags with 21 different forged
+    first entries. The 21st must get 429.
+- **Hostile text.** Notes and place fields are read in the owner's terminal.
+  The server strips control characters (except newline and tab), bidi
+  overrides and lone surrogates. It refuses NaN, Infinity, non-finite and
+  out-of-range numbers: one stored NaN would make every later admin list and
+  nightly backup fail. `flags.py` escapes anything non-printable as a second
+  guard.
 - **Loading `auth.js` lazily in an iife bundle.** esbuild inlines a dynamic
   import of a local module but defers its evaluation, and `auth.js` imports the
   SDK by a runtime URL. So the viewer should load no Firebase until the dialog

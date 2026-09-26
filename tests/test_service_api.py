@@ -1315,3 +1315,217 @@ class TestTheReviewLinkSaysWhatItLeftOut:
         sid = world["client"].get("/api/games").json()["games"][0]["source_id"]
         doc = world["client"].get(f"/g/{sid}/timeline.json").json()
         assert doc["chart"]["ends_trimmed"] == 0
+
+
+class TestFlags:
+    """Anyone looking at a game can say what is wrong with a rock."""
+
+    PLACE = {"game_index": 0, "end": 1, "rock": 2, "end_id": "1", "rock_id": "2",
+             "key": "0.1.2", "t_video_s": 812.5, "label": "yellow, lead"}
+
+    def flag(self, w, path, note="the house is wrong", place=None, ip="9.9.9.9", headers=None):
+        return w["client"].post(
+            "/api/flags", json={"path": path, "note": note,
+                                "place": self.PLACE if place is None else place},
+            headers={"X-Forwarded-For": ip, **(headers or {})})
+
+    def chart(self, w):
+        slug = submit(w).json()["slug"]
+        work_through(w)
+        return w["repo"].get_chart(slug)
+
+    def source(self, w):
+        submit(w)
+        work_through(w)
+        games = w["client"].get("/api/games").json()["games"]
+        return w["repo"].get_source(next(g["source_id"] for g in games if g["source_id"]))
+
+    def test_a_flag_from_an_edit_link(self, world):
+        ch = self.chart(world)
+        r = self.flag(world, f"/c/{ch.id}/")
+        assert r.status_code == 201 and r.json()["id"].startswith("f_")
+        f = world["repo"].list_flags()[0]
+        assert f.note == "the house is wrong" and f.status == "open"
+        assert f.where == {"link": "c", "chart_id": ch.id, "share_slug": ch.share_slug,
+                           "source_id": ch.source_id, "run_id": ch.run_id, "video_id": VID,
+                           "processing_version": world["repo"].get_run(ch.run_id).processing_version,
+                           "title": world["repo"].get_run(ch.run_id).title}
+        assert f.place == self.PLACE and f.overrides_version == 0 and f.user is None
+        assert f.ip_hash
+
+    def test_a_flag_from_a_view_only_link_names_the_same_chart(self, world):
+        ch = self.chart(world)
+        assert self.flag(world, f"/s/{ch.share_slug}/").status_code == 201
+        f = world["repo"].list_flags()[0]
+        assert f.where["link"] == "s" and f.where["chart_id"] == ch.id
+
+    def test_a_flag_from_a_review_link(self, world):
+        src = self.source(world)
+        assert self.flag(world, f"/g/{src.id}").status_code == 201
+        f = world["repo"].list_flags()[0]
+        assert f.where["link"] == "g" and f.where["chart_id"] is None
+        assert f.where["source_id"] == src.id and f.where["run_id"] == src.current_run_id
+        assert f.overrides_version is None
+
+    def test_a_superseded_chart_is_followed(self, world):
+        import dataclasses
+        old = self.chart(world)
+        world["repo"].put_chart(dataclasses.replace(old, id="c_newer", share_slug="s_newer"))
+        world["repo"].update_chart(old.id, superseded_by="c_newer")
+        self.flag(world, f"/c/{old.id}/")
+        assert world["repo"].list_flags()[0].where["chart_id"] == "c_newer"
+
+    def test_a_flag_never_touches_the_charts_overrides(self, world):
+        ch = self.chart(world)
+        self.flag(world, f"/c/{ch.id}/")
+        assert world["client"].get(f"/c/{ch.id}/overrides.json").json() == {}
+
+    @pytest.mark.parametrize("path", ["/c/nosuchchartatall/", "/s/nosuchshare/", "/g/s_nosuchgame/"])
+    def test_an_unknown_link_is_404(self, world, path):
+        assert self.flag(world, path).status_code == 404
+        assert world["repo"].list_flags() == []
+
+    @pytest.mark.parametrize("body,code", [
+        (b"{not json", 400), (b"[1, 2]", 400),
+        (b'{"path": "/x/abc/", "note": "n", "place": {}}', 400),
+        (b'{"note": "n", "place": {}}', 400),
+        (b'{"path": "/c/../../etc/", "note": "n", "place": {}}', 400),
+    ])
+    def test_a_bad_body_is_400(self, world, body, code):
+        r = world["client"].post("/api/flags", content=body,
+                                 headers={"Content-Type": "application/json"})
+        assert r.status_code == code
+
+    @pytest.mark.parametrize("note,place", [
+        ("   \n ", None), ("x" * 2001, None), (None, None),
+        ("n", "not an object"), ("n", {"rock": "16"}), ("n", {"rock": True}),
+        ("n", {"label": "x" * 81}), ("n", {"key": "k" * 41}), ("n", {"t_video_s": "12"}),
+    ])
+    def test_a_bad_note_or_place_is_422(self, world, note, place):
+        ch = self.chart(world)
+        r = world["client"].post("/api/flags", json={"path": f"/c/{ch.id}/", "note": note,
+                                                     "place": self.PLACE if place is None else place})
+        assert r.status_code == 422
+        assert world["repo"].list_flags() == []
+
+    def test_a_note_of_exactly_the_limit_is_accepted_trimmed(self, world):
+        ch = self.chart(world)
+        assert self.flag(world, f"/c/{ch.id}/", note="  " + "x" * 2000 + " \n").status_code == 201
+        assert world["repo"].list_flags()[0].note == "x" * 2000
+
+    def test_a_place_with_nothing_known_is_accepted(self, world):
+        """A blank rock has no video time; an end with no rocks has no rock."""
+        ch = self.chart(world)
+        place = {"game_index": 0, "end": 3, "end_id": "3", "rock": None, "rock_id": None,
+                 "key": None, "t_video_s": None, "label": None}
+        assert self.flag(world, f"/c/{ch.id}/", place=place).status_code == 201
+        assert world["repo"].list_flags()[0].place == place
+
+    def test_numbers_in_identities_are_kept_as_text(self, world):
+        ch = self.chart(world)
+        self.flag(world, f"/c/{ch.id}/", place={**self.PLACE, "end_id": 7, "rock_id": 12})
+        f = world["repo"].list_flags()[0]
+        assert f.place["end_id"] == "7" and f.place["rock_id"] == "12"
+
+    def test_an_oversized_body_is_413(self, world):
+        ch = self.chart(world)
+        assert self.flag(world, f"/c/{ch.id}/", note="x" * 9000).status_code == 413
+
+    def test_twenty_an_hour_per_address(self, world):
+        ch = self.chart(world)
+        codes = [self.flag(world, f"/c/{ch.id}/").status_code for _ in range(21)]
+        assert codes[:20] == [201] * 20 and codes[20] == 429
+        assert self.flag(world, f"/c/{ch.id}/", ip="8.8.8.8").status_code == 201
+        world["clock"].advance(3600)
+        assert self.flag(world, f"/c/{ch.id}/").status_code == 201
+
+    def test_the_admin_lists_newest_first_and_resolves(self, world):
+        ch = self.chart(world)
+        c = world["client"]
+        first = self.flag(world, f"/c/{ch.id}/", note="one").json()["id"]
+        world["clock"].advance(60)
+        second = self.flag(world, f"/c/{ch.id}/", note="two").json()["id"]
+        assert c.get("/api/admin/flags").status_code == 401
+        listed = c.get("/api/admin/flags", headers=ADMIN).json()["flags"]
+        assert [f["id"] for f in listed] == [second, first]
+        assert listed[0]["created_at"].startswith("2026-") and listed[0]["resolved_at"] is None
+        r = c.post(f"/api/admin/flags/{first}/resolve", headers=ADMIN)
+        assert r.status_code == 200 and r.json()["status"] == "resolved"
+        assert [f["id"] for f in c.get("/api/admin/flags", headers=ADMIN).json()["flags"]] == [second]
+        assert [f["id"] for f in c.get("/api/admin/flags?status=resolved",
+                                       headers=ADMIN).json()["flags"]] == [first]
+        assert len(c.get("/api/admin/flags?status=all", headers=ADMIN).json()["flags"]) == 2
+        assert c.get("/api/admin/flags?status=bogus", headers=ADMIN).status_code == 422
+        assert c.post("/api/admin/flags/f_nope/resolve", headers=ADMIN).status_code == 404
+        assert c.post(f"/api/admin/flags/{first}/resolve").status_code == 401
+
+    def test_flags_are_in_the_backup(self, world):
+        ch = self.chart(world)
+        self.flag(world, f"/c/{ch.id}/")
+        data = world["client"].get("/api/admin/export", headers=ADMIN).json()
+        assert [f["note"] for f in data["flags"]] == ["the house is wrong"]
+
+    @pytest.mark.parametrize("raw,code", [
+        (b'{"path": "PATH", "note": "x", "place": {"t_video_s": NaN}}', 400),
+        (b'{"path": "PATH", "note": "x", "place": {"t_video_s": Infinity}}', 400),
+        (b'{"path": "PATH", "note": "x", "place": {"t_video_s": -Infinity}}', 400),
+        (b'{"path": "PATH", "note": "x", "place": {"t_video_s": 1e400}}', 422),
+        (b'{"path": "PATH", "note": "x", "place": {"end": 10000000000000000000000000}}', 422),
+    ])
+    def test_numbers_json_cannot_carry_are_refused(self, world, raw, code):
+        """One stored NaN would 500 every later admin list and nightly backup."""
+        ch = self.chart(world)
+        c = world["client"]
+        r = c.post("/api/flags", content=raw.replace(b"PATH", f"/c/{ch.id}/".encode()),
+                   headers={"Content-Type": "application/json"})
+        assert r.status_code == code
+        assert c.get("/api/admin/flags?status=all", headers=ADMIN).status_code == 200
+        assert c.get("/api/admin/export", headers=ADMIN).status_code == 200
+
+    def test_control_characters_never_reach_the_store(self, world):
+        """Escape codes in an anonymous note would run in the owner's terminal."""
+        ch = self.chart(world)
+        note = "a\x1b]52;c;ZWNobyBoaQ==\x07b‮\ttab\nline\x9b2J"
+        self.flag(world, f"/c/{ch.id}/", note=note,
+                  place={**self.PLACE, "label": "red\x1b[31m, lead", "key": "0.1.2\x07"})
+        f = world["repo"].list_flags()[0]
+        assert f.note == "a]52;c;ZWNobyBoaQ==b\ttab\nline2J"
+        assert f.place["label"] == "red[31m, lead" and f.place["key"] == "0.1.2"
+
+    def test_a_note_of_only_control_characters_is_blank(self, world):
+        ch = self.chart(world)
+        assert self.flag(world, f"/c/{ch.id}/", note="\x1b\x07‮").status_code == 422
+
+    def test_a_lone_surrogate_is_dropped(self, world):
+        ch = self.chart(world)
+        c = world["client"]
+        raw = ('{"path": "/c/%s/", "note": "ok\\ud800", "place": {}}' % ch.id).encode()
+        assert c.post("/api/flags", content=raw,
+                      headers={"Content-Type": "application/json"}).status_code == 201
+        assert world["repo"].list_flags()[0].note == "ok"
+        assert c.get("/api/admin/flags", headers=ADMIN).status_code == 200
+
+    def test_a_whole_number_too_big_for_a_float_is_refused(self, world):
+        """JSON parses it to an int, and math.isfinite on it overflows."""
+        ch = self.chart(world)
+        raw = ('{"path": "/c/%s/", "note": "x", "place": {"t_video_s": %s}}'
+               % (ch.id, "1" * 400)).encode()
+        r = world["client"].post("/api/flags", content=raw,
+                                 headers={"Content-Type": "application/json"})
+        assert r.status_code == 422
+        assert world["repo"].list_flags() == []
+
+    def test_a_forged_forwarded_for_does_not_buy_a_fresh_budget(self, world):
+        """Cloud Run's front end appends the address it saw; whatever the
+        caller wrote before it is the caller's to invent."""
+        ch = self.chart(world)
+        codes = [self.flag(world, f"/c/{ch.id}/", ip=f"10.0.0.{i}, 9.9.9.9").status_code
+                 for i in range(21)]
+        assert codes[:20] == [201] * 20 and codes[20] == 429
+
+    def test_behind_a_load_balancer_the_second_to_last_entry_is_the_caller(self, world):
+        ch = self.chart(world)
+        world["settings"].proxy_hops = 2
+        codes = [self.flag(world, f"/c/{ch.id}/", ip=f"10.0.0.{i}, 9.9.9.9, 35.1.1.{i}").status_code
+                 for i in range(21)]
+        assert codes[20] == 429

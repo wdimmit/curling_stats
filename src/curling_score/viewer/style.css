@@ -351,7 +351,26 @@ tr.total td { border-top:2px solid var(--line); font-weight:650; }
   header > #save     { order: 9; }
   header #download   { order: 10; }
   header #reportBtn  { order: 11; }
+  header #flagBtn    { order: 12; }
 }
+
+/* --- flag dialog ---------------------------------------------------------- */
+/* A modal <dialog> is in the top layer, above the phone shell and #menu, so
+   it needs no z-index -- only never to be inside a hidden parent (App.jsx). */
+#flagDialog { width: min(440px, calc(100vw - 32px)); padding: 16px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); color: var(--ink); }
+#flagDialog::backdrop { background: rgb(0 0 0 / .35); }
+#flagDialog h2 { margin: 0 0 4px; font: 600 18px var(--display); }
+#flagDialog .flagPlace { margin: 0 0 10px; color: var(--muted); }
+#flagDialog textarea { display: block; width: 100%; box-sizing: border-box;
+  min-height: 120px; padding: 8px; font: inherit; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+#flagDialog .flagWho { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+#flagDialog .flagError { margin: 8px 0 0; color: var(--warn); }
+#flagDialog .flagButtons { display: flex; justify-content: flex-end; gap: 8px;
+  margin-top: 12px; }
+#flagDialog .flagThanks { margin: 8px 0; font-weight: 600; }
 
 /* --- phone-only elements: present, wired, dormant on desktop ------------ */
 #stoneChip, #sheetHandle, #orderRow, .housebar, #placeStones { display: none; }
@@ -833,6 +852,10 @@ body[data-mode="review"] #house { cursor:default; }
              font-size: 14px; font-variant-numeric: tabular-nums; }
   .wtotals span { display: flex; align-items: center; gap: 7px; }
   .wcaveat { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0; }
+  /* A bottom sheet on the phone, with thumb-sized buttons. */
+  #flagDialog { width: 100vw; max-width: 100vw; margin: auto 0 0;
+    border-radius: 16px 16px 0 0; }
+  #flagDialog .flagButtons button { flex: 1; min-height: 44px; }
 }
 
 /* --- short screens ------------------------------------------------------ */

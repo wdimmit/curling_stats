@@ -2283,3 +2283,222 @@ class TestThePhoneTabsCss:
         css = (VIEWER / "style.css").read_text()
         for gone in (".wsheethead {", ".wbar {", ".wendbar {"):
             assert gone not in css, gone
+
+
+class TestFlagPlace:
+    """What a flag records about the rock it was sent from."""
+
+    def place(self, d, ei=0, si=0, gi=0):
+        return run_js(f"out(flagPlace(buildGameView({json.dumps(d)}, {gi}, {{}}), {ei}, {si}));")
+
+    def test_a_rock(self):
+        """A hosted page holds one game, so the dialog names no game: its
+        number there would be 1 whichever game of the video it was, and the
+        owner's list numbers games within the video."""
+        d = doc([shot(1, "red", "lead", t_enter_s=822.5), shot(2, "yellow", "lead")],
+                end_number=4)
+        got = self.place(d)
+        assert got["place"] == {"game_index": 0, "end": 4, "end_id": "4", "rock": 1,
+                                "rock_id": "1", "key": "0.4.1", "t_video_s": 812.5,
+                                "label": "red, lead"}
+        assert got["text"] == "End 4 · Rock 1 (red, lead)"
+
+    def test_a_page_with_two_games_names_the_game(self):
+        d = doc([shot(1, "red", "lead")])
+        d["games"].append({**d["games"][0], "index": 1})
+        got = self.place(d, gi=1)
+        assert got["place"]["game_index"] == 1
+        assert got["text"] == "Game 2 · End 1 · Rock 1 (red, lead)"
+
+    def test_an_end_with_no_rocks(self):
+        got = self.place(doc([], end_number=3))
+        assert got["place"]["rock"] is None and got["place"]["key"] is None
+        assert got["place"]["t_video_s"] is None and got["place"]["label"] is None
+        assert got["text"] == "End 3"
+
+    def test_a_rock_without_a_video_time(self):
+        got = self.place(doc([shot(1, "red", "lead")]))
+        assert got["place"]["t_video_s"] is None
+
+    def test_a_rock_never_delivered_still_has_a_video_time(self):
+        """The rocks worth flagging are often the ones detection missed. They
+        get the same time the viewer seeks to: rest less 8 s, then the guess,
+        each with the pipeline's 10 s lead-in."""
+        got = self.place(doc([shot(1, "red", "lead", t_rest_s=900.0)]))
+        assert got["place"]["t_video_s"] == 882.0
+        got = self.place(doc([shot(1, "red", "lead", t_enter_s=700.0)]))
+        assert got["place"]["t_video_s"] == 690.0
+
+    def test_a_trimmed_end_keeps_its_identity(self):
+        got = self.place(doc([shot(1, "red", "lead")], end_number=2, end_id=5))
+        assert (got["place"]["end"], got["place"]["end_id"], got["place"]["key"]) == (2, "5", "0.5.1")
+
+    def test_a_renumbered_rock_keeps_its_identity(self):
+        got = self.place(doc([shot(3, "red", "lead", id=7)]))
+        assert (got["place"]["rock"], got["place"]["rock_id"], got["place"]["key"]) == (3, "7", "0.1.7")
+
+    def test_the_second_game_of_a_video_keeps_its_index(self):
+        got = self.place(doc([shot(1, "red", "lead")], game_index=1))
+        assert got["place"]["game_index"] == 1 and got["place"]["key"] == "1.1.1"
+
+    def test_a_game_with_no_ends_can_still_be_flagged(self):
+        """Nothing detected at all is the failure most worth reporting."""
+        d = doc([])
+        d["games"][0]["ends"] = []
+        got = self.place(d)
+        assert got["place"] == {"game_index": 0, "end": None, "end_id": None, "rock": None,
+                                "rock_id": None, "key": None, "t_video_s": None,
+                                "label": None}
+        assert got["text"] == "No ends in this game"
+
+    def test_it_reads_the_cursor_it_does_not_redo_it(self):
+        src = (Path(__file__).resolve().parents[1] / "frontend/core/flag.mjs").read_text()
+        assert "cursor(view, ei, si)" in src and "at.raws[si]" not in src
+        assert "shotVideoTime(shot, VIDEO_LEAD_IN_S)" in src and "shot?.t_video_s" not in src
+
+
+class TestFlagConstants:
+    """Numbers the viewer and the server must agree on, where the frontend keeps
+    them (core/constants.mjs), checked against the Python they mirror."""
+
+    def test_they_match_the_server(self):
+        from curling_score import timeline
+        from curling_score.service import api
+        assert run_js("out([NOTE_MAX, VIDEO_LEAD_IN_S]);") == [
+            api.MAX_FLAG_NOTE, timeline.VIDEO_LEAD_IN_S]
+
+    def test_they_live_in_constants(self):
+        root = Path(__file__).resolve().parents[1] / "frontend/core"
+        consts = (root / "constants.mjs").read_text()
+        assert "export const NOTE_MAX" in consts and "export const VIDEO_LEAD_IN_S" in consts
+        flag = (root / "flag.mjs").read_text()
+        assert "const NOTE_MAX" not in flag and "const VIDEO_LEAD_IN_S" not in flag
+
+
+class TestNoteProblem:
+    @pytest.mark.parametrize("note,ok", [
+        ("", False), ("   \n\t", False), ("x" * 2000, True), ("x" * 2001, False),
+        ("  wrong thrower  ", True),
+    ])
+    def test_notes(self, note, ok):
+        got = run_js(f"out(noteProblem({json.dumps(note)}));")
+        assert (got is None) == ok
+
+    def test_null_is_blank(self):
+        assert run_js("out(noteProblem(null));") == "Say what is wrong."
+
+
+class TestSettledUser:
+    """Who is signed in, once Firebase has said -- not when it started asking.
+
+    site/auth.js's whenReady() settles as soon as its state listener is
+    registered, before the session is restored from IndexedDB, so reading
+    currentUser() then made a signed-in person's first flag anonymous."""
+
+    def test_waits_for_the_restored_session(self):
+        body = """
+        const listeners = new Set(); let user = null, ready = false;
+        const onUser = fn => { listeners.add(fn); fn(user, ready); return () => listeners.delete(fn); };
+        setTimeout(() => { user = { email: "s@x.org" }; ready = true;
+                           for (const f of listeners) f(user, ready); }, 20);
+        settledUser(onUser).then(u => out([u && u.email, listeners.size]));
+        """
+        assert run_js(body) == ["s@x.org", 0]
+
+    def test_accounts_off_is_nobody_at_once(self):
+        assert run_js("settledUser(fn => { fn(null, true); return () => {}; }).then(out);") is None
+
+    def test_the_dialog_asks_the_same_way(self):
+        src = (Path(__file__).resolve().parents[1] / "frontend/runtime/flag.mjs").read_text()
+        assert "settledUser(auth.onUser)" in src and "whenReady" not in src
+
+
+class TestSettleWithin:
+    """The sign-in check must never hold a flag hostage."""
+
+    def test_a_check_that_never_settles_falls_back(self):
+        assert run_js("settleWithin(new Promise(() => {}), 30, 'anon').then(out);") == "anon"
+
+    def test_a_check_that_fails_falls_back(self):
+        assert run_js("settleWithin(Promise.reject(new Error('x')), 500, 'anon').then(out);") == "anon"
+
+    def test_a_check_that_answers_in_time_wins(self):
+        assert run_js("settleWithin(Promise.resolve('me'), 50, 'anon').then(out);") == "me"
+
+
+class TestTheFlagButton:
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_it_sits_in_the_menu_after_report_and_only_when_hosted(self):
+        app = self.src("frontend/viewer/App.jsx")
+        menu = app[app.index('<div id="menu"'):app.index("</header>")]
+        assert menu.index('id="reportBtn"') < menu.index('id="flagBtn"')
+        assert "hidden={!config.hosted}" in menu[menu.index('id="flagBtn"'):]
+
+    def test_review_mode_does_not_hide_it_and_the_desktop_orders_it(self):
+        css = self.src("src/curling_score/viewer/style.css")
+        review = "\n".join(l for l in css.splitlines() if 'data-mode="review"' in l)
+        assert "#flagBtn" not in review
+        assert "header #flagBtn" in css
+
+    def test_the_place_is_a_snapshot_taken_on_open(self):
+        app = self.src("frontend/viewer/App.jsx")
+        assert "const at = flagPlace(view, ui.ei, ui.si);" in app
+        assert "flagging: { ...at, opened: Date.now() }" in app
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "flagging.place" in flag and "ui." not in flag
+
+    def test_each_opening_starts_a_fresh_form(self):
+        """A late reply from the last opening must not land on this one, and
+        a reopened dialog must focus its empty textarea, not a stale thanks."""
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "function FlagForm(" in flag
+        assert "<FlagForm key={flagging.opened}" in flag
+
+    def test_keys_do_nothing_underneath_the_open_dialog(self):
+        app = self.src("frontend/viewer/App.jsx")
+        on_key = app[app.index("const onKey = ev =>"):]
+        assert on_key.index('getElementById("flagDialog")?.open') < on_key.index("switch (ev.key)")
+
+    def test_send_asks_who_again_with_a_fresh_token(self):
+        """A slow first answer must cost the display, never the attribution,
+        and a dialog left open past the token's hour must not send a dead one."""
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "const w = await whoIsFlagging();" in flag
+        assert "who === undefined ? await" not in flag
+        assert "checked again when you send" in flag
+        run = self.src("frontend/runtime/flag.mjs")
+        assert "settled ??= settledUser(auth.onUser)" in run
+        assert "u.getIdToken()" in run[run.index("export async function whoIsFlagging"):]
+
+    def test_a_send_in_flight_cannot_be_cancelled_into_a_lie(self):
+        """Cancel mid-send used to close the dialog while the flag was stored."""
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert 'disabled={sending} onClick={onClose}' in flag
+        assert 'addEventListener("cancel", stop)' in flag
+
+    def test_unsaved_edits_are_saved_before_the_flag(self):
+        """The flag's overrides version must include what the charter sees."""
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "if (store.isDirty()) await store.save();" in flag
+        assert flag.index("await store.save()") < flag.index("await sendFlag(")
+
+    def test_send_cannot_fire_twice(self):
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "disabled={sending || !!noteProblem(note)}" in flag
+        assert "if (sending || noteProblem(note)) return;" in flag
+
+    def test_the_dialog_is_never_inside_main(self):
+        app = self.src("frontend/viewer/App.jsx")
+        assert "<FlagDialog" in app
+        assert "<FlagDialog" not in app[app.index("<main>"):app.index("</main>")]
+
+    def test_firebase_is_only_ever_imported_on_demand(self):
+        for rel in ("frontend/viewer", "frontend/runtime", "frontend/core"):
+            for p in (self.ROOT / rel).rglob("*"):
+                if p.suffix in (".js", ".mjs", ".jsx"):
+                    assert "site/auth.js\";" not in p.read_text(), p
+        assert 'import("../site/auth.js")' in self.src("frontend/runtime/flag.mjs")

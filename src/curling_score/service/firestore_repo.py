@@ -11,6 +11,7 @@ Composite indexes this needs (``deploy/firestore.indexes.json``):
     vod_runs  (video_id ASC, created_at DESC)
     sources   (league ASC, played_at DESC)
     charts    (run_id ASC)
+    flags     (status ASC, created_at DESC)
 
 Field-index exemptions the same file carries: charts.overrides and
 charts.overrides_meta are maps whose every subfield Firestore would otherwise
@@ -21,7 +22,7 @@ import json
 from datetime import timedelta
 
 from curling_score.service.records import (
-    Chart, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
+    Chart, Flag, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
 )
 from curling_score.service.repo import (
     LEASE_S, MAX_STORED_OVERRIDES_BYTES, _day_bucket, _hour_bucket,
@@ -30,6 +31,7 @@ from curling_score.service.repo import (
 RUNS, JOBS, SOURCES, CHARTS = "vod_runs", "jobs", "sources", "charts"
 SHARES, WORKERS, PLAYLISTS, RATES = "share_slugs", "workers", "watched_playlists", "rate_limits"
 USERS, TEAMS, INVITES, CLAIMS = "users", "teams", "invites", "chart_claims"
+FLAGS = "flags"
 
 
 def _claim_id(owner_key: str, source_id: str) -> str:
@@ -393,6 +395,29 @@ class FirestoreRepo:
     def delete_playlist(self, playlist_id):
         self._col(PLAYLISTS).document(playlist_id).delete()
 
+    # ---- flags --------------------------------------------------------
+    def put_flag(self, flag):
+        self._col(FLAGS).document(flag.id).set(flag.to_dict())
+
+    def list_flags(self, status=None, limit=200):
+        # Ordered and limited in Firestore, not here: resolved flags pile up
+        # for good, and streaming them all to return the newest 200 is paid
+        # for per document. The status filter needs the composite index.
+        q = self._col(FLAGS) if status is None else self._where(FLAGS, "status", "==", status)
+        q = q.order_by("created_at", direction=self._fs.Query.DESCENDING).limit(limit)
+        return [Flag.from_dict(d.to_dict()) for d in q.stream()]
+
+    def resolve_flag(self, flag_id, now):
+        ref = self._col(FLAGS).document(flag_id)
+        snap = ref.get()
+        if not snap.exists:
+            return None
+        flag = Flag.from_dict(snap.to_dict())
+        if flag.status != "resolved":
+            ref.update({"status": "resolved", "resolved_at": now})
+            flag.status, flag.resolved_at = "resolved", now
+        return flag
+
     # ---- rate limit ---------------------------------------------------
     def bump_rate_limit(self, ip_hash, now, hour_limit, day_limit):
         ref = self._col(RATES).document(ip_hash)
@@ -425,7 +450,7 @@ class FirestoreRepo:
         return {"runs": dump(RUNS), "jobs": dump(JOBS), "sources": dump(SOURCES),
                 "charts": dump(CHARTS), "workers": dump(WORKERS),
                 "watched_playlists": dump(PLAYLISTS), "users": dump(USERS),
-                "teams": dump(TEAMS), "invites": dump(INVITES)}
+                "teams": dump(TEAMS), "invites": dump(INVITES), "flags": dump(FLAGS)}
 
     def import_all(self, data):
         for d in data.get("runs", []):
@@ -446,6 +471,8 @@ class FirestoreRepo:
             self.put_team(Team.from_dict(d))
         for d in data.get("invites", []):
             self.put_invite(Invite.from_dict(d))
+        for d in data.get("flags", []):
+            self.put_flag(Flag.from_dict(d))
         # Claims are derivable, so they are not exported -- rebuilt here
         # instead, because a restore that lost them would start handing a team
         # a second chart for a game it already has.

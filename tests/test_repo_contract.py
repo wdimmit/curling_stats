@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from curling_score.service.records import (
-    Chart, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
+    Chart, Flag, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
 )
 from curling_score.service.repo import MemoryRepo
 
@@ -38,7 +38,7 @@ def _firestore_repo():
     repo = FirestoreRepo(client=client)
     for col in ("vod_runs", "jobs", "sources", "charts", "share_slugs",
                 "workers", "watched_playlists", "rate_limits",
-                "users", "teams", "invites", "chart_claims"):
+                "users", "teams", "invites", "chart_claims", "flags"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -442,6 +442,41 @@ class TestRateLimit:
         assert not repo.bump_rate_limit("a", T0, 1, 1)
 
 
+class TestFlags:
+    def flag(self, **kw):
+        base = dict(id="f_1", created_at=T0, note="the house is wrong",
+                    where={"link": "g", "source_id": "s_1", "run_id": "r_1"},
+                    place={"end": 4, "rock": 16, "key": "0.4.16"})
+        base.update(kw)
+        return Flag(**base)
+
+    def test_newest_first_and_filtered_by_status(self, repo):
+        repo.put_flag(self.flag(id="f_1", created_at=T0))
+        repo.put_flag(self.flag(id="f_2", created_at=at(60)))
+        repo.put_flag(self.flag(id="f_3", created_at=at(30), status="resolved",
+                                resolved_at=at(40)))
+        assert [f.id for f in repo.list_flags("open")] == ["f_2", "f_1"]
+        assert [f.id for f in repo.list_flags("resolved")] == ["f_3"]
+        assert [f.id for f in repo.list_flags()] == ["f_2", "f_3", "f_1"]
+        assert [f.id for f in repo.list_flags(limit=1)] == ["f_2"]
+
+    def test_resolving_once_and_only_once(self, repo):
+        repo.put_flag(self.flag())
+        got = repo.resolve_flag("f_1", at(90))
+        assert got.status == "resolved"
+        assert got.resolved_at.timestamp() == at(90).timestamp()
+        assert repo.list_flags("open") == []
+        again = repo.resolve_flag("f_1", at(200))
+        assert again.resolved_at.timestamp() == at(90).timestamp()
+        assert repo.resolve_flag("f_nope", at(90)) is None
+
+    def test_the_maps_come_back_as_they_went_in(self, repo):
+        repo.put_flag(self.flag(user={"uid": "u1", "email": "a@b.c"}, overrides_version=3))
+        f = repo.list_flags()[0]
+        assert f.where["source_id"] == "s_1" and f.place["rock"] == 16
+        assert f.user == {"uid": "u1", "email": "a@b.c"} and f.overrides_version == 3
+
+
 class TestBackup:
     def test_export_then_import_into_a_fresh_store(self, repo):
         repo.put_run(run())
@@ -449,6 +484,7 @@ class TestBackup:
         repo.put_chart(chart(overrides={"0.1.1": {"user_score": 4}}, overrides_version=1))
         repo.put_playlist(WatchedPlaylist(id="p_1", playlist_id="PL", label="Tue",
                                           created_at=T0))
+        repo.put_flag(Flag(id="f_1", created_at=T0, note="n", place={"end": 1}))
         data = repo.export_all()
         assert {r["id"] for r in data["runs"]} == {"r_1"}
         assert {c["id"] for c in data["charts"]} == {"c_1"}
@@ -459,3 +495,4 @@ class TestBackup:
         assert fresh.chart_by_share("s_1").id == "c_1"
         assert fresh.get_run("r_1").games == run().games
         assert fresh.get_playlist("p_1").label == "Tue"
+        assert [f.id for f in fresh.list_flags()] == ["f_1"]
