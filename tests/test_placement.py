@@ -92,54 +92,6 @@ class TestFind:
     def test_an_empty_house_has_no_placement(self):
         assert P.find(frames(0, 100, []), 0, 100) is None
 
-    def test_the_house_stones_first_hold_is_recorded(self):
-        fr = frames(100, 500, [("yellow", 0.01, -0.5, 166, 500), ("red", 0.01, 3.4, 262, 500)])
-        p = P.find(fr, 100, 500)
-        assert p.complete and 257 <= p.t_s <= 262
-        assert 161 <= p.house_s <= 166
-
-    def test_a_thrown_centre_guard_is_not_the_guard(self):
-        # The guard is never seen. Rock 1, of the guard's colour, flies in and
-        # stops in the centre-guard gate: it is a throw, and play has begun.
-        fr = frames(0, 500, [("red", 0.0, -0.5, 100, 500), ("yellow", 0.05, 3.3, 300, 500)])
-        p = P.find(fr, 0, 500, thrown=[("yellow", 0.06, 3.31)])
-        assert p.hammer == "red" and not p.complete
-        assert 95 <= p.t_s <= 100 and p.house_s == p.t_s
-
-    def test_a_rock_drawn_into_the_house_ends_the_search_for_a_guard(self):
-        # The guard is never seen. Rock 1 is drawn into the house (not on the
-        # house spot) at 300, so play has begun; rock 3 later stops in the
-        # centre-guard gate and must not be taken for the guard.
-        stones = [("red", 0.0, -0.5, 100, 600), ("yellow", 0.5, 0.3, 300, 600),
-                  ("yellow", 0.1, 3.3, 400, 600)]
-        p = P.find(frames(0, 600, stones), 0, 600)
-        assert p.hammer == "red" and not p.complete
-        assert 95 <= p.t_s <= 100
-
-    def test_a_guard_seen_too_rarely_to_settle_is_not_replaced_by_rock_3(self):
-        # The guard is on the ice but detected in only 30% of frames, below
-        # the settled test's 40%; the rest is as above.
-        hide = lambda t, i: i == 1 and int(round(t * 10)) % 10 >= 3
-        stones = [("red", 0.0, -0.5, 100, 600), ("yellow", 0.0, 3.4, 130, 600),
-                  ("yellow", 0.5, 0.3, 300, 600), ("yellow", 0.1, 3.3, 400, 600)]
-        p = P.find(frames(0, 600, stones, hide=hide), 0, 600)
-        assert p.hammer == "red" and not p.complete
-        assert 95 <= p.t_s <= 100
-
-    def test_a_stone_parked_before_the_house_stone_held_does_not_end_the_search(self):
-        # A stray parked by the boards the whole time is not play beginning.
-        stones = [("red", 1.8, -0.76, 100, 500), ("yellow", 0.01, -0.5, 166, 500),
-                  ("red", 0.01, 3.4, 262, 500)]
-        p = P.find(frames(100, 500, stones), 100, 500)
-        assert p.complete and 257 <= p.t_s <= 262
-
-    def test_a_carried_guard_not_in_thrown_is_still_the_guard(self):
-        # ih59 end 1 again, with the house stone itself a slid (thrown) stone:
-        # only a guard lying on a thrown rest position is refused.
-        fr = frames(100, 500, [("yellow", 0.01, -0.5, 166, 500), ("red", 0.01, 3.4, 262, 500)])
-        p = P.find(fr, 100, 500, thrown=[("yellow", 0.01, -0.5)])
-        assert p.complete and p.hammer == "yellow" and 257 <= p.t_s <= 262
-
 
 class TestReadBefore:
     def test_a_two_step_power_play_reads_as_the_power_play(self):
@@ -169,7 +121,6 @@ class TestReadBefore:
         read = P.read_before(fr, found, t_first=300.0)
         assert read.guard == found.guard and read.hammer == "red"
         assert P.fill_base(read, F.DOUBLES) == 2
-        assert read.house_s == found.house_s
 
 
 from curling_score.detect.delivery import Delivery

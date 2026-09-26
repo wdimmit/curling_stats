@@ -1171,3 +1171,4 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Reading a guard from the long camera when it is above the panel. Phase 0 never saw that happen.
 - The 16-game four-player harness before any deploy (spec phase 7).
 - Re-anchoring the exclusion to a two-step power play's final spots. The cut is still `t_s + SETTLE_S` from the first arrangement to hold, not from when the stones reached their power-play spots.
+- A guard never seen at all: find then keeps looking for a complete placement and a later rock of the guard's colour in the guard gate could be taken for it (final review I1). A first attempt (a play-has-begun stop and rejecting stones that flew down-sheet) made real reads worse; a follow-up needs time-aware evidence, e.g. the thrower's-panel release of each candidate.

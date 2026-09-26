@@ -100,11 +100,7 @@ def _placement(placed, shots) -> dict | None:
         # The guard's team throws first, so a first rock of the hammer's colour
         # contradicts the placement read (or the shot list).
         agrees = first.color != placed.hammer
-    house_s = placed.house_s
-    return {"t_s": round(float(placed.t_s), 2),
-            # When the house stone alone first held, for diagnosis.
-            "house_s": None if house_s is None else round(float(house_s), 2),
-            "hammer": placed.hammer,
+    return {"t_s": round(float(placed.t_s), 2), "hammer": placed.hammer,
             "house": pos(placed.house), "guard": pos(placed.guard),
             "power_play": placed.power_play, "complete": placed.complete,
             "agrees_with_shots": agrees}

@@ -377,10 +377,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                 if d.t_enter >= from_s
             ]
             # Doubles: every delivery of the end comes after its placement is
-            # complete, so find that moment before anything is counted. A
-            # candidate that flew in is a throw, and never the guard.
-            placed = (placement.find(seq, from_s, end.end_s,
-                                     thrown=placement.thrown_from(deliveries))
+            # complete, so find that moment before anything is counted.
+            placed = (placement.find(seq, from_s, end.end_s)
                       if fmt.placed_per_team else None)
             deliveries, before_placement = placement.exclude(deliveries, placed)
             # The first pass has to be strict or sweepers count as stones. Once
