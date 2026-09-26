@@ -2677,6 +2677,23 @@ class TestRoleSwapParity:
         assert js == py
         assert [row[4] for row in js] == ["B", "A", "A", "B", "A", "B"]
 
+    @pytest.mark.parametrize("patch", [{"roles_swapped": {"red": 1, "yellow": "true"}},
+                                       {"roles_swapped": "red"}])
+    def test_js_and_python_agree_a_malformed_swap_swaps_nothing(self, patch):
+        """Only a real true swaps a team: 1, "true" or a bare colour name is
+        not a swap, on either side of the wire."""
+        py, js = both(doubles_doc(doubles_shots()), {"0.3": patch})
+        assert js == py
+        plain_py, plain_js = both(doubles_doc(doubles_shots()), {})
+        assert js == plain_js and py == plain_py
+        assert [row[4] for row in js][:5] == ["A", "A", "B", "B", "B"]
+        got = run_js(setup(doubles_doc(doubles_shots()), {"0.3": patch}) +
+                     "out(buildGameView(state.doc, 0, state.overrides).ends[0].swapped);")
+        assert got == {}
+        from curling_score import timeline
+        baked = timeline.apply_overrides(doubles_doc(doubles_shots()), {"0.3": patch})
+        assert "roles_swapped" not in baked["games"][0]["ends"][0]
+
     def test_js_ignores_an_end_key_on_a_fours_chart(self):
         shots = [{"number": n, "color": "red" if n % 2 else "yellow", "position": "lead",
                   "rock_of_player": 1, "stones": []} for n in (1, 2)]
