@@ -1,0 +1,296 @@
+Doubles broomless-line acceptance (Task 3, plan 2026-09-26-doubles-line-and-deploy)
+================================================================================
+
+HEAD = e90b47dd610eafa69531de880dd348fd3dfc3f1d
+  "viewer: a doubles rock nobody held a broom for shows its line, hack and curl"
+(built on b799010 "linetime: in doubles a rock nobody held a broom for still
+gets its line" and c36e858, the plan commit)
+
+Worker: administrator@10.0.0.182 (ssh -o BatchMode=yes). Live worker
+(deploy-worker-1) never touched (no stop/restart/rebuild, /data/wdd/curling_score
+untouched); all runs were `docker compose ... run --rm --no-deps` starting
+throwaway containers from its image, HEAD's `src` mounted read-only.
+/data/wdd/curling/ds15/games/ (the concurrent 16-game CPU replay) not touched.
+
+--------------------------------------------------------------------------------
+Step 1: ship HEAD's code to the worker
+--------------------------------------------------------------------------------
+  mkdir -p /data/wdd/curling/doubles-parity/code-$SHA
+  git archive $SHA src | ssh ... tar -x -C .../code-$SHA
+Verified: .../code-$SHA/src/curling_score/game/format.py has
+line_without_broom=True on DOUBLES. Done.
+
+--------------------------------------------------------------------------------
+Step 2: analyse the four doubles games with HEAD (--format doubles)
+--------------------------------------------------------------------------------
+Two at a time (GPU had room, 8 GB total, ~2 GB used per pair), one pair after
+the other, each ~15-20 min, cache warm (no re-download):
+  brMO74e6ZZU + n7ifEk4Zfl8   -- both exit 0
+  8J3r5FhFFd4 + ih59IKFUHXk   -- both exit 0
+Timelines copied to the laptop scratchpad as p6-<vid>.json (each parsed as
+valid JSON before use).
+
+--------------------------------------------------------------------------------
+Step 3: per-game line counts, and comparison with phase 3
+--------------------------------------------------------------------------------
+
+== brMO74e6ZZU
+non-missing rocks: 50
+broom lines: 0
+broomless lines: 49
+no line: 1
+broomless confirmed: true 25/49 (51%), false 0/49 (0%), null 24/49 (49%)
+per player, n starts / median start x:
+  red|1: n=10 x=-0.1411   red|2: n=16 x=-0.0919
+  yellow|1: n=10 x=-0.0396   yellow|2: n=13 x=-0.1196
+broomless-of-no-broom share: 49/50 (98.0%)
+p3 broom-line rocks checked: 0 -- no problems (shot list, hammer, power_play,
+placement all match p3r-brMO74e6ZZU.json)
+
+== n7ifEk4Zfl8
+non-missing rocks: 60
+broom lines: 0
+broomless lines: 55
+no line: 5
+broomless confirmed: true 46/55 (84%), false 1/55 (2%), null 8/55 (15%)
+per player, n starts / median start x:
+  red|1: n=11 x=-0.0710   red|2: n=17 x=-0.0665
+  yellow|1: n=9  x=-0.0476   yellow|2: n=18 x=-0.1338
+broomless-of-no-broom share: 55/60 (91.7%)
+p3 broom-line rocks checked: 0 -- no problems (matches p3r-n7ifEk4Zfl8.json)
+
+== 8J3r5FhFFd4
+non-missing rocks: 70
+broom lines: 1
+broomless lines: 67
+no line: 2
+broomless confirmed: true 18/67 (27%), false 1/67 (1%), null 48/67 (72%)
+per player, n starts / median start x:
+  red|1: n=13 x=-0.1259   red|2: n=21 x=-0.1247
+  yellow|1: n=13 x=-0.1203   yellow|2: n=21 x=-0.1368
+broomless-of-no-broom share: 67/69 (97.1%)
+p3 broom-line rocks checked: 1 -- no problems (matches p3r-8J3r5FhFFd4.json);
+  the one broom line (end 2 shot 8, t_release_s=1670.0) is byte-identical.
+
+== ih59IKFUHXk
+non-missing rocks: 60
+broom lines: 12
+broomless lines: 48
+no line: 0
+broomless confirmed: true 27/48 (56%), false 0/48 (0%), null 21/48 (44%)
+per player, n starts / median start x:
+  red|1: n=12 x=-0.1254   red|2: n=18 x=-0.1866
+  yellow|1: n=12 x=-0.0413   yellow|2: n=18 x=-0.0505
+broomless-of-no-broom share: 48/48 (100.0%)
+p3 broom-line rocks checked: 12 -- no problems (matches p3r-ih59IKFUHXk.json);
+  all 12 broom lines byte-identical.
+
+Totals across the four games: 240 non-missing rocks, 13 broom lines (1 in
+8J3r5FhFFd4, 12 in ih59IKFUHXk -- exactly the expected split), 219 broomless
+lines, 8 with no line. Aggregate broomless-of-no-broom share: 219/227 (96.5%).
+
+All 13 phase-3 broom lines (matched by t_release_s within 0.5s) carry an
+identical `line` object under HEAD. Every game's shot list is unchanged (same
+count per end, same colours, same t_enter_s), and hammer/power_play/placement
+per end are unchanged, against p3r-<VID>.json.
+
+--------------------------------------------------------------------------------
+Step 3b: phase-3 placement acceptance, re-run on the new outputs
+--------------------------------------------------------------------------------
+  python3 scripts/doubles/placement_acceptance.py \
+      datasets/doubles/marks/placements.json <scratchpad>/p6/p6-*.json
+
+23 marked ends: hammer 23/23, power play 23/23, rock 1 colour 23/23 where
+seen, ten shots 23/23. (Full per-end table in task-3-report.md.)
+
+--------------------------------------------------------------------------------
+Step 3c: four-player line share, for reference
+--------------------------------------------------------------------------------
+  /data/wdd/curling/doubles-parity/out/base-a/*/timeline.json (fours, HEAD not
+  involved -- the phases-1-2 base runs):
+    AEqLTgM25Tc: 190/202
+    VXU9xwmugRg: 199/207
+    hOKZoeJNTpM: 126/128
+    TOTAL: 515/537 (95.9%) of non-missing rocks carry a line -- all of them
+    broom lines, since fours never takes the broomless branch.
+
+--------------------------------------------------------------------------------
+Step 4: hand-check the 13 target brooms against the camera
+--------------------------------------------------------------------------------
+Frame at t_release_s - 1.0s, full composite, via a throwaway
+`--entrypoint ffmpeg curling-worker:local` container (one ffmpeg process per
+frame -- a first attempt packing multiple -ss/-i pairs into one ffmpeg
+invocation produced byte-identical frames for every timestamp in a video, a
+seek bug in that usage; redone one process per frame, confirmed by distinct
+md5sums for all 18 files).
+
+Broom rocks (13/13 confirmed: a person is holding a broom still in the
+destination house near the recorded spot, both in the long camera facing
+that house -- hogtime.CAMERA_FOR[end.house] -- and in the overhead crop):
+  8J3r5FhFFd4 e2 r8  yellow slot2 t=1670.0  house=top    cam=left   CONFIRMED
+  ih59IKFUHXk e1 r5  red    slot2 t=713.0   house=bottom cam=right  CONFIRMED
+  ih59IKFUHXk e1 r7  red    slot2 t=833.4   house=bottom cam=right  CONFIRMED
+  ih59IKFUHXk e1 r9  red    slot1 t=974.4   house=bottom cam=right  CONFIRMED
+  ih59IKFUHXk e3 r3  red    slot2 t=1950.0  house=bottom cam=right  CONFIRMED
+  ih59IKFUHXk e3 r5  red    slot2 t=2080.6  house=bottom cam=right  CONFIRMED
+  ih59IKFUHXk e3 r7  red    slot2 t=2185.2  house=bottom cam=right  CONFIRMED
+  ih59IKFUHXk e4 r5  red    slot2 t=2796.7  house=top    cam=left   CONFIRMED
+  ih59IKFUHXk e4 r7  red    slot2 t=2918.7  house=top    cam=left   CONFIRMED
+  ih59IKFUHXk e5 r6  red    slot2 t=3567.1  house=bottom cam=right  CONFIRMED
+  ih59IKFUHXk e5 r8  red    slot2 t=3681.7  house=bottom cam=right  CONFIRMED
+  ih59IKFUHXk e6 r5  red    slot2 t=4227.6  house=top    cam=left   CONFIRMED
+  ih59IKFUHXk e6 r7  red    slot2 t=4343.4  house=top    cam=left   CONFIRMED
+
+Broomless rocks, 5 picked spread over games and both teams (nobody holding a
+broom in the house at the recorded spot, 5/5 confirmed absent):
+  brMO74e6ZZU e1 r1  red    slot1 t=631.0   house=bottom cam=right  NO BROOM
+  n7ifEk4Zfl8 e1 r2  yellow slot1 t=883.8   house=bottom cam=right  NO BROOM
+  8J3r5FhFFd4 e1 r2  red    slot1 t=591.8   house=bottom cam=right  NO BROOM
+  8J3r5FhFFd4 e2 r2  yellow slot1 t=1224.8  house=top    cam=left   NO BROOM
+  ih59IKFUHXk e2 r1  yellow slot1 t=1146.3  house=top    cam=left   NO BROOM
+
+--------------------------------------------------------------------------------
+Step 5: four-player parity (full pipeline, 3 videos: VXU9xwmugRg, hOKZoeJNTpM,
+AEqLTgM25Tc)
+--------------------------------------------------------------------------------
+  bash scripts/doubles/fours_parity.sh run p6-head-nl $SHA --no-longview
+  bash scripts/doubles/fours_parity.sh run p6-head $SHA
+(run concurrently, one label each -- at most 2 GPU jobs at once, as each
+label's script itself runs its 3 videos one after another)
+
+compare base-nl-a p6-head-nl   (expected: identical on all three)
+== VXU9xwmugRg
+.games[0].ends[0].end_s: 865.0 != 860.0
+.games[0].ends[1].start_s: 870.0 != 865.0
+.games[0].ends[2].end_s: 2645.0 != 2640.0
+.games[0].ends[3].start_s: 2650.0 != 2645.0
+.games[0].ends[4].end_s: 4530.0 != 4525.0
+.games[0].ends[5].start_s: 4535.0 != 4530.0
+6+ differences
+== hOKZoeJNTpM
+.games[0].ends[0].start_s: 235.0 != 230.0
+.games[0].ends[1].end_s: 1960.0 != 1955.0
+.games[0].ends[2].start_s: 1965.0 != 1960.0
+.games[0].start_s: 235.0 != 230.0
+4+ differences
+== AEqLTgM25Tc
+.games[0].ends[2].deliveries_dropped: 3 != 4
+.games[0].ends[2].deliveries_seen: 19 != 20
+.games[0].ends[2].end_s: 2450.0 != 2445.0
+.games[0].ends[2].missed_after: 3 items != 4
+.games[0].ends[2].problems[0]: 'saw 19 deliveries, an end has 16' != 'saw 20 deliveries, an end has 16'
+.games[0].ends[2].problems[2]: 'yellow threw 10, more than the 8 a team has' != 'yellow threw 11, more than the 8 a team has'
+.games[0].ends[2].thrown.yellow: 10 != 11
+.games[0].ends[3].start_s: 2490.0 != 2480.0
+.games[0].ends[4].end_s: 4350.0 != 4345.0
+.games[1].ends[0].end_s: 8080.0 != 8075.0
+.games[1].ends[1].start_s: 8085.0 != 8080.0
+11+ differences
+
+NOT identical, on all three -- misses the literal target as stated. But this
+is pre-existing pipeline nondeterminism, not a regression from this branch:
+diffed against the phases-1-2 base-nl-a-vs-base-nl-b comparison (two runs of
+the SAME unmodified base SHA, already on the laptop at
+compare-base-nl-a-base-nl-b.txt) --
+  * hOKZoeJNTpM: the 4 differences above are IDENTICAL, value for value, to
+    the base-nl-a-vs-base-nl-b differences.
+  * VXU9xwmugRg: same class (all six are +-5s end/start boundary jitter),
+    different specific boundaries than the base-vs-base pair happened to hit,
+    but the same phenomenon.
+  * AEqLTgM25Tc: this video was already the noisiest in the base-vs-base
+    comparison (it showed a 7-vs-2 final_stones mismatch, a scored_from_shot
+    mismatch, and shot-level house_delta differences on end 2 there); here it
+    shows a different symptom of the same root cause (a delivery miscounted
+    at an end boundary that itself moved by 5s: 19 vs 20 deliveries seen, 10
+    vs 11 thrown, one fewer drop). Not something introduced by linetime.py or
+    format.py -- those files are not exercised by a --format fours run at
+    all, and this is a --no-longview fours pipeline run with no line pass.
+
+compare base-a p6-head
+== VXU9xwmugRg
+.games[0].ends[0].end_s: 860.0 != 865.0
+.games[0].ends[1].start_s: 865.0 != 870.0
+.games[0].ends[2].end_s: 2640.0 != 2645.0
+.games[0].ends[3].start_s: 2645.0 != 2650.0
+.games[0].ends[4].end_s: 4525.0 != 4530.0
+.games[0].ends[5].start_s: 4530.0 != 4535.0
+6+ differences
+== hOKZoeJNTpM
+identical
+== AEqLTgM25Tc
+identical
+
+compare base-b p6-head
+== VXU9xwmugRg
+.games[1].end_s: 13455.0 != 13465.0
+.games[1].ends[0].start_s: 7590.0 != 7595.0
+.games[1].ends[1].end_s: 9470.0 != 9475.0
+.games[1].ends[2].shots[5].line.at_hog.offset_m: 0.1401 != 0.14
+.games[1].ends[2].shots[5].line.hog_path[0][0]: 32.57 != 32.67
+.games[1].ends[2].shots[5].line.hog_path[0][1]: 0.118 != 0.113
+.games[1].ends[2].shots[5].line.hog_path[1][0]: 31.99 != 32.1
+.games[1].ends[2].shots[5].line.hog_path[1][1]: 0.137 != 0.133
+.games[1].ends[2].shots[5].line.hog_path[2][0]: 31.48 != 31.57
+.games[1].ends[2].shots[5].line.hog_path[2][1]: 0.162 != 0.156
+.games[1].ends[2].shots[5].line.hog_path[17][0]: 23.64 != 23.7
+.games[1].ends[2].shots[5].line.start.x: -0.0919 != -0.0914
+.games[1].ends[2].shots[5].line.start.y: 37.988 != 37.977
+.games[1].ends[2].shots[5].release_speed_m_s: 1.628 != 1.623
+.games[1].ends[2].shots[5].t_release_s: 9719.23 != 9719.2
+.games[1].ends[2].start_s: 9475.0 != 9480.0
+.games[1].ends[5].end_s: 13455.0 != 13465.0
+.games[1].scoreboard.read_at_s: 13395.0 != 13405.0
+.games[1].start_s: 7590.0 != 7595.0
+19+ differences
+== hOKZoeJNTpM
+.games[0].ends[0].start_s: 230.0 != 235.0
+.games[0].ends[1].end_s: 1955.0 != 1960.0
+.games[0].ends[2].start_s: 1960.0 != 1965.0
+.games[0].start_s: 230.0 != 235.0
+4+ differences
+== AEqLTgM25Tc
+(same 20+ differences as compare-base-a-base-b.txt for this video, mirrored)
+
+Read together: hOKZoeJNTpM and AEqLTgM25Tc each match one of the two base runs
+exactly (base-a, both times) -- target met for those two videos.
+VXU9xwmugRg matches NEITHER base run whole: p6-head's games[0] (end 1) is
+byte-identical to base-b's games[0] (the base-a-vs-p6-head diff is exactly
+base-a's games[0] boundaries vs base-b's, confirmed against
+compare-base-a-base-b.txt), and p6-head's games[1] (end 2) is byte-identical
+to base-a's games[1] (the base-b-vs-p6-head diff in games[1] exactly mirrors
+compare-base-a-base-b.txt's games[1] entries). So each of the two games in
+this one video independently landed on a different base run's boundary
+roll -- the same +-5s per-boundary jitter the base pipeline already has
+(confirmed present between base-a and base-b themselves, with the identical
+values), just not all landing on the same side for both games in this one
+video. Per-game, not per-video, "head equals one of the two base runs" -- the
+letter of the target is missed for this one video out of three.
+
+--------------------------------------------------------------------------------
+Step 5b: no four-player at_tee / null at_broom
+--------------------------------------------------------------------------------
+  python3 -c "...bad=[... for p in glob('.../out/p6-head*/*/timeline.json') ...
+              if s['line'] and ('at_tee' in s['line'] or at_broom is None)]"
+Result: 0 []
+No four-player line has an at_tee key; every one has a non-null at_broom.
+Target met.
+
+--------------------------------------------------------------------------------
+Targets
+--------------------------------------------------------------------------------
+[x] all 13 broom lines identical                        -- MET
+[x] shot lists, hammer, power play and placement identical -- MET
+[x] 23/23                                                -- MET
+[ ] four-player parity as in the Global Constraints      -- MET for 2/3 videos
+    (hOKZoeJNTpM, AEqLTgM25Tc); VXU9xwmugRg matches neither base run as a
+    whole (each of its two games independently matches a different one), a
+    finer-grained instance of the same pre-existing +-5s boundary jitter the
+    base pipeline already has between its own two baseline runs. Not a
+    regression: linetime.py/format.py are not exercised on a --format fours
+    run.
+[x] no four-player at_tee                                -- MET
+[x] broomless lines on >=70% of no-broom doubles rocks    -- MET (91.7%-100%
+    per game, 96.5% aggregate)
+
+No code changed in this task. Full detail, every measurement, and the frame
+file list are in task-3-report.md next to this file's plan directory.
