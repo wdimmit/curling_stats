@@ -418,3 +418,20 @@ No code changed in this task. The 18 hand-check frames (13 broom + 5
 broomless, named <video>-e<end>-r<rock>[-broomless].jpg) are left on the
 worker at /data/wdd/curling/doubles-parity/frames/; this file is the
 complete record of the measurements and the ruling above it.
+
+--------------------------------------------------------------------------------
+Task 4: the 16-game four-player harness, deployed commit against head
+--------------------------------------------------------------------------------
+The 16 hosted four-player timelines in /data/wdd/curling/ds15/games/timelines,
+replayed end by end with scripts/phase3/split_report.py (fixed end windows,
+so no segmentation jitter) and the deployed overhead model (ds15-all.pt, md5
+788d50a8f54553962c2268710574611a = the worker's weights/ds15a.pt), once with
+the pipeline the worker runs today (a63495b) and once with this branch's
+pipeline (e90b47d; git diff e90b47d..1ca63bf -- src/curling_score minus the
+viewer is comments only). Four streams each, on the worker's CPU venv:
+
+  base a63495b: 16/16 exit 0
+  head e90b47d: 16/16 exit 0
+  cmp of the 16 per-rock outputs: identical=16 differ=0
+
+Every shot list, end by end, is byte-identical to the deployed pipeline's.

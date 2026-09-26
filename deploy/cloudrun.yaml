@@ -30,8 +30,9 @@ spec:
             # DOUBLES_ENABLED ("1", "true" or "yes") lets submissions, the
             # playlist poller and admin reprocess make mixed doubles runs.
             # Unset is off -- asking for doubles is a 400 and a doubles title
-            # is read as fours -- and it stays unset until the viewer can
+            # is read as fours. On since 2026-09-26, when the viewer came to
             # chart a doubles game. The worker is not gated by it.
+            - { name: DOUBLES_ENABLED,    value: "1" }
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'
