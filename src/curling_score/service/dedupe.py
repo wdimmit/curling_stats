@@ -111,8 +111,18 @@ def same_game(a_start, a_end, b_start, b_end) -> bool:
 
 
 def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
-    """The source for one discovered game, made once per game per video."""
+    """The source for one discovered game, made once per game, video and format.
+
+    The format is part of what the game is. A doubles reading of a window that
+    was run as fours is not a newer run of the same game: moving the fours
+    source onto it would hand the doubles run the fours game's page, catalogue
+    entry and charts, and fold an owner's doubles chart into their fours one,
+    since a chart claim is per source.
+    """
+    want = run.format or "fours"
     for s in repo.sources_for_video(run.video_id):
+        if (s.format or "fours") != want:
+            continue
         if same_game(s.game_start_s, s.game_end_s, game["start_s"], game["end_s"]):
             # A newer run of the same game moves the source forward, but
             # existing charts stay pinned to the run they were made from.

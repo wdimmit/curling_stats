@@ -84,8 +84,12 @@ def submit(w, url=f"https://youtu.be/{VID}", **body):
                             headers={"X-Forwarded-For": body.pop("ip", "1.2.3.4")})
 
 
-def work_through(w, doc=None, games=2):
-    """Play the worker: claim, progress, upload, complete. Returns the job."""
+def work_through(w, doc=None, games=2, fmt=None):
+    """Play the worker: claim, progress, upload, complete. Returns the job.
+
+    ``fmt`` is the format the worker says it built; left out, it says nothing,
+    as a worker from before formats did, which the API reads as fours.
+    """
     c = w["client"]
     r = c.post("/api/worker/claim", json={"worker_id": "home", "model_id": "m-abc",
                                           "version": "2026.09.1", "gpu": "A2000"}, headers=WORKER)
@@ -107,10 +111,12 @@ def work_through(w, doc=None, games=2):
         w["store"].put_bytes(up["key"], b"npz")
     games_list = [{"index": g["index"], "start_s": g["start_s"], "end_s": g["end_s"],
                    "ends": len(g["ends"])} for g in doc["games"]]
-    r = c.post(f"/api/worker/jobs/{job['id']}/complete", headers=WORKER,
-               json={"worker_id": "home", "title": "4/30 - Sheet 2 - Spring League",
-                     "channel_id": CLUB, "duration_s": 14392.0, "sheet": 2,
-                     "games": games_list, "detcache_digests": ["abc123"], "timings": {}})
+    done = {"worker_id": "home", "title": "4/30 - Sheet 2 - Spring League",
+            "channel_id": CLUB, "duration_s": 14392.0, "sheet": 2,
+            "games": games_list, "detcache_digests": ["abc123"], "timings": {}}
+    if fmt is not None:
+        done["format"] = fmt
+    r = c.post(f"/api/worker/jobs/{job['id']}/complete", headers=WORKER, json=done)
     assert r.status_code == 200, r.text
     return job
 
@@ -1273,7 +1279,23 @@ def add_doubles_video(w):
                           CLUB, 6001.0, "none", T0))
 
 
+def signed_in(w):
+    """The same world with accounts on and one person, Sarah, who can sign in."""
+    from curling_score.service.auth import FakeVerifier
+    auth = FakeVerifier()
+    auth.add("tok-sarah", "uid-sarah", "sarah@example.org", "Sarah")
+    w["client"] = TestClient(create_app(w["repo"], w["store"], w["yt"], w["settings"],
+                                        now=w["clock"], auth=auth))
+    return {"Authorization": "Bearer tok-sarah"}
+
+
 class TestFormat:
+    @pytest.fixture(autouse=True)
+    def _doubles_on(self, world):
+        # The hosted service keeps doubles off until it can chart them; these
+        # tests are about what happens once it is on.
+        world["settings"].doubles_enabled = True
+
     def test_a_doubles_title_queues_a_doubles_run(self, world):
         add_doubles_video(world)
         assert submit(world, url=f"https://youtu.be/{DOUBLES_VID}").status_code == 201
@@ -1326,3 +1348,54 @@ class TestFormat:
         work_through(world)                             # sends no "format"
         (run,) = world["repo"].runs_for_video(VID)
         assert run.status == "ready"
+
+    def test_a_doubles_run_of_a_fours_game_gets_its_own_source(self, world):
+        """The same video and game window, read as doubles, is another game
+        record: it must not take the fours one's page, catalogue entry or run."""
+        submit(world)                                   # fours, from the title
+        work_through(world)
+        fours = {s.id: s.current_run_id for s in world["repo"].sources_for_video(VID)}
+        assert len(fours) == 2
+        assert submit(world, format="doubles", ip="5.6.7.8").status_code == 201
+        work_through(world, doc={**sample_doc(), "format": {"name": "doubles"}},
+                     fmt="doubles")
+        sources = world["repo"].sources_for_video(VID)
+        for s in sources:
+            if s.id in fours:
+                assert s.current_run_id == fours[s.id] and s.format == "fours"
+        doubles = [s for s in sources if s.id not in fours]
+        assert len(doubles) == 2 and all(s.format == "doubles" for s in doubles)
+        assert {world["repo"].get_run(s.current_run_id).format for s in doubles} \
+            == {"doubles"}
+        listed = {g["source_id"]: g["format"]
+                  for g in world["client"].get("/api/games").json()["games"]}
+        assert listed == {**{sid: "fours" for sid in fours},
+                          **{s.id: "doubles" for s in doubles}}
+        # The public page of the fours game still serves the fours reading.
+        c = world["client"]
+        for sid in fours:
+            assert "format" not in c.get(f"/g/{sid}/timeline.json").json()
+        for s in doubles:
+            assert c.get(f"/g/{s.id}/timeline.json").json()["format"]["name"] == "doubles"
+
+    def test_a_doubles_resubmission_is_not_folded_into_the_owners_fours_chart(self, world):
+        """Chart claims are per source; one source for both formats made the
+        doubles chart a loser of a race it was never in."""
+        sarah = signed_in(world)
+        c = world["client"]
+        r = c.post("/api/submissions", json={"url": f"https://youtu.be/{VID}"},
+                   headers={"X-Forwarded-For": "1.2.3.4", **sarah})
+        fours_chart = r.json()["slug"]
+        work_through(world)
+        r = c.post("/api/submissions", json={"url": f"https://youtu.be/{VID}",
+                                             "format": "doubles"},
+                   headers={"X-Forwarded-For": "1.2.3.4", **sarah})
+        assert r.status_code == 201, r.text
+        doubles_chart = r.json()["slug"]
+        assert doubles_chart != fours_chart
+        work_through(world, fmt="doubles")
+        got = world["repo"].get_chart(doubles_chart)
+        assert got.superseded_by is None and got.duplicate_of is None
+        assert got.source_id is not None
+        assert world["repo"].get_source(got.source_id).format == "doubles"
+        assert world["repo"].get_chart(fours_chart).superseded_by is None
