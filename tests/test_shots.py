@@ -747,3 +747,11 @@ class TestDoublesEnds:
         got = shots.from_deliveries(self._alternating(12), self._frames({0: []}),
                                     fmt=F.DOUBLES)
         assert len(got) == 10
+
+
+class TestAShotDoesNotKnowItsThrowerAlone:
+    def test_there_is_no_format_blind_throw_on_a_shot(self):
+        """Who threw a shot depends on the game format; a Shot has none, so
+        it must not answer with the four-player table. ``timeline.build_end``
+        asks the format instead."""
+        assert not hasattr(shots.Shot, "throw")

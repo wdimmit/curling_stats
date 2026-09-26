@@ -493,6 +493,15 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
 # in the document says how many leading blocks were practice, so the two
 # numberings can only be assumed equal -- and this design does not assume.
 BOARD_ALIGNMENT_UNKNOWN = (
+    "the game opens with an end short of a full end, so it may be "
+    "practice, and the board does not account for every detected end -- which "
+    "end each card belongs to cannot be settled without a start time"
+)
+# The same reason as four-player documents have always worded it. Kept word
+# for word, because a fours timeline must stay byte-identical to what it was
+# before there were formats; any other format gets the wording above, since
+# a doubles end is ten delivered rocks, not sixteen.
+_BOARD_ALIGNMENT_UNKNOWN_FOURS = (
     "the game opens with an end short of a full sixteen rocks, so it may be "
     "practice, and the board does not account for every detected end -- which "
     "end each card belongs to cannot be settled without a start time"
@@ -520,7 +529,8 @@ def board_per_end(board: dict | None) -> dict | None:
     return out
 
 
-def settle_board_scores(ends: list, block: dict, highest_end: int) -> bool:
+def settle_board_scores(ends: list, block: dict, highest_end: int,
+                        fmt=None) -> bool:
     """Whether the board's scores may stay on these ends. Fails closed.
 
     The board's numbering is the real game's; ours is whatever detection cut
@@ -540,6 +550,9 @@ def settle_board_scores(ends: list, block: dict, highest_end: int) -> bool:
     Both conditions are recorded on ``block`` either way, because "the board
     did not account for every end" was previously visible only as a
     suppressed ``final``, where it read as ordinary conservatism.
+
+    ``fmt`` is the game's :class:`format.GameFormat` (None is fours); it only
+    words the reason. The short-end test reads each end's ``shots_expected``.
     """
     covers_every_end = int(highest_end) >= len(ends)
     first_short = bool(ends) and (
@@ -550,7 +563,10 @@ def settle_board_scores(ends: list, block: dict, highest_end: int) -> bool:
     if covers_every_end or not first_short:
         block["scores_withheld"] = None
         return True
-    block["scores_withheld"] = BOARD_ALIGNMENT_UNKNOWN
+    block["scores_withheld"] = (
+        _BOARD_ALIGNMENT_UNKNOWN_FOURS
+        if (fmt or format_mod.FOURS).name == format_mod.FOURS.name
+        else BOARD_ALIGNMENT_UNKNOWN)
     for end in ends:
         end["score"] = None
         end["score_source"] = None

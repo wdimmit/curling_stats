@@ -484,7 +484,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         # be placed is honest, and one end out of step is not. The block keeps
         # "per_end", so a start time typed later puts them back (trim_to_start).
         if board_block is not None and not timeline.settle_board_scores(
-                out_ends, board_block, got.board.highest_end()):
+                out_ends, board_block, got.board.highest_end(), fmt=fmt):
             progress(f"  game {game.index + 1}: board scores withheld -- "
                      "leading practice, and the board is short of the ends")
             scores = None

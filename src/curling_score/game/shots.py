@@ -81,10 +81,6 @@ class Shot:
     # Which entry in ``stones`` is the stone that was just thrown.
     delivered_stone_index: int | None = None
 
-    @property
-    def throw(self) -> rules.ThrowInfo:
-        return rules.throw_info(self.number)
-
 
 def scoring_shot(shots):
     """The shot whose house decides the end.

@@ -792,6 +792,37 @@ class TestWhenTheBoardCannotBePlaced:
         assert timeline.settle_board_scores(ends, block, highest_end=3) is True
         assert ends[0]["score"] == {"red": 0, "yellow": 1}
 
+    # What a fours document has always said, word for word: four-player
+    # timelines stay byte-identical to what they were before formats.
+    FOURS_WORDS = (
+        "the game opens with an end short of a full sixteen rocks, so it may be "
+        "practice, and the board does not account for every detected end -- which "
+        "end each card belongs to cannot be settled without a start time"
+    )
+
+    def test_a_fours_game_says_what_it_always_said(self):
+        block = {}
+        timeline.settle_board_scores(self._ends(6), block, highest_end=2)
+        assert block["scores_withheld"] == self.FOURS_WORDS
+
+    def test_a_doubles_game_is_not_told_sixteen_rocks(self):
+        from curling_score.game import format as F
+        ends = []
+        for number in (1, 2, 3):
+            n_shots = 4 if number == 1 else 10
+            ends.append(timeline.build_end(
+                number=number, house="top", start_s=300.0 * number,
+                end_s=300.0 * number + 200.0,
+                shots=[shot(i, "red" if i % 2 else "yellow", [])
+                       for i in range(1, n_shots + 1)],
+                board_score={"red": 0, "yellow": 1}, fmt=F.DOUBLES))
+        block = {}
+        assert timeline.settle_board_scores(ends, block, highest_end=2,
+                                            fmt=F.DOUBLES) is False
+        assert "sixteen" not in block["scores_withheld"]
+        assert "short of a full end" in block["scores_withheld"]
+        assert "short of a full end" in timeline.BOARD_ALIGNMENT_UNKNOWN
+
     def test_whether_the_board_covered_every_end_is_recorded_either_way(self):
         # Part C. R22 suppresses "final" whenever an end is unread, which
         # reads as ordinary conservatism -- and was hiding exactly this.
