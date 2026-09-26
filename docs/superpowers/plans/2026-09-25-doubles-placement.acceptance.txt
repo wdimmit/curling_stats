@@ -1,0 +1,380 @@
+Doubles placement stage acceptance (Task 5, plan 2026-09-25-doubles-placement)
+================================================================================
+
+HEAD = 864d62603d4905da6199db8e4438ff8ca58e5e14
+  "analyze: doubles ends drop what came before the placement and diff rock 1
+  against it; acceptance check"
+
+Worker: administrator@10.0.0.182 (ssh -o BatchMode=yes). Live worker never
+touched (no stop/restart/rebuild, /data/wdd/curling_score untouched); all runs
+were `docker compose -f docker-compose.worker.yml run --rm --no-deps` with
+HEAD's `src` mounted read-only over the installed package.
+
+--------------------------------------------------------------------------------
+Step 1: ship HEAD's code to the worker
+--------------------------------------------------------------------------------
+  mkdir -p /data/wdd/curling/doubles-parity/code-$SHA                  (~1s)
+  git archive $SHA src | ssh ... tar -x -C .../code-$SHA               (~1s)
+Verified: .../code-$SHA/src/curling_score present. Done.
+
+--------------------------------------------------------------------------------
+Step 2: analyse the four doubles games with HEAD
+--------------------------------------------------------------------------------
+Each: `docker compose ... run --rm --no-deps -v code-$SHA:/code:ro
+-e PYTHONPATH=/code/src worker sh -c 'curling-score -v analyze
+https://www.youtube.com/watch?v=$VID --format doubles --cache-root
+/data/cache/doubles --out /data/cache/doubles/out/p3-$VID > .../p3-$VID.log
+2>&1'`, one at a time, cache warm (no download).
+
+Game 1: brMO74e6ZZU  "3/19 - Sheet 1 - Thursday Mixed Doubles League 2025-2026"
+  (marks note: conceded after 4 ends) -- exit 0, ~16 min.
+  game 1: board says None in 1 read(s), ends [4] not posted
+    end 1: 10/10 deliveries (R6 Y5 offered, -1 against the rules), placement yellow, board says {'red': 0, 'yellow': 2}
+    end 2: 10/10 deliveries (R5 Y5 offered), placement red, board says {'red': 0, 'yellow': 3}
+    end 3: 10/10 deliveries (R6 Y6 offered, -2 against the rules), placement red, board says {'red': 0, 'yellow': 2}
+    end 4: 10/10 deliveries (R5 Y6 offered, -1 against the rules), placement red power play left, board silent, detected {'red': 0, 'yellow': 2}
+  (a second, unmarked "game 2" was also detected in this video's tail footage --
+  2 ends, 5/10 and 5/5 deliveries only, board not read; irrelevant to
+  acceptance, which only reads games[0], and consistent with the marks' "4
+  ends" for this video.)
+
+Game 2: n7ifEk4Zfl8  "3/26 - Sheet 4 - Thursday Mixed Doubles League 2025-2026"
+  -- exit 0, ~17 min.
+  game 1: board says None in 1 read(s), ends [6] not posted
+    end 1: 10/10 deliveries (R5 Y6 offered, -1 against the rules), placement yellow, board says {'red': 1, 'yellow': 0}
+    end 2: 10/10 deliveries (R7 Y6 offered, +1 recovered, -3 against the rules), placement yellow, board says {'red': 0, 'yellow': 2}
+    end 3: 10/10 deliveries (R5 Y5 offered, +1 recovered), placement red, board says {'red': 3, 'yellow': 0}
+    end 4: 10/10 deliveries (R6 Y5 offered, -1 against the rules), placement yellow power play left, board says {'red': 0, 'yellow': 5}
+    end 5: 10/10 deliveries (R5 Y5 offered), placement red power play left, board says {'red': 1, 'yellow': 0}
+    end 6: 10/10 deliveries (R6 Y6 offered, -2 against the rules), placement yellow, board silent, detected {'red': 0, 'yellow': 2}
+
+Game 3: 8J3r5FhFFd4  "4/2 - Sheet 3 - Thursday Mixed Doubles League 2025-2026"
+  -- exit 0, ~19 min.
+  game 1: board says None in 1 read(s), ends [7] not posted
+    end 1: 10/10 deliveries (R5 Y5 offered), placement red, board says {'red': 0, 'yellow': 0}
+    end 2: 10/10 deliveries (R5 Y5 offered), placement yellow, board says {'red': 0, 'yellow': 2}
+    end 3: 10/10 deliveries (R5 Y5 offered), placement red, board says {'red': 2, 'yellow': 0}
+    end 4: 10/10 deliveries (R5 Y5 offered), placement yellow, board says {'red': 0, 'yellow': 5}
+    end 5: 10/10 deliveries (R5 Y5 offered), placement red power play left, board says {'red': 0, 'yellow': 1}
+    end 6: 10/10 deliveries (R5 Y5 offered), placement red, board says {'red': 2, 'yellow': 0}
+    end 7: 10/10 deliveries (R5 Y5 offered), placement yellow power play right, board silent, detected {'red': 1, 'yellow': 0}
+
+Game 4: ih59IKFUHXk  "2/19 - Sheet 5 - Thursday Mixed Doubles League 2025-2026"
+  -- exit 0, ~17 min.
+  game 1: board says None in 2 read(s), ends [6] not posted
+    end 1: 10/10 deliveries (R6 Y6 offered, +1 recovered, -2 against the rules), placement yellow, board says {'red': 0, 'yellow': 1}
+    end 2: 10/10 deliveries (R6 Y5 offered, -1 against the rules), placement red, board says {'red': 4, 'yellow': 0}
+    end 3: 10/10 deliveries (R6 Y5 offered, +1 recovered, -1 against the rules), placement yellow, board says {'red': 1, 'yellow': 0}
+    end 4: 10/10 deliveries (R5 Y5 offered), placement yellow, board says {'red': 0, 'yellow': 1}
+    end 5: 10/10 deliveries (R5 Y5 offered), placement red, board says {'red': 1, 'yellow': 0}
+    end 6: 10/10 deliveries (R6 Y5 offered, -1 against the rules), placement yellow power play right, board silent, detected {'red': 1, 'yellow': 0}
+
+Timelines copied to the laptop scratchpad as p3-<vid>.json (each parsed as
+valid JSON before use).
+
+--------------------------------------------------------------------------------
+Step 3: acceptance check
+--------------------------------------------------------------------------------
+  python3 scripts/doubles/placement_acceptance.py \
+      datasets/doubles/marks/placements.json /tmp/.../p3-*.json
+
+Per-end table (verbatim):
+
+8J3r5FhFFd4 e1: hammer red/red pp None/None first yellow/yellow shots 10
+8J3r5FhFFd4 e2: hammer yellow/yellow pp None/None first red/red shots 10
+8J3r5FhFFd4 e3: hammer red/red pp None/None first yellow/yellow shots 10
+8J3r5FhFFd4 e4: hammer yellow/yellow pp None/None first red/red shots 10
+8J3r5FhFFd4 e5: hammer red/red pp left/left first yellow/yellow shots 10
+8J3r5FhFFd4 e6: hammer red/red pp None/None first yellow/yellow shots 10
+8J3r5FhFFd4 e7: hammer yellow/yellow pp right/right first red/red shots 10
+brMO74e6ZZU e1: hammer yellow/yellow pp None/None first red/red shots 10
+brMO74e6ZZU e2: hammer red/red pp None/None first yellow/yellow shots 10
+brMO74e6ZZU e3: hammer red/red pp None/None first yellow/yellow shots 10
+brMO74e6ZZU e4: hammer red/red pp left/left first yellow/yellow shots 10
+ih59IKFUHXk e1: hammer yellow/yellow pp None/None first red/red shots 10
+ih59IKFUHXk e2: hammer red/red pp None/None first yellow/yellow shots 10
+ih59IKFUHXk e3: hammer yellow/yellow pp None/None first red/red shots 10
+ih59IKFUHXk e4: hammer yellow/yellow pp None/None first red/red shots 10
+ih59IKFUHXk e5: hammer red/red pp None/None first yellow/yellow shots 10
+ih59IKFUHXk e6: hammer yellow/yellow pp right/right first red/red shots 10
+n7ifEk4Zfl8 e1: hammer yellow/yellow pp None/None first red/red shots 10
+n7ifEk4Zfl8 e2: hammer yellow/yellow pp None/None first red/red shots 10
+n7ifEk4Zfl8 e3: hammer red/red pp None/None first yellow/yellow shots 10
+n7ifEk4Zfl8 e4: hammer yellow/yellow pp left/left first red/red shots 10
+n7ifEk4Zfl8 e5: hammer red/red pp left/left first yellow/yellow shots 10
+n7ifEk4Zfl8 e6: hammer yellow/yellow pp None/None first red/red shots 10
+
+23 marked ends: hammer 23/23, power play 23/23, rock 1 colour 23/23 where seen, ten shots 23/23
+
+Exit code: 0 (no mismatches).
+
+Targets vs result:
+  hammer 23/23                                    -> MET (23/23)
+  power play 23/23                                -> MET (23/23)
+  rock 1's colour right wherever seen              -> MET (23/23 where seen; seen in all 23)
+  ten shots in every marked end                    -> MET (23/23)
+
+--------------------------------------------------------------------------------
+Per-game facts (Step 3's "also record")
+--------------------------------------------------------------------------------
+
+format.check per game (games[0], the marked game in each video):
+  8J3r5FhFFd4:  {'ends': 7, 'median_offered': 10, 'placement_found': 7, 'looks_like': 'doubles'}
+  brMO74e6ZZU:  {'ends': 6, 'median_offered': 11, 'placement_found': 5, 'looks_like': 'doubles'}
+                (the 6 ends and median_offered=11 count both detected "games" in
+                this video -- the marked 4-end game plus the unmarked, partial
+                5-ends-offered tail game; format_check runs over all detected
+                games in the document, not just games[0])
+  ih59IKFUHXk:  {'ends': 6, 'median_offered': 11, 'placement_found': 6, 'looks_like': 'doubles'}
+  n7ifEk4Zfl8:  {'ends': 6, 'median_offered': 11, 'placement_found': 6, 'looks_like': 'doubles'}
+  All four: looks_like == 'doubles' (matches the --format doubles claim; no
+  format mismatch flagged for any of the four analyses).
+
+scoreboard.scores_withheld, games[0] (the marked game) in each video: all four None
+  (board scores kept, none withheld). brMO74e6ZZU's video also has an unmarked
+  games[1] whose scoreboard is None outright (board not read at all for that
+  spurious tail segment) -- irrelevant to the withheld check, which is about
+  games[0].
+
+placement.candidates_dropped per end (games[0]):
+  8J3r5FhFFd4:  e1=0 e2=0 e3=0 e4=0 e5=0 e6=0 e7=0
+  brMO74e6ZZU:  e1=0 e2=0 e3=1 e4=0
+  ih59IKFUHXk:  e1=2 e2=1 e3=1 e4=1 e5=0 e6=1
+  n7ifEk4Zfl8:  e1=2 e2=0 e3=1 e4=0 e5=0 e6=1
+
+Rock-1 house diffs adding the colour that did not throw (target: 0):
+  For each marked end's first non-missing shot, entries in that shot's
+  house_delta.added whose colour != the shot's own colour:
+  8J3r5FhFFd4  e1..e7: 0,0,0,0,0,0,0
+  brMO74e6ZZU  e1..e4: 0,0,0,0
+  ih59IKFUHXk  e1..e6: 0,0,0,0,0,0
+  n7ifEk4Zfl8  e1..e6: 0,0,0,0,0,0
+  Total across 23 marked ends: 0/0 wrong-colour additions. Target MET.
+
+--------------------------------------------------------------------------------
+Step 4: four-player parity
+--------------------------------------------------------------------------------
+Videos: VXU9xwmugRg, hOKZoeJNTpM, AEqLTgM25Tc. Stored base outputs from the
+phase 1-2 check: out/base-a, out/base-b, out/base-nl-a, out/base-nl-b (all
+pre-existing, untouched by this task).
+
+Run: `bash scripts/doubles/fours_parity.sh run p3-head-nl $SHA --no-longview`
+  p3-head-nl VXU9xwmugRg done
+  p3-head-nl hOKZoeJNTpM done
+  p3-head-nl AEqLTgM25Tc done
+(exit 0, ~14 min total for the three videos)
+
+chmod (throwaway container, `docker run --rm -v .../out:/mnt --entrypoint
+chmod curling-worker:local -R a+rX /mnt`) before every compare below.
+
+Compare: `bash scripts/doubles/fours_parity.sh compare base-nl-a p3-head-nl`
+(target: identical on all three)
+
+== VXU9xwmugRg
+.games[0].ends[0].end_s: 865.0 != 860.0
+.games[0].ends[1].start_s: 870.0 != 865.0
+.games[0].ends[2].end_s: 2645.0 != 2640.0
+.games[0].ends[3].start_s: 2650.0 != 2645.0
+.games[0].ends[4].end_s: 4530.0 != 4525.0
+.games[0].ends[5].start_s: 4535.0 != 4530.0
+.games[1].end_s: 13455.0 != 13465.0
+.games[1].ends[0].start_s: 7590.0 != 7595.0
+.games[1].ends[1].end_s: 9470.0 != 9475.0
+.games[1].ends[2].shots[5].release_speed_m_s: 1.628 != 1.623
+.games[1].ends[2].shots[5].t_release_s: 9719.23 != 9719.2
+.games[1].ends[2].start_s: 9475.0 != 9480.0
+.games[1].ends[5].end_s: 13455.0 != 13465.0
+.games[1].scoreboard.read_at_s: 13395.0 != 13405.0
+.games[1].start_s: 7590.0 != 7595.0
+15+ differences
+== hOKZoeJNTpM
+.games[0].ends[0].start_s: 235.0 != 230.0
+.games[0].ends[1].end_s: 1960.0 != 1955.0
+.games[0].ends[2].start_s: 1965.0 != 1960.0
+.games[0].start_s: 235.0 != 230.0
+4+ differences
+== AEqLTgM25Tc
+identical
+
+RESULT: target MISSED for VXU9xwmugRg and hOKZoeJNTpM (not identical); MET
+for AEqLTgM25Tc only. See "Concerns" below -- this reproduces the exact,
+already-documented noise floor from the phase 1-2 parity check, verified by
+re-diffing the stored control pair (below), not a new regression.
+
+Control re-diff of the two stored BASE runs (no new runs; same files used by
+the phase 1-2 check), to confirm the above is the known noise and not new:
+  `bash scripts/doubles/fours_parity.sh compare base-nl-a base-nl-b`
+
+== VXU9xwmugRg
+.games[1].end_s: 13455.0 != 13465.0
+.games[1].ends[0].start_s: 7590.0 != 7595.0
+.games[1].ends[1].end_s: 9470.0 != 9475.0
+.games[1].ends[2].shots[5].release_speed_m_s: 1.628 != 1.623
+.games[1].ends[2].shots[5].t_release_s: 9719.23 != 9719.2
+.games[1].ends[2].start_s: 9475.0 != 9480.0
+.games[1].ends[5].end_s: 13455.0 != 13465.0
+.games[1].scoreboard.read_at_s: 13395.0 != 13405.0
+.games[1].start_s: 7590.0 != 7595.0
+9+ differences
+== hOKZoeJNTpM
+.games[0].ends[0].start_s: 235.0 != 230.0
+.games[0].ends[1].end_s: 1960.0 != 1955.0
+.games[0].ends[2].start_s: 1965.0 != 1960.0
+.games[0].start_s: 235.0 != 230.0
+4+ differences
+== AEqLTgM25Tc
+.games[0].ends[1].end_s: 1465.0 != 1470.0
+.games[0].ends[1].final_stones: 2 items != 7
+.games[0].ends[1].final_stones[0].confidence: 0.936 != 0.945
+.games[0].ends[1].final_stones[0].distance_to_tee: 2.0419 != 1.0032
+.games[0].ends[1].final_stones[0].in_house: False != True
+.games[0].ends[1].final_stones[0].x: -1.6243 != 0.5796
+.games[0].ends[1].final_stones[0].y: -1.2374 != -0.8188
+.games[0].ends[1].final_stones[1].confidence: 0.93 != 0.925
+.games[0].ends[1].final_stones[1].distance_to_tee: 1.1936 != 0.3941
+.games[0].ends[1].final_stones[1].x: 0.6374 != -0.3936
+.games[0].ends[1].final_stones[1].y: -1.0091 != -0.0207
+.games[0].ends[1].scored_from_shot: 16 != 15
+.games[0].ends[1].shots[15].entry_speed_m_s: 1.089 != 0.0
+.games[0].ends[1].shots[15].house_delta.moved: 1 items != 0
+.games[0].ends[1].shots[15].house_delta.removed: 5 items != 7
+.games[0].ends[1].shots[15].house_delta.removed[1].color: 'yellow' != 'red'
+.games[0].ends[1].shots[15].house_delta.removed[1].x: -0.9879 != -0.3936
+.games[0].ends[1].shots[15].house_delta.removed[1].y: -0.383 != -0.0207
+.games[0].ends[1].shots[15].house_delta.removed[2].color: 'red' != 'yellow'
+.games[0].ends[1].shots[15].house_delta.removed[2].x: -1.7957 != -0.9879
+20+ differences
+
+Comparison of the two diffs, value by value: on VXU9xwmugRg, every line in the
+base-nl-a-vs-p3-head-nl diff's games[1] block is byte-identical (same paths,
+same two values) to the base-nl-a-vs-base-nl-b control; the games[0] end-
+boundary lines are new this run (the control happened to agree on games[0]
+that time) but are the exact same +/-5s quantization pattern -- e.g.
+".games[0].ends[0].end_s: 865.0 != 860.0" here vs. the phase-1-2 report's own
+"base-a vs base-b" full-pipeline comparison showing
+".games[0].ends[0].end_s: 860.0 != 865.0" for the same end, same two values,
+opposite pairing. On hOKZoeJNTpM the base-nl-a-vs-p3-head-nl diff is
+line-for-line and value-for-value identical to the control. This is the same
+pre-existing GPU/model nondeterminism the phase 1-2 parity report already
+flagged as not confined to --no-longview, reproduced again here, not a
+regression introduced by the placement-stage code.
+
+Run: `bash scripts/doubles/fours_parity.sh run p3-head $SHA`
+  p3-head VXU9xwmugRg done
+  p3-head hOKZoeJNTpM done
+  p3-head AEqLTgM25Tc done
+(exit 0, ~19 min total for the three videos)
+
+chmod as above, then:
+
+Compare: `bash scripts/doubles/fours_parity.sh compare base-a p3-head`
+
+== VXU9xwmugRg
+.games[0].ends[0].end_s: 860.0 != 865.0
+.games[0].ends[1].start_s: 865.0 != 870.0
+.games[0].ends[2].end_s: 2640.0 != 2645.0
+.games[0].ends[3].start_s: 2645.0 != 2650.0
+.games[0].ends[4].end_s: 4525.0 != 4530.0
+.games[0].ends[5].start_s: 4530.0 != 4535.0
+.games[1].end_s: 13465.0 != 13455.0
+.games[1].ends[0].start_s: 7595.0 != 7590.0
+.games[1].ends[1].end_s: 9475.0 != 9470.0
+.games[1].ends[2].shots[5].line.at_hog.offset_m: 0.14 != 0.1401
+.games[1].ends[2].shots[5].line.hog_path[0][0]: 32.67 != 32.57
+.games[1].ends[2].shots[5].line.hog_path[0][1]: 0.113 != 0.118
+.games[1].ends[2].shots[5].line.hog_path[1][0]: 32.1 != 31.99
+.games[1].ends[2].shots[5].line.hog_path[1][1]: 0.133 != 0.137
+.games[1].ends[2].shots[5].line.hog_path[2][0]: 31.57 != 31.48
+.games[1].ends[2].shots[5].line.hog_path[2][1]: 0.156 != 0.162
+.games[1].ends[2].shots[5].line.hog_path[17][0]: 23.7 != 23.64
+.games[1].ends[2].shots[5].line.start.x: -0.0914 != -0.0919
+.games[1].ends[2].shots[5].line.start.y: 37.977 != 37.988
+.games[1].ends[2].shots[5].release_speed_m_s: 1.623 != 1.628
+20+ differences
+== hOKZoeJNTpM
+identical
+== AEqLTgM25Tc
+.games[0].ends[1].end_s: 1470.0 != 1465.0
+.games[0].ends[1].final_stones: 7 items != 2
+.games[0].ends[1].final_stones[0].confidence: 0.945 != 0.936
+.games[0].ends[1].final_stones[0].distance_to_tee: 1.0032 != 2.0419
+.games[0].ends[1].final_stones[0].in_house: True != False
+.games[0].ends[1].final_stones[0].x: 0.5796 != -1.6243
+.games[0].ends[1].final_stones[0].y: -0.8188 != -1.2374
+.games[0].ends[1].final_stones[1].confidence: 0.925 != 0.93
+.games[0].ends[1].final_stones[1].distance_to_tee: 0.3941 != 1.1936
+.games[0].ends[1].final_stones[1].x: -0.3936 != 0.6374
+.games[0].ends[1].final_stones[1].y: -0.0207 != -1.0091
+.games[0].ends[1].scored_from_shot: 15 != 16
+.games[0].ends[1].shots[15].entry_speed_m_s: 0.0 != 1.089
+.games[0].ends[1].shots[15].house_delta.moved: 0 items != 1
+.games[0].ends[1].shots[15].house_delta.removed: 7 items != 5
+.games[0].ends[1].shots[15].house_delta.removed[1].color: 'red' != 'yellow'
+.games[0].ends[1].shots[15].house_delta.removed[1].x: -0.3936 != -0.9879
+.games[0].ends[1].shots[15].house_delta.removed[1].y: -0.0207 != -0.383
+.games[0].ends[1].shots[15].house_delta.removed[2].color: 'yellow' != 'red'
+.games[0].ends[1].shots[15].house_delta.removed[2].x: -0.9879 != -1.7957
+20+ differences
+
+Compare: `bash scripts/doubles/fours_parity.sh compare base-b p3-head`
+(target: one of the two identical per video)
+
+== VXU9xwmugRg
+identical
+== hOKZoeJNTpM
+.games[0].ends[0].start_s: 230.0 != 235.0
+.games[0].ends[1].end_s: 1955.0 != 1960.0
+.games[0].ends[2].start_s: 1960.0 != 1965.0
+.games[0].start_s: 230.0 != 235.0
+4+ differences
+== AEqLTgM25Tc
+identical
+
+RESULT per video (base-a vs p3-head, base-b vs p3-head):
+  VXU9xwmugRg:   base-a NOT identical (20+ diffs, capped) / base-b identical  -> ONE identical. MET.
+  hOKZoeJNTpM:   base-a identical / base-b NOT identical (4+ diffs)           -> ONE identical. MET.
+  AEqLTgM25Tc:   base-a NOT identical (20+ diffs) / base-b identical          -> ONE identical. MET.
+All three videos have exactly one identical match, and every one of these
+"identical" results (base-b/VXU9xwmugRg, base-a/hOKZoeJNTpM, base-b/
+AEqLTgM25Tc) is a direct, uncapped two-way diff, not an inference from two
+20-line-capped lists agreeing -- so this is conclusive, matching exactly the
+phase-1-2 report's own resolution of the same three videos (compare
+comparisons 3 and 5 there): head equals whichever of base-a/base-b avoided
+that run's particular GPU-nondeterminism draw, on every video.
+
+format_warning key check: scanned every value in all six fours timelines
+(p3-head-nl x3, p3-head x3) recursively for a key named "format_warning" --
+none found in any of them.
+
+--------------------------------------------------------------------------------
+Overall verdict
+--------------------------------------------------------------------------------
+Doubles acceptance (Step 3): all four targets fully met --
+  hammer 23/23, power play 23/23, rock 1 colour 23/23 (seen in all 23), ten
+  shots 23/23, and 0/0 rock-1 house-diff additions of the wrong colour.
+
+Four-player parity (Step 4):
+  - Full-pipeline comparison (base-a/base-b vs p3-head): target MET on all
+    three videos (exactly one of the two stored base runs matches p3-head,
+    every match direct and uncapped).
+  - No --no-longview comparison (base-nl-a vs p3-head-nl): target MISSED for
+    2 of 3 videos (VXU9xwmugRg, hOKZoeJNTpM); MET only for AEqLTgM25Tc. The
+    diffs reproduce -- value for value on hOKZoeJNTpM, and for the games[1]
+    portion on VXU9xwmugRg -- the exact noise floor the phase 1-2 parity
+    report already documented and flagged as a pre-existing, out-of-scope
+    GPU/model nondeterminism issue not confined to the longview pass. The
+    additional games[0] boundary jitter on VXU9xwmugRg this run is the same
+    +/-5s quantization pattern documented there, just landing on different
+    ends. No pipeline code was changed in response to this miss, per the
+    task's instruction.
+  - No format_warning key appeared in any of the six fours timelines
+    produced this task.
+
+STATUS: DONE_WITH_CONCERNS. The doubles placement acceptance is a clean pass.
+Four-player parity is a pass on the full pipeline (the direct, real-world
+comparison) and a documented, pre-existing-noise-floor miss on the
+--no-longview control comparison, not attributable to this branch's code
+(fours is provably unchanged per Task 4's line-by-line trace, and the
+--no-longview noise floor was already shown not to vanish in the phase 1-2
+check). The controller should decide whether this pre-existing nondeterminism
+needs a separate fix.
