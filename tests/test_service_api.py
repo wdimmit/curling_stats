@@ -1416,6 +1416,21 @@ class TestFormat:
         assert world["repo"].get_source(got.source_id).format == "doubles"
         assert world["repo"].get_chart(fours_chart).superseded_by is None
 
+    def test_a_reprocess_can_choose_the_format(self, world):
+        submit(world)                                   # fours, from the title
+        c = world["client"]
+        r = c.post("/api/admin/reprocess", headers=ADMIN,
+                   json={"video_id": VID, "format": "doubles"})
+        assert r.status_code == 200, r.text
+        assert world["repo"].get_run(r.json()["run_id"]).format == "doubles"
+        # Left out, it stays the base run's.
+        r = c.post("/api/admin/reprocess", headers=ADMIN, json={"video_id": VID})
+        base_format = world["repo"].runs_for_video(VID)[0].format
+        assert world["repo"].get_run(r.json()["run_id"]).format == base_format
+        for bad in ("quads", ["doubles"]):
+            assert c.post("/api/admin/reprocess", headers=ADMIN,
+                          json={"video_id": VID, "format": bad}).status_code == 400
+
     def test_the_poller_reads_a_doubles_title(self, world):
         add_doubles_video(world)
         world["repo"].put_playlist(WatchedPlaylist(id="p", playlist_id="PLthu",
@@ -1468,6 +1483,13 @@ class TestDoublesIsOffUntilItCanBeCharted:
         assert len(r.json()["created"]) == 1
         (run,) = world["repo"].runs_for_video(DOUBLES_VID)
         assert run.format == "fours"
+
+    def test_a_reprocess_cannot_ask_for_doubles(self, world):
+        submit(world)
+        r = world["client"].post("/api/admin/reprocess", headers=ADMIN,
+                                 json={"video_id": VID, "format": "doubles"})
+        assert r.status_code == 400
+        assert r.json()["detail"] == "doubles games are not supported yet"
 
     def test_a_reprocess_makes_fours_even_of_a_doubles_run(self, world):
         add_doubles_video(world)

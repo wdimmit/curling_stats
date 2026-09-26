@@ -1549,6 +1549,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         require_admin(authorization)
         body = await request.json()
         vid = source.video_id(str(body["video_id"]))
+        # A reprocess is how a game read as the wrong format gets read again,
+        # so it may say which; left out, it is the base run's.
+        asked = requested_format(body.get("format"))
         prior = repo.runs_for_video(vid)
         base = prior[0] if prior else None
         t = now()
@@ -1560,7 +1563,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                   sheet=base.sheet if base else None,
                   published_at=base.published_at if base else None,
                   league=base.league if base else None,
-                  format=allowed_format(base.format if base else None),
+                  format=asked or allowed_format(base.format if base else None),
                   playlist_id=base.playlist_id if base else None)
         repo.put_run(run)
         repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t, run_after=t))
