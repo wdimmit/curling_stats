@@ -17,9 +17,16 @@ class FakeApi:
         self.uploads = {}
         self.completed = []
         self.failed = []
+        self.yielded = []
+        self.claims = []
 
-    def claim(self, worker_id, model_id, gpu):
+    def claim(self, worker_id, model_id, gpu, kinds=None):
+        self.claims.append(kinds)
         return self.jobs.pop(0) if self.jobs else None
+
+    def yield_job(self, job_id, worker_id):
+        self.yielded.append(job_id)
+        return {"ok": True}
 
     def progress(self, job_id, worker_id, phase, fraction, message):
         self.progress_calls.append((phase, fraction))
@@ -321,3 +328,49 @@ class TestStackDumpsCanBeRequested:
         assert faulthandler.is_enabled()
         # Registering again is harmless and proves the handler is ours.
         faulthandler.unregister(signal.SIGUSR1)
+
+
+class Live:
+    """A live lane with ``steps`` units of live work, arriving after ``after``
+    busy() checks -- as a stream going live partway through a recording."""
+
+    def __init__(self, steps=0, after=0):
+        self.steps, self.after, self.checks, self.stepped = steps, after, 0, 0
+
+    def busy(self):
+        self.checks += 1
+        return self.checks > self.after and self.stepped < self.steps
+
+    def step(self):
+        self.stepped += 1
+        return True
+
+
+class TestLiveComesFirst:
+    def test_live_work_is_done_before_any_recording_is_claimed(self, tmp_path):
+        api, live = FakeApi([JOB]), Live(steps=3)
+        worker.run_forever(api, "home", root=tmp_path, weights=None, out_dir=tmp_path,
+                           cache_gb=1.0, sleep=lambda s: None, once=True, live=live)
+        assert live.stepped == 3
+        assert api.claims == []           # nothing claimed while live work was waiting
+
+    def test_with_a_live_lane_it_claims_only_recordings(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(worker, "process_job",
+                            lambda job, api, wid, **kw: api.complete(job["id"], wid, {}))
+        api = FakeApi([JOB])
+        worker.run_forever(api, "home", root=tmp_path, weights=None, out_dir=tmp_path,
+                           cache_gb=1.0, sleep=lambda s: None, once=True, live=Live())
+        assert api.claims == [["vod"]]
+
+    def test_a_recording_steps_aside_when_a_stream_goes_live(self, tmp_path):
+        def analyze(url, **kw):
+            for i in range(10):
+                kw["on_phase"]("detect", i / 10, f"end {i}")
+            return fake_doc()
+
+        api, live = FakeApi([JOB]), Live(steps=1, after=3)
+        worker.run_forever(api, "home", root=tmp_path, weights=None, out_dir=tmp_path,
+                           cache_gb=1.0, sleep=lambda s: None, once=True, live=live,
+                           analyze_fn=analyze, fetch_info=fake_info)
+        assert api.yielded == ["j_1"]
+        assert api.completed == [] and api.failed == []

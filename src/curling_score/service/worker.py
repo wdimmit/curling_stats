@@ -24,6 +24,9 @@ POLL_BUSY_S = 10.0    # after a job, look again soon: a league night queues five
 POLL_IDLE_S = 30.0    # otherwise stay well inside Firestore's free read quota
 HEARTBEAT_S = 60.0    # how often an idle worker says it is alive
 PROGRESS_MIN_GAP_S = 5.0
+# With live streams in hand but nothing of theirs ready, look again this soon:
+# the next end settles on the recording's clock, not the queue's.
+LIVE_IDLE_S = 5.0
 UPLOAD_TIMEOUT_S = 600.0
 # Short, because a progress post that is not answered promptly has already
 # failed at its job of being timely, and the next one is seconds away.
@@ -32,6 +35,22 @@ PROGRESS_TIMEOUT_S = 15.0
 
 class Lost(Exception):
     """The API says this job is no longer ours; stop working on it."""
+
+
+class Yield(Exception):
+    """A live stream needs the GPU: hand this recording back and come back to it."""
+
+
+def _yielded(exc: BaseException) -> bool:
+    """Whether ``exc`` is, or was caused by, a Yield -- yt-dlp may wrap one
+    raised from inside its progress hook."""
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, Yield):
+            return True
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return False
 
 
 class ApiClient:
@@ -50,10 +69,13 @@ class ApiClient:
         r.raise_for_status()
         return r.json() if r.content else None
 
-    def claim(self, worker_id, model_id, gpu):
+    def claim(self, worker_id, model_id, gpu, kinds=None):
+        body = {"worker_id": worker_id, "version": version.PIPELINE_VERSION,
+                "model_id": model_id, "gpu": gpu}
+        if kinds is not None:
+            body["kinds"] = list(kinds)
         r = self._http.post(f"{self.base}/api/worker/claim", headers=self._headers,
-                            json={"worker_id": worker_id, "version": version.PIPELINE_VERSION,
-                                  "model_id": model_id, "gpu": gpu})
+                            json=body)
         if r.status_code == 204:
             return None
         if r.status_code == 409:
@@ -96,6 +118,13 @@ class ApiClient:
         return self._post(f"/api/worker/jobs/{job_id}/complete",
                           {"worker_id": worker_id, **payload})
 
+    def yield_job(self, job_id, worker_id):
+        return self._post(f"/api/worker/jobs/{job_id}/yield", {"worker_id": worker_id})
+
+    def publish(self, job_id, worker_id, payload):
+        return self._post(f"/api/worker/jobs/{job_id}/publish",
+                          {"worker_id": worker_id, **payload})
+
     def fail(self, job_id, worker_id, error, kind, retry_after_s=None):
         return self._post(f"/api/worker/jobs/{job_id}/fail",
                           {"worker_id": worker_id, "error": error, "kind": kind,
@@ -135,8 +164,13 @@ def gpu_name() -> str | None:
 def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
                 weights: str | None, out_dir: Path, skip_longview: bool = False,
                 analyze_fn=None, fetch_info=source.fetch_info,
-                clock=time.monotonic) -> dict:
-    """Run one job end to end. Raises on failure; the caller reports it."""
+                clock=time.monotonic, should_yield=None) -> dict:
+    """Run one job end to end. Raises on failure; the caller reports it.
+
+    ``should_yield`` is asked at every progress report, and a yes raises
+    Yield: a live stream has started and needs the GPU. The detection cache
+    keeps every end already done, so coming back costs little.
+    """
     analyze_fn = analyze_fn or analyze_mod.analyze
     url = source.canonical_url(job["video_id"])
     last = {"t": -1e9}
@@ -144,6 +178,8 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     t_start = clock()
 
     def on_phase(name, fraction, message=None):
+        if should_yield is not None and should_yield():
+            raise Yield(f"live work waiting, at {name}")
         t = clock()
         timings.setdefault(name, {"first_s": round(t - t_start, 1)})
         timings[name]["last_s"] = round(t - t_start, 1)
@@ -257,14 +293,30 @@ def resolve_skip_longview() -> bool:
 
 def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | None,
                 out_dir: Path, cache_gb: float, skip_longview: bool = False,
-                sleep=time.sleep, once: bool = False):
+                sleep=time.sleep, once: bool = False, live=None, **process_kw):
+    """Claim and process jobs until stopped.
+
+    With a ``live`` lane, live streams come first: while the lane has any,
+    the loop steps them and claims nothing else, and a recording already in
+    hand is handed back (``/yield``) as soon as one appears -- the lane's
+    manager thread claims live jobs by itself. Without one, as before.
+    """
     model = version.model_id(weights)
     gpu = gpu_name()
     log.info("worker %s: model %s, gpu %s, cache %s", worker_id, model, gpu, root)
     idle_since = None
+    served_live = False
     while True:
+        if live is not None and live.busy():
+            served_live = True
+            if not live.step():
+                sleep(LIVE_IDLE_S)
+            continue
+        if once and served_live:
+            return
         try:
-            job = api.claim(worker_id, model, gpu)
+            job = (api.claim(worker_id, model, gpu) if live is None
+                   else api.claim(worker_id, model, gpu, kinds=["vod"]))
         except Exception as exc:  # noqa: BLE001 - the API may be down; keep trying
             log.warning("claim failed: %s", exc)
             job = None
@@ -283,11 +335,22 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
                  job.get("window_start_s"), job.get("window_end_s"))
         try:
             result = process_job(job, api, worker_id, root=root, weights=weights,
-                                 out_dir=out_dir, skip_longview=skip_longview)
+                                 out_dir=out_dir, skip_longview=skip_longview,
+                                 should_yield=None if live is None else live.busy,
+                                 **process_kw)
             log.info("job %s done: %s", job["id"], result)
         except Lost as exc:
             log.warning("job %s lost: %s", job["id"], exc)
         except Exception as exc:  # noqa: BLE001
+            if _yielded(exc):
+                log.info("job %s handed back for live work", job["id"])
+                try:
+                    api.yield_job(job["id"], worker_id)
+                except Exception as exc2:  # noqa: BLE001 - the lease will return it
+                    log.warning("could not hand job %s back: %s", job["id"], exc2)
+                if once:
+                    return
+                continue
             kind = classify_error(exc)
             log.exception("job %s failed (%s)", job["id"], kind)
             try:
