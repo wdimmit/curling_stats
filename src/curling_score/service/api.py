@@ -293,7 +293,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         """
         if value in (None, "", "auto"):
             return None
-        if value not in format_mod.FORMATS:
+        # A list or an object is not a name, and is unhashable besides: the
+        # dict lookup would raise and answer a malformed body with a 500.
+        if not isinstance(value, str) or value not in format_mod.FORMATS:
             raise HTTPException(400, f"format must be one of {sorted(format_mod.FORMATS)}")
         if value != "fours" and not settings.doubles_enabled:
             raise HTTPException(400, "doubles games are not supported yet")

@@ -1311,6 +1311,11 @@ class TestFormat:
     def test_an_unknown_format_is_a_400(self, world):
         assert submit(world, format="quads").status_code == 400
 
+    @pytest.mark.parametrize("bad", [["doubles"], {"name": "doubles"}, 2])
+    def test_a_format_that_is_not_a_name_is_a_400_not_a_crash(self, world, bad):
+        r = submit(world, format=bad)
+        assert r.status_code == 400 and "format" in r.json()["detail"]
+
     def test_the_claim_carries_the_format(self, world):
         add_doubles_video(world)
         submit(world, url=f"https://youtu.be/{DOUBLES_VID}")

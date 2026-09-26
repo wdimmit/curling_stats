@@ -66,7 +66,9 @@ class TestLookup:
             F.by_name("quads")
 
     @pytest.mark.parametrize("doc", [{}, {"format": None}, {"format": {}},
-                                     {"format": {"name": "quads"}}, None])
+                                     {"format": {"name": "quads"}}, None,
+                                     {"format": {"name": ["x"]}},
+                                     {"format": {"name": {"n": 1}}}])
     def test_a_document_that_does_not_say_is_fours(self, doc):
         assert F.of_document(doc) is F.FOURS
 

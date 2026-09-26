@@ -124,4 +124,5 @@ def of_document(doc) -> GameFormat:
     the one every older chart was built for."""
     block = doc.get("format") if isinstance(doc, dict) else None
     name = block.get("name") if isinstance(block, dict) else None
-    return FORMATS.get(name, FOURS)
+    # Only a string can name a format; a list or object would not even hash.
+    return FORMATS.get(name, FOURS) if isinstance(name, str) else FOURS
