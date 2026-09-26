@@ -164,10 +164,13 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     det_dir = root / "detections"
     before = _snapshot(det_dir)
 
+    # The API decides the format and checks it on complete. A claim without
+    # one is an API from before formats, which holds every run as fours; the
+    # title must not overrule that.
     doc = analyze_fn(
         url, root=root, weights=weights, info=info,
         start_s=job.get("window_start_s"), end_s=job.get("window_end_s"),
-        sheet=job.get("sheet"), game_format=job.get("format"),
+        sheet=job.get("sheet"), game_format=job.get("format") or "fours",
         skip_scoreboard=False,
         skip_longview=skip_longview, on_phase=on_phase,
         download_attempts=1,

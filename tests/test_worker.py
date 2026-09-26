@@ -142,6 +142,22 @@ class TestProcessJob:
         assert json.loads(api.uploads["memory://meta.json"])["format"] == "doubles"
         assert api.completed[0]["format"] == "doubles"
 
+    def test_a_claim_without_a_format_is_analysed_as_fours(self, tmp_path):
+        """The API holds such a run as fours; letting the title decide could
+        put a doubles document on it, which the API would then refuse."""
+        api = FakeApi([])
+        seen = {}
+
+        def analyze_fn(url, **kw):
+            seen.update(kw)
+            return fake_doc()
+
+        assert "format" not in JOB
+        worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
+                           out_dir=tmp_path / "out", analyze_fn=analyze_fn,
+                           fetch_info=fake_info)
+        assert seen["game_format"] == "fours"
+
     def test_a_fours_document_reports_fours(self, tmp_path):
         api = FakeApi([])
         worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
