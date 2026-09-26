@@ -339,6 +339,59 @@ def b_share(b):
     return b["share_url"]
 
 
+class TestAViewOnlyLinkKeepsTheEditKey:
+    """A view-only link must not carry the key that makes its chart editable.
+
+    It did: the /s/ page booted with window.CHART.slug = chart.id, and its
+    timeline.json and export.json said chart.slug = chart.id, so anyone given
+    a view-only link could read the edit link out of the page."""
+
+    VIEW_ROUTES = ("", "timeline.json", "export.json", "status.json",
+                   "overrides.json", "overrides_meta.json")
+
+    def _ready(self, world):
+        a = submit(world).json()
+        work_through(world)
+        return world["repo"].get_chart(a["slug"])
+
+    def test_no_route_under_the_view_link_mentions_the_edit_key(self, world):
+        ch = self._ready(world)
+        c = world["client"]
+        for path in self.VIEW_ROUTES:
+            r = c.get(f"/s/{ch.share_slug}/{path}")
+            assert r.status_code == 200, path
+            assert ch.id not in r.text, path
+
+    def test_the_view_page_keys_its_cursor_on_its_own_link(self, world):
+        """The viewer uses the slug only to remember where this tab was."""
+        ch = self._ready(world)
+        page = world["client"].get(f"/s/{ch.share_slug}/").text
+        assert f'"slug": "{ch.share_slug}"' in page and '"mode": "view"' in page
+        assert world["client"].get(f"/s/{ch.share_slug}/timeline.json").json()[
+            "chart"]["slug"] is None
+
+    def test_the_edit_link_still_knows_its_own_key(self, world):
+        ch = self._ready(world)
+        c = world["client"]
+        assert f'"slug": "{ch.id}"' in c.get(f"/c/{ch.id}/").text
+        assert c.get(f"/c/{ch.id}/timeline.json").json()["chart"]["slug"] == ch.id
+
+    def test_a_superseded_view_link_reveals_neither_chart(self, world):
+        """lookup() follows superseded_by, so the page shows the newer chart --
+        whose edit key must not leak either."""
+        import dataclasses
+        old = self._ready(world)
+        newer = dataclasses.replace(old, id="Cnewerchartid000000000",
+                                    share_slug="Snewershare00000000000")
+        world["repo"].put_chart(newer)
+        world["repo"].update_chart(old.id, superseded_by=newer.id)
+        c = world["client"]
+        for path in self.VIEW_ROUTES:
+            r = c.get(f"/s/{old.share_slug}/{path}")
+            assert r.status_code == 200, path
+            assert newer.id not in r.text and old.id not in r.text, path
+
+
 class TestCharting:
     def _ready(self, world):
         a = submit(world).json()

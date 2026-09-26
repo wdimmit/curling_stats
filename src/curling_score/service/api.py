@@ -358,7 +358,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         src = repo.get_source(chart.source_id) if chart.source_id else None
         doc = game_doc(run, chart.game_index, src, trim_start_for(chart, src))
         doc["chart"] = {
-            "slug": chart.id,
+            # The chart id IS the edit link, so a view-only document must not
+            # carry it: anyone could read it out and open /c/<id>/.
+            "slug": None if read_only else chart.id,
             "share_url": None if read_only else url_for(f"/s/{chart.share_slug}/"),
             "read_only": read_only,
             "requested_start_s": chart.requested_start_s,
@@ -1089,8 +1091,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # getting whole documents. `shared` is what turns on polling for a
             # teammate's edits -- pointless, and a read every 15s, on a chart
             # only one person can reach.
+            # The viewer uses the slug only to key the tab's saved cursor, so a
+            # view-only page keys it on the link it was opened by: the chart id
+            # is the edit link, and would be readable in the page source.
             return HTMLResponse(viewer.boot_page({
-                "slug": chart.id,
+                "slug": key if read_only else chart.id,
                 "mode": "view" if read_only else "edit",
                 "merge": True,
                 "shared": chart.team_id is not None,
