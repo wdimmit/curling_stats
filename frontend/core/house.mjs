@@ -12,6 +12,15 @@ import { isBlank } from "./shots.mjs";
  * `aspect` is the rendered box's width over its height; desktop passes nothing
  * that matters, because "full" is always the view it has always had. */
 export function houseViewBox(mode, aspect) {
+  // Everything in play, for watching on a phone: back line to hog line at
+  // the sheet's full width, framed by the margin the sides already have. The
+  // box is letterboxed rather than cropped, so its shape does not matter and
+  // no stone in play ever falls out of view.
+  if (mode === "inplay") {
+    const m = 2.6 - R.halfWidth;
+    const n = x => String(+x.toFixed(3));
+    return `-2.6 ${n(R.back - m)} 5.2 ${n(R.hog - R.back + 2 * m)}`;
+  }
   if (mode !== "crop" || !(aspect > 0)) return "-2.6 -2.6 5.2 8.6";
   // A box taller than the whole sheet is capped, and the result is then
   // letterboxed -- its centring is the box's, no longer the sheet's.

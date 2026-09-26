@@ -224,9 +224,12 @@ The video is never reparented. That is the same rule as today
 
 **House**
 - The pager, as on Detail.
-- The existing read-only `House` component, cropped to the scoring area with
-  room for guards. It shows the house after this rock, the rock ringed, and the
-  skip's broom pad with its dashed link to the rock (already shipped).
+- The existing read-only `House` component, showing the whole in-play area:
+  back line to hog line at full width (`houseViewBox("inplay")`, amended
+  2026-09-25). The crop it replaced stopped about 4.4 m in front of the tee,
+  halving a guard and hiding the hog line. It shows the house after this rock,
+  the rock ringed, and the skip's broom pad with its dashed link to the rock
+  (already shipped). Phone charting keeps its crop.
 - **The rock's path.** Where `line.path` exists, the house draws that path.
   Otherwise it falls back to today's `track`. `track` comes from the overhead
   panel, which is squeezed toward the centre line near its far edge and can

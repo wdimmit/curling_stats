@@ -613,6 +613,34 @@ class TestHouseViewBox:
         assert w / h == pytest.approx(366 / 457, abs=1e-3)
 
 
+class TestTheInPlayView:
+    """The phone's House tab on a view-only or review link shows everything in
+    play: the back line to the hog line at the sheet's full width, with the
+    same 0.225 m margin the crop leaves behind the back line at each end.
+
+    The crop stopped about 4.4 m in front of the tee, halving a guard and
+    hiding the hog line. Charting keeps its crop: its band is too short for
+    the whole sheet to stay legible."""
+
+    def box(self, aspect="0.8"):
+        return [float(v) for v in run_js(f'out(houseViewBox("inplay", {aspect}));').split()]
+
+    def test_it_spans_the_back_line_to_the_hog_line_at_full_width(self):
+        x, y, w, h = self.box()
+        assert (x, w) == (-2.6, 5.2)
+        assert y == pytest.approx(-1.829 - 0.225, abs=1e-3)
+        assert y + h == pytest.approx(6.401 + 0.225, abs=1e-3)
+
+    def test_it_does_not_depend_on_the_box_it_is_drawn_in(self):
+        """Letterboxed, never cropped: every stone in play stays in view."""
+        assert self.box("2.0") == self.box("0.3") == self.box("0")
+
+    def test_only_the_phone_house_on_a_watch_link_uses_it(self):
+        src = (Path(__file__).resolve().parents[1] / "frontend/viewer/House.jsx").read_text()
+        assert 'houseViewBox(watching && phone() ? "inplay" : box.crop ? "crop" : "full"' in src
+        assert "watching: readOnly," in src
+
+
 class TestShouldCrop:
     """Whether the band shows the crop. Two bugs have lived in this branch."""
 
