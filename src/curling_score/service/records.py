@@ -13,7 +13,12 @@ dicts -- so any document store can hold them without a mapping layer.
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 
-RUN_STATUSES = ("pending_approval", "queued", "processing", "ready", "failed")
+# "live": a stream still being played, with the ends settled so far published.
+RUN_STATUSES = ("pending_approval", "queued", "processing", "live", "ready",
+                "failed")
+# A job is a recording to analyse whole, or a stream to follow while it plays.
+# Live jobs are claimed first; a record from before kinds is a recording.
+JOB_KINDS = ("vod", "live")
 JOB_STATES = ("queued", "running", "done", "failed")
 FAIL_KINDS = ("transient", "blocked", "permanent")
 
@@ -42,6 +47,11 @@ class Run:
     league: str | None = None
     # "fours" or "doubles"; None is a record from before formats, read as fours
     format: str | None = None
+    # "vod" or "live", as on the run's job. A live run is published end by
+    # end while its stream plays; `revised_at` changes with every publish,
+    # the way `ready_at` does at completion, so each is served fresh.
+    kind: str = "vod"
+    revised_at: datetime | None = None
     timeline_key: str | None = None
     meta_key: str | None = None
     error: str | None = None
@@ -82,6 +92,7 @@ class Job:
     error_kind: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    kind: str = "vod"
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

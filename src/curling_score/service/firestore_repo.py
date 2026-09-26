@@ -117,23 +117,34 @@ class FirestoreRepo:
         docs = list(q.stream())
         return Job.from_dict(docs[0].to_dict()) if docs else None
 
-    def _ready_query(self, now):
+    def _ready_query(self, now, kind=None):
         # An inequality filter must lead the ordering, so eligibility time
         # orders the queue; for fresh jobs that is creation order anyway.
-        return (self._where(JOBS, "state", "==", "queued")
-                .where(filter=self._fs.FieldFilter("run_after", "<=", now))
+        q = self._where(JOBS, "state", "==", "queued")
+        if kind is not None:
+            q = q.where(filter=self._fs.FieldFilter("kind", "==", kind))
+        return (q.where(filter=self._fs.FieldFilter("run_after", "<=", now))
                 .order_by("run_after").order_by("created_at"))
 
-    def claim_job(self, worker_id, now, lease_s=LEASE_S):
+    def claim_job(self, worker_id, now, lease_s=LEASE_S, kinds=("vod",)):
         transaction = self.db.transaction()
         fs = self._fs
 
         @fs.transactional
         def _claim(tx):
-            docs = list(tx.get(self._ready_query(now).limit(1)))
-            if not docs:
+            # Live jobs first. The recordings' pass is the query from before
+            # kinds existed, unfiltered, because a job written then has no
+            # `kind` field for an equality filter to match; the few live jobs
+            # it can also return are skipped.
+            snap = None
+            if "live" in kinds:
+                docs = list(tx.get(self._ready_query(now, kind="live").limit(1)))
+                snap = docs[0] if docs else None
+            if snap is None and "vod" in kinds:
+                snap = next((d for d in tx.get(self._ready_query(now).limit(20))
+                             if (d.to_dict().get("kind") or "vod") != "live"), None)
+            if snap is None:
                 return None
-            snap = docs[0]
             data = snap.to_dict()
             if data.get("state") != "queued":
                 return None

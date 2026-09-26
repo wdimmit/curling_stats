@@ -140,6 +140,28 @@ class TestJobsAndClaiming:
         assert repo.get_run("r_1").status == "queued"
         assert repo.claim_job("w2", at(602)).attempts == 2
 
+    def test_a_live_job_is_claimed_before_older_recordings(self, repo):
+        repo.put_run(run())
+        repo.put_run(run(id="r_live"))
+        repo.put_job(job(id="j_vod", created_at=at(0), run_after=at(0)))
+        repo.put_job(job(id="j_live", run_id="r_live", kind="live",
+                         created_at=at(50), run_after=at(50)))
+        assert repo.claim_job("w", at(100), kinds=("live", "vod")).id == "j_live"
+        assert repo.claim_job("w", at(100), kinds=("live", "vod")).id == "j_vod"
+
+    def test_a_worker_asking_only_for_live_work_gets_no_recording(self, repo):
+        repo.put_run(run())
+        repo.put_job(job())
+        assert repo.claim_job("w", at(10), kinds=("live",)) is None
+        assert repo.claim_job("w", at(10), kinds=("live", "vod")).id == "j_1"
+
+    def test_a_worker_that_never_asks_for_live_work_never_gets_it(self, repo):
+        repo.put_run(run(id="r_live"))
+        repo.put_job(job(id="j_live", run_id="r_live", kind="live"))
+        assert repo.claim_job("w", at(10)) is None
+        assert repo.claim_job("w", at(10), kinds=("vod",)) is None
+        assert repo.claim_job("w", at(10), kinds=("live",)).id == "j_live"
+
     def test_update_job_and_job_for_run(self, repo):
         repo.put_job(job())
         repo.update_job("j_1", phase="detect", fraction=0.5)

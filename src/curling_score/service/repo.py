@@ -45,7 +45,8 @@ class Repo(Protocol):
     def get_job(self, job_id: str) -> Job | None: ...
     def update_job(self, job_id: str, **fields) -> Job | None: ...
     def job_for_run(self, run_id: str) -> Job | None: ...
-    def claim_job(self, worker_id: str, now: datetime, lease_s: float = LEASE_S) -> Job | None: ...
+    def claim_job(self, worker_id: str, now: datetime, lease_s: float = LEASE_S,
+                  kinds: tuple = ("vod",)) -> Job | None: ...
     def requeue_expired(self, now: datetime) -> int: ...
     def queue_position(self, job_id: str) -> int | None: ...
     def count_queued(self) -> int: ...
@@ -191,16 +192,18 @@ class MemoryRepo:
         jobs = [j for j in self.jobs.values() if j.run_id == run_id]
         return max(jobs, key=lambda j: j.created_at) if jobs else None
 
-    def _queued(self, now=None):
+    def _queued(self, now=None, kinds=None):
+        # Live jobs first: a stream being played cannot wait for a recording.
         return sorted(
             (j for j in self.jobs.values()
-             if j.state == "queued" and (now is None or j.run_after <= now)),
-            key=lambda j: j.created_at,
+             if j.state == "queued" and (now is None or j.run_after <= now)
+             and (kinds is None or (j.kind or "vod") in kinds)),
+            key=lambda j: (j.kind != "live", j.created_at),
         )
 
-    def claim_job(self, worker_id, now, lease_s=LEASE_S):
+    def claim_job(self, worker_id, now, lease_s=LEASE_S, kinds=("vod",)):
         with self._lock:
-            ready = self._queued(now)
+            ready = self._queued(now, kinds)
             if not ready:
                 return None
             job = ready[0]

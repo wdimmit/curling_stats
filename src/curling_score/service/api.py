@@ -37,7 +37,7 @@ from curling_score.ingest import source
 from curling_score.service import dedupe, playlist_index, playlists, slug, thinking_report
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Run, Source, Team, User, Worker,
+    JOB_KINDS, Chart, Flag, Invite, Job, Run, Source, Team, User, Worker,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import detcache_key, meta_key, timeline_key
@@ -393,8 +393,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return json.loads(data)
 
     def run_doc(run: Run) -> dict:
+        # A live run's timeline is rewritten at the same key after every end;
+        # whichever of the two stamps is newer names the version to serve.
+        stamps = [t for t in (run.ready_at, run.revised_at) if t is not None]
         return load_doc(run.timeline_key,
-                        run.ready_at.isoformat() if run.ready_at else None)
+                        max(stamps).isoformat() if stamps else None)
 
     def requested_format(value) -> str | None:
         """The format a request asked for, or None to let the title decide.
@@ -804,7 +807,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 "game_index": s.game_index,
                 "start_s": s.play_start_s if s.play_start_s is not None else s.game_start_s,
                 "end_s": s.game_end_s, "status": run.status if run else None,
-                "ends": s.play_ends if s.play_ends is not None else
+                # A live game's end count grows with every publish; the
+                # count learned at completion would be a snapshot of none.
+                "ends": s.play_ends if (s.play_ends is not None and not (
+                            run and run.status == "live")) else
                         next((g.get("ends") for g in (run.games if run else [])
                               if g["index"] == s.game_index), None),
                 "format": s.format or "fours",
@@ -812,7 +818,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # Games queued or in flight have no sources yet; list their runs too so
         # a person can make a link now and have it fill in.
         for run in repo.list_runs():
-            if run.status in ("ready", "failed"):
+            if run.status in ("ready", "failed", "live"):
                 continue
             out.append({
                 "source_id": None, "video_id": run.video_id, "title": run.title,
@@ -1510,7 +1516,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if src is None:
             raise HTTPException(404, "no such game")
         run = repo.get_run(src.current_run_id)
-        if run is None or run.status != "ready":
+        # A live game is watchable from its first published end.
+        if run is None or run.status not in ("ready", "live"):
             raise HTTPException(404, "not processed yet")
         return src, run
 
@@ -1616,7 +1623,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(409, f"worker has model {body['model_id']}, "
                                      f"the service expects {settings.model_id}")
         repo.requeue_expired(t)
-        job = repo.claim_job(str(body.get("worker_id", "worker")), t, settings.lease_s)
+        # What this worker can do. One from before live games says nothing and
+        # gets recordings only: handed a live stream it would try to download
+        # it whole.
+        kinds = tuple(k for k in (body.get("kinds") or ("vod",)) if k in JOB_KINDS)
+        job = repo.claim_job(str(body.get("worker_id", "worker")), t, settings.lease_s,
+                             kinds=kinds)
         if job is None:
             return Response(status_code=204)
         # Whatever went wrong last time is history now; leaving it set means the
@@ -1633,7 +1645,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             "id": job.id, "run_id": run.id, "video_id": run.video_id,
             "window_start_s": run.window_start_s, "window_end_s": run.window_end_s,
             "sheet": run.sheet, "processing_version": run.processing_version,
-            "format": run.format or "fours",
+            "format": run.format or "fours", "kind": job.kind or "vod",
+            "title": run.title,
             "attempt": job.attempts, "lease_s": settings.lease_s,
         }}
 
@@ -1726,6 +1739,53 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         data = await request.body()
         store.put_bytes(key, data, request.headers.get("content-type", "application/octet-stream"))
         return {"ok": True, "bytes": len(data)}
+
+    @app.post("/api/worker/jobs/{job_id}/yield")
+    async def yield_job(job_id: str, request: Request,
+                        authorization: str | None = Header(default=None)):
+        """A recording stepping aside for a live stream. Back in the queue at
+        once, and not a failure: the attempt it was on is given back."""
+        require_worker(authorization)
+        body = await request.json()
+        job = owned_job(job_id, body.get("worker_id"))
+        repo.update_job(job.id, state="queued", worker_id=None, lease_expires_at=None,
+                        run_after=now(), attempts=max(0, job.attempts - 1),
+                        error_kind="yielded", message="paused for live games")
+        repo.update_run(job.run_id, status="queued")
+        return {"ok": True}
+
+    @app.post("/api/worker/jobs/{job_id}/publish")
+    async def publish(job_id: str, request: Request,
+                      authorization: str | None = Header(default=None)):
+        """A live run's timeline as it stands: served from now on, its games
+        given sources so they can be watched, the job's lease renewed."""
+        require_worker(authorization)
+        body = await request.json()
+        job = owned_job(job_id, body.get("worker_id"))
+        if (job.kind or "vod") != "live":
+            raise HTTPException(400, "only a live run publishes before it completes")
+        run = repo.get_run(job.run_id)
+        tkey = timeline_key(run.video_id, run.id)
+        if not store.exists(tkey):
+            raise HTTPException(409, "timeline.json has not been uploaded")
+        t = now()
+        games = body.get("games") or []
+        title = body.get("title", run.title)
+        repo.update_run(run.id, status="live", revised_at=t, games=games, title=title,
+                        league=run.league or source.league_from_title(title),
+                        sheet=body.get("sheet", run.sheet),
+                        duration_s=body.get("duration_s", run.duration_s),
+                        timeline_key=tkey, error=None)
+        repo.update_job(job.id, progress_at=t, phase="live",
+                        lease_expires_at=t + timedelta(seconds=settings.lease_s))
+        run = repo.get_run(run.id)
+        sources = []
+        for game in games:
+            src = dedupe.find_or_create_source(repo, run, game, t)
+            if src.game_end_s != float(game["end_s"]):
+                repo.update_source(src.id, game_end_s=float(game["end_s"]))
+            sources.append(src.id)
+        return {"ok": True, "sources": sources}
 
     @app.post("/api/worker/jobs/{job_id}/complete")
     async def complete(job_id: str, request: Request,
