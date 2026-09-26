@@ -32,9 +32,11 @@ class GameFormat:
     swappable: bool               # may a team's two players swap roles per end?
     # Does a rock nobody held a broom for still get its thrown line? In
     # doubles the partner is usually sweeping, not holding a broom in the
-    # house (phase 0: 44 of 45 rocks of brMO74e6ZZU), so the start, the line,
-    # the path and the curl are measured without one. Not in the document:
-    # it is what this code does with a format, not a fact about the game.
+    # house (across four doubles games, 227 of 240 seen rocks had no broom
+    # held in the house; the 13 that did were checked on camera,
+    # 2026-09-26), so the start, the line, the path and the curl are
+    # measured without one. Not in the document: it is what this code does
+    # with a format, not a fact about the game.
     line_without_broom: bool = False
 
     @property

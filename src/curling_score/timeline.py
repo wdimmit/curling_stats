@@ -46,7 +46,8 @@ def _line(l):
            "hog_path": [[r(y, 2), r(x, 3)] for y, x in l.hog_path],
            "path": [[r(y, 2), r(x, 3)] for y, x in l.path],
            "fit": {"n": int(l.fit_n), "rms_m": r(l.fit_rms)}}
-    # Only a broomless line has one; a four-player line is unchanged.
+    # Only a broomless line has one; a line with a broom -- every
+    # four-player line -- has none.
     tee = getattr(l, "at_tee_x", None)
     if tee is not None:
         out["at_tee"] = {"x": r(tee)}
