@@ -385,8 +385,9 @@ def build_game(index, start_s, end_s, ends, board=None, fmt=None) -> dict:
 
 
 # The format check (it flags, never overrides). A doubles analysis whose
-# placement shows in fewer than this share of ends, or whose ends offer
-# fourteen or more rocks, looks like fours.
+# complete placement shows in fewer than this share of ends, or whose ends
+# offer fourteen or more rocks (counting what the placement dropped), looks
+# like fours.
 DOUBLES_MIN_PLACED = 0.4
 FOURS_MIN_OFFERED = 14
 # A fours analysis looks like doubles when its ends offer twelve or fewer
@@ -396,23 +397,41 @@ DOUBLES_MAX_A_SIDE = 6
 DOUBLES_SHARE = 0.75
 
 
+def _offered(end) -> int:
+    """What detection offered in an end, before the placement took its share.
+
+    ``deliveries_seen`` is counted after the placement's exclusion, which in a
+    four-player game analysed as doubles would hide the very rocks that give
+    it away. A four-player end has no placement, so nothing is added.
+    """
+    seen = int(end.get("deliveries_seen", len(end.get("shots") or [])))
+    return seen + int((end.get("placement") or {}).get("candidates_dropped", 0))
+
+
 def format_check(games, fmt) -> dict:
-    """Whether the ends look like the format they were analysed as."""
+    """Whether the ends look like the format they were analysed as.
+
+    With no ends there is nothing to judge, and the answer is "unknown".
+    """
     ends = [e for g in games for e in g.get("ends", [])]
-    offered = sorted(int(e.get("deliveries_seen", len(e.get("shots") or []))) for e in ends)
+    offered = sorted(_offered(e) for e in ends)
     median = offered[len(offered) // 2] if offered else 0
     out = {"ends": len(ends), "median_offered": median}
     if fmt.placed_per_team:
         found = sum(1 for e in ends if e.get("placement"))
-        doubles = bool(ends) and found / len(ends) >= DOUBLES_MIN_PLACED \
+        # Only a complete placement is evidence: a house stone alone is just
+        # a stone behind the button, which any game has.
+        complete = sum(1 for e in ends if (e.get("placement") or {}).get("complete"))
+        out = {**out, "placement_found": found, "placement_complete": complete}
+        doubles = bool(ends) and complete / len(ends) >= DOUBLES_MIN_PLACED \
             and median < FOURS_MIN_OFFERED
-        return {**out, "placement_found": found,
-                "looks_like": "doubles" if doubles else "fours"}
-    small = sum(1 for e in ends
-                if max((e.get("thrown") or {}).values(), default=99) <= DOUBLES_MAX_A_SIDE)
-    doubles = bool(ends) and median <= DOUBLES_MAX_OFFERED \
-        and small / len(ends) >= DOUBLES_SHARE
-    return {**out, "looks_like": "doubles" if doubles else "fours"}
+    else:
+        small = sum(1 for e in ends
+                    if max((e.get("thrown") or {}).values(), default=99) <= DOUBLES_MAX_A_SIDE)
+        doubles = bool(ends) and median <= DOUBLES_MAX_OFFERED \
+            and small / len(ends) >= DOUBLES_SHARE
+    looks = "unknown" if not ends else "doubles" if doubles else "fours"
+    return {**out, "looks_like": looks}
 
 
 def build_document(video_id, url, sheet, duration_s, calibration, games,
@@ -464,7 +483,7 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
         doc["format"] = fmt.to_json()
         if check is not None:
             doc["format"]["check"] = check
-    elif check is not None and check.get("looks_like") != fmt.name:
+    elif check is not None and check.get("looks_like") not in (fmt.name, "unknown"):
         doc["format_warning"] = (
             f"analysed as {fmt.name}, but the ends look like "
             f"{check['looks_like']}: a median of {check['median_offered']} rocks "

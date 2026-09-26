@@ -1013,9 +1013,33 @@ def _game(ends):
 
 class TestFormatCheck:
     def test_doubles_with_placements_looks_like_doubles(self):
-        ends = [{"placement": {"hammer": "red"}, "deliveries_seen": 10, "thrown": {"red": 5, "yellow": 5}, "shots": []}] * 3
+        ends = [{"placement": {"hammer": "red", "complete": True}, "deliveries_seen": 10, "thrown": {"red": 5, "yellow": 5}, "shots": []}] * 3
         c = timeline.format_check([_game(ends)], F.DOUBLES)
         assert (c["looks_like"], c["placement_found"], c["ends"]) == ("doubles", 3, 3)
+
+    def test_what_the_placement_dropped_still_counts_as_offered(self):
+        # A fours game declared as doubles: sixteen offered, six of them taken
+        # for the placement. The check must see the sixteen.
+        ends = [{"placement": {"hammer": "red", "complete": True, "candidates_dropped": 6},
+                 "deliveries_seen": 10, "thrown": {"red": 5, "yellow": 5}, "shots": []}] * 3
+        c = timeline.format_check([_game(ends)], F.DOUBLES)
+        assert (c["median_offered"], c["looks_like"]) == (16, "fours")
+
+    def test_incomplete_placements_do_not_count_toward_doubles(self):
+        ends = [{"placement": {"hammer": "red", "complete": False, "candidates_dropped": 0},
+                 "deliveries_seen": 10, "thrown": {"red": 5, "yellow": 5}, "shots": []}] * 3
+        c = timeline.format_check([_game(ends)], F.DOUBLES)
+        assert c["looks_like"] == "fours"
+
+    def test_no_ends_looks_like_nothing(self):
+        for fmt in (F.FOURS, F.DOUBLES):
+            assert timeline.format_check([], fmt)["looks_like"] == "unknown"
+            assert timeline.format_check([_game([])], fmt)["looks_like"] == "unknown"
+
+    def test_a_fours_document_with_no_ends_is_not_warned(self):
+        doc = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[],
+                                      check={"ends": 0, "median_offered": 0, "looks_like": "unknown"})
+        assert "format_warning" not in doc and "format" not in doc
 
     def test_doubles_with_no_placements_looks_like_fours(self):
         ends = [{"placement": None, "deliveries_seen": 16, "thrown": {"red": 8, "yellow": 8}, "shots": []}] * 3
