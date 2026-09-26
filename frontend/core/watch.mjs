@@ -118,5 +118,11 @@ export function endSummary(view, ei) {
     scoresWithheld: readable && !!view.game.scoreboard?.scores_withheld,
     red: clockText(end.thinking_time?.red),
     yellow: clockText(end.thinking_time?.yellow),
+    // Doubles: the placement names the hammer and any power play (the house
+    // stone's team calls it), and a team may have swapped roles this end.
+    hammerSource: end.hammer_source || null,
+    powerPlay: end.placement?.power_play
+      ? { color: end.placement.hammer, side: end.placement.power_play } : null,
+    swapped: view.ends[ei]?.swapped || {},
   };
 }

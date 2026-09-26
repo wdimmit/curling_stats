@@ -2652,3 +2652,62 @@ class TestRoleSwapParity:
         # swap, 1 and 9 are B's and 3, 5, 7 are A's, so each person's hack is
         # read from their own rocks: B right, A left.
         assert got == [["B", "right"], ["A", "left"], ["A", "left"], ["A", "left"], ["B", "right"]]
+
+
+class TestDoublesStatsAndSummary:
+    def test_doubles_stats_have_a_bucket_per_player(self):
+        got = run_js(setup(doubles_doc(doubles_shots())) +
+                     "const v = buildGameView(state.doc, 0, state.overrides);"
+                     "const s = gatherStats(v);"
+                     "out([Object.keys(s.red), s.red.A.thrown, s.red.B.thrown]);")
+        assert got == [["A", "B"], 2, 3]
+
+    def test_a_swap_moves_rocks_between_players(self):
+        got = run_js(setup(doubles_doc(doubles_shots()), {"0.3": {"roles_swapped": {"red": True}}}) +
+                     "const s = gatherStats(buildGameView(state.doc, 0, state.overrides));"
+                     "out([s.red.A.thrown, s.red.B.thrown, s.yellow.A.thrown]);")
+        assert got == [3, 2, 2]
+
+    def test_an_unknown_position_still_counts(self):
+        shots = [{"number": 1, "color": "red", "position": "alternate",
+                  "rock_of_player": 1, "stones": []}]
+        got = run_js(setup(doc(shots)) +
+                     "const s = gatherStats(buildGameView(state.doc, 0, state.overrides));"
+                     "out([Object.keys(s.red), s.red.alternate.thrown]);")
+        assert got == [["lead", "second", "third", "skip", "alternate"], 1]
+
+    def test_fours_stats_keys_are_unchanged(self):
+        got = run_js(setup(doc([])) +
+                     "out(Object.keys(gatherStats(buildGameView(state.doc, 0, {})).yellow));")
+        assert got == ["lead", "second", "third", "skip"]
+
+    def test_the_end_summary_names_the_power_play(self):
+        d = doubles_doc(doubles_shots())
+        e = d["games"][0]["ends"][0]
+        e["hammer"] = "yellow"
+        e["hammer_source"] = "placement"
+        e["placement"] = {"hammer": "yellow", "power_play": "left", "complete": True}
+        got = run_js(setup(d, {"0.3": {"roles_swapped": {"red": True}}}) +
+                     "const v = buildGameView(state.doc, 0, state.overrides);"
+                     "const s = endSummary(v, 0);"
+                     "out([s.hammer, s.powerPlay, s.hammerSource, s.swapped]);")
+        assert got == ["yellow", {"color": "yellow", "side": "left"}, "placement", {"red": True}]
+
+    def test_a_fours_end_summary_has_no_power_play(self):
+        got = run_js(setup(doc([])) +
+                     "const s = endSummary(buildGameView(state.doc, 0, {}), 0);"
+                     "out([s.powerPlay, s.hammerSource]);")
+        assert got == [None, None]
+
+    def test_the_format_warning(self):
+        fours = doc([])
+        fours["format_warning"] = "analysed as fours, but the ends look like doubles"
+        d = doubles_doc(doubles_shots())
+        d["format"]["check"] = {"looks_like": "fours", "ends": 6, "median_offered": 15}
+        quiet = doubles_doc(doubles_shots())
+        quiet["format"]["check"] = {"looks_like": "doubles", "ends": 6, "median_offered": 10}
+        got = run_js(f"out([formatWarning({json.dumps(fours)}), formatWarning({json.dumps(d)}),"
+                     f" formatWarning({json.dumps(quiet)}), formatWarning({json.dumps(doc([]))})]);")
+        assert got[0] == "analysed as fours, but the ends look like doubles"
+        assert "doubles" in got[1] and "four-player" in got[1]
+        assert got[2] is None and got[3] is None

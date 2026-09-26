@@ -3,7 +3,7 @@
  * Everything takes the game view built by timeline.buildGameView, so one
  * relayout serves the report, the clock, the queue and the strip.
  */
-import { POSITIONS } from "./constants.mjs";
+import { FOURS } from "./format.mjs";
 import { isGraded, typeOf } from "./shots.mjs";
 
 /* mm:ss, because a thinking-time budget is quoted in minutes. */
@@ -119,20 +119,24 @@ export function cumulativeThinking(view) {
  * nobody graded is counted as thrown and nothing more, which is what keeps a
  * half-charted game from reading as a bad one. */
 export function gatherStats(view) {
+  const positions = (view.format || FOURS).positions;
   const out = {};
+  const bucket = (c, p) => (out[c][p] ||= { thrown: 0, graded: 0, sum: 0, types: {} });
   for (const c of ["red", "yellow"]) {
     out[c] = {};
-    for (const p of POSITIONS) out[c][p] = { thrown: 0, graded: 0, sum: 0, types: {} };
+    for (const p of positions) bucket(c, p);
   }
   for (const { shots } of view.ends)
     for (const s of shots) {
-      const bucket = out[s.color]?.[s.position];
-      if (!bucket) continue;
+      if (!out[s.color] || !s.position) continue;
+      // A position the format does not list -- an old chart edited by hand --
+      // still counts, in its own bucket, rather than vanishing from the report.
+      const b = bucket(s.color, s.position);
       const id = typeOf(s);
-      const row = (bucket.types[id] ||= { thrown: 0, graded: 0, sum: 0 });
-      bucket.thrown++; row.thrown++;
+      const row = (b.types[id] ||= { thrown: 0, graded: 0, sum: 0 });
+      b.thrown++; row.thrown++;
       if (isGraded(s)) {
-        bucket.graded++; bucket.sum += s.user_score;
+        b.graded++; b.sum += s.user_score;
         row.graded++; row.sum += s.user_score;
       }
     }

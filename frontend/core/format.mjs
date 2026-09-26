@@ -68,3 +68,16 @@ export function throwerText(shot, fmt = FOURS) {
   const of = fmt.throw_table.filter(r => r === role).length;
   return `Player ${shot.position ?? "?"} (rock ${shot.rock_of_player} of ${of})`;
 }
+
+/* A sentence for the chart page when the ends do not look like the format
+ * they were analysed as -- the pipeline flags it, never overrides it. */
+export function formatWarning(doc) {
+  if (doc?.format_warning) return String(doc.format_warning);
+  const check = doc?.format?.check;
+  if (check && check.looks_like && check.looks_like !== "unknown"
+      && check.looks_like !== doc.format.name)
+    return `This game was analysed as doubles, but its ends look like a `
+         + `four-player game (a median of ${check.median_offered} rocks offered `
+         + `across ${check.ends} ends). If it is, resubmit it as four-player.`;
+  return null;
+}
