@@ -121,8 +121,34 @@ Step 3b: phase-3 placement acceptance, re-run on the new outputs
   python3 scripts/doubles/placement_acceptance.py \
       datasets/doubles/marks/placements.json <scratchpad>/p6/p6-*.json
 
+Per-end result (hammer colour, power-play side, rock 1's colour where seen,
+shots thrown), both teams' pair of games:
+  8J3r5FhFFd4 e1: hammer red/red pp None/None first yellow/yellow shots 10
+  8J3r5FhFFd4 e2: hammer yellow/yellow pp None/None first red/red shots 10
+  8J3r5FhFFd4 e3: hammer red/red pp None/None first yellow/yellow shots 10
+  8J3r5FhFFd4 e4: hammer yellow/yellow pp None/None first red/red shots 10
+  8J3r5FhFFd4 e5: hammer red/red pp left/left first yellow/yellow shots 10
+  8J3r5FhFFd4 e6: hammer red/red pp None/None first yellow/yellow shots 10
+  8J3r5FhFFd4 e7: hammer yellow/yellow pp right/right first red/red shots 10
+  brMO74e6ZZU e1: hammer yellow/yellow pp None/None first red/red shots 10
+  brMO74e6ZZU e2: hammer red/red pp None/None first yellow/yellow shots 10
+  brMO74e6ZZU e3: hammer red/red pp None/None first yellow/yellow shots 10
+  brMO74e6ZZU e4: hammer red/red pp left/left first yellow/yellow shots 10
+  ih59IKFUHXk e1: hammer yellow/yellow pp None/None first red/red shots 10
+  ih59IKFUHXk e2: hammer red/red pp None/None first yellow/yellow shots 10
+  ih59IKFUHXk e3: hammer yellow/yellow pp None/None first red/red shots 10
+  ih59IKFUHXk e4: hammer yellow/yellow pp None/None first red/red shots 10
+  ih59IKFUHXk e5: hammer red/red pp None/None first yellow/yellow shots 10
+  ih59IKFUHXk e6: hammer yellow/yellow pp right/right first red/red shots 10
+  n7ifEk4Zfl8 e1: hammer yellow/yellow pp None/None first red/red shots 10
+  n7ifEk4Zfl8 e2: hammer yellow/yellow pp None/None first red/red shots 10
+  n7ifEk4Zfl8 e3: hammer red/red pp None/None first yellow/yellow shots 10
+  n7ifEk4Zfl8 e4: hammer yellow/yellow pp left/left first red/red shots 10
+  n7ifEk4Zfl8 e5: hammer red/red pp left/left first yellow/yellow shots 10
+  n7ifEk4Zfl8 e6: hammer yellow/yellow pp None/None first red/red shots 10
+
 23 marked ends: hammer 23/23, power play 23/23, rock 1 colour 23/23 where
-seen, ten shots 23/23. (Full per-end table in task-3-report.md.)
+seen, ten shots 23/23.
 
 --------------------------------------------------------------------------------
 Step 3c: four-player line share, for reference
@@ -309,7 +335,7 @@ letter of the target is missed for this one video out of three.
 
 --------------------------------------------------------------------------------
 Step 5, per game: every four-player game against every earlier run on the
-worker (/tmp/pergame.py, run by the controller)
+worker (scripts/doubles/pergame.py, run by the controller)
 --------------------------------------------------------------------------------
 Run labels:
   base-a, base-b, base-nl-a, base-nl-b -- two runs each (full pipeline, and
@@ -340,10 +366,17 @@ Run labels:
 With the long camera, every game equals a base run. Without it, AEqL's two
 games match none of the four earlier no-longview runs, and their differences
 are only end-boundary shifts of 5-10 s and the delivery counted at a moved
-boundary; base-nl-a and base-nl-b already differ on this video. No code this
-branch changed runs in a four-player analysis without the long camera, since
-there are no side views and so no line pass. Parity is therefore accepted
-per game (controller's ruling), with the deterministic 16-game replay as the
+boundary -- the same phenomenon at different boundaries: base-nl-a and
+base-nl-b themselves already differ on this video at games[0].ends[1], while
+p6-head-nl's own shift lands at games[0].ends[2..4] and games[1].ends[0..1].
+Stronger still: p3-head-nl and p6-head-nl run effectively the same
+four-player code without the long camera (864d626..9e9ffb0's analyze changes
+are gated on fmt.placed_per_team, and the format check is written only for
+doubles), yet they differ on AEqL -- direct evidence of run-to-run
+nondeterminism, not a regression from this branch. No code this branch
+changed runs in a four-player analysis without the long camera, since there
+are no side views and so no line pass. Parity is therefore accepted per game
+(controller's ruling), with the deterministic 16-game replay as the
 shot-list check.
 
 --------------------------------------------------------------------------------
@@ -362,18 +395,26 @@ Targets
 [x] shot lists, hammer, power play and placement identical -- MET
 [x] 23/23                                                -- MET
 [x] four-player parity as in the Global Constraints      -- MET per game, by
-    the controller's ruling (Step 5's "per game" subsection, /tmp/pergame.py
-    on the worker): with the long camera every game equals a base run;
-    without it, AEqLTgM25Tc's two games match none of the four earlier
-    no-longview runs, but their only differences are end-boundary shifts of
-    5-10 s and the delivery counted at a moved boundary, and base-nl-a and
-    base-nl-b already differ on this video the same way. No code this branch
-    changed runs in a four-player analysis without the long camera (no side
-    views, so no line pass), so parity is judged per game, with the
-    deterministic 16-game replay standing as the shot-list check.
+    the controller's ruling (Step 5's "per game" subsection,
+    scripts/doubles/pergame.py, run on the worker): with the long camera
+    every game equals a base run; without it, AEqLTgM25Tc's two games match
+    none of the four earlier no-longview runs, but their only differences
+    are end-boundary shifts of 5-10 s and the delivery counted at a moved
+    boundary -- the same phenomenon at different boundaries: base-nl-a and
+    base-nl-b differ on this video at a different boundary (games[0].ends[1])
+    than p6-head-nl does (games[0].ends[2..4] and games[1].ends[0..1]). And
+    p3-head-nl and p6-head-nl run effectively the same four-player code
+    without the long camera (864d626..9e9ffb0's analyze changes are gated on
+    fmt.placed_per_team; the format check is written only for doubles), yet
+    they differ on AEqL -- direct evidence of run-to-run nondeterminism. No
+    code this branch changed runs in a four-player analysis without the long
+    camera (no side views, so no line pass), so parity is judged per game,
+    with the deterministic 16-game replay standing as the shot-list check.
 [x] no four-player at_tee                                -- MET
 [x] broomless lines on >=70% of no-broom doubles rocks    -- MET (91.7%-100%
     per game, 96.5% aggregate)
 
-No code changed in this task. Full detail, every measurement, and the frame
-file list are in task-3-report.md next to this file's plan directory.
+No code changed in this task. The 18 hand-check frames (13 broom + 5
+broomless, named <video>-e<end>-r<rock>[-broomless].jpg) are left on the
+worker at /data/wdd/curling/doubles-parity/frames/; this file is the
+complete record of the measurements and the ruling above it.
