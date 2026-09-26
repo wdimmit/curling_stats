@@ -286,6 +286,13 @@ class WatchedPlaylist:
     last_seen_video_ids: list = field(default_factory=list)
     failures: int = 0
     last_error: str | None = None
+    # When to look. Weekly windows in the club's time, e.g. league night:
+    # [{"days": ["thu"], "start": "18:00", "end": "23:30"}]. Inside one the
+    # playlist is polled every `live_poll_s`, to catch a stream as it goes
+    # live; outside, every `idle_poll_s`, or never when that is None.
+    schedule: list = field(default_factory=list)
+    live_poll_s: float = 180.0
+    idle_poll_s: float | None = 3600.0
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

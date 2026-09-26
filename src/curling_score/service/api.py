@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -146,6 +147,13 @@ class Settings:
     # service behaves exactly as it did before formats. The worker is not
     # gated -- it builds whatever format the job it claimed says.
     doubles_enabled: bool = False
+    # Whether the playlist poller queues a stream that has gone live as a live
+    # job. Off until a worker that can follow one is running: a live run no
+    # worker claims would stand in for the recording and keep it from ever
+    # being queued the ordinary way.
+    live_enabled: bool = False
+    # The club's own clock, which playlists' schedules are written in.
+    club_tz: str = "America/Los_Angeles"
     model_id: str = "classical"
     # A hard sanity cap on what we will look at at all. Streams longer than
     # dedupe.MAX_WHOLE_S (5 h) are still accepted -- with a start time, and
@@ -184,6 +192,8 @@ class Settings:
             allowed_channels=chans,
             require_approval=env("REQUIRE_APPROVAL", "0") in ("1", "true", "yes"),
             doubles_enabled=env("DOUBLES_ENABLED", "0") in ("1", "true", "yes"),
+            live_enabled=env("LIVE_ENABLED", "0") in ("1", "true", "yes"),
+            club_tz=env("CLUB_TZ", "America/Los_Angeles"),
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
             max_queued=int(env("MAX_QUEUED", "10")),
@@ -1973,15 +1983,61 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             {**p.to_dict(), "created_at": _iso(p.created_at), "last_polled_at": _iso(p.last_polled_at)}
             for p in repo.list_playlists()]}
 
+    def playlist_id_from(text: str) -> str:
+        """A playlist's id, from the id itself or any link that carries it."""
+        text = str(text).strip()
+        found = parse_qs(urlparse(text).query).get("list")
+        return found[0] if found else text
+
+    def playlist_fields(body: dict, allowed: set) -> dict:
+        unknown = set(body) - allowed
+        if unknown:
+            raise HTTPException(422, f"not a playlist setting: {', '.join(sorted(unknown))}")
+        fields = dict(body)
+        try:
+            if "schedule" in fields:
+                fields["schedule"] = playlists.check_schedule(fields["schedule"])
+            for key in ("live_poll_s", "idle_poll_s"):
+                if key in fields and fields[key] is not None:
+                    fields[key] = float(fields[key])
+                    if fields[key] < 60:
+                        raise ValueError(f"{key} is at least 60 seconds")
+            if "live_poll_s" in fields and fields["live_poll_s"] is None:
+                raise ValueError("live_poll_s cannot be empty")
+        except (ValueError, TypeError) as e:
+            raise HTTPException(422, str(e)) from e
+        return fields
+
     @app.post("/api/admin/playlists", status_code=201)
     async def admin_add_playlist(request: Request, authorization: str | None = Header(default=None)):
         require_admin(authorization)
         body = await request.json()
-        pl = playlists.new_watched_playlist(str(body["playlist_id"]).strip(),
-                                            str(body.get("label") or body["playlist_id"]).strip(),
-                                            now())
+        pid = playlist_id_from(body.pop("playlist_id"))
+        if any(p.playlist_id == pid for p in repo.list_playlists()):
+            raise HTTPException(409, f"playlist {pid} is already watched")
+        label = str(body.pop("label", None) or pid).strip()
+        fields = playlist_fields(body, {"schedule", "live_poll_s", "idle_poll_s"})
+        pl = playlists.new_watched_playlist(pid, label, now())
+        for key, value in fields.items():
+            setattr(pl, key, value)
         repo.put_playlist(pl)
         return {"ok": True, "id": pl.id}
+
+    @app.patch("/api/admin/playlists/{pid}")
+    async def admin_change_playlist(pid: str, request: Request,
+                                    authorization: str | None = Header(default=None)):
+        """A playlist's label, schedule, polling intervals, or whether it is
+        watched at all. Re-enabling one forgets the failures that disabled it."""
+        require_admin(authorization)
+        if repo.get_playlist(pid) is None:
+            raise HTTPException(404, "no such playlist")
+        fields = playlist_fields(await request.json(),
+                                 {"label", "enabled", "schedule", "live_poll_s", "idle_poll_s"})
+        if fields.get("enabled") is True:
+            fields.update(failures=0, last_error=None)
+        pl = repo.update_playlist(pid, **fields)
+        return {"ok": True, "playlist": {**pl.to_dict(), "created_at": _iso(pl.created_at),
+                                         "last_polled_at": _iso(pl.last_polled_at)}}
 
     @app.delete("/api/admin/playlists/{pid}")
     def admin_delete_playlist(pid: str, authorization: str | None = Header(default=None)):
@@ -1990,17 +2046,27 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return {"ok": True}
 
     @app.post("/api/admin/poll-playlists")
-    def admin_poll(authorization: str | None = Header(default=None)):
+    def admin_poll(force: bool = Query(False),
+                   authorization: str | None = Header(default=None)):
+        """The scheduler's call, every few minutes. Each playlist is polled
+        when its own schedule says it is due; ``force`` polls every one."""
         require_admin(authorization)
+        t = now()
         result = playlists.poll(
-            repo, youtube, processing_version=settings.processing_version, now=now(),
+            repo, youtube, processing_version=settings.processing_version, now=t,
             allowed_channels=settings.allowed_channels or None,
             max_hours=min(settings.max_hours, dedupe.MAX_WHOLE_S / 3600),
             initial_status="pending_approval" if settings.require_approval else "queued",
-            doubles_enabled=settings.doubles_enabled,
+            doubles_enabled=settings.doubles_enabled, tz=settings.club_tz,
+            force=force, live=settings.live_enabled,
         )
-        # The league index rides on the same hourly call, so a stream the club
-        # files in its playlist after the game gets its league within the hour.
+        # The league index rides on the first call of each hour, so a stream
+        # the club files in its playlist after the game gets its league within
+        # the hour. Every call would spend the whole channel's quota twenty
+        # times over.
+        if not (force or t.minute < 3):
+            result["index"] = "not due"
+            return result
         try:
             result["index"] = index_playlists(always_stamp=False)
         except Exception as e:  # noqa: BLE001 - the index must never stop the poll

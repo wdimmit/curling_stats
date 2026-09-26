@@ -162,10 +162,30 @@ fixed by any of this.
 
 ```bash
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"playlist_id":"PLxxxxxxxx","label":"Tuesday Open League"}' $PUBLIC_BASE_URL/api/admin/playlists
-PUBLIC_BASE_URL=… ADMIN_TOKEN=… ./deploy/scheduler.sh     # hourly poll, 1 of 3 free Scheduler jobs
-curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" $PUBLIC_BASE_URL/api/admin/poll-playlists   # backfill now (10 per call)
+  -d '{"playlist_id":"https://www.youtube.com/playlist?list=PLxxxxxxxx","label":"Tuesday Open League",
+       "schedule":[{"days":["tue"],"start":"18:00","end":"23:30"}]}' $PUBLIC_BASE_URL/api/admin/playlists
+PUBLIC_BASE_URL=… ADMIN_TOKEN=… ./deploy/scheduler.sh     # poll every 3 min, 1 of 3 free Scheduler jobs
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "$PUBLIC_BASE_URL/api/admin/poll-playlists?force=1"  # every playlist now (10 new per call)
+curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"schedule":[{"days":["thu"],"start":"18:00","end":"23:30"}],"live_poll_s":180,"idle_poll_s":3600}' \
+  $PUBLIC_BASE_URL/api/admin/playlists/p_xxxxxx                        # also label, enabled
 ```
+
+The scheduler calls the poll every three minutes; each playlist is only asked
+when its own schedule says it is due. Inside one of its windows (the club's
+time, `CLUB_TZ`, default America/Los_Angeles; a window ending before it starts
+runs past midnight) that is every `live_poll_s` (default 180), so a stream is
+seen within minutes of going live. Outside, every `idle_poll_s` (default 3600,
+or `null` for never). The channel index for the thinking report still runs
+once an hour, on the first poll of the hour.
+
+With `LIVE_ENABLED=1` on the API, a stream that has gone live in a watched
+playlist is queued as a **live job**: it skips approval, and a worker follows
+the game as it is played, publishing each end as it finishes. Leave it off
+until a worker that can follow a stream is running -- a live run nobody claims
+stands in for the recording, which the poller then never queues the ordinary
+way. (One still queued when its recording is archived gives way to it.) The
+doubles playlist stays out of the poller entirely.
 
 ## The thinking report
 

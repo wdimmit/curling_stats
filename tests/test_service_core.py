@@ -450,12 +450,13 @@ class TestPlaylistWatcher:
         repo.put_playlist(WatchedPlaylist(id="p", playlist_id="GONE", label="L", created_at=T0))
         yt = FakeYouTube(playlists={})
         for i in range(3):
-            playlists.poll(repo, yt, processing_version="p+m", now=at(i))
+            # Forced: a second apart, the schedule would not ask again.
+            playlists.poll(repo, yt, processing_version="p+m", now=at(i), force=True)
         pl = repo.get_playlist("p")
         assert pl.failures == 3 and pl.enabled is False
         # And it is no longer polled.
         calls = yt.calls
-        playlists.poll(repo, yt, processing_version="p+m", now=at(10))
+        playlists.poll(repo, yt, processing_version="p+m", now=at(10), force=True)
         assert yt.calls == calls
 
     def test_a_doubles_title_is_fours_unless_doubles_is_on(self):
