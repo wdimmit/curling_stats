@@ -385,7 +385,6 @@ export function App({ doc, config, cursor }) {
               view={view} shot={shot} dispatch={dispatch} goTo={goTo} />
 
       <main>
-        {formatWarning(doc) ? <div className="warn" id="formatWarning">{formatWarning(doc)}</div> : null}
         <section className="card" id="playCard">
           {/* Zero React children: YT.Player replaces what it is given, so if
               React held a child for that slot one reconciliation would remove
@@ -419,7 +418,7 @@ export function App({ doc, config, cursor }) {
                      onChange={e => setPref({ leadIn: Math.max(0, +e.target.value || 0) })} />s
             </label>
           </div>
-          <Flags shot={shot} trimmed={ui.ei === 0 ? doc.chart?.ends_trimmed : 0} />
+          <Flags doc={doc} shot={shot} trimmed={ui.ei === 0 ? doc.chart?.ends_trimmed : 0} />
           <div className="shots" id="shots">
             {shots.map((sh, i) => (
               <div key={i} data-i={i} title={sh.label || ""}
@@ -503,8 +502,14 @@ export function App({ doc, config, cursor }) {
   );
 }
 
-function Flags({ shot, trimmed }) {
+function Flags({ doc, shot, trimmed }) {
   const flags = [];
+  /* First, and about the whole game rather than this rock: the ends do not
+   * look like the format they were analysed as. It lives here, not as a child
+   * of <main>, because main is a grid whose areas are all spoken for on a
+   * desktop -- an extra child drops to a row below the fold -- and on a phone
+   * it would push the video down under the fixed house card. */
+  const warning = formatWarning(doc);
   // Asked at the first end and nowhere else: "the stream opens with practice,
   // so where are those rocks?" Saying nothing would leave it looking like the
   // detector lost them. No advice on how to get them back, because there is
@@ -525,6 +530,7 @@ function Flags({ shot, trimmed }) {
              + "rule rather than from seeing the rock arrive.");
   return (
     <div id="flags">
+      {warning ? <div className="warn" id="formatWarning">{warning}</div> : null}
       {flags.map((f, i) => <div key={i} className="warn">{f}</div>)}
     </div>
   );

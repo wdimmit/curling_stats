@@ -2711,3 +2711,14 @@ class TestDoublesStatsAndSummary:
         assert got[0] == "analysed as fours, but the ends look like doubles"
         assert "doubles" in got[1] and "four-player" in got[1]
         assert got[2] is None and got[3] is None
+
+    def test_the_format_warning_is_the_first_flag_not_a_child_of_main(self):
+        """On a desktop <main> is a grid whose areas are all spoken for, so a
+        child of its own drops to a row below the fold; on a phone it pushed
+        the video down under the fixed house card."""
+        app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()
+        flags = app[app.index("function Flags("):app.index("function Header(")]
+        main = app[app.index("<main>"):app.index("</main>")]
+        assert 'id="formatWarning"' in flags and 'id="formatWarning"' not in main
+        assert flags.index('id="formatWarning"') < flags.index("flags.map(")
+        assert "<Flags doc={doc} " in main
