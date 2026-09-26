@@ -142,6 +142,28 @@ class TestProcessJob:
         assert json.loads(api.uploads["memory://meta.json"])["format"] == "doubles"
         assert api.completed[0]["format"] == "doubles"
 
+    def test_the_format_check_reaches_meta(self, tmp_path):
+        check = {"ends": 6, "median_offered": 11, "placement_found": 6,
+                 "placement_complete": 6, "looks_like": "doubles"}
+        api = FakeApi([])
+        worker.process_job({**JOB, "format": "doubles"}, api, "home", root=tmp_path,
+                           weights=None, out_dir=tmp_path / "out",
+                           analyze_fn=lambda url, **kw: {
+                               **fake_doc(), "format": {"name": "doubles", "check": check}},
+                           fetch_info=fake_info)
+        meta = json.loads(api.uploads["memory://meta.json"])
+        assert meta["format_check"] == check and meta["format_warning"] is None
+
+    def test_a_format_warning_reaches_meta(self, tmp_path):
+        warning = "analysed as fours, but the ends look like doubles: ..."
+        api = FakeApi([])
+        worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
+                           out_dir=tmp_path / "out",
+                           analyze_fn=lambda url, **kw: {**fake_doc(), "format_warning": warning},
+                           fetch_info=fake_info)
+        meta = json.loads(api.uploads["memory://meta.json"])
+        assert meta["format_warning"] == warning and meta["format_check"] is None
+
     def test_a_claim_without_a_format_is_analysed_as_fours(self, tmp_path):
         """The API holds such a run as fours; letting the title decide could
         put a doubles document on it, which the API would then refuse."""

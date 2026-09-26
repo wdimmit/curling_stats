@@ -193,6 +193,10 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
         "worker_id": worker_id, "timings_s": timings,
         "total_s": round(clock() - t_start, 1),
         "format": fmt_name,
+        # Whether the ends looked like the format they were analysed as: a
+        # doubles document carries the check, a fours one only its warning.
+        "format_check": (doc.get("format") or {}).get("check"),
+        "format_warning": doc.get("format_warning"),
     }
     meta_bytes = json.dumps(meta, indent=1).encode()
 
