@@ -21,6 +21,7 @@ import hmac
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -34,7 +35,7 @@ from curling_score.ingest import source
 from curling_score.service import dedupe, playlists, slug
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    Chart, Invite, Job, Run, Source, Team, User, Worker,
+    Chart, Flag, Invite, Job, Run, Source, Team, User, Worker,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import detcache_key, meta_key, timeline_key
@@ -89,6 +90,17 @@ def asset_revalidated(request: Request, path: Path, media_type: str) -> Response
 # merged result, because many small merges add up where one request does not.
 MAX_OVERRIDES_BYTES = 700_000
 MAX_MERGE_BYTES = 100_000
+# A flag is a sentence or three about one rock. These bound what a stranger
+# can make us store, and the budget is a flag's own, like the chart's, so
+# flagging a game never costs anyone a submission.
+MAX_FLAG_BYTES = 8_000
+MAX_FLAG_NOTE = 2_000
+FLAG_HOUR_LIMIT = 20
+FLAG_DAY_LIMIT = 100
+# The page a flag was sent from: an edit, view-only or review link.
+FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
+_PLACE_INTS = ("game_index", "end", "rock")
+_PLACE_TEXT = {"end_id": 40, "rock_id": 40, "key": 40, "label": 80}
 # Starting a chart on a game we already hold queues no work, so it gets a
 # budget of its own rather than one of the five submissions an hour.
 CHART_RATE_FACTOR = 6
@@ -171,6 +183,39 @@ def utcnow():
 
 def _iso(dt):
     return dt.isoformat(timespec="seconds") if dt else None
+
+
+def clean_place(place) -> dict:
+    """The browser's account of which rock, checked field by field.
+
+    Every field may be null: a blank rock has no video time and an end with
+    no rocks has no rock. Raises ValueError naming the first wrong field.
+    """
+    if not isinstance(place, dict):
+        raise ValueError("place must be an object")
+    out = {}
+    for k in _PLACE_INTS:
+        v = place.get(k)
+        if v is not None and (isinstance(v, bool) or not isinstance(v, int)):
+            raise ValueError(f"place.{k} must be a whole number")
+        out[k] = v
+    for k, most in _PLACE_TEXT.items():
+        v = place.get(k)
+        if isinstance(v, int) and not isinstance(v, bool):
+            v = str(v)   # an identity is the detector's number unless renumbered
+        if v is not None and (not isinstance(v, str) or len(v) > most):
+            raise ValueError(f"place.{k} must be text of at most {most} characters")
+        out[k] = v
+    t = place.get("t_video_s")
+    if t is not None and (isinstance(t, bool) or not isinstance(t, (int, float))):
+        raise ValueError("place.t_video_s must be a number")
+    out["t_video_s"] = None if t is None else float(t)
+    return out
+
+
+def _flag_json(flag) -> dict:
+    return {**flag.to_dict(), "created_at": _iso(flag.created_at),
+            "resolved_at": _iso(flag.resolved_at)}
 
 
 def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) -> FastAPI:
@@ -1259,6 +1304,62 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return asset_revalidated(request, STATIC_DIR / asset, STATIC_ASSETS[asset])
         raise HTTPException(404)
 
+    # ------------------------------------------------------------- flags
+    # Anyone looking at a chart may say what is wrong with it. One route for
+    # all three kinds of link rather than one under each: /g/ carries no POST
+    # route at all (see lookup_source), and one route is one budget to count.
+    # The link arrives as the page's own path and is resolved here, so where a
+    # flag says it was is the server's word, never the browser's.
+    @app.post("/api/flags", status_code=201)
+    async def create_flag(request: Request, authorization: str | None = Header(default=None)):
+        raw = await request.body()
+        if len(raw) > MAX_FLAG_BYTES:
+            raise HTTPException(413, "that flag is too long")
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            raise HTTPException(400, "send JSON") from None
+        if not isinstance(body, dict):
+            raise HTTPException(400, "send a JSON object")
+        m = FLAG_PATH.match(str(body.get("path") or ""))
+        if not m:
+            raise HTTPException(400, "path must be a chart or game link")
+        kind, key = m.groups()
+        note = body.get("note")
+        note = note.strip() if isinstance(note, str) else ""
+        if not note:
+            raise HTTPException(422, "say what is wrong")
+        if len(note) > MAX_FLAG_NOTE:
+            raise HTTPException(422, f"keep it under {MAX_FLAG_NOTE} characters")
+        try:
+            place = clean_place(body.get("place"))
+        except ValueError as err:
+            raise HTTPException(422, str(err)) from None
+        if kind == "g":
+            src, run = lookup_source(key)
+            chart = None
+        else:
+            chart, run, _ = lookup(kind, key)
+            src = repo.get_source(chart.source_id) if chart.source_id else None
+        iph = ip_hash(request)
+        if not repo.bump_rate_limit("flag:" + iph, now(), FLAG_HOUR_LIMIT, FLAG_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of flags; try again later")
+        user = current_user_or_none(authorization)
+        flag = Flag(
+            id=slug.new_flag_id(), created_at=now(), note=note, place=place,
+            where={"link": kind,
+                   "chart_id": chart.id if chart else None,
+                   "share_slug": chart.share_slug if chart else None,
+                   "source_id": src.id if src else None,
+                   "run_id": run.id, "video_id": run.video_id,
+                   "processing_version": run.processing_version,
+                   "title": run.title},
+            overrides_version=chart.overrides_version if chart else None,
+            user={"uid": user.id, "email": user.email} if user else None,
+            ip_hash=iph)
+        repo.put_flag(flag)
+        return {"id": flag.id}
+
     # ------------------------------------------------------------- worker
     @app.post("/api/worker/claim")
     async def claim(request: Request, authorization: str | None = Header(default=None)):
@@ -1514,6 +1615,23 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def admin_export(authorization: str | None = Header(default=None)):
         require_admin(authorization)
         return JSONResponse(json.loads(json.dumps(repo.export_all(), default=_json_default)))
+
+    @app.get("/api/admin/flags")
+    def admin_flags(status: str = "open", limit: int = Query(200, ge=1, le=1000),
+                    authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        if status not in ("open", "resolved", "all"):
+            raise HTTPException(422, "status is open, resolved or all")
+        flags = repo.list_flags(None if status == "all" else status, limit)
+        return {"flags": [_flag_json(f) for f in flags]}
+
+    @app.post("/api/admin/flags/{flag_id}/resolve")
+    def admin_resolve_flag(flag_id: str, authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        got = repo.resolve_flag(flag_id, now())
+        if got is None:
+            raise HTTPException(404, "no such flag")
+        return _flag_json(got)
 
     @app.get("/api/admin/playlists")
     def admin_playlists(authorization: str | None = Header(default=None)):

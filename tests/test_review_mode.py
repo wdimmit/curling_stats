@@ -91,3 +91,10 @@ class TestReviewIsReadOnly:
         world["client"].get(f"/g/{sid}/")
         world["client"].get(f"/g/{sid}/timeline.json")
         assert len(world["repo"].charts) == before
+
+
+def test_a_flag_is_not_a_route_under_the_review_link(world):
+    """Flags go to /api/flags; the review link keeps carrying no POST route."""
+    sid = a_source(world)["source_id"]
+    r = world["client"].post(f"/g/{sid}/flag", json={"note": "n"})
+    assert r.status_code == 405
