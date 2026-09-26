@@ -94,6 +94,27 @@ identical `line` object under HEAD. Every game's shot list is unchanged (same
 count per end, same colours, same t_enter_s), and hammer/power_play/placement
 per end are unchanged, against p3r-<VID>.json.
 
+Broomless-line invariant, over the four local p6 files:
+  python3 -c "
+  import json, glob
+  n = 0
+  bad = []
+  for p in sorted(glob.glob('<scratchpad>/p6/p6-*.json')):
+      doc = json.load(open(p))
+      for g in doc['games']:
+          for e in g['ends']:
+              for s in e['shots']:
+                  l = s.get('line')
+                  if l is not None and 'at_tee' in l:
+                      n += 1
+                      if not (l.get('at_broom') is None and l['at_hog'].get('offset_m') is None and l.get('side') is None):
+                          bad.append((p, e['number'], s['number']))
+  print(n, 'broomless lines checked;', len(bad), 'violations:', bad[:5])
+  "
+Result: 219 broomless lines checked; 0 violations: []
+Every broomless line has at_broom: null, at_hog.offset_m: null and
+side: null, with no exception. Target met.
+
 --------------------------------------------------------------------------------
 Step 3b: phase-3 placement acceptance, re-run on the new outputs
 --------------------------------------------------------------------------------
@@ -249,7 +270,27 @@ compare base-b p6-head
 .games[0].start_s: 230.0 != 235.0
 4+ differences
 == AEqLTgM25Tc
-(same 20+ differences as compare-base-a-base-b.txt for this video, mirrored)
+.games[0].ends[1].end_s: 1465.0 != 1470.0
+.games[0].ends[1].final_stones: 2 items != 7
+.games[0].ends[1].final_stones[0].confidence: 0.936 != 0.945
+.games[0].ends[1].final_stones[0].distance_to_tee: 2.0419 != 1.0032
+.games[0].ends[1].final_stones[0].in_house: False != True
+.games[0].ends[1].final_stones[0].x: -1.6243 != 0.5796
+.games[0].ends[1].final_stones[0].y: -1.2374 != -0.8188
+.games[0].ends[1].final_stones[1].confidence: 0.93 != 0.925
+.games[0].ends[1].final_stones[1].distance_to_tee: 1.1936 != 0.3941
+.games[0].ends[1].final_stones[1].x: 0.6374 != -0.3936
+.games[0].ends[1].final_stones[1].y: -1.0091 != -0.0207
+.games[0].ends[1].scored_from_shot: 16 != 15
+.games[0].ends[1].shots[15].entry_speed_m_s: 1.089 != 0.0
+.games[0].ends[1].shots[15].house_delta.moved: 1 items != 0
+.games[0].ends[1].shots[15].house_delta.removed: 5 items != 7
+.games[0].ends[1].shots[15].house_delta.removed[1].color: 'yellow' != 'red'
+.games[0].ends[1].shots[15].house_delta.removed[1].x: -0.9879 != -0.3936
+.games[0].ends[1].shots[15].house_delta.removed[1].y: -0.383 != -0.0207
+.games[0].ends[1].shots[15].house_delta.removed[2].color: 'red' != 'yellow'
+.games[0].ends[1].shots[15].house_delta.removed[2].x: -1.7957 != -0.9879
+20+ differences
 
 Read together: hOKZoeJNTpM and AEqLTgM25Tc each match one of the two base runs
 exactly (base-a, both times) -- target met for those two videos.
@@ -270,6 +311,19 @@ letter of the target is missed for this one video out of three.
 Step 5, per game: every four-player game against every earlier run on the
 worker (/tmp/pergame.py, run by the controller)
 --------------------------------------------------------------------------------
+Run labels:
+  base-a, base-b, base-nl-a, base-nl-b -- two runs each (full pipeline, and
+    --no-longview) of BASE = a63495b "pipeline: the last rock's house stops
+    at the clearing, and a house diff pairs stones as a whole" (merge-base of
+    doubles with main), from the phases-1-2 check.
+  head, head-nl -- the phases-1-2 HEAD = 52ed513 "service: a run's format
+    travels from the submission to the worker and is checked on return".
+  p3-head, p3-head-nl -- the phase-3 HEAD = 864d626 "analyze: doubles ends
+    drop what came before the placement and diff rock 1 against it;
+    acceptance check".
+  p6-head, p6-head-nl -- this branch's HEAD, e90b47d (see the top of this
+    file).
+
 == p6-head-nl
   VXU9xwmugRg game 0: equals ['p3-head-nl']
   VXU9xwmugRg game 1: equals ['base-nl-a', 'head-nl']
