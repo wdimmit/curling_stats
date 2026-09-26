@@ -486,19 +486,28 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             built["thrown"] = audit.thrown
             built["complete"] = audit.complete
             built["problems"] = audit.problems
+            if fmt.placed_per_team and (placed is None or not placed.complete):
+                # Say so when the placement stage had to fall back: the hammer
+                # then comes from rock 1, or rock 1's fill base is one short.
+                built["problems"] = list(audit.problems) + [
+                    "no placement found; hammer read from the first rock"
+                    if placed is None else "the placement's guard was not seen"]
             built["missed_after"] = audit.missed_after
             built["detection_confidence"] = round(audit.confidence, 3)
             out_ends.append(built)
             done_ends += 1
             p = built.get("placement")
-            placed_note = "" if not p else (
+            placed_note = "" if not fmt.placed_per_team else (
+                "no placement, " if not p else
                 f"placement {p['hammer']}"
                 + (f" power play {p['power_play']}" if p["power_play"] else "") + ", ")
+            n_before = (p or {}).get("candidates_dropped", 0)
             progress(
                 f"    {len(kept)}/{fmt.delivered_per_end} deliveries "
                 f"(R{audit.thrown['red']} Y{audit.thrown['yellow']} offered"
                 f"{f', +{len(recovered)} recovered' if recovered else ''}"
-                f"{f', -{dropped} against the rules' if dropped else ''}), "
+                f"{f', -{dropped} against the rules' if dropped else ''}"
+                f"{f', -{n_before} before placement' if n_before else ''}), "
                 + placed_note
                 + (f"board says {built['score']}" if built["score"] is not None
                    else f"board silent, detected {built['detected_score']}")
