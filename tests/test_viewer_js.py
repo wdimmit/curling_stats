@@ -2310,6 +2310,15 @@ class TestFlagPlace:
         got = self.place(doc([shot(1, "red", "lead")]))
         assert got["place"]["t_video_s"] is None
 
+    def test_a_rock_never_delivered_still_has_a_video_time(self):
+        """The rocks worth flagging are often the ones detection missed. They
+        get the same time the viewer seeks to: rest less 8 s, then the guess,
+        each with the pipeline's 10 s lead-in."""
+        got = self.place(doc([shot(1, "red", "lead", t_rest_s=900.0)]))
+        assert got["place"]["t_video_s"] == 882.0
+        got = self.place(doc([shot(1, "red", "lead", t_enter_s=700.0)]))
+        assert got["place"]["t_video_s"] == 690.0
+
     def test_a_trimmed_end_keeps_its_identity(self):
         got = self.place(doc([shot(1, "red", "lead")], end_number=2, end_id=5))
         assert (got["place"]["end"], got["place"]["end_id"], got["place"]["key"]) == (2, "5", "0.5.1")
@@ -2337,6 +2346,31 @@ class TestNoteProblem:
 
     def test_null_is_blank(self):
         assert run_js("out(noteProblem(null));") == "Say what is wrong."
+
+
+class TestSettledUser:
+    """Who is signed in, once Firebase has said -- not when it started asking.
+
+    site/auth.js's whenReady() settles as soon as its state listener is
+    registered, before the session is restored from IndexedDB, so reading
+    currentUser() then made a signed-in person's first flag anonymous."""
+
+    def test_waits_for_the_restored_session(self):
+        body = """
+        const listeners = new Set(); let user = null, ready = false;
+        const onUser = fn => { listeners.add(fn); fn(user, ready); return () => listeners.delete(fn); };
+        setTimeout(() => { user = { email: "s@x.org" }; ready = true;
+                           for (const f of listeners) f(user, ready); }, 20);
+        settledUser(onUser).then(u => out([u && u.email, listeners.size]));
+        """
+        assert run_js(body) == ["s@x.org", 0]
+
+    def test_accounts_off_is_nobody_at_once(self):
+        assert run_js("settledUser(fn => { fn(null, true); return () => {}; }).then(out);") is None
+
+    def test_the_dialog_asks_the_same_way(self):
+        src = (Path(__file__).resolve().parents[1] / "frontend/runtime/flag.mjs").read_text()
+        assert "settledUser(auth.onUser)" in src and "whenReady" not in src
 
 
 class TestSettleWithin:
@@ -2372,9 +2406,17 @@ class TestTheFlagButton:
 
     def test_the_place_is_a_snapshot_taken_on_open(self):
         app = self.src("frontend/viewer/App.jsx")
-        assert "flagging: flagPlace(view, ui.ei, ui.si)" in app
+        assert "const at = flagPlace(view, ui.ei, ui.si);" in app
+        assert "flagging: { ...at, opened: Date.now() }" in app
         flag = self.src("frontend/viewer/Flag.jsx")
         assert "flagging.place" in flag and "ui." not in flag
+
+    def test_each_opening_starts_a_fresh_form(self):
+        """A late reply from the last opening must not land on this one, and
+        a reopened dialog must focus its empty textarea, not a stale thanks."""
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "function FlagForm(" in flag
+        assert "<FlagForm key={flagging.opened}" in flag
 
     def test_keys_do_nothing_underneath_the_open_dialog(self):
         app = self.src("frontend/viewer/App.jsx")

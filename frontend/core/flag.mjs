@@ -2,9 +2,11 @@
  *
  * Plain ESM with no React and no DOM, so the Python suite can run it under
  * bare node -- see tests/test_viewer_js.py. */
+import { shotVideoTime } from "./shots.mjs";
 import { endIdentity, identity, keyFor } from "./timeline.mjs";
 
 export const NOTE_MAX = 2000;   // api.MAX_FLAG_NOTE
+const VIDEO_LEAD_IN_S = 10;     // timeline.VIDEO_LEAD_IN_S
 
 /* The rock the cursor is on, as a flag records it, and the line the dialog
  * shows. An end with no rocks is still somewhere to flag: its rock is null.
@@ -24,7 +26,10 @@ export function flagPlace(view, ei, si) {
     rock: shot ? shot.number : null,
     rock_id: raw ? String(identity(raw)) : null,
     key: raw ? keyFor(view.game, e, raw) : null,
-    t_video_s: typeof shot?.t_video_s === "number" ? shot.t_video_s : null,
+    // A rock never seen arriving has no t_video_s; it still has the time the
+    // viewer seeks to, and those are the rocks most likely to be flagged.
+    t_video_s: typeof shot?.t_video_s === "number" ? shot.t_video_s
+      : shotVideoTime(shot, VIDEO_LEAD_IN_S),
     label,
   };
   const text = `Game ${(view.gi ?? 0) + 1} · End ${place.end}`
@@ -48,4 +53,23 @@ export function settleWithin(p, ms, fallback = null) {
     Promise.resolve(p).catch(() => fallback),
     new Promise(res => { timer = setTimeout(() => res(fallback), ms); }),
   ]).finally(() => clearTimeout(timer));
+}
+
+/* The signed-in user once auth has actually decided, from an `onUser` like
+ * site/auth.js's -- which calls back now and on every change with
+ * (user, ready). Not whenReady(): that settles when the state listener is
+ * registered, before the session is restored, and a signed-in person's first
+ * flag then went anonymous. Unsubscribes once answered. */
+export function settledUser(onUser) {
+  return new Promise(resolve => {
+    let off = null;
+    let done = false;
+    off = onUser((u, ready) => {
+      if (!ready || done) return;
+      done = true;
+      if (off) off();
+      resolve(u ?? null);
+    });
+    if (done) off();   // answered synchronously, before `off` existed
+  });
 }

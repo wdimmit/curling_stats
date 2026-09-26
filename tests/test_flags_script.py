@@ -57,3 +57,12 @@ def test_describe_says_who_where_and_what():
 
 def test_describe_says_anonymous():
     assert "anonymous" in flags.describe(flag(user=None), BASE)
+
+
+def test_describe_never_prints_a_control_character():
+    """A second guard: the server strips them, but this reads whatever is stored."""
+    f = flag(note="a\x1b]52;c;x\x07b\nsecond",
+             place={**flag()["place"], "label": "red\x1b[31m"})
+    text = flags.describe(f, BASE)
+    assert "\x1b" not in text and "\x07" not in text
+    assert "\\x1b" in text and "> second" in text

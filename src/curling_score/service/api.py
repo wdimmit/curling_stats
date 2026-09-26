@@ -20,8 +20,10 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -101,6 +103,7 @@ FLAG_DAY_LIMIT = 100
 FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
 _PLACE_INTS = ("game_index", "end", "rock")
 _PLACE_TEXT = {"end_id": 40, "rock_id": 40, "key": 40, "label": 80}
+PLACE_INT_MAX = 1_000_000
 # Starting a chart on a game we already hold queues no work, so it gets a
 # budget of its own rather than one of the five submissions an hour.
 CHART_RATE_FACTOR = 6
@@ -196,21 +199,48 @@ def clean_place(place) -> dict:
     out = {}
     for k in _PLACE_INTS:
         v = place.get(k)
-        if v is not None and (isinstance(v, bool) or not isinstance(v, int)):
+        # Bounded: Firestore holds int64, and a 25-digit end fails the write.
+        if v is not None and (isinstance(v, bool) or not isinstance(v, int)
+                              or abs(v) > PLACE_INT_MAX):
             raise ValueError(f"place.{k} must be a whole number")
         out[k] = v
     for k, most in _PLACE_TEXT.items():
         v = place.get(k)
         if isinstance(v, int) and not isinstance(v, bool):
             v = str(v)   # an identity is the detector's number unless renumbered
+        if isinstance(v, str):
+            v = printable(v, keep="")
         if v is not None and (not isinstance(v, str) or len(v) > most):
             raise ValueError(f"place.{k} must be text of at most {most} characters")
         out[k] = v
     t = place.get("t_video_s")
-    if t is not None and (isinstance(t, bool) or not isinstance(t, (int, float))):
+    # Finite, because one stored inf (1e400 parses to it) makes every later
+    # admin list and backup fail to serialise.
+    if t is not None and (isinstance(t, bool) or not isinstance(t, (int, float))
+                          or not math.isfinite(t)):
         raise ValueError("place.t_video_s must be a number")
     out["t_video_s"] = None if t is None else float(t)
     return out
+
+
+# Right-to-left and isolate overrides: invisible, and they reorder what is
+# printed after them, so a note could make the owner's terminal lie.
+_BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A))
+
+
+def printable(text: str, keep: str = "\n\t") -> str:
+    """`text` without control characters (but `keep`), bidi overrides or lone
+    surrogates. A flag is read in the owner's terminal, where an escape code
+    runs -- OSC 52 writes the clipboard -- and a lone surrogate cannot be
+    encoded at all, so every later listing of it would fail."""
+    return "".join(ch for ch in text
+                   if ch in keep or not (unicodedata.category(ch) in ("Cc", "Cs")
+                                         or ord(ch) in _BIDI))
+
+
+def _no_constants(name):
+    # NaN and Infinity are not JSON; Python's parser accepts them by default.
+    raise ValueError(f"{name} is not JSON")
 
 
 def _flag_json(flag) -> dict:
@@ -1316,7 +1346,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if len(raw) > MAX_FLAG_BYTES:
             raise HTTPException(413, "that flag is too long")
         try:
-            body = json.loads(raw)
+            body = json.loads(raw, parse_constant=_no_constants)
         except ValueError:
             raise HTTPException(400, "send JSON") from None
         if not isinstance(body, dict):
@@ -1326,7 +1356,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(400, "path must be a chart or game link")
         kind, key = m.groups()
         note = body.get("note")
-        note = note.strip() if isinstance(note, str) else ""
+        note = printable(note).strip() if isinstance(note, str) else ""
         if not note:
             raise HTTPException(422, "say what is wrong")
         if len(note) > MAX_FLAG_NOTE:

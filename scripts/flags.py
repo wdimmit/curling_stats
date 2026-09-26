@@ -19,10 +19,20 @@ import argparse
 import json
 import os
 import sys
+import unicodedata
 import urllib.request
 from datetime import datetime
 
 PAGES = {"c": ("/c/", "chart_id"), "s": ("/s/", "share_slug"), "g": ("/g/", "source_id")}
+
+
+def _safe(text: str) -> str:
+    """Every control or format character but a newline, escaped.
+
+    The server strips them on the way in; this is the second guard, because
+    a stored escape code printed raw runs in the terminal reading it."""
+    return "".join(ch if ch == "\n" or not unicodedata.category(ch).startswith("C")
+                   else ch.encode("unicode_escape").decode() for ch in text)
 
 
 def rock_link(flag: dict, base: str) -> str:
@@ -58,7 +68,7 @@ def describe(flag: dict, base: str) -> str:
         lines.append(f"  {yt}")
     lines.append(f"  run {where.get('run_id')} · key {place.get('key')}"
                  f" · pipeline {where.get('processing_version')}")
-    return "\n".join(lines)
+    return _safe("\n".join(lines))
 
 
 def _call(method: str, url: str, token: str):

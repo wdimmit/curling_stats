@@ -6,15 +6,14 @@
  * opens the dialog never fetches the SDK. The session is per origin, so
  * someone signed in on the site is signed in here. All of it fails soft:
  * no answer within SIGN_IN_WAIT_MS is an anonymous flag, not a stuck one. */
-import { settleWithin } from "../core/index.mjs";
+import { settleWithin, settledUser } from "../core/index.mjs";
 
 export const SIGN_IN_WAIT_MS = 3000;
 
 export function whoIsFlagging() {
   return settleWithin((async () => {
     const auth = await import("../site/auth.js");
-    await auth.whenReady();
-    const u = auth.currentUser();
+    const u = await settledUser(auth.onUser);
     if (!u) return null;
     return { email: u.email ?? null, token: await u.getIdToken() };
   })(), SIGN_IN_WAIT_MS, null);

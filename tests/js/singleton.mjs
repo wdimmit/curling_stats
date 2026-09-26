@@ -69,6 +69,7 @@ export const ghostStones = core.ghostStones;
 export const flagPlace = core.flagPlace;
 export const noteProblem = core.noteProblem;
 export const settleWithin = core.settleWithin;
+export const settledUser = core.settledUser;
 export const NOTE_MAX = core.NOTE_MAX;
 export const buildGameView = core.buildGameView;
 

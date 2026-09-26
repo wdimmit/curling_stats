@@ -1411,3 +1411,43 @@ class TestFlags:
         self.flag(world, f"/c/{ch.id}/")
         data = world["client"].get("/api/admin/export", headers=ADMIN).json()
         assert [f["note"] for f in data["flags"]] == ["the house is wrong"]
+
+    @pytest.mark.parametrize("raw,code", [
+        (b'{"path": "PATH", "note": "x", "place": {"t_video_s": NaN}}', 400),
+        (b'{"path": "PATH", "note": "x", "place": {"t_video_s": Infinity}}', 400),
+        (b'{"path": "PATH", "note": "x", "place": {"t_video_s": -Infinity}}', 400),
+        (b'{"path": "PATH", "note": "x", "place": {"t_video_s": 1e400}}', 422),
+        (b'{"path": "PATH", "note": "x", "place": {"end": 10000000000000000000000000}}', 422),
+    ])
+    def test_numbers_json_cannot_carry_are_refused(self, world, raw, code):
+        """One stored NaN would 500 every later admin list and nightly backup."""
+        ch = self.chart(world)
+        c = world["client"]
+        r = c.post("/api/flags", content=raw.replace(b"PATH", f"/c/{ch.id}/".encode()),
+                   headers={"Content-Type": "application/json"})
+        assert r.status_code == code
+        assert c.get("/api/admin/flags?status=all", headers=ADMIN).status_code == 200
+        assert c.get("/api/admin/export", headers=ADMIN).status_code == 200
+
+    def test_control_characters_never_reach_the_store(self, world):
+        """Escape codes in an anonymous note would run in the owner's terminal."""
+        ch = self.chart(world)
+        note = "a\x1b]52;c;ZWNobyBoaQ==\x07b‮\ttab\nline\x9b2J"
+        self.flag(world, f"/c/{ch.id}/", note=note,
+                  place={**self.PLACE, "label": "red\x1b[31m, lead", "key": "0.1.2\x07"})
+        f = world["repo"].list_flags()[0]
+        assert f.note == "a]52;c;ZWNobyBoaQ==b\ttab\nline2J"
+        assert f.place["label"] == "red[31m, lead" and f.place["key"] == "0.1.2"
+
+    def test_a_note_of_only_control_characters_is_blank(self, world):
+        ch = self.chart(world)
+        assert self.flag(world, f"/c/{ch.id}/", note="\x1b\x07‮").status_code == 422
+
+    def test_a_lone_surrogate_is_dropped(self, world):
+        ch = self.chart(world)
+        c = world["client"]
+        raw = ('{"path": "/c/%s/", "note": "ok\\ud800", "place": {}}' % ch.id).encode()
+        assert c.post("/api/flags", content=raw,
+                      headers={"Content-Type": "application/json"}).status_code == 201
+        assert world["repo"].list_flags()[0].note == "ok"
+        assert c.get("/api/admin/flags", headers=ADMIN).status_code == 200

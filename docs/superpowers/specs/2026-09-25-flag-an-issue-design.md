@@ -99,8 +99,12 @@ typing a note cannot step rocks or toggle panels.
 
 **Sign-in, without Firebase in the viewer.** The viewer deliberately does not
 load Firebase (`frontend/site/auth.js`, lines 1–12). The dialog loads it only
-when it opens: `await import("../site/auth.js")`, then `whenReady()` and
-`currentUser()`. The SDK itself stays on the gstatic CDN, as on the site pages.
+when it opens: `await import("../site/auth.js")`, then it waits for
+`onUser` to report `ready` (`settledUser` in `core/flag.mjs`). Not
+`whenReady()` then `currentUser()`, as first written here: `whenReady()`
+settles once the state listener is registered, before Firebase restores the
+session, so a signed-in person's first flag went anonymous (found in the final
+review). The SDK itself stays on the gstatic CDN, as on the site pages.
 The Firebase session is per origin, so someone signed in on the site is signed
 in here. When they are, the request carries `Authorization: Bearer <ID token>`.
 
@@ -231,9 +235,20 @@ and `resolved_at` and returns the flag, or 404.
 
   This design never trusts the browser's slug, so it neither depends on nor
   worsens the leak. The fix is its own change.
-- **Spam.** Anyone can flag. The rate limit, the 2,000-character cap and
-  admin-only reading bound the harm. There is no captcha. If abuse shows up,
-  `ip_hash` lets it be found and the limit tightened.
+- **Spam.** Anyone can flag. The 2,000-character cap and admin-only reading
+  bound the harm. There is no captcha.
+  - The rate limit does **not** bound it yet. `client_ip` trusts the first
+    `X-Forwarded-For` entry, which the client controls, so a spoofed header
+    gets a fresh budget. That bug predates flags and weakens the submission
+    limit too. The fix is its own change: take the entry Google's front end
+    appends, after confirming the deployed setup.
+  - If abuse shows up, `ip_hash` still groups honest clients.
+- **Hostile text.** Notes and place fields are read in the owner's terminal.
+  The server strips control characters (except newline and tab), bidi
+  overrides and lone surrogates. It refuses NaN, Infinity, non-finite and
+  out-of-range numbers: one stored NaN would make every later admin list and
+  nightly backup fail. `flags.py` escapes anything non-printable as a second
+  guard.
 - **Loading `auth.js` lazily in an iife bundle.** esbuild inlines a dynamic
   import of a local module but defers its evaluation, and `auth.js` imports the
   SDK by a runtime URL. So the viewer should load no Firebase until the dialog
