@@ -1412,8 +1412,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         want = run.format or "fours"
         got = body.get("format") or "fours"
         if got != want:
-            raise HTTPException(409, f"this run's format is {want}, but the worker "
-                                     f"built {got} -- update the worker")
+            error = (f"this run's format is {want}, but the worker built {got} "
+                     f"-- update the worker")
+            # Failed here, as a permanent failure would be, and not just
+            # refused: the worker reads the 409 as "no longer yours" and walks
+            # away, and a job left running would come back when its lease ran
+            # out, to be claimed by the same old worker for ever.
+            t = now()
+            repo.update_job(job.id, state="failed", error=error, error_kind="permanent",
+                            finished_at=t)
+            repo.update_run(run.id, status="failed", error=error)
+            raise HTTPException(409, error)
         tkey = timeline_key(run.video_id, run.id)
         if not store.exists(tkey):
             raise HTTPException(409, "timeline.json has not been uploaded")

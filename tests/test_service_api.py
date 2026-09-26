@@ -1341,7 +1341,18 @@ class TestFormat:
         r = c.post(f"/api/worker/jobs/{job['id']}/complete", headers=WORKER,
                    json={"worker_id": "home", "games": [], "detcache_digests": []})
         assert r.status_code == 409
-        assert "format" in r.json()["detail"]
+        detail = r.json()["detail"]
+        assert "format" in detail
+        # The worker reads a 409 as "not yours any more" and walks away. If the
+        # job stayed running, its lease would expire and the same old worker
+        # would claim it again, for ever; so the run fails, saying why.
+        (run,) = world["repo"].runs_for_video(DOUBLES_VID)
+        assert run.status == "failed" and run.error == detail
+        got = world["repo"].get_job(job["id"])
+        assert got.state == "failed" and got.error == detail
+        world["clock"].advance(3600)            # well past the lease
+        assert c.post("/api/worker/claim", headers=WORKER,
+                      json={"worker_id": "home", "model_id": "m-abc"}).status_code == 204
 
     def test_a_fours_run_still_completes_without_a_format(self, world):
         submit(world)
