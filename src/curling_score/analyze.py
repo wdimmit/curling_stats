@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -183,6 +184,336 @@ def resolve_format(game_format: str | None, title: str | None):
     return format_mod.by_name(game_format or source.format_from_title(title))
 
 
+@dataclass
+class EndContext:
+    """What building one end needs that stays the same for the whole video.
+
+    ``path`` is the full-resolution original, which the side views are decoded
+    from. ``read_path`` is what the overhead detection reads -- the strip proxy
+    for a recording, the recording itself for a live stream -- and
+    ``read_setups`` are the panels in its coordinates. ``use_cache`` is off for
+    a file still being written: the detection cache keys on the file's size, so
+    a growing file would never hit it and would store truncated spans.
+    """
+
+    path: object
+    read_path: object
+    read_setups: dict
+    sideviews: dict | None
+    detector: object
+    broom_model: object
+    line_model: object
+    fmt: format_mod.GameFormat
+    use_cache: bool = True
+    shot_fps: float = SHOT_FPS
+    progress: object = log.info
+
+
+@dataclass
+class BoardRead:
+    """One game's wall board, and the block a timeline carries for it."""
+
+    got: sb.GameBoard
+    scores: sb.BoardScores
+    block: dict
+
+
+def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info):
+    """Panels, their calibrations and the side views, from a few keyframes.
+
+    Returns ``(panels, setups, sideviews)``; ``sideviews`` is None when they
+    were skipped or could not be read, which costs the splits and nothing else.
+    """
+    panels = layout.detect_panels(calib_frames)
+    setups = profile.calibrate_panels(calib_frames, panels)
+    for name, setup in setups.items():
+        progress(
+            f"{name} panel {setup.rect} {setup.calib.px_per_m:.1f} px/m "
+            f"(residual {setup.calib.residual_m * 100:.2f} cm)"
+        )
+    # The two wide side views. They watch the far end's hog line, which the
+    # overhead panel loses on about 40% of throws, and they are read straight
+    # from the original -- like the scoreboard, and for the same reason.
+    sideviews = None
+    if not skip_longview:
+        h, w = calib_frames[0].shape[:2]
+        plate = np.median(
+            np.stack([f.astype("float32") for f in calib_frames]), axis=0)
+        try:
+            rects = sideview.locate(panels, width=w, height=h)
+            sideviews = {n: sideview.solve(plate, r, name=n)
+                         for n, r in rects.items()}
+            sideviews = {n: _with_lateral(plate, v, n, progress)
+                         for n, v in sideviews.items()}
+        except sideview.SideViewError as exc:
+            progress(f"side views unusable, so this video has no splits: {exc}")
+    return panels, setups, sideviews
+
+
+def load_models(weights, imgsz: int, device, *, skip_longview: bool,
+                skip_line: bool, progress=log.info):
+    """The overhead detector, the broom model and the line model: ``(detector,
+    broom_model, line_model)``, each None where it is not wanted or not there."""
+    detector = None
+    if weights:
+        from curling_score.detect import yolo
+
+        detector = yolo.YoloDetector(weights, conf=0.30, device=device,
+                                     imgsz=imgsz)
+        detector.model.overrides["half"] = True
+        progress(f"detecting with {weights} at imgsz={imgsz}")
+    # The skip's target broom, read in the camera that sees the destination
+    # house. None without a model -- no brooms, the same timeline otherwise.
+    broom_model = None if skip_longview else broommodel.default_model()
+    if broom_model is not None:
+        progress(f"finding target brooms with {weights_mod.broom_path()}")
+    # The rock's thrown line against the broom: the side model again, which
+    # hogtime has already loaded (`sidemodel._load` is cached). No broom
+    # model means no brooms, so there is nothing for a line to be measured
+    # against either.
+    line_model = (None if (skip_longview or skip_line or broom_model is None)
+                  else sidemodel.default_model())
+    return detector, broom_model, line_model
+
+
+def board_block(got) -> BoardRead:
+    """A board read as the timeline carries it: every card, and the scores."""
+    scores = got.scores
+    return BoardRead(got=got, scores=scores, block={
+        "read_at_s": round(got.read_at_s, 2),
+        "reads": got.reads,
+        "unread_ends": list(scores.unread_ends),
+        "final": scores.final,
+        "cards": {
+            color: [
+                {"slot": c.slot, "end": c.end,
+                 "confidence": round(c.confidence, 4)}
+                for c in getattr(got.board, color)
+            ]
+            for color in sb.COLORS
+        },
+        "per_end": {str(k): v for k, v in sorted(scores.per_end.items())},
+    })
+
+
+def board_for_game(path, game, progress=log.info) -> BoardRead | None:
+    """One game's wall board from the original, or None. Never raises."""
+    progress(f"  game {game.index + 1}: reading the wall scoreboard...")
+    got = read_board(path, game, progress=progress)
+    if got is None:
+        progress(f"  game {game.index + 1}: board not read")
+        return None
+    board = board_block(got)
+    scores = board.scores
+    progress(
+        f"  game {game.index + 1}: board says {scores.final} "
+        f"in {got.reads} read(s)"
+        + (f", ends {list(scores.unread_ends)} not posted"
+           if scores.unread_ends else "")
+    )
+    return board
+
+
+def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
+    """One end, from detection to the timeline's record of it.
+
+    Returns ``(built, closed_s)``: the end's timeline dict, and when its last
+    rock came to rest, which is where the next end's run-up begins. Nothing
+    else carries from one end to the next.
+    """
+    fmt, progress = ctx.fmt, ctx.progress
+    path, read_path, read_setups = ctx.path, ctx.read_path, ctx.read_setups
+    sideviews = ctx.sideviews
+    setup = read_setups[end.house]
+    progress(f"  game {game.index + 1} end {end.number} ({end.house})...")
+    from_s = run_up_from(prev_end_s, end.start_s,
+                         crossed_games=end is game.ends[0])
+    seq = sequence.detect_end(read_path, setup, end, ctx.shot_fps,
+                              ctx.detector, use_cache=ctx.use_cache,
+                              from_s=from_s)
+    # Anything thrown since the previous end closed is this end's;
+    # anything earlier on this panel is not.
+    deliveries = [
+        d for d in delivery.find_deliveries(
+            seq, view_x_limit_m=setup.view_x_limit_m,
+            view_y_min_m=setup.view_y_min_m,
+        )
+        if d.t_enter >= from_s
+    ]
+    # Doubles: every delivery of the end comes after its placement is
+    # complete, so find that moment before anything is counted.
+    placed = (placement.find(seq, from_s, end.end_s)
+              if fmt.placed_per_team else None)
+    deliveries, before_placement = placement.exclude(deliveries, placed)
+    # The first pass has to be strict or sweepers count as stones. Once
+    # it is in hand the rules say where the gaps are and what colour
+    # belongs in them, so a second look can be far more permissive
+    # without letting phantoms in everywhere else.
+    gap_from = (end.start_s if placed is None
+                else max(end.start_s, placed.t_s + placement.SETTLE_S))
+    gaps = secondpass.gaps_to_search(
+        deliveries, gap_from, end.end_s,
+        per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
+    recovered, recovered_early = placement.exclude(
+        secondpass.search(seq, gaps, deliveries), placed)
+    if recovered:
+        deliveries = sorted(
+            deliveries + recovered, key=lambda d: d.t_enter
+        )
+    # The other panel is the thrower's house, and every delivery
+    # crosses it on the way out. A throw seen there with no arrival
+    # here is a hogged rock -- the one kind of miss this house can
+    # never show, and it puts every later thrower off by one. Paired
+    # only now, after the second pass: an arrival the gap search
+    # recovers is still an arrival, and a release standing in for it
+    # would have hidden the very gap that finds it.
+    far = read_setups[OTHER_HOUSE[end.house]]
+    far_seq = list(sequence.detect_span(
+        read_path, far, from_s, end.end_s,
+        release.RELEASE_FPS, ctx.detector, use_cache=ctx.use_cache))
+    releases, thrown_by, unaccounted = release.find_and_pair(
+        far_seq, far.view_y_min_m, deliveries, seq,
+        since=from_s if placed is None else max(from_s, placed.t_s),
+        view_x_limit_m=far.view_x_limit_m,
+    )
+    if unaccounted:
+        deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)
+    # Audit what detection actually offered, before the rules trim
+    # it -- that is the honest measure of how well detection did.
+    audit = endcheck.check(deliveries, per_end=fmt.delivered_per_end,
+                           per_team=fmt.delivered_per_team)
+    # An end holds its format's deliveries thrown strictly in turn, so
+    # a longer or doubled candidate list is provably wrong. Without
+    # this an over-counted end does not merely score badly, it cannot
+    # be built at all: the last shot has no thrower.
+    # Stones moved while the house is cleared after the last shot
+    # look like deliveries in every way but one: nothing released them.
+    kept = fit.fit_end(fit.drop_clearing(
+        deliveries, seq, fit.released_ids(thrown_by, unaccounted)),
+        paired=fit.paired_ids(thrown_by),
+        per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
+    dropped = len(deliveries) - len(kept)
+    # The arrangement as it stood when rock 1 was on its way: a power
+    # play set up in two steps shows its final shape here.
+    if placed is not None and kept:
+        placed = placement.read_before(seq, placed, kept[0].t_enter)
+    # The next end's run-up begins when this end's last rock stopped.
+    closed_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
+    shots = shots_mod.from_deliveries(
+        kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()},
+        fmt=fmt,
+        before=placed.seed if placed is not None else (),
+        base=placement.fill_base(placed, fmt))
+    # Only now that the rules have settled which rocks exist: the
+    # clock wants a tee crossing for each of them, which is a far
+    # weaker thing to ask of the same footage than a release was, and
+    # cannot reach back into the shot list.
+    thinking.time_shots(shots, far_seq, far.view_y_min_m)
+    if sideviews is not None:
+        hogtime.time_hog_crossings(
+            shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+        # The skip's target broom, from the camera that sees the
+        # destination house -- the OTHER camera from hogtime's.
+        broomtime.time_target_brooms(
+            shots, path, sideviews[hogtime.CAMERA_FOR[end.house]],
+            model=ctx.broom_model)
+        # Where the rock's thrown line passed the skip's broom -- the
+        # hog-crossing camera for the line, the destination camera for
+        # where it went. Needs hogtime's crossing and broomtime's broom.
+        # In doubles, a rock nobody held a broom for is measured too.
+        n_lines = linetime.time_lines(
+            shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
+            sideviews[hogtime.CAMERA_FOR[end.house]], model=ctx.line_model,
+            without_broom=fmt.line_without_broom)
+        progress(f"    end {end.number}: lines {n_lines}/{len(shots)}")
+    # Stage 3, the destination hog line, from that panel's painted line.
+    # In this block ``setup`` is the destination panel and ``far`` is
+    # the THROWING panel -- far from the house being played to.
+    fartime.time_far_crossings(shots, near_line=far.hog_line,
+                               far_line=setup.hog_line)
+    built = timeline.build_end(
+        end.number, end.house, end.start_s, end.end_s, shots,
+        board_score=board_score,
+        fmt=fmt,
+        placement=placed,
+    )
+    if built.get("placement") is not None:
+        built["placement"]["candidates_dropped"] = (
+            len(before_placement) + len(recovered_early))
+    built["deliveries_seen"] = len(deliveries)
+    built["releases_seen"] = len(releases)
+    built["releases_unaccounted"] = len(unaccounted)
+    built["hogged"] = sum(1 for d in unaccounted if d.reason == release.REASON)
+    built["deliveries_recovered"] = len(recovered)
+    built["deliveries_dropped"] = dropped
+    built["thrown"] = audit.thrown
+    built["complete"] = audit.complete
+    built["problems"] = audit.problems
+    if fmt.placed_per_team and (placed is None or not placed.complete):
+        # Say so when the placement stage had to fall back: the hammer
+        # then comes from rock 1, or rock 1's fill base is one short.
+        built["problems"] = list(audit.problems) + [
+            "no placement found; hammer read from the first rock"
+            if placed is None else "the placement's guard was not seen"]
+    built["missed_after"] = audit.missed_after
+    built["detection_confidence"] = round(audit.confidence, 3)
+    p = built.get("placement")
+    placed_note = "" if not fmt.placed_per_team else (
+        "no placement, " if not p else
+        f"placement {p['hammer']}"
+        + (f" power play {p['power_play']}" if p["power_play"] else "") + ", ")
+    n_before = (p or {}).get("candidates_dropped", 0)
+    progress(
+        f"    {len(kept)}/{fmt.delivered_per_end} deliveries "
+        f"(R{audit.thrown['red']} Y{audit.thrown['yellow']} offered"
+        f"{f', +{len(recovered)} recovered' if recovered else ''}"
+        f"{f', -{dropped} against the rules' if dropped else ''}"
+        f"{f', -{n_before} before placement' if n_before else ''}), "
+        + placed_note
+        + (f"board says {built['score']}" if built["score"] is not None
+           else f"board silent, detected {built['detected_score']}")
+    )
+    return built, closed_s
+
+
+def finish_game(game, out_ends, board: BoardRead | None, fmt,
+                progress=log.info) -> dict:
+    """A game's timeline dict from its built ends and its board, if read."""
+    scores = board.scores if board is not None else None
+    board_block_ = board.block if board is not None else None
+    # The scores on the ends were attached by *detected* end number, which is
+    # the board's real end number only when nothing but the game was
+    # detected. Now that the ends are built we can see the practice
+    # signature -- a leading end short of sixteen rocks -- and ask whether
+    # the board accounted for every block we found. Doubtful means the
+    # scores come back off the ends: a chart that says the board could not
+    # be placed is honest, and one end out of step is not. The block keeps
+    # "per_end", so a start time typed later puts them back (trim_to_start).
+    if board_block_ is not None and not timeline.settle_board_scores(
+            out_ends, board_block_, board.got.board.highest_end(), fmt=fmt):
+        progress(f"  game {game.index + 1}: board scores withheld -- "
+                 "leading practice, and the board is short of the ends")
+        scores = None
+    out_game = timeline.build_game(
+        game.index, game.start_s, game.end_s, out_ends, board=scores,
+        fmt=fmt,
+    )
+    # The board's word against the detector's, which is the only thing
+    # that can tell a misread board from a correct one. None while the
+    # board left an end unread: there is nothing to compare.
+    out_game["scoreboard"] = board_block_
+    if board_block_ is not None:
+        final = board_block_.get("final")
+        agrees = (
+            None if final is None
+            else final == out_game["detected"]["final"]
+        )
+        out_game["scoreboard"]["agrees_with_detection"] = agrees
+        for end in out_game["ends"]:
+            end["scoreboard_agrees"] = agrees
+    return out_game
+
+
 def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             use_proxy: bool = True, weights=None, imgsz: int = 448,
             device=None, *, start_s=None, end_s=None, sheet=None,
@@ -239,29 +570,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     progress("sampling keyframes for layout and calibration...")
     calib_frames = F.sample_keyframes(path, count=CALIB_FRAMES, stride=CALIB_STRIDE)
     progress(f"{len(calib_frames)} calibration frames")
-    panels = layout.detect_panels(calib_frames)
-    setups = profile.calibrate_panels(calib_frames, panels)
-    for name, setup in setups.items():
-        progress(
-            f"{name} panel {setup.rect} {setup.calib.px_per_m:.1f} px/m "
-            f"(residual {setup.calib.residual_m * 100:.2f} cm)"
-        )
-    # The two wide side views. They watch the far end's hog line, which the
-    # overhead panel loses on about 40% of throws, and they are read straight
-    # from the original -- like the scoreboard, and for the same reason.
-    sideviews = None
-    if not skip_longview:
-        h, w = calib_frames[0].shape[:2]
-        plate = np.median(
-            np.stack([f.astype("float32") for f in calib_frames]), axis=0)
-        try:
-            rects = sideview.locate(panels, width=w, height=h)
-            sideviews = {n: sideview.solve(plate, r, name=n)
-                         for n, r in rects.items()}
-            sideviews = {n: _with_lateral(plate, v, n, progress)
-                         for n, v in sideviews.items()}
-        except sideview.SideViewError as exc:
-            progress(f"side views unusable, so this video has no splits: {exc}")
+    panels, setups, sideviews = calibrate_from(
+        calib_frames, skip_longview=skip_longview, progress=progress)
     phase("calibrate", 1.0, "calibrated")
 
     # Every later pass decodes only the overhead strip, which is about a
@@ -280,25 +590,9 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     else:
         phase("proxy", 1.0, "reading the full frame")
 
-    detector = None
-    if weights:
-        from curling_score.detect import yolo
-
-        detector = yolo.YoloDetector(weights, conf=0.30, device=device,
-                                     imgsz=imgsz)
-        detector.model.overrides["half"] = True
-        progress(f"detecting with {weights} at imgsz={imgsz}")
-    # The skip's target broom, read in the camera that sees the destination
-    # house. None without a model -- no brooms, the same timeline otherwise.
-    broom_model = None if skip_longview else broommodel.default_model()
-    if broom_model is not None:
-        progress(f"finding target brooms with {weights_mod.broom_path()}")
-    # The rock's thrown line against the broom: the side model again, which
-    # hogtime has already loaded (`sidemodel._load` is cached). No broom
-    # model means no brooms, so there is nothing for a line to be measured
-    # against either.
-    line_model = (None if (skip_longview or skip_line or broom_model is None)
-                  else sidemodel.default_model())
+    detector, broom_model, line_model = load_models(
+        weights, imgsz, device, skip_longview=skip_longview,
+        skip_line=skip_line, progress=progress)
 
     phase("profile", 0.0, "finding games and ends")
     progress("building activity profile...")
@@ -311,6 +605,11 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     progress(f"{len(games)} game(s), {[len(g.ends) for g in games]} ends")
     phase("profile", 1.0, f"{len(games)} game(s)")
 
+    ctx = EndContext(
+        path=path, read_path=read_path, read_setups=read_setups,
+        sideviews=sideviews, detector=detector, broom_model=broom_model,
+        line_model=line_model, fmt=fmt, shot_fps=shot_fps, progress=progress,
+    )
     total_ends = sum(len(g.ends) for g in games) or 1
     done_ends = 0
     out_games = []
@@ -323,226 +622,25 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         # full-resolution original, so a caller that does not want to keep
         # that file can leave it out -- and then the game simply has no
         # score, which is the designed outcome and not an error.
-        board_block, scores = None, None
+        board = None
         if skip_scoreboard:
             phase("scoreboard", game.index / len(games), "skipped")
         else:
             phase("scoreboard", game.index / len(games),
                   f"reading the wall scoreboard for game {game.index + 1}")
-            progress(f"  game {game.index + 1}: reading the wall scoreboard...")
-            got = read_board(path, game, progress=progress)
-            if got is None:
-                progress(f"  game {game.index + 1}: board not read")
-            else:
-                scores = got.scores
-                board_block = {
-                    "read_at_s": round(got.read_at_s, 2),
-                    "reads": got.reads,
-                    "unread_ends": list(scores.unread_ends),
-                    "final": scores.final,
-                    "cards": {
-                        color: [
-                            {"slot": c.slot, "end": c.end,
-                             "confidence": round(c.confidence, 4)}
-                            for c in getattr(got.board, color)
-                        ]
-                        for color in sb.COLORS
-                    },
-                    "per_end": {str(k): v for k, v in sorted(scores.per_end.items())},
-                }
-                progress(
-                    f"  game {game.index + 1}: board says {scores.final} "
-                    f"in {got.reads} read(s)"
-                    + (f", ends {list(scores.unread_ends)} not posted"
-                       if scores.unread_ends else "")
-                )
+            board = board_for_game(path, game, progress=progress)
 
         out_ends = []
         for end in game.ends:
-            setup = read_setups[end.house]
-            progress(f"  game {game.index + 1} end {end.number} ({end.house})...")
             phase("detect", done_ends / total_ends,
                   f"game {game.index + 1} end {end.number}")
-            from_s = run_up_from(prev_end_s, end.start_s,
-                                 crossed_games=end is game.ends[0])
-            seq = sequence.detect_end(read_path, setup, end, shot_fps,
-                                      detector, from_s=from_s)
-            # Anything thrown since the previous end closed is this end's;
-            # anything earlier on this panel is not.
-            deliveries = [
-                d for d in delivery.find_deliveries(
-                    seq, view_x_limit_m=setup.view_x_limit_m,
-                    view_y_min_m=setup.view_y_min_m,
-                )
-                if d.t_enter >= from_s
-            ]
-            # Doubles: every delivery of the end comes after its placement is
-            # complete, so find that moment before anything is counted.
-            placed = (placement.find(seq, from_s, end.end_s)
-                      if fmt.placed_per_team else None)
-            deliveries, before_placement = placement.exclude(deliveries, placed)
-            # The first pass has to be strict or sweepers count as stones. Once
-            # it is in hand the rules say where the gaps are and what colour
-            # belongs in them, so a second look can be far more permissive
-            # without letting phantoms in everywhere else.
-            gap_from = (end.start_s if placed is None
-                        else max(end.start_s, placed.t_s + placement.SETTLE_S))
-            gaps = secondpass.gaps_to_search(
-                deliveries, gap_from, end.end_s,
-                per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
-            recovered, recovered_early = placement.exclude(
-                secondpass.search(seq, gaps, deliveries), placed)
-            if recovered:
-                deliveries = sorted(
-                    deliveries + recovered, key=lambda d: d.t_enter
-                )
-            # The other panel is the thrower's house, and every delivery
-            # crosses it on the way out. A throw seen there with no arrival
-            # here is a hogged rock -- the one kind of miss this house can
-            # never show, and it puts every later thrower off by one. Paired
-            # only now, after the second pass: an arrival the gap search
-            # recovers is still an arrival, and a release standing in for it
-            # would have hidden the very gap that finds it.
-            far = read_setups[OTHER_HOUSE[end.house]]
-            far_seq = list(sequence.detect_span(
-                read_path, far, from_s, end.end_s,
-                release.RELEASE_FPS, detector))
-            releases, thrown_by, unaccounted = release.find_and_pair(
-                far_seq, far.view_y_min_m, deliveries, seq,
-                since=from_s if placed is None else max(from_s, placed.t_s),
-                view_x_limit_m=far.view_x_limit_m,
-            )
-            if unaccounted:
-                deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)
-            # Audit what detection actually offered, before the rules trim
-            # it -- that is the honest measure of how well detection did.
-            audit = endcheck.check(deliveries, per_end=fmt.delivered_per_end,
-                                   per_team=fmt.delivered_per_team)
-            # An end holds its format's deliveries thrown strictly in turn, so
-            # a longer or doubled candidate list is provably wrong. Without
-            # this an over-counted end does not merely score badly, it cannot
-            # be built at all: the last shot has no thrower.
-            # Stones moved while the house is cleared after the last shot
-            # look like deliveries in every way but one: nothing released them.
-            kept = fit.fit_end(fit.drop_clearing(
-                deliveries, seq, fit.released_ids(thrown_by, unaccounted)),
-                paired=fit.paired_ids(thrown_by),
-                per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
-            dropped = len(deliveries) - len(kept)
-            # The arrangement as it stood when rock 1 was on its way: a power
-            # play set up in two steps shows its final shape here.
-            if placed is not None and kept:
-                placed = placement.read_before(seq, placed, kept[0].t_enter)
-            # The next end's run-up begins when this end's last rock stopped.
-            prev_end_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
-            shots = shots_mod.from_deliveries(
-                kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()},
-                fmt=fmt,
-                before=placed.seed if placed is not None else (),
-                base=placement.fill_base(placed, fmt))
-            # Only now that the rules have settled which rocks exist: the
-            # clock wants a tee crossing for each of them, which is a far
-            # weaker thing to ask of the same footage than a release was, and
-            # cannot reach back into the shot list.
-            thinking.time_shots(shots, far_seq, far.view_y_min_m)
-            if sideviews is not None:
-                hogtime.time_hog_crossings(
-                    shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
-                # The skip's target broom, from the camera that sees the
-                # destination house -- the OTHER camera from hogtime's.
-                broomtime.time_target_brooms(
-                    shots, path, sideviews[hogtime.CAMERA_FOR[end.house]],
-                    model=broom_model)
-                # Where the rock's thrown line passed the skip's broom -- the
-                # hog-crossing camera for the line, the destination camera for
-                # where it went. Needs hogtime's crossing and broomtime's broom.
-                # In doubles, a rock nobody held a broom for is measured too.
-                n_lines = linetime.time_lines(
-                    shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
-                    sideviews[hogtime.CAMERA_FOR[end.house]], model=line_model,
-                    without_broom=fmt.line_without_broom)
-                progress(f"    end {end.number}: lines {n_lines}/{len(shots)}")
-            # Stage 3, the destination hog line, from that panel's painted line.
-            # In this block ``setup`` is the destination panel and ``far`` is
-            # the THROWING panel -- far from the house being played to.
-            fartime.time_far_crossings(shots, near_line=far.hog_line,
-                                       far_line=setup.hog_line)
-            built = timeline.build_end(
-                end.number, end.house, end.start_s, end.end_s, shots,
-                board_score=(None if scores is None
-                             else scores.per_end.get(end.number)),
-                fmt=fmt,
-                placement=placed,
-            )
-            if built.get("placement") is not None:
-                built["placement"]["candidates_dropped"] = (
-                    len(before_placement) + len(recovered_early))
-            built["deliveries_seen"] = len(deliveries)
-            built["releases_seen"] = len(releases)
-            built["releases_unaccounted"] = len(unaccounted)
-            built["hogged"] = sum(1 for d in unaccounted if d.reason == release.REASON)
-            built["deliveries_recovered"] = len(recovered)
-            built["deliveries_dropped"] = dropped
-            built["thrown"] = audit.thrown
-            built["complete"] = audit.complete
-            built["problems"] = audit.problems
-            if fmt.placed_per_team and (placed is None or not placed.complete):
-                # Say so when the placement stage had to fall back: the hammer
-                # then comes from rock 1, or rock 1's fill base is one short.
-                built["problems"] = list(audit.problems) + [
-                    "no placement found; hammer read from the first rock"
-                    if placed is None else "the placement's guard was not seen"]
-            built["missed_after"] = audit.missed_after
-            built["detection_confidence"] = round(audit.confidence, 3)
+            built, prev_end_s = build_one_end(
+                ctx, game, end, prev_end_s,
+                board_score=(None if board is None
+                             else board.scores.per_end.get(end.number)))
             out_ends.append(built)
             done_ends += 1
-            p = built.get("placement")
-            placed_note = "" if not fmt.placed_per_team else (
-                "no placement, " if not p else
-                f"placement {p['hammer']}"
-                + (f" power play {p['power_play']}" if p["power_play"] else "") + ", ")
-            n_before = (p or {}).get("candidates_dropped", 0)
-            progress(
-                f"    {len(kept)}/{fmt.delivered_per_end} deliveries "
-                f"(R{audit.thrown['red']} Y{audit.thrown['yellow']} offered"
-                f"{f', +{len(recovered)} recovered' if recovered else ''}"
-                f"{f', -{dropped} against the rules' if dropped else ''}"
-                f"{f', -{n_before} before placement' if n_before else ''}), "
-                + placed_note
-                + (f"board says {built['score']}" if built["score"] is not None
-                   else f"board silent, detected {built['detected_score']}")
-            )
-        # The scores above were attached by *detected* end number, which is
-        # the board's real end number only when nothing but the game was
-        # detected. Now that the ends are built we can see the practice
-        # signature -- a leading end short of sixteen rocks -- and ask whether
-        # the board accounted for every block we found. Doubtful means the
-        # scores come back off the ends: a chart that says the board could not
-        # be placed is honest, and one end out of step is not. The block keeps
-        # "per_end", so a start time typed later puts them back (trim_to_start).
-        if board_block is not None and not timeline.settle_board_scores(
-                out_ends, board_block, got.board.highest_end(), fmt=fmt):
-            progress(f"  game {game.index + 1}: board scores withheld -- "
-                     "leading practice, and the board is short of the ends")
-            scores = None
-        out_game = timeline.build_game(
-            game.index, game.start_s, game.end_s, out_ends, board=scores,
-            fmt=fmt,
-        )
-        # The board's word against the detector's, which is the only thing
-        # that can tell a misread board from a correct one. None while the
-        # board left an end unread: there is nothing to compare.
-        out_game["scoreboard"] = board_block
-        if board_block is not None:
-            final = board_block.get("final")
-            agrees = (
-                None if final is None
-                else final == out_game["detected"]["final"]
-            )
-            out_game["scoreboard"]["agrees_with_detection"] = agrees
-            for end in out_game["ends"]:
-                end["scoreboard_agrees"] = agrees
-        out_games.append(out_game)
+        out_games.append(finish_game(game, out_ends, board, fmt, progress))
     phase("detect", 1.0, "all ends detected")
     phase("scoreboard", 1.0, "skipped" if skip_scoreboard else "scoreboard read")
     phase("rules", 1.0, "timeline built")
