@@ -79,6 +79,25 @@ def _side_calibration(sideviews) -> dict:
     return out
 
 
+def calibration_block(setups, sideviews) -> dict:
+    """The timeline's record of how each panel and side view was calibrated."""
+    return {
+        **{
+            name: {
+                "rect": list(s.rect),
+                "px_per_m": round(s.calib.px_per_m, 3),
+                "center_px": [round(v, 2) for v in s.calib.center_px],
+                "residual_m": round(s.calib.residual_m, 5),
+                "flipped": s.calib.flipped,
+                "hog_line": None if s.hog_line is None else s.hog_line.to_json(),
+                "hog_line_error": s.hog_line_error,
+            }
+            for name, s in setups.items()
+        },
+        **_side_calibration(sideviews),
+    }
+
+
 def _proxy_setups(setups, strip):
     """The same calibrations, with panel rects moved into proxy coordinates.
 
@@ -645,21 +664,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     phase("scoreboard", 1.0, "skipped" if skip_scoreboard else "scoreboard read")
     phase("rules", 1.0, "timeline built")
 
-    calibration = {
-        **{
-            name: {
-                "rect": list(s.rect),
-                "px_per_m": round(s.calib.px_per_m, 3),
-                "center_px": [round(v, 2) for v in s.calib.center_px],
-                "residual_m": round(s.calib.residual_m, 5),
-                "flipped": s.calib.flipped,
-                "hog_line": None if s.hog_line is None else s.hog_line.to_json(),
-                "hog_line_error": s.hog_line_error,
-            }
-            for name, s in setups.items()
-        },
-        **_side_calibration(sideviews),
-    }
+    calibration = calibration_block(setups, sideviews)
     check = timeline.format_check(out_games, fmt)
     return timeline.build_document(
         video_id=info.video_id,

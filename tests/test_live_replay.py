@@ -71,3 +71,20 @@ class TestReplayRecording:
         time.sleep(1.0)
         rec.stop()
         assert not rec.ended()
+
+
+class TestTheVideoPipeline:
+    def test_a_picture_with_no_panels_is_a_calibration_failure_to_wait_out(self, clip):
+        from curling_score.geometry.calibrate import CalibrationError
+        from curling_score.live import session as live
+
+        pipe = live.VideoPipeline(progress=lambda m: None)
+        with pytest.raises(CalibrationError):
+            pipe.calibrate(clip, until_s=10.0)
+
+    def test_too_little_footage_is_a_calibration_failure_too(self, clip):
+        from curling_score.geometry.calibrate import CalibrationError
+        from curling_score.live import session as live
+
+        with pytest.raises(CalibrationError):
+            live.VideoPipeline(progress=lambda m: None).calibrate(clip, until_s=0.5)

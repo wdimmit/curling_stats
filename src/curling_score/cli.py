@@ -579,6 +579,56 @@ def _add_sideframes(sub):
     p.set_defaults(func=_sideframes)
 
 
+def _live_replay(args) -> int:
+    """A cached video played back as a live stream, through the live session:
+    each settled end is built and published as it would be on a league night.
+    Every published document is kept, numbered, beside the latest one."""
+    import time
+
+    from curling_score.live import replay, runner, session as live
+
+    out = Path(args.out)
+    (out / "publishes").mkdir(parents=True, exist_ok=True)
+    weights = None if (args.weights or "").lower() in ("", "none", "classical") \
+        else args.weights
+    detector, broom_model, line_model = analyze_mod.load_models(
+        weights, args.imgsz, args.device, skip_longview=args.no_longview,
+        skip_line=args.no_line, progress=print)
+    rec = replay.ReplayRecording(args.video, out / "recording.ts",
+                                 speed=args.speed).start()
+    t0, count = time.monotonic(), [0]
+
+    def publish(doc):
+        count[0] += 1
+        doc["live"]["wall_s"] = round(time.monotonic() - t0, 1)
+        analyze_mod.write(doc, out)
+        (out / "publishes" / f"{count[0]:03d}.json").write_text(json.dumps(doc))
+        ends = [len(g["ends"]) for g in doc["games"]]
+        print(f"[{doc['live']['wall_s']:7.1f} s] published {ends} ends, "
+              f"recorded to {doc['live']['recorded_s']} s"
+              + ("" if doc["live"]["in_progress"] else " -- final"))
+
+    vid = Path(args.video).stem
+    try:
+        url = source.canonical_url(vid)
+    except ValueError:
+        url = str(args.video)
+    session = live.LiveSession(
+        video_id=vid, url=url, recording=rec, fmt=format_mod.by_name(args.format),
+        pipeline=live.VideoPipeline(weights=weights, skip_longview=args.no_longview,
+                                    line=line_model is not None, progress=print),
+        sheet=args.sheet,
+        models=live.Models(detector=detector, broom_model=broom_model,
+                           line_model=line_model),
+        publish=publish, progress=print)
+    try:
+        runner.run_session(session)
+    finally:
+        rec.stop()
+    print(f"\n{count[0]} publishes; latest at {out / 'timeline.json'}")
+    return 0
+
+
 def main(argv=None) -> int:
     from curling_score.diagnostics import enable_stack_dumps
 
@@ -621,6 +671,24 @@ def main(argv=None) -> int:
                    help="where videos, proxies and detections are kept "
                         "(default: $CURLING_SCORE_CACHE or ~/.cache/curling_score)")
     p.set_defaults(func=_analyze)
+
+    p = sub.add_parser("live-replay",
+                       help="replay a cached video as a live stream, one end at a time")
+    p.add_argument("video", help="a cached video file")
+    p.add_argument("--out", default="out-live", help="output directory (default: out-live)")
+    p.add_argument("--speed", type=float, default=1.0,
+                   help="playback speed against real time (default: 1)")
+    p.add_argument("--weights", default=_default_weights(),
+                   help="a trained YOLO model to detect with, or 'none'")
+    p.add_argument("--imgsz", type=int, default=448)
+    p.add_argument("--device", default=None)
+    p.add_argument("--sheet", type=int, default=None)
+    p.add_argument("--format", choices=sorted(format_mod.FORMATS), default="fours")
+    p.add_argument("--no-longview", action="store_true",
+                   help="skip the side views (hog times, brooms, lines)")
+    p.add_argument("--no-line", action="store_true",
+                   help="skip measuring where each rock's line passed the broom")
+    p.set_defaults(func=_live_replay)
 
     _add_harvest(sub)
     _add_sideframes(sub)

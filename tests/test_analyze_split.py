@@ -171,3 +171,16 @@ class TestCalibratingFromFrames:
             fake_geometry, skip_longview=False, progress=said.append)
         assert sideviews is None and set(setups) == {"top", "bottom"}
         assert any("no splits" in m for m in said)
+
+
+class TestTheCalibrationBlock:
+    def test_each_panel_is_described_as_the_timeline_carries_it(self):
+        top = panel(False)
+        block = analyze.calibration_block({"top": top, "bottom": panel(True)}, None)
+        assert set(block) == {"top", "bottom"}
+        assert block["top"] == {
+            "rect": [0, 0, 297, 514], "px_per_m": 76.0, "center_px": [150.0, 160.0],
+            "residual_m": 0.001, "flipped": False, "hog_line": None,
+            "hog_line_error": None,
+        }
+        assert block["bottom"]["flipped"] is True
