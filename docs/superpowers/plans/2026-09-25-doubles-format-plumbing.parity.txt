@@ -135,14 +135,22 @@ noise floor for these three videos. (Flagged as a concern below.)
 ------------------------------------------------------------------------------
 3) base-a vs head (full pipeline, the parity question)
 ------------------------------------------------------------------------------
-Result: for VXU9xwmugRg and hOKZoeJNTpM, the differing paths and values are
-BYTE-IDENTICAL, line for line, to comparison (1)'s base-a-vs-base-b diff
-(verified with `diff` between the saved outputs). For AEqLTgM25Tc, base-a vs
-head is `identical` outright (head matches base-a exactly, avoiding the
-divergence base-b had). In other words: head's output for every video is one
-of the two outcomes already observed between two BASE runs. No new or
-different divergence appears anywhere. Tasks 1-6 introduce zero attributable
-change to four-player output beyond the pre-existing noise floor.
+Result: for VXU9xwmugRg and hOKZoeJNTpM, the differing paths and values match,
+line for line, comparison (1)'s base-a-vs-base-b diff (verified with `diff`
+between the saved outputs). For AEqLTgM25Tc, base-a vs head is `identical`
+outright (head matches base-a exactly, avoiding the divergence base-b had).
+
+CAVEAT ON THIS COMPARISON: compare_docs.py caps its output at 20 differing
+paths (`diff(..., limit=20)`). VXU9xwmugRg's diff hits that cap in BOTH
+comparison (1) and this one ("20+ differences"), so the match between the two
+20-line lists shows they agree on the first 20 paths, not that the two full,
+uncapped diffs are identical -- there could be more differences past the cap
+in one but not the other. That gap is closed by comparison (5) below, which
+compares head directly against base-b (no intermediary, no reliance on two
+capped lists agreeing) and comes back `identical` outright for both
+VXU9xwmugRg and hOKZoeJNTpM -- a true uncapped result. AEqLTgM25Tc's
+base-a-vs-head `identical` above was never capped (zero differences found,
+not a truncated list), so it was always solid evidence on its own.
 
 == VXU9xwmugRg
 .games[0].ends[0].end_s: 860.0 != 865.0
@@ -191,14 +199,66 @@ identical
 identical
 
 ------------------------------------------------------------------------------
+5) base-b vs head (full pipeline, direct and uncapped)
+------------------------------------------------------------------------------
+Added in fix round 1, in response to review: comparison (3)'s "byte-identical"
+claim for VXU9xwmugRg rested on two lists both truncated at compare_docs.py's
+20-path cap, which shows agreement on the first 20 paths but does not rule
+out further, unseen differences past the cap in one list but not the other.
+This comparison closes that gap: it compares head directly against base-b
+(no intermediary, no capped-list-vs-capped-list reasoning), using the same
+chmod-then-compare method as the other comparisons
+(`docker run --rm --user root -v .../out:/mnt curling-worker:local chmod -R
+a+rX /mnt`, then `scripts/doubles/fours_parity.sh compare base-b head`).
+
+Result: `identical` outright for VXU9xwmugRg and hOKZoeJNTpM -- a true,
+uncapped match, not just agreement on a truncated prefix. AEqLTgM25Tc differs,
+as expected: head equals base-a on this video (comparison 3's `identical`,
+itself never capped), and base-b is the run that diverged from base-a
+(comparison 1), so head-vs-base-b reproduces that same known divergence.
+
+== VXU9xwmugRg
+identical
+== hOKZoeJNTpM
+identical
+== AEqLTgM25Tc
+.games[0].ends[1].end_s: 1465.0 != 1470.0
+.games[0].ends[1].final_stones: 2 items != 7
+.games[0].ends[1].final_stones[0].confidence: 0.936 != 0.945
+.games[0].ends[1].final_stones[0].distance_to_tee: 2.0419 != 1.0032
+.games[0].ends[1].final_stones[0].in_house: False != True
+.games[0].ends[1].final_stones[0].x: -1.6243 != 0.5796
+.games[0].ends[1].final_stones[0].y: -1.2374 != -0.8188
+.games[0].ends[1].final_stones[1].confidence: 0.93 != 0.925
+.games[0].ends[1].final_stones[1].distance_to_tee: 1.1936 != 0.3941
+.games[0].ends[1].final_stones[1].x: 0.6374 != -0.3936
+.games[0].ends[1].final_stones[1].y: -1.0091 != -0.0207
+.games[0].ends[1].scored_from_shot: 16 != 15
+.games[0].ends[1].shots[15].entry_speed_m_s: 1.089 != 0.0
+.games[0].ends[1].shots[15].house_delta.moved: 1 items != 0
+.games[0].ends[1].shots[15].house_delta.removed: 5 items != 7
+.games[0].ends[1].shots[15].house_delta.removed[1].color: 'yellow' != 'red'
+.games[0].ends[1].shots[15].house_delta.removed[1].x: -0.9879 != -0.3936
+.games[0].ends[1].shots[15].house_delta.removed[1].y: -0.383 != -0.0207
+.games[0].ends[1].shots[15].house_delta.removed[2].color: 'red' != 'yellow'
+.games[0].ends[1].shots[15].house_delta.removed[2].x: -1.7957 != -0.9879
+20+ differences
+
+------------------------------------------------------------------------------
 Verdict
 ------------------------------------------------------------------------------
-Four-player output is unchanged by Tasks 1-6. Every difference seen between
-BASE and HEAD (comparison 3) is also present, path-for-path and value-for-
-value, between two independent runs of BASE alone (comparison 1) -- it is
-pre-existing GPU/model nondeterminism in the longview/line/scoreboard passes,
-not a regression. With that nondeterminism disabled (--no-longview), HEAD and
-BASE match exactly (comparison 4).
+Four-player output is unchanged by Tasks 1-6, resting on the uncapped results:
+head equals base-b outright (comparison 5, `identical`) for VXU9xwmugRg and
+hOKZoeJNTpM; head equals base-a outright (comparison 3, `identical`, never
+capped) for AEqLTgM25Tc; and head-nl equals base-nl-a outright (comparison 4,
+`identical` x3) for all three videos. Every one of those matches is either an
+outright `identical` or, in the base-b case, a fresh two-way comparison run
+specifically to avoid resting on two truncated 20-path lists agreeing by
+coincidence. Comparison (3)'s capped byte-for-byte match against base-a is
+consistent with this but was not, on its own, conclusive for VXU9xwmugRg --
+comparison (5) is what makes it so. With the noisiest passes disabled
+(--no-longview), HEAD and BASE match exactly and without qualification
+(comparison 4).
 
 Caveat: the noise floor did not vanish under --no-longview as the brief
 expected (comparison 2) -- the same end-boundary and AEqLTgM25Tc scoring jitter
