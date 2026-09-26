@@ -940,3 +940,99 @@ class TestReorderingByFormat:
         kept = got["games"][0]["ends"]
         assert len(kept) == 1 and kept[0]["number"] == 1
         assert kept[0]["shots"][8]["label"] == "1st end, A's second rock"
+
+
+from curling_score.game import placement as PL
+
+
+PLACED = PL.Placement(t_s=100.0, house=("yellow", 0.01, -0.5), guard=("red", 0.0, 3.4),
+                      power_play=None)
+
+
+class TestPlacementInTheTimeline:
+    def _shots(self, n=4, first="red"):
+        other = "yellow" if first == "red" else "red"
+        return [shot(i, first if i % 2 else other, [], t=100.0 + 10 * i) for i in range(1, n + 1)]
+
+    def test_a_doubles_end_records_its_placement_and_hammer(self):
+        end = timeline.build_end(1, "top", 0.0, 900.0, self._shots(), fmt=F.DOUBLES,
+                                 placement=PLACED)
+        p = end["placement"]
+        assert (p["hammer"], p["guard"]["color"], p["power_play"], p["complete"]) == \
+               ("yellow", "red", None, True)
+        assert (end["hammer"], end["hammer_source"]) == ("yellow", "placement")
+        assert p["agrees_with_shots"] is True
+
+    def test_a_first_shot_of_the_wrong_colour_disagrees(self):
+        end = timeline.build_end(1, "top", 0.0, 900.0, self._shots(first="yellow"),
+                                 fmt=F.DOUBLES, placement=PLACED)
+        assert end["placement"]["agrees_with_shots"] is False
+        assert end["hammer"] == "yellow"          # the placement, not the first shot
+
+    def test_a_doubles_end_with_no_placement_says_so(self):
+        end = timeline.build_end(1, "top", 0.0, 900.0, self._shots(), fmt=F.DOUBLES)
+        assert end["placement"] is None
+        assert (end["hammer"], end["hammer_source"]) == ("yellow", "first_shot")
+
+    def test_a_fours_end_gains_no_keys(self):
+        end = timeline.build_end(1, "top", 0.0, 900.0, self._shots())
+        assert "placement" not in end and "hammer_source" not in end
+
+    def test_power_plays_are_counted_per_team(self):
+        pp = PL.Placement(t_s=1.0, house=("red", -1.28, 0.16), guard=("yellow", -0.93, 3.56),
+                          power_play="left")
+        ends = [timeline.build_end(n, "top", 0.0, 1.0, self._shots(), fmt=F.DOUBLES,
+                                   placement=pp if n == 4 else PLACED) for n in range(1, 5)]
+        game = timeline.build_game(0, 0.0, 1.0, ends, fmt=F.DOUBLES)
+        assert game["power_plays"] == {"red": [4], "yellow": []}
+        assert game["power_play_problems"] == []
+
+    def test_two_power_plays_by_one_team_are_a_problem(self):
+        pp = PL.Placement(t_s=1.0, house=("red", -1.28, 0.16), guard=("yellow", -0.93, 3.56),
+                          power_play="left")
+        ends = [timeline.build_end(n, "top", 0.0, 1.0, self._shots(), fmt=F.DOUBLES,
+                                   placement=pp if n in (2, 9) else PLACED) for n in range(1, 10)]
+        game = timeline.build_game(0, 0.0, 1.0, ends, fmt=F.DOUBLES)
+        assert game["power_plays"]["red"] == [2, 9]
+        assert len(game["power_play_problems"]) == 2   # a second one, and one in an extra end
+
+    def test_a_fours_game_has_no_power_plays(self):
+        game = timeline.build_game(0, 0.0, 1.0, [timeline.build_end(1, "top", 0.0, 1.0, [])])
+        assert "power_plays" not in game and "power_play_problems" not in game
+
+
+def _game(ends):
+    return {"index": 0, "ends": ends}
+
+
+class TestFormatCheck:
+    def test_doubles_with_placements_looks_like_doubles(self):
+        ends = [{"placement": {"hammer": "red"}, "deliveries_seen": 10, "thrown": {"red": 5, "yellow": 5}, "shots": []}] * 3
+        c = timeline.format_check([_game(ends)], F.DOUBLES)
+        assert (c["looks_like"], c["placement_found"], c["ends"]) == ("doubles", 3, 3)
+
+    def test_doubles_with_no_placements_looks_like_fours(self):
+        ends = [{"placement": None, "deliveries_seen": 16, "thrown": {"red": 8, "yellow": 8}, "shots": []}] * 3
+        assert timeline.format_check([_game(ends)], F.DOUBLES)["looks_like"] == "fours"
+
+    def test_fours_with_short_ends_looks_like_doubles(self):
+        ends = [{"deliveries_seen": 10, "thrown": {"red": 5, "yellow": 5}, "shots": []}] * 4
+        assert timeline.format_check([_game(ends)], F.FOURS)["looks_like"] == "doubles"
+
+    def test_fours_with_full_ends_looks_like_fours(self):
+        ends = [{"deliveries_seen": 16, "thrown": {"red": 8, "yellow": 8}, "shots": []}] * 4
+        assert timeline.format_check([_game(ends)], F.FOURS)["looks_like"] == "fours"
+
+    def test_a_doubles_document_carries_its_check(self):
+        check = {"ends": 3, "median_offered": 10, "looks_like": "doubles", "placement_found": 3}
+        doc = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[],
+                                      fmt=F.DOUBLES, check=check)
+        assert doc["format"]["check"] == check and "format_warning" not in doc
+
+    def test_a_fours_document_is_warned_only_when_it_looks_like_doubles(self):
+        quiet = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[],
+                                        check={"ends": 4, "median_offered": 16, "looks_like": "fours"})
+        assert "format_warning" not in quiet and "format" not in quiet
+        loud = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[],
+                                       check={"ends": 4, "median_offered": 10, "looks_like": "doubles"})
+        assert "doubles" in loud["format_warning"] and "format" not in loud

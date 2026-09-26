@@ -20,6 +20,9 @@ SCHEMA_VERSION = 7
 # called and thrown you have to start this far back from where we first see it.
 VIDEO_LEAD_IN_S = 10.0
 
+# A doubles game is scheduled for eight ends (R17); an end after that is extra.
+SCHEDULED_ENDS = 8
+
 
 def _broom(b):
     """A `broomtime.TargetBroom` in house metres, or None."""
@@ -85,7 +88,26 @@ def _delta(delta) -> dict | None:
             for k in ("added", "removed", "moved")}
 
 
-def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None) -> dict:
+def _placement(placed, shots) -> dict | None:
+    """A `placement.Placement` for output, or None when none was found."""
+    if placed is None:
+        return None
+    pos = lambda s: None if s is None else {
+        "color": s[0], "x": round(float(s[1]), 3), "y": round(float(s[2]), 3)}
+    first = shots[0] if shots else None
+    agrees = None
+    if first is not None and not first.missing and not first.color_inferred:
+        # The guard's team throws first, so a first rock of the hammer's colour
+        # contradicts the placement read (or the shot list).
+        agrees = first.color != placed.hammer
+    return {"t_s": round(float(placed.t_s), 2), "hammer": placed.hammer,
+            "house": pos(placed.house), "guard": pos(placed.guard),
+            "power_play": placed.power_play, "complete": placed.complete,
+            "agrees_with_shots": agrees}
+
+
+def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None,
+             placement=None) -> dict:
     """One end: its shots, the house they left, and the board's score for it.
 
     ``board_score`` is what the wall board says this end was; ``None`` means
@@ -99,6 +121,9 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None) 
 
     ``fmt`` is the :class:`format.GameFormat` this end was played under;
     ``None`` means fours, which is every chart made before doubles existed.
+
+    ``placement`` is doubles' positioned stones (`placement.Placement`); it
+    names the hammer.
     """
     fmt = fmt or format_mod.FOURS
     shots = list(shots)
@@ -199,7 +224,7 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None) 
             }
         )
 
-    return {
+    out = {
         "number": number,
         "house": house,
         "start_s": round(float(start_s), 2),
@@ -230,6 +255,14 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None) 
         "final_stones": [_stone(d) for d in final],
         "scoreboard_agrees": None,
     }
+    if fmt.placed_per_team:
+        # The house stone's team has the hammer: observed directly, where
+        # reading it from the first rock depends on having seen rock 1.
+        out["placement"] = _placement(placement, shots)
+        if placement is not None:
+            out["hammer"] = placement.hammer
+        out["hammer_source"] = "first_shot" if placement is None else "placement"
+    return out
 
 
 def build_game(index, start_s, end_s, ends, board=None, fmt=None) -> dict:
@@ -304,7 +337,7 @@ def build_game(index, start_s, end_s, ends, board=None, fmt=None) -> dict:
         anomalies += int(t.get("anomalies", 0) or 0)
         splits += int(end.get("splits_measured", 0) or 0)
 
-    return {
+    out = {
         "index": index,
         "start_s": round(float(start_s), 2),
         "end_s": round(float(end_s), 2),
@@ -328,10 +361,58 @@ def build_game(index, start_s, end_s, ends, board=None, fmt=None) -> dict:
         "hammer_consistent": consistent,
         "ends": ends,
     }
+    if (fmt or format_mod.FOURS).placed_per_team:
+        plays = {c: [] for c in rules.COLORS}
+        for end in ends:
+            p = end.get("placement") or {}
+            if p.get("power_play"):
+                plays[p["hammer"]].append(end["number"])
+        out["power_plays"] = plays
+        # R17: one power play per team per game, and none in an extra end.
+        problems = []
+        for c, used in plays.items():
+            if len(used) > 1:
+                problems.append(f"{c} used {len(used)} power plays (ends {used}); a team has one")
+            late = [n for n in used if n > SCHEDULED_ENDS]
+            if late:
+                problems.append(f"{c} used a power play in an extra end ({late})")
+        out["power_play_problems"] = problems
+    return out
+
+
+# The format check (it flags, never overrides). A doubles analysis whose
+# placement shows in fewer than this share of ends, or whose ends offer
+# fourteen or more rocks, looks like fours.
+DOUBLES_MIN_PLACED = 0.4
+FOURS_MIN_OFFERED = 14
+# A fours analysis looks like doubles when its ends offer twelve or fewer
+# rocks and three in four offer six or fewer a side.
+DOUBLES_MAX_OFFERED = 12
+DOUBLES_MAX_A_SIDE = 6
+DOUBLES_SHARE = 0.75
+
+
+def format_check(games, fmt) -> dict:
+    """Whether the ends look like the format they were analysed as."""
+    ends = [e for g in games for e in g.get("ends", [])]
+    offered = sorted(int(e.get("deliveries_seen", len(e.get("shots") or []))) for e in ends)
+    median = offered[len(offered) // 2] if offered else 0
+    out = {"ends": len(ends), "median_offered": median}
+    if fmt.placed_per_team:
+        found = sum(1 for e in ends if e.get("placement"))
+        doubles = bool(ends) and found / len(ends) >= DOUBLES_MIN_PLACED \
+            and median < FOURS_MIN_OFFERED
+        return {**out, "placement_found": found,
+                "looks_like": "doubles" if doubles else "fours"}
+    small = sum(1 for e in ends
+                if max((e.get("thrown") or {}).values(), default=99) <= DOUBLES_MAX_A_SIDE)
+    doubles = bool(ends) and median <= DOUBLES_MAX_OFFERED \
+        and small / len(ends) >= DOUBLES_SHARE
+    return {**out, "looks_like": "doubles" if doubles else "fours"}
 
 
 def build_document(video_id, url, sheet, duration_s, calibration, games,
-                   window=None, processing_version=None, fmt=None) -> dict:
+                   window=None, processing_version=None, fmt=None, check=None) -> dict:
     """The whole analysis, ready to write to ``timeline.json``.
 
     ``window`` is the ``(start_s, end_s)`` of the stream that was analysed when
@@ -377,6 +458,13 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
         # Written only when it says something: a four-player timeline stays
         # byte-for-byte what it was, and a missing block reads as fours.
         doc["format"] = fmt.to_json()
+        if check is not None:
+            doc["format"]["check"] = check
+    elif check is not None and check.get("looks_like") != fmt.name:
+        doc["format_warning"] = (
+            f"analysed as {fmt.name}, but the ends look like "
+            f"{check['looks_like']}: a median of {check['median_offered']} rocks "
+            f"offered across {check['ends']} ends")
     return doc
 
 
