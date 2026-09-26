@@ -35,7 +35,13 @@ export const { readOnly: READ_ONLY, review: REVIEW, merge: MERGE } = config;
 
 export const identity = core.identity;
 export const keyFor = core.keyFor;
-export const layout = e => core.layout(game(), e, state.overrides);
+export const formatOf = core.formatOf;
+export const throwInfo = core.throwInfo;
+export const shotLabel = core.shotLabel;
+export const roleText = core.roleText;
+export const throwerText = core.throwerText;
+export const endKey = core.endKey;
+export const layout = e => core.layout(game(), e, state.overrides, core.formatOf(state.doc));
 export const mergedShots = e => layout(e).shots;
 export const merge = (g, e, s) => core.merge(g, e, s, state.overrides);
 export const rawShot = () => layout(end()).raws[state.si] ?? null;

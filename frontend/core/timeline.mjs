@@ -11,8 +11,9 @@
  * from read a module-global `state`, which made every caller a hidden
  * dependency and made one `render()` cost O(ends x shots) relayouts.
  */
-import { POSITIONS, TYPICAL_GAP_S } from "./constants.mjs";
+import { TYPICAL_GAP_S } from "./constants.mjs";
 import { playerHacks } from "./line.mjs";
+import { FOURS, formatOf, ordinalOf, shotLabel, throwInfo } from "./format.mjs";
 
 /* A shot is known by the number detection gave it. Moving one renumbers the
  * end, so `id` keeps the original where that has happened. */
@@ -34,15 +35,39 @@ export function merge(g, e, s, overrides) {
   return { ...s, ...patch, corrected: true };
 }
 
-export const throwInfo = n => {
-  const k = (n + 1) >> 1;   // this team's k-th stone
-  return { has_hammer: n % 2 === 0, thrower_slot: (k + 1) >> 1, rock_of_player: 2 - (k % 2) };
-};
+// Kept for existing callers: they import `ordinal` from here, not format.mjs.
+export const ordinal = ordinalOf;
 
-export const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th"
-  : { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th");
+/* The key of an end-level correction: a doubles team swapping roles. */
+export const endKey = (g, e) => `${g.index}.${endIdentity(e)}`;
 
-export function renumber(shots, endNo, fixed) {
+/* Which teams swapped roles this end. Only a format whose two players can
+ * trade roles honours it, and only true counts -- turning a swap off is the
+ * same as never having set it. Mirrors timeline._swapped. */
+export function swappedOf(g, e, overrides, fmt = FOURS) {
+  if (!fmt.swappable) return {};
+  const want = overrides[endKey(g, e)]?.roles_swapped;
+  if (!want || typeof want !== "object") return {};
+  const out = {};
+  for (const c of ["red", "yellow"]) if (want[c] === true) out[c] = true;
+  return out;
+}
+
+/* Who threw each rock of an end whose order did not change. Mirrors
+ * timeline._assign_throwers. */
+export function assignThrowers(shots, endNo, fmt, swapped) {
+  for (const s of shots) {
+    if (!Number.isInteger(s.number) || s.number < 1 || s.number > fmt.delivered_per_end) continue;
+    const swap = !!swapped[s.color];
+    const t = throwInfo(s.number, fmt, swap);
+    s.thrower_slot = t.thrower_slot;
+    s.position = fmt.positions[t.thrower_slot - 1];
+    s.rock_of_player = t.rock_of_player;
+    s.label = shotLabel(endNo, s.number, fmt, swap);
+  }
+}
+
+export function renumber(shots, endNo, fixed, fmt = FOURS, swapped = {}) {
   const anchors = [];
   shots.forEach((s, i) => {
     if (!s.color_inferred || fixed.has(identity(s))) anchors.push([i, s.color]);
@@ -50,17 +75,18 @@ export function renumber(shots, endNo, fixed) {
   shots.forEach((s, i) => {
     s.id = identity(s);
     s.number = i + 1;
-    const t = throwInfo(i + 1);
-    s.has_hammer = t.has_hammer;
-    s.thrower_slot = t.thrower_slot;
-    s.position = POSITIONS[t.thrower_slot - 1];
-    s.rock_of_player = t.rock_of_player;
-    s.label = `${ordinal(endNo)} end, ${s.position}'s ${t.rock_of_player === 1 ? "first" : "second"} rock`;
     if (s.color_inferred && anchors.length && !fixed.has(s.id)) {
       let best = anchors[0];
       for (const a of anchors) if (Math.abs(a[0] - i) < Math.abs(best[0] - i)) best = a;
       s.color = (i - best[0]) % 2 === 0 ? best[1] : (best[1] === "red" ? "yellow" : "red");
     }
+    const swap = !!swapped[s.color];
+    const t = throwInfo(i + 1, fmt, swap);
+    s.has_hammer = t.has_hammer;
+    s.thrower_slot = t.thrower_slot;
+    s.position = fmt.positions[t.thrower_slot - 1];
+    s.rock_of_player = t.rock_of_player;
+    s.label = shotLabel(endNo, i + 1, fmt, swap);
   });
 }
 
@@ -82,7 +108,7 @@ export function guessTimes(shots) {
  * that order and renumbered -- thrower, label and hammer follow the number,
  * and a blank's colour follows the alternation around it. `raws` are the
  * document's own shot objects in the same order, for editing. */
-export function layout(g, e, overrides) {
+export function layout(g, e, overrides, fmt = FOURS) {
   // An end with no shots array at all is an end with nothing detected. The
   // version this replaced never noticed, because only the renderers called it
   // and they only ever walked ends that had shots; buildGameView lays every
@@ -90,6 +116,7 @@ export function layout(g, e, overrides) {
   const src = e.shots || [];
   let shots = src.map(s => ({ ...merge(g, e, s, overrides) }));
   let raws = src;
+  const swapped = swappedOf(g, e, overrides, fmt);
   const ids = new Set(shots.map(identity));
   const moves = shots.filter(s => Number.isInteger(s.before) &&
                                   s.before !== identity(s) && ids.has(s.before));
@@ -99,16 +126,18 @@ export function layout(g, e, overrides) {
       const at = shots.findIndex(o => identity(o) === s.before);
       shots.splice(at === -1 ? shots.length : at, 0, s);
     }
-    const prefix = `${g.index}.${e.number}.`;
+    const prefix = `${g.index}.${endIdentity(e)}.`;
     const fixed = new Set(Object.entries(overrides)
       .filter(([k, p]) => k.startsWith(prefix) && p && "color" in p)
       .map(([k]) => +k.slice(prefix.length)));
-    renumber(shots, e.number, fixed);
+    renumber(shots, e.number, fixed, fmt, swapped);
     const byId = new Map(src.map(s => [identity(s), s]));
     raws = shots.map(s => byId.get(identity(s)));
+  } else if (Object.keys(swapped).length) {
+    assignThrowers(shots, e.number, fmt, swapped);
   }
   guessTimes(shots);
-  return { shots, raws };
+  return { shots, raws, swapped };
 }
 
 /* One relayout of the whole game, which everything else reads off.
@@ -122,9 +151,10 @@ export function layout(g, e, overrides) {
  */
 export function buildGameView(doc, gi, overrides) {
   const game = doc.games[gi];
+  const format = formatOf(doc);
   const ends = game.ends.map(e => {
-    const { shots, raws } = layout(game, e, overrides);
-    return { end: e, shots, raws };
+    const { shots, raws, swapped } = layout(game, e, overrides, format);
+    return { end: e, shots, raws, swapped };
   });
   // A player throws from one hack all game, so each rock is given its
   // player's -- after the overrides, which can change who threw it.
@@ -135,7 +165,7 @@ export function buildGameView(doc, gi, overrides) {
       if (h) s.hack = h;
     }
   }
-  return { doc, gi, game, ends };
+  return { doc, gi, game, ends, format };
 }
 
 /* The shot the cursor is on, merged and raw. `raw` is what an edit is keyed

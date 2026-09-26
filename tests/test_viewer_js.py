@@ -2530,3 +2530,125 @@ class TestTheFlagButton:
                 if p.suffix in (".js", ".mjs", ".jsx"):
                     assert "site/auth.js\";" not in p.read_text(), p
         assert 'import("../site/auth.js")' in self.src("frontend/runtime/flag.mjs")
+
+
+def doubles_doc(shots, end_number=3):
+    from curling_score.game import format as F
+    d = doc(shots, end_number=end_number)
+    d["schema_version"] = 7
+    d["format"] = F.DOUBLES.to_json()
+    return d
+
+
+def doubles_shots(n=10, end_number=3):
+    from curling_score.game import format as F
+    out = []
+    for num in range(1, n + 1):
+        t = F.DOUBLES.throw_info(num)
+        out.append({"number": num, "color": "red" if num % 2 else "yellow",
+                    "color_inferred": False, "missing": False, "state_known": True,
+                    "position": F.DOUBLES.positions[t.position_slot - 1],
+                    "thrower_slot": t.position_slot, "rock_of_player": t.rock_of_player,
+                    "has_hammer": t.has_hammer,
+                    "label": F.DOUBLES.shot_label(end_number, num),
+                    "shot_type": "draw", "stones": []})
+    return out
+
+
+FIELDS = ("id", "number", "color", "label", "position", "rock_of_player",
+          "has_hammer", "thrower_slot")
+
+
+def both(document, overrides):
+    import copy
+    from curling_score import timeline
+    py = timeline.apply_overrides(copy.deepcopy(document), overrides)
+    py = [[s.get(f) for f in FIELDS] for s in py["games"][0]["ends"][0]["shots"]]
+    js = run_js(setup(document, overrides) +
+                f"out(mergedShots(e).map(s => {list(FIELDS)}.map(f => s[f] ?? null)));")
+    return py, js
+
+
+class TestDoublesFormat:
+    def test_the_throw_table_comes_from_the_document(self):
+        got = run_js(setup(doubles_doc(doubles_shots())) +
+                     "const f = formatOf(state.doc);"
+                     "out([1,3,9].map(n => throwInfo(n, f)).concat([shotLabel(3, 7, f), roleText(f, 1), roleText(f, 2)]));")
+        assert got[:3] == [{"has_hammer": False, "thrower_slot": 1, "rock_of_player": 1},
+                           {"has_hammer": False, "thrower_slot": 2, "rock_of_player": 1},
+                           {"has_hammer": False, "thrower_slot": 1, "rock_of_player": 2}]
+        assert got[3:] == ["3rd end, B's third rock", "1st & 5th", "2nd–4th"]
+
+    def test_fours_is_what_it_always_was(self):
+        got = run_js(setup(doc([])) +
+                     "const f = formatOf(state.doc);"
+                     "out([f.name, throwInfo(13), throwInfo(13, f), shotLabel(2, 16, f)]);")
+        assert got[0] == "fours"
+        assert got[1] == got[2] == {"has_hammer": False, "thrower_slot": 4, "rock_of_player": 1}
+        assert got[3] == "2nd end, skip's second rock"
+
+    def test_a_malformed_format_block_reads_as_fours(self):
+        d = doubles_doc(doubles_shots())
+        del d["format"]["throw_table"]
+        assert run_js(setup(d) + "out(formatOf(state.doc).name);") == "fours"
+
+    def test_the_thrower_row_says_player_and_rock_of_n(self):
+        got = run_js(setup(doubles_doc(doubles_shots())) +
+                     "const f = formatOf(state.doc);"
+                     "out([throwerText(mergedShots(e)[4], f), throwerText(mergedShots(e)[8], f)]);")
+        assert got == ["Player B (rock 2 of 3)", "Player A (rock 2 of 2)"]
+
+    def test_fours_thrower_text_is_unchanged(self):
+        got = run_js(setup(doc([{"number": 3, "color": "red", "position": "second",
+                                 "rock_of_player": 1, "stones": []}])) +
+                     "out(throwerText(mergedShots(e)[0], formatOf(state.doc)));")
+        assert got == "second (rock 1)"
+
+
+class TestRoleSwapParity:
+    def test_js_and_python_agree_on_a_swap(self):
+        py, js = both(doubles_doc(doubles_shots()), {"0.3": {"roles_swapped": {"red": True}}})
+        assert js == py
+        assert js[0][4] == "B"
+
+    def test_js_and_python_agree_when_a_swap_is_turned_off(self):
+        py, js = both(doubles_doc(doubles_shots()), {"0.3": {"roles_swapped": {"red": False}}})
+        assert js == py
+        assert js[0][4] == "A"
+
+    def test_js_and_python_agree_on_a_swap_with_a_move(self):
+        shots = doubles_shots(n=6, end_number=4)
+        for s in shots[4:]:
+            s["color_inferred"] = s["missing"] = True
+            s["state_known"] = False
+        py, js = both(doubles_doc(shots, end_number=4),
+                      {"0.4.5": {"before": 1}, "0.4.6": {"before": 1},
+                       "0.4": {"roles_swapped": {"red": True}}})
+        assert js == py
+        assert [row[4] for row in js] == ["B", "A", "A", "B", "A", "B"]
+
+    def test_js_ignores_an_end_key_on_a_fours_chart(self):
+        shots = [{"number": n, "color": "red" if n % 2 else "yellow", "position": "lead",
+                  "rock_of_player": 1, "stones": []} for n in (1, 2)]
+        got = run_js(setup(doc(shots, end_number=3), {"0.3": {"roles_swapped": {"red": True}}}) +
+                     "out(mergedShots(e).map(s => s.position));")
+        assert got == ["lead", "lead"]
+
+    def test_the_view_carries_the_format_and_the_swap(self):
+        got = run_js(setup(doubles_doc(doubles_shots()), {"0.3": {"roles_swapped": {"yellow": True}}}) +
+                     "const v = buildGameView(state.doc, 0, state.overrides);"
+                     "out([v.format.name, v.ends[0].swapped, endKey(v.game, v.ends[0].end)]);")
+        assert got == ["doubles", {"yellow": True}, "0.3"]
+
+    def test_the_hack_call_follows_the_person_across_a_swap(self):
+        shots = doubles_shots()
+        for s in shots:
+            s["line"] = {"start": {"x": 0.15 if s["thrower_slot"] == 1 else -0.15}, "curl": "left"}
+        got = run_js(setup(doubles_doc(shots), {"0.3": {"roles_swapped": {"red": True}}}) +
+                     "const v = buildGameView(state.doc, 0, state.overrides);"
+                     "out(v.ends[0].shots.filter(s => s.color === 'red').map(s => [s.position, s.hack && s.hack.side]));")
+        # The set positions were written by the detected role: rocks 1 and 9 at
+        # +0.15 (right of centre), rocks 3, 5 and 7 at -0.15 (left). After the
+        # swap, 1 and 9 are B's and 3, 5, 7 are A's, so each person's hack is
+        # read from their own rocks: B right, A left.
+        assert got == [["B", "right"], ["A", "left"], ["A", "left"], ["A", "left"], ["B", "right"]]
