@@ -130,3 +130,74 @@ code { background:var(--line); padding:1px 5px; border-radius:4px; }
   .teamedit { flex-wrap: wrap; }
   .teamedit input { width: 100%; }
 }
+
+/* --- thinking time ------------------------------------------------------- */
+/* One league at a time, ranked two ways. The link for the page you are on
+   reads as a place, not a destination. */
+header a.here { text-decoration:none; font-weight:650; }
+body[data-page="thinking"] main { max-width:920px; }
+.tabs { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 16px; }
+.tabs button.tab { font-family:var(--display); font-size:13px; padding:4px 10px;
+                   border-radius:999px; white-space:nowrap; }
+.tab b { color:var(--muted); font-weight:600; margin-left:3px; }
+.tab.on { background:var(--accent); color:var(--onaccent); border-color:transparent; }
+.tab.on b { color:var(--onaccent); opacity:.7; }
+.tab .pill.doubles { font-size:11px; padding:0 6px; }
+.lhead { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+.lhead h1 { font-family:var(--display); font-size:22px; margin:0; font-weight:700; }
+#thinking h2 { margin-top:26px; }
+#thinking h2:first-of-type { margin-top:18px; }
+#thinking h2 small { font-weight:500; text-transform:none; letter-spacing:0; color:var(--muted);
+                     font-size:13px; margin-left:8px; }
+#thinking th.num, #thinking td.num { text-align:right; }
+#thinking td.rk { color:var(--muted); width:1.5em; }
+#thinking a.plain, #thinking td.teams a { color:inherit; text-decoration:none; }
+#thinking td.teams a.muted { color:var(--muted); }
+#thinking td.teams a:hover { text-decoration:underline; text-underline-offset:3px; }
+/* Per end is the ranked number; the bar under it is its size against the
+   league's slowest game, from zero, in ink rather than a rock colour. */
+td.pace { min-width:210px; }
+td.pace > div { display:flex; align-items:center; gap:10px; }
+td.pace .val { width:4.6em; text-align:right; font-weight:600; }
+.mag { flex:1; height:8px; }
+.mag span { display:block; height:100%; background:var(--muted); border-radius:0 4px 4px 0; }
+/* The split is red then yellow, always in that order, with a tick at half so
+   "how far off even" reads without the numbers. The rock yellow is too light
+   to fill a bar on the cream panel, so the fill is a step deeper; the
+   percentages beside it carry the reading either way. */
+#thinking { --yellowfill:#d9a600; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #thinking {
+  --yellowfill:var(--yellow); } }
+td.split { min-width:250px; white-space:nowrap; }
+.sbar { position:relative; display:inline-flex; gap:2px; width:150px; height:10px;
+        vertical-align:middle; }
+.sbar .r { background:var(--red); border-radius:4px 0 0 4px; }
+.sbar .y { background:var(--yellowfill); border-radius:0 4px 4px 0; }
+.sbar .mid { position:absolute; left:50%; top:-3px; bottom:-3px; width:1px;
+             background:var(--ink); opacity:.55; }
+.spct { margin-left:10px; font-weight:600; }
+.note { font-size:13px; margin-top:18px; }
+
+@media (max-width: 640px) {
+  /* Seven columns do not fit a phone either: each game becomes a card, as the
+     catalogue's do -- who played on the first line, then the numbers with
+     their headings, then the bar across the full width. */
+  #thinking table, #thinking tbody { display:block; }
+  #thinking tr:first-child { display:none; }
+  #thinking tr { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 12px;
+                 padding:12px 0; border-bottom:1px solid var(--line); }
+  #thinking tr:last-child { border-bottom:0; }
+  #thinking td { display:block; border:0; padding:0; font-size:14px; }
+  #thinking td[data-label]::before { content:attr(data-label) " "; color:var(--muted);
+    font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  #thinking td.rk { order:0; width:auto; }
+  #thinking td.teams { order:1; flex:1 1 60%; font-size:16px; font-weight:650; }
+  #thinking td.when { order:2; color:var(--muted); }
+  #thinking td[data-label] { order:3; }
+  #thinking td.num { text-align:left; }
+  #thinking td.pace, #thinking td.split { order:4; flex:1 1 100%; min-width:0; }
+  #thinking td.pace .val { width:auto; text-align:left; }
+  .sbar { width:55%; }
+  #thinking td.longer, #thinking td.num[data-label="By"] { order:5; }
+  .lhead h1 { font-size:19px; }
+}

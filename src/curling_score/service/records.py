@@ -124,6 +124,17 @@ class Source:
     # coming out clean.
     play_start_s: float | None = None
     play_ends: int | None = None
+    # The YouTube playlist the club published the stream in, which is the
+    # club's own name for the league ("2025-2026 Tuesday Super League"). Found
+    # by playlist_index, never typed: `league` above is the label people edit,
+    # and it drifts ("Super", "Spring Thursday") where this does not.
+    playlist_id: str | None = None
+    playlist_title: str | None = None
+    # Both teams' thinking time for the game as the review link serves it --
+    # after the warm-up is trimmed -- so the thinking report can rank a league
+    # without loading a 1 MB timeline per game. Keyed by the run and the play
+    # start it was read from; when either moves it is stale until refreshed.
+    thinking: dict | None = None
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
@@ -264,6 +275,27 @@ class WatchedPlaylist:
     last_seen_video_ids: list = field(default_factory=list)
     failures: int = 0
     last_error: str | None = None
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class PlaylistIndexEntry:
+    """One of a channel's YouTube playlists, and the videos in it.
+
+    YouTube lists a playlist's videos but has no call for a video's playlists,
+    so the only way to learn which league a stream was published under is to
+    index the channel. A cache of YouTube, rebuilt by playlist_index.refresh,
+    so the backup leaves it out.
+    """
+
+    id: str                     # YouTube's playlist id
+    channel_id: str
+    title: str
+    item_count: int
+    scanned_at: datetime
+    video_ids: list = field(default_factory=list)
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

@@ -30,6 +30,7 @@ for (const [name, url] of [
   ["games", `${base}/games`],
   ["mine", `${base}/mine`],
   ["join", `${base}/join/i_nosuch`],
+  ["thinking", `${base}/thinking`],
   ["status", statusUrl],
 ]) {
   errors = [];

@@ -30,11 +30,15 @@ export function IdentityChip() {
   );
 }
 
+/* `links` are [href, text] pairs; a third element marks the page you are on. */
 export function Header({ links = [], children }) {
   return (
     <header>
       <h1><a href="/games">Curling Chart</a></h1>
-      {links.map(([href, text]) => <a key={href} href={href}>{text}</a>)}
+      {links.map(([href, text, here]) => (
+        <a key={href} href={href} className={here ? "here" : undefined}
+           aria-current={here ? "page" : undefined}>{text}</a>
+      ))}
       <span style={{ flex: 1 }} />
       <IdentityChip />
       {children}

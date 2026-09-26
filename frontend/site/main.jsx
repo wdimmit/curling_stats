@@ -1,6 +1,6 @@
 /* One bundle for every page on the site.
  *
- * All five together are ~31 KB against React's ~190, so serving all of them
+ * All six together are ~35 KB against React's ~190, so serving all of them
  * everywhere costs almost nothing and means React is downloaded once and
  * cached across the whole site -- which five separate bundles would not do.
  *
@@ -14,8 +14,10 @@ import { Join } from "./Join.jsx";
 import { Mine } from "./Mine.jsx";
 import { Status } from "./Status.jsx";
 import { Submit } from "./Submit.jsx";
+import { Thinking } from "./Thinking.jsx";
 
-const PAGES = { submit: Submit, games: Games, mine: Mine, join: Join, status: Status };
+const PAGES = { submit: Submit, games: Games, mine: Mine, join: Join, status: Status,
+                thinking: Thinking };
 
 const which = document.body.dataset.page;
 const Page = PAGES[which];

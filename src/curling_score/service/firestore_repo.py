@@ -22,7 +22,8 @@ import json
 from datetime import timedelta
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
+    Chart, Flag, Invite, Job, PlaylistIndexEntry, Run, Source, Team, User,
+    WatchedPlaylist, Worker,
 )
 from curling_score.service.repo import (
     LEASE_S, MAX_STORED_OVERRIDES_BYTES, _day_bucket, _hour_bucket,
@@ -31,7 +32,7 @@ from curling_score.service.repo import (
 RUNS, JOBS, SOURCES, CHARTS = "vod_runs", "jobs", "sources", "charts"
 SHARES, WORKERS, PLAYLISTS, RATES = "share_slugs", "workers", "watched_playlists", "rate_limits"
 USERS, TEAMS, INVITES, CLAIMS = "users", "teams", "invites", "chart_claims"
-FLAGS = "flags"
+FLAGS, PLAYLIST_INDEX = "flags", "yt_playlists"
 
 
 def _claim_id(owner_key: str, source_id: str) -> str:
@@ -394,6 +395,14 @@ class FirestoreRepo:
 
     def delete_playlist(self, playlist_id):
         self._col(PLAYLISTS).document(playlist_id).delete()
+
+    def list_playlist_index(self):
+        docs = [PlaylistIndexEntry.from_dict(d.to_dict())
+                for d in self._col(PLAYLIST_INDEX).stream()]
+        return sorted(docs, key=lambda e: e.id)
+
+    def put_playlist_index(self, entry):
+        self._col(PLAYLIST_INDEX).document(entry.id).set(entry.to_dict())
 
     # ---- flags --------------------------------------------------------
     def put_flag(self, flag):

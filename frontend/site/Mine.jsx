@@ -141,7 +141,8 @@ export function Mine() {
 
   return (
     <>
-      <Header links={[["/games", "All games"], ["/", "Submit a link"]]} />
+      <Header links={[["/games", "All games"], ["/thinking", "Thinking time"],
+                       ["/", "Submit a link"]]} />
       <main>
         {ready && !user && (
           <div id="signedout">

@@ -16,7 +16,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
+    Chart, Flag, Invite, Job, PlaylistIndexEntry, Run, Source, Team, User,
+    WatchedPlaylist, Worker,
 )
 
 LEASE_S = 600.0
@@ -96,6 +97,9 @@ class Repo(Protocol):
     def list_playlists(self) -> list[WatchedPlaylist]: ...
     def update_playlist(self, playlist_id: str, **fields) -> WatchedPlaylist | None: ...
     def delete_playlist(self, playlist_id: str) -> None: ...
+    # the channel's playlists, indexed -- a cache of YouTube, not a record
+    def list_playlist_index(self) -> list[PlaylistIndexEntry]: ...
+    def put_playlist_index(self, entry: PlaylistIndexEntry) -> None: ...
     # flags
     def put_flag(self, flag: Flag) -> None: ...
     def list_flags(self, status: str | None = None, limit: int = 200) -> list[Flag]: ...
@@ -139,6 +143,7 @@ class MemoryRepo:
         self.invites: dict[str, Invite] = {}
         self.claims: dict[tuple[str, str], str] = {}
         self.flags: dict[str, Flag] = {}
+        self.playlist_index: dict[str, PlaylistIndexEntry] = {}
 
     # ---- runs ---------------------------------------------------------
     def put_run(self, run):
@@ -455,6 +460,13 @@ class MemoryRepo:
     def delete_playlist(self, playlist_id):
         with self._lock:
             self.playlists.pop(playlist_id, None)
+
+    def list_playlist_index(self):
+        return sorted(self.playlist_index.values(), key=lambda e: e.id)
+
+    def put_playlist_index(self, entry):
+        with self._lock:
+            self.playlist_index[entry.id] = entry
 
     # ---- flags --------------------------------------------------------
     def put_flag(self, flag):

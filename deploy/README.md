@@ -167,6 +167,24 @@ PUBLIC_BASE_URL=… ADMIN_TOKEN=… ./deploy/scheduler.sh     # hourly poll, 1 o
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" $PUBLIC_BASE_URL/api/admin/poll-playlists   # backfill now (10 per call)
 ```
 
+## The thinking report
+
+`/thinking` ranks each league's games by thinking time per end, and by how
+lopsided the two teams' split was. A league is the YouTube playlist the club
+filed the stream in, found by indexing the channel's playlists. The hourly
+poll above keeps that index current, reading at most 40 playlists per call.
+Each game's thinking totals are kept on its source, written when the run
+completes.
+
+After the first deploy, and after restoring a backup, which leaves the index
+out because it can be rebuilt, fill both. Repeat each call until it reports
+`pending: 0` or `remaining: 0`:
+
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" $PUBLIC_BASE_URL/api/admin/playlist-index      # {scanned, pending, stamped}
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" $PUBLIC_BASE_URL/api/admin/backfill-thinking   # {refreshed, skipped, remaining}
+```
+
 ## Backups
 
 Nightly on the home box (cron):

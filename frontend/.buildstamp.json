@@ -22,15 +22,16 @@
     "frontend/runtime/overridesStore.mjs": "a55fd55bdc0a9eae8d950329ac12dfbfd55bf78b265300307bb53b6fde0bbd46",
     "frontend/runtime/player.mjs": "6fea60197a05c0994abcf3f179c2be83901609d9980d938dd1d64854065dd34e",
     "frontend/runtime/prefs.mjs": "8fd39bb740719fe04d942b18aa5b513df8fad3e9279ff9743186df0d60c72f4d",
-    "frontend/site/Games.jsx": "02e06948fda1cd7e78632f60718f83486a99ced639d9d8cf6dbd9a2c4f04ac10",
+    "frontend/site/Games.jsx": "4723311951a23d48083b9d63369297bae5d1cbc57c1d672888ca3f59287368a8",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
-    "frontend/site/Mine.jsx": "51d144408783b2eabdb807ece878ddb928adb09160f8dda81815a02de33b2923",
+    "frontend/site/Mine.jsx": "bce5d1419b0200ac2d9070d81d5ba13c037ecf54a9af52150cd269caec578c96",
     "frontend/site/Status.jsx": "69f88cddcb4c58746464227be8d2f51b1327999fa114be57e56fb25f30f3f731",
-    "frontend/site/Submit.jsx": "d491607ae0b8e456971974efd18e31429c51bbe0386e249b159df6a309da2ddb",
+    "frontend/site/Submit.jsx": "68d08f80f6c12a045ccdc39f752dd5d61a22550af7ec98cdbff7d5fb3dba8f38",
+    "frontend/site/Thinking.jsx": "1f18a4c4d2766c4d0ecef59105342d75ad0180f50d5b259a773754a2fdf73216",
     "frontend/site/auth.js": "5f8188503a00c70db4e696259d8ecef329f94be2e70f76186601fd02652f94ab",
     "frontend/site/fmt.js": "d79132a3ced1d182a0255efb337743b2148a7685f820790bf926acadd7b5c274",
-    "frontend/site/main.jsx": "3ae012ef5bf5845a1bfa2fd195cc7b4bd154746f3e861cf15619abf8ab6fe9d7",
-    "frontend/site/ui.jsx": "5f54667ec87c4dc31e393f5f804bec5cd1c4667833c966b07297db35623e0e58",
+    "frontend/site/main.jsx": "5af71f53831da02c454f97778ccc851449afb9e7aa859a40eb734dd4e2cbe69c",
+    "frontend/site/ui.jsx": "26c1f3feadcee73bec3c1ff1f2cde523eec713e921c5f56a281aa599e5209362",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
     "frontend/viewer/App.jsx": "8bccd3cb090eeac2cbe8502901306819b0d668ab01a8b3ed357b6a857c3a86c0",
     "frontend/viewer/ChartPanel.jsx": "c9252e7679a631c4ae1fe65491f395124684afebd4914a5776ef2068330cb007",
@@ -45,7 +46,7 @@
     "frontend/viewer/main.jsx": "03c6d1858c606f51671b711c0ecf7c3d58260ac3d8198c0d2231b9590a605562"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "bb15e8e72659765f336e20daa10aa09673f85da755b6edc351b5f6863254235d",
+    "src/curling_score/service/static/site.js": "d47e5f2e288aa9299fcb7f3e4c32ff86a3130cc07f90685ddf2295c7df7a4586",
     "src/curling_score/viewer/app.js": "ee59dbd8938ca94d2e9c8335b9d6168941e620cd2f3dd64daf515a6e5546fe26"
   }
 }

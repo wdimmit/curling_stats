@@ -26,6 +26,13 @@ class VideoMeta:
     published_at: datetime | None = None
 
 
+@dataclass(frozen=True)
+class PlaylistMeta:
+    playlist_id: str
+    title: str
+    item_count: int
+
+
 class SubmissionError(Exception):
     """A submission we will not accept, with an HTTP status and a plain reason."""
 
@@ -50,7 +57,7 @@ def _parse_ts(text):
 
 
 class YouTubeClient:
-    """The two Data API calls the service makes, over httpx."""
+    """The Data API calls the service makes, over httpx."""
 
     def __init__(self, api_key: str, http=None, timeout_s: float = 20.0):
         import httpx
@@ -104,14 +111,38 @@ class YouTubeClient:
                 break
         return ids
 
+    def channel_playlists(self, channel_id: str) -> list[PlaylistMeta]:
+        """Every playlist a channel has published, with how many videos each holds.
+
+        The count is what lets an index skip a playlist that has not changed:
+        one call lists fifty playlists, where reading one playlist's videos
+        costs a call per fifty of them."""
+        out, token = [], None
+        while True:
+            params = {"part": "snippet,contentDetails", "channelId": channel_id,
+                      "maxResults": 50}
+            if token:
+                params["pageToken"] = token
+            data = self._get("playlists", **params)
+            out.extend(PlaylistMeta(playlist_id=it["id"],
+                                    title=it["snippet"].get("title", ""),
+                                    item_count=int(it["contentDetails"].get("itemCount", 0)))
+                       for it in data.get("items", []))
+            token = data.get("nextPageToken")
+            if not token:
+                return out
+
 
 class FakeYouTube:
     """Hand-fed metadata, for tests and for running without an API key."""
 
     def __init__(self, videos: dict[str, VideoMeta] | None = None,
-                 playlists: dict[str, list[str]] | None = None):
+                 playlists: dict[str, list[str]] | None = None,
+                 channels: dict[str, dict[str, str]] | None = None):
         self._videos = dict(videos or {})
         self._playlists = dict(playlists or {})
+        # channel id -> {playlist id: title}; the videos are in `playlists`
+        self._channels = {c: dict(p) for c, p in (channels or {}).items()}
         self.calls = 0
 
     def add(self, meta: VideoMeta):
@@ -130,6 +161,16 @@ class FakeYouTube:
         if playlist_id not in self._playlists:
             raise KeyError(playlist_id)
         return list(self._playlists[playlist_id])[:max_items]
+
+    def add_playlist(self, channel_id: str, playlist_id: str, title: str,
+                     video_ids: list[str]):
+        self._channels.setdefault(channel_id, {})[playlist_id] = title
+        self._playlists[playlist_id] = list(video_ids)
+
+    def channel_playlists(self, channel_id):
+        self.calls += 1
+        return [PlaylistMeta(pid, title, len(self._playlists.get(pid, [])))
+                for pid, title in self._channels.get(channel_id, {}).items()]
 
 
 def validate_submission(meta: VideoMeta | None, allowed_channels: set[str] | None,
@@ -192,3 +233,8 @@ class YtDlpYouTube:
             info = ydl.extract_info(f"https://www.youtube.com/playlist?list={playlist_id}",
                                     download=False)
         return [e["id"] for e in info.get("entries", []) if e and e.get("id")]
+
+    def channel_playlists(self, channel_id: str) -> list[PlaylistMeta]:
+        # A development host without an API key has no league index; the
+        # thinking report falls back to the league in each stream's title.
+        return []

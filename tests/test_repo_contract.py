@@ -17,7 +17,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Run, Source, Team, User, WatchedPlaylist, Worker,
+    Chart, Flag, Invite, Job, PlaylistIndexEntry, Run, Source, Team, User,
+    WatchedPlaylist, Worker,
 )
 from curling_score.service.repo import MemoryRepo
 
@@ -38,7 +39,7 @@ def _firestore_repo():
     repo = FirestoreRepo(client=client)
     for col in ("vod_runs", "jobs", "sources", "charts", "share_slugs",
                 "workers", "watched_playlists", "rate_limits",
-                "users", "teams", "invites", "chart_claims", "flags"):
+                "users", "teams", "invites", "chart_claims", "flags", "yt_playlists"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -403,6 +404,18 @@ class TestSources:
         assert [x.id for x in repo.list_sources(league="Tue")] == ["s_1"]
         assert repo.list_sources(league="Other") == []
 
+    def test_the_report_fields_round_trip(self, repo):
+        repo.put_source(Source(id="s_1", video_id="vidA", game_start_s=0.0, game_end_s=6000.0,
+                               current_run_id="r_1", game_index=0, created_at=T0))
+        summary = {"run_id": "r_1", "play_start_s": None, "ends": 8, "red": 1252.85,
+                   "yellow": 1872.16, "measured_shots": 120, "unmeasured_shots": 8,
+                   "estimated_shots": 1}
+        repo.update_source("s_1", thinking=summary, playlist_id="PL",
+                           playlist_title="2026 Spring Skip's Choice League")
+        got = repo.get_source("s_1")
+        assert got.thinking == summary
+        assert (got.playlist_id, got.playlist_title) == ("PL", "2026 Spring Skip's Choice League")
+
 
 class TestWorkersAndPlaylists:
     def test_heartbeat_upserts(self, repo):
@@ -421,6 +434,21 @@ class TestWorkersAndPlaylists:
         assert repo.get_playlist("p_1").last_seen_video_ids == ["a", "b"]
         repo.delete_playlist("p_1")
         assert repo.get_playlist("p_1") is None
+
+    def test_the_playlist_index_upserts(self, repo):
+        assert repo.list_playlist_index() == []
+        repo.put_playlist_index(PlaylistIndexEntry(id="PL_b", channel_id="UC", title="B",
+                                                   item_count=1, scanned_at=T0,
+                                                   video_ids=["v1"]))
+        repo.put_playlist_index(PlaylistIndexEntry(id="PL_a", channel_id="UC", title="A",
+                                                   item_count=0, scanned_at=T0))
+        repo.put_playlist_index(PlaylistIndexEntry(id="PL_b", channel_id="UC", title="B2",
+                                                   item_count=2, scanned_at=at(60),
+                                                   video_ids=["v1", "v2"]))
+        got = repo.list_playlist_index()
+        assert [e.id for e in got] == ["PL_a", "PL_b"]
+        assert got[1].title == "B2" and got[1].video_ids == ["v1", "v2"]
+        assert got[1].scanned_at.timestamp() == at(60).timestamp()
 
 
 class TestRateLimit:

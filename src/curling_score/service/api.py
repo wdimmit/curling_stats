@@ -34,7 +34,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from curling_score import timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
-from curling_score.service import dedupe, playlists, slug
+from curling_score.service import dedupe, playlist_index, playlists, slug, thinking_report
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
     Chart, Flag, Invite, Job, Run, Source, Team, User, Worker,
@@ -47,6 +47,10 @@ log = logging.getLogger(__name__)
 
 VIEWER_DIR = Path(viewer.__file__).parent
 STATIC_DIR = Path(__file__).parent / "static"
+# What "every game" means to the report, its backfill and the league stamp.
+# list_sources defaults to the newest 500, which suits a catalogue page; the
+# report must see a league's old games too.
+EVERY_SOURCE = 5000
 VIEWER_ASSETS = {"app.js": "application/javascript", "style.css": "text/css"}
 # One bundle for every page. This was nine hand-kept names, one per script
 # plus the modules they imported, and a page referencing a file missing from
@@ -428,6 +432,46 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                     game.setdefault("teams", {}).setdefault(colour, {})["name"] = name
         return doc
 
+    def refresh_thinking(src: Source, run: Run | None = None) -> Source:
+        """Keep the game's thinking summary in step with what /g/ serves.
+
+        The thinking report ranks a whole league, and loading a timeline per
+        game to do it would be a megabyte a row, so the numbers are read once
+        here and kept on the source -- from the same trimmed document the
+        review link shows, keyed by the run and play start they came from.
+        Whatever moves either of those calls this again.
+        """
+        run = run or repo.get_run(src.current_run_id)
+        if run is not None and run.id != src.current_run_id:
+            return src                  # not this game's run
+        if run is not None and run.status in ("pending_approval", "queued", "processing"):
+            return src                  # being run again in place; /complete will do it
+        game = None
+        if run is not None and run.status == "ready" and run.timeline_key:
+            try:
+                doc = game_doc(run, src.game_index, None, src.play_start_s)
+                game = doc["games"][0] if doc.get("games") else None
+            except KeyError:
+                pass
+        # Nothing to read -- no run, a failed one, no timeline, no such game in
+        # it -- is summarised as nothing measured, so the report leaves the
+        # game out rather than calling it pending for ever.
+        summary = thinking_report.summarize(game or {}, src.current_run_id, src.play_start_s)
+        if summary == src.thinking:
+            return src
+        return repo.update_source(src.id, thinking=summary) or src
+
+    def keep_thinking_current(src: Source | None, run: Run) -> None:
+        """Refresh the summary if the game has moved under it -- a new chart
+        can move a game to another run of the same video. Bookkeeping for the
+        report, so it never fails the request it rides on."""
+        if src is None or thinking_report.current(src) is not None:
+            return
+        try:
+            refresh_thinking(src, run)
+        except Exception:  # noqa: BLE001 - see above
+            log.exception("could not summarise %s for the thinking report", src.id)
+
     def learn_play_start(src: Source, run: Run) -> Source:
         """Teach a game where its play begins, from what its charters typed.
 
@@ -459,13 +503,41 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return src
         if src.play_start_s == float(ends[0]["start_s"]) and src.play_ends == len(ends):
             return src
-        return repo.update_source(src.id, play_start_s=float(ends[0]["start_s"]),
-                                  play_ends=len(ends))
+        src = repo.update_source(src.id, play_start_s=float(ends[0]["start_s"]),
+                                 play_ends=len(ends))
+        return refresh_thinking(src, run)
 
     def learn_play_starts_for_run(run: Run) -> None:
         for src in repo.sources_for_video(run.video_id):
             if src.current_run_id == run.id:
                 learn_play_start(src, run)
+
+    def settle_sources_for_run(run: Run) -> None:
+        """The rest of what a game's catalogue entry needs once its run is
+        ready: its league playlist, from the index as it stands (no YouTube
+        call -- the hourly poll catches a stream filed later), and its
+        thinking summary. Bookkeeping for the report, so a failure here is
+        logged rather than failing the worker's completion."""
+        mine = [s for s in repo.sources_for_video(run.video_id) if s.current_run_id == run.id]
+        try:
+            playlist_index.stamp(repo, mine)
+            for s in mine:
+                refresh_thinking(repo.get_source(s.id) or s, run)
+        except Exception:  # noqa: BLE001 - see above
+            log.exception("could not summarise run %s for the thinking report", run.id)
+
+    def index_playlists(max_scans: int = playlist_index.MAX_SCANS,
+                        always_stamp: bool = True) -> dict:
+        """Refresh the index, then re-stamp every game if it moved. A game
+        that finishes is stamped on completion, so the hourly poll need not
+        read every source when YouTube said nothing new."""
+        channels = playlist_index.channels_to_index(repo, settings.allowed_channels)
+        result = playlist_index.refresh(repo, youtube, channels, now(), max_scans=max_scans)
+        moved = result["scanned"] or result["retitled"] or result["emptied"]
+        result["stamped"] = (playlist_index.stamp(repo, repo.list_sources(limit=EVERY_SOURCE))
+                             if always_stamp or moved else 0)
+        result["channels"] = len(channels)
+        return result
 
     def trim_start_for(chart: Chart, src: Source | None) -> float | None:
         """Where this chart's game starts: the game's own answer, or its own.
@@ -631,6 +703,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if game is None:
             return None
         src = dedupe.find_or_create_source(repo, run, game, now())
+        keep_thinking_current(repo.get_source(src.id), run)
         found = repo.chart_claim(owner_key, src.id)
         return repo.get_chart(found) if found else None
 
@@ -656,7 +729,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             if chart.superseded_by:                    # lost a race just now
                 return repo.get_chart(chart.superseded_by), True
             if chart.source_id and (src := repo.get_source(chart.source_id)):
-                learn_play_start(src, run)
+                keep_thinking_current(learn_play_start(src, run), run)
         return chart, False
 
     # ------------------------------------------------------------- public
@@ -671,6 +744,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.get("/mine", response_class=HTMLResponse)
     def mine_page():
         return page("mine.html")
+
+    @app.get("/thinking", response_class=HTMLResponse)
+    def thinking_page():
+        return page("thinking.html")
 
     @app.get("/join/{token}", response_class=HTMLResponse)
     def join_page(token: str):
@@ -768,6 +845,56 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                  league, src.video_id, len(games), me.id)
         return {"ok": True, "league": league, "games": len(games)}
 
+    @app.get("/api/reports/thinking")
+    def api_thinking_report(top: int = Query(thinking_report.TOP, ge=1, le=100)):
+        """Per league, the games with the most thinking per end and the ones
+        where one team did most of it. Public, like the catalogue, and read
+        from the summaries on the sources alone -- never a timeline."""
+        report = thinking_report.build(repo.list_sources(limit=EVERY_SOURCE), top=top)
+        return JSONResponse(report, headers={"Cache-Control": "public, max-age=300"})
+
+    @app.post("/api/admin/backfill-thinking")
+    def admin_backfill_thinking(limit: int = Query(50, ge=1, le=500),
+                                authorization: str | None = Header(default=None)):
+        """Give games that predate the thinking report the summary it reads.
+
+        New runs get one on completion; this is for everything before that,
+        and for any summary a reprocess or a play-start change left stale.
+        Idempotent, and bounded by ``limit`` so it fits in one request: call
+        it again until ``remaining`` is 0. A run's games are taken together so
+        its timeline is loaded once.
+        """
+        require_admin(authorization)
+        stale = sorted((s for s in repo.list_sources(limit=EVERY_SOURCE)
+                        if thinking_report.current(s) is None),
+                       key=lambda s: (s.current_run_id, s.game_index))
+        refreshed = skipped = 0
+        for s in stale:
+            if refreshed >= limit:
+                break
+            if thinking_report.current(refresh_thinking(s)) is None:
+                skipped += 1        # its run is being processed again; /complete will do it
+            else:
+                refreshed += 1
+        log.info("thinking summaries: %d refreshed, %d skipped", refreshed, skipped)
+        return {"ok": True, "refreshed": refreshed, "skipped": skipped,
+                "remaining": len(stale) - refreshed - skipped}
+
+    @app.post("/api/admin/playlist-index")
+    def admin_playlist_index(max_scans: int = Query(playlist_index.MAX_SCANS, ge=0, le=200),
+                             authorization: str | None = Header(default=None)):
+        """Index the channel's playlists and stamp each game with its own.
+
+        The hourly poll does this too; this is for the first pass, which is
+        bigger than one poll reads. Call it again until ``pending`` is 0.
+        """
+        require_admin(authorization)
+        try:
+            return {"ok": True, **index_playlists(max_scans)}
+        except Exception as e:  # noqa: BLE001 - YouTube's error, passed on
+            log.warning("playlist index failed: %s", e)
+            raise HTTPException(502, f"YouTube did not answer: {e}")
+
     @app.post("/api/admin/games/{source_id}/play-start")
     def admin_set_play_start(source_id: str, body: dict | None = None,
                              authorization: str | None = Header(default=None)):
@@ -788,6 +915,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         raw = (body or {}).get("start_s")
         if raw in (None, ""):
             src = repo.update_source(src.id, play_start_s=None, play_ends=None)
+            refresh_thinking(src, run)
             return {"ok": True, "play_start_s": None, "play_ends": None}
         try:
             start = float(raw)
@@ -799,6 +927,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(409, "that game has no ends")
         src = repo.update_source(src.id, play_start_s=float(ends[0]["start_s"]),
                                  play_ends=len(ends))
+        src = refresh_thinking(src, run)
         log.info("play starts at %s on %s, %d ends, %d trimmed",
                  src.play_start_s, src.id, src.play_ends, timeline.ends_trimmed(doc))
         return {"ok": True, "play_start_s": src.play_start_s,
@@ -1634,6 +1763,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         run = repo.get_run(run.id)
         resolved = dedupe.resolve_charts_for_run(repo, run, t)
         learn_play_starts_for_run(run)
+        settle_sources_for_run(run)
         return {"ok": True, "charts_resolved": resolved}
 
     @app.post("/api/worker/jobs/{job_id}/fail")
@@ -1789,6 +1919,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             initial_status="pending_approval" if settings.require_approval else "queued",
             doubles_enabled=settings.doubles_enabled,
         )
+        # The league index rides on the same hourly call, so a stream the club
+        # files in its playlist after the game gets its league within the hour.
+        try:
+            result["index"] = index_playlists(always_stamp=False)
+        except Exception as e:  # noqa: BLE001 - the index must never stop the poll
+            log.warning("playlist index failed: %s", e)
+            result["index"] = {"error": str(e)}
         return result
 
     return app
