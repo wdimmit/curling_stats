@@ -2799,3 +2799,27 @@ class TestDoublesStatsAndSummary:
         phone = css[start:css.index("@media (max-width: 640px) and (max-height: 520px)")]
         at = phone.index('body[data-sheet="peek"] #chart #endBox')
         assert "display: none" in phone[at:phone.index("}", at)]
+
+    def test_the_phone_transport_has_an_opaque_band(self):
+        """The bar floats over a sheet that scrolls, and whatever was scrolled
+        under its gaps took the tap -- in the open doubles sheet, a swap
+        checkbox. Its band is painted in the sheet's colour, under the buttons
+        (z-index -1 inside .transport) and over the sheet."""
+        css = (VIEWER / "style.css").read_text()
+        start = css.index("@media (max-width: 640px) and (min-height: 521px)")
+        short = css.index("@media (max-width: 640px) and (max-height: 520px)")
+        phone = css[start:short]
+        rule = lambda block, sel: block[block.index(sel):block.index("}", block.index(sel))]
+        band = rule(phone, ".transport::before {")
+        for decl in ('content: ""', "position: absolute", "z-index: -1", "top: -8px",
+                     "left: -12px", "right: -12px", "background: var(--panel)"):
+            assert decl in band, decl
+        assert "background: var(--panel)" in rule(phone, "\n  #chart {")
+        # The short screen scrolls under its bar too: the same band, in the
+        # page's colour, with the card moved to ::after so it paints over it.
+        tail = css[short:]
+        assert "z-index: -1" in rule(tail, ".transport::before {")
+        assert "background: var(--bg)" in rule(tail, ".transport::before {")
+        card = rule(tail, ".transport::after {")
+        assert "background: var(--panel)" in card and "border-radius: 10px" in card
+        assert "background:" not in rule(tail, ".transport {")

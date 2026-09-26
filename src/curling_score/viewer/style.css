@@ -616,6 +616,19 @@ body[data-mode="review"] #house { cursor:default; }
   .transport { position: fixed; left: 12px; right: 12px; z-index: 5;
                bottom: calc(24px + env(safe-area-inset-bottom));
                margin: 0; gap: 8px; flex-wrap: nowrap; }
+  /* The bar's own band, opaque, from 8px above the buttons to the bottom of
+     the screen and the sheet's full width, in the sheet's colour. Without it
+     the bar floats over a sheet that scrolls, and whatever is scrolled under
+     its gaps and margins takes the tap: the open doubles sheet put a swap
+     checkbox there. Now a tap beside a button lands on the bar and does
+     nothing. A child of .transport (a stacking context: fixed, z-index 5), so
+     z-index -1 paints it under the buttons and still over the sheet (4), and
+     it goes -- and hides -- wherever the bar does. The sheet's 84px of bottom
+     padding is what lets its last row scroll clear of these 80. */
+  .transport::before { content: ""; position: absolute; z-index: -1;
+                       top: -8px; left: -12px; right: -12px;
+                       bottom: calc(-24px - env(safe-area-inset-bottom));
+                       background: var(--panel); }
   .transport button { height: 48px; flex: 0 0 56px; padding: 0; }
   .transport #label, .transport #link { display: none; }
   .transport #prev { order: 1; }
@@ -876,9 +889,21 @@ body[data-mode="review"] #house { cursor:default; }
   main { margin-bottom: calc(84px + env(safe-area-inset-bottom)); }
   .transport { position: fixed; left: 12px; right: 12px; z-index: 5;
                bottom: calc(12px + env(safe-area-inset-bottom));
-               margin: 0; gap: 8px; flex-wrap: nowrap;
-               background: var(--panel); padding: 8px; border-radius: 10px;
-               box-shadow: 0 2px 12px rgb(0 0 0 / .14); }
+               margin: 0; gap: 8px; flex-wrap: nowrap; padding: 8px; }
+  /* The same opaque band the tall phone gives its bar, for the same reason:
+     this page scrolls under the bar, and its 12px margins beside and below
+     the card handed a near miss to whatever was there -- a swap checkbox, a
+     grade button. The band is the page's colour, since there is no sheet
+     here, and the card itself moves to ::after: a z-index -1 child paints
+     over its parent's own background, so a card left on .transport would
+     vanish under the band. Tree order puts ::after over ::before. */
+  .transport::before { content: ""; position: absolute; z-index: -1;
+                       top: 0; left: -12px; right: -12px;
+                       bottom: calc(-12px - env(safe-area-inset-bottom));
+                       background: var(--bg); }
+  .transport::after { content: ""; position: absolute; z-index: -1; inset: 0;
+                      background: var(--panel); border-radius: 10px;
+                      box-shadow: 0 2px 12px rgb(0 0 0 / .14); }
   .transport button { height: 44px; min-width: 44px; padding: 0 10px; }
   .transport #prev, .transport #next { flex: 0 0 44px; padding: 0; }
   .transport #label, .transport #link { display: none; }
