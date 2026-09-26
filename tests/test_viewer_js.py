@@ -2722,3 +2722,13 @@ class TestDoublesStatsAndSummary:
         assert 'id="formatWarning"' in flags and 'id="formatWarning"' not in main
         assert flags.index('id="formatWarning"') < flags.index("flags.map(")
         assert "<Flags doc={doc} " in main
+
+    def test_a_phone_peek_hides_the_end_box(self):
+        """The peek's bottom 84px belong to the fixed transport bar. The End
+        box rendered into them, and a tap beside a transport button landed on
+        a swap label and saved a swap."""
+        css = (VIEWER / "style.css").read_text()
+        start = css.index("@media (max-width: 640px) and (min-height: 521px)")
+        phone = css[start:css.index("@media (max-width: 640px) and (max-height: 520px)")]
+        at = phone.index('body[data-sheet="peek"] #chart #endBox')
+        assert "display: none" in phone[at:phone.index("}", at)]

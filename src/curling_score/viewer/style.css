@@ -651,9 +651,13 @@ body[data-mode="review"] #house { cursor:default; }
      "Place the stones" comes along into the open state too. */
   body[data-sheet="open"] #orderRow:not([hidden]),
   body[data-sheet="open"] #placeStones:not([hidden]) { display: flex; }
+  /* #endBox too: the peek has no room for it, and what it would render into
+     is the 84px of padding under the fixed transport bar -- where a tap beside
+     a transport button landed on a swap label and saved a swap. */
   body[data-sheet="peek"] #chart #typeList,
   body[data-sheet="peek"] #chart #missReason,
-  body[data-sheet="peek"] #chart #note { display: none; }
+  body[data-sheet="peek"] #chart #note,
+  body[data-sheet="peek"] #chart #endBox { display: none; }
 
   /* No `display` here: Task 3 hides #orderRow globally at the same specificity,
      and this rule lands later, so declaring one would show it in every state.
