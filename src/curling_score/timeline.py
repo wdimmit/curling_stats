@@ -533,7 +533,41 @@ def _reorder(shots: list) -> list:
     return out
 
 
-def _renumber(shots: list, end_number: int, patched: set, fmt=None) -> None:
+def _swapped(patch, fmt) -> dict:
+    """Which teams swapped roles this end, from an end-level override.
+
+    Only a format whose two players can trade roles honours it; anything else
+    -- a four-player chart, a patch that is not the expected shape -- is no
+    swap at all. Only true values count, so turning a swap off is the same as
+    never having set it.
+    """
+    if not fmt.swappable or not isinstance(patch, dict):
+        return {}
+    wanted = patch.get("roles_swapped")
+    if not isinstance(wanted, dict):
+        return {}
+    return {c: True for c in rules.COLORS if wanted.get(c) is True}
+
+
+def _assign_throwers(shots, end_number, fmt, swapped) -> None:
+    """Who threw each rock of an end whose order did not change.
+
+    A role swap moves the thrower fields and the label, never the number, the
+    colour or the hammer.
+    """
+    for s in shots:
+        n = s.get("number")
+        if not isinstance(n, int) or not 1 <= n <= fmt.delivered_per_end:
+            continue
+        swap = bool(swapped.get(s.get("color")))
+        t = fmt.throw_info(n, swapped=swap)
+        s["thrower_slot"] = t.position_slot
+        s["position"] = fmt.positions[t.position_slot - 1]
+        s["rock_of_player"] = t.rock_of_player
+        s["label"] = fmt.shot_label(end_number, n, swapped=swap)
+
+
+def _renumber(shots: list, end_number: int, patched: set, fmt=None, swapped=None) -> None:
     """Give a reordered end its numbers, throwers and labels afresh.
 
     Everything a shot's number implies follows it: who threw it, which of
@@ -543,55 +577,69 @@ def _renumber(shots: list, end_number: int, patched: set, fmt=None) -> None:
     any shot whose colour the charter set by hand.
 
     ``fmt`` is the :class:`format.GameFormat` the end was played under; ``None``
-    means fours.
+    means fours. ``swapped`` names the teams that traded roles this end
+    (doubles).
     """
     fmt = fmt or format_mod.FOURS
+    swapped = swapped or {}
     anchors = [(i, s["color"]) for i, s in enumerate(shots)
                if not s.get("color_inferred") or shot_identity(s) in patched]
     for i, s in enumerate(shots):
         s["id"] = shot_identity(s)
         s["number"] = i + 1
-        t = fmt.throw_info(i + 1)
+        if s.get("color_inferred") and anchors and shot_identity(s) not in patched:
+            j, color = min(anchors, key=lambda a: abs(a[0] - i))
+            s["color"] = color if (i - j) % 2 == 0 else rules.other_color(color)
+        swap = bool(swapped.get(s["color"]))
+        t = fmt.throw_info(i + 1, swapped=swap)
         s["has_hammer"] = t.has_hammer
         s["thrower_slot"] = t.position_slot
         s["position"] = fmt.positions[t.position_slot - 1]
         s["rock_of_player"] = t.rock_of_player
-        s["label"] = fmt.shot_label(end_number, i + 1)
-        if s.get("color_inferred") and anchors and shot_identity(s) not in patched:
-            j, color = min(anchors, key=lambda a: abs(a[0] - i))
-            s["color"] = color if (i - j) % 2 == 0 else rules.other_color(color)
+        s["label"] = fmt.shot_label(end_number, i + 1, swapped=swap)
 
 
 def apply_overrides(document: dict, overrides: dict) -> dict:
     """Layer hand corrections over the detected timeline.
 
-    Overrides are keyed ``"<game>.<end>.<shot>"`` so re-running the analysis
-    never destroys work someone did by hand. A patch may carry ``before``,
-    naming the shot this one was actually thrown before; the end is then put
-    in that order and renumbered, with the original numbers kept in ``id`` so
-    the keys still resolve.
+    Overrides are keyed ``"<game>.<end>.<shot>"`` for a shot, or
+    ``"<game>.<end>"`` for the end (doubles' ``roles_swapped``), so
+    re-running the analysis never destroys work someone did by hand. A shot
+    patch may carry ``before``, naming the shot this one was actually thrown
+    before; the end is then put in that order and renumbered, with the
+    original numbers kept in ``id`` so the keys still resolve.
     """
     fmt = format_mod.of_document(document)
     patches: dict[tuple[int, int], dict[int, dict]] = {}
+    end_patches: dict[tuple[int, int], dict] = {}
     for key, patch in (overrides or {}).items():
         try:
-            g, e, s = (int(part) for part in key.split("."))
+            parts = [int(part) for part in key.split(".")]
         except ValueError:
             continue
-        patches.setdefault((g, e), {})[s] = patch
+        if len(parts) == 3:
+            patches.setdefault((parts[0], parts[1]), {})[parts[2]] = patch
+        elif len(parts) == 2:
+            end_patches[(parts[0], parts[1])] = patch
     for game in document.get("games", []):
         for end in game["ends"]:
-            here = patches.get((game["index"], end_identity(end)), {})
+            ident = (game["index"], end_identity(end))
+            here = patches.get(ident, {})
             for shot in end["shots"]:
                 patch = here.get(shot_identity(shot))
                 if patch is not None:
                     shot.update(patch)
                     shot["corrected"] = True
+            swapped = _swapped(end_patches.get(ident), fmt)
             ordered = _reorder(end["shots"])
             if ordered is not end["shots"]:
                 colour_set = {s for s, p in here.items() if "color" in p}
-                _renumber(ordered, end["number"], colour_set, fmt)
+                _renumber(ordered, end["number"], colour_set, fmt, swapped)
                 end["shots"] = ordered
+            elif swapped:
+                _assign_throwers(end["shots"], end["number"], fmt, swapped)
+            if swapped:
+                end["roles_swapped"] = swapped
     return document
 
 

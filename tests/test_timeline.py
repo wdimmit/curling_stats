@@ -1060,3 +1060,69 @@ class TestFormatCheck:
         loud = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[],
                                        check={"ends": 4, "median_offered": 10, "looks_like": "doubles"})
         assert "doubles" in loud["format_warning"] and "format" not in loud
+
+
+def _doubles_end(n=10, end_number=3, fmt=F.DOUBLES, with_block=True):
+    """A doubles end as the pipeline writes it: red throws first."""
+    def s(num):
+        t = fmt.throw_info(num)
+        return {"number": num, "color": "red" if num % 2 else "yellow",
+                "color_inferred": False, "missing": False,
+                "thrower_slot": t.position_slot,
+                "position": fmt.positions[t.position_slot - 1],
+                "rock_of_player": t.rock_of_player, "has_hammer": t.has_hammer,
+                "label": fmt.shot_label(end_number, num)}
+    doc = {"games": [{"index": 0, "ends": [
+        {"number": end_number, "shots": [s(i) for i in range(1, n + 1)]}]}]}
+    if with_block:
+        doc["format"] = fmt.to_json()
+    return doc
+
+
+def _end(doc, ov):
+    return timeline.apply_overrides(doc, ov)["games"][0]["ends"][0]
+
+
+class TestRoleSwap:
+    def test_a_swap_hands_red_first_and_last_to_b(self):
+        end = _end(_doubles_end(), {"0.3": {"roles_swapped": {"red": True}}})
+        red = [(s["number"], s["position"], s["thrower_slot"], s["rock_of_player"])
+               for s in end["shots"] if s["color"] == "red"]
+        assert red == [(1, "B", 2, 1), (3, "A", 1, 1), (5, "A", 1, 2),
+                       (7, "A", 1, 3), (9, "B", 2, 2)]
+        assert end["shots"][0]["label"] == "3rd end, B's first rock"
+        assert [s["position"] for s in end["shots"] if s["color"] == "yellow"] == \
+               ["A", "B", "B", "B", "A"]
+
+    def test_the_end_records_who_swapped(self):
+        end = _end(_doubles_end(), {"0.3": {"roles_swapped": {"red": True, "yellow": False}}})
+        assert end["roles_swapped"] == {"red": True}
+
+    def test_unswapping_restores_the_detected_roles(self):
+        before = _doubles_end()["games"][0]["ends"][0]["shots"]
+        end = _end(_doubles_end(), {"0.3": {"roles_swapped": {"red": False}}})
+        fields = ("position", "thrower_slot", "rock_of_player", "label")
+        assert [[s[f] for f in fields] for s in end["shots"]] == \
+               [[s[f] for f in fields] for s in before]
+        assert "roles_swapped" not in end
+
+    def test_a_swap_and_a_move_together(self):
+        doc = _doubles_end(n=6, end_number=4)
+        for s in doc["games"][0]["ends"][0]["shots"][4:]:
+            s["color_inferred"] = s["missing"] = True
+        end = _end(doc, {"0.4.5": {"before": 1}, "0.4.6": {"before": 1},
+                         "0.4": {"roles_swapped": {"red": True}}})
+        assert [s["id"] for s in end["shots"]] == [5, 6, 1, 2, 3, 4]
+        assert [s["color"] for s in end["shots"]] == ["red", "yellow"] * 3
+        assert [s["position"] for s in end["shots"]] == ["B", "A", "A", "B", "A", "B"]
+        assert end["shots"][0]["label"] == "4th end, B's first rock"
+
+    def test_a_fours_document_ignores_an_end_key(self):
+        doc = _doubles_end(n=16, fmt=F.FOURS, with_block=False)
+        end = _end(doc, {"0.3": {"roles_swapped": {"red": True}}})
+        assert end["shots"][0]["position"] == "lead"
+        assert "roles_swapped" not in end
+
+    def test_a_malformed_end_patch_is_ignored(self):
+        end = _end(_doubles_end(), {"0.3": {"roles_swapped": "red"}})
+        assert end["shots"][0]["position"] == "A" and "roles_swapped" not in end

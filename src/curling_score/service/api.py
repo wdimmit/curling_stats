@@ -1021,7 +1021,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             "status": run.status if run else None,
             "game_index": chart.game_index,
             "updated_at": _iso(chart.updated_at),
-            "shots_charted": len(chart.overrides),
+            # Shot corrections only: an end-level key (a doubles role swap)
+            # is not a charted shot.
+            "shots_charted": sum(1 for k in chart.overrides if k.count(".") == 2),
             "team_id": chart.team_id,
             "team_name": team.name if team else None,
             "superseded_by": chart.superseded_by,

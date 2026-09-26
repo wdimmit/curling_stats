@@ -1342,6 +1342,21 @@ def signed_in(w):
     return {"Authorization": "Bearer tok-sarah"}
 
 
+class TestRoleSwapCharting:
+    def test_a_role_swap_is_not_counted_as_a_charted_shot(self, world):
+        headers = signed_in(world)
+        c = world["client"]
+        r = c.post("/api/submissions", json={"url": f"https://youtu.be/{VID}"},
+                   headers={"X-Forwarded-For": "9.9.9.9", **headers})
+        slug = r.json()["slug"]
+        c.post(f"/c/{slug}/overrides.json?v=0", headers=headers,
+               json={"0.1.1": {"user_score": 3},
+                     "0.1": {"roles_swapped": {"red": True}}})
+        rows = c.get("/api/me/charts", headers=headers).json()
+        row = next(rr for rr in rows["charts"] if rr["slug"] == slug)
+        assert row["shots_charted"] == 1
+
+
 class TestFormat:
     @pytest.fixture(autouse=True)
     def _doubles_on(self, world):
