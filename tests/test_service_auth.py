@@ -515,3 +515,24 @@ class TestNamingTheTeams:
 
     def test_a_game_we_do_not_have_is_404(self, w):
         assert post(w, "/api/games/s_nope/teams", {"red": "Rice"}, SARAH).status_code == 404
+
+
+class TestAFlagCarriesTheAccount:
+    def body(self, sid):
+        return {"path": f"/g/{sid}/", "note": "wrong thrower", "place": {}}
+
+    def test_a_signed_in_flag_names_its_author(self, w):
+        sid = a_ready_game(w)
+        assert post(w, "/api/flags", self.body(sid), SARAH).status_code == 201
+        assert w["repo"].list_flags()[0].user == {"uid": "uid-sarah",
+                                                  "email": "sarah@example.org"}
+
+    def test_a_bad_token_is_anonymous_not_an_error(self, w):
+        sid = a_ready_game(w)
+        r = post(w, "/api/flags", self.body(sid), {"Authorization": "Bearer nonsense"})
+        assert r.status_code == 201 and w["repo"].list_flags()[0].user is None
+
+    def test_with_accounts_off_a_token_is_ignored(self, no_accounts):
+        sid = a_ready_game(no_accounts)
+        assert post(no_accounts, "/api/flags", self.body(sid), SARAH).status_code == 201
+        assert no_accounts["repo"].list_flags()[0].user is None

@@ -21,6 +21,8 @@ import hmac
 import json
 import logging
 import os
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -35,7 +37,7 @@ from curling_score.ingest import source
 from curling_score.service import dedupe, playlists, slug
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    Chart, Invite, Job, Run, Source, Team, User, Worker,
+    Chart, Flag, Invite, Job, Run, Source, Team, User, Worker,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import detcache_key, meta_key, timeline_key
@@ -90,6 +92,20 @@ def asset_revalidated(request: Request, path: Path, media_type: str) -> Response
 # merged result, because many small merges add up where one request does not.
 MAX_OVERRIDES_BYTES = 700_000
 MAX_MERGE_BYTES = 100_000
+# A flag is a sentence or three about one rock. These bound what a stranger
+# can make us store, and the budget is a flag's own, like the chart's, so
+# flagging a game never costs anyone a submission.
+MAX_FLAG_BYTES = 8_000
+MAX_FLAG_NOTE = 2_000
+FLAG_HOUR_LIMIT = 20
+FLAG_DAY_LIMIT = 100
+# The page a flag was sent from: an edit, view-only or review link.
+FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
+_PLACE_INTS = ("game_index", "end", "rock")
+_PLACE_TEXT = {"end_id": 40, "rock_id": 40, "key": 40, "label": 80}
+PLACE_INT_MAX = 1_000_000
+# Two days: past the longest video we accept (Settings.max_hours).
+FLAG_VIDEO_S_MAX = 172_800
 # Starting a chart on a game we already hold queues no work, so it gets a
 # budget of its own rather than one of the five submissions an hour.
 CHART_RATE_FACTOR = 6
@@ -134,6 +150,10 @@ class Settings:
     max_queued: int = 10
     rate_hour: int = 5
     rate_day: int = 20
+    # How many proxies append to X-Forwarded-For before us: 1 for Cloud Run
+    # (a domain mapping included), 2 behind an external HTTPS load balancer,
+    # which appends its own address after the caller's. See client_ip.
+    proxy_hops: int = 1
     ip_salt: str = "curling"
     lease_s: float = LEASE_S
     # Firebase's web config. None of it is secret -- the apiKey is a public
@@ -165,6 +185,7 @@ class Settings:
             max_queued=int(env("MAX_QUEUED", "10")),
             rate_hour=int(env("RATE_HOUR", "5")),
             rate_day=int(env("RATE_DAY", "20")),
+            proxy_hops=int(env("PROXY_HOPS", "1")),
             ip_salt=env("IP_SALT", "curling"),
             firebase_project=env("FIREBASE_PROJECT", ""),
             firebase_api_key=env("FIREBASE_API_KEY", ""),
@@ -179,6 +200,69 @@ def utcnow():
 
 def _iso(dt):
     return dt.isoformat(timespec="seconds") if dt else None
+
+
+def clean_place(place) -> dict:
+    """The browser's account of which rock, checked field by field.
+
+    Every field may be null: a blank rock has no video time and an end with
+    no rocks has no rock. Raises ValueError naming the first wrong field.
+    """
+    if not isinstance(place, dict):
+        raise ValueError("place must be an object")
+    out = {}
+    for k in _PLACE_INTS:
+        v = place.get(k)
+        # Bounded: Firestore holds int64, and a 25-digit end fails the write.
+        if v is not None and (isinstance(v, bool) or not isinstance(v, int)
+                              or abs(v) > PLACE_INT_MAX):
+            raise ValueError(f"place.{k} must be a whole number")
+        out[k] = v
+    for k, most in _PLACE_TEXT.items():
+        v = place.get(k)
+        if isinstance(v, int) and not isinstance(v, bool):
+            v = str(v)   # an identity is the detector's number unless renumbered
+        if isinstance(v, str):
+            v = printable(v, keep="")
+        if v is not None and (not isinstance(v, str) or len(v) > most):
+            raise ValueError(f"place.{k} must be text of at most {most} characters")
+        out[k] = v
+    t = place.get("t_video_s")
+    # A range check rather than math.isfinite: it refuses inf (1e400 parses
+    # to it), whose storage makes every later admin list and backup fail to
+    # serialise, and NaN (every comparison with it is false), and a 400-digit
+    # int, which isfinite cannot even convert. Python compares int and float
+    # exactly, so none of these overflow here.
+    if t is not None and (isinstance(t, bool) or not isinstance(t, (int, float))
+                          or not 0 <= t <= FLAG_VIDEO_S_MAX):
+        raise ValueError("place.t_video_s must be a number of seconds")
+    out["t_video_s"] = None if t is None else float(t)
+    return out
+
+
+# Right-to-left and isolate overrides: invisible, and they reorder what is
+# printed after them, so a note could make the owner's terminal lie.
+_BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A))
+
+
+def printable(text: str, keep: str = "\n\t") -> str:
+    """`text` without control characters (but `keep`), bidi overrides or lone
+    surrogates. A flag is read in the owner's terminal, where an escape code
+    runs -- OSC 52 writes the clipboard -- and a lone surrogate cannot be
+    encoded at all, so every later listing of it would fail."""
+    return "".join(ch for ch in text
+                   if ch in keep or not (unicodedata.category(ch) in ("Cc", "Cs")
+                                         or ord(ch) in _BIDI))
+
+
+def _no_constants(name):
+    # NaN and Infinity are not JSON; Python's parser accepts them by default.
+    raise ValueError(f"{name} is not JSON")
+
+
+def _flag_json(flag) -> dict:
+    return {**flag.to_dict(), "created_at": _iso(flag.created_at),
+            "resolved_at": _iso(flag.resolved_at)}
 
 
 def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) -> FastAPI:
@@ -267,9 +351,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return bool(user and team_id and user.id in repo.team_members(team_id))
 
     def client_ip(request: Request) -> str:
+        """The caller's address, as our own proxies saw it.
+
+        Cloud Run's front end appends the address it saw to whatever
+        X-Forwarded-For the caller sent, so only the entries our proxies
+        appended are facts -- the last `proxy_hops` of them -- and anything
+        before is the caller's to invent. Taking the first entry, as this
+        used to, gave anyone a fresh rate-limit budget per forged header.
+        """
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
-            return fwd.split(",")[0].strip()
+            hops = [h.strip() for h in fwd.split(",") if h.strip()]
+            if hops:
+                return hops[-min(max(settings.proxy_hops, 1), len(hops))]
         return request.client.host if request.client else "unknown"
 
     def ip_hash(request: Request) -> str:
@@ -389,7 +483,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         src = repo.get_source(chart.source_id) if chart.source_id else None
         doc = game_doc(run, chart.game_index, src, trim_start_for(chart, src))
         doc["chart"] = {
-            "slug": chart.id,
+            # The chart id IS the edit link, so a view-only document must not
+            # carry it: anyone could read it out and open /c/<id>/.
+            "slug": None if read_only else chart.id,
             "share_url": None if read_only else url_for(f"/s/{chart.share_slug}/"),
             "read_only": read_only,
             "requested_start_s": chart.requested_start_s,
@@ -1126,8 +1222,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # getting whole documents. `shared` is what turns on polling for a
             # teammate's edits -- pointless, and a read every 15s, on a chart
             # only one person can reach.
+            # The viewer uses the slug only to key the tab's saved cursor, so a
+            # view-only page keys it on the link it was opened by: the chart id
+            # is the edit link, and would be readable in the page source.
             return HTMLResponse(viewer.boot_page({
-                "slug": chart.id,
+                "slug": key if read_only else chart.id,
                 "mode": "view" if read_only else "edit",
                 "merge": True,
                 "shared": chart.team_id is not None,
@@ -1295,6 +1394,62 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if asset in STATIC_ASSETS:
             return asset_revalidated(request, STATIC_DIR / asset, STATIC_ASSETS[asset])
         raise HTTPException(404)
+
+    # ------------------------------------------------------------- flags
+    # Anyone looking at a chart may say what is wrong with it. One route for
+    # all three kinds of link rather than one under each: /g/ carries no POST
+    # route at all (see lookup_source), and one route is one budget to count.
+    # The link arrives as the page's own path and is resolved here, so where a
+    # flag says it was is the server's word, never the browser's.
+    @app.post("/api/flags", status_code=201)
+    async def create_flag(request: Request, authorization: str | None = Header(default=None)):
+        raw = await request.body()
+        if len(raw) > MAX_FLAG_BYTES:
+            raise HTTPException(413, "that flag is too long")
+        try:
+            body = json.loads(raw, parse_constant=_no_constants)
+        except ValueError:
+            raise HTTPException(400, "send JSON") from None
+        if not isinstance(body, dict):
+            raise HTTPException(400, "send a JSON object")
+        m = FLAG_PATH.match(str(body.get("path") or ""))
+        if not m:
+            raise HTTPException(400, "path must be a chart or game link")
+        kind, key = m.groups()
+        note = body.get("note")
+        note = printable(note).strip() if isinstance(note, str) else ""
+        if not note:
+            raise HTTPException(422, "say what is wrong")
+        if len(note) > MAX_FLAG_NOTE:
+            raise HTTPException(422, f"keep it under {MAX_FLAG_NOTE} characters")
+        try:
+            place = clean_place(body.get("place"))
+        except ValueError as err:
+            raise HTTPException(422, str(err)) from None
+        if kind == "g":
+            src, run = lookup_source(key)
+            chart = None
+        else:
+            chart, run, _ = lookup(kind, key)
+            src = repo.get_source(chart.source_id) if chart.source_id else None
+        iph = ip_hash(request)
+        if not repo.bump_rate_limit("flag:" + iph, now(), FLAG_HOUR_LIMIT, FLAG_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of flags; try again later")
+        user = current_user_or_none(authorization)
+        flag = Flag(
+            id=slug.new_flag_id(), created_at=now(), note=note, place=place,
+            where={"link": kind,
+                   "chart_id": chart.id if chart else None,
+                   "share_slug": chart.share_slug if chart else None,
+                   "source_id": src.id if src else None,
+                   "run_id": run.id, "video_id": run.video_id,
+                   "processing_version": run.processing_version,
+                   "title": run.title},
+            overrides_version=chart.overrides_version if chart else None,
+            user={"uid": user.id, "email": user.email} if user else None,
+            ip_hash=iph)
+        repo.put_flag(flag)
+        return {"id": flag.id}
 
     # ------------------------------------------------------------- worker
     @app.post("/api/worker/claim")
@@ -1573,6 +1728,23 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def admin_export(authorization: str | None = Header(default=None)):
         require_admin(authorization)
         return JSONResponse(json.loads(json.dumps(repo.export_all(), default=_json_default)))
+
+    @app.get("/api/admin/flags")
+    def admin_flags(status: str = "open", limit: int = Query(200, ge=1, le=1000),
+                    authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        if status not in ("open", "resolved", "all"):
+            raise HTTPException(422, "status is open, resolved or all")
+        flags = repo.list_flags(None if status == "all" else status, limit)
+        return {"flags": [_flag_json(f) for f in flags]}
+
+    @app.post("/api/admin/flags/{flag_id}/resolve")
+    def admin_resolve_flag(flag_id: str, authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        got = repo.resolve_flag(flag_id, now())
+        if got is None:
+            raise HTTPException(404, "no such flag")
+        return _flag_json(got)
 
     @app.get("/api/admin/playlists")
     def admin_playlists(authorization: str | None = Header(default=None)):

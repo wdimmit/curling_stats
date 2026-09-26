@@ -50,6 +50,10 @@ def new_team_id() -> str:
     return new_slug(SHORT_BYTES, "t_")
 
 
+def new_flag_id() -> str:
+    return new_slug(SHORT_BYTES, "f_")
+
+
 def new_invite_token() -> str:
     """Full length: an invite travels in a URL and joining a team is what it
     grants, so it belongs with the chart slugs, not with the ids nobody types."""
