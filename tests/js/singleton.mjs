@@ -66,6 +66,11 @@ export const shouldCrop = core.shouldCrop;
 export const stoneAt = core.stoneAt;
 export const broomMark = core.broomMark;
 export const ghostStones = core.ghostStones;
+export const flagPlace = core.flagPlace;
+export const noteProblem = core.noteProblem;
+export const settleWithin = core.settleWithin;
+export const NOTE_MAX = core.NOTE_MAX;
+export const buildGameView = core.buildGameView;
 
 export const lineFigures = core.lineFigures;
 export const feetInches = core.feetInches;

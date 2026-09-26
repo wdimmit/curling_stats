@@ -2283,3 +2283,70 @@ class TestThePhoneTabsCss:
         css = (VIEWER / "style.css").read_text()
         for gone in (".wsheethead {", ".wbar {", ".wendbar {"):
             assert gone not in css, gone
+
+
+class TestFlagPlace:
+    """What a flag records about the rock it was sent from."""
+
+    def place(self, d, ei=0, si=0):
+        return run_js(f"out(flagPlace(buildGameView({json.dumps(d)}, 0, {{}}), {ei}, {si}));")
+
+    def test_a_rock(self):
+        d = doc([shot(1, "red", "lead", t_video_s=812.5), shot(2, "yellow", "lead")],
+                end_number=4)
+        got = self.place(d)
+        assert got["place"] == {"game_index": 0, "end": 4, "end_id": "4", "rock": 1,
+                                "rock_id": "1", "key": "0.4.1", "t_video_s": 812.5,
+                                "label": "red, lead"}
+        assert got["text"] == "Game 1 · End 4 · Rock 1 (red, lead)"
+
+    def test_an_end_with_no_rocks(self):
+        got = self.place(doc([], end_number=3))
+        assert got["place"]["rock"] is None and got["place"]["key"] is None
+        assert got["place"]["t_video_s"] is None and got["place"]["label"] is None
+        assert got["text"] == "Game 1 · End 3"
+
+    def test_a_rock_without_a_video_time(self):
+        got = self.place(doc([shot(1, "red", "lead")]))
+        assert got["place"]["t_video_s"] is None
+
+    def test_a_trimmed_end_keeps_its_identity(self):
+        got = self.place(doc([shot(1, "red", "lead")], end_number=2, end_id=5))
+        assert (got["place"]["end"], got["place"]["end_id"], got["place"]["key"]) == (2, "5", "0.5.1")
+
+    def test_a_renumbered_rock_keeps_its_identity(self):
+        got = self.place(doc([shot(3, "red", "lead", id=7)]))
+        assert (got["place"]["rock"], got["place"]["rock_id"], got["place"]["key"]) == (3, "7", "0.1.7")
+
+    def test_the_second_game_of_a_video_keeps_its_index(self):
+        got = self.place(doc([shot(1, "red", "lead")], game_index=1))
+        assert got["place"]["game_index"] == 1 and got["place"]["key"] == "1.1.1"
+
+    def test_past_the_last_end_there_is_nothing_to_flag(self):
+        assert self.place(doc([shot(1, "red", "lead")]), ei=5) is None
+
+
+class TestNoteProblem:
+    @pytest.mark.parametrize("note,ok", [
+        ("", False), ("   \n\t", False), ("x" * 2000, True), ("x" * 2001, False),
+        ("  wrong thrower  ", True),
+    ])
+    def test_notes(self, note, ok):
+        got = run_js(f"out(noteProblem({json.dumps(note)}));")
+        assert (got is None) == ok
+
+    def test_null_is_blank(self):
+        assert run_js("out(noteProblem(null));") == "Say what is wrong."
+
+
+class TestSettleWithin:
+    """The sign-in check must never hold a flag hostage."""
+
+    def test_a_check_that_never_settles_falls_back(self):
+        assert run_js("settleWithin(new Promise(() => {}), 30, 'anon').then(out);") == "anon"
+
+    def test_a_check_that_fails_falls_back(self):
+        assert run_js("settleWithin(Promise.reject(new Error('x')), 500, 'anon').then(out);") == "anon"
+
+    def test_a_check_that_answers_in_time_wins(self):
+        assert run_js("settleWithin(Promise.resolve('me'), 50, 'anon').then(out);") == "me"
