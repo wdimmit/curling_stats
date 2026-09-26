@@ -16,12 +16,12 @@ function readHash() {
   try { return decodeURIComponent(location.hash.slice(1)); } catch { return ""; }
 }
 
-/* "Tue Mar 3": the weekday is how a league night is remembered. */
+/* "Mar 3". No weekday: a league plays on the same night every week, and the
+ * tab already says which. */
 function when(iso) {
   const d = iso ? new Date(iso) : null;
   if (!d || isNaN(d)) return "—";
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
-    .replace(",", "");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function span(first, last) {
