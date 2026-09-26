@@ -1,0 +1,206 @@
+{
+ "about": "Placement marks for the mixed doubles work, read by eye from the destination overhead panel 4 s before each end's first real release. house_stone holds the hammer; first_thrower is who threw rock 1 in the video. Power-play side is sheet coordinates (+x right facing down-sheet).",
+ "marked": "2026-09-25",
+ "games": {
+  "brMO74e6ZZU": {
+   "title": "3/19 - Sheet 1 - Thursday Mixed Doubles League 2025-2026",
+   "note": "conceded after 4 ends",
+   "ends": [
+    {
+     "end": 1,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": null
+    },
+    {
+     "end": 2,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": null
+    },
+    {
+     "end": 3,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": null
+    },
+    {
+     "end": 4,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": {
+      "color": "red",
+      "side": "left"
+     }
+    }
+   ]
+  },
+  "n7ifEk4Zfl8": {
+   "title": "3/26 - Sheet 4 - Thursday Mixed Doubles League 2025-2026",
+   "ends": [
+    {
+     "end": 1,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": null
+    },
+    {
+     "end": 2,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": null
+    },
+    {
+     "end": 3,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": null
+    },
+    {
+     "end": 4,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": {
+      "color": "yellow",
+      "side": "left"
+     }
+    },
+    {
+     "end": 5,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": {
+      "color": "red",
+      "side": "left"
+     }
+    },
+    {
+     "end": 6,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": null
+    }
+   ]
+  },
+  "8J3r5FhFFd4": {
+   "title": "4/2 - Sheet 3 - Thursday Mixed Doubles League 2025-2026",
+   "ends": [
+    {
+     "end": 1,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": null
+    },
+    {
+     "end": 2,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": null
+    },
+    {
+     "end": 3,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": null
+    },
+    {
+     "end": 4,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": null
+    },
+    {
+     "end": 5,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": {
+      "color": "red",
+      "side": "left"
+     }
+    },
+    {
+     "end": 6,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": null
+    },
+    {
+     "end": 7,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": {
+      "color": "yellow",
+      "side": "right"
+     }
+    }
+   ]
+  },
+  "ih59IKFUHXk": {
+   "title": "2/19 - Sheet 5 - Thursday Mixed Doubles League 2025-2026",
+   "ends": [
+    {
+     "end": 1,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": null
+    },
+    {
+     "end": 2,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": null
+    },
+    {
+     "end": 3,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": null
+    },
+    {
+     "end": 4,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": null
+    },
+    {
+     "end": 5,
+     "house_stone": "red",
+     "guard_stone": "yellow",
+     "first_thrower": "yellow",
+     "power_play": null
+    },
+    {
+     "end": 6,
+     "house_stone": "yellow",
+     "guard_stone": "red",
+     "first_thrower": "red",
+     "power_play": {
+      "color": "yellow",
+      "side": "right"
+     }
+    }
+   ]
+  }
+ }
+}
