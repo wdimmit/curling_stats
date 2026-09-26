@@ -12,7 +12,7 @@ import {
 } from "react";
 import {
   PHONE_QUERY,
-  buildGameView, cumulativeThinking, cursor as cursorOf, gatherStats, gatherThinking,
+  buildGameView, cumulativeThinking, cursor as cursorOf, flagPlace, gatherStats, gatherThinking,
   identity, isBlank, isGraded, nextBlankAfter, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash,
@@ -25,6 +25,7 @@ import { House } from "./House.jsx";
 import { DeskDetail } from "./Detail.jsx";
 import { ChartPanel } from "./ChartPanel.jsx";
 import { Report } from "./Report.jsx";
+import { FlagDialog } from "./Flag.jsx";
 import { Watch } from "./Watch.jsx";
 import { useSwipe } from "./Pager.jsx";
 
@@ -65,7 +66,7 @@ export function App({ doc, config, cursor }) {
     const saved = savedView?.ends[cursor.ei]?.shots[cursor.si] ? cursor : null;
     return {
       gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
-      sheet: "peek", houseMode: "", menu: undefined, reporting: false, notice: null,
+      sheet: "peek", houseMode: "", menu: undefined, reporting: false, flagging: null, notice: null,
       following: true,
       // A link or a restored session names a rock the video is not at yet:
       // seen once, on mount, to seek the player there (below). Not a pref
@@ -112,6 +113,8 @@ export function App({ doc, config, cursor }) {
     if (text) noticeTimer.current = setTimeout(
       () => dispatch({ type: "set", patch: { notice: null } }), 5000);
   }, []);
+
+  const closeFlag = useCallback(() => dispatch({ type: "set", patch: { flagging: null } }), []);
 
   /* --------------------------------------------------------------- actions */
 
@@ -315,6 +318,9 @@ export function App({ doc, config, cursor }) {
       return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
     };
     const onKey = ev => {
+      // Behind the open flag dialog nothing steps, grades or seeks: the keys
+      // belong to its buttons, and its textarea is covered by typing() anyway.
+      if (document.getElementById("flagDialog")?.open) return;
       if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
       if (typing(ev)) { if (ev.key === "Escape") ev.target.blur(); return; }
       switch (ev.key) {
@@ -478,6 +484,9 @@ export function App({ doc, config, cursor }) {
       <section id="report" className={ui.reporting ? "show" : undefined}>
         <Report view={view} stats={stats} think={think} series={series} actions={actions} />
       </section>
+      {/* Outside <main>: the phone's watch layout hides everything in it
+          but #playCard, and a dialog inside a hidden parent never shows. */}
+      <FlagDialog flagging={ui.flagging} onClose={closeFlag} />
     </>
   );
 }
@@ -561,6 +570,11 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
         <button id="reportBtn" className={ui.reporting ? "on" : undefined}
                 onClick={() => dispatch({ type: "set", patch: { reporting: !ui.reporting } })}>
           Report
+        </button>
+        <button id="flagBtn" title="Flag an issue with this rock" hidden={!config.hosted}
+                onClick={() => dispatch({ type: "set",
+                  patch: { flagging: flagPlace(view, ui.ei, ui.si) } })}>
+          ⚑ Flag
         </button>
       </div>
     </header>

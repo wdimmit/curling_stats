@@ -62,6 +62,11 @@ class TestReviewPage:
         assert world["client"].get(f"/g/{sid}/style.css").status_code == 200
         assert world["client"].get(f"/g/{sid}/nope.js").status_code == 404
 
+    def test_the_flag_button_is_in_the_bundle(self, world):
+        sid = a_source(world)["source_id"]
+        app = world["client"].get(f"/g/{sid}/app.js").text
+        assert "flagBtn" in app and "flagDialog" in app and "/api/flags" in app
+
 
 class TestReviewTimeline:
     def test_it_serves_only_that_game(self, world):

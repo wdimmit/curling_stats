@@ -2350,3 +2350,50 @@ class TestSettleWithin:
 
     def test_a_check_that_answers_in_time_wins(self):
         assert run_js("settleWithin(Promise.resolve('me'), 50, 'anon').then(out);") == "me"
+
+
+class TestTheFlagButton:
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_it_sits_in_the_menu_after_report_and_only_when_hosted(self):
+        app = self.src("frontend/viewer/App.jsx")
+        menu = app[app.index('<div id="menu"'):app.index("</header>")]
+        assert menu.index('id="reportBtn"') < menu.index('id="flagBtn"')
+        assert "hidden={!config.hosted}" in menu[menu.index('id="flagBtn"'):]
+
+    def test_review_mode_does_not_hide_it_and_the_desktop_orders_it(self):
+        css = self.src("src/curling_score/viewer/style.css")
+        review = "\n".join(l for l in css.splitlines() if 'data-mode="review"' in l)
+        assert "#flagBtn" not in review
+        assert "header #flagBtn" in css
+
+    def test_the_place_is_a_snapshot_taken_on_open(self):
+        app = self.src("frontend/viewer/App.jsx")
+        assert "flagging: flagPlace(view, ui.ei, ui.si)" in app
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "flagging.place" in flag and "ui." not in flag
+
+    def test_keys_do_nothing_underneath_the_open_dialog(self):
+        app = self.src("frontend/viewer/App.jsx")
+        on_key = app[app.index("const onKey = ev =>"):]
+        assert on_key.index('getElementById("flagDialog")?.open') < on_key.index("switch (ev.key)")
+
+    def test_send_cannot_fire_twice(self):
+        flag = self.src("frontend/viewer/Flag.jsx")
+        assert "disabled={sending || !!noteProblem(note)}" in flag
+        assert "if (sending || noteProblem(note)) return;" in flag
+
+    def test_the_dialog_is_never_inside_main(self):
+        app = self.src("frontend/viewer/App.jsx")
+        assert "<FlagDialog" in app
+        assert "<FlagDialog" not in app[app.index("<main>"):app.index("</main>")]
+
+    def test_firebase_is_only_ever_imported_on_demand(self):
+        for rel in ("frontend/viewer", "frontend/runtime", "frontend/core"):
+            for p in (self.ROOT / rel).rglob("*"):
+                if p.suffix in (".js", ".mjs", ".jsx"):
+                    assert "site/auth.js\";" not in p.read_text(), p
+        assert 'import("../site/auth.js")' in self.src("frontend/runtime/flag.mjs")
