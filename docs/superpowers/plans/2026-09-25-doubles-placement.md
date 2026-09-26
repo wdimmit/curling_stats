@@ -16,9 +16,11 @@
 
 **Tech Stack:** Python 3.12, pytest. No frontend change.
 
-**Spec:** `docs/superpowers/specs/2026-09-25-mixed-doubles-design.md` (phase 3), as refined by the section "Design consequences" in `docs/superpowers/specs/2026-09-25-mixed-doubles-phase0.md`. Read both. Two deliberate refinements of the spec:
+**Spec:** `docs/superpowers/specs/2026-09-25-mixed-doubles-design.md` (phase 3), as refined by the section "Design consequences" in `docs/superpowers/specs/2026-09-25-mixed-doubles-phase0.md`. Read both. Four deliberate refinements of the spec:
 - **One block, not separate fields.** The spec's separate end fields (`placed`, `power_play`, `placement`) are one `placement` block here.
 - **Exclusion is by time alone.** A later "hit and stick" can come to rest on a placed stone's spot, so position cannot identify a placement stone.
+- **No `spread_s`.** The spec's `spread_s` is dropped with the "two stones settling close together in time" gate it measured, which phase 0 removed: ih59's first house stone arrived 96 s before its guard.
+- **`power_play` is a side string.** The spec's `power_play: {color, side}` is just the side here: `"left"`, `"right"` or `null`, the house stone's side. Its colour is the hammer, so it is not repeated.
 
 ## Global Constraints
 
@@ -1168,3 +1170,4 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - The broomless thrown line, **doubles only** (the user's decision on 2026-09-25), which gives doubles an aim line, a hack call and curl (spec phase 6).
 - Reading a guard from the long camera when it is above the panel. Phase 0 never saw that happen.
 - The 16-game four-player harness before any deploy (spec phase 7).
+- Re-anchoring the exclusion to a two-step power play's final spots. The cut is still `t_s + SETTLE_S` from the first arrangement to hold, not from when the stones reached their power-play spots.

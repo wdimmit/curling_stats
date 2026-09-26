@@ -110,11 +110,11 @@ def run_up_from(prev_end_s, start_s: float, *, crossed_games: bool = False) -> f
     Both were detected and both were discarded as belonging to the run-up.
 
     Between the previous end closing and this one opening, this panel holds
-    nothing but this end's stones: in doubles its two placed stones, then its
-    first deliveries: the previous end was played into the
-    other house, and its stones are cleared toward the hack behind it, away
-    from here. So everything from that close onward is this end's, bounded by
-    the gap that would have split the games. The first end of a game has no
+    nothing but this end's stones (in doubles, its two placed stones and then
+    its first deliveries). The previous end was played into the other house,
+    and its stones are cleared toward the hack behind it, away from here. So
+    everything from that close onward is this end's, bounded by the gap that
+    would have split the games. The first end of a game has no
     previous end and gets the whole gap: game 5's opening yellow ran clean
     through the house 67 s before the segmenter saw the end begin, which is
     what a through-shot does -- it leaves nothing for the segmenter to see.

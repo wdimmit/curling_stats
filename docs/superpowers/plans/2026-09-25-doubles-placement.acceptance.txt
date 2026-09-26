@@ -34,7 +34,7 @@ Game 1: brMO74e6ZZU  "3/19 - Sheet 1 - Thursday Mixed Doubles League 2025-2026"
     end 3: 10/10 deliveries (R6 Y6 offered, -2 against the rules), placement red, board says {'red': 0, 'yellow': 2}
     end 4: 10/10 deliveries (R5 Y6 offered, -1 against the rules), placement red power play left, board silent, detected {'red': 0, 'yellow': 2}
   (a second, unmarked "game 2" was also detected in this video's tail footage --
-  2 ends, 5/10 and 5/5 deliveries only, board not read; irrelevant to
+  2 ends, 5/10 and 5/10 deliveries only, board not read; irrelevant to
   acceptance, which only reads games[0], and consistent with the marks' "4
   ends" for this video.)
 

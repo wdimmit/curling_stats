@@ -256,7 +256,7 @@ def exclude(deliveries, placed: Placement | None):
     Dropped: anything that settled before the placement had held for
     ``SETTLE_S``. Those are the placement stones themselves (slid, carried or
     set down) and whatever was slid before the game. By time alone: a later
-    hit and stick on a placed stone's spot.
+    hit and stick can come to rest right on a placed stone's spot.
     """
     if placed is None:
         return list(deliveries), []
