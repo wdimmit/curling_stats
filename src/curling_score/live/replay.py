@@ -52,6 +52,9 @@ class ReplayRecording:
     def head_s(self) -> float:
         return self._head_s
 
+    def check(self):
+        """A replay needs no keeping: it has no network to drop out of."""
+
     def ended(self) -> bool:
         if self._stopped or self._proc is None or self._proc.poll() is None:
             return False
