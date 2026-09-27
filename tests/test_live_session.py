@@ -257,6 +257,26 @@ class TestTheStreamEnding:
         assert final["games"][0]["in_progress"] is False
         assert s.step() is None              # nothing more to do
 
+    def test_a_sheet_with_no_game_still_publishes_when_its_stream_ends(self):
+        """Sheets 1 and 5 on 2026-09-27: streamed, calibrated, never played.
+        The API completes a job only once its timeline is uploaded, so the
+        empty stream must publish too, or its job is refused and comes back."""
+        class Empty(Pipeline):
+            def samples(self, path, setups, from_s, until_s):
+                return [Sample(t=s.t, top_stones=0, bottom_stones=0)
+                        for s in super().samples(path, setups, from_s, until_s)]
+
+        pipe, rec, pub = Empty(), Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 3600.0)
+        assert pub == [] and pipe.built == []
+        rec.finished = True
+        for _ in range(5):
+            s.step()
+        assert s.done
+        assert pub[-1]["games"] == []
+        assert pub[-1]["live"]["in_progress"] is False
+
 
 class TestCalibrationGivesUp:
     def test_a_stream_that_ends_before_it_ever_calibrates_fails_after_a_try(self):
