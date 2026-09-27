@@ -34,11 +34,12 @@ spec:
             # chart a doubles game. The worker is not gated by it.
             - { name: DOUBLES_ENABLED,    value: "1" }
             # LIVE_ENABLED ("1", "true" or "yes") lets the playlist poller queue
-            # a stream that has gone live as a live job. Off until a worker
-            # running with WORKER_LIVE=1 is up: a live run no worker claims
-            # stands in for the recording. One box keeps up with five sheets
-            # (~83% of its time); a sixth falls behind.
-            - { name: LIVE_ENABLED,       value: "0" }
+            # a stream that has gone live as a live job. Only with a worker
+            # running with WORKER_LIVE=1: a live run no worker claims stands in
+            # for the recording. On since 2026-09-27, when the worker was
+            # deployed with it. One box keeps up with five sheets (~83% of its
+            # time); a sixth falls behind.
+            - { name: LIVE_ENABLED,       value: "1" }
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'
