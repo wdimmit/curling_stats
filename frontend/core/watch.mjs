@@ -104,11 +104,26 @@ export function rockAt(rows, t) {
  * it cannot rule out), so every score came back off rather than risk one
  * attached to the wrong end. `game.scoreboard` carries that verdict for the
  * whole game, not per end, so it applies to every end alike while it holds. */
+/* A game still being played: its stream is live and this game has not ended.
+ * The timeline says so in `live` (the run) and `in_progress` (the game); a
+ * recording's timeline has neither, and is never live. */
+export function liveGame(doc, game) {
+  return !!doc?.live?.in_progress && game?.in_progress !== false;
+}
+
+/* The board's unread ends, worded for the state of the game: while it is still
+ * being played the club simply has not hung those cards yet. */
+export function unreadNote(unread, live) {
+  if (!unread?.length) return null;
+  return `ends ${unread.join(", ")} ${live ? "not posted yet" : "were never posted"}`;
+}
+
 export function endSummary(view, ei) {
   const end = view.ends[ei]?.end;
   if (!end) return null;
   const readable = boardReadable(view.doc);
   return {
+    gameLive: liveGame(view.doc, view.game),
     number: end.number,
     of: view.ends.length,
     hammer: end.hammer || null,

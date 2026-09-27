@@ -2,7 +2,8 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   GROUPS, GROUP_TYPE, MISS_REASONS, TALLBOX, TYPES, subtypesOf,
-  blankQueue, boardReadable, endSummary, identity, isBlank, openGroupFor, scoreCell,
+  blankQueue, boardReadable, endSummary, identity, isBlank, liveGame, openGroupFor, scoreCell,
+  unreadNote,
   houseDeltaText, thinkText, throwerText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
@@ -252,9 +253,7 @@ function Scoreboard({ game, doc }) {
           <p className="scorekey">
             <span>&ndash; blank end</span>
             <span>&middot; not posted</span>
-            {unread.length
-              ? <span>{`ends ${unread.join(", ")} were never posted`}</span>
-              : null}
+            {unread.length ? <span>{unreadNote(unread, liveGame(doc, game))}</span> : null}
           </p>
         </>
       ) : (

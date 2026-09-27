@@ -39,10 +39,11 @@ function RockRow({ row, current, onPick }) {
 }
 
 function EndHead({ summary }) {
-  const { number, running, hammer, boardReadable, scoresWithheld, powerPlay } = summary;
+  const { number, running, hammer, boardReadable, scoresWithheld, powerPlay, gameLive } = summary;
   return (
     <div className="tend">
       <span className="wen">End {number}</span>
+      {gameLive ? <span className="wlive">live</span> : null}
       {hammer ? <span className="wham">{hammer} has hammer</span> : null}
       {powerPlay ? <span className="wpp">power play · {powerPlay.color}, {powerPlay.side}</span> : null}
       {running ? (

@@ -14,7 +14,7 @@ import {
   PHONE_QUERY,
   buildGameView, chartedNotice, cumulativeThinking, cursor as cursorOf, endKey, flagPlace,
   gatherStats, gatherThinking, formatWarning,
-  identity, isBlank, isGraded, nextBlankAfter, blankQueue, peekMode,
+  identity, isBlank, isGraded, liveGame, nextBlankAfter, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash,
 } from "../core/index.mjs";
@@ -549,6 +549,10 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
         sheet {src.sheet ?? "?"} &middot;{" "}
         <a href={src.url} target="_blank" rel="noopener">{src.video_id}</a>
       </span>
+      {liveGame(doc, view.game)
+        ? <span id="livePill" className="pill live"
+                title="Still being played: each end appears here once it is over">live</span>
+        : null}
       <span id="stoneChip" className={shot ? `chip ${shot.color} ${isBlank(shot) ? "unknown" : ""}` : "chip"}
             hidden={!shot}>{shot ? (isBlank(shot) ? "?" : shot.number) : ""}</span>
       <span className="grow" />

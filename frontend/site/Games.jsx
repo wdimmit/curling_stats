@@ -5,7 +5,7 @@
  * the same game used to mint a second, blank chart and strand the first;
  * /api/charts now hands back the one you already have.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { authedFetch } from "./auth.js";
 import { hms, localDay } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
@@ -178,6 +178,13 @@ export function Games() {
   const [team, setTeam] = useState("");
 
   const all = catalogue.data?.games || [];
+  // A live game's end count grows as it is played; keep the list current.
+  const anyLive = all.some(g => g.status === "live");
+  useEffect(() => {
+    if (!anyLive) return undefined;
+    const id = setInterval(catalogue.reload, 60000);
+    return () => clearInterval(id);
+  }, [anyLive, catalogue.reload]);
   const setAll = fn => catalogue.setData({ ...catalogue.data, games: fn(all) });
   const mine = new Map((charts.data?.charts || [])
     .filter(c => c.source_id).map(c => [c.source_id, c.slug]));

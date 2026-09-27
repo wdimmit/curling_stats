@@ -2934,3 +2934,42 @@ class TestDoublesStatsAndSummary:
         card = rule(tail, ".transport::after {")
         assert "background: var(--panel)" in card and "border-radius: 10px" in card
         assert "background:" not in rule(tail, ".transport {")
+
+
+class TestALiveGame:
+    """A game whose stream is still being played grows an end at a time: the
+    page says it is live, keeps looking for the next end, and does not call
+    an end the board has not caught up with 'never posted'."""
+
+    def live_doc(self, run_live=True, game_live=True):
+        d = end_four(hammer="yellow", score=None, running=None)
+        d["live"] = {"in_progress": run_live, "recorded_s": 5400.0}
+        d["games"][0]["in_progress"] = game_live
+        return d
+
+    def test_a_game_still_being_played_is_live(self):
+        got = run_js(setup(self.live_doc()) +
+                     "out([liveGame(state.doc, g), endSummary().gameLive]);")
+        assert got == [True, True]
+
+    def test_a_game_that_has_finished_while_its_stream_plays_on_is_not(self):
+        got = run_js(setup(self.live_doc(game_live=False)) +
+                     "out([liveGame(state.doc, g), endSummary().gameLive]);")
+        assert got == [False, False]
+
+    def test_a_finished_live_run_is_not_live(self):
+        got = run_js(setup(self.live_doc(run_live=False)) + "out(liveGame(state.doc, g));")
+        assert got is False
+
+    def test_an_ordinary_recording_is_not_live(self):
+        got = run_js(setup(end_four(hammer="yellow")) +
+                     "out([liveGame(state.doc, g), endSummary().gameLive]);")
+        assert got == [False, False]
+
+    def test_unposted_ends_are_not_posted_yet_while_it_plays(self):
+        got = run_js("out([unreadNote([5, 6], true), unreadNote([5, 6], false),"
+                     " unreadNote([], true)]);")
+        assert got == ["ends 5, 6 not posted yet", "ends 5, 6 were never posted", None]
+
+    def test_a_live_page_looks_for_the_next_end_every_half_minute(self):
+        assert run_js("out(LIVE_POLL_MS);") == 30000

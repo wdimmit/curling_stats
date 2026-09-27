@@ -236,6 +236,11 @@ td.name, th.name { text-align:left; font-weight:600; }
         border:1px solid var(--line); white-space:nowrap; }
 .pill.ok { background:var(--okbg); color:var(--ok); border-color:transparent; }
 .pill.bad { background:var(--warnbg); color:var(--warn); border-color:transparent; }
+/* A game still being played. The same red in both themes: it reads as "on
+ * air", which neither the warning nor the ok colours do. */
+.pill.live, .wlive { background:#c0392b; color:#fff; border-color:transparent;
+  text-transform:uppercase; letter-spacing:.04em; font-weight:650; }
+.wlive { font-size:11px; padding:1px 6px; border-radius:999px; margin-left:6px; white-space:nowrap; }
 
 /* --- report ------------------------------------------------------------ */
 #report { padding:14px; display:none; }
