@@ -9,10 +9,18 @@ ended. Everything here runs on the main thread, the only one that decodes.
 
 import json
 import logging
+import time
 
+from curling_score.ingest import source
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
+
+# A stream's unexpected errors in a row before its job is failed, and how long
+# a stream in trouble -- or whose publish did not go through -- is left before
+# it is tried again. One stream's trouble never stops the others.
+MAX_FAILURES = 3
+RETRY_S = 60.0
 
 
 def _games(doc):
@@ -20,81 +28,167 @@ def _games(doc):
              "ends": len(g["ends"])} for g in doc["games"]]
 
 
+def _sheet(job):
+    return job.get("sheet") or source.sheet_from_title(job.get("title"))
+
+
 class LiveLane:
-    def __init__(self, manager, api, worker_id, *, make_session):
+    def __init__(self, manager, api, worker_id, *, make_session, clock=time.monotonic):
         self.manager, self.api, self.worker_id = manager, api, worker_id
-        self.make_session = make_session
+        self.make_session, self.clock = make_session, clock
+        self._turn = 0
 
     def busy(self) -> bool:
         return self.manager.has_streams()
 
     def step(self) -> bool:
-        """Do one unit of live work; False when there was nothing to do."""
-        from curling_score.service.worker import Lost
+        """Do one unit of live work; False when there was nothing to do.
 
+        Nothing a stream does can raise out of here: a LiveError fails that
+        stream's job, a lost job is let go, and anything else backs that one
+        stream off for RETRY_S and fails it only after MAX_FAILURES in a row.
+        """
+        now = self.clock()
         streams = self.manager.streams()
         for stream in streams:
             if stream.lost:
                 log.warning("live job %s was taken away; letting it go", stream.job["id"])
                 self.manager.finish(stream)
                 return True
+        ready = [s for s in streams if s.retry_at <= now]
+        for stream in ready:
             if stream.session is None:
-                stream.session = self.make_session(
-                    stream, lambda doc, s=stream: self._publish(s, doc))
-        due = [(stream.session.next_end_due(), i, stream) for i, stream in enumerate(streams)]
-        order = ([s for d, _, s in sorted(x for x in due if x[0] is not None)]
-                 + [s for d, _, s in due if d is None])
-        for stream in order:
+                try:
+                    stream.session = self.make_session(
+                        stream, lambda doc, s=stream: self._publish(s, doc))
+                except Exception as exc:  # noqa: BLE001
+                    return self._trouble(stream, exc)
+        # A document that did not go out goes before anything new is built.
+        for stream in ready:
+            if stream.pending is not None:
+                return self._resend(stream)
+        due, idle = [], []
+        for i, stream in enumerate(ready):
+            try:
+                when = stream.session.next_end_due()
+            except Exception as exc:  # noqa: BLE001
+                return self._trouble(stream, exc)
+            (due if when is not None else idle).append((when, i, stream))
+        # The end that has waited longest first; the rest take turns, so a
+        # stream whose calibration keeps failing cannot always go first.
+        if idle:
+            k = self._turn % len(idle)
+            idle = idle[k:] + idle[:k]
+            self._turn += 1
+        for stream in [s for *_, s in sorted(due)] + [s for *_, s in idle]:
+            if stream.session.done:
+                return self._complete(stream)
             try:
                 did = stream.session.step()
-            except LiveError as exc:
-                log.warning("live job %s cannot go on: %s", stream.job["id"], exc)
-                try:
-                    self.api.fail(stream.job["id"], self.worker_id, str(exc)[:500], "permanent")
-                except Exception as exc2:  # noqa: BLE001
-                    log.warning("could not report it: %s", exc2)
-                self.manager.finish(stream)
-                return True
-            except Lost:
-                log.warning("live job %s is no longer ours", stream.job["id"])
-                self.manager.finish(stream)
-                return True
+            except Exception as exc:  # noqa: BLE001
+                return self._trouble(stream, exc)
+            stream.failures = 0
             if stream.session.done:
-                self._complete(stream)
-                return True
+                return self._complete(stream)
             if did:
                 return True
         return False
 
-    def _publish(self, stream, doc):
-        job = stream.job
-        data = json.dumps(doc).encode()
-        plan = self.api.artifacts(job["id"], self.worker_id,
-                                  [{"name": "timeline.json", "bytes": len(data)}], [])
-        for up in plan["uploads"]:
-            self.api.upload(up["url"], up["headers"], data)
-        self.api.publish(job["id"], self.worker_id, {
-            "games": _games(doc), "title": job.get("title"), "sheet": job.get("sheet"),
-            "duration_s": doc["live"]["recorded_s"]})
-        stream.last_doc = doc
-        log.info("live job %s: published %s end(s)", job["id"],
-                 [len(g["ends"]) for g in doc["games"]])
+    # --- when things go wrong ---------------------------------------------------
 
-    def _complete(self, stream):
+    def _trouble(self, stream, exc) -> bool:
         from curling_score.service.worker import Lost
 
+        job = stream.job["id"]
+        if isinstance(exc, LiveError):
+            log.warning("live job %s cannot go on: %s", job, exc)
+            self._fail(stream, str(exc))
+        elif isinstance(exc, Lost):
+            log.warning("live job %s is no longer ours", job)
+            self.manager.finish(stream)
+        else:
+            stream.failures += 1
+            log.error("live job %s: %s: %s (%d in a row)", job, type(exc).__name__, exc,
+                      stream.failures, exc_info=exc)
+            if stream.failures >= MAX_FAILURES:
+                self._fail(stream, f"{type(exc).__name__}: {exc}")
+            else:
+                stream.retry_at = self.clock() + RETRY_S
+        return True
+
+    def _fail(self, stream, error):
+        try:
+            self.api.fail(stream.job["id"], self.worker_id, error[:500], "permanent")
+        except Exception as exc:  # noqa: BLE001 - the lease returns it
+            log.warning("could not report live job %s failing: %s", stream.job["id"], exc)
+        self.manager.finish(stream)
+
+    # --- publishing -------------------------------------------------------------
+
+    def _publish(self, stream, doc):
+        """The session's publish callback. A document that cannot be sent now
+        is kept and sent again; only a lost job is raised to the session."""
+        stream.pending = doc
+        self._send(stream)
+
+    def _send(self, stream) -> bool:
+        from curling_score.service.worker import Lost
+
+        job, doc = stream.job, stream.pending
+        try:
+            data = json.dumps(doc).encode()
+            plan = self.api.artifacts(job["id"], self.worker_id,
+                                      [{"name": "timeline.json", "bytes": len(data)}], [])
+            for up in plan["uploads"]:
+                self.api.upload(up["url"], up["headers"], data)
+            self.api.publish(job["id"], self.worker_id, {
+                "games": _games(doc), "title": job.get("title"), "sheet": _sheet(job),
+                "duration_s": doc["live"]["recorded_s"]})
+        except Lost:
+            raise
+        except Exception as exc:  # noqa: BLE001 - the API may be down; send it again
+            log.warning("live job %s: publish did not go through (%s); trying again",
+                        job["id"], exc)
+            stream.retry_at = self.clock() + RETRY_S
+            return False
+        stream.pending, stream.last_doc = None, doc
+        log.info("live job %s: published %s end(s)", job["id"],
+                 [len(g["ends"]) for g in doc["games"]])
+        return True
+
+    def _resend(self, stream) -> bool:
+        from curling_score.service.worker import Lost
+
+        try:
+            self._send(stream)
+        except Lost:
+            log.warning("live job %s is no longer ours", stream.job["id"])
+            self.manager.finish(stream)
+        return True
+
+    def _complete(self, stream) -> bool:
+        """The finished stream's job, completed -- tried again until the API
+        takes it, since letting the stream go first would lose the game."""
+        from curling_score.service.worker import Lost
+
+        if stream.pending is not None:
+            return self._resend(stream)       # the final document goes first
         job, doc = stream.job, stream.last_doc or {"games": [], "live": {"recorded_s": 0}}
         try:
             self.api.complete(job["id"], self.worker_id, {
                 "games": _games(doc), "title": job.get("title"),
-                "format": job.get("format") or "fours", "sheet": job.get("sheet"),
+                "format": job.get("format") or "fours", "sheet": _sheet(job),
                 "duration_s": doc["live"]["recorded_s"]})
-            log.info("live job %s complete", job["id"])
         except Lost:
             log.warning("live job %s was taken away before it completed", job["id"])
-        except Exception:  # noqa: BLE001 - the lease returns it; the next claim redoes it
-            log.exception("live job %s: completing failed", job["id"])
+        except Exception as exc:  # noqa: BLE001 - try again shortly
+            log.warning("live job %s: completing did not go through (%s)", job["id"], exc)
+            stream.retry_at = self.clock() + RETRY_S
+            return True
+        else:
+            log.info("live job %s complete", job["id"])
         self.manager.finish(stream)
+        return True
 
 
 def video_sessions(weights, *, imgsz: int = 448, device=None,
@@ -125,6 +219,6 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             pipeline=live.VideoPipeline(weights=weights, skip_longview=skip_longview,
                                         line=models.line_model is not None,
                                         progress=progress),
-            sheet=job.get("sheet"), models=models, publish=publish, progress=progress)
+            sheet=_sheet(job), models=models, publish=publish, progress=progress)
 
     return make

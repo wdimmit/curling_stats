@@ -42,17 +42,19 @@ class Proc:
     kill = terminate
 
 
-def make(tmp_path, procs, seq=0, still_live=False):
+def make(tmp_path, procs, seq=0, still_live=False, **kw):
     spawned = []
 
-    def popen(cmd, **kw):
+    def popen(cmd, **k):
         spawned.append(cmd)
         return procs.pop(0)
 
+    live = still_live if callable(still_live) else (lambda: still_live)
+    kw.setdefault("exit_grace_s", 0.0)
     rec = recorder.YtDlpRecorder(
         "liveVid0001", tmp_path, resolve=lambda: "https://example/playlist.m3u8",
         fetch=lambda url: PLAYLIST.format(seq=seq), popen=popen,
-        is_live=lambda: still_live)
+        is_live=live, **kw)
     return rec, spawned
 
 
@@ -136,3 +138,99 @@ def test_a_dropout_after_the_rewind_window_has_moved_on_cannot_resume(tmp_path):
             rec.check()
             time.sleep(0.01)
     assert len(spawned) == 1
+
+
+
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+
+def test_ended_is_a_plain_read_that_never_touches_the_network(tmp_path):
+    # Only the manager's thread keeps the recording going; the lane reads.
+    asked = []
+    rec, _ = make(tmp_path, [Proc(["00:10:00.00"], code=0)],
+                  still_live=lambda: asked.append(1) or False)
+    rec.start()
+    time.sleep(0.05)
+    assert rec.ended() is False and asked == []
+    settle(rec)
+    assert rec.ended() is True
+
+
+def test_two_threads_checking_at_once_restart_it_once(tmp_path):
+    import threading
+
+    def slow_live():
+        time.sleep(0.2)
+        return True
+
+    procs = [Proc(["00:10:00.00"], code=1), Proc(["00:01:00.00"], code=None),
+             Proc(["00:01:00.00"], code=None)]
+    rec, spawned = make(tmp_path, procs, still_live=slow_live)
+    rec.start()
+    time.sleep(0.05)
+    threads = [threading.Thread(target=rec.check) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(spawned) == 2
+
+
+def test_a_stalled_recorder_whose_stream_is_over_is_ended(tmp_path):
+    clock = Clock()
+    proc = Proc(["00:30:00.00"], code=None)
+    rec, _ = make(tmp_path, [proc], still_live=False, clock=clock)
+    rec.start()
+    settle(rec)
+    assert not rec.ended()
+    clock.t = recorder.STALL_S + 1
+    rec.check()
+    assert rec.ended() and proc.killed
+
+
+def test_a_stalled_recorder_of_a_live_stream_is_restarted(tmp_path):
+    clock = Clock()
+    stuck, fresh = Proc(["00:30:00.00"], code=None), Proc(["00:31:00.00"], code=None)
+    rec, spawned = make(tmp_path, [stuck, fresh], still_live=True, clock=clock)
+    rec.start()
+    settle(rec)
+    clock.t = recorder.STALL_S + 1
+    rec.check()                      # kills the stuck one
+    stuck.code = -15                 # and it exits
+    rec.check()
+    assert stuck.killed and len(spawned) == 2 and not rec.ended()
+
+
+def test_a_stale_still_live_at_the_very_end_is_waited_out(tmp_path):
+    # yt-dlp exits when the stream ends, but YouTube can say "live" for a
+    # minute or two after. Restarting then would find the window moved on
+    # and fail a game whose every end is already published.
+    clock = Clock()
+    answers = [True, True, False]
+    rec, spawned = make(tmp_path, [Proc(["01:40:00.00"], code=0)],
+                        still_live=lambda: answers.pop(0) if answers else False,
+                        clock=clock, exit_grace_s=240.0, seq=0)
+    rec._fetch = lambda url: PLAYLIST.format(seq=0 if len(spawned) == 0 else 900)
+    rec.start()
+    for t in (1.0, 60.0, 120.0, 250.0):
+        clock.t = t
+        settle(rec)
+    assert len(spawned) == 1
+    assert rec.ended()
+
+
+def test_a_recording_is_cut_off_by_the_wall_clock_too(tmp_path):
+    clock = Clock()
+    rec, _ = make(tmp_path, [Proc(["00:10:00.00"], code=None)], still_live=True,
+                  clock=clock)
+    rec.max_s = 3600.0
+    rec.start()
+    settle(rec)
+    clock.t = 3600.0 + recorder.WALL_MARGIN_S + 1
+    rec.check()
+    assert rec.ended()

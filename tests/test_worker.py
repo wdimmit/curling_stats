@@ -391,3 +391,35 @@ class TestBuildingTheLiveLane:
                                 start=False)
         assert isinstance(got, lane.LiveLane)
         assert got.manager.max_streams == 4 and got.manager.root == tmp_path
+
+
+class TestTheWorkerOutlivesItsLiveLane:
+    def test_a_live_step_that_raises_is_logged_and_the_loop_goes_on(self, tmp_path):
+        class Raising(Live):
+            def step(self):
+                self.stepped += 1
+                if self.stepped == 1:
+                    raise RuntimeError("unexpected")
+                return True
+
+        api, live = FakeApi([]), Raising(steps=3)
+        worker.run_forever(api, "home", root=tmp_path, weights=None, out_dir=tmp_path,
+                           cache_gb=1.0, sleep=lambda s: None, once=True, live=live)
+        assert live.stepped == 3
+
+
+class TestAFinishedRecordingIsNotThrownAway:
+    def test_once_its_results_are_uploading_it_no_longer_steps_aside(self, tmp_path):
+        # Live work turns up just as the recording finishes: the results are
+        # already made, so they go up rather than being done again later.
+        def analyze(url, **kw):
+            kw["on_phase"]("detect", 0.99, "last end")
+            return fake_doc()
+
+        # busy() is asked at the loop's top, then at "download" and "detect";
+        # the fourth ask -- the first upload report -- is when it turns up.
+        api, live = FakeApi([JOB]), Live(steps=1, after=3)
+        worker.run_forever(api, "home", root=tmp_path, weights=None, out_dir=tmp_path,
+                           cache_gb=1.0, sleep=lambda s: None, once=True, live=live,
+                           analyze_fn=analyze, fetch_info=fake_info)
+        assert api.yielded == [] and len(api.completed) == 1

@@ -285,3 +285,127 @@ def test_a_recording_that_cannot_go_on_fails_its_job_and_is_let_go():
     m.poll_once()
     assert api.failed == [("j_1", "permanent", "window moved on")]
     assert s.lost
+
+
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+
+def lane_with_clock(api, streams, sessions):
+    ln, m, made = lane(api, streams, sessions)
+    ln.clock = Clock()
+    return ln, m, made
+
+
+class TestTheLaneKeepsGoing:
+    def test_one_streams_unexpected_error_stops_neither_the_lane_nor_the_others(self):
+        class Broken(Session):
+            def step(self):
+                raise RuntimeError("an analysis bug in this end")
+
+        api = Api()
+        s1, s2 = stream(1), stream(2)
+        ln, m, _ = lane_with_clock(api, [s1, s2], {
+            "j_1": lambda st, pub: Broken(st, pub, due=600.0),
+            "j_2": lambda st, pub: Session(st, pub, due=900.0, ends=5)})
+        ln.step()                                  # j_1 fails once, backs off
+        ln.step()                                  # j_2 goes meanwhile
+        assert [p[0] for p in api.published] == ["j_2"]
+        assert api.failed == []
+        for _ in range(lane_mod.MAX_FAILURES):
+            ln.clock.t += lane_mod.RETRY_S + 1
+            ln.step()
+        assert ("j_1", "permanent") in [(f[0], f[1]) for f in api.failed]
+        assert "j_1" in m.finished and "j_2" not in m.finished
+
+    def test_an_error_while_asking_what_is_due_is_contained_to_its_stream(self):
+        class Wedged(Session):
+            def next_end_due(self):
+                raise LiveError("recording cannot resume")
+
+        api = Api()
+        ln, m, _ = lane_with_clock(api, [stream(1)],
+                                   {"j_1": lambda st, pub: Wedged(st, pub)})
+        ln.step()
+        assert api.failed == [("j_1", "permanent", "recording cannot resume")]
+        assert m.finished == ["j_1"]
+
+    def test_a_publish_that_fails_is_sent_again_without_rebuilding_the_end(self):
+        class Flaky(Api):
+            fails = 1
+
+            def publish(self, job_id, worker_id, payload):
+                if self.fails:
+                    self.fails -= 1
+                    raise ConnectionError("503")
+                super().publish(job_id, worker_id, payload)
+
+        api = Flaky()
+        sessions = {}
+
+        def make(st, pub):
+            sessions[st.job["id"]] = Session(st, pub, due=600.0, ends=5)
+            return sessions["j_1"]
+
+        ln, _, _ = lane_with_clock(api, [stream(1)], {"j_1": make})
+        ln.step()                                  # builds end 1; publish fails
+        assert api.published == [] and sessions["j_1"].built == 1
+        ln.clock.t += lane_mod.RETRY_S + 1
+        ln.step()                                  # sends it again first
+        assert [len(p[1]["games"]) for p in api.published][:1] == [1]
+        assert api.published[0][1]["games"][0]["ends"] == 1
+
+    def test_completion_that_fails_is_tried_again_before_letting_go(self):
+        class Flaky(Api):
+            fails = 1
+
+            def complete(self, job_id, worker_id, payload):
+                if self.fails:
+                    self.fails -= 1
+                    raise ConnectionError("503")
+                super().complete(job_id, worker_id, payload)
+
+        api = Flaky()
+        ln, m, _ = lane_with_clock(api, [stream(1)],
+                                   {"j_1": lambda st, pub: Session(st, pub, ends=1)})
+        for _ in range(3):
+            ln.step()
+        assert api.completed == [] and m.finished == []
+        ln.clock.t += lane_mod.RETRY_S + 1
+        while ln.busy():
+            ln.step()
+            ln.clock.t += lane_mod.RETRY_S + 1
+        assert [c[0] for c in api.completed] == ["j_1"] and m.finished == ["j_1"]
+
+    def test_streams_with_nothing_due_take_turns(self):
+        class Busy(Session):
+            def step(self):
+                self.built += 1
+                return "calibrated"
+
+        api = Api()
+        made = {}
+
+        def factory(n):
+            def make(st, pub):
+                made[n] = Busy(st, pub)
+                return made[n]
+            return make
+
+        ln, _, _ = lane_with_clock(api, [stream(1), stream(2)],
+                                   {"j_1": factory(1), "j_2": factory(2)})
+        for _ in range(4):
+            ln.step()
+        assert (made[1].built, made[2].built) == (2, 2)
+
+    def test_the_sheet_comes_from_the_title_when_the_job_has_none(self):
+        api = Api()
+        s = stream(1)
+        s.job["sheet"], s.job["title"] = None, "10/1 - Sheet 3 - Thursday League"
+        ln, _, _ = lane_with_clock(api, [s], {"j_1": lambda st, pub: Session(st, pub, ends=5)})
+        ln.step()
+        assert api.published[0][1]["sheet"] == 3

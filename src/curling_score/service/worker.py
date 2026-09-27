@@ -178,7 +178,9 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     t_start = clock()
 
     def on_phase(name, fraction, message=None):
-        if should_yield is not None and should_yield():
+        # Not once the results are going up: they are made, and handing the
+        # job back now would only mean making them again.
+        if name != "upload" and should_yield is not None and should_yield():
             raise Yield(f"live work waiting, at {name}")
         t = clock()
         timings.setdefault(name, {"first_s": round(t - t_start, 1)})
@@ -309,7 +311,13 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
     while True:
         if live is not None and live.busy():
             served_live = True
-            if not live.step():
+            try:
+                did = live.step()
+            except Exception:  # noqa: BLE001 - the lane contains its streams' errors;
+                # this is the backstop, so a bug there costs a pause, not the worker.
+                log.exception("live lane step failed")
+                did = False
+            if not did:
                 sleep(LIVE_IDLE_S)
             continue
         if once and served_live:

@@ -37,10 +37,13 @@ from curling_score.geometry.calibrate import CalibrationError
 log = logging.getLogger(__name__)
 
 # The first calibration waits for this much footage, then repeats this often
-# until two calibrations in a row agree; giving up at the last.
+# until two calibrations in a row agree. By the last, a stream with no working
+# calibration is given up, and one with a working calibration keeps it.
 CALIB_FIRST_S = 900.0
 CALIB_EVERY_S = 900.0
 CALIB_GIVE_UP_S = 3600.0
+# A stream that has ended with no calibration gets this many more tries.
+ENDED_CALIB_TRIES = 2
 # Two side-view calibrations agree when their tee and hog rows are this close.
 SIDE_AGREE_PX = 3.0
 # The profile is extended when the recording has grown this much.
@@ -62,17 +65,26 @@ class Calibration:
     setups: dict
     sideviews: dict | None
     until_s: float
+    # False when the side views were left out on purpose (SKIP_LONGVIEW):
+    # then there is nothing of them to wait for.
+    side_expected: bool = True
 
     @property
     def complete(self) -> bool:
-        """Both hog lines found and both side views calibrated across."""
-        return (all(s.hog_line is not None for s in self.setups.values())
-                and self.sideviews is not None
+        """Both hog lines found and, where wanted, both side views calibrated
+        across."""
+        if not all(s.hog_line is not None for s in self.setups.values()):
+            return False
+        if not self.side_expected:
+            return True
+        return (self.sideviews is not None
                 and all(v.has_lateral for v in self.sideviews.values()))
 
     def agrees_with(self, other) -> bool:
         if other is None or not other.complete or not self.complete:
             return False
+        if not self.side_expected:
+            return True
         return all(abs(v.tee_row - other.sideviews[n].tee_row) <= SIDE_AGREE_PX
                    and abs(v.hog_row - other.sideviews[n].hog_row) <= SIDE_AGREE_PX
                    for n, v in self.sideviews.items())
@@ -109,6 +121,7 @@ class LiveSession:
         self.boards = {}            # game index -> newest BoardRead
         self.prev_end_s = None
         self.done = False
+        self._ended_calib_tries = 0
 
     # --- what the lane asks -------------------------------------------------
 
@@ -126,6 +139,10 @@ class LiveSession:
         if self.done:
             return None
         head, ended = self.recording.head_s(), self.recording.ended()
+        if ended and self.calibration is None and (
+                head <= 0 or self._ended_calib_tries >= ENDED_CALIB_TRIES):
+            raise LiveError("the stream ended before it could be calibrated"
+                            if head > 0 else "the stream ended with nothing recorded")
         if self._calibration_due(head, ended):
             return self._calibrate(head)
         if self.calibration is None:
@@ -144,12 +161,16 @@ class LiveSession:
     def _calibration_due(self, head, ended):
         if self.steady:
             return False
-        if self.calibration is None and ended and head > 0:
+        if self.calibration is not None and head >= CALIB_GIVE_UP_S:
+            return False          # a working calibration is kept after an hour
+        if self.calibration is None and ended:
             return True           # a stream shorter than the wait still gets one
         return head >= self.next_calibration_s
 
     def _calibrate(self, head):
         self.next_calibration_s = head + CALIB_EVERY_S
+        if self.recording.ended():
+            self._ended_calib_tries += 1
         try:
             got = self.pipeline.calibrate(self.recording.path, head)
         except CalibrationError as exc:
@@ -300,7 +321,7 @@ class VideoPipeline:
         except layout.LayoutError as exc:
             raise CalibrationError(f"panels not found: {exc}") from exc
         return Calibration(panels=panels, setups=setups, sideviews=sideviews,
-                           until_s=until_s)
+                           until_s=until_s, side_expected=not self.skip_longview)
 
     def samples(self, path, setups, from_s, until_s):
         from curling_score.game import profile

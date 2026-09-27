@@ -255,3 +255,43 @@ class TestTheStreamEnding:
         assert final["live"]["in_progress"] is False
         assert final["games"][0]["in_progress"] is False
         assert s.step() is None              # nothing more to do
+
+
+class TestCalibrationGivesUp:
+    def test_a_stream_that_ends_before_it_ever_calibrates_fails_after_a_try(self):
+        pipe = Pipeline([CalibrationError("slate only")] * 50)
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        rec.head, rec.finished = 1200.0, True
+        with pytest.raises(live.LiveError):
+            for _ in range(10):
+                s.step()
+        assert len(pipe.calibrated_at) <= live.ENDED_CALIB_TRIES
+
+    def test_a_stream_that_ended_with_nothing_recorded_fails(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        rec.finished = True
+        with pytest.raises(live.LiveError):
+            s.step()
+
+    def test_once_it_works_it_stops_trying_to_improve_it_after_an_hour(self):
+        # Hog paint never found: never "complete", so never steady -- but a
+        # calibration that works is kept once an hour has passed.
+        pipe = Pipeline([calibration(t, hog=False) for t in (900, 1800, 2700, 3600, 4500)])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 5400.0)
+        assert pipe.calibrated_at == [900.0, 1800.0, 2700.0]
+
+    def test_side_views_left_out_on_purpose_count_as_complete(self):
+        def no_sides(t):
+            c = calibration(t)
+            c.sideviews, c.side_expected = None, False
+            return c
+
+        pipe = Pipeline([no_sides(900), no_sides(1800), no_sides(2700)])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 4000.0)
+        assert pipe.calibrated_at == [900.0, 1800.0]
