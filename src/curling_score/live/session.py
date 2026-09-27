@@ -262,6 +262,30 @@ class LiveSession:
 
     # --- the document ---------------------------------------------------------
 
+    def _board_for(self, index, n_ends):
+        """The game's newest board read, scored against the ends it has now.
+
+        A read keeps its cards, but which ends are unread -- and whether there
+        is a final -- depends on how many ends the game has. A read taken five
+        ends in, kept because the end-of-game read failed, would otherwise
+        still say every end was posted and carry its five-end total as the
+        final of a nine-end game (found comparing live with VOD on
+        jgZ9wlxGYHM). A fresh block every time, since finish_game writes to it.
+        """
+        from curling_score.game import scoreboard as sb
+
+        board = self.boards.get(index)
+        if board is None:
+            return None
+        try:
+            scores = sb.per_end_from_cards(board.got.board, n_ends)
+        except sb.ScoreboardError as exc:
+            self.progress(f"game {index + 1}: the board read does not fit {n_ends} ends: {exc}")
+            return None
+        got = sb.GameBoard(scores=scores, read_at_s=board.got.read_at_s,
+                           reads=board.got.reads, board=board.got.board)
+        return analyze.board_block(got)
+
     def document(self) -> dict:
         """The timeline as it stands: every built end, the boards' newest
         scores on them, and a ``live`` block saying how far it has got."""
@@ -270,7 +294,7 @@ class LiveSession:
         for index in sorted({g for g, _ in self.built}):
             game = self.games[index]
             keys = sorted(k for k in self.built if k[0] == index)
-            board = self.boards.get(index)
+            board = self._board_for(index, len(keys))
             ends = []
             for key in keys:
                 end = deepcopy(self.built[key])
@@ -281,10 +305,7 @@ class LiveSession:
             segs = [self.ends[k] for k in keys]
             seg = GameSegment(index=index, start_s=game.start_s, end_s=segs[-1].end_s,
                               ends=segs, closed=game.closed)
-            copy = (None if board is None
-                    else analyze.BoardRead(got=board.got, scores=board.scores,
-                                           block=deepcopy(board.block)))
-            out = analyze.finish_game(seg, ends, copy, self.fmt, self.progress)
+            out = analyze.finish_game(seg, ends, board, self.fmt, self.progress)
             out["in_progress"] = not (self.done or (game.closed and len(keys) == len(game.ends)))
             out_games.append(out)
         cal = self.calibration

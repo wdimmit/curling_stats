@@ -210,12 +210,13 @@ class TestEnds:
         assert s.next_end_due() == pytest.approx(600.0, abs=10)
 
 
-def board(*cards):
+def board(*cards, n_ends=4):
     red = tuple(c for c in cards if c[0] == "red")
     yellow = tuple(c for c in cards if c[0] == "yellow")
     cb = sb.CardBoard(red=tuple(sb.Card(slot=c[1], end=c[2], confidence=1.0) for c in red),
                       yellow=tuple(sb.Card(slot=c[1], end=c[2], confidence=1.0) for c in yellow))
-    got = sb.GameBoard(scores=sb.per_end_from_cards(cb, 4), read_at_s=0.0, reads=1, board=cb)
+    got = sb.GameBoard(scores=sb.per_end_from_cards(cb, n_ends), read_at_s=0.0, reads=1,
+                       board=cb)
     return analyze.board_block(got)
 
 
@@ -308,3 +309,32 @@ class TestNeedingACalibration:
         assert s.needs_calibration()
         s.step()
         assert not s.needs_calibration()          # recalibrating is not urgent
+
+
+class TestABoardReadDuringPlay:
+    def test_is_scored_against_the_ends_the_game_has_now_not_then(self):
+        # Found comparing live with VOD on jgZ9wlxGYHM: the board read with
+        # five ends played kept "every end posted" and its five-end total as
+        # the game's final after nine ends -- the end-of-game read had failed,
+        # so that earlier read was the one kept.
+        class FullEnds(Pipeline):
+            def build_end(self, ctx, game, end, prev_end_s):
+                built, closed = super().build_end(ctx, game, end, prev_end_s)
+                built["shots_expected"] = 0     # no practice signature here
+                return built, closed
+
+        pipe, rec, pub = FullEnds(), Recording(), []
+        s = session(pipe, rec, pub)
+        pipe.board = board(("red", 1, 1), n_ends=1)   # scored when one end was known
+        run_until(s, rec, 1000.0)               # end 1 built, board read
+        pipe.board = None                       # later reads fail
+        rec.head = 3400.0
+        rec.finished = True
+        while s.step():
+            pass
+        game = pub[-1]["games"][0]
+        assert len(game["ends"]) == 4
+        assert game["ends"][0]["score"] == {"red": 1, "yellow": 0}
+        assert game["scoreboard"]["unread_ends"] == [2, 3, 4]
+        assert game["scoreboard"]["final"] is None
+        assert game["final"] is None
