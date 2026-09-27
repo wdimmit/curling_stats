@@ -48,6 +48,9 @@ def main(argv=None) -> int:
     p.add_argument("--calib-first", type=float, default=None,
                    help="seconds of footage before the first calibration (default the session's)")
     p.add_argument("--no-longview", action="store_true")
+    p.add_argument("--any-window", action="store_true",
+                   help="record a YouTube stream even if its window has moved on "
+                        "(a mechanics check on a stream that is not a game)")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     if args.calib_first is not None:
@@ -81,7 +84,8 @@ def main(argv=None) -> int:
 
             import os
             return YtDlpRecorder(vid, out / "live" / vid,
-                                 pot_provider=os.environ.get("YTDLP_POT_PROVIDER"))
+                                 pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
+                                 require_first_segment=not args.any_window)
         return replay.ReplayRecording(sources[vid], out / "live" / vid / "rec.ts",
                                       speed=args.speed)
 
@@ -122,8 +126,15 @@ def main(argv=None) -> int:
 
     lane._publish = publish
     deadline = t0 + args.timeout
+    next_report = t0
     try:
         while time.monotonic() < deadline:
+            if time.monotonic() >= next_report:
+                next_report += 30.0
+                for st in mgr.streams():
+                    log.info("STREAM %s head %.1f s, session %s", st.job["video_id"],
+                             st.recorder.head_s(), "none" if st.session is None else
+                             ("calibrated" if st.session.calibration else "uncalibrated"))
             runs = [repo.get_run(f"r_{vid}") for vid, _ in videos]
             if all(r.status in ("ready", "failed") for r in runs) and not lane.busy():
                 break
