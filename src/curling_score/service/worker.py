@@ -375,6 +375,34 @@ def _enable_stack_dumps():
     enable_stack_dumps()
 
 
+def build_live(api_url, token, worker_id, *, root: Path, weights,
+               skip_longview: bool = False, start: bool = True):
+    """The live lane, when ``WORKER_LIVE=1`` asks for one; None otherwise.
+
+    Its manager gets an API client of its own, since it talks to the API from
+    its own thread, and follows up to ``LIVE_MAX_STREAMS`` streams at once.
+    A worker starts with nothing in hand, so any recordings left under
+    ``live/`` by a worker that died are cleared: a live job it held comes back
+    when its lease runs out, and is recorded again from the first segment.
+    """
+    if os.environ.get("WORKER_LIVE") != "1":
+        return None
+    import shutil
+
+    from curling_score.live import lane, manager
+
+    shutil.rmtree(root / "live", ignore_errors=True)
+    mgr = manager.LiveManager(
+        ApiClient(api_url, token), worker_id, model_id=version.model_id(weights),
+        gpu=gpu_name() if start else None, root=root,
+        max_streams=int(os.environ.get("LIVE_MAX_STREAMS", manager.MAX_STREAMS)))
+    if start:
+        mgr.start()
+    return lane.LiveLane(mgr, ApiClient(api_url, token), worker_id,
+                         make_session=lane.video_sessions(weights,
+                                                          skip_longview=skip_longview))
+
+
 def main(argv=None) -> int:
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname)s %(message)s")
@@ -384,12 +412,15 @@ def main(argv=None) -> int:
     root = Path(os.environ.get("CURLING_SCORE_CACHE") or cache.default_root())
     os.environ["CURLING_SCORE_CACHE"] = str(root)
     weights = resolve_weights()
+    worker_id = os.environ.get("WORKER_ID") or socket.gethostname()
     run_forever(
-        ApiClient(api_url, token), os.environ.get("WORKER_ID") or socket.gethostname(),
+        ApiClient(api_url, token), worker_id,
         root=root, weights=weights, out_dir=Path(os.environ.get("WORKER_OUT", root / "out")),
         cache_gb=float(os.environ.get("WORKER_CACHE_GB", "300")),
         skip_longview=resolve_skip_longview(),
         once="--once" in (argv or sys.argv[1:]),
+        live=build_live(api_url, token, worker_id, root=root, weights=weights,
+                        skip_longview=resolve_skip_longview()),
     )
     return 0
 

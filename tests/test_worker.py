@@ -374,3 +374,20 @@ class TestLiveComesFirst:
                            analyze_fn=analyze, fetch_info=fake_info)
         assert api.yielded == ["j_1"]
         assert api.completed == [] and api.failed == []
+
+
+class TestBuildingTheLiveLane:
+    def test_it_is_off_unless_asked_for(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("WORKER_LIVE", raising=False)
+        assert worker.build_live("http://api", "t", "home", root=tmp_path,
+                                 weights=None, start=False) is None
+
+    def test_asked_for_it_follows_up_to_the_streams_configured(self, monkeypatch, tmp_path):
+        from curling_score.live import lane
+
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("LIVE_MAX_STREAMS", "4")
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False)
+        assert isinstance(got, lane.LiveLane)
+        assert got.manager.max_streams == 4 and got.manager.root == tmp_path
