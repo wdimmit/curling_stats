@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Serve every charting surface locally, against the real service code.
 
-    python scripts/devserve.py [path/to/timeline.json]
+    python scripts/devserve.py [path/to/timeline.json] [--live SECONDS]
 
 Prints a URL for each of the four surfaces the viewer has to work on:
 
@@ -17,6 +17,11 @@ nothing, so it reproduces exactly one of them -- and teaching it to fake the
 injection would be a second implementation of the one mechanism in this system
 whose failure is silent. Here the injection, the merge protocol and the 403s
 are the real ones. Pair it with `npm run watch` and reload.
+
+With ``--live SECONDS`` the same game is also served as a live one: a live
+run publishes its first game one more end every SECONDS, through the real
+claim, publish and complete routes, and ends complete -- for watching the
+page fill in while it is open.
 
 Everything is in memory: nothing here touches Firestore, GCS or YouTube.
 """
@@ -44,8 +49,71 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def serve_live(w, doc, every_s: float) -> str | None:
+    """Publish ``doc``'s first game as a live run, one more end every
+    ``every_s``, then complete it. Returns the live game's source id."""
+    import copy
+    import threading
+    import time
+
+    from curling_score.service.records import Job, Run
+
+    live_vid, repo, c = "liveVid0001", w["repo"], w["client"]
+    worker = {"Authorization": "Bearer worker-secret"}
+    w["yt"].add(VideoMeta(live_vid, "Tonight - Sheet 3", CLUB, 0.0, "live", T0))
+    repo.put_run(Run(id="r_live", video_id=live_vid, status="queued", created_at=T0,
+                     processing_version=w["settings"].processing_version, kind="live",
+                     title="Tonight - Sheet 3", format=(doc.get("format") or {}).get("name")))
+    repo.put_job(Job(id="j_live", run_id="r_live", state="queued", created_at=T0,
+                     run_after=T0, kind="live"))
+    job = c.post("/api/worker/claim", headers=worker,
+                 json={"worker_id": "dev", "model_id": "m-abc", "kinds": ["live"]}).json()["job"]
+    ends = doc["games"][0]["ends"]
+
+    def publish(k):
+        final = k == len(ends)
+        d = copy.deepcopy(doc)
+        game = d["games"][0]
+        d["games"], game["ends"] = [game], game["ends"][:k]
+        game["end_s"], game["in_progress"] = game["ends"][-1]["end_s"], not final
+        d["source"]["video_id"] = live_vid
+        w["clock"].advance(1)
+        d["live"] = {"in_progress": not final, "recorded_s": game["end_s"] + 300.0,
+                     "updated_at": w["clock"]().isoformat()}
+        plan = c.post(f"/api/worker/jobs/{job['id']}/artifacts", headers=worker,
+                      json={"worker_id": "dev", "files": [{"name": "timeline.json",
+                                                           "bytes": 1}]}).json()
+        w["store"].put_bytes(plan["uploads"][0]["key"], json.dumps(d).encode())
+        games = [{"index": 0, "start_s": game["start_s"], "end_s": game["end_s"], "ends": k}]
+        c.post(f"/api/worker/jobs/{job['id']}/publish", headers=worker,
+               json={"worker_id": "dev", "games": games, "title": "Tonight - Sheet 3"})
+        if final:
+            c.post(f"/api/worker/jobs/{job['id']}/complete", headers=worker,
+                   json={"worker_id": "dev", "games": games, "title": "Tonight - Sheet 3",
+                         "format": (doc.get("format") or {}).get("name") or "fours"})
+        print(f"  live: published end {k} of {len(ends)}" + (" -- final" if final else ""),
+              flush=True)
+
+    publish(1)
+
+    def rest():
+        for k in range(2, len(ends) + 1):
+            time.sleep(every_s)
+            publish(k)
+
+    threading.Thread(target=rest, daemon=True).start()
+    src = next(iter(repo.sources_for_video(live_vid)), None)
+    return src.id if src else None
+
+
 def main() -> None:
-    where = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "out_chart/timeline.json")
+    args = [a for a in sys.argv[1:]]
+    live_every = None
+    if "--live" in args:
+        i = args.index("--live")
+        live_every = float(args[i + 1])
+        del args[i:i + 2]
+    where = pathlib.Path(args[0] if args else "out_chart/timeline.json")
     if not where.is_file():
         raise SystemExit(
             f"no timeline at {where}\n"
@@ -85,6 +153,9 @@ def main() -> None:
     if source:
         say(f"  review     {base}/g/{source}/")
     say(f"  waiting    {base}/c/{waiting}/   (status page)")
+    if live_every is not None:
+        live_source = serve_live(w, doc, live_every)
+        say(f"  live       {base}/g/{live_source}/   (one more end every {live_every:g} s)")
     say(f"  catalogue  {base}/games")
     say(f"  submit     {base}/\n")
 
