@@ -270,3 +270,18 @@ class TestVideoSessions:
         assert a.models.detector == "det" and b.models is a.models
         assert a.url == "https://www.youtube.com/watch?v=liveVid0001"
         assert loads == [1]
+
+
+def test_a_recording_that_cannot_go_on_fails_its_job_and_is_let_go():
+    api = Api([live_job(1)])
+    m, _ = manager(api)
+    m.poll_once()
+    (s,) = m.streams()
+
+    def broken():
+        raise LiveError("window moved on")
+
+    s.recorder.check = broken
+    m.poll_once()
+    assert api.failed == [("j_1", "permanent", "window moved on")]
+    assert s.lost

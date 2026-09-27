@@ -80,8 +80,12 @@ class YtDlpRecorder:
 
     def __init__(self, video_id, directory, *, pot_provider=None, cookies=None,
                  resolve=None, fetch=None, popen=subprocess.Popen, is_live=None,
-                 max_s: float = MAX_RECORD_S):
+                 max_s: float = MAX_RECORD_S, require_first_segment: bool = True):
+        """``require_first_segment=False`` records a stream whose window has
+        already moved on, on a clock that starts where the window did -- only
+        for exercising the recorder on a stream that is not a game."""
         self.video_id, self.dir = video_id, Path(directory)
+        self.require_first_segment = require_first_segment
         self.pot_provider, self.cookies = pot_provider, cookies
         self._resolve = resolve or self._resolve_hls
         self._fetch = fetch or self._fetch_text
@@ -94,14 +98,26 @@ class YtDlpRecorder:
     # --- lifecycle ------------------------------------------------------------
 
     def start(self):
+        self._require_first_segment()
+        self._spawn()
+        return self
+
+    def _require_first_segment(self):
+        """Refuse unless the live playlist still begins at the stream's start.
+
+        YouTube's live playlist keeps a rewind window -- the whole stream on a
+        new one, about the last hour on a long one (720 five-second segments,
+        measured on four 24/7 news streams). A recording that does not begin
+        at segment 0 would be on a clock that does not match the video's.
+        """
+        if not self.require_first_segment:
+            return
         url = self._resolve()
         seq = first_media_sequence(self._fetch(url)) if url else None
         if seq not in (None, 0):
             raise LiveError(f"the stream's playlist begins at segment {seq}, not 0: "
-                            "it keeps no rewind (DVR) window, so it cannot be "
-                            "recorded on the video's own clock")
-        self._spawn()
-        return self
+                            "its rewind window no longer reaches the start, so it "
+                            "cannot be recorded on the video's own clock")
 
     def _spawn(self):
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -133,6 +149,9 @@ class YtDlpRecorder:
         if self._is_live():
             log.warning("recording %s stopped (exit %s) while still live; restarting",
                         self.video_id, code)
+            # Only while the rewind window still reaches the first segment;
+            # past it this raises, and the recording's VOD path takes the game.
+            self._require_first_segment()
             self._spawn()
         else:
             self._ended = True

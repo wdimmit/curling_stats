@@ -117,6 +117,13 @@ class LiveManager:
     def _keep(self, stream):
         try:
             stream.recorder.check()
+        except LiveError as exc:
+            # The recording cannot go on (it could not resume on the video's
+            # clock): the job fails, and the lane lets the stream go.
+            log.warning("live job %s: %s", stream.job["id"], exc)
+            self._fail(stream.job, str(exc))
+            stream.lost = True
+            return
         except Exception:  # noqa: BLE001 - a bad check must not stop the others
             log.exception("checking the recorder of %s", stream.job["id"])
         if stream.lost or self.clock() - stream.last_beat < self.heartbeat_s:

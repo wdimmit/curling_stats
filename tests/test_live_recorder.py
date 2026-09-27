@@ -121,3 +121,18 @@ def test_a_recording_is_cut_off_at_the_cap(tmp_path):
     rec.start()
     settle(rec)
     assert rec.ended()
+
+
+def test_a_dropout_after_the_rewind_window_has_moved_on_cannot_resume(tmp_path):
+    # YouTube's live playlist keeps about an hour: past that, starting again
+    # from "the first segment" would start somewhere later, on a clock that
+    # no longer matches the video's. The stream is given up instead.
+    seqs = [0, 720]
+    rec, spawned = make(tmp_path, [Proc(["01:10:00.00"], code=1)], still_live=True)
+    rec._fetch = lambda url: PLAYLIST.format(seq=seqs.pop(0))
+    rec.start()
+    with pytest.raises(LiveError):
+        for _ in range(50):
+            rec.check()
+            time.sleep(0.01)
+    assert len(spawned) == 1
