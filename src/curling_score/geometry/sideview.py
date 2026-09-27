@@ -62,6 +62,21 @@ _GREEN_THRESHOLD = 2.5
 # 410.2-489.7 of a 1080-row frame, i.e. 0.380-0.453. (0.33, 0.50) brackets that
 # with about 0.05 spare either side.
 _HOUSE_SEARCH = (0.33, 0.50)
+# That was the 2025-26 season's framing. Sheets 2-4 were re-aimed over the
+# 2026 summer, and their new positions are the framing from the 2026-27
+# season on: on 2026-09-27 their tees sat at rows 305.8-368.6 (0.283-0.341),
+# the 12-ft ring's far edge as high as row 290 (0.269). Sheet 2's ring fell
+# wholly above row 356; sheets 3 and 4 were cut through and mispaired. Sheets
+# 1 and 5 kept theirs (tees 463-494). A view the band above cannot fit is
+# searched again from 0.20 -- 70 rows above the highest ring seen, and clear
+# of the far wall's green stripe, which sits near row 150 where the house sits
+# near 460. Only then: the rows above the house carry faint green on some
+# right views (up to 2.3 on 24ysVAIxKg8 and AEqLTgM25Tc, against a threshold
+# of 2.5), so widening every view's search would stake calibrations that are
+# right, and already published, on that margin. Checked over 19 archived
+# videos and 2026-09-27's five streams: every older view fits exactly as
+# before (one lateral scale moves 0.13%).
+_HOUSE_SEARCH_WIDE = (0.20, 0.50)
 # Over the same ten views, the hog line sits 57-66 px below the annulus's last
 # green edge. 140 is a little over twice the largest gap seen.
 _HOG_SEARCH_PX = 140
@@ -291,8 +306,22 @@ def solve(plate, rect: Rect, name: str = "side") -> SideView:
     The hog line is the darkest full-width row below the house.
     """
     green, lum = _green_profile(plate, rect)
+    try:
+        return _solve_within(green, lum, rect, name, _HOUSE_SEARCH)
+    except SideViewError:
+        return _solve_within(green, lum, rect, name, _HOUSE_SEARCH_WIDE)
+
+
+def _solve_within(green, lum, rect, name, search):
     h = rect[3]
-    lo, hi = int(h * _HOUSE_SEARCH[0]), int(h * _HOUSE_SEARCH[1])
+    lo, hi = int(h * search[0]), int(h * search[1])
+    last = min(hi, len(green)) - 1
+    if green[lo] > _GREEN_THRESHOLD or green[last] > _GREEN_THRESHOLD:
+        # The rows searched start or stop inside a band, so the outermost
+        # crossings are not the 12-ft ring's and a fit from them is wrong by
+        # a band's width -- 8 px of tee on sheet 3, 2026-09-27.
+        raise SideViewError(
+            f"{name}: the house runs past rows {lo}-{last} searched")
     edges = _crossings(green, lo, hi, _GREEN_THRESHOLD)
     if len(edges) < 2:
         raise SideViewError(f"{name}: found {len(edges)} green edges, need at least 2")
@@ -348,7 +377,7 @@ PLAUSIBLE_LAT_PX_PER_M = (90.0, 220.0)
 
 
 def _bands(prof):
-    """The two green bands along one row, left then right, as (start, stop)."""
+    """Every green band along one row, left to right, as (start, stop)."""
     runs, start = [], None
     for i, on in enumerate(np.append(prof > _BAND_FLOOR, False)):
         if on and start is None:
@@ -356,12 +385,32 @@ def _bands(prof):
         elif not on and start is not None:
             runs.append((start, i))
             start = None
-    runs = [r for r in runs if r[1] - r[0] >= _BAND_MIN_PX]
-    if len(runs) < 2:
-        return None
-    # The two longest: the neighbouring sheet's ring, where it shows at the
-    # view's edge, is a sliver beside either of these.
-    return sorted(sorted(runs, key=lambda r: r[1] - r[0])[-2:])
+    return [r for r in runs if r[1] - r[0] >= _BAND_MIN_PX]
+
+
+def _ring_chords(prof, runs, a8_over_a12):
+    """The 12-ft and 8-ft chords this row cuts, as ``(l12, l8, r8, r12)``, or
+    None when no two bands make them.
+
+    The ring's two bands are next to each other -- nothing green lies inside
+    the 8-ft -- so only neighbouring runs are paired, and the pair whose inner
+    span over outer span is nearest the chords' own ratio wins. Not the two
+    longest: the neighbouring sheets' rings show at the view's edges, and in
+    sheet 2's wider 2026-27 framing they are longer than this ring's bands.
+    """
+    best = None
+    for a, b in zip(runs, runs[1:]):
+        left, right = _band_edges(prof, a), _band_edges(prof, b)
+        if left is None or right is None:
+            continue
+        (l12, l8), (r8, r12) = left, right
+        outer, inner = r12 - l12, r8 - l8
+        if outer <= 0 or inner <= 0:
+            continue
+        miss = abs(inner / outer - a8_over_a12)
+        if miss <= _RATIO_TOL and (best is None or miss < best[0]):
+            best = (miss, (l12, l8, r8, r12))
+    return None if best is None else best[1]
 
 
 def _band_edges(prof, run):
@@ -392,19 +441,14 @@ def solve_lateral(plate, view: SideView, name: str = "side") -> SideView:
         if abs(r - view.tee_row) < 1.5 or not 0 <= r < h:
             continue
         prof = np.convolve(green[r], kernel, mode="same")
-        runs = _bands(prof)
-        if runs is None:
-            continue
-        left, right = _band_edges(prof, runs[0]), _band_edges(prof, runs[1])
-        if left is None or right is None:
-            continue
-        (l12, l8), (r8, r12) = left, right
         y = view.metres_at(r)
         a12 = math.sqrt(C.R_12FT_M ** 2 - y ** 2)
         a8 = math.sqrt(C.R_8FT_M ** 2 - y ** 2)
-        outer, inner = r12 - l12, r8 - l8
-        if outer <= 0 or inner <= 0 or abs(inner / outer - a8 / a12) > _RATIO_TOL:
+        chords = _ring_chords(prof, _bands(prof), a8 / a12)
+        if chords is None:
             continue
+        l12, l8, r8, r12 = chords
+        outer, inner = r12 - l12, r8 - l8
         factor = (r - yh) / (view.tee_row - yh)
         lats.append((outer + inner) / (2 * (a12 + a8)) / factor)
         centres.append((l12 + l8 + r8 + r12) / 4)

@@ -90,6 +90,39 @@ class TestSolve:
         with pytest.raises(sideview.SideViewError):
             sideview.solve(blank, (0, 0, 810, 1080))
 
+    def test_the_higher_framings_of_the_2026_27_season(self):
+        """Sheets 2-4 were re-aimed over the 2026 summer: on 2026-09-27 the far
+        tee sat at rows 306-338, where the spring's sat at 405-445."""
+        for tee, hog in ((337.7, 405.0), (305.8, 373.0), (336.3, 409.0),
+                         (367.8, 440.0)):
+            got = sideview.solve(synth.side_view(tee_row=tee, hog_row=hog),
+                                 (0, 0, 810, 1080))
+            assert got.tee_row == pytest.approx(tee, abs=1.5), (tee, hog)
+            assert got.hog_row == pytest.approx(hog, abs=1.5), (tee, hog)
+
+    def test_a_ring_the_search_cuts_through_is_refused_not_mispaired(self):
+        """With the ring's top edge above the rows searched, the outermost
+        crossings are the far band's inner edge and the near band's outer edge.
+        Fitting those as the 12-ft pair put sheet 3's tee 8 px low on
+        2026-09-27 -- a confident, wrong calibration."""
+        top = int(1080 * sideview._HOUSE_SEARCH_WIDE[0])
+        # At sheet 3's own spacing, 72.2 rows, the far band spans tee-16.6 to
+        # tee-11.2, so a tee 14 rows in puts the first row searched inside it.
+        # The mispaired fit shortens tee-to-hog to ~64, which the plausibility
+        # band lets through.
+        tee = top + 14.0
+        plate = synth.side_view(tee_row=tee, hog_row=tee + 72.2)
+        with pytest.raises(sideview.SideViewError, match="runs past"):
+            sideview.solve(plate, (0, 0, 810, 1080))
+
+    def test_a_view_the_spring_band_fits_is_never_searched_wider(self):
+        """Faint green above the house on some right views sits just under the
+        threshold. A view the spring band fits must not be staked on it."""
+        plate = synth.side_view(tee_row=430.0, hog_row=520.0)
+        plate[270:280, 300:500] = synth.GREEN_PAINT    # well above the ring
+        got = sideview.solve(plate, (0, 0, 810, 1080))
+        assert got.tee_row == pytest.approx(430.0, abs=1.5)
+
 
 @pytest.mark.slow
 class TestEveryRealView:
@@ -278,6 +311,20 @@ class TestSolveLateral:
         plate[:, 785:810] = synth.GREEN_PAINT      # VXU9 left: crossings at 790-797
         got = sideview.solve_lateral(plate, _depth_only())
         assert got.centre_col == pytest.approx(390.0, abs=1.0)
+
+    def test_neighbouring_rings_longer_than_this_one_s_bands_are_passed_over(self):
+        """Sheet 2's wider 2026-27 framing: the far house spans ~400 px, and the
+        neighbouring sheets' rings show ~100 px of green at each edge of the
+        view -- longer than this ring's own ~67 px bands along the tee rows."""
+        tee, hog, centre, lat = 337.7, 405.0, 405.0, 110.0
+        plate = synth.side_view_house(tee_row=tee, hog_row=hog,
+                                      centre_col=centre, lat_px_per_m=lat)
+        rows = slice(int(tee) - 12, int(tee) + 13)
+        plate[rows, 0:100] = synth.GREEN_PAINT
+        plate[rows, 700:790] = synth.GREEN_PAINT
+        got = sideview.solve_lateral(plate, _depth_only(tee, hog))
+        assert got.centre_col == pytest.approx(centre, abs=1.0)
+        assert got.lat_px_per_m_at_tee == pytest.approx(lat, rel=0.015)
 
     def test_a_player_across_a_few_rows_costs_those_rows_only(self):
         plate = synth.side_view_house()
