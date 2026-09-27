@@ -136,6 +136,19 @@ def stream_start_s(path) -> float:
         return _stream_start(container.streams.video[0])
 
 
+# How far before a seek target an MPEG-TS file is entered. A live recording is
+# MPEG-TS, which has no index: PyAV's seek, like ffmpeg's, lands on the
+# keyframe *after* the target (measured: a window asked for from 2000 s of a
+# live recording began at 2005 s). Its keyframes are at most 5 s apart on
+# these streams, so entering this early always reaches the one before.
+TS_SEEK_LEAD_S = 10.0
+
+
+def seek_lead(path) -> float:
+    """Seconds to enter ``path`` before a seek target: none for an indexed MP4."""
+    return TS_SEEK_LEAD_S if Path(path).suffix.lower() == ".ts" else 0.0
+
+
 def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
     """Yield ``(t, frame)`` for every keyframe in the video.
 
@@ -147,6 +160,7 @@ def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
     video -- reaching the one-hour mark by scanning costs about ten seconds, and
     it grows from there.
     """
+    lead = seek_lead(path) if start_s is not None else 0.0
     _quiet_ffmpeg()
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
@@ -154,17 +168,31 @@ def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
         stream.codec_context.skip_frame = "NONKEY"
         offset = _stream_start(stream)
         if start_s is not None:
-            target = int((start_s + offset) / stream.time_base)
+            target = int((start_s - lead + offset) / stream.time_base)
             container.seek(target, backward=True, stream=stream)
+        # Entered early, the sweep holds back the keyframes it passes and
+        # starts from the last one at or before start_s -- where an indexed
+        # file's backward seek would have put it.
+        held = None
         for frame in container.decode(stream):
             if frame.pts is None:
                 continue
             t = float(frame.pts * stream.time_base) - offset
+            if lead and t <= start_s:
+                held = (t, frame)
+                continue
+            if held is not None:
+                ht, hf = held
+                held = None
+                if ht >= start_s - 10.0 and (end_s is None or ht <= end_s):
+                    yield ht, (hf.to_ndarray(format="bgr24") if decode else None)
             if start_s is not None and t < start_s - 10.0:
                 continue
             if end_s is not None and t > end_s:
                 break
             yield t, (frame.to_ndarray(format="bgr24") if decode else None)
+        if held is not None and held[0] >= start_s - 10.0 and (end_s is None or held[0] <= end_s):
+            yield held[0], (held[1].to_ndarray(format="bgr24") if decode else None)
 
 
 def window(path, start_s: float, end_s: float, fps: float, crop=None):
@@ -183,7 +211,7 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
         stream.thread_type = "AUTO"
         offset = _stream_start(stream)
 
-        target_pts = int((start_s + offset) / stream.time_base)
+        target_pts = int((start_s - seek_lead(path) + offset) / stream.time_base)
         container.seek(target_pts, backward=True, stream=stream)
 
         next_wanted = start_s

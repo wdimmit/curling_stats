@@ -363,11 +363,6 @@ def find_in_frames(frames, view, color, times) -> Crossing:
     return crossing_from_tracks(tracks, view)
 
 
-# How far before a window an MPEG-TS recording is entered. Its keyframes are
-# at most 5 s apart on these streams, so this always reaches the one before.
-TS_LEAD_S = 10.0
-
-
 def _seek(video, t0: float) -> list:
     """ffmpeg arguments that open ``video`` at exactly ``t0``.
 
@@ -380,9 +375,12 @@ def _seek(video, t0: float) -> list:
     side, which gives the same frames the MP4 does. Only the recording pays
     for the extra decode.
     """
-    if Path(video).suffix.lower() != ".ts":
+    from curling_score.ingest.frames import seek_lead
+
+    lead = seek_lead(video)
+    if not lead:
         return ["-ss", f"{t0}", "-i", str(video)]
-    start = max(0.0, t0 - TS_LEAD_S)
+    start = max(0.0, t0 - lead)
     return ["-ss", f"{start}", "-i", str(video), "-ss", f"{t0 - start}"]
 
 

@@ -46,3 +46,27 @@ def test_a_window_from_the_recording_is_the_window_from_the_video(clips, t0, fps
     assert len(got) == len(want)
     assert got_t == want_t
     assert all(np.array_equal(a, b) for a, b in zip(got, want))
+
+
+# The pipeline's own frame reader has the same trouble: PyAV's seek into an
+# MPEG-TS lands on the keyframe *after* the target. A window asked for from
+# 2000 s of a live recording began at 2005 s -- the start of every end's
+# run-up, on both panels, lost.
+@pytest.mark.parametrize("start", [10.0, 12.0, 17.3, 24.9])
+def test_a_window_of_the_recording_starts_where_the_videos_does(clips, start):
+    from curling_score.ingest import frames as F
+
+    mp4, ts = clips
+    want = [t for t, _ in F.window(mp4, start, start + 3.0, 10.0, crop=RECT)]
+    got = [t for t, _ in F.window(ts, start, start + 3.0, 10.0, crop=RECT)]
+    assert got == pytest.approx(want, abs=1e-3)
+
+
+@pytest.mark.parametrize("start", [10.0, 12.0, 17.3])
+def test_a_keyframe_sweep_of_the_recording_sees_the_videos_keyframes(clips, start):
+    from curling_score.ingest import frames as F
+
+    mp4, ts = clips
+    want = [t for t, _ in F.keyframe_sweep(mp4, decode=False, start_s=start, end_s=start + 12)]
+    got = [t for t, _ in F.keyframe_sweep(ts, decode=False, start_s=start, end_s=start + 12)]
+    assert got == pytest.approx(want, abs=1e-3)
