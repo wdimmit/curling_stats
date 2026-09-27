@@ -142,6 +142,9 @@ class Session:
     def next_end_due(self):
         return self.due
 
+    def needs_calibration(self):
+        return False
+
     def step(self):
         if self.error:
             raise self.error
@@ -409,3 +412,31 @@ class TestTheLaneKeepsGoing:
         ln, _, _ = lane_with_clock(api, [s], {"j_1": lambda st, pub: Session(st, pub, ends=5)})
         ln.step()
         assert api.published[0][1]["sheet"] == 3
+
+
+
+def test_a_stream_waiting_for_its_first_calibration_goes_before_any_end():
+    # Found in the rehearsal: with ends always due elsewhere, a stream with no
+    # calibration -- so nothing due of its own -- never got a turn.
+    class Uncalibrated(Session):
+        calibrated = False
+
+        def needs_calibration(self):
+            return not self.calibrated
+
+        def step(self):
+            self.calibrated = True
+            return "calibrated"
+
+    api = Api()
+    made = {}
+
+    def uncal(st, pub):
+        made["j_2"] = Uncalibrated(st, pub)
+        return made["j_2"]
+
+    ln, _, _ = lane_with_clock(api, [stream(1), stream(2)], {
+        "j_1": lambda st, pub: Session(st, pub, due=600.0, ends=9),
+        "j_2": uncal})
+    ln.step()
+    assert made["j_2"].calibrated and api.published == []

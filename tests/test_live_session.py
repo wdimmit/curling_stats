@@ -295,3 +295,16 @@ class TestCalibrationGivesUp:
         s = session(pipe, rec, pub)
         run_until(s, rec, 4000.0)
         assert pipe.calibrated_at == [900.0, 1800.0]
+
+
+
+class TestNeedingACalibration:
+    def test_it_needs_one_once_fifteen_minutes_are_recorded_and_until_it_has_one(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        rec.head = 600.0
+        assert not s.needs_calibration()
+        rec.head = 905.0
+        assert s.needs_calibration()
+        s.step()
+        assert not s.needs_calibration()          # recalibrating is not urgent

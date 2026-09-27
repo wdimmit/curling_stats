@@ -134,6 +134,14 @@ class LiveSession:
         end = self._next_end()
         return None if end is None else end[1].end_s
 
+    def needs_calibration(self) -> bool:
+        """Whether this stream is waiting for its first calibration -- which
+        blocks every end it will have, so the lane does it before anything
+        else. Improving a calibration it already has is not urgent."""
+        if self.done or self.calibration is not None:
+            return False
+        return self._calibration_due(self.recording.head_s(), self.recording.ended())
+
     def step(self):
         """Do the most useful thing there is; return what, or None if nothing."""
         if self.done:

@@ -67,20 +67,26 @@ class LiveLane:
         for stream in ready:
             if stream.pending is not None:
                 return self._resend(stream)
-        due, idle = [], []
+        first, due, idle = [], [], []
         for i, stream in enumerate(ready):
             try:
+                if stream.session.needs_calibration():
+                    first.append(stream)
+                    continue
                 when = stream.session.next_end_due()
             except Exception as exc:  # noqa: BLE001
                 return self._trouble(stream, exc)
             (due if when is not None else idle).append((when, i, stream))
-        # The end that has waited longest first; the rest take turns, so a
-        # stream whose calibration keeps failing cannot always go first.
+        # A stream waiting for its first calibration goes first: it has no end
+        # due until it has one, so behind the others' ends it would wait for
+        # ever (the rehearsal found exactly that). Then the end that has waited
+        # longest; the rest take turns, so a stream whose work keeps failing
+        # cannot always go first.
         if idle:
             k = self._turn % len(idle)
             idle = idle[k:] + idle[:k]
             self._turn += 1
-        for stream in [s for *_, s in sorted(due)] + [s for *_, s in idle]:
+        for stream in first + [s for *_, s in sorted(due)] + [s for *_, s in idle]:
             if stream.session.done:
                 return self._complete(stream)
             try:
