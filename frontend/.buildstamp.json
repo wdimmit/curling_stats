@@ -22,7 +22,7 @@
     "frontend/runtime/overridesStore.mjs": "a55fd55bdc0a9eae8d950329ac12dfbfd55bf78b265300307bb53b6fde0bbd46",
     "frontend/runtime/player.mjs": "6fea60197a05c0994abcf3f179c2be83901609d9980d938dd1d64854065dd34e",
     "frontend/runtime/prefs.mjs": "8fd39bb740719fe04d942b18aa5b513df8fad3e9279ff9743186df0d60c72f4d",
-    "frontend/site/Games.jsx": "27c75c44f9970a14dd8ef48ae77826cd73cc35ca3a378284d98677b69cd22a4c",
+    "frontend/site/Games.jsx": "d043cba75486b540fa10ea8d7db047159097312688e91f28ef38ddcadd10e322",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
     "frontend/site/Mine.jsx": "bce5d1419b0200ac2d9070d81d5ba13c037ecf54a9af52150cd269caec578c96",
     "frontend/site/Status.jsx": "416134b3273fa491fb20e3627dadedd82480bfc7c4afe966cacc3df90203eefb",
@@ -46,7 +46,7 @@
     "frontend/viewer/main.jsx": "12532cd5b6db8bc8ab5b0ae962a8c8e65fc3e9dae9b92e715917cd9e8aa1a310"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "c170ed425896365985c01cc97a7ebacad15b407a2f616d7b9a5de6cc37f95ba0",
+    "src/curling_score/service/static/site.js": "42a5a29b82c05f7bf7601cf2dd90bdb51afe2cc3f83b1cb8ac5d1f717a745c8f",
     "src/curling_score/viewer/app.js": "f4c38bca5432aa1c94e82b71507ace36953439290698f4930b358f9e44479317"
   }
 }

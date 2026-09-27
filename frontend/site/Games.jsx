@@ -13,6 +13,32 @@ import { Header, TeamPicker, useCommitOnExit } from "./ui.jsx";
 
 const leaguesIn = games => [...new Set(games.map(g => g.league).filter(Boolean))].sort();
 
+/* The league you last filtered to, kept across reloads: most people follow
+ * one league, so it is yours rather than the page's, like the viewer's prefs.
+ * Storage can be blocked, and then the filter just forgets. */
+const LEAGUE = "curlchart:league";
+
+function loadLeague() {
+  try { return localStorage.getItem(LEAGUE) || ""; } catch { return ""; }
+}
+
+function saveLeague(league) {
+  try {
+    if (league) localStorage.setItem(LEAGUE, league);
+    else localStorage.removeItem(LEAGUE);
+  } catch { /* not important enough to bother the user about */ }
+}
+
+/* When a game began on the clock, in ms. played_at is when the stream went
+ * live and start_s how far into it the game starts, so the two together order
+ * a day the way it was played -- and a day's leagues are played in blocks, so
+ * that groups them too. start_s alone is no use across recordings: 3:55 into
+ * the evening stream is hours after 6:00 into the afternoon one. */
+const startsAt = g => {
+  const t = g.played_at ? Date.parse(g.played_at) : NaN;
+  return isNaN(t) ? null : t + (g.start_s ?? 0) * 1000;
+};
+
 /* The league a game belongs to, editable once you are signed in.
  *
  * The playlist watcher labels everything it queues; a link pasted by hand
@@ -174,7 +200,7 @@ export function Games() {
   const catalogue = useResource("/api/games", { auth: false });
   const charts = useResource("/api/me/charts",
                              { skip: !ready || !user, deps: [user?.uid] });
-  const [league, setLeague] = useState("");
+  const [league, setLeague] = useState(loadLeague);
   const [team, setTeam] = useState("");
 
   const all = catalogue.data?.games || [];
@@ -190,16 +216,21 @@ export function Games() {
     .filter(c => c.source_id).map(c => [c.source_id, c.slug]));
   const editable = !!user;
 
-  const shown = all.filter(g => !league || g.league === league);
+  const leagues = leaguesIn(all);
+  // A remembered league the catalogue no longer has -- renamed, or its season
+  // gone -- would hide every game behind a select reading "All leagues".
+  const active = leagues.includes(league) ? league : "";
+  const shown = all.filter(g => !active || g.league === active);
   const byDate = {};
   for (const g of shown) (byDate[localDay(g.played_at) || "undated"] ||= []).push(g);
 
   return (
     <>
       <Header links={[["/thinking", "Thinking time"], ["/", "Submit a link"]]}>
-        <select id="league" value={league} onChange={e => setLeague(e.target.value)}>
+        <select id="league" value={active}
+                onChange={e => { setLeague(e.target.value); saveLeague(e.target.value); }}>
           <option value="">All leagues</option>
-          {leaguesIn(all).map(l => <option key={l} value={l}>{l}</option>)}
+          {leagues.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
       </Header>
       <main>
@@ -219,7 +250,8 @@ export function Games() {
                     <tr><th>Sheet</th><th>League</th><th>Game</th><th>Starts</th>
                         <th>Ends</th><th>Status</th><th /></tr>
                     {byDate[date]
-                      .sort((a, b) => (a.sheet ?? 99) - (b.sheet ?? 99)
+                      .sort((a, b) => (startsAt(a) ?? 0) - (startsAt(b) ?? 0)
+                                   || (a.sheet ?? 99) - (b.sheet ?? 99)
                                    || (a.start_s ?? 0) - (b.start_s ?? 0))
                       .map(g => (
                         <tr key={g.source_id || `${g.video_id}:${g.start_s}`}>
