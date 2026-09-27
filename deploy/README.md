@@ -20,6 +20,10 @@ gcloud firestore databases create --location=$REGION
 gcloud firestore indexes composite create --collection-group=jobs \
   --field-config=field-path=state,order=ascending --field-config=field-path=run_after,order=ascending \
   --field-config=field-path=created_at,order=ascending
+# Live jobs are claimed first: the same query with kind == "live".
+gcloud firestore indexes composite create --collection-group=jobs \
+  --field-config=field-path=state,order=ascending --field-config=field-path=kind,order=ascending \
+  --field-config=field-path=run_after,order=ascending --field-config=field-path=created_at,order=ascending
 gcloud firestore indexes composite create --collection-group=jobs \
   --field-config=field-path=state,order=ascending --field-config=field-path=lease_expires_at,order=ascending
 gcloud firestore indexes composite create --collection-group=jobs \
