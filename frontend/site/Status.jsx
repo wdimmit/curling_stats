@@ -61,6 +61,11 @@ function Body({ s }) {
       working on this stopped part-way through. Nothing is lost: it picks up from
       where the caches left it, which is usually much quicker than starting over.</Warn>;
 
+  if (s.status === "queued" && s.paused)
+    return <Warn><strong>Paused for tonight&rsquo;s live games.</strong> Games being
+      played right now are processed first, as they happen. This one carries on
+      once they finish, keeping everything it had already done.</Warn>;
+
   if (s.status === "queued") {
     const ahead = s.position ?? 0;
     return s.worker_online ? (

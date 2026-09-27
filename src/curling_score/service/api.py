@@ -672,6 +672,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         }
         if status in ("queued", "pending_approval") and job is not None and not stalled:
             out["position"] = repo.queue_position(job.id)
+        # A recording that stepped aside for live games, and resumes after them.
+        out["paused"] = bool(status == "queued" and job is not None
+                             and job.state == "queued" and job.error_kind == "yielded")
         if status == "processing" and job is not None:
             out.update(phase=job.phase, fraction=job.fraction, message=job.message,
                        attempt=job.attempts)
@@ -1526,8 +1529,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if src is None:
             raise HTTPException(404, "no such game")
         run = repo.get_run(src.current_run_id)
-        # A live game is watchable from its first published end.
-        if run is None or run.status not in ("ready", "live"):
+        # A live game is watchable from its first published end -- and stays
+        # so if its live coverage stops (a failed or interrupted live run),
+        # showing what was published until another run takes the game over.
+        published_live = run is not None and run.kind == "live" and run.revised_at
+        if run is None or (run.status not in ("ready", "live") and not published_live):
             raise HTTPException(404, "not processed yet")
         return src, run
 
@@ -1544,6 +1550,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def review_timeline(sid: str, request: Request):
         src, run = lookup_source(sid)
         doc = game_doc(run, src.game_index, src, src.play_start_s)
+        if run.kind == "live" and run.status not in ("live", "ready"):
+            # Coverage stopped: the page stops looking for more and says so.
+            doc["live"] = {**(doc.get("live") or {}), "in_progress": False, "stopped": True}
         # No slug and no share_url: this link is already the public one.
         doc["chart"] = {"read_only": True, "review": True,
                         "title": run.title, "league": run.league,

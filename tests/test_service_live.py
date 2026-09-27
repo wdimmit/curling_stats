@@ -166,3 +166,32 @@ class TestPublishingOneEndAtATime:
         assert after.id == src.id
         served = world["client"].get(f"/g/{src.id}/timeline.json").json()
         assert served["live"]["in_progress"] is False
+
+
+class TestAGameWhoseLiveCoverageStopped:
+    def test_its_last_published_ends_stay_up_and_say_it_stopped(self, world):
+        add_live_run(world)
+        job = claim(world, ["live"]).json()["job"]
+        doc = one_game(3)
+        upload(world, job["id"], doc)
+        publish(world, job["id"], doc)
+        (src,) = world["repo"].sources_for_video(LIVE)
+        world["client"].post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER,
+                             json={"worker_id": "home", "error": "gone", "kind": "permanent"})
+        r = world["client"].get(f"/g/{src.id}/timeline.json")
+        assert r.status_code == 200
+        served = r.json()
+        assert len(served["games"][0]["ends"]) == 3
+        assert served["live"]["in_progress"] is False and served["live"]["stopped"] is True
+
+
+class TestAPausedRecordingSaysSo:
+    def test_the_status_page_knows_it_stepped_aside_for_live_games(self, world):
+        slug = submit(world).json()["slug"]
+        job = claim(world).json()["job"]
+        world["client"].post(f"/api/worker/jobs/{job['id']}/yield", headers=WORKER,
+                             json={"worker_id": "home"})
+        status = world["client"].get(f"/c/{slug}/status.json").json()
+        assert status["status"] == "queued" and status["paused"] is True
+        claim(world)
+        assert world["client"].get(f"/c/{slug}/status.json").json().get("paused") is False

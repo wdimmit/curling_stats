@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { LIVE_POLL_MS, modeOf } from "../core/index.mjs";
+import { LIVE_POLL_MS, acceptLiveDoc, modeOf } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import { loadCursor } from "../runtime/prefs.mjs";
 import { App } from "./App.jsx";
@@ -34,7 +34,8 @@ async function loadOverrides() {
  * timeline says so the page keeps asking for it. App keeps the viewer's place
  * across a new document -- the game, end and rock are its own state, and ends
  * are only ever appended -- so the next end simply appears. An answer that has
- * not moved on is dropped without a render. */
+ * not moved on, or a restarted run's shorter rebuild, is dropped without a
+ * render (acceptLiveDoc). */
 function Live({ first, cursor }) {
   const [doc, setDoc] = useState(first);
   const live = !!doc.live?.in_progress;
@@ -45,7 +46,7 @@ function Live({ first, cursor }) {
         const r = await fetch("timeline.json", { cache: "no-cache" });
         if (!r.ok) return;
         const next = await r.json();
-        setDoc(prev => (next.live?.updated_at === prev.live?.updated_at ? prev : next));
+        setDoc(prev => acceptLiveDoc(prev, next));
       } catch {
         /* a missed look is only a late end: try again next time */
       }

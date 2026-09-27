@@ -45,6 +45,7 @@ export const positionText = core.positionText;
 export const endKey = core.endKey;
 export const liveGame = core.liveGame;
 export const unreadNote = core.unreadNote;
+export const acceptLiveDoc = core.acceptLiveDoc;
 export const layout = e => core.layout(game(), e, state.overrides, core.formatOf(state.doc));
 export const mergedShots = e => layout(e).shots;
 export const merge = (g, e, s) => core.merge(g, e, s, state.overrides);

@@ -2973,3 +2973,31 @@ class TestALiveGame:
 
     def test_a_live_page_looks_for_the_next_end_every_half_minute(self):
         assert run_js("out(LIVE_POLL_MS);") == 30000
+
+
+class TestWhichLiveDocumentToShow:
+    """A live page swaps in each new document -- except one it should not: a
+    live run that restarted rebuilds from its first end, and jumping back to
+    fewer ends would take viewers backwards through the game."""
+
+    @staticmethod
+    def d(ends, updated, live=True):
+        return {"games": [{"ends": [{}] * ends}],
+                "live": {"in_progress": live, "updated_at": updated}}
+
+    def test_a_newer_document_with_more_ends_is_shown(self):
+        got = run_js(f"out(acceptLiveDoc({json.dumps(self.d(3, 'a'))}, {json.dumps(self.d(4, 'b'))}).live.updated_at);")
+        assert got == "b"
+
+    def test_the_same_document_again_is_not_swapped_in(self):
+        prev, same = self.d(3, "a"), self.d(3, "a")
+        got = run_js(f"const p = {json.dumps(prev)}; out(acceptLiveDoc(p, {json.dumps(same)}) === p);")
+        assert got is True
+
+    def test_a_rebuild_with_fewer_ends_waits_until_it_catches_up(self):
+        got = run_js(f"out(acceptLiveDoc({json.dumps(self.d(5, 'a'))}, {json.dumps(self.d(1, 'b'))}).live.updated_at);")
+        assert got == "a"
+
+    def test_the_final_document_is_always_shown(self):
+        got = run_js(f"out(acceptLiveDoc({json.dumps(self.d(5, 'a'))}, {json.dumps(self.d(4, 'b', live=False))}).live.updated_at);")
+        assert got == "b"

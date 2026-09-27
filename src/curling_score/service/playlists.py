@@ -125,14 +125,16 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                     accepted_now.append(meta.video_id)
                     skipped.append((meta.video_id, "channel_not_allowed"))
                     continue
-                if not any(r.kind == "live" and r.status != "failed"
-                           for r in repo.runs_for_video(meta.video_id)):
+                # Once per stream: a live run that failed is left to the
+                # recording's ordinary run, not queued again every poll.
+                if not any(r.kind == "live" for r in repo.runs_for_video(meta.video_id)):
                     run = Run(
                         id=slug.new_run_id(), video_id=meta.video_id,
                         processing_version=processing_version, status="queued",
                         created_at=now, title=meta.title, channel_id=meta.channel_id,
                         published_at=meta.published_at, playlist_id=pl.playlist_id,
                         league=pl.label, format=fmt_of(meta.title), kind="live",
+                        sheet=source.sheet_from_title(meta.title),
                     )
                     repo.put_run(run)
                     repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued",
@@ -161,6 +163,13 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                         repo.update_job(job.id, state="failed", error=error,
                                         error_kind="permanent", finished_at=now)
                     repo.update_run(r.id, status="failed", error=error)
+            # A live run still going -- finishing its last ends -- keeps the
+            # recording unseen until it is ready, so if it fails even now the
+            # recording is still there to be queued the ordinary way.
+            if any(r.kind == "live" and r.status in ("processing", "live")
+                   for r in repo.runs_for_video(meta.video_id)):
+                skipped.append((meta.video_id, "live_in_progress"))
+                continue
             if any(r.processing_version == processing_version
                    and r.status != "failed"
                    for r in repo.runs_for_video(meta.video_id)):

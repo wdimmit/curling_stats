@@ -180,3 +180,47 @@ class TestOnceTheRecordingIsArchived:
         assert repo.get_run(live_run.id).status == "failed"
         assert repo.job_for_run(live_run.id).state == "failed"
         assert len(result["created"]) == 1
+
+
+class TestTheRecordingWaitsForItsLiveRun:
+    def archive(self, yt):
+        yt.add(VideoMeta("vidL", "10/1 - Sheet 3 - Thursday League", "UCclub",
+                         9000.0, "none", THU_7PM))
+
+    @pytest.mark.parametrize("state", ["processing", "live"])
+    def test_archived_while_its_live_run_is_still_going_it_stays_unseen(self, state):
+        repo, yt = live_setup()
+        poll(repo, yt)
+        (run,) = repo.list_runs()
+        repo.update_run(run.id, status=state)
+        self.archive(yt)
+        result = poll(repo, yt, later(THU_7PM, 180))
+        assert result["created"] == []
+        assert "vidL" not in repo.get_playlist("p").last_seen_video_ids
+
+    def test_a_live_run_that_fails_after_the_archive_still_leaves_it_to_the_recording(self):
+        repo, yt = live_setup()
+        poll(repo, yt)
+        (run,) = repo.list_runs()
+        repo.update_run(run.id, status="live")
+        self.archive(yt)
+        poll(repo, yt, later(THU_7PM, 180))
+        repo.update_run(run.id, status="failed")
+        result = poll(repo, yt, later(THU_7PM, 360))
+        assert len(result["created"]) == 1
+        assert repo.get_run(result["created"][0]).kind == "vod"
+
+    def test_a_failed_live_run_is_not_queued_again_while_the_stream_plays(self):
+        repo, yt = live_setup()
+        poll(repo, yt)
+        (run,) = repo.list_runs()
+        repo.update_run(run.id, status="failed")
+        for k in range(1, 4):
+            poll(repo, yt, later(THU_7PM, 3 * k))
+        assert len(repo.list_runs()) == 1
+
+    def test_a_live_run_carries_the_sheet_its_title_names(self):
+        repo, yt = live_setup()
+        poll(repo, yt)
+        (run,) = repo.list_runs()
+        assert run.sheet == 3

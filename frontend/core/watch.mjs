@@ -111,6 +111,18 @@ export function liveGame(doc, game) {
   return !!doc?.live?.in_progress && game?.in_progress !== false;
 }
 
+/* Which of two live documents to show: the newer, unless it is the same one
+ * again, or a live run that restarted and is rebuilding from its first end --
+ * showing fewer ends would take viewers back through the game, so the page
+ * keeps what it has until the rebuild catches up. The final document always
+ * wins. */
+export function acceptLiveDoc(prev, next) {
+  const ends = d => (d?.games || []).reduce((n, g) => n + (g.ends?.length || 0), 0);
+  if (next?.live?.updated_at === prev?.live?.updated_at) return prev;
+  if (next?.live?.in_progress && ends(next) < ends(prev)) return prev;
+  return next;
+}
+
 /* The board's unread ends, worded for the state of the game: while it is still
  * being played the club simply has not hung those cards yet. */
 export function unreadNote(unread, live) {
