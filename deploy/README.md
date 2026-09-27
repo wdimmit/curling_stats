@@ -152,6 +152,28 @@ To check the sidecar is being used rather than merely running:
 docker compose -f deploy/docker-compose.worker.yml logs pot | tail   # a line per token minted
 ```
 
+### Following live games
+
+With `WORKER_LIVE=1` in `worker.env` the worker also follows live streams (the
+API queues them when `LIVE_ENABLED=1` there -- see "Watching a league"). A
+thread claims live jobs, up to `LIVE_MAX_STREAMS` at once (default 6), and
+records each with yt-dlp from the stream's first segment into
+`/data/cache/live/<video>/rec.N.ts`; the main loop builds every end as it
+settles and publishes it, oldest end first across the streams, and claims no
+recording while any live stream is in hand. A recording already being
+processed when a stream goes live is handed back (`/yield`) and resumes from
+its detection cache afterwards.
+
+- Each stream is ~2.5 Mbps; five need ~13 Mbps down and ~6 GB of disk an hour,
+  deleted when the stream completes (and at worker start).
+- The stream has to be recorded from its first segment, which YouTube's live
+  playlist keeps only for about the first hour of a stream. A stream noticed
+  later, or a recorder that drops out past that point, fails its live job, and
+  the poller queues the recording the ordinary way once it is archived.
+- Calibration comes from the first 15 minutes and is repeated every 15 until
+  two agree; an end is published about four minutes after the next end's
+  first stone, plus the time it takes to build.
+
 Note that only the download path in `ingest/cache.py` is wired to it. Metadata
 (`ingest/source.py`), clip resolution (`harvest/clips.py`) and playlist
 enumeration (`harvest/playlist.py`) each build their own yt-dlp options with no
