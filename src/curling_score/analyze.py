@@ -226,6 +226,10 @@ class EndContext:
     use_cache: bool = True
     shot_fps: float = SHOT_FPS
     progress: object = log.info
+    # Decode the end's window once for both panels (sequence.detect_spans)
+    # rather than once each: for a live recording, read at full resolution
+    # with no proxy and no cache, the decode is most of an end's cost.
+    one_pass: bool = False
 
 
 @dataclass
@@ -347,9 +351,19 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     progress(f"  game {game.index + 1} end {end.number} ({end.house})...")
     from_s = run_up_from(prev_end_s, end.start_s,
                          crossed_games=end is game.ends[0])
-    seq = sequence.detect_end(read_path, setup, end, ctx.shot_fps,
-                              ctx.detector, use_cache=ctx.use_cache,
-                              from_s=from_s)
+    far = read_setups[OTHER_HOUSE[end.house]]
+    if ctx.one_pass:
+        from curling_score.detect.delivery import REQUIRED_LOOKBACK_S
+
+        # The spans detect_end and the far panel's detect_span would read.
+        near_from = max(0.0, min(end.start_s - REQUIRED_LOOKBACK_S, from_s))
+        seq, far_seq = sequence.detect_spans(
+            read_path, [(setup, near_from, ctx.shot_fps),
+                        (far, from_s, release.RELEASE_FPS)], end.end_s, ctx.detector)
+    else:
+        seq = sequence.detect_end(read_path, setup, end, ctx.shot_fps,
+                                  ctx.detector, use_cache=ctx.use_cache,
+                                  from_s=from_s)
     # Anything thrown since the previous end closed is this end's;
     # anything earlier on this panel is not.
     deliveries = [
@@ -386,10 +400,10 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     # only now, after the second pass: an arrival the gap search
     # recovers is still an arrival, and a release standing in for it
     # would have hidden the very gap that finds it.
-    far = read_setups[OTHER_HOUSE[end.house]]
-    far_seq = list(sequence.detect_span(
-        read_path, far, from_s, end.end_s,
-        release.RELEASE_FPS, ctx.detector, use_cache=ctx.use_cache))
+    if not ctx.one_pass:
+        far_seq = list(sequence.detect_span(
+            read_path, far, from_s, end.end_s,
+            release.RELEASE_FPS, ctx.detector, use_cache=ctx.use_cache))
     releases, thrown_by, unaccounted = release.find_and_pair(
         far_seq, far.view_y_min_m, deliveries, seq,
         since=from_s if placed is None else max(from_s, placed.t_s),

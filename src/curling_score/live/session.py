@@ -221,7 +221,7 @@ class LiveSession:
             sideviews=self.calibration.sideviews,
             detector=self.models.detector, broom_model=self.models.broom_model,
             line_model=self.models.line_model, fmt=self.fmt, use_cache=False,
-            progress=self.progress)
+            one_pass=True, progress=self.progress)
         built, self.prev_end_s = self.pipeline.build_end(ctx, game, end,
                                                          self.prev_end_s)
         self.built[(game.index, end.number)] = built

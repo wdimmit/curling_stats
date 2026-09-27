@@ -62,3 +62,36 @@ def detect_span(path, setup, start_s: float, end_s: float, fps: float,
     digest = cache.key(path, setup.rect, setup.calib, detector,
                        start_s, end_s, 1.0 / fps)
     return cache.detections(digest, produce)
+
+
+def detect_spans(path, specs, end_s: float, detector=None):
+    """Detections for several panels from one decode of ``path``.
+
+    ``specs`` are ``(setup, start_s, fps)``; the result is a list per spec, as
+    ``detect_span(..., use_cache=False)`` would give it. For a live recording,
+    which has no strip proxy and no detection cache: decoding each frame once
+    for both panels halves the dominant cost of a live end.
+    """
+    from curling_score.detect import rocks
+
+    out = [[] for _ in specs]
+    batches = [[] for _ in specs]
+
+    def flush(i):
+        setup, batch = specs[i][0], batches[i]
+        if detector is None:
+            out[i].extend((t, rocks.find_stones(img, setup.calib)) for t, img in batch)
+        else:
+            got = detector.find_stones_batch([img for _, img in batch], setup.calib)
+            out[i].extend((t, r) for (t, _), r in zip(batch, got))
+        batches[i] = []
+
+    for i, t, img in F.windows(path, [(start, fps, setup.rect)
+                                      for setup, start, fps in specs], end_s):
+        batches[i].append((t, img))
+        if len(batches[i]) >= BATCH:
+            flush(i)
+    for i in range(len(specs)):
+        if batches[i]:
+            flush(i)
+    return out

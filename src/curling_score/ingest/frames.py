@@ -234,6 +234,47 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
                 next_wanted += step
 
 
+def windows(path, specs, end_s: float):
+    """Several windows of one file from a single decode.
+
+    Each spec is ``(start_s, fps, crop)``; this yields ``(i, t, frame)``, and
+    spec ``i`` gets exactly the frames ``window(path, start_s, end_s, fps,
+    crop)`` would. A live end reads the full-resolution recording for two
+    panels over nearly the same span, and decoding it once instead of twice
+    is most of the difference between a live end's cost and a recorded one's.
+    """
+    wanted = [float(start) for start, _, _ in specs]
+    steps = [1.0 / fps for _, fps, _ in specs]
+    lead = seek_lead(path)
+    _quiet_ffmpeg()
+    with av.open(str(path)) as container:
+        stream = container.streams.video[0]
+        stream.thread_type = "AUTO"
+        offset = _stream_start(stream)
+        target_pts = int((min(wanted) - lead + offset) / stream.time_base)
+        container.seek(target_pts, backward=True, stream=stream)
+        for frame in container.decode(stream):
+            if frame.pts is None:
+                continue
+            t = float(frame.pts * stream.time_base) - offset
+            due = [i for i in range(len(specs)) if t >= wanted[i] - 1e-9]
+            if not due:
+                continue
+            if t > end_s + 1e-9:
+                break
+            img = frame.to_ndarray(format="bgr24")
+            for i in due:
+                crop = specs[i][2]
+                if crop is None:
+                    out = img
+                else:
+                    x, y, w, h = crop
+                    out = np.ascontiguousarray(img[y : y + h, x : x + w])
+                yield i, t, out
+                while wanted[i] <= t + 1e-9:
+                    wanted[i] += steps[i]
+
+
 def sample_keyframes(path, count: int = 24, stride: int = 90, with_times: bool = False):
     """A handful of keyframes spread across the video, without holding the rest.
 
