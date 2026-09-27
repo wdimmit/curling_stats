@@ -170,6 +170,13 @@ its detection cache afterwards.
   playlist keeps only for about the first hour of a stream. A stream noticed
   later, or a recorder that drops out past that point, fails its live job, and
   the poller queues the recording the ordinary way once it is archived.
+- A worker restart is the same: nothing of a live stream is kept across one
+  (the `live/` recordings are cleared at start). Within a stream's first hour
+  its job comes back when the lease runs out and is recorded and built again
+  from the start; past it, the job fails and the recording's ordinary run
+  takes the game. Pages keep showing what was already published.
+- Roll the API back only with no live job queued: an API from before live
+  jobs would hand one to a worker as a recording.
 - Calibration comes from the first 15 minutes and is repeated every 15 until
   two agree; an end is published about four minutes after the next end's
   first stone, plus the time it takes to build.
