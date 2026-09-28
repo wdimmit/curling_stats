@@ -132,6 +132,9 @@ class Release:
     # to be timed -- the near tee line for thinking time, the hog line for the
     # long split -- and neither can be read from the endpoints alone.
     track: tuple[tuple[float, float, float], ...] = ()
+    # "overhead", this panel's; "side" when `game/sidereleases` filled in one
+    # this panel lost, from the long camera facing the thrower.
+    source: str = "overhead"
 
 
 def on_centre_line(x_m: float, view_x_limit_m: float | None) -> bool:

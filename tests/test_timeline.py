@@ -282,6 +282,23 @@ class TestTimingFields:
         assert end["shots"][0]["long_split_s"] is None
         assert end["splits_measured"] == 0
 
+    def test_a_release_says_which_camera_it_came_from(self):
+        end = timeline.build_end(
+            number=1, house="top", start_s=0.0, end_s=900.0,
+            shots=[self._shot(1, "red", 100.0, t_rel=70.0), self._shot(2, "yellow", 160.0)],
+        )
+        one, two = end["shots"]
+        assert one["release_source"] == "overhead"
+        assert two["release_source"] is None
+
+    def test_a_release_the_long_camera_filled_in_is_marked_so(self):
+        from dataclasses import replace
+        shot = self._shot(1, "red", 100.0, t_rel=70.0)
+        shot.release = replace(shot.release, source="side")
+        end = timeline.build_end(number=1, house="top", start_s=0.0, end_s=900.0,
+                                 shots=[shot])
+        assert end["shots"][0]["release_source"] == "side"
+
     def test_a_shot_with_no_release_reports_none_rather_than_zero(self):
         end = timeline.build_end(
             number=1, house="top", start_s=0.0, end_s=900.0,

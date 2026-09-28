@@ -25,6 +25,7 @@ from curling_score.game import (
     secondpass,
     segment,
     shots as shots_mod,
+    sidereleases,
     thinking,
 )
 from curling_score.game import format as format_mod
@@ -445,6 +446,13 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     if sideviews is not None:
         hogtime.time_hog_crossings(
             shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+        # The releases the throwing panel lost -- a thrower whose body hides
+        # the stone from above -- from hogtime's camera, which faces the
+        # delivery. Before the brooms and lines: both read what it gives.
+        n_side = sidereleases.time_side_releases(
+            shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+        if n_side:
+            progress(f"    end {end.number}: {n_side} release(s) from the long camera")
         # The skip's target broom, from the camera that sees the
         # destination house -- the OTHER camera from hogtime's.
         broomtime.time_target_brooms(

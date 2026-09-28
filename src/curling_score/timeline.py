@@ -188,6 +188,11 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None,
                 "release_speed_m_s": (
                     None if rel is None else round(float(rel.speed_m_s), 3)
                 ),
+                # "overhead", or "side" where the long camera facing the
+                # thrower filled in one that panel lost (`game/sidereleases`).
+                "release_source": (
+                    None if rel is None else getattr(rel, "source", "overhead")
+                ),
                 "t_tee_s": None if t_tee is None else round(float(t_tee), 2),
                 # True when the crossing -- and so the interval below -- is the
                 # typical lag taken off the arrival rather than a sighting.
