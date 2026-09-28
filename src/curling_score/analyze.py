@@ -13,6 +13,7 @@ from curling_score import timeline, version
 from curling_score import weights as weights_mod
 from curling_score.detect import broommodel, delivery, release, sequence, sidemodel
 from curling_score.game import (
+    boardsplit,
     broomtime,
     endcheck,
     fartime,
@@ -643,6 +644,16 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     samples = profile.build_profile(read_path, read_setups, sweep=sweep)
     games = segment.segment_games(
         samples, min_end_s=fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S)
+    if not skip_scoreboard:
+        # A changeover with stones still in view never reads empty long enough
+        # to end a game; the wall board, cleared after it, still says so. Read
+        # from the original: the proxy holds only the houses.
+        n_before = len(games)
+        games = boardsplit.split_games(
+            games, lambda t0, t1: boardsplit.board_states(path, t0, t1))
+        if len(games) > n_before:
+            progress(f"the scoreboard split {len(games) - n_before} changeover(s) "
+                     "the empty sheet did not")
     progress(f"{len(games)} game(s), {[len(g.ends) for g in games]} ends")
     phase("profile", 1.0, f"{len(games)} game(s)")
 
