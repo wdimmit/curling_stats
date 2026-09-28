@@ -406,27 +406,50 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         far_seq = list(sequence.detect_span(
             read_path, far, from_s, end.end_s,
             release.RELEASE_FPS, ctx.detector, use_cache=ctx.use_cache))
+    since = from_s if placed is None else max(from_s, placed.t_s)
+    arrivals = deliveries
     releases, thrown_by, unaccounted = release.find_and_pair(
-        far_seq, far.view_y_min_m, deliveries, seq,
-        since=from_s if placed is None else max(from_s, placed.t_s),
+        far_seq, far.view_y_min_m, arrivals, seq,
+        since=since,
         view_x_limit_m=far.view_x_limit_m,
     )
-    if unaccounted:
-        deliveries = sorted(deliveries + unaccounted, key=lambda d: d.t_enter)
+
+    def by_the_rules(unaccounted):
+        cands = (sorted(arrivals + unaccounted, key=lambda d: d.t_enter)
+                 if unaccounted else arrivals)
+        # An end holds its format's deliveries thrown strictly in turn, so
+        # a longer or doubled candidate list is provably wrong. Without
+        # this an over-counted end does not merely score badly, it cannot
+        # be built at all: the last shot has no thrower.
+        # Stones moved while the house is cleared after the last shot
+        # look like deliveries in every way but one: nothing released them.
+        return cands, fit.fit_end(fit.drop_clearing(
+            cands, seq, fit.released_ids(thrown_by, unaccounted)),
+            paired=fit.paired_ids(thrown_by),
+            per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
+
+    deliveries, kept = by_the_rules(unaccounted)
+    # A rock seen at neither end: a hogged rock whose thrower also hid its
+    # release from above leaves this end one short and nothing to say where,
+    # and the blank then goes last -- which, for a missed rock 1, names every
+    # thrower after it wrongly and hands the hammer to the other team. The
+    # long camera facing the thrower still sees it slide out of the hack.
+    lost = []
+    short = fmt.delivered_per_end - len(kept)
+    if sideviews is not None and 0 < short <= shots_mod.MAX_FILL:
+        lost = sidereleases.lost_rocks(
+            path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
+            kept=kept, releases=releases, thrown_by=thrown_by, arrivals=arrivals,
+            house_frames=seq, t0=since, t1=end.end_s)
+        if lost:
+            progress(f"    end {end.number}: {len(lost)} rock(s) the overhead saw at "
+                     f"neither end, from the long camera")
+            unaccounted = unaccounted + lost
+            deliveries, kept = by_the_rules(unaccounted)
     # Audit what detection actually offered, before the rules trim
     # it -- that is the honest measure of how well detection did.
     audit = endcheck.check(deliveries, per_end=fmt.delivered_per_end,
                            per_team=fmt.delivered_per_team)
-    # An end holds its format's deliveries thrown strictly in turn, so
-    # a longer or doubled candidate list is provably wrong. Without
-    # this an over-counted end does not merely score badly, it cannot
-    # be built at all: the last shot has no thrower.
-    # Stones moved while the house is cleared after the last shot
-    # look like deliveries in every way but one: nothing released them.
-    kept = fit.fit_end(fit.drop_clearing(
-        deliveries, seq, fit.released_ids(thrown_by, unaccounted)),
-        paired=fit.paired_ids(thrown_by),
-        per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
     dropped = len(deliveries) - len(kept)
     # The arrangement as it stood when rock 1 was on its way: a power
     # play set up in two steps shows its final shape here.
@@ -486,6 +509,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     built["releases_seen"] = len(releases)
     built["releases_unaccounted"] = len(unaccounted)
     built["hogged"] = sum(1 for d in unaccounted if d.reason == release.REASON)
+    built["lost_rocks_found"] = len(lost)
     built["deliveries_recovered"] = len(recovered)
     built["deliveries_dropped"] = dropped
     built["thrown"] = audit.thrown

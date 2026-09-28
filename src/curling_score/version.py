@@ -40,7 +40,13 @@ from pathlib import Path
 # arrive (`shots.house_delta`). On the 16 harness games the final house agrees
 # with the scoreboard in 40 of 54 ends instead of 29, and diffs that add a
 # stone of the colour that did not throw fall from 97 to 17.
-PIPELINE_VERSION = "2026.09.25"
+# 2026.09.28: an end the rules leave short searches the long camera facing the
+# thrower for a rock the overhead saw at neither end, and settles what it finds
+# like any unaccounted release (`sidereleases.lost_rocks`); the end record gains
+# `lost_rocks_found`. Also covers the long-camera release fill-in (23f6a6a,
+# `release_source`) and the board splits (bd916d7, 0a08d57), which changed
+# timelines without bumping this.
+PIPELINE_VERSION = "2026.09.28"
 
 
 def model_id(weights) -> str:

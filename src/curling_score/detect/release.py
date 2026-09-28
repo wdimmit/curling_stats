@@ -115,6 +115,8 @@ REASON = "hogged"
 # Reasons for a throw the house camera did not follow but the house confirms.
 REASON_ADD = "release-add"        # a stone of its colour appeared: it arrived unseen
 REASON_REMOVE = "release-remove"  # a stone went missing: it hit and rolled out
+# Every delivery ``settle`` makes: timed by its release, which is its t_enter.
+RELEASE_REASONS = (REASON, REASON_ADD, REASON_REMOVE)
 # How long after the throw to read the far house for what it did.
 SETTLE_S = 36.0
 

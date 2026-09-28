@@ -24,6 +24,17 @@ calibrates itself: rocks both saw give the correction the filled ones get.
 Fill-in only, and attach-only like ``hogtime``, ``broomtime`` and ``linetime``:
 it gives a release to a shot that has none, never replaces the overhead's, and
 cannot add, drop or renumber a shot. An end with nothing to fill reads no video.
+
+One case filling in cannot reach: a rock the overhead saw at *neither* end. A
+hogged rock never comes into the far house, so its release is all the evidence
+it leaves, and when the thrower hides that too there is no shot to fill in.
+PHbZ3EKOhMI end 6 opened with exactly that -- the red lead whose releases the
+overhead lost all game hogged rock 1 at 5341 -- and with fifteen rocks seen the
+missing one was placed last, which gave red the hammer and named every red
+thrower one rock early. ``lost_rocks`` looks for such throws, and only in an
+end the rules leave short: it scans this same camera where a rock could hide
+and hands back every slide that no release and no arrival accounts for, as the
+releases ``detect.release`` settles like any other.
 """
 from __future__ import annotations
 
@@ -162,9 +173,14 @@ def side_points(video, view, color, t0, t1, *, model=None, decode=None, detect=N
     frames, times = decode(video, view.rect, t0, t1, FPS)
     if not len(frames):
         return []
-    top = max(0, int(view.row_for(-(C.TEE_TO_HACKLINE_M + 1.0))) - 30)
-    bot = int(view.hog_row) + 40
+    top, bot = _band(view)
     return stone_points(view, times, detect(model, frames, times, top, bot, color))
+
+
+def _band(view):
+    """The view's rows from 1 m behind the hack to just below the hog line."""
+    top = max(0, int(view.row_for(-(C.TEE_TO_HACKLINE_M + 1.0))) - 30)
+    return top, int(view.hog_row) + 40
 
 
 def _window(shot):
@@ -233,12 +249,218 @@ def time_side_releases(shots, video, view, *, points=None) -> int:
         got = seen(s)
         if got is None:
             continue
-        # The climb, on the fitted line and the tee's correction: it is what the
-        # thinking clock and the broom read the tee crossing from.
-        track = tuple((got.t_at(y) + off_tee, got.x_m, y)
-                      for y in (FIT_Y_M[0], REF_Y_M, 0.0, FIT_Y_M[1]))
-        s.release = R.Release(s.color, got.t_ref + off_rel, got.y_max_m, got.speed_m_s,
-                              track=track, source=SOURCE)
+        s.release = _as_release(s.color, got, off_rel, off_tee)
         s.tee_estimated = False
         n += 1
     return n
+
+
+def _as_release(color, got: Slide, off_rel: float = 0.0, off_tee: float = 0.0):
+    # The climb, on the fitted line and the tee's correction: it is what the
+    # thinking clock and the broom read the tee crossing from.
+    track = tuple((got.t_at(y) + off_tee, got.x_m, y)
+                  for y in (FIT_Y_M[0], REF_Y_M, 0.0, FIT_Y_M[1]))
+    return R.Release(color, got.t_ref + off_rel, got.y_max_m, got.speed_m_s,
+                     track=track, source=SOURCE)
+
+
+# -- Rocks the overhead saw at neither end -------------------------------------
+#
+# The scan's rate. Half the fill-in's: a slide at 2 m/s spends 3 s in FIT_Y_M,
+# so 5 fps still gives it about 15 samples against FIT_MIN_N of 4, and on
+# PHbZ3EKOhMI it found the same 94 slides at 5 fps as the fill-in's windows do
+# at 10. The scan reads far more video than a fill-in, so the rate is its cost.
+SCAN_FPS = 5.0
+# Decoded this much at a time: the view's frames are full RGB, ~2.6 MB each.
+SCAN_CHUNK_S = 20.0
+# Slides are fitted in windows this long, stepped this far, and two fits of
+# one colour closer than SAME_SLIDE_S are one slide, the better-sampled kept.
+# A slide crosses FIT_Y_M in about 3 s; two throws are never within
+# R.MIN_SEPARATION_S of each other.
+SLIDE_WINDOW_S = 6.0
+SLIDE_STEP_S = 1.0
+SAME_SLIDE_S = 3.0
+# Where to look, as multiples of the end's median time between rocks: a gap
+# this long between two rocks seen can hold one that was not, and the search
+# reaches this far before the first rock seen and after the last. Bounded
+# rather than running to the end's edges, because between games players slide
+# practice rocks, and the first end's run-up reaches back into that.
+# PHbZ3EKOhMI end 6's lost rock 1 was 59 s, 1.1 of its end's median, before
+# the first rock seen.
+GAP_FACTOR = 1.7
+# An end's median before it has two gaps to take one from.
+DEFAULT_INTERVAL_S = 55.0
+# A slide must be surer to add a rock than to time one: it has to run this
+# far, and reach the tee. The fill-in knows a rock is there and asks only for
+# FIT_MIN_SPAN_M. Scanning every end of five games (PHbZ3EKOhMI, bLkgfZaDSKw,
+# 2z7vOezY9Bw and qMDNIgIGHZs of 2026-09-27, VXU9xwmugRg of the spring; 32
+# ends) found 494 slides of rocks the timelines hold, 2 of them short of
+# this, lost to their sweepers; 4 slides where a timeline had a blank, all
+# 3.65-5.54 m and past +2.6 m; and 2 with no rock behind them at all, 1.46 m
+# to -0.58 m and 1.74 m to -1.25 m.
+LOST_MIN_SPAN_M = 2.0
+LOST_MIN_Y_MAX_M = 0.0
+# ...and slide faster than a stone pushed by hand. Of those 494, 5 slid under
+# this (0.82-1.04 m/s) and the median 2.11; the four rocks found where a
+# timeline had a blank slid at 1.95-2.24; the five stones seen pushed through
+# a throwing house between ends slid at 0.81-1.02.
+LOST_MIN_SPEED_M_S = 1.1
+# The search starts this long after the end's run-up does, which is the
+# previous end's last rock coming to rest. That house is this end's throwing
+# house, and it is being cleared: on bLkgfZaDSKw, the 6 s after end 1's last
+# rest held four slides of both colours at 0.8-1.0 m/s, the players pushing
+# end 1's stones. The quickest turnaround in five games (27 of them) threw the
+# next rock 32.8 s after the close, the median 55 s.
+TURNAROUND_S = 20.0
+# Release to arrival, for an arrival with no release to time it by: the middle
+# of the 11-24 s the overhead measures.
+TYPICAL_LAG_S = 17.0
+
+
+def scan_points(video, view, t0, t1, *, fps=SCAN_FPS, model=None, decode=None,
+                detect=None) -> dict:
+    """Both colours' centre-line points over ``t0..t1``, as ``side_points``
+    gives one colour's: each stretch of video is decoded once for both."""
+    if decode is None:
+        from curling_score.detect import longview
+        decode = longview.decode
+    if detect is None:
+        from curling_score.detect import sidemodel
+        detect = sidemodel.detect_band
+    if model is None:
+        from curling_score.detect import sidemodel
+        model = sidemodel.default_model()
+    top, bot = _band(view)
+    out = {"red": [], "yellow": []}
+    t = t0
+    while t < t1:
+        frames, times = decode(video, view.rect, t, min(t + SCAN_CHUNK_S, t1), fps)
+        if len(frames):
+            for color in out:
+                out[color] += stone_points(
+                    view, times, detect(model, frames, times, top, bot, color))
+        t += SCAN_CHUNK_S
+    return out
+
+
+def find_slides(points, t0, t1) -> list[Slide]:
+    """Every distinct slide in one colour's ``points`` over ``t0..t1``, in time
+    order: ``fit_slide`` in each window, one slide per SAME_SLIDE_S."""
+    points = sorted(points)
+    found: list[Slide] = []
+    w = t0
+    while w < t1:
+        got = fit_slide([q for q in points if w <= q[0] < min(w + SLIDE_WINDOW_S, t1)])
+        if got is not None:
+            same = [i for i, s in enumerate(found) if abs(s.t_ref - got.t_ref) < SAME_SLIDE_S]
+            if not same:
+                found.append(got)
+            elif got.n > found[same[0]].n:
+                found[same[0]] = got
+        w += SLIDE_STEP_S
+    return sorted(found, key=lambda s: s.t_ref)
+
+
+def search_windows(rocks, t0, t1) -> list[tuple[float, float]]:
+    """Where an end short of rocks could be hiding one, given ``(t, colour)``
+    for when each rock it has was thrown: before the first, after the last,
+    between two of a colour -- the other team's rock must lie between them --
+    and inside any other gap GAP_FACTOR times the end's median. Each window
+    keeps R.MIN_SEPARATION_S clear of the rocks either side of it, and none
+    leaves ``t0..t1``.
+
+    The colour rule is not the gap rule's to catch: s_1aAUMPjTB3eCfHqHM end 2
+    lost a red between two yellows 87 s apart, when its reach was 88 s."""
+    rocks = sorted(rocks)
+    if not rocks:
+        return [(t0, t1)] if t1 > t0 else []
+    ts = [t for t, _c in rocks]
+    gaps = [b - a for a, b in zip(ts, ts[1:])]
+    interval = sorted(gaps)[len(gaps) // 2] if len(gaps) >= 2 else DEFAULT_INTERVAL_S
+    reach = GAP_FACTOR * interval
+    sep = R.MIN_SEPARATION_S
+    spans = [(ts[0] - reach, ts[0] - sep)]
+    spans += [(a + sep, b - sep) for (a, ca), (b, cb) in zip(rocks, rocks[1:])
+              if b - a >= reach or ca == cb]
+    spans.append((ts[-1] + sep, ts[-1] + reach))
+    out = []
+    for a, b in spans:
+        a, b = max(a, t0), min(b, t1)
+        if b - a >= SLIDE_WINDOW_S / 2:
+            out.append((a, b))
+    return out
+
+
+def rock_times(kept, thrown_by, lags=()) -> list[tuple[float, str]]:
+    """``(t, colour)`` for when each rock in ``kept`` was thrown: its release
+    where one was paired with it (``thrown_by`` maps a release to its
+    arrival), the arrival itself for a rock ``detect.release`` stood in for,
+    whose arrival *is* its release, and otherwise the arrival less the end's
+    median lag."""
+    by_arrival = {id(d): r.t for r, d in thrown_by.items()}
+    lags = sorted(lags)
+    lag = lags[len(lags) // 2] if lags else TYPICAL_LAG_S
+    out = []
+    for d in kept:
+        if id(d) in by_arrival:
+            t = by_arrival[id(d)]
+        elif getattr(d, "reason", "") in R.RELEASE_REASONS:
+            t = d.t_enter
+        else:
+            t = d.t_enter - lag
+        out.append((t, d.color))
+    return out
+
+
+def lost_rocks(video, view, *, kept, releases, thrown_by, arrivals, house_frames,
+               t0, t1, scan=None) -> list:
+    """The rocks an end the rules left short lost at both ends of the sheet, as
+    deliveries ``fit.fit_end`` can place; [] when there are none.
+
+    ``kept`` is the end as the rules built it, ``releases`` every overhead
+    release, ``thrown_by`` their pairing to ``arrivals``, the far house's
+    candidates, and ``house_frames`` its detections. ``t0`` is where the end's
+    run-up begins, and the search starts TURNAROUND_S after it; it never
+    passes ``t1``. Only a slide a throw could make counts: LOST_MIN_SPAN_M
+    long, reaching LOST_MIN_Y_MAX_M, and no other slide within
+    R.MIN_SEPARATION_S of it. A slide within R.MIN_SEPARATION_S of an overhead
+    release is that release, whatever colour either read; one that pairs with
+    an arrival no release claimed is that arrival's lost release, which the
+    fill-in times later. Whatever is left is settled by ``R.unaccounted`` exactly as an
+    overhead release with no arrival would be: from what the house did, a
+    rock that arrived unseen, struck a stone, or was hogged.
+
+    ``scan`` is ``(video, view, t0, t1) -> {colour: [(t, y, x)]}``,
+    ``scan_points`` by default. A decode or detector error costs the end only
+    what the search would have added.
+    """
+    if view is None or not getattr(view, "has_lateral", False):
+        return []
+    if scan is None:
+        scan = scan_points
+    lags = [d.t_enter - r.t for r, d in thrown_by.items()]
+    windows = search_windows(rock_times(kept, thrown_by, lags), t0 + TURNAROUND_S, t1)
+    found = []
+    for a, b in windows:
+        try:
+            pts = scan(video, view, a, b)
+        except Exception:
+            log.exception("long-camera search failed over %.0f-%.0f s", a, b)
+            continue
+        for color, p in pts.items():
+            found += [(color, s) for s in find_slides(p, a, b)
+                      if s.span_m >= LOST_MIN_SPAN_M and s.y_max_m >= LOST_MIN_Y_MAX_M
+                      and s.speed_m_s >= LOST_MIN_SPEED_M_S]
+    # Two throws are never within R.MIN_SEPARATION_S of each other, so slides
+    # that close together are stones being moved, and none of them is a throw.
+    found = [(c, s) for c, s in found
+             if not any(o is not s and abs(o.t_ref - s.t_ref) < R.MIN_SEPARATION_S
+                        for _c, o in found)]
+    known = [r.t for r in releases]
+    new = [_as_release(color, s) for color, s in sorted(found, key=lambda f: f[1].t_ref)
+           if all(abs(s.t_ref - t) >= R.MIN_SEPARATION_S for t in known)]
+    if not new:
+        return []
+    claimed = {id(d) for d in thrown_by.values()}
+    free = [d for d in arrivals if id(d) not in claimed]
+    return R.unaccounted(new, free, house_frames)
