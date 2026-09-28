@@ -323,6 +323,29 @@ class TestSources:
         dedupe.resolve_charts_for_run(repo, r2, at(1))
         assert len(repo.sources_for_video("VXU9xwmugRg")) == 2   # still two games
 
+    def test_a_game_split_in_two_gets_a_second_source(self):
+        """Doubles sheet 4, 2026-09-27: first read as one twelve-end game, then
+        split in two by the board. Each half overlaps the old source entirely,
+        by its own length, and both used to land on it -- the second game had
+        no page at all."""
+        repo = MemoryRepo()
+        r1 = run(id="r_1", games=[{"index": 0, "start_s": 260.0, "end_s": 9670.0, "ends": 12}])
+        repo.put_run(r1)
+        dedupe.resolve_charts_for_run(repo, r1, at(0))
+        (old,) = repo.sources_for_video("VXU9xwmugRg")
+        r2 = run(id="r_2", processing_version="p+new",
+                 games=[{"index": 0, "start_s": 260.0, "end_s": 4990.0, "ends": 6},
+                        {"index": 1, "start_s": 5390.0, "end_s": 9670.0, "ends": 6}])
+        repo.put_run(r2)
+        dedupe.resolve_charts_for_run(repo, r2, at(1))
+        sources = sorted(repo.sources_for_video("VXU9xwmugRg"), key=lambda s: s.game_start_s)
+        assert len(sources) == 2
+        assert [s.game_index for s in sources] == [0, 1]
+        assert all(s.current_run_id == "r_2" for s in sources)
+        # the old page is the first game's, and says where that game is now
+        assert sources[0].id == old.id
+        assert (sources[0].game_start_s, sources[0].game_end_s) == (260.0, 4990.0)
+
     def test_same_game_is_by_overlap(self):
         assert dedupe.same_game(0, 6400, 10, 6390)
         assert not dedupe.same_game(0, 6400, 7500, 14000)

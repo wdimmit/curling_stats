@@ -123,12 +123,21 @@ def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
     for s in repo.sources_for_video(run.video_id):
         if (s.format or "fours") != want:
             continue
+        # Already this run's page for another of its games: a game the old run
+        # read as one and this run splits in two overlaps it with both halves
+        # (doubles sheet 4, 2026-09-27), and the second half needs a page of
+        # its own. Games resolve in order, so the first keeps the old page.
+        if s.current_run_id == run.id and s.game_index != int(game["index"]):
+            continue
         if same_game(s.game_start_s, s.game_end_s, game["start_s"], game["end_s"]):
-            # A newer run of the same game moves the source forward, but
-            # existing charts stay pinned to the run they were made from.
+            # A newer run of the same game moves the source forward, to where
+            # this run found the game, but existing charts stay pinned to the
+            # run they were made from.
             if s.current_run_id != run.id:
                 repo.update_source(s.id, current_run_id=run.id,
-                                   game_index=int(game["index"]))
+                                   game_index=int(game["index"]),
+                                   game_start_s=float(game["start_s"]),
+                                   game_end_s=float(game["end_s"]))
             return s
     source = Source(
         id=slug.new_slug(slug.SHORT_BYTES, "s_"),
