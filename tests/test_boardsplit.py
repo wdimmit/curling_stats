@@ -65,6 +65,22 @@ class TestSplitGames:
         board = Board([(t, None) for t in range(60, 120)])
         assert [len(g.ends) for g in B.split_games([game(SHEET4)], board)] == [12]
 
+    def test_a_board_blank_early_in_a_game_is_not_a_changeover(self):
+        """jgZ9wlxGYHM, PNWCA draw 7: with one or two cards up, the board
+        flickered between cards and blank around a 2-minute gap after end 2
+        of a real game. No game is over after two ends."""
+        spans = [(0.0, 15.0), (15.1, 30.3), (32.8, 45.0), (45.1, 60.0), (60.1, 75.0)]
+        board = Board([(26.0, "cards"), (28.0, "cards"), (30.0, "blank"), (30.5, "blank"),
+                       (31.0, "blank"), (33.0, "cards")])
+        assert [len(g.ends) for g in B.split_games([game(spans)], board)] == [5]
+
+    def test_one_end_after_a_cleared_board_is_split_off(self):
+        """a2U6XeQYcbA: six ends, the board cleared, then one more end 535 s
+        later -- not the first game's seventh."""
+        spans = SHEET4[:6] + [(92.1, 104.0)]
+        board = Board([(80.0, "cards"), (85.0, "blank"), (86.0, "blank"), (95.0, "cards")])
+        assert [len(g.ends) for g in B.split_games([game(spans)], board)] == [6, 1]
+
     def test_without_a_long_gap_the_board_is_never_read(self):
         """Ends run into each other within a game -- 5-10 s apart on every game
         of 2026-09-27 -- so a gap that short is no changeover, whatever the board."""

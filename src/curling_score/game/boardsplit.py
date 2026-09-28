@@ -13,7 +13,7 @@ Two cues settle it, and a split needs both:
   house stays active until the other house's stones arrive. The merged
   changeover left 400 s.
 * **The board cleared.** The club clears the wall scoreboard promptly after a
-  game. Blank after showing cards, for two readable samples in a row, is a
+  game, and a game is at least ``MIN_ENDS_BEFORE`` ends in. Blank after showing cards, for two readable samples in a row, is a
   game that has finished. Blank before any card is only a game that has not
   posted yet, and one blank read between two readings of cards is a misread
   (7pm sheet 3 read one mid-game). Measured on six videos, 2026-09-28: the
@@ -31,6 +31,11 @@ from curling_score.game.segment import GameSegment
 
 CHANGEOVER_MIN_GAP_S = 120.0
 BLANK_RUN = 2
+# A board is cleared after a game that was played, and no game is over in
+# fewer ends than this. Early on, with one or two cards up, the board flickers
+# between cards and blank: jgZ9wlxGYHM read blank runs after end 2 of a real
+# game, at a 2-minute gap.
+MIN_ENDS_BEFORE = 4
 # The board around a gap: from before the last end finished, for the last
 # score it posted, to well into the next game, in case it was cleared late.
 LOOK_BEFORE_S = 300.0
@@ -78,7 +83,8 @@ def split_games(games, read_board) -> list[GameSegment]:
     for g in games:
         pieces = [[g.ends[0]]] if g.ends else []
         for a, b in zip(g.ends, g.ends[1:]):
-            if (b.start_s - a.end_s >= CHANGEOVER_MIN_GAP_S
+            if (len(pieces[-1]) >= MIN_ENDS_BEFORE
+                    and b.start_s - a.end_s >= CHANGEOVER_MIN_GAP_S
                     and board_cleared(read_board(a.end_s - LOOK_BEFORE_S,
                                                  b.start_s + LOOK_AFTER_S), a.end_s)):
                 pieces.append([b])
