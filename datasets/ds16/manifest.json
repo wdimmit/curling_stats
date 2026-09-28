@@ -1,0 +1,1881 @@
+{
+ "what": "ds16: the 2026-27 season's houses (sheet 4's portrait button) and red's third's yellow toque on bLkgfZaDSKw",
+ "prelabel": {
+  "weights": "ds15a.pt",
+  "conf": 0.05,
+  "imgsz": 448,
+  "classes": {
+   "0": "red_stone",
+   "1": "yellow_stone"
+  }
+ },
+ "seed": 16,
+ "counts": {
+  "settled-near-button": 15,
+  "settled": 50,
+  "throwing-house": 35,
+  "toque": 24
+ },
+ "frames": [
+  {
+   "stem": "bLkgfZaDSKw_t_001155_00",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 1155.0,
+   "why": "e2s5 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_001204_30",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 1204.3,
+   "why": "e2s6 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 6
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_001299_30",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 1299.3,
+   "why": "e2s8 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 8
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_001349_20",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 1349.2,
+   "why": "e2s9 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 10
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_003578_40",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 3578.4,
+   "why": "e4s14 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 7
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_000077_20",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 77.2,
+   "why": "e1s1 settled, 1 stones read",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_002025_60",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 2025.6,
+   "why": "e3s4 settled, 5 stones read",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_003940_20",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 3940.2,
+   "why": "e5s3 settled, 3 stones read",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 4
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_005692_60",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled",
+   "t": 5692.6,
+   "why": "e6s16 settled, 12 stones read",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 12
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_000059_00",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 59.0,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_000861_80",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 861.8,
+   "why": "e1s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_001869_80",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 1869.8,
+   "why": "e3s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_002768_20",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 2768.2,
+   "why": "e3s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_003809_60",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 3809.6,
+   "why": "e5s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_004760_93",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 4760.933,
+   "why": "e6s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_005679_73",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 5679.733,
+   "why": "e6s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "Y_XxbP1-G_o_t_002866_70",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 2866.7,
+   "why": "e4s5 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 9
+  },
+  {
+   "stem": "Y_XxbP1-G_o_b_003507_10",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled-near-button",
+   "t": 3507.1,
+   "why": "e5s2 settled; a real stone near the button",
+   "tee_px": [
+    147.3,
+    351.1
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "Y_XxbP1-G_o_b_003929_80",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled-near-button",
+   "t": 3929.8,
+   "why": "e5s8 settled; a real stone near the button",
+   "tee_px": [
+    147.3,
+    351.1
+   ],
+   "prelabels": 9
+  },
+  {
+   "stem": "Y_XxbP1-G_o_t_004473_23",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 4473.233,
+   "why": "e6s4 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 6
+  },
+  {
+   "stem": "Y_XxbP1-G_o_t_004940_43",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 4940.433,
+   "why": "e6s10 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 13
+  },
+  {
+   "stem": "Y_XxbP1-G_o_b_000396_70",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 396.7,
+   "why": "e1s1 settled, 4 stones read",
+   "tee_px": [
+    147.3,
+    351.1
+   ],
+   "prelabels": 4
+  },
+  {
+   "stem": "Y_XxbP1-G_o_t_001291_70",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled",
+   "t": 1291.7,
+   "why": "e2s5 settled, 8 stones read",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 8
+  },
+  {
+   "stem": "Y_XxbP1-G_o_b_002272_10",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 2272.1,
+   "why": "e3s8 settled, 9 stones read",
+   "tee_px": [
+    147.3,
+    351.1
+   ],
+   "prelabels": 9
+  },
+  {
+   "stem": "Y_XxbP1-G_o_b_003582_30",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 3582.3,
+   "why": "e5s3 settled, 5 stones read",
+   "tee_px": [
+    147.3,
+    351.1
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "Y_XxbP1-G_o_t_004861_03",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled",
+   "t": 4861.033,
+   "why": "e6s9 settled, 11 stones read",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 11
+  },
+  {
+   "stem": "Y_XxbP1-G_o_t_000375_00",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 375.0,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "Y_XxbP1-G_o_t_000938_40",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 938.4,
+   "why": "e1s10 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "Y_XxbP1-G_o_b_001657_40",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 1657.4,
+   "why": "e2s10 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    147.3,
+    351.1
+   ],
+   "prelabels": 2
+  },
+  {
+   "stem": "Y_XxbP1-G_o_t_002410_00",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 2410.0,
+   "why": "e3s10 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "Y_XxbP1-G_o_t_003416_20",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 3416.2,
+   "why": "e5s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "Y_XxbP1-G_o_b_004204_00",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 4204.0,
+   "why": "e6s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    147.3,
+    351.1
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "Y_XxbP1-G_o_b_004923_20",
+   "video": "Y_XxbP1-G_o",
+   "source": "s_0qR8SYtWpF8o2hCtq",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 4923.2,
+   "why": "e6s10 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    147.3,
+    351.1
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "8un0-JBKkLA_b_000982_30",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled-near-button",
+   "t": 982.3,
+   "why": "e1s12 settled; a real stone near the button",
+   "tee_px": [
+    147.4,
+    351.3
+   ],
+   "prelabels": 6
+  },
+  {
+   "stem": "8un0-JBKkLA_b_005068_93",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled-near-button",
+   "t": 5068.933,
+   "why": "e5s6 settled; a real stone near the button",
+   "tee_px": [
+    147.4,
+    351.3
+   ],
+   "prelabels": 6
+  },
+  {
+   "stem": "8un0-JBKkLA_b_005512_83",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled-near-button",
+   "t": 5512.833,
+   "why": "e5s13 settled; a real stone near the button",
+   "tee_px": [
+    147.4,
+    351.3
+   ],
+   "prelabels": 10
+  },
+  {
+   "stem": "8un0-JBKkLA_t_006460_40",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 6460.4,
+   "why": "e6s10 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 9
+  },
+  {
+   "stem": "8un0-JBKkLA_t_007073_90",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled-near-button",
+   "t": 7073.9,
+   "why": "e6s16 settled; a real stone near the button",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 18
+  },
+  {
+   "stem": "8un0-JBKkLA_b_000438_60",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 438.6,
+   "why": "e1s1 settled, 1 stones read",
+   "tee_px": [
+    147.4,
+    351.3
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "8un0-JBKkLA_t_001823_40",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled",
+   "t": 1823.4,
+   "why": "e2s8 settled, 6 stones read",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 7
+  },
+  {
+   "stem": "8un0-JBKkLA_b_003674_10",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 3674.1,
+   "why": "e3s16 settled, 10 stones read",
+   "tee_px": [
+    147.4,
+    351.3
+   ],
+   "prelabels": 10
+  },
+  {
+   "stem": "8un0-JBKkLA_b_005109_43",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 5109.433,
+   "why": "e5s7 settled, 5 stones read",
+   "tee_px": [
+    147.4,
+    351.3
+   ],
+   "prelabels": 7
+  },
+  {
+   "stem": "8un0-JBKkLA_t_006988_10",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "settled",
+   "t": 6988.1,
+   "why": "e6s15 settled, 14 stones read",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 14
+  },
+  {
+   "stem": "8un0-JBKkLA_t_000429_00",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 429.0,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "8un0-JBKkLA_t_001367_80",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 1367.8,
+   "why": "e1s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "8un0-JBKkLA_b_002463_40",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 2463.4,
+   "why": "e2s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    147.4,
+    351.3
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "8un0-JBKkLA_b_003781_20",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 3781.2,
+   "why": "e4s2 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    147.4,
+    351.3
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "8un0-JBKkLA_t_004759_60",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 4759.6,
+   "why": "e5s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 2
+  },
+  {
+   "stem": "8un0-JBKkLA_t_005853_40",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 5853.4,
+   "why": "e5s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    148.8,
+    152.6
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "8un0-JBKkLA_b_007055_63",
+   "video": "8un0-JBKkLA",
+   "source": "s_11MefKj8rSvZiFrlA",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 7055.633,
+   "why": "e6s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    147.4,
+    351.3
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "qEtMW7vWiYA_b_000065_40",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 65.4,
+   "why": "e1s1 settled, 1 stones read",
+   "tee_px": [
+    139.5,
+    347.7
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "qEtMW7vWiYA_b_000883_80",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 883.8,
+   "why": "e1s15 settled, 13 stones read",
+   "tee_px": [
+    139.5,
+    347.7
+   ],
+   "prelabels": 13
+  },
+  {
+   "stem": "qEtMW7vWiYA_t_001582_00",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "top",
+   "kind": "settled",
+   "t": 1582.0,
+   "why": "e2s12 settled, 4 stones read",
+   "tee_px": [
+    145.4,
+    135.7
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "qEtMW7vWiYA_b_002415_20",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 2415.2,
+   "why": "e3s10 settled, 7 stones read",
+   "tee_px": [
+    139.5,
+    347.7
+   ],
+   "prelabels": 7
+  },
+  {
+   "stem": "qEtMW7vWiYA_t_003345_40",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "top",
+   "kind": "settled",
+   "t": 3345.4,
+   "why": "e4s7 settled, 7 stones read",
+   "tee_px": [
+    145.4,
+    135.7
+   ],
+   "prelabels": 11
+  },
+  {
+   "stem": "qEtMW7vWiYA_b_004250_70",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 4250.7,
+   "why": "e5s5 settled, 3 stones read",
+   "tee_px": [
+    139.5,
+    347.7
+   ],
+   "prelabels": 2
+  },
+  {
+   "stem": "qEtMW7vWiYA_t_005173_23",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "top",
+   "kind": "settled",
+   "t": 5173.233,
+   "why": "e6s2 settled, 2 stones read",
+   "tee_px": [
+    145.4,
+    135.7
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "qEtMW7vWiYA_t_006184_00",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "top",
+   "kind": "settled",
+   "t": 6184.0,
+   "why": "e6s16 settled, 13 stones read",
+   "tee_px": [
+    145.4,
+    135.7
+   ],
+   "prelabels": 14
+  },
+  {
+   "stem": "qEtMW7vWiYA_t_000047_80",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 47.8,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    145.4,
+    135.7
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "qEtMW7vWiYA_b_001863_30",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 1863.3,
+   "why": "e2s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    139.5,
+    347.7
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "qEtMW7vWiYA_b_003948_30",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 3948.3,
+   "why": "e4s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    139.5,
+    347.7
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "qEtMW7vWiYA_b_006171_53",
+   "video": "qEtMW7vWiYA",
+   "source": "s_06xNpsdZAJoCvuffR",
+   "sheet": 1,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 6171.533,
+   "why": "e6s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    139.5,
+    347.7
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "2z7vOezY9Bw_b_000036_60",
+   "video": "2z7vOezY9Bw",
+   "source": "s_1ICAFKqsG5OaONluo",
+   "sheet": 2,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 36.6,
+   "why": "e1s1 settled, 0 stones read",
+   "tee_px": [
+    149.4,
+    356.1
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "2z7vOezY9Bw_t_001171_40",
+   "video": "2z7vOezY9Bw",
+   "source": "s_1ICAFKqsG5OaONluo",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "settled",
+   "t": 1171.4,
+   "why": "e2s5 settled, 5 stones read",
+   "tee_px": [
+    154.7,
+    158.8
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "2z7vOezY9Bw_b_002340_40",
+   "video": "2z7vOezY9Bw",
+   "source": "s_1ICAFKqsG5OaONluo",
+   "sheet": 2,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 2340.4,
+   "why": "e3s8 settled, 4 stones read",
+   "tee_px": [
+    149.4,
+    356.1
+   ],
+   "prelabels": 4
+  },
+  {
+   "stem": "2z7vOezY9Bw_t_003552_20",
+   "video": "2z7vOezY9Bw",
+   "source": "s_1ICAFKqsG5OaONluo",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "settled",
+   "t": 3552.2,
+   "why": "e4s11 settled, 9 stones read",
+   "tee_px": [
+    154.7,
+    158.8
+   ],
+   "prelabels": 9
+  },
+  {
+   "stem": "2z7vOezY9Bw_b_004597_83",
+   "video": "2z7vOezY9Bw",
+   "source": "s_1ICAFKqsG5OaONluo",
+   "sheet": 2,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 4597.833,
+   "why": "e5s13 settled, 10 stones read",
+   "tee_px": [
+    149.4,
+    356.1
+   ],
+   "prelabels": 11
+  },
+  {
+   "stem": "2z7vOezY9Bw_t_005957_80",
+   "video": "2z7vOezY9Bw",
+   "source": "s_1ICAFKqsG5OaONluo",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "settled",
+   "t": 5957.8,
+   "why": "e6s16 settled, 0 stones read",
+   "tee_px": [
+    154.7,
+    158.8
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "2z7vOezY9Bw_t_000019_40",
+   "video": "2z7vOezY9Bw",
+   "source": "s_1ICAFKqsG5OaONluo",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 19.4,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    154.7,
+    158.8
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "2z7vOezY9Bw_b_005877_43",
+   "video": "2z7vOezY9Bw",
+   "source": "s_1ICAFKqsG5OaONluo",
+   "sheet": 2,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 5877.433,
+   "why": "e6s15 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    149.4,
+    356.1
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "Po27AF7podc_b_000375_80",
+   "video": "Po27AF7podc",
+   "source": "s_1cGUTmZWBAxJNx9Ne",
+   "sheet": 2,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 375.8,
+   "why": "e1s1 settled, 1 stones read",
+   "tee_px": [
+    149.3,
+    356.6
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "Po27AF7podc_t_002233_50",
+   "video": "Po27AF7podc",
+   "source": "s_1cGUTmZWBAxJNx9Ne",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "settled",
+   "t": 2233.5,
+   "why": "e2s16 settled, 6 stones read",
+   "tee_px": [
+    154.8,
+    158.7
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "Po27AF7podc_t_004363_50",
+   "video": "Po27AF7podc",
+   "source": "s_1cGUTmZWBAxJNx9Ne",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "settled",
+   "t": 4363.5,
+   "why": "e4s16 settled, 9 stones read",
+   "tee_px": [
+    154.8,
+    158.7
+   ],
+   "prelabels": 10
+  },
+  {
+   "stem": "Po27AF7podc_t_006502_80",
+   "video": "Po27AF7podc",
+   "source": "s_1cGUTmZWBAxJNx9Ne",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "settled",
+   "t": 6502.8,
+   "why": "e6s16 settled, 12 stones read",
+   "tee_px": [
+    154.8,
+    158.7
+   ],
+   "prelabels": 13
+  },
+  {
+   "stem": "Po27AF7podc_t_000356_60",
+   "video": "Po27AF7podc",
+   "source": "s_1cGUTmZWBAxJNx9Ne",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 356.6,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    154.8,
+    158.7
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "Po27AF7podc_b_006484_63",
+   "video": "Po27AF7podc",
+   "source": "s_1cGUTmZWBAxJNx9Ne",
+   "sheet": 2,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 6484.633,
+   "why": "e6s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    149.3,
+    356.6
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "wZlFn8PoGPk_b_005680_53",
+   "video": "wZlFn8PoGPk",
+   "source": "s_0m4tRBUh2g7pby2qS",
+   "sheet": 2,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 5680.533,
+   "why": "e1s1 settled, 2 stones read",
+   "tee_px": [
+    149.5,
+    356.4
+   ],
+   "prelabels": 2
+  },
+  {
+   "stem": "wZlFn8PoGPk_b_007729_73",
+   "video": "wZlFn8PoGPk",
+   "source": "s_0m4tRBUh2g7pby2qS",
+   "sheet": 2,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 7729.733,
+   "why": "e3s10 settled, 8 stones read",
+   "tee_px": [
+    149.5,
+    356.4
+   ],
+   "prelabels": 8
+  },
+  {
+   "stem": "wZlFn8PoGPk_t_010175_23",
+   "video": "wZlFn8PoGPk",
+   "source": "s_0m4tRBUh2g7pby2qS",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "settled",
+   "t": 10175.233,
+   "why": "e6s10 settled, 12 stones read",
+   "tee_px": [
+    154.7,
+    158.7
+   ],
+   "prelabels": 11
+  },
+  {
+   "stem": "wZlFn8PoGPk_t_005666_80",
+   "video": "wZlFn8PoGPk",
+   "source": "s_0m4tRBUh2g7pby2qS",
+   "sheet": 2,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 5666.8,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    154.7,
+    158.7
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "PHbZ3EKOhMI_b_000093_40",
+   "video": "PHbZ3EKOhMI",
+   "source": "s_0N8Q2sB4vY8Hv4Ooq",
+   "sheet": 3,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 93.4,
+   "why": "e1s1 settled, 1 stones read",
+   "tee_px": [
+    153.2,
+    369.3
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "PHbZ3EKOhMI_t_001240_50",
+   "video": "PHbZ3EKOhMI",
+   "source": "s_0N8Q2sB4vY8Hv4Ooq",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "settled",
+   "t": 1240.5,
+   "why": "e2s4 settled, 3 stones read",
+   "tee_px": [
+    149.5,
+    152.3
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "PHbZ3EKOhMI_b_002544_30",
+   "video": "PHbZ3EKOhMI",
+   "source": "s_0N8Q2sB4vY8Hv4Ooq",
+   "sheet": 3,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 2544.3,
+   "why": "e3s7 settled, 3 stones read",
+   "tee_px": [
+    153.2,
+    369.3
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "PHbZ3EKOhMI_t_003855_30",
+   "video": "PHbZ3EKOhMI",
+   "source": "s_0N8Q2sB4vY8Hv4Ooq",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "settled",
+   "t": 3855.3,
+   "why": "e4s10 settled, 5 stones read",
+   "tee_px": [
+    149.5,
+    152.3
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "PHbZ3EKOhMI_b_005093_93",
+   "video": "PHbZ3EKOhMI",
+   "source": "s_0N8Q2sB4vY8Hv4Ooq",
+   "sheet": 3,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 5093.933,
+   "why": "e5s13 settled, 4 stones read",
+   "tee_px": [
+    153.2,
+    369.3
+   ],
+   "prelabels": 4
+  },
+  {
+   "stem": "PHbZ3EKOhMI_t_006372_30",
+   "video": "PHbZ3EKOhMI",
+   "source": "s_0N8Q2sB4vY8Hv4Ooq",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "settled",
+   "t": 6372.3,
+   "why": "e6s16 settled, 12 stones read",
+   "tee_px": [
+    149.5,
+    152.3
+   ],
+   "prelabels": 11
+  },
+  {
+   "stem": "PHbZ3EKOhMI_t_000071_20",
+   "video": "PHbZ3EKOhMI",
+   "source": "s_0N8Q2sB4vY8Hv4Ooq",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 71.2,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    149.5,
+    152.3
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "PHbZ3EKOhMI_b_006351_43",
+   "video": "PHbZ3EKOhMI",
+   "source": "s_0N8Q2sB4vY8Hv4Ooq",
+   "sheet": 3,
+   "panel": "bottom",
+   "kind": "throwing-house",
+   "t": 6351.433,
+   "why": "e6s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    153.2,
+    369.3
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "qMDNIgIGHZs_b_000416_60",
+   "video": "qMDNIgIGHZs",
+   "source": "s_0J7c7G9Gj22Nmj5dp",
+   "sheet": 3,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 416.6,
+   "why": "e1s1 settled, 1 stones read",
+   "tee_px": [
+    153.2,
+    369.5
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "qMDNIgIGHZs_t_001596_70",
+   "video": "qMDNIgIGHZs",
+   "source": "s_0J7c7G9Gj22Nmj5dp",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "settled",
+   "t": 1596.7,
+   "why": "e2s7 settled, 2 stones read",
+   "tee_px": [
+    149.5,
+    152.2
+   ],
+   "prelabels": 2
+  },
+  {
+   "stem": "qMDNIgIGHZs_b_002945_20",
+   "video": "qMDNIgIGHZs",
+   "source": "s_0J7c7G9Gj22Nmj5dp",
+   "sheet": 3,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 2945.2,
+   "why": "e3s14 settled, 9 stones read",
+   "tee_px": [
+    153.2,
+    369.5
+   ],
+   "prelabels": 12
+  },
+  {
+   "stem": "qMDNIgIGHZs_b_004316_50",
+   "video": "qMDNIgIGHZs",
+   "source": "s_0J7c7G9Gj22Nmj5dp",
+   "sheet": 3,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 4316.5,
+   "why": "e5s3 settled, 2 stones read",
+   "tee_px": [
+    153.2,
+    369.5
+   ],
+   "prelabels": 2
+  },
+  {
+   "stem": "qMDNIgIGHZs_t_005696_50",
+   "video": "qMDNIgIGHZs",
+   "source": "s_0J7c7G9Gj22Nmj5dp",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "settled",
+   "t": 5696.5,
+   "why": "e6s10 settled, 4 stones read",
+   "tee_px": [
+    149.5,
+    152.2
+   ],
+   "prelabels": 4
+  },
+  {
+   "stem": "qMDNIgIGHZs_b_006948_70",
+   "video": "qMDNIgIGHZs",
+   "source": "s_0J7c7G9Gj22Nmj5dp",
+   "sheet": 3,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 6948.7,
+   "why": "e7s16 settled, 5 stones read",
+   "tee_px": [
+    153.2,
+    369.5
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "qMDNIgIGHZs_t_000398_40",
+   "video": "qMDNIgIGHZs",
+   "source": "s_0J7c7G9Gj22Nmj5dp",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 398.4,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    149.5,
+    152.2
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "qMDNIgIGHZs_t_006927_70",
+   "video": "qMDNIgIGHZs",
+   "source": "s_0J7c7G9Gj22Nmj5dp",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 6927.7,
+   "why": "e7s16 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    149.5,
+    152.2
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "a57Go8rhkIo_b_005411_43",
+   "video": "a57Go8rhkIo",
+   "source": "s_0PXVGfZmiusxIlyX5",
+   "sheet": 3,
+   "panel": "bottom",
+   "kind": "settled",
+   "t": 5411.433,
+   "why": "e1s1 settled, 2 stones read",
+   "tee_px": [
+    153.1,
+    369.5
+   ],
+   "prelabels": 2
+  },
+  {
+   "stem": "a57Go8rhkIo_t_007522_50",
+   "video": "a57Go8rhkIo",
+   "source": "s_0PXVGfZmiusxIlyX5",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "settled",
+   "t": 7522.5,
+   "why": "e4s1 settled, 3 stones read",
+   "tee_px": [
+    149.5,
+    152.2
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "a57Go8rhkIo_t_009874_73",
+   "video": "a57Go8rhkIo",
+   "source": "s_0PXVGfZmiusxIlyX5",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "settled",
+   "t": 9874.733,
+   "why": "e6s10 settled, 11 stones read",
+   "tee_px": [
+    149.5,
+    152.2
+   ],
+   "prelabels": 11
+  },
+  {
+   "stem": "a57Go8rhkIo_t_005393_80",
+   "video": "a57Go8rhkIo",
+   "source": "s_0PXVGfZmiusxIlyX5",
+   "sheet": 3,
+   "panel": "top",
+   "kind": "throwing-house",
+   "t": 5393.8,
+   "why": "e1s1 thrown 8 s ago; the throwing house mid-end",
+   "tee_px": [
+    149.5,
+    152.2
+   ],
+   "prelabels": 0
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_000431_10",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 431.1,
+   "why": "e1s9 red third's slide, +0.3 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_000431_90",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 431.9,
+   "why": "e1s9 red third's slide, +1.1 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 4
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_000521_00",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 521.0,
+   "why": "e1s11 red third's slide, +0.3 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_000521_80",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 521.8,
+   "why": "e1s11 red third's slide, +1.1 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_001365_17",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 1365.167,
+   "why": "e2s10 red third's slide, +0.3 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_001365_97",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 1365.967,
+   "why": "e2s10 red third's slide, +1.1 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_001447_10",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 1447.1,
+   "why": "e2s12 red third's slide, +0.3 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_001447_90",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 1447.9,
+   "why": "e2s12 red third's slide, +1.1 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 1
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_002227_70",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 2227.7,
+   "why": "e3s9 red third's slide, +0.3 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 4
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_002228_50",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 2228.5,
+   "why": "e3s9 red third's slide, +1.1 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_002317_13",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 2317.133,
+   "why": "e3s11 red third's slide, +0.3 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_002317_93",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 2317.933,
+   "why": "e3s11 red third's slide, +1.1 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 2
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_003229_07",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 3229.067,
+   "why": "e4s9 red third's slide, +0.3 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_003229_87",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 3229.867,
+   "why": "e4s9 red third's slide, +1.1 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_003327_53",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 3327.533,
+   "why": "e4s11 red third's slide, +0.3 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_003328_33",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 3328.333,
+   "why": "e4s11 red third's slide, +1.1 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_004232_30",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 4232.3,
+   "why": "e5s10 red third's slide, +0.3 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_004233_10",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 4233.1,
+   "why": "e5s10 red third's slide, +1.1 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_004322_90",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 4322.9,
+   "why": "e5s12 red third's slide, +0.3 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 4
+  },
+  {
+   "stem": "bLkgfZaDSKw_t_004323_70",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "top",
+   "kind": "toque",
+   "t": 4323.7,
+   "why": "e5s12 red third's slide, +1.1 s",
+   "tee_px": [
+    148.8,
+    152.7
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_005205_13",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 5205.133,
+   "why": "e6s10 red third's slide, +0.3 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 3
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_005205_93",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 5205.933,
+   "why": "e6s10 red third's slide, +1.1 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 5
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_005341_03",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 5341.033,
+   "why": "e6s12 red third's slide, +0.3 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 2
+  },
+  {
+   "stem": "bLkgfZaDSKw_b_005341_83",
+   "video": "bLkgfZaDSKw",
+   "source": "s_1aAUMPjTB3eCfHqHM",
+   "sheet": 4,
+   "panel": "bottom",
+   "kind": "toque",
+   "t": 5341.833,
+   "why": "e6s12 red third's slide, +1.1 s",
+   "tee_px": [
+    147.2,
+    351.0
+   ],
+   "prelabels": 2
+  }
+ ]
+}
