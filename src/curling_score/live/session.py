@@ -26,6 +26,7 @@ session's own decisions are testable without any.
 
 import logging
 from copy import deepcopy
+import dataclasses
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -97,6 +98,14 @@ class Models:
     detector: object = None
     broom_model: object = None
     line_model: object = None
+
+
+def _side_worth(cal) -> int:
+    """How much a calibration's side views read: one for each view, one
+    more for each calibrated across."""
+    if cal is None or cal.sideviews is None:
+        return 0
+    return sum(1 + bool(v.has_lateral) for v in cal.sideviews.values())
 
 
 class LiveSession:
@@ -186,6 +195,18 @@ class LiveSession:
             if self.calibration is None and head >= CALIB_GIVE_UP_S:
                 raise LiveError(f"no calibration after {head:.0f} s: {exc}") from exc
             return "calibration failed"
+        if (got.side_expected and self.calibration is not None
+                and _side_worth(got) < _side_worth(self.calibration)):
+            # The panels are newer; the side views that worked are kept. On
+            # sheet 3, 2026-09-27, a recalibration that lost both views took
+            # the splits from every end after it. Kept views prove nothing
+            # about the new ones, so this is not steady: it goes on trying.
+            self.calibration = dataclasses.replace(
+                got, sideviews=self.calibration.sideviews)
+            self.steady = False
+            self.progress(f"calibrated from {head:.0f} s, keeping the side "
+                          "views before it: the new ones read less")
+            return "calibrated"
         self.steady = got.agrees_with(self.calibration)
         self.calibration = got
         self.progress(f"calibrated from {head:.0f} s"

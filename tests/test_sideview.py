@@ -115,6 +115,22 @@ class TestSolve:
         with pytest.raises(sideview.SideViewError, match="runs past"):
             sideview.solve(plate, (0, 0, 810, 1080))
 
+    def test_faint_green_well_above_the_ring_is_not_the_ring(self):
+        """Sheet 3's right view, 2026-09-27 at 19:31: a faint green patch at
+        rows 200-223 (peak 3.4), 120 rows above the ring. It crosses the top of
+        the wide search, which is not the ring running past it."""
+        plate = synth.side_view(tee_row=362.4, hog_row=435.0)
+        plate[200:224, :] = (236, 242, 236)
+        got = sideview.solve(plate, (0, 0, 810, 1080))
+        assert got.tee_row == pytest.approx(362.4, abs=1.5)
+        assert got.hog_row == pytest.approx(435.0, abs=1.5)
+
+    def test_green_inside_the_search_but_apart_from_the_ring_is_left_out(self):
+        plate = synth.side_view(tee_row=337.7, hog_row=405.0)
+        plate[240:250, :] = (236, 242, 236)
+        got = sideview.solve(plate, (0, 0, 810, 1080))
+        assert got.tee_row == pytest.approx(337.7, abs=1.5)
+
     def test_a_view_the_spring_band_fits_is_never_searched_wider(self):
         """Faint green above the house on some right views sits just under the
         threshold. A view the spring band fits must not be staked on it."""

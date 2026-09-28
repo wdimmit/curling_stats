@@ -154,6 +154,44 @@ class TestCalibration:
         run_until(s, rec, 5000.0)
         assert pipe.calibrated_at == [900.0, 1800.0, 2700.0]
 
+    def test_side_views_that_worked_are_not_given_up_for_worse_ones(self):
+        """Sheet 3, 2026-09-27 at 19:31: the recalibration lost both side views
+        where the one before had them, and every end after it had no splits.
+        The newer panels are taken; the side views that worked are kept."""
+        first = calibration(900)
+        worse = live.Calibration(panels=None, setups=calibration(1800).setups,
+                                 sideviews=None, until_s=1800)
+        pipe = Pipeline([first, worse, calibration(2700), calibration(3600)])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 2000.0)
+        assert s.calibration.setups is worse.setups
+        assert s.calibration.sideviews is first.sideviews
+        assert not s.steady          # a kept view proves nothing: go on trying
+        run_until(s, rec, 2750.0)
+        assert len(pipe.calibrated_at) == 3
+
+    def test_a_side_view_without_lateral_is_not_given_up_for_none(self):
+        first = calibration(900)
+        first.sideviews["right"] = side(450.0, 531.0, lateral=False)
+        worse = live.Calibration(panels=None, setups=calibration(1800).setups,
+                                 sideviews=None, until_s=1800)
+        pipe = Pipeline([first, worse])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 2000.0)
+        assert s.calibration.sideviews is first.sideviews
+
+    def test_better_side_views_replace_worse_ones(self):
+        first = live.Calibration(panels=None, setups=calibration(900).setups,
+                                 sideviews=None, until_s=900)
+        better = calibration(1800)
+        pipe = Pipeline([first, better])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 2000.0)
+        assert s.calibration is better
+
     def test_each_end_is_built_with_the_newest_calibration(self):
         first, second = calibration(900, hog=False), calibration(1800)
         pipe, rec, pub = Pipeline([first, second]), Recording(), []
