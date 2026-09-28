@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { authedFetch } from "./auth.js";
-import { hms, localDay } from "./fmt.js";
+import { clockTime, localDay } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Header, TeamPicker, useCommitOnExit } from "./ui.jsx";
 
@@ -30,13 +30,28 @@ function saveLeague(league) {
 }
 
 /* When a game began on the clock, in ms. played_at is when the stream went
- * live and start_s how far into it the game starts, so the two together order
- * a day the way it was played -- and a day's leagues are played in blocks, so
- * that groups them too. start_s alone is no use across recordings: 3:55 into
- * the evening stream is hours after 6:00 into the afternoon one. */
+ * live and start_s how far into it the game starts. start_s alone is no use
+ * across recordings: 3:55 into the evening stream is hours after 6:00 into the
+ * afternoon one. */
 const startsAt = g => {
   const t = g.played_at ? Date.parse(g.played_at) : NaN;
   return isNaN(t) ? null : t + (g.start_s ?? 0) * 1000;
+};
+
+/* That start put on the half hour the schedule said. Ice is booked on the
+ * hour or the half, and each sheet's game gets going a little after it --
+ * sometimes a good while after, rarely much before -- so a start up to 20
+ * minutes past a slot belongs to it and one up to 10 before does too. That
+ * puts the games that were played together on one time, and a day ordered by
+ * it, then by sheet, reads like the schedule board. In the reader's time
+ * rather than UTC's, so a zone offset by :30 or :45 still lands on :00 and
+ * :30. */
+const slotAt = g => {
+  const t = startsAt(g);
+  if (t == null) return null;
+  const d = new Date(t);
+  d.setMinutes(Math.ceil((d.getMinutes() + d.getSeconds() / 60 - 20) / 30) * 30, 0, 0);
+  return d.getTime();
 };
 
 /* The league a game belongs to, editable once you are signed in.
@@ -105,8 +120,6 @@ function TeamsCell({ game, editable, onSaved }) {
   const [red, setRed] = useState(game.team_red || "");
   const [yellow, setYellow] = useState(game.team_yellow || "");
 
-  const fallback = game.game_index == null
-    ? (game.title || game.video_id) : `Game ${game.game_index + 1}`;
   const named = game.team_red || game.team_yellow;
   const shown = named ? (
     <>
@@ -133,14 +146,15 @@ function TeamsCell({ game, editable, onSaved }) {
   };
   const exit = useCommitOnExit(save, () => setEditing(false));
 
-  if (!editable) return <td className="teams">{shown || fallback}</td>;
+  if (!editable)
+    return <td className="teams">{shown || <span className="muted">&mdash;</span>}</td>;
   if (!editing)
     return (
       <td className="teams">
         <button className="linky" title="Say who played this game"
                 onClick={() => { setRed(game.team_red || "");
                                  setYellow(game.team_yellow || ""); setEditing(true); }}>
-          {shown || <>{fallback} <span className="muted">&mdash; name the teams</span></>}
+          {shown || <span className="muted">name the teams</span>}
         </button>
       </td>
     );
@@ -247,20 +261,20 @@ export function Games() {
                 <h2>{date}</h2>
                 <table>
                   <tbody>
-                    <tr><th>Sheet</th><th>League</th><th>Game</th><th>Starts</th>
+                    <tr><th>League</th><th>Sheet</th><th>Game</th><th>Starts</th>
                         <th>Ends</th><th>Status</th><th /></tr>
                     {byDate[date]
-                      .sort((a, b) => (startsAt(a) ?? 0) - (startsAt(b) ?? 0)
+                      .sort((a, b) => (slotAt(a) ?? 0) - (slotAt(b) ?? 0)
                                    || (a.sheet ?? 99) - (b.sheet ?? 99)
-                                   || (a.start_s ?? 0) - (b.start_s ?? 0))
+                                   || (startsAt(a) ?? 0) - (startsAt(b) ?? 0))
                       .map(g => (
                         <tr key={g.source_id || `${g.video_id}:${g.start_s}`}>
-                          <td data-label="Sheet">{g.sheet ?? "?"}</td>
                           <LeagueCell game={g} games={all} onSaved={setAll}
                                       editable={editable && !!g.source_id} />
+                          <td data-label="Sheet">{g.sheet ?? "?"}</td>
                           <TeamsCell game={g} onSaved={setAll}
                                      editable={editable && !!g.source_id} />
-                          <td data-label="Starts">{g.start_s == null ? "—" : hms(g.start_s)}</td>
+                          <td data-label="Starts">{slotAt(g) == null ? "—" : clockTime(slotAt(g))}</td>
                           <td data-label="Ends">{g.ends ?? "—"}</td>
                           <td className="status"><span className={`pill ${g.status || ""}`}>{g.status || ""}</span></td>
                           <Actions game={g} mine={mine} team={team} />

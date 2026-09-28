@@ -29,6 +29,10 @@ export function localDay(iso) {
 
 export const day = iso => localDay(iso) || "—";
 
+/* The time of day a moment in ms falls on where the reader is, as "6:30 PM". */
+export const clockTime = ms =>
+  new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
 /** Seconds from "1:52:30", "6750" or "2:15". Null when it is not a time. */
 export function parseClock(text) {
   text = (text || "").trim();
