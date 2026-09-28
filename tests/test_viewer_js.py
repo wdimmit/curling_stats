@@ -1856,6 +1856,140 @@ class TestCurlStopsAtAHit:
         assert self.figs(dict(s, house_delta=None))["broom"]["value"] == "1 ft wide"
 
 
+def turning(y_break, speed, standing=(0.10, -0.22)):
+    """A rock running straight down the sheet at `speed` that turns off
+    sideways at depth `y_break`, with a stone standing `standing` from where
+    it turned; the house diff saw a stone go that the rock never went near."""
+    track, x, y = [], 0.0, y_break + 8 * 0.1 * speed
+    for i in range(18):
+        track.append([round(i * 0.1, 2), round(x, 4), round(y, 4)])
+        if i < 8:
+            y -= 0.1 * speed
+        else:
+            x -= 0.06 * speed; y -= 0.02 * speed
+    return shot(10, "yellow", "third", target_broom={"x": -0.3, "y": 1.0},
+                delivered_stone_index=0, stones=[{"color": "yellow", "x": round(x, 4), "y": round(y, 4)}],
+                stones_before=[{"color": "red", "x": standing[0], "y": round(y_break + standing[1], 4)}],
+                house_delta={"added": [], "removed": [{"color": "red", "x": 1.8, "y": -1.5}], "moved": []},
+                track=track,
+                line={"start": {"x": 0.0, "y": 38.0}, "at_hog": {"x": 0.0, "offset_m": 0.0},
+                      "at_broom": {"x": 0.0, "miss_m": 0.3}, "curl": "left", "confirmed": None,
+                      "hog_path": [], "path": []})
+
+
+class TestContactFromTheTrack:
+    """A hit the house diff cannot place -- the stone it struck moved less
+    than a move counts -- is found where the overhead track breaks, next to a
+    stone that stood there before the throw."""
+
+    def figs(self, s):
+        return {f["key"]: f for f in run_js(f"out(lineFigures({json.dumps(s)}, {{schema_version: 6}}));")["figures"]}
+
+    def s_0N8Q_e5_s10(self, **kw):
+        """s_0N8Q2sB4vY8Hv4Ooq, end 5, rock 10: it curled right onto the front
+        red of a stack at (-0.17, 1.86), which squirted 0.29 m -- under the
+        0.30 m the house diff calls a move -- and drove the red behind it out.
+        The rock rolled 0.95 m left. Checked against the video, 2026-09-28."""
+        base = dict(
+            target_broom={"x": -0.6683, "y": 1.7488}, delivered_stone_index=3,
+            stones=[{"color": "red", "x": 0.1229, "y": 2.9456}, {"color": "yellow", "x": 0.6306, "y": 3.6739},
+                    {"color": "red", "x": 0.1037, "y": 1.7636}, {"color": "yellow", "x": -1.195, "y": 1.3042}],
+            stones_before=[{"color": "yellow", "x": 0.6306, "y": 3.6759}, {"color": "red", "x": -0.1687, "y": 1.5397},
+                           {"color": "red", "x": -0.1706, "y": 1.8597}, {"color": "red", "x": 0.1223, "y": 2.9427}],
+            house_delta={"added": [{"color": "yellow", "x": -1.195, "y": 1.3042}],
+                         "removed": [{"color": "red", "x": -0.1687, "y": 1.5397}], "moved": []},
+            track=[[4866.83, -0.164, 4.524], [4867.03, -0.217, 4.433], [4867.13, -0.2, 4.374],
+                   [4867.33, -0.227, 4.286], [4867.43, -0.204, 4.233], [4867.53, -0.24, 4.186],
+                   [4867.63, -0.235, 4.134], [4867.73, -0.212, 4.076], [4867.83, -0.238, 4.01],
+                   [4867.93, -0.238, 3.947], [4868.03, -0.242, 3.881], [4868.13, -0.258, 3.806],
+                   [4868.23, -0.248, 3.735], [4868.33, -0.26, 3.664], [4868.43, -0.258, 3.591],
+                   [4868.53, -0.242, 3.505], [4868.63, -0.277, 3.426], [4868.73, -0.277, 3.347],
+                   [4868.83, -0.269, 3.261], [4868.93, -0.281, 3.161], [4869.03, -0.277, 3.065],
+                   [4869.13, -0.281, 2.969], [4869.23, -0.284, 2.867], [4869.33, -0.281, 2.756],
+                   [4869.43, -0.281, 2.652], [4869.53, -0.284, 2.537], [4869.63, -0.286, 2.422],
+                   [4869.73, -0.284, 2.299], [4869.83, -0.284, 2.178], [4869.93, -0.288, 2.069],
+                   [4870.03, -0.323, 2.042], [4870.13, -0.365, 2.015], [4870.23, -0.404, 1.99],
+                   [4870.33, -0.446, 1.973], [4870.43, -0.484, 1.948], [4870.53, -0.523, 1.923],
+                   [4870.63, -0.561, 1.903], [4870.73, -0.599, 1.877], [4870.83, -0.634, 1.857],
+                   [4870.93, -0.672, 1.834], [4871.03, -0.707, 1.811], [4871.13, -0.736, 1.794],
+                   [4871.23, -0.768, 1.773], [4871.33, -0.799, 1.752], [4871.43, -0.828, 1.731],
+                   [4871.53, -0.858, 1.71], [4871.63, -0.891, 1.688], [4871.73, -0.92, 1.665],
+                   [4871.83, -0.947, 1.646], [4871.93, -0.972, 1.623], [4872.03, -0.995, 1.604],
+                   [4872.13, -1.022, 1.589], [4872.23, -1.043, 1.566], [4872.33, -1.068, 1.55],
+                   [4872.43, -1.091, 1.533], [4872.53, -1.104, 1.52], [4872.63, -1.125, 1.502],
+                   [4872.73, -1.141, 1.487], [4872.83, -1.156, 1.47], [4872.93, -1.171, 1.452],
+                   [4873.03, -1.189, 1.433], [4873.13, -1.198, 1.42], [4873.23, -1.212, 1.408],
+                   [4873.33, -1.221, 1.401]],
+            line={"start": {"x": -0.1367, "y": 37.114}, "at_hog": {"x": -0.3624, "offset_m": -0.0939},
+                  "at_broom": {"x": -0.9531, "miss_m": -0.2847}, "side": "narrow", "curl": "left",
+                  "confirmed": True, "hog_path": [],
+                  "path": [[23.8, -0.43], [14.86, -0.516], [5.03, -0.366], [2.48, -0.272], [1.95, -0.242],
+                           [1.45, -0.705], [1.02, -1.189]]})
+        base.update(kw)
+        return shot(10, "yellow", "third", **base)
+
+    def test_a_struck_stone_the_house_diff_missed_is_found_where_the_track_breaks(self):
+        # The break peaks at 4869.93 s, 0.24 m from the front red; curl is read
+        # at the sample before, 4869.83 s. Curling right, a miss to the left
+        # of the broom is on the side away from the curl.
+        f = self.figs(self.s_0N8Q_e5_s10())
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("2 ft 2 in", "from its line to where it hit a stone")
+        assert f["broom"]["value"] == "11 in wide"
+
+    def test_without_the_house_before_it_the_rock_is_measured_to_rest(self):
+        s = self.s_0N8Q_e5_s10()
+        del s["stones_before"]
+        f = self.figs(s)
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("9 in", "from its line to where it stopped")
+        assert f["broom"]["value"] == "11 in narrow"
+
+    def test_a_break_with_no_stone_standing_there_is_not_a_hit(self):
+        f = self.figs(self.s_0N8Q_e5_s10(stones_before=[{"color": "red", "x": 0.1223, "y": 2.9427}]))
+        assert f["curl"]["note"] == "from its line to where it stopped"
+
+    def test_a_throw_that_disturbed_nothing_is_not_searched(self):
+        # A draw that grazed a stone keeps its draw's curl, to rest.
+        quiet = {"added": [{"color": "yellow", "x": -1.195, "y": 1.3042}], "removed": [], "moved": []}
+        f = self.figs(self.s_0N8Q_e5_s10(house_delta=quiet))
+        assert f["curl"]["note"] == "from its line to where it stopped"
+
+    def test_a_break_at_the_panel_s_far_edge_is_not_trusted(self):
+        assert self.figs(turning(3.0, 1.0))["curl"]["note"] == "from its line to where it hit a stone"
+        assert self.figs(turning(4.2, 1.0))["curl"]["note"] == "from its line to where it stopped"
+
+    def test_a_slow_rock_s_wobble_is_not_a_break(self):
+        assert self.figs(turning(3.0, 0.2))["curl"]["note"] == "from its line to where it stopped"
+
+    def test_a_track_that_speeds_up_is_a_stone_being_struck_not_striking(self):
+        """A rock loses speed to the stone it strikes. A track that sits still
+        and then sets off (s_0qR8SYtWpF8o2hCtq, end 10, rock 10) is following
+        a stone that was struck."""
+        s = turning(1.0, 1.0)
+        s["track"] = [[round(i * 0.1, 2), -0.395, 0.354] for i in range(8)] + \
+                     [[round(0.8 + i * 0.1, 2), round(-0.395 + 0.07 * i, 3), round(0.354 - 0.09 * i, 3)]
+                      for i in range(1, 10)]
+        s["stones_before"] = [{"color": "red", "x": -0.40, "y": 0.10}]
+        assert self.figs(s)["curl"]["note"] == "from its line to where it stopped"
+
+    def test_the_game_view_gives_each_rock_the_house_it_was_thrown_into(self):
+        """The last house read before it: a rock never seen reads no house, so
+        the one after it was thrown into the house before that."""
+        one = [{"color": "red", "x": 0.0, "y": 1.0}]
+        two = one + [{"color": "yellow", "x": 0.5, "y": 0.5}]
+        shots = [shot(1, "red", "lead", stones=one), shot(2, "yellow", "lead", stones=two),
+                 shot(3, "red", "second", missing=True, state_known=False),
+                 shot(4, "yellow", "second", stones=two)]
+        got = run_js(setup(doc(shots)) + "out(gameView().ends[0].shots.map(s => s.stones_before));")
+        assert got == [[], one, two, two]
+
+    def test_doubles_rock_one_is_thrown_into_the_placed_stones(self):
+        d = doc([shot(1, "red", "lead", stones=[])])
+        d["games"][0]["ends"][0]["placement"] = {
+            "house": {"color": "yellow", "x": 0.0, "y": -0.9}, "guard": {"color": "red", "x": 0.0, "y": 4.1}}
+        got = run_js(setup(d) + "out(gameView().ends[0].shots[0].stones_before);")
+        assert got == [{"color": "yellow", "x": 0.0, "y": -0.9}, {"color": "red", "x": 0.0, "y": 4.1}]
+
+
 def lined(number, color, slot, x, curl=None):
     """A rock whose stone sat at `x` before the push."""
     return shot(number, color, "lead", thrower_slot=slot, target_broom={"x": 0.0, "y": 0.0},

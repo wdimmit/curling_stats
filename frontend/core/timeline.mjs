@@ -153,6 +153,17 @@ export function buildGameView(doc, gi, overrides) {
     const { shots, raws, swapped } = layout(game, e, overrides, format);
     return { end: e, shots, raws, swapped };
   });
+  // The house each rock was thrown into, which line.mjs's curlEnd looks for a
+  // struck stone in: the last one read before it. A rock never seen, or seen
+  // with no reading of the house, leaves the house as it was. Rock 1 is thrown
+  // into doubles' placed stones, or an empty house.
+  for (const { end, shots } of ends) {
+    let house = [end.placement?.house, end.placement?.guard].filter(Boolean);
+    for (const s of shots) {
+      s.stones_before = house;
+      if (!s.missing && s.state_known !== false) house = s.stones ?? [];
+    }
+  }
   // A player throws from one hack all game, so each rock is given its
   // player's -- after the overrides, which can change who threw it.
   const hacks = playerHacks(ends.flatMap(x => x.shots));

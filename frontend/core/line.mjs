@@ -110,20 +110,76 @@ export function struckStones(shot) {
     .filter(p => typeof p.x === "number" && typeof p.y === "number");
 }
 
+// A break in the overhead track: the rock's velocity over the half second
+// after a sample differs from the half second before by at least half its
+// speed. Measured on the 44 hosted charts (2026-09-28): on hits the reach
+// test below places, the break peaks within two samples of it on 610 of 721.
+// The track jitters 1-2 cm a sample, which swamps any shorter window, and
+// swamps a rock slower than BREAK_SPEED_MIN whatever the window.
+const BREAK_WINDOW_S = 0.5;
+const BREAK_WINDOW_N = 4;                 // samples each side; fewer is a gap
+const BREAK_MIN = 0.5;
+const BREAK_SPEED_MIN = 0.25;             // m/s
+// The panel's far edge reads the track badly: 624 of the 807 breaks on rocks
+// that disturbed nothing were deeper than this.
+const BREAK_FAR_Y = 3.8;
+
+/* Least-squares velocity through {t, x, y} samples. */
+function velocity(pts) {
+  const tm = pts.reduce((a, p) => a + p.t, 0) / pts.length;
+  const stt = pts.reduce((a, p) => a + (p.t - tm) ** 2, 0);
+  if (!(stt > 0)) return null;
+  const v = k => pts.reduce((a, p) => a + (p.t - tm) * p[k], 0) / stt;
+  return { x: v("x"), y: v("y") };
+}
+
+/* Where a track of [t, x, y] breaks beside a stone that stood there: the
+ * peak of the first run of breaks within reach of one of `standing`, and not
+ * at the panel's far edge. -1 when there is none. */
+function trackBreak(track, standing) {
+  const pts = track.map(([t, x, y]) => ({ t, x, y }));
+  const runs = [];
+  let run = null;
+  pts.forEach((p, i) => {
+    const before = pts.slice(0, i + 1).filter(q => p.t - q.t <= BREAK_WINDOW_S + 1e-6);
+    const after = pts.slice(i).filter(q => q.t - p.t <= BREAK_WINDOW_S + 1e-6);
+    const vin = before.length >= BREAK_WINDOW_N ? velocity(before) : null;
+    const vout = after.length >= BREAK_WINDOW_N ? velocity(after) : null;
+    const speed = vin ? Math.hypot(vin.x, vin.y) : 0;
+    // A rock leaves a stone it strikes slower than it came. A track that
+    // speeds up is following the stone that was struck.
+    const size = vout && speed >= BREAK_SPEED_MIN && Math.hypot(vout.x, vout.y) < speed
+      ? Math.hypot(vout.x - vin.x, vout.y - vin.y) / speed : 0;
+    if (size < BREAK_MIN) { run = null; return; }
+    if (!run) runs.push(run = []);
+    run.push({ i, size });
+  });
+  for (const r of runs) {
+    const { i } = r.reduce((a, b) => (b.size > a.size ? b : a));
+    const p = pts[i];
+    if (p.y <= BREAK_FAR_Y && standing.some(s => Math.hypot(p.x - s.x, p.y - s.y) <= CONTACT_M)) return i;
+  }
+  return -1;
+}
+
 /* Where curl stops being measured: the rock's last position before it came
  * within reach of a stone its throw disturbed, else where it came to rest.
  * The overhead track is tried first -- ten a second, from the camera that
  * placed those stones -- then the path from behind the thrower. A rock that
  * never came near any of them is taken not to have hit one: the house diff
  * also moves stones a rock never touched (a detection dropout, a stone it
- * knocked on). `hit` without a position: it was already touching when first
- * seen. null: nothing to measure to. */
+ * knocked on). Except where its track breaks beside a stone that stood there
+ * (`stones_before`, which buildGameView gives each rock): the stone it struck
+ * moved too little for the diff to count it, under 0.30 m. `hit` without a
+ * position: it was already touching when first seen. null: nothing to
+ * measure to. */
 export function curlEnd(shot) {
   const hits = struckStones(shot);
   if (hits.length) {
     const reach = p => Math.min(...hits.map(h => Math.hypot(p.x - h.x, p.y - h.y)));
+    const track = Array.isArray(shot.track) ? shot.track : [];
     const sources = [
-      (Array.isArray(shot.track) ? shot.track : []).map(([, x, y]) => ({ x, y })),
+      track.map(([, x, y]) => ({ x, y })),
       (Array.isArray(shot.line?.path) ? shot.line.path : []).map(([y, x]) => ({ x, y })),
     ];
     let touched = false, best = null;
@@ -134,6 +190,10 @@ export function curlEnd(shot) {
       if (i > 0 && (!best || reach(pts[i - 1]) < reach(best))) best = pts[i - 1];
     }
     if (touched) return best ? { x: best.x, y: best.y, hit: true } : { hit: true };
+    const standing = [...hits, ...(Array.isArray(shot.stones_before) ? shot.stones_before : [])]
+      .filter(p => typeof p?.x === "number" && typeof p?.y === "number");
+    const i = trackBreak(track, standing);
+    if (i > 0) return { x: track[i - 1][1], y: track[i - 1][2], hit: true };
   }
   const path = shot?.line?.path;
   const end = restOf(shot) ?? (path?.length ? { x: path[path.length - 1][1], y: path[path.length - 1][0] } : null);
