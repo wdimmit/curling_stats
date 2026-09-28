@@ -131,6 +131,19 @@ class TestSolve:
         got = sideview.solve(plate, (0, 0, 810, 1080))
         assert got.tee_row == pytest.approx(337.7, abs=1.5)
 
+    def test_one_band_alone_is_not_taken_for_the_whole_ring(self):
+        """7pm sheet 3's right view, 2026-09-27 ~20:00: the far band (rows
+        344-355) sat wholly above the spring band's row 356, so it saw the
+        near band alone -- 13 rows of it with the paint's bleed, rows 368-381.
+        Its two edges fitted as the 12-ft pair put the tee at 374.7, 60.3 rows
+        above the hog line: 0.3 inside the plausible band, and 13 px wrong."""
+        # hog 437: the near band's two edges then fit 60.4 rows above it
+        plate = synth.side_view(tee_row=362.4, hog_row=437.0)
+        plate[368:382, int(810 * 0.12):int(810 * 0.88)] = synth.GREEN_PAINT
+        got = sideview.solve(plate, (0, 0, 810, 1080))
+        assert got.tee_row == pytest.approx(362.4, abs=2.5)
+        assert got.hog_row == pytest.approx(437.0, abs=1.5)
+
     def test_a_view_the_spring_band_fits_is_never_searched_wider(self):
         """Faint green above the house on some right views sits just under the
         threshold. A view the spring band fits must not be staked on it."""

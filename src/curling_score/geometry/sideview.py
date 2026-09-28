@@ -317,10 +317,15 @@ def solve(plate, rect: Rect, name: str = "side") -> SideView:
 # ring whole, and leaves out green that is not the ring -- on sheet 3's right
 # view, 2026-09-27 at 19:31, a faint patch 120 rows above it.
 _RING_GAP_PX = 40
+# Runs closer than this are one band that noise split (Sheet 3's left view on
+# 2026-09-27 read crossings at 350, 350 and 351). The narrowest gap between a
+# ring's two bands measured is 8 rows (sheet 2's left view, 335-343).
+_BAND_SPLIT_PX = 3
 
 
 def _ring_rows(green, lo, last):
-    """The rows the ring's green spans, as ``(first, last)``, or None.
+    """The rows the ring's green spans and the bands it shows, as
+    ``(first, last, bands)``, or None.
 
     The strongest run above the threshold, with every run within
     ``_RING_GAP_PX`` of it, and of those, taken in turn.
@@ -343,7 +348,8 @@ def _ring_rows(green, lo, last):
         a -= 1
     while b < len(runs) - 1 and runs[b + 1][0] - runs[b][1] <= _RING_GAP_PX:
         b += 1
-    return runs[a][0], runs[b][1]
+    bands = 1 + sum(runs[j + 1][0] - runs[j][1] > _BAND_SPLIT_PX for j in range(a, b))
+    return runs[a][0], runs[b][1], bands
 
 
 def _solve_within(green, lum, rect, name, search):
@@ -359,6 +365,12 @@ def _solve_within(green, lum, rect, name, search):
         # a band's width -- 8 px of tee on sheet 3, 2026-09-27.
         raise SideViewError(
             f"{name}: the house runs past rows {lo}-{last} searched")
+    if ring[2] < 2:
+        # One band alone, its two edges fitted as the 12-ft pair, put 7pm
+        # sheet 3's right tee 13 px low on 2026-09-27 -- and 60.3 rows above
+        # the hog line, just inside the plausible band. The far band had sat
+        # wholly above the rows searched.
+        raise SideViewError(f"{name}: one green band where the ring shows two")
     edges = _crossings(green, ring[0] - 1, ring[1] + 2, _GREEN_THRESHOLD)
     if len(edges) < 2:
         raise SideViewError(f"{name}: found {len(edges)} green edges, need at least 2")
