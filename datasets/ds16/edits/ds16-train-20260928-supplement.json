@@ -1,0 +1,21 @@
+{
+ "scope": "ds16:train",
+ "reject": [
+  "bLkgfZaDSKw_t_000059_00|0.500,0.292",
+  "Y_XxbP1-G_o_b_000396_70|0.496,0.681",
+  "Y_XxbP1-G_o_b_001657_40|0.497,0.681",
+  "Y_XxbP1-G_o_b_002272_10|0.497,0.681",
+  "8un0-JBKkLA_t_005853_40|0.501,0.293",
+  "bLkgfZaDSKw_b_001447_10|0.513,0.967"
+ ],
+ "add": [],
+ "reviewed": [
+  "8un0-JBKkLA_t_005853_40",
+  "Y_XxbP1-G_o_b_000396_70",
+  "Y_XxbP1-G_o_b_001657_40",
+  "Y_XxbP1-G_o_b_002272_10",
+  "bLkgfZaDSKw_b_001447_10",
+  "bLkgfZaDSKw_t_000059_00"
+ ],
+ "note": "Supplement to ds16-train-20260928.json (Claude, from crops, 2026-09-28): five bare-portrait boxes on sheet 4's button and one yellow toque at the hack, kept in the review with no stone under them."
+}
