@@ -1,14 +1,18 @@
 """Which detector runs when nobody says.
 
-Standardised on **ds15a** as of 2026-09-23. It is ds11a's recipe and ds11's
-1,304 reviewed frames, plus ds15: 234 reviewed frames of arriving stones that
-ds11a found late at the panel's far edge (`datasets/ds15/`). It holds ds11a's
-benchmarks (ds11 val mAP50 0.994, ds12 0.988 against 0.992). Held out by
-game, it finds that late stone 82% of the time against ds11a's 34%, and on 13
-games it never saw it raised measured splits from 84% to 92% of 1,389 rocks.
-Its shot lists differ from ds11a's in 3 of 108 ends.
+Standardised on **ds16a** as of 2026-09-28: ds15a's recipe and training set
+plus ds16, 124 reviewed frames of the 2026-27 season (`datasets/ds16/`). Sheet
+4's buttons were repainted with a portrait, which ds15a read as a yellow stone
+in ~85% of frames; on the sheet 4 game ds16 held out, ds16a sees a stone on
+the tee in 0% of them and its precision on that game's frames goes from 0.876
+to 1.000. It also stops reading a red thrower's yellow toque as a yellow
+stone. Benchmarks hold (ds11 val mAP50 0.993, ds12 0.987 against ds15a's
+0.994 and 0.988).
 
-ds11a (2026-09-11 to 2026-09-23) stays in the repository as that baseline.
+ds15a (2026-09-23 to 2026-09-28) was ds11a's recipe and ds11's 1,304 reviewed
+frames plus ds15's 234 frames of stones found late at the panel's far edge
+(`datasets/ds15/`); ds11a (2026-09-11 to 2026-09-23) is the baseline both
+were measured against. Both stay in the repository.
 
 Changing this changes ``version.processing_version``, so cached timelines are
 invalidated rather than quietly mixed -- which is the point of hashing the
@@ -27,7 +31,7 @@ saying so would leave every downstream number quietly incomparable.
 import os
 from pathlib import Path
 
-DEFAULT_NAME = "ds15a.pt"
+DEFAULT_NAME = "ds16a.pt"
 ENV_VAR = "CURLING_SCORE_WEIGHTS"
 
 # The SIDE-view detector, which times the throwing end's hog crossing. A

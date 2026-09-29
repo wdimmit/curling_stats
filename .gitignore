@@ -49,6 +49,9 @@ weights/*.pt
 # ds15a supersedes ds11a as the overhead detector (2026-09-23); ds11a is kept
 # as the baseline every ds15 comparison was measured against.
 !weights/ds15a.pt
+# ds16a supersedes ds15a (2026-09-28): ds15a's set plus ds16, the 2026-27 season's
+# houses (sheet 4's portrait button) and the toque. ds15a is kept as its baseline.
+!weights/ds16a.pt
 # ds13a does not supersede ds11a: they read different cameras. ds11a detects
 # stones in the overhead panels, looking straight down; ds13a detects them in
 # the wide side view, edge-on at thirty metres, to time the hog crossing.
