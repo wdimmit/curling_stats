@@ -11,6 +11,7 @@ Every cache -- videos, proxies, detections -- lives under one root, chosen by
 
 import os
 import secrets
+import subprocess
 import time
 from pathlib import Path
 
@@ -160,4 +161,35 @@ def ensure_cached(url: str, root: Path | None = None, progress: bool = True, *,
         # pruner skips anything called ``.part``, so they would have stayed.
         for leftover in (tmp, Path(f"{tmp}.part"), Path(f"{tmp}.ytdl")):
             leftover.unlink(missing_ok=True)
+    return dest
+
+
+def keep_recording(recording, vid: str, root: Path | None = None, *,
+                   run=subprocess.run) -> Path | None:
+    """File a whole live recording as the video's cached copy; its path, or
+    None when the video is cached already.
+
+    The recording is the stream in this module's FORMAT from its first
+    segment, on the archived video's clock (see ``live/recorder.py``). Remuxed
+    into MP4 -- copied, not re-encoded -- it gains the index MPEG-TS lacks, and a
+    reprocess finds it here as it would a download. Not the same bytes as a
+    download, though, so its detections are cached under a key of their own.
+
+    The MP4 is written beside the recording and renamed into place when whole:
+    a worker that dies part-way leaves it under ``live/``, cleared on start.
+    """
+    if is_cached(vid, root):
+        return None
+    recording = Path(recording)
+    tmp = recording.with_name(f"{vid}.mp4")
+    run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+         "-i", str(recording), "-map", "0:v:0", "-c", "copy", str(tmp)], check=True)
+    if not (tmp.is_file() and tmp.stat().st_size > 0):
+        raise RuntimeError(f"remuxing {recording} did not produce a usable file")
+    dest = video_path(vid, root)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp.replace(dest)
+    # The pinned mtime, but a fresh atime: pin_mtime's would make it the
+    # oldest-read file in the cache, the first the pruner lets go.
+    os.utime(dest, ns=(time.time_ns(), PINNED_MTIME_NS))
     return dest

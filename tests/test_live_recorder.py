@@ -95,6 +95,29 @@ def test_it_has_ended_once_the_process_exits_and_the_stream_is_over(tmp_path):
     assert rec.ended()
 
 
+def test_a_recording_that_ended_with_the_stream_is_whole(tmp_path):
+    rec, _ = make(tmp_path, [Proc(["00:10:00.00"], code=0)], still_live=False)
+    rec.start()
+    assert not rec.whole()
+    settle(rec)
+    assert rec.whole()
+
+
+def test_a_recording_whose_process_failed_as_the_stream_ended_is_not_whole(tmp_path):
+    rec, _ = make(tmp_path, [Proc(["00:10:00.00"], code=1)], still_live=False)
+    rec.start()
+    settle(rec)
+    assert rec.ended() and not rec.whole()
+
+
+def test_a_recording_on_a_clock_of_its_own_is_never_whole(tmp_path):
+    rec, _ = make(tmp_path, [Proc(["00:10:00.00"], code=0)], still_live=False,
+                  seq=55450, require_first_segment=False)
+    rec.start()
+    settle(rec)
+    assert rec.ended() and not rec.whole()
+
+
 def test_a_dropout_while_still_live_restarts_into_a_new_file(tmp_path):
     procs = [Proc(["00:10:00.00"], code=1),
              Proc(["00:05:00.00", "00:12:00.00"], code=None)]
@@ -123,6 +146,7 @@ def test_a_recording_is_cut_off_at_the_cap(tmp_path):
     rec.start()
     settle(rec)
     assert rec.ended()
+    assert not rec.whole()           # the stream may have gone on past the cap
 
 
 def test_a_dropout_after_the_rewind_window_has_moved_on_cannot_resume(tmp_path):
@@ -191,6 +215,7 @@ def test_a_stalled_recorder_whose_stream_is_over_is_ended(tmp_path):
     clock.t = recorder.STALL_S + 1
     rec.check()
     assert rec.ended() and proc.killed
+    assert not rec.whole()           # it may have stalled before the end
 
 
 def test_a_stalled_recorder_of_a_live_stream_is_restarted(tmp_path):

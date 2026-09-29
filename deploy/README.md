@@ -141,8 +141,11 @@ docker compose -f deploy/docker-compose.worker.yml logs -f
 The worker polls `/api/worker/claim` (10 s when busy, 30 s idle) and heartbeats
 once a minute. If the box reboots mid-job the lease expires after 10 minutes
 and the job is requeued; the caches under `/data/wdd/curling-cache` make the retry a
-~2 minute warm run. `WORKER_CACHE_GB` prunes old media (never detections); keep
-it comfortably under the free space on whatever volume holds the cache.
+~2 minute warm run. `WORKER_CACHE_GB` prunes old media (never detections), least
+recently read first, and `WORKER_MIN_FREE_GB` (default 40) prunes further while
+the disk has less than that free. A live stream's recording, once the stream
+has ended, is kept in the same cache as if it were a download, so reprocessing
+the game needs no new one.
 
 The compose file brings up a `pot` sidecar alongside the worker, and the image
 carries the matching `bgutil-ytdlp-pot-provider` plugin. Together they mint the

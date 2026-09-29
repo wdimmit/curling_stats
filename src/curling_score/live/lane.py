@@ -193,7 +193,8 @@ class LiveLane:
             return True
         else:
             log.info("live job %s complete", job["id"])
-        self.manager.finish(stream)
+        # A sheet nobody played has nothing to reprocess: its recording goes.
+        self.manager.finish(stream, keep=bool(doc["games"]))
         return True
 
 

@@ -294,8 +294,9 @@ def resolve_skip_longview() -> bool:
 
 
 def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | None,
-                out_dir: Path, cache_gb: float, skip_longview: bool = False,
-                sleep=time.sleep, once: bool = False, live=None, **process_kw):
+                out_dir: Path, cache_gb: float, min_free_gb: float = 0.0,
+                skip_longview: bool = False, sleep=time.sleep, once: bool = False,
+                live=None, **process_kw):
     """Claim and process jobs until stopped.
 
     With a ``live`` lane, live streams come first: while the lane has any,
@@ -366,7 +367,7 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
             except Exception as exc2:  # noqa: BLE001
                 log.warning("could not report failure: %s", exc2)
         try:
-            removed = prune.prune(root, cache_gb)
+            removed = prune.prune(root, cache_gb, min_free_gb=min_free_gb)
             if removed:
                 log.info("pruned %d cached media files", len(removed))
         except Exception as exc:  # noqa: BLE001
@@ -384,7 +385,8 @@ def _enable_stack_dumps():
 
 
 def build_live(api_url, token, worker_id, *, root: Path, weights,
-               skip_longview: bool = False, start: bool = True):
+               skip_longview: bool = False, start: bool = True,
+               cache_gb: float | None = None, min_free_gb: float = 0.0):
     """The live lane, when ``WORKER_LIVE=1`` asks for one; None otherwise.
 
     Its manager gets an API client of its own, since it talks to the API from
@@ -392,6 +394,8 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     A worker starts with nothing in hand, so any recordings left under
     ``live/`` by a worker that died are cleared: a live job it held comes back
     when its lease runs out, and is recorded again from the first segment.
+    A whole recording is kept in the video cache, which is then pruned to
+    ``cache_gb`` as after any job.
     """
     if os.environ.get("WORKER_LIVE") != "1":
         return None
@@ -400,10 +404,16 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     from curling_score.live import lane, manager
 
     shutil.rmtree(root / "live", ignore_errors=True)
+    def prune_cache():
+        removed = prune.prune(root, cache_gb, min_free_gb=min_free_gb)
+        if removed:
+            log.info("pruned %d cached media files", len(removed))
+
     mgr = manager.LiveManager(
         ApiClient(api_url, token), worker_id, model_id=version.model_id(weights),
         gpu=gpu_name() if start else None, root=root,
-        max_streams=int(os.environ.get("LIVE_MAX_STREAMS", manager.MAX_STREAMS)))
+        max_streams=int(os.environ.get("LIVE_MAX_STREAMS", manager.MAX_STREAMS)),
+        prune=prune_cache if cache_gb is not None else None)
     if start:
         mgr.start()
     return lane.LiveLane(mgr, ApiClient(api_url, token), worker_id,
@@ -421,14 +431,17 @@ def main(argv=None) -> int:
     os.environ["CURLING_SCORE_CACHE"] = str(root)
     weights = resolve_weights()
     worker_id = os.environ.get("WORKER_ID") or socket.gethostname()
+    cache_gb = float(os.environ.get("WORKER_CACHE_GB", "300"))
+    min_free_gb = float(os.environ.get("WORKER_MIN_FREE_GB", "40"))
     run_forever(
         ApiClient(api_url, token), worker_id,
         root=root, weights=weights, out_dir=Path(os.environ.get("WORKER_OUT", root / "out")),
-        cache_gb=float(os.environ.get("WORKER_CACHE_GB", "300")),
+        cache_gb=cache_gb, min_free_gb=min_free_gb,
         skip_longview=resolve_skip_longview(),
         once="--once" in (argv or sys.argv[1:]),
         live=build_live(api_url, token, worker_id, root=root, weights=weights,
-                        skip_longview=resolve_skip_longview()),
+                        skip_longview=resolve_skip_longview(),
+                        cache_gb=cache_gb, min_free_gb=min_free_gb),
     )
     return 0
 

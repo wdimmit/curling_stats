@@ -59,3 +59,68 @@ class TestAFailedDownloadLeavesNothingBehind:
                                   root=tmp_path, downloader=ok)
         assert got.read_bytes() == b"video"
         assert [p.name for p in (tmp_path / "videos").iterdir()] == ["abcdefghijk.mp4"]
+
+
+class TestKeepingALiveRecording:
+    """A whole live recording is filed as the video's cached copy, so
+    reprocessing the game needs no download."""
+
+    @staticmethod
+    def _ts(d):
+        import subprocess
+
+        mp4, ts = d / "src.mp4", d / "rec.0.ts"
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+             "-i", "testsrc2=size=160x120:rate=30", "-t", "12", "-g", "150",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", str(mp4)], check=True)
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(mp4),
+                        "-c", "copy", "-f", "mpegts", str(ts)], check=True)
+        return ts
+
+    def test_the_recording_becomes_an_mp4_on_the_same_clock(self, tmp_path):
+        import shutil
+        import time
+
+        import pytest
+
+        from curling_score.ingest import frames
+
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("needs ffmpeg")
+        live = tmp_path / "live" / "liveVid0001"
+        live.mkdir(parents=True)
+        ts = self._ts(live)
+        kept = cache.keep_recording(ts, "liveVid0001", tmp_path)
+        assert kept == cache.video_path("liveVid0001", tmp_path)
+        assert cache.is_cached("liveVid0001", tmp_path)
+        assert not (live / "liveVid0001.mp4").exists()
+        assert frames.seek_lead(kept) == 0.0             # indexed, unlike the .ts
+        st = kept.stat()
+        assert st.st_mtime_ns == cache.PINNED_MTIME_NS
+        # Freshly read as far as the pruner can tell, not the oldest file there.
+        assert time.time() - st.st_atime < 60
+        want = [t for t, _ in frames.keyframe_sweep(ts, decode=False)]
+        got = [t for t, _ in frames.keyframe_sweep(kept, decode=False)]
+        assert got == pytest.approx(want, abs=1e-3)
+
+    def test_a_video_already_cached_is_left_as_it_is(self, tmp_path):
+        dest = cache.video_path("liveVid0001", tmp_path)
+        dest.parent.mkdir(parents=True)
+        dest.write_bytes(b"the download")
+        calls = []
+        assert cache.keep_recording(tmp_path / "rec.0.ts", "liveVid0001", tmp_path,
+                                    run=lambda *a, **k: calls.append(a)) is None
+        assert calls == [] and dest.read_bytes() == b"the download"
+
+    def test_a_remux_that_fails_files_nothing(self, tmp_path):
+        import subprocess
+
+        import pytest
+
+        def run(cmd, check):
+            raise subprocess.CalledProcessError(1, cmd)
+
+        with pytest.raises(subprocess.CalledProcessError):
+            cache.keep_recording(tmp_path / "rec.0.ts", "liveVid0001", tmp_path, run=run)
+        assert not cache.is_cached("liveVid0001", tmp_path)

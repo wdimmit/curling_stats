@@ -240,6 +240,29 @@ class TestPrune:
         prune.prune(tmp_path, keep_gb=0.0, now=now)
         assert det.exists()
 
+    def test_a_disk_short_of_room_prunes_inside_the_budget(self, tmp_path):
+        # The budget is set once; the disk it shares fills up regardless.
+        now = 1_000_000.0
+        old = self._file(tmp_path, "videos", "old.mp4", 600, 90000, now)
+        mid = self._file(tmp_path, "videos", "mid.mp4", 600, 80000, now)
+        new = self._file(tmp_path, "videos", "new.mp4", 600, 70000, now)
+        removed = prune.prune(tmp_path, keep_gb=1.0, now=now,
+                              min_free_gb=1000e-9, free_bytes=0)
+        assert removed == [old, mid] and new.exists()
+
+    def test_a_disk_with_room_leaves_the_budget_in_charge(self, tmp_path):
+        now = 1_000_000.0
+        self._file(tmp_path, "videos", "a.mp4", 600, 90000, now)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now,
+                           min_free_gb=1000e-9, free_bytes=5000) == []
+
+    def test_a_full_disk_still_never_takes_a_file_in_use(self, tmp_path):
+        now = 1_000_000.0
+        busy = self._file(tmp_path, "videos", "busy.mp4", 1000, 60, now)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now,
+                           min_free_gb=1.0, free_bytes=0) == []
+        assert busy.exists()
+
 
 class TestVersion:
     def test_the_model_id_names_the_file_and_its_bytes(self, tmp_path):
