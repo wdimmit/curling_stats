@@ -4,7 +4,7 @@
  * broom for has a line too, pinned where it crosses the tee (`at_tee`) instead
  * of at the broom. Pure -- core/** may not touch the DOM. See
  * docs/superpowers/specs/2026-09-24-shot-line-detail-design.md. */
-import { R, STRIPBOX } from "./constants.mjs";
+import { R, STRIPBOX, WATCH_TABS } from "./constants.mjs";
 import { isSplitEstimated } from "./stats.mjs";
 import { formatOf, lineWithoutBroom } from "./format.mjs";
 
@@ -355,7 +355,7 @@ export function stepRock(view, ei, si, d) {
   return null;
 }
 
-const TABS = ["house", "detail", "timing"];
+const TABS = WATCH_TABS.map(([k]) => k);
 
 export function parseHash(hash) {
   const out = {};

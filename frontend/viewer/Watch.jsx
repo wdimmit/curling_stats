@@ -4,8 +4,8 @@
  * read-only surfaces inherited it with the grading cut out -- a 256px empty
  * panel under a video. This replaces it on /s/ and /g/ with the thing a
  * viewer actually wants: a pager over the current rock, a pane for whichever
- * of House, Detail or Timing is open, and the tab bar that switches between
- * them. The pane's own file owns what it draws -- this is the shell, and the
+ * of House, Detail, Delivery or Timing is open, and the tab bar that switches
+ * between them. The pane's own file owns what it draws -- this is the shell, and the
  * following that keeps it all pointed at the video as it plays.
  *
  * This renders no video slot. #playCard stays exactly where it is inside
@@ -15,8 +15,9 @@
  * second <House> would put a second id="house" in the document.
  */
 import { useEffect, useMemo } from "react";
-import { rockSpan, rockRows, stepRock } from "../core/index.mjs";
+import { WATCH_TABS, rockSpan, rockRows, stepRock } from "../core/index.mjs";
 import * as player from "../runtime/player.mjs";
+import { Delivery } from "./Delivery.jsx";
 import { Detail } from "./Detail.jsx";
 import { Pager, useSwipe } from "./Pager.jsx";
 import { Timing } from "./Timing.jsx";
@@ -40,8 +41,6 @@ function useFollow(rows, following, si, actions) {
   }, [rows, following, si, actions]);
 }
 
-const TABS = [["house", "House"], ["detail", "Detail"], ["timing", "Timing"]];
-
 export function Watch({ view, ui, config, series, think, here, actions }) {
   const rows = useMemo(() => rockRows(view, ui.ei, ui.leadIn), [view, ui.ei, ui.leadIn]);
   useFollow(rows, ui.following !== false, ui.si, actions);
@@ -61,13 +60,16 @@ export function Watch({ view, ui, config, series, think, here, actions }) {
       {ui.tab === "detail" ? (
         <div className="wpane" {...swipe}><Detail shot={shot} doc={view.doc} /></div>
       ) : null}
+      {ui.tab === "delivery" ? (
+        <div className="wpane" {...swipe}><Delivery shot={shot} doc={view.doc} /></div>
+      ) : null}
       {/* The House tab has no element of its own: #houseCard is promoted by CSS
           between the pager and the tabs -- one <House> in the page, so one #house. */}
       {ui.tab === "timing" ? (
         <Timing view={view} ui={ui} series={series} think={think} here={here} actions={actions} />
       ) : null}
       <nav className="wtabs" aria-label="Views">
-        {TABS.map(([k, label]) => (
+        {WATCH_TABS.map(([k, label]) => (
           <button key={k} type="button" aria-current={ui.tab === k ? "page" : undefined}
                   onClick={() => actions.setTab(k)}>{label}</button>
         ))}

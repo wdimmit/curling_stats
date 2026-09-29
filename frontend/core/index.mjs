@@ -14,4 +14,5 @@ export * from "./watch.mjs";
 export * from "./wire.mjs";
 export * as overrides from "./overrides.mjs";
 export * from "./line.mjs";
+export * from "./delivery.mjs";
 export * from "./flag.mjs";

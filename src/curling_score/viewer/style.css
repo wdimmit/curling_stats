@@ -107,6 +107,10 @@ main { display:grid; gap:14px; padding:14px;
 #detailCard .dstrip { display: block; width: 100%; height: auto; background: var(--ice);
                       border: 1px solid var(--line); border-radius: 4px; }
 #detailCard .dstrip-none { aspect-ratio: 660 / 114; }
+/* The delivery close up under the strip, the same way round and as wide. */
+#detailCard .dlv { display: block; width: 100%; height: auto; background: var(--ice);
+                   border: 1px solid var(--line); border-radius: 4px; margin-top: 6px; }
+#detailCard .dlvnone { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 /* At 1440 x 900 the video's natural height leaves only ~300 px under it, so
    these six rows are tighter than the phone's: less row padding and a closer
    line-height, not a smaller number (font-size stays 19px, matching the
@@ -738,7 +742,7 @@ body[data-mode="review"] #house { cursor:default; }
            bottom: 0; z-index: 4; flex-direction: column;
            background: var(--bg); }
 
-  /* Three tabs at the thumb. 52px, not taller: every pixel here is one the
+  /* Four tabs at the thumb. 52px, not taller: every pixel here is one the
      House tab's house does not get, and 52 still clears a 44px target. */
   .wtabs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 9;
            height: calc(52px + env(safe-area-inset-bottom));
@@ -787,6 +791,9 @@ body[data-mode="review"] #house { cursor:default; }
   .dstrip { flex: none; display: block; background: var(--ice);
             border: 1px solid var(--line); border-radius: 4px; }
   .dstrip-none { width: 150px; height: 420px; }
+  /* Delivery: the chart at the pane's width, 358 px on a 390 phone. */
+  .wpane .dlv { display: block; width: 100%; max-width: 358px; height: auto;
+                background: var(--ice); border: 1px solid var(--line); border-radius: 4px; }
   .dfigs { flex: 1; min-width: 0; margin: 0; display: flex; flex-direction: column; }
   .dfig { padding: 9px 0; border-bottom: 1px solid var(--line); }
   .dfig dt { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;

@@ -44,6 +44,11 @@ export const VIDEO_LEAD_IN_S = 10;  // timeline.VIDEO_LEAD_IN_S: t_video_s's lea
  * asserts the two are equal. */
 export const PHONE_QUERY = "(max-width: 640px) and (min-height: 521px)";
 
+/* The phone viewer's bottom tabs, in order: the one table the tab bar draws
+ * and a link's #tab= is checked against. */
+export const WATCH_TABS = [["house", "House"], ["detail", "Detail"], ["delivery", "Delivery"],
+                           ["timing", "Timing"]];
+
 /* The Detail pane's sheet strip: the whole sheet, thrower at the bottom, in
  * a 150x420 px box -- about 3x wider across than along. Metres y0..y1 from
  * the destination tee. */
@@ -51,6 +56,19 @@ export const STRIPBOX = { w: 150, h: 420, y0: -2.3, y1: 38.9, half: 2.375 };
 /* The desktop strip before it is turned on its side: ×1.5 across (24 px/m
  * against 16 px/m along), so the whole sheet fits under the video. */
 export const DESKBOX = { w: 114, h: 660, y0: -2.3, y1: 38.9, half: 2.375 };
+/* The delivery close up (core/delivery.mjs): metres past the throwing tee
+ * `from`..`to` along, `across` metres across -- the window only widens for a
+ * rock that will not fit. The phone's is upright, about ×7 across; the
+ * desktop's lies under the sideways strip, about ×4. */
+export const DELIVERYBOX = { w: 358, h: 395, side: false, from: -4.0, to: 8.05, across: 1.6,
+                             pad: { l: 34, r: 8, t: 10, b: 26 } };
+export const DESKDELIVERYBOX = { w: 660, h: 230, side: true, from: -4.0, to: 8.05, across: 0.9,
+                                 pad: { l: 10, r: 34, t: 18, b: 8 } };
+/* Time along the delivery: indigo while the rock sits, teal through the slide,
+ * and the strip's own path gold past the hog line. Every stop reads on the
+ * ice (PAINT.ice), and lightness rises monotonically, so order survives
+ * colour blindness. */
+export const DELIVERY_RAMP = ["#2d1e6b", "#1f7a8c", "#a07a00"];
 /* The whole-game clock above Timing's list: short, so the list keeps the room. */
 export const TIMINGBOX = { w: 640, h: 200, padL: 60, padR: 12, padT: 10, padB: 30 };
 

@@ -2085,6 +2085,9 @@ class TestSteppingAndTheHash:
             'out([h, cursorFromHash(parseHash(h))]);'))
         assert got == ["#tab=detail&e=2&s=2", {"gi": 0, "ei": 1, "si": 1}]
 
+    def test_a_link_can_open_the_delivery_tab(self):
+        assert run_js('out(parseHash("#tab=delivery&e=2&s=1"));') == {"tab": "delivery", "e": 2, "s": 1}
+
     def test_a_hash_naming_no_such_rock_or_tab_is_ignored(self):
         got = run_js(setup(two_ends()) + (
             'out([cursorFromHash(parseHash("#tab=timing&e=9&s=1")), parseHash("#tab=bogus&e=x")]);'))
@@ -2441,11 +2444,17 @@ class TestTheAppKnowsItsTab:
 class TestTheTabShell:
     JSX = Path(__file__).resolve().parents[1] / "frontend/viewer"
 
-    def test_three_tabs_and_the_panes_they_show(self):
+    def test_four_tabs_and_the_panes_they_show(self):
         src = (self.JSX / "Watch.jsx").read_text()
-        for needle in ('className="wtabs"', "actions.setTab(", "<Detail ", "<Timing ", "<Pager "):
+        for needle in ('className="wtabs"', "actions.setTab(", "<Detail ", "<Delivery ", "<Timing ",
+                       "<Pager ", "WATCH_TABS.map("):
             assert needle in src, needle
         assert "openWatch" not in src and "ui.watch" not in src
+        assert run_js("out(WATCH_TABS.map(([k]) => k));") == ["house", "detail", "delivery", "timing"]
+
+    def test_the_delivery_pane_swipes_like_the_detail_pane(self):
+        src = (self.JSX / "Watch.jsx").read_text()
+        assert ('<div className="wpane" {...swipe}><Delivery shot={shot} doc={view.doc} /></div>') in src
 
     def test_tapping_the_pager_s_end_and_rock_picks_an_end(self):
         pager = (self.JSX / "Pager.jsx").read_text()
@@ -2572,6 +2581,12 @@ class TestThePhoneTabsCss:
             assert decl in rule, decl
         mid = css[css.index(".wpmid {"):css.index("}", css.index(".wpmid {"))]
         assert "position: relative" in mid
+
+    def test_the_delivery_chart_takes_the_pane_s_width(self):
+        css = (VIEWER / "style.css").read_text()
+        rule = css[css.index(".wpane .dlv {"):css.index("}", css.index(".wpane .dlv {"))]
+        for decl in ("width: 100%", "max-width: 358px", "height: auto", "background: var(--ice)"):
+            assert decl in rule, decl
 
     def test_the_detail_pane_hands_horizontal_drags_to_the_swipe(self):
         css = (VIEWER / "style.css").read_text()
@@ -3135,3 +3150,176 @@ class TestWhichLiveDocumentToShow:
     def test_the_final_document_is_always_shown(self):
         got = run_js(f"out(acceptLiveDoc({json.dumps(self.d(5, 'a'))}, {json.dumps(self.d(4, 'b', live=False))}).live.updated_at);")
         assert got == "b"
+
+
+TEE_Y = 34.747
+
+
+def delivery_points(gap=None, corner=0.0, t_end=4.7):
+    """A rock at rest at (-0.15, 3.2 m behind the tee) until 0.5 s before the
+    release, then 2 m/s up the sheet drifting right: [t, y, x] every 0.1 s."""
+    out = []
+    for i in range(int(round((t_end + 3.0) * 10)) + 1):
+        t = round(-3.0 + i / 10, 2)
+        if gap and gap[0] < t < gap[1]:
+            continue
+        moving = max(0.0, t + 0.5)
+        yp = -3.2 + 2.0 * moving
+        x = -0.15 + 0.04 * moving + corner * moving
+        out.append([t, round(TEE_Y - yp, 2), round(x, 3)])
+    return out
+
+
+def delivery_shot(points=None, **kw):
+    s = {"number": 3, "color": "red", "hack": {"side": "left"},
+         "target_broom": {"x": 0.3, "y": 0.0},
+         "line": {"start": {"x": -0.15, "y": TEE_Y + 3.2},
+                  "delivery": delivery_points() if points is None else points}}
+    s.update(kw)
+    return s
+
+
+D8 = {"schema_version": 8}
+
+
+class TestDeliveryReason:
+    def reason(self, shot, doc=D8):
+        return run_js(f"out(deliveryReason({json.dumps(shot)}, {json.dumps(doc)}));")
+
+    def test_a_followed_rock_has_no_reason(self):
+        assert self.reason(delivery_shot()) is None
+
+    def test_a_chart_from_before_schema_8_predates_it(self):
+        assert self.reason(delivery_shot(), {"schema_version": 7}) == "This chart predates the delivery chart"
+        assert self.reason(delivery_shot(), {}) == "This chart predates the delivery chart"
+
+    def test_a_rock_with_no_line_says_why_as_the_strip_does(self):
+        assert self.reason(delivery_shot(line=None)) == "The hog-line camera lost this rock"
+
+    def test_a_line_without_a_delivery_is_a_rock_not_followed(self):
+        want = "The hog-line camera did not follow this rock from the hack"
+        assert self.reason(delivery_shot(points=[])) == want
+        assert self.reason(delivery_shot(points=[[0.0, 30.0, 0.1]])) == want
+        no_key = delivery_shot(); del no_key["line"]["delivery"]
+        assert self.reason(no_key) == want
+
+
+class TestDeliveryGeometry:
+    def geom(self, shot, box="DELIVERYBOX"):
+        return run_js(f"out(deliveryGeometry({json.dumps(shot)}, {box}));")
+
+    def test_upright_the_thrower_is_at_the_bottom(self):
+        g = self.geom(delivery_shot())
+        y = {l["kind"]: l["y1"] for l in g["lines"] if l["kind"] != "centre"}
+        assert y["hack"] > y["tee"] > y["hog"]
+        assert all(l["y1"] == l["y2"] for l in g["lines"] if l["kind"] != "centre")
+        # 10 px of padding, then 8.05 m down to the tee at 359 px for 12.05 m.
+        assert y["tee"] == pytest.approx(10 + 8.05 * 359 / 12.05, abs=0.06)
+        assert g["stretch"] == 7
+
+    def test_on_its_side_the_hack_is_at_the_left(self):
+        g = self.geom(delivery_shot(), "DESKDELIVERYBOX")
+        x = {l["kind"]: l["x1"] for l in g["lines"] if l["kind"] != "centre"}
+        assert x["hack"] < x["tee"] < x["hog"]
+        assert all(l["x1"] == l["x2"] for l in g["lines"] if l["kind"] != "centre")
+        assert g["stretch"] == 4
+
+    def test_the_thrower_s_foothold_is_filled_and_the_aim_leaves_it(self):
+        g = self.geom(delivery_shot())
+        left, right = g["holds"]
+        assert (left["side"], left["used"], right["used"]) == ("left", True, False)
+        assert left["x"] < right["x"]
+        first = [float(v) for v in g["aim"].split(" ")[0].split(",")]
+        assert first[0] == pytest.approx(left["x"] + left["w"] / 2, abs=0.2)
+        # Upright the foothold sits behind the hack line: the aim leaves its front edge.
+        hack = next(l for l in g["lines"] if l["kind"] == "hack")
+        assert first[1] == pytest.approx(left["y"], abs=0.2) == pytest.approx(hack["y1"], abs=0.2)
+
+    def test_the_broom_label_stays_on_the_ice(self):
+        for bx in (0.3, -0.3):
+            g = self.geom(delivery_shot(target_broom={"x": bx, "y": 0.0}))
+            end = [float(v) for v in g["aim"].split(" ")[-1].split(",")]
+            right = end[0] > g["plot"]["x"] + g["plot"]["w"] / 2
+            assert g["aimLabel"]["anchor"] == ("end" if right else "start")
+            assert (g["aimLabel"]["x"] < end[0]) == right
+
+    def test_no_broom_is_no_aim(self):
+        g = self.geom(delivery_shot(target_broom=None))
+        assert g["aim"] is None and g["aimLabel"] is None
+
+    def test_the_dots_run_from_the_ramp_s_first_stop_to_its_last(self):
+        g = self.geom(delivery_shot())
+        ramp = run_js("out(DELIVERY_RAMP);")
+        assert g["dots"][0]["fill"] == ramp[0] and g["dots"][-1]["fill"] == ramp[-1]
+        assert g["points"] == len(g["dots"])
+
+    def test_the_ramp_ends_in_the_strip_s_gold(self):
+        detail = (Path(__file__).resolve().parents[1] / "frontend/viewer/Detail.jsx").read_text()
+        assert run_js("out(DELIVERY_RAMP.at(-1));") == "#a07a00"
+        assert 'const GOLD = "#a07a00";' in detail
+
+    def test_a_long_gap_breaks_the_line_through_the_dots(self):
+        assert len(self.geom(delivery_shot())["runs"]) == 1
+        assert len(self.geom(delivery_shot(delivery_points(gap=(0.5, 1.6))))["runs"]) == 2
+
+    def test_samples_past_the_window_are_not_drawn(self):
+        g = self.geom(delivery_shot(delivery_points(t_end=6.0)))
+        assert all(d["y"] >= g["plot"]["y"] - 0.05 for d in g["dots"])
+        assert g["points"] < len(delivery_points(t_end=6.0))
+
+    def test_a_rock_that_drifts_wide_moves_the_window_not_the_scale(self):
+        g = self.geom(delivery_shot(delivery_points(corner=0.16)))
+        assert g["stretch"] == 7
+        lo, hi = g["plot"]["x"], g["plot"]["x"] + g["plot"]["w"]
+        assert all(lo <= d["x"] <= hi for d in g["dots"])
+
+    def test_only_a_rock_that_cannot_fit_widens_it(self):
+        g = self.geom(delivery_shot(delivery_points(corner=0.30)))
+        assert g["stretch"] < 7
+
+    def test_no_shot_is_nothing_to_draw(self):
+        assert run_js("out(deliveryGeometry(null, DELIVERYBOX));") is None
+
+
+class TestTheDeliveryChart:
+    SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/Delivery.jsx"
+    DETAIL = Path(__file__).resolve().parents[1] / "frontend/viewer/Detail.jsx"
+
+    def test_the_tab_draws_the_phone_box_at_the_pane_s_width_or_says_why_not(self):
+        src = self.SRC.read_text()
+        body = src[src.index("export function Delivery("):]
+        for needle in ("deliveryReason(shot, doc)", '<p className="dnone">{reason}</p>',
+                       "deliveryGeometry(shot, DELIVERYBOX)", "fluid />",
+                       'if (!shot) return <p className="dnone">No rocks were detected in this end</p>;'):
+            assert needle in body, needle
+
+    def test_the_caption_says_which_way_up_and_how_stretched(self):
+        assert ("From above, thrower at the bottom · across ×{g.stretch} · a dot every 0.1 s, "
+                "dark at rest to gold past the hog line") in self.SRC.read_text()
+
+    def test_it_is_an_image_with_a_label_and_no_ids(self):
+        src = self.SRC.read_text()
+        assert 'role="img" aria-label={label}' in src
+        # The desktop card stays mounted on a phone: two charts, one page.
+        code = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+        assert "<defs" not in code and " id=" not in code
+
+    def test_the_desktop_card_puts_it_between_the_strip_and_the_figures(self):
+        src = self.DETAIL.read_text()
+        body = src[src.index("export function DeskDetail("):]
+        i_strip = body.index("<Strip ")
+        i_chart = body.index("<DeliveryChart g={g} label={deliveryLabel(shot, true)} fluid />")
+        i_why = body.index('<p className="dlvnone">{why}</p>')
+        i_figs = body.index("<Figures ")
+        assert i_strip < i_chart < i_why < i_figs
+        assert "deliveryGeometry(shot, DESKDELIVERYBOX)" in body
+
+    def test_an_old_chart_keeps_the_desktop_card_it_had(self):
+        body = self.DETAIL.read_text()
+        body = body[body.index("export function DeskDetail("):]
+        assert "const why = measured ? deliveryReason(shot, doc) : null;" in body
+
+    def test_the_desktop_chart_scales_to_the_card(self):
+        css = (VIEWER / "style.css").read_text()
+        rule = css[css.index("#detailCard .dlv {"):css.index("}", css.index("#detailCard .dlv {"))]
+        assert "width: 100%" in rule and "height: auto" in rule

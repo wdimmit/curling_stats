@@ -1,8 +1,10 @@
 /* Detail: was this rock thrown at the skip's broom? The whole sheet as a strip
  * beside (the phone) or above (the desktop) six figures. Everything it draws
  * comes from core/line.mjs; this file only turns it into markup. */
-import { DESKBOX, lineFigures, sideways, stripGeometry, stripShapes } from "../core/index.mjs";
+import { DESKBOX, DESKDELIVERYBOX, deliveryGeometry, deliveryReadable, deliveryReason, lineFigures,
+         sideways, stripGeometry, stripShapes } from "../core/index.mjs";
 import { PAINT } from "../core/constants.mjs";
+import { DeliveryChart, deliveryLabel } from "./Delivery.jsx";
 
 const RING = { twelve: PAINT.twelve, eight: PAINT.ice, four: PAINT.four, button: PAINT.ice };
 const GOLD = "#a07a00";      // the rock's path: #e8b400 is unreadable on the ice
@@ -98,8 +100,10 @@ export function Detail({ shot, doc }) {
   );
 }
 
-/* The desktop card under the video: the same strip on its side, the same
- * figures below it. */
+/* The desktop card under the video: the same strip on its side, the
+ * delivery close up under it the same way round, then the same figures. A
+ * chart from before the delivery was measured keeps the card it had; a rock
+ * the camera did not follow says so in one line. */
 export function DeskDetail({ shot, doc }) {
   // An end where detection found nothing has no rock to describe, and
   // lineFigures would blame a broom that was never the problem.
@@ -107,12 +111,18 @@ export function DeskDetail({ shot, doc }) {
   const f = lineFigures(shot, doc);
   if (f.predates) return <p className="dnone">{f.reason}</p>;
   const { seen, wideGloss } = stripWords(shot);
+  const measured = deliveryReadable(doc);
+  const why = measured ? deliveryReason(shot, doc) : null;
+  const g = measured && !why ? deliveryGeometry(shot, DESKDELIVERYBOX) : null;
   return (
     <>
       <Strip shot={shot} shapes={sideways(stripShapes(stripGeometry(shot, DESKBOX)))} fluid
              label={`The sheet from above, thrower at the left: ${seen}`} />
+      {g ? <DeliveryChart g={g} label={deliveryLabel(shot, true)} fluid /> : null}
+      {why ? <p className="dlvnone">{why}</p> : null}
       <Figures figures={f.figures} />
-      <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±4 in{wideGloss}</p>
+      <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±4 in{wideGloss}
+        {g ? ` · below it, the hack to 1.5 m past the hog line, across ×${g.stretch}, a dot every 0.1 s` : ""}</p>
     </>
   );
 }

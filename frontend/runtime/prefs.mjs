@@ -9,7 +9,7 @@ const KEY = "curlchart";
 export const DEFAULTS = {
   showTrack: true, autoplay: true, leadIn: 10,
   clockOpen: false, clockBars: false,
-  tab: "detail", // the phone viewer's bottom tab: "house" | "detail" | "timing"
+  tab: "detail", // the phone viewer's bottom tab: "house" | "detail" | "delivery" | "timing"
 };
 
 export function loadPrefs() {

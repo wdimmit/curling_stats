@@ -117,6 +117,11 @@ export const stripGeometry = core.stripGeometry;
 export const stripShapes = core.stripShapes;
 export const sideways = core.sideways;
 export const trackPoints = core.trackPoints;
+export const deliveryReadable = core.deliveryReadable;
+export const deliveryReason = core.deliveryReason;
+export const deliveryPoints = core.deliveryPoints;
+export const deliveryGeometry = core.deliveryGeometry;
+export const rampColor = core.rampColor;
 export const endSpan = core.endSpan;
 
 export const dirtyPayload = core.dirtyPayload;
