@@ -14,7 +14,11 @@ there is to do, and says what it did:
 * **Follow the profile** -- the keyframe stone counts -- as the file grows.
 * **Build the next settled end** (:func:`segment.settled_ends`), strictly in
   order, since each end's run-up begins where the previous one closed. Then
-  read the open game's board again and publish.
+  read the open game's board again and publish. A pause the empty sheet took
+  for a new game is joined back on where the board stayed up through it
+  (:func:`boardsplit.join_games`), and an end in which nothing was thrown is
+  published only once a real end follows it (:func:`timeline.nothing_thrown`),
+  as ``analyze`` does for a recording.
 * **Finish** when the stream ends: settle and build what is left, take the
   final board reads, publish the last document.
 
@@ -31,7 +35,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from curling_score import analyze, timeline
-from curling_score.game import segment
+from curling_score.game import boardsplit, segment
 from curling_score.game.segment import EndSegment, GameSegment
 from curling_score.geometry.calibrate import CalibrationError
 
@@ -128,6 +132,7 @@ class LiveSession:
         self.built = {}             # (game, end) -> built end dict
         self.ends = {}              # (game, end) -> EndSegment it was built from
         self.boards = {}            # game index -> newest BoardRead
+        self.board_windows = {}     # (t0, t1) -> the board across a pause
         self.prev_end_s = None
         self.done = False
         self._ended_calib_tries = 0
@@ -232,9 +237,50 @@ class LiveSession:
     def _settled(self):
         ended = self.recording.ended()
         games = segment.settled_ends(self.samples, self.min_end_s, ended=ended)
+        games = boardsplit.join_games(self._decidable(games), self._board_across)
         for game in games:
             self.games[game.index] = game
         return games
+
+    def _decidable(self, games):
+        """The games up to the first pause short enough to be one whose board
+        is not yet recorded far enough past it to show a late clear. Held back
+        until then, so each pause is decided once, before anything after it
+        is built, and no end is ever renumbered."""
+        if self.recording.ended():
+            return games
+        head = self.recording.head_s()
+        for i in range(1, len(games)):
+            a, b = games[i - 1], games[i]
+            if (b.start_s - a.end_s <= boardsplit.JOIN_MAX_GAP_S
+                    and self._window(a.end_s, b.start_s) not in self.board_windows
+                    and head < b.start_s + boardsplit.LOOK_AFTER_S + boardsplit.HALF_S):
+                return games[:i]
+        return games
+
+    @staticmethod
+    def _window(t_last_end_s, t_next_start_s):
+        return (round(t_last_end_s - boardsplit.LOOK_BEFORE_S, 2),
+                round(t_next_start_s + boardsplit.LOOK_AFTER_S, 2))
+
+    def _board_across(self, t0, t1):
+        key = (round(t0, 2), round(t1, 2))
+        if key not in self.board_windows:
+            self.board_windows[key] = self.pipeline.board_states(
+                self.recording.path, t0, t1)
+        return self.board_windows[key]
+
+    def _played(self, game):
+        """``game`` without the built ends at its tail in which nothing was
+        thrown, or None if that is all of it."""
+        ends = list(game.ends)
+        while ends and timeline.nothing_thrown(self.built.get((game.index, ends[-1].number), {})):
+            ends.pop()
+        if len(ends) == len(game.ends):
+            return game
+        if not ends:
+            return None
+        return dataclasses.replace(game, ends=ends, end_s=ends[-1].end_s)
 
     def _next_end(self):
         for game in self._settled():
@@ -260,9 +306,13 @@ class LiveSession:
 
     def _read_board(self, game):
         # A closed game's board is read the way analyze() reads it, from the
-        # game's own end. An open game's board is read as late as the
-        # recording allows: the club posts cards late, often an end or more
-        # behind the play.
+        # game's own end -- not the end of rocks left in a house after it,
+        # by when the board is often cleared. An open game's board is read as
+        # late as the recording allows: the club posts cards late, often an
+        # end or more behind the play.
+        game = self._played(game)
+        if game is None:
+            return
         read = game if game.closed else GameSegment(
             index=game.index, start_s=game.start_s,
             end_s=self.recording.head_s() - BOARD_BEHIND_S,
@@ -314,7 +364,12 @@ class LiveSession:
         out_games = []
         for index in sorted({g for g, _ in self.built}):
             game = self.games[index]
-            keys = sorted(k for k in self.built if k[0] == index)
+            built = sorted(k for k in self.built if k[0] == index)
+            played = self._played(game)
+            if played is None:
+                continue
+            numbers = {e.number for e in played.ends}
+            keys = [k for k in built if k[1] in numbers]
             board = self._board_for(index, len(keys))
             ends = []
             for key in keys:
@@ -324,10 +379,11 @@ class LiveSession:
                 end["score_source"] = None if score is None else "board"
                 ends.append(end)
             segs = [self.ends[k] for k in keys]
-            seg = GameSegment(index=index, start_s=game.start_s, end_s=segs[-1].end_s,
-                              ends=segs, closed=game.closed)
+            # Numbered as published: a game of nothing thrown is no game.
+            seg = GameSegment(index=len(out_games), start_s=game.start_s,
+                              end_s=segs[-1].end_s, ends=segs, closed=game.closed)
             out = analyze.finish_game(seg, ends, board, self.fmt, self.progress)
-            out["in_progress"] = not (self.done or (game.closed and len(keys) == len(game.ends)))
+            out["in_progress"] = not (self.done or (game.closed and len(built) == len(game.ends)))
             out_games.append(out)
         cal = self.calibration
         doc = timeline.build_document(
@@ -387,6 +443,9 @@ class VideoPipeline:
 
     def read_board(self, path, game):
         return analyze.board_for_game(path, game, progress=self.progress)
+
+    def board_states(self, path, t0, t1):
+        return boardsplit.board_states(path, t0, t1)
 
     def processing_version(self, sideviews):
         from curling_score import version

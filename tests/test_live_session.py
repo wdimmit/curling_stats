@@ -73,6 +73,7 @@ class Pipeline:
     def __init__(self, calibrations=None):
         self.calibrations = list(calibrations or [])
         self.calibrated_at, self.built, self.boards_read = [], [], []
+        self.windows_read = []
         self.board = None
 
     def calibrate(self, path, until_s):
@@ -101,6 +102,13 @@ class Pipeline:
     def read_board(self, path, game):
         self.boards_read.append((game.index, game.end_s))
         return self.board
+
+    def board_states(self, path, t0, t1):
+        self.windows_read.append((t0, t1))
+        return [(t, self.board_state(t)) for t in range(int(t0), int(t1) + 1, 30)]
+
+    def board_state(self, t):
+        return None
 
     def processing_version(self, sideviews):
         return "test-version"
@@ -396,3 +404,162 @@ class TestABoardReadDuringPlay:
         assert game["scoreboard"]["unread_ends"] == [2, 3, 4]
         assert game["scoreboard"]["final"] is None
         assert game["final"] is None
+
+
+def finish(s, rec, head):
+    run_until(s, rec, head)
+    rec.finished = True
+    while s.step():
+        pass
+
+
+class Unplayed(Pipeline):
+    """Ends the test names were rocks in a house: nothing released."""
+
+    def __init__(self, unplayed, **kw):
+        super().__init__(**kw)
+        self.unplayed = set(unplayed)
+
+    def build_end(self, ctx, game, end, prev_end_s):
+        built, closed = super().build_end(ctx, game, end, prev_end_s)
+        idle = (game.index, end.number) in self.unplayed
+        built["deliveries_seen"], built["releases_seen"] = (1, 0) if idle else (16, 16)
+        return built, closed
+
+
+class TestNothingThrown:
+    def test_a_last_end_of_rocks_in_a_house_is_never_published(self):
+        """Monday sheet 3, 2026-09-28: the rocks pushed back after the game."""
+        pipe, rec, pub = Unplayed({(0, 4)}), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 3400.0)
+        assert [b["end"] for b in pipe.built] == [1, 2, 3, 4]
+        assert all(len(doc["games"][0]["ends"]) <= 3 for doc in pub)
+        assert [e["number"] for e in pub[-1]["games"][0]["ends"]] == [1, 2, 3]
+        assert pub[-1]["games"][0]["in_progress"] is False
+
+    def test_the_board_is_read_for_the_game_without_it(self):
+        pipe, rec, pub = Unplayed({(0, 4)}), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 3400.0)
+        index, read_to = pipe.boards_read[-1]
+        assert read_to == pytest.approx(s.ends[(0, 3)].end_s)
+
+    def test_one_in_the_middle_of_a_game_is_kept(self):
+        pipe, rec, pub = Unplayed({(0, 2)}), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 3400.0)
+        assert [e["number"] for e in pub[-1]["games"][0]["ends"]] == [1, 2, 3, 4]
+
+
+# A game, a pause of 400 s with both houses empty, and more of it -- or the
+# next game, if the board was cleared: top 0-900, bottom 900-1800, nothing
+# until 2200, then top 2200-3100 and bottom 3100-4000.
+def paused(t):
+    if t < 1800:
+        return (5, 0) if t < 900 else (0, 5)
+    if t < 2200 or t >= 4000:
+        return 0, 0
+    return (5, 0) if t < 3100 else (0, 5)
+
+
+class Paused(Pipeline):
+    def __init__(self, board_up=True, activity=paused, **kw):
+        super().__init__(**kw)
+        self.board_up, self.activity = board_up, activity
+
+    def samples(self, path, setups, from_s, until_s):
+        return [Sample(t=x.t, top_stones=self.activity(x.t)[0],
+                       bottom_stones=self.activity(x.t)[1])
+                for x in super().samples(path, setups, from_s, until_s)]
+
+    def board_state(self, t):
+        if self.board_up or t < 1800:
+            return "cards"
+        return "blank" if t < 2600 else "cards"
+
+
+class TestAPause:
+    def test_with_the_board_still_up_the_game_goes_on(self):
+        """Monday sheet 5, 2026-09-28: 310 s empty after the late game's
+        second end, and the board kept its cards up."""
+        pipe, rec, pub = Paused(board_up=True), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 4400.0)
+        assert [(b["game"], b["end"]) for b in pipe.built] == [(0, 1), (0, 2), (0, 3), (0, 4)]
+        game, = pub[-1]["games"]
+        assert [e["number"] for e in game["ends"]] == [1, 2, 3, 4]
+
+    def test_with_the_board_cleared_the_next_game_begins(self):
+        pipe, rec, pub = Paused(board_up=False), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 4400.0)
+        assert [(b["game"], b["end"]) for b in pipe.built] == [(0, 1), (0, 2), (1, 1), (1, 2)]
+        assert [len(g["ends"]) for g in pub[-1]["games"]] == [2, 2]
+
+    def test_the_board_across_it_is_read_once(self):
+        pipe, rec, pub = Paused(), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 4400.0)
+        (t0, t1), = set(pipe.windows_read)
+        assert len(pipe.windows_read) == 1
+        assert t0 <= 1800 and t1 >= 2200
+
+    def test_nothing_after_it_is_built_until_a_late_clear_would_show(self):
+        """The club clears the board promptly, but a read before the next end
+        is under way could miss a clear that came late."""
+        pipe, rec, pub = Paused(), Recording(), []
+        s = session(pipe, rec, pub)
+        rec.head = 905.0
+        s.step()                          # calibrate
+        start = 2200.0
+        while rec.head < 4400.0:
+            rec.head += 30.0
+            while s.step():
+                pass
+            if any(b["game"] == 0 and b["end"] == 3 for b in pipe.built):
+                break
+        assert pipe.windows_read
+        assert rec.head >= start + live.boardsplit.LOOK_AFTER_S
+
+    def test_a_gap_longer_than_any_pause_never_reads_the_board(self):
+        def changeover(t):
+            if t < 1800:
+                return (5, 0) if t < 900 else (0, 5)
+            if t < 2600 or t >= 4400:
+                return 0, 0
+            return (5, 0) if t < 3500 else (0, 5)
+
+        pipe, rec, pub = Paused(activity=changeover), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 4800.0)
+        assert pipe.windows_read == []
+        assert [len(g["ends"]) for g in pub[-1]["games"]] == [2, 2]
+
+
+class TestAGameOfNothingThrown:
+    def test_is_never_published_and_the_next_game_is_game_0(self):
+        """Sunday evening sheet 5, 2026-09-27: one-end "games" of rocks left in
+        a house. Here: rocks sit in the top house for 600 s, the sheet is
+        empty 800 s, then a game."""
+        def practice_first(t):
+            if t < 600:
+                return 5, 0
+            if t < 1400 or t >= 3200:
+                return 0, 0
+            return (0, 5) if t < 2300 else (5, 0)
+
+        class PracticeFirst(Paused):
+            def build_end(self, ctx, game, end, prev_end_s):
+                built, closed = super().build_end(ctx, game, end, prev_end_s)
+                idle = (game.index, end.number) == (0, 1)
+                built["deliveries_seen"], built["releases_seen"] = (1, 0) if idle else (16, 16)
+                return built, closed
+
+        pipe, rec, pub = PracticeFirst(activity=practice_first), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 3600.0)
+        assert all(g["index"] == 0 for doc in pub for g in doc["games"])
+        game, = pub[-1]["games"]
+        assert [e["number"] for e in game["ends"]] == [1, 2]
+        assert game["start_s"] == pytest.approx(1400.0, abs=10)
