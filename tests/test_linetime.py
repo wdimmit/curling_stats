@@ -232,6 +232,34 @@ class TestChain:
         times, per = self.frames(gap=range(20, 40))
         assert L.chain(times, per, self.FIT)[-1][0] < 5.0
 
+    def test_a_stone_seen_resting_ahead_is_not_taken_for_the_rock_after_a_gap(self):
+        # s_0sJsCcB7bMaXKTKy4 end 6 rock 1: hidden for 2.4 s, the rock's widened
+        # gates reached the placed guard it had been seen ahead of all along,
+        # and the path ended there instead of where the rock stopped.
+        guard = (self.FIT.x(4.0) + 0.05, 4.0)
+        times, per = self.frames(gap=range(42, 54), static=guard)
+        path = L.chain(times, per, self.FIT)
+        assert path[-1][0] < 1.5
+        assert not any(abs(y - guard[1]) < 0.01 and abs(x - guard[0]) < 0.01 for y, x in path)
+
+    def test_a_rock_that_stops_is_followed_to_its_rest(self):
+        times = [i * 0.2 for i in range(80)]           # at rest from 13 s
+        ys = [max(2.0, 21.5 - 1.5 * t) for t in times]
+        per = [[(t, self.FIT.x(y), y, 0, 0, 0.9)] for t, y in zip(times, ys)]
+        path = L.chain(times, per, self.FIT)
+        assert len(path) == 80 and path[-1][0] == 2.0
+
+    def test_a_rock_followed_into_a_freeze_is_followed_to_its_rest(self):
+        # hOKZoeJNTpM end 6 rock 5: seen every frame up to the stone it froze
+        # to, which this camera reads 0.15 m behind it.
+        stop = (19.5 / 0.06) ** 0.5                    # 0.12 m/s/s from 21.5 m to rest at 2.0
+        times = [i * 0.2 for i in range(110)]
+        ys = [2.0 + 0.06 * max(0.0, stop - t) ** 2 for t in times]
+        per = [[(t, self.FIT.x(y), y, 0, 0, 0.9), (t, self.FIT.x(1.85), 1.85, 0, 0, 0.8)]
+               for t, y in zip(times, ys)]
+        path = L.chain(times, per, self.FIT)
+        assert path[-1][0] == 2.0
+
     def test_a_lone_false_start_is_skipped(self):
         times, per = self.frames(stray_first=True)
         path = L.chain(times, per, self.FIT)

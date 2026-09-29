@@ -271,6 +271,14 @@ PATH_SEED_Y = 21.5
 PATH_START_GAP_S = 1.0          # a start whose next sighting is over a second
                                  # later is a lone false detection (a sweeper's
                                  # broom, a glint), not the rock
+# A stone of the rock's colour seen well down-sheet of it, in a frame the rock
+# was seen in, cannot be the rock; seen at one spot twice, 0.4 s apart, it is
+# sitting there. The tolerance is this camera re-reading one stone (a placed
+# guard at 3.2 m read 3.34-3.63 along, 1.15-1.21 across).
+PATH_AHEAD_M = 1.0
+PATH_REST_TOL_M = (0.3, 0.12)   # (along, across)
+PATH_REST_SEEN_S = 0.4
+PATH_LOST_S = 1.5 / PATH_FPS    # the rock missed at least one frame
 
 
 def path_points(boxes, times, view):
@@ -288,8 +296,21 @@ def path_points(boxes, times, view):
     return out
 
 
+def _at_rest(d, ahead) -> bool:
+    """Was ``d`` where a stone already sat, seen ahead of the rock?"""
+    along, across = PATH_REST_TOL_M
+    ts = [t for t, y, x in ahead if abs(d[2] - y) < along and abs(d[1] - x) < across]
+    return bool(ts) and max(ts) - min(ts) >= PATH_REST_SEEN_S
+
+
 def _follow(times, per, is_seed, near, max_gap_s):
-    path, cur, vel, last_t = [], None, -2.0, None
+    # The gates widen with every frame the rock is hidden (a sweeper, the
+    # delivery team), and a stone already at rest in them is still the best
+    # match once they reach it; from then on it matches every frame and the
+    # path ends on it. So once the rock is lost, what the camera saw sitting
+    # ahead of it is not the rock. Only once it is lost: a rock followed
+    # frame by frame into a freeze reads within a stone of the one it froze to.
+    path, cur, vel, last_t, ahead = [], None, -2.0, None, []
     for t, dets in zip(times, per):
         if cur is None:
             c = [d for d in dets if is_seed(d)]
@@ -300,13 +321,16 @@ def _follow(times, per, is_seed, near, max_gap_s):
         if dt > max_gap_s:
             break
         ypred = cur[2] + vel * dt
+        lost = dt > PATH_LOST_S
         c = [d for d in dets if abs(d[2] - ypred) < 0.6 + 0.5 * dt
-             and abs(d[1] - cur[1]) < 0.12 + 0.12 * dt and d[2] <= cur[2] + 0.2]
+             and abs(d[1] - cur[1]) < 0.12 + 0.12 * dt and d[2] <= cur[2] + 0.2
+             and not (lost and _at_rest(d, ahead))]
         if not c:
             continue
         nxt = min(c, key=lambda d: abs(d[2] - ypred) + abs(d[1] - cur[1]))
         vel = 0.6 * vel + 0.4 * (nxt[2] - cur[2]) / dt
         cur = nxt; path.append(cur); last_t = t
+        ahead += [(t, d[2], d[1]) for d in dets if d[2] < cur[2] - PATH_AHEAD_M]
     return path
 
 
