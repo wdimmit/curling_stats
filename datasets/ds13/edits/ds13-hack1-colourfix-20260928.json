@@ -1,0 +1,148 @@
+{
+ "scope": "ds13:hack1",
+ "boxes": {
+  "PHbZ3EKOhMI_l_004705_60": [
+   [
+    1,
+    0.514215,
+    0.27686,
+    0.039555,
+    0.157025
+   ]
+  ],
+  "PHbZ3EKOhMI_l_000482_30": [
+   [
+    1,
+    0.518541,
+    0.338843,
+    0.040791,
+    0.214876
+   ]
+  ],
+  "2z7vOezY9Bw_r_003170_40": [
+   [
+    1,
+    0.52583,
+    0.284911,
+    0.04059,
+    0.171557
+   ]
+  ],
+  "qEtMW7vWiYA_r_003324_50": [
+   [
+    1,
+    0.520223,
+    0.229947,
+    0.047854,
+    0.186722
+   ]
+  ],
+  "Y_XxbP1-G_o_l_008773_03": [
+   [
+    1,
+    0.475271,
+    0.279828,
+    0.042887,
+    0.199609
+   ]
+  ],
+  "entTaSBFK3A_l_006419_70": [
+   [
+    1,
+    0.498366,
+    0.355119,
+    0.046353,
+    0.280269
+   ]
+  ],
+  "entTaSBFK3A_l_000659_60": [
+   [
+    1,
+    0.532235,
+    0.225293,
+    0.04602,
+    0.180992
+   ]
+  ],
+  "entTaSBFK3A_l_000567_10": [
+   [
+    1,
+    0.531222,
+    0.293774,
+    0.041535,
+    0.239519
+   ]
+  ],
+  "a57Go8rhkIo_l_006851_13": [
+   [
+    1,
+    0.503301,
+    0.300114,
+    0.044921,
+    0.16402
+   ]
+  ],
+  "a57Go8rhkIo_l_007081_23": [
+   [
+    1,
+    0.51447,
+    0.247803,
+    0.041951,
+    0.182081
+   ]
+  ],
+  "a57Go8rhkIo_l_008781_63": [
+   [
+    1,
+    0.511125,
+    0.272727,
+    0.038319,
+    0.181818
+   ]
+  ],
+  "8un0-JBKkLA_l_004918_52": [
+   [
+    1,
+    0.48155,
+    0.30732,
+    0.04059,
+    0.152026
+   ]
+  ],
+  "8un0-JBKkLA_l_003183_50": [
+   [
+    1,
+    0.505685,
+    0.236971,
+    0.034739,
+    0.176058
+   ]
+  ],
+  "n51rf_nFlhM_r_006076_47": [
+   [
+    1,
+    0.489606,
+    0.246173,
+    0.046863,
+    0.234927
+   ]
+  ]
+ },
+ "reviewed": [
+  "PHbZ3EKOhMI_l_004705_60",
+  "PHbZ3EKOhMI_l_000482_30",
+  "2z7vOezY9Bw_r_003170_40",
+  "qEtMW7vWiYA_r_003324_50",
+  "Y_XxbP1-G_o_l_008773_03",
+  "entTaSBFK3A_l_006419_70",
+  "entTaSBFK3A_l_000659_60",
+  "entTaSBFK3A_l_000567_10",
+  "a57Go8rhkIo_l_006851_13",
+  "a57Go8rhkIo_l_007081_23",
+  "a57Go8rhkIo_l_008781_63",
+  "8un0-JBKkLA_l_004918_52",
+  "8un0-JBKkLA_l_003183_50",
+  "n51rf_nFlhM_r_006076_47"
+ ],
+ "note": "Restates 14 frames of ds13-hack1-20260928-211534: the thrown rock is yellow (timeline colour, ds13b's own box, and the handle in the frame all agree) but was saved red -- the editor keeps the armed colour across frames, so a box re-placed with +red still armed comes out red. Only that one box's class changes; every other box is the session's own."
+}
