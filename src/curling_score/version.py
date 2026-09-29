@@ -49,7 +49,12 @@ from pathlib import Path
 # 2026.09.29: every measured line carries `delivery`, the rock from its rest
 # to 1.5 m past the throwing hog line every 0.1 s (schema 8), and its start is
 # picked from that one 10 fps read instead of a 5 fps read of its own.
-PIPELINE_VERSION = "2026.09.29"
+# 2026.09.29.1: a rock that stopped dead and was moved off before
+# REST_CONFIRM_S -- the last rock, pushed in the clearing -- rests where it
+# stopped (`delivery._stopped_dead_index`), so its house is read before the
+# clearing instead of after it. Last rocks' rests and houses move; shot lists
+# do not.
+PIPELINE_VERSION = "2026.09.29.1"
 
 
 def model_id(weights) -> str:

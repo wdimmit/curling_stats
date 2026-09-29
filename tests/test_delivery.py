@@ -1315,3 +1315,48 @@ class TestRunningOutTheBackOfTheView:
     def test_without_a_view_edge_the_back_line_is_the_edge(self):
         got = delivery.find_deliveries(self._through())
         assert [d.reason for d in got] == ["left-view"]
+
+
+class TestTheLastRockPushedOffInTheClearing:
+    """s_19Kg6AyVDQacEX6zf (VTldBAiftKk, 09/28 sheet 3) end 3, the red hammer.
+
+    It stopped dead at (0.48, 0.75) at 2678.3, sat 1.7 s, and from 2680.0 a
+    player pushed it off the back of the house at half a metre a second. Held
+    for less than REST_CONFIRM_S it was never at rest, so the track ran on
+    through the push; the house read from where the push ended was the cleared
+    one, and the end was scored from rock 15 -- one red short of the board.
+    """
+
+    HOUSE = (("red", 0.47, 3.82), ("yellow", 0.78, 2.82),
+             ("red", 1.03, -0.36), ("yellow", -1.60, 0.43))
+
+    def _frames(self, pushed_to=(-0.15, -1.75), hold_s=1.7):
+        stop = 21.6
+        rock = interp([(10.0, -0.18, 4.68), (stop, 0.48, 0.75),
+                       (stop + hold_s, 0.48, 0.75), (stop + hold_s + 5.2, *pushed_to)],
+                      fps=10.0, color="red")
+        house = [static(c, x, y, 0.0, 24.0, fps=10.0) for c, x, y in self.HOUSE]
+        frames = merge(rock, *house)
+        # The camera goes on seeing the house, empty now, until the next end.
+        return frames + [(round(frames[-1][0] + 0.1 * k, 3), []) for k in range(1, 300)]
+
+    def test_it_rests_where_it_stopped_not_where_it_was_pushed(self):
+        got = delivery.find_deliveries(self._frames())
+        assert [d.color for d in got] == ["red"]
+        assert got[0].t_rest == pytest.approx(21.6, abs=0.3)
+        assert (got[0].rest_x_m, got[0].rest_y_m) == (
+            pytest.approx(0.48, abs=0.05), pytest.approx(0.75, abs=0.05))
+        assert got[0].came_to_rest is True
+        assert got[0].track[-1][2] == pytest.approx(0.75, abs=0.05)
+
+    def test_pushed_out_of_the_view_it_still_rests_where_it_stopped(self):
+        got = delivery.find_deliveries(self._frames(pushed_to=(0.9, -1.94)),
+                                       view_y_min_m=-1.97)
+        assert got[0].t_rest == pytest.approx(21.6, abs=0.3)
+        assert got[0].rest_y_m == pytest.approx(0.75, abs=0.05)
+
+    def test_a_pause_shorter_than_a_second_is_not_a_stop(self):
+        # Under a second still is a stone the sweepers hid, or one nudged on
+        # its way; its place is not where it paused.
+        got = delivery.find_deliveries(self._frames(hold_s=0.6))
+        assert got[0].rest_y_m != pytest.approx(0.75, abs=0.05)

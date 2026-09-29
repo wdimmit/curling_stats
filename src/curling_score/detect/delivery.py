@@ -128,6 +128,16 @@ REST_HOLD_S = 1.0
 # refused as too lateral, though it ran on out the back.
 REST_CONFIRM_S = 3.0
 REST_CONFIRM_M = 0.2
+# A stone that came down the sheet and then held within this for a whole second
+# stopped dead: a crawl at the far edge moves about twice this in panel units
+# (hOKZ's 0.09 a second), and a real stone covers under 0.04 m in its last
+# second. Pushed off before REST_CONFIRM_S was up, it still came to rest there.
+# The players clearing the house do exactly that to the last rock:
+# s_19Kg6AyVDQacEX6zf end 3's red stopped at 2678.3 and was pushed at 2680.0,
+# s_1CZnoivpFZSmnZFTb end 2's yellow 1.2 s after it stopped. Its track ran on
+# through the push, so the rock "rested" at the back line when the house was
+# already empty.
+REST_STILL_M = 0.05
 # Requiring the *delivered* stone to be seen coming to rest is wrong twice over,
 # and both cases are common. A collision breaks it: the shooter stops dead while
 # the stone it struck carries on the way the shot was going, and since a stone
@@ -520,6 +530,32 @@ def _rest_index(track):
             )
             if drift <= REST_CONFIRM_M:
                 return i
+    return None
+
+
+def _stopped_dead_index(track, end_i: int):
+    """First index, after a real flight, from which the stone held within
+    REST_STILL_M for REST_HOLD_S before ``end_i``; None when it never did.
+
+    For a track `_rest_index` refused because the stone was somewhere else
+    REST_CONFIRM_S later: if it had first stopped dead, something moved it, and
+    where it stopped is where the shot left it. The hold has to be witnessed by
+    a sighting a second on, as in `_rest_index`, and has to come after the stone
+    travelled -- a box clipped at the top of the panel barely moves either.
+    """
+    for i in range(end_i):
+        if track.ys[0] - track.ys[i] < MIN_TRAVEL_M:
+            continue
+        j = next((k for k in range(i + 1, end_i + 1)
+                  if track.ts[k] - track.ts[i] >= REST_HOLD_S), None)
+        if j is None:
+            return None
+        span = max(
+            ((track.xs[k] - track.xs[i]) ** 2 + (track.ys[k] - track.ys[i]) ** 2) ** 0.5
+            for k in range(i, j + 1)
+        )
+        if span <= REST_STILL_M:
+            return i
     return None
 
 
@@ -1019,8 +1055,24 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
         # track first seen behind the tee the same standing as a delivery
         # tracked from the top of the panel, and the fit then had no grounds to
         # choose between them.
+        route = reason
         if late_entry:
             reason = "late-entry"
+        # Confirmed by the house or by leaving, but it may have stopped dead
+        # first and been moved off -- the last rock, pushed in the clearing.
+        # Where it stopped is its rest, and the house is read from there. Not
+        # when the house names the thrown stone somewhere the track did not
+        # end: then the track went on with a stone it struck, and the stop was
+        # that stone's.
+        stop_i = None if at_rest else _stopped_dead_index(track, end_i)
+        if stop_i is not None and route == "house-add" and (
+                (rest_x - track.xs[end_i]) ** 2
+                + (rest_y - track.ys[end_i]) ** 2) ** 0.5 > CHANGE_TOLERANCE_M:
+            stop_i = None
+        if stop_i is not None:
+            end_i, settled = stop_i, True
+            rest_x, rest_y = track.xs[stop_i], track.ys[stop_i]
+            travelled = track.ys[0] - rest_y
         found = Delivery(
             color=track.color,
             t_enter=track.ts[0],
