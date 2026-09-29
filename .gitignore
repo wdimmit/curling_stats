@@ -58,6 +58,9 @@ weights/*.pt
 # Both are live, so both are kept.
 !weights/ds13a.pt
 !weights/ds13b.pt
+# ds13c supersedes ds13b (2026-09-29): ds13b's set plus the hack wave, the hack to
+# the tee. ds13b is kept as its baseline.
+!weights/ds13c.pt
 
 # Harvested board frames for the card-digit training set. What training
 # consumes is the ~24x22 px card window, and those are committed in

@@ -68,7 +68,7 @@ COPY weights/${MODEL} /opt/curling/weights/${MODEL}
 # is the right behaviour and the wrong failure here: an image built without
 # this file would reprocess a whole archive, succeed, and quietly republish the
 # old answers. Pinning the path turns that into a startup failure instead.
-ARG SIDE_MODEL=ds13b.pt
+ARG SIDE_MODEL=ds13c.pt
 COPY weights/${SIDE_MODEL} /opt/curling/weights/${SIDE_MODEL}
 
 # The broom-head detector: the skip's target broom, read in the side view that

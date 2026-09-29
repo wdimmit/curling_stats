@@ -44,10 +44,17 @@ ENV_VAR = "CURLING_SCORE_WEIGHTS"
 # 93.3%, published splits 21.2% -> 77.9%, and on the 27 crossings marked by
 # hand it times 25 against 9 with a median error of 0.018 s against 0.079 s.
 #
+# ds13c replaced it on 2026-09-29: ds13b's set plus 96 frames between the hack
+# and the tee, which no frame had ever covered (the band starts at the tee).
+# Held out, it finds 29 of 29 stones there against 26; production's resting
+# start went from 86 to 94 of 94 rocks on a 2026-27 game; and over 418 rocks of
+# four games it loses no line, times 414 crossings against 412, and moves the
+# line 0.1-0.2 cm at the hog line (median). See datasets/ds13/manifest-hack1.json.
+#
 # `none` selects the colour scan, and so does a missing file -- the side view
 # is an improvement on a pipeline that worked without it, not a dependency of
 # it. Unlike DEFAULT_NAME, absence here is not an error.
-SIDE_NAME = "ds13b.pt"
+SIDE_NAME = "ds13c.pt"
 SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 
 # The broom-head detector, which finds the skip's target broom in the camera
