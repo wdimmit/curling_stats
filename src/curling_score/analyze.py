@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -486,11 +487,14 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         # hog-crossing camera for the line, the destination camera for
         # where it went. Needs hogtime's crossing and broomtime's broom.
         # In doubles, a rock nobody held a broom for is measured too.
+        # Timed: the delivery's read costs the live lane most of what this adds.
+        t_lines = time.monotonic()
         n_lines = linetime.time_lines(
             shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
             sideviews[hogtime.CAMERA_FOR[end.house]], model=ctx.line_model,
             without_broom=fmt.line_without_broom)
-        progress(f"    end {end.number}: lines {n_lines}/{len(shots)}")
+        progress(f"    end {end.number}: lines {n_lines}/{len(shots)} "
+                 f"in {time.monotonic() - t_lines:.1f} s")
     # Stage 3, the destination hog line, from that panel's painted line.
     # In this block ``setup`` is the destination panel and ``far`` is
     # the THROWING panel -- far from the house being played to.

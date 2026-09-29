@@ -77,6 +77,7 @@ class Line:
     fit_n: int
     fit_rms: float
     at_tee_x: float | None = None  # the line's x at the destination tee, only without a broom
+    delivery: tuple = ()         # ((t, y, x), ...) from the rest to past the hog line; see read_delivery
 
 
 def fit_line(track) -> Fit | None:
@@ -141,7 +142,7 @@ def thin(points, step: float = THIN_M) -> tuple:
     return tuple(out)
 
 
-def measure(fit: Fit, track, start, broom, rest=None, path=()) -> Line:
+def measure(fit: Fit, track, start, broom, rest=None, path=(), delivery=()) -> Line:
     """Everything the Detail pane says about one rock, from its pieces.
 
     ``broom`` None is a rock nobody held a broom for (doubles): the offset at
@@ -164,7 +165,8 @@ def measure(fit: Fit, track, start, broom, rest=None, path=()) -> Line:
                 at_broom_x=at_broom_x, miss=miss, curl=curl, side=side,
                 confirmed=confirmed_by(list(path), fit),
                 hog_path=thin([(y, x) for _t, x, y, _yp in track]),
-                path=thin(list(path)), fit_n=fit.n, fit_rms=fit.rms, at_tee_x=at_tee_x)
+                path=thin(list(path)), fit_n=fit.n, fit_rms=fit.rms, at_tee_x=at_tee_x,
+                delivery=tuple(delivery))
 
 
 CROP_EDGE_ROWS = 6          # the box is clipped at the band's bottom edge
@@ -422,12 +424,21 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
             fit = fit_line(track)
             if fit is None:
                 continue
-            start = find_start(model, video, hog_view, shot.color, rel.t, decode=decode, detect=detect)
+            # One read from before the push to the band gives the start and
+            # the delivery both; only the delivery's assembly may fail alone.
+            frames = read_delivery(model, video, hog_view, shot.color, rel.t, track[0][0],
+                                   decode=decode, detect=detect)
+            try:
+                delivery = delivery_path(track, frames, rel.t)
+            except Exception:
+                log.exception("delivery failed on shot %s; its line keeps none",
+                              getattr(shot, "number", "?"))
+                delivery = ()
             path = find_path(model, video, dest_view, shot.color, getattr(shot, "t_hog_s", None),
                              getattr(shot, "t_rest_s", None), fit, decode=decode, detect=detect)
-            shot.line = measure(fit, track, start,
+            shot.line = measure(fit, track, frames.start,
                                 None if broom is None else (broom.x_m, broom.y_m),
-                                rest=_rest(shot), path=path)
+                                rest=_rest(shot), path=path, delivery=delivery)
             n += 1
         except Exception:
             log.exception("line pass failed on shot %s; it keeps no line",
@@ -450,3 +461,195 @@ def _extend_for(shot, view, video, t_release, model, decode, detect):
             if expect > 1 and sidemodel.WIDTH_TOL[0] <= w / expect <= sidemodel.WIDTH_TOL[1]:
                 out.append((t, cx, row, w))
     return out
+
+
+# The delivery, close up: the rock from where it sat in front of the hack to
+# 1.5 m past the throwing hog line, a sample every tenth of a second, for the
+# viewer's delivery chart (schema 8's ``line.delivery``). Most of the sideways
+# movement a thrower puts on a rock happens in the hand -- at the push-off and
+# in late steering -- where no figure above looks. The band's own 30 fps track
+# covers it from hogtime's window on (2 s after the release, 2-3 m past the
+# tee); one read at 10 fps from before the push to the band's first sample
+# covers the rest, and replaces the start's own read, the start being picked
+# from that read's frames on START_FPS's grid.
+#
+# 10 fps, measured 2026-09-29 on s_0N8Q's 94 rocks against the 30 fps path:
+# 0.4 cm p95 across (4.1 cm worst), the biggest sideways move in the slide
+# 0.2 cm short at the median, every rock followed back to its rest. 15 fps
+# bought nothing past that and would take the live lane to its limit.
+DELIVERY_FPS = 10.0
+DELIVERY_MAX_AFTER_S = 5.0      # the band's first sample comes 2.0-3.1 s after the release
+DELIVERY_TO_M = 4.5             # the read's crop runs past the band's first rows
+DELIVERY_END_M = C.TEE_TO_HOGLINE_M + 1.5
+DELIVERY_KEEP_M = 8.2
+DELIVERY_MAX_X_M = 1.0          # stones parked at the side sit 1.4 m or more out
+DELIVERY_LOST_S = 1.2           # unseen this long, stop rather than guess
+DELIVERY_V0 = 2.0               # m/s at the band, when its track is too short to say
+# Where the rock will be is a straight line through its last few samples, not
+# its last one: at the hack's distance one reading can be 0.5 m out along, and
+# a speed taken from it runs every prediction after it off (AEqL e1 r1). The
+# speed is held to what a rock does here, forward and back over 0.3 s, measured
+# on s_0N8Q's 94 rocks: 3.9 m/s and -1.0 at the most.
+DELIVERY_FIT_N, DELIVERY_FIT_S = 5, 0.6
+DELIVERY_V_M_S = (-1.1, 4.0)
+# The follow's gates, (base, per second unseen, cap), across and along: capped,
+# because an open-ended gate reaches the stones parked at the side.
+DELIVERY_GATE_X = (0.06, 0.40, 0.20)
+DELIVERY_GATE_YP = (0.30, 2.5, 0.90)
+# A band sample that leads nowhere back (its first is sometimes read short
+# where the thrower's body meets the band) gives way to the next, this far in.
+DELIVERY_ANCHOR_S = 0.3
+# A stone sitting still in front of the hack is one dot, drawn twice: a run of
+# samples within this camera re-reading one stone (0.15 m along, 0.015 across
+# at that distance) keeps its first and last.
+DELIVERY_STILL_M = (0.15, 0.015)
+DELIVERY_REST_BEHIND_M = -2.0
+
+
+@dataclass(frozen=True)
+class DeliveryFrames:
+    times: tuple                # the read's frame times, video seconds
+    dets: tuple                 # per frame, ((x, yp), ...): the rock's colour, near the centre line
+    start: tuple | None         # pick_start over the frames on START_FPS's grid
+
+
+def read_delivery(model, video, view, color, t_release, t_band, *, decode, detect,
+                  fps: float = DELIVERY_FPS) -> DeliveryFrames:
+    """One read of the hog camera from before the push to ``t_band``, the
+    band's first sample: the stone at rest, which is the line's start, and the
+    rock's way from there to the band."""
+    t0 = t_release + START_WINDOW_S[0]
+    t1 = min(t_release + DELIVERY_MAX_AFTER_S, max(t_release, t_band) + 0.1)
+    frames, times = decode(video, view.rect, t0, t1, fps)
+    if not len(frames):
+        return DeliveryFrames((), (), None)
+    top = int(view.row_for(-(C.TEE_TO_HACKLINE_M + 1.0))) - 30
+    bot = int(view.row_for(DELIVERY_TO_M + C.STONE_RADIUS_M)) + 30
+    boxes = detect(model, frames, times, top, bot, color)
+    step = max(1, round(fps / START_FPS))
+    t_last = t_release + START_WINDOW_S[1] + 1e-6
+    start = pick_start([b for i, (t, per) in enumerate(zip(times, boxes))
+                        if i % step == 0 and t <= t_last for b in per], view)
+    # A box cut by the crop's bottom edge puts the stone short of where it is.
+    edge = min(bot, view.rect[3]) - CROP_EDGE_ROWS
+    dets = []
+    for per in boxes:
+        here = []
+        for cx, row, _w, _c in per:
+            if row >= edge:
+                continue
+            x, _y, yp = to_destination(view, cx, row)
+            if abs(x) <= DELIVERY_MAX_X_M:
+                here.append((x, yp))
+        dets.append(tuple(here))
+    return DeliveryFrames(tuple(times), tuple(dets), start)
+
+
+def _gate(g, dt: float) -> float:
+    base, per_s, cap = g
+    return min(base + per_s * dt, cap)
+
+
+def _band_speed(track) -> float:
+    """m/s along the sheet over the band's first samples."""
+    head = track[:8]
+    if len(head) < 8 or head[-1][0] - head[0][0] <= 0:
+        return DELIVERY_V0
+    return float(np.polyfit([p[0] for p in head], [p[3] for p in head], 1)[0])
+
+
+def _predict(seen, t: float, vel: float) -> float:
+    """Where the rock was at ``t``, from the samples ``seen`` since the anchor."""
+    lo, hi = DELIVERY_V_M_S
+    cur_t, _x, cur_yp = seen[-1]
+    recent = [p for p in seen[-DELIVERY_FIT_N:] if p[0] - t <= DELIVERY_FIT_S + (cur_t - t)]
+    if len(recent) < 3:
+        return cur_yp - min(max(vel, lo), hi) * (cur_t - t)
+    ts = np.array([p[0] for p in recent]); ys = np.array([p[2] for p in recent])
+    b = min(max(float(np.polyfit(ts, ys, 1)[0]), lo), hi)
+    return float(ys.mean() + b * (t - ts.mean()))
+
+
+def _follow_back(frames: DeliveryFrames, anchor, vel: float):
+    """The rock from ``anchor`` (t, x, yp) back through the read's earlier
+    frames, by where it was and how fast it went, as [(t, x, yp)] in time
+    order. ``vel`` is its speed at the anchor, for the first steps back."""
+    seen = [anchor]
+    for t, dets in reversed(list(zip(frames.times, frames.dets))):
+        cur_t, cur_x, _yp = seen[-1]
+        if t >= cur_t - 1e-6:
+            continue
+        dt = cur_t - t
+        if dt > DELIVERY_LOST_S:
+            break
+        pred = _predict(seen, t, vel)
+        gx, gy = _gate(DELIVERY_GATE_X, dt), _gate(DELIVERY_GATE_YP, dt)
+        ok = [d for d in dets if abs(d[0] - cur_x) <= gx and abs(d[1] - pred) <= gy]
+        if not ok:
+            continue
+        x, yp = min(ok, key=lambda d: 3 * abs(d[0] - cur_x) + abs(d[1] - pred))
+        seen.append((t, x, yp))
+    return seen[1:][::-1]
+
+
+def _on_grid(track, t0: float, fps: float):
+    """The band's samples nearest the read's grid (t0 + k/fps), as [(t, x, yp)]."""
+    best: dict = {}
+    for t, x, _y, yp in track:
+        k = round((t - t0) * fps)
+        off = abs(t - (t0 + k / fps))
+        if off <= 0.5 / 30 + 1e-6 and (k not in best or off < best[k][0]):
+            best[k] = (off, (t, x, yp))
+    return [best[k][1] for k in sorted(best)]
+
+
+def _to_end(pts):
+    """Up to the first sample past DELIVERY_END_M, none past DELIVERY_KEEP_M."""
+    out = []
+    for p in pts:
+        if p[2] > DELIVERY_KEEP_M:
+            break
+        out.append(p)
+        if p[2] > DELIVERY_END_M:
+            break
+    return out
+
+
+def _collapse_rest(pts):
+    """Each run of samples sitting still in front of the hack as its first and last."""
+    along, across = DELIVERY_STILL_M
+    out, i = [], 0
+    while i < len(pts):
+        j = i
+        if pts[i][2] < DELIVERY_REST_BEHIND_M:
+            while j + 1 < len(pts) and pts[j + 1][2] < DELIVERY_REST_BEHIND_M \
+                    and abs(pts[j + 1][2] - pts[i][2]) <= along and abs(pts[j + 1][1] - pts[i][1]) <= across:
+                j += 1
+        out += [pts[i], pts[j]] if j - i >= 2 else list(pts[i:j + 1])
+        i = j + 1
+    return out
+
+
+def delivery_path(track, frames: DeliveryFrames, t_release: float) -> tuple:
+    """The rock from its rest to just past DELIVERY_END_M as ((t, y, x), ...),
+    t seconds from the release. Anchored on the band, which is certainly the
+    thrown rock -- a stone of its colour waiting at the other hack is not --
+    and followed back to the rest; the band's own samples on the same grid
+    from the anchor on. The first band sample that leads back to the rest is
+    the anchor, else the one that leads furthest. () without a track."""
+    if not track:
+        return ()
+    t0 = t_release + START_WINDOW_S[0]
+    best = None
+    for i, (ta, xa, _ya, ypa) in enumerate(track):
+        if ta > track[0][0] + DELIVERY_ANCHOR_S:
+            break
+        back = _follow_back(frames, (ta, xa, ypa), _band_speed(track[i:]))
+        if best is None or len(back) > len(best[1]):
+            best = (i, back)
+        if back and min(p[2] for p in back) < DELIVERY_REST_BEHIND_M:
+            break
+    i, back = best
+    pts = back + _on_grid(track[i:], t0, DELIVERY_FPS)
+    pts = _collapse_rest(_to_end(pts))
+    return tuple((t - t_release, TEE_Y - yp, x) for t, x, yp in pts)

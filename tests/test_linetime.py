@@ -395,3 +395,183 @@ class TestAnalyzeCallsIt:
     def test_a_shot_starts_with_no_line(self):
         from curling_score.game.shots import Shot
         assert Shot(number=1, color="red", stones=[], t_rest_s=0.0).line is None
+
+
+def box_for(view, x_dest, yp):
+    """A side-model box for a stone centred at destination x, yp metres past the throwing tee."""
+    rc = view.row_for(yp)
+    cx = view.centre_col_at(rc) + (-x_dest) * view.lateral_px_per_m(rc)
+    return (cx, view.row_for(yp + C.STONE_RADIUS_M), 40.0, 0.9)
+
+
+class Delivery:
+    """A rock sitting at (-0.15, -3.2) in front of the left hack until 0.5 s
+    before the release at t=100, then sliding at 2 m/s and drifting right."""
+    T = 100.0
+
+    def rock(self, t):
+        if t < 99.5:
+            return (-0.15, -3.2)
+        return (-0.15 + 0.04 * (t - 99.5), -3.2 + 2.0 * (t - 99.5))
+
+    def track(self):
+        """The band's 30 fps samples, 3.0 m past the tee on."""
+        out = []
+        for k in range(300):
+            t = 97.0 + k / 30
+            x, yp = self.rock(t)
+            if 2.99 <= yp <= 11.5:              # from 102.6 s, on the read's grid
+                out.append((t, x, TEE - yp, yp))
+        return out
+
+    def read(self, hidden=(), others=(), t_band=None, only=None, short_at=None):
+        self.decoded, self.rows = [], []
+
+        def decode(video, rect, t0, t1, fps):
+            self.decoded.append((round(t0 - self.T, 2), round(t1 - self.T, 2), fps))
+            n = int((t1 - t0 + 0.05) * fps + 1e-9)
+            return [object()] * n, [t0 + i / fps for i in range(n)]
+
+        def detect(model, frames, times, lo, hi, color, imgsz=800, conf=0.35):
+            self.rows.append((lo, hi))
+            out = []
+            for i, t in enumerate(times):
+                if only is not None and not only(i, t):
+                    out.append([]); continue
+                stones = [] if any(a < t < b for a, b in hidden) else [self.rock(t)]
+                if short_at and abs(t - short_at[0]) < 1e-6:
+                    stones = [(x, yp - short_at[1]) for x, yp in stones]
+                boxes = [box_for(HOG_VIEW, x, yp) for x, yp in stones + list(others)]
+                out.append([b for b in boxes if lo <= b[1] < hi])
+            return out
+
+        t_band = self.track()[0][0] if t_band is None else t_band
+        return L.read_delivery(object(), "v.mp4", HOG_VIEW, "red", self.T, t_band,
+                               decode=decode, detect=detect)
+
+    def path(self, track=None, **kw):
+        return L.delivery_path(self.track() if track is None else track, self.read(**kw), self.T)
+
+
+yp_of = lambda p: TEE - p[1]
+
+
+class TestReadDelivery(Delivery):
+    def test_one_read_from_before_the_push_to_just_past_the_band_s_first_sample(self):
+        self.read()
+        assert self.decoded == [(-3.0, round(self.track()[0][0] + 0.1 - self.T, 2), 10.0)]
+
+    def test_the_read_stops_five_seconds_after_the_release(self):
+        self.read(t_band=108.0)
+        assert self.decoded == [(-3.0, 5.0, 10.0)]
+
+    def test_the_crop_runs_from_a_metre_behind_the_hack_to_past_the_band_s_first_rows(self):
+        self.read()
+        assert self.rows == [(int(HOG_VIEW.row_for(-(C.TEE_TO_HACKLINE_M + 1.0))) - 30,
+                              int(HOG_VIEW.row_for(L.DELIVERY_TO_M + C.STONE_RADIUS_M)) + 30)]
+
+    def test_the_start_is_picked_from_the_five_fps_frames_before_the_push(self):
+        got = self.read(only=lambda i, t: i % 2 == 0).start
+        assert got == (pytest.approx(-0.15, abs=1e-6), pytest.approx(TEE + 3.2, abs=1e-6))
+        # Today's 5 fps read would not have had these frames.
+        assert self.read(only=lambda i, t: i % 2 == 1).start is None
+        assert self.read(only=lambda i, t: t > self.T - 0.2 + 1e-6).start is None
+
+    def test_a_stone_parked_at_the_side_is_no_candidate(self):
+        frames = self.read(others=[(1.4, -3.2)])
+        assert all(abs(x) <= L.DELIVERY_MAX_X_M for per in frames.dets for x, _yp in per)
+
+    def test_a_box_cut_by_the_crop_s_bottom_edge_is_no_candidate(self):
+        bot = int(HOG_VIEW.row_for(L.DELIVERY_TO_M + C.STONE_RADIUS_M)) + 30
+        yp_edge = HOG_VIEW.metres_at(bot - 2) - C.STONE_RADIUS_M
+        frames = self.read(others=[(0.0, yp_edge)])
+        assert all(abs(yp - yp_edge) > 0.01 for per in frames.dets for _x, yp in per)
+
+
+class TestDeliveryPath(Delivery):
+    def test_it_follows_the_rock_back_to_where_it_sat(self):
+        d = self.path()
+        assert d[0][0] == pytest.approx(-3.0)
+        assert (d[0][2], yp_of(d[0])) == (pytest.approx(-0.15, abs=1e-6), pytest.approx(-3.2, abs=1e-6))
+
+    def test_the_stone_at_rest_is_one_dot_drawn_twice(self):
+        rest = [p for p in self.path() if abs(yp_of(p) + 3.2) < 1e-6]
+        assert [round(p[0], 2) for p in rest] == [-3.0, -0.5]
+
+    def test_it_is_on_the_tenth_of_a_second_throughout(self):
+        d = self.path()
+        assert all(abs(p[0] * 10 - round(p[0] * 10)) < 1e-6 for p in d)
+        steps = [round((b[0] - a[0]) * 10) for a, b in zip(d[1:], d[2:])]
+        assert set(steps) == {1}
+
+    def test_it_ends_at_the_first_sample_past_the_hog_line_and_a_half(self):
+        yps = [yp_of(p) for p in self.path()]
+        assert yps[-1] > L.DELIVERY_END_M >= yps[-2]
+        assert max(yps) <= L.DELIVERY_KEEP_M
+
+    def test_across_is_where_the_rock_was(self):
+        for t, _y, x in self.path():
+            assert x == pytest.approx(self.rock(t + self.T)[0], abs=1e-6)
+
+    def test_a_stone_waiting_at_the_other_hack_is_not_the_rock(self):
+        d = self.path(others=[(0.15, -3.2)], hidden=[(97.5, 98.5)])
+        assert d[0][0] == pytest.approx(-3.0)
+        for t, _y, x in d:
+            assert x == pytest.approx(self.rock(t + self.T)[0], abs=1e-6)
+
+    def test_a_stone_parked_at_the_side_is_not_the_rock(self):
+        d = self.path(others=[(0.9, -3.0)], hidden=[(97.5, 98.5)])
+        for t, _y, x in d:
+            assert x == pytest.approx(self.rock(t + self.T)[0], abs=1e-6)
+
+    def test_a_second_unseen_is_bridged(self):
+        assert self.path(hidden=[(98.0, 99.0)])[0][0] == pytest.approx(-3.0)
+
+    def test_it_stops_rather_than_guess_after_more_than_1_2_s_unseen(self):
+        # Last seen before the gap at 97.5, again at 98.9.
+        assert self.path(hidden=[(97.5, 98.9)])[0][0] == pytest.approx(-1.1)
+
+    def test_a_band_sample_read_short_gives_way_to_the_next(self, monkeypatch):
+        track = self.track()
+        t, x, _y, yp = track[0]
+        track[0] = (t, x, TEE - (yp - 0.6), yp - 0.6)
+        at = lambda d: [yp_of(p) for p in d if abs(p[0] - (t - self.T)) < 1e-6]
+        d = self.path(track=track)
+        assert d[0][0] == pytest.approx(-3.0)
+        assert at(d) == [pytest.approx(yp, abs=1e-6)]
+        monkeypatch.setattr(L, "DELIVERY_ANCHOR_S", 0.0)       # no second try
+        assert at(self.path(track=track)) == [pytest.approx(yp - 0.6, abs=1e-6)]
+
+    def test_one_reading_half_a_metre_short_does_not_lose_the_rock(self):
+        # AEqL e1 r1: one box read 0.5 m short along in the slide, and a speed
+        # taken from that one reading ran every prediction after it off.
+        d = self.path(others=(), short_at=(99.9, 0.5))
+        assert d[0][0] == pytest.approx(-3.0)
+
+    def test_with_no_frames_it_is_the_band_alone(self):
+        track = self.track()
+        d = L.delivery_path(track, L.DeliveryFrames((), (), None), self.T)
+        assert d[0][0] == pytest.approx(track[0][0] - self.T)
+
+    def test_no_track_is_no_delivery(self):
+        assert L.delivery_path([], L.DeliveryFrames((), (), None), self.T) == ()
+
+
+class TestTheLineCarriesItsDelivery:
+    def setup_method(self):
+        self.t = TestTimeLines()
+
+    def test_a_line_has_its_delivery_from_one_read_that_also_gives_the_start(self):
+        s = self.t.shot(crossing_for(self.t.stone_to(11.5)))
+        decoded = self.t.run([s])
+        assert s.line.delivery and yp_of(s.line.delivery[-1]) > L.DELIVERY_END_M
+        assert (-3.0, 0.1, 10.0) in decoded
+        assert (-3.0, -0.2, 5.0) not in decoded
+
+    def test_a_delivery_that_fails_to_assemble_costs_only_the_delivery(self, monkeypatch):
+        def boom(*a, **k):
+            raise RuntimeError("boom")
+        monkeypatch.setattr(L, "delivery_path", boom)
+        s = self.t.shot(crossing_for(self.t.stone_to(11.5)))
+        self.t.run([s])
+        assert s.line is not None and s.line.delivery == ()

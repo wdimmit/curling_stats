@@ -13,7 +13,7 @@ from curling_score.game import format as format_mod
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # The overhead camera only sees the last few metres of a 45 m sheet, so the
 # stone comes into view long after it left the hand. To watch the shot being
@@ -45,6 +45,8 @@ def _line(l):
            "side": l.side, "curl": l.curl, "confirmed": l.confirmed,
            "hog_path": [[r(y, 2), r(x, 3)] for y, x in l.hog_path],
            "path": [[r(y, 2), r(x, 3)] for y, x in l.path],
+           # [t, y, x], t seconds from the release: the delivery chart's dots.
+           "delivery": [[r(t, 2), r(y, 2), r(x, 3)] for t, y, x in getattr(l, "delivery", ())],
            "fit": {"n": int(l.fit_n), "rms_m": r(l.fit_rms)}}
     # Only a broomless line has one; a line with a broom -- every
     # four-player line -- has none.

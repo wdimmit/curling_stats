@@ -46,7 +46,10 @@ from pathlib import Path
 # `lost_rocks_found`. Also covers the long-camera release fill-in (23f6a6a,
 # `release_source`) and the board splits (bd916d7, 0a08d57), which changed
 # timelines without bumping this.
-PIPELINE_VERSION = "2026.09.28"
+# 2026.09.29: every measured line carries `delivery`, the rock from its rest
+# to 1.5 m past the throwing hog line every 0.1 s (schema 8), and its start is
+# picked from that one 10 fps read instead of a 5 fps read of its own.
+PIPELINE_VERSION = "2026.09.29"
 
 
 def model_id(weights) -> str:
