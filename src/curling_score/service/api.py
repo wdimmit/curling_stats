@@ -803,9 +803,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         ok = latest is not None and (now() - latest) < timedelta(hours=1)
         return JSONResponse({"ok": ok, "last_seen_at": _iso(latest)}, status_code=200 if ok else 503)
 
+    def games_listed(sources):
+        """The sources that are games of their own: not a page left over from
+        a game a newer run joined onto another (Source.merged_into)."""
+        return [s for s in sources if s.merged_into is None]
+
     @app.get("/api/games")
     def api_games(league: str | None = None, video_id: str | None = None):
-        sources = repo.list_sources(league=league)
+        sources = games_listed(repo.list_sources(league=league))
         if video_id:
             sources = [s for s in sources if s.video_id == video_id]
         runs = {}
@@ -882,7 +887,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         """Per league, the games with the most thinking per end and the ones
         where one team did most of it. Public, like the catalogue, and read
         from the summaries on the sources alone -- never a timeline."""
-        report = thinking_report.build(repo.list_sources(limit=EVERY_SOURCE), top=top)
+        report = thinking_report.build(games_listed(repo.list_sources(limit=EVERY_SOURCE)),
+                                       top=top)
         return JSONResponse(report, headers={"Cache-Control": "public, max-age=300"})
 
     @app.post("/api/admin/backfill-thinking")
@@ -897,7 +903,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         its timeline is loaded once.
         """
         require_admin(authorization)
-        stale = sorted((s for s in repo.list_sources(limit=EVERY_SOURCE)
+        stale = sorted((s for s in games_listed(repo.list_sources(limit=EVERY_SOURCE))
                         if thinking_report.current(s) is None),
                        key=lambda s: (s.current_run_id, s.game_index))
         refreshed = skipped = 0
@@ -1526,6 +1532,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     # forget to guard.
     def lookup_source(sid: str) -> tuple[Source, Run]:
         src = repo.get_source(sid)
+        # A page folded into another shows the game it is now part of. A few
+        # hops at most: a folded page is never folded into again, but a
+        # pointer loop must not hang a request.
+        for _ in range(3):
+            if src is None or src.merged_into is None:
+                break
+            src = repo.get_source(src.merged_into)
         if src is None:
             raise HTTPException(404, "no such game")
         run = repo.get_run(src.current_run_id)

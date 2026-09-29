@@ -146,6 +146,11 @@ class Source:
     # without loading a 1 MB timeline per game. Keyed by the run and the play
     # start it was read from; when either moves it is stale until refreshed.
     thinking: dict | None = None
+    # This page's game is now part of another page's: a newer run read two
+    # games as one (a pause the empty sheet took for a changeover, joined by
+    # the board). Hidden from the catalogue, and /g/ follows the pointer; a
+    # later run that splits the game again takes the page back.
+    merged_into: str | None = None
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

@@ -346,6 +346,59 @@ class TestSources:
         assert sources[0].id == old.id
         assert (sources[0].game_start_s, sources[0].game_end_s) == (260.0, 4990.0)
 
+    # Monday sheet 5, 2026-09-28: the late game read as two -- 2 ends, then 5
+    # after a 310 s pause -- until the board joined them.
+    SPLIT = [{"index": 0, "start_s": 130.0, "end_s": 6245.0, "ends": 6},
+             {"index": 1, "start_s": 7210.0, "end_s": 8905.0, "ends": 2},
+             {"index": 2, "start_s": 9215.0, "end_s": 13730.0, "ends": 5}]
+    JOINED = [{"index": 0, "start_s": 130.0, "end_s": 6245.0, "ends": 6},
+              {"index": 1, "start_s": 7210.0, "end_s": 13730.0, "ends": 7}]
+
+    def joined_after_split(self):
+        repo = MemoryRepo()
+        r1 = run(id="r_1", games=self.SPLIT); repo.put_run(r1)
+        dedupe.resolve_charts_for_run(repo, r1, at(0))
+        r2 = run(id="r_2", processing_version="p+new", games=self.JOINED); repo.put_run(r2)
+        dedupe.resolve_charts_for_run(repo, r2, at(1))
+        return repo
+
+    def test_a_game_joined_from_two_folds_the_left_over_page_into_the_other(self):
+        repo = self.joined_after_split()
+        sources = repo.sources_for_video("VXU9xwmugRg")
+        live = [s for s in sources if s.merged_into is None]
+        folded = [s for s in sources if s.merged_into is not None]
+        assert sorted((s.game_index, s.current_run_id) for s in live) == [(0, "r_2"), (1, "r_2")]
+        (gone,) = folded
+        (late,) = [s for s in live if s.game_index == 1]
+        assert gone.merged_into == late.id
+        assert (late.game_start_s, late.game_end_s) == (7210.0, 13730.0)
+
+    def test_the_folded_page_stays_folded_through_a_later_run_of_the_joined_game(self):
+        repo = self.joined_after_split()
+        before = {s.id: s.merged_into for s in repo.sources_for_video("VXU9xwmugRg")}
+        r3 = run(id="r_3", processing_version="p+newer", games=self.JOINED); repo.put_run(r3)
+        dedupe.resolve_charts_for_run(repo, r3, at(2))
+        after = {s.id: s.merged_into for s in repo.sources_for_video("VXU9xwmugRg")}
+        assert after == before
+
+    def test_a_later_run_that_splits_it_again_gives_the_page_back(self):
+        repo = self.joined_after_split()
+        r3 = run(id="r_3", processing_version="p+newer", games=self.SPLIT); repo.put_run(r3)
+        dedupe.resolve_charts_for_run(repo, r3, at(2))
+        sources = repo.sources_for_video("VXU9xwmugRg")
+        assert all(s.merged_into is None for s in sources)
+        assert sorted(s.game_index for s in sources) == [0, 1, 2]
+        assert all(s.current_run_id == "r_3" for s in sources)
+
+    def test_pages_for_games_a_run_did_not_cover_are_left_alone(self):
+        """A run of one window of the video says nothing about the rest."""
+        repo = MemoryRepo()
+        r1 = run(id="r_1", games=self.SPLIT); repo.put_run(r1)
+        dedupe.resolve_charts_for_run(repo, r1, at(0))
+        r2 = run(id="r_2", processing_version="p+new", games=self.JOINED[:1]); repo.put_run(r2)
+        dedupe.resolve_charts_for_run(repo, r2, at(1))
+        assert all(s.merged_into is None for s in repo.sources_for_video("VXU9xwmugRg"))
+
     def test_same_game_is_by_overlap(self):
         assert dedupe.same_game(0, 6400, 10, 6390)
         assert not dedupe.same_game(0, 6400, 7500, 14000)

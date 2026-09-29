@@ -573,6 +573,42 @@ class TestCharting:
         assert [g["index"] for g in doc["games"]] == [1]
 
 
+def spans_doc(*spans):
+    """sample_doc with its games at these (start_s, end_s)."""
+    doc = sample_doc(len(spans))
+    for g, (a, b) in zip(doc["games"], spans):
+        g["start_s"], g["end_s"] = a, b
+        g["ends"][0]["start_s"], g["ends"][0]["end_s"] = a, min(b, a + 900.0)
+    return doc
+
+
+class TestAGameJoinedFromTwo:
+    """Monday sheet 5, 2026-09-28: read as three games, the late one broken at
+    a pause; read again, as two. The late game's second page is left over."""
+
+    def joined(self, w):
+        submit(w)
+        work_through(w, spans_doc((130.0, 6245.0), (7210.0, 8905.0), (9215.0, 13730.0)))
+        pages = {s.game_index: s.id for s in w["repo"].sources_for_video(VID)}
+        w["client"].post("/api/admin/reprocess", headers=ADMIN, json={"video_id": VID})
+        work_through(w, spans_doc((130.0, 6245.0), (7210.0, 13730.0)))
+        return pages
+
+    def test_the_catalogue_lists_the_joined_game_once(self, world):
+        self.joined(world)
+        games = [g for g in world["client"].get("/api/games").json()["games"]
+                 if g["source_id"]]
+        assert sorted((g["game_index"], g["start_s"], g["end_s"]) for g in games) == [
+            (0, 130.0, 6245.0), (1, 7210.0, 13730.0)]
+
+    def test_the_left_over_page_shows_the_game_it_is_part_of(self, world):
+        pages = self.joined(world)
+        folded = next(s for s in world["repo"].sources_for_video(VID) if s.merged_into)
+        doc = world["client"].get(f"/g/{folded.id}/timeline.json").json()
+        assert [(g["index"], g["end_s"]) for g in doc["games"]] == [(1, 13730.0)]
+        assert folded.id in (pages[1], pages[2])
+
+
 class TestCatalogueAndAdmin:
     def test_the_catalogue_lists_queued_runs_before_they_have_sources(self, world):
         submit(world)

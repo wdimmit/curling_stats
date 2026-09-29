@@ -5,8 +5,8 @@ before, and grouped by the club's own playlist."""
 import pytest
 
 from tests.test_service_api import (  # noqa: F401
-    ADMIN, CLUB, DOUBLES_VID, VID, add_doubles_video, practice_doc, sample_doc, submit,
-    work_through, world,
+    ADMIN, CLUB, DOUBLES_VID, VID, add_doubles_video, practice_doc, sample_doc, spans_doc,
+    submit, work_through, world,
 )
 
 
@@ -255,3 +255,18 @@ def test_a_retry_drops_the_summary_until_the_run_is_read_again(world):
     work_through(world, doc=with_thinking(sample_doc(1), [(30.0, 120.0)]), games=1)
     assert report(world)["pending"] == 0
     assert (game_row(world)[1]["red_s"], game_row(world)[1]["yellow_s"]) == (30.0, 120.0)
+
+
+class TestAGameJoinedFromTwo:
+    def test_its_left_over_page_is_not_ranked_as_a_game(self, world):
+        """Monday sheet 5, 2026-09-28: the late game read as two, then as one."""
+        submit(world)
+        work_through(world, with_thinking(
+            spans_doc((130.0, 6245.0), (7210.0, 8905.0), (9215.0, 13730.0))))
+        world["client"].post("/api/admin/reprocess", headers=ADMIN, json={"video_id": VID})
+        work_through(world, with_thinking(spans_doc((130.0, 6245.0), (7210.0, 13730.0))))
+        (league,) = report(world)["leagues"]
+        folded = {s.id for s in world["repo"].sources_for_video(VID) if s.merged_into}
+        assert len(folded) == 1
+        assert len(league["by_pace"]) == 2
+        assert not folded & {row["source_id"] for row in league["by_pace"]}

@@ -120,7 +120,11 @@ def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
     since a chart claim is per source.
     """
     want = run.format or "fours"
-    for s in repo.sources_for_video(run.video_id):
+    # A page folded into another is a last resort: the page that took its
+    # game keeps it, and a folded one comes back only for a game that split
+    # off again.
+    for s in sorted(repo.sources_for_video(run.video_id),
+                    key=lambda s: s.merged_into is not None):
         if (s.format or "fours") != want:
             continue
         # Already this run's page for another of its games: a game the old run
@@ -137,7 +141,8 @@ def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
                 repo.update_source(s.id, current_run_id=run.id,
                                    game_index=int(game["index"]),
                                    game_start_s=float(game["start_s"]),
-                                   game_end_s=float(game["end_s"]))
+                                   game_end_s=float(game["end_s"]),
+                                   merged_into=None)
             return s
     source = Source(
         id=slug.new_slug(slug.SHORT_BYTES, "s_"),
@@ -155,6 +160,35 @@ def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
     )
     repo.put_source(source)
     return source
+
+
+def fold_left_over_sources(repo, run: Run) -> list[str]:
+    """Fold each page this run's games left behind into the page of the game
+    that now holds it; the ids folded.
+
+    Two games an older run found can be one game to a newer run (Monday
+    sheet 5, 2026-09-28: a pause the empty sheet had taken for a changeover).
+    The first page moves forward onto the joined game; the second overlaps it
+    as surely but no game is left for it, and it would stay in the catalogue
+    as a game of its own, pinned to the old reading. Pages of games this run
+    did not cover at all -- a window of the video -- are no business of it.
+    """
+    want = run.format or "fours"
+    sources = [s for s in repo.sources_for_video(run.video_id)
+               if (s.format or "fours") == want]
+    page = {s.game_index: s for s in sources if s.current_run_id == run.id}
+    folded = []
+    for s in sources:
+        if s.current_run_id == run.id or s.merged_into is not None:
+            continue
+        for game in run.games:
+            into = page.get(int(game["index"]))
+            if into is not None and same_game(s.game_start_s, s.game_end_s,
+                                              game["start_s"], game["end_s"]):
+                repo.update_source(s.id, merged_into=into.id)
+                folded.append(s.id)
+                break
+    return folded
 
 
 def resolve_chart(repo, chart: Chart, run: Run, now: datetime) -> Chart:
@@ -195,6 +229,7 @@ def resolve_charts_for_run(repo, run: Run, now: datetime) -> int:
     """Every chart waiting on this run gets its game; every game gets a source."""
     for game in run.games:
         find_or_create_source(repo, run, game, now)
+    fold_left_over_sources(repo, run)
     n = 0
     # Oldest first, so that when two teammates raced, the one who asked first
     # keeps their link as the team's. Neither repo promises an order.
