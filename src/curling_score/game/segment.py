@@ -28,7 +28,9 @@ from curling_score.geometry import constants as C
 # as an end and given a score.
 MIN_DELIVERY_GAP_S = 15.0
 MIN_END_S = C.STONES_PER_END * MIN_DELIVERY_GAP_S
-# Both houses empty for longer than this means the sheet was reset.
+# Both houses empty for longer than this means the sheet was reset -- or a
+# long pause in a game, which boardsplit.join_games puts back together when
+# the wall board stayed up through it.
 GAME_GAP_S = 240.0
 # A player standing over the stones hides them briefly; smooth that away.
 SMOOTH_SAMPLES = 5

@@ -19,6 +19,15 @@ Two cues settle it, and a split needs both:
   (7pm sheet 3 read one mid-game). Measured on six videos, 2026-09-28: the
   runs mark every changeover and nothing else.
 
+The same two cues work the other way round (:func:`join_games`). The
+empty-sheet rule also fires on a long pause in the middle of a game: Monday
+sheet 5 on 2026-09-28 sat empty for 310 s after the late game's second end,
+and came out as a two-end game and a five-end one. The board said otherwise
+-- the five-end game's board scores were ends 1-5 of the whole game -- because
+nobody clears the board in the middle of a game. So a pause no longer than a
+pause is one game when the board shows cards before it, still shows them
+after, and never went blank in between.
+
 The board is read only around a gap that qualifies, which most games never
 have. Nothing here adds or removes an end; it only says which game each is in.
 """
@@ -47,6 +56,11 @@ CLEAR_LEAD_S = 60.0
 STEP_S = 30.0
 HALF_S = 20.0
 MIN_FRAMES = 3
+# No gap between two games longer than this is a pause in one. The changeovers
+# of 2026-09-27 and -28 were 400-480 s (doubles) and 520-1955 s (fours) apart;
+# the longest pause the empty-sheet rule split was 310 s. Up to here, the board
+# decides.
+JOIN_MAX_GAP_S = 600.0
 
 
 def board_cleared(states, t_last_end_s: float) -> bool:
@@ -70,6 +84,38 @@ def board_cleared(states, t_last_end_s: float) -> bool:
         if run >= BLANK_RUN and run_start >= t_last_end_s - CLEAR_LEAD_S:
             return True
     return False
+
+
+def board_kept(states, t_last_end_s: float, t_next_start_s: float) -> bool:
+    """Whether ``states`` show the board still up across a gap: cards before
+    the next end began, cards for ``BLANK_RUN`` readable samples after it, and
+    never cleared (:func:`board_cleared`) after the last end. A board that was
+    not read, or showed no card yet, says nothing, and nothing is joined."""
+    before = any(s == "cards" for t, s in states if t <= t_next_start_s)
+    after = sum(1 for t, s in states if t >= t_next_start_s and s == "cards")
+    return before and after >= BLANK_RUN and not board_cleared(states, t_last_end_s)
+
+
+def join_games(games, read_board) -> list[GameSegment]:
+    """The games, with each pair the empty-sheet rule parted across a pause
+    rejoined where the board stayed up through it; renumbered, the input left
+    as it was. ``read_board`` is as for :func:`split_games`."""
+    out: list[GameSegment] = []
+    for g in games:
+        prev = out[-1] if out else None
+        if (prev is not None and prev.ends and g.ends
+                and g.start_s - prev.end_s <= JOIN_MAX_GAP_S
+                and board_kept(read_board(prev.end_s - LOOK_BEFORE_S,
+                                          g.start_s + LOOK_AFTER_S),
+                               prev.end_s, g.start_s)):
+            ends = prev.ends + [replace(e, number=len(prev.ends) + i)
+                                for i, e in enumerate(g.ends, start=1)]
+            out[-1] = GameSegment(index=prev.index, start_s=prev.start_s,
+                                  end_s=g.end_s, ends=ends, closed=g.closed)
+            continue
+        out.append(GameSegment(index=len(out), start_s=g.start_s, end_s=g.end_s,
+                               ends=list(g.ends), closed=g.closed))
+    return out
 
 
 def split_games(games, read_board) -> list[GameSegment]:

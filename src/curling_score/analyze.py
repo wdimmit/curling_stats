@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -580,6 +580,87 @@ def finish_game(game, out_ends, board: BoardRead | None, fmt,
     return out_game
 
 
+def played(game, out_ends):
+    """The game without the ends at its tail in which nothing was thrown
+    (:func:`timeline.nothing_thrown`), and its built ends to match; None when
+    nothing was thrown in any of it. The game itself is left as it was."""
+    keep = len(out_ends)
+    while keep and timeline.nothing_thrown(out_ends[keep - 1]):
+        keep -= 1
+    if keep == len(out_ends):
+        return game, out_ends
+    if not keep:
+        return None, []
+    ends = game.ends[:keep]
+    return replace(game, ends=ends, end_s=ends[-1].end_s), out_ends[:keep]
+
+
+def put_board_scores(out_ends, board: BoardRead | None) -> None:
+    """Each built end's score from ``board``, or none: what build_end does
+    with the board score it is handed, done again after the fact."""
+    for end in out_ends:
+        score = None if board is None else board.scores.per_end.get(end["number"])
+        end["score"] = None if score is None else dict(score)
+        end["score_source"] = None if score is None else "board"
+
+
+def build_games(ctx: EndContext, games, *, read_board=None,
+                phase=_no_phase) -> list[dict]:
+    """Every game's ends built in order and each game finished with its board.
+
+    ``read_board(game)`` is the game's :class:`BoardRead` or None; left out,
+    the board is skipped and no game has a score. Ends at a game's tail in
+    which nothing was thrown are left off, and a game of nothing but those is
+    no game: the rest are numbered from 0 as they stand.
+    """
+    progress = ctx.progress
+    total_ends = sum(len(g.ends) for g in games) or 1
+    done_ends = 0
+    out_games = []
+    prev_end_s = None
+    for game in games:
+        # --- the wall scoreboard, read before a single end is built -------
+        # The board is the score, so it has to be in hand before build_end
+        # can be handed one. Never used for timing: the club often posts it
+        # several ends late. It is the one stage that reads the
+        # full-resolution original, so a caller that does not want to keep
+        # that file can leave it out -- and then the game simply has no
+        # score, which is the designed outcome and not an error.
+        board = None
+        if read_board is None:
+            phase("scoreboard", game.index / len(games), "skipped")
+        else:
+            phase("scoreboard", game.index / len(games),
+                  f"reading the wall scoreboard for game {game.index + 1}")
+            board = read_board(game)
+
+        out_ends = []
+        for end in game.ends:
+            phase("detect", done_ends / total_ends,
+                  f"game {game.index + 1} end {end.number}")
+            built, prev_end_s = build_one_end(
+                ctx, game, end, prev_end_s,
+                board_score=(None if board is None
+                             else board.scores.per_end.get(end.number)))
+            out_ends.append(built)
+            done_ends += 1
+        kept, out_ends = played(game, out_ends)
+        if kept is None:
+            progress(f"  game {game.index + 1}: nothing thrown in it, so no game")
+            continue
+        if kept is not game:
+            progress(f"  game {game.index + 1}: nothing thrown after end "
+                     f"{len(kept.ends)}, {len(game.ends) - len(kept.ends)} end(s) left off")
+            # The board was read at the old last end, which is often after the
+            # club had cleared it. Read it at the game's own.
+            if read_board is not None:
+                board = read_board(kept)
+                put_board_scores(out_ends, board)
+        out_games.append(finish_game(replace(kept, index=len(out_games)), out_ends,
+                                     board, ctx.fmt, progress))
+    return out_games
+
+
 def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             use_proxy: bool = True, weights=None, imgsz: int = 448,
             device=None, *, start_s=None, end_s=None, sheet=None,
@@ -669,12 +750,22 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     games = segment.segment_games(
         samples, min_end_s=fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S)
     if not skip_scoreboard:
-        # A changeover with stones still in view never reads empty long enough
-        # to end a game; the wall board, cleared after it, still says so. Read
-        # from the original: the proxy holds only the houses.
+        # The empty sheet is a changeover's cue, and the board settles it both
+        # ways. A pause in a game can sit empty as long, and the board, still
+        # up through it, joins the game back together; a changeover with
+        # stones still in view never reads empty long enough to end a game,
+        # and the board, cleared after it, splits it. Read from the original:
+        # the proxy holds only the houses.
+        def states(t0, t1):
+            return boardsplit.board_states(path, t0, t1)
+
         n_before = len(games)
-        games = boardsplit.split_games(
-            games, lambda t0, t1: boardsplit.board_states(path, t0, t1))
+        games = boardsplit.join_games(games, states)
+        if len(games) < n_before:
+            progress(f"the scoreboard joined {n_before - len(games)} pause(s) "
+                     "the empty sheet had called a new game")
+        n_before = len(games)
+        games = boardsplit.split_games(games, states)
         if len(games) > n_before:
             progress(f"the scoreboard split {len(games) - n_before} changeover(s) "
                      "the empty sheet did not")
@@ -686,37 +777,10 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         sideviews=sideviews, detector=detector, broom_model=broom_model,
         line_model=line_model, fmt=fmt, shot_fps=shot_fps, progress=progress,
     )
-    total_ends = sum(len(g.ends) for g in games) or 1
-    done_ends = 0
-    out_games = []
-    prev_end_s = None
-    for game in games:
-        # --- the wall scoreboard, read before a single end is built -------
-        # The board is the score, so it has to be in hand before build_end
-        # can be handed one. Never used for timing: the club often posts it
-        # several ends late. It is the one stage that reads the
-        # full-resolution original, so a caller that does not want to keep
-        # that file can leave it out -- and then the game simply has no
-        # score, which is the designed outcome and not an error.
-        board = None
-        if skip_scoreboard:
-            phase("scoreboard", game.index / len(games), "skipped")
-        else:
-            phase("scoreboard", game.index / len(games),
-                  f"reading the wall scoreboard for game {game.index + 1}")
-            board = board_for_game(path, game, progress=progress)
-
-        out_ends = []
-        for end in game.ends:
-            phase("detect", done_ends / total_ends,
-                  f"game {game.index + 1} end {end.number}")
-            built, prev_end_s = build_one_end(
-                ctx, game, end, prev_end_s,
-                board_score=(None if board is None
-                             else board.scores.per_end.get(end.number)))
-            out_ends.append(built)
-            done_ends += 1
-        out_games.append(finish_game(game, out_ends, board, fmt, progress))
+    out_games = build_games(
+        ctx, games, phase=phase,
+        read_board=(None if skip_scoreboard
+                    else lambda game: board_for_game(path, game, progress=progress)))
     phase("detect", 1.0, "all ends detected")
     phase("scoreboard", 1.0, "skipped" if skip_scoreboard else "scoreboard read")
     phase("rules", 1.0, "timeline built")

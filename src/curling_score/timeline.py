@@ -696,6 +696,22 @@ def board_per_end(board: dict | None) -> dict | None:
     return out
 
 
+# An end in which nobody threw: rocks left sitting in a house -- pushed back
+# after a game, set out before one -- long enough to clear MIN_END_S. Monday
+# sheet 3's ninth end, 2026-09-28, saw one delivery and no release. Across the
+# 56 hosted games every such block saw at most two deliveries and never a
+# release, where real ends that read short were still released six times.
+NOTHING_THROWN_MAX_DELIVERIES = 2
+
+
+def nothing_thrown(end: dict) -> bool:
+    """Whether a built end is rocks in a house rather than an end: no release
+    seen and hardly a delivery. An end built without the counts is kept."""
+    delivered, released = end.get("deliveries_seen"), end.get("releases_seen")
+    return (released == 0 and delivered is not None
+            and delivered <= NOTHING_THROWN_MAX_DELIVERIES)
+
+
 def settle_board_scores(ends: list, block: dict, highest_end: int,
                         fmt=None) -> bool:
     """Whether the board's scores may stay on these ends. Fails closed.

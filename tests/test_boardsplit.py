@@ -117,6 +117,106 @@ class TestSplitGames:
         assert [x.closed for x in got] == [True, False]
 
 
+
+def seconds(spans, index=0):
+    """A game from (start_s, end_s) end spans, houses alternating."""
+    return game([(a / MIN, b / MIN) for a, b in spans], index=index)
+
+
+# Monday sheet 5, 2026-09-28, the late game: both houses sat empty for 310 s
+# after its second end, and the empty-sheet rule started a new game there.
+# The board kept the first two ends' cards up through it.
+LATE5_A = [(7210, 8065), (8255, 8905)]
+LATE5_B = [(9215, 10150), (10155, 11020), (11100, 11895), (11915, 12805), (12830, 13730)]
+
+
+class TestJoinGames:
+    def test_a_pause_with_the_board_still_up_is_the_same_game(self):
+        board = Board([(140.0, "cards"), (147.0, "cards"), (150.0, "cards"),
+                       (154.0, "cards"), (158.0, "cards")])
+        got = B.join_games([seconds(LATE5_A, 0), seconds(LATE5_B, 1)], board)
+        assert [len(g.ends) for g in got] == [7]
+        assert [e.number for e in got[0].ends] == [1, 2, 3, 4, 5, 6, 7]
+        assert got[0].start_s == pytest.approx(7210) and got[0].end_s == pytest.approx(13730)
+        assert [e.house for e in got[0].ends] == ["bottom", "top", "bottom", "top",
+                                                  "bottom", "top", "bottom"]
+
+    def test_a_changeover_where_the_board_was_cleared_stays_two_games(self):
+        """Doubles sheet 4, 2026-09-27: 400 s apart, the board cleared."""
+        board = Board([(81.0, "cards"), (84.0, "blank"), (84.5, "blank"),
+                       (93.0, "blank"), (100.0, "cards")])
+        got = B.join_games([game(SHEET4[:6], 0), game(SHEET4[6:], 1)], board)
+        assert [len(g.ends) for g in got] == [6, 6]
+
+    def test_a_board_that_cannot_be_read_joins_nothing(self):
+        board = Board([(t, None) for t in range(100, 240)])
+        got = B.join_games([seconds(LATE5_A, 0), seconds(LATE5_B, 1)], board)
+        assert [len(g.ends) for g in got] == [2, 5]
+
+    def test_cards_before_the_gap_but_nothing_read_after_it_join_nothing(self):
+        board = Board([(140.0, "cards"), (147.0, "cards"), (154.0, None), (158.0, None)])
+        got = B.join_games([seconds(LATE5_A, 0), seconds(LATE5_B, 1)], board)
+        assert [len(g.ends) for g in got] == [2, 5]
+
+    def test_a_board_with_no_cards_yet_says_nothing_either_way(self):
+        board = Board([(140.0, "blank"), (147.0, "blank"), (154.0, "blank"),
+                       (158.0, "blank")])
+        got = B.join_games([seconds(LATE5_A, 0), seconds(LATE5_B, 1)], board)
+        assert [len(g.ends) for g in got] == [2, 5]
+
+    def test_a_gap_longer_than_any_pause_is_never_read(self):
+        """Monday sheet 1, 2026-09-28: the draws were 1250 s apart."""
+        board = Board([(t, "cards") for t in range(0, 260)])
+        early = seconds([(80, 885), (980, 1745), (1815, 2760), (2765, 3835),
+                         (3840, 4860), (4915, 5890)], 0)
+        late = seconds([(7140, 7975), (8020, 9115)], 1)
+        got = B.join_games([early, late], board)
+        assert [len(g.ends) for g in got] == [6, 2]
+        assert board.calls == []
+
+    def test_the_board_is_read_only_around_the_gap(self):
+        board = Board([(140.0, "cards"), (147.0, "cards"), (154.0, "cards"),
+                       (158.0, "cards")])
+        B.join_games([seconds(LATE5_A, 0), seconds(LATE5_B, 1)], board)
+        (t0, t1), = board.calls
+        assert t0 <= 8905 and t1 >= 9215
+        assert t1 - t0 <= 30 * MIN
+
+    def test_only_the_paused_pair_is_joined_and_the_rest_renumbered(self):
+        early = seconds([(130, 1130), (1135, 2010), (2015, 3145), (3225, 4155),
+                         (4160, 5300), (5390, 6245)], 0)
+        board = Board([(95.0, "cards"), (104.0, "blank"), (105.0, "blank"),
+                       (140.0, "cards"), (147.0, "cards"), (154.0, "cards"),
+                       (158.0, "cards")])
+        got = B.join_games([early, seconds(LATE5_A, 1), seconds(LATE5_B, 2)], board)
+        assert [len(g.ends) for g in got] == [6, 7]
+        assert [g.index for g in got] == [0, 1]
+
+    def test_the_games_given_are_left_as_they_were(self):
+        a, b = seconds(LATE5_A, 0), seconds(LATE5_B, 1)
+        board = Board([(140.0, "cards"), (147.0, "cards"), (154.0, "cards"),
+                       (158.0, "cards")])
+        B.join_games([a, b], board)
+        assert [e.number for e in b.ends] == [1, 2, 3, 4, 5]
+        assert len(a.ends) == 2 and b.index == 1
+
+    def test_an_open_game_joined_on_stays_open(self):
+        a, b = seconds(LATE5_A, 0), seconds(LATE5_B, 1)
+        b.closed = False
+        board = Board([(140.0, "cards"), (147.0, "cards"), (154.0, "cards"),
+                       (158.0, "cards")])
+        got, = B.join_games([a, b], board)
+        assert got.closed is False
+
+    def test_a_split_across_the_joined_gap_would_not_undo_it(self):
+        """join, then split, as analyze runs them: the board that kept the game
+        together cannot also have cleared across the same gap."""
+        board = Board([(140.0, "cards"), (147.0, "cards"), (154.0, "cards"),
+                       (158.0, "cards")])
+        joined = B.join_games([seconds(LATE5_A, 0), seconds(LATE5_B, 1)], board)
+        assert [len(g.ends) for g in B.split_games(joined, board)] == [7]
+
+
 class TestBoardStates:
     def test_each_step_reads_the_median_of_its_keyframes(self, monkeypatch):
         from curling_score.game import scoreboard as SB
@@ -137,10 +237,11 @@ class TestBoardStates:
 
 
 class TestAnalyzeCallsIt:
-    def test_it_splits_the_segmented_games_unless_the_board_is_skipped(self):
+    def test_it_joins_then_splits_the_segmented_games_unless_the_board_is_skipped(self):
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] / "src/curling_score/analyze.py").read_text()
         i_seg = src.index("games = segment.segment_games(")
+        i_join = src.index("boardsplit.join_games(")
         i_split = src.index("boardsplit.split_games(")
-        assert i_seg < i_split
-        assert "skip_scoreboard" in src[i_seg:i_split + 300]
+        assert i_seg < i_join < i_split
+        assert "skip_scoreboard" in src[i_seg:i_join]
