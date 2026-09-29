@@ -1190,6 +1190,50 @@ class TestTheTimelineRevalidates:
         assert again.status_code == 304
 
 
+class TestResponsesAreCompressed:
+    """A timeline is 350-500 KB of JSON and was sent as it was: gzip takes it
+    to about a quarter, for a browser that asks."""
+
+    def _ready(self, world):
+        r = submit(world).json()
+        doc = sample_doc(2)
+        for g in doc["games"]:       # a rock's track, so the game is past gzip's floor
+            g["ends"][0]["shots"][0]["track"] = [[0.01 * i, 0.5, 20.0 - 0.1 * i] for i in range(150)]
+        work_through(world, doc=doc, games=2)
+        return r["slug"]
+
+    def test_the_timeline_is_gzipped_for_a_browser_that_asks(self, world):
+        s = self._ready(world)
+        c = world["client"]
+        plain = c.get(f"/c/{s}/timeline.json", headers={"Accept-Encoding": "identity"})
+        zipped = c.get(f"/c/{s}/timeline.json", headers={"Accept-Encoding": "gzip"})
+        assert len(plain.content) > 1024
+        assert "content-encoding" not in plain.headers
+        assert zipped.headers["content-encoding"] == "gzip"
+        assert "accept-encoding" in zipped.headers["vary"].lower()
+        assert zipped.json() == plain.json()
+        # The tag names the document, whichever way it was sent.
+        assert zipped.headers["etag"] == plain.headers["etag"]
+
+    def test_a_revalidation_is_still_an_empty_304(self, world):
+        s = self._ready(world)
+        c = world["client"]
+        tag = c.get(f"/c/{s}/timeline.json").headers["etag"]
+        again = c.get(f"/c/{s}/timeline.json",
+                      headers={"If-None-Match": tag, "Accept-Encoding": "gzip"})
+        assert again.status_code == 304 and again.content == b""
+
+    def test_the_viewer_code_is_gzipped_too(self, world):
+        s = self._ready(world)
+        res = world["client"].get(f"/c/{s}/app.js", headers={"Accept-Encoding": "gzip"})
+        assert res.status_code == 200 and res.headers["content-encoding"] == "gzip"
+
+    def test_a_small_answer_is_sent_as_it_is(self, world):
+        res = world["client"].get("/api/games", headers={"Accept-Encoding": "gzip"})
+        if len(res.content) < 1024:
+            assert "content-encoding" not in res.headers
+
+
 class TestTheViewerCodeRevalidates:
     """A deploy changes app.js and style.css without changing their URLs.
 
