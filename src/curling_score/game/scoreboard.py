@@ -74,14 +74,6 @@ _MARKER_DY = (35, 95)
 _SLOT1_OFFSET = 0.737
 _SLOT_PITCH = 0.362
 
-# A card is a white tile carrying a black digit, so it is both *brighter* and
-# *darker* than the flat grey board around it. Both halves are needed: a
-# spectator standing in front of the board has plenty of internal contrast too,
-# but is uniformly darker than the board and never brighter. Measured against
-# the board's own level: real cards read +22..+29 bright and 63..114 dark;
-# empty slots +/-6 either way; a person -105..-59 bright (i.e. never bright).
-_CARD_BRIGHT_MARGIN = 12.0
-_CARD_DARK_MARGIN = 30.0
 
 
 @dataclass(frozen=True)
@@ -467,27 +459,26 @@ def _row_level(boxes) -> "float | None":
 
 
 def read_slots(image, geom: BoardGeometry) -> BoardReading:
-    """Which slots carry a card, judged by intra-slot brightness range."""
-    gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY).astype(float)
-    half_w = max(2, int(0.14 * geom.dy))
+    """Which slots carry a card, asked of `slotmodel` over each slot's card
+    window. Two brightness thresholds did this until 2026-09-30 and missed
+    "1" cards -- a thin stroke, or a card hung high -- and with them every
+    end-1 score; see `slotmodel`."""
+    from curling_score.game import slotmodel
 
-    found = {}
-    for name, row_bounds in (("yellow", geom.yellow_row), ("red", geom.red_row)):
-        boxes = _row_boxes(gray, row_bounds, geom.slot_x, half_w)
-        level = _row_level(boxes)
-        if level is None:
-            found[name] = set()
-            continue
-
-        slots = set()
-        for k, box in enumerate(boxes, start=1):
-            if box is None:
-                continue
-            bright = float(np.percentile(box, 92)) - level
-            dark = level - float(np.percentile(box, 8))
-            if bright >= _CARD_BRIGHT_MARGIN and dark >= _CARD_DARK_MARGIN:
-                slots.add(k)
-        found[name] = slots
+    gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY)
+    keys, inputs = [], []
+    for name in ("yellow", "red"):
+        for k in range(1, SLOTS + 1):
+            window = card_window(gray, geom, name, k)
+            if window is not None and window.size:
+                keys.append((name, k))
+                inputs.append(slotmodel.as_input(window))
+    found = {"yellow": set(), "red": set()}
+    if inputs:
+        p_card = slotmodel.load_default().probs(np.stack(inputs))[:, 1]
+        for (name, k), p in zip(keys, p_card):
+            if p >= slotmodel.MIN_P_CARD:
+                found[name].add(k)
     return BoardReading(yellow=found["yellow"], red=found["red"])
 
 

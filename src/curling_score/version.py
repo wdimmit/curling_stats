@@ -54,7 +54,15 @@ from pathlib import Path
 # stopped (`delivery._stopped_dead_index`), so its house is read before the
 # clearing instead of after it. Last rocks' rests and houses move; shot lists
 # do not.
-PIPELINE_VERSION = "2026.09.29.1"
+# 2026.09.30: whether a scoreboard slot holds a card is `slotmodel`'s, a small
+# net trained on 10,892 labelled slots, not two brightness thresholds that
+# missed "1" cards and with them every end-1 score (09/28's board agreed with
+# the detected score in 36 of 40 ends instead of 28); `find_board` passes over
+# a neighbouring sheet's board at the frame's edge (sheets 3 and 4 since the
+# re-aim); and the live session splits a game where the board was cleared
+# across a changeover, as analyze does. Also covers 2026.09.29.1, which was
+# never deployed on its own.
+PIPELINE_VERSION = "2026.09.30"
 
 
 def model_id(weights) -> str:

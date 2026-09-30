@@ -214,20 +214,22 @@ class TestObstruction:
         completely clear -- the printed-row check alone has nothing to
         object to.
 
-        On this frame `read_slots` reports red cards at slots
-        [2, 4, 5, 6, 7, 9, 10, 11, 12] -- a cumulative score of 12 -- where
-        the rest is three or four people's clothing across the red row.
-        `is_readable` must catch what the printed-row check misses.
+        On this frame the brightness thresholds `read_slots` used until
+        2026-09-30 reported red cards at slots [2, 4, 5, 6, 7, 9, 10, 11, 12]
+        -- a cumulative score of 12 -- where three or four people's clothing
+        crosses the red row. The slot model reads the board as it is: red "3"
+        and "5" at slots 4 and 5, yellow "1", "2" and "4" at 3, 5 and 8, and
+        nothing where the crowd is. `is_readable` still refuses the frame, a
+        second guard against a row with people across it.
         """
         img = cv2.imread(self.CROWD)
         assert img is not None, "fixture frame missing"
         geom = SB.find_board(img)
         assert geom is not None
 
-        # Document the bug this guards against: read_slots really does see
-        # a crowd as nine cards.
         got = SB.read_slots(img, geom)
-        assert sorted(got.red) == [2, 4, 5, 6, 7, 9, 10, 11, 12]
+        assert sorted(got.red) == [4, 5]
+        assert sorted(got.yellow) == [3, 5, 8]
 
         assert SB.is_readable(img, geom) is False
 

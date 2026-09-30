@@ -203,14 +203,40 @@ def serve(root: Path, port: int):
     httpd.serve_forever()
 
 
+def build_audit(root: Path, ids) -> Path:
+    """A page of just ``ids`` -- the slots the held-out model disagreed with --
+    each opening with its current label (the latest reviewed one, else the
+    automatic one), for a person to confirm or flip."""
+    import glob
+    rows = {r["id"]: r for r in (json.loads(l) for l in open(root / "slots.jsonl"))}
+    auto = json.loads((root / "labels-auto.json").read_text())
+    human = {}
+    for f in sorted(glob.glob(str(root / "edits" / "*.json"))):
+        human.update(json.loads(Path(f).read_text())["labels"])
+    items = []
+    for i in ids:
+        r = rows[i]
+        cur = human.get(i, auto.get(i))
+        items.append({"id": i, "members": [i], "auto": "ask", "guess": cur, "vid": r["vid"], "t": r["t"],
+                      "color": r["color"], "slot": r["slot"], "digit": r.get("digit"), "conf": r["conf"],
+                      "ink": r["ink"], "b98": r.get("b98"), "board": f"win/board_{r['vid']}_{int(r['t']):06d}.jpg"})
+    counts = {"ask": len(items), "ask_tiles": len(items), "card": 0, "blank": 0, "total": len(items)}
+    page = root / "audit.html"
+    page.write_text(PAGE.replace("__DATA__", json.dumps(items)).replace("__COUNTS__", html.escape(json.dumps(counts)))
+                    .replace("<h1>Scoreboard slots: card or blank?</h1>",
+                             "<h1>Audit: slots the held-out model disagreed with</h1>"))
+    return page
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root")
     ap.add_argument("--port", type=int, default=8779)
     ap.add_argument("--build-only", action="store_true")
+    ap.add_argument("--audit", help="a file of slot ids, one per line: build audit.html of just those")
     args = ap.parse_args()
     root = Path(args.root).expanduser()
-    page = build(root)
+    page = build_audit(root, open(args.audit).read().split()) if args.audit else build(root)
     print("page", page)
     if not args.build_only:
         serve(root, args.port)
