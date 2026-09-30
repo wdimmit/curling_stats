@@ -1,9 +1,9 @@
 """Find the moments where a delivery was probably missed.
 
-Delivery detection currently recovers about 60% of an end's sixteen stones, and
-the limit on improving it is not ideas but ground truth: there is no honest
-measure of what is being missed, because the only labels we have were generated
-by the detector itself.
+Delivery detection still misses rocks -- far fewer than the 40% it missed when
+this was written (2.6% of rocks on 45 hosted games, pipeline 2026.09.24-.28) --
+and a rock that was never seen is invisible to any measure built from what
+was. Finding them needs a person looking at the right few seconds of video.
 
 The rules narrow the search enormously. Teams alternate, so the same colour
 twice running means exactly one delivery is missing, and it must lie between the

@@ -252,8 +252,11 @@ Restore with `python -m curling_score.service.restore backup.json` (env as for t
 
 ```bash
 docker compose -f deploy/docker-compose.local.yml up --build     # Firestore emulator + API + worker
-# or, in one process with everything in memory:
-MEMORY_BACKENDS=1 WORKER_TOKEN=w ADMIN_TOKEN=a uvicorn curling_score.service.asgi:app --port 8080
+# or, in one process with everything in memory. MODEL_ID must be the model a
+# worker will claim with, or the API refuses it (409 "model mismatch"):
+MEMORY_BACKENDS=1 WORKER_TOKEN=w ADMIN_TOKEN=a \
+  MODEL_ID=$(python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))') \
+  uvicorn curling_score.service.asgi:app --port 8080
 ```
 
 ## What the terms say

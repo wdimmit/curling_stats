@@ -60,51 +60,40 @@ homography work in `geometry/calibrate.py` does not transfer. The cheap version
 needs no metres at all — just "a stone-coloured blob crossed the throwing end's
 hog line at time t", which is a tripwire in pixel space.
 
-## The painted line near the top of a panel is not the hog line
+## The painted line near the top of a panel *is* the hog line
 
-Every overhead panel shows a red line across the sheet a little below its top
-edge, and it is very tempting to read it as the hog line. It is not. Measured
-against each video's own calibration it sits at a consistent **+4.47 m** from
-the tee (median 4.49 over six videos, p10 4.46, p90 4.54), against a hog line
-at `TEE_TO_HOGLINE_M` = 6.401.
+This section used to say the opposite, and it is kept, corrected, because the
+trap is easy to fall back into. Every overhead panel shows a red line across
+the sheet a little below its top edge. Measured against the rings'
+calibration it sits at about **+4.47 m** from the tee, against a hog line at
+`TEE_TO_HOGLINE_M` = 6.401, which reads as proof that the panels stop short of
+the hog line. They do not. The along-sheet scale falls to about a third of the
+rings' by the top of the frame (`game/split.py`, `geometry/hogpaint.py`), so
+the real 6.4 m line reads as 4.4-4.7.
 
-The trap is that the discrepancy looks exactly like a far-field scale error,
-and the README's own "the oblique view compresses the far field" invites that
-reading. It is worth knowing that the scale was checked directly and is fine. A
-stone is a fixed 0.284 m across, so its apparent size measures the local scale;
-over 358 clean unclipped detections near the centre line of the reference VOD
-the detected box is 21.81 px wide at y = -1 m and 21.32 px at y = +4 m, flat to
-about 2%. Only the box *height* falls in the last bin, and there the stone is
-against the frame edge.
-
-So the panels genuinely reach about +4.6 m and the hog line genuinely is not in
-view. Two consequences already relied on elsewhere: `game/split.py` measures its
-baseline from the near hog line to a line at +3.4 m rather than hog to hog, and
-`geometry/calibrate.py` needs no distortion term.
+What seemed to rule that out was a stone-size check: box widths flat to about
+2% from y = -1 m to +4 m. Width runs across the sheet, the axis that falloff
+leaves alone. The tell was in the same measurement: only the box *height* fell
+in the last bin. `game/split.py` now times both hog lines at their paint,
+found per panel by `geometry/hogpaint.py`, and the split is hog to hog.
 
 ## Release pairing is too loose to time with
 
 `release.pair` matches a throw to an arrival inside a 6-30 s window, which is
 the right question for "did this rock arrive, or was it hogged?" -- several
-seconds of slop change no answer. `game/split.py` asks it to carry a
-*measurement* instead, and there the slop is the measurement.
+seconds of slop change no answer. It was once asked to carry the long split
+as well, and there the slop was the measurement: three splits from sixteen
+shots on game 1 end 4. That was settled by going round it. A split is now two
+line crossings, the throwing one read by the long camera, and needs no release
+at all (`game/split.py`).
 
-Measured on game 1 end 4: clean pairs run 18-20 s from release to arrival,
-while three shots paired against a release 10-15 s earlier, one of them a draw
-stopping on the button that would have had to cover 24.9 m in 8.5 s. The split
-now refuses those on physical grounds -- a stone's mean speed cannot exceed the
-speed it was measured sliding at -- but refusing is not the same as pairing
-correctly, and it costs coverage: three splits from sixteen shots.
-
-The suspect releases share a signature worth chasing: followed to the very top
-of the panel (+4.28 to +4.53) at 1.3-2.3 m/s, where a genuine delivery is lost
+What is left is hogged-rock detection, which still rides on the pairing. The
+suspect releases on that end shared a signature: followed to the very top of
+the panel (+4.28 to +4.53) at 1.3-2.3 m/s, where a genuine delivery is lost
 among the sweepers by +1.4 to +2.6. A player walking up-sheet from the house
-fits that better than a stone. `ENTRY_MARGIN_M` refuses a track that *starts*
-mid-panel, but nothing refuses one that runs the whole length of it without
-ever being occluded, which a swept stone essentially never does.
-
-Getting this right would lift the long split from a sample to a statistic, and
-would tighten hogged-rock detection at the same time.
+fits that better than a stone. That was measured before a release was
+redefined as a stone crossing a line a foot behind the tee
+(`detect/release.py`, 2026-09-19), and has not been re-measured since.
 
 ## Cache the activity profile
 
@@ -430,8 +419,11 @@ implementation and its tests remain in git history for whoever picks this up.
 
 ## Other parked ideas
 - **Hammer from the score sequence.** It is read from who threw first, which is
-  wrong whenever an end's opening delivery is missed. The rules give it
-  independently: the team that scores throws first next end.
+  wrong whenever an end's opening delivery is missed. The board gives it
+  independently: the team that scores throws first next end. That chain is now
+  computed (`hammer_expected` per end, `hammer_consistent` per game, in
+  `timeline.build_game`), but only checked against the read, never used in
+  place of it.
 - **Cross-sheet validation of the trained model.** It has only been trained and
   evaluated on sheet 2. The other four sheets have harvested frames but no
   labels.

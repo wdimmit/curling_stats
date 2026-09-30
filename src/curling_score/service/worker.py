@@ -262,7 +262,7 @@ def resolve_weights():
 
     ``WEIGHTS`` still wins, so a deployment can pin a model or ask for the
     classical detector with ``none``. Unset now means the project default
-    (ds15a) rather than the colour detector.
+    (``weights.DEFAULT_NAME``) rather than the colour detector.
 
     A worker that cannot find the default falls back to classical and says so,
     rather than refusing to start. That is safe here only because

@@ -7,8 +7,12 @@ records, and the digit on the card names the end that produced it -- which
 means one late read of the board, with each card's digit decoded, carries the
 score of every end that has been posted so far.
 
-This is **validation only**. The club often updates the board late, sometimes
-several ends late, so it must never be used to time anything.
+This is the game's score: an end's ``score`` is the board's or nothing, and
+detection's own reading is kept beside it as ``detected_score``, a diagnostic.
+It is still never used to time anything. The club often updates the board
+late, sometimes several ends late, so an end the board has not reached comes
+back unread. (Whether cards are showing at all does decide where one game ends
+and the next begins; see ``game/boardsplit.py``.)
 """
 
 from dataclasses import dataclass
