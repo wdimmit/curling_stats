@@ -16,9 +16,11 @@ there is to do, and says what it did:
   order, since each end's run-up begins where the previous one closed. Then
   read the open game's board again and publish. A pause the empty sheet took
   for a new game is joined back on where the board stayed up through it
-  (:func:`boardsplit.join_games`), and an end in which nothing was thrown is
+  (:func:`boardsplit.join_games`); a changeover it missed -- stones in view,
+  or too short -- is split where the board was cleared across it
+  (:func:`boardsplit.split_games`); and an end in which nothing was thrown is
   published only once a real end follows it (:func:`timeline.nothing_thrown`),
-  as ``analyze`` does for a recording.
+  all as ``analyze`` does for a recording.
 * **Finish** when the stream ends: settle and build what is left, take the
   final board reads, publish the last document.
 
@@ -238,24 +240,37 @@ class LiveSession:
         ended = self.recording.ended()
         games = segment.settled_ends(self.samples, self.min_end_s, ended=ended)
         games = boardsplit.join_games(self._decidable(games), self._board_across)
+        games = boardsplit.split_games(games, self._board_across)
         for game in games:
             self.games[game.index] = game
         return games
 
     def _decidable(self, games):
-        """The games up to the first pause short enough to be one whose board
+        """The games up to the first gap the board has to decide -- a pause
+        short enough to be one (`boardsplit.join_games`), or a changeover-sized
+        gap between two ends of a game (`boardsplit.split_games`) -- whose board
         is not yet recorded far enough past it to show a late clear. Held back
-        until then, so each pause is decided once, before anything after it
-        is built, and no end is ever renumbered."""
+        until then, so each gap is decided once, before anything after it is
+        built, and no end is ever renumbered. The end after a gap takes longer
+        than that to settle, so the hold rarely costs anything."""
         if self.recording.ended():
             return games
         head = self.recording.head_s()
-        for i in range(1, len(games)):
-            a, b = games[i - 1], games[i]
-            if (b.start_s - a.end_s <= boardsplit.JOIN_MAX_GAP_S
-                    and self._window(a.end_s, b.start_s) not in self.board_windows
-                    and head < b.start_s + boardsplit.LOOK_AFTER_S + boardsplit.HALF_S):
+
+        def undecided(t_last_end_s, t_next_start_s):
+            return (self._window(t_last_end_s, t_next_start_s) not in self.board_windows
+                    and head < t_next_start_s + boardsplit.LOOK_AFTER_S + boardsplit.HALF_S)
+
+        for i, g in enumerate(games):
+            if i and (g.start_s - games[i - 1].end_s <= boardsplit.JOIN_MAX_GAP_S
+                      and undecided(games[i - 1].end_s, g.start_s)):
                 return games[:i]
+            for k in range(1, len(g.ends)):
+                a, b = g.ends[k - 1], g.ends[k]
+                if (b.start_s - a.end_s >= boardsplit.CHANGEOVER_MIN_GAP_S
+                        and undecided(a.end_s, b.start_s)):
+                    return games[:i] + [dataclasses.replace(g, end_s=a.end_s, ends=g.ends[:k],
+                                                            closed=False)]
         return games
 
     @staticmethod

@@ -537,6 +537,73 @@ class TestAPause:
         assert [len(g["ends"]) for g in pub[-1]["games"]] == [2, 2]
 
 
+# Four ends, a 200 s changeover -- too short for the empty-sheet rule -- and two
+# more: top 0-900, bottom 900-1800, top 1800-2700, bottom 2700-3600, nothing
+# until 3800, then top 3800-4700 and bottom 4700-5600. The Tuesday Super League
+# of 2026-09-29 played two four-end games a sheet like this; sheet 2's
+# changeover was 210 s and its board was blank 30 s after end 4.
+def changeover(t):
+    if t < 3600:
+        return (5, 0) if (t // 900) % 2 == 0 else (0, 5)
+    if t < 3800 or t >= 5600:
+        return 0, 0
+    return (5, 0) if t < 4700 else (0, 5)
+
+
+class Changeover(Paused):
+    def __init__(self, cleared=True, **kw):
+        super().__init__(activity=changeover, **kw)
+        self.cleared = cleared
+
+    def board_state(self, t):
+        if self.cleared and 3630 <= t < 4400:
+            return "blank"
+        return "cards"
+
+
+class TestAChangeoverTheSheetNeverSatEmptyThrough:
+    def test_with_the_board_cleared_the_next_game_begins(self):
+        pipe, rec, pub = Changeover(cleared=True), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 6000.0)
+        assert [(b["game"], b["end"]) for b in pipe.built] == [
+            (0, 1), (0, 2), (0, 3), (0, 4), (1, 1), (1, 2)]
+        assert [len(g["ends"]) for g in pub[-1]["games"]] == [4, 2]
+
+    def test_with_the_board_still_up_it_is_one_game(self):
+        """A break in the middle of a game keeps its cards up."""
+        pipe, rec, pub = Changeover(cleared=False), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 6000.0)
+        game, = pub[-1]["games"]
+        assert [e["number"] for e in game["ends"]] == [1, 2, 3, 4, 5, 6]
+
+    def test_nothing_after_it_is_built_until_a_late_clear_would_show(self):
+        pipe, rec, pub = Changeover(cleared=True), Recording(), []
+        s = session(pipe, rec, pub)
+        rec.head = 905.0
+        s.step()                          # calibrate
+        while rec.head < 6000.0:
+            rec.head += 30.0
+            while s.step():
+                pass
+            if len(pipe.built) > 4:
+                break
+        assert pipe.built[4]["game"] == 1
+        assert rec.head >= 3800.0 + live.boardsplit.LOOK_AFTER_S
+
+    def test_no_published_end_is_ever_renumbered(self):
+        pipe, rec, pub = Changeover(cleared=True), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 6000.0)
+        seen = {}
+        for doc in pub:
+            for g in doc["games"]:
+                for e in g["ends"]:
+                    key = (e["start_s"], e["end_s"])
+                    assert seen.setdefault(key, (g["index"], e["number"])) == (g["index"], e["number"])
+
+
 class TestAGameOfNothingThrown:
     def test_is_never_published_and_the_next_game_is_game_0(self):
         """Sunday evening sheet 5, 2026-09-27: one-end "games" of rocks left in
