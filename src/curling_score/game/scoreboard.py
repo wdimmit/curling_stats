@@ -170,24 +170,36 @@ def find_board(image) -> "BoardGeometry | None":
     rmask = cv2.morphologyEx(rmask, cv2.MORPH_CLOSE, kernel)
 
     reds = _blobs(rmask)
-    best = None
-    for yx, yy, yarea in sorted(_blobs(ymask), key=lambda b: -b[2]):
+    pairs = []
+    for yx, yy, yarea in _blobs(ymask):
         for rx, ry, rarea in reds:
             if abs(rx - yx) > _MARKER_DX:
                 continue
             if not (_MARKER_DY[0] <= ry - yy <= _MARKER_DY[1]):
                 continue
-            score = yarea + rarea
-            if best is None or score > best[0]:
-                best = (score, yx, yy, ry)
-    if best is None:
-        return None
+            pairs.append((yarea + rarea, yx, yy, ry))
 
-    _, ax, ay, ry = best
+    # The largest pair first -- but since the 2026 re-aim, sheets 3 and 4's
+    # camera also shows the next sheet's markers at the frame's right edge,
+    # about the size of the home board's, with the rest of that board out of
+    # shot. A board whose card slots run off the frame cannot be read, so it is
+    # passed over, and so is a pair with no printed rules around it.
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(float)
+    for _, ax, ay, ry in sorted(pairs, reverse=True):
+        geom = _board_at(gray, ax, ay, ry)
+        if geom is not None:
+            return geom
+    return None
+
+
+def _board_at(gray, ax, ay, ry) -> "BoardGeometry | None":
+    """The board whose markers are at (ax, ay) over (ax, ry), or None when its
+    card slots run off the frame or its printed rules are not where the
+    markers put them."""
     dy = ry - ay
     slot_x = [ax + _SLOT1_OFFSET * dy + _SLOT_PITCH * dy * k for k in range(SLOTS)]
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(float)
+    if slot_x[-1] >= gray.shape[1]:
+        return None
     x0, x1 = int(slot_x[0]), int(slot_x[-1])
     lines = _horizontal_lines(gray, x0, x1, int(ay - 0.6 * dy), int(ry + 0.8 * dy))
     # Three printed rules bound the score area, and the two colour markers say

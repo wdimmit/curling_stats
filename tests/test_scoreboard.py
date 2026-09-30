@@ -40,6 +40,46 @@ class TestFindBoard:
         assert SB.find_board(blank) is None
 
 
+def _wall_with_boards(home_x=1381, neighbour=True, neighbour_r=12):
+    """A wall with sheet 3's board as tonight's re-aimed camera frames it:
+    yellow over red markers 52 px apart, three printed rules, and -- at the
+    right edge of the frame -- the next sheet's markers, a shade larger, with
+    the rest of that board out of shot (VTld/4l60 sheet 3, 2026-09-29)."""
+    img = np.full((1080, 1920, 3), 200, np.uint8)
+    ay, dy = 117, 52
+    ry = ay + dy
+    x0, x1 = int(home_x - 0.6 * dy), int(home_x + 5.6 * dy)
+    cv2.rectangle(img, (x0, int(ay - 0.7 * dy)), (x1, int(ry + 0.7 * dy)), (150, 150, 150), -1)
+    for y in (ay - 8, ay + 33, ry + 12):            # under the banner, under 1-14, the bottom
+        cv2.rectangle(img, (x0, y - 1), (x1, y + 1), (20, 20, 20), -1)
+    cv2.circle(img, (home_x, ay), 11, (40, 200, 230), -1)    # yellow
+    cv2.circle(img, (home_x, ry), 11, (40, 40, 200), -1)     # red
+    if neighbour:
+        nx = 1920 - 25
+        cv2.circle(img, (nx, ay + 3), neighbour_r, (40, 200, 230), -1)
+        cv2.circle(img, (nx, ry + 3), neighbour_r, (40, 40, 200), -1)
+    return img
+
+
+class TestANeighbouringBoardAtTheEdgeOfTheFrame:
+    """Since the 2026 re-aim, sheets 3 and 4's camera also shows the next
+    sheet's board markers at the right edge. When those read a few pixels
+    larger than the home board's, they were picked, the card slots landed off
+    the frame, and the board read as nothing -- on every blank board of the
+    changeover that decides a board split."""
+
+    def test_the_board_that_fits_in_the_frame_is_the_one_found(self):
+        geom = SB.find_board(_wall_with_boards())
+        assert geom is not None
+        assert geom.anchor_x == pytest.approx(1381, abs=2)
+        assert geom.slot_x[-1] < 1920
+
+    def test_markers_alone_at_the_edge_are_still_no_board(self):
+        img = _wall_with_boards(home_x=1381)
+        img[:, :1700] = 200                             # only the neighbour's markers left
+        assert SB.find_board(img) is None
+
+
 class TestTemplates:
     """The printed 1-14 row is the exemplar set for the card digits: same
     font, same scale, same lighting, same frame. Nothing is shipped or
