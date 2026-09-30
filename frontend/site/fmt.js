@@ -33,6 +33,30 @@ export const day = iso => localDay(iso) || "—";
 export const clockTime = ms =>
   new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
+/* The same clock split into the figures and the "PM", so the figures can be
+ * set large and the period small. A 24-hour locale has no period, and then
+ * it is "". */
+export function clockParts(ms) {
+  const parts = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" })
+    .formatToParts(new Date(ms));
+  return {
+    time: parts.filter(p => p.type !== "dayPeriod").map(p => p.value).join("").trim(),
+    period: parts.find(p => p.type === "dayPeriod")?.value || "",
+  };
+}
+
+/* A localDay key as the weekday and the date, "Tuesday" and "September 29";
+ * the year only when it is not this one. */
+export function dayParts(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  const at = new Date(y, m - 1, d);
+  return {
+    weekday: at.toLocaleDateString([], { weekday: "long" }),
+    date: at.toLocaleDateString([], y === new Date().getFullYear()
+      ? { month: "long", day: "numeric" } : { month: "long", day: "numeric", year: "numeric" }),
+  };
+}
+
 /** Seconds from "1:52:30", "6750" or "2:15". Null when it is not a time. */
 export function parseClock(text) {
   text = (text || "").trim();
