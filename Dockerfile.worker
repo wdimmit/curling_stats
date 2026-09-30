@@ -75,7 +75,7 @@ COPY weights/${SIDE_MODEL} /opt/curling/weights/${SIDE_MODEL}
 # looks at the destination house. Pinned for the side model's reason --
 # `weights.broom_path()` treats a missing file as "no brooms", so an unpinned
 # image would publish every shot with a null broom and call it success.
-ARG BROOM_MODEL=broom2.pt
+ARG BROOM_MODEL=broom3.pt
 COPY weights/${BROOM_MODEL} /opt/curling/weights/${BROOM_MODEL}
 
 ENV CURLING_SCORE_WEIGHTS=/opt/curling/weights/${MODEL} \

@@ -85,3 +85,6 @@ frontend/node_modules/
 # broom2 supersedes broom1 (2026-09-24): round 3 added the red pads broom1 never
 # saw. broom1 is kept as the baseline broom2 was measured against.
 !weights/broom2.pt
+# broom3 supersedes broom2 (2026-09-30): round 4, the 09/28 misses (a navy pad on
+# sheet 5's green ring). broom2 is kept as the baseline broom3 was measured against.
+!weights/broom3.pt

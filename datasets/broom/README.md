@@ -74,3 +74,26 @@ on the worker with `--without-broom` and pre-labelled by broom1; 163 frames
 were reviewed. `weights/broom2.pt` is trained on all four waves. Coverage on
 the weak videos rose from 55-67% to 96-99%; the spec's "Round 3 and broom2"
 has the checks.
+
+**Round 4 / broom3 (2026-09-30).** `wave4a` (sheets 3 and 5) and `wave4b` (sheets 1,
+2 and 4) are every shot of the ten 2026-09-28 Monday games that broom2 left
+without a broom or held below 0.7 -- 117 shots, 232 frames, cut on the worker
+(`merge_waves.py` joins the per-game harvests), pre-labelled by broom2 and all
+reviewed: 224 boxes. The gap it is for: a navy pad held on sheet 5's green
+12-foot ring, which broom2 scored 0 while it read the same pad on white ice at
+0.7-0.85.
+
+A check model held out sheet 2 and s_0vIn end 6; broom3 (`weights/broom3.pt`,
+tree b3all, 157 epochs, val mAP50 0.965) trains on all four rounds. Probed from
+pre-cut windows (`~/curling-work/broom/b3eval`) over 19 hosted games:
+
+| model | all 19 games | 9 games in no wave | lost vs broom2 (9 games) | s_0vIn (navy pad) |
+| --- | --- | --- | --- | --- |
+| broom2 | 94.7% | 94.8% | -- | 83.3% |
+| check | 96.6% | 96.0% | 10 | 99.0% |
+| broom3 | 97.1% | 96.9% | 5 | 99.0% |
+
+The check model found all five held-out navy shots (broom2 none). About 2% of
+markers move 0.3-0.5 m in depth, the box's bottom edge sitting 2-3 px lower on
+the same pad; lateral position is unchanged.
+
