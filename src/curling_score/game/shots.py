@@ -472,6 +472,21 @@ def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL,
     return seq
 
 
+def _lead_blanks(seq, per_end: int):
+    """Every rock ``seq`` is short of a full end, as blanks before its first:
+    what a recording that began inside the end missed. The colours run
+    backwards from the first rock seen, so the last rock seen is the end's
+    last and its thrower holds the hammer. No `MAX_FILL` cap: with no gap to
+    place, a missed start of any length has one home."""
+    short = per_end - len(seq)
+    if short <= 0 or not seq:
+        return seq
+    first = seq[0][0]
+    lead = [(first if (short - i) % 2 == 0 else rules.other_color(first), None)
+            for i in range(short)]
+    return lead + list(seq)
+
+
 def _with_placeholders(deliveries):
     """Deliveries in order, with a gap marked wherever alternation breaks.
 
@@ -491,7 +506,8 @@ def _with_placeholders(deliveries):
 
 
 def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S,
-                    thrown_by=None, fmt=None, before=(), base: int = 0):
+                    thrown_by=None, fmt=None, before=(), base: int = 0,
+                    joined_late: bool = False):
     """Build the shot list from observed deliveries.
 
     This replaces inferring shots from how the house changed. That approach
@@ -509,6 +525,11 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     ``fmt`` sets how many rocks an end holds; four-player unless told.
     ``before`` is the house rock 1 was thrown into (doubles' placed stones), and
     ``base`` how many of those the house reads count.
+
+    ``joined_late`` says the recording began inside this end -- a stream that
+    came up after the first rocks were thrown -- so every rock it is short was
+    thrown before the first one seen (`_lead_blanks`), not wherever the gaps
+    and house counts would put them.
     """
     from curling_score.detect.rest import stones_in_window, until_disturbed
     from curling_score.game.format import FOURS
@@ -543,9 +564,12 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     out: list[Shot] = []
     previous: list = list(before)
     seen = 0
-    plan = _fill_short_end(_with_placeholders(deliveries), per_end,
-                           house_sizes=[len(houses[i]) for i in range(len(deliveries))],
-                           base=base)
+    if joined_late:
+        plan = _lead_blanks(_with_placeholders(deliveries), per_end)
+    else:
+        plan = _fill_short_end(_with_placeholders(deliveries), per_end,
+                               house_sizes=[len(houses[i]) for i in range(len(deliveries))],
+                               base=base)
     for color, dv in plan:
         if len(out) >= per_end:
             break

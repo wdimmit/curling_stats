@@ -808,6 +808,22 @@ class TestWhenTheBoardCannotBePlaced:
         assert ends[0]["score"] == {"red": 0, "yellow": 1}
         assert block["scores_withheld"] is None
 
+    def test_an_end_the_stream_joined_late_reads_as_short_as_it_was_seen(self):
+        """Its missing rocks are blanks before the first one seen, so the list
+        is sixteen long -- but a practice block at a stream's start is joined
+        late too, and eight blanks must not switch the guard off. Past
+        shots.MAX_FILL it reads as short as it did before it was padded."""
+        ends, block = self._ends(16), {}
+        for s in ends[0]["shots"][:8]:
+            s["missing"] = True
+        ends[0]["joined_late"] = 8
+        assert timeline.settle_board_scores(ends, block, highest_end=2) is False
+
+    def test_a_few_missed_at_the_start_read_full_as_the_filler_always_made_them(self):
+        ends, block = self._ends(16), {}
+        ends[0]["joined_late"] = 4
+        assert timeline.settle_board_scores(ends, block, highest_end=2) is True
+
     def test_a_board_that_covers_every_end_cannot_be_shifted(self):
         ends, block = self._ends(6), {}
         assert timeline.settle_board_scores(ends, block, highest_end=3) is True

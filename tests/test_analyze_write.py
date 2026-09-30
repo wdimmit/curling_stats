@@ -97,6 +97,27 @@ class TestDownloadChatter:
             assert seen["progress"] is expected
 
 
+class TestAStreamThatJoinedAnEndLate:
+    """The Tuesday Super League of 2026-09-29 started just before its streams
+    came up: each sheet's first end began at the recording's first moment and
+    showed only its last rocks. Only the recording's first end can have been
+    joined late, and only if it begins where the recording does."""
+
+    def test_the_first_end_opening_with_the_recording_was_joined_late(self):
+        assert analyze.joined_late(None, 0.0) is True
+        assert analyze.joined_late(None, 20.0) is True
+
+    def test_a_first_end_the_stream_was_up_for_was_not(self):
+        assert analyze.joined_late(None, 300.0) is False
+
+    def test_no_later_end_was(self):
+        assert analyze.joined_late(1815.0, 1940.0) is False
+
+    def test_a_window_s_start_is_the_recording_s(self):
+        assert analyze.joined_late(None, 3610.0, recording_start_s=3600.0) is True
+        assert analyze.joined_late(None, 3610.0) is False
+
+
 class TestTheRunUpStartsWhereThePreviousEndClosed:
     """The segmenter opens an end when a stone first rests in its house, so
     first rocks thrown before that -- through the house, or just early --

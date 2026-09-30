@@ -714,6 +714,22 @@ def nothing_thrown(end: dict) -> bool:
             and delivered <= NOTHING_THROWN_MAX_DELIVERIES)
 
 
+def reads_short(end: dict) -> bool:
+    """Whether an end is short of a full end, as the practice guard and the
+    trim have always counted it: the shots listed, blanks included.
+
+    An end a stream joined late lists a blank for every rock it missed, so it
+    is always full length. A practice block at a stream's start is joined late
+    too, though, and padding must not switch the guard off: past
+    `shots.MAX_FILL` -- where the short-end filler never padded -- its leading
+    blanks are not counted, so it reads exactly as short as it did before."""
+    listed = len(end.get("shots") or [])
+    lead = int(end.get("joined_late") or 0)
+    if lead > shots_mod.MAX_FILL:
+        listed -= lead
+    return listed < end.get("shots_expected", C.STONES_PER_END)
+
+
 def settle_board_scores(ends: list, block: dict, highest_end: int,
                         fmt=None) -> bool:
     """Whether the board's scores may stay on these ends. Fails closed.
@@ -740,10 +756,7 @@ def settle_board_scores(ends: list, block: dict, highest_end: int,
     words the reason. The short-end test reads each end's ``shots_expected``.
     """
     covers_every_end = int(highest_end) >= len(ends)
-    first_short = bool(ends) and (
-        len(ends[0].get("shots") or [])
-        < ends[0].get("shots_expected", C.STONES_PER_END)
-    )
+    first_short = bool(ends) and reads_short(ends[0])
     block["accounts_for_every_end"] = covers_every_end
     if covers_every_end or not first_short:
         block["scores_withheld"] = None
@@ -790,7 +803,7 @@ def trim_to_start(document: dict, start_s: float | None) -> dict:
             end = ends[drop]
             if float(end["start_s"]) >= start_s:
                 break
-            if len(end["shots"]) >= end.get("shots_expected", C.STONES_PER_END):
+            if not reads_short(end):
                 break
             drop += 1
         board = game.get("scoreboard")

@@ -62,7 +62,12 @@ from pathlib import Path
 # re-aim); and the live session splits a game where the board was cleared
 # across a changeover, as analyze does. Also covers 2026.09.29.1, which was
 # never deployed on its own.
-PIPELINE_VERSION = "2026.09.30"
+# 2026.09.30.1: a recording's first end that it joined late -- opening within
+# `analyze.JOIN_S` of the recording's start, short of a full end -- numbers its
+# missing rocks first, so the thrower, rock-of-player and hammer of every rock
+# seen come out right (09/29 Super League sheet 2's 7 pm end 1: rocks 6-16, red
+# hammer, where it read 1-11 and yellow); the end records `joined_late`.
+PIPELINE_VERSION = "2026.09.30.1"
 
 
 def model_id(weights) -> str:

@@ -424,6 +424,53 @@ class TestDeliveredStone:
         assert got[0].delivered_stone_index is None
 
 
+class TestAnEndTheStreamJoinedLate:
+    """The Tuesday Super League of 2026-09-29 started just before its streams
+    came up: each sheet's first end showed only its last 8, 11 or 12 rocks. The
+    rocks we saw are the end's last ones, so every missing rock goes before
+    the first one seen -- however many, since there is no gap to place -- and
+    the thrower, the rock-of-player and the hammer then come out right."""
+
+    def _dvs(self, n, first):
+        other = "red" if first == "yellow" else "yellow"
+        dv = TestShotsFromDeliveries()._dv
+        return [dv(first if i % 2 == 0 else other, 10 + 50 * i) for i in range(n)]
+
+    def _frames(self):
+        return TestShotsFromDeliveries()._frames({0: []})
+
+    def test_eight_seen_are_rocks_nine_to_sixteen(self):
+        got = shots.from_deliveries(self._dvs(8, "yellow"), self._frames(), joined_late=True)
+        assert len(got) == 16
+        assert [s.missing for s in got] == [True] * 8 + [False] * 8
+        assert got[8].color == "yellow"
+        colors = [s.color for s in got]
+        assert all(a != b for a, b in zip(colors, colors[1:]))
+
+    def test_the_hammer_is_whoever_threw_the_last_rock_seen(self):
+        """Eleven seen from a red: rock 16 is the last red, so red had the
+        hammer -- numbered from 1, the end said yellow."""
+        got = shots.from_deliveries(self._dvs(11, "red"), self._frames(), joined_late=True)
+        assert [s.missing for s in got] == [True] * 5 + [False] * 11
+        assert got[15].color == "red"
+        assert shots.hammer_from_shots(got) == "red"
+
+    def test_a_few_missing_all_go_first_not_to_the_gaps(self):
+        """Twelve seen: the short-end filler would place some blanks at the end;
+        a stream that joined late missed only the start."""
+        got = shots.from_deliveries(self._dvs(12, "red"), self._frames(), joined_late=True)
+        assert [s.missing for s in got] == [True] * 4 + [False] * 12
+
+    def test_a_full_end_is_left_alone(self):
+        got = shots.from_deliveries(self._dvs(16, "yellow"), self._frames(), joined_late=True)
+        assert not any(s.missing for s in got)
+
+    def test_every_leading_blank_is_unknown_and_inferred(self):
+        got = shots.from_deliveries(self._dvs(8, "yellow"), self._frames(), joined_late=True)
+        for s in got[:8]:
+            assert s.state_known is False and s.color_inferred is True and s.delivery is None
+
+
 class TestShortEndsAreFilledWithBlanks:
     """fit_end enforces alternation, so a missed rock shows up as a short end.
 

@@ -121,6 +121,22 @@ def _no_phase(name, fraction, message=None):
     return None
 
 
+# A stream that came up after an end's first rocks were thrown starts with
+# stones already in the house, so the segmenter opens that end at the
+# recording's first moment. Within this of it, the first end was joined late.
+JOIN_S = 30.0
+
+
+def joined_late(prev_end_s, start_s: float, recording_start_s: float = 0.0) -> bool:
+    """Whether the recording began inside this end: it is the recording's
+    first (nothing before it closed) and it opens with the recording. Its
+    missing rocks were then thrown before the stream came up, and they are
+    numbered first (`shots.from_deliveries`). The Tuesday Super League of
+    2026-09-29 started just before its streams: every sheet's first end
+    opened at 0 s showing its last 8-12 rocks."""
+    return prev_end_s is None and start_s - recording_start_s <= JOIN_S
+
+
 def run_up_from(prev_end_s, start_s: float, *, crossed_games: bool = False) -> float:
     """Where an end's run-up begins: the moment the previous end closed.
 
@@ -233,6 +249,8 @@ class EndContext:
     # rather than once each: for a live recording, read at full resolution
     # with no proxy and no cache, the decode is most of an end's cost.
     one_pass: bool = False
+    # Where the recording (or the window analysed) begins, for `joined_late`.
+    recording_start_s: float = 0.0
 
 
 @dataclass
@@ -458,11 +476,20 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         placed = placement.read_before(seq, placed, kept[0].t_enter)
     # The next end's run-up begins when this end's last rock stopped.
     closed_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
+    late = joined_late(prev_end_s, end.start_s, ctx.recording_start_s)
     shots = shots_mod.from_deliveries(
         kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()},
         fmt=fmt,
         before=placed.seed if placed is not None else (),
-        base=placement.fill_base(placed, fmt))
+        base=placement.fill_base(placed, fmt),
+        joined_late=late)
+    lead_missed = 0
+    if late:
+        while lead_missed < len(shots) and shots[lead_missed].missing:
+            lead_missed += 1
+        if lead_missed:
+            progress(f"    end {end.number}: the recording joined it late -- "
+                     f"its first {lead_missed} rock(s) were thrown before it began")
     # Only now that the rules have settled which rocks exist: the
     # clock wants a tee crossing for each of them, which is a far
     # weaker thing to ask of the same footage than a release was, and
@@ -509,6 +536,10 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     if built.get("placement") is not None:
         built["placement"]["candidates_dropped"] = (
             len(before_placement) + len(recovered_early))
+    if lead_missed:
+        # How many rocks the recording missed at this end's start: numbered
+        # first, and not counted by `timeline.reads_short` past MAX_FILL.
+        built["joined_late"] = lead_missed
     built["deliveries_seen"] = len(deliveries)
     built["releases_seen"] = len(releases)
     built["releases_unaccounted"] = len(unaccounted)
@@ -780,6 +811,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         path=path, read_path=read_path, read_setups=read_setups,
         sideviews=sideviews, detector=detector, broom_model=broom_model,
         line_model=line_model, fmt=fmt, shot_fps=shot_fps, progress=progress,
+        recording_start_s=float(start_s or 0.0),
     )
     out_games = build_games(
         ctx, games, phase=phase,
