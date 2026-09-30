@@ -141,8 +141,8 @@ export function Status() {
     <>
       <header>
         <h1>Curling Chart</h1>
-        <a href="/">Submit another</a>
-        <a href="/games">All games</a>
+        <a href="/submit">Submit another</a>
+        <a href="/">All games</a>
       </header>
       <main>
         <Card>

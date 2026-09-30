@@ -34,7 +34,7 @@ export function IdentityChip() {
 export function Header({ links = [], children }) {
   return (
     <header>
-      <h1><a href="/games">Curling Chart</a></h1>
+      <h1><a href="/">Curling Chart</a></h1>
       {links.map(([href, text, here]) => (
         <a key={href} href={href} className={here ? "here" : undefined}
            aria-current={here ? "page" : undefined}>{text}</a>

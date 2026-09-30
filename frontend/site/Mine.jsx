@@ -141,8 +141,8 @@ export function Mine() {
 
   return (
     <>
-      <Header links={[["/games", "All games"], ["/thinking", "Thinking time"],
-                       ["/", "Submit a link"]]} />
+      <Header links={[["/", "All games"], ["/thinking", "Thinking time"],
+                       ["/submit", "Submit a link"]]} />
       <main>
         {ready && !user && (
           <div id="signedout">
@@ -182,7 +182,7 @@ export function Mine() {
                   </table>
                 ) : (
                   <span className="muted">Nothing yet. Pick a game from{" "}
-                    <a href="/games">the catalogue</a> and press Chart.</span>
+                    <a href="/">the catalogue</a> and press Chart.</span>
                 )}
             </div>
             <Teams user={user} />

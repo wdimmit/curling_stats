@@ -456,7 +456,7 @@ the two being mistaken for each other.
 The same pipeline runs as a small public service. Paste a link and get a
 private charting URL. The club's league playlists are watched, each on its own
 schedule, and processed automatically. A stream that goes live is followed end
-by end while it is played. A catalogue at `/games` lists every game. The API
+by end while it is played. The front page is a catalogue of every game; links are pasted at `/submit`. The API
 runs on Cloud Run with Firestore and Cloud Storage, all inside free tiers at
 club scale. Processing runs on a home GPU machine that pulls jobs over HTTPS.
 See [`deploy/README.md`](deploy/README.md).

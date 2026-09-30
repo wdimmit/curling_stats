@@ -767,13 +767,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return chart, False
 
     # ------------------------------------------------------------- public
+    # The catalogue is the front page: most people arrive to find a game that
+    # was played, not to paste a link. /games stays, since bookmarks and every
+    # chart's header point there.
     @app.get("/", response_class=HTMLResponse)
-    def home():
-        return page("submit.html")
-
     @app.get("/games", response_class=HTMLResponse)
     def games_page():
         return page("games.html")
+
+    @app.get("/submit", response_class=HTMLResponse)
+    def submit_page():
+        return page("submit.html")
 
     @app.get("/mine", response_class=HTMLResponse)
     def mine_page():

@@ -339,7 +339,7 @@ export function Games() {
 
   return (
     <>
-      <Header links={[["/thinking", "Thinking time"], ["/", "Submit a link"]]}>
+      <Header links={[["/thinking", "Thinking time"], ["/submit", "Submit a link"]]}>
         <select id="league" value={active}
                 onChange={e => { setLeague(e.target.value); saveLeague(e.target.value); }}>
           <option value="">All leagues</option>

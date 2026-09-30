@@ -139,8 +139,8 @@ export function Thinking() {
 
   return (
     <>
-      <Header links={[["/games", "All games"], ["/thinking", "Thinking time", true],
-                      ["/", "Submit a link"]]} />
+      <Header links={[["/", "All games"], ["/thinking", "Thinking time", true],
+                      ["/submit", "Submit a link"]]} />
       <main>
         <p className="muted" style={{ marginTop: 0 }}>How long each game's teams took to decide
         their shots, grouped by league. The league is the YouTube playlist the stream was
