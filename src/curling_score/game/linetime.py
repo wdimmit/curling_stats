@@ -28,6 +28,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from curling_score.game.rules import other_color
 from curling_score.geometry import constants as C
 from curling_score.harvest import sidepool
 
@@ -281,6 +282,10 @@ PATH_AHEAD_M = 1.0
 PATH_REST_TOL_M = (0.3, 0.12)   # (along, across)
 PATH_REST_SEEN_S = 0.4
 PATH_LOST_S = 1.5 / PATH_FPS    # the rock missed at least one frame
+# One stone read as both colours in one frame: the two boxes 0.03-0.06 m apart
+# along (s_1PbxeFSujkOVgtmLS e3 r11). A rock frozen to a stone of the other
+# colour reads 0.2 m from it (s_1V5GRT57payxP8XCp e5 r16).
+PATH_SAME_SPOT_M = (0.1, 0.12)  # (along, across)
 
 
 def path_points(boxes, times, view):
@@ -298,6 +303,12 @@ def path_points(boxes, times, view):
     return out
 
 
+def _on(d, dets) -> bool:
+    """Is one of ``dets`` a second read of ``d``'s box?"""
+    along, across = PATH_SAME_SPOT_M
+    return any(abs(d[2] - o[2]) < along and abs(d[1] - o[1]) < across for o in dets)
+
+
 def _at_rest(d, ahead) -> bool:
     """Was ``d`` where a stone already sat, seen ahead of the rock?"""
     along, across = PATH_REST_TOL_M
@@ -305,15 +316,22 @@ def _at_rest(d, ahead) -> bool:
     return bool(ts) and max(ts) - min(ts) >= PATH_REST_SEEN_S
 
 
-def _follow(times, per, is_seed, near, max_gap_s):
+def _follow(times, per, is_seed, near, max_gap_s, others):
     # The gates widen with every frame the rock is hidden (a sweeper, the
     # delivery team), and a stone already at rest in them is still the best
     # match once they reach it; from then on it matches every frame and the
     # path ends on it. So once the rock is lost, what the camera saw sitting
     # ahead of it is not the rock. Only once it is lost: a rock followed
     # frame by frame into a freeze reads within a stone of the one it froze to.
-    path, cur, vel, last_t, ahead = [], None, -2.0, None, []
-    for t, dets in zip(times, per):
+    #
+    # A stone of the other colour is the rock only when misread as the rock's
+    # (a sweeper's pad pressed against it), and then the detector reads it as
+    # its own colour too, on the same spot in the same frame. Refused only
+    # then: a rock that sticks where a stone it knocked away had sat is the
+    # rock, and that stone is no longer there; a rock frozen to one reads a
+    # stone's width short of it.
+    path, cur, vel, last_t, ahead, ahead_other = [], None, -2.0, None, [], []
+    for t, dets, other in zip(times, per, others):
         if cur is None:
             c = [d for d in dets if is_seed(d)]
             if c:
@@ -326,21 +344,25 @@ def _follow(times, per, is_seed, near, max_gap_s):
         lost = dt > PATH_LOST_S
         c = [d for d in dets if abs(d[2] - ypred) < 0.6 + 0.5 * dt
              and abs(d[1] - cur[1]) < 0.12 + 0.12 * dt and d[2] <= cur[2] + 0.2
-             and not (lost and _at_rest(d, ahead))]
+             and not (lost and (_at_rest(d, ahead) or _on(d, other) and _at_rest(d, ahead_other)))]
         if not c:
             continue
         nxt = min(c, key=lambda d: abs(d[2] - ypred) + abs(d[1] - cur[1]))
         vel = 0.6 * vel + 0.4 * (nxt[2] - cur[2]) / dt
         cur = nxt; path.append(cur); last_t = t
         ahead += [(t, d[2], d[1]) for d in dets if d[2] < cur[2] - PATH_AHEAD_M]
+        ahead_other += [(t, d[2], d[1]) for d in other if d[2] < cur[2] - PATH_AHEAD_M]
     return path
 
 
-def chain(times, per, fit: Fit):
+def chain(times, per, fit: Fit, others=None):
     """The rock's path to rest as [(y, x)], started from the detection nearest
     the fitted line -- first where the rock enters this camera's view, then
     anywhere -- and moved on to the next candidate when a start leads nowhere
-    (a sweeper's broom, a resting stone near the line)."""
+    (a sweeper's broom, a resting stone near the line). ``others`` are the
+    other colour's points, frame for frame, where there are any."""
+    if others is None:
+        others = [[] for _ in per]
     near = lambda d: abs(d[1] - fit.x(d[2]))
     rules = (lambda d: abs(d[2] - PATH_SEED_Y) < 2.5 and near(d) < 0.35,
              lambda d: 3.0 < d[2] < 24.0 and near(d) < 0.45)
@@ -349,7 +371,7 @@ def chain(times, per, fit: Fit):
         for i, dets in enumerate(per):
             if not any(rule(d) for d in dets):
                 continue
-            got = _follow(times[i:], per[i:], rule, near, PATH_GAP_S)
+            got = _follow(times[i:], per[i:], rule, near, PATH_GAP_S, others[i:])
             if len(got) >= 2 and got[1][0] - got[0][0] > PATH_START_GAP_S:
                 continue
             if len(got) > len(best):
@@ -360,19 +382,22 @@ def chain(times, per, fit: Fit):
 
 
 def find_path(model, video, view, color, t_hog, t_rest, fit, *, decode, detect):
-    """Where the rock went, seen from behind the thrower."""
+    """Where the rock went, seen from behind the thrower. ``detect`` is
+    ``sidemodel.detect_bands``: the other colour's boxes come from the same pass."""
     if view is None or not view.has_lateral or t_hog is None:
         return []
     t1 = (t_rest if t_rest is not None else t_hog + 24.0) + 1.0
     frames, times = decode(video, view.rect, t_hog + 1.0, t1, PATH_FPS)
     if not len(frames):
         return []
-    far = detect(model, frames, times, int(view.tee_row) - 80, PATH_SPLIT_ROW + 20, color,
+    colors = (color, other_color(color))
+    far = detect(model, frames, times, int(view.tee_row) - 80, PATH_SPLIT_ROW + 20, colors,
                  imgsz=800, conf=PATH_CONF)
-    near_boxes = detect(model, frames, times, PATH_SPLIT_ROW - 20, view.rect[3], color,
+    near_boxes = detect(model, frames, times, PATH_SPLIT_ROW - 20, view.rect[3], colors,
                         imgsz=416, conf=PATH_CONF)
-    boxes = [a + b for a, b in zip(far, near_boxes)]
-    return chain(times, path_points(boxes, times, view), fit)
+    per, other = (path_points([a + b for a, b in zip(f, n)], times, view)
+                  for f, n in zip(far, near_boxes))
+    return chain(times, per, fit, other)
 
 
 EXTEND_WINDOW_S = (6.5, 9.0)        # after the release, past hogtime's window
@@ -406,7 +431,11 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
         decode = longview.decode
     if detect is None:
         from curling_score.detect import sidemodel
-        detect = sidemodel.detect_band
+        detect, detect_bands = sidemodel.detect_band, sidemodel.detect_bands
+    else:
+        # A stand-in for one colour, asked once per colour.
+        detect_bands = lambda model, frames, times, lo, hi, colors, **kw: [
+            detect(model, frames, times, lo, hi, c, **kw) for c in colors]
     n = 0
     for shot in shots:
         broom = getattr(shot, "target_broom", None)
@@ -435,7 +464,7 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
                               getattr(shot, "number", "?"))
                 delivery = ()
             path = find_path(model, video, dest_view, shot.color, getattr(shot, "t_hog_s", None),
-                             getattr(shot, "t_rest_s", None), fit, decode=decode, detect=detect)
+                             getattr(shot, "t_rest_s", None), fit, decode=decode, detect=detect_bands)
             shot.line = measure(fit, track, frames.start,
                                 None if broom is None else (broom.x_m, broom.y_m),
                                 rest=_rest(shot), path=path, delivery=delivery)

@@ -67,7 +67,12 @@ from pathlib import Path
 # missing rocks first, so the thrower, rock-of-player and hammer of every rock
 # seen come out right (09/29 Super League sheet 2's 7 pm end 1: rocks 6-16, red
 # hammer, where it read 1-11 and yellow); the end records `joined_late`.
-PIPELINE_VERSION = "2026.09.30.1"
+# 2026.10.01: the path from behind the thrower refuses, once the rock is lost,
+# a stone of the other colour misread as the rock's -- read as both in one
+# frame where it had been seen sitting (`linetime._on`). s_1PbxeFSujkOVgtmLS
+# e3 r11's path ran into a red guard a yellow pad had made read yellow; on 361
+# harness rocks one path loses one point.
+PIPELINE_VERSION = "2026.10.01"
 
 
 def model_id(weights) -> str:

@@ -152,24 +152,32 @@ def detect_band(model, frames, times, lo, hi, color, *, imgsz=800, conf=CONF_MIN
     """Every box of ``color`` in rows ``lo:hi`` of each frame, in view rows:
     per frame, a list of (cx, bottom_row, width, conf). The line pass reads the
     hack, the window past hogtime's and the destination camera through this."""
-    want = _CLASS_FOR[color]
+    return detect_bands(model, frames, times, lo, hi, (color,), imgsz=imgsz, conf=conf)[0]
+
+
+def detect_bands(model, frames, times, lo, hi, colors, *, imgsz=800, conf=CONF_MIN):
+    """``detect_band`` for each of ``colors`` from one pass of the detector:
+    its per-frame lists, in the order asked. The destination camera's path
+    wants where the other colour's stones sit as well as the rock."""
+    want = [_CLASS_FOR[c] for c in colors]
     lo = max(0, int(lo))
     crops = []
     for frame in frames:
         arr = np.asarray(frame)
         crops.append(np.ascontiguousarray(arr[lo:min(arr.shape[0], int(hi)), :, ::-1]))
-    out = []
+    out = [[] for _ in colors]
     for i in range(0, len(crops), BATCH):
         for res in model.predict(crops[i:i + BATCH], imgsz=imgsz, conf=conf, verbose=False):
-            boxes = []
+            boxes = [[] for _ in colors]
             if res.boxes is not None:
                 for b, c, cf in zip(res.boxes.xyxy.cpu().numpy(), res.boxes.cls.cpu().numpy(),
                                     res.boxes.conf.cpu().numpy()):
-                    if int(c) != want or float(cf) < conf:
+                    if int(c) not in want or float(cf) < conf:
                         continue
                     bx0, _by0, bx1, by1 = (float(v) for v in b)
-                    boxes.append(((bx0 + bx1) / 2, by1 + lo, bx1 - bx0, float(cf)))
-            out.append(boxes)
+                    boxes[want.index(int(c))].append(((bx0 + bx1) / 2, by1 + lo, bx1 - bx0, float(cf)))
+            for got, frame_boxes in zip(out, boxes):
+                got.append(frame_boxes)
     return out
 
 

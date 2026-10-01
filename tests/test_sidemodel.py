@@ -114,3 +114,12 @@ class TestDetectBand:
         per = [[[100, 10, 150, 40, 0, 0.9], [200, 10, 250, 40, 1, 0.8]], []]
         got = sidemodel.detect_band(FakeModel(per), frames, [0.0, 0.2], 300, 700, "red")
         assert got == [[pytest.approx((125.0, 340.0, 50.0, 0.9))], []]
+
+    def test_both_colours_come_from_one_pass_in_the_order_asked(self):
+        frames = [np.zeros((1080, 810, 3), np.uint8)] * 2
+        per = [[[100, 10, 150, 40, 0, 0.9], [200, 10, 250, 40, 1, 0.8]], []]
+        model = FakeModel(per)
+        yellow, red = sidemodel.detect_bands(model, frames, [0.0, 0.2], 300, 700, ("yellow", "red"))
+        assert model.i == 2                # each frame predicted once
+        assert yellow == [[pytest.approx((225.0, 340.0, 50.0, 0.8))], []]
+        assert red == [[pytest.approx((125.0, 340.0, 50.0, 0.9))], []]

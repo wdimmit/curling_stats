@@ -260,6 +260,50 @@ class TestChain:
         path = L.chain(times, per, self.FIT)
         assert path[-1][0] == 2.0
 
+    def guard_read_as_the_rock(self, misread=(38, 39), gone_after=None):
+        # The rock hidden from 4.0 s to 8.0 s; a stone of the other colour
+        # sitting where the widened gates reach at 7.6 s, read once as the
+        # rock's colour too (a sweeper's pad pressed against it).
+        x, y = 0.09, 9.0
+        times, per = self.frames(gap=range(20, 40))
+        others = []
+        for i, t in enumerate(times):
+            there = gone_after is None or t <= gone_after
+            others.append([(t, x, y, 0, 0, 0.85)] if there else [])
+            if i in misread:
+                per[i].append((t, x, y, 0, 0, 0.6))
+        return (y, x), times, per, others
+
+    def test_a_stone_of_the_other_colour_read_as_the_rock_is_not_the_rock(self):
+        # s_1PbxeFSujkOVgtmLS end 3 rock 11: hidden 4 s, the yellow rock's
+        # gates reached a red guard a yellow pad had made read yellow for two
+        # frames, and the house view drew the rock running into the guard.
+        guard, times, per, others = self.guard_read_as_the_rock()
+        path = L.chain(times, per, self.FIT, others)
+        assert path[-1][0] < 1.5
+        assert guard not in path
+
+    def test_without_the_other_colour_the_misread_guard_is_taken(self):
+        guard, times, per, _others = self.guard_read_as_the_rock()
+        assert guard in L.chain(times, per, self.FIT)
+
+    def test_a_rock_that_stops_where_a_stone_it_knocked_away_sat_is_the_rock(self):
+        # Hit and stick, hidden: the struck stone is gone from its spot when
+        # the rock is next seen there, so that sighting is the rock.
+        guard, times, per, others = self.guard_read_as_the_rock(misread=(38,), gone_after=7.5)
+        assert guard in L.chain(times, per, self.FIT, others)
+
+    def test_a_rock_hidden_into_a_freeze_on_the_other_colour_is_followed_to_its_rest(self):
+        # s_1V5GRT57payxP8XCp end 5 rock 16: lost on the way in, then seen at
+        # rest 0.2 m short of the stone of the other colour it froze to.
+        stop = (19.5 / 0.06) ** 0.5
+        times = [i * 0.2 for i in range(110)]
+        ys = [2.0 + 0.06 * max(0.0, stop - t) ** 2 for t in times]
+        per = [[(t, self.FIT.x(y), y, 0, 0, 0.9)] if not 2.05 < y < 5.0 else []
+               for t, y in zip(times, ys)]
+        others = [[(t, self.FIT.x(1.8), 1.8, 0, 0, 0.85)] for t in times]
+        assert L.chain(times, per, self.FIT, others)[-1][0] == 2.0
+
     def test_a_lone_false_start_is_skipped(self):
         times, per = self.frames(stray_first=True)
         path = L.chain(times, per, self.FIT)
@@ -272,6 +316,22 @@ class TestChain:
 
 DEST_VIEW = SideView(rect=(1110, 0, 810, 1080), tee_row=465.0, hog_row=547.0,
                      centre_col=411.0, lat_px_per_m_at_tee=140.0, centre_line=(411.0, 0.0))
+
+
+class TestFindPath:
+    def test_the_rock_s_colour_and_the_other_are_read_in_one_pass_per_band(self):
+        asked = []
+
+        def decode(video, rect, t0, t1, fps):
+            return [object()] * 3, [t0, t0 + 0.2, t0 + 0.4]
+
+        def detect(model, frames, times, lo, hi, colors, imgsz=800, conf=0.35):
+            asked.append(tuple(colors))
+            return [[[] for _ in frames] for _ in colors]
+
+        L.find_path(object(), "v.mp4", DEST_VIEW, "yellow", 100.0, 120.0, TestChain.FIT,
+                    decode=decode, detect=detect)
+        assert asked == [("yellow", "red")] * 2
 
 
 class TestTimeLines:
