@@ -3323,3 +3323,205 @@ class TestTheDeliveryChart:
         css = (VIEWER / "style.css").read_text()
         rule = css[css.index("#detailCard .dlv {"):css.index("}", css.index("#detailCard .dlv {"))]
         assert "width: 100%" in rule and "height: auto" in rule
+
+
+REPORT_FIXTURE = Path(__file__).resolve().parent / "fixtures/report/dimmit_grant.json"
+
+
+def report_js(body: str, document=None, overrides=None):
+    """Run ``body`` with ``view``, ``stats``, ``think`` and ``series`` built from
+    Dimmit v Grant (2026-09-29, sheet 3) as its charter graded it -- or from
+    ``document`` when one is given."""
+    if document is None:
+        fx = json.loads(REPORT_FIXTURE.read_text())
+        document, overrides = fx["doc"], fx["overrides"]
+    return run_js(
+        f"const view = buildGameView({json.dumps(document)}, 0, {json.dumps(overrides or {})});\n"
+        "const stats = gatherStats(view);\n"
+        "const think = gatherThinkingOf(view);\n"
+        "const series = cumulativeThinkingOf(view);\n" + body)
+
+
+class TestTheReportByEnd:
+    """The table at the top: the score, the hammer, and each team's
+    shooting and clock, end by end."""
+
+    def test_the_ends_and_their_hammer(self):
+        got = report_js("out(byEnd(view).ends.map(e => [e.number, e.hammer]));")
+        assert got == [[1, "yellow"], [2, "yellow"], [3, "red"], [4, "yellow"]]
+
+    def test_an_end_the_board_never_read_has_no_score(self):
+        got = report_js("out(byEnd(view).ends.map(e => e.score));")
+        assert got == [{"red": 1, "yellow": 0}, {"red": 0, "yellow": 2},
+                       {"red": 3, "yellow": 0}, None]
+
+    def test_an_ungraded_end_has_no_shooting(self):
+        got = report_js("out(byEnd(view).ends.map(e => e.shooting));")
+        assert got == [{"red": None, "yellow": None}, {"red": 63, "yellow": 75},
+                       {"red": 78, "yellow": 41}, {"red": 44, "yellow": 94}]
+
+    def test_the_totals(self):
+        got = report_js("out(byEnd(view).total);")
+        assert got["score"] == {"red": 4, "yellow": 2}
+        assert got["complete"] is False
+        assert got["shooting"] == {"red": 61, "yellow": 70}
+        assert round(got["thinking"]["red"]) == 653 and round(got["thinking"]["yellow"]) == 789
+
+    def test_the_status_is_ok_and_the_board_was_read(self):
+        got = report_js("const t = byEnd(view); out([t.status, t.boardRead]);")
+        assert got == ["ok", True]
+
+    def test_an_old_chart_says_it_predates_board_reading(self):
+        d = doc([shot(1, "red", "lead")])
+        d["schema_version"] = 3
+        got = report_js("const t = byEnd(view); out([t.status, t.ends[0].score]);", d)
+        assert got == ["predates", None]
+
+    def test_a_withheld_board_says_so(self):
+        d = doc([shot(1, "red", "lead")])
+        d["games"][0]["scoreboard"] = {"scores_withheld": "could not place"}
+        assert report_js("out(byEnd(view).status);", d) == "withheld"
+
+    def test_a_ten_end_game_totals_every_end(self):
+        d = doc([shot(1, "red", "lead", user_score=4)])
+        first = d["games"][0]["ends"][0]
+        d["games"][0]["ends"] = [{**first, "number": n, "score": {"red": n % 2, "yellow": 0},
+                                  "shots": [dict(s) for s in first["shots"]]}
+                                 for n in range(1, 11)]
+        got = report_js("const t = byEnd(view); out([t.ends.length, t.total]);", d)
+        assert got[0] == 10
+        assert got[1]["score"] == {"red": 5, "yellow": 0} and got[1]["complete"] is True
+
+
+class TestTheReportHeadToHead:
+    def test_by_position(self):
+        got = report_js("out(headToHead(stats, view.format).positions"
+                        "  .map(p => [p.label, p.red, p.yellow]));")
+        assert got == [["Lead", 63, 83], ["Second", 79, 63], ["Third", 54, 71], ["Skip", 50, 63]]
+
+    def test_the_team(self):
+        assert report_js("out(headToHead(stats, view.format).team);") == {"red": 61, "yellow": 70}
+
+    def test_by_shot_type_with_the_rocks_behind_each(self):
+        got = report_js("out(headToHead(stats, view.format).types"
+                        "  .map(t => [t.label, t.red, t.yellow, t.redN, t.yellowN]));")
+        assert got == [["Draw", 52, 68, 11, 15], ["Guard", 63, 100, 2, 2], ["Hit", 70, 58, 11, 6]]
+
+    def test_every_player_graded_alike_is_said_once(self):
+        got = report_js("out(headToHead(stats, view.format).perPlayer);")
+        assert got == {"graded": 6, "thrown": 8}
+
+    def test_the_other_rocks_are_listed(self):
+        got = report_js("out(headToHead(stats, view.format).other);")
+        assert got == [{"color": "red", "type": "Unknown", "thrown": 2},
+                       {"color": "yellow", "type": "Unknown", "thrown": 2},
+                       {"color": "yellow", "type": "Not thrown", "thrown": 1}]
+
+    def test_doubles_reads_player_a_and_b(self):
+        got = report_js("out(headToHead(stats, view.format).positions.map(p => p.label));",
+                        doubles_doc(doubles_shots()))
+        assert got == ["Player A", "Player B"]
+
+    def test_nothing_graded_reads_as_no_percentage(self):
+        got = report_js("out(headToHead(stats, view.format).positions[0]);",
+                        doc([shot(1, "red", "lead")]))
+        assert got == {"id": "lead", "label": "Lead", "red": None, "yellow": None}
+
+
+class TestTheReportDetail:
+    def cells(self, color):
+        return report_js(
+            f"out(detailRows(stats, {color!r}, view.format).rows.map(r => [r.kind, r.label,"
+            "  r.cells.map(c => c && `${c.pct}:${c.graded}/${c.thrown}`),"
+            "  r.all && `${r.all.pct}:${r.all.graded}/${r.all.thrown}`]));")
+
+    def test_a_group_with_one_type_has_no_row_under_it(self):
+        labels = [r[1] for r in self.cells("red")]
+        assert labels == ["Draw", "Guard", "Guard", "Centre guard", "Hit", "Hit",
+                          "Hit & stick", "Hit & roll", "Peel", "Run back", "Flashed", "Other"]
+
+    def test_the_third_draws(self):
+        draw = self.cells("red")[0]
+        assert draw == ["group", "Draw", ["67:3/3", "50:2/2", "33:3/5", "58:3/3"], "52:11/13"]
+
+    def test_nothing_of_a_kind_is_an_empty_cell(self):
+        guard = self.cells("red")[1]
+        assert guard[2] == ["63:2/2", None, None, None]
+
+    def test_nothing_graded_has_no_percentage_but_keeps_its_count(self):
+        other = self.cells("red")[-1]
+        assert other[2][0] == "null:0/2"
+
+    def test_the_all_row(self):
+        got = report_js("out(detailRows(stats, 'red', view.format).all.all);")
+        assert got == {"pct": 61, "graded": 24, "thrown": 32}
+
+    def test_yellow_lists_its_own_types(self):
+        labels = [r[1] for r in self.cells("yellow")]
+        assert labels == ["Draw", "Draw", "Freeze", "Tap up", "Guard", "Centre guard",
+                          "Corner guard", "Hit", "Hit", "Hit & stick", "Hit & roll", "Peel",
+                          "Flashed", "Other", "Not thrown", "Unknown"]
+
+
+class TestTheReportClockAndCoverage:
+    def test_the_longest_thinks(self):
+        got = report_js("out(longestThinks(view, series).map(l =>"
+                        "  [clockText(l.secs), l.color, l.position, l.end, l.number, l.type]));")
+        assert got[:2] == [["1:28", "yellow", "skip", 1, 14, "Hit"],
+                           ["1:18", "yellow", "skip", 3, 13, "Draw"]]
+        assert len(got) == 5
+
+    def test_the_median(self):
+        assert report_js("out(clockText(series.median));") == "0:21"
+
+    def test_coverage(self):
+        got = report_js("out(coverage(view));")
+        assert got == {"graded": 48, "thrown": 64, "ungradedEnds": [1],
+                       "first": {"ei": 0, "si": 0}}
+
+    def test_the_pill_says_what_is_left(self):
+        got = report_js("out(coverageText(coverage(view)));")
+        assert got == "48 of 64 rocks graded · end 1 still to grade"
+
+    def test_the_pill_goes_once_every_rock_is_graded(self):
+        got = report_js("out(coverageText(coverage(view)));",
+                        doc([shot(1, "red", "lead", user_score=3)]))
+        assert got is None
+
+    def test_nothing_graded_says_so(self):
+        got = report_js("out(coverageText(coverage(view)));", doc([shot(1, "red", "lead")]))
+        assert got == "No rocks graded yet"
+
+    def test_the_notes(self):
+        got = report_js("out(reportNotes(coverage(view), think, view.ends.length));")
+        assert got == [
+            "Percentages come from graded rocks only: 48 of 64. End 1 hasn’t been graded. "
+            "A rock nobody graded counts as thrown, never as a miss.",
+            "Thinking time is read for 56 of 64 rocks. An end’s first rock has nothing to "
+            "time from, and the camera missed 4 more. 1 is estimated (outlined). Treat the "
+            "totals as lower bounds."]
+
+    def test_no_clock_means_no_clock_note(self):
+        got = report_js("out(reportNotes(coverage(view), think, view.ends.length).length);",
+                        doc([shot(1, "red", "lead")]))
+        assert got == 1
+
+
+class TestTheReportWords:
+    def test_end_lists(self):
+        assert run_js("out([endList([1]), endList([1, 3]), endList([1, 2, 4])]);") == [
+            "end 1", "ends 1 and 3", "ends 1, 2 and 4"]
+
+    def test_the_meta_line(self):
+        got = run_js("out(reportMeta({chart: {league: 'Tuesday Super League 2026-2027',"
+                     " played_at: '2026-09-30T02:00:00+00:00'}, source: {sheet: 3},"
+                     " games: [{}]}, 0, d => d.toISOString().slice(0, 10)));")
+        assert got == "Tuesday Super League 2026-2027 · Sheet 3 · 2026-09-30 · Game report"
+
+    def test_a_recording_of_two_games_says_which(self):
+        got = run_js("out(reportMeta({chart: {}, source: {}, games: [{}, {}]}, 1));")
+        assert got == "Game 2 of 2 · Game report"
+
+    def test_team_names_fall_back_to_the_colours(self):
+        got = run_js("out(teamNames({teams: {red: {name: 'Dimmit'}, yellow: {name: null}}}));")
+        assert got == {"red": "Dimmit", "yellow": "Yellow"}

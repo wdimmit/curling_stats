@@ -9,9 +9,10 @@
     "frontend/core/flag.mjs": "ca06b39b51bc3a9c1810f5763a26478f2286165de863c1cf4c4879ee427d3082",
     "frontend/core/format.mjs": "8f937075dcb79136dd18bbd49cbeff639c9bf9027701b6e46fab35ced6bc4a50",
     "frontend/core/house.mjs": "94d64eae255dc61ae56b90901710908c5016eee29601b86133d4aeb7717a0631",
-    "frontend/core/index.mjs": "1986715b9f4effc1f168c2a098844b899297f990a7ff9b981881767c470f513b",
+    "frontend/core/index.mjs": "57e100df418b3d8be07fa61850d4b8ef353e8c4b946c532389bd513a6a9e029d",
     "frontend/core/line.mjs": "5035f47752ecd4dab16b701aaeb41fcd3a0b5812d4d5d0579bdf1bb274e15a07",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
+    "frontend/core/report.mjs": "187281f68b883bd70674e2ace44cae2c41318a5913afb0a601b03304f0589401",
     "frontend/core/shots.mjs": "7bbae170388975b0f70afd6c3588083b4f2baf6a32bb8a839a52086bf7a60310",
     "frontend/core/stats.mjs": "67387a12686219c8a66d89631afa54750b6f051b324ad3caaabab641e6be27bb",
     "frontend/core/timeline.mjs": "b9bf4a85364f5e07f3f2bdb1db2f7de8c74a30f4adc62343e9bd08d9cfc14cb5",
@@ -49,6 +50,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "0b1614f1ea17a4fe05c6b4b88185edf0860823d7ffe37601a1d210e75ad0a14f",
-    "src/curling_score/viewer/app.js": "1bfe76022f87046a5d70359451e6c1f61e971a5203225c7d742936e579deff61"
+    "src/curling_score/viewer/app.js": "469add130226e3f95b0755cf5a0ad63808637d4cf8c4366a5d7006b2dd3c18ad"
   }
 }

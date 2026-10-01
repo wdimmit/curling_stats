@@ -124,6 +124,22 @@ export const deliveryGeometry = core.deliveryGeometry;
 export const rampColor = core.rampColor;
 export const endSpan = core.endSpan;
 
+/* The report's numbers, by the view they are given -- not state's. */
+export const byEnd = core.byEnd;
+export const headToHead = core.headToHead;
+export const detailRows = core.detailRows;
+export const longestThinks = core.longestThinks;
+export const coverage = core.coverage;
+export const coverageText = core.coverageText;
+export const reportNotes = core.reportNotes;
+export const reportMeta = core.reportMeta;
+export const teamNames = core.teamNames;
+export const endList = core.endList;
+export const pctOf = core.pctOf;
+export const positionLabel = core.positionLabel;
+export const gatherThinkingOf = core.gatherThinking;
+export const cumulativeThinkingOf = core.cumulativeThinking;
+
 export const dirtyPayload = core.dirtyPayload;
 export const saveUrl = () => core.saveUrl(config, state.version);
 export const unloadBeacon = () => core.unloadBeacon(config, state.overrides, state.dirty);

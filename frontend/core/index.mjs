@@ -9,6 +9,7 @@ export * from "./timeline.mjs";
 export * from "./shots.mjs";
 export * from "./house.mjs";
 export * from "./stats.mjs";
+export * from "./report.mjs";
 export * from "./charts.mjs";
 export * from "./watch.mjs";
 export * from "./wire.mjs";

@@ -1,0 +1,1535 @@
+{
+ "doc": {
+  "chart": {
+   "league": "Tuesday Super League 2026-2027",
+   "title": "09/29 - Sheet 3 - Tuesday Super League 2026-2027"
+  },
+  "games": [
+   {
+    "detected": {
+     "final": {
+      "red": 5,
+      "yellow": 5
+     },
+     "score_by_end": [
+      {
+       "red": 3,
+       "yellow": 0
+      },
+      {
+       "red": 0,
+       "yellow": 2
+      },
+      {
+       "red": 2,
+       "yellow": 0
+      },
+      {
+       "red": 0,
+       "yellow": 3
+      }
+     ]
+    },
+    "end_s": 3325.0,
+    "ends": [
+     {
+      "detected_score": {
+       "red": 3,
+       "yellow": 0
+      },
+      "end_s": 695.0,
+      "hammer": "yellow",
+      "house": "bottom",
+      "number": 1,
+      "running": {
+       "red": 1,
+       "yellow": 0
+      },
+      "score": {
+       "red": 1,
+       "yellow": 0
+      },
+      "score_source": "board",
+      "shots": [
+       {
+        "color": "red",
+        "color_inferred": true,
+        "has_hammer": false,
+        "label": "1st end, lead's first rock",
+        "missing": true,
+        "number": 1,
+        "position": "lead",
+        "rock_of_player": 1,
+        "shot_type": "unknown",
+        "shot_type_source": "auto",
+        "state_known": false,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": null,
+        "thrower_slot": 1
+       },
+       {
+        "color": "yellow",
+        "color_inferred": true,
+        "has_hammer": true,
+        "label": "1st end, lead's first rock",
+        "missing": true,
+        "number": 2,
+        "position": "lead",
+        "rock_of_player": 1,
+        "shot_type": "unknown",
+        "shot_type_source": "auto",
+        "state_known": false,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": null,
+        "thrower_slot": 1
+       },
+       {
+        "color": "red",
+        "color_inferred": true,
+        "has_hammer": false,
+        "label": "1st end, lead's second rock",
+        "missing": true,
+        "number": 3,
+        "position": "lead",
+        "rock_of_player": 2,
+        "shot_type": "unknown",
+        "shot_type_source": "auto",
+        "state_known": false,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": null,
+        "thrower_slot": 1
+       },
+       {
+        "color": "yellow",
+        "color_inferred": true,
+        "has_hammer": true,
+        "label": "1st end, lead's second rock",
+        "missing": true,
+        "number": 4,
+        "position": "lead",
+        "rock_of_player": 2,
+        "shot_type": "unknown",
+        "shot_type_source": "auto",
+        "state_known": false,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": null,
+        "thrower_slot": 1
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "1st end, second's first rock",
+        "missing": false,
+        "number": 5,
+        "position": "second",
+        "rock_of_player": 1,
+        "shot_type": "flashed",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": null,
+        "thrower_slot": 2
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "1st end, second's first rock",
+        "missing": false,
+        "number": 6,
+        "position": "second",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 18.23,
+        "thrower_slot": 2
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "1st end, second's second rock",
+        "missing": false,
+        "number": 7,
+        "position": "second",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 17.82,
+        "thrower_slot": 2
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "1st end, second's second rock",
+        "missing": false,
+        "number": 8,
+        "position": "second",
+        "rock_of_player": 2,
+        "shot_type": "flashed",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 15.51,
+        "thrower_slot": 2
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "1st end, third's first rock",
+        "missing": false,
+        "number": 9,
+        "position": "third",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 32.63,
+        "thrower_slot": 3
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "1st end, third's first rock",
+        "missing": false,
+        "number": 10,
+        "position": "third",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 21.6,
+        "thrower_slot": 3
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "1st end, third's second rock",
+        "missing": false,
+        "number": 11,
+        "position": "third",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 18.85,
+        "thrower_slot": 3
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "1st end, third's second rock",
+        "missing": false,
+        "number": 12,
+        "position": "third",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 11.24,
+        "thrower_slot": 3
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "1st end, skip's first rock",
+        "missing": false,
+        "number": 13,
+        "position": "skip",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 24.21,
+        "thrower_slot": 4
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "1st end, skip's first rock",
+        "missing": false,
+        "number": 14,
+        "position": "skip",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 87.78,
+        "thrower_slot": 4
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "1st end, skip's second rock",
+        "missing": false,
+        "number": 15,
+        "position": "skip",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 19.53,
+        "thrower_slot": 4
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "1st end, skip's second rock",
+        "missing": false,
+        "number": 16,
+        "position": "skip",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 35.04,
+        "thrower_slot": 4
+       }
+      ],
+      "shots_expected": 16,
+      "splits_measured": 12,
+      "start_s": 0.0,
+      "thinking_time": {
+       "anomalies": 0,
+       "estimated_shots": 0,
+       "measured_shots": 11,
+       "red": 113.05,
+       "unmeasured_shots": 5,
+       "yellow": 189.41
+      },
+      "unplaced_shots": 0
+     },
+     {
+      "detected_score": {
+       "red": 0,
+       "yellow": 2
+      },
+      "end_s": 1540.0,
+      "hammer": "yellow",
+      "house": "top",
+      "number": 2,
+      "running": {
+       "red": 1,
+       "yellow": 2
+      },
+      "score": {
+       "red": 0,
+       "yellow": 2
+      },
+      "score_source": "board",
+      "shots": [
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "2nd end, lead's first rock",
+        "missing": false,
+        "number": 1,
+        "position": "lead",
+        "rock_of_player": 1,
+        "shot_type": "guard",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": null,
+        "thrower_slot": 1
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "2nd end, lead's first rock",
+        "missing": false,
+        "number": 2,
+        "position": "lead",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 0.14,
+        "thrower_slot": 1
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "2nd end, lead's second rock",
+        "missing": false,
+        "number": 3,
+        "position": "lead",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 11.13,
+        "thrower_slot": 1
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "2nd end, lead's second rock",
+        "missing": false,
+        "number": 4,
+        "position": "lead",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 8.65,
+        "thrower_slot": 1
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "2nd end, second's first rock",
+        "missing": false,
+        "number": 5,
+        "position": "second",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 26.5,
+        "thrower_slot": 2
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "2nd end, second's first rock",
+        "missing": false,
+        "number": 6,
+        "position": "second",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 15.0,
+        "thrower_slot": 2
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "2nd end, second's second rock",
+        "missing": false,
+        "number": 7,
+        "position": "second",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 15.49,
+        "thrower_slot": 2
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "2nd end, second's second rock",
+        "missing": false,
+        "number": 8,
+        "position": "second",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 22.34,
+        "thrower_slot": 2
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "2nd end, third's first rock",
+        "missing": false,
+        "number": 9,
+        "position": "third",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 26.59,
+        "thrower_slot": 3
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "2nd end, third's first rock",
+        "missing": false,
+        "number": 10,
+        "position": "third",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 35.22,
+        "thrower_slot": 3
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "2nd end, third's second rock",
+        "missing": false,
+        "number": 11,
+        "position": "third",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 30.03,
+        "thrower_slot": 3
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "2nd end, third's second rock",
+        "missing": false,
+        "number": 12,
+        "position": "third",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 24.2,
+        "thrower_slot": 3
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "2nd end, skip's first rock",
+        "missing": false,
+        "number": 13,
+        "position": "skip",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": true,
+        "thinking_time_s": 1.3,
+        "thrower_slot": 4
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "2nd end, skip's first rock",
+        "missing": false,
+        "number": 14,
+        "position": "skip",
+        "rock_of_player": 1,
+        "shot_type": "guard",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 50.54,
+        "thrower_slot": 4
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "2nd end, skip's second rock",
+        "missing": false,
+        "number": 15,
+        "position": "skip",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 12.77,
+        "thrower_slot": 4
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "2nd end, skip's second rock",
+        "missing": false,
+        "number": 16,
+        "position": "skip",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 41.47,
+        "thrower_slot": 4
+       }
+      ],
+      "shots_expected": 16,
+      "splits_measured": 14,
+      "start_s": 700.0,
+      "thinking_time": {
+       "anomalies": 0,
+       "estimated_shots": 1,
+       "measured_shots": 15,
+       "red": 123.8,
+       "unmeasured_shots": 1,
+       "yellow": 197.55
+      },
+      "unplaced_shots": 0
+     },
+     {
+      "detected_score": {
+       "red": 2,
+       "yellow": 0
+      },
+      "end_s": 2460.0,
+      "hammer": "red",
+      "house": "bottom",
+      "number": 3,
+      "running": {
+       "red": 4,
+       "yellow": 2
+      },
+      "score": {
+       "red": 3,
+       "yellow": 0
+      },
+      "score_source": "board",
+      "shots": [
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "3rd end, lead's first rock",
+        "missing": false,
+        "number": 1,
+        "position": "lead",
+        "rock_of_player": 1,
+        "shot_type": "guard",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": null,
+        "thrower_slot": 1
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "3rd end, lead's first rock",
+        "missing": false,
+        "number": 2,
+        "position": "lead",
+        "rock_of_player": 1,
+        "shot_type": "guard",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 13.27,
+        "thrower_slot": 1
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "3rd end, lead's second rock",
+        "missing": false,
+        "number": 3,
+        "position": "lead",
+        "rock_of_player": 2,
+        "shot_type": "guard",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 7.35,
+        "thrower_slot": 1
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "3rd end, lead's second rock",
+        "missing": false,
+        "number": 4,
+        "position": "lead",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 11.7,
+        "thrower_slot": 1
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "3rd end, second's first rock",
+        "missing": false,
+        "number": 5,
+        "position": "second",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 13.5,
+        "thrower_slot": 2
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "3rd end, second's first rock",
+        "missing": false,
+        "number": 6,
+        "position": "second",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 21.29,
+        "thrower_slot": 2
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "3rd end, second's second rock",
+        "missing": false,
+        "number": 7,
+        "position": "second",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 22.4,
+        "thrower_slot": 2
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "3rd end, second's second rock",
+        "missing": false,
+        "number": 8,
+        "position": "second",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 15.69,
+        "thrower_slot": 2
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "3rd end, third's first rock",
+        "missing": false,
+        "number": 9,
+        "position": "third",
+        "rock_of_player": 1,
+        "shot_type": "flashed",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 16.95,
+        "thrower_slot": 3
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "3rd end, third's first rock",
+        "missing": false,
+        "number": 10,
+        "position": "third",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 28.01,
+        "thrower_slot": 3
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "3rd end, third's second rock",
+        "missing": false,
+        "number": 11,
+        "position": "third",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 15.24,
+        "thrower_slot": 3
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "3rd end, third's second rock",
+        "missing": false,
+        "number": 12,
+        "position": "third",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 21.84,
+        "thrower_slot": 3
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "3rd end, skip's first rock",
+        "missing": false,
+        "number": 13,
+        "position": "skip",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 78.0,
+        "thrower_slot": 4
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "3rd end, skip's first rock",
+        "missing": false,
+        "number": 14,
+        "position": "skip",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 31.03,
+        "thrower_slot": 4
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "3rd end, skip's second rock",
+        "missing": false,
+        "number": 15,
+        "position": "skip",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 77.02,
+        "thrower_slot": 4
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "3rd end, skip's second rock",
+        "missing": false,
+        "number": 16,
+        "position": "skip",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 45.58,
+        "thrower_slot": 4
+       }
+      ],
+      "shots_expected": 16,
+      "splits_measured": 15,
+      "start_s": 1545.0,
+      "thinking_time": {
+       "anomalies": 0,
+       "estimated_shots": 0,
+       "measured_shots": 15,
+       "red": 188.4,
+       "unmeasured_shots": 1,
+       "yellow": 230.47
+      },
+      "unplaced_shots": 0
+     },
+     {
+      "detected_score": {
+       "red": 0,
+       "yellow": 3
+      },
+      "end_s": 3325.0,
+      "hammer": "yellow",
+      "house": "top",
+      "number": 4,
+      "running": null,
+      "score": null,
+      "score_source": null,
+      "shots": [
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "4th end, lead's first rock",
+        "missing": false,
+        "number": 1,
+        "position": "lead",
+        "rock_of_player": 1,
+        "shot_type": "guard",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": null,
+        "thrower_slot": 1
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "4th end, lead's first rock",
+        "missing": false,
+        "number": 2,
+        "position": "lead",
+        "rock_of_player": 1,
+        "shot_type": "guard",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 12.27,
+        "thrower_slot": 1
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "4th end, lead's second rock",
+        "missing": false,
+        "number": 3,
+        "position": "lead",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 12.9,
+        "thrower_slot": 1
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "4th end, lead's second rock",
+        "missing": false,
+        "number": 4,
+        "position": "lead",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 9.86,
+        "thrower_slot": 1
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "4th end, second's first rock",
+        "missing": false,
+        "number": 5,
+        "position": "second",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 10.39,
+        "thrower_slot": 2
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "4th end, second's first rock",
+        "missing": false,
+        "number": 6,
+        "position": "second",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 16.67,
+        "thrower_slot": 2
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "4th end, second's second rock",
+        "missing": false,
+        "number": 7,
+        "position": "second",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 11.84,
+        "thrower_slot": 2
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "4th end, second's second rock",
+        "missing": false,
+        "number": 8,
+        "position": "second",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 32.72,
+        "thrower_slot": 2
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "4th end, third's first rock",
+        "missing": false,
+        "number": 9,
+        "position": "third",
+        "rock_of_player": 1,
+        "shot_type": "guard",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 47.27,
+        "thrower_slot": 3
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "4th end, third's first rock",
+        "missing": false,
+        "number": 10,
+        "position": "third",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 32.03,
+        "thrower_slot": 3
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "4th end, third's second rock",
+        "missing": false,
+        "number": 11,
+        "position": "third",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 26.34,
+        "thrower_slot": 3
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "4th end, third's second rock",
+        "missing": false,
+        "number": 12,
+        "position": "third",
+        "rock_of_player": 2,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 17.89,
+        "thrower_slot": 3
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "4th end, skip's first rock",
+        "missing": false,
+        "number": 13,
+        "position": "skip",
+        "rock_of_player": 1,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 42.18,
+        "thrower_slot": 4
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "4th end, skip's first rock",
+        "missing": false,
+        "number": 14,
+        "position": "skip",
+        "rock_of_player": 1,
+        "shot_type": "draw",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 45.2,
+        "thrower_slot": 4
+       },
+       {
+        "color": "red",
+        "color_inferred": false,
+        "has_hammer": false,
+        "label": "4th end, skip's second rock",
+        "missing": false,
+        "number": 15,
+        "position": "skip",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 76.54,
+        "thrower_slot": 4
+       },
+       {
+        "color": "yellow",
+        "color_inferred": false,
+        "has_hammer": true,
+        "label": "4th end, skip's second rock",
+        "missing": false,
+        "number": 16,
+        "position": "skip",
+        "rock_of_player": 2,
+        "shot_type": "hit",
+        "shot_type_source": "auto",
+        "state_known": true,
+        "stones": [],
+        "t_tee_estimated": false,
+        "thinking_time_s": 5.32,
+        "thrower_slot": 4
+       }
+      ],
+      "shots_expected": 16,
+      "splits_measured": 14,
+      "start_s": 2465.0,
+      "thinking_time": {
+       "anomalies": 0,
+       "estimated_shots": 0,
+       "measured_shots": 15,
+       "red": 227.46,
+       "unmeasured_shots": 1,
+       "yellow": 171.96
+      },
+      "unplaced_shots": 0
+     }
+    ],
+    "final": null,
+    "hammer_consistent": true,
+    "index": 0,
+    "scoreboard": {
+     "accounts_for_every_end": false,
+     "agrees_with_detection": null,
+     "cards": {
+      "red": [
+       {
+        "confidence": 1.0,
+        "end": 1,
+        "slot": 1
+       },
+       {
+        "confidence": 1.0,
+        "end": 3,
+        "slot": 4
+       }
+      ],
+      "yellow": [
+       {
+        "confidence": 1.0,
+        "end": 2,
+        "slot": 2
+       }
+      ]
+     },
+     "final": null,
+     "per_end": {
+      "1": {
+       "red": 1,
+       "yellow": 0
+      },
+      "2": {
+       "red": 0,
+       "yellow": 2
+      },
+      "3": {
+       "red": 3,
+       "yellow": 0
+      }
+     },
+     "read_at_s": 2965.0,
+     "reads": 2,
+     "scores_withheld": null,
+     "unread_ends": [
+      4
+     ]
+    },
+    "start_s": 0.0,
+    "teams": {
+     "red": {
+      "name": "Dimmit"
+     },
+     "yellow": {
+      "name": "Grant"
+     }
+    },
+    "thinking_time": {
+     "anomalies": 0,
+     "estimated_shots": 1,
+     "measured_shots": 56,
+     "red": 652.71,
+     "unmeasured_shots": 8,
+     "yellow": 789.39
+    }
+   }
+  ],
+  "schema_version": 8,
+  "source": {
+   "sheet": 3,
+   "video_id": "4l60dFdwgVo"
+  }
+ },
+ "overrides": {
+  "0.2.1": {
+   "miss_reason": "narrow",
+   "shot_type": "centre_guard",
+   "shot_type_source": "manual",
+   "user_score": 2
+  },
+  "0.2.10": {
+   "shot_type": "tap_up",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.2.11": {
+   "shot_type": "hit_roll",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.2.12": {
+   "user_score": 3
+  },
+  "0.2.13": {
+   "miss_reason": "narrow",
+   "shot_type": "hit_roll",
+   "shot_type_source": "manual",
+   "user_score": 2
+  },
+  "0.2.14": {
+   "miss_reason": "light",
+   "shot_type": "freeze",
+   "shot_type_source": "manual",
+   "user_score": 0
+  },
+  "0.2.15": {
+   "note": "needs more ice",
+   "shot_type": "hit_stick",
+   "shot_type_source": "manual",
+   "user_score": 2
+  },
+  "0.2.16": {
+   "shot_type": "hit_stick",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.2.2": {
+   "user_score": 4
+  },
+  "0.2.3": {
+   "miss_reason": "heavy",
+   "shot_type": "hit_stick",
+   "shot_type_source": "manual",
+   "user_score": 2
+  },
+  "0.2.4": {
+   "user_score": 4
+  },
+  "0.2.5": {
+   "miss_reason": "heavy",
+   "user_score": 1
+  },
+  "0.2.6": {
+   "user_score": 3
+  },
+  "0.2.7": {
+   "miss_reason": "light",
+   "user_score": 3
+  },
+  "0.2.8": {
+   "miss_reason": "narrow",
+   "user_score": 2
+  },
+  "0.2.9": {
+   "miss_reason": "heavy",
+   "user_score": 4
+  },
+  "0.3.1": {
+   "shot_type": "centre_guard",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.3.10": {
+   "miss_reason": "light",
+   "shot_type": "draw",
+   "shot_type_source": "manual",
+   "user_score": 0
+  },
+  "0.3.11": {
+   "shot_type": "hit_roll",
+   "shot_type_source": "manual",
+   "user_score": 2
+  },
+  "0.3.12": {
+   "user_score": 4
+  },
+  "0.3.13": {
+   "user_score": 2
+  },
+  "0.3.14": {
+   "user_score": 3
+  },
+  "0.3.15": {
+   "user_score": 1
+  },
+  "0.3.16": {
+   "shot_type": "draw",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.3.2": {
+   "user_score": 3
+  },
+  "0.3.3": {
+   "shot_type": "draw",
+   "shot_type_source": "manual",
+   "user_score": 1
+  },
+  "0.3.4": {
+   "user_score": 4
+  },
+  "0.3.5": {
+   "user_score": 3
+  },
+  "0.3.6": {
+   "shot_type": "peel",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.3.7": {
+   "miss_reason": "light",
+   "shot_type": "draw",
+   "shot_type_source": "manual",
+   "user_score": 0
+  },
+  "0.3.8": {
+   "shot_type": "hit_roll",
+   "shot_type_source": "manual",
+   "user_score": 3
+  },
+  "0.3.9": {
+   "user_score": 0
+  },
+  "0.4.1": {
+   "shot_type": "draw",
+   "shot_type_source": "manual",
+   "user_score": 2
+  },
+  "0.4.10": {
+   "user_score": 4
+  },
+  "0.4.11": {
+   "miss_reason": "not swept enough",
+   "shot_type": "run_back",
+   "shot_type_source": "manual",
+   "user_score": 1
+  },
+  "0.4.12": {
+   "user_score": 4
+  },
+  "0.4.13": {
+   "miss_reason": "narrow",
+   "shot_type": "run_back",
+   "shot_type_source": "manual",
+   "user_score": 1
+  },
+  "0.4.14": {
+   "user_score": 4
+  },
+  "0.4.15": {
+   "shot_type": "draw",
+   "shot_type_source": "manual",
+   "user_score": 0
+  },
+  "0.4.16": {
+   "shot_type": "not_thrown",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.4.2": {
+   "shot_type": "corner_guard",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.4.3": {
+   "user_score": 2
+  },
+  "0.4.4": {
+   "user_score": 3
+  },
+  "0.4.5": {
+   "shot_type": "hit_roll",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.4.6": {
+   "user_score": 3
+  },
+  "0.4.7": {
+   "shot_type": "hit_roll",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.4.8": {
+   "shot_type": "peel",
+   "shot_type_source": "manual",
+   "user_score": 4
+  },
+  "0.4.9": {
+   "shot_type": "draw",
+   "shot_type_source": "manual",
+   "user_score": 0
+  }
+ }
+}
