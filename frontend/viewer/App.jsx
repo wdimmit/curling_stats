@@ -495,7 +495,7 @@ export function App({ doc, config, cursor, reload }) {
 
       <section id="report" className={ui.reporting ? "show" : undefined}>
         <Report view={view} stats={stats} think={think} series={series} actions={actions}
-                config={config} />
+                config={config} open={ui.reporting} />
       </section>
       {/* Outside <main>: the phone's watch layout hides everything in it
           but #playCard, and a dialog inside a hidden parent never shows. */}

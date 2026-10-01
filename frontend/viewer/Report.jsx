@@ -292,10 +292,14 @@ function Matrix({ table, c, names }) {
 
 /* Who may enter a score: "in", "out", or null while unknown or where
  * accounts are off -- then there is no button at all, only the "?". */
-function useWho(config) {
+function useWho(config, open) {
   const [who, setWho] = useState(null);
+  // Only once the report is open: Report is always mounted, and asking on
+  // mount loaded Firebase on every chart page, which the viewer never does
+  // (site/auth.js). Asked again on each opening while still unknown, so a
+  // slow first answer does not turn entry off for the session.
   useEffect(() => {
-    if (!config?.hosted) return undefined;
+    if (!config?.hosted || !open || who !== null) return undefined;
     let live = true;
     (async () => {
       if (!(await accountsOn())) return;
@@ -303,7 +307,7 @@ function useWho(config) {
       if (live && w !== undefined) setWho(w ? "in" : "out");
     })();
     return () => { live = false; };
-  }, [config?.hosted]);
+  }, [config?.hosted, open, who]);
   return [who, setWho];
 }
 
@@ -353,7 +357,7 @@ function ScoreDialog({ at, names, fmt, busy, error, onPick, onClear, onClose }) 
   );
 }
 
-export function Report({ view, stats, think, series, actions, config }) {
+export function Report({ view, stats, think, series, actions, config, open }) {
   const names = teamNames(view.game);
   const table = useMemo(() => byEnd(view), [view]);
   const h2h = useMemo(() => headToHead(stats, view.format), [stats, view.format]);
@@ -362,7 +366,7 @@ export function Report({ view, stats, think, series, actions, config }) {
                          [stats, view.format]);
   const pill = coverageText(cov);
   const notes = reportNotes(cov, think, view.ends.length);
-  const [who, setWho] = useWho(config);
+  const [who, setWho] = useWho(config, open);
   const [at, setAt] = useState(null);       // the end being entered, or null
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -408,7 +412,7 @@ export function Report({ view, stats, think, series, actions, config }) {
         <button type="button" className="noprint" onClick={() => print()}>Print</button>
       </div>
 
-      <div className="rpt-top">
+      <div className={`rpt-top${table.ends.length > 4 ? " long" : ""}`}>
         <section className="card rpt-end">
           <h2>By end</h2>
           <p className="sub">Score, shooting percentage and thinking time, end by end</p>

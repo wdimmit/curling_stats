@@ -291,6 +291,17 @@ body.reporting main { display:none; }
 .rpt-cover:disabled { cursor:default; }
 .rpt-top { display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:20px;
            align-items:stretch; }
+/* A game of more than four ends does not fit beside the head-to-head at
+   1280 px, and below 1240 px nor do four: the by-end table then takes the
+   full width, and the two comparisons sit side by side under it. */
+.rpt-top.long { grid-template-columns:minmax(0,1fr); }
+.rpt-top.long .rpt-h2h-body { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:20px 40px; }
+.rpt-top.long .rpt-h2h-body > div + div { border-top:0; padding-top:0; }
+@media (max-width: 1240px) and (min-width: 821px) {
+  .rpt-top { grid-template-columns:minmax(0,1fr); }
+  .rpt-h2h-body { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:20px 40px; }
+  .rpt-h2h-body > div + div { border-top:0; padding-top:0; }
+}
 
 /* By end. The table is as wide as its columns, not the card: numbers spread
    across a wide card are numbers the eye cannot track along a row. */
@@ -410,6 +421,8 @@ body.reporting main { display:none; }
    the team column pinned, so a ten-end game never widens the page. */
 @media (max-width: 820px) {
   .rpt-top, .rpt-think-body, .rpt-detail-body { grid-template-columns:minmax(0,1fr); }
+  .rpt-top.long .rpt-h2h-body { display:flex; }
+  .rpt-top.long .rpt-h2h-body > div + div { border-top:1px solid var(--line); padding-top:16px; }
   .rpt-detail-body { gap:28px; }
 }
 @media (max-width: 640px) {
@@ -442,6 +455,12 @@ body.reporting main { display:none; }
                    border-radius:6px; border:1px dashed var(--line); padding:0 6px; }
 .rpt-byend .sc-q:hover { border-color:var(--muted); }
 .rpt-byend .sc-q:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* all:unset above clears what the cell's own classes say; say it again, or
+   the people who can enter scores never see one marked as entered. */
+.rpt-byend .sc-q.entered { text-decoration:underline dotted; text-decoration-thickness:1.5px;
+                           text-underline-offset:3px; }
+.rpt-byend .sc-q.won { font-weight:700; }
+.rpt-byend .sc-q.zero, .rpt-byend .sc-q.none { color:var(--muted); }
 #scoreDialog { width:min(460px, calc(100vw - 32px)); padding:16px 18px; border:1px solid var(--line);
                border-radius:10px; background:var(--panel); color:var(--ink);
                font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif; }
@@ -622,7 +641,7 @@ body.reporting main { display:none; }
   }
   body { background:#fff; }
   .card { break-inside:avoid; border-color:#ccc; }
-  .rpt { gap:12px; max-width:none; }
+  .rpt { gap:8px; max-width:none; }
   .rpt .card { border:0; border-radius:0; padding:0; }
   .rpt .screenonly { display:none !important; }
   .rpt .sub { display:none; }
@@ -635,7 +654,12 @@ body.reporting main { display:none; }
   .rpt-top { grid-template-columns:minmax(0,1fr); gap:12px; }
   .rpt-byend { font-size:12.5px; }
   .rpt-byend th, .rpt-byend td { height:22px; }
-  .rpt-byend th[scope=row] { min-width:120px; font-size:12.5px; }
+  /* Paper keeps every column: no scroller, and none of the screen's
+     minimum widths, so a ten-end game still prints its Total. */
+  .rpt-scroll { overflow:visible; }
+  .rpt-byend th, .rpt-byend td { min-width:0; padding:0 4px; }
+  .rpt-byend td.tot { min-width:0; }
+  .rpt-byend th[scope=row] { min-width:0; padding:0 10px 0 0; font-size:12.5px; }
   .rpt-byend tr.blk th { height:18px; font-size:9.5px; }
   .rpt-key { font-size:10px; margin-top:6px; }
   .rpt-rule { margin:8px 0; }
@@ -644,6 +668,7 @@ body.reporting main { display:none; }
   /* By shot type is the detail's group rows again, side by side; on paper the
      detail says it once, and the page fits one sheet. */
   .rpt-h2h-body > div + div { display:none; }
+  .rpt-h2h-body, .rpt-top.long .rpt-h2h-body { display:block; }
   .duel-head { font-size:12px; height:20px; }
   .duel-row { min-height:24px; }
   .duel-num { font-size:12.5px; }
@@ -651,7 +676,7 @@ body.reporting main { display:none; }
   .duel-bar { height:10px; }
   .rpt-cap { font-size:10px; margin-top:4px; }
   .rpt-think-body { grid-template-columns:minmax(0,1fr); }
-  .rclock.lines { max-height:1.6in; width:auto; max-width:100%; }
+  .rclock.lines { max-height:1.4in; width:auto; max-width:100%; }
   /* Paper is ~730 CSS px across, inside the narrow-window rule above, which
      would stack the two teams' tables; side by side they fit the sheet. */
   .rpt-detail-body { grid-template-columns:repeat(2, minmax(0,1fr)); gap:20px; }

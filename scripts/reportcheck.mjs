@@ -6,8 +6,10 @@
  *     --remote-debugging-port=9333 --user-data-dir=$(mktemp -d) about:blank &
  *   CDP_PORT=9333 node scripts/reportcheck.mjs http://127.0.0.1:PORT/s/SHARE/
  *
- * The view-only link, because review (/g/) hides the Report button. Up to
- * five ends, the by-end table must fit its card on a phone without scrolling.
+ * The view-only link, because review (/g/) hides the Report button. The
+ * by-end table must fit its card -- up to five ends on a phone, ten on a
+ * desktop -- and keep its Total column on paper. Nothing may ask about
+ * sign-in before the report is opened.
  * Exits 1 naming each failure. */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -36,6 +38,11 @@ async function openReport(width, height, mobile) {
   await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: mobile });
   await cdp.send("Page.navigate", { url });
   await waitFor(`!!document.getElementById("reportBtn")`);
+  // The viewer stays free of Firebase until somebody opens the report: the
+  // page a person charts in for an hour never fetches the SDK (site/auth.js).
+  await sleep(500);
+  if (await cdp.eval(`performance.getEntriesByType("resource").some(e => e.name.includes("/api/auth/config"))`))
+    fails.push(`${width}px: the viewer asked about sign-in before the report was opened`);
   await cdp.eval(`document.getElementById("reportBtn").click()`);
   await waitFor(`!!document.querySelector("#report.show .rpt-byend")`);
   await cdp.eval("document.fonts.ready.then(() => true)");
@@ -55,7 +62,9 @@ for (const [w, h, mobile] of [[1280, 900, false], [390, 844, true]]) {
   const t = await cdp.eval(`(() => { const el = document.querySelector(".rpt-end .rpt-scroll");
     return { sw: el.scrollWidth, cw: el.clientWidth,
              ends: document.querySelectorAll(".rpt-byend thead th").length - 1 }; })()`);
-  if (t.ends <= 5 && t.sw > t.cw)
+  // On a phone a long game may scroll inside its card; five ends or fewer
+  // must fit. On a desktop every game up to ten ends must fit.
+  if ((w >= 1280 ? t.ends <= 10 : t.ends <= 5) && t.sw > t.cw)
     fails.push(`${w}px: the by-end table needs a sideways scroll (${t.sw} > ${t.cw}) for ${t.ends} ends`);
 }
 
@@ -66,6 +75,9 @@ writeFileSync(file, Buffer.from(pdf.data, "base64"));
 const pages = Number(/Pages:\s+(\d+)/.exec(execFileSync("pdfinfo", [file]).toString())?.[1]);
 console.log(`printed: ${pages} page(s) -> ${file}`);
 if (pages !== 1) fails.push(`it prints on ${pages} pages, not 1`);
+// A long game's by-end table must not lose its Total column off the paper.
+if (!/\bTotal\b/.test(execFileSync("pdftotext", ["-layout", file, "-"]).toString()))
+  fails.push("the printed by-end table has lost its Total column");
 
 if (fails.length) { console.error(fails.join("\n")); process.exit(1); }
 console.log("ok");

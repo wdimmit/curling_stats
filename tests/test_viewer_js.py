@@ -3696,3 +3696,34 @@ class TestEnteringScores:
     def test_the_picker_buttons_are_big_enough_on_a_phone(self):
         css = self.src("src/curling_score/viewer/style.css")
         assert "#scoreDialog .sc-nums button { min-width:44px; min-height:44px;" in css
+
+
+class TestTheReviewFixes:
+    """Findings from the branch's final review, each pinned."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_a_score_button_keeps_the_marks_its_span_would_have(self):
+        """`.sc-q { all:unset }` wiped the dotted "entered by hand" line and
+        the winner's bold from exactly the people who can enter scores."""
+        css = self.src("src/curling_score/viewer/style.css")
+        unset = css.index(".rpt-byend .sc-q { all:unset;")
+        for rule in (".rpt-byend .sc-q.entered {", ".rpt-byend .sc-q.won {",
+                     ".rpt-byend .sc-q.zero, .rpt-byend .sc-q.none {"):
+            assert rule in css and css.index(rule) > unset, rule
+
+    def test_sign_in_is_asked_only_once_the_report_opens(self):
+        """Report is always mounted, so asking on mount loaded Firebase on
+        every chart page -- which site/auth.js says the viewer never does."""
+        report = self.src("frontend/viewer/Report.jsx")
+        assert "const [who, setWho] = useWho(config, open);" in report
+        assert "if (!config?.hosted || !open || who !== null) return undefined;" in report
+        assert "open={ui.reporting}" in self.src("frontend/viewer/App.jsx")
+
+    def test_a_long_game_takes_the_full_width(self):
+        report = self.src("frontend/viewer/Report.jsx")
+        assert 'className={`rpt-top${table.ends.length > 4 ? " long" : ""}`}' in report
+        css = self.src("src/curling_score/viewer/style.css")
+        assert ".rpt-top.long { grid-template-columns:minmax(0,1fr); }" in css

@@ -37,7 +37,7 @@
     "frontend/site/main.jsx": "5af71f53831da02c454f97778ccc851449afb9e7aa859a40eb734dd4e2cbe69c",
     "frontend/site/ui.jsx": "fc72df4ef27d2eeea412256177e5a312502bbdb90c1374a064c4cd281e6e58e0",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
-    "frontend/viewer/App.jsx": "e2adf22966b328549caa3be37d42d5400864288b47156aded50ae74340e46ddb",
+    "frontend/viewer/App.jsx": "014dce5e376056a8aeccb49872491179173c8636b617b6184298f8b5d0746003",
     "frontend/viewer/ChartPanel.jsx": "1ae0a3cba7cd425dbdb4bba58ad6c31d58462e6ce2644a50016070b09c4a05be",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "0924ef749d5cd711e01175d123a9f47e3bfe9e29165b4000dc990fb625f42bfa",
@@ -45,13 +45,13 @@
     "frontend/viewer/Flag.jsx": "7f2b7a7d3e63d89d1d356c257546b7c844896bce6fec4dc276dcd8a0e5a88c90",
     "frontend/viewer/House.jsx": "868238509dfdfb62700f2320d20b78923ac87bc285ce4ea5ae9908130a6560e4",
     "frontend/viewer/Pager.jsx": "3e750b495fffda8fd24ebf00f3f0dd928b1ea2b202ad560f532643c672693df7",
-    "frontend/viewer/Report.jsx": "ae6819ce56dfebb8f39c12b68551e9debb059ecebe603701abbd75212c4821aa",
+    "frontend/viewer/Report.jsx": "c52a28d9789026141379daee371285bc1893999fd0d823f61e64ac3acac2035d",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
     "frontend/viewer/Watch.jsx": "2e7de47175de0cbd87b75ed400def1d76e407ce366ac90b5569c3690fa0e4f5e",
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "0b1614f1ea17a4fe05c6b4b88185edf0860823d7ffe37601a1d210e75ad0a14f",
-    "src/curling_score/viewer/app.js": "cddba681829e3c5d0ecab832eb0bc94f2f2e4300a9b172d23db56f170d8f4935"
+    "src/curling_score/viewer/app.js": "60b3a4d2262a827ae8b402c42d2f048b9fb47a7bf1585e61cd03062abb3b96c9"
   }
 }
