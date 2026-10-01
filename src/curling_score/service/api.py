@@ -452,6 +452,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if game_index is not None:
             doc["games"] = [g for g in doc["games"] if g["index"] == game_index]
         doc = timeline.trim_to_start(doc, start_s)
+        # Scores people entered for the ends the board never gave one. After
+        # the trim, because the key is the end number the trimmed game shows;
+        # before the team names, because rebuilding a game resets those.
+        if src is not None:
+            doc = timeline.apply_entered_scores(doc, src.entered_scores)
         game = doc["games"][0] if doc["games"] else None
         doc["source"]["start_s"] = game["start_s"] if game else None
         # Who played, if anybody has said. The names live on the source rather
@@ -1019,6 +1024,59 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         log.info("teams %s set on %s by %s", names, src.id, me.id)
         return {"ok": True, **{c: names.get("team_" + c, getattr(src, "team_" + c))
                                for c in ("red", "yellow")}}
+
+    @app.post("/api/games/{source_id}/scores")
+    def api_enter_score(source_id: str, body: dict,
+                        authorization: str | None = Header(default=None)):
+        """An end's score, typed in by anyone signed in, where the board gave none.
+
+        The wall board is read off the video and misses ends: a card never
+        hung, a camera that lost the board, a recording that stops before the
+        last card goes up. Somebody who was there knows the score, and the
+        report's by-end table shows a "?" until they say.
+
+        It lives on the source, like the team names, so every chart and link
+        of the game shows it. Gaps only: an end the board read is refused here
+        (with the board's figure, so the page can say what it says), and
+        ``timeline.apply_entered_scores`` lets the board win if it reads one
+        later. ``end`` is the end number the review link shows -- the game as
+        ``game_doc`` serves it from the current run and play start.
+        """
+        me = require_user(authorization)
+        src = repo.get_source(source_id)
+        if src is None:
+            raise HTTPException(404, "no such game")
+        run = repo.get_run(src.current_run_id)
+        if run is None or run.timeline_key is None:
+            raise HTTPException(409, "that game has no finished run")
+        doc = game_doc(run, src.game_index, src, src.play_start_s)
+        if int(doc.get("schema_version") or 0) < 4:
+            raise HTTPException(409, "that game was analysed before the wall board was read")
+        ends = doc["games"][0]["ends"] if doc.get("games") else []
+        number = body.get("end")
+        served = (next((e for e in ends if e["number"] == number), None)
+                  if isinstance(number, int) and not isinstance(number, bool) else None)
+        if served is None:
+            raise HTTPException(422, f"end must be one of the game's {len(ends)} ends")
+        if served.get("score_source") == "board":
+            raise HTTPException(409, {"message": "the wall board has a score for that end",
+                                      "score": served["score"]})
+        if body.get("clear") is True:
+            entry = None
+        else:
+            most = format_mod.of_document(doc).stones_per_team
+            red, yellow = body.get("red"), body.get("yellow")
+            whole = all(isinstance(v, int) and not isinstance(v, bool) for v in (red, yellow))
+            if not whole or min(red, yellow) < 0 or (red and yellow) or max(red, yellow) > most:
+                raise HTTPException(422, f"one team scores 1 to {most}, or neither")
+            entry = {"red": red, "yellow": yellow, "by": me.id, "at": _iso(now())}
+        src = repo.set_entered_score(src.id, number, entry)
+        log.info("score for end %d set to %s on %s by %s", number,
+                 None if entry is None else {"red": entry["red"], "yellow": entry["yellow"]},
+                 source_id, me.id)
+        return {"ok": True,
+                "entered_scores": {k: {f: v for f, v in e.items() if f != "by"}
+                                   for k, e in (src.entered_scores or {}).items()}}
 
     @app.post("/api/admin/relabel")
     def admin_relabel(authorization: str | None = Header(default=None)):
