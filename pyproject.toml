@@ -42,7 +42,7 @@ where = ["src"]
 # The card-digit classifier's weights. Numpy reads them, so they belong in the
 # base install: `analyze` reads the scoreboard without the `gpu` extra.
 "curling_score.game" = ["*.npz"]
-"curling_score.viewer" = ["*.html", "*.js", "*.css"]
+"curling_score.viewer" = ["*.html", "*.js", "*.css", "*.woff2", "*.txt"]
 "curling_score.service" = ["static/*.html", "static/*.js", "static/*.css"]
 
 [tool.pytest.ini_options]

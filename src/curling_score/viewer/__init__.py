@@ -17,7 +17,8 @@ import webbrowser
 from pathlib import Path
 
 HERE = Path(__file__).parent
-ASSETS = ("index.html", "app.js", "style.css")
+ASSETS = ("index.html", "app.js", "style.css", "source-sans-3.woff2",
+          "source-sans-3.OFL.txt")
 
 # The comment in index.html that the hosted service replaces with the page's
 # configuration. A comment rather than the script tag: a tag is markup a tool

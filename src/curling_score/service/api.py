@@ -53,7 +53,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 # list_sources defaults to the newest 500, which suits a catalogue page; the
 # report must see a league's old games too.
 EVERY_SOURCE = 5000
-VIEWER_ASSETS = {"app.js": "application/javascript", "style.css": "text/css"}
+VIEWER_ASSETS = {"app.js": "application/javascript", "style.css": "text/css",
+                 "source-sans-3.woff2": "font/woff2"}
 # One bundle for every page. This was nine hand-kept names, one per script
 # plus the modules they imported, and a page referencing a file missing from
 # it 404s at runtime with nothing to catch it -- which is what the test named

@@ -1912,3 +1912,23 @@ class TestTheChartSaysWhichGameAndWhen:
         chart = world["client"].get(f"/g/{src}/timeline.json").json()["chart"]
         assert chart["source_id"] == src
         assert chart["played_at"] is not None
+
+
+class TestTheViewerFont:
+    """The report's face is shipped with the viewer, not fetched from a CDN."""
+
+    def test_every_surface_serves_it(self, world):
+        slug = submit(world).json()["slug"]
+        work_through(world, games=1)
+        src = world["repo"].get_chart(slug).source_id
+        share = world["repo"].get_chart(slug).share_slug
+        for path in (f"/c/{slug}/source-sans-3.woff2", f"/s/{share}/source-sans-3.woff2",
+                     f"/g/{src}/source-sans-3.woff2"):
+            r = world["client"].get(path)
+            assert r.status_code == 200, path
+            assert r.headers["content-type"] == "font/woff2"
+            assert r.content[:4] == b"wOF2"
+
+    def test_the_local_server_copies_it(self):
+        from curling_score import viewer
+        assert "source-sans-3.woff2" in viewer.ASSETS

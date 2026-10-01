@@ -590,7 +590,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
                 onClick={() => store.download()}>⬇</button>
         <button id="reportBtn" className={ui.reporting ? "on" : undefined}
                 onClick={() => dispatch({ type: "set", patch: { reporting: !ui.reporting } })}>
-          Report
+          {ui.reporting ? "Close report" : "Report"}
         </button>
         <button id="flagBtn" title="Flag an issue with this rock" hidden={!config.hosted}
                 onClick={() => {

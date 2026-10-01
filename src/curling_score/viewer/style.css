@@ -14,6 +14,7 @@
 :root {
   --bg:#f3f0e7; --panel:#fffdf7; --ink:#16130c; --muted:#6d6455;
   --line:#dcd5c3; --accent:#16130c; --onaccent:#fffdf7;
+  --soft:#eee8da; --band:#f7f3ea;
   --red:#d13438; --yellow:#e8b400;
   --warn:#8a4f12; --warnbg:#f3e3c6; --ok:#2f7a37; --okbg:#e2efd9;
   --ice:#fffdf7; --iceline:#cfc8b6; --rail:#8c8472;
@@ -32,6 +33,7 @@
   :root:not([data-theme="light"]) {
     --bg:#17140f; --panel:#211c14; --ink:#f2ece0; --muted:#a2977f;
     --line:#372f22; --accent:#f2ece0; --onaccent:#17140f;
+    --soft:#2c251a; --band:#262017;
     --warn:#e0a94a; --warnbg:#3a2c11; --ok:#7fbf6a; --okbg:#1c2c16;
   }
 }
@@ -247,12 +249,186 @@ td.name, th.name { text-align:left; font-weight:600; }
 .wlive { font-size:11px; padding:1px 6px; border-radius:999px; margin-left:6px; white-space:nowrap; }
 
 /* --- report ------------------------------------------------------------ */
-#report { padding:14px; display:none; }
+/* The game report: a by-end table, the two teams head to head, the clock and
+   the detail, as on board B of the "Game Report Readability" canvas
+   (docs/superpowers/specs/2026-10-01-game-report-and-entered-scores-design.md).
+   Set in Source Sans 3 like the games page, with tabular figures so every
+   column of numbers lines up. Team colours are SVG fills (.rpt-dot, the
+   duel bars), because a CSS background is dropped when the page prints. */
+/* Source Sans 3 (SIL OFL 1.1, source-sans-3.OFL.txt): the latin subset, every
+   weight from 400 to 700 in one variable file. Shipped with the viewer rather
+   than fetched from Google, because the viewer reaches for nothing but
+   YouTube and so keeps working offline under `curling-score serve`
+   (tests/test_frontend_build.py). */
+@font-face { font-family:"Source Sans 3"; font-style:normal; font-weight:400 700;
+             font-display:swap; src:url("source-sans-3.woff2") format("woff2"); }
+#report { padding:24px 28px 40px; display:none;
+          font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
+          font-size:15px; line-height:1.4; font-variant-numeric:tabular-nums; }
 #report.show { display:block; }
 body.reporting main { display:none; }
-.reportgrid { display:grid; gap:14px;
-              grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); }
-.pct { font-weight:650; }
+#report table, #report th, #report button { font-family:inherit; }
+.rpt { max-width:1216px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+.rpt .card { border-radius:12px; padding:20px 24px; min-width:0; }
+.rpt h2 { font-family:inherit; font-size:19px; font-weight:700; line-height:1.2;
+          text-transform:none; letter-spacing:0; margin:0; color:var(--ink); }
+.rpt h3 { font-family:inherit; font-size:15px; font-weight:700; text-transform:none;
+          letter-spacing:0; color:var(--ink); margin:0 0 6px; }
+.rpt .sub { font-size:14px; color:var(--muted); margin:2px 0 14px; }
+.rpt-dot { flex:none; }
+.rpt-dot.red circle { fill:var(--red); }
+.rpt-dot.yellow circle { fill:var(--yellow); }
+.rpt-team { display:inline-flex; align-items:center; gap:8px; font-weight:600; }
+.rpt-head { display:flex; align-items:flex-end; gap:16px 20px; flex-wrap:wrap; }
+.rpt-meta { font-size:15px; color:var(--muted); margin-bottom:4px; }
+.rpt-title { font-family:inherit; font-size:34px; line-height:1.1; font-weight:700;
+             text-transform:none; letter-spacing:0; white-space:normal;
+             display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.rpt-title .v { color:var(--muted); font-weight:400; font-size:26px; }
+.rpt-cover { display:inline-flex; align-items:center; gap:10px; min-height:40px;
+             padding:6px 16px; border-radius:999px; border:0; cursor:pointer;
+             background:var(--warnbg); color:var(--warn); font-size:15px; font-weight:600; }
+.rpt-cover:disabled { cursor:default; }
+.rpt-top { display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:20px;
+           align-items:stretch; }
+
+/* By end. The table is as wide as its columns, not the card: numbers spread
+   across a wide card are numbers the eye cannot track along a row. */
+.rpt-scroll { overflow-x:auto; }
+.rpt-byend { width:auto; font-size:17px; }
+.rpt-byend th, .rpt-byend td { border:0; padding:0 10px; height:38px; text-align:center;
+                               font-size:inherit; color:var(--ink); }
+.rpt-byend thead th { height:32px; font-size:13px; font-weight:600; color:var(--muted);
+                      white-space:nowrap; }
+.rpt-byend th[scope=row] { text-align:left; padding-left:0; min-width:150px; font-size:16px;
+                           white-space:nowrap; position:sticky; left:0; background:var(--panel); z-index:1; }
+.rpt-byend tr.blk th { height:28px; vertical-align:bottom; text-align:left; padding:0 0 4px;
+                       font-size:12px; font-weight:700; letter-spacing:.08em;
+                       text-transform:uppercase; color:var(--muted);
+                       border-bottom:1px solid var(--line); }
+.rpt-byend tbody tr:not(.blk) > * { border-bottom:1px solid var(--line); }
+.rpt-byend td { min-width:64px; position:relative; }
+.rpt-byend td.tot { background:var(--band); font-weight:700; min-width:90px; }
+.rpt-byend td.tot.partial { color:var(--muted); }
+.rpt-byend .zero, .rpt-byend .none, .rpt-byend td.none { color:var(--muted); }
+.rpt-byend .won, .rpt-byend td.won { font-weight:700; }
+.rpt-byend .rpt-noscore { text-align:left; padding:8px 0; height:auto; color:var(--muted);
+                          font-size:14px; }
+.rpt .ham { width:6px; height:6px; }
+.rpt .ham circle { fill:var(--muted); }
+.rpt-byend .ham { position:absolute; left:8px; top:50%; margin-top:-3px; }
+.rpt-key { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:13px; color:var(--muted);
+           margin-top:12px; }
+.rpt-key .ham { margin-right:6px; vertical-align:middle; }
+.rpt-rule { border:0; height:1px; background:var(--line); margin:20px 0 16px; }
+.rpt-notes p { margin:0 0 8px; font-size:14px; color:var(--muted); line-height:1.45; }
+
+/* Head to head: mirrored bars on a 0-100 scale, the number outside each. */
+.rpt-h2h-body { display:flex; flex-direction:column; gap:20px; }
+.rpt-h2h-body > div + div { border-top:1px solid var(--line); padding-top:16px; }
+.rpt-h2h-body > div + div h2 { font-size:17px; margin-bottom:8px; }
+.duel-head, .duel-row { display:grid; align-items:center;
+                        grid-template-columns:3.4em minmax(0,1fr) 6.2em minmax(0,1fr) 3.4em; }
+.duel-head { height:28px; margin-bottom:4px; font-size:15px; }
+.duel-head > :first-child { grid-column:1 / 3; justify-self:end; }
+.duel-head > :last-child { grid-column:4 / 6; }
+.duel-row { min-height:46px; }
+.duel-row.total { border-top:2px solid var(--line); margin-top:4px; }
+.duel-label { text-align:center; font-weight:600; }
+.duel-row.total .duel-label { font-weight:700; }
+.duel-num { font-size:18px; font-weight:500; color:var(--muted); line-height:1.15; }
+.duel-num.better { font-weight:700; color:var(--ink); }
+.duel-num.r { text-align:right; }
+.duel-num small { display:block; font-size:12px; font-weight:400; color:var(--muted); line-height:1; }
+.duel-bar { display:block; width:100%; height:14px; }
+.duel-bar .track { fill:var(--soft); }
+.duel-bar .red { fill:var(--red); }
+.duel-bar .yellow { fill:var(--yellow); }
+.rpt-cap { font-size:13px; color:var(--muted); margin:8px 0 0; }
+
+/* Thinking time, drawn at the card's own width (Charts.jsx ReportClock). */
+.rpt-think-body { display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:40px; }
+.rpt-clock { min-width:0; }
+.rclock { display:block; height:auto; overflow:visible; }
+.rclock.bars { margin-top:18px; }
+.rclock text { font-size:13px; fill:var(--muted); }
+.rclock .yl { text-anchor:end; }
+.rclock .xl { text-anchor:middle; }
+.rclock .g { stroke:var(--line); stroke-width:1; }
+.rclock .b { stroke:var(--line); stroke-width:1; stroke-dasharray:3 4; }
+.rclock .ln { fill:none; stroke-width:2.5; stroke-linejoin:round; }
+.rclock .ln.red { stroke:var(--red); }
+.rclock .ln.yellow { stroke:var(--yellow); }
+.rclock .est { fill:var(--panel); stroke-width:1.5; }
+.rclock .est.red { stroke:var(--red); }
+.rclock .est.yellow { stroke:var(--yellow); }
+.rclock .dot.red { fill:var(--red); }
+.rclock .dot.yellow { fill:var(--yellow); }
+.rclock .tot { fill:var(--ink); font-size:14px; font-weight:600; }
+.rclock .bar { cursor:pointer; }
+.rclock .bar:hover { opacity:.65; }
+.rclock .bar.red { fill:var(--red); }
+.rclock .bar.yellow { fill:var(--yellow); }
+.rclock .bar.est { fill:none; stroke-width:1.5; pointer-events:all; }
+.rclock .bar.est.red { stroke:var(--red); }
+.rclock .bar.est.yellow { stroke:var(--yellow); }
+.rclock .median { stroke:var(--ink); stroke-width:1; stroke-dasharray:5 4; opacity:.7; }
+.rclock .mlabel, .rclock .blabel { fill:var(--ink); }
+.rclock .blabel { font-size:12px; font-weight:600; text-anchor:middle; }
+.rpt-clockkey { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:14px; margin:8px 0; }
+.rpt-clockkey span { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+.rpt-clockkey.screenonly { font-weight:400; color:var(--muted); font-size:13px; }
+.rpt-long h3 { margin-bottom:4px; }
+.rpt-long button { all:unset; box-sizing:border-box; width:100%; cursor:pointer;
+                   display:grid; grid-template-columns:auto 1fr; column-gap:12px;
+                   grid-template-areas:"t who" "t where"; padding:9px 0;
+                   border-bottom:1px solid var(--line); }
+.rpt-long button:hover .who { text-decoration:underline; }
+.rpt-long button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.rpt-long .t { grid-area:t; font-size:17px; font-weight:700; min-width:40px; }
+.rpt-long .who { grid-area:who; display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+.rpt-long .where { grid-area:where; font-size:13px; color:var(--muted); }
+
+/* Detail: one position-by-type table per team, the header said once. */
+.rpt-detail-body { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:48px; }
+.rpt-mhead { font-size:17px; margin:0 0 10px; }
+.rpt-matrix { width:100%; font-size:16px; }
+.rpt-matrix th, .rpt-matrix td { height:36px; padding:0 6px; text-align:center; white-space:nowrap;
+                                 border-bottom:1px solid var(--line); font-size:inherit; color:var(--ink); }
+.rpt-matrix thead th { height:28px; font-size:13px; font-weight:600; color:var(--muted); }
+.rpt-matrix th[scope=row] { text-align:left; font-weight:400; padding-left:26px; }
+.rpt-matrix tr.grp > * { background:var(--band); font-weight:700; }
+.rpt-matrix tr.grp th[scope=row], .rpt-matrix tr.all th[scope=row] { padding-left:10px; font-weight:700; }
+.rpt-matrix tr.all > * { border-top:2px solid var(--line); border-bottom:0; font-weight:700; }
+.rpt-matrix .p { font-weight:600; }
+.rpt-matrix .none { color:var(--muted); }
+.rpt-matrix .n { font-size:13px; color:var(--muted); font-weight:400; margin-left:5px; }
+.rpt-matrix .empty { color:var(--line); }
+
+/* Phone and narrow windows: one column, tighter cells, counts under the
+   percentage. The by-end table scrolls inside its card (.rpt-scroll) with
+   the team column pinned, so a ten-end game never widens the page. */
+@media (max-width: 820px) {
+  .rpt-top, .rpt-think-body, .rpt-detail-body { grid-template-columns:minmax(0,1fr); }
+  .rpt-detail-body { gap:28px; }
+}
+@media (max-width: 640px) {
+  #report { padding:16px; }
+  .rpt { gap:16px; }
+  .rpt .card { padding:16px; }
+  .rpt-title { font-size:28px; }
+  .rpt-cover { width:100%; min-height:44px; }
+  .rpt-byend { font-size:16px; }
+  .rpt-byend th[scope=row] { min-width:86px; font-size:15px; }
+  .rpt-byend td { min-width:48px; padding:0 4px; height:40px; }
+  .rpt-byend td.tot { min-width:56px; }
+  .duel-head, .duel-row { grid-template-columns:2.9em minmax(0,1fr) 4.4em minmax(0,1fr) 2.9em; }
+  .duel-num { font-size:17px; }
+  .rpt-matrix { font-size:15px; }
+  .rpt-matrix th, .rpt-matrix td { height:46px; padding:0 2px; }
+  .rpt-matrix th[scope=row] { padding-left:12px; white-space:normal; }
+  .rpt-matrix .n { display:block; margin:0; line-height:1.1; }
+}
 
 /* --- the clock chart ---------------------------------------------------- */
 /* Scales uniformly with the card, so the tick labels keep their proportions
@@ -307,7 +483,6 @@ body.reporting main { display:none; }
 /* The game's own median: what "long" means here rather than in the abstract. */
 .clockchart .median { stroke:var(--ink); stroke-width:1; stroke-dasharray:4 3;
                       opacity:.5; vector-effect:non-scaling-stroke; }
-.clockcard .clockchart.bars { margin-top:10px; }
 #clock .key .grow { flex:1 1 auto; }
 #clock .key button.linky { all:unset; cursor:pointer; color:var(--accent); }
 #clock .key button.linky:hover { text-decoration:underline; }
@@ -321,16 +496,6 @@ body.reporting main { display:none; }
                    vector-effect:non-scaling-stroke; }
 .clockchart .est.red { stroke:var(--red); }
 .clockchart .est.yellow { stroke:var(--yellow); }
-.clockcard .key { display:flex; gap:14px; flex-wrap:wrap; font-size:12px;
-                  margin-top:6px; }
-.clockcard .key i.sw { display:inline-block; width:10px; height:10px;
-                       border-radius:50%; margin-right:5px;
-                       vertical-align:-1px; }
-.clockcard .key i.sw.red { background:var(--red); }
-.clockcard .key i.sw.yellow { background:var(--yellow); }
-.clockcard .key i.sw.est { background:var(--panel); border:1.5px solid var(--muted); }
-td.sub { text-align:left; padding-left:18px; color:var(--muted); font-size:12px; }
-tr.total td { border-top:2px solid var(--line); font-weight:650; }
 
 /* --- gathered controls -------------------------------------------------- */
 /* `display:contents` lets the menu exist as a container for the phone while
@@ -460,7 +625,7 @@ body[data-mode="review"] #house { cursor:default; }
   body.reporting { height: auto; overflow: auto; }
 
   header { height: 48px; padding: 0 8px 0 12px; flex-wrap: nowrap; gap: 8px; }
-  h1, #src { display: none; }
+  header > h1, #src { display: none; }
   /* #save is the only channel that says a save is not landing -- "not saved
      -- use ⬇", or "reloaded -- someone else saved", which silently replaces
      the charter's overrides with somebody else's. A phone is the likeliest
@@ -724,6 +889,10 @@ body[data-mode="review"] #house { cursor:default; }
   body[data-mode="review"] main > *:not(#playCard) { display: none; }
   body[data-mode="view"] #watch,
   body[data-mode="review"] #watch { display: flex; }
+  /* The report replaces the watching layout while it is open, as it replaces
+     main: #watch is fixed over the page and would otherwise cover it. */
+  body.reporting[data-mode="view"] #watch,
+  body.reporting[data-mode="review"] #watch { display: none; }
 
   /* #playCard stays for the player's sake, but its charting furniture does
      not: the list is the transport now, and the flags are a charting prompt
@@ -735,7 +904,7 @@ body[data-mode="review"] #house { cursor:default; }
     display: none; }
   /* The phone hides these to buy room for the grade row. Watch mode has room,
      and a header saying nothing at all is worse than one saying where you are. */
-  body[data-mode="view"] h1,   body[data-mode="review"] h1,
+  body[data-mode="view"] header > h1, body[data-mode="review"] header > h1,
   body[data-mode="view"] #src, body[data-mode="review"] #src { display: block; }
 
   #watch { position: fixed; left: 0; right: 0; top: calc(48px + 56.25vw);

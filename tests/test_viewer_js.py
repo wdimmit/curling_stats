@@ -3550,3 +3550,63 @@ class TestTheReportChartLabels:
     def test_a_bar_knows_its_seconds(self):
         got = report_js(f"out(barsGeometry(series, null, {self.BOX}).bars[0].secs);")
         assert isinstance(got, (int, float))
+
+
+class TestTheReportPage:
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_the_report_holds_no_arithmetic(self):
+        """Every number comes from core/report.mjs, where it is tested."""
+        report = self.src("frontend/viewer/Report.jsx")
+        for name in ("byEnd(", "headToHead(", "detailRows(", "coverage(", "reportNotes("):
+            assert name in report
+        assert "/ (4 *" not in report and "toFixed" not in report
+
+    def test_the_button_says_close_while_open(self):
+        app = self.src("frontend/viewer/App.jsx")
+        assert '{ui.reporting ? "Close report" : "Report"}' in app
+
+    def test_the_viewer_carries_its_own_source_sans(self):
+        """Not from Google: the viewer fetches nothing but YouTube, so it
+        keeps working offline (TestItStillWorksWithNoNetwork)."""
+        css = self.src("src/curling_score/viewer/style.css")
+        face = css[css.index("@font-face"):][:300]
+        assert 'font-family:"Source Sans 3"' in face
+        assert 'url("source-sans-3.woff2") format("woff2")' in face
+        assert "fonts.googleapis.com" not in self.src("src/curling_score/viewer/index.html")
+        viewer_dir = self.ROOT / "src/curling_score/viewer"
+        assert (viewer_dir / "source-sans-3.woff2").read_bytes()[:4] == b"wOF2"
+        assert (viewer_dir / "source-sans-3.OFL.txt").is_file()
+
+    def test_the_phone_hides_only_the_headers_title(self):
+        css = self.src("src/curling_score/viewer/style.css")
+        assert "header > h1, #src { display: none; }" in css
+        assert "\n  h1, #src { display: none; }" not in css
+
+    def test_the_watching_layout_steps_aside_for_the_report(self):
+        """On a phone's view link #watch is fixed over the page; left up, it
+        covered the report (as on the live site before this)."""
+        css = self.src("src/curling_score/viewer/style.css")
+        assert 'body.reporting[data-mode="view"] #watch,' in css
+        assert 'body.reporting[data-mode="review"] #watch { display: none; }' in css
+
+    def test_watch_mode_shows_only_the_headers_title(self):
+        """A bare h1 rule there outranked .rpt-title and broke its layout."""
+        css = self.src("src/curling_score/viewer/style.css")
+        assert 'body[data-mode="view"] header > h1, body[data-mode="review"] header > h1,' in css
+
+    def test_a_long_game_scrolls_inside_its_card(self):
+        css = self.src("src/curling_score/viewer/style.css")
+        assert ".rpt-scroll { overflow-x:auto; }" in css
+        assert "position:sticky; left:0;" in css[css.index(".rpt-byend th[scope=row]"):]
+        # "End 1" on one line, even in a 48 px phone column.
+        assert "white-space:nowrap" in css[css.index(".rpt-byend thead th"):][:160]
+
+    def test_team_colours_are_drawn_not_painted_behind(self):
+        """CSS backgrounds vanish when printed; SVG fills do not."""
+        report = self.src("frontend/viewer/Report.jsx")
+        assert "className=\"swatch\"" not in report
+        assert "<Dot " in report
