@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Serve every charting surface locally, against the real service code.
 
-    python scripts/devserve.py [path/to/timeline.json] [--live SECONDS]
+    python scripts/devserve.py [path/to/timeline.json] [--live SECONDS] [--overrides overrides.json]
 
 Prints a URL for each of the four surfaces the viewer has to work on:
 
@@ -113,6 +113,11 @@ def main() -> None:
         i = args.index("--live")
         live_every = float(args[i + 1])
         del args[i:i + 2]
+    overrides = None
+    if "--overrides" in args:
+        i = args.index("--overrides")
+        overrides = json.loads(pathlib.Path(args[i + 1]).read_text())
+        del args[i:i + 2]
     where = pathlib.Path(args[0] if args else "out_chart/timeline.json")
     if not where.is_file():
         raise SystemExit(
@@ -135,6 +140,9 @@ def main() -> None:
 
     slug = submit(w).json()["slug"]
     work_through(w, doc=doc, games=len(doc["games"]))
+    if overrides is not None:
+        # A chart's grading, so the report has percentages to show.
+        repo.update_chart(slug, overrides=overrides, overrides_version=1)
     # A second video, left queued, so the status page is reachable too -- it is
     # a surface like any other and is otherwise only visible for the half hour
     # a real run takes.

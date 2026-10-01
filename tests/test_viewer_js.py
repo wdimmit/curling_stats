@@ -3610,3 +3610,32 @@ class TestTheReportPage:
         report = self.src("frontend/viewer/Report.jsx")
         assert "className=\"swatch\"" not in report
         assert "<Dot " in report
+
+
+class TestTheReportPrints:
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def print_css(self):
+        css = (self.ROOT / "src/curling_score/viewer/style.css").read_text()
+        start = css.index("@media print {")
+        return css[start:css.index("\n}\n", start)]
+
+    def test_print_forces_the_light_tokens(self):
+        """From a dark-mode device the ink would print cream on white paper."""
+        block = self.print_css()
+        assert ':root, :root:not([data-theme="light"])' in block
+        assert "--ink:#16130c" in block and "--panel:#fff" in block
+
+    def test_print_drops_the_screen_only_parts(self):
+        block = self.print_css()
+        assert ".rpt .screenonly" in block and ".rpt-matrix tr.type" in block
+
+    def test_print_keeps_one_sheet(self):
+        """Paper is inside the narrow-window rule, which would stack the two
+        detail tables; and by shot type repeats the detail's group rows."""
+        block = self.print_css()
+        assert ".rpt-detail-body { grid-template-columns:repeat(2, minmax(0,1fr));" in block
+        assert ".rpt-h2h-body > div + div { display:none; }" in block
+
+    def test_print_asks_for_letter(self):
+        assert "@page { size:letter;" in self.print_css()

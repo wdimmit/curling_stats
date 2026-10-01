@@ -581,9 +581,56 @@ body.reporting main { display:none; }
 
 @media print {
   header, main, .noprint { display:none !important; }
-  #report { display:block !important; }
+  #report { display:block !important; padding:0; font-size:12px; }
+  @page { size:letter; margin:0.45in; }
+  /* Paper is white whatever the device is doing. The dark tokens are set by
+     :root:not([data-theme="light"]) at (0,2,0), so the list repeats that
+     selector to win by order rather than lose by specificity. */
+  :root, :root:not([data-theme="light"]) {
+    --bg:#fff; --panel:#fff; --ink:#16130c; --muted:#5f574a; --line:#d9d2bf;
+    --soft:#eee8da; --band:#f6f3ec; --warn:#7a440c; --warnbg:#f3e3c6; --accent:#16130c;
+  }
   body { background:#fff; }
   .card { break-inside:avoid; border-color:#ccc; }
+  .rpt { gap:12px; max-width:none; }
+  .rpt .card { border:0; border-radius:0; padding:0; }
+  .rpt .screenonly { display:none !important; }
+  .rpt .sub { display:none; }
+  .rpt h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+  .rpt-head { padding-bottom:8px; border-bottom:2px solid var(--ink); }
+  .rpt-title { font-size:22px; }
+  .rpt-meta { font-size:11px; }
+  .rpt-cover { background:none; padding:0; min-height:0; color:var(--muted);
+               font-size:11px; font-weight:400; }
+  .rpt-top { grid-template-columns:minmax(0,1fr); gap:12px; }
+  .rpt-byend { font-size:12.5px; }
+  .rpt-byend th, .rpt-byend td { height:22px; }
+  .rpt-byend th[scope=row] { min-width:120px; font-size:12.5px; }
+  .rpt-byend tr.blk th { height:18px; font-size:9.5px; }
+  .rpt-key { font-size:10px; margin-top:6px; }
+  .rpt-rule { margin:8px 0; }
+  .rpt-notes p { font-size:10px; margin-bottom:3px; }
+  .rpt h3 { font-size:11px; }
+  /* By shot type is the detail's group rows again, side by side; on paper the
+     detail says it once, and the page fits one sheet. */
+  .rpt-h2h-body > div + div { display:none; }
+  .duel-head { font-size:12px; height:20px; }
+  .duel-row { min-height:24px; }
+  .duel-num { font-size:12.5px; }
+  .duel-num small { font-size:9px; }
+  .duel-bar { height:10px; }
+  .rpt-cap { font-size:10px; margin-top:4px; }
+  .rpt-think-body { grid-template-columns:minmax(0,1fr); }
+  .rclock.lines { max-height:1.6in; width:auto; max-width:100%; }
+  /* Paper is ~730 CSS px across, inside the narrow-window rule above, which
+     would stack the two teams' tables; side by side they fit the sheet. */
+  .rpt-detail-body { grid-template-columns:repeat(2, minmax(0,1fr)); gap:20px; }
+  .rpt-matrix th, .rpt-matrix td { padding:0 3px; }
+  .rpt-mhead { font-size:12px; margin-bottom:4px; }
+  .rpt-matrix { font-size:11.5px; }
+  .rpt-matrix th, .rpt-matrix td { height:20px; }
+  .rpt-matrix .n { font-size:9.5px; }
+  .rpt-matrix tr.type { display:none; }
 }
 
 /* --- view-only mode ---------------------------------------------------- */
