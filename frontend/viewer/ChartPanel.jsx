@@ -212,20 +212,21 @@ function Scoreboard({ game, doc }) {
   const readable = boardReadable(doc);
   const board = readable ? game.scoreboard : null;
   const unread = board?.unread_ends ?? [];
-  return (
+     const entered = game.ends.some(e => e.score_source === "entered");
+     return (
     <details id="scoreBox">
       <summary>Scoreboard (read from the wall board)</summary>
       {!readable ? (
         <p className="scorekey">
           This chart predates board reading &mdash; no score is shown.
         </p>
-      ) : board?.scores_withheld ? (
+      ) : board?.scores_withheld && !entered ? (
         <p className="scorekey">
           The wall board was read, but its scores could not be matched to
           these ends. Setting this game&rsquo;s start time places them
           &mdash; the board will not need to be read again.
         </p>
-      ) : board ? (
+      ) : board || entered ? (
         <>
           <table id="score">
             <tbody>
@@ -241,8 +242,9 @@ function Scoreboard({ game, doc }) {
                     {game.teams[c].name || c}
                   </td>
                   {game.ends.map(e => (
-                    <td key={e.number} className={e.score == null ? "unread" : ""}>
-                      {scoreCell(e.score, c)}
+                       <td key={e.number} className={e.score == null ? "unread"
+                         : e.score_source === "entered" ? "entered" : ""}>
+                         {scoreCell(e.score, c)}
                     </td>
                   ))}
                   <td><strong>{game.final ? game.final[c] : "·"}</strong></td>
@@ -253,6 +255,7 @@ function Scoreboard({ game, doc }) {
           <p className="scorekey">
             <span>&ndash; blank end</span>
             <span>&middot; not posted</span>
+            {entered ? <span><u className="entered">2</u> entered by hand</span> : null}
             {unread.length ? <span>{unreadNote(unread, liveGame(doc, game))}</span> : null}
           </p>
         </>

@@ -141,6 +141,9 @@ export const gatherThinkingOf = core.gatherThinking;
 export const cumulativeThinkingOf = core.cumulativeThinking;
 export const lineEnds = core.lineEnds;
 export const barLabels = core.barLabels;
+export const scoreChoices = core.scoreChoices;
+export const scoreError = core.scoreError;
+export const FOURS_FORMAT = core.FOURS;
 
 export const dirtyPayload = core.dirtyPayload;
 export const saveUrl = () => core.saveUrl(config, state.version);

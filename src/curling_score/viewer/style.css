@@ -419,8 +419,11 @@ body.reporting main { display:none; }
   .rpt-title { font-size:28px; }
   .rpt-cover { width:100%; min-height:44px; }
   .rpt-byend { font-size:16px; }
-  .rpt-byend th[scope=row] { min-width:86px; font-size:15px; }
-  .rpt-byend td { min-width:48px; padding:0 4px; height:40px; }
+  /* 76 + 4 x 46 + 56 fits the 324 px a phone's card holds, header cells
+     included: they carried the desktop's 10 px padding and pushed it over. */
+  .rpt-byend th, .rpt-byend td { padding:0 4px; }
+  .rpt-byend th[scope=row] { min-width:76px; font-size:15px; }
+  .rpt-byend td { min-width:46px; height:40px; }
   .rpt-byend td.tot { min-width:56px; }
   .duel-head, .duel-row { grid-template-columns:2.9em minmax(0,1fr) 4.4em minmax(0,1fr) 2.9em; }
   .duel-num { font-size:17px; }
@@ -429,6 +432,33 @@ body.reporting main { display:none; }
   .rpt-matrix th[scope=row] { padding-left:12px; white-space:normal; }
   .rpt-matrix .n { display:block; margin:0; line-height:1.1; }
 }
+
+/* Entered by hand: a dotted underline wherever a score shows, so a typed-in
+   figure never passes for the board's. */
+.rpt .entered, #score td.entered, .wsc.entered, .scorekey u.entered {
+  text-decoration:underline dotted; text-decoration-thickness:1.5px; text-underline-offset:3px; }
+.rpt-byend .sc-q { all:unset; box-sizing:border-box; cursor:pointer; min-width:32px; min-height:32px;
+                   display:inline-flex; align-items:center; justify-content:center;
+                   border-radius:6px; border:1px dashed var(--line); padding:0 6px; }
+.rpt-byend .sc-q:hover { border-color:var(--muted); }
+.rpt-byend .sc-q:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+#scoreDialog { width:min(460px, calc(100vw - 32px)); padding:16px 18px; border:1px solid var(--line);
+               border-radius:10px; background:var(--panel); color:var(--ink);
+               font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif; }
+#scoreDialog::backdrop { background:rgb(0 0 0 / .35); }
+#scoreDialog h2 { margin:0 0 4px; font:inherit; font-size:19px; font-weight:700;
+                  text-transform:none; letter-spacing:0; }
+#scoreDialog .sc-why { margin:0 0 12px; font-size:14px; color:var(--muted); }
+#scoreDialog .sc-blank { width:100%; min-height:44px; margin-bottom:12px; font:inherit; font-weight:600; }
+#scoreDialog .sc-row { margin-bottom:12px; }
+#scoreDialog .sc-row .rpt-team { margin-bottom:6px; }
+#scoreDialog .sc-nums { display:flex; flex-wrap:wrap; gap:6px; }
+#scoreDialog .sc-nums button { min-width:44px; min-height:44px; font:inherit; font-size:17px;
+                               font-weight:600; font-variant-numeric:tabular-nums; }
+#scoreDialog .sc-nums button.on { background:var(--accent); color:var(--onaccent); }
+#scoreDialog .sc-error { margin:4px 0 8px; color:var(--warn); font-weight:600; }
+#scoreDialog .sc-foot { display:flex; gap:8px; align-items:center; margin-top:4px; }
+#scoreDialog .sc-foot button { min-height:44px; padding:0 16px; font:inherit; }
 
 /* --- the clock chart ---------------------------------------------------- */
 /* Scales uniformly with the card, so the tick labels keep their proportions
@@ -631,6 +661,8 @@ body.reporting main { display:none; }
   .rpt-matrix th, .rpt-matrix td { height:20px; }
   .rpt-matrix .n { font-size:9.5px; }
   .rpt-matrix tr.type { display:none; }
+  .rpt-byend .sc-q { border:0; padding:0; }
+  #scoreDialog { display:none; }
 }
 
 /* --- view-only mode ---------------------------------------------------- */

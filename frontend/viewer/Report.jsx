@@ -11,11 +11,13 @@
  * on board B of the "Game Report Readability" canvas. See
  * docs/superpowers/specs/2026-10-01-game-report-and-entered-scores-design.md.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   byEnd, clockText, coverage, coverageText, detailRows, endList, headToHead, liveGame,
-  longestThinks, positionText, reportMeta, reportNotes, teamNames,
+  longestThinks, positionText, reportMeta, reportNotes, scoreChoices, scoreError, teamNames,
 } from "../core/index.mjs";
+import { accountsOn, signInNow, whoIsSignedIn } from "../runtime/auth.mjs";
+import { sendScore } from "../runtime/scores.mjs";
 import { Dot, ReportClock } from "./Charts.jsx";
 
 const COLORS = ["red", "yellow"];
@@ -35,13 +37,31 @@ function Hammer() {
   );
 }
 
-function ScoreCell({ end, c }) {
-  if (!end.score) return <span className="none">?</span>;
-  const n = end.score[c] || 0;
-  return <span className={n ? "won" : "zero"}>{n}</span>;
+function ScoreCell({ end, c, entry }) {
+  const n = end.score ? (end.score[c] || 0) : null;
+  const shown = n == null ? "?" : n;
+  const cls = `${n == null ? "none" : n ? "won" : "zero"}${end.entered ? " entered" : ""}`;
+  if (entry?.can && (n == null || end.entered))
+    return (
+      <button type="button" className={`sc-q ${cls}`} onClick={() => entry.open(end)}
+              aria-label={n == null ? `Add end ${end.number}’s score` : `Change end ${end.number}’s score`}>
+        {shown}
+      </button>
+    );
+  if (entry?.signIn && n == null)
+    return (
+      <button type="button" className="sc-q none" title="Sign in to add the score"
+              aria-label="Sign in to add the score" onClick={entry.signIn}>?</button>
+    );
+  return <span className={cls}>{shown}</span>;
 }
 
-function ByEnd({ table, names }) {
+/* Whether the score rows show: always where the board can speak, and on a
+ * withheld board once there is something entered or a way to enter it. */
+const showsScores = (table, entry) => table.status === "ok"
+  || (table.status === "withheld" && (!!entry?.can || table.ends.some(e => e.entered)));
+
+function ByEnd({ table, names, entry }) {
   const { ends, total, status } = table;
   const span = ends.length + 2;
   const rowsFor = cells => COLORS.map(c => (
@@ -62,7 +82,7 @@ function ByEnd({ table, names }) {
         </thead>
         <tbody>
           <tr className="blk"><th colSpan={span}>Score</th></tr>
-          {status !== "ok" ? (
+          {!showsScores(table, entry) ? (
             <tr>
               <td className="rpt-noscore" colSpan={span}>
                 {status === "predates"
@@ -76,7 +96,7 @@ function ByEnd({ table, names }) {
               {ends.map(e => (
                 <td key={e.number}>
                   {e.hammer === c ? <Hammer /> : null}
-                  <ScoreCell end={e} c={c} />
+                  <ScoreCell end={e} c={c} entry={entry} />
                 </td>
               ))}
               <td className={`tot${total.complete ? "" : " partial"}`}>
@@ -110,7 +130,7 @@ function ByEnd({ table, names }) {
   );
 }
 
-function ByEndKey({ table, live }) {
+function ByEndKey({ table, live, entry }) {
   const unread = table.ends.filter(e => !e.score).map(e => e.number);
   const ungraded = table.ends
     .filter(e => e.shooting.red == null && e.shooting.yellow == null).map(e => e.number);
@@ -118,6 +138,10 @@ function ByEndKey({ table, live }) {
   return (
     <div className="rpt-key">
       {ok ? <span><Hammer />had the hammer</span> : null}
+      {table.ends.some(e => e.entered) ? <span><u className="entered">3</u> entered by hand</span> : null}
+      {ok && unread.length && entry?.signIn ? <span>sign in to add missing scores</span> : null}
+      {table.status === "withheld" && showsScores(table, entry)
+        ? <span>the wall board&rsquo;s scores couldn&rsquo;t be matched to these ends</span> : null}
       {ok && unread.length ? (
         <span>
           ? {endList(unread)} {!table.boardRead ? "— the wall board couldn’t be read"
@@ -266,7 +290,70 @@ function Matrix({ table, c, names }) {
   );
 }
 
-export function Report({ view, stats, think, series, actions }) {
+/* Who may enter a score: "in", "out", or null while unknown or where
+ * accounts are off -- then there is no button at all, only the "?". */
+function useWho(config) {
+  const [who, setWho] = useState(null);
+  useEffect(() => {
+    if (!config?.hosted) return undefined;
+    let live = true;
+    (async () => {
+      if (!(await accountsOn())) return;
+      const w = await whoIsSignedIn();
+      if (live && w !== undefined) setWho(w ? "in" : "out");
+    })();
+    return () => { live = false; };
+  }, [config?.hosted]);
+  return [who, setWho];
+}
+
+/* The picker for one end. A modal <dialog>, like the flag dialog: in the
+ * top layer, above the phone shell, and never inside a hidden parent. */
+function ScoreDialog({ at, names, fmt, busy, error, onPick, onClear, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (at && !d.open) d.showModal();
+    if (!at && d.open) d.close();
+  }, [at]);
+  const choices = scoreChoices(fmt);
+  return (
+    <dialog ref={ref} id="scoreDialog" onClose={onClose} aria-labelledby="scoreTitle">
+      {at ? (
+        <>
+          <h2 id="scoreTitle">End {at.number} score</h2>
+          <p className="sc-why">
+            For an end the wall board didn&rsquo;t read. Everyone who opens this game sees it,
+            marked as entered by hand.
+          </p>
+          <button type="button" className="sc-blank" disabled={busy}
+                  onClick={() => onPick(choices[0])}>Blank end</button>
+          {["red", "yellow"].map(c => (
+            <div key={c} className="sc-row">
+              <Team c={c} names={names} />
+              <div className="sc-nums">
+                {choices.filter(x => x.color === c).map(x => (
+                  <button key={x.n} type="button" disabled={busy} aria-label={`${names[c]} ${x.n}`}
+                          className={at.score && at.score[c] === x.n ? "on" : undefined}
+                          onClick={() => onPick(x)}>{x.n}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {error ? <p className="sc-error" role="alert">{error}</p> : null}
+          <div className="sc-foot">
+            {at.entered ? <button type="button" disabled={busy} onClick={onClear}>Clear</button> : null}
+            <span className="grow" />
+            <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
+          </div>
+        </>
+      ) : null}
+    </dialog>
+  );
+}
+
+export function Report({ view, stats, think, series, actions, config }) {
   const names = teamNames(view.game);
   const table = useMemo(() => byEnd(view), [view]);
   const h2h = useMemo(() => headToHead(stats, view.format), [stats, view.format]);
@@ -275,6 +362,33 @@ export function Report({ view, stats, think, series, actions }) {
                          [stats, view.format]);
   const pill = coverageText(cov);
   const notes = reportNotes(cov, think, view.ends.length);
+  const [who, setWho] = useWho(config);
+  const [at, setAt] = useState(null);       // the end being entered, or null
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const canEnter = who === "in" && !!view.doc.chart?.source_id && table.status !== "predates";
+  const close = () => { setAt(null); setError(null); };
+  const save = async body => {
+    setBusy(true);
+    setError(null);
+    const w = await whoIsSignedIn();
+    if (!w) {
+      setBusy(false);
+      setError(scoreError(401));
+      if (w === null) setWho("out");
+      return;
+    }
+    const r = await sendScore(view.doc.chart.source_id, { end: at.number, ...body }, w.token);
+    if (r.ok || r.status === 409) await actions.reloadDoc();
+    setBusy(false);
+    if (r.ok) close();
+    else setError(scoreError(r.status));
+  };
+  const entry = canEnter
+    ? { can: true, open: e => { setError(null); setAt(e); } }
+    : who === "out" && view.doc.chart?.source_id && table.status !== "predates"
+      ? { signIn: async () => { try { await signInNow(); setWho("in"); } catch { /* shut */ } } }
+      : null;
   return (
     <div className="rpt">
       <div className="rpt-head">
@@ -298,8 +412,8 @@ export function Report({ view, stats, think, series, actions }) {
         <section className="card rpt-end">
           <h2>By end</h2>
           <p className="sub">Score, shooting percentage and thinking time, end by end</p>
-          <ByEnd table={table} names={names} />
-          <ByEndKey table={table} live={liveGame(view.doc, view.game)} />
+          <ByEnd table={table} names={names} entry={entry} />
+          <ByEndKey table={table} live={liveGame(view.doc, view.game)} entry={entry} />
           <hr className="rpt-rule" />
           <h3>About these numbers</h3>
           <div className="rpt-notes">{notes.map((t, i) => <p key={i}>{t}</p>)}</div>
@@ -321,6 +435,9 @@ export function Report({ view, stats, think, series, actions }) {
           {COLORS.map((c, i) => <Matrix key={c} table={detail[i]} c={c} names={names} />)}
         </div>
       </section>
+      <ScoreDialog at={at} names={names} fmt={view.format} busy={busy} error={error}
+                   onPick={x => save({ red: x.red, yellow: x.yellow })}
+                   onClear={() => save({ clear: true })} onClose={close} />
     </div>
   );
 }

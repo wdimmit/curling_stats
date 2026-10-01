@@ -252,3 +252,22 @@ export function reportNotes(cov, think, endCount) {
   }
   return notes;
 }
+
+/* What the score picker offers for one end: a blank end, then each team
+ * scoring one up to every stone it has (8 in fours, 6 in doubles). Only one
+ * team scores in an end, so there is nothing to type. */
+export function scoreChoices(fmt = FOURS) {
+  const most = fmt.stones_per_team || FOURS.stones_per_team;
+  const out = [{ label: "Blank end", red: 0, yellow: 0 }];
+  for (const c of COLORS)
+    for (let n = 1; n <= most; n++)
+      out.push({ color: c, n, red: c === "red" ? n : 0, yellow: c === "yellow" ? n : 0 });
+  return out;
+}
+
+/* What the picker says when a save does not land. */
+export function scoreError(status) {
+  if (status === 409) return "The board has a score for this end now";
+  if (status === 401) return "Sign in again to save";
+  return "Couldn't save. Try again.";
+}

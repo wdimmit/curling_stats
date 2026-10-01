@@ -39,7 +39,7 @@ function RockRow({ row, current, onPick }) {
 }
 
 function EndHead({ summary }) {
-  const { number, running, hammer, boardReadable, scoresWithheld, powerPlay, gameLive } = summary;
+  const { number, running, entered, hammer, boardReadable, scoresWithheld, powerPlay, gameLive } = summary;
   return (
     <div className="tend">
       <span className="wen">End {number}</span>
@@ -47,8 +47,9 @@ function EndHead({ summary }) {
       {hammer ? <span className="wham">{hammer} has hammer</span> : null}
       {powerPlay ? <span className="wpp">power play · {powerPlay.color}, {powerPlay.side}</span> : null}
       {running ? (
-        <span className="wsc">
-          <i className="wdot red" />{running.red} – {running.yellow}<i className="wdot yellow" />
+          <span className={`wsc${entered ? " entered" : ""}`}
+                title={entered ? "Includes a score entered by hand" : undefined}>
+            <i className="wdot red" />{running.red} – {running.yellow}<i className="wdot yellow" />
         </span>
       ) : (
         <span className="wsc wsc-none"

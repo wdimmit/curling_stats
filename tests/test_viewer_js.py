@@ -2391,7 +2391,7 @@ class TestTheAppKnowsItsTab:
 
     def test_a_link_s_rock_is_restored_before_the_session_s(self):
         src = self.APP.read_text()
-        assert "cursorFromHash(" in src and "export function App({ doc, config, cursor })" in src
+        assert "cursorFromHash(" in src and "export function App({ doc, config, cursor, reload })" in src
 
     def test_the_house_re_measures_its_crop_when_the_tab_changes(self):
         assert "cropDeps={[ui.sheet, ui.houseMode, ui.ei, ui.si, ui.gi, ui.tab]}" in self.APP.read_text()
@@ -2739,8 +2739,14 @@ class TestSettledUser:
         assert run_js("settledUser(fn => { fn(null, true); return () => {}; }).then(out);") is None
 
     def test_the_dialog_asks_the_same_way(self):
-        src = (Path(__file__).resolve().parents[1] / "frontend/runtime/flag.mjs").read_text()
-        assert "settledUser(auth.onUser)" in src and "whenReady" not in src
+        """Who is signed in is decided by settledUser, never whenReady, which
+        settles before the session is restored. accountsOn may use whenReady:
+        it only asks whether accounts exist at all."""
+        src = (Path(__file__).resolve().parents[1] / "frontend/runtime/auth.mjs").read_text()
+        assert "settledUser(auth.onUser)" in src
+        who = (src[src.index("async function signedIn"):src.index("export async function accountsOn")]
+               + src[src.index("export async function whoIsSignedIn"):])
+        assert "whenReady" not in who
 
 
 class TestSettleWithin:
@@ -2800,9 +2806,9 @@ class TestTheFlagButton:
         assert "const w = await whoIsFlagging();" in flag
         assert "who === undefined ? await" not in flag
         assert "checked again when you send" in flag
-        run = self.src("frontend/runtime/flag.mjs")
+        run = self.src("frontend/runtime/auth.mjs")
         assert "settled ??= settledUser(auth.onUser)" in run
-        assert "u.getIdToken()" in run[run.index("export async function whoIsFlagging"):]
+        assert "u.getIdToken()" in run[run.index("export async function whoIsSignedIn"):]
 
     def test_a_send_in_flight_cannot_be_cancelled_into_a_lie(self):
         """Cancel mid-send used to close the dialog while the flag was stored."""
@@ -2831,7 +2837,7 @@ class TestTheFlagButton:
             for p in (self.ROOT / rel).rglob("*"):
                 if p.suffix in (".js", ".mjs", ".jsx"):
                     assert "site/auth.js\";" not in p.read_text(), p
-        assert 'import("../site/auth.js")' in self.src("frontend/runtime/flag.mjs")
+        assert 'import("../site/auth.js")' in self.src("frontend/runtime/auth.mjs")
 
 
 def doubles_doc(shots, end_number=3):
@@ -3639,3 +3645,54 @@ class TestTheReportPrints:
 
     def test_print_asks_for_letter(self):
         assert "@page { size:letter;" in self.print_css()
+
+
+class TestEnteringScores:
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_fours_offers_a_blank_and_one_to_eight_each(self):
+        got = run_js("out(scoreChoices(FOURS_FORMAT).map(c => [c.red, c.yellow]));")
+        assert got[0] == [0, 0] and len(got) == 17
+        assert got[1:9] == [[n, 0] for n in range(1, 9)]
+        assert got[9:] == [[0, n] for n in range(1, 9)]
+
+    def test_doubles_offers_one_to_six(self):
+        from curling_score.game import format as F
+        got = run_js(f"out(scoreChoices({json.dumps(F.DOUBLES.to_json())}).length);")
+        assert got == 13
+
+    def test_an_entered_end_is_marked(self):
+        d = doc([shot(1, "red", "lead")])
+        d["games"][0]["ends"][0].update(score={"red": 0, "yellow": 3}, score_source="entered")
+        assert report_js("out(byEnd(view).ends[0].entered);", d) is True
+
+    def test_the_errors_people_see(self):
+        assert run_js("out([scoreError(409), scoreError(401), scoreError(0), scoreError(500)]);") == [
+            "The board has a score for this end now", "Sign in again to save",
+            "Couldn't save. Try again.", "Couldn't save. Try again."]
+
+    def test_sign_in_is_asked_on_demand_from_one_place(self):
+        auth = self.src("frontend/runtime/auth.mjs")
+        assert 'import("../site/auth.js")' in auth
+        assert "settled ??= settledUser(auth.onUser)" in auth
+        assert "u.getIdToken()" in auth[auth.index("export async function whoIsSignedIn"):]
+        flag = self.src("frontend/runtime/flag.mjs")
+        assert 'from "./auth.mjs"' in flag
+
+    def test_the_picker_needs_a_game_and_a_person(self):
+        report = self.src("frontend/viewer/Report.jsx")
+        assert 'who === "in" && !!view.doc.chart?.source_id' in report
+        assert '<dialog ref={ref} id="scoreDialog"' in report
+
+    def test_a_save_refetches_the_chart(self):
+        main = self.src("frontend/viewer/main.jsx")
+        assert "reload={reload}" in main
+        report = self.src("frontend/viewer/Report.jsx")
+        assert "await actions.reloadDoc()" in report
+
+    def test_the_picker_buttons_are_big_enough_on_a_phone(self):
+        css = self.src("src/curling_score/viewer/style.css")
+        assert "#scoreDialog .sc-nums button { min-width:44px; min-height:44px;" in css

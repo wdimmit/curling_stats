@@ -53,7 +53,7 @@ function reducer(s, a) {
   }
 }
 
-export function App({ doc, config, cursor }) {
+export function App({ doc, config, cursor, reload }) {
   const [ui, dispatch] = useReducer(reducer, null, () => {
     const prefs = loadPrefs();
     const hash = parseHash(location.hash);
@@ -223,8 +223,10 @@ export function App({ doc, config, cursor }) {
       dispatch({ type: "set", patch: { reporting: false } });
       goTo(b.ei, b.si);
     },
+    // An entered score is merged into the game by the server; ask again.
+    reloadDoc: reload,
   }), [goTo, patch, setSwapped, setPref, setFollowing, raw, shot, shotKey, doc, ui.gi, ui.ei, ui.si,
-       ui.sheet, notify, view]);
+       ui.sheet, notify, view, reload]);
 
   const houseSwipe = useSwipe(d => { if (phone()) actions.step(d); });
 
@@ -492,7 +494,8 @@ export function App({ doc, config, cursor }) {
         : null}
 
       <section id="report" className={ui.reporting ? "show" : undefined}>
-        <Report view={view} stats={stats} think={think} series={series} actions={actions} />
+        <Report view={view} stats={stats} think={think} series={series} actions={actions}
+                config={config} />
       </section>
       {/* Outside <main>: the phone's watch layout hides everything in it
           but #playCard, and a dialog inside a hidden parent never shows. */}

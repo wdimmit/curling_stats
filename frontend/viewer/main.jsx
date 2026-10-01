@@ -5,7 +5,7 @@
  * has no such route. Doing it here rather than in an effect also means the
  * page never paints an empty chart it is about to replace.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { LIVE_POLL_MS, acceptLiveDoc, modeOf } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
@@ -53,7 +53,16 @@ function Live({ first, cursor }) {
     }, LIVE_POLL_MS);
     return () => clearInterval(id);
   }, [live]);
-  return <App doc={doc} config={config} cursor={cursor} />;
+  /* After a change made somewhere other than the overrides -- an entered
+   * score, which the server merges into the game -- ask again rather than
+   * patch the document here, so the page shows what every link shows. */
+  const reload = useCallback(async () => {
+    try {
+      const r = await fetch("timeline.json", { cache: "no-cache" });
+      if (r.ok) setDoc(await r.json());
+    } catch { /* the next look, or a reload, will catch it up */ }
+  }, []);
+  return <App doc={doc} config={config} cursor={cursor} reload={reload} />;
 }
 
 Promise.all([fetch("timeline.json").then(r => r.json()), loadOverrides()])

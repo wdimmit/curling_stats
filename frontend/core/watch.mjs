@@ -141,6 +141,8 @@ export function endSummary(view, ei) {
     hammer: end.hammer || null,
     score: readable ? (end.score ?? null) : null,
     running: readable ? (end.running ?? null) : null,
+    // Whether the running score leans on a score somebody typed in.
+    entered: readable && view.ends.slice(0, ei + 1).some(x => x.end.score_source === "entered"),
     boardReadable: readable,
     scoresWithheld: readable && !!view.game.scoreboard?.scores_withheld,
     red: clockText(end.thinking_time?.red),

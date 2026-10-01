@@ -6,7 +6,8 @@
  *     --remote-debugging-port=9333 --user-data-dir=$(mktemp -d) about:blank &
  *   CDP_PORT=9333 node scripts/reportcheck.mjs http://127.0.0.1:PORT/s/SHARE/
  *
- * The view-only link, because review (/g/) hides the Report button.
+ * The view-only link, because review (/g/) hides the Report button. Up to
+ * five ends, the by-end table must fit its card on a phone without scrolling.
  * Exits 1 naming each failure. */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -50,6 +51,12 @@ for (const [w, h, mobile] of [[1280, 900, false], [390, 844, true]]) {
   console.log(`${w}px: ${r.sw}px wide in a ${r.iw}px window, ${r.tall}px tall, title ${r.title}`);
   if (r.sw > r.iw) fails.push(`${w}px: the page scrolls sideways (${r.sw} > ${r.iw})`);
   if (r.title === "none") fails.push(`${w}px: the report title is hidden`);
+  // A ten-end game may scroll inside its card; five ends or fewer must fit.
+  const t = await cdp.eval(`(() => { const el = document.querySelector(".rpt-end .rpt-scroll");
+    return { sw: el.scrollWidth, cw: el.clientWidth,
+             ends: document.querySelectorAll(".rpt-byend thead th").length - 1 }; })()`);
+  if (t.ends <= 5 && t.sw > t.cw)
+    fails.push(`${w}px: the by-end table needs a sideways scroll (${t.sw} > ${t.cw}) for ${t.ends} ends`);
 }
 
 await openReport(1280, 900, false);
