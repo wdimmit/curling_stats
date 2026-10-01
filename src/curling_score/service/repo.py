@@ -54,6 +54,8 @@ class Repo(Protocol):
     def put_source(self, source: Source) -> None: ...
     def get_source(self, source_id: str) -> Source | None: ...
     def update_source(self, source_id: str, **fields) -> Source | None: ...
+    def set_entered_score(self, source_id: str, end: int,
+                          entry: dict | None) -> Source | None: ...
     def sources_for_video(self, video_id: str) -> list[Source]: ...
     def list_sources(self, league: str | None = None, limit: int = 500) -> list[Source]: ...
     # charts
@@ -257,6 +259,19 @@ class MemoryRepo:
                 return None
             for k, v in fields.items():
                 setattr(src, k, v)
+            return src
+
+    def set_entered_score(self, source_id, end, entry):
+        with self._lock:
+            src = self.sources.get(source_id)
+            if src is None:
+                return None
+            scores = dict(src.entered_scores or {})
+            if entry is None:
+                scores.pop(str(end), None)
+            else:
+                scores[str(end)] = dict(entry)
+            src.entered_scores = scores
             return src
 
     def sources_for_video(self, video_id):

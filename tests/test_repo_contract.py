@@ -439,6 +439,35 @@ class TestSources:
         assert (got.playlist_id, got.playlist_title) == ("PL", "2026 Spring Skip's Choice League")
 
 
+    def _source(self, repo):
+        repo.put_source(Source(id="s_1", video_id="vidA", game_start_s=0.0, game_end_s=6000.0,
+                               current_run_id="r_1", game_index=0, created_at=T0))
+
+    def test_an_entered_score_round_trips(self, repo):
+        self._source(repo)
+        assert repo.get_source("s_1").entered_scores == {}
+        entry = {"red": 0, "yellow": 3, "by": "uid-sarah", "at": "2026-10-01T12:00:00+00:00"}
+        got = repo.set_entered_score("s_1", 4, entry)
+        assert got.entered_scores == {"4": entry}
+        assert repo.get_source("s_1").entered_scores == {"4": entry}
+
+    def test_two_ends_are_kept_apart(self, repo):
+        """Two people filling different ends at once must not overwrite each other."""
+        self._source(repo)
+        repo.set_entered_score("s_1", 3, {"red": 1, "yellow": 0})
+        repo.set_entered_score("s_1", 4, {"red": 0, "yellow": 2})
+        assert set(repo.get_source("s_1").entered_scores) == {"3", "4"}
+
+    def test_clearing_one_end_leaves_the_others(self, repo):
+        self._source(repo)
+        repo.set_entered_score("s_1", 3, {"red": 1, "yellow": 0})
+        repo.set_entered_score("s_1", 4, {"red": 0, "yellow": 2})
+        repo.set_entered_score("s_1", 3, None)
+        assert repo.get_source("s_1").entered_scores == {"4": {"red": 0, "yellow": 2}}
+
+    def test_an_unknown_game_is_none(self, repo):
+        assert repo.set_entered_score("s_nope", 1, {"red": 1, "yellow": 0}) is None
+
 class TestWorkersAndPlaylists:
     def test_heartbeat_upserts(self, repo):
         repo.heartbeat(Worker(id="home", last_seen_at=T0, gpu="3070"))

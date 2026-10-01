@@ -151,6 +151,11 @@ class Source:
     # the board). Hidden from the catalogue, and /g/ follows the pointer; a
     # later run that splits the game again takes the page back.
     merged_into: str | None = None
+    # Scores people typed in for the ends the wall board never gave one, by
+    # the game's end number as a string: {"4": {"red", "yellow", "by", "at"}}.
+    # On the game, like the team names, so every chart of it shows them.
+    # Gaps only: timeline.apply_entered_scores never lets one beat the board.
+    entered_scores: dict = field(default_factory=dict)
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

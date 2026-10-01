@@ -199,6 +199,24 @@ class FirestoreRepo:
     def update_source(self, source_id, **fields):
         return self._update(SOURCES, source_id, Source, fields)
 
+    def set_entered_score(self, source_id, end, entry):
+        """One end's entered score, set or cleared on its own.
+
+        A field path rather than a read-modify-write of the whole map, so two
+        people filling different ends at the same moment both land. The key
+        is a bare digit, which Firestore would read as a walk into a nested
+        map; FieldPath quotes it, as it does the override keys above.
+        """
+        from google.cloud.firestore_v1.field_path import FieldPath
+
+        ref = self._col(SOURCES).document(source_id)
+        if not ref.get().exists:
+            return None
+        path = FieldPath("entered_scores", str(end)).to_api_repr()
+        ref.update({path: self._fs.DELETE_FIELD if entry is None else dict(entry)})
+        snap = ref.get()
+        return Source.from_dict(snap.to_dict()) if snap.exists else None
+
     def sources_for_video(self, video_id):
         q = self._where(SOURCES, "video_id", "==", video_id)
         return [Source.from_dict(d.to_dict()) for d in q.stream()]
