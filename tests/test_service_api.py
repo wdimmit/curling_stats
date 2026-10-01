@@ -1887,3 +1887,28 @@ def test_the_site_learns_whether_doubles_is_on(world):
     assert r.status_code == 200 and r.json() == {"doubles": False}
     world["settings"].doubles_enabled = True
     assert world["client"].get("/api/features").json() == {"doubles": True}
+
+
+class TestTheChartSaysWhichGameAndWhen:
+    """The report's title line needs the day; entering a score needs the game."""
+
+    def _ready(self, world):
+        slug = submit(world).json()["slug"]
+        work_through(world, games=1)
+        src = world["repo"].get_chart(slug).source_id
+        return slug, src
+
+    def test_the_edit_and_view_links_carry_both(self, world):
+        slug, src = self._ready(world)
+        share = world["repo"].get_chart(slug).share_slug
+        played = world["repo"].get_source(src).played_at.isoformat(timespec="seconds")
+        for path in (f"/c/{slug}/timeline.json", f"/s/{share}/timeline.json"):
+            chart = world["client"].get(path).json()["chart"]
+            assert chart["source_id"] == src
+            assert chart["played_at"] == played
+
+    def test_the_review_link_carries_both(self, world):
+        _slug, src = self._ready(world)
+        chart = world["client"].get(f"/g/{src}/timeline.json").json()["chart"]
+        assert chart["source_id"] == src
+        assert chart["played_at"] is not None

@@ -599,6 +599,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             "game_index": chart.game_index,
             "title": run.title,
             "league": run.league,
+            # The day it was played, for the report's title, and the game it
+            # is, which an entered score is sent to. Neither is secret: the
+            # catalogue lists both.
+            "played_at": _iso(src.played_at if src else run.published_at),
+            "source_id": chart.source_id,
         }
         return doc
 
@@ -1578,6 +1583,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # No slug and no share_url: this link is already the public one.
         doc["chart"] = {"read_only": True, "review": True,
                         "title": run.title, "league": run.league,
+                        "played_at": _iso(src.played_at or run.published_at),
+                        "source_id": src.id,
                         "ends_trimmed": timeline.ends_trimmed(doc)}
         return json_revalidated(request, doc, "public")
 
