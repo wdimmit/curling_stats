@@ -3,7 +3,7 @@
   "esbuild": "0.28.2",
   "flags": "3814b6394471718919220a4072fed98a4853a93360e8ea70a4896d47dc55fa9a",
   "sources": {
-    "frontend/core/charts.mjs": "b8f1c5d005cf7911135b86ace736c07f722b624479960b38bb5b4c67bd6d4432",
+    "frontend/core/charts.mjs": "30eec1a0654d5fd43b547bbb0523b194c5f257d8ef7d7021849b6c3f48688d2e",
     "frontend/core/constants.mjs": "de0fe8e5963ec479aabf7a93d4cf3d9c2c72f0748611885447d51a85eb39c790",
     "frontend/core/delivery.mjs": "9f65cc6dd5af0d90ea26e1cf0e7f1c012fd35ff0bf69e9a95cacd336b1142661",
     "frontend/core/flag.mjs": "ca06b39b51bc3a9c1810f5763a26478f2286165de863c1cf4c4879ee427d3082",
@@ -50,6 +50,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "0b1614f1ea17a4fe05c6b4b88185edf0860823d7ffe37601a1d210e75ad0a14f",
-    "src/curling_score/viewer/app.js": "469add130226e3f95b0755cf5a0ad63808637d4cf8c4366a5d7006b2dd3c18ad"
+    "src/curling_score/viewer/app.js": "8e51bad9e09a595d61459c6d6169d774a67150eb7f5e13730d74d60589e99d5f"
   }
 }

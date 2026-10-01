@@ -139,6 +139,8 @@ export const pctOf = core.pctOf;
 export const positionLabel = core.positionLabel;
 export const gatherThinkingOf = core.gatherThinking;
 export const cumulativeThinkingOf = core.cumulativeThinking;
+export const lineEnds = core.lineEnds;
+export const barLabels = core.barLabels;
 
 export const dirtyPayload = core.dirtyPayload;
 export const saveUrl = () => core.saveUrl(config, state.version);

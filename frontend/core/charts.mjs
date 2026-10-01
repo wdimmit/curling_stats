@@ -99,7 +99,7 @@ export function barsGeometry(series, at = null, BOX = CHARTBOX) {
     grid: gridlines(top, y, [30, 60, 120, 300], 4, 600),
     ...endScale(bounds, x, BOX),
     bars: thrown.map(p => ({
-      shot: p.i, ei: p.ei, si: p.si, color: p.color || "", est: !!p.estimated,
+      shot: p.i, ei: p.ei, si: p.si, secs: p.secs, color: p.color || "", est: !!p.estimated,
       x: x(p.i) - w / 2, y: y(p.secs), w, h: Math.max(0.8, (BOX.h - BOX.padB) - y(p.secs)),
       title: `End ${p.end}, ${p.label} — ${clockText(p.secs)}`
            + (p.estimated ? " (estimated)" : ""),
@@ -118,4 +118,36 @@ export function endSpan(geom, k, BOX) {
   if (!at) return null;
   const x0 = k ? geom.ticks[k - 1].x : BOX.padL;
   return { x0, x1: at.x, y1: at.y1, y2: at.y2 };
+}
+
+/* Each team's total at the end of its line, to label it there. Two that
+ * would overlap are pushed apart, the larger total kept above. */
+export function lineEnds(geom, series, gap = 18) {
+  if (!geom) return [];
+  const out = geom.lines.map(l => {
+    const [x, y] = l.points[l.points.length - 1];
+    return { color: l.color, x, y, total: series[l.color] };
+  });
+  const [a, b] = out;
+  if (a && b && Math.abs(a.y - b.y) < gap) {
+    const mid = (a.y + b.y) / 2;
+    const [hi, lo] = a.total >= b.total ? [a, b] : [b, a];
+    hi.y = mid - gap / 2;
+    lo.y = mid + gap / 2;
+  }
+  return out;
+}
+
+/* The longest few bars, to print their time over them. A bar within
+ * `apart` rocks of one already labelled is passed over, or the two labels
+ * would print on top of each other. */
+export function barLabels(geom, n = 3, apart = 4) {
+  if (!geom) return [];
+  const picked = [];
+  for (const b of [...geom.bars].sort((p, q) => q.secs - p.secs)) {
+    if (picked.length === n) break;
+    if (picked.some(p => Math.abs(p.shot - b.shot) < apart)) continue;
+    picked.push(b);
+  }
+  return picked.map(b => ({ shot: b.shot, x: b.x + b.w / 2, y: b.y, text: clockText(b.secs) }));
 }

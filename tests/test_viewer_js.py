@@ -3525,3 +3525,28 @@ class TestTheReportWords:
     def test_team_names_fall_back_to_the_colours(self):
         got = run_js("out(teamNames({teams: {red: {name: 'Dimmit'}, yellow: {name: null}}}));")
         assert got == {"red": "Dimmit", "yellow": "Yellow"}
+
+
+class TestTheReportChartLabels:
+    BOX = "{ w: 868, h: 200, padL: 52, padR: 128, padT: 22, padB: 30 }"
+
+    def test_the_three_longest_bars_skip_a_neighbour(self):
+        """End 3's rocks 13 and 15 are two apart: one label, not two piled up."""
+        got = report_js(f"out(barLabels(barsGeometry(series, null, {self.BOX}))"
+                        "  .map(l => [l.shot, l.text]));")
+        assert got == [[14, "1:28"], [45, "1:18"], [63, "1:17"]]
+
+    def test_each_line_is_labelled_with_its_total(self):
+        got = report_js(f"out(lineEnds(chartGeometry(series, null, {{...{self.BOX}, h: 240,"
+                        " padT: 12}), series).map(e => [e.color, clockText(e.total)]));")
+        assert got == [["yellow", "13:09"], ["red", "10:53"]]
+
+    def test_two_totals_that_would_overlap_are_pushed_apart(self):
+        got = run_js("const g = {lines: [{color: 'yellow', points: [[0, 0], [100, 50]]},"
+                     " {color: 'red', points: [[0, 0], [100, 55]]}]};"
+                     "out(lineEnds(g, {red: 600, yellow: 590}).map(e => [e.color, e.y]));")
+        assert got == [["yellow", 61.5], ["red", 43.5]]
+
+    def test_a_bar_knows_its_seconds(self):
+        got = report_js(f"out(barsGeometry(series, null, {self.BOX}).bars[0].secs);")
+        assert isinstance(got, (int, float))
