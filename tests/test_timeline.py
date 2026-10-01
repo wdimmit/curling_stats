@@ -1196,3 +1196,109 @@ class TestRoleSwap:
     def test_a_malformed_end_patch_is_ignored(self):
         end = _end(_doubles_end(), {"0.3": {"roles_swapped": "red"}})
         assert end["shots"][0]["position"] == "A" and "roles_swapped" not in end
+
+
+class TestEnteredScores:
+    """Scores people typed in, for the ends the wall board never gave one.
+    They fill gaps and nothing else: the board's figure always wins."""
+
+    @staticmethod
+    def game(scores, *, schema=8, board=True, withheld=None):
+        ends = []
+        for n, sc in enumerate(scores, start=1):
+            ends.append({"number": n, "start_s": 600.0 * n, "end_s": 600.0 * n + 500,
+                         "hammer": "yellow" if n != 3 else "red",
+                         "score": sc, "score_source": "board" if sc else None,
+                         "detected_score": {"red": 0, "yellow": 0},
+                         "thinking_time": {"red": 10.0, "yellow": 20.0,
+                                           "measured_shots": 2, "unmeasured_shots": 1},
+                         "shots": []})
+        g = timeline.build_game(0, 600.0, 600.0 * len(scores) + 500, ends)
+        g["teams"] = {"red": {"name": "Dimmit"}, "yellow": {"name": "Grant"}}
+        if board:
+            g["scoreboard"] = {
+                "per_end": {str(n): sc for n, sc in enumerate(scores, start=1) if sc},
+                "unread_ends": [n for n, sc in enumerate(scores, start=1) if not sc],
+                "final": None, "scores_withheld": withheld}
+        else:
+            g["scoreboard"] = None
+        return {"schema_version": schema, "games": [g]}
+
+    def test_an_unread_end_takes_the_entry(self):
+        doc = self.game([{"red": 1, "yellow": 0}, {"red": 0, "yellow": 2},
+                         {"red": 3, "yellow": 0}, None])
+        out = timeline.apply_entered_scores(doc, {"4": {"red": 0, "yellow": 3, "by": "u"}})
+        end = out["games"][0]["ends"][3]
+        assert end["score"] == {"red": 0, "yellow": 3}
+        assert end["score_source"] == "entered"
+
+    def test_the_running_score_and_final_follow(self):
+        doc = self.game([{"red": 1, "yellow": 0}, {"red": 0, "yellow": 2},
+                         {"red": 3, "yellow": 0}, None])
+        out = timeline.apply_entered_scores(doc, {"4": {"red": 0, "yellow": 3}})
+        g = out["games"][0]
+        assert g["ends"][3]["running"] == {"red": 4, "yellow": 5}
+        assert g["final"] == {"red": 4, "yellow": 5}
+        assert g["scoreboard"]["unread_ends"] == []
+
+    def test_the_board_wins_over_an_entry(self):
+        """An end the board read -- even one read after somebody entered it,
+        on a reprocess or a live update -- keeps the board's figure."""
+        doc = self.game([{"red": 1, "yellow": 0}, None])
+        out = timeline.apply_entered_scores(doc, {"1": {"red": 0, "yellow": 4}})
+        end = out["games"][0]["ends"][0]
+        assert end["score"] == {"red": 1, "yellow": 0} and end["score_source"] == "board"
+
+    def test_an_end_still_unread_leaves_the_final_unknown(self):
+        doc = self.game([None, None])
+        out = timeline.apply_entered_scores(doc, {"1": {"red": 2, "yellow": 0}})
+        g = out["games"][0]
+        assert g["ends"][1]["score"] is None and g["ends"][1]["running"] is None
+        assert g["final"] is None
+        assert g["scoreboard"]["unread_ends"] == [2]
+
+    def test_a_withheld_board_is_filled_and_still_says_so(self):
+        doc = self.game([None, None], withheld="could not place")
+        out = timeline.apply_entered_scores(doc, {"1": {"red": 1, "yellow": 0},
+                                                  "2": {"red": 0, "yellow": 0}})
+        g = out["games"][0]
+        assert [e["score_source"] for e in g["ends"]] == ["entered", "entered"]
+        assert g["final"] == {"red": 1, "yellow": 0}
+        assert g["scoreboard"]["scores_withheld"] == "could not place"
+
+    def test_a_board_never_read_is_filled(self):
+        doc = self.game([None], board=False)
+        out = timeline.apply_entered_scores(doc, {"1": {"red": 0, "yellow": 1}})
+        assert out["games"][0]["ends"][0]["score"] == {"red": 0, "yellow": 1}
+        assert out["games"][0]["scoreboard"] is None
+
+    def test_a_chart_from_before_board_reading_is_untouched(self):
+        doc = self.game([None], schema=3)
+        assert timeline.apply_entered_scores(doc, {"1": {"red": 1, "yellow": 0}}) == doc
+
+    def test_an_end_the_game_does_not_have_is_ignored(self):
+        doc = self.game([None])
+        assert timeline.apply_entered_scores(doc, {"9": {"red": 1, "yellow": 0}}) == doc
+
+    def test_the_team_names_survive(self):
+        doc = self.game([None])
+        out = timeline.apply_entered_scores(doc, {"1": {"red": 1, "yellow": 0}})
+        assert out["games"][0]["teams"]["red"]["name"] == "Dimmit"
+
+    def test_the_input_is_not_changed(self):
+        import copy
+        doc = self.game([None])
+        before = copy.deepcopy(doc)
+        timeline.apply_entered_scores(doc, {"1": {"red": 1, "yellow": 0}})
+        assert doc == before
+
+    def test_on_a_trimmed_game_the_key_is_the_end_shown(self):
+        """The key is the number on the board's card -- the end the report
+        shows as that number, after the practice is trimmed off."""
+        from tests.test_service_api import practice_doc
+        doc = practice_doc()
+        del doc["games"][0]["scoreboard"]["per_end"]["5"]
+        trimmed = timeline.trim_to_start(doc, 1440)
+        out = timeline.apply_entered_scores(trimmed, {"2": {"red": 1, "yellow": 0}})
+        end = out["games"][0]["ends"][1]
+        assert end["id"] == 5 and end["score_source"] == "entered"

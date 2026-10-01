@@ -897,3 +897,53 @@ def ends_trimmed(document: dict) -> int:
     games = document.get("games") or []
     ends = (games[0].get("ends") if games else None) or []
     return (end_identity(ends[0]) - ends[0]["number"]) if ends else 0
+
+
+def apply_entered_scores(document: dict, entries: dict | None) -> dict:
+    """Fill the ends the board gave no score with the ones people entered.
+
+    ``entries`` is ``Source.entered_scores``: the game's end number, as a
+    string, to ``{red, yellow, by, at}``. The key is the number on the board's
+    own cards, so it names the end the report shows as that number -- after
+    :func:`trim_to_start` has taken any practice off, which is why this runs
+    after it.
+
+    Only ends whose score is still None are filled. The board's figure always
+    wins, including one the board gave after somebody typed theirs in -- a
+    reprocess, or a live game's card going up late. An entry for an end the
+    game does not have is ignored. A chart from before board reading
+    (schema < 4) is left alone: its ends hold the detector's guesses, which
+    the viewer refuses to show, and an entered score among them would total
+    with those.
+
+    The running score, the hammer check and ``final`` are rebuilt the way
+    :func:`trim_to_start` rebuilds them; keys :func:`build_game` does not own
+    (the scoreboard block, the team names) are kept.
+    """
+    if not entries or int(document.get("schema_version") or 0) < 4:
+        return document
+    document = deepcopy(document)
+    fmt = format_mod.of_document(document)
+    for i, game in enumerate(document.get("games", [])):
+        ends = [dict(e) for e in game.get("ends") or []]
+        filled = []
+        for end in ends:
+            entry = entries.get(str(end["number"]))
+            if end.get("score") is None and isinstance(entry, dict):
+                end["score"] = {c: int(entry.get(c) or 0) for c in rules.COLORS}
+                end["score_source"] = "entered"
+                filled.append(end["number"])
+        if not filled:
+            continue
+        rebuilt = build_game(game["index"], game["start_s"], game["end_s"], ends, fmt=fmt)
+        rebuilt.pop("teams", None)
+        known = bool(rebuilt["ends"]) and all(e.get("score") is not None
+                                              for e in rebuilt["ends"])
+        rebuilt["final"] = (deepcopy(rebuilt["ends"][-1]["running"]) if known
+                            else deepcopy(game.get("final")))
+        game = document["games"][i] = {**game, **rebuilt}
+        board = game.get("scoreboard")
+        if isinstance(board, dict) and isinstance(board.get("unread_ends"), list):
+            game["scoreboard"] = {**board, "unread_ends": [n for n in board["unread_ends"]
+                                                           if n not in filled]}
+    return document
