@@ -1,5 +1,5 @@
 /* What a single shot is, and what the page says about it. */
-import { TYPES } from "./constants.mjs";
+import { RELEASE_TO_ARRIVAL_S, TYPES } from "./constants.mjs";
 
 export const isBlank = s => s && (s.state_known === false || s.missing);
 export const typeOf = s => (s ? (s.shot_type || "unknown") : "unknown");
@@ -19,14 +19,20 @@ export function renumberNotice(before, after) {
   return `End renumbered — this is now rock ${after.number}${why}`;
 }
 
-/* Where in the video to start, counting the lead-in back from the moment the
- * rock is known to have been somewhere. A rest time is the rock already
- * stopped, so it needs a further eight seconds to catch the delivery. */
+/* Where in the video to start: the lead-in back from the release. A rock whose
+ * release nobody saw was thrown about RELEASE_TO_ARRIVAL_S before it arrived,
+ * and a rest time is the rock already stopped, a further eight seconds on. A
+ * rock settled from its release in a chart older than 2026.10.01.1 carries no
+ * release, but its t_enter is that release. */
+const TIMED_BY_RELEASE = new Set(["hogged", "release-add", "release-remove"]);
 export function shotVideoTime(s, leadIn) {
   if (!s) return null;
-  if (typeof s.t_enter_s === "number") return Math.max(0, s.t_enter_s - leadIn);
-  if (typeof s.t_rest_s === "number") return Math.max(0, s.t_rest_s - leadIn - 8);
-  if (typeof s.t_guess_s === "number") return Math.max(0, s.t_guess_s - leadIn);
+  const back = t => Math.max(0, t - leadIn);
+  if (typeof s.t_release_s === "number") return back(s.t_release_s);
+  if (typeof s.t_enter_s === "number")
+    return back(s.t_enter_s - (TIMED_BY_RELEASE.has(s.reason) ? 0 : RELEASE_TO_ARRIVAL_S));
+  if (typeof s.t_rest_s === "number") return back(s.t_rest_s - 8 - RELEASE_TO_ARRIVAL_S);
+  if (typeof s.t_guess_s === "number") return back(s.t_guess_s - RELEASE_TO_ARRIVAL_S);
   return null;
 }
 

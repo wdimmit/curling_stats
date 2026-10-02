@@ -77,7 +77,11 @@ from pathlib import Path
 # the throw, not 16 s before it as if its t_enter were an arrival. Its broom,
 # hog crossing, line and thinking time were all read at the wrong moment
 # (09/29 Super League sheet 3 e2 r13, flagged: 103 of 7,401 hosted rocks).
-PIPELINE_VERSION = "2026.10.01.1"
+# 2026.10.02: a shot's `t_video_s`, and so its `youtube_url`, is the lead-in
+# before its release, or before its arrival less `RELEASE_TO_ARRIVAL_S` (15 s)
+# when no release was seen, rather than the lead-in before its arrival; and
+# that lead-in is 5 s, not 10.
+PIPELINE_VERSION = "2026.10.02"
 
 
 def model_id(weights) -> str:

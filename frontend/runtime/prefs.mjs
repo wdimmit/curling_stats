@@ -4,18 +4,27 @@
  * seen this page, or one with storage blocked, must get the defaults rather
  * than a crash.
  */
+import { VIDEO_LEAD_IN_S } from "../core/constants.mjs";
+
 const KEY = "curlchart";
 
 export const DEFAULTS = {
-  showTrack: true, autoplay: true, leadIn: 10,
+  showTrack: true, autoplay: true, leadIn: VIDEO_LEAD_IN_S,
   clockOpen: false, clockBars: false,
   tab: "detail", // the phone viewer's bottom tab: "house" | "detail" | "delivery" | "timing"
 };
+
+/* The lead-in has counted back from the release since 2026-10-02, and from the
+ * arrival before that. One saved earlier meant something else -- and was
+ * nearly always the old default, saved along with some other setting -- so it
+ * is dropped for the default. */
+const LEAD_IN_FROM = "release";
 
 export function loadPrefs() {
   const out = { ...DEFAULTS };
   try {
     const p = JSON.parse(localStorage.getItem(KEY) || "{}");
+    if (p.leadInFrom !== LEAD_IN_FROM) delete p.leadIn;
     for (const [k, v] of Object.entries(DEFAULTS))
       if (typeof p[k] === typeof v) out[k] = p[k];
   } catch { /* a fresh browser, or storage blocked: defaults are fine */ }
@@ -24,8 +33,10 @@ export function loadPrefs() {
 
 export function savePrefs(prefs) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(
-      Object.fromEntries(Object.keys(DEFAULTS).map(k => [k, prefs[k]]))));
+    localStorage.setItem(KEY, JSON.stringify({
+      ...Object.fromEntries(Object.keys(DEFAULTS).map(k => [k, prefs[k]])),
+      leadInFrom: LEAD_IN_FROM,
+    }));
   } catch { /* not important enough to bother the user about */ }
 }
 

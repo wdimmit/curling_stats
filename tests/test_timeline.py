@@ -259,6 +259,19 @@ class TestTimingFields:
         assert second["thinking_time_s"] == pytest.approx(26.0, abs=0.1)
         assert end["splits_measured"] == 2
 
+    def test_the_video_starts_the_lead_in_before_the_release(self):
+        end = timeline.build_end(
+            number=1, house="top", start_s=0.0, end_s=900.0,
+            shots=[self._shot(1, "red", 100.0, t_rel=70.0),
+                   self._shot(2, "yellow", 160.0)],
+        )
+        released, unseen = end["shots"]
+        assert released["t_video_s"] == pytest.approx(70.0 - timeline.VIDEO_LEAD_IN_S)
+        # Nobody saw the second one leave the hand: it is put a typical flight
+        # before its arrival.
+        assert unseen["t_video_s"] == pytest.approx(
+            unseen["t_enter_s"] - timeline.RELEASE_TO_ARRIVAL_S - timeline.VIDEO_LEAD_IN_S)
+
     def test_a_panel_crossing_with_no_side_view_hog_has_no_split(self):
         """One method per game: even though the release track crosses the
         panel's own hog line (the throwing panel's own tripwire would see it),

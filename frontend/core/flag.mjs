@@ -29,7 +29,7 @@ export function flagPlace(view, ei, si, fmt = FOURS) {
     rock: shot ? shot.number : null,
     rock_id: raw ? String(identity(raw)) : null,
     key,
-    // The time the viewer seeks to: t_enter less the lead-in, as the
+    // The time the viewer seeks to: the release less the lead-in, as the
     // pipeline's t_video_s, and for a rock never seen arriving, its rest or
     // its guess -- those are the rocks most likely to be flagged.
     t_video_s: shotVideoTime(shot, VIDEO_LEAD_IN_S),

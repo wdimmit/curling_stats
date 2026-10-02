@@ -21,7 +21,7 @@ export * from "../../frontend/core/constants.mjs";
 
 export const state = {
   doc: null, overrides: {}, version: null, gi: 0, ei: 0, si: 0,
-  leadIn: 10, dirty: new Set(), dragging: false,
+  leadIn: core.VIDEO_LEAD_IN_S, dirty: new Set(), dragging: false,
 };
 
 /* Rebuilt per call rather than memoised: the tests mutate state.overrides in

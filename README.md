@@ -390,9 +390,10 @@ detector could not read and grade the shot as a coach would.
 - **Blanks are explicit.** A shot whose house we could not read is hatched and
   labelled `STATE UNKNOWN` — never drawn as an empty house. The header counts
   how many are left; `n` jumps to the next one.
-- **The video starts before the throw.** Each shot seeks to `t_enter_s` minus a
-  lead-in (10 s by default, set under the video), so you see the call and the
-  delivery rather than a stone already at rest. One embedded player is reused
+- **The video starts before the throw.** Each shot seeks to `t_release_s` minus
+  a lead-in (5 s by default, set under the video), so you see the call and the
+  delivery rather than a stone already at rest. A rock whose release nobody saw
+  is taken to have been released 15 s before it arrived (`t_enter_s`). One embedded player is reused
   throughout — navigating never reloads it.
 - **The house shows what the shot was aimed at and what it hit.** The skip's
   broom is drawn with a line to where the rock stopped. Ghosts mark where the

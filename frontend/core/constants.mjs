@@ -36,7 +36,8 @@ export const POLL_MS = 15000;
 export const LIVE_POLL_MS = 30000;
 // Mirrors of the server's numbers, pinned equal by TestFlagConstants.
 export const NOTE_MAX = 2000;       // api.MAX_FLAG_NOTE: longest flag note
-export const VIDEO_LEAD_IN_S = 10;  // timeline.VIDEO_LEAD_IN_S: t_video_s's lead-in
+export const VIDEO_LEAD_IN_S = 5;   // timeline.VIDEO_LEAD_IN_S: t_video_s's lead-in, and the viewer's default
+export const RELEASE_TO_ARRIVAL_S = 15;  // timeline.RELEASE_TO_ARRIVAL_S: an unseen release, before the arrival
 
 /* Must stay byte-identical to the phone block in style.css. The JS gate and
  * the stylesheet gate being the same string is what keeps the behaviour that

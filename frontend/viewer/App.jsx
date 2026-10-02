@@ -413,7 +413,7 @@ export function App({ doc, config, cursor, reload }) {
               <input type="checkbox" id="autoplay" checked={ui.autoplay}
                      onChange={e => setPref({ autoplay: e.target.checked })} /> play on jump
             </label>
-            <label className="chk">lead-in
+            <label className="chk" title="How long before the release each shot starts">lead-in
               <input type="number" id="leadin" min="0" max="60" step="1"
                      style={{ width: 58 }} defaultValue={ui.leadIn}
                      onChange={e => setPref({ leadIn: Math.max(0, +e.target.value || 0) })} />s

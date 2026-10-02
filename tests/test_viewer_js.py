@@ -400,8 +400,20 @@ class TestReportArithmetic:
 
 
 class TestVideoTiming:
-    def test_it_starts_before_the_stone_comes_into_view(self):
+    def test_it_starts_the_lead_in_before_the_release(self):
+        got = run_js(setup(doc([shot(1, "red", "lead", t_release_s=83.0, t_enter_s=100.0)])) +
+                     "state.leadIn = 10; out(shotVideoTime(merge(g, e, e.shots[0])));")
+        assert got == 73.0
+
+    def test_with_no_release_seen_it_starts_well_before_the_arrival(self):
         got = run_js(setup(doc([shot(1, "red", "lead", t_enter_s=100.0)])) +
+                     "state.leadIn = 10; out(shotVideoTime(merge(g, e, e.shots[0])));")
+        assert got == 100.0 - 15 - 10
+
+    def test_an_older_charts_rock_timed_by_its_release_is_not_moved_back_again(self):
+        # Before 2026.10.01.1 a rock settled from its release carried no
+        # release, but its t_enter is the release itself.
+        got = run_js(setup(doc([shot(1, "red", "lead", t_enter_s=100.0, reason="hogged")])) +
                      "state.leadIn = 10; out(shotVideoTime(merge(g, e, e.shots[0])));")
         assert got == 90.0
 
@@ -415,12 +427,41 @@ class TestVideoTiming:
         # stopped, so the lead-in has to cover the flight as well.
         got = run_js(setup(doc([shot(1, "red", "lead", t_rest_s=100.0)])) +
                      "state.leadIn = 10; out(shotVideoTime(merge(g, e, e.shots[0])));")
-        assert got == 82.0
+        assert got == 100.0 - 8 - 15 - 10
 
     def test_a_blank_with_no_times_at_all_has_nowhere_to_seek(self):
         got = run_js(setup(doc([shot(1, "red", "lead", missing=True)])) +
                      "out(shotVideoTime(merge(g, e, e.shots[0])));")
         assert got is None
+
+
+class TestSavedPrefs:
+    """What a returning browser gets back from localStorage."""
+
+    PREFS = Path(__file__).resolve().parents[1] / "frontend/runtime/prefs.mjs"
+
+    def load(self, stored):
+        """The prefs a page loads from ``stored``, and what it loads again
+        once it has saved them."""
+        return run_js(
+            "const box = new Map();\n"
+            "globalThis.localStorage = { getItem: k => box.get(k) ?? null,"
+            " setItem: (k, v) => box.set(k, v) };\n"
+            f"box.set('curlchart', {json.dumps(json.dumps(stored))});\n"
+            f"const P = await import({self.PREFS.as_uri()!r});\n"
+            "const first = P.loadPrefs(); P.savePrefs(first);\n"
+            "out([first, P.loadPrefs()]);")
+
+    def test_a_lead_in_saved_when_it_counted_from_the_arrival_is_dropped(self):
+        from curling_score import timeline
+        first, again = self.load({"autoplay": False, "leadIn": 10})
+        assert first["leadIn"] == timeline.VIDEO_LEAD_IN_S
+        assert first["autoplay"] is False
+        assert again == first
+
+    def test_a_lead_in_saved_since_is_kept(self):
+        first, again = self.load({"leadIn": 8, "leadInFrom": "release"})
+        assert first["leadIn"] == 8 and again == first
 
 
 class TestPlacingStones:
@@ -518,14 +559,14 @@ class TestMovingAShot:
         got = run_js(setup(doc(shots, end_number=4),
                            {"0.4.5": {"before": 1}, "0.4.6": {"before": 1}}) +
                      "state.leadIn = 10; out(mergedShots(e).slice(0, 3).map(shotVideoTime));")
-        assert got == [2899.0 - 90 - 10, 2899.0 - 45 - 10, 2899.0 - 10]
+        assert got == [2899.0 - 90 - 25, 2899.0 - 45 - 25, 2899.0 - 25]
 
     def test_a_trailing_blank_is_guessed_after_the_last_seen_rock(self):
         shots = self._shots()
         shots[3]["t_enter_s"] = 3000.0
         got = run_js(setup(doc(shots, end_number=4)) +
                      "state.leadIn = 0; out(shotVideoTime(mergedShots(e)[5]));")
-        assert got == 3090.0
+        assert got == 3090.0 - 15
 
 
 class TestHouseViewBox:
@@ -1240,10 +1281,11 @@ class TestTheEndAsAList:
         assert got == "retired_thing"
 
     def test_the_row_knows_where_to_start_the_video(self):
-        """Ten seconds before the rock entered, so the throw is seen and not
-        just its aftermath -- the same rule the transport already uses."""
+        """Ten seconds before the rock was thrown -- with no release seen, a
+        typical flight before it entered -- so the throw is seen and not just
+        its aftermath: the same rule the transport already uses."""
         got = run_js(setup(end_four()) + "out(rockRows()[2].tVideo);")
-        assert got == 3290.0 + 3 * 60 - 10
+        assert got == 3290.0 + 3 * 60 - 15 - 5
 
 
 class TestTheListFollowsTheVideo:
@@ -2613,7 +2655,7 @@ class TestFlagPlace:
                 end_number=4)
         got = self.place(d)
         assert got["place"] == {"game_index": 0, "end": 4, "end_id": "4", "rock": 1,
-                                "rock_id": "1", "key": "0.4.1", "t_video_s": 812.5,
+                                "rock_id": "1", "key": "0.4.1", "t_video_s": 802.5,
                                 "label": "red, lead"}
         assert got["text"] == "End 4 · Rock 1 (red, lead)"
 
@@ -2636,12 +2678,12 @@ class TestFlagPlace:
 
     def test_a_rock_never_delivered_still_has_a_video_time(self):
         """The rocks worth flagging are often the ones detection missed. They
-        get the same time the viewer seeks to: rest less 8 s, then the guess,
-        each with the pipeline's 10 s lead-in."""
+        get the same time the viewer seeks to: from the rest or the arrival
+        back to an unseen release, then the pipeline's 5 s lead-in."""
         got = self.place(doc([shot(1, "red", "lead", t_rest_s=900.0)]))
-        assert got["place"]["t_video_s"] == 882.0
+        assert got["place"]["t_video_s"] == 900.0 - 8 - 15 - 5
         got = self.place(doc([shot(1, "red", "lead", t_enter_s=700.0)]))
-        assert got["place"]["t_video_s"] == 690.0
+        assert got["place"]["t_video_s"] == 700.0 - 15 - 5
 
     def test_a_trimmed_end_keeps_its_identity(self):
         got = self.place(doc([shot(1, "red", "lead")], end_number=2, end_id=5))
@@ -2694,8 +2736,8 @@ class TestFlagConstants:
     def test_they_match_the_server(self):
         from curling_score import timeline
         from curling_score.service import api
-        assert run_js("out([NOTE_MAX, VIDEO_LEAD_IN_S]);") == [
-            api.MAX_FLAG_NOTE, timeline.VIDEO_LEAD_IN_S]
+        assert run_js("out([NOTE_MAX, VIDEO_LEAD_IN_S, RELEASE_TO_ARRIVAL_S]);") == [
+            api.MAX_FLAG_NOTE, timeline.VIDEO_LEAD_IN_S, timeline.RELEASE_TO_ARRIVAL_S]
 
     def test_they_live_in_constants(self):
         root = Path(__file__).resolve().parents[1] / "frontend/core"

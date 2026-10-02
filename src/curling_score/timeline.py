@@ -15,10 +15,13 @@ from curling_score.ingest.source import watch_url_at
 
 SCHEMA_VERSION = 8
 
+# To watch the shot being called and thrown, the video starts this far back
+# from the release.
+VIDEO_LEAD_IN_S = 5.0
 # The overhead camera only sees the last few metres of a 45 m sheet, so the
-# stone comes into view long after it left the hand. To watch the shot being
-# called and thrown you have to start this far back from where we first see it.
-VIDEO_LEAD_IN_S = 10.0
+# stone comes into view long after it left the hand. A rock whose release
+# nobody saw is taken to have been released this long before it arrived.
+RELEASE_TO_ARRIVAL_S = 15.0
 
 # A doubles game is scheduled for eight ends (R17); an end after that is extra.
 SCHEDULED_ENDS = 8
@@ -156,6 +159,8 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None,
         think = clock.per_shot[i] if i < len(clock.per_shot) else None
         kind, kind_conf = classify.classify_shot(s)
         t_enter = None if dv is None else round(float(dv.t_enter), 2)
+        t_thrown = (float(rel.t) if rel is not None
+                    else None if t_enter is None else t_enter - RELEASE_TO_ARRIVAL_S)
         out_shots.append(
             {
                 "number": s.number,
@@ -170,7 +175,7 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None,
                 # Where to start the video to see the shot being called and
                 # thrown, not merely its arrival.
                 "t_video_s": (
-                    None if t_enter is None else round(max(0.0, t_enter - VIDEO_LEAD_IN_S), 2)
+                    None if t_thrown is None else round(max(0.0, t_thrown - VIDEO_LEAD_IN_S), 2)
                 ),
                 "confidence": round(float(s.confidence), 3),
                 "color_inferred": bool(s.color_inferred),
