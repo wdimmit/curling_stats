@@ -196,7 +196,7 @@ def run_up_from(prev_end_s, start_s: float, *, crossed_games: bool = False) -> f
     return max(0.0, min(lookback, floor))
 
 
-def read_board(path, game, progress=log.info):
+def read_board(path, game, progress=log.info, *, back_to_s=None):
     """One game's wall board, or None if it could not be read. Never raises.
 
     By the time this runs the job has already paid for the download, the
@@ -210,7 +210,8 @@ def read_board(path, game, progress=log.info):
     different responses from whoever reads the logs.
     """
     try:
-        return sb.read_game_board(path, game.start_s, game.end_s, len(game.ends))
+        return sb.read_game_board(path, game.start_s, game.end_s, len(game.ends),
+                                  back_to_s=back_to_s)
     except Exception:
         log.exception("game %s: the wall scoreboard pass failed", game.index + 1)
         progress(f"  game {game.index + 1}: board read failed, see the log")
@@ -340,10 +341,11 @@ def board_block(got) -> BoardRead:
     })
 
 
-def board_for_game(path, game, progress=log.info) -> BoardRead | None:
+def board_for_game(path, game, progress=log.info, *,
+                   back_to_s=None) -> BoardRead | None:
     """One game's wall board from the original, or None. Never raises."""
     progress(f"  game {game.index + 1}: reading the wall scoreboard...")
-    got = read_board(path, game, progress=progress)
+    got = read_board(path, game, progress=progress, back_to_s=back_to_s)
     if got is None:
         progress(f"  game {game.index + 1}: board not read")
         return None
@@ -356,6 +358,15 @@ def board_for_game(path, game, progress=log.info) -> BoardRead | None:
            if scores.unread_ends else "")
     )
     return board
+
+
+def recording_board_reader(path, progress=log.info):
+    """``read_board`` for a recording's `build_games`: each game's board, read
+    once, walking back as far as its first end's end when the late reads all
+    fail (`sb.read_game_board`). A live stream reads it after every end
+    instead, and keeps the newest read that worked."""
+    return lambda game: board_for_game(path, game, progress=progress,
+                                       back_to_s=game.ends[0].end_s)
 
 
 def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
@@ -816,7 +827,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     out_games = build_games(
         ctx, games, phase=phase,
         read_board=(None if skip_scoreboard
-                    else lambda game: board_for_game(path, game, progress=progress)))
+                    else recording_board_reader(path, progress)))
     phase("detect", 1.0, "all ends detected")
     phase("scoreboard", 1.0, "skipped" if skip_scoreboard else "scoreboard read")
     phase("rules", 1.0, "timeline built")

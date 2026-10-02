@@ -841,7 +841,8 @@ def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
     return read_cards(image, geom)
 
 
-def read_game_board(video_path, start_s, end_s, n_ends, *, read_at=None):
+def read_game_board(video_path, start_s, end_s, n_ends, *, read_at=None,
+                    back_to_s=None):
     """The latest usable board state for one game, or None.
 
     Walks back from just before ``end_s``. Never looks past it: the board is
@@ -860,14 +861,24 @@ def read_game_board(video_path, start_s, end_s, n_ends, *, read_at=None):
     `per_end_from_cards`: it says whether another read is worth spending, but
     it never gates a card or changes a score.
 
+    ``back_to_s``, when given, lets the walk go on past `MAX_BOARD_READS`, a
+    read every `BOARD_STEP_S`, back as far as that: a mid-game board with its
+    later ends unread beats none. A recording passes the end of the game's
+    first end -- before it, the board is blank or still the last game's. 10/01
+    Thursday Morning sheet 2 had nothing usable in its last 25 minutes, where
+    the stream stopped, but the board read cleanly at end 3.
+
     ``read_at`` is an injection point for tests: a callable ``(t) ->
     CardBoard | None`` replacing `read_cards_at`, so the sampler is testable
     without decoding any video.
     """
     read_at = read_at or (lambda t: read_cards_at(video_path, t))
     t = end_s - BOARD_LEAD_S
-    for reads in range(1, MAX_BOARD_READS + 1):
-        if t < start_s:
+    reads = 0
+    while True:
+        reads += 1
+        if t < start_s or (reads > MAX_BOARD_READS
+                           and (back_to_s is None or t < back_to_s)):
             break
         board = read_at(t)
         if board is not None and not board.is_blank():

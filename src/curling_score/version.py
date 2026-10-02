@@ -86,7 +86,12 @@ from pathlib import Path
 # stray stone in the other panel meanwhile cut it in two (10/01 Thursday
 # Morning sheet 2 end 4; Mens sheet 5, flagged, three times in one game).
 # Of 30 cached videos' profiles, only that sheet 2 game changes.
-PIPELINE_VERSION = "2026.10.02.1"
+# 2026.10.02.2: a recording's board, read once per game, walks back to the
+# end of the first end when the game's last five reads all fail, instead of
+# giving the game no scores (`sb.read_game_board`'s ``back_to_s``). Of 22
+# cached games with no board score, 9 gain a mid-game read this way (6-12
+# reads), agreeing with the stones as often as published board scores do.
+PIPELINE_VERSION = "2026.10.02.2"
 
 
 def model_id(weights) -> str:

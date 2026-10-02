@@ -186,3 +186,37 @@ class TestTheBoardPassCannotAbortTheJob:
         monkeypatch.setattr(analyze.sb, "read_game_board",
                             lambda *a, **k: "the board")
         assert analyze.read_board("v.mp4", self._game()) == "the board"
+
+
+class TestHowFarBackTheBoardIsRead:
+    """A recording is read once per game, so when the game's last reads all
+    fail it walks back to the end of the first end. A live stream reads the
+    board after every end and keeps the newest that worked, so it never needs
+    to -- and on a sheet whose board never reads it would pay for the walk
+    after every end."""
+
+    def _game(self):
+        return SimpleNamespace(index=0, start_s=100.0, end_s=3000.0,
+                               ends=[SimpleNamespace(number=1, end_s=900.0),
+                                     SimpleNamespace(number=2, end_s=1800.0)])
+
+    def _asked(self, monkeypatch):
+        asked = {}
+
+        def capture(path, start_s, end_s, n_ends, **kw):
+            asked.update(kw)
+            return None
+        monkeypatch.setattr(analyze.sb, "read_game_board", capture)
+        return asked
+
+    def test_a_recording_walks_back_to_the_end_of_the_first_end(self, monkeypatch):
+        asked = self._asked(monkeypatch)
+        analyze.recording_board_reader("v.mp4", lambda m: None)(self._game())
+        assert asked.get("back_to_s") == 900.0
+
+    def test_a_live_stream_does_not(self, monkeypatch):
+        from curling_score.live import session as live
+
+        asked = self._asked(monkeypatch)
+        live.VideoPipeline(progress=lambda m: None).read_board("rec.ts", self._game())
+        assert asked.get("back_to_s") is None

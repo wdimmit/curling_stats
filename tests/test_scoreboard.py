@@ -422,6 +422,45 @@ class TestReadGameBoard:
                                  read_at=lambda t: None)
         assert got is None
 
+    def test_a_recording_walks_on_back_when_the_late_reads_all_fail(self):
+        """10/01 Thursday Morning sheet 2: the live run read ends 1-3 off the
+        board mid-game, but a reprocess found nothing in the game's last
+        25 minutes -- the stream stopped at two hours -- and lost all three."""
+        def read_at(t):
+            return None if t > 2000.0 else self.board(yellow=[(1, 1)], red=[(2, 2)])
+
+        assert SB.read_game_board("v", 0.0, 4000.0, n_ends=4, read_at=read_at) is None
+        got = SB.read_game_board("v", 0.0, 4000.0, n_ends=4, read_at=read_at,
+                                 back_to_s=600.0)
+        assert got.read_at_s <= 2000.0
+        assert got.reads > SB.MAX_BOARD_READS
+        assert got.scores.per_end[2] == {"red": 2, "yellow": 0}
+        assert got.scores.unread_ends == (3, 4)
+
+    def test_it_walks_back_no_further_than_it_is_told(self):
+        """Before the first end is over, the board is blank -- or still the
+        last game's, which would be read as this one's."""
+        seen = []
+
+        def read_at(t):
+            seen.append(t)
+            return None
+
+        assert SB.read_game_board("v", 0.0, 7000.0, n_ends=6, read_at=read_at,
+                                  back_to_s=1500.0) is None
+        assert min(seen) >= 1500.0
+        assert len(seen) > SB.MAX_BOARD_READS
+
+    def test_a_late_read_that_works_still_costs_one(self):
+        seen = []
+
+        def read_at(t):
+            seen.append(t)
+            return self.board(yellow=[(1, 1)])
+
+        SB.read_game_board("v", 0.0, 4000.0, n_ends=1, read_at=read_at, back_to_s=600.0)
+        assert len(seen) == 1
+
     def test_an_incomplete_board_is_still_returned(self):
         """Trailing ends unposted is a partial answer, not a failure."""
         got = SB.read_game_board("v", 0.0, 3000.0, n_ends=4,
