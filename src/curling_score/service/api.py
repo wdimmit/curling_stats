@@ -1339,12 +1339,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.post("/api/me/charts/{chart_id}/claim")
     def api_claim_chart(chart_id: str, body: dict | None = None,
                         authorization: str | None = Header(default=None)):
-        """Put a link you already hold into your list.
+        """Put a link you already hold into your list, or move it onto a team.
 
         Holding the chart id is the whole permission -- it is the same thing
         that lets you edit -- so nothing else is asked for. What is refused is
         claiming a chart that already belongs to a team you are not on, which
-        would otherwise let anyone you shared a link with take it.
+        would otherwise let anyone you shared a link with take it. With
+        ``team_id`` the chart moves onto that team: see below for who may.
         """
         me = require_user(authorization)
         chart = repo.get_chart(chart_id)
@@ -1365,6 +1366,21 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(403, "this chart belongs to another team")
         if team_id and not may_use_team(me, team_id):
             raise HTTPException(403, "you are not on that team")
+        # Moving a chart onto a team ("I charted this as myself and meant to
+        # chart it as my team"). The edit link lets anybody chart a game, so
+        # it is not enough to take the chart: only the person who charted it
+        # moves it. And a team keeps one chart per game, so the team's claim
+        # on the game is taken first -- the same first-writer-wins as
+        # resolving a chart -- and a team that already has one is told which,
+        # with nothing changed, rather than quietly left holding two.
+        if team_id and team_id != chart.team_id:
+            if chart.owner_user_id and chart.owner_user_id != me.id:
+                raise HTTPException(403, "only the person who charted it can move it")
+            if chart.source_id:
+                held = repo.claim_chart(team_id, chart.source_id, chart.id)
+                if held != chart.id:
+                    raise HTTPException(409, {"message": "that team already has a chart of this game",
+                                              "chart": held})
         fields = {"owner_user_id": chart.owner_user_id or me.id, "team_id": team_id or chart.team_id}
         chart = repo.update_chart(chart_id, **fields)
         key = owner_key_for(chart)

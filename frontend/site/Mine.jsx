@@ -4,7 +4,48 @@ import { day } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Warn } from "./ui.jsx";
 
-function ChartRow({ c }) {
+/* Charted as yourself, meant as your team: move it there. The link and the
+ * grading stay as they are; the chart becomes the team's one chart for this
+ * game. The server refuses a team that already has one, and says which. */
+function MoveToTeam({ c, teams, onMoved }) {
+  const [team, setTeam] = useState(teams[0].id);
+  const [note, setNote] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function move() {
+    if (busy) return;
+    setBusy(true);
+    setNote(null);
+    const res = await authedFetch(`/api/me/charts/${encodeURIComponent(c.slug)}/claim`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ team_id: team }) });
+    setBusy(false);
+    if (res.ok) { onMoved(); return; }
+    const data = await res.json().catch(() => ({}));
+    const name = teams.find(t => t.id === team)?.name || "That team";
+    setNote(res.status === 409 && data.detail?.chart
+      ? <Warn>{name} already has a chart of this game.{" "}
+          <a href={`/c/${data.detail.chart}/`}>Open it</a></Warn>
+      : <Warn>{res.status === 403 ? "Only the person who charted it can move it."
+                                  : "Could not move it. Try again."}</Warn>);
+  }
+
+  return (
+    <div className="row move">
+      {teams.length > 1 ? (
+        <select aria-label="Team" value={team} onChange={e => setTeam(e.target.value)}>
+          {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      ) : null}
+      <button disabled={busy} onClick={move}>
+        {teams.length > 1 ? "Move to team" : `Move to ${teams[0].name}`}
+      </button>
+      {note}
+    </div>
+  );
+}
+
+function ChartRow({ c, teams, onMoved }) {
   return (
     <tr>
       <td className="when">{day(c.played_at)}</td>
@@ -15,6 +56,9 @@ function ChartRow({ c }) {
           <Warn>Your team has another chart for this game.{" "}
             <a href={`/c/${c.duplicate_of}/`}>Open it</a> — this one is kept as it is.</Warn>
         )}
+        {!c.team_id && teams.length ? (
+          <MoveToTeam c={c} teams={teams} onMoved={onMoved} />
+        ) : null}
       </td>
       <td data-label="Sheet">{c.sheet ?? "?"}</td>
       <td data-label="Charted">{c.shots_charted || 0}</td>
@@ -27,7 +71,7 @@ function ChartRow({ c }) {
   );
 }
 
-function Teams({ user }) {
+function Teams({ user, onChanged }) {
   const [teams, setTeams] = useState(null);
   const [invites, setInvites] = useState({});
   const [name, setName] = useState("");
@@ -63,7 +107,7 @@ function Teams({ user }) {
     const res = await authedFetch("/api/teams", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: name.trim() }) });
-    if (res.ok) { setName(""); await load(); }
+    if (res.ok) { setName(""); await load(); onChanged?.(); }
   }
 
   return (
@@ -137,6 +181,9 @@ function Claim({ onAdded }) {
 export function Mine() {
   const { user, ready, accounts } = useAuthUser();
   const charts = useResource("/api/me/charts", { skip: !ready || !user, deps: [user?.uid] });
+  // The teams a chart can be moved onto; Teams below fetches its own, in full.
+  const me = useResource("/api/me", { skip: !ready || !user, deps: [user?.uid] });
+  const teams = me.data?.teams || [];
   const [err, setErr] = useState("");
 
   return (
@@ -177,7 +224,9 @@ export function Mine() {
                     <tbody>
                       <tr><th>Played</th><th>Game</th><th>Sheet</th><th>Charted</th>
                           <th>Status</th><th /></tr>
-                      {charts.data.charts.map(c => <ChartRow key={c.slug} c={c} />)}
+                      {charts.data.charts.map(c => (
+                        <ChartRow key={c.slug} c={c} teams={teams} onMoved={charts.reload} />
+                      ))}
                     </tbody>
                   </table>
                 ) : (
@@ -185,7 +234,7 @@ export function Mine() {
                     <a href="/">the catalogue</a> and press Chart.</span>
                 )}
             </div>
-            <Teams user={user} />
+            <Teams user={user} onChanged={me.reload} />
             <Claim onAdded={charts.reload} />
           </div>
         )}

@@ -536,3 +536,67 @@ class TestAFlagCarriesTheAccount:
         sid = a_ready_game(no_accounts)
         assert post(no_accounts, "/api/flags", self.body(sid), SARAH).status_code == 201
         assert no_accounts["repo"].list_flags()[0].user is None
+
+
+class TestMovingAChartToATeam:
+    """A game charted as yourself, moved onto a team you are on: the same
+    link and grading, now the team's one chart for that game."""
+
+    def _charted(self, w, who, team=None, process=True):
+        body = {"url": f"https://youtu.be/{VID}"}
+        if team:
+            body["team_id"] = team
+        slug = post(w, "/api/submissions", body, who).json()["slug"]
+        if process:          # a second chart of the game reuses the finished run
+            work_through(w)
+        return slug
+
+    def test_my_chart_moves_onto_my_team(self, w):
+        team = a_team(w)
+        slug = self._charted(w, SARAH)
+        r = post(w, f"/api/me/charts/{slug}/claim", {"team_id": team}, SARAH)
+        assert r.status_code == 200, r.text
+        assert r.json()["slug"] == slug and r.json()["team_name"] == "Thistles"
+        chart = w["repo"].get_chart(slug)
+        assert chart.team_id == team and chart.owner_user_id == "uid-sarah"
+        assert w["repo"].chart_claim(team, chart.source_id) == slug
+
+    def test_the_link_and_the_grading_come_with_it(self, w):
+        team = a_team(w)
+        slug = self._charted(w, SARAH)
+        w["repo"].update_chart(slug, overrides={"0.1.1": {"user_score": 4}}, overrides_version=1)
+        post(w, f"/api/me/charts/{slug}/claim", {"team_id": team}, SARAH)
+        assert w["client"].get(f"/c/{slug}/overrides.json").json() == {"0.1.1": {"user_score": 4}}
+
+    def test_not_onto_a_team_i_am_not_on(self, w):
+        team = a_team(w)                       # Sarah's
+        slug = self._charted(w, ALEX)
+        assert post(w, f"/api/me/charts/{slug}/claim", {"team_id": team}, ALEX).status_code == 403
+        assert w["repo"].get_chart(slug).team_id is None
+
+    def test_not_someone_elses_chart_even_holding_its_link(self, w):
+        """The edit link lets you chart a game; it must not let you take the chart."""
+        team = a_team(w)                       # Sarah's
+        slug = self._charted(w, ALEX)
+        r = post(w, f"/api/me/charts/{slug}/claim", {"team_id": team}, SARAH)
+        assert r.status_code == 403
+        assert w["repo"].get_chart(slug).team_id is None
+
+    def test_not_onto_a_team_that_already_has_this_game(self, w):
+        """A team keeps one chart per game; a move must not quietly make two."""
+        team = a_team(w)
+        theirs = self._charted(w, SARAH, team)
+        mine = self._charted(w, SARAH, process=False)
+        assert mine != theirs
+        assert w["repo"].get_chart(mine).source_id is not None
+        r = post(w, f"/api/me/charts/{mine}/claim", {"team_id": team}, SARAH)
+        assert r.status_code == 409
+        assert r.json()["detail"]["chart"] == theirs
+        assert w["repo"].get_chart(mine).team_id is None
+
+    def test_claiming_without_a_team_is_unchanged(self, w):
+        slug = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}).json()["slug"]
+        work_through(w)
+        assert post(w, f"/api/me/charts/{slug}/claim", {}, SARAH).status_code == 200
+        chart = w["repo"].get_chart(slug)
+        assert chart.owner_user_id == "uid-sarah" and chart.team_id is None

@@ -295,3 +295,7 @@ body[data-page="games"] .pill { font-family:inherit; }
   .drawrow .actions > * { min-height:44px; padding:0 12px; font-size:15px;
                           display:flex; align-items:center; justify-content:center; }
 }
+
+/* My games: moving a chart charted as yourself onto a team. */
+#charts .game .move { margin-top: 6px; gap: 6px; }
+#charts .game .move select, #charts .game .move button { font-size: 13px; }

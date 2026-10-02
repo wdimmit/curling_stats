@@ -3727,3 +3727,22 @@ class TestTheReviewFixes:
         assert 'className={`rpt-top${table.ends.length > 4 ? " long" : ""}`}' in report
         css = self.src("src/curling_score/viewer/style.css")
         assert ".rpt-top.long { grid-template-columns:minmax(0,1fr); }" in css
+
+
+class TestMoveToTeamButton:
+    """My games: a chart charted as yourself can be moved onto a team."""
+    MINE = Path(__file__).resolve().parents[1] / "frontend/site/Mine.jsx"
+
+    def test_it_sends_the_team_to_the_claim_route(self):
+        src = self.MINE.read_text()
+        move = src[src.index("function MoveToTeam("):]
+        assert "/claim`" in move and "JSON.stringify({ team_id: team })" in move
+
+    def test_a_team_that_already_has_the_game_is_named_with_a_link(self):
+        src = self.MINE.read_text()
+        assert "res.status === 409 && data.detail?.chart" in src
+        assert "already has a chart of this game" in src
+
+    def test_only_personal_charts_offer_it(self):
+        src = self.MINE.read_text()
+        assert "{!c.team_id && teams.length ? (" in src
