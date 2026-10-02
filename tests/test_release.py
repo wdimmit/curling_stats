@@ -386,6 +386,11 @@ class TestAHoggedRockAsADelivery:
         d = release.as_delivery(release.Release("red", 1109.3, 4.0, 2.0))
         assert classify.classify(d, {"added": [], "removed": [], "moved": []})[0] == "hogged"
 
+    def test_it_carries_the_release_it_stands_in_for(self):
+        """Its t_enter is the throw, not an arrival; only the release says so."""
+        r = release.Release("red", 1109.3, 4.0, 2.0)
+        assert release.as_delivery(r).release is r
+
 
 class TestWhatBecameOfAnUnseenArrival:
     """A release with no arrival is settled by what the far house did."""
@@ -423,6 +428,14 @@ class TestWhatBecameOfAnUnseenArrival:
     def test_with_no_house_to_read_it_is_taken_as_hogged(self):
         got = release.unaccounted([self._rel()], [], frames=())
         assert [d.reason for d in got] == ["hogged"]
+
+    @pytest.mark.parametrize("after", [[("yellow", 0.3, 1.0)],
+                                       [("yellow", 0.3, 1.0), ("red", -0.4, 0.6)],
+                                       []])
+    def test_whatever_it_became_it_carries_its_release(self, after):
+        r = self._rel()
+        got = release.settle(r, self._house([("yellow", 0.3, 1.0)], after))
+        assert got.release is r
 
 
 class TestAMisreadHandle:

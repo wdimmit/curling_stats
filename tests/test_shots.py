@@ -751,6 +751,16 @@ class TestTheReleaseThatThrewIt:
                                       thrown_by={id(dv): r})
         assert built[0].release is r
 
+    def test_a_rock_timed_by_its_release_alone_carries_that_release(self):
+        """Hogged, or arrived unseen: never paired, because nothing arrived.
+        Without its release the clock, the hog crossing and the broom all
+        take its t_enter -- the throw -- for an arrival, 16 s too late."""
+        from curling_score.detect import release
+        r = release.Release(color="red", t=88.0, y_exit_m=3.1, speed_m_s=1.9)
+        hog = release.as_delivery(r)
+        built = shots.from_deliveries([hog], self._frames(hog))
+        assert built[0].release is r
+
     def test_a_shot_with_no_release_still_builds(self):
         dv = self._one_delivery()
         built = shots.from_deliveries([dv], self._frames(dv))

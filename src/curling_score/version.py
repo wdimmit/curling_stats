@@ -72,7 +72,12 @@ from pathlib import Path
 # frame where it had been seen sitting (`linetime._on`). s_1PbxeFSujkOVgtmLS
 # e3 r11's path ran into a red guard a yellow pad had made read yellow; on 361
 # harness rocks one path loses one point.
-PIPELINE_VERSION = "2026.10.01"
+# 2026.10.01.1: a rock nothing saw arrive -- hogged, or settled from the house
+# by its release -- carries that release, and its tee crossing is read from
+# the throw, not 16 s before it as if its t_enter were an arrival. Its broom,
+# hog crossing, line and thinking time were all read at the wrong moment
+# (09/29 Super League sheet 3 e2 r13, flagged: 103 of 7,401 hosted rocks).
+PIPELINE_VERSION = "2026.10.01.1"
 
 
 def model_id(weights) -> str:

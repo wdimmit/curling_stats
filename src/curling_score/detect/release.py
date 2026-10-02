@@ -381,6 +381,7 @@ def as_delivery(release: Release) -> D.Delivery:
         travel_m=0.0,
         came_to_rest=False,
         reason=REASON,
+        release=release,
     )
 
 
@@ -405,12 +406,13 @@ def settle(release: Release, frames) -> D.Delivery:
         x, y = mine[0]
         return D.Delivery(color=release.color, t_enter=t, t_rest=t + SETTLE_S,
                           entry_y_m=C.HOGGED_Y_M, rest_x_m=x, rest_y_m=y,
-                          travel_m=C.HOGGED_Y_M - y, came_to_rest=True, reason=REASON_ADD)
+                          travel_m=C.HOGGED_Y_M - y, came_to_rest=True, reason=REASON_ADD,
+                          release=release)
     if removed:
         return D.Delivery(color=release.color, t_enter=t, t_rest=t + SETTLE_S,
                           entry_y_m=C.HOGGED_Y_M, rest_x_m=0.0, rest_y_m=C.THROUGH_BACK_Y_M,
                           travel_m=C.HOGGED_Y_M - C.THROUGH_BACK_Y_M, came_to_rest=False,
-                          reason=REASON_REMOVE)
+                          reason=REASON_REMOVE, release=release)
     return rock
 
 

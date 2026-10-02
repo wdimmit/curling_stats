@@ -603,7 +603,9 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
                 missing=False,
                 confidence=1.0 if dv.came_to_rest else 0.8,
                 delivery=dv,
-                release=(thrown_by or {}).get(id(dv)),
+                # Paired with its arrival, or -- a rock nothing saw arrive --
+                # the release the delivery was made from.
+                release=(thrown_by or {}).get(id(dv)) or getattr(dv, "release", None),
                 # An empty reading is normally a failure to see the house --
                 # the stone just thrown has to be somewhere. The exception is a
                 # stone that ran out of play, which legitimately leaves the

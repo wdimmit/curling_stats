@@ -289,6 +289,65 @@ class TestWhenNothingWasSeenLeavingTheHouse:
         assert thinking.for_game([shots, shots]).estimated_shots == 2
 
 
+class Thrown:
+    """A delivery `detect.release` made from a throw nothing saw arrive."""
+
+    def __init__(self, t_release, reason):
+        self.t_enter, self.reason = t_release, reason
+
+
+def released(n, color, rest, t_release, reason="release-add"):
+    s = Shot(n, color, t_rest_s=rest)
+    s.delivery = Thrown(t_release, reason)
+    s.tee_s, s.tee_estimated = None, False
+    return s
+
+
+class TestARockTimedByItsReleaseAlone:
+    """Its t_enter is when it was thrown, not when it arrived.
+
+    Super League 09/29 sheet 3 end 2 rock 13, flagged "no split or broom":
+    released at 1273.6, its tee crossing was put at 1257.6 -- the arrival
+    lag taken off a throw -- and the broom was read where nobody held one.
+    """
+
+    @pytest.mark.parametrize("reason", ["hogged", "release-add", "release-remove"])
+    def test_with_nothing_else_seen_it_crossed_the_tee_just_after(self, reason):
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 released(2, "yellow", 146.0, 110.0, reason)]
+        thinking.time_shots(shots, [], VIEW_Y_MIN)
+        assert shots[1].tee_s == pytest.approx(
+            110.0 + thinking.ASSUMED_RELEASE_TO_TEE_S)
+        assert shots[1].tee_estimated is True
+
+    def test_the_lag_is_the_one_measured_across_the_hosted_games(self):
+        assert thinking.ASSUMED_RELEASE_TO_TEE_S == 0.8
+
+    def test_its_own_climb_out_of_the_hack_times_it(self):
+        # climbs from -1.95 at 2 m/s, so it crosses y = 0 at t = 110.975
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 released(2, "yellow", 146.0, 110.0)]
+        thinking.time_shots(shots, frames(leaving("yellow", 110.0)), VIEW_Y_MIN)
+        assert shots[1].tee_s == pytest.approx(110.975, abs=0.02)
+        assert shots[1].tee_estimated is False
+
+    def test_the_throw_before_it_is_not_taken_for_it(self):
+        """12 s earlier sits in an arrival's lag window, but this is no arrival."""
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 released(2, "yellow", 146.0, 110.0)]
+        thinking.time_shots(shots, frames(leaving("yellow", 98.0)), VIEW_Y_MIN)
+        assert shots[1].tee_s == pytest.approx(
+            110.0 + thinking.ASSUMED_RELEASE_TO_TEE_S)
+        assert shots[1].tee_estimated is True
+
+    def test_the_clock_runs_to_the_throw(self):
+        shots = [arriving(1, "red", 80.0, 70.0),
+                 released(2, "yellow", 146.0, 110.0)]
+        thinking.time_shots(shots, [], VIEW_Y_MIN)
+        assert thinking.for_end(shots).by_color["yellow"] == pytest.approx(
+            110.8 - (80.0 + thinking.GRACE_S))
+
+
 class TestWhatTheTimingPassLeavesAlone:
     def test_a_shot_with_a_paired_release_keeps_it(self):
         """The pairing is the better evidence, and the long split needs it."""

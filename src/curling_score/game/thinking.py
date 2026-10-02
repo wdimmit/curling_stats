@@ -93,6 +93,16 @@ TRACK_TEE_GAP_M = 1.0
 # ``Shot.tee_estimated``, and ``estimated_shots`` travels with every total.
 ASSUMED_TEE_TO_ARRIVAL_S = 16.0
 
+# A rock nothing saw arrive is timed by its release (`detect.release.settle`):
+# its t_enter is the first sighting of its climb out of the hack, so the lag
+# above would put its crossing 16 s before it was thrown. Across the 94 hosted
+# games on 2026-10-01, the 4,293 overhead releases seen crossing the tee did so
+# a median 0.82 s after that first sighting, p10 0.62 to p90 1.0.
+ASSUMED_RELEASE_TO_TEE_S = 0.8
+# Two throws are never within `R.MIN_SEPARATION_S` of each other, so a climb of
+# its colour starting within half of that of such a release is the release.
+SAME_THROW_S = R.MIN_SEPARATION_S / 2
+
 
 @dataclass(frozen=True)
 class _Sighting:
@@ -140,6 +150,8 @@ def time_shots(shots, frames, view_y_min_m: float) -> None:
     depends on it. For the rest, the one track of the right colour climbing
     out of the house in the lag window is taken as this rock on its way, and
     where there is no track at all the crossing is assumed from the arrival.
+    A rock timed by its release alone has no arrival: its own climb starts
+    at its t_enter, and without one the crossing is assumed from the throw.
 
     This runs after the rules have settled the shot list, and can only attach a
     time to a rock already in it. Nothing here can add, drop or renumber a
@@ -160,15 +172,21 @@ def time_shots(shots, frames, view_y_min_m: float) -> None:
         delivery = getattr(shot, "delivery", None)
         if delivery is None:
             continue
-        fits = [s for s in seen if s.color == shot.color
-                and R.MIN_LAG_S <= delivery.t_enter - s.t_start <= R.MAX_LAG_S]
+        if getattr(delivery, "reason", None) in R.RELEASE_REASONS:
+            fits = [s for s in seen if s.color == shot.color
+                    and abs(s.t_start - delivery.t_enter) <= SAME_THROW_S]
+            assumed = delivery.t_enter + ASSUMED_RELEASE_TO_TEE_S
+        else:
+            fits = [s for s in seen if s.color == shot.color
+                    and R.MIN_LAG_S <= delivery.t_enter - s.t_start <= R.MAX_LAG_S]
+            assumed = delivery.t_enter - ASSUMED_TEE_TO_ARRIVAL_S
         if fits:
             # More than one is one delivery seen twice -- the rock and the
             # slider, or a track broken and remade a moment later. The one
             # that entered closest to the back edge came out of the hack.
             shot.tee_s = min(fits, key=lambda s: s.entry_m).t_tee
         else:
-            shot.tee_s = delivery.t_enter - ASSUMED_TEE_TO_ARRIVAL_S
+            shot.tee_s = assumed
             shot.tee_estimated = True
 
 

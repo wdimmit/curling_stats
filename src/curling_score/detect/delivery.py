@@ -16,7 +16,7 @@ It also names the thrower directly: the moving stone's own colour, with no
 appeal to the alternation rule.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from curling_score.geometry import constants as C
 
@@ -239,6 +239,12 @@ class Delivery:
     # its endpoints, and because how fast it was moving is the only evidence
     # separating a takeout from a draw that happened to land on a stone.
     track: tuple[tuple[float, float, float], ...] = ()
+    # The `detect.release.Release` this delivery stands in for, when the far
+    # house never saw it arrive (`detect.release.settle`). Its t_enter is
+    # then the throw, not an arrival, and the shot built from it needs the
+    # release itself: the clock, the hog crossing and the broom all time
+    # from it. Not part of a delivery's identity.
+    release: object = field(default=None, compare=False, repr=False)
 
     @property
     def duration_s(self) -> float:
