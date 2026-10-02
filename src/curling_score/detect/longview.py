@@ -32,7 +32,13 @@ import numpy as np
 # The hog crossing itself is unaffected -- it is timed off paint, not off
 # ``t`` -- so a later anchor only shrinks the gap between the two, putting
 # the LOWER bound (2.0 s) at risk first; the upper bound has margin to spare.
-WINDOW_S = (2.0, 6.5)
+#
+# And it did: of 35 hosted throws released at 3 m/s or more, 3 crossed
+# 1.77-1.86 s after their release, before a 2.0 s window opened. Nothing can
+# reach the hog line, 6.4 m from the tee, in a second, so the window opens
+# there; a second more of search for every throw changed nothing on the
+# others (see SPEED_BOUNDS_M_S).
+WINDOW_S = (1.0, 6.5)
 
 # How wide a stone reads at the hog line, and how far from that a candidate may
 # be before it is refused.
@@ -61,10 +67,15 @@ WINDOW_S = (2.0, 6.5)
 # all, since VideoStats carries no such field today.
 WIDTH_BOUNDS = (0.5, 1.6)
 STONE_WIDTH_AT_HOG_PX = 52.0
-# A delivery crosses its hog line between 1.2 and 3.2 m/s -- the range the 27
-# hand-marked crossings imply. Slower than that is a stone being nudged aside,
-# or a tracker that has drifted onto one already at rest.
-SPEED_BOUNDS_M_S = (1.2, 3.2)
+# A delivery crosses its hog line no slower than 1.2 m/s -- slower is a stone
+# being nudged aside, or a tracker that has drifted onto one already at rest.
+# The 27 hand-marked crossings, nearly all draws, put the top at 3.2 m/s, but
+# a big-weight hit goes faster: 10/01 Mens sheet 2's flagged rock 16 was
+# followed across the line and refused at 3.69 m/s, and 6 of 35 hosted
+# throws released at 3 m/s or more were refused at 3.20-3.67 m/s. Raising the
+# top only admits crossings once refused for speed; a tracker jump that reads
+# faster still is refused, and the split checks both camera speeds again.
+SPEED_BOUNDS_M_S = (1.2, 5.0)
 # How much darker than the ice granite is, in luminance levels.
 #
 # The painted hog line dips about 25 levels below the ice (238 -> ~212), so

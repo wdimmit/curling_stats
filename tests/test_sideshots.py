@@ -21,7 +21,7 @@ class TestWindows:
 
     def test_a_window_spans_the_flight_from_the_release(self):
         (w,) = sideshots.windows_for_end([FakeShot(1, "red", t_rel=100.0)], "top")
-        assert (w.t0, w.t1) == (100.0 + 2.0, 100.0 + 6.5)   # longview.WINDOW_S
+        assert (w.t0, w.t1) == (100.0 + 1.0, 100.0 + 6.5)   # longview.WINDOW_S
 
     def test_a_shot_with_no_release_falls_back_to_the_arrival(self):
         (w,) = sideshots.windows_for_end([FakeShot(1, "red", t_rest=200.0)], "top")

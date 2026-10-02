@@ -50,8 +50,8 @@ class TestTiming:
         shots = [a_shot(1, "red", 100.0, t_rel=80.0)]
         find = Recorder()
         hogtime.time_hog_crossings(shots, "v.mp4", object(), find=find)
-        assert find.calls == [("red", 82.0, 86.5)]
-        assert hogtime.crossing(shots[0]) == pytest.approx(85.0)
+        assert find.calls == [("red", 81.0, 86.5)]
+        assert hogtime.crossing(shots[0]) == pytest.approx(84.0)
 
     def test_a_shot_with_no_release_is_searched_back_from_its_arrival(self):
         shots = [a_shot(1, "red", 100.0, t_enter=92.0)]
@@ -106,8 +106,8 @@ class TestTheDefaultFinder:
                                      release=types.SimpleNamespace(t=10.0))
         hogtime.time_hog_crossings([shot], "v.mp4", object(), find=find)
         assert seen == ["red"]
-        # t0 is release.t + WINDOW_S[0] = 12.0, and the stub returns t0 + 1.
-        assert shot.t_hog_s == pytest.approx(13.0)
+        # t0 is release.t + WINDOW_S[0] = 11.0, and the stub returns t0 + 1.
+        assert shot.t_hog_s == pytest.approx(12.0)
 
     def test_it_falls_back_to_the_colour_scan_with_no_side_model(self, monkeypatch):
         monkeypatch.setattr(hogtime.sidemodel, "default_finder", lambda: None)

@@ -91,7 +91,13 @@ from pathlib import Path
 # giving the game no scores (`sb.read_game_board`'s ``back_to_s``). Of 22
 # cached games with no board score, 9 gain a mid-game read this way (6-12
 # reads), agreeing with the stones as often as published board scores do.
-PIPELINE_VERSION = "2026.10.02.2"
+# 2026.10.02.3: the long camera times a big-weight hit's hog crossing: its
+# speed bound tops out at 5.0 m/s, not 3.2, and its window opens 1.0 s after
+# the release, not 2.0 (`longview`). 10/01 Mens sheet 2's flagged rock 16 was
+# refused at 3.69 m/s and now splits 5.53 s. Of 35 hosted throws released at
+# 3 m/s or more, 26 crossings were found before and 35 now; of 438 rocks in
+# three games, 431 read the same, 7 gained one, none was lost or moved.
+PIPELINE_VERSION = "2026.10.02.3"
 
 
 def model_id(weights) -> str:

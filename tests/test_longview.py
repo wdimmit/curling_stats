@@ -252,6 +252,42 @@ class TestOffsetBelongsToTheProposer:
         assert sidemodel.OFFSET_S != longview.OFFSET_S
 
 
+class TestABigWeightHit:
+    """10/01 Mens sheet 2, 9 pm game, end 4, rock 16, flagged "weight not
+    tracked": the long camera followed it across the hog line and refused it
+    at 3.69 m/s, over a bound set from 27 hand marks that were nearly all
+    draws. Of 35 hosted throws released at 3 m/s or more, 6 were refused this
+    way (3.20-3.67 m/s), and 3 more crossed 1.77-1.86 s after their release,
+    before the window opened."""
+
+    VIEW = SideView(rect=(0, 0, 810, 1080), tee_row=435.0, hog_row=520.0)
+
+    def _track(self, rows_per_sample):
+        return {0: [(10.0 + i * 0.1, 520.0 - 8.0 + i * rows_per_sample, 52.0)
+                    for i in range(6)]}
+
+    def _speed(self, track):
+        pts = track[0]
+        return (abs(self.VIEW.metres_at(pts[-1][1]) - self.VIEW.metres_at(pts[0][1]))
+                / (pts[-1][0] - pts[0][0]))
+
+    def test_a_hit_at_rock_16s_speed_is_timed(self):
+        track = self._track(6.0)
+        assert 3.5 < self._speed(track) < 4.0          # the fixture is what it says
+        got = longview.crossing_from_tracks(track, self.VIEW, offset_s=0.0)
+        assert got.key == longview.KEY_OK, got.reason
+
+    def test_faster_than_any_delivery_is_still_refused(self):
+        track = self._track(9.0)
+        assert self._speed(track) > longview.SPEED_BOUNDS_M_S[1]
+        got = longview.crossing_from_tracks(track, self.VIEW, offset_s=0.0)
+        assert got.key == longview.KEY_BAD_SPEED
+
+    def test_the_bound_and_the_window(self):
+        assert longview.SPEED_BOUNDS_M_S == (1.2, 5.0)
+        assert longview.WINDOW_S == (1.0, 6.5)
+
+
 class TestATrackSplitAtABinBoundary:
     """AEqL game 2, end 3, rock 3: the stone's column crossed 480 -- a 120-px
     key boundary -- exactly on the hog row, so its track came apart there and
