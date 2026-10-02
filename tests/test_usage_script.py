@@ -202,7 +202,52 @@ def test_main_reads_a_saved_dump(tmp_path, capsys):
     assert usage.main(["--input", str(dump), "--tz", "America/Los_Angeles", "--json"]) == 0
     got = json.loads(capsys.readouterr().out)
     assert got["totals"]["visitors"] == 1 and got["totals"]["charts_started"] == 1
+    assert "registered_users" not in got["totals"]     # a bare list holds no users
 
 
 def test_main_refuses_a_bad_time_zone(capsys):
     assert usage.main(["--input", "unused.json", "--tz", "Mars/Olympus"]) == 2
+
+
+def account(created, seen=None):
+    """A `users` document as Firestore's REST API returns it."""
+    fields = {"created_at": {"timestampValue": created.isoformat().replace("+00:00", "Z")}}
+    if seen:
+        fields["last_seen_at"] = {"timestampValue": seen.isoformat().replace("+00:00", "Z")}
+    return {"name": "projects/p/databases/(default)/documents/users/u", "fields": fields}
+
+
+def test_a_user_document_gives_its_two_timestamps():
+    assert usage.parse_user(account(T0, T0 + timedelta(days=1))) == (T0, T0 + timedelta(days=1))
+    assert usage.parse_user(account(T0)) == (T0, None)
+    assert usage.parse_user({"fields": {}}) is None
+
+
+def test_registered_users_count_signups_and_sign_ins_inside_the_window():
+    since = T0 - timedelta(days=7)
+    old, evening = T0 - timedelta(days=40), datetime(2026, 9, 30, 2, 30, tzinfo=timezone.utc)
+    users = [(old, T0), (old, old), (evening, evening)]
+    visitors, _ = usage.screen([usage.parse(e) for e in watch()])
+    rep = usage.report(visitors, PACIFIC, users, since)
+    t = rep["totals"]
+    assert t["registered_users"] == 3 and t["signed_up"] == 1 and t["seen_signed_in"] == 2
+    # The evening signup lands on its local Tuesday, with the day's visit.
+    assert [(d["start"], d["signups"]) for d in rep["days"]] == [("2026-09-29", 1)]
+    assert rep["weeks"][0]["signups"] == 1
+
+
+def test_the_report_says_when_users_could_not_be_read():
+    visitors, excluded = usage.screen([usage.parse(e) for e in watch()])
+    text = usage.render(usage.report(visitors, PACIFIC), excluded, "w")
+    assert "Registered users: could not be read." in text and "signups" not in text
+    text = usage.render(usage.report(visitors, PACIFIC, [(T0, T0)], T0 - timedelta(days=1)),
+                        excluded, "w")
+    assert "1 registered users" in text and "signups" in text
+
+
+def test_main_reads_users_saved_with_the_log(tmp_path, capsys):
+    dump = tmp_path / "req.json"
+    dump.write_text(json.dumps({"requests": watch(), "users": [account(T0, T0), account(T0)]}))
+    assert usage.main(["--input", str(dump), "--tz", "America/Los_Angeles", "--json"]) == 0
+    t = json.loads(capsys.readouterr().out)["totals"]
+    assert t["registered_users"] == 2 and t["seen_signed_in"] == 1

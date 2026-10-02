@@ -8,6 +8,12 @@ It reads Cloud Run's own request logs with `gcloud logging read`, so it
 needs your gcloud login, not the admin token. Cloud Logging keeps them 30
 days, so no report reaches further back than that.
 
+Registered users come from Firestore's `users` collection instead, over its
+REST API with the same login. Only each account's created_at and
+last_seen_at are read; no email or name leaves Firestore. last_seen_at
+moves at most hourly, and only on a signed-in site page (grading on a /c/
+link sends no sign-in), so "seen signed in" is a floor.
+
 A visitor is an address plus its browser, which makes the count rough:
 - a phone on mobile data can show up as several visitors as its carrier
   hands it new addresses (IPv6 is folded to its /64, which takes care of
@@ -40,6 +46,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import urllib.request
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -49,6 +56,8 @@ from zoneinfo import ZoneInfo
 PROJECT = "curling-stats-508323"
 SERVICE = "curling-chart"
 SESSION_GAP = timedelta(minutes=30)
+FIRESTORE_QUERY = ("https://firestore.googleapis.com/v1/projects/{project}"
+                   "/databases/(default)/documents:runQuery")
 FIELDS = ("timestamp", "httpRequest.remoteIp", "httpRequest.requestMethod",
           "httpRequest.status", "httpRequest.requestUrl", "httpRequest.userAgent")
 
@@ -106,6 +115,19 @@ def parse(entry: dict) -> Req | None:
     return Req(at=at, ip=http.get("remoteIp", ""), method=http.get("requestMethod", ""),
                status=int(http.get("status") or 0), path=urlsplit(http["requestUrl"]).path,
                ua=http.get("userAgent", ""))
+
+
+def parse_user(doc: dict) -> tuple[datetime, datetime | None] | None:
+    """(created_at, last_seen_at) from one Firestore REST document."""
+    fields = doc.get("fields") or {}
+
+    def when(name):
+        v = fields.get(name) or {}
+        t = v.get("timestampValue") or v.get("stringValue")
+        return datetime.fromisoformat(t.replace("Z", "+00:00")) if t else None
+
+    created = when("created_at")
+    return (created, when("last_seen_at")) if created else None
 
 
 def network(ip: str) -> str:
@@ -222,11 +244,15 @@ def reopens(rs: list[Req], first_seen: dict) -> set[Req]:
 def _empty() -> dict:
     return {"visitors": set(), "charted": set(), "chart_sessions": 0, "view_sessions": 0,
             "views": Counter(), "chart_started": 0, "chart_reopened": 0, "video_submitted": 0,
-            "grading_saved": 0, "charts_graded": set(), "game_details": 0}
+            "grading_saved": 0, "charts_graded": set(), "game_details": 0, "signups": 0}
 
 
-def report(visitors: dict, tz: ZoneInfo | None = None) -> dict:
-    """Daily and weekly counts. `tz` None is this machine's local time."""
+def report(visitors: dict, tz: ZoneInfo | None = None, users: list | None = None,
+           since: datetime | None = None) -> dict:
+    """Daily and weekly counts. `tz` None is this machine's local time.
+
+    `users` is [(created_at, last_seen_at)] for every account, or None when
+    they could not be read; `since` is where the window opens."""
     local = (lambda t: t.astimezone(tz)) if tz else (lambda t: t.astimezone())
     days = defaultdict(_empty)
     first_seen = {}
@@ -258,6 +284,10 @@ def report(visitors: dict, tz: ZoneInfo | None = None) -> dict:
                     d["charted"].add(v)
         for start, charted in sessions(rs):
             days[local(start).date()]["chart_sessions" if charted else "view_sessions"] += 1
+    in_window = lambda t: t is not None and (since is None or t >= since)
+    for created, _ in users or []:
+        if in_window(created):
+            days[local(created).date()]["signups"] += 1
     weeks = defaultdict(_empty)
     for day, d in days.items():
         w = weeks[day - timedelta(days=day.weekday())]
@@ -285,7 +315,7 @@ def report(visitors: dict, tz: ZoneInfo | None = None) -> dict:
                         "charts_graded": len(b["charts_graded"]),
                         "grading_saves": b["grading_saved"],
                         "videos_submitted": b["video_submitted"],
-                        "game_details": b["game_details"]})
+                        "game_details": b["game_details"], "signups": b["signups"]})
             seen |= b["visitors"]
         return out
 
@@ -293,8 +323,12 @@ def report(visitors: dict, tz: ZoneInfo | None = None) -> dict:
     counted = set(active_days)
     charters = set().union(*(d["charted"] for d in days.values())) if days else set()
     all_sessions = [s for v in counted for s in sessions(visitors[v])]
+    totals = {} if users is None else {
+        "registered_users": len(users),
+        "signed_up": sum(1 for c, _ in users if in_window(c)),
+        "seen_signed_in": sum(1 for _, seen in users if in_window(seen))}
     return {"days": rows(days), "weeks": rows(weeks),
-            "totals": {"visitors": len(counted), "charted": len(charters),
+            "totals": {**totals, "visitors": len(counted), "charted": len(charters),
                        "viewed_only": len(counted - charters),
                        "came_back": sum(1 for n in active_days.values() if n >= 2),
                        "median_days_active": statistics.median(active_days.values())
@@ -322,19 +356,25 @@ def render(rep: dict, excluded: dict, window: str) -> str:
            f"{ex['owner_requests']:,} requests), scanners ({addresses(ex['scanner_addresses'])}, "
            f"{ex['scanner_requests']:,} requests), bots ({ex['bot_requests']:,} requests), "
            f"link previews ({ex['preview_clients']} clients)", ""]
+    t = rep["totals"]
+    have_users = "registered_users" in t
     cols = ["visitors", "charted", "viewed only", "returning", "chart sess", "view sess",
             "page views", "started", "graded", "submitted", "details"]
+    cols += ["signups"] if have_users else []
 
     def row(b):
         return [b["start"], b["visitors"], b["charted"], b["viewed_only"], b["returning"],
                 b["chart_sessions"], b["view_sessions"], b["page_views"], b["charts_started"],
-                b["charts_graded"], b["videos_submitted"], b["game_details"]]
+                b["charts_graded"], b["videos_submitted"], b["game_details"],
+                *([b["signups"]] if have_users else [])]
 
     out += [_table(["week of", *cols], [row(w) for w in rep["weeks"]]), ""]
     out += [_table(["week of", *PAGE_KINDS],
                    [[w["start"], *(w["views"][k] for k in PAGE_KINDS)] for w in rep["weeks"]]), ""]
     out += [_table(["day", *cols], [row(d) for d in rep["days"]]), ""]
-    t = rep["totals"]
+    out += [f"{t['registered_users']} registered users, your account included: "
+            f"{t['signed_up']} signed up in this window, {t['seen_signed_in']} seen signed in "
+            f"during it." if have_users else "Registered users: could not be read."]
     out += [f"{t['visitors']} visitors: {t['charted']} charted at least once, "
             f"{t['viewed_only']} only viewed; {t['came_back']} came back on another day "
             f"(median days active: {t['median_days_active']}).",
@@ -374,6 +414,22 @@ def fetch(gcloud: str, project: str, since: datetime) -> list[dict]:
     return json.loads(got.stdout or "[]")
 
 
+def fetch_users(gcloud: str, project: str) -> list[dict]:
+    """Every `users` document, holding only its created_at and last_seen_at."""
+    tok = subprocess.run([gcloud, "auth", "print-access-token"], capture_output=True, text=True)
+    if tok.returncode:
+        raise RuntimeError(tok.stderr.strip() or f"gcloud exited {tok.returncode}")
+    query = {"structuredQuery": {"from": [{"collectionId": "users"}],
+                                 "select": {"fields": [{"fieldPath": "created_at"},
+                                                       {"fieldPath": "last_seen_at"}]}}}
+    req = urllib.request.Request(FIRESTORE_QUERY.format(project=project), method="POST",
+                                 data=json.dumps(query).encode(),
+                                 headers={"Authorization": f"Bearer {tok.stdout.strip()}",
+                                          "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return [x["document"] for x in json.load(r) if "document" in x]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--days", type=int, default=30, help="how far back (the logs keep 30)")
@@ -381,8 +437,9 @@ def main(argv=None) -> int:
     ap.add_argument("--exclude-ip", action="append", default=[], metavar="IP",
                     help="also drop this address or network, e.g. your phone")
     src = ap.add_mutually_exclusive_group()
-    src.add_argument("--save", metavar="FILE", help="also write the raw log entries here")
-    src.add_argument("--input", metavar="FILE", help="read entries saved with --save")
+    src.add_argument("--save", metavar="FILE",
+                     help="also write the raw log entries and user timestamps here")
+    src.add_argument("--input", metavar="FILE", help="read a file written with --save")
     ap.add_argument("--project", default=PROJECT)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
@@ -394,9 +451,13 @@ def main(argv=None) -> int:
         print(f"bad argument: {err}", file=sys.stderr)
         return 2
     since = datetime.now(timezone.utc) - timedelta(days=args.days)
+    users = None
     if args.input:
         with open(args.input) as f:
-            entries = json.load(f)
+            saved = json.load(f)
+        # A bare list is the log entries alone, from before users were saved too.
+        entries, users = (saved, None) if isinstance(saved, list) else (saved["requests"],
+                                                                          saved.get("users"))
     else:
         gcloud = find_gcloud()
         if not gcloud:
@@ -408,16 +469,21 @@ def main(argv=None) -> int:
         except (RuntimeError, OSError, ValueError) as err:
             print(f"could not read the request logs: {err}", file=sys.stderr)
             return 1
+        try:
+            users = fetch_users(gcloud, args.project)
+        except (RuntimeError, OSError, ValueError) as err:   # the visitor counts still stand
+            print(f"could not read registered users: {err}", file=sys.stderr)
         if args.save:
             with open(args.save, "w") as f:
-                json.dump(entries, f)
+                json.dump({"requests": entries, "users": users}, f)
     reqs = [r for r in map(parse, entries) if r]
     if args.input and reqs:
         # A saved file's window ends where the file does, not today.
         since = max(r.at for r in reqs) - timedelta(days=args.days)
     reqs = [r for r in reqs if r.at >= since]
     visitors, excluded = screen(reqs, args.exclude_ip)
-    rep = report(visitors, tz)
+    accounts = None if users is None else [u for u in map(parse_user, users) if u]
+    rep = report(visitors, tz, accounts, since)
     if args.json:
         print(json.dumps({"excluded": excluded, **rep}, indent=1))
         return 0
