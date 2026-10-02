@@ -28,6 +28,16 @@ from curling_score.geometry import constants as C
 # as an end and given a score.
 MIN_DELIVERY_GAP_S = 15.0
 MIN_END_S = C.STONES_PER_END * MIN_DELIVERY_GAP_S
+# Two ends of one house in a row are one end cut in two by a run of the other
+# house too short to be an end -- a takeout that emptied the house, and a
+# stray stone in the other panel meanwhile -- unless the first already ran as
+# long as a whole end, when what follows it is more likely the next draw's
+# first rocks (09/29 Supper sheets 3 and 4). Of 364 complete four-player ends
+# hosted on 2026-10-01 the shortest ran 575 s, and of 111 doubles ends 470 s;
+# the four cut in two on 10/01 had run 250-465 s. As a multiple of the floor,
+# so it scales with the format: 540 s for sixteen rocks, 338 s for ten.
+WHOLE_END_FACTOR = 2.25
+WHOLE_END_S = WHOLE_END_FACTOR * MIN_END_S
 # Both houses empty for longer than this means the sheet was reset -- or a
 # long pause in a game, which boardsplit.join_games puts back together when
 # the wall board stayed up through it.
@@ -132,6 +142,7 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
             continue
         games_runs[-1].append((house, i0, i1))
 
+    whole_s = WHOLE_END_FACTOR * min_end_s
     games: list[GameSegment] = []
     for run_group in games_runs:
         # Merge consecutive runs of the same house: ends always alternate, so a
@@ -143,11 +154,19 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
             else:
                 merged.append([house, i0, i1])
 
-        ends = [
-            EndSegment(number=0, house=h, start_s=samples[i0].t, end_s=samples[i1 - 1].t)
-            for h, i0, i1 in merged
-            if span(i0, i1) >= min_end_s
-        ]
+        ends: list[EndSegment] = []
+        for h, i0, i1 in merged:
+            if span(i0, i1) < min_end_s:
+                continue
+            if (ends and ends[-1].house == h
+                    and ends[-1].end_s - ends[-1].start_s < whole_s):
+                # One end the other house's short run cut in two (WHOLE_END_S):
+                # 10/01 Thursday Morning sheet 2 end 4, and Mens sheet 5 three
+                # times in one game.
+                ends[-1].end_s = samples[i1 - 1].t
+                continue
+            ends.append(EndSegment(number=0, house=h, start_s=samples[i0].t,
+                                   end_s=samples[i1 - 1].t))
         if not ends:
             continue
         for n, end in enumerate(ends, start=1):

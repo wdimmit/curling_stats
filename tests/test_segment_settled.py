@@ -84,9 +84,11 @@ class TestWhenAnEndSettles:
 
 
 # A night on one sheet: practice, two games, a dropout, a brief look at the
-# other house that is too short to be an end, lights-out gaps.
+# other house that is too short to be an end, a house a takeout cleared with a
+# stray stone seen at the other end meanwhile, lights-out gaps.
 NIGHT = [(30, 0, 0), (180, 0, 6), (3, 0, 0), (97, 0, 6), (40, 5, 0), (150, 0, 6),
-         (180, 5, 0), (60, 0, 0), (180, 0, 5), (140, 4, 0), (200, 0, 0),
+         (90, 5, 0), (4, 0, 0), (1, 0, 1), (5, 0, 0), (90, 5, 0),
+         (60, 0, 0), (180, 0, 5), (140, 4, 0), (200, 0, 0),
          (180, 4, 0), (4, 0, 0), (176, 0, 3), (170, 5, 0), (90, 0, 0)]
 
 
@@ -95,6 +97,13 @@ NIGHT = [(30, 0, 0), (180, 0, 6), (3, 0, 0), (97, 0, 6), (40, 5, 0), (150, 0, 6)
 def test_every_settled_end_is_the_one_the_whole_video_would_give(jitter, min_end_s):
     samples = profile(NIGHT, jitter=jitter)
     full = segment.segment_games(samples, min_end_s=min_end_s)
+    # The house the takeout cleared is one end across the stray stone. (At
+    # the doubles floor each 450 s half is as long as a whole doubles end,
+    # so there they rightly stay two.)
+    if min_end_s == segment.MIN_END_S:
+        t_stray = samples[sum(n for n, *_ in NIGHT[:NIGHT.index((1, 0, 1))])].t
+        assert any(e.house == "top" and e.start_s < t_stray < e.end_s
+                   for g in full for e in g.ends)
     open_checked = 0
     for k in range(1, len(samples) + 1, 3):
         for game in segment.settled_ends(samples[:k], min_end_s=min_end_s):

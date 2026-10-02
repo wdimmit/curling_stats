@@ -42,6 +42,78 @@ class TestEndsAlternate:
         assert [e.house for e in ends] == ["bottom", "top"]
 
 
+class TestAHouseClearedMidEnd:
+    """10/01 Thursday Morning sheet 2, end 4: a takeout left the top house
+    empty for 50 s, and one stray stone in the bottom panel in that time --
+    which the smoothing turned into 25 s of "bottom" -- cut the end in two,
+    9 and 7 rocks to the top house, and numbered every later end one high.
+    Mens sheet 5 the same night did it three times in one game."""
+
+    def _cleared(self, stray):
+        return profile([(180, 0, 6), (93, 5, 0), (4, 0, 0), (1, 0, stray), (5, 0, 0),
+                        (94, 3, 0), (180, 0, 7)])
+
+    def test_one_stray_stone_in_the_other_panel_does_not_cut_it_in_two(self):
+        ends = segment.segment_games(self._cleared(stray=1))[0].ends
+        assert [e.house for e in ends] == ["bottom", "top", "bottom"]
+        assert [e.number for e in ends] == [1, 2, 3]
+
+    def test_the_end_runs_across_the_cleared_house(self):
+        top = segment.segment_games(self._cleared(stray=1))[0].ends[1]
+        assert top.start_s == pytest.approx(900.0, abs=10)
+        assert top.end_s == pytest.approx(900.0 + 5 * (93 + 10 + 94), abs=15)
+
+    def test_with_no_stray_stone_it_was_already_one_end(self):
+        ends = segment.segment_games(self._cleared(stray=0))[0].ends
+        assert [e.house for e in ends] == ["bottom", "top", "bottom"]
+
+    def test_a_whole_end_is_never_joined_to_what_follows_it(self):
+        """09/29 Supper sheets 3 and 4: the recording ends with the next draw's
+        first rocks, to the house the last end went to, 100-225 s after it.
+        That end ran 15 minutes -- a whole end, not the start of one -- so
+        whatever follows it is not more of it."""
+        whole = int(segment.WHOLE_END_S // 5) + 20
+        samples = profile([(180, 0, 6), (whole, 5, 0), (20, 0, 4), (60, 4, 0)])
+        ends = segment.segment_games(samples)[0].ends
+        assert [e.house for e in ends] == ["bottom", "top", "top"]
+
+    def test_no_whole_end_is_that_short(self):
+        """The shortest of 364 complete hosted ends ran 575 s; the four cut in
+        two on 10/01 had run 250-465 s when their house was cleared."""
+        assert segment.WHOLE_END_S == 540.0
+
+    def test_a_doubles_end_scales_it_with_the_floor(self):
+        """Ten rocks, not sixteen: 2.25 x 150 s, under the shortest of 111
+        complete doubles ends (470 s)."""
+        def ends_after(first_samples):
+            samples = profile([(120, 0, 6), (first_samples, 5, 0), (6, 0, 0), (1, 0, 1),
+                               (6, 0, 0), (40, 5, 0), (120, 0, 6)])
+            return [e.house for e in segment.segment_games(samples, min_end_s=150.0)[0].ends]
+        assert ends_after(60) == ["bottom", "top", "bottom"]          # 300 s: part of an end
+        assert ends_after(80) == ["bottom", "top", "top", "bottom"]   # 400 s: a whole one
+
+
+class TestThursdayMorningSheet2:
+    """The live recording's own profile (tests/fixtures/profiles)."""
+
+    def _samples(self):
+        import json
+        from pathlib import Path
+        doc = json.loads((Path(__file__).parent / "fixtures" / "profiles"
+                          / "q_hBbdc3A_M.json").read_text())
+        return [S(t=t, top_stones=top, bottom_stones=bot, top_playable=bool(tp),
+                  bottom_playable=bool(bp)) for t, top, bot, tp, bp in doc["samples"]]
+
+    def test_its_eight_ends_alternate(self):
+        ends = segment.segment_games(self._samples())[0].ends
+        houses = [e.house for e in ends]
+        assert all(a != b for a, b in zip(houses, houses[1:])), houses
+
+    def test_end_4_runs_across_the_house_its_takeout_cleared(self):
+        end4 = segment.segment_games(self._samples())[0].ends[3]
+        assert (end4.house, end4.start_s, end4.end_s) == ("top", 3035.0, 4020.0)
+
+
 class TestGames:
     def test_a_long_idle_gap_separates_two_games(self):
         samples = profile(

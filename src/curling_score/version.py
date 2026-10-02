@@ -81,7 +81,12 @@ from pathlib import Path
 # before its release, or before its arrival less `RELEASE_TO_ARRIVAL_S` (15 s)
 # when no release was seen, rather than the lead-in before its arrival; and
 # that lead-in is 5 s, not 10.
-PIPELINE_VERSION = "2026.10.02"
+# 2026.10.02.1: two ends of one house in a row, the first shorter than a whole
+# end (`segment.WHOLE_END_S`), are one end: a takeout emptied the house and a
+# stray stone in the other panel meanwhile cut it in two (10/01 Thursday
+# Morning sheet 2 end 4; Mens sheet 5, flagged, three times in one game).
+# Of 30 cached videos' profiles, only that sheet 2 game changes.
+PIPELINE_VERSION = "2026.10.02.1"
 
 
 def model_id(weights) -> str:
