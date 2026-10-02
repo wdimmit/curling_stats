@@ -18,11 +18,16 @@ from curling_score.game import format as format_mod, scoreboard as sb
 from curling_score.game.segment import EndSegment, GameSegment
 
 
-def built(number, delivered=16, released=16, start_s=None):
+def built(number, delivered=16, released=16, start_s=None, kept=None,
+          fmt=format_mod.FOURS):
+    """An end that offered ``delivered``, saw ``released`` and kept ``kept``
+    rocks (as many as were offered, up to an end's worth, unless told)."""
     start_s = number * 900.0 if start_s is None else start_s
     out = timeline.build_end(number, ("bottom", "top")[number % 2], start_s,
-                             start_s + 850.0, [], fmt=format_mod.FOURS)
+                             start_s + 850.0, [], fmt=fmt)
     out["deliveries_seen"], out["releases_seen"] = delivered, released
+    kept = min(delivered, fmt.delivered_per_end) if kept is None else kept
+    out["shots"] = [{"number": i + 1, "missing": False} for i in range(kept)]
     return out
 
 
@@ -46,8 +51,29 @@ class TestNothingThrown:
         """4/2 sheet 5 end 7: six deliveries, six releases."""
         assert not timeline.nothing_thrown(built(7, delivered=6, released=6))
 
-    def test_one_release_is_a_rock_thrown(self):
-        assert not timeline.nothing_thrown(built(1, delivered=1, released=1))
+    def test_no_end_is_one_or_two_rocks_released_or_not(self):
+        """The user, flagging 10/01 doubles sheet 5's eighth end: "no end
+        should ever have only one or two shots". 09/29 Supper sheet 4's last
+        end kept two -- the 7 pm game's first rocks -- one released."""
+        assert timeline.nothing_thrown(built(1, delivered=1, released=1))
+        assert timeline.nothing_thrown(built(7, delivered=5, released=1, kept=2))
+
+    def test_three_released_rocks_kept_are_an_end(self):
+        """09/30 Womens sheet 5's last end, as the stream ran out."""
+        assert not timeline.nothing_thrown(built(2, delivered=5, released=4, kept=3))
+
+    def test_a_clean_up_that_pushed_many_stones_but_released_none(self):
+        """10/01 doubles sheet 5 end 8, flagged twice: stones pushed about
+        after the game offered eleven candidates, the rules kept two, and no
+        release was seen. Of 569 hosted ends, 8 saw no release: 7 were a
+        game's last end, keeping 0-3 rocks, and no real end went unreleased."""
+        doubles = format_mod.DOUBLES
+        assert timeline.nothing_thrown(built(8, delivered=11, released=0, kept=2, fmt=doubles))
+        # 09/29 Supper sheet 5's last end: the same, three kept.
+        assert timeline.nothing_thrown(built(6, delivered=11, released=0, kept=3))
+
+    def test_with_no_release_seen_more_than_half_an_end_is_still_an_end(self):
+        assert not timeline.nothing_thrown(built(1, delivered=12, released=0, kept=9))
 
     def test_a_house_full_of_deliveries_is_an_end_even_with_no_release_seen(self):
         """The thrower's panel can miss every release; the deliveries decide."""
@@ -80,8 +106,9 @@ def ends_as(monkeypatch):
     counts = {}
 
     def build_one_end(ctx, game, end, prev_end_s, board_score):
-        delivered, released = counts.get((game.index, end.number), (16, 16))
-        out = built(end.number, delivered, released, start_s=end.start_s)
+        delivered, released, *kept = counts.get((game.index, end.number), (16, 16))
+        out = built(end.number, delivered, released, start_s=end.start_s,
+                    kept=kept[0] if kept else None)
         out["score"] = None if board_score is None else dict(board_score)
         out["score_source"] = None if board_score is None else "board"
         return out, end.end_s
@@ -120,6 +147,13 @@ class TestBuildGames:
         assert [e["score"] for e in game["ends"]] == [{"red": 1, "yellow": 0},
                                                      {"red": 0, "yellow": 2}]
         assert game["scoreboard"]["unread_ends"] == []
+
+    def test_a_clean_up_after_the_last_end_is_left_off(self, ends_as):
+        """10/01 doubles sheet 5: "game ended after 7 ends but system says 2
+        rocks in 8th end were played"."""
+        ends_as[0, 8] = (11, 0, 2)
+        game, = analyze.build_games(context(), [segment(8)])
+        assert [e["number"] for e in game["ends"]] == list(range(1, 8))
 
     def test_an_end_with_nothing_thrown_in_the_middle_is_kept(self, ends_as):
         ends_as[0, 2] = (1, 0)

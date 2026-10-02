@@ -522,6 +522,8 @@ class Unplayed(Pipeline):
         built, closed = super().build_end(ctx, game, end, prev_end_s)
         idle = (game.index, end.number) in self.unplayed
         built["deliveries_seen"], built["releases_seen"] = (1, 0) if idle else (16, 16)
+        built["shots"] = [{"number": i + 1, "missing": False}
+                          for i in range(1 if idle else 16)]
         return built, closed
 
 
@@ -719,6 +721,8 @@ class TestAGameOfNothingThrown:
                 built, closed = super().build_end(ctx, game, end, prev_end_s)
                 idle = (game.index, end.number) == (0, 1)
                 built["deliveries_seen"], built["releases_seen"] = (1, 0) if idle else (16, 16)
+                built["shots"] = [{"number": i + 1, "missing": False}
+                                  for i in range(1 if idle else 16)]
                 return built, closed
 
         pipe, rec, pub = PracticeFirst(activity=practice_first), Recording(), []

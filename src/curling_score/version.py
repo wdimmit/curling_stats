@@ -97,7 +97,12 @@ from pathlib import Path
 # refused at 3.69 m/s and now splits 5.53 s. Of 35 hosted throws released at
 # 3 m/s or more, 26 crossings were found before and 35 now; of 438 rocks in
 # three games, 431 read the same, 7 gained one, none was lost or moved.
-PIPELINE_VERSION = "2026.10.02.3"
+# 2026.10.02.4: a game's last end is not an end when it kept two rocks or
+# fewer, or saw no release and kept half an end or less (`timeline.
+# nothing_thrown`): 10/01 doubles sheet 5's eighth end, flagged twice, was a
+# clean-up that offered eleven candidates. Of every hosted game, three change:
+# that one and the 09/29 Supper games on sheets 4 and 5.
+PIPELINE_VERSION = "2026.10.02.4"
 
 
 def model_id(weights) -> str:

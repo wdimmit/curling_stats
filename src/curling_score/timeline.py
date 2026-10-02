@@ -704,19 +704,36 @@ def board_per_end(board: dict | None) -> dict | None:
 
 
 # An end in which nobody threw: rocks left sitting in a house -- pushed back
-# after a game, set out before one -- long enough to clear MIN_END_S. Monday
-# sheet 3's ninth end, 2026-09-28, saw one delivery and no release. Across the
-# 56 hosted games every such block saw at most two deliveries and never a
-# release, where real ends that read short were still released six times.
+# after a game, set out before one, cleared away -- long enough to clear
+# MIN_END_S. Monday sheet 3's ninth end, 2026-09-28, saw one delivery and no
+# release. A clean-up can push enough stones about to offer many deliveries,
+# though: 10/01 doubles sheet 5's eighth end, flagged twice, offered eleven,
+# kept two and saw no release. Of 569 hosted ends on 2026-10-02, 8 saw no
+# release: 7 were a game's last end, keeping 0-3 rocks, and none was a real
+# end. The thrower's panel can still miss every release of a real one, so it
+# is the rocks kept that decide: no more than half an end.
+#
+# And no end is one or two rocks (the user, flagging that eighth end): a last
+# end that kept so few is the stream running out, or the next draw's first
+# rocks (09/29 Supper sheet 4), not this game's end.
 NOTHING_THROWN_MAX_DELIVERIES = 2
+NOT_AN_END_MAX_ROCKS = 2
 
 
 def nothing_thrown(end: dict) -> bool:
-    """Whether a built end is rocks in a house rather than an end: no release
-    seen and hardly a delivery. An end built without the counts is kept."""
+    """Whether a built end is not an end -- rocks in a house, a clean-up, a
+    stray rock or two: two rocks kept or fewer, or no release seen and at
+    most half an end kept. Only ever asked of a game's last ends; an end
+    built without the counts is kept."""
     delivered, released = end.get("deliveries_seen"), end.get("releases_seen")
-    return (released == 0 and delivered is not None
-            and delivered <= NOTHING_THROWN_MAX_DELIVERIES)
+    if released is None or delivered is None:
+        return False
+    if released == 0 and delivered <= NOTHING_THROWN_MAX_DELIVERIES:
+        return True
+    kept = sum(1 for s in end.get("shots") or () if not s.get("missing"))
+    if kept <= NOT_AN_END_MAX_ROCKS:
+        return True
+    return released == 0 and kept <= end.get("shots_expected", C.STONES_PER_END) // 2
 
 
 def reads_short(end: dict) -> bool:
