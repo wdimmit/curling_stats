@@ -10,7 +10,11 @@ there is to do, and says what it did:
   minutes moves stone positions by at most ~1.4 cm against the whole video,
   but twice before 30 minutes a panel's hog paint was missed, and once a side
   camera's tee row came out 27 px off -- so a first calibration is used, not
-  trusted, until two in a row agree.
+  trusted, until two in a row agree. One missing a side view or a hog line
+  is tried again within minutes, a few times, before that cadence resumes,
+  and an end built while something was missing is built again once a
+  calibration has it -- after the ends that are new, before the stream is
+  finished.
 * **Follow the profile** -- the keyframe stone counts -- as the file grows.
 * **Build the next settled end** (:func:`segment.settled_ends`), strictly in
   order, since each end's run-up begins where the previous one closed. Then
@@ -49,6 +53,14 @@ log = logging.getLogger(__name__)
 CALIB_FIRST_S = 900.0
 CALIB_EVERY_S = 900.0
 CALIB_GIVE_UP_S = 3600.0
+# A calibration missing a side view or a hog line is tried again this soon,
+# this many times, before the cadence above. 0SWB4g3SJoE (10/01 sheet 1): at
+# 930 s players stood in front of the bottom house and the right view could
+# not be calibrated across; from 1050 s on it could, but the next try came at
+# 1845 s, after end 1 had gone out with no brooms. Each try costs the lane
+# 15-25 s, so a camera that never calibrates costs it two minutes at most.
+CALIB_RETRY_S = 120.0
+CALIB_QUICK_TRIES = 5
 # A stream that has ended with no calibration gets this many more tries.
 ENDED_CALIB_TRIES = 2
 # Two side-view calibrations agree when their tee and hog rows are this close.
@@ -114,6 +126,14 @@ def _side_worth(cal) -> int:
     return sum(1 + bool(v.has_lateral) for v in cal.sideviews.values())
 
 
+def _worth(cal) -> int:
+    """What a calibration can give an end: one for each panel's hog line, and
+    `_side_worth`. An end built with less is built again once there is more."""
+    if cal is None:
+        return 0
+    return sum(s.hog_line is not None for s in cal.setups.values()) + _side_worth(cal)
+
+
 class LiveSession:
     def __init__(self, video_id, url, recording, fmt, pipeline, *, sheet=None,
                  models=None, publish=None, progress=log.info,
@@ -133,6 +153,9 @@ class LiveSession:
         self.games = {}             # index -> newest settled GameSegment
         self.built = {}             # (game, end) -> built end dict
         self.ends = {}              # (game, end) -> EndSegment it was built from
+        self.built_with = {}        # (game, end) -> `_worth` of its calibration
+        self.run_up = {}            # (game, end) -> prev_end_s it was built with
+        self._quick_tries = 0
         self.boards = {}            # game index -> newest BoardRead
         self.board_windows = {}     # (t0, t1) -> the board across a pause
         self.prev_end_s = None
@@ -176,6 +199,10 @@ class LiveSession:
         if nxt is not None:
             self._build(*nxt)
             return "end"
+        again = self._next_rebuild()
+        if again is not None:
+            self._build(*again)
+            return "rebuilt"
         if ended and self.profiled_to is not None:
             return self._finish()
         return None
@@ -213,11 +240,14 @@ class LiveSession:
             self.steady = False
             self.progress(f"calibrated from {head:.0f} s, keeping the side "
                           "views before it: the new ones read less")
-            return "calibrated"
-        self.steady = got.agrees_with(self.calibration)
-        self.calibration = got
-        self.progress(f"calibrated from {head:.0f} s"
-                      + (", steady" if self.steady else ""))
+        else:
+            self.steady = got.agrees_with(self.calibration)
+            self.calibration = got
+            self.progress(f"calibrated from {head:.0f} s"
+                          + (", steady" if self.steady else ""))
+        if not self.calibration.complete and self._quick_tries < CALIB_QUICK_TRIES:
+            self._quick_tries += 1
+            self.next_calibration_s = head + CALIB_RETRY_S
         return "calibrated"
 
     # --- profile and ends -----------------------------------------------------
@@ -304,7 +334,27 @@ class LiveSession:
                     return game, end
         return None
 
+    def _next_rebuild(self):
+        """The oldest end built with less than the calibration gives now, or
+        None. Only after every new end: a published end that lacks its brooms
+        matters less than one not published at all."""
+        now = _worth(self.calibration)
+        for index in sorted(self.games):
+            game = self.games[index]
+            for end in game.ends:
+                key = (game.index, end.number)
+                if key in self.built and self.built_with[key] < now:
+                    return game, end
+        return None
+
     def _build(self, game, end):
+        """Build an end and publish -- or build it again, from the run-up it
+        was first given, with a calibration that has what it lacked."""
+        key = (game.index, end.number)
+        again = key in self.built
+        if again:
+            self.progress(f"game {game.index + 1} end {end.number}: built again with "
+                          f"the calibration from {self.calibration.until_s:.0f} s")
         ctx = analyze.EndContext(
             path=self.recording.path, read_path=self.recording.path,
             read_setups=self.calibration.setups,
@@ -312,10 +362,14 @@ class LiveSession:
             detector=self.models.detector, broom_model=self.models.broom_model,
             line_model=self.models.line_model, fmt=self.fmt, use_cache=False,
             one_pass=True, progress=self.progress)
-        built, self.prev_end_s = self.pipeline.build_end(ctx, game, end,
-                                                         self.prev_end_s)
-        self.built[(game.index, end.number)] = built
-        self.ends[(game.index, end.number)] = end
+        run_up = self.run_up[key] if again else self.prev_end_s
+        built, closed = self.pipeline.build_end(ctx, game, end, run_up)
+        if not again:
+            self.run_up[key] = run_up
+            self.prev_end_s = closed
+        self.built[key] = built
+        self.ends[key] = end
+        self.built_with[key] = _worth(self.calibration)
         self._read_board(game)
         self.publish(self.document())
 

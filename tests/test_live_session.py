@@ -94,6 +94,7 @@ class Pipeline:
     def build_end(self, ctx, game, end, prev_end_s):
         self.built.append({"game": game.index, "end": end.number,
                            "prev_end_s": prev_end_s, "setups": ctx.read_setups,
+                           "sideviews": ctx.sideviews,
                            "use_cache": ctx.use_cache, "read_path": ctx.read_path})
         built = timeline.build_end(end.number, end.house, end.start_s, end.end_s, [],
                                    fmt=ctx.fmt)
@@ -145,14 +146,14 @@ class TestCalibration:
         assert pipe.calibrated_at == [905.0]
 
     def test_it_recalibrates_until_the_hog_lines_and_side_views_hold_still(self):
-        pipe = Pipeline([calibration(900, hog=False), calibration(1800, tee=452.0),
-                         calibration(2700, tee=454.0), calibration(3600, tee=455.0)])
+        pipe = Pipeline([calibration(900, hog=False), calibration(1020, tee=452.0),
+                         calibration(1920, tee=454.0), calibration(2820, tee=455.0)])
         rec, pub = Recording(), []
         s = session(pipe, rec, pub)
         run_until(s, rec, 5000.0)
-        # 900: no hog line. 1800: first good one. 2700: side views 2 px from
-        # the last -- steady, so no more.
-        assert pipe.calibrated_at == [900.0, 1800.0, 2700.0]
+        # 900: no hog line, so tried again soon. 1020: first good one. 1920:
+        # side views 2 px from the last -- steady, so no more.
+        assert pipe.calibrated_at == [900.0, 1020.0, 1920.0]
 
     def test_a_side_view_that_moved_keeps_it_recalibrating(self):
         pipe = Pipeline([calibration(900, tee=420.0), calibration(1800, tee=447.0),
@@ -187,17 +188,18 @@ class TestCalibration:
         pipe = Pipeline([first, worse])
         rec, pub = Recording(), []
         s = session(pipe, rec, pub)
-        run_until(s, rec, 2000.0)
+        run_until(s, rec, 900.0 + live.CALIB_RETRY_S)
+        assert pipe.calibrated_at == [900.0, 900.0 + live.CALIB_RETRY_S]
         assert s.calibration.sideviews is first.sideviews
 
     def test_better_side_views_replace_worse_ones(self):
         first = live.Calibration(panels=None, setups=calibration(900).setups,
                                  sideviews=None, until_s=900)
-        better = calibration(1800)
+        better = calibration(1020)
         pipe = Pipeline([first, better])
         rec, pub = Recording(), []
         s = session(pipe, rec, pub)
-        run_until(s, rec, 2000.0)
+        run_until(s, rec, 900.0 + live.CALIB_RETRY_S)
         assert s.calibration is better
 
     def test_each_end_is_built_with_the_newest_calibration(self):
@@ -213,6 +215,100 @@ class TestCalibration:
         s = session(pipe, rec, pub)
         with pytest.raises(live.LiveError):
             run_until(s, rec, 4000.0)
+
+
+class TestACalibrationMissingSomething:
+    """0SWB4g3SJoE, 10/01 sheet 1: at 930 s players stood in front of the
+    bottom house and the right view could not be calibrated across. From
+    1050 s on it could, but the next try came at 1845 s, after end 1 had
+    gone out with no brooms and no lines."""
+
+    def test_is_tried_again_within_minutes(self):
+        pipe = Pipeline([calibration(900, lateral=False)])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 1500.0)
+        assert pipe.calibrated_at[:2] == [900.0, 900.0 + live.CALIB_RETRY_S]
+
+    def test_the_retry_is_two_minutes(self):
+        assert live.CALIB_RETRY_S == 120.0
+
+    def test_only_a_few_times_before_the_usual_cadence(self):
+        """A camera that never calibrates must not cost the lane a try
+        every two minutes for an hour."""
+        pipe = Pipeline([calibration(0, lateral=False) for _ in range(20)])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 5000.0)
+        quick = [900.0 + k * live.CALIB_RETRY_S for k in range(live.CALIB_QUICK_TRIES + 1)]
+        slow, t = [], quick[-1] + live.CALIB_EVERY_S
+        while t < live.CALIB_GIVE_UP_S:
+            slow.append(t)
+            t += live.CALIB_EVERY_S
+        assert pipe.calibrated_at == quick + slow
+
+    def test_side_views_kept_over_worse_ones_are_still_short_and_tried_again(self):
+        first = calibration(900, lateral=False)
+        worse = live.Calibration(panels=None, setups=calibration(1020).setups,
+                                 sideviews=None, until_s=1020)
+        pipe = Pipeline([first, worse])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 1200.0)
+        assert pipe.calibrated_at[:3] == [900.0, 1020.0, 1140.0]
+
+
+def built_ends(pipe):
+    return [(b["game"], b["end"]) for b in pipe.built]
+
+
+class TestAnEndBuiltBeforeTheCalibrationHadEverything:
+    def test_is_rebuilt_once_a_calibration_has_it(self):
+        short, full = calibration(900, lateral=False), calibration(1020)
+        pipe, rec, pub = Pipeline([short, full]), Recording(), []
+        s = session(pipe, rec, pub)
+        rec.head = 905.0
+        assert s.step() == "calibrated"
+        assert s.step() == "end"                 # the practice end, 0-600
+        rec.head = 1025.0
+        assert s.step() == "calibrated"
+        assert s.next_end_due() is None          # a rebuild is not a new end
+        assert s.step() == "rebuilt"
+        assert s.step() is None
+        assert built_ends(pipe) == [(0, 1), (0, 1)]
+        assert pipe.built[0]["sideviews"] is short.sideviews
+        assert pipe.built[1]["sideviews"] is full.sideviews
+        assert len(pub) == 2                     # and published again
+
+    def test_an_end_built_with_everything_is_never_rebuilt(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 3300.0)
+        assert built_ends(pipe) == [(0, 1), (0, 2), (0, 3)]
+
+    def test_new_ends_go_first_and_a_rebuild_keeps_its_run_up(self, monkeypatch):
+        monkeypatch.setattr(live, "CALIB_QUICK_TRIES", 0)
+        pipe = Pipeline([calibration(900, lateral=False), calibration(1800, lateral=False),
+                         calibration(2700)])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 2700.0)
+        assert built_ends(pipe) == [(0, 1), (0, 2), (0, 3), (0, 1), (0, 2)]
+        first_2, again_2 = pipe.built[1], pipe.built[4]
+        assert again_2["prev_end_s"] == first_2["prev_end_s"]
+        assert again_2["sideviews"] is pipe.built[2]["sideviews"]
+
+    def test_the_rebuild_is_done_before_the_stream_finishes(self, monkeypatch):
+        monkeypatch.setattr(live, "CALIB_QUICK_TRIES", 0)
+        pipe = Pipeline([calibration(900, lateral=False), calibration(1800)])
+        rec, pub = Recording(), []
+        s = session(pipe, rec, pub)
+        run_until(s, rec, 1800.0)
+        rec.finished = True
+        while not s.done:
+            s.step()
+        assert built_ends(pipe).count((0, 1)) == 2
+        assert pub[-1]["live"]["in_progress"] is False
 
 
 class TestEnds:
@@ -344,12 +440,14 @@ class TestCalibrationGivesUp:
 
     def test_once_it_works_it_stops_trying_to_improve_it_after_an_hour(self):
         # Hog paint never found: never "complete", so never steady -- but a
-        # calibration that works is kept once an hour has passed.
-        pipe = Pipeline([calibration(t, hog=False) for t in (900, 1800, 2700, 3600, 4500)])
+        # calibration that works is kept once an hour has passed. Before
+        # that: the quick tries, then every fifteen minutes.
+        pipe = Pipeline([calibration(0, hog=False) for _ in range(20)])
         rec, pub = Recording(), []
         s = session(pipe, rec, pub)
         run_until(s, rec, 5400.0)
-        assert pipe.calibrated_at == [900.0, 1800.0, 2700.0]
+        assert pipe.calibrated_at == [900.0, 1020.0, 1140.0, 1260.0, 1380.0, 1500.0,
+                                      2400.0, 3300.0]
 
     def test_side_views_left_out_on_purpose_count_as_complete(self):
         def no_sides(t):
