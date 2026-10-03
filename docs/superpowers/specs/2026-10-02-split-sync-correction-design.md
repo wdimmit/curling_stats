@@ -99,7 +99,7 @@ timed readings:
    playing tee: a RANSAC line, then a quadratic through its inliers. Let
    `t_trail` be when that edge reaches the paint's near edge (`hog_row`, i.e.
    6.401 m in the view's calibration), and `v` the speed there. The crossing
-   is `t_trail + c − 0.291 / v`: the leading edge touching the paint, the
+   is `t_trail + c − 2·STONE_RADIUS_M / v` (0.284 m / v): the leading edge touching the paint, the
    arriving tripwire's convention. `c` is fitted from hand marks (section 5);
    it is 0 until then.
 3. **Mid-sheet, both long cameras.**
@@ -253,7 +253,7 @@ and that is the detector's box bottom, so marks and model judge the same edge.
   - The arriving marks give the panel tripwire's residual on this season's
     framing (validated so far only on 2025-26 panels).
   - Per rock, they give a hand-made arriving panel − camera offset: the arriving
-    mark − (the receding mark − 0.291/v). That checks reading (1) − (2) directly.
+    mark − (the receding mark − 0.284/v). That checks reading (1) − (2) directly.
 
 ### 6. Testing and rollout
 
