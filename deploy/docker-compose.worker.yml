@@ -16,6 +16,9 @@ services:
       CURLING_SCORE_CACHE: /data/cache
       WORKER_CACHE_GB: "300"
       YTDLP_POT_PROVIDER: http://pot:4416
+      # Half of a league night's streams each, with worker2 below; a worker
+      # claims live jobs greedily up to this, so 6 here would take all five.
+      LIVE_MAX_STREAMS: "3"
     depends_on: [pot]
     volumes:
       # The host's designated storage. 394 GB free there, so the 300 GB budget
@@ -25,6 +28,20 @@ services:
       resources:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+  # A second worker on the same GPU. The pipeline is bound by one CPU thread,
+  # so two build ~1.55x the ends an hour, each ~25% slower (measured 2026-10-02).
+  # It must not share the cache: a worker empties <cache>/live at start, prunes
+  # media the other may be reading, and uploads every new detections/*.npz as
+  # its own. It needs its own WORKER_ID too -- the API knows workers by it alone.
+  worker2:
+    extends: { service: worker }
+    build: !reset null
+    pull_policy: never
+    environment:
+      WORKER_ID: home-3070-2
+      WORKER_CACHE_GB: "40"
+    volumes:
+      - /data/wdd/curling-cache-2:/data/cache
   # Mints the proof-of-origin tokens YouTube demands before it will serve a
   # video. This used to be off, on the theory that a residential IP rarely
   # needs it; "Sign in to confirm you're not a bot" on a cold request is what

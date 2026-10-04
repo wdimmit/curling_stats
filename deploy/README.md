@@ -191,6 +191,24 @@ enumeration (`harvest/playlist.py`) each build their own yt-dlp options with no
 token provider and no cookies, so a block that lands on one of those is not
 fixed by any of this.
 
+### Two workers on one box
+
+The pipeline spends most of an end on one CPU thread, with the GPU idle ~75% of
+the time, so the compose file runs a second worker (`worker2`) on the same GPU.
+Two build ~1.55x the ends an hour; each end takes ~25% longer while both are
+building (measured on the 3070 laptop, 2026-10-02).
+
+- `worker2` has its own cache, `/data/wdd/curling-cache-2`. Sharing one breaks:
+  a live worker empties `<cache>/live` when it starts, the pruner can delete
+  media the other worker is reading, and a job uploads every new
+  `detections/*.npz` as its own. The cost is that a recording `worker2` takes
+  is downloaded again into its cache.
+- Each has its own `WORKER_ID`; the API tells workers' jobs apart by it alone.
+- Each follows at most `LIVE_MAX_STREAMS: "3"` live streams. A worker claims
+  them greedily, so a larger limit would let one of them take a whole league.
+- `up -d` recreates both, and both drop their live jobs (see above).
+  `docker compose ... logs -f worker worker2` follows both.
+
 ## Watching a league
 
 ```bash
