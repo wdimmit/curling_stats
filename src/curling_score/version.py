@@ -107,7 +107,12 @@ from pathlib import Path
 # (`segment._held`): 10/02 Friday sheet 5's end 6 was cut in two by a skip's
 # red shoes at the far end, read as three stones. Of 32 cached profiles, only
 # that one changes.
-PIPELINE_VERSION = "2026.10.03.1"
+# 2026.10.03.2: a target broom is held still within 0.15 m across the sheet
+# and 0.45 m along it, not a 0.15 m circle (`broomtime.CLUSTER_ALONG_M`): the
+# long camera reads a held pad's depth with up to half a metre of wobble, and
+# the circle split pads seen in every frame into pieces under half the window.
+# Over 2,091 rocks in 23 cached games, 8 gained a broom, none lost or moved one.
+PIPELINE_VERSION = "2026.10.03.2"
 
 
 def model_id(weights) -> str:

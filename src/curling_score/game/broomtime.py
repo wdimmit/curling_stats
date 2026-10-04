@@ -5,7 +5,9 @@ found it down and still across t_tee -2.0..+0.5 s on 45 of 49 shots, so the
 second before the tee crossing (the user's window) sits well inside the hold,
 even with the camera and the panel up to ~0.9 s out of step. What counts is a
 pad held STILL: a cluster seen in more than half the window. A pad that moves
-or lifts gives no marker, never an average of where it went. Two held pads --
+or lifts gives no marker, never an average of where it went -- still across
+the sheet, that is; along it the long camera cannot tell a move of under half
+a metre from its own wobble (CLUSTER_ALONG_M). Two held pads --
 the skip's and one resting by the sideline -- go to the one nearest the tee.
 
 Like `hogtime` and `fartime`, this only attaches data to shots that exist.
@@ -30,7 +32,14 @@ FPS = 10
 # so a pad moved mid-window cannot split into two halves that both qualify.
 MIN_SEEN = 0.5
 EXPECTED_FRAMES = round(WINDOW_S * FPS)
-CLUSTER_M = 0.15
+CLUSTER_M = 0.15               # across the sheet
+# Along the sheet the long camera, looking down it, reads depth from a pad
+# box's bottom edge a few pixels at a time, so a pad held still wanders
+# there: Kozai Draw 1 sheet 3 end 2 rock 8 read 0.32-0.74 m in one second,
+# steady to 1 cm across and seen at 0.86-0.89 in every frame. A round 15 cm
+# cluster broke such pads into pieces under half the window, and whether one
+# piece reached half was a coin toss between runs of the same video.
+CLUSTER_ALONG_M = 0.45
 X_MAX_M = 2.2                   # inside the sheet's 2.375 half-width
 BEHIND_M = 0.15                 # past the back line is the other skip's ground
 
@@ -62,7 +71,7 @@ def pick_target(samples, n_frames: int) -> TargetBroom | None:
         for c in clusters:
             cx = float(np.median([q[1] for q in c]))
             cy = float(np.median([q[2] for q in c]))
-            if math.hypot(p[1] - cx, p[2] - cy) <= CLUSTER_M:
+            if abs(p[1] - cx) <= CLUSTER_M and abs(p[2] - cy) <= CLUSTER_ALONG_M:
                 c.append(p)
                 break
         else:

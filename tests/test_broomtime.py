@@ -66,6 +66,24 @@ class TestPickTarget:
     def test_nothing_seen_is_no_call(self):
         assert broomtime.pick_target([], 10) is None
 
+    def test_a_held_pad_whose_depth_wobbles_is_still_held(self):
+        """Kozai Draw 1 sheet 3, end 2 rock 8, from the VOD: the pad is seen in
+        all 11 frames at 0.86-0.89, steady across the sheet, while the long
+        camera reads it anywhere from 0.32 to 0.74 m along it. A 15 cm round
+        cluster broke it into pieces, none over half the window, and the live
+        run kept it only by luck (seen 0.55)."""
+        ys = [0.57, 0.66, 0.71, 0.74, 0.64, 0.54, 0.53, 0.43, 0.37, 0.32, 0.39]
+        pts = [s(i, 0.35 + 0.01 * (i % 2), y, 0.87) for i, y in enumerate(ys)]
+        got = broomtime.pick_target(pts, len(ys))
+        assert got.x_m == pytest.approx(0.355, abs=0.01)
+        assert got.seen == pytest.approx(1.0)
+
+    def test_two_pads_one_behind_the_other_are_still_two(self):
+        near = [s(i, 0.5, 0.3) for i in range(10)]
+        behind = [s(i, 0.5, 1.4) for i in range(10)]
+        got = broomtime.pick_target(behind + near, 10)
+        assert (got.x_m, got.y_m) == pytest.approx((0.5, 0.3))
+
 
 class TestWindowFor:
     def test_the_second_before_an_observed_tee_crossing(self):
