@@ -115,8 +115,13 @@ REASON = "hogged"
 # Reasons for a throw the house camera did not follow but the house confirms.
 REASON_ADD = "release-add"        # a stone of its colour appeared: it arrived unseen
 REASON_REMOVE = "release-remove"  # a stone went missing: it hit and rolled out
-# Every delivery ``settle`` makes: timed by its release, which is its t_enter.
-RELEASE_REASONS = (REASON, REASON_ADD, REASON_REMOVE)
+# What the long camera facing the house saw of one the overhead could not
+# place (`game.farfollow`): it stopped in play, or ran through the house.
+REASON_REST = "release-rest"
+REASON_THROUGH = "release-through"
+# Every delivery ``settle`` and `game.farfollow` make: timed by its release,
+# which is its t_enter.
+RELEASE_REASONS = (REASON, REASON_ADD, REASON_REMOVE, REASON_REST, REASON_THROUGH)
 # How long after the throw to read the far house for what it did.
 SETTLE_S = 36.0
 
@@ -383,6 +388,26 @@ def as_delivery(release: Release) -> D.Delivery:
         reason=REASON,
         release=release,
     )
+
+
+def came_to_rest_at(release: Release, t_rest: float, x_m: float, y_m: float) -> D.Delivery:
+    """A throw the long camera saw stop in play where the overhead saw nothing
+    change -- a guard frozen to another in the overhead's last strip."""
+    return D.Delivery(color=release.color, t_enter=release.t, t_rest=t_rest,
+                      entry_y_m=C.HOGGED_Y_M, rest_x_m=x_m, rest_y_m=y_m,
+                      travel_m=max(0.0, C.HOGGED_Y_M - y_m), came_to_rest=True,
+                      reason=REASON_REST, release=release)
+
+
+def ran_through(release: Release, t_last: float, x_m: float, track=()) -> D.Delivery:
+    """A throw that crossed the far hog line and left through the house,
+    disturbing nothing. ``track`` is the overhead's sight of it, when it had
+    one: it times the far hog crossing, and so the split."""
+    entry = track[0][2] if track else C.HOGGED_Y_M
+    return D.Delivery(color=release.color, t_enter=release.t, t_rest=t_last,
+                      entry_y_m=entry, rest_x_m=x_m, rest_y_m=C.THROUGH_BACK_Y_M,
+                      travel_m=entry - C.THROUGH_BACK_Y_M, came_to_rest=False,
+                      reason=REASON_THROUGH, track=tuple(track), release=release)
 
 
 def settle(release: Release, frames) -> D.Delivery:

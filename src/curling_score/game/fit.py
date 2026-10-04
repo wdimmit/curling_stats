@@ -56,6 +56,10 @@ WEIGHT_BY_REASON = {
     # arrival came late or its handle colour was misread, the arrival is the
     # record and the release must lose the tie, not replace it.
     "release-add": 0.4,
+    # Placed by the long camera facing the house (`game.farfollow`): as sure
+    # of the throw as a release-add, and as unseen arriving by the overhead.
+    "release-rest": 0.4,
+    "release-through": 0.4,
     "release-remove": 0.35,
     "hogged": 0.3,
 }

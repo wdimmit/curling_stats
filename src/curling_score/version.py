@@ -112,7 +112,14 @@ from pathlib import Path
 # long camera reads a held pad's depth with up to half a metre of wobble, and
 # the circle split pads seen in every frame into pieces under half the window.
 # Over 2,091 rocks in 23 cached games, 8 gained a broom, none lost or moved one.
-PIPELINE_VERSION = "2026.10.03.2"
+# 2026.10.04.1: a throw the far overhead could not place is followed by the
+# long camera facing that house (`game.farfollow`): one it saw stop in play is
+# a rest there (release-rest), one the overhead saw enter within 19 s of its
+# release or the camera saw run through ran through (release-through), and a
+# late arrival that ran on is the hog pushed down the sheet. Of the 39 rocks
+# the user reviewed on video, the decision matches 38; the last hit a guard out
+# and now rests in play.
+PIPELINE_VERSION = "2026.10.04.1"
 
 
 def model_id(weights) -> str:

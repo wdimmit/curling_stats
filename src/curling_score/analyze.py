@@ -17,6 +17,7 @@ from curling_score.game import (
     boardsplit,
     broomtime,
     endcheck,
+    farfollow,
     fartime,
     fit,
     hogtime,
@@ -443,6 +444,18 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         since=since,
         view_x_limit_m=far.view_x_limit_m,
     )
+    # What the overhead could not place -- a guard frozen to another in its
+    # last strip, a throw that ran through the house -- and the hogs it
+    # mistook for arrivals, pushed down the sheet: the long camera facing this
+    # house followed each to where it stopped. Without that camera, the
+    # overhead's timing alone (`farfollow.entry_track`).
+    dest_view = sideviews[hogtime.CAMERA_FOR[end.house]] if sideviews is not None else None
+    arrivals, thrown_by, unaccounted, n_followed = farfollow.place(
+        unaccounted, thrown_by, arrivals, seq,
+        follow_fn=lambda color, t: farfollow.follow(path, dest_view, color, t))
+    if n_followed:
+        progress(f"    end {end.number}: {n_followed} throw(s) the overhead could not "
+                 f"place, placed from the long camera")
 
     def by_the_rules(unaccounted):
         cands = (sorted(arrivals + unaccounted, key=lambda d: d.t_enter)
