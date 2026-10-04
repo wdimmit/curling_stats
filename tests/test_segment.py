@@ -93,16 +93,63 @@ class TestAHouseClearedMidEnd:
         assert ends_after(80) == ["bottom", "top", "top", "bottom"]   # 400 s: a whole one
 
 
+class TestAHouseThatKeptItsStones:
+    """10/02 Friday Evening sheet 5, end 6 (flag f_1OuNeYzFXzs1xCacl): after
+    rock 12 the skips changed ends, and one stood at the edge of the empty
+    bottom house in red shoes, which the profile counted as three red stones
+    -- as many as the top house held. A tie names the bottom house, so twice
+    for 15-25 s the bottom was in play, and the end's first 12 rocks (605 s,
+    past WHOLE_END_S) were cut from its last 4."""
+
+    def _skip_at_the_far_end(self, top_meanwhile):
+        return profile([(180, 0, 6), (121, 3, 0), (10, top_meanwhile, 3), (60, 3, 0),
+                        (180, 0, 7)])
+
+    def test_a_house_that_held_its_stones_throughout_is_one_end(self):
+        ends = segment.segment_games(self._skip_at_the_far_end(3))[0].ends
+        assert [e.house for e in ends] == ["bottom", "top", "bottom"]
+
+    def test_the_end_runs_to_its_last_rock(self):
+        top = segment.segment_games(self._skip_at_the_far_end(3))[0].ends[1]
+        assert top.start_s == pytest.approx(900.0, abs=10)
+        assert top.end_s == pytest.approx(900.0 + 5 * (121 + 10 + 60), abs=15)
+
+    def test_a_house_emptied_meanwhile_still_parts_a_whole_end_from_what_follows(self):
+        """The 09/29 Supper case: the house was cleared after the game."""
+        ends = segment.segment_games(self._skip_at_the_far_end(0))[0].ends
+        assert [e.house for e in ends] == ["bottom", "top", "top", "bottom"]
+
+
+def _fixture(video_id):
+    import json
+    from pathlib import Path
+    doc = json.loads((Path(__file__).parent / "fixtures" / "profiles"
+                      / f"{video_id}.json").read_text())
+    return [S(t=t, top_stones=top, bottom_stones=bot, top_playable=bool(tp),
+              bottom_playable=bool(bp)) for t, top, bot, tp, bp in doc["samples"]]
+
+
+class TestFridayEveningSheet5:
+    """The archived VOD's own profile (tests/fixtures/profiles)."""
+
+    def test_its_six_ends_alternate(self):
+        ends = segment.segment_games(_fixture("uKWnmVG9mA8"))[0].ends
+        houses = [e.house for e in ends]
+        assert len(ends) == 6
+        assert all(a != b for a, b in zip(houses, houses[1:])), houses
+
+    def test_end_6_runs_across_the_skip_at_the_far_end(self):
+        end6 = segment.segment_games(_fixture("uKWnmVG9mA8"))[0].ends[5]
+        # The start moves a keyframe with the hash seed (`_smooth`'s tie-break).
+        assert (end6.house, end6.end_s) == ("top", 7015.0)
+        assert end6.start_s == pytest.approx(5935.0, abs=5)
+
+
 class TestThursdayMorningSheet2:
     """The live recording's own profile (tests/fixtures/profiles)."""
 
     def _samples(self):
-        import json
-        from pathlib import Path
-        doc = json.loads((Path(__file__).parent / "fixtures" / "profiles"
-                          / "q_hBbdc3A_M.json").read_text())
-        return [S(t=t, top_stones=top, bottom_stones=bot, top_playable=bool(tp),
-                  bottom_playable=bool(bp)) for t, top, bot, tp, bp in doc["samples"]]
+        return _fixture("q_hBbdc3A_M")
 
     def test_its_eight_ends_alternate(self):
         ends = segment.segment_games(self._samples())[0].ends

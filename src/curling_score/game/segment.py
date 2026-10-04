@@ -36,6 +36,9 @@ MIN_END_S = C.STONES_PER_END * MIN_DELIVERY_GAP_S
 # hosted on 2026-10-01 the shortest ran 575 s, and of 111 doubles ends 470 s;
 # the four cut in two on 10/01 had run 250-465 s. As a multiple of the floor,
 # so it scales with the format: 540 s for sixteen rocks, 338 s for ten.
+# Whatever the first one ran, two such ends are one when their house held
+# stones in every keyframe between them: nothing cleared it, so the same
+# end's stones were still in play (`_held`).
 WHOLE_END_FACTOR = 2.25
 WHOLE_END_S = WHOLE_END_FACTOR * MIN_END_S
 # Both houses empty for longer than this means the sheet was reset -- or a
@@ -110,6 +113,21 @@ def _smooth(active: list[str | None]) -> list[str | None]:
     return out
 
 
+def _held(samples, house: str) -> bool:
+    """Whether ``house`` showed stones in every one of ``samples``.
+
+    10/02 Friday Evening sheet 5, end 6: after rock 12 the skips changed
+    ends, and one stood at the edge of the empty bottom house in red shoes,
+    which counted as three red stones -- as many as the top house held. A tie
+    names the bottom, so twice for 15-25 s the bottom was in play, cutting the
+    end's first 12 rocks (605 s, past WHOLE_END_S) from its last 4. The top
+    house held its three stones through both.
+    """
+    attr = "top" if house == "top" else "bottom"
+    return all(getattr(s, f"{attr}_stones") > 0 and getattr(s, f"{attr}_playable")
+               for s in samples)
+
+
 def _runs(active, samples):
     """Contiguous stretches of a single active house, as (house, i0, i1)."""
     out, start = [], 0
@@ -155,18 +173,23 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
                 merged.append([house, i0, i1])
 
         ends: list[EndSegment] = []
+        last_i1 = 0     # one past the last sample of ends[-1]
         for h, i0, i1 in merged:
             if span(i0, i1) < min_end_s:
                 continue
             if (ends and ends[-1].house == h
-                    and ends[-1].end_s - ends[-1].start_s < whole_s):
+                    and (ends[-1].end_s - ends[-1].start_s < whole_s
+                         or _held(samples[last_i1:i0], h))):
                 # One end the other house's short run cut in two (WHOLE_END_S):
                 # 10/01 Thursday Morning sheet 2 end 4, and Mens sheet 5 three
-                # times in one game.
+                # times in one game -- or, however long it had run, one whose
+                # house kept its stones throughout: 10/02 Friday sheet 5 end 6.
                 ends[-1].end_s = samples[i1 - 1].t
+                last_i1 = i1
                 continue
             ends.append(EndSegment(number=0, house=h, start_s=samples[i0].t,
                                    end_s=samples[i1 - 1].t))
+            last_i1 = i1
         if not ends:
             continue
         for n, end in enumerate(ends, start=1):

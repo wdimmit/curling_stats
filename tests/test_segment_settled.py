@@ -118,3 +118,21 @@ def test_every_settled_end_is_the_one_the_whole_video_would_give(jitter, min_end
     # And once it has all arrived, the stream's end settles the rest.
     assert ends_of(segment.settled_ends(samples, min_end_s=min_end_s, ended=True)) \
         == ends_of(full)
+
+
+def test_friday_sheet_5s_sixth_end_is_never_published_in_two():
+    """Live, 10/02 Friday sheet 5 published 5935-6550 as end 6 once the 4 rocks
+    after the skip at the far end had run 300 s, and those 4 as end 7. Every
+    end settled from its profile, at any point in the stream, is the end the
+    whole video gives."""
+    import json
+    from pathlib import Path
+    doc = json.loads((Path(__file__).parent / "fixtures" / "profiles"
+                      / "uKWnmVG9mA8.json").read_text())
+    samples = [S(t=t, top_stones=top, bottom_stones=bot, top_playable=bool(tp),
+                 bottom_playable=bool(bp)) for t, top, bot, tp, bp in doc["samples"]]
+    full = segment.segment_games(samples)
+    for k in range(1, len(samples) + 1, 2):
+        for game in segment.settled_ends(samples[:k]):
+            assert ends_of([game])[0] == ends_of([full[game.index]])[0][:len(game.ends)], \
+                samples[k - 1].t

@@ -102,7 +102,12 @@ from pathlib import Path
 # nothing_thrown`): 10/01 doubles sheet 5's eighth end, flagged twice, was a
 # clean-up that offered eleven candidates. Of every hosted game, three change:
 # that one and the 09/29 Supper games on sheets 4 and 5.
-PIPELINE_VERSION = "2026.10.02.4"
+# 2026.10.03.1: two ends of one house in a row are one end, however long the
+# first ran, when the house held stones in every keyframe between them
+# (`segment._held`): 10/02 Friday sheet 5's end 6 was cut in two by a skip's
+# red shoes at the far end, read as three stones. Of 32 cached profiles, only
+# that one changes.
+PIPELINE_VERSION = "2026.10.03.1"
 
 
 def model_id(weights) -> str:
