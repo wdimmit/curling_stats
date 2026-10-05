@@ -352,3 +352,57 @@ body[data-page="shots"] main { max-width:980px; }
   #plays td.actions select { flex:1 1 100%; max-width:none; }
   #shots td.actions a.btn { display:flex; align-items:center; justify-content:center; }
 }
+
+/* The game filter at the top of My shots: a menu button, then a dropdown list
+   on a desktop and a list in the page on a phone. The site's bare `label` and
+   `input` rules are for forms, so the rows undo them. */
+.picker { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 10px; }
+.picker-label { font:700 12px var(--display); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.picker-anchor { position:relative; }
+.picker-btn { display:flex; gap:10px; align-items:center; min-height:40px; padding:0 14px;
+              font-weight:600; border-color:var(--ink); }
+.picker-btn.open { background:var(--accent); color:var(--onaccent); }
+.picker-panel { position:absolute; top:calc(100% + 8px); left:0; z-index:5;
+                width:min(460px, calc(100vw - 36px)); background:var(--panel);
+                border:1px solid var(--line); border-radius:10px;
+                box-shadow:0 10px 28px rgb(0 0 0 / .16); overflow:hidden; }
+.picker-head { display:flex; align-items:center; gap:8px; padding:10px 12px 8px 14px;
+               border-bottom:1px solid var(--line); }
+.picker-head span { flex:1; font:700 12px var(--display); text-transform:uppercase;
+                    letter-spacing:.06em; color:var(--muted); }
+.picker-head button { min-height:32px; padding:0 10px; font-size:14px; }
+.picker-row { display:flex; align-items:center; gap:12px; min-height:46px; margin:0; padding:0 14px;
+              border-bottom:1px solid var(--line); cursor:pointer; font-size:15px; font-weight:400;
+              font-variant-numeric:tabular-nums; }
+.picker-row input { flex:none; width:18px; height:18px; margin:0; padding:0; accent-color:var(--accent); }
+.picker-when { width:4.5em; color:var(--muted); font-size:14px; }
+.picker-game { flex:1; min-width:0; font-weight:600; }
+.picker-rocks { width:5em; text-align:right; color:var(--muted); font-size:13px; }
+.picker-foot { padding:10px 14px; }
+.picker-foot p { margin:0; font-size:13px; }
+.picker-done { display:none; }
+.picker-names { font-size:14px; }
+.picker button.linky { border:0; background:none; padding:4px 6px; font-size:14px;
+                       text-decoration:underline; text-underline-offset:3px; }
+#plays tr.left td { color:var(--muted); }
+#plays tr.left .pill { margin-left:6px; }
+
+@media (max-width: 640px) {
+  .picker-anchor { flex:1 1 100%; }
+  .picker-btn { width:100%; min-height:48px; }
+  .picker-btn svg { margin-left:auto; }
+  .picker-panel { position:static; width:auto; margin-top:8px; box-shadow:none; }
+  .picker-head span { display:none; }
+  .picker-head button { flex:1; min-height:44px; }
+  /* Two lines a game, as a thumb wants them: the game, then where you threw
+     and how many rocks. */
+  .picker-row { display:grid; grid-template-columns:22px 4.8em minmax(0,1fr); column-gap:12px;
+                align-items:center; min-height:52px; padding:6px 14px; }
+  .picker-row input { grid-row:span 2; width:22px; height:22px; }
+  .picker-when { width:auto; color:var(--ink); font-size:15px; font-weight:600; }
+  .picker-game { grid-column:3; }
+  .picker-row .pill { grid-column:2; justify-self:start; }
+  .picker-rocks { grid-column:3; width:auto; text-align:left; }
+  .picker-done { display:block; width:100%; min-height:48px; margin-bottom:8px; }
+  .picker-foot p { text-align:center; font-size:12px; }
+}

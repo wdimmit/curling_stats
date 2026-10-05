@@ -51,12 +51,52 @@ export function playText(play) {
 
 const shortDay = d => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
+/* "Sep 29" and "v Grant": when a game was and who against, from the
+ * player's side -- the sheet when nobody has named the other team. */
+function gameParts(play, day) {
+  const when = play.played_at ? day(new Date(play.played_at)) : "Undated";
+  const them = play.teams?.[OTHER[play.color]];
+  return { when, against: them ? `v ${them}` : play.sheet ? `sheet ${play.sheet}` : "" };
+}
+
 /* "Sep 29 v Grant": the game a rock was thrown in, from the player's side.
  * `day` formats the date, so the rest is testable without a locale. */
 export function gameText(play, day = shortDay) {
-  const when = play.played_at ? day(new Date(play.played_at)) : "Undated";
-  const them = play.teams?.[OTHER[play.color]];
-  return them ? `${when} v ${them}` : play.sheet ? `${when} · sheet ${play.sheet}` : when;
+  const { when, against } = gameParts(play, day);
+  return !against ? when : against.startsWith("v ") ? `${when} ${against}` : `${when} · ${against}`;
+}
+
+/* The game filter's words. `off` is the Set of games left out, by source id:
+ * the button's label, the games named beside it -- three at most, past which
+ * the count says it -- and the line over the report. */
+export function pickedText(plays, off, day = shortDay) {
+  const n = plays.length;
+  const on = plays.filter(p => !off.has(p.source_id));
+  const all = on.length === n;
+  const games = k => `${k} game${k === 1 ? "" : "s"}`;
+  const which = all ? (n === 1 ? "1 game" : `all ${n} games`) : `${on.length} of ${games(n)}`;
+  return {
+    on: on.length,
+    all,
+    label: !on.length ? "No games" : all ? (n === 1 ? "1 game" : `All ${n} games`) : `${on.length} of ${games(n)}`,
+    names: !all && on.length && on.length <= 3 ? on.map(p => gameText(p, day)).join(", ") : "",
+    intro: !on.length ? "Pick at least one game to see your rocks."
+      : `Every rock you threw in ${which}, by shot and by turn. A clockwise rock curls to the thrower's right.`,
+  };
+}
+
+/* One line of the game filter's list: when, against whom, where you threw,
+ * and how many of your rocks it holds -- "…" while it loads. `got` is the
+ * game's loaded rocks, as the page keeps them. */
+export function pickerRow(play, got, day = shortDay) {
+  const { when, against } = gameParts(play, day);
+  const fmt = play.format;
+  const n = got?.rows?.length;
+  return {
+    when, against: against || play.title || "",
+    position: fmt ? positionLabel(fmt.positions[play.slot - 1], fmt) : "",
+    rocks: !got ? "…" : got.failed ? "–" : `${n} rock${n === 1 ? "" : "s"}`,
+  };
 }
 
 /* The rocks `play`'s player threw in `doc`, one row each, and how many of

@@ -7,10 +7,15 @@
  * by what it was fetched as -- colour, slot and when the play was saved -- so
  * changing one game's play fetches that game again and nothing else.
  *
+ * A filter at the top picks which games the report draws on. Every game is
+ * still fetched, so putting one back is instant.
+ *
  * Every number and word in the groups is core's (core/myshots.mjs); this
  * only lays them out. */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { playText, playerRocks, positionChoices, shotGroups, summaryText } from "../core/myshots.mjs";
+import {
+  pickedText, pickerRow, playText, playerRocks, positionChoices, shotGroups, summaryText,
+} from "../core/myshots.mjs";
 import { playUrl } from "../runtime/plays.mjs";
 import { authedFetch, signIn } from "./auth.js";
 import { day } from "./fmt.js";
@@ -20,6 +25,97 @@ import { DeliveryOverlay, MissScatter } from "./ShotCharts.jsx";
 
 const AT_ONCE = 3;
 const playKey = p => `${p.source_id}|${p.color}|${p.slot}|${p.updated_at}`;
+
+/* The games left out of the report, kept across visits in this browser. The
+ * games left OUT, not the ones in: a game you mark later is in the report
+ * until you take it out. Storage can be blocked, and then every game is in. */
+const OFF = "curlchart:shots-off";
+
+function loadOff() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(OFF) || "[]");
+    return new Set(Array.isArray(ids) ? ids.filter(id => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveOff(off) {
+  try {
+    if (off.size) localStorage.setItem(OFF, JSON.stringify([...off]));
+    else localStorage.removeItem(OFF);
+  } catch { /* the filter just forgets */ }
+}
+
+/* Which games the report draws on: a button saying how many, opening a list
+ * to tick. A dropdown on a desktop, a list in the page on a phone, where Done
+ * closes it (site.css). */
+function GamePicker({ plays, rocks, off, setOff }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+  const t = pickedText(plays, off);
+
+  // Shut by Escape or by a press anywhere else, as a menu is.
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = e => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
+    const esc = e => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  const flip = id => {
+    const next = new Set(off);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setOff(next);
+  };
+
+  return (
+    <div className="picker" ref={box}>
+      <span className="picker-label">Games</span>
+      <div className="picker-anchor">
+        <button type="button" className={`picker-btn${open ? " open" : ""}`} aria-expanded={open}
+                aria-controls="pickerPanel" onClick={() => setOpen(o => !o)}>
+          {t.label}
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path d={open ? "M2 8l4-4 4 4" : "M2 4l4 4 4-4"} fill="none" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+        </button>
+        {open && (
+          <div className="picker-panel" id="pickerPanel">
+            <div className="picker-head">
+              <span>Show rocks from</span>
+              <button type="button" onClick={() => setOff(new Set())}>All</button>
+              <button type="button" onClick={() => setOff(new Set(plays.map(p => p.source_id)))}>None</button>
+            </div>
+            {plays.map(p => {
+              const r = pickerRow(p, rocks[playKey(p)]);
+              return (
+                <label key={p.source_id} className="picker-row">
+                  <input type="checkbox" checked={!off.has(p.source_id)} onChange={() => flip(p.source_id)} />
+                  <span className="picker-when">{r.when}</span>
+                  <span className="picker-game">{r.against}</span>
+                  {r.position && <span className="pill">{r.position}</span>}
+                  <span className="picker-rocks">{r.rocks}</span>
+                </label>
+              );
+            })}
+            <div className="picker-foot">
+              <button type="button" className="picker-done primary" onClick={() => setOpen(false)}>Done</button>
+              <p className="muted">Remembered in this browser. Games you mark later are included.</p>
+            </div>
+          </div>
+        )}
+      </div>
+      {t.names && <span className="muted picker-names">{t.names}</span>}
+      {!t.all && <button type="button" className="linky" onClick={() => setOff(new Set())}>Show all</button>}
+    </div>
+  );
+}
 
 /* Each game's rocks, by playKey: {rows, missing, fallback}, or {failed, status}. */
 function useRocks(plays) {
@@ -110,7 +206,7 @@ function Group({ group }) {
 }
 
 /* One game you said you played: which rocks, changeable here, and clearable. */
-function PlayRow({ p, rocks, onChanged }) {
+function PlayRow({ p, rocks, left, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
   const teams = { red: p.teams?.red || "Red", yellow: p.teams?.yellow || "Yellow" };
@@ -145,10 +241,11 @@ function PlayRow({ p, rocks, onChanged }) {
     : `${rocks.rows.length} rock${rocks.rows.length === 1 ? "" : "s"}`
       + (rocks.missing ? `, ${rocks.missing} never seen` : "");
   return (
-    <tr>
+    <tr className={left ? "left" : undefined}>
       <td className="when">{day(p.played_at)}</td>
       <td className="game">
         {p.title || "Untitled game"}
+        {left && <span className="pill">Not in the report</span>}
         <div className="muted">{playText(p)}</div>
         {rocks?.fallback && <Warn>{rocks.fallback}.</Warn>}
         {note && <Warn>{note}</Warn>}
@@ -173,13 +270,23 @@ export function Shots() {
   const plays = list.data?.plays ?? null;
   const rocks = useRocks(plays);
   const [err, setErr] = useState("");
+  const [off, setOffState] = useState(loadOff);
+  // Only games still listed are kept: a cleared game's id would linger for ever.
+  const setOff = next => {
+    const listed = new Set((plays || []).map(p => p.source_id));
+    const kept = new Set([...next].filter(id => listed.has(id)));
+    setOffState(kept);
+    saveOff(kept);
+  };
 
   const live = (plays || []).filter(p => p.status === "ok");
   const loaded = live.filter(p => rocks[playKey(p)]).length;
   const groups = useMemo(
-    () => shotGroups(live.flatMap(p => rocks[playKey(p)]?.rows ?? [])),
+    () => shotGroups(live.filter(p => !off.has(p.source_id))
+      .flatMap(p => rocks[playKey(p)]?.rows ?? [])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [plays, rocks]);
+    [plays, rocks, off]);
+  const picked = pickedText(plays || [], off);
 
   return (
     <>
@@ -216,12 +323,12 @@ export function Shots() {
                 </Card>
               ) : (
                 <>
-                  <p className="muted intro">Every rock you threw in {plays.length} game
-                  {plays.length === 1 ? "" : "s"}, by shot and by turn. A clockwise rock
-                  curls to the thrower's right.
+                  <GamePicker plays={plays} rocks={rocks} off={off} setOff={setOff} />
+                  <p className="muted intro">{picked.intro}
                   {loaded < live.length ? ` Loaded ${loaded} of ${live.length}…` : ""}</p>
                   {groups.length ? groups.map(g => <Group key={g.id} group={g} />)
-                   : loaded === live.length ? <Card>None of your rocks in these games were seen.</Card>
+                   : picked.on && loaded === live.length
+                     ? <Card>None of your rocks in these games were seen.</Card>
                    : null}
                   <h2>Games you played</h2>
                   <div className="card" id="plays">
@@ -230,7 +337,7 @@ export function Shots() {
                         <tr><th>Played</th><th>Game</th><th>Grading</th><th>Rocks</th><th /></tr>
                         {plays.map(p => (
                           <PlayRow key={p.source_id} p={p} rocks={rocks[playKey(p)]}
-                                   onChanged={list.reload} />
+                                   left={off.has(p.source_id)} onChanged={list.reload} />
                         ))}
                       </tbody>
                     </table>

@@ -4241,3 +4241,88 @@ class TestTheShotsPage:
 
     def test_every_signed_in_page_links_to_it(self):
         assert '<a href="/shots">My shots</a>' in self.src("frontend/site/ui.jsx")
+
+
+class TestTheGameFilter:
+    """The words at the top of My shots when only some games are in it."""
+
+    def plays(self, n):
+        days = ["2026-09-29", "2026-09-22", "2026-09-15", "2026-09-08", "2026-09-01", "2026-08-25"]
+        them = ["Grant", "Thistles", "Brooms", "Hackers", "Hogs", "Rocks"]
+        return [play(source_id=f"s{i}", played_at=f"{days[i]}T23:30:00+00:00",
+                     teams={"red": "Dimmit", "yellow": them[i]}) for i in range(n)]
+
+    def text(self, plays, off):
+        return run_js(f"out(pickedText({json.dumps(plays)}, new Set({json.dumps(off)}), {DAY}));")
+
+    def test_every_game(self):
+        t = self.text(self.plays(6), [])
+        assert (t["label"], t["names"], t["all"]) == ("All 6 games", "", True)
+        assert t["intro"].startswith("Every rock you threw in all 6 games, by shot and by turn.")
+
+    def test_some_games_are_named_up_to_three(self):
+        t = self.text(self.plays(6), ["s3", "s4", "s5"])
+        assert t["label"] == "3 of 6 games" and t["on"] == 3
+        assert t["names"] == "09-29 v Grant, 09-22 v Thistles, 09-15 v Brooms"
+        assert t["intro"].startswith("Every rock you threw in 3 of 6 games,")
+        assert self.text(self.plays(6), ["s5"])["names"] == ""
+
+    def test_no_games(self):
+        t = self.text(self.plays(6), [f"s{i}" for i in range(6)])
+        assert (t["label"], t["names"], t["on"]) == ("No games", "", 0)
+        assert t["intro"] == "Pick at least one game to see your rocks."
+
+    def test_one_game_reads_as_one(self):
+        t = self.text(self.plays(1), [])
+        assert t["label"] == "1 game" and "in 1 game," in t["intro"]
+
+    def test_a_game_left_out_that_is_no_longer_listed_counts_for_nothing(self):
+        assert self.text(self.plays(2), ["gone"])["label"] == "All 2 games"
+
+    def test_a_row_of_the_list(self):
+        p = play(slot=3, played_at="2026-09-15T23:30:00+00:00")
+        got = run_js(f"const p = {json.dumps(p)};"
+                     f"out([pickerRow(p, undefined, {DAY}), pickerRow(p, {{rows: [1, 2]}}, {DAY}),"
+                     f" pickerRow(p, {{rows: [1]}}, {DAY}).rocks, pickerRow(p, {{failed: true}}, {DAY}).rocks,"
+                     f" pickerRow({{...p, teams: {{}}}}, undefined, {DAY}).against]);")
+        assert got[0] == {"when": "09-15", "against": "v Grant", "position": "Third", "rocks": "…"}
+        assert got[1]["rocks"] == "2 rocks" and got[2] == "1 rock" and got[3] == "–"
+        assert got[4] == "sheet 3"
+
+    def test_game_text_reads_as_it_did(self):
+        got = run_js(f"const p = {json.dumps(play())};"
+                     f"out([gameText(p, {DAY}), gameText({{...p, teams: {{}}}}, {DAY}),"
+                     f" gameText({{...p, teams: {{}}, sheet: null}}, {DAY})]);")
+        assert got == ["09-29 v Grant", "09-29 · sheet 3", "09-29"]
+
+
+class TestTheGameFilterOnThePage:
+    """The filter leaves games out of the report, and remembers which."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def page(self):
+        return (self.ROOT / "frontend/site/Shots.jsx").read_text()
+
+    def test_the_groups_draw_only_on_the_games_left_in(self):
+        page = self.page()
+        assert "live.filter(p => !off.has(p.source_id))" in page
+        assert "[plays, rocks, off]" in page
+
+    def test_what_is_kept_is_the_games_left_out_and_storage_may_fail(self):
+        page = self.page()
+        load = page[page.index("function loadOff()"):page.index("function saveOff(")]
+        save = page[page.index("function saveOff("):page.index("function GamePicker(")]
+        assert "try {" in load and "catch" in load and "Array.isArray(ids)" in load
+        assert "try {" in save and "catch" in save
+        assert 'const OFF = "curlchart:shots-off";' in page
+
+    def test_it_shuts_like_a_menu(self):
+        page = self.page()
+        picker = page[page.index("function GamePicker("):]
+        assert 'e.key === "Escape"' in picker and '"pointerdown"' in picker
+        assert "aria-expanded={open}" in picker
+
+    def test_a_game_left_out_says_so_in_the_list(self):
+        page = self.page()
+        assert "left={off.has(p.source_id)}" in page
+        assert "Not in the report" in page
