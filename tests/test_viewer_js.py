@@ -3029,6 +3029,76 @@ class TestRoleSwapParity:
         assert got == [["B", "right"], ["A", "left"], ["A", "left"], ["A", "left"], ["B", "right"]]
 
 
+def _sliced_shots(n, fmt_name, end_number):
+    """An end whose every rock has a house and a set position, so the slice
+    has something to lose: `stones` for stones_before, `line.start` for the
+    hack call."""
+    shots = doubles_shots(n, end_number) if fmt_name == "doubles" else [
+        shot(i, "red" if i % 2 else "yellow", ["lead", "second", "third", "skip"][(i - 1) // 4],
+             thrower_slot=(i - 1) // 4 + 1, rock_of_player=1 + ((i - 1) // 2) % 2,
+             color_inferred=False)
+        for i in range(1, n + 1)]
+    for s in shots:
+        s["stones"] = [{"color": s["color"], "x": round(0.05 * s["number"], 2), "y": 0.3}]
+        s["line"] = {"start": {"x": -0.14 if s["number"] % 3 else 0.12, "y": 38.0}, "curl": "left"}
+    return shots
+
+
+class TestPlayerSliceParity:
+    """The report lays out a game the server already graded and cut down to
+    one player, with no overrides; the viewer lays out the raw game with
+    them. Every rock must come out numbered and attributed the same, and the
+    player's own rocks with the same house and hack."""
+
+    def _view(self, document, overrides):
+        return run_js(
+            f"const v = buildGameView({json.dumps(document)}, 0, {json.dumps(overrides)});"
+            "out(v.ends[0].shots.map(s => ({id: s.id ?? null, number: s.number, color: s.color,"
+            " slot: s.thrower_slot ?? null, position: s.position ?? null,"
+            " house: s.stones_before ?? null, hack: s.hack ?? null})));")
+
+    def _check(self, document, overrides, color, slot):
+        import copy
+        from curling_score import timeline
+        raw = self._view(document, overrides)
+        baked = timeline.for_player(
+            timeline.apply_overrides(copy.deepcopy(document), overrides), color, slot)
+        cut = self._view(baked, {})
+        who = [{k: r[k] for k in ("id", "number", "color", "slot", "position")} for r in raw]
+        assert [{k: r[k] for k in who[0]} for r in cut] == who
+        mine = [i for i, r in enumerate(raw) if r["color"] == color and r["slot"] == slot]
+        assert mine, "the case must give the player some rocks"
+        assert [cut[i]["house"] for i in mine] == [raw[i]["house"] for i in mine]
+        assert [cut[i]["hack"] for i in mine] == [raw[i]["hack"] for i in mine]
+        return raw
+
+    def test_a_rock_moved_in_fours(self):
+        d = doc(_sliced_shots(16, "fours", 2), end_number=2)
+        raw = self._check(d, {"0.2.16": {"before": 14}}, "yellow", 4)
+        assert [r["id"] for r in raw][-3:] == [16, 14, 15]
+
+    def test_a_blank_coloured_by_hand_and_moved(self):
+        shots = _sliced_shots(6, "fours", 4)
+        for s in shots[4:]:
+            s.update(color_inferred=True, missing=True, state_known=False)
+        self._check(doc(shots, end_number=4),
+                    {"0.4.5": {"before": 2}, "0.4.6": {"before": 2},
+                     "0.4.3": {"color": "yellow"}}, "yellow", 1)
+
+    def test_a_doubles_swap(self):
+        raw = self._check(doubles_doc(_sliced_shots(10, "doubles", 3)),
+                          {"0.3": {"roles_swapped": {"red": True}}}, "red", 2)
+        assert [r["number"] for r in raw if r["color"] == "red" and r["slot"] == 2] == [1, 9]
+
+    def test_a_doubles_swap_with_a_move(self):
+        shots = _sliced_shots(6, "doubles", 4)
+        for s in shots[4:]:
+            s.update(color_inferred=True, missing=True, state_known=False)
+        self._check(doubles_doc(shots, end_number=4),
+                    {"0.4.5": {"before": 1}, "0.4.6": {"before": 1},
+                     "0.4": {"roles_swapped": {"red": True}}}, "red", 2)
+
+
 class TestDoublesStatsAndSummary:
     def test_doubles_stats_have_a_bucket_per_player(self):
         got = run_js(setup(doubles_doc(doubles_shots())) +

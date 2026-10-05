@@ -1315,3 +1315,96 @@ class TestEnteredScores:
         out = timeline.apply_entered_scores(trimmed, {"2": {"red": 1, "yellow": 0}})
         end = out["games"][0]["ends"][1]
         assert end["id"] == 5 and end["score_source"] == "entered"
+
+
+def _fours_doc():
+    """One fours end as the pipeline writes it, every rock with the heavy
+    fields the report reads off the player's own rocks."""
+    def s(num):
+        t = F.FOURS.throw_info(num)
+        return {"number": num, "color": "red" if num % 2 else "yellow",
+                "color_inferred": False, "missing": False, "state_known": True,
+                "thrower_slot": t.position_slot,
+                "position": F.FOURS.positions[t.position_slot - 1],
+                "rock_of_player": t.rock_of_player, "has_hammer": t.has_hammer,
+                "label": F.FOURS.shot_label(2, num), "shot_type": "draw",
+                "stones": [{"color": "red", "x": 0.1 * num, "y": 0.0}],
+                "track": [[1.0, 0.0, 1.0]], "house_delta": {"moved": []},
+                "line": {"start": {"x": 0.1, "y": 38.0}, "delivery": [[0.0, 38.0, 0.1]]},
+                "long_split_s": 13.9}
+    return {"schema_version": 8, "calibration": {"big": True},
+            "games": [{"index": 0, "ends": [
+                {"number": 2, "final_stones": [{"x": 0}],
+                 "shots": [s(i) for i in range(1, 17)]}]}]}
+
+
+class TestForPlayer:
+    """One player's rocks whole, everyone else's cut to who threw them."""
+
+    def _shots(self, doc, color="red", slot=4):
+        return timeline.for_player(doc, color, slot)["games"][0]["ends"][0]["shots"]
+
+    def test_the_players_own_rocks_keep_everything(self):
+        shots = self._shots(_fours_doc())
+        mine = [s for s in shots if s["color"] == "red" and s["thrower_slot"] == 4]
+        assert [s["number"] for s in mine] == [13, 15]
+        assert all("track" in s and "line" in s and "long_split_s" in s for s in mine)
+
+    def test_everyone_elses_rocks_keep_only_who_threw_them(self):
+        shots = self._shots(_fours_doc())
+        others = [s for s in shots if not (s["color"] == "red" and s["thrower_slot"] == 4)]
+        assert len(others) == 14
+        for s in others:
+            assert "track" not in s and "line" not in s and "house_delta" not in s
+            assert {"number", "color", "thrower_slot", "position", "missing"} <= set(s)
+
+    def test_the_house_each_of_the_players_rocks_was_thrown_into_survives(self):
+        """buildGameView gives a rock the stones of the last rock read before
+        it, which is how the curl figure finds what it hit."""
+        shots = self._shots(_fours_doc())
+        kept = [s["number"] for s in shots if "stones" in s]
+        assert kept == [12, 13, 14, 15]
+
+    def test_a_rock_never_seen_passes_the_house_on_from_the_one_before(self):
+        doc = _fours_doc()
+        rocks = doc["games"][0]["ends"][0]["shots"]
+        rocks[11]["missing"] = True          # rock 12
+        rocks[13]["state_known"] = False     # rock 14
+        shots = self._shots(doc)
+        # 13 reads the house from 11, past the unseen 12; 15 from 13, past 14
+        # whose house was never read.
+        assert [s["number"] for s in shots if "stones" in s] == [11, 13, 15]
+
+    def test_the_document_loses_what_no_report_reads(self):
+        doc = timeline.for_player(_fours_doc(), "red", 4)
+        assert "calibration" not in doc
+        assert "final_stones" not in doc["games"][0]["ends"][0]
+
+    def test_before_is_gone_from_every_rock_once_the_overrides_are_baked(self):
+        """apply_overrides leaves `before` on a moved rock. The browser would
+        read it as a move still to make and renumber the end a second time,
+        without the colours and swaps the overrides set."""
+        doc = timeline.apply_overrides(_fours_doc(), {"0.2.15": {"before": 14}})
+        shots = self._shots(doc)
+        assert not any("before" in s for s in shots)
+        assert [s["id"] for s in shots][-3:] == [15, 14, 16]
+        assert "track" in shots[13]       # rock 15, still the red skip's
+
+    def test_a_document_without_slots_is_read_by_position(self):
+        doc = _fours_doc()
+        for s in doc["games"][0]["ends"][0]["shots"]:
+            del s["thrower_slot"]
+        shots = self._shots(doc, "yellow", 1)
+        assert [s["number"] for s in shots if "track" in s] == [2, 4]
+
+    def test_doubles_follows_the_person_across_a_swap(self):
+        doc = timeline.apply_overrides(_doubles_end(), {"0.3": {"roles_swapped": {"red": True}}})
+        for s in doc["games"][0]["ends"][0]["shots"]:
+            s["track"] = [[1.0, 0.0, 1.0]]
+        shots = timeline.for_player(doc, "red", 1)["games"][0]["ends"][0]["shots"]
+        # Swapped, red's A throws its 2nd to 4th rocks: end rocks 3, 5 and 7.
+        assert [s["number"] for s in shots if "track" in s] == [3, 5, 7]
+
+    def test_an_end_with_no_shots_is_left_alone(self):
+        doc = {"games": [{"index": 0, "ends": [{"number": 1}]}]}
+        assert timeline.for_player(doc, "red", 1)["games"][0]["ends"][0] == {"number": 1}

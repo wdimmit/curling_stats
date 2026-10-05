@@ -662,6 +662,74 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
     return document
 
 
+# What one player's report needs of a rock somebody else threw: who threw it
+# and whether it was seen -- enough for the browser to number the end and
+# attribute every rock -- and none of the tracks and lines that make a
+# timeline heavy.
+_OTHER_ROCK_FIELDS = ("id", "number", "color", "color_inferred", "thrower_slot",
+                      "position", "rock_of_player", "has_hammer", "missing",
+                      "state_known", "shot_type", "shot_type_source", "label",
+                      "corrected")
+
+
+def slot_of(shot: dict, fmt) -> int | None:
+    """Which of its team's players threw `shot`, counting from 1. Documents
+    older than `thrower_slot` are read by position name; None when neither
+    says."""
+    slot = shot.get("thrower_slot")
+    if isinstance(slot, int) and not isinstance(slot, bool):
+        return slot
+    try:
+        return fmt.positions.index(shot.get("position")) + 1
+    except ValueError:
+        return None
+
+
+def for_player(document: dict, color: str, slot: int) -> dict:
+    """`document`, already graded, cut down to what one player's report reads.
+
+    Edits and returns the document it is given. The player's own rocks are
+    kept whole. Everyone else's keep only who threw them, plus the stones of
+    the last rock read before each of the player's -- the house that rock was
+    thrown into, which the viewer's buildGameView hands on as
+    `stones_before` and the curl figure looks for a struck stone in.
+
+    `before` is dropped from every rock. apply_overrides has already put the
+    end in that order and renumbered it, but leaves the field on the rock; the
+    browser, given no overrides, would read it as a move still to make and
+    renumber the end again without the hand-set colours and role swaps.
+    """
+    fmt = format_mod.of_document(document)
+    document.pop("calibration", None)
+    for game in document.get("games", []):
+        for end in game.get("ends", []):
+            end.pop("final_stones", None)
+            if "shots" not in end:
+                continue
+            shots = end["shots"]
+            mine = [s.get("color") == color and slot_of(s, fmt) == slot for s in shots]
+            # buildGameView's walk: the house moves on only at a rock that was
+            # seen and whose house was read.
+            houses, last = set(), None
+            for i, s in enumerate(shots):
+                if mine[i] and last is not None:
+                    houses.add(last)
+                if not s.get("missing") and s.get("state_known") is not False:
+                    last = i
+            out = []
+            for i, s in enumerate(shots):
+                s.pop("before", None)
+                if mine[i]:
+                    out.append(s)
+                    continue
+                kept = {k: s[k] for k in _OTHER_ROCK_FIELDS if k in s}
+                if i in houses and "stones" in s:
+                    kept["stones"] = s["stones"]
+                out.append(kept)
+            end["shots"] = out
+    return document
+
+
 # Why a game's board scores were left off its ends. The board is keyed by the
 # real end number on each card; detection numbers the blocks it found. Nothing
 # in the document says how many leading blocks were practice, so the two
