@@ -91,6 +91,10 @@ export const lineX = core.lineX;
 export const restOf = core.restOf;
 export const playerHacks = core.playerHacks;
 export const hackOf = core.hackOf;
+export const lineNumbers = core.lineNumbers;
+export const narrowOf = core.narrowOf;
+export const turnOf = core.turnOf;
+export const groupOf = core.groupOf;
 export const gameView = () => view();
 
 export const clockText = core.clockText;

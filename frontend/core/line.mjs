@@ -278,31 +278,65 @@ function confirmTick(l) {
   return { tick, note };
 }
 
-export function lineFigures(shot, doc) {
+/* The figures' numbers, before any words: what the report adds up and plots
+ * across many rocks. Follows lineFigures branch for branch -- it is what
+ * lineFigures formats. Distances are metres, + to the thrower's right; null
+ * where the figure would read "–". */
+export function lineNumbers(shot, doc) {
   const reason = lineReason(shot, doc);
-  const predates = reason === "This chart predates line measurement";
   const l = reason ? null : shot.line;
-  const weight = typeof shot?.long_split_s === "number"
-    ? fig("weight", "Weight", `${shot.long_split_s.toFixed(1)} s`,
-          isSplitEstimated(shot) ? "hog line to hog line, estimated" : "hog line to hog line")
+  const split = typeof shot?.long_split_s === "number" ? shot.long_split_s : null;
+  const out = {
+    reason, predates: reason === "This chart predates line measurement", broomless: false,
+    split_s: split, split_estimated: split != null && isSplitEstimated(shot),
+    rest: restOf(shot), hack: hackOf(shot),
+    miss_m: null, on_broom: null, hog_off_m: null, curl: null, turn: null, tick: null,
+  };
+  if (!l) return out;
+  out.tick = confirmTick(l).tick;
+  out.curl = curlOf(shot);
+  out.turn = turnOf(shot);
+  if (!shot.target_broom) return { ...out, broomless: true };
+  out.miss_m = l.at_broom.miss_m;
+  out.on_broom = Math.abs(out.miss_m) < ON_M;
+  // The same two lines as At the broom, read at the hog line: the thrown line,
+  // and the line from this rock's hack to the broom. Not the pipeline's
+  // `offset_m`, which starts that line at the stone instead.
+  const aim = hackAimX(shot, HOG_Y);
+  out.hog_off_m = aim == null || typeof l.at_hog?.x !== "number" ? null : l.at_hog.x - aim;
+  return out;
+}
+
+/* An offset measured toward the side the rock curls to: + narrow, - wide.
+ * null with no turn to say which side is which. sideWord's convention. */
+export function narrowOf(v, turn) {
+  if (typeof v !== "number") return null;
+  return turn === "right" ? v : turn === "left" ? -v : null;
+}
+
+export function lineFigures(shot, doc) {
+  const n = lineNumbers(shot, doc);
+  const { reason, predates } = n;
+  const weight = n.split_s != null
+    ? fig("weight", "Weight", `${n.split_s.toFixed(1)} s`,
+          n.split_estimated ? "hog line to hog line, estimated" : "hog line to hog line")
     : fig("weight", "Weight", "–", "not timed");
-  const rest = restOf(shot);
-  const restFig = rest
-    ? fig("rest", "Came to rest", zone(rest), `${Math.hypot(rest.x, rest.y).toFixed(1)} m from the button`)
+  const restFig = n.rest
+    ? fig("rest", "Came to rest", zone(n.rest), `${Math.hypot(n.rest.x, n.rest.y).toFixed(1)} m from the button`)
     : fig("rest", "Came to rest", "–", "not matched to a stone");
-  if (!l) {
+  if (reason) {
     return { predates, reason, figures: [
       fig("broom", "At the broom", "–", reason),
       hackFig(shot), fig("hog", "At the hog line", "–", reason),
       weight, fig("curl", "Curl", "–", ""), restFig] };
   }
-  if (!shot.target_broom) {
+  const { tick, note: tickNote } = confirmTick(shot.line);
+  if (n.broomless) {
     // A doubles rock nobody held a broom for: nothing measures against one,
     // but the hack, the weight, the rest and the curl's own note do not need
     // it. The curl figure still carries whether the camera behind the
     // thrower confirmed this line, since nothing else here can.
-    const { tick, note: tickNote } = confirmTick(l);
-    const curlBase = curlFig(curlOf(shot));
+    const curlBase = curlFig(n.curl);
     const curl = { ...curlBase, tick, dim: tick === "disagrees", note: `${curlBase.note} · ${tickNote}` };
     return { predates, reason, figures: [
       fig("broom", "At the broom", "–", "no broom held in the house"),
@@ -310,25 +344,15 @@ export function lineFigures(shot, doc) {
       fig("hog", "At the hog line", "–", "no broom to aim at"),
       weight, curl, restFig] };
   }
-  const miss = l.at_broom.miss_m;
-  const c = curlOf(shot);
-  const turn = turnOf(shot);
-  const { tick, note: tickNote } = confirmTick(l);
   const broom = fig("broom", "At the broom",
-                    Math.abs(miss) < ON_M ? "On the broom" : `${feetInches(miss)} ${sideWord(miss, turn)}`,
+                    n.on_broom ? "On the broom" : `${feetInches(n.miss_m)} ${sideWord(n.miss_m, n.turn)}`,
                     tickNote, { tick, dim: tick === "disagrees" });
-  const hack = hackFig(shot);
-  // The same two lines as At the broom, read at the hog line: the thrown line,
-  // and the line from this rock's hack to the broom. Not the pipeline's
-  // `offset_m`, which starts that line at the stone instead.
-  const aim = hackAimX(shot, HOG_Y);
-  const off = aim == null || typeof l.at_hog?.x !== "number" ? null : l.at_hog.x - aim;
+  const off = n.hog_off_m;
   const hog = off == null ? fig("hog", "At the hog line", "–", "needs the hack")
     : fig("hog", "At the hog line",
-          Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, turn)}`,
+          Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, n.turn)}`,
           "of the hack-to-broom line");
-  const curl = curlFig(c);
-  return { predates, reason, figures: [broom, hack, hog, weight, curl, restFig] };
+  return { predates, reason, figures: [broom, hackFig(shot), hog, weight, curlFig(n.curl), restFig] };
 }
 
 const SWIPE_MIN_PX = 50;

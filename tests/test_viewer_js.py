@@ -3858,3 +3858,61 @@ class TestMoveToTeamButton:
     def test_only_personal_charts_offer_it(self):
         src = self.MINE.read_text()
         assert "{!c.team_id && teams.length ? (" in src
+
+
+class TestLineNumbers:
+    """The numbers under the Detail pane's figures, for the report to add up."""
+
+    DOC6 = {"schema_version": 6}
+
+    def nums(self, s, doc=None):
+        return run_js(f"const s = {json.dumps(s)}, d = {json.dumps(doc or self.DOC6)};"
+                      "out({n: lineNumbers(s, d), f: lineFigures(s, d).figures});")
+
+    def test_they_are_what_the_figures_say(self):
+        got = self.nums(TestLineFigures().measured())
+        n, f = got["n"], {x["key"]: x["value"] for x in got["f"]}
+        assert n["miss_m"] == -0.712 and n["on_broom"] is False
+        assert f["broom"] == "2 ft 4 in wide"
+        # The hack-to-broom line is at x -0.545 at the hog line; the rock at -0.757.
+        assert n["hog_off_m"] == pytest.approx(-0.757 + 0.545, abs=0.002)
+        assert (n["split_s"], n["split_estimated"], n["turn"], n["hack"], n["tick"]) == (
+            13.79, False, "right", "left", "confirmed")
+        assert n["curl"]["m"] == pytest.approx(1.143, abs=0.01) and n["curl"]["hit"] is False
+        assert n["rest"] == {"x": -1.1529, "y": 1.3486}
+        assert n["reason"] is None and n["broomless"] is False
+
+    def test_narrow_is_the_side_the_rock_curls_to(self):
+        got = run_js("out([narrowOf(0.2, 'right'), narrowOf(0.2, 'left'), narrowOf(-0.2, 'right'),"
+                     " narrowOf(0.2, null), narrowOf(null, 'right')]);")
+        assert got == [0.2, -0.2, -0.2, None, None]
+        # The figure agrees: curling right, thrown 1 ft right of the broom is narrow.
+        rock = TestLineFigures().measured(at_broom={"x": -1.34, "miss_m": 0.3048})
+        f = {x["key"]: x["value"] for x in self.nums(rock)["f"]}
+        assert f["broom"] == "1 ft narrow"
+
+    def test_no_line_leaves_only_what_needs_none(self):
+        rock = TestLineFigures().measured()
+        del rock["line"]
+        n = self.nums(rock)["n"]
+        assert n["reason"] == "The hog-line camera lost this rock"
+        assert (n["miss_m"], n["hog_off_m"], n["curl"], n["turn"]) == (None, None, None, None)
+        assert n["split_s"] == 13.79 and n["rest"] is not None
+
+    def test_an_old_chart_predates_it(self):
+        n = self.nums(TestLineFigures().measured(), {"schema_version": 5})["n"]
+        assert n["predates"] is True and n["miss_m"] is None
+
+    def test_a_doubles_rock_with_no_broom_has_a_curl_but_no_miss(self):
+        rock = TestLineFigures().measured(at_broom=None, at_tee={"x": -1.9})
+        del rock["target_broom"]
+        n = self.nums(rock, {"schema_version": 7, "format": {"name": "doubles",
+                     "positions": ["A", "B"], "throw_table": [1, 2, 2, 2, 1]}})["n"]
+        assert n["broomless"] is True and n["miss_m"] is None and n["hog_off_m"] is None
+        assert n["curl"]["m"] is not None and n["turn"] == "right"
+
+    def test_the_type_groups(self):
+        got = run_js("out(['hit', 'draw', 'guard', 'draw_through', 'flashed', 'hogged', 'unknown',"
+                     " 'takeout', 'nonsense'].map(groupOf));")
+        assert got[:7] == ["Hit", "Draw", "Guard", "Draw", "Hit", "Other", "Other"]
+        assert got[8] == "Other"

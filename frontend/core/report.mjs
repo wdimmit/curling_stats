@@ -117,7 +117,8 @@ const positionsOf = (stats, fmt) => {
   return [...fmt.positions, ...new Set(extra)];
 };
 
-const groupOf = id => TYPE[id]?.group || "Other";
+/* Which of Draw, Guard, Hit or Other a shot type is reported under. */
+export const groupOf = id => TYPE[id]?.group || "Other";
 const groupTotal = (bucket, group) => Object.entries(bucket?.types || {})
   .filter(([id]) => groupOf(id) === group)
   .reduce((r, [, x]) => addInto(r, x), zero());
