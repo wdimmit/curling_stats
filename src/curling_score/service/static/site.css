@@ -299,3 +299,56 @@ body[data-page="games"] .pill { font-family:inherit; }
 /* My games: moving a chart charted as yourself onto a team. */
 #charts .game .move { margin-top: 6px; gap: 6px; }
 #charts .game .move select, #charts .game .move button { font-size: 13px; }
+
+/* --- my shots ------------------------------------------------------------ */
+/* Every rock a player threw, by shot and turn: a summary line, two charts side
+   by side, and the rocks. The charts' plots are painted as ice in literal
+   colours (ShotCharts.jsx); their words take the page's ink from here. */
+body[data-page="shots"] main { max-width:980px; }
+#shots .intro { margin-top:0; }
+#shots .shotgrp { margin-bottom:16px; }
+#shots .shotgrp h3 { margin:0 0 8px; font-family:var(--display); font-size:18px; font-weight:700; }
+#shots .shotgrp h3 .muted { font-weight:500; font-size:15px; margin-left:6px; }
+.shotsum { display:flex; flex-wrap:wrap; gap:4px 22px; margin:0 0 12px; }
+.shotsum div { display:flex; gap:7px; align-items:baseline; }
+.shotsum dt { color:var(--muted); font:700 12px var(--display); text-transform:uppercase; letter-spacing:.06em; }
+.shotsum dd { margin:0; font-weight:600; font-variant-numeric:tabular-nums; }
+.shotsum p { flex:1 1 100%; margin:0; font-size:13px; }
+.shotgrp-charts { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
+@media (min-width: 700px) {
+  .shotgrp-charts { grid-template-columns:repeat(2, minmax(0,1fr)); align-items:start; }
+}
+.shotchart { margin:0; }
+.shotchart svg { display:block; width:100%; height:auto; }
+.shotchart text { fill:var(--muted); font:11px var(--display); }
+.shotchart text.sc-side { fill:var(--ink); font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+.shotchart .sc-tick { stroke:var(--muted); }
+.shotchart figcaption { margin-top:4px; font-size:12px; color:var(--muted); }
+.shotchart-none { margin:8px 0; font-size:13px; }
+.shotgrp details { margin-top:12px; }
+.shotgrp summary { cursor:pointer; font:700 14px var(--display); padding:6px 0; }
+#shots table.rocks th, #shots table.rocks td { padding:5px 6px; font-size:13px; }
+#shots table.rocks td.dim { color:var(--muted); }
+#plays .game .muted { font-size:13px; }
+#plays td.actions select { max-width:15em; padding:6px 8px; }
+#plays td.actions button, #plays td.actions a.btn { padding:6px 10px; }
+
+@media (max-width: 640px) {
+  #shots table, #shots tbody { display:block; }
+  #shots tr:first-child { display:none; }
+  #shots tr { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 12px;
+              padding:12px 0; border-bottom:1px solid var(--line); }
+  #shots tr:last-child { border-bottom:0; }
+  #shots td, #shots table.rocks td { display:block; border:0; padding:0; font-size:14px; }
+  #shots td[data-label]::before {
+    content:attr(data-label) " "; color:var(--muted); font-size:12px;
+    text-transform:uppercase; letter-spacing:.04em; }
+  #shots td.game { order:1; flex:1 1 100%; font-weight:650; }
+  #shots td.when { order:2; flex:1 1 100%; color:var(--muted); font-size:13px; }
+  #shots td[data-label] { order:3; }
+  #shots td.actions { order:9; flex:1 1 100%; display:flex; flex-wrap:wrap; gap:8px;
+                      margin-top:8px; white-space:normal; }
+  #shots td.actions > * { flex:1 1 auto; min-height:44px; }
+  #plays td.actions select { flex:1 1 100%; max-width:none; }
+  #shots td.actions a.btn { display:flex; align-items:center; justify-content:center; }
+}

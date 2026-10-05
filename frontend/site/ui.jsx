@@ -16,6 +16,7 @@ export function IdentityChip() {
       {user ? (
         <>
           <a href="/mine">{user.displayName || user.email || "My games"}</a>{" "}
+          <a href="/shots">My shots</a>{" "}
           <button onClick={() => signOff()}>Sign out</button>
         </>
       ) : (

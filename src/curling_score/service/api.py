@@ -808,6 +808,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def thinking_page():
         return page("thinking.html")
 
+    @app.get("/shots", response_class=HTMLResponse)
+    def shots_page():
+        return page("shots.html")
+
     @app.get("/join/{token}", response_class=HTMLResponse)
     def join_page(token: str):
         # The token is read back off the URL by the page itself; nothing is

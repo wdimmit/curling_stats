@@ -188,7 +188,7 @@ export function Mine() {
 
   return (
     <>
-      <Header links={[["/", "All games"], ["/thinking", "Thinking time"],
+      <Header links={[["/", "All games"], ["/shots", "My shots"], ["/thinking", "Thinking time"],
                        ["/submit", "Submit a link"]]} />
       <main>
         {ready && !user && (

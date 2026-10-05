@@ -167,19 +167,27 @@ export function missScatter(rows, turn, box = SCATTERBOX) {
   const feet = Math.min(maxFeet, Math.ceil(reach / FOOT_M - 1e-9));
   const half = feet * FOOT_M;
   const splits = plotted.map(r => r.nums.split_s);
-  let lo = splits.length ? Math.floor(Math.min(...splits) * 2) / 2 : 13;
-  let hi = splits.length ? Math.ceil(Math.max(...splits) * 2) / 2 : 15;
+  // A tick every half second, or every one or two across a group that runs
+  // from guard weight to a peel: a label every few pixels reads as none.
+  const least = splits.length ? Math.min(...splits) : 13.5;
+  const most = splits.length ? Math.max(...splits) : 14.5;
+  const step = most - least <= 3 ? 0.5 : most - least <= 6 ? 1 : 2;
+  let lo = Math.floor(least / step) * step, hi = Math.ceil(most / step) * step;
   if (hi - lo < 1) { lo -= (1 - (hi - lo)) / 2; hi = lo + 1; }
   const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const X = x => pad.l + (clamp(x, -half, half) + half) / (2 * half) * plotW;
   const Y = s => pad.t + (clamp(s, lo, hi) - lo) / (hi - lo) * plotH;
   const xTicks = [];
+  // Every foot, labelled every other one past three feet a side.
   for (let k = -feet; k <= feet; k++) {
-    xTicks.push({ x: r1(X(k * FOOT_M)), label: k === 0 ? "0" : `${Math.abs(k)} ft`, zero: k === 0 });
+    const label = feet > 3 && k % 2 ? "" : k === 0 ? "0" : `${Math.abs(k)} ft`;
+    xTicks.push({ x: r1(X(k * FOOT_M)), label, zero: k === 0 });
   }
   const yTicks = [];
-  for (let s = Math.ceil(lo * 2) / 2; s <= hi + 1e-9; s += 0.5) yTicks.push({ y: r1(Y(s)), label: s.toFixed(1) });
+  for (let s = lo; s <= hi + 1e-9; s += step) {
+    yTicks.push({ y: r1(Y(s)), label: s.toFixed(step < 1 ? 1 : 0) });
+  }
   const sides = turn === "right" ? ["wide", "narrow"] : turn === "left" ? ["narrow", "wide"] : ["left", "right"];
   return {
     w, h, plot: { x: pad.l, y: pad.t, w: plotW, h: plotH },

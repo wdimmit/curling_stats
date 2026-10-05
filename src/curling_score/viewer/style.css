@@ -611,7 +611,7 @@ body.reporting main { display:none; }
 #playedDialog .pl-why, #playedDialog .pl-who { margin: 0 0 12px; color: var(--muted); }
 #playedDialog .pl-teams, #playedDialog .pl-slots { display: grid; gap: 6px; margin-bottom: 12px; }
 #playedDialog .pl-teams { grid-template-columns: 1fr 1fr; }
-#playedDialog .pl-slots { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
+#playedDialog .pl-slots { grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); }
 #playedDialog .pl-teams button, #playedDialog .pl-slots button {
   min-height: 44px; padding: 6px 10px; font: inherit; text-align: left;
   display: flex; align-items: center; gap: 8px; }
@@ -1195,6 +1195,8 @@ body[data-mode="review"] #house { cursor:default; }
   #flagDialog .flagButtons button { flex: 1; min-height: 44px; }
   #playedDialog { width: 100vw; max-width: 100vw; margin: auto 0 0;
     border-radius: 16px 16px 0 0; }
+  /* Two to a row: four across is too tight for "5th & 6th" at a thumb's width. */
+  #playedDialog .pl-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* --- short screens ------------------------------------------------------ */

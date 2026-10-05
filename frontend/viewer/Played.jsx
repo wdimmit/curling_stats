@@ -149,7 +149,8 @@ function PlayedForm({ playing, onClose }) {
           </button>
         ))}
       </div>
-      <div className="pl-slots" role="group" aria-label="The rocks you threw">
+      <div className="pl-slots" role="group" aria-label="The rocks you threw"
+           style={{ "--n": playing.format.positions.length }}>
         {positionChoices(playing.format).map(p => (
           <button key={p.slot} type="button" className={slot === p.slot ? "on" : undefined}
                   aria-pressed={slot === p.slot} onClick={() => setSlot(p.slot)}>

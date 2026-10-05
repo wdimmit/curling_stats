@@ -746,21 +746,21 @@ class TestCatalogueAndAdmin:
         c = world["client"]
         for path, page in [("/", "games"), ("/games", "games"), ("/submit", "submit"),
                            ("/mine", "mine"), ("/join/i_whatever", "join"),
-                           ("/thinking", "thinking")]:
+                           ("/thinking", "thinking"), ("/shots", "shots")]:
             body = c.get(path).text
             assert f'data-page="{page}"' in body, f"{path} is not the {page} page"
             assert 'src="/static/site.js"' in body, f"{path} loads no bundle"
         assert c.get("/static/site.css").status_code == 200
         bundle = c.get("/static/site.js").text
         for words in ("Get my link", "My games", "Join a team", "All leagues",
-                      "Most lopsided"):
+                      "Most lopsided", "Games you played"):
             assert words in bundle, f"{words!r} is in no page"
 
     def test_every_script_a_page_asks_for_is_actually_served(self, world):
         """The allowlist is hand-kept, so a new page can reference a 404."""
         import re
         c = world["client"]
-        for path in ("/", "/games", "/mine", "/join/i_x", "/thinking"):
+        for path in ("/", "/games", "/mine", "/join/i_x", "/thinking", "/shots"):
             for src in re.findall(r'src="(/static/[^"]+)"', c.get(path).text):
                 assert c.get(src).status_code == 200, f"{path} asks for {src}"
 

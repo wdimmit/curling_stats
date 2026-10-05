@@ -4110,7 +4110,18 @@ class TestMissScatter:
         g = run_js(f"out(missScatter({json.dumps(rows)}, 'left'));")
         assert [s["text"] for s in g["sides"]] == ["narrow", "wide"]
         assert len(g["xTicks"]) == 13 and g["points"][0]["clipped"] is True
+        assert [t["label"] for t in g["xTicks"]][4:9] == ["2 ft", "", "0", "", "2 ft"]
         assert g["points"][0]["cx"] == g["plot"]["x"] + g["plot"]["w"]
+
+
+class TestMissScatterWeightAxis:
+    def test_a_wide_range_of_weights_is_ticked_less_often(self):
+        def labels(splits):
+            rows = [_row("Hit", "right", miss=0.1 * i, split=sp) for i, sp in enumerate(splits)]
+            return [t["label"] for t in run_js(f"out(missScatter({json.dumps(rows)}, 'right'));")["yTicks"]]
+        assert labels([13.6, 14.4]) == ["13.5", "14.0", "14.5"]
+        assert labels([8.4, 12.9]) == ["8", "9", "10", "11", "12", "13"]
+        assert labels([8.4, 16.4]) == ["8", "10", "12", "14", "16", "18"]
 
 
 class TestDeliveryOverlay:
@@ -4185,3 +4196,31 @@ class TestThePlayedDialog:
     def test_on_the_desktop_it_sits_after_the_flag(self):
         css = self.src("src/curling_score/viewer/style.css")
         assert "header #playedBtn  { order: 13; }" in css
+
+
+class TestTheShotsPage:
+    """My shots lays out core's words and numbers; it computes none."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_the_page_does_no_arithmetic_of_its_own(self):
+        for rel in ("frontend/site/Shots.jsx", "frontend/site/ShotCharts.jsx"):
+            page = self.src(rel)
+            assert "toFixed" not in page and "Math." not in page, rel
+
+    def test_games_load_a_few_at_a_time_and_only_once_each(self):
+        page = self.src("frontend/site/Shots.jsx")
+        assert "const AT_ONCE = 3;" in page
+        assert "for (let i = 0; i < AT_ONCE; i++) worker();" in page
+        assert "!asked.current.has(playKey(p))" in page
+        assert "`${playUrl(p.source_id)}/doc`" in page
+
+    def test_changing_a_play_from_here_sends_no_path(self):
+        page = self.src("frontend/site/Shots.jsx")
+        assert 'send("PUT", { color, slot: Number(slot) })' in page
+        assert 'send("DELETE")' in page
+
+    def test_every_signed_in_page_links_to_it(self):
+        assert '<a href="/shots">My shots</a>' in self.src("frontend/site/ui.jsx")
