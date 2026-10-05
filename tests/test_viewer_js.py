@@ -3916,3 +3916,233 @@ class TestLineNumbers:
                      " 'takeout', 'nonsense'].map(groupOf));")
         assert got[:7] == ["Hit", "Draw", "Guard", "Draw", "Hit", "Other", "Other"]
         assert got[8] == "Other"
+
+
+TEE_Y = 34.747
+HACK_Y = 34.747 + 3.658
+FOURS_JSON = {"name": "fours", "positions": ["lead", "second", "third", "skip"],
+              "throw_table": [1, 1, 2, 2, 3, 3, 4, 4], "swappable": False}
+
+
+def aimed(number, color, slot, *, broom_x=0.5, off=0.0, miss=0.0, split=13.9, curl="right",
+          hack_x=-0.1, delivery=True):
+    """A schema-8 rock thrown from the left hack at a broom on the tee line at
+    `broom_x`, its delivery `off` metres right of its hack-to-broom line."""
+    def aim(y):
+        hx = -0.152
+        return hx + (broom_x - hx) * (y - HACK_Y) / (0.0 - HACK_Y)
+    pts = []
+    for i, yp in enumerate([-3.45, -3.45, -2.0, 0.0, 2.0, 4.0, 6.0, 7.5]):
+        y = TEE_Y - yp
+        pts.append([round(i * 0.4 - 3.0, 2), round(y, 4), round(aim(y) + off, 4)])
+    line = {"start": {"x": hack_x, "y": TEE_Y + 3.45}, "curl": curl, "confirmed": True,
+            "at_hog": {"x": round(aim(28.346) + off, 4), "offset_m": 0.0},
+            "at_broom": {"x": broom_x + miss, "miss_m": miss}}
+    if delivery:
+        line["delivery"] = pts
+    return shot(number, color, ["lead", "second", "third", "skip"][slot - 1], thrower_slot=slot,
+                target_broom={"x": broom_x, "y": 0.0}, long_split_s=split, line=line)
+
+
+def play(**kw):
+    base = {"source_id": "src1", "color": "red", "slot": 4, "format": FOURS_JSON,
+            "played_at": "2026-09-29T23:30:00+00:00", "view_path": "/s/share1/",
+            "teams": {"red": "Dimmit", "yellow": "Grant"}, "sheet": 3}
+    base.update(kw)
+    return base
+
+
+DAY = "d => d.toISOString().slice(5, 10)"
+
+
+class TestPositionChoices:
+    def test_fours_by_throwing_order(self):
+        got = run_js("out(positionChoices(formatOf({})));")
+        assert [(c["slot"], c["label"], c["role"]) for c in got] == [
+            (1, "Lead", "1st & 2nd"), (2, "Second", "3rd & 4th"),
+            (3, "Third", "5th & 6th"), (4, "Skip", "7th & 8th")]
+
+    def test_doubles_by_player(self):
+        got = run_js(setup(doubles_doc(doubles_shots())) + "out(positionChoices(formatOf(state.doc)));")
+        assert [(c["label"], c["role"]) for c in got] == [("Player A", "1st & 5th"),
+                                                          ("Player B", "2nd–4th")]
+
+    def test_a_play_and_its_game_in_words(self):
+        got = run_js(f"const p = {json.dumps(play())};"
+                     f"out([playText(p), gameText(p, {DAY}), gameText({{...p, teams: {{}}}}, {DAY}),"
+                     f" gameText({{...p, teams: {{}}, sheet: null, played_at: null}}), playText({{...p, teams: {{}}}})]);")
+        assert got == ["Dimmit · Skip (7th & 8th)", "09-29 v Grant", "09-29 · sheet 3",
+                       "Undated", "Red · Skip (7th & 8th)"]
+
+
+class TestPlayerRocks:
+    """A player's rocks from the game the server baked and cut down for them."""
+
+    def _baked(self, document, overrides, color, slot):
+        import copy
+        from curling_score import timeline
+        return timeline.for_player(timeline.apply_overrides(copy.deepcopy(document), overrides),
+                                   color, slot)
+
+    def test_the_same_rocks_and_types_the_viewer_shows(self):
+        fx = json.loads(REPORT_FIXTURE.read_text())
+        baked = self._baked(fx["doc"], fx["overrides"], "red", 4)
+        got = run_js(
+            f"const raw = buildGameView({json.dumps(fx['doc'])}, 0, {json.dumps(fx['overrides'])});"
+            "const want = raw.ends.flatMap(x => x.shots.filter(s => s.color === 'red' && s.thrower_slot === 4"
+            "  && !s.missing).map(s => [x.end.number, s.number, typeOf(s)]));"
+            f"const {{rows, missing}} = playerRocks({json.dumps(play())}, {json.dumps(baked)}, {DAY});"
+            "out({want, got: rows.map(r => [r.end, r.number, r.type]), missing,"
+            " groups: rows.map(r => r.group), href: rows[0].href, game: rows[0].game});")
+        assert got["got"] == got["want"] and len(got["got"]) >= 6
+        assert set(got["groups"]) <= {"Hit", "Draw", "Guard", "Other"}
+        assert got["href"] == f"/s/share1/#e={got['got'][0][0]}&s={got['got'][0][1]}"
+        assert got["game"] == "09-29 v Grant"
+
+    def test_a_measured_rock_carries_its_numbers_figures_and_path(self):
+        d = doc([aimed(13, "red", 4, off=0.05, miss=-0.2), aimed(15, "red", 4, delivery=False),
+                 aimed(14, "yellow", 4)], end_number=3)
+        d["schema_version"] = 8
+        got = run_js(f"const {{rows}} = playerRocks({json.dumps(play())}, {json.dumps(d)}, {DAY});"
+                     "out(rows.map(r => ({n: r.number, turn: r.turn, miss: r.nums.miss_m,"
+                     " broom: r.figures[0].value, path: r.path && r.path.pts.map(p => +p.dx.toFixed(3)),"
+                     " start: r.path && r.path.start, key: r.key})));")
+        assert [r["n"] for r in got] == [13, 15]
+        first = got[0]
+        assert first["turn"] == "right" and first["miss"] == -0.2
+        assert first["broom"] == "8 in wide"
+        assert first["path"] == [0.05] * 8          # every sample 5 cm right of its aim line
+        assert first["start"]["yp"] == pytest.approx(-3.45)
+        assert first["key"] == "src1.3.13"
+        assert got[1]["path"] is None
+
+    def test_a_rock_never_seen_is_counted_not_listed(self):
+        d = doc([aimed(13, "red", 4), shot(15, "red", "skip", thrower_slot=4, missing=True)])
+        d["schema_version"] = 8
+        got = run_js(f"const r = playerRocks({json.dumps(play())}, {json.dumps(d)});"
+                     "out([r.rows.length, r.missing]);")
+        assert got == [1, 1]
+
+    def test_doubles_by_the_person_across_a_swap(self):
+        shots = doubles_shots()
+        baked = self._baked(doubles_doc(shots), {"0.3": {"roles_swapped": {"red": True}}}, "red", 1)
+        got = run_js(f"const p = {json.dumps(play(slot=1, format=baked['format']))};"
+                     f"out(playerRocks(p, {json.dumps(baked)}).rows.map(r => r.number));")
+        assert got == [3, 5, 7]
+
+
+def _row(group, turn, *, miss=None, split=None, on=False, path=True, played="2026-09-29", end=1,
+         number=13, est=False, tick="confirmed"):
+    return {"key": f"{played}.{end}.{number}", "group": group, "turn": turn, "playedAt": played,
+            "end": end, "number": number, "href": f"/g/x/#e={end}&s={number}",
+            "path": {"pts": []} if path else None,
+            "nums": {"miss_m": miss, "split_s": split, "on_broom": on, "split_estimated": est,
+                     "tick": tick}}
+
+
+class TestShotGroups:
+    def test_fixed_order_and_no_empty_groups(self):
+        rows = [_row("Draw", "left"), _row("Hit", None), _row("Draw", "right"), _row("Hit", "right"),
+                _row("Other", "left")]
+        got = run_js(f"out(shotGroups({json.dumps(rows)}).map(g => [g.id, g.label, g.rows.length]));")
+        assert got == [["Hit-right", "Hits · Clockwise", 1],
+                       ["Hit-unmeasured", "Hits · Turn not measured", 1],
+                       ["Draw-right", "Draws · Clockwise", 1],
+                       ["Draw-left", "Draws · Counter-clockwise", 1],
+                       ["Other-left", "Other rocks · Counter-clockwise", 1]]
+
+    def test_newest_game_first_then_end_and_rock(self):
+        rows = [_row("Draw", "right", played="2026-09-22", end=1, number=13),
+                _row("Draw", "right", played="2026-09-29", end=4, number=15),
+                _row("Draw", "right", played="2026-09-29", end=2, number=13)]
+        got = run_js(f"out(shotGroups({json.dumps(rows)})[0].rows.map(r => r.key));")
+        assert got == ["2026-09-29.2.13", "2026-09-29.4.15", "2026-09-22.1.13"]
+
+    def test_the_summary_counts_by_side_of_the_turn(self):
+        rows = [_row("Draw", "right", miss=0.05, split=13.8, on=True),
+                _row("Draw", "right", miss=-0.4, split=14.2),      # left of the broom: wide
+                _row("Draw", "right", miss=-0.3, split=13.6),
+                _row("Draw", "right", miss=0.25, split=None),      # right: narrow
+                _row("Draw", "right", miss=None, split=14.0, path=False)]
+        got = run_js(f"const s = summarize({json.dumps(rows)}, 'right'); out([s, summaryText(s, 'right')]);")
+        s, t = got
+        assert (s["n"], s["broom"]["on"], s["broom"]["minus"], s["broom"]["plus"]) == (5, 1, 2, 1)
+        assert s["weight"] == {"n": 4, "median": pytest.approx(13.9), "lo": 13.6, "hi": 14.2}
+        assert t["count"] == "5 rocks"
+        assert t["weight"] == "13.9 s (13.6–14.2)"
+        assert t["broom"] == "1 on · 2 wide · 1 narrow"
+        # Curling right, + is narrow: [-0.4, -0.3, 0.05, 0.25] has median -0.125, 5 in wide.
+        assert t["typical"] == "5 in wide"
+        assert t["notes"] == ["1 not measured at the broom", "1 not timed", "1 with no delivery path"]
+
+    def test_counter_clockwise_flips_the_sides_and_no_turn_says_left_and_right(self):
+        rows = [_row("Hit", "left", miss=-0.3, split=9.0)]
+        assert run_js(f"const s = summarize({json.dumps(rows)}, 'left'); out(summaryText(s, 'left').broom);") == \
+            "0 on · 0 wide · 1 narrow"
+        rows = [_row("Hit", None, miss=-0.3, split=9.0)]
+        assert run_js(f"const s = summarize({json.dumps(rows)}, null); out(summaryText(s, null));")["broom"] == \
+            "0 on · 1 left · 0 right"
+
+    def test_nothing_measured_reads_as_dashes(self):
+        got = run_js(f"out(summaryText(summarize({json.dumps([_row('Guard', None)])}, null), null));")
+        assert (got["count"], got["weight"], got["broom"], got["typical"]) == ("1 rock", "–", "–", "–")
+
+
+class TestMissScatter:
+    def test_the_frame_and_the_points(self):
+        rows = [_row("Draw", "right", miss=0.3048, split=13.5), _row("Draw", "right", miss=-0.6, split=14.4, est=True),
+                _row("Draw", "right", miss=0.0, split=14.0, tick="disagrees"), _row("Draw", "right")]
+        g = run_js(f"out(missScatter({json.dumps(rows)}, 'right'));")
+        assert [s["text"] for s in g["sides"]] == ["wide", "narrow"]
+        assert [t["label"] for t in g["xTicks"]] == ["2 ft", "1 ft", "0", "1 ft", "2 ft"]
+        assert [t["label"] for t in g["yTicks"]] == ["13.5", "14.0", "14.5"]
+        p = g["plot"]
+        for q in g["points"]:
+            assert p["x"] <= q["cx"] <= p["x"] + p["w"] and p["y"] <= q["cy"] <= p["y"] + p["h"]
+        heavy, light, on = g["points"]
+        assert heavy["cy"] < on["cy"] < light["cy"]           # heavier (shorter split) at the top
+        assert light["cx"] < on["cx"] < heavy["cx"]           # left of the broom to the left
+        assert light["hollow"] and on["dim"] and not heavy["hollow"]
+        assert g["skipped"] == 1
+
+    def test_counter_clockwise_and_a_miss_off_the_chart(self):
+        rows = [_row("Hit", "left", miss=3.0, split=9.0)]
+        g = run_js(f"out(missScatter({json.dumps(rows)}, 'left'));")
+        assert [s["text"] for s in g["sides"]] == ["narrow", "wide"]
+        assert len(g["xTicks"]) == 13 and g["points"][0]["clipped"] is True
+        assert g["points"][0]["cx"] == g["plot"]["x"] + g["plot"]["w"]
+
+
+class TestDeliveryOverlay:
+    def test_each_rock_is_measured_off_its_own_aim_line(self):
+        rocks = [aimed(13, "red", 4, broom_x=bx, off=off) for bx, off in ((0.8, 0.03), (-1.2, -0.02))]
+        got = run_js(f"const d = {{schema_version: 8}};"
+                     f"out({json.dumps(rocks)}.map(s => aimFrame(s, d).pts.map(p => +p.dx.toFixed(3))));")
+        assert got == [[0.03] * 8, [-0.02] * 8]
+
+    def test_no_broom_or_no_delivery_is_no_frame(self):
+        no_path = aimed(13, "red", 4, delivery=False)
+        old = aimed(13, "red", 4)
+        got = run_js(f"out([aimFrame({json.dumps(no_path)}, {{schema_version: 8}}),"
+                     f" aimFrame({json.dumps(old)}, {{schema_version: 7}})]);")
+        assert got == [None, None]
+
+    def test_the_overlay_centres_the_aim_line_and_draws_a_median(self):
+        rocks = [aimed(13, "red", 4, off=off) for off in (0.04, -0.02, 0.01)]
+        g = run_js(f"const d = {{schema_version: 8}};"
+                   f"const paths = {json.dumps(rocks)}.map((s, i) => ({{key: 'k' + i, ...aimFrame(s, d)}}));"
+                   "out(deliveryOverlay(paths, 'right'));")
+        assert g["n"] == 3 and len(g["rocks"]) == 3 and g["median"]
+        assert g["aim"]["x1"] == pytest.approx(g["plot"]["x"] + g["plot"]["w"] / 2, abs=1)
+        assert [s["text"] for s in g["sides"]] == ["wide", "narrow"]
+        assert {q["kind"] for q in g["lines"]} == {"hack", "tee", "hog"}
+        assert all(r["start"] for r in g["rocks"])
+        assert "0" in [t["label"] for t in g["ticks"]]
+
+    def test_fewer_than_three_rocks_have_no_median_and_a_wild_one_caps_the_window(self):
+        rocks = [aimed(13, "red", 4, off=off) for off in (0.02, 3.0)]
+        g = run_js(f"const d = {{schema_version: 8}};"
+                   f"const paths = {json.dumps(rocks)}.map((s, i) => ({{key: 'k' + i, ...aimFrame(s, d)}}));"
+                   "out(deliveryOverlay(paths, null));")
+        assert g["median"] is None and g["n"] == 2
+        assert len(g["ticks"]) == 17                       # 1.6 m at most: -80 cm to +80

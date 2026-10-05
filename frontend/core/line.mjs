@@ -12,7 +12,7 @@ export const LINE_SCHEMA = 6;
 export const HOG_Y = 34.747 - 6.401;      // the throwing hog line, house metres
 export const TEE_Y = 34.747;              // the throwing tee
 export const HACK_Y = 34.747 + 3.658;     // the hack line
-const ON_M = 0.10;                        // inside the measurement's own error
+export const ON_M = 0.10;                 // inside the measurement's own error
 // A foothold's centre. WCF R1: each hack's inside edge is 76 mm from the
 // centre line and a hack is at most 152 mm wide. There is no centre hack.
 export const HACK_X_M = 0.152;

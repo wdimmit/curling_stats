@@ -126,6 +126,18 @@ export const deliveryReason = core.deliveryReason;
 export const deliveryPoints = core.deliveryPoints;
 export const deliveryGeometry = core.deliveryGeometry;
 export const rampColor = core.rampColor;
+export const aimFrame = core.aimFrame;
+export const deliveryOverlay = core.deliveryOverlay;
+export const slotOf = core.slotOf;
+export const positionChoices = core.positionChoices;
+export const positionLabel = core.positionLabel;
+export const playText = core.playText;
+export const gameText = core.gameText;
+export const playerRocks = core.playerRocks;
+export const summarize = core.summarize;
+export const summaryText = core.summaryText;
+export const shotGroups = core.shotGroups;
+export const missScatter = core.missScatter;
 export const endSpan = core.endSpan;
 
 /* The report's numbers, by the view they are given -- not state's. */
@@ -140,7 +152,6 @@ export const reportMeta = core.reportMeta;
 export const teamNames = core.teamNames;
 export const endList = core.endList;
 export const pctOf = core.pctOf;
-export const positionLabel = core.positionLabel;
 export const gatherThinkingOf = core.gatherThinking;
 export const cumulativeThinkingOf = core.cumulativeThinking;
 export const lineEnds = core.lineEnds;

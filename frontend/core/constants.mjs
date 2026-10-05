@@ -65,6 +65,14 @@ export const DELIVERYBOX = { w: 358, h: 395, side: false, from: -4.0, to: 8.05, 
                              pad: { l: 34, r: 8, t: 10, b: 26 } };
 export const DESKDELIVERYBOX = { w: 660, h: 230, side: true, from: -4.0, to: 8.05, across: 0.9,
                                  pad: { l: 10, r: 34, t: 18, b: 8 } };
+/* My shots (core/myshots.mjs): every rock of a group in one chart. The
+ * overlay is the delivery close up with each rock's path measured off its own
+ * hack-to-broom line -- `across` metres wide unless the rocks need more, and
+ * never past `maxAcross`. The scatter is the miss at the broom against the
+ * weight. */
+export const OVERLAYBOX = { w: 358, h: 395, from: -4.0, to: 8.05, across: 0.6, maxAcross: 1.6,
+                            pad: { l: 34, r: 8, t: 22, b: 26 } };
+export const SCATTERBOX = { w: 358, h: 260, maxFeet: 6, pad: { l: 40, r: 10, t: 22, b: 34 } };
 /* Time along the delivery: indigo while the rock sits, teal through the slide,
  * and the strip's own path gold past the hog line. Every stop reads on the
  * ice (PAINT.ice), and lightness rises monotonically, so order survives

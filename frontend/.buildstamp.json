@@ -4,13 +4,14 @@
   "flags": "3814b6394471718919220a4072fed98a4853a93360e8ea70a4896d47dc55fa9a",
   "sources": {
     "frontend/core/charts.mjs": "30eec1a0654d5fd43b547bbb0523b194c5f257d8ef7d7021849b6c3f48688d2e",
-    "frontend/core/constants.mjs": "ee29011e6a7c2e49e08a80d77371280599c9d5aabd405728a8cd96c42ea5b78c",
-    "frontend/core/delivery.mjs": "9f65cc6dd5af0d90ea26e1cf0e7f1c012fd35ff0bf69e9a95cacd336b1142661",
+    "frontend/core/constants.mjs": "46c838eecab061f81317fe2ff24d64f0080edd094aaa78fff28a905c3114233c",
+    "frontend/core/delivery.mjs": "9fbe7c030766c4aeb4e3eca40972d78d49fd545409cc5334a2f8a26542a5d4c3",
     "frontend/core/flag.mjs": "61002c1dd367a4665463f8f363d0eafb6cbcdc0be5fa669b747afc9c659ae7cc",
     "frontend/core/format.mjs": "8f937075dcb79136dd18bbd49cbeff639c9bf9027701b6e46fab35ced6bc4a50",
     "frontend/core/house.mjs": "94d64eae255dc61ae56b90901710908c5016eee29601b86133d4aeb7717a0631",
-    "frontend/core/index.mjs": "57e100df418b3d8be07fa61850d4b8ef353e8c4b946c532389bd513a6a9e029d",
-    "frontend/core/line.mjs": "cb72a0a48e1bd5231863ce1278738f69683b20595e5ce3588eba3127f060a84d",
+    "frontend/core/index.mjs": "a2a86fa58de3d3d15a3ffabdcf19e9ed2f2aa0b9319f2557c635a459a401dedb",
+    "frontend/core/line.mjs": "20a2eed98612a3d76b1bd16e6065ff35918d35f84f9a54a9e2993f5b03ef3bf6",
+    "frontend/core/myshots.mjs": "2867f0a4fb57ce9e3c473005de52ad875af39fb4afb10ef77672fbc0047a3267",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
     "frontend/core/report.mjs": "0540683adf098f12f92c3eb1b5f7aebdf084a04616357c1dc15ff185b16befad",
     "frontend/core/shots.mjs": "32dad29e6eef0c4de59ca66dd2a9ea640ac42cec4f092c47583ebaa719777731",
@@ -52,6 +53,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "cdd569072482f9b3df05fd23b06094071ac1e9c2cddb4202c6ce95f3796e5ac6",
-    "src/curling_score/viewer/app.js": "a334f12de3013c8fafb508e664d9cd75b30438c74dc2d5b1627bdac4f1d8c9cb"
+    "src/curling_score/viewer/app.js": "1a936355fd5bdaa71d1027a84d99fd07664b0f332e2ea5d9150b0675c2454fa4"
   }
 }

@@ -7,7 +7,7 @@
  * sideways before it lets go.
  *
  * Pure -- core/** may not touch the DOM. */
-import { DELIVERY_RAMP } from "./constants.mjs";
+import { DELIVERY_RAMP, OVERLAYBOX } from "./constants.mjs";
 import { HACK_X_M, HACK_Y, TEE_Y, hackAimX, hackOf, lineReason } from "./line.mjs";
 
 export const DELIVERY_SCHEMA = 8;
@@ -156,5 +156,86 @@ export function deliveryGeometry(shot, box) {
     runs, dots,
     start: start && start.yp >= from && start.yp <= to ? pt(start.x, start.yp) : null,
     points: pts.length,
+  };
+}
+
+/* One rock's delivery in the frame every rock can share: along, metres past
+ * the throwing tee, as above; across, `dx`, metres off this rock's own line
+ * from its foothold to its broom (+ to the thrower's right). Raw x cannot be
+ * overlaid -- the brooms sit metres apart and the footholds 30 cm -- but off
+ * its own aim line a perfect delivery is dx 0 all the way, whatever it was
+ * aimed at. null when there is no delivery, or no broom or hack to aim from. */
+export function aimFrame(shot, doc) {
+  if (deliveryReason(shot, doc)) return null;
+  const off = (x, yp) => {
+    const aim = hackAimX(shot, TEE_Y - yp);
+    return aim == null ? null : x - aim;
+  };
+  const pts = deliveryPoints(shot).map(p => ({ t: p.t, yp: p.yp, dx: off(p.x, p.yp) }));
+  if (pts.some(p => p.dx == null)) return null;
+  const st = shot.line?.start;
+  const start = st && Number.isFinite(st.x) && Number.isFinite(st.y)
+    ? { yp: TEE_Y - st.y, dx: off(st.x, TEE_Y - st.y) } : null;
+  return { pts, start: start && start.dx != null ? start : null };
+}
+
+const OVERLAY_BIN_M = 0.25;
+const OVERLAY_BIN_MIN = 3;               // rocks a bin needs before it has a median
+
+const medianOf = xs => {
+  const s = [...xs].sort((a, b) => a - b), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/* Every rock of a group drawn in aimFrame's frame, upright, the thrower at
+ * the bottom: one line per rock, the dot it sat at before the push, and the
+ * median of them all where at least three rocks pass. `paths` are
+ * [{key, pts, start, dim}] from aimFrame; `turn` names the sides, wide and
+ * narrow, as the scatter beside it does. */
+export function deliveryOverlay(paths, turn = null, box = OVERLAYBOX) {
+  const { w, h, from, to, across, maxAcross, pad } = box;
+  const rocks = (paths || []).map(p => ({ ...p, pts: (p.pts || []).filter(q => q.yp >= from && q.yp <= to) }))
+    .filter(p => p.pts.length >= 2);
+  const xs = [0, ...rocks.flatMap(p => p.pts.map(q => q.dx))];
+  let win = acrossWindow(xs, across);
+  if (win.span > maxAcross) win = { c: 0, span: maxAcross };
+  const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+  const kAlong = plotH / (to - from), kAcross = plotW / win.span;
+  const x0 = win.c - win.span / 2;
+  const P = (dx, yp) => [pad.l + (dx - x0) * kAcross, pad.t + (to - yp) * kAlong];
+  const pt = (dx, yp) => { const [a, b] = P(dx, yp); return { x: r1(a), y: r1(b) }; };
+  const poly = list => list.map(([dx, yp]) => P(dx, yp).map(v => v.toFixed(1)).join(",")).join(" ");
+  const lines = [[HACK_PAST, "hack"], [0, "tee"], [HOG_PAST, "hog"]]
+    .filter(([yp]) => yp >= from && yp <= to)
+    .map(([yp, kind]) => { const a = pt(x0, yp), b = pt(x0 + win.span, yp); return { x1: a.x, y1: a.y, x2: b.x, y2: b.y, kind }; });
+  const labels = lines.map(q => ({ x: r1(pad.l - 4), y: r1(q.y1 + 3), text: q.kind, anchor: "end", kind: q.kind }));
+  const a = pt(0, from), b = pt(0, to);
+  const aim = { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+  // Every 10 cm off the aim line, labelled in cm.
+  const ticks = [];
+  for (let c = Math.ceil((x0 - 1e-9) / 0.1) * 0.1; c <= x0 + win.span + 1e-9; c += 0.1) {
+    const v = Math.round(c * 100), q = pt(c, from);
+    ticks.push({ x1: q.x, y1: r1(pad.t + plotH), x2: q.x, y2: r1(pad.t + plotH + 4),
+                 label: `${v > 0 ? "+" : ""}${v}`, lx: q.x, ly: r1(pad.t + plotH + 14) });
+  }
+  const sides = turn === "right" ? ["wide", "narrow"] : turn === "left" ? ["narrow", "wide"] : ["left", "right"];
+  const drawn = rocks.map(p => ({ key: p.key, d: poly(p.pts.map(q => [q.dx, q.yp])), dim: !!p.dim,
+    start: p.start && p.start.yp >= from && p.start.yp <= to ? pt(p.start.dx, p.start.yp) : null }));
+  // The median: each rock's mean dx in each bin, then the median across rocks.
+  const median = [];
+  for (let lo = from; lo < to; lo += OVERLAY_BIN_M) {
+    const per = rocks.map(p => p.pts.filter(q => q.yp >= lo && q.yp < lo + OVERLAY_BIN_M))
+      .filter(qs => qs.length).map(qs => qs.reduce((s, q) => s + q.dx, 0) / qs.length);
+    if (per.length >= OVERLAY_BIN_MIN) median.push([medianOf(per), lo + OVERLAY_BIN_M / 2]);
+  }
+  return {
+    w, h, plot: { x: pad.l, y: pad.t, w: plotW, h: plotH },
+    stretch: Math.round(kAcross / kAlong),
+    lines, labels, aim, ticks,
+    sides: [{ x: pad.l + 2, y: pad.t - 8, text: sides[0], anchor: "start" },
+            { x: pad.l + plotW - 2, y: pad.t - 8, text: sides[1], anchor: "end" }],
+    rocks: drawn,
+    median: median.length >= 2 ? poly(median) : null,
+    n: rocks.length,
   };
 }
