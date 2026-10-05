@@ -3,7 +3,7 @@
  * dialog passes in: the viewer does not load Firebase until somebody asks
  * (runtime/auth.mjs). Each answers {ok, status, ...the server's JSON}, with
  * `error` the server's own words when it gave any. */
-const playUrl = sourceId => `/api/me/plays/${encodeURIComponent(sourceId)}`;
+export const playUrl = sourceId => `/api/me/plays/${encodeURIComponent(sourceId)}`;
 
 async function call(url, init) {
   try {

@@ -333,9 +333,10 @@ export function App({ doc, config, cursor, reload }) {
       return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
     };
     const onKey = ev => {
-      // Behind the open flag dialog nothing steps, grades or seeks: the keys
-      // belong to its buttons, and its textarea is covered by typing() anyway.
-      if (document.getElementById("flagDialog")?.open) return;
+      // Behind an open dialog -- the flag's, I played…, a score -- nothing
+      // steps, grades or seeks: the keys belong to its buttons. Enter on one
+      // of them would otherwise also mark the rock behind it charted.
+      if (document.querySelector("dialog[open]")) return;
       if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
       if (typing(ev)) { if (ev.key === "Escape") ev.target.blur(); return; }
       switch (ev.key) {

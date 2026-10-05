@@ -9,7 +9,7 @@ import dataclasses
 import pytest
 
 from curling_score.game import format as F
-from curling_score.service.records import Source
+from curling_score.service.records import Play, Source, play_id
 from tests.test_service_api import T0, VID, sample_doc, work_through
 from tests.test_service_auth import ALEX, SARAH, no_accounts, post, w  # noqa: F401  (fixtures)
 
@@ -40,8 +40,13 @@ def played_doc(fmt=F.FOURS):
 
 def a_played_game(w, doc=None):  # noqa: F811  (w: the fixture, passed through)
     """A processed game with one chart; (chart id, share slug, source id)."""
-    slug = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}).json()["slug"]
-    work_through(w, doc=doc or played_doc(), games=1)
+    doc = doc or played_doc()
+    fmt = (doc.get("format") or {}).get("name")
+    if fmt:
+        w["settings"].doubles_enabled = True
+    body = {"url": f"https://youtu.be/{VID}", **({"format": fmt} if fmt else {})}
+    slug = post(w, "/api/submissions", body).json()["slug"]
+    work_through(w, doc=doc, games=1, fmt=fmt)
     chart = w["repo"].get_chart(slug)
     return slug, chart.share_slug, chart.source_id
 
@@ -125,6 +130,21 @@ class TestSavingAPlay:
         assert put(w, "folded", {"path": f"/g/{src}/", "color": "red", "slot": 2}).status_code == 200
         assert w["repo"].get_play("uid-sarah", src).slot == 2
         assert get(w, "/api/me/plays/folded").json()["play"]["slot"] == 2
+
+    def test_a_play_saved_before_its_game_was_folded_is_found_from_the_merged_page(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        w["repo"].put_source(Source(id="early", video_id=VID, game_start_s=0.0, game_end_s=1.0,
+                                    current_run_id="r_x", game_index=0, created_at=T0))
+        # Saved on the early page, which a later run then folded into this one.
+        w["repo"].put_play(Play(id=play_id("uid-sarah", "early"), user_id="uid-sarah",
+                                source_id="early", color="red", slot=3, created_at=T0, updated_at=T0))
+        w["repo"].update_source("early", merged_into=src)
+        assert get(w, f"/api/me/plays/{src}").json()["play"]["slot"] == 3
+        assert len(get(w, "/api/me/plays").json()["plays"]) == 1
+        assert put(w, src, {"path": f"/g/{src}/", "color": "yellow", "slot": 1}).status_code == 200
+        assert [p.source_id for p in w["repo"].plays_for_user("uid-sarah")] == [src]
+        r = w["client"].delete(f"/api/me/plays/{src}", headers=SARAH)
+        assert r.json()["removed"] is True and w["repo"].plays_for_user("uid-sarah") == []
 
     @pytest.mark.parametrize("color,slot", [("blue", 1), ("red", 0), ("red", 5), ("red", True),
                                             ("red", "2"), ("red", None), (None, 1), ("red", 2.0)])
@@ -270,6 +290,13 @@ class TestThePlayersGame:
         r = get(w, f"/api/me/plays/{src}/doc")
         assert r.status_code == 200, r.text
         assert r.json()["fallback"] and len(mine(r.json()["doc"])) == 2
+
+    def test_a_chart_being_analysed_again_says_so_rather_than_gone(self, w):  # noqa: F811
+        slug, _, src = a_played_game(w)
+        put(w, src, {"path": f"/c/{slug}/", "color": "red", "slot": 4})
+        w["repo"].update_run(w["repo"].get_chart(slug).run_id, status="processing")
+        r = get(w, f"/api/me/plays/{src}/doc")
+        assert r.status_code == 409 and "analysed again" in r.json()["detail"]
 
     def test_unchanged_it_is_not_sent_again(self, w):  # noqa: F811
         _, _, src = a_played_game(w)

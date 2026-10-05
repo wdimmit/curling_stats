@@ -11,7 +11,9 @@
 import { SCATTERBOX, TYPE } from "./constants.mjs";
 import { roleText } from "./format.mjs";
 import { aimFrame } from "./delivery.mjs";
-import { ON_M, feetInches, formatHash, lineFigures, lineNumbers, narrowOf, withHash } from "./line.mjs";
+import {
+  ON_M, feetInches, formatHash, lineFigures, lineNumbers, median, narrowOf, sideNames, withHash,
+} from "./line.mjs";
 import { groupOf, positionLabel } from "./report.mjs";
 import { typeOf } from "./shots.mjs";
 import { buildGameView } from "./timeline.mjs";
@@ -73,9 +75,9 @@ export function playerRocks(play, doc, day = shortDay) {
       rows.push({
         key: `${play.source_id}.${end.number}.${s.number}`,
         sourceId: play.source_id, playedAt: play.played_at || "", game,
-        end: end.number, number: s.number, rock: s.rock_of_player ?? null,
+        end: end.number, number: s.number,
         type, typeName: TYPE[type]?.name ?? type, group: groupOf(type),
-        turn: nums.turn, nums, figures: lineFigures(s, doc).figures,
+        turn: nums.turn, nums, figures: lineFigures(s, doc, nums).figures,
         path: aimFrame(s, doc),
         href: play.view_path ? withHash(play.view_path, formatHash({ e: end.number, s: s.number })) : null,
       });
@@ -83,11 +85,6 @@ export function playerRocks(play, doc, day = shortDay) {
   }
   return { rows, missing };
 }
-
-const median = xs => {
-  const s = [...xs].sort((a, b) => a - b), m = s.length >> 1;
-  return !s.length ? null : s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-};
 
 /* A group's numbers. The broom counts are by side of the turn when there is
  * one -- `plus` narrow, `minus` wide -- and by the thrower's right and left
@@ -135,14 +132,16 @@ export function summaryText(sum, turn) {
 
 /* The rocks in fixed order -- Hit, Draw, Guard, Other, each clockwise, then
  * counter-clockwise, then unmeasured -- with the groups nobody threw left out.
- * Within a group, newest game first, then by end and rock. */
+ * Within a group, newest game first, a game's rocks together, then by end
+ * and rock. */
 export function shotGroups(rows) {
   const out = [];
   for (const group of SHOT_GROUPS) {
     for (const [turn, turnName] of TURNS) {
       const these = rows.filter(r => r.group === group && (r.turn ?? null) === turn);
       if (!these.length) continue;
-      these.sort((a, b) => (a.playedAt < b.playedAt ? 1 : a.playedAt > b.playedAt ? -1 : 0)
+      const desc = (x, y) => (x < y ? 1 : x > y ? -1 : 0);
+      these.sort((a, b) => desc(a.playedAt, b.playedAt) || desc(a.sourceId, b.sourceId)
         || a.end - b.end || a.number - b.number);
       out.push({ id: `${group}-${turn ?? "unmeasured"}`, group, turn,
                  label: `${PLURAL[group]} · ${turnName}`, rows: these,
@@ -173,7 +172,11 @@ export function missScatter(rows, turn, box = SCATTERBOX) {
   const most = splits.length ? Math.max(...splits) : 14.5;
   const step = most - least <= 3 ? 0.5 : most - least <= 6 ? 1 : 2;
   let lo = Math.floor(least / step) * step, hi = Math.ceil(most / step) * step;
-  if (hi - lo < 1) { lo -= (1 - (hi - lo)) / 2; hi = lo + 1; }
+  // At least a second tall, widened a step at a time so the ticks stay on it.
+  while (hi - lo < 1 - 1e-9) {
+    lo -= step;
+    if (hi - lo < 1 - 1e-9) hi += step;
+  }
   const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const X = x => pad.l + (clamp(x, -half, half) + half) / (2 * half) * plotW;
@@ -188,7 +191,7 @@ export function missScatter(rows, turn, box = SCATTERBOX) {
   for (let s = lo; s <= hi + 1e-9; s += step) {
     yTicks.push({ y: r1(Y(s)), label: s.toFixed(step < 1 ? 1 : 0) });
   }
-  const sides = turn === "right" ? ["wide", "narrow"] : turn === "left" ? ["narrow", "wide"] : ["left", "right"];
+  const sides = sideNames(turn);
   return {
     w, h, plot: { x: pad.l, y: pad.t, w: plotW, h: plotH },
     band: { x: r1(X(-ON_M)), y: pad.t, w: r1(X(ON_M) - X(-ON_M)), h: plotH },
@@ -202,5 +205,6 @@ export function missScatter(rows, turn, box = SCATTERBOX) {
       clipped: Math.abs(r.nums.miss_m) > half,
     })),
     skipped: rows.length - plotted.length,
+    clipped: plotted.filter(r => Math.abs(r.nums.miss_m) > half).length,
   };
 }

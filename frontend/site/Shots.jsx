@@ -11,6 +11,7 @@
  * only lays them out. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { playText, playerRocks, positionChoices, shotGroups, summaryText } from "../core/myshots.mjs";
+import { playUrl } from "../runtime/plays.mjs";
 import { authedFetch, signIn } from "./auth.js";
 import { day } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
@@ -19,9 +20,8 @@ import { DeliveryOverlay, MissScatter } from "./ShotCharts.jsx";
 
 const AT_ONCE = 3;
 const playKey = p => `${p.source_id}|${p.color}|${p.slot}|${p.updated_at}`;
-const playUrl = sid => `/api/me/plays/${encodeURIComponent(sid)}`;
 
-/* Each game's rocks, by playKey: {rows, missing, fallback}, or {failed}. */
+/* Each game's rocks, by playKey: {rows, missing, fallback}, or {failed, status}. */
 function useRocks(plays) {
   const [got, setGot] = useState({});
   const asked = useRef(new Set());
@@ -35,11 +35,14 @@ function useRocks(plays) {
         let one;
         try {
           const res = await authedFetch(`${playUrl(p.source_id)}/doc`);
-          if (!res.ok) throw new Error(String(res.status));
-          const { doc, fallback } = await res.json();
-          one = { ...playerRocks(p, doc), fallback };
+          if (res.ok) {
+            const { doc, fallback } = await res.json();
+            one = { ...playerRocks(p, doc), fallback };
+          } else {
+            one = { failed: true, status: res.status };
+          }
         } catch {
-          one = { failed: true };
+          one = { failed: true, status: 0 };
         }
         setGot(g => ({ ...g, [playKey(p)]: one }));
       }
@@ -87,6 +90,9 @@ function RockTable({ rows }) {
 }
 
 function Group({ group }) {
+  // Open to begin with when short, then the reader's: a group that grows
+  // past twelve as games arrive must not snap shut under them.
+  const [open, setOpen] = useState(group.rows.length <= 12);
   return (
     <section className="card shotgrp" id={group.id}>
       <h3>{group.label} <span className="muted">{summaryText(group.summary, group.turn).count}</span></h3>
@@ -95,7 +101,7 @@ function Group({ group }) {
         <MissScatter rows={group.rows} turn={group.turn} />
         <DeliveryOverlay rows={group.rows} turn={group.turn} />
       </div>
-      <details open={group.rows.length <= 12}>
+      <details open={open} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary>Every rock ({group.rows.length})</summary>
         <RockTable rows={group.rows} />
       </details>
@@ -114,13 +120,17 @@ function PlayRow({ p, rocks, onChanged }) {
   async function send(method, body) {
     setBusy(true);
     setNote(null);
-    const res = await authedFetch(playUrl(p.source_id), {
-      method, headers: body ? { "Content-Type": "application/json" } : {},
-      body: body ? JSON.stringify(body) : undefined });
+    let status = 0;
+    try {
+      const res = await authedFetch(playUrl(p.source_id), {
+        method, headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined });
+      status = res.ok ? 200 : res.status;
+    } catch { /* offline: status stays 0 */ }
     setBusy(false);
-    if (res.ok) onChanged();
-    else setNote(res.status === 429 ? "That is a lot of changes; try again later."
-                                    : "Could not change it. Try again.");
+    if (status === 200) onChanged();
+    else setNote(status === 429 ? "That is a lot of changes; try again later."
+                                : "Could not change it. Try again.");
   }
 
   const change = e => {
@@ -130,7 +140,8 @@ function PlayRow({ p, rocks, onChanged }) {
 
   const state = p.status !== "ok" ? "This game is no longer available."
     : !rocks ? "Loading…"
-    : rocks.failed ? "Could not load this game."
+    : rocks.failed ? (rocks.status === 409 ? "Being analysed again; try later."
+                                           : "Could not load this game.")
     : `${rocks.rows.length} rock${rocks.rows.length === 1 ? "" : "s"}`
       + (rocks.missing ? `, ${rocks.missing} never seen` : "");
   return (

@@ -93,6 +93,7 @@ export const playerHacks = core.playerHacks;
 export const hackOf = core.hackOf;
 export const lineNumbers = core.lineNumbers;
 export const narrowOf = core.narrowOf;
+export const sideNames = core.sideNames;
 export const turnOf = core.turnOf;
 export const groupOf = core.groupOf;
 export const gameView = () => view();

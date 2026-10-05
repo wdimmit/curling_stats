@@ -471,10 +471,12 @@ class FirestoreRepo:
         return True
 
     def plays_for_user(self, user_id, limit=500):
-        # One equality filter, sorted here: no composite index to keep.
+        # One equality filter, sorted here: no composite index to keep. All
+        # of them, then the newest `limit` -- limiting in the query would keep
+        # whichever came first in document-id order instead.
         q = self._where(PLAYS, "user_id", "==", user_id)
-        docs = [Play.from_dict(d.to_dict()) for d in q.limit(limit).stream()]
-        return sorted(docs, key=lambda p: p.updated_at, reverse=True)
+        docs = [Play.from_dict(d.to_dict()) for d in q.stream()]
+        return sorted(docs, key=lambda p: p.updated_at, reverse=True)[:limit]
 
     # ---- rate limit ---------------------------------------------------
     def bump_rate_limit(self, ip_hash, now, hour_limit, day_limit):

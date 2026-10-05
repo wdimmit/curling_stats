@@ -50,9 +50,10 @@ export function lineX(shot, y) {
   return null;
 }
 
-const median = xs => {
+/* The middle value, or null for none. */
+export const median = xs => {
   const s = [...xs].sort((a, b) => a - b), m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  return !s.length ? null : s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
 
 /* Each player's hack for a game, keyed "color|slot": a player throws from one
@@ -214,8 +215,7 @@ function curlOf(shot) {
 /* Which way the rock curled. After a hit it is read where curl is measured:
  * the pipeline's `curl` takes it from the rest position, which is after the
  * hit, and a hit-and-roll flips it. */
-export function turnOf(shot) {
-  const c = curlOf(shot);
+export function turnOf(shot, c = curlOf(shot)) {
   return c?.hit ? c.dir : shot?.line?.curl ?? null;
 }
 
@@ -295,7 +295,7 @@ export function lineNumbers(shot, doc) {
   if (!l) return out;
   out.tick = confirmTick(l).tick;
   out.curl = curlOf(shot);
-  out.turn = turnOf(shot);
+  out.turn = turnOf(shot, out.curl);
   if (!shot.target_broom) return { ...out, broomless: true };
   out.miss_m = l.at_broom.miss_m;
   out.on_broom = Math.abs(out.miss_m) < ON_M;
@@ -314,8 +314,13 @@ export function narrowOf(v, turn) {
   return turn === "right" ? v : turn === "left" ? -v : null;
 }
 
-export function lineFigures(shot, doc) {
-  const n = lineNumbers(shot, doc);
+/* What the thrower's left and right of the line are called for a turn:
+ * curling right, left of the line is wide. */
+export const sideNames = turn =>
+  (turn === "right" ? ["wide", "narrow"] : turn === "left" ? ["narrow", "wide"] : ["left", "right"]);
+
+/* `n` is lineNumbers' answer for this rock, for a caller that has it already. */
+export function lineFigures(shot, doc, n = lineNumbers(shot, doc)) {
   const { reason, predates } = n;
   const weight = n.split_s != null
     ? fig("weight", "Weight", `${n.split_s.toFixed(1)} s`,

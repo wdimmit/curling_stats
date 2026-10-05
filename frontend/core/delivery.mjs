@@ -8,7 +8,7 @@
  *
  * Pure -- core/** may not touch the DOM. */
 import { DELIVERY_RAMP, OVERLAYBOX } from "./constants.mjs";
-import { HACK_X_M, HACK_Y, TEE_Y, hackAimX, hackOf, lineReason } from "./line.mjs";
+import { HACK_X_M, HACK_Y, TEE_Y, hackAimX, hackOf, lineReason, median, sideNames } from "./line.mjs";
 
 export const DELIVERY_SCHEMA = 8;
 // Fail closed, as LINE_SCHEMA does: undefined >= 8 is false.
@@ -182,11 +182,6 @@ export function aimFrame(shot, doc) {
 const OVERLAY_BIN_M = 0.25;
 const OVERLAY_BIN_MIN = 3;               // rocks a bin needs before it has a median
 
-const medianOf = xs => {
-  const s = [...xs].sort((a, b) => a - b), m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-};
-
 /* Every rock of a group drawn in aimFrame's frame, upright, the thrower at
  * the bottom: one line per rock, the dot it sat at before the push, and the
  * median of them all where at least three rocks pass. `paths` are
@@ -218,15 +213,15 @@ export function deliveryOverlay(paths, turn = null, box = OVERLAYBOX) {
     ticks.push({ x1: q.x, y1: r1(pad.t + plotH), x2: q.x, y2: r1(pad.t + plotH + 4),
                  label: `${v > 0 ? "+" : ""}${v}`, lx: q.x, ly: r1(pad.t + plotH + 14) });
   }
-  const sides = turn === "right" ? ["wide", "narrow"] : turn === "left" ? ["narrow", "wide"] : ["left", "right"];
+  const sides = sideNames(turn);
   const drawn = rocks.map(p => ({ key: p.key, d: poly(p.pts.map(q => [q.dx, q.yp])), dim: !!p.dim,
     start: p.start && p.start.yp >= from && p.start.yp <= to ? pt(p.start.dx, p.start.yp) : null }));
   // The median: each rock's mean dx in each bin, then the median across rocks.
-  const median = [];
+  const mid = [];
   for (let lo = from; lo < to; lo += OVERLAY_BIN_M) {
     const per = rocks.map(p => p.pts.filter(q => q.yp >= lo && q.yp < lo + OVERLAY_BIN_M))
       .filter(qs => qs.length).map(qs => qs.reduce((s, q) => s + q.dx, 0) / qs.length);
-    if (per.length >= OVERLAY_BIN_MIN) median.push([medianOf(per), lo + OVERLAY_BIN_M / 2]);
+    if (per.length >= OVERLAY_BIN_MIN) mid.push([median(per), lo + OVERLAY_BIN_M / 2]);
   }
   return {
     w, h, plot: { x: pad.l, y: pad.t, w: plotW, h: plotH },
@@ -235,7 +230,7 @@ export function deliveryOverlay(paths, turn = null, box = OVERLAYBOX) {
     sides: [{ x: pad.l + 2, y: pad.t - 8, text: sides[0], anchor: "start" },
             { x: pad.l + plotW - 2, y: pad.t - 8, text: sides[1], anchor: "end" }],
     rocks: drawn,
-    median: median.length >= 2 ? poly(median) : null,
+    median: mid.length >= 2 ? poly(mid) : null,
     n: rocks.length,
   };
 }

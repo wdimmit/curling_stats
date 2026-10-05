@@ -54,8 +54,10 @@ export function MissScatter({ rows, turn }) {
         <text x={plot.x + plot.w / 2} y={g.h - 4} textAnchor="middle" className="sc-axis">{g.xLabel}</text>
         {g.points.map(p => (
           <a key={p.key} href={p.href || undefined}>
-            <circle cx={p.cx} cy={p.cy} r={4.5}
-                    fill={p.hollow ? PAINT.ice : PAINT.accent} stroke={PAINT.accent} strokeWidth={1.5}
+            {/* Past the edge: drawn on it, as a ring that says it is further. */}
+            <circle cx={p.cx} cy={p.cy} r={p.clipped ? 6 : 4.5}
+                    fill={p.clipped || p.hollow ? PAINT.ice : PAINT.accent} stroke={PAINT.accent}
+                    strokeWidth={1.5} strokeDasharray={p.clipped ? "2 2" : undefined}
                     opacity={p.dim ? 0.35 : 0.8} />
           </a>
         ))}
@@ -63,6 +65,7 @@ export function MissScatter({ rows, turn }) {
       <figcaption>
         Where each rock crossed the broom, by its weight: heavier at the top, {g.yLabel} down
         the side. The band is on the broom. Hollow: the split is estimated.
+        {g.clipped ? ` Dashed: further out than the edge.` : ""}
         {g.skipped ? ` ${g.skipped} not plotted.` : ""}
       </figcaption>
     </figure>

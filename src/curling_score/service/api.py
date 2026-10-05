@@ -1765,13 +1765,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 "updated_at": _iso(play.updated_at)}
 
     def find_play(user_id: str, source_id: str) -> tuple[Play | None, Source | None]:
-        """A person's play on a game, and the game it is part of now. A play
-        saved before its game was folded into another is still under the id
-        it was saved with."""
+        """A person's play on a game, and the game it is part of now.
+
+        A play saved before its game was folded into another is still under
+        the id it was saved with: asked for by that id, it is found directly;
+        asked for by the game it was folded into, only by looking through the
+        person's plays for one whose page now points here -- done only once
+        both direct reads miss, since every play costs a read.
+        """
         src = canonical_source(source_id)
         play = repo.get_play(user_id, src.id) if src else None
         if play is None and (src is None or src.id != source_id):
             play = repo.get_play(user_id, source_id)
+        if play is None and src is not None:
+            folded = [p for p in repo.plays_for_user(user_id) if p.source_id != src.id
+                      and getattr(repo.get_source(p.source_id), "merged_into", None) == src.id]
+            play = folded[0] if folded else None
         return play, src
 
     def play_target(path) -> tuple[str, Chart | None, Source, Run]:
@@ -1808,7 +1817,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             kind, chart, shown, run = play_target(path)
             if shown.id != src.id:
                 raise HTTPException(409, "that link is a different game")
-            fmt = format_mod.of_document(run_doc(run))
+            # The run's own record of its format, not its timeline: loading a
+            # few hundred KB to learn "fours" would push other people's games
+            # out of load_doc's cache.
+            fmt = format_mod.FORMATS.get(run.format or "fours", format_mod.FOURS)
             chart_id, link = (chart.id if chart else None), kind
         elif existing is None:
             raise HTTPException(422, "open the game to say which rocks you threw")
@@ -1854,9 +1866,15 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         report lists it by and the link to watch it on -- the chart's share
         link when the play came from a chart, else the game's review link."""
         me = require_user(authorization)
-        out = []
-        for play in repo.plays_for_user(me.id):
+        out, seen = [], set()
+        for play in repo.plays_for_user(me.id):   # newest first
             src = canonical_source(play.source_id)
+            # Two plays on one game: one saved before its page was folded
+            # into another. The newer is the one the person meant.
+            if src is not None and src.id in seen:
+                continue
+            if src is not None:
+                seen.add(src.id)
             chart = live_chart(repo.get_chart(play.chart_id)) if play.chart_id else None
             run_id = chart.run_id if chart else (src.current_run_id if src else None)
             run = repo.get_run(run_id) if run_id else None
@@ -1891,7 +1909,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if play.chart_id:
             chart = live_chart(repo.get_chart(play.chart_id))
             run = repo.get_run(chart.run_id) if chart else None
-            if chart and run and run.status == "ready" and chart.game_index is not None:
+            if chart and run and chart.game_index is not None:
+                if run.status != "ready":
+                    # Being analysed again in place. Not gone: its grading
+                    # comes back with it, and its share link still opens it.
+                    raise HTTPException(409, "this game is being analysed again; try later")
                 # read_only: the chart block must not carry the edit link.
                 doc = timeline.apply_overrides(chart_doc(chart, run, read_only=True),
                                                chart.overrides)

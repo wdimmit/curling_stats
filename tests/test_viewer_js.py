@@ -2837,9 +2837,11 @@ class TestTheFlagButton:
         assert "<FlagForm key={flagging.opened}" in flag
 
     def test_keys_do_nothing_underneath_the_open_dialog(self):
+        """Any dialog: the flag's, I played…, a score. Enter on a team button
+        in I played… once also marked the rock behind it charted."""
         app = self.src("frontend/viewer/App.jsx")
         on_key = app[app.index("const onKey = ev =>"):]
-        assert on_key.index('getElementById("flagDialog")?.open') < on_key.index("switch (ev.key)")
+        assert on_key.index('document.querySelector("dialog[open]")') < on_key.index("switch (ev.key)")
 
     def test_send_asks_who_again_with_a_fresh_token(self):
         """A slow first answer must cost the display, never the attribution,
@@ -3911,6 +3913,10 @@ class TestLineNumbers:
         assert n["broomless"] is True and n["miss_m"] is None and n["hog_off_m"] is None
         assert n["curl"]["m"] is not None and n["turn"] == "right"
 
+    def test_the_sides_of_the_line_by_turn(self):
+        got = run_js("out([sideNames('right'), sideNames('left'), sideNames(null)]);")
+        assert got == [["wide", "narrow"], ["narrow", "wide"], ["left", "right"]]
+
     def test_the_type_groups(self):
         got = run_js("out(['hit', 'draw', 'guard', 'draw_through', 'flashed', 'hogged', 'unknown',"
                      " 'takeout', 'nonsense'].map(groupOf));")
@@ -4051,6 +4057,12 @@ class TestShotGroups:
                        ["Draw-left", "Draws · Counter-clockwise", 1],
                        ["Other-left", "Other rocks · Counter-clockwise", 1]]
 
+    def test_two_games_on_one_day_are_not_interleaved(self):
+        rows = [dict(_row("Draw", "right", played="", end=e, number=n), sourceId=g, key=f"{g}.{e}.{n}")
+                for g, e, n in (("A", 1, 7), ("B", 1, 7), ("B", 1, 9), ("A", 2, 7))]
+        got = run_js(f"out(shotGroups({json.dumps(rows)})[0].rows.map(r => r.key));")
+        assert got == ["B.1.7", "B.1.9", "A.1.7", "A.2.7"]
+
     def test_newest_game_first_then_end_and_rock(self):
         rows = [_row("Draw", "right", played="2026-09-22", end=1, number=13),
                 _row("Draw", "right", played="2026-09-29", end=4, number=15),
@@ -4109,7 +4121,7 @@ class TestMissScatter:
         rows = [_row("Hit", "left", miss=3.0, split=9.0)]
         g = run_js(f"out(missScatter({json.dumps(rows)}, 'left'));")
         assert [s["text"] for s in g["sides"]] == ["narrow", "wide"]
-        assert len(g["xTicks"]) == 13 and g["points"][0]["clipped"] is True
+        assert len(g["xTicks"]) == 13 and g["points"][0]["clipped"] is True and g["clipped"] == 1
         assert [t["label"] for t in g["xTicks"]][4:9] == ["2 ft", "", "0", "", "2 ft"]
         assert g["points"][0]["cx"] == g["plot"]["x"] + g["plot"]["w"]
 
@@ -4122,6 +4134,11 @@ class TestMissScatterWeightAxis:
         assert labels([13.6, 14.4]) == ["13.5", "14.0", "14.5"]
         assert labels([8.4, 12.9]) == ["8", "9", "10", "11", "12", "13"]
         assert labels([8.4, 16.4]) == ["8", "10", "12", "14", "16", "18"]
+
+    def test_a_narrow_range_widens_on_the_half_seconds(self):
+        rows = [_row("Draw", "right", miss=0.0, split=sp) for sp in (14.1, 14.4)]
+        g = run_js(f"out(missScatter({json.dumps(rows)}, 'right'));")
+        assert [t["label"] for t in g["yTicks"]] == ["13.5", "14.0", "14.5"]
 
 
 class TestDeliveryOverlay:
