@@ -22,8 +22,8 @@ import json
 from datetime import timedelta
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, PlaylistIndexEntry, Run, Source, Team, User,
-    WatchedPlaylist, Worker,
+    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Run, Source, Team, User,
+    WatchedPlaylist, Worker, play_id,
 )
 from curling_score.service.repo import (
     LEASE_S, MAX_STORED_OVERRIDES_BYTES, _day_bucket, _hour_bucket,
@@ -32,7 +32,7 @@ from curling_score.service.repo import (
 RUNS, JOBS, SOURCES, CHARTS = "vod_runs", "jobs", "sources", "charts"
 SHARES, WORKERS, PLAYLISTS, RATES = "share_slugs", "workers", "watched_playlists", "rate_limits"
 USERS, TEAMS, INVITES, CLAIMS = "users", "teams", "invites", "chart_claims"
-FLAGS, PLAYLIST_INDEX = "flags", "yt_playlists"
+FLAGS, PLAYLIST_INDEX, PLAYS = "flags", "yt_playlists", "plays"
 
 
 def _claim_id(owner_key: str, source_id: str) -> str:
@@ -456,6 +456,26 @@ class FirestoreRepo:
             flag.status, flag.resolved_at = "resolved", now
         return flag
 
+    # ---- plays --------------------------------------------------------
+    def put_play(self, play):
+        self._col(PLAYS).document(play.id).set(play.to_dict())
+
+    def get_play(self, user_id, source_id):
+        return self._get(PLAYS, play_id(user_id, source_id), Play)
+
+    def delete_play(self, user_id, source_id):
+        ref = self._col(PLAYS).document(play_id(user_id, source_id))
+        if not ref.get().exists:
+            return False
+        ref.delete()
+        return True
+
+    def plays_for_user(self, user_id, limit=500):
+        # One equality filter, sorted here: no composite index to keep.
+        q = self._where(PLAYS, "user_id", "==", user_id)
+        docs = [Play.from_dict(d.to_dict()) for d in q.limit(limit).stream()]
+        return sorted(docs, key=lambda p: p.updated_at, reverse=True)
+
     # ---- rate limit ---------------------------------------------------
     def bump_rate_limit(self, ip_hash, now, hour_limit, day_limit):
         ref = self._col(RATES).document(ip_hash)
@@ -488,7 +508,8 @@ class FirestoreRepo:
         return {"runs": dump(RUNS), "jobs": dump(JOBS), "sources": dump(SOURCES),
                 "charts": dump(CHARTS), "workers": dump(WORKERS),
                 "watched_playlists": dump(PLAYLISTS), "users": dump(USERS),
-                "teams": dump(TEAMS), "invites": dump(INVITES), "flags": dump(FLAGS)}
+                "teams": dump(TEAMS), "invites": dump(INVITES), "flags": dump(FLAGS),
+                "plays": dump(PLAYS)}
 
     def import_all(self, data):
         for d in data.get("runs", []):
@@ -511,6 +532,8 @@ class FirestoreRepo:
             self.put_invite(Invite.from_dict(d))
         for d in data.get("flags", []):
             self.put_flag(Flag.from_dict(d))
+        for d in data.get("plays", []):
+            self.put_play(Play.from_dict(d))
         # Claims are derivable, so they are not exported -- rebuilt here
         # instead, because a restore that lost them would start handing a team
         # a second chart for a game it already has.

@@ -16,8 +16,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, PlaylistIndexEntry, Run, Source, Team, User,
-    WatchedPlaylist, Worker,
+    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Run, Source, Team, User,
+    WatchedPlaylist, Worker, play_id,
 )
 
 LEASE_S = 600.0
@@ -107,6 +107,11 @@ class Repo(Protocol):
     def put_flag(self, flag: Flag) -> None: ...
     def list_flags(self, status: str | None = None, limit: int = 200) -> list[Flag]: ...
     def resolve_flag(self, flag_id: str, now: datetime) -> Flag | None: ...
+    # plays -- which rocks of a game a person threw, one per person per game
+    def put_play(self, play: Play) -> None: ...
+    def get_play(self, user_id: str, source_id: str) -> Play | None: ...
+    def delete_play(self, user_id: str, source_id: str) -> bool: ...
+    def plays_for_user(self, user_id: str, limit: int = 500) -> list[Play]: ...
     # rate limit
     def bump_rate_limit(self, ip_hash: str, now: datetime,
                         hour_limit: int, day_limit: int) -> bool: ...
@@ -146,6 +151,7 @@ class MemoryRepo:
         self.invites: dict[str, Invite] = {}
         self.claims: dict[tuple[str, str], str] = {}
         self.flags: dict[str, Flag] = {}
+        self.plays: dict[str, Play] = {}
         self.playlist_index: dict[str, PlaylistIndexEntry] = {}
 
     # ---- runs ---------------------------------------------------------
@@ -505,6 +511,23 @@ class MemoryRepo:
                 got.status, got.resolved_at = "resolved", now
             return got
 
+    # ---- plays --------------------------------------------------------
+    def put_play(self, play):
+        with self._lock:
+            self.plays[play.id] = play
+
+    def get_play(self, user_id, source_id):
+        return self.plays.get(play_id(user_id, source_id))
+
+    def delete_play(self, user_id, source_id):
+        with self._lock:
+            return self.plays.pop(play_id(user_id, source_id), None) is not None
+
+    def plays_for_user(self, user_id, limit=500):
+        out = [p for p in self.plays.values() if p.user_id == user_id]
+        out.sort(key=lambda p: p.updated_at, reverse=True)
+        return out[:limit]
+
     # ---- rate limit ---------------------------------------------------
     def bump_rate_limit(self, ip_hash, now, hour_limit, day_limit):
         with self._lock:
@@ -533,6 +556,7 @@ class MemoryRepo:
             "teams": [t.to_dict() for t in self.teams.values()],
             "invites": [i.to_dict() for i in self.invites.values()],
             "flags": [f.to_dict() for f in self.flags.values()],
+            "plays": [p.to_dict() for p in self.plays.values()],
         }
 
     def import_all(self, data):
@@ -557,6 +581,8 @@ class MemoryRepo:
                 self.put_invite(Invite.from_dict(d))
             for d in data.get("flags", []):
                 self.put_flag(Flag.from_dict(d))
+            for d in data.get("plays", []):
+                self.put_play(Play.from_dict(d))
             # Claims are derivable, so they are not exported -- rebuilt here
             # instead, because a restore that lost them would start handing a
             # team a second chart for a game it already has.

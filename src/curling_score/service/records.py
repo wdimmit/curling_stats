@@ -353,3 +353,43 @@ class Flag:
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
+
+
+def play_id(user_id: str, source_id: str) -> str:
+    """The id of a person's tag on a game: derived from the pair, so there is
+    only ever one, and saving again replaces it rather than adding another."""
+    import hashlib
+
+    return hashlib.sha256(f"{user_id}|{source_id}".encode()).hexdigest()[:32]
+
+
+@dataclass
+class Play:
+    """Which rocks of a game a person threw: their team's colour and their
+    slot in the throwing order, so the "My shots" report can pick them out.
+
+    `slot` counts from 1 in the game's format -- fours 1-4 for lead to skip,
+    doubles 1 and 2 for players A and B. It names the throwing order, not who
+    held the broom: a skip who throws third is slot 3.
+
+    `chart_id` is the chart the tag was saved from, whose grading the report
+    then reads (refined shot types, reordered rocks, doubles role swaps). It
+    is that chart's edit link, so it is a capability and never leaves the
+    server. None when the tag was saved from a game's public review page,
+    which has no grading. `link` says which kind of page it was: "c", "s"
+    or "g".
+    """
+
+    id: str
+    user_id: str
+    source_id: str
+    color: str                         # "red" | "yellow"
+    slot: int
+    created_at: datetime
+    updated_at: datetime
+    format: str = "fours"
+    chart_id: str | None = None
+    link: str = "g"
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)

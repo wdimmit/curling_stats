@@ -17,8 +17,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, PlaylistIndexEntry, Run, Source, Team, User,
-    WatchedPlaylist, Worker,
+    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Run, Source, Team, User,
+    WatchedPlaylist, Worker, play_id,
 )
 from curling_score.service.repo import MemoryRepo
 
@@ -39,7 +39,8 @@ def _firestore_repo():
     repo = FirestoreRepo(client=client)
     for col in ("vod_runs", "jobs", "sources", "charts", "share_slugs",
                 "workers", "watched_playlists", "rate_limits",
-                "users", "teams", "invites", "chart_claims", "flags", "yt_playlists"):
+                "users", "teams", "invites", "chart_claims", "flags", "yt_playlists",
+                "plays"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -556,6 +557,50 @@ class TestFlags:
         assert f.user == {"uid": "u1", "email": "a@b.c"} and f.overrides_version == 3
 
 
+class TestPlays:
+    def play(self, **kw):
+        base = dict(user_id="u1", source_id="src_1", color="red", slot=4,
+                    created_at=T0, updated_at=T0)
+        base.update(kw)
+        return Play(id=play_id(base["user_id"], base["source_id"]), **base)
+
+    def test_put_and_get(self, repo):
+        repo.put_play(self.play(chart_id="c_1", link="s"))
+        got = repo.get_play("u1", "src_1")
+        assert (got.color, got.slot, got.chart_id, got.link) == ("red", 4, "c_1", "s")
+        assert got.format == "fours"
+        assert repo.get_play("u1", "src_2") is None
+        assert repo.get_play("u2", "src_1") is None
+
+    def test_one_per_person_per_game_and_the_second_replaces_the_first(self, repo):
+        repo.put_play(self.play(color="red", slot=4, chart_id="c_1", link="c"))
+        repo.put_play(self.play(color="yellow", slot=1, updated_at=at(60)))
+        got = repo.get_play("u1", "src_1")
+        assert (got.color, got.slot, got.chart_id, got.link) == ("yellow", 1, None, "g")
+        assert [p.source_id for p in repo.plays_for_user("u1")] == ["src_1"]
+
+    def test_each_person_sees_only_their_own(self, repo):
+        repo.put_play(self.play(source_id="src_1"))
+        repo.put_play(self.play(source_id="src_2", updated_at=at(60)))
+        repo.put_play(self.play(user_id="u2", source_id="src_1"))
+        assert [p.source_id for p in repo.plays_for_user("u1")] == ["src_2", "src_1"]
+        assert [p.user_id for p in repo.plays_for_user("u2")] == ["u2"]
+        assert repo.plays_for_user("u3") == []
+
+    def test_deleting(self, repo):
+        repo.put_play(self.play())
+        repo.put_play(self.play(user_id="u2"))
+        assert repo.delete_play("u1", "src_1") is True
+        assert repo.get_play("u1", "src_1") is None
+        assert repo.delete_play("u1", "src_1") is False
+        assert repo.get_play("u2", "src_1") is not None
+
+    def test_the_id_is_the_pair(self):
+        assert play_id("u1", "src_1") == play_id("u1", "src_1")
+        assert play_id("u1", "src_1") != play_id("u2", "src_1")
+        assert play_id("u1", "src_1") != play_id("u1", "src_2")
+
+
 class TestBackup:
     def test_export_then_import_into_a_fresh_store(self, repo):
         repo.put_run(run())
@@ -564,6 +609,9 @@ class TestBackup:
         repo.put_playlist(WatchedPlaylist(id="p_1", playlist_id="PL", label="Tue",
                                           created_at=T0))
         repo.put_flag(Flag(id="f_1", created_at=T0, note="n", place={"end": 1}))
+        repo.put_play(Play(id=play_id("u1", "src_1"), user_id="u1", source_id="src_1",
+                           color="yellow", slot=2, created_at=T0, updated_at=T0,
+                           chart_id="c_1", link="c"))
         data = repo.export_all()
         assert {r["id"] for r in data["runs"]} == {"r_1"}
         assert {c["id"] for c in data["charts"]} == {"c_1"}
@@ -575,3 +623,5 @@ class TestBackup:
         assert fresh.get_run("r_1").games == run().games
         assert fresh.get_playlist("p_1").label == "Tue"
         assert [f.id for f in fresh.list_flags()] == ["f_1"]
+        got = fresh.get_play("u1", "src_1")
+        assert (got.color, got.slot, got.chart_id) == ("yellow", 2, "c_1")
