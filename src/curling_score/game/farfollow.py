@@ -313,10 +313,18 @@ def entry_track(frames, color, t_release):
     return None if best is None else tuple(zip(best.ts, best.xs, best.ys))
 
 
+# What a hog pushed down the sheet can be taken for: an arrival that changed
+# nothing in the house. One that took stones out or added one is a real throw,
+# however late -- Sunday Skips 09/27 S2 end 3 rock 16 came in at draw weight
+# (a 16.2 s split) 19.6 s after its release and cleared the house.
+PUSHED_AS = ("gap-search", "left-view")
+
+
 def _ran_in(arrival) -> bool:
-    """An arrival that came in at the far edge and ran on, never resting in play."""
-    return (not arrival.came_to_rest and arrival.entry_y_m >= ENTRY_MIN_Y_M
-            and arrival.travel_m >= ENTRY_MIN_TRAVEL_M)
+    """An arrival that came in at the far edge and ran on, never resting in play
+    and changing nothing: what a pushed hog looks like."""
+    return (arrival.reason in PUSHED_AS and not arrival.came_to_rest
+            and arrival.entry_y_m >= ENTRY_MIN_Y_M and arrival.travel_m >= ENTRY_MIN_TRAVEL_M)
 
 
 def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):

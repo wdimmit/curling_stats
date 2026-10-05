@@ -221,6 +221,17 @@ class TestPlace:
         arrivals, pairs, out, n = FF.place([], {r: pushed}, [pushed], [], follow_fn=follow)
         assert (n, arrivals, pairs, out) == (0, [pushed], {r: pushed}, [])
 
+    def test_a_late_arrival_that_struck_the_house_is_a_real_throw(self):
+        """Sunday Skips 09/27 S2 end 3 rock 16: in at draw weight 19.6 s after
+        its release, it took stones out. A pushed hog changes nothing."""
+        r = _release()
+        hit = D.Delivery(color="red", t_enter=T0 + 19.6, t_rest=T0 + 32.0, entry_y_m=4.55,
+                         rest_x_m=0.4, rest_y_m=-2.0, travel_m=6.1, came_to_rest=False,
+                         reason="house-remove")
+        calls = []
+        _a, pairs, out, n = FF.place([], {r: hit}, [hit], [], follow_fn=lambda c, t: calls.append(t))
+        assert (n, pairs, out, calls) == (0, {r: hit}, [], [])
+
     def test_a_late_arrival_that_came_to_rest_is_kept(self):
         """A light draw reaches the far edge late; that is not a push."""
         r = _release()
