@@ -23,7 +23,7 @@ never stopped at all. So `follow` reads one of REST, HOG or THROUGH, or None
 when the camera could not say.
 
 Where the camera cannot say, the overhead's timing is the fallback
-(`entry_track`): a stone with the pace to run through the house reaches the
+(`entry`): a stone with the pace to run through the house reaches the
 overhead's far edge within ~19 s of its release (reviewed throughs 13.7-18.2 s),
 and a pushed hog later (19.9-27.4 s).
 """
@@ -102,10 +102,17 @@ NEAR_STOP_M_S = 0.15
 RESTART_M_S = 0.35
 RESTART_AWAY_M = 0.6
 
-# The overhead fallback (`entry_track`).
+# The overhead's own sight of it (`entry`).
 THROUGH_MAX_LAG_S = 19.0
 ENTRY_MIN_Y_M = 3.5
 ENTRY_MIN_TRAVEL_M = 3.0
+# The overhead reads a resting stone to a couple of centimetres: still within
+# this over this long has stopped.
+OVERHEAD_STILL_M = 0.1
+OVERHEAD_STILL_S = 1.0
+# Its view ends 2.0-2.3 m behind the tee, where a stone running out of it is
+# cut off and looks still; a stop this far back is not the overhead's to call.
+BACK_EDGE_Y_M = -1.6
 
 
 @dataclass(frozen=True)
@@ -291,12 +298,32 @@ def follow(video, view, color, t_release, *, model=None, decode=None, detect=Non
     return read_outcome(samples, t_release)
 
 
-def entry_track(frames, color, t_release):
-    """The overhead's track of a stone of ``color`` entering the house at its
-    far edge in time to have been this throw running through, or None.
+def _until_still(points):
+    """``(points, stopped)``: the track up to where the stone first stood still
+    -- a sliding stone only slows, so anything after that is a person -- and
+    whether it did."""
+    for i, (t, x, y) in enumerate(points):
+        j = i
+        while j + 1 < len(points) and points[j + 1][0] - t <= OVERHEAD_STILL_S:
+            j += 1
+        if (points[j][0] - t >= 0.8 * OVERHEAD_STILL_S
+                and all(math.hypot(px - x, py - y) <= OVERHEAD_STILL_M
+                        for _pt, px, py in points[i:j + 1])):
+            return points[:j + 1], True
+    return points, False
+
+
+def entry(frames, color, t_release):
+    """What the overhead saw of the throw in the far house, when it saw a stone
+    of ``color`` come in at the far edge in time to be it: ``(Outcome, track)``,
+    REST where it stopped in play or THROUGH when it ran on, or None.
 
     ``frames`` are the destination panel's detections. A late entry is a hog
-    being pushed down the sheet, not the throw (see the module docstring).
+    being pushed down the sheet, not the throw (see the module docstring). The
+    track is cut where the stone first stood still: Tuesday Super 3/3 S4 end 4
+    rock 16 came in at 18.2 s, stopped at (+0.05, +0.82) and was swept out by
+    the players clearing the house 2.4 s later, which a whole track read as a
+    stone that ran through.
     """
     from curling_score.detect import delivery as D
 
@@ -304,13 +331,23 @@ def entry_track(frames, color, t_release):
     window = [(t, d) for t, d in frames if lo - 40.0 <= t <= hi + 40.0]
     best = None
     for tr in D._build_tracks(window):
-        if tr.color != color or not lo <= tr.ts[0] <= hi:
-            continue
-        if tr.ys[0] < ENTRY_MIN_Y_M or tr.ys[0] - min(tr.ys) < ENTRY_MIN_TRAVEL_M:
+        if tr.color != color or not lo <= tr.ts[0] <= hi or tr.ys[0] < ENTRY_MIN_Y_M:
             continue
         if best is None or tr.ts[0] < best.ts[0]:
             best = tr
-    return None if best is None else tuple(zip(best.ts, best.xs, best.ys))
+    if best is None:
+        return None
+    points, stopped = _until_still(tuple(zip(best.ts, best.xs, best.ys)))
+    t, x, y = points[-1]
+    in_play = y > C.THROUGH_BACK_Y_M and abs(x) <= C.SIDELINE_ABS_X_M
+    if stopped and in_play:
+        rest = [p for p in points if math.hypot(p[1] - x, p[2] - y) <= OVERHEAD_STILL_M]
+        return Outcome(REST, rest[0][0], x, y, len(points)), points
+    # Ran on: through the house and out of view, or to a stop out of play
+    # behind it or at the side.
+    if points[0][2] - min(p[2] for p in points) >= ENTRY_MIN_TRAVEL_M:
+        return Outcome(THROUGH, t, x, y, len(points)), points
+    return None
 
 
 # What a hog pushed down the sheet can be taken for: an arrival that changed
@@ -336,8 +373,9 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     t_release)`` is `follow` bound to the video and the camera facing the house,
     returning None when it cannot say.
 
-    * A release settled as hogged that the overhead saw enter in time to run
-      through (`entry_track`) runs through. Otherwise the camera is asked: one
+    * A release settled as hogged that the overhead saw come in in time
+      (`entry`) rests where it stopped, or runs through. Otherwise the camera
+      is asked: one
       it saw stop in play becomes a rest there, one it saw run through runs
       through, and one it saw stop by the line and be moved on -- or could
       not follow -- stays hogged.
@@ -356,13 +394,24 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
         if d.reason != R.REASON or r is None:
             out.append(d)
             continue
-        # Seen by the overhead running in, in time to be the throw: that is the
+        # Seen by the overhead coming in, in time to be the throw: that is the
         # stronger evidence, and the camera is not asked. Following a stone
         # past a guard, the camera can lose it for a frame and take the guard
         # (Sunday Skips 09/27 S2 end 6 rock 5).
-        track = entry_track(frames, r.color, r.t)
-        if track:
-            out.append(R.ran_through(r, track[-1][0], track[-1][1], track))
+        seen = entry(frames, r.color, r.t)
+        if seen is not None:
+            o, track = seen
+            if o.kind == REST and o.y_m <= BACK_EDGE_Y_M:
+                # At the back edge of the view the overhead cannot tell a stone
+                # biting the back of the twelve-foot from one that ran out of
+                # view there and looks still (Sunday Skips 09/27 S2 end 6 rock
+                # 6). It reached here in time, so it crossed the hog line either
+                # way: a rest only if the camera saw one.
+                seen_by_camera = follow_fn(r.color, r.t)
+                if seen_by_camera is None or seen_by_camera.kind != REST:
+                    o = Outcome(THROUGH, o.t, o.x_m, o.y_m, o.samples)
+            out.append(R.ran_through(r, o.t, o.x_m, track) if o.kind == THROUGH
+                       else R.came_to_rest_at(r, o.t, o.x_m, o.y_m, track))
             changed += 1
             continue
         o = follow_fn(r.color, r.t)

@@ -390,13 +390,17 @@ def as_delivery(release: Release) -> D.Delivery:
     )
 
 
-def came_to_rest_at(release: Release, t_rest: float, x_m: float, y_m: float) -> D.Delivery:
-    """A throw the long camera saw stop in play where the overhead saw nothing
-    change -- a guard frozen to another in the overhead's last strip."""
+def came_to_rest_at(release: Release, t_rest: float, x_m: float, y_m: float,
+                    track=()) -> D.Delivery:
+    """A throw seen to stop in play where the house read saw nothing change --
+    a guard frozen to another in the overhead's last strip, or a last rock
+    swept away with the house before it had sat still long enough. ``track`` is
+    the overhead's sight of it, when it had one."""
+    entry = track[0][2] if track else C.HOGGED_Y_M
     return D.Delivery(color=release.color, t_enter=release.t, t_rest=t_rest,
-                      entry_y_m=C.HOGGED_Y_M, rest_x_m=x_m, rest_y_m=y_m,
-                      travel_m=max(0.0, C.HOGGED_Y_M - y_m), came_to_rest=True,
-                      reason=REASON_REST, release=release)
+                      entry_y_m=entry, rest_x_m=x_m, rest_y_m=y_m,
+                      travel_m=max(0.0, entry - y_m), came_to_rest=True,
+                      reason=REASON_REST, track=tuple(track), release=release)
 
 
 def ran_through(release: Release, t_last: float, x_m: float, track=()) -> D.Delivery:

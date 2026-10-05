@@ -129,19 +129,63 @@ def _track_frames(color, entry_t, ys, x=0.1, dt=0.1):
             for k, y in enumerate(ys)]
 
 
-class TestEntryTrack:
-    def test_a_stone_entering_in_time_to_run_through_is_found(self):
+def _stop_then_swept(entry_t, stop_y=0.82, hold_s=2.4, x=0.05, dt=0.1):
+    """A stone coming in at the far edge, slowing to a stop at ``stop_y``,
+    then swept on out of the house by the players clearing it."""
+    # Constant deceleration from the far edge to the stop, as a sliding stone does.
+    run = 4.75 - stop_y
+    v0 = 0.7
+    a = v0 * v0 / (2 * run)
+    pts, k = [], 0
+    while k * dt < v0 / a:
+        tt = k * dt
+        pts.append((entry_t + tt, 4.75 - (v0 * tt - a * tt * tt / 2)))
+        k += 1
+    t = entry_t + k * dt
+    for _ in range(int(hold_s / dt)):
+        pts.append((t, stop_y))
+        t += dt
+    y = stop_y
+    for _ in range(40):
+        y -= 0.07
+        pts.append((t, y))
+        t += dt
+    return [(pt, [Detection(color="yellow", x_m=x, y_m=py, x_px=0.0, y_px=0.0, area_px=100.0,
+                            confidence=0.9)]) for pt, py in pts]
+
+
+class TestEntry:
+    def test_a_stone_running_in_in_time_runs_through(self):
         frames = _track_frames("red", T0 + 15.0, [4.6 - 0.07 * k for k in range(90)])
-        tr = FF.entry_track(frames, "red", T0)
-        assert tr and tr[0][0] == pytest.approx(T0 + 15.0)
+        o, track = FF.entry(frames, "red", T0)
+        assert o.kind == FF.THROUGH and track[0][0] == pytest.approx(T0 + 15.0)
+
+    def test_one_that_stopped_in_play_rests_there_whatever_happened_next(self):
+        """Tuesday Super 3/3 S4 end 4 rock 16 came in at 18.2 s, stopped at
+        (+0.05, +0.82), and the players clearing the house swept it out 2.4 s
+        later; read whole, the track looked like a stone that ran through."""
+        o, track = FF.entry(_stop_then_swept(T0 + 18.2), "yellow", T0)
+        assert o.kind == FF.REST
+        assert (o.x_m, o.y_m) == pytest.approx((0.05, 0.82), abs=0.05)
+        assert track[-1][2] == pytest.approx(0.82, abs=0.05)
 
     def test_one_entering_late_is_a_hog_being_pushed(self):
         frames = _track_frames("red", T0 + 22.0, [4.6 - 0.07 * k for k in range(90)])
-        assert FF.entry_track(frames, "red", T0) is None
+        assert FF.entry(frames, "red", T0) is None
+
+    def test_one_stopping_out_of_play_behind_the_house_ran_through(self):
+        ys = [4.6 - 0.07 * k for k in range(95)] + [4.6 - 0.07 * 94] * 20
+        o, _track = FF.entry(_track_frames("red", T0 + 15.0, ys), "red", T0)
+        assert o.kind == FF.THROUGH
 
     def test_the_other_colour_is_not_this_throw(self):
         frames = _track_frames("yellow", T0 + 15.0, [4.6 - 0.07 * k for k in range(90)])
-        assert FF.entry_track(frames, "red", T0) is None
+        assert FF.entry(frames, "red", T0) is None
+
+    def test_a_short_run_that_never_stops_says_nothing(self):
+        """Seen a moment at the far edge, then lost: the camera is asked."""
+        frames = _track_frames("red", T0 + 15.0, [4.6 - 0.07 * k for k in range(10)])
+        assert FF.entry(frames, "red", T0) is None
 
 
 def _release(color="red", t=T0):
@@ -205,6 +249,28 @@ class TestPlace:
                             rest_x_m=1.5, rest_y_m=-2.0, travel_m=6.5, came_to_rest=False,
                             reason="gap-search")
         return r, pushed
+
+    def test_one_the_overhead_saw_stop_in_play_rests_there(self):
+        r = _release(color="yellow")
+        _a, _p, out, n = FF.place([R.as_delivery(r)], {}, [], _stop_then_swept(T0 + 18.2),
+                                  follow_fn=lambda c, t: None)
+        assert (n, out[0].reason, out[0].came_to_rest) == (1, R.REASON_REST, True)
+        assert (out[0].rest_x_m, out[0].rest_y_m) == pytest.approx((0.05, 0.82), abs=0.05)
+
+    def _at_the_back_edge(self):
+        ys = [4.6 - 0.1 * k for k in range(66)]
+        return _track_frames("red", T0 + 18.2, ys + [ys[-1]] * 20, x=-0.68)
+
+    def test_a_stop_at_the_back_edge_of_the_view_ran_through_unless_the_camera_saw_it_rest(self):
+        """Sunday Skips 09/27 S2 end 6 rock 6 ran out of the overhead's view
+        at the back line, where it looked still at (-0.68, -1.97)."""
+        r = _release()
+        _a, _p, out, n = FF.place([R.as_delivery(r)], {}, [], self._at_the_back_edge(),
+                                  follow_fn=lambda c, t: FF.Outcome(FF.THROUGH, T0 + 25, -0.7, -2.5, 60))
+        assert (n, out[0].reason) == (1, R.REASON_THROUGH)
+        _a, _p, out, n = FF.place([R.as_delivery(r)], {}, [], self._at_the_back_edge(),
+                                  follow_fn=lambda c, t: FF.Outcome(FF.REST, T0 + 28, -0.7, -1.8, 60))
+        assert (n, out[0].reason) == (1, R.REASON_REST)
 
     def test_a_late_arrival_that_ran_on_is_the_hog_pushed_down_the_sheet(self):
         """Sunday Skips 09/27 S2 end 3 rock 15: paired with a gap-search arrival
