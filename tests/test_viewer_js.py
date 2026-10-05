@@ -4146,3 +4146,42 @@ class TestDeliveryOverlay:
                    "out(deliveryOverlay(paths, null));")
         assert g["median"] is None and g["n"] == 2
         assert len(g["ticks"]) == 17                       # 1.6 m at most: -80 cm to +80
+
+
+class TestThePlayedDialog:
+    """The viewer's "I played…": which rocks of a game were yours."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_the_button_is_only_where_there_is_a_game_and_a_server(self):
+        app = self.src("frontend/viewer/App.jsx")
+        button = app[app.index('<button id="playedBtn"'):]
+        assert "hidden={!config.hosted || !doc.chart?.source_id}" in button[:400]
+        assert "<PlayedDialog playing={ui.playing} onClose={closePlayed} />" in app
+
+    def test_sign_in_is_asked_only_once_the_dialog_is_open(self):
+        """The dialog is always mounted; its form is not. Asking from the form
+        keeps Firebase off every page nobody opens it on."""
+        played = self.src("frontend/viewer/Played.jsx")
+        dialog = played[played.index("export function PlayedDialog("):played.index("function PlayedForm(")]
+        assert "whoIsSignedIn" not in dialog and "accountsOn" not in dialog
+        assert "{playing && <PlayedForm key={playing.opened}" in dialog
+        form = played[played.index("function PlayedForm("):]
+        assert "await accountsOn()" in form and "await whoIsSignedIn()" in form
+
+    def test_it_sends_the_pages_own_path_and_a_fresh_token(self):
+        played = self.src("frontend/viewer/Played.jsx")
+        save = played[played.index("const save = async"):played.index("const clear = async")]
+        assert "await whoIsSignedIn()" in save
+        assert "{ path: location.pathname, color, slot }" in save
+
+    def test_the_calls_go_to_the_play_routes(self):
+        plays = self.src("frontend/runtime/plays.mjs")
+        assert "`/api/me/plays/${encodeURIComponent(sourceId)}`" in plays
+        assert 'method: "PUT"' in plays and 'method: "DELETE"' in plays
+
+    def test_on_the_desktop_it_sits_after_the_flag(self):
+        css = self.src("src/curling_score/viewer/style.css")
+        assert "header #playedBtn  { order: 13; }" in css

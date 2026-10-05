@@ -25,6 +25,7 @@
     "frontend/runtime/flag.mjs": "5be5eeb900c2056f6666966b5485709ca21ea3eaceabb5a5b2dc3559d3732f3c",
     "frontend/runtime/overridesStore.mjs": "a55fd55bdc0a9eae8d950329ac12dfbfd55bf78b265300307bb53b6fde0bbd46",
     "frontend/runtime/player.mjs": "6fea60197a05c0994abcf3f179c2be83901609d9980d938dd1d64854065dd34e",
+    "frontend/runtime/plays.mjs": "83f0e8b27e20e15ec0ca5c775b13b0c4aeeeca8038f1620765c8200c05d79f1b",
     "frontend/runtime/prefs.mjs": "238969881d352d08606f188215c1adda730be7f8489cc049204df324f655d6fb",
     "frontend/runtime/scores.mjs": "51f0984f02f825dcc93ed3bc375e47130ec4026984b1fdab9c643ffe91b6deed",
     "frontend/site/Games.jsx": "d9e13f10a65bed67fc84748bb3017d35e56a05cab3bee2f28d30b3282ffa21fa",
@@ -38,7 +39,7 @@
     "frontend/site/main.jsx": "5af71f53831da02c454f97778ccc851449afb9e7aa859a40eb734dd4e2cbe69c",
     "frontend/site/ui.jsx": "fc72df4ef27d2eeea412256177e5a312502bbdb90c1374a064c4cd281e6e58e0",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
-    "frontend/viewer/App.jsx": "8bb31b244e0d3e705e4832651464eb96f90661ae8bedfb30c49abf2392c200b8",
+    "frontend/viewer/App.jsx": "6d930d181aa08b753be227679c5f26d5e8da03f8b68a4cd2e2edeaa980778083",
     "frontend/viewer/ChartPanel.jsx": "1ae0a3cba7cd425dbdb4bba58ad6c31d58462e6ce2644a50016070b09c4a05be",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "0924ef749d5cd711e01175d123a9f47e3bfe9e29165b4000dc990fb625f42bfa",
@@ -46,6 +47,7 @@
     "frontend/viewer/Flag.jsx": "7f2b7a7d3e63d89d1d356c257546b7c844896bce6fec4dc276dcd8a0e5a88c90",
     "frontend/viewer/House.jsx": "868238509dfdfb62700f2320d20b78923ac87bc285ce4ea5ae9908130a6560e4",
     "frontend/viewer/Pager.jsx": "3e750b495fffda8fd24ebf00f3f0dd928b1ea2b202ad560f532643c672693df7",
+    "frontend/viewer/Played.jsx": "879a33ee5c98a8edd5c5f86af706ce1ab923de1a8d5ac46653458fcda11bef68",
     "frontend/viewer/Report.jsx": "c52a28d9789026141379daee371285bc1893999fd0d823f61e64ac3acac2035d",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
     "frontend/viewer/Watch.jsx": "2e7de47175de0cbd87b75ed400def1d76e407ce366ac90b5569c3690fa0e4f5e",
@@ -53,6 +55,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "cdd569072482f9b3df05fd23b06094071ac1e9c2cddb4202c6ce95f3796e5ac6",
-    "src/curling_score/viewer/app.js": "1a936355fd5bdaa71d1027a84d99fd07664b0f332e2ea5d9150b0675c2454fa4"
+    "src/curling_score/viewer/app.js": "4bbaae96ea6c7fc32de937d7759834a870bab5470c74d51caef4738d003f8f9b"
   }
 }

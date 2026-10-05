@@ -16,7 +16,7 @@ import {
   gatherStats, gatherThinking, formatWarning,
   identity, isBlank, isGraded, liveGame, nextBlankAfter, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
-  stepRock, parseHash, formatHash, cursorFromHash, withHash,
+  stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames,
 } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
@@ -27,6 +27,7 @@ import { DeskDetail } from "./Detail.jsx";
 import { ChartPanel } from "./ChartPanel.jsx";
 import { Report } from "./Report.jsx";
 import { FlagDialog } from "./Flag.jsx";
+import { PlayedDialog } from "./Played.jsx";
 import { Watch } from "./Watch.jsx";
 import { useSwipe } from "./Pager.jsx";
 
@@ -67,7 +68,8 @@ export function App({ doc, config, cursor, reload }) {
     const saved = savedView?.ends[cursor.ei]?.shots[cursor.si] ? cursor : null;
     return {
       gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
-      sheet: "peek", houseMode: "", menu: undefined, reporting: false, flagging: null, notice: null,
+      sheet: "peek", houseMode: "", menu: undefined, reporting: false, flagging: null, playing: null,
+      notice: null,
       following: true,
       // A link or a restored session names a rock the video is not at yet:
       // seen once, on mount, to seek the player there (below). Not a pref
@@ -116,6 +118,7 @@ export function App({ doc, config, cursor, reload }) {
   }, []);
 
   const closeFlag = useCallback(() => dispatch({ type: "set", patch: { flagging: null } }), []);
+  const closePlayed = useCallback(() => dispatch({ type: "set", patch: { playing: null } }), []);
 
   /* --------------------------------------------------------------- actions */
 
@@ -500,6 +503,7 @@ export function App({ doc, config, cursor, reload }) {
       {/* Outside <main>: the phone's watch layout hides everything in it
           but #playCard, and a dialog inside a hidden parent never shows. */}
       <FlagDialog flagging={ui.flagging} onClose={closeFlag} />
+      <PlayedDialog playing={ui.playing} onClose={closePlayed} />
     </>
   );
 }
@@ -603,6 +607,16 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
                     patch: { flagging: { ...at, opened: Date.now() } } });
                 }}>
           ⚑ Flag
+        </button>
+        {/* Which rocks were yours, for My shots. Only where there is a game
+            to keep it against and accounts to keep it with. */}
+        <button id="playedBtn" title="Say which rocks of this game you threw"
+                hidden={!config.hosted || !doc.chart?.source_id}
+                onClick={() => dispatch({ type: "set", patch: { playing: {
+                  opened: Date.now(), sourceId: doc.chart.source_id,
+                  teams: teamNames(view.game), format: view.format,
+                  review: !!doc.chart.review } } })}>
+          I played…
         </button>
       </div>
     </header>
