@@ -39,7 +39,7 @@ from curling_score.ingest import source
 from curling_score.service import dedupe, playlist_index, playlists, slug, thinking_report
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, Chart, Flag, Invite, Job, Run, Source, Team, User, Worker,
+    JOB_KINDS, Chart, Flag, Invite, Job, Play, Run, Source, Team, User, Worker, play_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import detcache_key, meta_key, timeline_key
@@ -106,6 +106,10 @@ MAX_FLAG_BYTES = 8_000
 MAX_FLAG_NOTE = 2_000
 FLAG_HOUR_LIMIT = 20
 FLAG_DAY_LIMIT = 100
+# Saying which rocks of a game you threw, or changing your mind. Generous: a
+# season's worth of games tagged in one sitting is the expected use.
+PLAY_HOUR_LIMIT = 60
+PLAY_DAY_LIMIT = 300
 # The page a flag was sent from: an edit, view-only or review link.
 FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
 _PLACE_INTS = ("game_index", "end", "rock")
@@ -635,22 +639,28 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return Response(status_code=304, headers=headers)
         return Response(body, media_type="application/json", headers=headers)
 
-    def lookup(kind: str, key: str):
-        chart = repo.get_chart(key) if kind == "c" else repo.chart_by_share(key)
-        if chart is None:
-            raise HTTPException(404, "no such chart")
-        # A link that lost a race to a teammate keeps working: follow the
-        # pointer here rather than redirecting, so the URL somebody wrote down
-        # never breaks and app.js's relative POSTs land on the right chart
-        # without knowing any of this happened. Chains are one deep by
-        # construction -- a claim never changes hands -- but bound it anyway.
+    def live_chart(chart: Chart | None) -> Chart | None:
+        """`chart`, or the chart that replaced it.
+
+        A link that lost a race to a teammate keeps working: follow the
+        pointer rather than redirecting, so the URL somebody wrote down never
+        breaks and app.js's relative POSTs land on the right chart without
+        knowing any of this happened. Chains are one deep by construction --
+        a claim never changes hands -- but bound it anyway.
+        """
         for _ in range(4):
-            if not chart.superseded_by:
+            if chart is None or not chart.superseded_by:
                 break
             nxt = repo.get_chart(chart.superseded_by)
             if nxt is None:
                 break
             chart = nxt
+        return chart
+
+    def lookup(kind: str, key: str):
+        chart = live_chart(repo.get_chart(key) if kind == "c" else repo.chart_by_share(key))
+        if chart is None:
+            raise HTTPException(404, "no such chart")
         run = repo.get_run(chart.run_id)
         if run is None:
             raise HTTPException(404, "the chart's run is missing")
@@ -1619,7 +1629,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     # chart is created by browsing, and nothing here can write. Read-only is a
     # property of the surface, not a check inside it; there is no POST route to
     # forget to guard.
-    def lookup_source(sid: str) -> tuple[Source, Run]:
+    def canonical_source(sid: str) -> Source | None:
         src = repo.get_source(sid)
         # A page folded into another shows the game it is now part of. A few
         # hops at most: a folded page is never folded into again, but a
@@ -1628,6 +1638,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             if src is None or src.merged_into is None:
                 break
             src = repo.get_source(src.merged_into)
+        return src
+
+    def lookup_source(sid: str) -> tuple[Source, Run]:
+        src = canonical_source(sid)
         if src is None:
             raise HTTPException(404, "no such game")
         run = repo.get_run(src.current_run_id)
@@ -1732,6 +1746,159 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             ip_hash=iph)
         repo.put_flag(flag)
         return {"id": flag.id}
+
+    # ------------------------------------------------------------- plays
+    # Which rocks of a game a person threw -- their team's colour and their
+    # slot in the throwing order -- said on the game's page and read back by
+    # the "My shots" report. Private to whoever said it. A play said on a
+    # chart link remembers that chart, whose grading the report reads; the
+    # chart's id is its edit link, so it never leaves the server: these routes
+    # answer with play_json and, for watching, the share or review link.
+    def play_json(play: Play) -> dict:
+        return {"source_id": play.source_id, "color": play.color, "slot": play.slot,
+                "format": format_mod.FORMATS.get(play.format, format_mod.FOURS).to_json(),
+                "graded": play.chart_id is not None,
+                "updated_at": _iso(play.updated_at)}
+
+    def find_play(user_id: str, source_id: str) -> tuple[Play | None, Source | None]:
+        """A person's play on a game, and the game it is part of now. A play
+        saved before its game was folded into another is still under the id
+        it was saved with."""
+        src = canonical_source(source_id)
+        play = repo.get_play(user_id, src.id) if src else None
+        if play is None and (src is None or src.id != source_id):
+            play = repo.get_play(user_id, source_id)
+        return play, src
+
+    def play_target(path) -> tuple[str, Chart | None, Source, Run]:
+        """The game a page's own path shows, and its chart if it has one."""
+        m = FLAG_PATH.match(path) if isinstance(path, str) else None
+        if not m:
+            raise HTTPException(400, "path must be a chart or game link")
+        kind, key = m.groups()
+        if kind == "g":
+            src, run = lookup_source(key)
+            return kind, None, src, run
+        chart, run, _ = lookup(kind, key)
+        src = canonical_source(chart.source_id) if chart.source_id else None
+        if run.status != "ready" or chart.game_index is None or src is None:
+            raise HTTPException(409, "that chart's game is not ready yet")
+        return kind, chart, src, run
+
+    @app.put("/api/me/plays/{source_id}")
+    def api_save_play(source_id: str, body: dict,
+                      authorization: str | None = Header(default=None)):
+        """Say which rocks of this game you threw: ``color`` and ``slot``.
+
+        From the game's page, ``path`` is that page's own path, resolved here
+        the way a flag's is, so which chart's grading the report reads is the
+        server's word. From the report page there is no path, and only the
+        colour and slot of a play already saved change.
+        """
+        me = require_user(authorization)
+        existing, src = find_play(me.id, source_id)
+        if src is None:
+            raise HTTPException(404, "no such game")
+        path = body.get("path")
+        if path is not None:
+            kind, chart, shown, run = play_target(path)
+            if shown.id != src.id:
+                raise HTTPException(409, "that link is a different game")
+            fmt = format_mod.of_document(run_doc(run))
+            chart_id, link = (chart.id if chart else None), kind
+        elif existing is None:
+            raise HTTPException(422, "open the game to say which rocks you threw")
+        else:
+            fmt = format_mod.FORMATS.get(existing.format, format_mod.FOURS)
+            chart_id, link = existing.chart_id, existing.link
+        color, slot = body.get("color"), body.get("slot")
+        if not isinstance(color, str) or color not in ("red", "yellow"):
+            raise HTTPException(422, "color must be red or yellow")
+        if not isinstance(slot, int) or isinstance(slot, bool) or not 1 <= slot <= len(fmt.positions):
+            raise HTTPException(422, f"slot must be 1 to {len(fmt.positions)}")
+        if not repo.bump_rate_limit("play:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of changes; try again later")
+        t = now()
+        play = Play(id=play_id(me.id, src.id), user_id=me.id, source_id=src.id,
+                    color=color, slot=slot, created_at=existing.created_at if existing else t,
+                    updated_at=t, format=fmt.name, chart_id=chart_id, link=link)
+        repo.put_play(play)
+        if existing is not None and existing.source_id != src.id:
+            repo.delete_play(me.id, existing.source_id)
+        log.info("play %s %d (%s) on %s by %s", color, slot, link, src.id, me.id)
+        return {"play": play_json(play)}
+
+    @app.get("/api/me/plays/{source_id}")
+    def api_my_play(source_id: str, authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        play, _ = find_play(me.id, source_id)
+        return {"play": play_json(play) if play else None}
+
+    @app.delete("/api/me/plays/{source_id}")
+    def api_clear_play(source_id: str, authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        play, _ = find_play(me.id, source_id)
+        if play is None:
+            return {"ok": True, "removed": False}
+        if not repo.bump_rate_limit("play:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of changes; try again later")
+        return {"ok": True, "removed": repo.delete_play(me.id, play.source_id)}
+
+    @app.get("/api/me/plays")
+    def api_my_plays(authorization: str | None = Header(default=None)):
+        """Every game this person said they played, newest first, with what the
+        report lists it by and the link to watch it on -- the chart's share
+        link when the play came from a chart, else the game's review link."""
+        me = require_user(authorization)
+        out = []
+        for play in repo.plays_for_user(me.id):
+            src = canonical_source(play.source_id)
+            chart = live_chart(repo.get_chart(play.chart_id)) if play.chart_id else None
+            run_id = chart.run_id if chart else (src.current_run_id if src else None)
+            run = repo.get_run(run_id) if run_id else None
+            item = play_json(play)
+            item.update({
+                "title": (src.title if src else None) or (run.title if run else None),
+                "league": (src.league if src else None) or (run.league if run else None),
+                "sheet": (src.sheet if src else None) or (run.sheet if run else None),
+                "played_at": _iso((src.played_at if src else None)
+                                  or (run.published_at if run else None)),
+                "teams": {"red": src.team_red if src else None,
+                          "yellow": src.team_yellow if src else None},
+                "view_path": (f"/s/{chart.share_slug}/" if chart and chart.share_slug
+                              else f"/g/{src.id}/" if src else None),
+                "status": "ok" if src and run else "gone",
+            })
+            out.append(item)
+        out.sort(key=lambda p: p["played_at"] or "", reverse=True)
+        return {"plays": out}
+
+    @app.get("/api/me/plays/{source_id}/doc")
+    def api_my_play_doc(source_id: str, request: Request,
+                        authorization: str | None = Header(default=None)):
+        """The game as the report reads it: graded by the chart the play was
+        saved from, if it was, then cut down to this player's rocks and the
+        little the browser needs of everyone else's (timeline.for_player)."""
+        me = require_user(authorization)
+        play, src = find_play(me.id, source_id)
+        if play is None or src is None:
+            raise HTTPException(404, "you have not said which rocks you threw in that game")
+        doc, fallback = None, None
+        if play.chart_id:
+            chart = live_chart(repo.get_chart(play.chart_id))
+            run = repo.get_run(chart.run_id) if chart else None
+            if chart and run and run.status == "ready" and chart.game_index is not None:
+                # read_only: the chart block must not carry the edit link.
+                doc = timeline.apply_overrides(chart_doc(chart, run, read_only=True),
+                                               chart.overrides)
+            else:
+                fallback = ("the chart this was saved from is gone, so this is the "
+                            "game as detected, without its grading")
+        if doc is None:
+            src, run = lookup_source(src.id)
+            doc = game_doc(run, src.game_index, src, src.play_start_s)
+        doc = timeline.for_player(doc, play.color, play.slot)
+        return json_revalidated(request, {"doc": doc, "fallback": fallback}, "private")
 
     # ------------------------------------------------------------- worker
     @app.post("/api/worker/claim")
