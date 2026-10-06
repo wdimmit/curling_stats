@@ -125,7 +125,15 @@ from pathlib import Path
 # taken for the 12-ft ring's far edge, the tee came out 19 px high, and the view
 # had no lateral fit -- no brooms or lines in that house all game. Of the cached
 # videos' side views, only that one changes.
-PIPELINE_VERSION = "2026.10.06.1"
+# 2026.10.06.2: two ends in a row played into one house are a gap the board
+# decides, however short (`boardsplit.board_decides`), and a later game's first
+# end in which nothing was thrown is left off before its next end is built, by
+# analyze and the live session alike: 10/04 doubles sheet 4 parked its stones in
+# the house it had just played to, 70 s after game 1's last end, and the board
+# was cleared across them, but no gap was changeover-sized -- one thirteen-end
+# game, with game 2's board on game 1's ends. Of 126 games, 09/27-10/05, three
+# have such a pair; the other two were already decided or are a game's tail.
+PIPELINE_VERSION = "2026.10.06.2"
 
 
 def model_id(weights) -> str:

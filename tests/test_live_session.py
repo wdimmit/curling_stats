@@ -732,3 +732,69 @@ class TestAGameOfNothingThrown:
         game, = pub[-1]["games"]
         assert [e["number"] for e in game["ends"]] == [1, 2]
         assert game["start_s"] == pytest.approx(1400.0, abs=10)
+
+
+# Doubles sheet 4, 2026-10-04: four ends (top 0-900, bottom 900-1800, top
+# 1800-2700, bottom 2700-3600), a stone through the top house for 40 s, stones
+# parked in the bottom house -- end 4's -- from 3640 until the next game starts,
+# then its ends: top 4300-5200, bottom 5200-6100. No gap is changeover-sized;
+# the board is cleared across the parked stones, and they are the second
+# game's first "end".
+def parked(t):
+    if t < 3600:
+        return (5, 0) if (t // 900) % 2 == 0 else (0, 5)
+    if t >= 6100:
+        return 0, 0
+    if t < 3640:
+        return 1, 0
+    if t < 4300:
+        return 0, 4
+    return (5, 0) if t < 5200 else (0, 5)
+
+
+class Parked(Paused):
+    def __init__(self, **kw):
+        super().__init__(activity=parked, **kw)
+
+    def board_state(self, t):
+        return "blank" if 3630 <= t < 4600 else "cards"
+
+    def build_end(self, ctx, game, end, prev_end_s):
+        built, closed = super().build_end(ctx, game, end, prev_end_s)
+        idle = 3600 <= end.start_s < 4300
+        built["deliveries_seen"], built["releases_seen"] = (2, 0) if idle else (16, 16)
+        built["shots"] = [{"number": i + 1, "missing": False}
+                          for i in range(1 if idle else 16)]
+        return built, closed
+
+
+class TestStonesParkedBetweenTwoGames:
+    def test_the_board_splits_them_off_and_the_next_game_starts_after_them(self):
+        pipe, rec, pub = Parked(), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 6500.0)
+        assert [len(g["ends"]) for g in pub[-1]["games"]] == [4, 2]
+        second = pub[-1]["games"][1]
+        assert [e["number"] for e in second["ends"]] == [1, 2]
+        assert second["ends"][0]["start_s"] == pytest.approx(4300.0, abs=10)
+        assert second["start_s"] == pytest.approx(4300.0, abs=10)
+
+    def test_the_parked_end_is_built_once_and_the_game_s_first_end_after_it(self):
+        pipe, rec, pub = Parked(), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 6500.0)
+        assert [(b["game"], b["end"]) for b in pipe.built] == [
+            (0, 1), (0, 2), (0, 3), (0, 4), (1, 1), (1, 1), (1, 2)]
+
+    def test_nothing_is_ever_published_out_of_its_place(self):
+        pipe, rec, pub = Parked(), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 6500.0)
+        seen = {}
+        for doc in pub:
+            assert len(doc["games"]) <= 2 and len(doc["games"][0]["ends"]) <= 4
+            for g in doc["games"]:
+                for e in g["ends"]:
+                    assert not 3600 <= e["start_s"] < 4300
+                    key = (e["start_s"], e["end_s"])
+                    assert seen.setdefault(key, (g["index"], e["number"])) == (g["index"], e["number"])

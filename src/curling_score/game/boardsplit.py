@@ -11,7 +11,10 @@ Two cues settle it, and a split needs both:
 * **A changeover-sized gap between ends.** Within a game one end's segment
   runs into the next -- 5-10 s apart on every game of 2026-09-27 -- because the
   house stays active until the other house's stones arrive. The merged
-  changeover left 400 s.
+  changeover left 400 s. Or two ends in a row played into one house, which no
+  game does, however short the gap: doubles sheet 4 on 2026-10-04 parked its
+  stones in the house it had just played to, 70 s after its last end, until
+  the next game's first placement 5 s after them (:func:`board_decides`).
 * **The board cleared.** The club clears the wall scoreboard promptly after a
   game, and a game is at least ``MIN_ENDS_BEFORE`` ends in. Blank after showing cards, for two readable samples in a row, is a
   game that has finished. Blank before any card is only a game that has not
@@ -61,6 +64,15 @@ MIN_FRAMES = 3
 # the longest pause the empty-sheet rule split was 310 s. Up to here, the board
 # decides.
 JOIN_MAX_GAP_S = 600.0
+
+
+def board_decides(a, b) -> bool:
+    """Whether the gap between ends ``a`` and ``b`` of one game is one the
+    board has to decide: changeover-sized, or between two ends played into
+    the same house. Of 126 games, 2026-09-27 to 10-05, the three such pairs
+    were all stones left in a house -- a clean-up twice, and once the next
+    draw's first rocks -- and never two ends of one game."""
+    return b.start_s - a.end_s >= CHANGEOVER_MIN_GAP_S or a.house == b.house
 
 
 def board_cleared(states, t_last_end_s: float) -> bool:
@@ -119,8 +131,8 @@ def join_games(games, read_board) -> list[GameSegment]:
 
 
 def split_games(games, read_board) -> list[GameSegment]:
-    """The games, split wherever a changeover-sized gap between two ends has
-    the board cleared across it; renumbered, the input left as it was.
+    """The games, split wherever a gap the board decides (:func:`board_decides`)
+    has the board cleared across it; renumbered, the input left as it was.
 
     ``read_board(t0, t1)`` gives the board's states over a window, as
     :func:`board_states` does.
@@ -130,7 +142,7 @@ def split_games(games, read_board) -> list[GameSegment]:
         pieces = [[g.ends[0]]] if g.ends else []
         for a, b in zip(g.ends, g.ends[1:]):
             if (len(pieces[-1]) >= MIN_ENDS_BEFORE
-                    and b.start_s - a.end_s >= CHANGEOVER_MIN_GAP_S
+                    and board_decides(a, b)
                     and board_cleared(read_board(a.end_s - LOOK_BEFORE_S,
                                                  b.start_s + LOOK_AFTER_S), a.end_s)):
                 pieces.append([b])

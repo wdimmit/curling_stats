@@ -117,6 +117,57 @@ class TestSplitGames:
         assert [x.closed for x in got] == [True, False]
 
 
+def houses(spans, order):
+    """A game from (start_s, end_s) end spans and the house each was played to."""
+    ends = [EndSegment(number=i + 1, house=h, start_s=a, end_s=b)
+            for i, ((a, b), h) in enumerate(zip(spans, order))]
+    return GameSegment(index=0, start_s=ends[0].start_s, end_s=ends[-1].end_s, ends=ends)
+
+
+# Doubles sheet 4, 2026-10-04 (_bUHGLIAViY): six ends, then stones parked in the
+# top house -- the house end 6 was played to -- until the next game's first
+# placement, then that game's six. 70 s and 5 s gaps either side of the parked
+# stones, so no gap was changeover-sized, and the final board read, game 2's
+# cards, landed on game 1's ends.
+DOUBLES4_1004 = [(70, 745), (750, 1395), (1400, 2225), (2230, 3030), (3035, 3785),
+                 (3790, 4510), (4580, 5265), (5270, 5945), (5950, 6730), (6735, 7510),
+                 (7515, 8245), (8250, 9080), (9085, 9870)]
+DOUBLES4_1004_HOUSES = ["bottom", "top"] * 3 + ["top"] + ["bottom", "top"] * 3
+
+
+class TestSameHouse:
+    """No game plays two ends in a row into one house, so a pair that does is
+    a gap for the board to decide, however short."""
+
+    def test_two_games_joined_by_parked_stones_split_where_the_board_cleared(self):
+        board = Board([(74.0, "cards"), (75.0, "cards"), (76.5, "blank"), (77.0, "blank"),
+                       (83.0, "blank")])
+        got = B.split_games([houses(DOUBLES4_1004, DOUBLES4_1004_HOUSES)], board)
+        assert [len(g.ends) for g in got] == [6, 7]
+        assert got[0].end_s == 4510
+        assert got[1].ends[0].start_s == 4580       # the parked stones, for the build to drop
+        assert [e.number for e in got[1].ends] == list(range(1, 8))
+
+    def test_the_board_is_read_across_the_pair_however_short_the_gap(self):
+        board = Board([(74.0, "cards"), (76.5, "blank"), (77.0, "blank")])
+        B.split_games([houses(DOUBLES4_1004, DOUBLES4_1004_HOUSES)], board)
+        (t0, t1), = board.calls
+        assert t0 <= 4510 <= 4580 <= t1
+
+    def test_a_same_house_pair_with_the_board_still_up_is_one_game(self):
+        """An end cut in two mid-game reads as two ends of one house; the
+        board keeps its cards up, so nothing splits."""
+        board = Board([(70.0, "cards"), (75.0, "cards"), (80.0, "cards")])
+        got = B.split_games([houses(DOUBLES4_1004, DOUBLES4_1004_HOUSES)], board)
+        assert [len(g.ends) for g in got] == [13]
+
+    def test_a_pair_is_a_gap_to_decide_and_alternating_ends_are_not(self):
+        a = EndSegment(number=1, house="top", start_s=0, end_s=600)
+        assert B.board_decides(a, EndSegment(number=2, house="top", start_s=605, end_s=900))
+        assert not B.board_decides(a, EndSegment(number=2, house="bottom", start_s=605, end_s=900))
+        assert B.board_decides(a, EndSegment(number=2, house="bottom", start_s=720, end_s=900))
+
+
 
 def seconds(spans, index=0):
     """A game from (start_s, end_s) end spans, houses alternating."""

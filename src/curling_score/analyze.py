@@ -654,6 +654,13 @@ def played(game, out_ends):
     return replace(game, ends=ends, end_s=ends[-1].end_s), out_ends[:keep]
 
 
+def without_first_end(game):
+    """``game`` without its first end, the rest numbered from one -- none, for
+    a live game whose next end has not settled yet."""
+    ends = [replace(e, number=i) for i, e in enumerate(game.ends[1:], start=1)]
+    return replace(game, ends=ends, start_s=ends[0].start_s if ends else game.start_s)
+
+
 def put_board_scores(out_ends, board: BoardRead | None) -> None:
     """Each built end's score from ``board``, or none: what build_end does
     with the board score it is handed, done again after the fact."""
@@ -694,15 +701,30 @@ def build_games(ctx: EndContext, games, *, read_board=None,
             board = read_board(game)
 
         out_ends = []
-        for end in game.ends:
+        k = 0
+        while k < len(game.ends):
+            end = game.ends[k]
             phase("detect", done_ends / total_ends,
                   f"game {game.index + 1} end {end.number}")
             built, prev_end_s = build_one_end(
                 ctx, game, end, prev_end_s,
                 board_score=(None if board is None
                              else board.scores.per_end.get(end.number)))
-            out_ends.append(built)
             done_ends += 1
+            if (game.index and not out_ends and k + 1 < len(game.ends)
+                    and timeline.nothing_thrown(built)):
+                # Stones parked in a house before this game's first end, which
+                # the board split put at its head (`boardsplit.board_decides`).
+                # Left off before the next end is built, since an end's number
+                # is in its labels and picks its board score.
+                game = without_first_end(game)
+                progress(f"  game {game.index + 1}: nothing thrown in its first "
+                         "end, left off")
+                if read_board is not None:
+                    board = read_board(game)
+                continue
+            out_ends.append(built)
+            k += 1
         kept, out_ends = played(game, out_ends)
         if kept is None:
             progress(f"  game {game.index + 1}: nothing thrown in it, so no game")

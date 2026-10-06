@@ -158,6 +158,7 @@ class LiveSession:
         self._quick_tries = 0
         self.boards = {}            # game index -> newest BoardRead
         self.board_windows = {}     # (t0, t1) -> the board across a pause
+        self.parked = set()         # start_s of ends left off a game's head
         self.prev_end_s = None
         self.done = False
         self._ended_calib_tries = 0
@@ -270,15 +271,23 @@ class LiveSession:
         ended = self.recording.ended()
         games = segment.settled_ends(self.samples, self.min_end_s, ended=ended)
         games = boardsplit.join_games(self._decidable(games), self._board_across)
-        games = boardsplit.split_games(games, self._board_across)
+        games = [self._unparked(g) for g in boardsplit.split_games(games, self._board_across)]
         for game in games:
             self.games[game.index] = game
         return games
 
+    def _unparked(self, game):
+        """``game`` without the ends at its head found to be stones parked in
+        a house (see `_build`), the rest numbered from one."""
+        while game.index and game.ends and game.ends[0].start_s in self.parked:
+            game = analyze.without_first_end(game)
+        return game
+
     def _decidable(self, games):
         """The games up to the first gap the board has to decide -- a pause
-        short enough to be one (`boardsplit.join_games`), or a changeover-sized
-        gap between two ends of a game (`boardsplit.split_games`) -- whose board
+        short enough to be one (`boardsplit.join_games`), or a gap between two
+        ends of a game that is changeover-sized or between two ends of one house
+        (`boardsplit.board_decides`, `boardsplit.split_games`) -- whose board
         is not yet recorded far enough past it to show a late clear. Held back
         until then, so each gap is decided once, before anything after it is
         built, and no end is ever renumbered. The end after a gap takes longer
@@ -297,8 +306,7 @@ class LiveSession:
                 return games[:i]
             for k in range(1, len(g.ends)):
                 a, b = g.ends[k - 1], g.ends[k]
-                if (b.start_s - a.end_s >= boardsplit.CHANGEOVER_MIN_GAP_S
-                        and undecided(a.end_s, b.start_s)):
+                if boardsplit.board_decides(a, b) and undecided(a.end_s, b.start_s):
                     return games[:i] + [dataclasses.replace(g, end_s=a.end_s, ends=g.ends[:k],
                                                             closed=False)]
         return games
@@ -364,6 +372,15 @@ class LiveSession:
             one_pass=True, progress=self.progress)
         run_up = self.run_up[key] if again else self.prev_end_s
         built, closed = self.pipeline.build_end(ctx, game, end, run_up)
+        if not again and game.index and end.number == 1 and timeline.nothing_thrown(built):
+            # Stones parked in a house ahead of this game's first end, which
+            # the board split put at its head (`boardsplit.board_decides`).
+            # Never published: the end after it is built as end 1, as
+            # analyze.build_games does for a recording.
+            self.parked.add(end.start_s)
+            self.prev_end_s = closed
+            self.progress(f"game {game.index + 1}: nothing thrown in its first end, left off")
+            return
         if not again:
             self.run_up[key] = run_up
             self.prev_end_s = closed

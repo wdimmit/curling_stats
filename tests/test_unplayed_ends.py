@@ -174,3 +174,77 @@ class TestBuildGames:
         g1, g2 = analyze.build_games(context(), [segment(2), replace(segment(2, 9000.0), index=1)])
         assert [g1["index"], g2["index"]] == [0, 1]
         assert all(e["score"] is None for e in g1["ends"] + g2["ends"])
+
+
+@pytest.fixture
+def ends_at(monkeypatch):
+    """build_one_end faked by where an end starts, as the real one is -- a
+    renumbered end is the same end -- recording each (game, number) it built."""
+    counts, seen = {}, []
+
+    def build_one_end(ctx, game, end, prev_end_s, board_score):
+        delivered, released, *kept = counts.get(end.start_s, (16, 16))
+        out = built(end.number, delivered, released, start_s=end.start_s,
+                    kept=kept[0] if kept else None)
+        out["score"] = None if board_score is None else dict(board_score)
+        out["score_source"] = None if board_score is None else "board"
+        seen.append((game.index, end.number, end.start_s))
+        return out, end.end_s
+
+    monkeypatch.setattr(analyze, "build_one_end", build_one_end)
+    return counts, seen
+
+
+class TestALaterGameStartingWithParkedStones:
+    """Doubles sheet 4, 2026-10-04: the board split two games where stones
+    sat parked in a house between them, and those stones were the second
+    game's first "end" -- one rock kept, none released. Left on, every end
+    after it is numbered one too high and the board's scores miss by an end."""
+
+    def games(self):
+        first = segment(6)
+        second = replace(segment(7, start_s=6000.0), index=1)
+        return first, second
+
+    def test_it_is_left_off_and_the_rest_numbered_from_one(self, ends_at):
+        counts, seen = ends_at
+        first, second = self.games()
+        counts[second.ends[0].start_s] = (2, 0, 1)
+        g1, g2 = analyze.build_games(context(), [first, second])
+        assert [e["number"] for e in g2["ends"]] == [1, 2, 3, 4, 5, 6]
+        assert g2["ends"][0]["start_s"] == second.ends[1].start_s
+        assert g2["start_s"] == pytest.approx(second.ends[1].start_s)
+        # Numbered before it was built, not after: an end's number is in its labels.
+        assert (1, 1, second.ends[1].start_s) in seen
+
+    def test_the_board_is_read_for_the_game_without_it(self, ends_at):
+        counts, _seen = ends_at
+        first, second = self.games()
+        counts[second.ends[0].start_s] = (2, 0, 1)
+        reads = []
+
+        def read_board(g):
+            reads.append((g.index, g.start_s, len(g.ends)))
+            return scored(("red", 1), ("yellow", 2), n_ends=len(g.ends))
+
+        _g1, g2 = analyze.build_games(context(), [first, second], read_board=read_board)
+        assert reads[-1] == (1, second.ends[1].start_s, 6)
+        assert [e["score"] for e in g2["ends"][:2]] == [{"red": 1, "yellow": 0},
+                                                       {"red": 0, "yellow": 2}]
+
+    def test_the_first_game_keeps_its_first_end(self, ends_at):
+        """A stream joined late opens on an end with rocks missing; the first
+        game's first end is never dropped from the front."""
+        counts, _seen = ends_at
+        first, _second = self.games()
+        counts[first.ends[0].start_s] = (2, 0, 1)
+        g1, = analyze.build_games(context(), [first])
+        assert [e["number"] for e in g1["ends"]] == [1, 2, 3, 4, 5, 6]
+
+    def test_a_later_game_of_nothing_but_parked_stones_is_no_game(self, ends_at):
+        counts, _seen = ends_at
+        first, _second = self.games()
+        parked = replace(segment(1, start_s=6000.0), index=1)
+        counts[parked.ends[0].start_s] = (2, 0, 1)
+        got = analyze.build_games(context(), [first, parked])
+        assert [len(g["ends"]) for g in got] == [6]
