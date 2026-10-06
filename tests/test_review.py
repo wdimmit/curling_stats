@@ -1,7 +1,9 @@
 """The nightly review's reading of one game: what counts as wrong, and how
 sure it has to be before a game is flagged."""
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -315,3 +317,33 @@ class TestNotes:
         g = game()
         g["ends"][1]["score"] = None
         assert autoreview.review_game(g, FLOOR).notes == []
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "autoreview"
+# The fours thresholds the 2026-09-27..10-05 backtest gave (p2 of 506 ends) and
+# the doubles ones (118 ends), as the endpoint would have them.
+BACKTEST = Baseline({("fours", "broom"): 0.5, ("fours", "split"): 0.75,
+                     ("fours", "line"): 0.5, ("fours", "release"): 0.88,
+                     ("doubles", "broom"): 0.0, ("doubles", "split"): 0.8,
+                     ("doubles", "line"): 0.8, ("doubles", "release"): 0.8},
+                    {"fours": 506, "doubles": 118})
+
+
+class TestRealGames:
+    """Four hosted games, as served on 2026-10-05, read the way the backtest read them."""
+
+    @pytest.mark.parametrize("sid,expected,flagged", [
+        # Super League 09/30 S5 (EUpp): the brooms and lines of two ends lost,
+        # and one end missing all 8 of one colour.
+        ("s_0qsNY1Vdc3vynNPx5", ["coverage_broom", "coverage_line", "missing_rocks"], True),
+        # Supper 09/29 S3 (LFvF): e8 back to e7's house with 4 rocks -- the
+        # next draw's first -- plus an unplaced rock and an odd split.
+        ("s_11DBbXARm30gMQEsy", ["odd_split", "same_house", "tiny_last_end", "unplaced"], True),
+        ("s_00hRGMbcChFTNviqg", [], False),          # a clean fours game, 7 ends
+        ("s_0PXVGfZmiusxIlyX5", [], False),          # a clean doubles game, no brooms
+    ])
+    def test_the_backtest_reading(self, sid, expected, flagged):
+        doc = json.loads((FIXTURES / f"{sid}.json").read_text())
+        got = autoreview.review_game(doc["games"][0], BACKTEST)
+        assert sorted({f.check for f in got.findings}) == expected
+        assert got.raise_flag is flagged
