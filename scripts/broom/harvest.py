@@ -86,6 +86,10 @@ def main() -> int:
                     "the page then opens with its boxes to correct")
     ap.add_argument("--without-broom", action="store_true",
                     help="only shots the timeline left without a broom")
+    ap.add_argument("--offsets", help="seconds from the tee crossing to cut, comma "
+                    f"separated (default {','.join(str(o) for o in OFFSETS_S)})")
+    ap.add_argument("--only", help="a JSON list of [game, end, shot] to cut, as mine.py "
+                    "writes them; every other shot is left out")
     args = ap.parse_args()
 
     from curling_score.detect import broommodel, longview
@@ -105,6 +109,12 @@ def main() -> int:
         model = YOLO(str(Path(args.weights).expanduser()))
 
     shots = pick_shots(doc, without_broom=args.without_broom)
+    if args.only:
+        want = {tuple(k) for k in json.loads(Path(args.only).expanduser().read_text())}
+        game_of = {id(e): g["index"] for g in doc["games"] for e in g["ends"]}
+        shots = [(e, s) for e, s in shots if (game_of[id(e)], e["number"], s["number"]) in want]
+    offsets = (tuple(float(o) for o in args.offsets.split(",")) if args.offsets
+               else OFFSETS_S)
     ts = [s["t_tee_s"] for _, s in shots]
     views = {}
     for n in ("left", "right"):
@@ -127,7 +137,7 @@ def main() -> int:
         top, bot = crop_rows(view)
         geom = boxedit.frame_geometry(view, longview.STONE_WIDTH_AT_HOG_PX,
                                       row_offset=top)
-        for off in OFFSETS_S:
+        for off in offsets:
             t = round(shot["t_tee_s"] + off, 2)
             if t < 0:
                 skipped += 1
