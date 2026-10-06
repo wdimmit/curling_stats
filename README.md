@@ -1,6 +1,16 @@
-# curling-score
+# curling.dimmit.net
 
-Turn a Seattle Curling Club YouTube stream into a shot-by-shot game timeline:
+This started as a project to make it easier for me to chart games with a 5U team I'm coaching, but has evolved into a tool that's also useful for evaluating all facets of club curing matches.
+
+The code keep up with our 5 sheets of video on an old gaming laptop and uses free-tier Google Cloud resources for backend data storage.
+
+I expect that this software can be adapted pretty easily for any club that runs overhead house cameras and down the sheet cameras like Granite Curling Club of Seattle does. And I expect some pretty straightforward work can be done to parameterize the club-specific aspects to the majority of the code can be common.
+
+If you end up adapting this for your club, I'd love to know about it. This software is Free and Open Source and can be taken, used and adapted freely (see LICENSE file for explicit details).
+
+On to the AI generated readme:
+
+Turn a like Granite Curling Club of Seattle YouTube stream into a shot-by-shot game timeline:
 every delivery, who threw it, where all the stones came to rest, the line it
 was thrown on against the skip's broom, its hog-to-hog split, each team's
 thinking time, and the score off the wall board. It reads archived videos and
@@ -30,7 +40,7 @@ you're not a bot", point `YTDLP_POT_PROVIDER` at a bgutil token provider, or
 
 The club composite puts two near-nadir overhead cameras, one per house, in a
 strip down the middle of the frame. Either side of that strip is a wide camera
-at each end of the sheet, looking down it at the *other* end's house. Each
+at each end of the sheet, looking down it at the _other_ end's house. Each
 source answers a different question:
 
 - The overhead panels say where every stone is.
@@ -38,33 +48,33 @@ source answers a different question:
   broom.
 - The wall scoreboard says what the score is.
 
-| Stage | Module | What it does |
-|---|---|---|
-| Ingest | `ingest/` | Canonicalise the URL and download the video once, or record a live stream as it grows. Crop the overhead strip into a small proxy. Iterate frames by keyframe sweep or dense window |
-| Layout | `geometry/layout.py` | Find the two overhead panels by **temporal** invariance |
-| Side views | `geometry/sideview.py` | Find the two long cameras and fit each to the far house's paint |
-| Lighting | `geometry/lighting.py` | Classify each panel lit / dim / dark |
-| Calibrate | `geometry/calibrate.py`, `geometry/hogpaint.py` | Fit pixels→metres from the painted rings, and find each panel's hog line in its paint |
-| Segment | `game/segment.py`, `game/boardsplit.py` | Split the stream into games and ends, then split or join games where the board says to |
-| Score | `game/scoreboard.py`, `game/slotmodel.py`, `game/digits.py` | Read the wall board's hung cards. This is the game's actual score, not a check on it |
-| Detect | `detect/yolo.py`, `detect/rocks.py` | Find stones in each panel, with the trained model or by colour |
-| Deliveries | `detect/delivery.py`, `detect/release.py`, `game/fit.py`, `game/secondpass.py` | Watch stones arriving in one house and leaving the other, and let the rules choose which were the end's rocks |
-| Lost rocks | `game/sidereleases.py` | Recover, from the long camera, releases the overhead lost and rocks it saw at neither end |
-| Placement | `game/placement.py` | Doubles only: the two positioned stones, and so the hammer |
-| Rest | `detect/rest.py` | Track stones over time and find the configurations that held |
-| Shots | `game/shots.py` | Turn rest states into an ordered, attributed shot sequence |
-| Rules | `game/rules.py`, `game/format.py` | Scoring, hammer and shot→player for fours and doubles. Pure logic, no CV |
-| Hog times | `game/hogtime.py`, `game/fartime.py`, `detect/sidemodel.py` | Time the throwing hog line from the long camera and the far hog line from its panel's paint |
-| Broom | `game/broomtime.py`, `detect/broommodel.py` | Find the skip's target broom, held still in the second before the tee crossing |
-| Line | `game/linetime.py` | Read the thrown line against the broom, where the rock went, which way it curled, and the delivery from the hack |
-| Split | `game/split.py` | Time the stone hog line to hog line (the long split) |
-| Classify | `game/classify.py` | Name what the shot was, as far as it can be seen |
-| Clock | `game/thinking.py` | Thinking time per team, and the tee crossings it is read from |
-| Live | `live/` | The same pipeline, run one end at a time on a growing recording |
+| Stage      | Module                                                                         | What it does                                                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ingest     | `ingest/`                                                                      | Canonicalise the URL and download the video once, or record a live stream as it grows. Crop the overhead strip into a small proxy. Iterate frames by keyframe sweep or dense window |
+| Layout     | `geometry/layout.py`                                                           | Find the two overhead panels by **temporal** invariance                                                                                                                             |
+| Side views | `geometry/sideview.py`                                                         | Find the two long cameras and fit each to the far house's paint                                                                                                                     |
+| Lighting   | `geometry/lighting.py`                                                         | Classify each panel lit / dim / dark                                                                                                                                                |
+| Calibrate  | `geometry/calibrate.py`, `geometry/hogpaint.py`                                | Fit pixels→metres from the painted rings, and find each panel's hog line in its paint                                                                                               |
+| Segment    | `game/segment.py`, `game/boardsplit.py`                                        | Split the stream into games and ends, then split or join games where the board says to                                                                                              |
+| Score      | `game/scoreboard.py`, `game/slotmodel.py`, `game/digits.py`                    | Read the wall board's hung cards. This is the game's actual score, not a check on it                                                                                                |
+| Detect     | `detect/yolo.py`, `detect/rocks.py`                                            | Find stones in each panel, with the trained model or by colour                                                                                                                      |
+| Deliveries | `detect/delivery.py`, `detect/release.py`, `game/fit.py`, `game/secondpass.py` | Watch stones arriving in one house and leaving the other, and let the rules choose which were the end's rocks                                                                       |
+| Lost rocks | `game/sidereleases.py`                                                         | Recover, from the long camera, releases the overhead lost and rocks it saw at neither end                                                                                           |
+| Placement  | `game/placement.py`                                                            | Doubles only: the two positioned stones, and so the hammer                                                                                                                          |
+| Rest       | `detect/rest.py`                                                               | Track stones over time and find the configurations that held                                                                                                                        |
+| Shots      | `game/shots.py`                                                                | Turn rest states into an ordered, attributed shot sequence                                                                                                                          |
+| Rules      | `game/rules.py`, `game/format.py`                                              | Scoring, hammer and shot→player for fours and doubles. Pure logic, no CV                                                                                                            |
+| Hog times  | `game/hogtime.py`, `game/fartime.py`, `detect/sidemodel.py`                    | Time the throwing hog line from the long camera and the far hog line from its panel's paint                                                                                         |
+| Broom      | `game/broomtime.py`, `detect/broommodel.py`                                    | Find the skip's target broom, held still in the second before the tee crossing                                                                                                      |
+| Line       | `game/linetime.py`                                                             | Read the thrown line against the broom, where the rock went, which way it curled, and the delivery from the hack                                                                    |
+| Split      | `game/split.py`                                                                | Time the stone hog line to hog line (the long split)                                                                                                                                |
+| Classify   | `game/classify.py`                                                             | Name what the shot was, as far as it can be seen                                                                                                                                    |
+| Clock      | `game/thinking.py`                                                             | Thinking time per team, and the tee crossings it is read from                                                                                                                       |
+| Live       | `live/`                                                                        | The same pipeline, run one end at a time on a growing recording                                                                                                                     |
 
 These decisions carry most of the weight.
 
-**Panels are found by what does *not* change over time.** Every sheet has a
+**Panels are found by what does _not_ change over time.** Every sheet has a
 different layout (strip widths of 294–302 px were measured across the five), so
 nothing is hardcoded. A per-frame "flat and bright" test is unsafe: clean ice is
 also flat and bright, and reading a band of it as a separator once put the
@@ -117,10 +127,10 @@ rock's line past the hog line.
 
 **The wall scoreboard is the score, read one digit at a time.** The club board
 is the traditional design: a fixed strip of numbers 1–14 that is the
-*cumulative* score, with the end number written on a card hung above the strip
+_cumulative_ score, with the end number written on a card hung above the strip
 (yellow) or below it (red). A card's slot alone gives the running total — that
 part needs no OCR, only which slots are occupied. The digit printed on each card
-names the *end* that produced the total at that slot. So one read of a board
+names the _end_ that produced the total at that slot. So one read of a board
 late in the game, with every card decoded, hands back the score of every end
 posted so far. Presence alone can only say what the total is, never which end
 brought it there. That is why the original presence-only design (see
@@ -155,7 +165,7 @@ back up across a pause of up to ten minutes that the board stayed up through.
 streams open with twenty minutes of practice that arrives as leading ends,
 numbered and scored. The two numberings differ by however many practice blocks
 were detected, so attaching the board by block number would hand the first real
-end the *second* end's score. A start time settles it. The trim
+end the _second_ end's score. A start time settles it. The trim
 (`timeline.trim_to_start`) drops the practice and re-derives every kept end's
 score from the surviving board block, so how detection cut the stream cannot
 change a score. The hosted service takes the start time from the chart or the
@@ -169,18 +179,18 @@ why under `scores_withheld`.
 
 Sheet metres, origin at the tee of the playing house, `+y` up-sheet toward the
 delivery end, `+x` to the right facing down-sheet (the thrower's right).
-Constants come from World Curling's *Rules of Curling* (July 2025); a stone
+Constants come from World Curling's _Rules of Curling_ (July 2025); a stone
 counts when it is within `1.971 m` of the tee (12-foot radius 1.829 + stone
 radius 0.142).
 
 ## Models
 
-| Job | Default | Override | Set to `none` for |
-|---|---|---|---|
-| Stones in the overhead panels | `weights/ds16a.pt` | `CURLING_SCORE_WEIGHTS` | the colour detector |
-| Stones crossing the throwing hog line, in the long camera | `weights/ds13c.pt` | `CURLING_SCORE_SIDE_WEIGHTS` | the colour scan |
-| The skip's broom head, in the long camera | `weights/broom2.pt` | `CURLING_SCORE_BROOM_WEIGHTS` | no brooms |
-| Card in a scoreboard slot, and its digit | `game/slot_weights.npz`, `game/digit_weights.npz` | — | — |
+| Job                                                       | Default                                           | Override                      | Set to `none` for   |
+| --------------------------------------------------------- | ------------------------------------------------- | ----------------------------- | ------------------- |
+| Stones in the overhead panels                             | `weights/ds16a.pt`                                | `CURLING_SCORE_WEIGHTS`       | the colour detector |
+| Stones crossing the throwing hog line, in the long camera | `weights/ds13c.pt`                                | `CURLING_SCORE_SIDE_WEIGHTS`  | the colour scan     |
+| The skip's broom head, in the long camera                 | `weights/broom2.pt`                               | `CURLING_SCORE_BROOM_WEIGHTS` | no brooms           |
+| Card in a scoreboard slot, and its digit                  | `game/slot_weights.npz`, `game/digit_weights.npz` | —                             | —                   |
 
 The two board models run in numpy, so reading the board needs no `gpu` extra.
 Each YOLO model's name and content hash go into the timeline's
@@ -290,7 +300,7 @@ for a while. Deselect it rather than chase it.
 ## Finding what the detector missed
 
 `review` turns the rules into a short worklist. Teams alternate, so the same
-colour twice running means exactly one delivery is missing *and* pins it
+colour twice running means exactly one delivery is missing _and_ pins it
 between two known times — often under a minute of video. Sixteen stones land at
 a fairly even rhythm, so a gap well beyond it holds at least one more.
 
@@ -303,7 +313,7 @@ Each suspected miss becomes one strip of frames spanning the window, with the
 expected colour where alternation determines it and a link into the video at
 that moment. Ticks are saved in the browser, so a pass can be done in sittings.
 
-A note on the spacing estimate: a gap only ever *grows* when a delivery inside
+A note on the spacing estimate: a gap only ever _grows_ when a delivery inside
 it was missed, never shrinks, so the median is dragged upward by the very
 anomalies it is meant to find. The lower quartile is used instead.
 
@@ -408,6 +418,7 @@ detector could not read and grade the shot as a coach would.
 
   Under it, the delivery chart follows the rock from the hack to 1.5 m past the
   hog line. On the desktop both sit under the video, with the sheet on its side.
+
 - **Shot types.** The detector offers only `draw`, `guard`, `hit`,
   `draw_through`, `flashed`, `hogged` or `unknown`. It reads them from where the
   stone stopped, what it moved, and, for a hogged rock, from having seen it
@@ -415,7 +426,7 @@ detector could not read and grade the shot as a coach would.
   over 12.5 s hog to hog it was a draw thrown through, under it a takeout that
   flashed. With no split timed it falls to the flash at half confidence. The
   full Curl Coach taxonomy (freeze, peel, raise, run back…) is yours to pick,
-  because those describe what was *called*.
+  because those describe what was _called_.
 - **Grading** is Curl Coach's 0–4 per shot, with a miss reason and a note. The
   Report view groups every player's shots by type and gives an average and a
   shooting percentage (`points ÷ (4 × shots graded)`). Every type counts once
@@ -465,13 +476,13 @@ See [`deploy/README.md`](deploy/README.md).
 There are three ways to open a game, and which URL you have decides what you
 can do with it:
 
-| | | |
-|---|---|---|
+|              |           |                                                                                                                                                                                                                                                          |
+| ------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/g/{game}/` | **Watch** | Public. Steps through a game shot by shot, with the house and the video, and nothing to fill in. Linked from the catalogue, creates nothing, and has no route that could write. A live game shows from its first end and fills in as ends are published. |
-| `/s/{slug}/` | **View** | Somebody's chart, including their grading, read-only. It carries only its own key, never the chart's. |
-| `/c/{slug}/` | **Chart** | The charting tool. A live game can be charted once it is over. |
+| `/s/{slug}/` | **View**  | Somebody's chart, including their grading, read-only. It carries only its own key, never the chart's.                                                                                                                                                    |
+| `/c/{slug}/` | **Chart** | The charting tool. A live game can be charted once it is over.                                                                                                                                                                                           |
 
-The two slugs are 22 random characters, and holding one *is* the permission it
+The two slugs are 22 random characters, and holding one _is_ the permission it
 carries. No account is needed for any of it.
 
 **Accounts** are optional and purely additive. Signing in with Google gives you
@@ -480,7 +491,7 @@ link stops mattering. You can also name a game's teams and league. A **team**
 shares one chart per game, so everyone fills in the same sheet rather than four
 of them, and members see the same list. Anyone holding a chart link can still
 edit it whether or not they are signed in, and whether or not they are on the
-team. An account changes what you can *find*, never what a URL lets you do.
+team. An account changes what you can _find_, never what a URL lets you do.
 
 **⚑ Flag**, in the `⋯` menu of any hosted page, leaves a note about the rock
 on screen for whoever runs the service, signed in or not. `scripts/flags.py`
