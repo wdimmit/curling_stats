@@ -169,3 +169,11 @@ def test_list_can_show_one_origin(monkeypatch, capsys):
     assert flags.main(["list", "--origin", "auto"]) == 0
     out = capsys.readouterr().out
     assert "fa_0123456789abcdef" in out and "f_abc " not in out
+
+
+def test_a_full_page_says_so_even_when_one_origin_is_shown(monkeypatch, capsys):
+    page = [{**auto_flag(), "id": f"fa_{i:016x}"} for i in range(195)] + [flag() for _ in range(5)]
+    monkeypatch.setenv("ADMIN_TOKEN", "t")
+    monkeypatch.setattr(flags, "_call", lambda m, u, t: {"flags": page})
+    assert flags.main(["list", "--origin", "viewer", "--limit", "200"]) == 0
+    assert "there may be more (raise --limit)" in capsys.readouterr().out

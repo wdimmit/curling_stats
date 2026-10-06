@@ -154,13 +154,16 @@ def main(argv=None) -> int:
         except OSError as err:          # URLError and HTTPError are OSErrors
             print(f"could not list flags: {_why(err)}", file=sys.stderr)
             return 1
+        # A full page may hide more, whatever the origin filter then keeps:
+        # auto-flags can fill a page and push older viewer flags off it.
+        full = len(got) >= args.limit
         if args.origin != "all":
             got = [f for f in got if (f.get("origin") or "viewer") == args.origin]
         if args.json:
             print(json.dumps(got, indent=1))
         else:
             print("\n\n".join(describe(f, base) for f in got) or "no flags")
-            if len(got) >= args.limit:
+            if full:
                 print(f"\n{len(got)} shown; there may be more (raise --limit)")
         return 0
     # Each id on its own: one typo must not leave the rest unresolved.

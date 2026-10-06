@@ -13,7 +13,7 @@ gcloud scheduler jobs create http curling-poll-playlists --project "$PROJECT_ID"
   --headers "Authorization=Bearer ${ADMIN_TOKEN}" --attempt-deadline 120s \
   || gcloud scheduler jobs update http curling-poll-playlists --project "$PROJECT_ID" --location "$REGION" \
   --schedule "*/3 * * * *" --uri "${PUBLIC_BASE_URL}/api/admin/poll-playlists" \
-  --headers "Authorization=Bearer ${ADMIN_TOKEN}"
+  --update-headers "Authorization=Bearer ${ADMIN_TOKEN}"
 
 # The nightly review (POST /api/admin/review), with REVIEW=1: hourly from
 # 03:00 to 06:00, after the last league's live job has finished. Each call

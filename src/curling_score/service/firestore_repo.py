@@ -467,12 +467,14 @@ class FirestoreRepo:
 
     def put_flag_if_absent(self, flag):
         # create() fails when the document exists: the check and the write are
-        # one operation, so two calls racing cannot both win.
-        from google.api_core.exceptions import Conflict      # AlreadyExists is one
+        # one operation, so two calls racing cannot both win. Only that
+        # failure means "it is there"; Aborted is a Conflict too, and taking it
+        # for one would lose the flag.
+        from google.api_core.exceptions import AlreadyExists
 
         try:
             self._col(FLAGS).document(flag.id).create(flag.to_dict())
-        except Conflict:
+        except AlreadyExists:
             return False
         return True
 
