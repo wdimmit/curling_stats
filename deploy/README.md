@@ -204,23 +204,25 @@ enumeration (`harvest/playlist.py`) each build their own yt-dlp options with no
 token provider and no cookies, so a block that lands on one of those is not
 fixed by any of this.
 
-### Two workers on one box
+### Three workers on one box
 
 The pipeline spends most of an end on one CPU thread, with the GPU idle ~75% of
-the time, so the compose file runs a second worker (`worker2`) on the same GPU.
-Two build ~1.55x the ends an hour; each end takes ~25% longer while both are
-building (measured on the 3070 laptop, 2026-10-02).
+the time, so the compose file runs three workers (`worker`, `worker2`,
+`worker3`) on the same GPU. On the 3070 laptop two built ~1.55x the ends an hour,
+each end ~25% slower (2026-10-02); on the Ryzen 9 5950X, which replaced it on
+2026-10-06, two lanes ran ends in 127 s against 116 s for one.
 
-- `worker2` has its own cache, `/data/wdd/curling-cache-2`. Sharing one breaks:
+- Each has its own cache, `/data/wdd/curling-cache{,-2,-3}`. Sharing one breaks:
   a live worker empties `<cache>/live` when it starts, the pruner can delete
-  media the other worker is reading, and a job uploads every new
-  `detections/*.npz` as its own. The cost is that a recording `worker2` takes
-  is downloaded again into its cache.
+  media another worker is reading, and a job uploads every new
+  `detections/*.npz` as its own. The cost is that a video one worker has is
+  downloaded again by another, unless it is hard-linked into that cache first
+  (same filesystem; the links cost no space).
 - Each has its own `WORKER_ID`; the API tells workers' jobs apart by it alone.
 - Each follows at most `LIVE_MAX_STREAMS: "3"` live streams. A worker claims
   them greedily, so a larger limit would let one of them take a whole league.
-- `up -d` recreates both, and both drop their live jobs (see above).
-  `docker compose ... logs -f worker worker2` follows both.
+- `up -d` recreates all three, and all drop their live jobs (see above).
+  `docker compose ... logs -f worker worker2 worker3` follows them.
 
 ## Watching a league
 

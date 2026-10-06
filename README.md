@@ -32,7 +32,7 @@ a YOLO model, so to run without the extra, set `CURLING_SCORE_WEIGHTS`,
 `CURLING_SCORE_SIDE_WEIGHTS` and `CURLING_SCORE_BROOM_WEIGHTS` to `none`. You
 get the colour detector, colour-scan hog crossings and no brooms. The models
 run on a CPU, but a GPU is what makes it practical: an end takes about two
-minutes on the hosted worker's RTX 3070. If YouTube answers "Sign in to confirm
+minutes on the hosted worker's RTX 3080. If YouTube answers "Sign in to confirm
 you're not a bot", point `YTDLP_POT_PROVIDER` at a bgutil token provider, or
 `YTDLP_COOKIES` at a cookies file (see [`deploy/README.md`](deploy/README.md#the-home-worker)).
 
