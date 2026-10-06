@@ -1,5 +1,7 @@
-# The home worker. Copy deploy/worker.env.example to deploy/worker.env, fill it
-# in, then:  docker compose -f deploy/docker-compose.worker.yml up -d --build
+# The worker box: the Ryzen 9 5950X + RTX 3080 (curling@, tailnet node
+# `curling`), since 2026-10-06 -- before that, the 3070 laptop. Copy
+# deploy/worker.env.example to deploy/worker.env, fill it in, then:
+#   docker compose -f deploy/docker-compose.worker.yml up -d --build
 services:
   worker:
     build: { context: .., dockerfile: Dockerfile.worker }
@@ -14,42 +16,54 @@ services:
     shm_size: 2gb
     environment:
       CURLING_SCORE_CACHE: /data/cache
-      WORKER_CACHE_GB: "300"
+      WORKER_CACHE_GB: "500"
       # Kept live recordings also go, oldest first, until the disk has this much
       # free (downloads never do): a live night records five streams at once,
-      # ~4 GB each, before any is kept in the cache.
-      WORKER_MIN_FREE_GB: "40"
+      # ~4 GB each, before any is kept in the cache. The disk also holds the
+      # training data, under /data/curling.
+      WORKER_MIN_FREE_GB: "100"
       # Live recordings are kept this many days -- a rolling week of league
       # nights, for replaying what the nightly review flags -- then go.
       WORKER_RECORDING_DAYS: "7"
       YTDLP_POT_PROVIDER: http://pot:4416
-      # Half of a league night's streams each, with worker2 below; a worker
-      # claims live jobs greedily up to this, so 6 here would take all five.
+      # A worker claims live jobs greedily up to this, so 6 here would take all
+      # five of a night's streams. Three workers at 3 give 9 slots: most of
+      # Tuesday's and Thursday's two back-to-back leagues (10 streams).
       LIVE_MAX_STREAMS: "3"
     depends_on: [pot]
     volumes:
-      # The host's designated storage, on a disk shared with everything else
-      # the box keeps: 76 GB free on 2026-09-29, less than the 300 GB budget
-      # above, so it is WORKER_MIN_FREE_GB that holds the cache in.
+      # /data is a 1.5 TB volume of its own (1.4 TB free on 2026-10-06). The
+      # /data/wdd paths are the laptop's, kept so its scripts still apply.
       - /data/wdd/curling-cache:/data/cache
     deploy:
       resources:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
-  # A second worker on the same GPU. The pipeline is bound by one CPU thread,
-  # so two build ~1.55x the ends an hour, each ~25% slower (measured 2026-10-02).
-  # It must not share the cache: a worker empties <cache>/live at start, prunes
-  # media the other may be reading, and uploads every new detections/*.npz as
-  # its own. It needs its own WORKER_ID too -- the API knows workers by it alone.
+  # More workers on the same GPU. The pipeline is bound by one CPU thread, so
+  # each worker is a lane: on the 5950X two ran ends in 127 s each against 116 s
+  # alone (measured 2026-10-05), with the CPU 30% busy.
+  # None may share a cache: a worker empties <cache>/live at start, prunes
+  # media another may be reading, and uploads every new detections/*.npz as
+  # its own. Each needs its own WORKER_ID too -- the API knows workers by it
+  # alone. Each keeps its own live recordings, a week of up to 3 streams a night.
   worker2:
     extends: { service: worker }
     build: !reset null
     pull_policy: never
     environment:
-      WORKER_ID: home-3070-2
-      WORKER_CACHE_GB: "40"
+      WORKER_ID: ryzen-3080-2
+      WORKER_CACHE_GB: "200"
     volumes:
       - /data/wdd/curling-cache-2:/data/cache
+  worker3:
+    extends: { service: worker }
+    build: !reset null
+    pull_policy: never
+    environment:
+      WORKER_ID: ryzen-3080-3
+      WORKER_CACHE_GB: "200"
+    volumes:
+      - /data/wdd/curling-cache-3:/data/cache
   # Mints the proof-of-origin tokens YouTube demands before it will serve a
   # video. This used to be off, on the theory that a residential IP rarely
   # needs it; "Sign in to confirm you're not a bot" on a cold request is what
