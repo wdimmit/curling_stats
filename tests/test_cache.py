@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from curling_score.ingest import cache
@@ -124,3 +125,68 @@ class TestKeepingALiveRecording:
         with pytest.raises(subprocess.CalledProcessError):
             cache.keep_recording(tmp_path / "rec.0.ts", "liveVid0001", tmp_path, run=run)
         assert not cache.is_cached("liveVid0001", tmp_path)
+
+
+class TestMarkingKeptRecordings:
+    """A kept live recording carries a marker, so the pruner can age it out
+    after a week; a downloaded video carries none and never ages out."""
+
+    def _remux(self, cmd, check):
+        Path(cmd[-1]).write_bytes(b"mp4")
+
+    def test_a_whole_recording_is_marked_as_one(self, tmp_path):
+        rec = tmp_path / "live" / "vid1" / "rec.0.ts"
+        rec.parent.mkdir(parents=True)
+        rec.write_bytes(b"ts")
+        cache.keep_recording(rec, "vid1", tmp_path, run=self._remux)
+        marker = json.loads(cache.kept_marker("vid1", tmp_path).read_text())
+        assert marker["whole"] is True and marker["kept_at"] > 0
+
+    def test_a_recording_of_a_cached_video_writes_no_marker(self, tmp_path):
+        cache.video_path("vid1", tmp_path).parent.mkdir(parents=True)
+        cache.video_path("vid1", tmp_path).write_bytes(b"download")
+        rec = tmp_path / "rec.0.ts"
+        rec.write_bytes(b"ts")
+        assert cache.keep_recording(rec, "vid1", tmp_path, run=self._remux) is None
+        assert not cache.kept_marker("vid1", tmp_path).exists()
+
+
+class TestKeepingAPartialRecording:
+    """A recording cut short is kept for investigation, never as the video."""
+
+    def _rec(self, tmp_path, vid="vid1"):
+        rec = tmp_path / "live" / vid / "rec.0.ts"
+        rec.parent.mkdir(parents=True)
+        rec.write_bytes(b"partial ts")
+        return rec
+
+    def test_it_moves_to_kept_and_is_marked_partial(self, tmp_path):
+        rec = self._rec(tmp_path)
+        got = cache.keep_partial(rec, "vid1", tmp_path, now=1234.0)
+        assert got == cache.partial_path("vid1", tmp_path) == tmp_path / "kept" / "vid1.ts"
+        assert got.read_bytes() == b"partial ts" and not rec.exists()
+        assert json.loads(cache.kept_marker("vid1", tmp_path).read_text()) == {
+            "kept_at": 1234.0, "whole": False}
+
+    def test_it_never_becomes_the_cached_video(self, tmp_path):
+        cache.keep_partial(self._rec(tmp_path), "vid1", tmp_path)
+        assert not cache.is_cached("vid1", tmp_path)
+
+    def test_a_video_already_cached_keeps_nothing(self, tmp_path):
+        cache.video_path("vid1", tmp_path).parent.mkdir(parents=True)
+        cache.video_path("vid1", tmp_path).write_bytes(b"download")
+        rec = self._rec(tmp_path)
+        assert cache.keep_partial(rec, "vid1", tmp_path) is None
+        assert not cache.partial_path("vid1", tmp_path).exists()
+        assert not cache.kept_marker("vid1", tmp_path).exists()
+
+    def test_an_empty_recording_keeps_nothing(self, tmp_path):
+        rec = self._rec(tmp_path)
+        rec.write_bytes(b"")
+        assert cache.keep_partial(rec, "vid1", tmp_path) is None
+        assert not cache.kept_marker("vid1", tmp_path).exists()
+
+    def test_an_id_that_starts_with_a_dash(self, tmp_path):
+        got = cache.keep_partial(self._rec(tmp_path, "-f3RabcdEF"), "-f3RabcdEF", tmp_path)
+        assert got == tmp_path / "kept" / "-f3RabcdEF.ts" and got.is_file()
+        assert cache.kept_marker("-f3RabcdEF", tmp_path).is_file()

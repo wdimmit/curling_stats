@@ -9,6 +9,7 @@ Every cache -- videos, proxies, detections -- lives under one root, chosen by
 ``$CURLING_SCORE_CACHE`` so a worker can put it on whatever disk it likes.
 """
 
+import json
 import os
 import secrets
 import subprocess
@@ -192,4 +193,59 @@ def keep_recording(recording, vid: str, root: Path | None = None, *,
     # The pinned mtime, but a fresh atime: pin_mtime's would make it the
     # oldest-read file in the cache, the first the pruner lets go.
     os.utime(dest, ns=(time.time_ns(), PINNED_MTIME_NS))
+    mark_kept(vid, root, whole=True)
+    return dest
+
+
+# Live recordings kept past their stream: a marker for each, and the partial
+# ones themselves. Kept for a rolling week (WORKER_RECORDING_DAYS) so a game
+# flagged overnight can still be replayed; see ingest/prune.py.
+KEPT_DIR = "kept"
+
+
+def kept_marker(vid: str, root: Path | None = None) -> Path:
+    root = Path(root) if root is not None else default_root()
+    return root / KEPT_DIR / f"{vid}.json"
+
+
+def partial_path(vid: str, root: Path | None = None) -> Path:
+    root = Path(root) if root is not None else default_root()
+    return root / KEPT_DIR / f"{vid}.ts"
+
+
+def mark_kept(vid: str, root: Path | None = None, *, whole: bool,
+              now: float | None = None) -> Path:
+    """Note that ``vid``'s media is a live recording, and when it was kept.
+
+    A marker rather than a timestamp on the media: the video's mtime is pinned
+    for the detection cache and its atime moves whenever it is read, so neither
+    can say how old the recording is."""
+    marker = kept_marker(vid, root)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    tmp = marker.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"kept_at": time.time() if now is None else now,
+                               "whole": whole}))
+    tmp.replace(marker)
+    return marker
+
+
+def keep_partial(recording, vid: str, root: Path | None = None, *,
+                 now: float | None = None) -> Path | None:
+    """Keep a live recording that is not the whole stream, for investigation.
+
+    A recording cut short by the cap, a stall, a stop or a failed exit is not
+    the game, so it never becomes ``videos/<id>.mp4`` -- a reprocess would take
+    it for the whole one. It is moved, as it is, to ``kept/<id>.ts``, where
+    replay tools can be pointed at it. None when the video is cached already
+    or there is nothing recorded."""
+    recording = Path(recording)
+    if is_cached(vid, root):
+        return None
+    if not (recording.is_file() and recording.stat().st_size > 0):
+        return None
+    dest = partial_path(vid, root)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(recording, dest)
+    os.utime(dest)              # read just now, as far as the pruner can tell
+    mark_kept(vid, root, whole=False, now=now)
     return dest
