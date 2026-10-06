@@ -211,10 +211,85 @@ def _structure(game: dict, fmt: str) -> list:
     return out
 
 
+def _coverage(game: dict, metrics: list, fmt: str, baseline: Baseline) -> list:
+    starts = {e.get("number"): e.get("start_s") for e in game.get("ends", [])}
+    out = []
+    for m in metrics:
+        if m.rocks < COVERAGE_MIN_ROCKS:
+            continue
+        for k in METRICS:
+            have, normal = getattr(m, k), baseline.threshold(fmt, k)
+            if have / m.rocks < normal and m.rocks - have >= COVERAGE_GAP_ROCKS:
+                out.append(Finding(f"coverage_{k}", "strong", m.number, None,
+                                   f"{k} on {have}/{m.rocks} rocks (normal ≥ {normal:.0%})",
+                                   starts.get(m.number)))
+    return out
+
+
+def _off_sheet(broom: dict) -> bool:
+    x, y = broom.get("x"), broom.get("y")
+    if x is None or y is None:
+        return False
+    return (abs(x) > HALF_SHEET_M or y < BACK_LINE_M - BROOM_BEHIND_M
+            or y > HOG_M + BROOM_PAST_HOG_M)
+
+
+def _odd_rocks(game: dict) -> list:
+    out = []
+    for e in game.get("ends", []):
+        n = e.get("number")
+        for s in _placed(e):
+            r, t = s.get("number"), s.get("t_video_s")
+            broom = s.get("target_broom")
+            if broom and _off_sheet(broom):
+                out.append(Finding("broom_off_sheet", "strong", n, r,
+                                   f"broom at x {broom['x']:+.2f} m, y {broom['y']:+.2f} m", t))
+            split = s.get("long_split_s")
+            if split is not None and not SPLIT_MIN_S <= split <= SPLIT_MAX_S:
+                out.append(Finding("odd_split", "weak", n, r, f"split {split:.1f} s", t))
+            if s.get("color_inferred"):
+                out.append(Finding("colour_inferred", "weak", n, r,
+                                   "colour inferred, not seen", t))
+        if e.get("unplaced_shots"):
+            k = e["unplaced_shots"]
+            out.append(Finding("unplaced", "strong", n, None,
+                               f"{k} rock{'' if k == 1 else 's'} seen but not placed",
+                               e.get("start_s")))
+    return out
+
+
+def _score_text(score) -> str:
+    if isinstance(score, dict):
+        return " ".join(f"{k} {v}" for k, v in sorted(score.items()))
+    return str(score)
+
+
+def _notes(game: dict) -> list:
+    out = []
+    for e in game.get("ends", []):
+        board, house = e.get("score"), e.get("detected_score")
+        if board is not None and house is not None and board != house:
+            out.append(Finding("board_disagrees", "note", e.get("number"), None,
+                               f"board {_score_text(board)}, house {_score_text(house)}",
+                               e.get("start_s")))
+    if game.get("hammer_consistent") is False:
+        out.append(Finding("hammer", "note", detail="hammer sequence broken"))
+    wide = sum(1 for e in game.get("ends", []) for s in _placed(e)
+               if abs(((s.get("line") or {}).get("at_broom") or {}).get("miss_m") or 0.0)
+               > BROOM_MISS_M)
+    if wide:
+        out.append(Finding("broom_miss", "note",
+                           detail=f"{wide} line{'' if wide == 1 else 's'} miss their broom "
+                                  f"by more than {BROOM_MISS_M:.1f} m"))
+    return out
+
+
 def review_game(game: dict, baseline: Baseline) -> GameReview:
     fmt = game_format(game)
-    findings = _structure(game, fmt)
-    return GameReview(fmt, [end_metrics(e) for e in game.get("ends", [])], findings, [])
+    metrics = [end_metrics(e) for e in game.get("ends", [])]
+    findings = (_structure(game, fmt) + _coverage(game, metrics, fmt, baseline)
+                + _odd_rocks(game))
+    return GameReview(fmt, metrics, findings, _notes(game))
 
 
 def describe(f: Finding) -> str:

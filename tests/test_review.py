@@ -219,3 +219,99 @@ class TestStructure:
     def test_a_short_game_is_not_also_a_tiny_end(self):
         g = game(end(1, "top"), end(2, "bottom", rocks=2))
         assert checks(g) == ["short_game"]
+
+
+def without(e, metric_key, count, value=None):
+    """Take a measurement off the first ``count`` rocks of an end."""
+    for s in e["shots"][:count]:
+        s[metric_key] = value
+    return e
+
+
+class TestCoverage:
+    def test_an_end_well_below_normal_is_flagged(self):
+        g = game()
+        without(g["ends"][1], "target_broom", 10)       # 6/16 = 38% < the 60% floor
+        got = autoreview.review_game(g, FLOOR).findings
+        assert [(f.check, f.end) for f in got] == [("coverage_broom", 2)]
+        assert "6/16" in got[0].detail and "60%" in got[0].detail
+
+    def test_below_normal_by_fewer_than_four_rocks_is_not(self):
+        g = game()
+        without(g["ends"][1], "target_broom", 3)        # 13/16, below a 0.9 normal
+        base = Baseline({("fours", "broom"): 0.9}, {"fours": 500})
+        assert checks(g, base) == []
+
+    def test_normal_comes_from_the_baseline(self):
+        g = game()
+        without(g["ends"][1], "target_broom", 10)       # 38%, above a 25% normal
+        base = Baseline({("fours", "broom"): 0.25}, {"fours": 500})
+        assert checks(g, base) == []
+
+    def test_doubles_without_brooms_are_normal(self):
+        g = doubles_game()
+        for e in g["ends"]:
+            without(e, "target_broom", 10)
+        assert checks(g) == []
+
+    @pytest.mark.parametrize("key,metric", [("long_split_s", "split"), ("line", "line"),
+                                            ("t_release_s", "release")])
+    def test_each_measurement_is_judged(self, key, metric):
+        g = game()
+        without(g["ends"][2], key, 12)
+        assert checks(g) == [f"coverage_{metric}"]
+
+    def test_ends_too_short_to_judge_are_skipped(self):
+        g = game(end(1, "top", rocks=5), end(2, "bottom"), end(3, "top"), end(4, "bottom"))
+        without(g["ends"][0], "target_broom", 5)
+        assert checks(g) == []
+
+
+class TestOddRocks:
+    @pytest.mark.parametrize("broom", [{"x": 2.5, "y": 0.0}, {"x": 0.0, "y": -2.2},
+                                       {"x": 0.0, "y": 7.5}])
+    def test_a_broom_off_the_sheet(self, broom):
+        g = game()
+        g["ends"][0]["shots"][3]["target_broom"] = {**broom, "confidence": 0.8}
+        got = autoreview.review_game(g, FLOOR)
+        assert [(f.check, f.strength, f.end, f.rock) for f in got.findings] == [
+            ("broom_off_sheet", "strong", 1, 4)]
+
+    def test_one_odd_split_is_weak_and_alone_flags_nothing(self):
+        g = game()
+        g["ends"][1]["shots"][8]["long_split_s"] = 23.4
+        got = autoreview.review_game(g, FLOOR)
+        assert [(f.check, f.strength, f.detail) for f in got.findings] == [
+            ("odd_split", "weak", "split 23.4 s")]
+        assert not got.raise_flag
+
+    def test_two_weak_findings_flag_the_game(self):
+        g = game()
+        g["ends"][1]["shots"][8]["long_split_s"] = 6.5
+        g["ends"][2]["shots"][2]["color_inferred"] = True
+        got = autoreview.review_game(g, FLOOR)
+        assert sorted(f.check for f in got.findings) == ["colour_inferred", "odd_split"]
+        assert got.raise_flag
+
+    def test_rocks_seen_but_not_placed(self):
+        g = game()
+        g["ends"][3]["unplaced_shots"] = 2
+        assert checks(g) == ["unplaced"]
+
+
+class TestNotes:
+    def test_notes_are_listed_but_never_flag(self):
+        g = game(hammer=False)
+        g["ends"][1]["score"] = {"red": 2, "yellow": 0}
+        g["ends"][2]["shots"][0]["line"] = {"at_broom": {"miss_m": 1.4}}
+        g["ends"][2]["shots"][1]["line"] = {"at_broom": {"miss_m": -1.2}}
+        got = autoreview.review_game(g, FLOOR)
+        assert got.findings == [] and not got.raise_flag
+        assert [(n.check, n.end) for n in got.notes] == [
+            ("board_disagrees", 2), ("hammer", None), ("broom_miss", None)]
+        assert got.notes[2].detail == "2 lines miss their broom by more than 1.0 m"
+
+    def test_an_end_the_board_never_read_says_nothing(self):
+        g = game()
+        g["ends"][1]["score"] = None
+        assert autoreview.review_game(g, FLOOR).notes == []
