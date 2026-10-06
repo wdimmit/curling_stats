@@ -216,6 +216,7 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicati
   -d '{"playlist_id":"https://www.youtube.com/playlist?list=PLxxxxxxxx","label":"Tuesday Open League",
        "schedule":[{"days":["tue"],"start":"18:00","end":"23:30"}]}' $PUBLIC_BASE_URL/api/admin/playlists
 PUBLIC_BASE_URL=… ADMIN_TOKEN=… ./deploy/scheduler.sh     # poll every 3 min, 1 of 3 free Scheduler jobs
+REVIEW=1 PUBLIC_BASE_URL=… ADMIN_TOKEN=… ./deploy/scheduler.sh   # + the nightly review, 2 of 3
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "$PUBLIC_BASE_URL/api/admin/poll-playlists?force=1"  # every playlist now (10 new per call)
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"schedule":[{"days":["thu"],"start":"18:00","end":"23:30"}],"live_poll_s":180,"idle_poll_s":3600}' \
@@ -237,6 +238,35 @@ until a worker that can follow a stream is running -- a live run nobody claims
 stands in for the recording, which the poller then never queues the ordinary
 way. (One still queued when its recording is archived gives way to it.) The
 doubles playlist stays out of the poller entirely.
+
+## The nightly review
+
+Every game whose run finished in the last 3 days is read once for signs that
+something went wrong (`curling_score/autoreview.py`): an end cut in two, lost
+rocks, a fragment of a game, an end whose brooms/splits/lines/releases fall
+well below the last fortnight's normal, a broom off the sheet, odd splits. A
+game showing one strong sign (or two weak ones) gets one ⚑ flag with
+`origin: "auto"`, in the same list as viewers' flags:
+
+```
+ADMIN_TOKEN=… python scripts/flags.py list --origin auto
+```
+
+Each finding prints with a link to its rock. Nothing is resolved or
+reprocessed automatically. What it read is kept per game and run in the
+`reviews` collection, which is also where "normal" comes from.
+
+By hand (all take the admin token):
+
+```
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "$PUBLIC_BASE_URL/api/admin/review?dry_run=true"   # what it would flag
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "$PUBLIC_BASE_URL/api/admin/review?source_id=s_…"  # read one game again
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "$PUBLIC_BASE_URL/api/admin/review?since=2026-09-19T00:00:00Z&until=2026-10-02T00:00:00Z&flag=false"  # seed the baseline, leaving the last 3 days
+```
+
+Repeat a call until `pending` is 0. To tune the checks, save served timelines
+(`/g/<source_id>/timeline.json` as `<source_id>.json`) into a folder and run
+`python scripts/review.py DIR --any`.
 
 ## The thinking report
 
