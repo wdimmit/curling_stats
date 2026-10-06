@@ -85,9 +85,10 @@ class LiveManager:
 
     def finish(self, stream, keep: bool = True):
         """Let a stream go: stop recording it, and delete the recording --
-        after filing it in the video cache, if it is whole and ``keep`` is not
-        turned down, so that reprocessing the game needs no download. The
-        cache's pruner lets it go in time, as it does a downloaded video."""
+        after filing it, unless ``keep`` is turned down: a whole recording as
+        the video's cached copy, so reprocessing the game needs no download; a
+        partial one under ``kept/``, for investigation. The pruner lets either
+        go after a week (WORKER_RECORDING_DAYS), or sooner if the disk needs it."""
         stream.recorder.stop()
         with self._lock:
             if stream in self._streams:
@@ -97,17 +98,25 @@ class LiveManager:
         vid = stream.job["video_id"]
         directory = self.root / "live" / vid
         whole = getattr(stream.recorder, "whole", lambda: False)()
-        if not (keep and whole):
+        try:
+            path = stream.recorder.path
+        except (AttributeError, IndexError):     # never started: nothing written
+            path = None
+        if not keep or path is None:
             shutil.rmtree(directory, ignore_errors=True)
             return
-        path = stream.recorder.path
+        # The whole stream becomes the video's cached copy; anything less is
+        # kept beside it for a week, for looking into what went wrong, and is
+        # never taken for the game itself.
+        file_it = cache.keep_recording if whole else cache.keep_partial
 
         def keep_it():
             try:
-                kept = cache.keep_recording(path, vid, self.root)
+                kept = file_it(path, vid, self.root)
                 if kept is not None:
-                    log.info("kept the recording of %s as %s", vid, kept)
-            except Exception:  # noqa: BLE001 - only a download is lost
+                    log.info("kept the %s recording of %s as %s",
+                             "whole" if whole else "partial", vid, kept)
+            except Exception:  # noqa: BLE001 - only a replay is lost
                 log.exception("could not keep the recording of %s", vid)
             finally:
                 shutil.rmtree(directory, ignore_errors=True)

@@ -136,8 +136,9 @@ class TestKeepingTheRecording:
     """A whole recording goes into the video cache when its stream is let go,
     so reprocessing the game needs no download; anything else is deleted."""
 
-    def _finish(self, tmp_path, monkeypatch, whole=True, keep=True, fails=False):
-        kept, pruned = [], []
+    def _finish(self, tmp_path, monkeypatch, whole=True, keep=True, fails=False,
+                no_file=False):
+        kept, partial, pruned = [], [], []
 
         def keep_recording(path, vid, root):
             if fails:
@@ -145,7 +146,12 @@ class TestKeepingTheRecording:
             kept.append((path, vid, root))
             return root / "videos" / f"{vid}.mp4"
 
+        def keep_partial(path, vid, root):
+            partial.append((path, vid, root))
+            return root / "kept" / f"{vid}.ts"
+
         monkeypatch.setattr(manager_mod.cache, "keep_recording", keep_recording)
+        monkeypatch.setattr(manager_mod.cache, "keep_partial", keep_partial)
         m = manager_mod.LiveManager(
             Api([live_job(1)]), "home", model_id="m-abc", gpu=None, root=tmp_path,
             make_recorder=lambda job: Recorder(job), prune=lambda: pruned.append(1),
@@ -156,27 +162,37 @@ class TestKeepingTheRecording:
         directory.mkdir(parents=True)
         (directory / "rec.0.ts").write_bytes(b"ts")
         s.recorder.whole = lambda: whole
-        s.recorder.path = directory / "rec.0.ts"
+        # This file's Recorder double has no `path` until a test gives it one,
+        # so leaving it unset stands for a recorder that never wrote a file.
+        # (The real recorder raises IndexError there; finish catches both.)
+        if not no_file:
+            s.recorder.path = directory / "rec.0.ts"
         m.finish(s, keep=keep)
         assert s.recorder.stopped and m.streams() == []
-        return s, kept, pruned, directory
+        return s, kept, partial, pruned, directory
 
     def test_a_whole_recording_is_kept_then_the_cache_pruned(self, tmp_path, monkeypatch):
-        _, kept, pruned, directory = self._finish(tmp_path, monkeypatch)
+        _, kept, partial, pruned, directory = self._finish(tmp_path, monkeypatch)
         assert kept == [(directory / "rec.0.ts", "liveVid0001", tmp_path)]
+        assert partial == [] and pruned == [1] and not directory.exists()
+
+    def test_a_recording_that_is_not_whole_is_kept_as_a_partial(self, tmp_path, monkeypatch):
+        _, kept, partial, pruned, directory = self._finish(tmp_path, monkeypatch, whole=False)
+        assert kept == [] and partial == [(directory / "rec.0.ts", "liveVid0001", tmp_path)]
         assert pruned == [1] and not directory.exists()
 
-    def test_a_recording_that_is_not_whole_is_deleted(self, tmp_path, monkeypatch):
-        _, kept, pruned, directory = self._finish(tmp_path, monkeypatch, whole=False)
-        assert kept == [] and pruned == [] and not directory.exists()
-
     def test_a_recording_turned_down_is_deleted(self, tmp_path, monkeypatch):
-        _, kept, _, directory = self._finish(tmp_path, monkeypatch, keep=False)
-        assert kept == [] and not directory.exists()
+        _, kept, partial, _, directory = self._finish(tmp_path, monkeypatch, keep=False)
+        assert kept == [] and partial == [] and not directory.exists()
 
     def test_a_recording_that_cannot_be_kept_is_still_deleted(self, tmp_path, monkeypatch):
-        _, _, pruned, directory = self._finish(tmp_path, monkeypatch, fails=True)
+        _, _, _, pruned, directory = self._finish(tmp_path, monkeypatch, fails=True)
         assert not directory.exists() and pruned == [1]
+
+    def test_a_recorder_that_never_wrote_a_file_keeps_nothing(self, tmp_path, monkeypatch):
+        _, kept, partial, pruned, directory = self._finish(tmp_path, monkeypatch,
+                                                           no_file=True)
+        assert kept == [] and partial == [] and pruned == [] and not directory.exists()
 
 
 class Session:
