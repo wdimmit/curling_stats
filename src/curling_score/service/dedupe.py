@@ -120,6 +120,7 @@ def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
     since a chart claim is per source.
     """
     want = run.format or "fours"
+    practice = bool(game.get("practice"))
     # A page folded into another is a last resort: the page that took its
     # game keeps it, and a folded one comes back only for a game that split
     # off again.
@@ -142,7 +143,10 @@ def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
                                    game_index=int(game["index"]),
                                    game_start_s=float(game["start_s"]),
                                    game_end_s=float(game["end_s"]),
-                                   merged_into=None)
+                                   merged_into=None, practice=practice)
+            elif s.practice != practice:
+                # A live run says practice only once the game is over.
+                repo.update_source(s.id, practice=practice)
             return s
     source = Source(
         id=slug.new_slug(slug.SHORT_BYTES, "s_"),
@@ -157,6 +161,7 @@ def find_or_create_source(repo, run: Run, game: dict, now: datetime) -> Source:
         league=run.league,
         format=run.format,
         played_at=run.published_at,
+        practice=practice,
     )
     repo.put_source(source)
     return source

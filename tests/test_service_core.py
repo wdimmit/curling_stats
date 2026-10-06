@@ -629,3 +629,43 @@ def test_the_flags_query_has_its_index():
     assert ("--collection-group=flags \\\n  --field-config=field-path=status,order=ascending "
             "--field-config=field-path=created_at,order=descending") in readme
 
+
+
+class TestPracticePages:
+    """Each run's reading of a game as practice goes onto its page."""
+
+    GAME = {"index": 0, "start_s": 0.0, "end_s": 6400.0, "ends": 4}
+
+    def test_a_new_page_takes_the_run_s_reading(self):
+        repo = MemoryRepo()
+        r1 = run(id="r_1", games=[dict(self.GAME, practice=True)])
+        repo.put_run(r1)
+        dedupe.resolve_charts_for_run(repo, r1, at(0))
+        (src,) = repo.sources_for_video("VXU9xwmugRg")
+        assert src.practice is True and src.is_practice
+
+    def test_a_live_run_marks_its_page_once_the_game_is_over(self):
+        """Each publish finds the page; the last one says practice."""
+        repo = MemoryRepo()
+        r1 = run(id="r_1", status="live", games=[dict(self.GAME)])
+        repo.put_run(r1)
+        dedupe.find_or_create_source(repo, r1, r1.games[0], at(0))
+        dedupe.find_or_create_source(repo, r1, dict(self.GAME, practice=True), at(1))
+        (src,) = repo.sources_for_video("VXU9xwmugRg")
+        assert src.practice is True
+
+    def test_a_newer_run_s_reading_replaces_the_last_but_not_a_hand_set_one(self):
+        repo = MemoryRepo()
+        r1 = run(id="r_1", games=[dict(self.GAME, practice=True)])
+        repo.put_run(r1)
+        dedupe.resolve_charts_for_run(repo, r1, at(0))
+        (src,) = repo.sources_for_video("VXU9xwmugRg")
+        r2 = run(id="r_2", processing_version="p+new", games=[dict(self.GAME)])
+        repo.put_run(r2)
+        dedupe.resolve_charts_for_run(repo, r2, at(1))
+        assert repo.get_source(src.id).practice is False
+        repo.update_source(src.id, practice_override=True)
+        r3 = run(id="r_3", processing_version="p+newer", games=[dict(self.GAME)])
+        repo.put_run(r3)
+        dedupe.resolve_charts_for_run(repo, r3, at(2))
+        assert repo.get_source(src.id).is_practice is True

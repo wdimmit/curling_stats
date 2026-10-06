@@ -223,6 +223,14 @@ class TestWhatIsNotAGame:
         got = review(world)
         assert got["reviewed"] == 1 and flags(world) == []
 
+    def test_a_practice_session_is_not_read(self, world):
+        """Practice is not a game: no flags for it, and none of its ends in
+        the baseline real games are measured against."""
+        a, b = charted(world, CLEAN, SAME_HOUSE)
+        world["repo"].update_source(b.id, practice=True)
+        got = review(world)
+        assert got["reviewed"] == 1 and flags(world) == []
+
     def test_a_live_run_waits_until_it_is_ready(self, world):
         (src,) = charted(world, SAME_HOUSE)
         world["repo"].update_run(src.current_run_id, status="live")

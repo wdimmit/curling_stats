@@ -109,8 +109,7 @@ def work_through(w, doc=None, games=2, fmt=None):
                                                    else {"meta": 1}).encode())
     for up in plan["detcache_uploads"]:
         w["store"].put_bytes(up["key"], b"npz")
-    games_list = [{"index": g["index"], "start_s": g["start_s"], "end_s": g["end_s"],
-                   "ends": len(g["ends"])} for g in doc["games"]]
+    games_list = [timeline_mod.game_summary(g) for g in doc["games"]]
     done = {"worker_id": "home", "title": "4/30 - Sheet 2 - Spring League",
             "channel_id": CLUB, "duration_s": 14392.0, "sheet": 2,
             "games": games_list, "detcache_digests": ["abc123"], "timings": {}}
@@ -1932,3 +1931,66 @@ class TestTheViewerFont:
     def test_the_local_server_copies_it(self):
         from curling_score import viewer
         assert "source-sans-3.woff2" in viewer.ASSETS
+
+
+class TestPractice:
+    """A game the worker marks practice keeps its page but leaves the
+    catalogue; an admin can say otherwise either way, and that sticks."""
+
+    def practice_second(self, w):
+        doc = sample_doc(2)
+        doc["games"][1]["practice"] = True
+        submit(w)
+        work_through(w, doc)
+        return {s.game_index: s for s in w["repo"].sources_for_video(VID)}
+
+    def listed(self, w):
+        return sorted(g["game_index"] for g in w["client"].get("/api/games").json()["games"]
+                      if g["source_id"])
+
+    def test_a_practice_session_is_left_out_of_the_catalogue(self, world):
+        pages = self.practice_second(world)
+        assert pages[1].practice is True and pages[0].practice is False
+        assert self.listed(world) == [0]
+
+    def test_its_page_still_opens(self, world):
+        pages = self.practice_second(world)
+        assert world["client"].get(f"/g/{pages[1].id}/timeline.json").status_code == 200
+
+    def test_an_admin_can_hide_a_game_and_put_it_back(self, world):
+        pages = self.practice_second(world)
+        c = world["client"]
+        r = c.post(f"/api/admin/sources/{pages[0].id}/practice", headers=ADMIN,
+                   json={"practice": True})
+        assert r.status_code == 200, r.text
+        assert self.listed(world) == []
+        c.post(f"/api/admin/sources/{pages[0].id}/practice", headers=ADMIN,
+               json={"practice": None})
+        assert self.listed(world) == [0]
+
+    def test_an_admin_s_word_outlasts_a_reprocess(self, world):
+        pages = self.practice_second(world)
+        c = world["client"]
+        c.post(f"/api/admin/sources/{pages[1].id}/practice", headers=ADMIN,
+               json={"practice": False})
+        c.post("/api/admin/reprocess", headers=ADMIN, json={"video_id": VID})
+        doc = sample_doc(2)
+        doc["games"][1]["practice"] = True
+        work_through(world, doc)
+        assert self.listed(world) == [0, 1]
+
+    def test_a_later_run_that_reads_it_as_a_game_lists_it_again(self, world):
+        self.practice_second(world)
+        world["client"].post("/api/admin/reprocess", headers=ADMIN, json={"video_id": VID})
+        work_through(world, sample_doc(2))
+        assert self.listed(world) == [0, 1]
+
+    def test_only_an_admin_can_say(self, world):
+        pages = self.practice_second(world)
+        r = world["client"].post(f"/api/admin/sources/{pages[0].id}/practice",
+                                 json={"practice": True})
+        assert r.status_code in (401, 403)
+        assert world["client"].post("/api/admin/sources/s_nope/practice", headers=ADMIN,
+                                    json={"practice": True}).status_code == 404
+        assert world["client"].post(f"/api/admin/sources/{pages[0].id}/practice",
+                                    headers=ADMIN, json={"practice": "yes"}).status_code == 422

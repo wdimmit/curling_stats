@@ -840,8 +840,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     def games_listed(sources):
         """The sources that are games of their own: not a page left over from
-        a game a newer run joined onto another (Source.merged_into)."""
-        return [s for s in sources if s.merged_into is None]
+        a game a newer run joined onto another (Source.merged_into), and not
+        practice (Source.is_practice)."""
+        return [s for s in sources if s.merged_into is None and not s.is_practice]
 
     @app.get("/api/games")
     def api_games(league: str | None = None, video_id: str | None = None):
@@ -2275,6 +2276,24 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         flags = repo.list_flags(None if status == "all" else status, limit)
         return {"flags": [_flag_json(f) for f in flags]}
 
+    @app.post("/api/admin/sources/{source_id}/practice")
+    async def admin_source_practice(source_id: str, request: Request,
+                                    authorization: str | None = Header(default=None)):
+        """Say by hand whether a game is practice: true hides it from the
+        catalogue, false lists it whatever runs say, null hands it back to them."""
+        require_admin(authorization)
+        body = await request.json()
+        said = body.get("practice")
+        if said is not None and not isinstance(said, bool):
+            raise HTTPException(422, "practice is true, false or null")
+        if repo.get_source(source_id) is None:
+            raise HTTPException(404, "no such game")
+        repo.update_source(source_id, practice_override=said)
+        src = repo.get_source(source_id)
+        log.info("source %s practice set by hand: %r", source_id, said)
+        return {"source_id": src.id, "practice": src.practice,
+                "practice_override": src.practice_override, "listed": not src.is_practice}
+
     @app.post("/api/admin/flags/{flag_id}/resolve")
     def admin_resolve_flag(flag_id: str, authorization: str | None = Header(default=None)):
         require_admin(authorization)
@@ -2301,7 +2320,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             if until is not None and run.ready_at >= until:
                 continue
             for src in repo.sources_for_video(run.video_id):
-                if src.current_run_id != run.id or src.merged_into is not None:
+                if (src.current_run_id != run.id or src.merged_into is not None
+                        or src.is_practice):
                     continue
                 done = repo.get_review(review_id(src.id, run.id))
                 if (done is not None and done.run_ready_at is not None

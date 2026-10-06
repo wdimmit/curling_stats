@@ -151,6 +151,13 @@ class Source:
     # the board). Hidden from the catalogue, and /g/ follows the pointer; a
     # later run that splits the game again takes the page back.
     merged_into: str | None = None
+    # The current run read this game as practice (timeline.is_practice: no
+    # board card and few rocks kept). Left out of the catalogue and the nightly
+    # review; the page still opens. Each run's reading replaces the last.
+    practice: bool = False
+    # Said by hand (POST /api/admin/sources/{id}/practice) and kept through any
+    # later run: True hides a game the rule missed, False lists one it caught.
+    practice_override: bool | None = None
     # Scores people typed in for the ends the wall board never gave one, by
     # the game's end number as a string: {"4": {"red", "yellow", "by", "at"}}.
     # On the game, like the team names, so every chart of it shows them.
@@ -159,6 +166,11 @@ class Source:
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
+
+    @property
+    def is_practice(self) -> bool:
+        """Practice, by hand if anyone said, else by the current run."""
+        return self.practice if self.practice_override is None else self.practice_override
 
 
 @dataclass
