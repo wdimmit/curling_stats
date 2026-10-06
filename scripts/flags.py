@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """List and resolve the flags people have sent from the viewer.
 
-    ADMIN_TOKEN=... python scripts/flags.py list [--status open|resolved|all] [--limit N] [--json]
+    ADMIN_TOKEN=... python scripts/flags.py list [--status open|resolved|all] [--origin auto|viewer|all] [--limit N] [--json]
     ADMIN_TOKEN=... python scripts/flags.py resolve f_abc f_def
 
 BASE_URL defaults to https://curling.dimmit.net. The admin token is the
@@ -13,6 +13,9 @@ Each flag prints with a link to the page it was sent from, opened at its
 rock, and YouTube at that moment. The run id and override key say exactly
 what was on screen: a chart stays on its run, but after a reprocess a /g/
 link shows the new run, where end and rock numbers may differ.
+
+Auto-flags (origin "auto") come from the nightly review, one per game; each
+of their findings prints with its own link.
 """
 
 import argparse
@@ -48,8 +51,8 @@ def _safe(text: str) -> str:
                    else ch for ch in text)
 
 
-def rock_link(flag: dict, base: str) -> str:
-    where, place = flag["where"], flag["place"]
+def rock_link(flag: dict, base: str, place: dict | None = None) -> str:
+    where, place = flag["where"], place if place is not None else flag["place"]
     prefix, field = PAGES[where["link"]]
     page = f"{base}{prefix}{where[field]}/"
     if place.get("rock") is None or place.get("end") is None:
@@ -63,10 +66,24 @@ def youtube_link(flag: dict) -> str | None:
     return f"https://youtu.be/{vid}?t={int(t)}" if t is not None and vid else None
 
 
+def finding_lines(flag: dict, finding: dict, base: str) -> list[str]:
+    """One finding of an auto-flag: what, where, and the links to that rock."""
+    at = " ".join(x for x in (
+        f"e{finding['end']}" if finding.get("end") is not None else "",
+        f"r{finding['rock']}" if finding.get("rock") is not None else "") if x)
+    lines = [f"  - {finding.get('check')}{' ' + at if at else ''}: {finding.get('detail', '')}",
+             f"    {rock_link(flag, base, finding)}"]
+    yt = youtube_link({**flag, "place": finding})
+    if yt:
+        lines.append(f"    {yt}")
+    return lines
+
+
 def describe(flag: dict, base: str) -> str:
     where, place = flag["where"], flag["place"]
     when = datetime.fromisoformat(flag["created_at"]).astimezone().strftime("%Y-%m-%d %H:%M")
-    who = (flag.get("user") or {}).get("email") or "anonymous"
+    auto = flag.get("origin") == "auto"
+    who = "auto-review" if auto else ((flag.get("user") or {}).get("email") or "anonymous")
     game = place.get("game_index")
     # The game's number in the video. The reporter's dialog shows no game
     # number when the page holds one game, so the two never disagree.
@@ -75,10 +92,18 @@ def describe(flag: dict, base: str) -> str:
         at += f" · End {place['end']}"
     if place.get("rock") is not None:
         at += f" · Rock {place['rock']}" + (f" ({place['label']})" if place.get("label") else "")
-    lines = [f"{flag['id']}  {flag['status']}  {when}  {who}",
+    lines = [f"{flag['id']}  {flag['status']}{'  auto' if auto else ''}  {when}  {who}",
              f"  {where.get('title') or where.get('video_id')}",
              f"  {at}"]
     lines += [f"  > {line}" for line in flag["note"].splitlines() or [""]]
+    if auto:
+        found = flag.get("findings") or []
+        for f in found:
+            if f.get("strength") != "note":
+                lines += finding_lines(flag, f, base)
+        notes = [f.get("detail", "") for f in found if f.get("strength") == "note"]
+        if notes:
+            lines.append("  notes: " + "; ".join(notes))
     lines.append(f"  {rock_link(flag, base)}")
     yt = youtube_link(flag)
     if yt:
@@ -112,6 +137,7 @@ def main(argv=None) -> int:
     ls = sub.add_parser("list")
     ls.add_argument("--status", default="open", choices=("open", "resolved", "all"))
     ls.add_argument("--limit", type=int, default=200)
+    ls.add_argument("--origin", default="all", choices=("auto", "viewer", "all"))
     ls.add_argument("--json", action="store_true")
     rs = sub.add_parser("resolve")
     rs.add_argument("ids", nargs="+")
@@ -128,6 +154,8 @@ def main(argv=None) -> int:
         except OSError as err:          # URLError and HTTPError are OSErrors
             print(f"could not list flags: {_why(err)}", file=sys.stderr)
             return 1
+        if args.origin != "all":
+            got = [f for f in got if (f.get("origin") or "viewer") == args.origin]
         if args.json:
             print(json.dumps(got, indent=1))
         else:

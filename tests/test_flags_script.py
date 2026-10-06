@@ -129,3 +129,43 @@ def test_a_place_without_an_end_names_the_game_only():
                     "rock_id": None, "key": None})
     text = flags.describe(f, BASE)
     assert "End None" not in text and "Game 1" in text
+
+
+def auto_flag(**kw):
+    return flag(id="fa_0123456789abcdef", user=None, origin="auto",
+                note="Auto-review: 2 findings — e5 e4 and e5 both to the top house; e6 r9 split 23.4 s",
+                place={"game_index": 0, "end": 5, "rock": None, "t_video_s": 4100.0},
+                findings=[
+                    {"check": "same_house", "strength": "strong", "end": 5, "rock": None,
+                     "detail": "e4 and e5 both to the top house", "t_video_s": 4100.0},
+                    {"check": "odd_split", "strength": "weak", "end": 6, "rock": 9,
+                     "detail": "split 23.4 s", "t_video_s": 4712.3},
+                    {"check": "hammer", "strength": "note", "end": None, "rock": None,
+                     "detail": "hammer sequence broken", "t_video_s": None}],
+                **kw)
+
+
+def test_an_auto_flag_says_it_is_automatic():
+    head = flags.describe(auto_flag(), BASE).splitlines()[0]
+    assert head.startswith("fa_0123456789abcdef  open  auto  ") and head.endswith("auto-review")
+
+
+def test_each_finding_gets_its_own_link():
+    text = flags.describe(auto_flag(), BASE)
+    assert "  - odd_split e6 r9: split 23.4 s" in text
+    assert f"{BASE}/g/s_x/#e=6&s=9" in text and "https://youtu.be/VID?t=4712" in text
+    assert "  - same_house e5: e4 and e5 both to the top house" in text
+    assert "  notes: hammer sequence broken" in text
+
+
+def test_a_viewer_flag_reads_as_it_did():
+    text = flags.describe(flag(), BASE)
+    assert "  auto  " not in text and "notes:" not in text
+
+
+def test_list_can_show_one_origin(monkeypatch, capsys):
+    monkeypatch.setenv("ADMIN_TOKEN", "t")
+    monkeypatch.setattr(flags, "_call", lambda m, u, t: {"flags": [flag(), auto_flag()]})
+    assert flags.main(["list", "--origin", "auto"]) == 0
+    out = capsys.readouterr().out
+    assert "fa_0123456789abcdef" in out and "f_abc " not in out
