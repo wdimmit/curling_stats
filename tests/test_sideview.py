@@ -144,6 +144,29 @@ class TestSolve:
         assert got.tee_row == pytest.approx(362.4, abs=2.5)
         assert got.hog_row == pytest.approx(437.0, abs=1.5)
 
+    def test_a_bright_edge_a_row_or_two_tall_is_not_a_band_of_the_ring(self):
+        """Sheet 1's left view, 2026-10-04 (Qzh8XQrxqww): where the dark
+        backboard meets the ice behind the house, one row read greenness 2.72
+        against the threshold's 2.5, 30 rows above the ring -- inside the gap
+        that keeps a ring whole. Taken as the 12-ft ring's far edge, it put
+        the tee at 478.3 against 496.9, 109 rows above the hog line (just
+        inside the plausible band), and the lateral fit then read no row."""
+        plate = synth.side_view(tee_row=496.9, hog_row=587.0)
+        plate[444:446, :] = (234, 239, 234)
+        got = sideview.solve(plate, (0, 0, 810, 1080))
+        assert got.tee_row == pytest.approx(496.9, abs=1.5)
+
+    def test_a_sliver_at_a_band_s_edge_is_still_that_band(self):
+        """Sheet 4's right view, 2026-10-04: the far band's faint top reads
+        as a run two rows tall, two rows above the rest of the band. It is
+        the paint's edge, and the 12-ft fit stands on it -- a sliver is left
+        out only when ice parts it from the ring's bands."""
+        plate = synth.side_view(tee_row=496.9, hog_row=587.0)
+        clean = sideview.solve(plate, (0, 0, 810, 1080))
+        plate[472:474, :] = (234, 239, 234)    # the band starts at row 476
+        got = sideview.solve(plate, (0, 0, 810, 1080))
+        assert got.tee_row < clean.tee_row - 1.0
+
     def test_a_view_the_spring_band_fits_is_never_searched_wider(self):
         """Faint green above the house on some right views sits just under the
         threshold. A view the spring band fits must not be staked on it."""

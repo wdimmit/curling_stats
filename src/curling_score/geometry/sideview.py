@@ -321,6 +321,16 @@ _RING_GAP_PX = 40
 # 2026-09-27 read crossings at 350, 350 and 351). The narrowest gap between a
 # ring's two bands measured is 8 rows (sheet 2's left view, 335-343).
 _BAND_SPLIT_PX = 3
+# Green fewer rows tall than this, with ice either side, is not a band of the
+# ring. Sheet 1's left view on 2026-10-04 read one row at 2.72 where the dark
+# backboard meets the ice, 30 rows above the ring, and took it for the 12-ft
+# ring's far edge. Short runs near a band are that band: its faint edge (sheet
+# 4's right view that day read rows 340-341 above a band starting at 344), or
+# a band a shadow cut in two (rows 409-410 and 415-416 in a test drawn from
+# one of the club's views). So runs closer than `_SLIVER_ICE_PX` are measured
+# together, and only green standing apart is dropped.
+_MIN_BAND_PX = 4
+_SLIVER_ICE_PX = 10
 
 
 def _ring_rows(green, lo, last):
@@ -328,7 +338,8 @@ def _ring_rows(green, lo, last):
     ``(first, last, bands)``, or None.
 
     The strongest run above the threshold, with every run within
-    ``_RING_GAP_PX`` of it, and of those, taken in turn.
+    ``_RING_GAP_PX`` of it, and of those, taken in turn. Runs that make a band
+    under ``_MIN_BAND_PX`` rows tall on their own are not paint.
     """
     runs, start = [], None
     for i in range(lo, last + 1):
@@ -340,6 +351,7 @@ def _ring_rows(green, lo, last):
             start = None
     if start is not None:
         runs.append((start, last))
+    runs = _without_slivers(runs, lo, last)
     if not runs:
         return None
     k = max(range(len(runs)), key=lambda j: float(green[runs[j][0]:runs[j][1] + 1].max()))
@@ -350,6 +362,24 @@ def _ring_rows(green, lo, last):
         b += 1
     bands = 1 + sum(runs[j + 1][0] - runs[j][1] > _BAND_SPLIT_PX for j in range(a, b))
     return runs[a][0], runs[b][1], bands
+
+
+def _without_slivers(runs, lo, last):
+    """``runs`` less the green standing apart: runs closer than
+    ``_SLIVER_ICE_PX`` are taken together, and a group under ``_MIN_BAND_PX``
+    rows from its first row to its last is dropped. A group the rows searched
+    cut through is kept whatever its size: how tall it is cannot be seen, and
+    `_solve_within` refuses it anyway."""
+    groups = []
+    for run in runs:
+        if groups and run[0] - groups[-1][-1][1] < _SLIVER_ICE_PX:
+            groups[-1].append(run)
+        else:
+            groups.append([run])
+    return [run for group in groups
+            for run in group
+            if group[-1][1] - group[0][0] + 1 >= _MIN_BAND_PX
+            or group[0][0] <= lo or group[-1][1] >= last]
 
 
 def _solve_within(green, lum, rect, name, search):

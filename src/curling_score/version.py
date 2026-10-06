@@ -119,7 +119,13 @@ from pathlib import Path
 # late arrival that ran on is the hog pushed down the sheet. Of the 39 rocks
 # the user reviewed on video, the decision matches 38; the last hit a guard out
 # and now rests in play.
-PIPELINE_VERSION = "2026.10.04.1"
+# 2026.10.06.1: green a row or two tall, with ice either side, is not a band of
+# the ring (`sideview._without_slivers`): on 10/04 doubles sheet 1's left view a
+# bright edge where the backboard meets the ice, 30 rows above the ring, was
+# taken for the 12-ft ring's far edge, the tee came out 19 px high, and the view
+# had no lateral fit -- no brooms or lines in that house all game. Of the cached
+# videos' side views, only that one changes.
+PIPELINE_VERSION = "2026.10.06.1"
 
 
 def model_id(weights) -> str:
