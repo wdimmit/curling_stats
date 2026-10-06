@@ -97,3 +97,34 @@ The check model found all five held-out navy shots (broom2 none). About 2% of
 markers move 0.3-0.5 m in depth, the box's bottom edge sitting 2-3 px lower on
 the same pad; lateral position is unchanged.
 
+**Rounds 5-6 / broom4 (2026-10-06).** `wave5b` is the 10/01 Thursday Morning shots
+on sheets 1, 4 and 5 that broom3 left without a broom or held below 0.7: 52 frames,
+all reviewed, 51 boxes. (`wave5a`, sheets 2-3, is cut but not reviewed: it is
+nearly all one player holding the pad flat on the ice, left for later.) `wave6` is
+hard negatives. `scripts/broom/mine.py` read every shot of 16 hosted games
+(2026-09-27..10-04) as broomtime does and kept the shots where broom3 held a pad
+more than 1 m off the thrown line that was also weak, behind the tee or not
+alone, or where boxes under the pipeline's floor sat behind the tee (flag f_1Np1:
+a doubles player's red shoes at the back of the house, read as the target four
+times). `harvest.py --only --offsets` cut those 15 shots at five moments each: 75
+frames, all reviewed; of broom3's 115 proposals the review deleted 63 and added 5,
+leaving 27 frames empty.
+
+broom4 (`weights/broom4.pt`, tree b4all, 153 epochs, val mAP50 0.963) is broom3's
+recipe on every round but 5a. A check model held out wave 6's iDZ-mFORtG0 (the
+f_1Np1 game) and wave 5b's I4qVxXm1tnY. On those 43 frames broom3 scored P 0.44 /
+R 0.57 / mAP50 0.28 and the check model 0.94 / 0.74 / 0.72; in that game it held
+none of the three shoe targets and kept all 18 real pads. Over the 19 b3eval games
+(`probe_b4.py`, `compare_b4.py`):
+
+| model | coverage | shoe-like held pads | picks moved across (>0.3 m in x) / new / lost |
+| --- | --- | --- | --- |
+| broom3 | 97.4% | 8 | -- |
+| broom4 | 97.2% | 2 | 7 / 3 / 6 |
+
+Of the 30 picks that changed across the 19 games and the 16 mined ones, about 12
+were wrong targets fixed (shoes, feet, a stone handle) and about 10 new pads
+(upright brooms at the feet, kneeling skips); about 7 real pads were lost, all
+brooms held upright at a standing player's feet -- wave 5a's gap -- and one new
+wrong pick (09/27 S4 e4 r8, a red shoe at 0.35 nearer the tee than the real pad).
+

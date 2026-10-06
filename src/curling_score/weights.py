@@ -61,12 +61,14 @@ SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 # looking at the destination house. Like SIDE_NAME it is optional: a missing
 # file means no brooms, not a broken run. See `detect/broommodel.py`.
 #
-# broom3 as of 2026-09-30: broom2 plus round 4, 232 frames of the shots
-# broom2 missed or doubted on 2026-09-28 -- among them a navy pad held on
-# sheet 5's green 12-foot ring, which broom2 scored 0. Over nine hosted games
-# in no broom wave it found a broom on 96.9% of shots against broom2's 94.8%,
-# losing 5; that sheet 5 game went 83% -> 99%. See datasets/broom/README.md.
-BROOM_NAME = "broom3.pt"
+# broom4 as of 2026-10-06: broom3 plus wave 5b (10/01 shots broom3 missed or
+# doubted) and wave 6, 75 frames of red shoes, feet and stone handles that
+# broom3 held as pads well off the thrown line (flag f_1Np1: a doubles player
+# standing behind the house read as the target four times). A check model that
+# never saw that game dropped all its shoe targets and kept its 18 real pads;
+# over 19 hosted games shoe-like held pads fell 8 -> 2 at 97.2% coverage
+# against 97.4%. See datasets/broom/README.md.
+BROOM_NAME = "broom4.pt"
 BROOM_ENV_VAR = "CURLING_SCORE_BROOM_WEIGHTS"
 
 
