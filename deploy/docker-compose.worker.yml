@@ -18,6 +18,9 @@ services:
       # Media also goes until the disk has this much free: a live night records
       # five streams at once, ~4 GB each, before any is kept in the cache.
       WORKER_MIN_FREE_GB: "40"
+      # Live recordings are kept this many days -- a rolling week of league
+      # nights, for replaying what the nightly review flags -- then go.
+      WORKER_RECORDING_DAYS: "7"
       YTDLP_POT_PROVIDER: http://pot:4416
       # Half of a league night's streams each, with worker2 below; a worker
       # claims live jobs greedily up to this, so 6 here would take all five.

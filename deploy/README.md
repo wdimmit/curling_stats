@@ -147,6 +147,14 @@ the disk has less than that free. A live stream's recording, once the stream
 has ended, is kept in the same cache as if it were a download, so reprocessing
 the game needs no new one.
 
+Live recordings are kept for `WORKER_RECORDING_DAYS` (default 7) once their stream
+ends: a whole one as `videos/<id>.mp4`, one cut short (cap, stall, failed exit) as
+`kept/<id>.ts`, never as the video. Each has a marker, `kept/<id>.json`. A whole
+recording replays like a download. To replay a partial one, remux it into a
+scratch cache (`ffmpeg -i kept/<id>.ts -map 0:v:0 -c copy <scratch>/videos/<id>.mp4`)
+and give `scripts/replay_end.py` that `--cache-root`. `worker2`'s 40 GB budget holds
+only a few nights; raise it on a box with the room.
+
 The compose file brings up a `pot` sidecar alongside the worker, and the image
 carries the matching `bgutil-ytdlp-pot-provider` plugin. Together they mint the
 proof-of-origin tokens YouTube asks for before it will serve a video; without
