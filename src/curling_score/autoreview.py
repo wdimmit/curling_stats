@@ -153,9 +153,68 @@ def end_metrics(end: dict) -> EndMetrics:
                       *(sum(1 for s in placed if _has(k, s)) for k in METRICS))
 
 
+def _missing(end: dict, first: bool, last: bool) -> list:
+    """Rocks an end lost. A leading run in the game's first end is the stream
+    joining late, and a trailing run in its last end is a concession; anything
+    else, or a middle end listing fewer rocks than it should, is not."""
+    shots = sorted(end.get("shots", []), key=lambda s: s["number"])
+    gone = [s["number"] for s in shots if s.get("missing")]
+    expected = end.get("shots_expected")
+    if gone:
+        leading = first and gone == list(range(1, len(gone) + 1))
+        top = shots[-1]["number"]
+        trailing = last and gone == list(range(top - len(gone) + 1, top + 1))
+        if leading or trailing:
+            return []
+        return [Finding("missing_rocks", "strong", end.get("number"), gone[0],
+                        "rocks " + ", ".join(map(str, gone)) + " missing",
+                        end.get("start_s"))]
+    if expected and len(shots) < expected and not first and not last:
+        return [Finding("missing_rocks", "strong", end.get("number"), None,
+                        f"{len(shots)} of {expected} rocks listed", end.get("start_s"))]
+    return []
+
+
+def _structure(game: dict, fmt: str) -> list:
+    ends = game.get("ends", [])
+    out = []
+    if len(ends) < MIN_ENDS:
+        out.append(Finding("short_game", "strong", None, None,
+                           f"{len(ends)} end{'' if len(ends) == 1 else 's'}"))
+    elif len(_placed(ends[-1])) <= TINY_END_ROCKS:
+        e = ends[-1]
+        out.append(Finding("tiny_last_end", "strong", e.get("number"), None,
+                           f"last end has {len(_placed(e))} rocks", e.get("start_s")))
+    for i, e in enumerate(ends):
+        n, before = e.get("number"), ends[i - 1] if i else None
+        if before is not None and e.get("house") == before.get("house"):
+            out.append(Finding("same_house", "strong", n, None,
+                               f"e{before.get('number')} and e{n} both to the "
+                               f"{e.get('house')} house", e.get("start_s")))
+        if before is not None and n != before.get("number", 0) + 1:
+            out.append(Finding("end_gap", "strong", n, None,
+                               f"e{before.get('number')} then e{n}", e.get("start_s")))
+        out += _missing(e, first=i == 0, last=i == len(ends) - 1)
+        placed = sorted(_placed(e), key=lambda s: s["number"])
+        if fmt == "fours":
+            for a, b in zip(placed, placed[1:]):
+                if b["number"] == a["number"] + 1 and a.get("color") == b.get("color"):
+                    out.append(Finding("not_alternating", "strong", n, b["number"],
+                                       f"r{a['number']} and r{b['number']} both "
+                                       f"{b.get('color')}", b.get("t_video_s")))
+                    break                   # one an end is enough to look
+        expected = e.get("shots_expected") or (10 if fmt == "doubles" else 16)
+        for colour, k in sorted(Counter(s.get("color") for s in placed).items()):
+            if k > expected // 2:
+                out.append(Finding("team_over", "strong", n, None,
+                                   f"{colour} has {k} of {expected} rocks", e.get("start_s")))
+    return out
+
+
 def review_game(game: dict, baseline: Baseline) -> GameReview:
     fmt = game_format(game)
-    return GameReview(fmt, [end_metrics(e) for e in game.get("ends", [])], [], [])
+    findings = _structure(game, fmt)
+    return GameReview(fmt, [end_metrics(e) for e in game.get("ends", [])], findings, [])
 
 
 def describe(f: Finding) -> str:

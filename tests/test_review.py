@@ -138,3 +138,84 @@ class TestTheFlagItRaises:
                                   extra="earlier auto-flag fa_0123 (run r_9)", limit=2000)
         assert len(text) <= 2000 and text.endswith("…")
         assert "earlier auto-flag fa_0123 (run r_9)" in text
+
+
+def missing(e, *numbers):
+    for s in e["shots"]:
+        if s["number"] in numbers:
+            s["missing"] = True
+    return e
+
+
+class TestStructure:
+    def test_two_ends_in_a_row_to_the_same_house(self):
+        g = game(end(1, "top"), end(2, "bottom"), end(3, "bottom"), end(4, "top"))
+        got = autoreview.review_game(g, FLOOR).findings
+        assert [(f.check, f.end, f.strength) for f in got] == [("same_house", 3, "strong")]
+
+    def test_an_end_number_skipped(self):
+        g = game(end(1, "top"), end(2, "bottom"), end(4, "top"), end(5, "bottom"))
+        assert checks(g) == ["end_gap"]
+
+    def test_rocks_missing_mid_game(self):
+        g = game()
+        missing(g["ends"][1], 5, 9)
+        got = [f for f in autoreview.review_game(g, FLOOR).findings]
+        assert [(f.check, f.end, f.rock) for f in got] == [("missing_rocks", 2, 5)]
+        assert "5, 9" in got[0].detail
+
+    def test_joining_late_is_not_missing_rocks(self):
+        g = game()
+        missing(g["ends"][0], 1, 2, 3)
+        assert checks(g) == []
+
+    def test_a_gap_in_the_first_end_after_rock_1_is(self):
+        g = game()
+        missing(g["ends"][0], 1, 2, 5)
+        assert checks(g) == ["missing_rocks"]
+
+    def test_a_conceded_last_end_is_not_missing_rocks(self):
+        g = game()
+        missing(g["ends"][-1], 14, 15, 16)
+        assert checks(g) == []
+
+    def test_a_middle_end_listing_too_few_rocks(self):
+        g = game(end(1, "top"), end(2, "bottom", rocks=14), end(3, "top"), end(4, "bottom"))
+        assert checks(g) == ["missing_rocks"]
+
+    def test_short_lists_at_either_end_of_the_game_are_normal(self):
+        g = game(end(1, "top", rocks=13), end(2, "bottom"), end(3, "top"), end(4, "bottom", rocks=9))
+        assert checks(g) == []
+
+    def test_one_colour_twice_in_a_row(self):
+        g = game()
+        g["ends"][2]["shots"][5]["color"] = g["ends"][2]["shots"][4]["color"]
+        assert "not_alternating" in checks(g)
+
+    def test_a_missing_rock_between_two_of_a_colour_is_not_a_repeat(self):
+        g = game()
+        missing(g["ends"][1], 6)          # rocks 5 and 7 are both red, and should be
+        assert "not_alternating" not in checks(g)
+
+    def test_doubles_are_not_held_to_alternating(self):
+        g = doubles_game()
+        g["ends"][0]["shots"][1]["color"] = "red"
+        assert "not_alternating" not in checks(g)
+
+    def test_one_colour_with_more_than_half_the_rocks(self):
+        g = game()
+        for s in g["ends"][1]["shots"][:10]:
+            s["color"] = "red"
+        assert "team_over" in checks(g)
+
+    def test_a_game_of_two_ends(self):
+        got = autoreview.review_game(game(n=2), FLOOR).findings
+        assert [(f.check, f.end) for f in got] == [("short_game", None)]
+
+    def test_a_tiny_last_end_after_a_real_game(self):
+        g = game(*[end(i, house(i)) for i in range(1, 7)], end(7, "top", rocks=3))
+        assert checks(g) == ["tiny_last_end"]
+
+    def test_a_short_game_is_not_also_a_tiny_end(self):
+        g = game(end(1, "top"), end(2, "bottom", rocks=2))
+        assert checks(g) == ["short_game"]
