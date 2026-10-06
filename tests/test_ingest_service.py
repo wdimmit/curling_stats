@@ -336,3 +336,101 @@ class TestFormatFromTitle:
     ])
     def test_everything_else_is_fours(self, title):
         assert source.format_from_title(title) == "fours"
+
+
+class TestRecordingsAgeOut:
+    """Live recordings stay a rolling week, then go -- whatever the budget;
+    downloads never age out."""
+
+    DAY = 86400.0
+
+    def _media(self, root, rel, size, read_ago, now):
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x" * size)
+        os.utime(p, (now - read_ago, now - read_ago))
+        return p
+
+    def _mark(self, root, vid, kept_ago, now, whole=True):
+        return cache.mark_kept(vid, root, whole=whole, now=now - kept_ago)
+
+    def test_a_recording_older_than_the_window_goes_with_its_proxy(self, tmp_path):
+        now = 10 * self.DAY
+        video = self._media(tmp_path, "videos/old.mp4", 100, 2 * self.DAY, now)
+        proxy = self._media(tmp_path, "proxies/old.ab12.mp4", 10, 2 * self.DAY, now)
+        marker = self._mark(tmp_path, "old", 8 * self.DAY, now)
+        removed = prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7)
+        assert set(removed) == {video, proxy}
+        assert not video.exists() and not proxy.exists() and not marker.exists()
+
+    def test_a_recording_inside_the_window_stays(self, tmp_path):
+        now = 10 * self.DAY
+        video = self._media(tmp_path, "videos/new.mp4", 100, 2 * self.DAY, now)
+        self._mark(tmp_path, "new", 6 * self.DAY, now)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7) == []
+        assert video.exists()
+
+    def test_a_download_never_ages_out(self, tmp_path):
+        now = 400 * self.DAY
+        video = self._media(tmp_path, "videos/harness.mp4", 100, 300 * self.DAY, now)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7) == []
+        assert video.exists()
+
+    def test_a_partial_recording_ages_out_too(self, tmp_path):
+        now = 10 * self.DAY
+        part = self._media(tmp_path, "kept/cut.ts", 100, 2 * self.DAY, now)
+        self._mark(tmp_path, "cut", 8 * self.DAY, now, whole=False)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7) == [part]
+
+    def test_an_old_recording_being_read_is_left_until_it_is_not(self, tmp_path):
+        now = 10 * self.DAY
+        video = self._media(tmp_path, "videos/busy.mp4", 100, 60, now)
+        marker = self._mark(tmp_path, "busy", 8 * self.DAY, now)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7) == []
+        assert video.exists() and marker.exists()
+
+    def test_a_marker_whose_recording_is_already_gone_is_cleared(self, tmp_path):
+        now = 10 * self.DAY
+        marker = self._mark(tmp_path, "gone", 8 * self.DAY, now)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7) == []
+        assert not marker.exists()
+
+    def test_an_unreadable_marker_is_left_alone(self, tmp_path):
+        now = 10 * self.DAY
+        video = self._media(tmp_path, "videos/odd.mp4", 100, 2 * self.DAY, now)
+        bad = tmp_path / "kept" / "odd.json"
+        bad.parent.mkdir()
+        bad.write_text("{not json")
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7) == []
+        assert video.exists() and bad.exists()
+
+    def test_proxies_of_a_dashed_id_take_no_other_video_s(self, tmp_path):
+        now = 10 * self.DAY
+        self._media(tmp_path, "videos/-f3R.mp4", 100, 2 * self.DAY, now)
+        mine = self._media(tmp_path, "proxies/-f3R.ab12.mp4", 10, 2 * self.DAY, now)
+        other = self._media(tmp_path, "proxies/-f3Rx.ab12.mp4", 10, 2 * self.DAY, now)
+        self._mark(tmp_path, "-f3R", 8 * self.DAY, now)
+        removed = prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7)
+        assert mine in removed and other.exists()
+
+    def test_markers_are_not_media(self, tmp_path):
+        now = 10 * self.DAY
+        self._mark(tmp_path, "x", 1 * self.DAY, now)
+        assert prune.media_files(tmp_path) == []
+
+    def test_kept_partials_count_against_the_budget(self, tmp_path):
+        now = 10 * self.DAY
+        part = self._media(tmp_path, "kept/cut.ts", 600, 3 * self.DAY, now)
+        self._mark(tmp_path, "cut", 1 * self.DAY, now, whole=False)
+        assert prune.prune(tmp_path, keep_gb=100e-9, now=now, recording_days=7) == [part]
+
+    def test_freed_space_counts_toward_the_floor(self, tmp_path):
+        # The expired recording frees 600 bytes; the floor of 500 is then met,
+        # so the other (younger) video stays.
+        now = 10 * self.DAY
+        self._media(tmp_path, "videos/old.mp4", 600, 2 * self.DAY, now)
+        self._mark(tmp_path, "old", 8 * self.DAY, now)
+        keep = self._media(tmp_path, "videos/other.mp4", 600, 3 * self.DAY, now)
+        prune.prune(tmp_path, keep_gb=1.0, now=now, min_free_gb=500e-9, free_bytes=0,
+                    recording_days=7)
+        assert keep.exists()
