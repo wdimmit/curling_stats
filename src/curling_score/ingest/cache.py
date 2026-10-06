@@ -193,7 +193,7 @@ def keep_recording(recording, vid: str, root: Path | None = None, *,
     # The pinned mtime, but a fresh atime: pin_mtime's would make it the
     # oldest-read file in the cache, the first the pruner lets go.
     os.utime(dest, ns=(time.time_ns(), PINNED_MTIME_NS))
-    mark_kept(vid, root, whole=True)
+    mark_kept(vid, root, whole=True, size=dest.stat().st_size)
     return dest
 
 
@@ -214,17 +214,19 @@ def partial_path(vid: str, root: Path | None = None) -> Path:
 
 
 def mark_kept(vid: str, root: Path | None = None, *, whole: bool,
-              now: float | None = None) -> Path:
-    """Note that ``vid``'s media is a live recording, and when it was kept.
+              now: float | None = None, size: int | None = None) -> Path:
+    """Note that ``vid``'s media is a live recording, when it was kept, and
+    how big the kept file was.
 
     A marker rather than a timestamp on the media: the video's mtime is pinned
     for the detection cache and its atime moves whenever it is read, so neither
-    can say how old the recording is."""
+    can say how old the recording is. The size is how the pruner tells the
+    recording from a download that later took its place in ``videos/``."""
     marker = kept_marker(vid, root)
     marker.parent.mkdir(parents=True, exist_ok=True)
     tmp = marker.with_suffix(".json.tmp")
     tmp.write_text(json.dumps({"kept_at": time.time() if now is None else now,
-                               "whole": whole}))
+                               "whole": whole, "size": size}))
     tmp.replace(marker)
     return marker
 
@@ -247,5 +249,5 @@ def keep_partial(recording, vid: str, root: Path | None = None, *,
     dest.parent.mkdir(parents=True, exist_ok=True)
     os.replace(recording, dest)
     os.utime(dest)              # read just now, as far as the pruner can tell
-    mark_kept(vid, root, whole=False, now=now)
+    mark_kept(vid, root, whole=False, now=now, size=dest.stat().st_size)
     return dest

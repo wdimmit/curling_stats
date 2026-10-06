@@ -240,15 +240,15 @@ class TestPrune:
         prune.prune(tmp_path, keep_gb=0.0, now=now)
         assert det.exists()
 
-    def test_a_disk_short_of_room_prunes_inside_the_budget(self, tmp_path):
-        # The budget is set once; the disk it shares fills up regardless.
+    def test_a_disk_short_of_room_takes_no_download(self, tmp_path):
+        # The floor makes room from live recordings only (TestRecordingsGiveWayFirst);
+        # downloads -- the harness among them -- answer to the budget alone.
         now = 1_000_000.0
         old = self._file(tmp_path, "videos", "old.mp4", 600, 90000, now)
         mid = self._file(tmp_path, "videos", "mid.mp4", 600, 80000, now)
-        new = self._file(tmp_path, "videos", "new.mp4", 600, 70000, now)
-        removed = prune.prune(tmp_path, keep_gb=1.0, now=now,
-                              min_free_gb=1000e-9, free_bytes=0)
-        assert removed == [old, mid] and new.exists()
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now,
+                           min_free_gb=1000e-9, free_bytes=0) == []
+        assert old.exists() and mid.exists()
 
     def test_a_disk_with_room_leaves_the_budget_in_charge(self, tmp_path):
         now = 1_000_000.0
@@ -352,7 +352,10 @@ class TestRecordingsAgeOut:
         return p
 
     def _mark(self, root, vid, kept_ago, now, whole=True):
-        return cache.mark_kept(vid, root, whole=whole, now=now - kept_ago)
+        # As keeping does: the marker records the size of the file it kept.
+        f = cache.video_path(vid, root) if whole else cache.partial_path(vid, root)
+        size = f.stat().st_size if f.is_file() else None
+        return cache.mark_kept(vid, root, whole=whole, now=now - kept_ago, size=size)
 
     def test_a_recording_older_than_the_window_goes_with_its_proxy(self, tmp_path):
         now = 10 * self.DAY
@@ -434,3 +437,107 @@ class TestRecordingsAgeOut:
         prune.prune(tmp_path, keep_gb=1.0, now=now, min_free_gb=500e-9, free_bytes=0,
                     recording_days=7)
         assert keep.exists()
+
+
+class TestRecordingsGiveWayFirst:
+    """Space allowing: when the budget or the disk floor needs room, kept live
+    recordings go first, oldest kept first; the floor never takes a download,
+    and the 11 harness videos are downloads."""
+
+    DAY = 86400.0
+
+    def _media(self, root, rel, size, read_ago, now):
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x" * size)
+        os.utime(p, (now - read_ago, now - read_ago))
+        return p
+
+    def test_a_full_disk_takes_a_recording_before_an_old_download(self, tmp_path):
+        now = 100 * self.DAY
+        harness = self._media(tmp_path, "videos/hOKZoeJNTpM.mp4", 600, 90 * self.DAY, now)
+        rec = self._media(tmp_path, "videos/rec1.mp4", 600, 2 * 3600, now)
+        cache.mark_kept("rec1", tmp_path, whole=True, now=now - self.DAY, size=600)
+        removed = prune.prune(tmp_path, keep_gb=1.0, now=now, min_free_gb=500e-9,
+                              free_bytes=0, recording_days=7)
+        assert removed == [rec] and harness.exists()
+
+    def test_the_floor_never_takes_a_download(self, tmp_path):
+        now = 100 * self.DAY
+        old = self._media(tmp_path, "videos/old.mp4", 600, 90 * self.DAY, now)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, min_free_gb=1.0,
+                           free_bytes=0, recording_days=7) == []
+        assert old.exists()
+
+    def test_recordings_go_oldest_kept_first_whatever_was_read_last(self, tmp_path):
+        now = 100 * self.DAY
+        older = self._media(tmp_path, "kept/a.ts", 600, 2 * 3600, now)
+        newer = self._media(tmp_path, "videos/b.mp4", 600, 5 * self.DAY, now)
+        cache.mark_kept("a", tmp_path, whole=False, now=now - 3 * self.DAY, size=600)
+        cache.mark_kept("b", tmp_path, whole=True, now=now - 1 * self.DAY, size=600)
+        removed = prune.prune(tmp_path, keep_gb=1.0, now=now, min_free_gb=500e-9,
+                              free_bytes=0, recording_days=7)
+        assert removed == [older] and newer.exists()
+
+    def test_the_budget_takes_recordings_then_old_downloads(self, tmp_path):
+        now = 100 * self.DAY
+        old = self._media(tmp_path, "videos/old.mp4", 600, 90 * self.DAY, now)
+        rec = self._media(tmp_path, "videos/rec1.mp4", 600, 2 * 3600, now)
+        cache.mark_kept("rec1", tmp_path, whole=True, now=now - self.DAY, size=600)
+        removed = prune.prune(tmp_path, keep_gb=100e-9, now=now, recording_days=7)
+        assert removed == [rec, old]
+
+    def test_a_recording_being_read_is_not_taken_for_space(self, tmp_path):
+        now = 100 * self.DAY
+        rec = self._media(tmp_path, "videos/rec1.mp4", 600, 60, now)
+        cache.mark_kept("rec1", tmp_path, whole=True, now=now - self.DAY, size=600)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, min_free_gb=1.0,
+                           free_bytes=0, recording_days=7) == []
+        assert rec.exists()
+
+
+class TestAMarkerTakesOnlyWhatItKept:
+    """A marker ages out the file it was written for, never a download that
+    took that video's place later."""
+
+    DAY = 86400.0
+
+    def _media(self, root, rel, size, read_ago, now):
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x" * size)
+        os.utime(p, (now - read_ago, now - read_ago))
+        return p
+
+    def test_a_download_after_a_partial_stays(self, tmp_path):
+        now = 100 * self.DAY
+        part = self._media(tmp_path, "kept/v1.ts", 300, 2 * self.DAY, now)
+        cache.mark_kept("v1", tmp_path, whole=False, now=now - 8 * self.DAY, size=300)
+        video = self._media(tmp_path, "videos/v1.mp4", 900, 2 * self.DAY, now)
+        proxy = self._media(tmp_path, "proxies/v1.ab12.mp4", 90, 2 * self.DAY, now)
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7) == [part]
+        assert video.exists() and proxy.exists()
+        assert not cache.kept_marker("v1", tmp_path).exists()
+
+    def test_a_download_after_a_pruned_recording_stays(self, tmp_path):
+        now = 100 * self.DAY
+        cache.mark_kept("v1", tmp_path, whole=True, now=now - 8 * self.DAY, size=600)
+        video = self._media(tmp_path, "videos/v1.mp4", 900, 2 * self.DAY, now)  # re-downloaded
+        assert prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7) == []
+        assert video.exists() and not cache.kept_marker("v1", tmp_path).exists()
+
+    def test_the_recording_itself_still_goes_with_its_proxies(self, tmp_path):
+        now = 100 * self.DAY
+        video = self._media(tmp_path, "videos/v1.mp4", 600, 2 * self.DAY, now)
+        proxy = self._media(tmp_path, "proxies/v1.ab12.mp4", 90, 2 * self.DAY, now)
+        cache.mark_kept("v1", tmp_path, whole=True, now=now - 8 * self.DAY, size=600)
+        assert set(prune.prune(tmp_path, keep_gb=1.0, now=now, recording_days=7)) == {
+            video, proxy}
+
+    def test_keeping_writes_the_kept_file_s_size(self, tmp_path):
+        rec = tmp_path / "live" / "v1" / "rec.0.ts"
+        rec.parent.mkdir(parents=True)
+        rec.write_bytes(b"x" * 123)
+        cache.keep_partial(rec, "v1", tmp_path)
+        import json as _json
+        assert _json.loads(cache.kept_marker("v1", tmp_path).read_text())["size"] == 123

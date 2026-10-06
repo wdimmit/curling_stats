@@ -15,8 +15,9 @@ services:
     environment:
       CURLING_SCORE_CACHE: /data/cache
       WORKER_CACHE_GB: "300"
-      # Media also goes until the disk has this much free: a live night records
-      # five streams at once, ~4 GB each, before any is kept in the cache.
+      # Kept live recordings also go, oldest first, until the disk has this much
+      # free (downloads never do): a live night records five streams at once,
+      # ~4 GB each, before any is kept in the cache.
       WORKER_MIN_FREE_GB: "40"
       # Live recordings are kept this many days -- a rolling week of league
       # nights, for replaying what the nightly review flags -- then go.

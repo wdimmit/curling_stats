@@ -166,7 +166,7 @@ class TestKeepingAPartialRecording:
         assert got == cache.partial_path("vid1", tmp_path) == tmp_path / "kept" / "vid1.ts"
         assert got.read_bytes() == b"partial ts" and not rec.exists()
         assert json.loads(cache.kept_marker("vid1", tmp_path).read_text()) == {
-            "kept_at": 1234.0, "whole": False}
+            "kept_at": 1234.0, "whole": False, "size": len(b"partial ts")}
 
     def test_it_never_becomes_the_cached_video(self, tmp_path):
         cache.keep_partial(self._rec(tmp_path), "vid1", tmp_path)
