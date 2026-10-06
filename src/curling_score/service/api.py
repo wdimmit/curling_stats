@@ -33,13 +33,14 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
-from curling_score import timeline, version, viewer
+from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
 from curling_score.service import dedupe, playlist_index, playlists, slug, thinking_report
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, Chart, Flag, Invite, Job, Play, Run, Source, Team, User, Worker, play_id,
+    JOB_KINDS, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team, User, Worker,
+    play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import detcache_key, meta_key, timeline_key
@@ -2281,6 +2282,145 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if got is None:
             raise HTTPException(404, "no such flag")
         return _flag_json(got)
+
+    # ------------------------------------------------------------- review
+    # Each night every game that finished processing is read for the signs
+    # that something went wrong (curling_score.autoreview), and one that shows
+    # them gets a ⚑ flag of its own beside the ones viewers send. Cloud
+    # Scheduler calls this hourly from 03:00 to 06:00 (deploy/scheduler.sh,
+    # REVIEW=1); each call does what fits in its time and leaves the rest.
+
+    def review_candidates(since: datetime, until: datetime | None = None) -> list:
+        """(source, run) for each game whose current run finished since
+        ``since`` (and before ``until``) and has not been read at that finish,
+        oldest first."""
+        out = []
+        for run in repo.runs_ready_since(since):
+            if run.status != "ready" or run.ready_at is None:
+                continue
+            if until is not None and run.ready_at >= until:
+                continue
+            for src in repo.sources_for_video(run.video_id):
+                if src.current_run_id != run.id or src.merged_into is not None:
+                    continue
+                done = repo.get_review(review_id(src.id, run.id))
+                if (done is not None and done.run_ready_at is not None
+                        and done.run_ready_at >= run.ready_at):
+                    continue
+                out.append((src, run))
+        out.sort(key=lambda pair: (pair[1].ready_at, pair[0].game_index))
+        return out
+
+    def review_baseline(before: datetime) -> autoreview.Baseline:
+        """Normal, from the games read in the fortnight before ``before`` --
+        never from the batch itself, so a bad night cannot hide in its own."""
+        since = before - timedelta(days=autoreview.BASELINE_DAYS)
+        return autoreview.Baseline.from_ends(
+            (r.format, m) for r in repo.reviews_ready_between(since, before)
+            if r.format and not r.error for m in r.ends)
+
+    def auto_flag(src: Source, run: Run, got: autoreview.GameReview) -> Flag:
+        fid = autoreview.flag_id(src.id, run.id, run.ready_at)
+        first = next((f for f in got.findings if f.strength == "strong"), got.findings[0])
+        earlier = next((r for r in repo.reviews_for_source(src.id)
+                        if r.flag_id and r.flag_id != fid), None)
+        extra = f"earlier auto-flag {earlier.flag_id} (run {earlier.run_id})" if earlier else ""
+        return Flag(
+            id=fid, created_at=now(), note=autoreview.summary(got, extra, MAX_FLAG_NOTE),
+            where={"link": "g", "chart_id": None, "share_slug": None, "source_id": src.id,
+                   "run_id": run.id, "video_id": run.video_id,
+                   "processing_version": run.processing_version, "title": run.title},
+            place={"game_index": src.game_index, "end": first.end, "rock": first.rock,
+                   "t_video_s": first.t_video_s},
+            origin="auto", findings=[f.to_dict() for f in got.findings + got.notes])
+
+    def review_one(src: Source, run: Run, baseline, with_flag: bool):
+        """One game read: its record and the flag it would raise. Writes nothing."""
+        try:
+            doc = game_doc(run, src.game_index, src, src.play_start_s)
+            if not doc.get("games"):
+                raise LookupError(f"game {src.game_index} is not in run {run.id}")
+            got, error = autoreview.review_game(doc["games"][0], baseline), None
+        except Exception as e:  # noqa: BLE001 - one bad game never stops the night
+            log.exception("could not review %s (run %s)", src.id, run.id)
+            got, error = None, f"{type(e).__name__}: {e}"[:500]
+        flag = auto_flag(src, run, got) if with_flag and got and got.raise_flag else None
+        record = Review(
+            id=review_id(src.id, run.id), source_id=src.id, run_id=run.id,
+            reviewed_at=now(), video_id=run.video_id, game_index=src.game_index,
+            format=got.format if got else None, run_ready_at=run.ready_at,
+            processing_version=run.processing_version,
+            ends=[m.to_dict() for m in got.ends] if got else [],
+            findings=[f.to_dict() for f in got.findings] if got else [],
+            notes=[f.to_dict() for f in got.notes] if got else [],
+            flag_id=flag.id if flag else None, error=error)
+        return record, flag
+
+    def iso_param(name: str, value: str | None) -> datetime | None:
+        if value is None:
+            return None
+        try:
+            t = datetime.fromisoformat(value)
+        except ValueError:
+            raise HTTPException(422, f"{name} must be an ISO time") from None
+        return t if t.tzinfo is not None else t.replace(tzinfo=timezone.utc)
+
+    @app.post("/api/admin/review")
+    def admin_review(dry_run: bool = False, flag: bool = True, since: str | None = None,
+                     until: str | None = None, source_id: str | None = None,
+                     limit: int = Query(autoreview.BATCH, ge=1, le=200),
+                     authorization: str | None = Header(default=None)):
+        """Read the games that finished since ``since`` (default: the last
+        LOOKBACK_DAYS), and before ``until`` if given, and flag the ones that
+        look wrong.
+
+        Idempotent: a game is read once per finish of its run, and its flag's
+        id is derived, so a repeated call never adds a second -- nor reopens
+        one that was resolved. ``dry_run`` writes nothing and returns the flags
+        it would raise; ``flag=false`` records what it read but raises nothing,
+        to give a new deployment its baseline (with ``until``, leaving the most
+        recent games for the first real night); ``source_id`` reads that one
+        game again now. Call it until ``pending`` is 0.
+        """
+        require_admin(authorization)
+        started = now()
+        if source_id is not None:
+            src = repo.get_source(source_id)
+            if src is None:
+                raise HTTPException(404, "no such game")
+            run = repo.get_run(src.current_run_id)
+            if run is None or run.status != "ready" or run.ready_at is None:
+                raise HTTPException(409, "that game's run is not ready")
+            batch = [(src, run)]
+        else:
+            t0 = (iso_param("since", since)
+                  or started - timedelta(days=autoreview.LOOKBACK_DAYS))
+            batch = review_candidates(t0, iso_param("until", until))
+        baseline = review_baseline(min(r.ready_at for _s, r in batch)) if batch else None
+        reviewed, flagged, errors, would = 0, 0, [], []
+        for src, run in batch[:limit]:
+            if reviewed and (now() - started).total_seconds() > autoreview.TIME_BUDGET_S:
+                break
+            record, fl = review_one(src, run, baseline, with_flag=flag)
+            reviewed += 1
+            if record.error:
+                errors.append({"source_id": src.id, "error": record.error})
+            if fl is not None:
+                if dry_run:
+                    would.append({"source_id": src.id, "title": run.title,
+                                  "flag": _flag_json(fl)})
+                    flagged += 1
+                elif repo.put_flag_if_absent(fl):
+                    flagged += 1
+            if not dry_run:
+                repo.put_review(record)
+        log.info("review: %d read, %d flagged, %d errors, %d left",
+                 reviewed, flagged, len(errors), len(batch) - reviewed)
+        out = {"ok": True, "reviewed": reviewed, "flagged": flagged, "errors": errors,
+               "pending": len(batch) - reviewed}
+        if dry_run:
+            out["would_flag"] = would
+        return out
 
     @app.get("/api/admin/playlists")
     def admin_playlists(authorization: str | None = Header(default=None)):
