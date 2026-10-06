@@ -17,8 +17,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Run, Source, Team, User,
-    WatchedPlaylist, Worker, play_id,
+    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, Source, Team, User,
+    WatchedPlaylist, Worker, play_id, review_id,
 )
 from curling_score.service.repo import MemoryRepo
 
@@ -40,7 +40,7 @@ def _firestore_repo():
     for col in ("vod_runs", "jobs", "sources", "charts", "share_slugs",
                 "workers", "watched_playlists", "rate_limits",
                 "users", "teams", "invites", "chart_claims", "flags", "yt_playlists",
-                "plays"):
+                "plays", "reviews"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -557,6 +557,64 @@ class TestFlags:
         assert f.user == {"uid": "u1", "email": "a@b.c"} and f.overrides_version == 3
 
 
+class TestReviews:
+    def review(self, **kw):
+        base = dict(id=review_id("s_1", "r_1"), source_id="s_1", run_id="r_1",
+                    reviewed_at=T0, format="fours", run_ready_at=T0,
+                    ends=[{"number": 1, "rocks": 16, "broom": 15, "split": 16, "line": 16,
+                           "release": 16}],
+                    findings=[{"check": "odd_split", "strength": "weak", "end": 1, "rock": 9,
+                               "detail": "split 23.4 s", "t_video_s": 1234.5}])
+        base.update(kw)
+        return Review(**base)
+
+    def test_put_and_get(self, repo):
+        repo.put_review(self.review())
+        got = repo.get_review("s_1_r_1")
+        assert got.ends[0]["broom"] == 15 and got.findings[0]["rock"] == 9
+        assert repo.get_review("s_9_r_9") is None
+
+    def test_between_is_half_open_on_when_the_run_finished(self, repo):
+        for i, t in enumerate((-60, 0, 60)):
+            repo.put_review(self.review(id=f"s_{i}_r_1", source_id=f"s_{i}",
+                                        run_ready_at=at(t)))
+        got = repo.reviews_ready_between(at(-60), at(60))
+        assert sorted(r.id for r in got) == ["s_0_r_1", "s_1_r_1"]
+
+    def test_for_a_source_newest_first(self, repo):
+        repo.put_review(self.review(id="s_1_r_1", reviewed_at=at(0)))
+        repo.put_review(self.review(id="s_1_r_2", run_id="r_2", reviewed_at=at(60)))
+        repo.put_review(self.review(id="s_2_r_1", source_id="s_2"))
+        assert [r.id for r in repo.reviews_for_source("s_1")] == ["s_1_r_2", "s_1_r_1"]
+
+
+class TestRunsReadySince:
+    def test_only_runs_that_finished_since_oldest_first(self, repo):
+        repo.put_run(run(id="r_never"))
+        repo.put_run(run(id="r_old", status="ready", ready_at=at(-10)))
+        repo.put_run(run(id="r_b", status="ready", ready_at=at(20)))
+        repo.put_run(run(id="r_a", status="ready", ready_at=at(10)))
+        assert [r.id for r in repo.runs_ready_since(at(0))] == ["r_a", "r_b"]
+
+
+class TestFlagIfAbsent:
+    def test_the_first_write_wins_and_a_resolved_flag_stays_resolved(self, repo):
+        f = Flag(id="fa_1", created_at=T0, note="first", origin="auto",
+                 findings=[{"check": "same_house"}])
+        assert repo.put_flag_if_absent(f) is True
+        repo.resolve_flag("fa_1", at(60))
+        again = Flag(id="fa_1", created_at=at(120), note="second", origin="auto")
+        assert repo.put_flag_if_absent(again) is False
+        (got,) = repo.list_flags()
+        assert (got.note, got.status, got.origin) == ("first", "resolved", "auto")
+        assert got.findings == [{"check": "same_house"}]
+
+    def test_a_flag_from_before_origins_reads_as_a_viewer_flag(self, repo):
+        repo.put_flag(Flag(id="f_1", created_at=T0, note="n"))
+        (got,) = repo.list_flags()
+        assert got.origin == "viewer" and got.findings == []
+
+
 class TestPlays:
     def play(self, **kw):
         base = dict(user_id="u1", source_id="src_1", color="red", slot=4,
@@ -612,6 +670,8 @@ class TestBackup:
         repo.put_play(Play(id=play_id("u1", "src_1"), user_id="u1", source_id="src_1",
                            color="yellow", slot=2, created_at=T0, updated_at=T0,
                            chart_id="c_1", link="c"))
+        repo.put_review(Review(id="s_1_r_1", source_id="s_1", run_id="r_1",
+                               reviewed_at=T0, run_ready_at=T0, flag_id="fa_1"))
         data = repo.export_all()
         assert {r["id"] for r in data["runs"]} == {"r_1"}
         assert {c["id"] for c in data["charts"]} == {"c_1"}
@@ -625,3 +685,4 @@ class TestBackup:
         assert [f.id for f in fresh.list_flags()] == ["f_1"]
         got = fresh.get_play("u1", "src_1")
         assert (got.color, got.slot, got.chart_id) == ("yellow", 2, "c_1")
+        assert fresh.get_review("s_1_r_1").flag_id == "fa_1"

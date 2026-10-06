@@ -13,6 +13,9 @@ Composite indexes this needs (``deploy/firestore.indexes.json``):
     charts    (run_id ASC)
     flags     (status ASC, created_at DESC)
 
+Single-field ranges only, which Firestore indexes by itself:
+``vod_runs.ready_at`` and ``reviews.run_ready_at``.
+
 Field-index exemptions the same file carries: charts.overrides and
 charts.overrides_meta are maps whose every subfield Firestore would otherwise
 index, thousands of entries per chart, for something no query ever touches.
@@ -22,7 +25,7 @@ import json
 from datetime import timedelta
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Run, Source, Team, User,
+    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, Source, Team, User,
     WatchedPlaylist, Worker, play_id,
 )
 from curling_score.service.repo import (
@@ -33,6 +36,7 @@ RUNS, JOBS, SOURCES, CHARTS = "vod_runs", "jobs", "sources", "charts"
 SHARES, WORKERS, PLAYLISTS, RATES = "share_slugs", "workers", "watched_playlists", "rate_limits"
 USERS, TEAMS, INVITES, CLAIMS = "users", "teams", "invites", "chart_claims"
 FLAGS, PLAYLIST_INDEX, PLAYS = "flags", "yt_playlists", "plays"
+REVIEWS = "reviews"
 
 
 def _claim_id(owner_key: str, source_id: str) -> str:
@@ -99,6 +103,11 @@ class FirestoreRepo:
         if status is not None:
             q = self._where(RUNS, "status", "==", status)
         q = q.order_by("created_at", direction=self._fs.Query.DESCENDING).limit(limit)
+        return [Run.from_dict(d.to_dict()) for d in q.stream()]
+
+    def runs_ready_since(self, t):
+        # A range on one field: Firestore's automatic index, no composite.
+        q = self._where(RUNS, "ready_at", ">=", t).order_by("ready_at")
         return [Run.from_dict(d.to_dict()) for d in q.stream()]
 
     # ---- jobs ---------------------------------------------------------
@@ -456,6 +465,35 @@ class FirestoreRepo:
             flag.status, flag.resolved_at = "resolved", now
         return flag
 
+    def put_flag_if_absent(self, flag):
+        # create() fails when the document exists: the check and the write are
+        # one operation, so two calls racing cannot both win.
+        from google.api_core.exceptions import Conflict      # AlreadyExists is one
+
+        try:
+            self._col(FLAGS).document(flag.id).create(flag.to_dict())
+        except Conflict:
+            return False
+        return True
+
+    # ---- reviews ------------------------------------------------------
+    def put_review(self, review):
+        self._col(REVIEWS).document(review.id).set(review.to_dict())
+
+    def get_review(self, review_id):
+        return self._get(REVIEWS, review_id, Review)
+
+    def reviews_ready_between(self, t0, t1):
+        q = (self._where(REVIEWS, "run_ready_at", ">=", t0)
+             .where(filter=self._fs.FieldFilter("run_ready_at", "<", t1)))
+        return [Review.from_dict(d.to_dict()) for d in q.stream()]
+
+    def reviews_for_source(self, source_id):
+        # One equality filter, sorted here: no composite index to keep.
+        q = self._where(REVIEWS, "source_id", "==", source_id)
+        docs = [Review.from_dict(d.to_dict()) for d in q.stream()]
+        return sorted(docs, key=lambda r: r.reviewed_at, reverse=True)
+
     # ---- plays --------------------------------------------------------
     def put_play(self, play):
         self._col(PLAYS).document(play.id).set(play.to_dict())
@@ -511,7 +549,7 @@ class FirestoreRepo:
                 "charts": dump(CHARTS), "workers": dump(WORKERS),
                 "watched_playlists": dump(PLAYLISTS), "users": dump(USERS),
                 "teams": dump(TEAMS), "invites": dump(INVITES), "flags": dump(FLAGS),
-                "plays": dump(PLAYS)}
+                "plays": dump(PLAYS), "reviews": dump(REVIEWS)}
 
     def import_all(self, data):
         for d in data.get("runs", []):
@@ -536,6 +574,8 @@ class FirestoreRepo:
             self.put_flag(Flag.from_dict(d))
         for d in data.get("plays", []):
             self.put_play(Play.from_dict(d))
+        for d in data.get("reviews", []):
+            self.put_review(Review.from_dict(d))
         # Claims are derivable, so they are not exported -- rebuilt here
         # instead, because a restore that lost them would start handing a team
         # a second chart for a game it already has.

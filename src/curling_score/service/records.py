@@ -350,6 +350,46 @@ class Flag:
     overrides_version: int | None = None
     user: dict | None = None              # {"uid", "email"} when signed in
     ip_hash: str | None = None
+    # "viewer": somebody pressed ⚑ Flag. "auto": the nightly review found
+    # something (curling_score.autoreview), and `findings` says what, rock by
+    # rock -- each {check, strength, end, rock, detail, t_video_s}.
+    origin: str = "viewer"
+    findings: list = field(default_factory=list)
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+def review_id(source_id: str, run_id: str) -> str:
+    """One review per game per run; a run retried in place replaces it."""
+    return f"{source_id}_{run_id}"
+
+
+@dataclass
+class Review:
+    """What the nightly review read in one game: each end's coverage, which
+    later nights' baseline is made of; what it found; and the flag it raised.
+
+    `run_ready_at` is the run's `ready_at` when it was read. A run retried in
+    place finishes again later, and that is how the review knows to read it
+    again. `error` is why the game could not be read; such a game is not
+    tried again by later calls.
+    """
+
+    id: str
+    source_id: str
+    run_id: str
+    reviewed_at: datetime
+    video_id: str | None = None
+    game_index: int | None = None
+    format: str | None = None             # "fours" | "doubles"
+    run_ready_at: datetime | None = None
+    processing_version: str | None = None
+    ends: list = field(default_factory=list)       # autoreview.EndMetrics dicts
+    findings: list = field(default_factory=list)   # autoreview.Finding dicts
+    notes: list = field(default_factory=list)
+    flag_id: str | None = None
+    error: str | None = None
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

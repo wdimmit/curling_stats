@@ -13,7 +13,8 @@ from pathlib import Path
 _TIME_FIELDS = {"created_at", "updated_at", "ready_at", "run_after", "lease_expires_at",
                 "progress_at", "started_at", "finished_at", "last_seen_at",
                 "last_polled_at", "published_at", "played_at",
-                "expires_at", "revoked_at", "resolved_at"}
+                "expires_at", "revoked_at", "resolved_at",
+                "reviewed_at", "run_ready_at"}
 # Note this only revives the top level. Chart.overrides_meta is a map of maps,
 # so its inner timestamps are stored as ISO strings and need no reviving --
 # which is exactly why they are strings.

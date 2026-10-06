@@ -602,6 +602,18 @@ def test_restore_revives_a_flags_times():
     assert f.created_at.hour == 12 and f.resolved_at.hour == 13
 
 
+def test_restore_revives_a_reviews_times():
+    from curling_score.service.repo import MemoryRepo
+    from curling_score.service.restore import restore
+
+    repo = MemoryRepo()
+    restore(repo, {"reviews": [{"id": "s_1_r_1", "source_id": "s_1", "run_id": "r_1",
+                                "reviewed_at": "2026-10-05T10:00:00+00:00",
+                                "run_ready_at": "2026-10-05T06:30:00+00:00"}]})
+    got = repo.get_review("s_1_r_1")
+    assert got.reviewed_at.hour == 10 and got.run_ready_at.hour == 6
+
+
 def test_the_flags_query_has_its_index():
     """list_flags filters on status and orders by time in Firestore, which
     needs a composite index -- declared in both places the deploy reads."""
