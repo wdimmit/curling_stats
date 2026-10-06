@@ -109,7 +109,7 @@ class YtDlpRecorder:
         self._parts = []
         self._lock = threading.Lock()
         self._checking = threading.Lock()
-        self._ended = self._stopped = False
+        self._ended = self._stopped = self._whole = False
         self._started_at = self._progress_at = self._exited_at = None
         self._progress_head = 0.0
         self._live_answer = (None, None)       # (asked at, answer) during the grace
@@ -193,7 +193,9 @@ class YtDlpRecorder:
         if self._exited_at is None:
             self._exited_at = now
         if not self._still_live_now(now):
+            log.info("recording %s ended with the stream (exit %s)", self.video_id, code)
             self._ended = True
+            self._whole = code == 0 and self.require_first_segment
             return
         if self._stopped or now - self._exited_at < self.exit_grace_s:
             return
@@ -216,6 +218,13 @@ class YtDlpRecorder:
     def ended(self) -> bool:
         """A plain read: the manager's thread decides, in check()."""
         return self._ended
+
+    def whole(self) -> bool:
+        """Whether the recording holds the whole stream: from the first
+        segment until yt-dlp finished it cleanly because the stream ended. A
+        cap, a stall, a stop or a failed exit may have cut its tail off, so
+        none of them counts."""
+        return self._whole
 
     def stop(self):
         self._stopped = True

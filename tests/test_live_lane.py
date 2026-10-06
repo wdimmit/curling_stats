@@ -132,6 +132,69 @@ class TestTheManager:
         assert s.recorder.stopped and m.streams() == [] and not m.has_streams()
 
 
+class TestKeepingTheRecording:
+    """A whole recording goes into the video cache when its stream is let go,
+    so reprocessing the game needs no download; anything else is deleted."""
+
+    def _finish(self, tmp_path, monkeypatch, whole=True, keep=True, fails=False,
+                no_file=False):
+        kept, partial, pruned = [], [], []
+
+        def keep_recording(path, vid, root):
+            if fails:
+                raise RuntimeError("ffmpeg fell over")
+            kept.append((path, vid, root))
+            return root / "videos" / f"{vid}.mp4"
+
+        def keep_partial(path, vid, root):
+            partial.append((path, vid, root))
+            return root / "kept" / f"{vid}.ts"
+
+        monkeypatch.setattr(manager_mod.cache, "keep_recording", keep_recording)
+        monkeypatch.setattr(manager_mod.cache, "keep_partial", keep_partial)
+        m = manager_mod.LiveManager(
+            Api([live_job(1)]), "home", model_id="m-abc", gpu=None, root=tmp_path,
+            make_recorder=lambda job: Recorder(job), prune=lambda: pruned.append(1),
+            background=lambda fn: fn())
+        m.poll_once()
+        (s,) = m.streams()
+        directory = tmp_path / "live" / "liveVid0001"
+        directory.mkdir(parents=True)
+        (directory / "rec.0.ts").write_bytes(b"ts")
+        s.recorder.whole = lambda: whole
+        # This file's Recorder double has no `path` until a test gives it one,
+        # so leaving it unset stands for a recorder that never wrote a file.
+        # (The real recorder raises IndexError there; finish catches both.)
+        if not no_file:
+            s.recorder.path = directory / "rec.0.ts"
+        m.finish(s, keep=keep)
+        assert s.recorder.stopped and m.streams() == []
+        return s, kept, partial, pruned, directory
+
+    def test_a_whole_recording_is_kept_then_the_cache_pruned(self, tmp_path, monkeypatch):
+        _, kept, partial, pruned, directory = self._finish(tmp_path, monkeypatch)
+        assert kept == [(directory / "rec.0.ts", "liveVid0001", tmp_path)]
+        assert partial == [] and pruned == [1] and not directory.exists()
+
+    def test_a_recording_that_is_not_whole_is_kept_as_a_partial(self, tmp_path, monkeypatch):
+        _, kept, partial, pruned, directory = self._finish(tmp_path, monkeypatch, whole=False)
+        assert kept == [] and partial == [(directory / "rec.0.ts", "liveVid0001", tmp_path)]
+        assert pruned == [1] and not directory.exists()
+
+    def test_a_recording_turned_down_is_deleted(self, tmp_path, monkeypatch):
+        _, kept, partial, _, directory = self._finish(tmp_path, monkeypatch, keep=False)
+        assert kept == [] and partial == [] and not directory.exists()
+
+    def test_a_recording_that_cannot_be_kept_is_still_deleted(self, tmp_path, monkeypatch):
+        _, _, _, pruned, directory = self._finish(tmp_path, monkeypatch, fails=True)
+        assert not directory.exists() and pruned == [1]
+
+    def test_a_recorder_that_never_wrote_a_file_keeps_nothing(self, tmp_path, monkeypatch):
+        _, kept, partial, pruned, directory = self._finish(tmp_path, monkeypatch,
+                                                           no_file=True)
+        assert kept == [] and partial == [] and pruned == [] and not directory.exists()
+
+
 class Session:
     """Builds an end whenever asked while one is due; done after ``ends``."""
 
@@ -166,7 +229,7 @@ def doc(n, final=False):
 def lane(api, streams, sessions):
     class M:
         def __init__(self):
-            self._streams, self.finished = list(streams), []
+            self._streams, self.finished, self.kept = list(streams), [], []
 
         def streams(self):
             return list(self._streams)
@@ -174,8 +237,9 @@ def lane(api, streams, sessions):
         def has_streams(self):
             return bool(self._streams)
 
-        def finish(self, s):
+        def finish(self, s, keep=True):
             self.finished.append(s.job["id"])
+            self.kept.append(keep)
             self._streams.remove(s)
 
     m = M()
@@ -221,7 +285,21 @@ class TestTheLane:
         (job_id, payload), = api.completed
         assert job_id == "j_1" and payload["format"] == "fours"
         assert payload["games"][0]["ends"] == 1
-        assert m.finished == ["j_1"]
+        assert m.finished == ["j_1"] and m.kept == [True]
+
+    def test_a_sheet_nobody_played_does_not_keep_its_recording(self):
+        class Empty(Session):
+            def step(self):
+                self.done = True
+                self.publish({"games": [], "live": {"in_progress": False,
+                                                    "recorded_s": 5400.0}})
+                return "finished"
+
+        api = Api()
+        ln, m, _ = lane(api, [stream(1)], {"j_1": lambda st, pub: Empty(st, pub)})
+        while ln.busy():
+            ln.step()
+        assert [c[0] for c in api.completed] == ["j_1"] and m.kept == [False]
 
     def test_a_session_that_cannot_go_on_fails_its_job(self):
         api = Api()

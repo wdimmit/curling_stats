@@ -15,14 +15,22 @@ services:
     environment:
       CURLING_SCORE_CACHE: /data/cache
       WORKER_CACHE_GB: "300"
+      # Kept live recordings also go, oldest first, until the disk has this much
+      # free (downloads never do): a live night records five streams at once,
+      # ~4 GB each, before any is kept in the cache.
+      WORKER_MIN_FREE_GB: "40"
+      # Live recordings are kept this many days -- a rolling week of league
+      # nights, for replaying what the nightly review flags -- then go.
+      WORKER_RECORDING_DAYS: "7"
       YTDLP_POT_PROVIDER: http://pot:4416
       # Half of a league night's streams each, with worker2 below; a worker
       # claims live jobs greedily up to this, so 6 here would take all five.
       LIVE_MAX_STREAMS: "3"
     depends_on: [pot]
     volumes:
-      # The host's designated storage. 394 GB free there, so the 300 GB budget
-      # above has room; change both together if that ever stops being true.
+      # The host's designated storage, on a disk shared with everything else
+      # the box keeps: 76 GB free on 2026-09-29, less than the 300 GB budget
+      # above, so it is WORKER_MIN_FREE_GB that holds the cache in.
       - /data/wdd/curling-cache:/data/cache
     deploy:
       resources:

@@ -232,6 +232,18 @@ class TestLoop:
         assert api.completed == [] and api.failed == []
 
 
+    def test_the_prune_after_a_job_ages_out_recordings(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(worker, "process_job",
+                            lambda job, api, wid, **kw: api.complete(job["id"], wid, {}))
+        calls = []
+        monkeypatch.setattr(worker.prune, "prune",
+                            lambda root, gb, **kw: calls.append(kw) or [])
+        worker.run_forever(FakeApi([JOB]), "home", root=tmp_path, weights=None,
+                           out_dir=tmp_path, cache_gb=1.0, min_free_gb=40.0,
+                           recording_days=7.0, sleep=lambda s: None, once=True)
+        assert calls == [{"min_free_gb": 40.0, "recording_days": 7.0}]
+
+
 class TestResolveWeights:
     def test_an_explicit_setting_wins(self, monkeypatch):
         # A deployment must be able to pin its own model.
@@ -391,6 +403,18 @@ class TestBuildingTheLiveLane:
                                 start=False)
         assert isinstance(got, lane.LiveLane)
         assert got.manager.max_streams == 4 and got.manager.root == tmp_path
+
+
+    def test_the_live_lane_prunes_with_the_recording_window(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        calls = []
+        monkeypatch.setattr(worker.prune, "prune",
+                            lambda root, gb, **kw: calls.append((gb, kw)) or [])
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False, cache_gb=300.0, min_free_gb=40.0,
+                                recording_days=7.0)
+        got.manager.prune()
+        assert calls == [(300.0, {"min_free_gb": 40.0, "recording_days": 7.0})]
 
 
 class TestTheWorkerOutlivesItsLiveLane:

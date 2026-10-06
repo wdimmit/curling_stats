@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from curling_score.ingest import cache
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -41,14 +42,23 @@ class Stream:
     retry_at: float = 0.0
 
 
+def _in_background(fn):
+    threading.Thread(target=fn, name="live-keep", daemon=True).start()
+
+
 class LiveManager:
     def __init__(self, api, worker_id, *, model_id, gpu, root=None,
                  max_streams: int = MAX_STREAMS, make_recorder=None,
-                 heartbeat_s: float = HEARTBEAT_S, clock=time.monotonic):
+                 heartbeat_s: float = HEARTBEAT_S, clock=time.monotonic,
+                 prune=None, background=_in_background):
+        """``prune`` is called once a recording has been kept, to hold the
+        cache to its budget; ``background`` runs the keeping, which copies
+        gigabytes, somewhere other than the lane's thread."""
         self.api, self.worker_id, self.model_id, self.gpu = api, worker_id, model_id, gpu
         self.root = Path(root) if root is not None else None
         self.max_streams, self.heartbeat_s, self.clock = max_streams, heartbeat_s, clock
         self.make_recorder = make_recorder or self._recorder
+        self.prune, self.background = prune, background
         self._streams = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -73,14 +83,50 @@ class LiveManager:
         with self._lock:
             return bool(self._streams)
 
-    def finish(self, stream):
-        """Let a stream go: stop recording it and delete the recording."""
+    def finish(self, stream, keep: bool = True):
+        """Let a stream go: stop recording it, and delete the recording --
+        after filing it, unless ``keep`` is turned down: a whole recording as
+        the video's cached copy, so reprocessing the game needs no download; a
+        partial one under ``kept/``, for investigation. The pruner lets either
+        go after a week (WORKER_RECORDING_DAYS), or sooner if the disk needs it."""
         stream.recorder.stop()
         with self._lock:
             if stream in self._streams:
                 self._streams.remove(stream)
-        if self.root is not None:
-            shutil.rmtree(self.root / "live" / stream.job["video_id"], ignore_errors=True)
+        if self.root is None:
+            return
+        vid = stream.job["video_id"]
+        directory = self.root / "live" / vid
+        whole = getattr(stream.recorder, "whole", lambda: False)()
+        try:
+            path = stream.recorder.path
+        except (AttributeError, IndexError):     # never started: nothing written
+            path = None
+        if not keep or path is None:
+            shutil.rmtree(directory, ignore_errors=True)
+            return
+        # The whole stream becomes the video's cached copy; anything less is
+        # kept beside it for a week, for looking into what went wrong, and is
+        # never taken for the game itself.
+        file_it = cache.keep_recording if whole else cache.keep_partial
+
+        def keep_it():
+            try:
+                kept = file_it(path, vid, self.root)
+                if kept is not None:
+                    log.info("kept the %s recording of %s as %s",
+                             "whole" if whole else "partial", vid, kept)
+            except Exception:  # noqa: BLE001 - only a replay is lost
+                log.exception("could not keep the recording of %s", vid)
+            finally:
+                shutil.rmtree(directory, ignore_errors=True)
+            if self.prune is not None:
+                try:
+                    self.prune()
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("prune failed: %s", exc)
+
+        self.background(keep_it)
 
     # --- the thread -----------------------------------------------------------
 
