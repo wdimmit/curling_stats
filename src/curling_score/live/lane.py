@@ -11,6 +11,7 @@ import json
 import logging
 import time
 
+from curling_score import timeline
 from curling_score.ingest import source
 from curling_score.live.session import LiveError
 
@@ -24,8 +25,7 @@ RETRY_S = 60.0
 
 
 def _games(doc):
-    return [{"index": g["index"], "start_s": g["start_s"], "end_s": g["end_s"],
-             "ends": len(g["ends"])} for g in doc["games"]]
+    return [timeline.game_summary(g) for g in doc["games"]]
 
 
 def _sheet(job):

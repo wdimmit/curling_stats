@@ -133,7 +133,12 @@ from pathlib import Path
 # was cleared across them, but no gap was changeover-sized -- one thirteen-end
 # game, with game 2's board on game 1's ends. Of 126 games, 09/27-10/05, three
 # have such a pair; the other two were already decided or are a game's tail.
-PIPELINE_VERSION = "2026.10.06.2"
+# 2026.10.06.3: a finished game with no board card and under 85% of its ends'
+# rocks kept is marked practice (`timeline.is_practice`), and its summary says
+# so; the service leaves it out of the catalogue. Of 127 games it marks the
+# four practice sessions of the week to 10/06 and six one- or two-end scraps,
+# and no real game.
+PIPELINE_VERSION = "2026.10.06.3"
 
 
 def model_id(weights) -> str:

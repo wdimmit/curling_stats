@@ -737,8 +737,14 @@ def build_games(ctx: EndContext, games, *, read_board=None,
             if read_board is not None:
                 board = read_board(kept)
                 put_board_scores(out_ends, board)
-        out_games.append(finish_game(replace(kept, index=len(out_games)), out_ends,
-                                     board, ctx.fmt, progress))
+        out_game = finish_game(replace(kept, index=len(out_games)), out_ends,
+                               board, ctx.fmt, progress)
+        # Kept, but marked: the service leaves practice out of the catalogue.
+        out_game["practice"] = timeline.is_practice(out_game)
+        if out_game["practice"]:
+            progress(f"  game {kept.index + 1}: no board card and few of its rocks "
+                     "kept -- practice, not listed")
+        out_games.append(out_game)
     return out_games
 
 

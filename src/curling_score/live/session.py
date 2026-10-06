@@ -470,6 +470,8 @@ class LiveSession:
                               end_s=segs[-1].end_s, ends=segs, closed=game.closed)
             out = analyze.finish_game(seg, ends, board, self.fmt, self.progress)
             out["in_progress"] = not (self.done or (game.closed and len(built) == len(game.ends)))
+            # Only a finished game: the club often posts its first cards ends late.
+            out["practice"] = not out["in_progress"] and timeline.is_practice(out)
             out_games.append(out)
         cal = self.calibration
         doc = timeline.build_document(

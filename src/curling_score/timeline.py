@@ -804,6 +804,40 @@ def nothing_thrown(end: dict) -> bool:
     return released == 0 and kept <= end.get("shots_expected", C.STONES_PER_END) // 2
 
 
+# A practice session is not a game. Four were published as games in the week to
+# 2026-10-06: two people throwing both colours (10/04 doubles sheet 1), one
+# person alone after the league game (10/02 Friday sheet 5) and both 10/04
+# Sunday Afternoon sheet 5 "games". None showed a board card all session -- nobody
+# keeps score in practice -- and none kept more than 81% of its ends' rocks,
+# since practice throws come in any number, of either colour, in any order. Of
+# 127 games those two together pick out the four and six one- or two-end scraps
+# of stones pushed about, and no real game: 17 real games read no card, from a
+# board the reader could not read, and all kept 85% or more; the one real game
+# that kept less (83%) had its board posted.
+PRACTICE_MAX_KEPT = 0.85
+
+
+def is_practice(game: dict) -> bool:
+    """Whether a finished game was practice: no board card all game, and under
+    ``PRACTICE_MAX_KEPT`` of its ends' rocks kept."""
+    ends = game.get("ends") or []
+    if not ends or ((game.get("scoreboard") or {}).get("per_end")):
+        return False
+    expected = sum(e.get("shots_expected", C.STONES_PER_END) for e in ends)
+    kept = sum(1 for e in ends for s in e.get("shots") or () if not s.get("missing"))
+    return kept < PRACTICE_MAX_KEPT * expected
+
+
+def game_summary(game: dict) -> dict:
+    """What a worker tells the service about a game: where it is, how many
+    ends, and -- only when it was -- that it was practice."""
+    out = {"index": game["index"], "start_s": game["start_s"], "end_s": game["end_s"],
+           "ends": len(game["ends"])}
+    if game.get("practice"):
+        out["practice"] = True
+    return out
+
+
 def reads_short(end: dict) -> bool:
     """Whether an end is short of a full end, as the practice guard and the
     trim have always counted it: the shots listed, blanks included.

@@ -798,3 +798,23 @@ class TestStonesParkedBetweenTwoGames:
                     assert not 3600 <= e["start_s"] < 4300
                     key = (e["start_s"], e["end_s"])
                     assert seen.setdefault(key, (g["index"], e["number"])) == (g["index"], e["number"])
+
+
+class TestPractice:
+    """The fakes' ends keep no rocks and the board is never read: practice,
+    by `timeline.is_practice` -- but only once the game is over."""
+
+    def test_a_game_in_progress_is_never_called_practice(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 3400.0)
+        assert all(not g["practice"] for doc in pub[:-1] for g in doc["games"]
+                   if g["in_progress"])
+        assert pub[-1]["games"][0]["practice"] is True
+
+    def test_a_finished_game_the_board_scored_is_a_game(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        pipe.board = board(("red", 1, 1), ("yellow", 2, 2), ("red", 3, 3))
+        s = session(pipe, rec, pub)
+        finish(s, rec, 3400.0)
+        assert pub[-1]["games"][0]["practice"] is False

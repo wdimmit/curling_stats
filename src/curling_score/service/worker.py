@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-from curling_score import analyze as analyze_mod, version
+from curling_score import analyze as analyze_mod, timeline, version
 from curling_score.ingest import cache, prune, source
 
 log = logging.getLogger("curling_score.worker")
@@ -221,8 +221,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     touched = [name for name, m in after.items() if before.get(name) != m]
     detcache = [{"digest": Path(n).stem, "bytes": (det_dir / n).stat().st_size} for n in touched]
 
-    games = [{"index": g["index"], "start_s": g["start_s"], "end_s": g["end_s"],
-              "ends": len(g["ends"])} for g in doc["games"]]
+    games = [timeline.game_summary(g) for g in doc["games"]]
     fmt_name = (doc.get("format") or {}).get("name", "fours")
     meta = {
         "video_id": info.video_id, "title": info.title, "channel_id": info.channel_id,
