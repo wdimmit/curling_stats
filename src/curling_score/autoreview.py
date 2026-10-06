@@ -279,8 +279,9 @@ def _notes(game: dict) -> list:
                > BROOM_MISS_M)
     if wide:
         out.append(Finding("broom_miss", "note",
-                           detail=f"{wide} line{'' if wide == 1 else 's'} miss their broom "
-                                  f"by more than {BROOM_MISS_M:.1f} m"))
+                           detail=(f"1 line misses its broom" if wide == 1
+                                   else f"{wide} lines miss their broom")
+                           + f" by more than {BROOM_MISS_M:.1f} m"))
     return out
 
 

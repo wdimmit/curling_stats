@@ -347,3 +347,10 @@ class TestRealGames:
         got = autoreview.review_game(doc["games"][0], BACKTEST)
         assert sorted({f.check for f in got.findings}) == expected
         assert got.raise_flag is flagged
+
+
+def test_one_wide_line_reads_in_the_singular():
+    g = game()
+    g["ends"][0]["shots"][0]["line"] = {"at_broom": {"miss_m": 1.4}}
+    (note,) = autoreview.review_game(g, FLOOR).notes
+    assert note.detail == "1 line misses its broom by more than 1.0 m"
