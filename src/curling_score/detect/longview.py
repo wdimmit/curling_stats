@@ -266,23 +266,27 @@ def _sub_row(rows, wide, lower):
     return y + max(0.0, min(1.0, (a - lower) / (a - b)))
 
 
-def _crossing_index(track, hog_row):
-    """Index ``i`` such that ``track[i], track[i + 1]`` straddle ``hog_row``."""
+def _crossing_index(track, hog_row, max_gap_s=None):
+    """Index ``i`` such that ``track[i], track[i + 1]`` straddle ``hog_row``,
+    no more than ``max_gap_s`` apart when that is given."""
     for i, (a, b) in enumerate(zip(track, track[1:])):
         r0, r1 = a[1], b[1]
-        if r0 <= hog_row <= r1 and r1 != r0:
+        if (r0 <= hog_row <= r1 and r1 != r0
+                and (max_gap_s is None or b[0] - a[0] <= max_gap_s)):
             return i
     return None
 
 
-def _moving_and_crossed(tracks, view):
+def _moving_and_crossed(tracks, view, max_gap_s=None):
     moving = [(k, tr) for k, tr in tracks.items()
               if len(tr) >= _MIN_SAMPLES and tr[-1][1] > tr[0][1]]
-    crossed = [(k, tr) for k, tr in moving if tr[0][1] <= view.hog_row <= tr[-1][1]]
+    crossed = [(k, tr) for k, tr in moving if tr[0][1] <= view.hog_row <= tr[-1][1]
+               and _crossing_index(tr, view.hog_row, max_gap_s) is not None]
     return moving, crossed
 
 
-def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
+def crossing_from_tracks(tracks, view, offset_s: float = None,
+                         max_gap_s: float = None) -> Crossing:
     """Turn ``{key: [(t, edge_row, body_px, ...), ...]}`` into a verdict.
 
     Entries carry 3 or more elements and are read by index (``[0]``, ``[1]``,
@@ -303,8 +307,18 @@ def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
     not of the gates. ``OFFSET_S`` is the colour scan's value; a trained
     detector drawing the granite's own edge has a different one, and inheriting
     this one made it read 0.073 s late on every crossing.
+
+    ``max_gap_s`` is the same kind of thing: how far apart in time the samples
+    either side of the line may be and still count as one crossing. It says
+    how often the proposer sees the stone, not what a delivery is. None, the
+    colour scan's, bounds nothing: that proposer loses the stone at the paint
+    and under the sweepers as a matter of course, and its interpolation across
+    those gaps is what the hand marks were matched against. A trained detector
+    sees the granite nearly every frame, so a long gap in its track is two
+    sightings, possibly of two objects, not a crossing -- see
+    ``sidemodel.STRADDLE_GAP_MAX_S``.
     """
-    moving, crossed = _moving_and_crossed(tracks, view)
+    moving, crossed = _moving_and_crossed(tracks, view, max_gap_s)
     if not crossed:
         # A stone's column can cross one of the 120-px keys' boundaries right
         # at the hog row -- AEqL game 2, end 3, rock 3 did, at column 480 --
@@ -312,7 +326,7 @@ def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
         # nothing crossed, join each key to its neighbour and ask again; a
         # join that finds exactly one crosser is that stone.
         joined = {k: sorted(tracks[k] + tracks[k + 1]) for k in tracks if k + 1 in tracks}
-        m2, c2 = _moving_and_crossed(joined, view)
+        m2, c2 = _moving_and_crossed(joined, view, max_gap_s)
         if len(c2) == 1:
             moving, crossed = m2, c2
     if not moving:
@@ -333,7 +347,7 @@ def crossing_from_tracks(tracks, view, offset_s: float = None) -> Crossing:
         return Crossing(None, "the stone never reached the line", KEY_NEVER_REACHED)
     key, track = crossed[0]
 
-    idx = _crossing_index(track, view.hog_row)
+    idx = _crossing_index(track, view.hog_row, max_gap_s)
     if idx is None:
         return Crossing(None, "the stone never reached the line", KEY_NEVER_REACHED)
     # Steadiness only has to hold up to the crossing itself, and only in the

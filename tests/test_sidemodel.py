@@ -108,6 +108,34 @@ class TestRefusalNamesTheStoneThatMoved:
         assert got.track_key == 0          # int(100 // 120): the mover, not the park
 
 
+class TestAStrayBoxIsNotASecondCrosser:
+    """S1 10/06 e7 r15 through the proposer: the stone runs from column 470
+    across the 480 key boundary before the line, and 2.6 s later one stray
+    red box lands past the line back in the stone's first key. The side
+    model's own STRADDLE_GAP_MAX_S keeps that key from counting as a crosser."""
+
+    def test_the_stone_is_timed_and_the_stray_ignored(self):
+        lo = max(0, sidepool.band_crop(VIEW)[0])
+        times = [10.0 + i / 30 for i in range(100)]
+        frames = [np.zeros((1080, 810, 3), np.uint8)] * len(times)
+        per = []
+        for i, t in enumerate(times):
+            boxes = []
+            if t <= 11.2:
+                edge, cx = 520.0 + (t - 10.6) * 40.0, 470.0 + i
+                w = VIEW.stone_width_at(edge, longview.STONE_WIDTH_AT_HOG_PX)
+                boxes.append([cx - w / 2, edge - lo - 30, cx + w / 2, edge - lo, 0, 0.9])
+            if i == 93:                         # t = 13.1
+                w = VIEW.stone_width_at(560.0, longview.STONE_WIDTH_AT_HOG_PX)
+                boxes.append([414 - w / 2, 560.0 - lo - 30, 414 + w / 2, 560.0 - lo, 0, 0.9])
+            per.append(boxes)
+        assert sidemodel.STRADDLE_GAP_MAX_S == 0.5
+        got = sidemodel.find_in_frames(FakeModel(per), frames, VIEW, "red", times, offset_s=0.0)
+        assert got.key == longview.KEY_OK, got.reason
+        assert got.track_key == 4
+        assert got.t == pytest.approx(10.6, abs=0.02)
+
+
 class TestDetectBand:
     def test_boxes_come_back_per_frame_in_view_rows_for_the_colour_asked(self):
         frames = [np.zeros((1080, 810, 3), np.uint8)] * 2

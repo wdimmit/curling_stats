@@ -316,3 +316,61 @@ class TestATrackSplitAtABinBoundary:
     def test_entries_may_carry_a_column_after_the_width(self):
         one = {3: [(10.0 + i * 0.1, 504.0 + i * 3.3, 52.0, 300.0 + i) for i in range(12)]}
         assert longview.crossing_from_tracks(one, VIEW, offset_s=0.0).key == longview.KEY_OK
+
+
+class TestAStraySampleIsNotACrossing:
+    """S1 10/06 game 1, end 7, rock 15: the stone left key 3 for key 4 at row
+    564, 21 rows short of the line, and crossed in key 4. Key 3 then picked up
+    one stray red box past the line 2.6 s later, so its first and last rows
+    straddled the line too and the throw was refused as two crossers.
+
+    A crossing is a pair of samples either side of the line, close in time --
+    for a proposer that sees the stone every frame. ``max_gap_s`` says how
+    close; the colour scan passes none and keeps interpolating across gaps."""
+
+    GAP = 0.5           # the side model's, sidemodel.STRADDLE_GAP_MAX_S
+
+    def _stone(self, t0, t1, t_cross=10.6, rows_per_s=40.0):
+        n = int(round((t1 - t0) * 30))
+        return [(t0 + i / 30, 520.0 + (t0 + i / 30 - t_cross) * rows_per_s, 52.0)
+                for i in range(n + 1)]
+
+    def _tracks(self):
+        return {3: self._stone(10.0, 10.5) + [(13.1, 560.0, 52.0)],
+                4: self._stone(10.533, 11.2)}
+
+    def test_the_stone_is_timed_in_the_key_it_crossed_in(self):
+        got = longview.crossing_from_tracks(self._tracks(), VIEW, offset_s=0.0,
+                                            max_gap_s=self.GAP)
+        assert got.key == longview.KEY_OK, got.reason
+        assert got.track_key == 4
+        assert got.t == pytest.approx(10.6, abs=0.01)
+
+    def test_a_straddle_across_a_long_gap_alone_never_reaches_the_line(self):
+        got = longview.crossing_from_tracks({3: self._tracks()[3]}, VIEW, offset_s=0.0,
+                                            max_gap_s=self.GAP)
+        assert got.key == longview.KEY_NEVER_REACHED
+
+    def test_a_few_frames_lost_at_the_line_are_still_a_crossing(self):
+        """The thrower's body hides the stone for a moment: the pair either
+        side of the line is a few frames apart, not seconds."""
+        hidden = [p for p in self._stone(10.0, 11.2) if not 10.5 < p[0] < 10.75]
+        pair = [(a, b) for a, b in zip(hidden, hidden[1:]) if a[1] <= 520.0 <= b[1]][0]
+        assert 0.2 < pair[1][0] - pair[0][0] <= self.GAP
+        got = longview.crossing_from_tracks({3: hidden}, VIEW, offset_s=0.0,
+                                            max_gap_s=self.GAP)
+        assert got.key == longview.KEY_OK, got.reason
+        assert got.t == pytest.approx(10.6, abs=0.01)
+
+    def test_two_stones_both_crossing_are_still_ambiguous(self):
+        both = {3: self._stone(10.0, 11.2), 5: self._stone(10.05, 11.25, t_cross=10.65)}
+        got = longview.crossing_from_tracks(both, VIEW, offset_s=0.0, max_gap_s=self.GAP)
+        assert got.key == longview.KEY_AMBIGUOUS
+
+    def test_the_colour_scan_bounds_no_gap(self):
+        """Its default: the stray still counts, as it always did, and a lone
+        gapped straddle is still interpolated."""
+        assert longview.crossing_from_tracks(
+            self._tracks(), VIEW, offset_s=0.0).key == longview.KEY_AMBIGUOUS
+        assert longview.crossing_from_tracks(
+            {3: self._tracks()[3]}, VIEW, offset_s=0.0).key == longview.KEY_OK

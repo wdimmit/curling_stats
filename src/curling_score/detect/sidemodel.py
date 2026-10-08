@@ -42,6 +42,20 @@ CONF_MIN = 0.35
 # threshold on confidence alone would have caught.
 WIDTH_TOL = (0.5, 2.0)
 
+# How far apart in time the samples either side of the hog row may be and
+# still be one crossing (``longview.crossing_from_tracks``' ``max_gap_s``). A
+# track is every box that fell in one column key over the whole window, so its
+# first and last rows can straddle the line with no stone crossing there: S1
+# 10/06 e7 r15's stone left key 3 at row 564 and crossed in key 4, and one
+# stray red box in key 3 past the line 2.6 s later made it a second "crosser"
+# -- the throw was refused. This detector sees the granite nearly every frame
+# at 30 fps; a thrower or sweeper hiding it costs a few. Across the 11-video
+# harness this turned 19 "two candidates" refusals into crossings, each one
+# checked on its frame, and moved no crossing that was already timed. The
+# colour scan keeps no bound: it loses the stone at the paint as a matter of
+# course, and at 0.5 s it lost 4 of VXU9's 27 hand-marked crossings.
+STRADDLE_GAP_MAX_S = 0.5
+
 # Frames per inference call. 16 at imgsz 800 is about 230 MiB of activations,
 # which leaves room on an 8 GB card beside the overhead detector.
 BATCH = 16
@@ -118,7 +132,8 @@ def find_in_frames(model, frames, view, color: str, times,
     keep every sample -- the column included -- for the line pass."""
     tracks = propose(model, frames, view, color, times)
     got = longview.crossing_from_tracks(
-        tracks, view, offset_s=OFFSET_S if offset_s is None else offset_s)
+        tracks, view, offset_s=OFFSET_S if offset_s is None else offset_s,
+        max_gap_s=STRADDLE_GAP_MAX_S)
     samples = tuple(sorted((p[0], p[3], p[1], p[2]) for tr in tracks.values() for p in tr))
     if got.track_key is None and samples:
         # A refusal still names the stone's key, so the line pass can find it,

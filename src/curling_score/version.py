@@ -138,7 +138,14 @@ from pathlib import Path
 # so; the service leaves it out of the catalogue. Of 127 games it marks the
 # four practice sessions of the week to 10/06 and six one- or two-end scraps,
 # and no real game.
-PIPELINE_VERSION = "2026.10.06.3"
+# 2026.10.08.1: the side model's crossing needs the two samples either side of
+# the hog row within 0.5 s of each other (`sidemodel.STRADDLE_GAP_MAX_S`): 10/06
+# Super League sheet 1 e7 r15 lost its split because one stray red box past the
+# line, 2.6 s after the stone left that column key, made the key a second
+# "crosser". On the 11-video harness 19 such refusals become crossings, each
+# checked on its frame, and no crossing already timed moves. The colour scan
+# keeps no bound.
+PIPELINE_VERSION = "2026.10.08.1"
 
 
 def model_id(weights) -> str:
