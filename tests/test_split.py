@@ -164,6 +164,28 @@ class TestSpeedAtLine:
         assert split.speed_at_line(arriving(y0=4.0), LINE) is None
         assert split.speed_at_line(None, LINE) is None
 
+    def test_a_gap_across_the_paint_is_no_speed(self):
+        """S1 10/06 e8 r12: the release track lost the stone at y 2.15 and
+        picked something up at 4.58 3.4 s later. That pair straddles the line,
+        but the rate between them is an average over half the panel, 0.71
+        against the arrival's 1.01, and it refused a good split."""
+        gapped = ((20.0, 0.0, 4.80), (20.1, 0.0, 4.72), (23.5, 0.0, 4.00), (23.6, 0.0, 3.92))
+        assert split.speed_at_line(gapped, LINE) is None
+
+    def test_a_sample_or_two_dropped_at_the_paint_is_still_a_speed(self):
+        dropped = tuple(p for p in arriving(y0=4.8, speed=0.8) if not 4.35 < p[2] < 4.6)
+        pair = [(a, b) for a, b in zip(dropped, dropped[1:]) if a[2] > 4.44 >= b[2]][0]
+        assert 0.2 < pair[1][0] - pair[0][0] <= split.SPEED_SPAN_MAX_S
+        assert split.speed_at_line(dropped, LINE) == pytest.approx(0.8, abs=0.01)
+
+    def test_the_departing_line_is_held_to_the_same_span(self):
+        """S1 10/06 e7 r16, read at the live run's sample phase: 4.18 at
+        6055.72, then 5.51 at 6058.72 -- 0.44 against the arrival's 0.63."""
+        trip = LINE.departure_y_at(0.0)
+        gapped = ((6055.52, 0.0, trip - 0.6), (6055.72, 0.0, trip - 0.2),
+                  (6058.72, 0.0, trip + 1.1))
+        assert split.speed_at_line(gapped, LINE, departing=True) is None
+
 
 class TestTheBaseline:
     def test_it_is_what_the_leading_edge_covers(self):

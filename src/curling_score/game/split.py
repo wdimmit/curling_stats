@@ -40,6 +40,19 @@ BASELINE_M = C.TEE_TO_TEE_M - C.TEE_TO_HOGLINE_M - (C.TEE_TO_HOGLINE_M + C.HOGLI
 # taken 20 s apart from different cameras at different sample rates.
 SPEED_TOLERANCE = 1.4
 
+# How far apart in time the two samples either side of a line may be and still
+# give a speed AT that line. A release track at 5 fps that loses the stone under
+# the sweepers and picks it up again -- or picks up something else near the
+# panel's edge -- seconds later still straddles the line, but the rate between
+# those two is an average over half the panel. S1 10/06 e8 r12's was read
+# across 3.4 s, 0.71 against an arrival of 1.01, and e7 r16's across 3.0 s at
+# the live run's sample phase; both refused a good pairing by this tolerance.
+# A missing speed is not a refusal: `long_split` then bounds the mean by the
+# side view's speed at the hog line instead, which is in real metres. Across
+# the 11-video harness 102 throwing-panel and 32 arriving-panel speeds were
+# read across such gaps; dropping them gained one split and lost none.
+SPEED_SPAN_MAX_S = 0.5
+
 # How far the side view and the panel may disagree about the same crossing
 # before both are disbelieved. They are independent cameras timing one painted
 # line, so a real disagreement means one of them found the wrong object and
@@ -273,7 +286,7 @@ def speed_at_line(track, line, *, departing: bool = False) -> float | None:
     pts = [(float(t), float(x), float(y)) for t, x, y in track or ()]
     for (t0, x0, y0), (t1, x1, y1) in zip(pts, pts[1:]):
         d0, d1 = y0 - tripwire(x0), y1 - tripwire(x1)
-        if d0 * d1 <= 0 and d0 != d1 and t1 > t0:
+        if d0 * d1 <= 0 and d0 != d1 and 0 < t1 - t0 <= SPEED_SPAN_MAX_S:
             return abs(y1 - y0) / (t1 - t0)
     return None
 

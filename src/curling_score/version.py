@@ -145,7 +145,13 @@ from pathlib import Path
 # "crosser". On the 11-video harness 19 such refusals become crossings, each
 # checked on its frame, and no crossing already timed moves. The colour scan
 # keeps no bound.
-PIPELINE_VERSION = "2026.10.08.1"
+# 2026.10.08.2: a panel's speed at a hog line comes from two samples either
+# side of it within 0.5 s (`split.SPEED_SPAN_MAX_S`), or there is none and
+# `long_split` bounds the mean by the side view's speed instead: 10/06 Super
+# League sheet 1 e7 r16 and e8 r12 lost their splits to near-line speeds read
+# across 3.0 and 3.4 s gaps in the release track. On the 11-video harness 134
+# such speeds drop, one split is gained and none lost.
+PIPELINE_VERSION = "2026.10.08.2"
 
 
 def model_id(weights) -> str:
