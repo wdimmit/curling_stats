@@ -920,9 +920,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     @app.get("/api/reports/thinking")
     def api_thinking_report(top: int = Query(thinking_report.TOP, ge=1, le=100)):
-        """Per league, the games with the most thinking per end and the ones
-        where one team did most of it. Public, like the catalogue, and read
-        from the summaries on the sources alone -- never a timeline."""
+        """Per league, the teams with the most thinking per end, one row per
+        team per game. Public, like the catalogue, and read from the
+        summaries on the sources alone -- never a timeline."""
         report = thinking_report.build(games_listed(repo.list_sources(limit=EVERY_SOURCE)),
                                        top=top)
         return JSONResponse(report, headers={"Cache-Control": "public, max-age=300"})

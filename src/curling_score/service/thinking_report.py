@@ -1,5 +1,5 @@
-"""The thinking-time report: in each league, which games took longest to
-play, and in which one team did most of the thinking.
+"""The thinking-time report: in each league, the teams that took longest to
+decide their shots, per end played.
 
 It works from the summary each Source carries, never from a timeline, so the
 page costs one list of sources however many games there are. The summary is
@@ -11,7 +11,7 @@ estimate or not at all.
 
 from curling_score.ingest.source import league_from_title
 
-TOP = 10
+TOP = 20
 
 
 def summarize(game: dict, run_id: str, play_start_s: float | None) -> dict:
@@ -58,26 +58,19 @@ def _iso(dt):
     return dt.isoformat() if dt is not None else None
 
 
-def _row(src, t: dict, games_in_video: int) -> dict:
-    red, yellow = t["red"], t["yellow"]
-    total = red + yellow
+def _rows(src, t: dict, games_in_video: int):
+    """One row per team: the game as that team played it."""
     ends = max(t["ends"], 1)
-    return {
-        "source_id": src.id, "video_id": src.video_id, "title": src.title,
-        "sheet": src.sheet, "played_at": _iso(src.played_at),
-        "team_red": src.team_red, "team_yellow": src.team_yellow,
-        "game_index": src.game_index, "games_in_video": games_in_video,
-        "format": src.format or "fours",
-        "ends": t["ends"], "red_s": red, "yellow_s": yellow, "total_s": total,
-        "per_end_s": total / ends,
-        "share_red": red / total, "share_yellow": yellow / total,
-        "share": max(red, yellow) / total,
-        "longer": "red" if red >= yellow else "yellow",
-        "gap_s": abs(red - yellow),
-        "measured_shots": t["measured_shots"],
-        "unmeasured_shots": t["unmeasured_shots"],
-        "estimated_shots": t["estimated_shots"],
-    }
+    for colour, other in (("red", "yellow"), ("yellow", "red")):
+        yield {
+            "source_id": src.id, "video_id": src.video_id, "title": src.title,
+            "sheet": src.sheet, "played_at": _iso(src.played_at),
+            "colour": colour, "team": getattr(src, f"team_{colour}"),
+            "opponent": getattr(src, f"team_{other}"),
+            "game_index": src.game_index, "games_in_video": games_in_video,
+            "format": src.format or "fours",
+            "ends": t["ends"], "thinking_s": t[colour], "per_end_s": t[colour] / ends,
+        }
 
 
 def _when(row):
@@ -85,7 +78,8 @@ def _when(row):
 
 
 def build(sources, top: int = TOP) -> dict:
-    """Group games by league and rank them both ways.
+    """Group games by league and rank its teams, one row per team per game,
+    by thinking per end.
 
     A league is also split by format: a doubles end is ten thrown rocks and
     a fours end sixteen, so their per-end times are not the same measure.
@@ -103,29 +97,29 @@ def build(sources, top: int = TOP) -> dict:
         if t["measured_shots"] <= 0 or t["red"] + t["yellow"] <= 0:
             continue
         name, origin = league_of(s)
-        row = _row(s, t, per_video[s.video_id])
-        g = groups.setdefault((name, row["format"]), {"league": name, "format": row["format"],
-                                                      "origins": set(), "rows": []})
+        rows = list(_rows(s, t, per_video[s.video_id]))
+        fmt = rows[0]["format"]
+        g = groups.setdefault((name, fmt), {"league": name, "format": fmt,
+                                            "origins": set(), "games": 0, "rows": []})
         g["origins"].add(origin)
-        g["rows"].append(row)
+        g["games"] += 1
+        g["rows"].extend(rows)
 
     leagues = []
     for g in groups.values():
-        rows = g["rows"]
-        by_pace = sorted(rows, key=lambda r: (r["per_end_s"], _when(r)), reverse=True)
-        by_split = sorted(rows, key=lambda r: (r["share"], r["gap_s"], _when(r)), reverse=True)
+        rows = sorted(g["rows"], key=lambda r: (r["per_end_s"], _when(r)), reverse=True)
         dates = [r["played_at"] for r in rows if r["played_at"]]
         leagues.append({
             "league": g["league"], "format": g["format"],
             # A playlist title and a stream-title league that read the same
             # land in one group; the playlist is the one that names it.
             "from": "playlist" if "playlist" in g["origins"] else sorted(g["origins"])[0],
-            "games": len(rows),
+            "games": g["games"],
             "first_played_at": min(dates) if dates else None,
             "last_played_at": max(dates) if dates else None,
-            "avg_per_end_s": sum(r["total_s"] for r in rows) / sum(max(r["ends"], 1) for r in rows),
-            "by_pace": by_pace[:top],
-            "by_split": by_split[:top],
+            # One team's thinking per end it played, so it reads against the rows.
+            "avg_per_end_s": sum(r["thinking_s"] for r in rows) / sum(max(r["ends"], 1) for r in rows),
+            "teams": rows[:top],
         })
     leagues.sort(key=lambda lg: (lg["last_played_at"] or "", lg["league"]), reverse=True)
     return {"leagues": leagues, "pending": pending, "top": top}

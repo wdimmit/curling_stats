@@ -1,5 +1,5 @@
-"""The thinking report: which games in a league took longest, and which were
-most one-sided -- worked out from each game's stored summary alone."""
+"""The thinking report: which teams in a league took longest per end --
+worked out from each game's stored summary alone."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -28,6 +28,10 @@ def src(sid, red, yellow, ends=8, *, video=None, index=0, days=0, run="r_1",
 def only(report):
     (league,) = report["leagues"]
     return league
+
+
+def ranked(league):
+    return [(r["source_id"], r["colour"]) for r in league["teams"]]
 
 
 class TestSummarize:
@@ -78,28 +82,28 @@ class TestLeagueOf:
 
 
 class TestBuild:
+    def test_each_team_in_a_game_is_its_own_row(self):
+        league = only(tr.build([src("a", 900, 600, ends=6, team_red="Casey", team_yellow="Good")]))
+        red, yellow = league["teams"]
+        assert (red["colour"], red["team"], red["opponent"]) == ("red", "Casey", "Good")
+        assert (yellow["colour"], yellow["team"], yellow["opponent"]) == ("yellow", "Good", "Casey")
+        assert red["thinking_s"] == 900 and red["per_end_s"] == pytest.approx(150)
+        assert yellow["per_end_s"] == pytest.approx(100)
+
     def test_most_thinking_is_per_end_not_per_game(self):
-        long_game = src("nine", 1800, 2000, ends=9)      # 3800 s over 9 ends = 422 s
-        short_game = src("six", 1340, 1375, ends=6)      # 2715 s over 6 ends = 452 s
-        league = only(tr.build([long_game, short_game]))
-        assert [r["source_id"] for r in league["by_pace"]] == ["six", "nine"]
-        assert league["by_pace"][0]["per_end_s"] == pytest.approx(2715 / 6)
+        long_game = src("nine", 2000, 100, ends=9)       # 222 s per end
+        short_game = src("six", 1375, 100, ends=6)       # 229 s per end
+        assert ranked(only(tr.build([long_game, short_game])))[:2] == [("six", "red"),
+                                                                        ("nine", "red")]
 
-    def test_lopsided_is_the_larger_share_whichever_colour(self):
-        red_heavy = src("r", 2293.27, 1589.27)           # red 59%
-        yellow_heavy = src("y", 730.28, 1455.44)         # yellow 67%
-        even = src("e", 1340, 1375)
-        league = only(tr.build([red_heavy, even, yellow_heavy]))
-        rows = league["by_split"]
-        assert [r["source_id"] for r in rows] == ["y", "r", "e"]
-        assert rows[0]["longer"] == "yellow" and rows[0]["share"] == pytest.approx(0.6659, abs=1e-4)
-        assert rows[1]["longer"] == "red" and rows[1]["gap_s"] == pytest.approx(704.0)
-        assert rows[0]["share_red"] + rows[0]["share_yellow"] == pytest.approx(1.0)
+    def test_both_colours_rank_in_one_list(self):
+        league = only(tr.build([src("a", 600, 300, ends=2), src("b", 300, 500, ends=2)]))
+        assert ranked(league) == [("a", "red"), ("b", "yellow"), ("a", "yellow"), ("b", "red")]
 
-    def test_an_equal_share_is_broken_by_the_bigger_gap(self):
-        small = src("small", 300, 200, ends=2)
-        big = src("big", 3000, 2000)
-        assert [r["source_id"] for r in only(tr.build([small, big]))["by_split"]] == ["big", "small"]
+    def test_a_tie_goes_to_the_later_game(self):
+        league = only(tr.build([src("old", 300, 0.0, ends=2, days=0),
+                                src("new", 300, 0.0, ends=2, days=7)]))
+        assert ranked(league)[:2] == [("new", "red"), ("old", "red")]
 
     def test_a_game_with_nothing_timed_is_left_out(self):
         stray = src("stray", 0, 0, ends=1, measured=0)
@@ -120,6 +124,7 @@ class TestBuild:
         ])
         assert [(lg["league"], lg["format"]) for lg in report["leagues"]] == [
             ("Tuesday Super", "fours"), ("Tuesday Super", "doubles"), ("Monday Open", "fours")]
+        assert {r["source_id"] for r in report["leagues"][1]["teams"]} == {"dbl"}
 
     def test_a_league_says_where_its_name_came_from(self):
         report = tr.build([src("a", 1, 1, playlist=None), src("b", 1, 1, video="v_b")])
@@ -127,17 +132,16 @@ class TestBuild:
             ("Tuesday Super League 2025-2026", "title"),
             ("2025-2026 Tuesday Super League", "playlist")}
 
-    def test_the_league_average_weights_by_ends(self):
+    def test_the_league_average_is_per_team_per_end_weighted_by_ends(self):
         league = only(tr.build([src("a", 300, 300, ends=6), src("b", 100, 100, ends=2)]))
-        assert league["avg_per_end_s"] == pytest.approx(800 / 8)
+        assert league["avg_per_end_s"] == pytest.approx(800 / 16)
 
-    def test_top_cuts_both_lists_but_counts_every_game(self):
-        league = only(tr.build([src(f"g{i}", 100 + i, 100) for i in range(12)], top=10))
-        assert league["games"] == 12
-        assert len(league["by_pace"]) == len(league["by_split"]) == 10
+    def test_top_cuts_the_rows_but_counts_every_game(self):
+        league = only(tr.build([src(f"g{i}", 100 + i, 100) for i in range(12)], top=20))
+        assert league["games"] == 12 and len(league["teams"]) == 20
+        assert tr.TOP == 20
 
     def test_a_row_knows_how_many_games_its_video_holds(self):
         a = src("a", 1, 2, video="v", index=0)
         b = src("b", 2, 1, video="v", index=1)
-        rows = only(tr.build([a, b]))["by_pace"]
-        assert {r["games_in_video"] for r in rows} == {2}
+        assert {r["games_in_video"] for r in only(tr.build([a, b]))["teams"]} == {2}

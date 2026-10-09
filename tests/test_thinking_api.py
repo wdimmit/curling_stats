@@ -34,9 +34,11 @@ def report(w):
 
 
 def game_row(w):
+    """The one league and its one game, as {"red": row, "yellow": row}."""
     (league,) = report(w)["leagues"]
-    (row,) = league["by_pace"]
-    return league, row
+    rows = league["teams"]
+    assert len(rows) == 2 and rows[0]["source_id"] == rows[1]["source_id"]
+    return league, {r["colour"]: r for r in rows}
 
 
 def the_source(w):
@@ -48,10 +50,10 @@ class TestSummarisedOnCompletion:
     def test_a_finished_game_is_in_the_report(self, world):
         submit(world)
         work_through(world, doc=with_thinking(sample_doc(1)), games=1)
-        league, row = game_row(world)
+        league, rows = game_row(world)
         assert league["league"] == "Spring League" and league["from"] == "title"
-        assert row["red_s"] == 90.0 and row["yellow_s"] == 60.0 and row["ends"] == 1
-        assert row["share"] == pytest.approx(0.6) and row["longer"] == "red"
+        assert rows["red"]["thinking_s"] == 90.0 and rows["yellow"]["thinking_s"] == 60.0
+        assert rows["red"]["ends"] == 1 and league["teams"][0]["colour"] == "red"
         assert report(world)["pending"] == 0
 
     def test_the_report_is_public_and_cacheable(self, world):
@@ -71,8 +73,8 @@ class TestSummarisedOnCompletion:
         r = world["client"].post("/api/admin/reprocess", json={"video_id": VID}, headers=ADMIN)
         assert r.status_code in (200, 201), r.text
         work_through(world, doc=with_thinking(sample_doc(1), [(30.0, 120.0)]), games=1)
-        _, row = game_row(world)
-        assert (row["red_s"], row["yellow_s"]) == (30.0, 120.0)
+        _, rows = game_row(world)
+        assert (rows["red"]["thinking_s"], rows["yellow"]["thinking_s"]) == (30.0, 120.0)
         assert the_source(world).thinking["run_id"] == the_source(world).current_run_id
 
 
@@ -87,27 +89,28 @@ class TestFollowsThePlayStart:
 
     def test_trimming_the_warm_up_takes_its_thinking_out(self, world):
         sid = self._game(world)
-        assert game_row(world)[1]["ends"] == 5
+        assert game_row(world)[1]["red"]["ends"] == 5
         r = world["client"].post(f"/api/admin/games/{sid}/play-start", json={"start_s": 1440},
                                  headers=ADMIN)
         assert r.status_code == 200, r.text
-        _, row = game_row(world)
-        assert row["ends"] == 2 and (row["red_s"], row["yellow_s"]) == (300.0, 100.0)
-        assert row["per_end_s"] == pytest.approx(200.0)
+        _, rows = game_row(world)
+        assert rows["red"]["ends"] == 2
+        assert (rows["red"]["thinking_s"], rows["yellow"]["thinking_s"]) == (300.0, 100.0)
+        assert rows["red"]["per_end_s"] == pytest.approx(150.0)
 
     def test_clearing_it_puts_the_warm_up_back(self, world):
         sid = self._game(world)
         c = world["client"]
         c.post(f"/api/admin/games/{sid}/play-start", json={"start_s": 1440}, headers=ADMIN)
         c.post(f"/api/admin/games/{sid}/play-start", json={"start_s": None}, headers=ADMIN)
-        assert game_row(world)[1]["ends"] == 5
+        assert game_row(world)[1]["red"]["ends"] == 5
 
     def test_a_chart_that_says_where_play_starts_trims_it_too(self, world):
         submit(world, url=f"https://youtu.be/{VID}?t=1440")
         work_through(world, doc=with_thinking(practice_doc(), [(10.0, 10.0), (11.0, 11.0),
                                                                (12.0, 12.0), (100.0, 50.0),
                                                                (200.0, 50.0)]), games=1)
-        assert game_row(world)[1]["ends"] == 2
+        assert game_row(world)[1]["red"]["ends"] == 2
 
 
 class TestBackfill:
@@ -127,7 +130,7 @@ class TestBackfill:
         r = world["client"].post("/api/admin/backfill-thinking", headers=ADMIN)
         assert r.json() == {"ok": True, "refreshed": 1, "skipped": 0, "remaining": 0}
         assert report(world)["pending"] == 0
-        assert game_row(world)[1]["red_s"] == 90.0
+        assert game_row(world)[1]["red"]["thinking_s"] == 90.0
 
     def test_it_is_bounded_and_can_be_called_again(self, world):
         submit(world)
@@ -200,9 +203,9 @@ class TestDoubles:
         submit(world, url=f"https://youtu.be/{DOUBLES_VID}")
         work_through(world, doc=with_thinking(sample_doc(1), [(40.0, 80.0)]), games=1,
                      fmt="doubles")
-        league, row = game_row(world)
-        assert league["format"] == "doubles" and row["format"] == "doubles"
-        assert row["longer"] == "yellow"
+        league, rows = game_row(world)
+        assert league["format"] == "doubles" and rows["yellow"]["format"] == "doubles"
+        assert league["teams"][0]["colour"] == "yellow"
 
 
 def test_the_page_is_served(world):
@@ -242,7 +245,7 @@ def test_a_new_chart_repairs_a_summary_the_game_moved_out_from_under(world):
     world["repo"].update_source(the_source(world).id, thinking=None)
     assert report(world)["pending"] == 1
     assert submit(world, ip="5.6.7.8").status_code in (200, 201)
-    assert report(world)["pending"] == 0 and game_row(world)[1]["red_s"] == 90.0
+    assert report(world)["pending"] == 0 and game_row(world)[1]["red"]["thinking_s"] == 90.0
 
 
 def test_a_retry_drops_the_summary_until_the_run_is_read_again(world):
@@ -254,7 +257,8 @@ def test_a_retry_drops_the_summary_until_the_run_is_read_again(world):
     world["clock"].advance(600)
     work_through(world, doc=with_thinking(sample_doc(1), [(30.0, 120.0)]), games=1)
     assert report(world)["pending"] == 0
-    assert (game_row(world)[1]["red_s"], game_row(world)[1]["yellow_s"]) == (30.0, 120.0)
+    _, rows = game_row(world)
+    assert (rows["red"]["thinking_s"], rows["yellow"]["thinking_s"]) == (30.0, 120.0)
 
 
 class TestAGameJoinedFromTwo:
@@ -268,5 +272,5 @@ class TestAGameJoinedFromTwo:
         (league,) = report(world)["leagues"]
         folded = {s.id for s in world["repo"].sources_for_video(VID) if s.merged_into}
         assert len(folded) == 1
-        assert len(league["by_pace"]) == 2
-        assert not folded & {row["source_id"] for row in league["by_pace"]}
+        assert league["games"] == 2 and len(league["teams"]) == 4
+        assert not folded & {row["source_id"] for row in league["teams"]}

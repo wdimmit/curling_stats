@@ -1,5 +1,5 @@
-/* Thinking time, league by league: which games took longest to play, and in
- * which one team did most of the deciding.
+/* Thinking time, league by league: the teams that took longest to decide
+ * their shots, per end played, one row per team per game.
  *
  * Everything is computed by the API from a summary kept on each game
  * (service/thinking_report.py); this page only lays it out. One league at a
@@ -11,6 +11,8 @@ import { Header } from "./ui.jsx";
 import { useResource } from "./useAuth.js";
 
 const keyOf = lg => lg.format === "fours" ? lg.league : `${lg.league} · ${lg.format}`;
+const other = { red: "yellow", yellow: "red" };
+const named = colour => colour === "red" ? "Red" : "Yellow";
 
 function readHash() {
   try { return decodeURIComponent(location.hash.slice(1)); } catch { return ""; }
@@ -32,93 +34,47 @@ function span(first, last) {
   return `${md(a)} – ${md(b)}, ${b.getFullYear()}`;
 }
 
-const pct = f => `${Math.round(f * 100)}%`;
-
-function Team({ game, colour }) {
-  const name = game[`team_${colour}`];
-  return <span className={`team ${colour}`}>{name || (colour === "red" ? "Red" : "Yellow")}</span>;
-}
-
-/* Who played, by colour -- or, with nobody named, which game on the sheet
- * that night, as the catalogue says it. Either way a link to watch it. */
-function GameCell({ game }) {
-  const href = `/g/${encodeURIComponent(game.source_id)}/`;
-  if (!game.team_red && !game.team_yellow)
-    return (
-      <td className="teams">
-        <a className="muted" href={href}>
-          {game.games_in_video > 1 ? `Game ${game.game_index + 1}` : "Teams not named"}
-        </a>
-      </td>
-    );
+/* The ranked team first, in its colour, then who it played -- by name, or by
+ * colour with nobody named. A link to watch the game either way. */
+function TeamCell({ row }) {
+  const nameless = !row.team && !row.opponent;
   return (
     <td className="teams">
-      <a className="plain" href={href}>
-        <Team game={game} colour="red" /> v <Team game={game} colour="yellow" />
+      <a className="plain" href={`/g/${encodeURIComponent(row.source_id)}/`}>
+        <span className={`team ${row.colour}`}>{row.team || named(row.colour)}</span>
+        <span className="vs"> v {row.opponent || named(other[row.colour])}</span>
+        {nameless && row.games_in_video > 1
+          ? <span className="vs"> · game {row.game_index + 1}</span> : null}
       </a>
     </td>
   );
 }
 
 function PaceTable({ rows }) {
-  const top = Math.max(...rows.map(r => r.per_end_s));
+  const top = rows[0].per_end_s;
   return (
     <table className="rank">
       <tbody>
-        <tr><th>#</th><th>Date</th><th>Sheet</th><th>Game</th><th className="num">Ends</th>
+        <tr><th>#</th><th>Date</th><th>Sheet</th><th>Team</th><th className="num">Ends</th>
             <th className="num">Thinking</th><th>Per end</th></tr>
-        {rows.map((g, i) => (
-          <tr key={g.source_id}>
+        {rows.map((r, i) => (
+          <tr key={`${r.source_id}/${r.colour}`}>
             <td className="rk">{i + 1}</td>
-            <td className="when">{when(g.played_at)}</td>
-            <td data-label="Sheet">{g.sheet ?? "?"}</td>
-            <GameCell game={g} />
-            <td className="num" data-label="Ends">{g.ends}</td>
-            <td className="num" data-label="Thinking">{mmss(g.total_s)}</td>
+            <td className="when">{when(r.played_at)}</td>
+            <td data-label="Sheet">{r.sheet ?? "?"}</td>
+            <TeamCell row={r} />
+            <td className="num" data-label="Ends">{r.ends}</td>
+            <td className="num" data-label="Thinking">{mmss(r.thinking_s)}</td>
             <td className="pace">
               <div>
-                <span className="val">{mmss(g.per_end_s)}</span>
+                <span className="val">{mmss(r.per_end_s)}</span>
                 <span className="mag" aria-hidden="true">
-                  <span style={{ width: `${(100 * g.per_end_s / top).toFixed(1)}%` }} />
+                  <span style={{ width: `${(100 * r.per_end_s / top).toFixed(1)}%` }} />
                 </span>
               </div>
             </td>
           </tr>
         ))}
-      </tbody>
-    </table>
-  );
-}
-
-function SplitTable({ rows }) {
-  return (
-    <table className="rank">
-      <tbody>
-        <tr><th>#</th><th>Date</th><th>Sheet</th><th>Game</th><th>Split of thinking time</th>
-            <th>Took longer</th><th className="num">By</th></tr>
-        {rows.map((g, i) => {
-          const red = g.team_red || "Red", yellow = g.team_yellow || "Yellow";
-          return (
-            <tr key={g.source_id}>
-              <td className="rk">{i + 1}</td>
-              <td className="when">{when(g.played_at)}</td>
-              <td data-label="Sheet">{g.sheet ?? "?"}</td>
-              <GameCell game={g} />
-              <td className="split">
-                <span className="sbar" role="img"
-                      aria-label={`${red} ${pct(g.share_red)}, ${yellow} ${pct(g.share_yellow)}`}
-                      title={`${red} ${mmss(g.red_s)} · ${yellow} ${mmss(g.yellow_s)}`}>
-                  <span className="r" style={{ width: `calc(${(g.share_red * 100).toFixed(2)}% - 1px)` }} />
-                  <span className="y" style={{ width: `calc(${(g.share_yellow * 100).toFixed(2)}% - 1px)` }} />
-                  <i className="mid" />
-                </span>
-                <span className="spct">{pct(g.share_red)} · {pct(g.share_yellow)}</span>
-              </td>
-              <td className="longer" data-label="Took longer"><Team game={g} colour={g.longer} /></td>
-              <td className="num" data-label="By">{mmss(g.gap_s)}</td>
-            </tr>
-          );
-        })}
       </tbody>
     </table>
   );
@@ -142,9 +98,9 @@ export function Thinking() {
       <Header links={[["/", "All games"], ["/thinking", "Thinking time", true],
                       ["/submit", "Submit a link"]]} />
       <main>
-        <p className="muted" style={{ marginTop: 0 }}>How long each game's teams took to decide
-        their shots, grouped by league. The league is the YouTube playlist the stream was
-        published in.</p>
+        <p className="muted" style={{ marginTop: 0 }}>How long a team took to decide its shots,
+        divided by the ends it played, grouped by league. A team is listed once for each game it
+        played. The league is the YouTube playlist the stream was published in.</p>
         {report.loading ? <p className="muted">Loading…</p>
          : report.error ? <p className="warn">The report could not be loaded. Try again in a minute.</p>
          : !league ? <p className="muted">No games with timed rocks yet.</p>
@@ -165,17 +121,15 @@ export function Thinking() {
                 <span className="muted">
                   {[`${league.games} ${league.games === 1 ? "game" : "games"}`,
                     span(league.first_played_at, league.last_played_at),
-                    `league average ${mmss(league.avg_per_end_s)} per end`]
+                    `a team averages ${mmss(league.avg_per_end_s)} per end`]
                     .filter(Boolean).join(" · ")}
                 </span>
               </div>
-              <h2>Most thinking per end <small>both teams together, divided by ends played</small></h2>
-              <PaceTable rows={league.by_pace} />
-              <h2>Most lopsided <small>ranked by the larger team's share of the game's thinking time</small></h2>
-              <SplitTable rows={league.by_split} />
-              {league.games > league.by_pace.length ? (
-                <p className="muted note">The top {league.by_pace.length} of {league.games} games
-                each way.</p>
+              <h2>Slowest teams per end <small>a team's thinking time, divided by ends played</small></h2>
+              <PaceTable rows={league.teams} />
+              {league.games * 2 > league.teams.length ? (
+                <p className="muted note">The slowest {league.teams.length} of {league.games * 2}:
+                each of the league's {league.games} games has two teams.</p>
               ) : null}
               <p className="muted note">Thinking time runs from when the previous rock comes to rest
               (plus 5 s) until the next rock crosses the tee line at the throwing end. The first rock

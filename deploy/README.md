@@ -285,9 +285,9 @@ Repeat a call until `pending` is 0. To tune the checks, save served timelines
 
 ## The thinking report
 
-`/thinking` ranks each league's games by thinking time per end, and by how
-lopsided the two teams' split was. A league is the YouTube playlist the club
-filed the stream in, found by indexing the channel's playlists. The hourly
+`/thinking` lists each league's 20 slowest teams by thinking time per end,
+one row per team per game. A league is the YouTube playlist the club filed
+the stream in, found by indexing the channel's playlists. The hourly
 poll above keeps that index current, reading at most 40 playlists per call.
 Each game's thinking totals are kept on its source, written when the run
 completes.
