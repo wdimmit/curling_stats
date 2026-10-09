@@ -187,7 +187,7 @@ radius 0.142).
 
 | Job                                                       | Default                                           | Override                      | Set to `none` for   |
 | --------------------------------------------------------- | ------------------------------------------------- | ----------------------------- | ------------------- |
-| Stones in the overhead panels                             | `weights/ds16a.pt`                                | `CURLING_SCORE_WEIGHTS`       | the colour detector |
+| Stones in the overhead panels                             | `weights/ds17b.pt`                                | `CURLING_SCORE_WEIGHTS`       | the colour detector |
 | Stones crossing the throwing hog line, in the long camera | `weights/ds13c.pt`                                | `CURLING_SCORE_SIDE_WEIGHTS`  | the colour scan     |
 | The skip's broom head, in the long camera                 | `weights/broom2.pt`                               | `CURLING_SCORE_BROOM_WEIGHTS` | no brooms           |
 | Card in a scoreboard slot, and its digit                  | `game/slot_weights.npz`, `game/digit_weights.npz` | —                             | —                   |

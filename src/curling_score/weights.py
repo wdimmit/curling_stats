@@ -1,18 +1,21 @@
 """Which detector runs when nobody says.
 
-Standardised on **ds16a** as of 2026-09-28: ds15a's recipe and training set
-plus ds16, 124 reviewed frames of the 2026-27 season (`datasets/ds16/`). Sheet
-4's buttons were repainted with a portrait, which ds15a read as a yellow stone
-in ~85% of frames; on the sheet 4 game ds16 held out, ds16a sees a stone on
-the tee in 0% of them and its precision on that game's frames goes from 0.876
-to 1.000. It also stops reading a red thrower's yellow toque as a yellow
-stone. Benchmarks hold (ds11 val mAP50 0.993, ds12 0.987 against ds15a's
-0.994 and 0.988).
+Standardised on **ds17b** as of 2026-10-09: ds16a's recipe and training set
+plus ds17, 311 reviewed throwing-panel frames (`datasets/ds17/`). ds16a read a
+sliding thrower's head, hat or hood, seen from straight above right behind the
+stone, as a stone at up to 0.98; at 10 fps a red toque outvoted three real
+yellow releases. Over every timed throw of 76 hosted games (6,593 throws) the
+runs of such boxes moving up the sheet go from 304 to 76 and the confident
+boxes from 2,223 to 653, while the arriving stone is seen in 91.7% of its
+frames against 89.9%. Benchmarks hold (ds11 val mAP50 0.994, ds12 0.988
+against ds16a's 0.993 and 0.987). Same architecture (YOLO11n) and live cost.
 
-ds15a (2026-09-23 to 2026-09-28) was ds11a's recipe and ds11's 1,304 reviewed
-frames plus ds15's 234 frames of stones found late at the panel's far edge
-(`datasets/ds15/`); ds11a (2026-09-11 to 2026-09-23) is the baseline both
-were measured against. Both stay in the repository.
+ds16a (2026-09-28 to 2026-10-09) was ds15a's set plus ds16, 124 frames of the
+2026-27 season (sheet 4's portrait button, a yellow toque). ds15a (2026-09-23
+to 2026-09-28) was ds11a's recipe and ds11's 1,304 reviewed frames plus ds15's
+234 frames of stones found late at the panel's far edge (`datasets/ds15/`);
+ds11a (2026-09-11 to 2026-09-23) is the baseline all were measured against.
+All stay in the repository.
 
 Changing this changes ``version.processing_version``, so cached timelines are
 invalidated rather than quietly mixed -- which is the point of hashing the
@@ -31,7 +34,7 @@ saying so would leave every downstream number quietly incomparable.
 import os
 from pathlib import Path
 
-DEFAULT_NAME = "ds16a.pt"
+DEFAULT_NAME = "ds17b.pt"
 ENV_VAR = "CURLING_SCORE_WEIGHTS"
 
 # The SIDE-view detector, which times the throwing end's hog crossing. A

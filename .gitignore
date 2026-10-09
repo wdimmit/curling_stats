@@ -52,6 +52,9 @@ weights/*.pt
 # ds16a supersedes ds15a (2026-09-28): ds15a's set plus ds16, the 2026-27 season's
 # houses (sheet 4's portrait button) and the toque. ds15a is kept as its baseline.
 !weights/ds16a.pt
+# ds17b supersedes ds16a (2026-10-09): ds16a's set plus ds17, sliding throwers' heads
+# and the arriving stones a sweeper stands over. ds16a is kept as its baseline.
+!weights/ds17b.pt
 # ds13a does not supersede ds11a: they read different cameras. ds11a detects
 # stones in the overhead panels, looking straight down; ds13a detects them in
 # the wide side view, edge-on at thirty metres, to time the hog crossing.
