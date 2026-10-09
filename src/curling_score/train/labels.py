@@ -564,14 +564,20 @@ def _card(frame, out_dir, meta=None):
         return f"frames/{Path(src).name}"
 
     name = copy_in(frame.image)
-    boxes = []
-    for b in frame.boxes:
+    boxes, chips = [], []
+    for i, b in enumerate(frame.boxes, 1):
         style = (f"left:{(b.cx - b.w / 2) * 100:.3f}%;"
                  f"top:{(b.cy - b.h / 2) * 100:.3f}%;"
                  f"width:{b.w * 100:.3f}%;height:{b.h * 100:.3f}%")
         key = _html.escape(reject_key(frame.image.stem, b))
-        boxes.append(f'<b class="bx {b.color}" style="{style}" data-k="{key}"'
-                     f' title="{b.color} {b.cx:.3f},{b.cy:.3f}"></b>')
+        boxes.append(f'<b class="bx {b.color}" style="{style}" data-k="{key}" data-i="{i}"'
+                     f' title="{i}: {b.color} {b.cx:.3f},{b.cy:.3f}"></b>')
+        chips.append(f'<button type="button" class="chip {b.color}" data-k="{key}"'
+                     f' title="reject or keep box {i}">{i} {b.color}</button>')
+    # Boxes drawn on top of one another -- one stone read as both colours -- can
+    # only be clicked at the top one, so every box is numbered and has a button
+    # here doing exactly what a click on it does.
+    chip_row = f'<div class="chips">{"".join(chips)}</div>' if len(chips) > 1 else ""
 
     # A box added to an empty frame has nothing to copy a size from, and the
     # set's median is wrong nearly everywhere when it spans 120 videos with 120
@@ -605,7 +611,7 @@ def _card(frame, out_dir, meta=None):
             f'<div class="wrap" data-stem="{_html.escape(frame.image.stem)}"'
             f' data-w="{w:.6f}" data-h="{h:.6f}">'
             f'<img src="{name}" loading="lazy" alt="">'
-            + "".join(boxes) + "</div>" + thumbs + "</figure>")
+            + "".join(boxes) + "</div>" + chip_row + thumbs + "</figure>")
 
 
 _CLICK_CSS = """
@@ -645,6 +651,15 @@ _CLICK_CSS = """
             background:repeating-linear-gradient(45deg,
               rgba(0,0,0,.35) 0 3px, transparent 3px 6px); }
   .bx.new { border-width:3px; box-shadow:0 0 0 1px #fff inset; }
+  .bx[data-i]::after { content:attr(data-i); position:absolute; left:-2px; top:-13px;
+            font:10px/1.1 ui-monospace,monospace; color:#fff; background:rgba(0,0,0,.65);
+            padding:0 2px; border-radius:2px; pointer-events:none; }
+  .bx.hl { box-shadow:0 0 0 3px #19d3e6; z-index:3; }
+  .chips { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
+  .chip { font:11px/1.2 ui-monospace,monospace; padding:2px 6px; border-width:2px; }
+  .chip.red { border-color:#e23b3b; }
+  .chip.yellow { border-color:#e8b400; }
+  .chip.out { text-decoration:line-through; opacity:.5; border-style:dashed; }
   .mode { display:flex; gap:6px; align-items:center; }
   .mode button.on { background:#1a1a1a; color:#fff; border-color:#1a1a1a; }
   .wrap.adding { cursor:crosshair; }
@@ -722,7 +737,7 @@ _CLICK_JS = """
     }
   }
   function paint() {
-    for (const el of document.querySelectorAll(".bx:not(.new)"))
+    for (const el of document.querySelectorAll(".bx:not(.new), .chip"))
       el.classList.toggle("out", rejects.has(el.dataset.k));
     renderAdds();
     let onPage = 0;
@@ -754,6 +769,16 @@ _CLICK_JS = """
     paint();
   }
 
+  // A chip lights up the box it stands for, so a stack can be told apart.
+  for (const [type, on] of [["mouseover", true], ["mouseout", false]]) {
+    document.getElementById("grid").addEventListener(type, (ev) => {
+      const chip = ev.target.closest(".chip");
+      if (!chip) return;
+      const fig = chip.closest("figure");
+      for (const b of fig.querySelectorAll(".bx"))
+        if (b.dataset.k === chip.dataset.k) b.classList.toggle("hl", on);
+    });
+  }
   document.getElementById("grid").addEventListener("click", (ev) => {
     const cb = ev.target.closest(".seen");
     if (cb) { markSeen(cb.closest("figure").dataset.stem, cb.checked); paint(); return; }
@@ -765,7 +790,7 @@ _CLICK_JS = """
       if (fig) markSeen(fig.dataset.stem);
       paint(); return;
     }
-    const boxEl = ev.target.closest(".bx");
+    const boxEl = ev.target.closest(".bx") || ev.target.closest(".chip");
     if (boxEl) {
       const k = boxEl.dataset.k;
       rejects = mutate(RKEY, (s) => (s.has(k) ? s.delete(k) : s.add(k)));

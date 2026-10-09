@@ -85,15 +85,20 @@ def main():
     ap.add_argument("--videos", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--manifest", type=Path, required=True)
+    ap.add_argument("--render-only", action="store_true",
+                    help="redraw the review pages from the set and manifest as they are")
     args = ap.parse_args()
     out = args.out.expanduser()
+    if args.render_only:
+        render(out, json.loads(args.manifest.read_text()))
+        return
     img_dir, lbl_dir = out / "set/images/train", out / "set/labels/train"
     for d in (img_dir, lbl_dir):
         d.mkdir(parents=True, exist_ok=True)
     det = yolo.YoloDetector(weights_mod.default_path(), conf=PRELABEL_CONF, imgsz=IMGSZ)
     throws = [r for p in sorted(args.mined.glob("*.json")) for r in json.loads(p.read_text())["throws"]]
     cal_cache = {}
-    frames_out, meta = [], {}
+    frames_out = []
     for r, t in pick(throws):
         if r["source"] not in cal_cache:
             cal_cache[r["source"]] = json.loads((args.timelines / f"tl_{r['source']}.json").read_text())["calibration"]
@@ -111,9 +116,6 @@ def main():
                 for c, (cx, cy, w, h) in zip(res.boxes.cls.tolist(), res.boxes.xywhn.tolist())]
         (lbl_dir / f"{stem}.txt").write_text("\n".join(rows) + ("\n" if rows else ""))
         sus = [s for s in r["suspects"] if abs(s["t"] - t) < 0.01]
-        why = (f"e{r['end']}s{r['shot']} {r['color']} {r['position'] or ''} sliding; the miner saw "
-               + ", ".join(f"a {s['color']} box at {s['conf']:.2f}" for s in sus) + " on the thrower")
-        meta[stem] = labels.FrameMeta(note=f"{why}. {HAT}", url=f"https://youtu.be/{r['video']}?t={int(tt)}")
         frames_out.append({"stem": stem, "video": r["video"], "source": r["source"], "panel": r["panel"],
                            "t": round(tt, 3), "end": r["end"], "shot": r["shot"], "color": r["color"],
                            "position": r["position"], "shadow_n": r["shadow_n"],
@@ -131,10 +133,24 @@ def main():
                 "by_video": dict(sorted(by_video.items())), "frames": frames_out}
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
     args.manifest.write_text(json.dumps(manifest, indent=1))
+    render(out, manifest)
+
+
+def note_for(f):
+    why = (f"e{f['end']}s{f['shot']} {f['color']} {f['position'] or ''} sliding; the miner saw "
+           + ", ".join(f"a {s['color']} box at {s['conf']:.2f}" for s in f["suspects"]) + " on the thrower")
+    return f"{why}. {HAT}"
+
+
+def render(out, manifest):
+    """The review pages, from the set on disk and the manifest's notes. The
+    labels are not touched, so a review in progress keeps every edit."""
+    meta = {f["stem"]: labels.FrameMeta(note=note_for(f), url=f"https://youtu.be/{f['video']}?t={int(f['t'])}")
+            for f in manifest["frames"]}
     frames = [f for seq in labels.load_split(out / "set", "train").values() for f in seq]
     page, n = labels.render_clickable(frames, out / "review", title="ds17: the thrower's head is not a stone",
                                       scope="ds17:train", per_page=200, meta=meta)
-    print(f"{len(frames_out)} frames from {len(by_video)} videos, {n} page(s): {page}")
+    print(f"{len(frames)} frames rendered: {page}")
 
 
 if __name__ == "__main__":
