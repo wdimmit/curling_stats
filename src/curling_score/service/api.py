@@ -287,7 +287,7 @@ def _flag_json(flag) -> dict:
 
 
 def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) -> FastAPI:
-    app = FastAPI(title="Curling Chart", docs_url=None, redoc_url=None)
+    app = FastAPI(title="curling.dimmit.net", docs_url=None, redoc_url=None)
     # Cloud Run sends what it is given, and a game's timeline is 350-500 KB of
     # JSON that gzip takes to about a quarter. Level 6 is gzip's own default:
     # 9 saves 2% more on a timeline for over twice the time (41 ms, not 17).

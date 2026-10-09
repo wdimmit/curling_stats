@@ -15,8 +15,7 @@ body { margin:0; background:var(--bg); color:var(--ink);
        font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
 header { padding:12px 18px; border-bottom:1px solid var(--line); background:var(--panel);
          display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
-header h1 { font-family:var(--display); font-size:19px; margin:0; font-weight:700;
-            text-transform:uppercase; letter-spacing:.05em; }
+header h1 { font-family:var(--display); font-size:19px; margin:0; font-weight:700; }
 header a { color:var(--accent); text-decoration:underline;
            text-underline-offset:3px; text-decoration-thickness:1px; }
 main { max-width:860px; margin:0 auto; padding:22px 18px; }

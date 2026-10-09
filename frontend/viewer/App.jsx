@@ -555,8 +555,8 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
     : unplaced ? `${unplaced} unaccounted for` : "all charted ✓";
   return (
     <header>
-      <h1>{config.hosted ? <a href="/games" title="All games">Curling Chart</a>
-                         : "Curling Chart"}</h1>
+      <h1>{config.hosted ? <a href="/games" title="All games">curling.dimmit.net</a>
+                         : "curling.dimmit.net"}</h1>
       <span className="muted" id="src">
         sheet {src.sheet ?? "?"} &middot;{" "}
         <a href={src.url} target="_blank" rel="noopener">{src.video_id}</a>

@@ -48,7 +48,7 @@ header { padding:10px 16px; border-bottom:1px solid var(--line);
    falls back to system-ui by design: the face comes from a CDN, so an offline
    `curling-score serve` loses the character but keeps the layout. */
 h1 { font-family:var(--display); font-size:17px; margin:0; font-weight:700;
-     white-space:nowrap; text-transform:uppercase; letter-spacing:.05em; }
+     white-space:nowrap; }
 /* The title reads as a title until you reach for it. */
 h1 a { text-decoration:none; color:inherit; }
 h1 a:hover { color:var(--accent); text-decoration:underline; }
