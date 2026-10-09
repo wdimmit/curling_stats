@@ -4215,6 +4215,86 @@ class TestThePlayedDialog:
         assert "header #playedBtn  { order: 13; }" in css
 
 
+class TestNamingTheTeams:
+    """The viewer's "Name teams…": who played, typed in from the game's own
+    page, kept on the game the way the game list keeps it."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def send(self, status, reply, *, throws=False):
+        """sendTeams against a stubbed fetch: what it asked for, and what it said."""
+        module = (self.ROOT / "frontend/runtime/teams.mjs").as_uri()
+        fetch = ("async () => { throw new Error('offline'); }" if throws else
+                 f"async (url, init) => {{ asked.push({{url, init}});"
+                 f" return {{ ok: {str(200 <= status < 300).lower()}, status: {status},"
+                 f" json: async () => ({json.dumps(reply)}) }}; }}")
+        script = (f"const asked = [];\nglobalThis.fetch = {fetch};\n"
+                  f"const M = await import({module!r});\n"
+                  "const res = await M.sendTeams('s 1', {red: 'Dimmit', yellow: ''}, 'tok');\n"
+                  "console.log(JSON.stringify({asked, res}));")
+        proc = subprocess.run([node, "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_the_form_starts_from_the_names_typed_not_the_colours(self):
+        """teamNames falls back on "Red": saved back, that would name a team Red."""
+        got = run_js("out([typedTeamNames({teams: {red: {name: 'Dimmit'}}}),"
+                     " typedTeamNames({}), typedTeamNames(null)]);")
+        assert got == [{"red": "Dimmit", "yellow": ""}, {"red": "", "yellow": ""},
+                       {"red": "", "yellow": ""}]
+
+    def test_it_posts_both_names_with_the_token(self):
+        got = self.send(200, {"ok": True, "red": "Dimmit", "yellow": None})
+        (call,) = got["asked"]
+        assert call["url"] == "/api/games/s%201/teams"
+        assert call["init"]["method"] == "POST"
+        assert call["init"]["headers"]["Authorization"] == "Bearer tok"
+        assert json.loads(call["init"]["body"]) == {"red": "Dimmit", "yellow": ""}
+        assert got["res"] == {"ok": True, "status": 200, "red": "Dimmit", "yellow": None}
+
+    def test_a_refusal_carries_the_servers_words(self):
+        got = self.send(422, {"detail": "that name is too long for a team"})
+        assert got["res"] == {"ok": False, "status": 422,
+                              "error": "that name is too long for a team"}
+
+    def test_no_network_is_a_failure_not_a_throw(self):
+        assert self.send(0, {}, throws=True)["res"] == {"ok": False, "status": 0, "error": None}
+
+    def test_the_button_is_only_where_there_is_a_game_and_a_server(self):
+        app = self.src("frontend/viewer/App.jsx")
+        button = app[app.index('<button id="teamsBtn"'):]
+        assert "hidden={!config.hosted || !doc.chart?.source_id}" in button[:400]
+        assert "names: typedTeamNames(view.game)" in button[:400]
+        assert "<TeamsDialog naming={ui.naming} onClose={closeNaming} onSaved={reload} />" in app
+
+    def test_sign_in_is_asked_only_once_the_dialog_is_open(self):
+        teams = self.src("frontend/viewer/Teams.jsx")
+        dialog = teams[teams.index("export function TeamsDialog("):teams.index("function TeamsForm(")]
+        assert "whoIsSignedIn" not in dialog and "accountsOn" not in dialog
+        assert "{naming && <TeamsForm key={naming.opened}" in dialog
+        form = teams[teams.index("function TeamsForm("):]
+        assert "await accountsOn()" in form and "await whoIsSignedIn()" in form
+
+    def test_a_save_asks_for_a_fresh_token_then_shows_the_game_again(self):
+        teams = self.src("frontend/viewer/Teams.jsx")
+        save = teams[teams.index("const save = async"):]
+        save = save[:save.index("\n  };")]
+        assert "await whoIsSignedIn()" in save
+        assert "{ red: red.trim(), yellow: yellow.trim() }" in save
+        assert save.index("await onSaved()") < save.index("onClose()")
+
+    def test_a_name_is_as_long_as_the_server_takes(self):
+        teams = self.src("frontend/viewer/Teams.jsx")
+        assert teams.count("maxLength={60}") == 2
+
+    def test_on_the_desktop_it_sits_after_i_played(self):
+        css = self.src("src/curling_score/viewer/style.css")
+        assert "header #teamsBtn   { order: 14; }" in css
+
+
 class TestTheShotsPage:
     """My shots lays out core's words and numbers; it computes none."""
     ROOT = Path(__file__).resolve().parents[1]

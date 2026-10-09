@@ -47,6 +47,13 @@ export function teamNames(game) {
   return { red: game?.teams?.red?.name || "Red", yellow: game?.teams?.yellow?.name || "Yellow" };
 }
 
+/* The names as somebody typed them, for a form to start from: "" where
+ * nobody has said, never the colour teamNames falls back on -- saved back,
+ * that would name a team "Red". */
+export function typedTeamNames(game) {
+  return { red: game?.teams?.red?.name || "", yellow: game?.teams?.yellow?.name || "" };
+}
+
 /* The line over the title: league, sheet, the day it was played, and the
  * game when a recording holds more than one. `day` formats the date, so
  * the rest stays testable without a locale. */

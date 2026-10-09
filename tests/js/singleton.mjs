@@ -153,6 +153,7 @@ export const coverageText = core.coverageText;
 export const reportNotes = core.reportNotes;
 export const reportMeta = core.reportMeta;
 export const teamNames = core.teamNames;
+export const typedTeamNames = core.typedTeamNames;
 export const endList = core.endList;
 export const pctOf = core.pctOf;
 export const gatherThinkingOf = core.gatherThinking;

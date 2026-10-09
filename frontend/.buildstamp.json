@@ -13,7 +13,7 @@
     "frontend/core/line.mjs": "1f71ef0d065c4e381037a6a51bd26f6aebeb9d0ad2402d3121078d169e9fd390",
     "frontend/core/myshots.mjs": "b7c735c361688fc70bd5f1cc9510aa599d39770a2c03474b79251388ee119a2a",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
-    "frontend/core/report.mjs": "0540683adf098f12f92c3eb1b5f7aebdf084a04616357c1dc15ff185b16befad",
+    "frontend/core/report.mjs": "b68f5eb1883e899be9fc9774f269e68dc8756e2ab364c7397848225f44db4026",
     "frontend/core/shots.mjs": "32dad29e6eef0c4de59ca66dd2a9ea640ac42cec4f092c47583ebaa719777731",
     "frontend/core/stats.mjs": "67387a12686219c8a66d89631afa54750b6f051b324ad3caaabab641e6be27bb",
     "frontend/core/timeline.mjs": "b9bf4a85364f5e07f3f2bdb1db2f7de8c74a30f4adc62343e9bd08d9cfc14cb5",
@@ -28,6 +28,7 @@
     "frontend/runtime/plays.mjs": "4317cb5bddd799126943375928138b768da436e6b0ab7633782e31f786802927",
     "frontend/runtime/prefs.mjs": "238969881d352d08606f188215c1adda730be7f8489cc049204df324f655d6fb",
     "frontend/runtime/scores.mjs": "51f0984f02f825dcc93ed3bc375e47130ec4026984b1fdab9c643ffe91b6deed",
+    "frontend/runtime/teams.mjs": "f124b06f3e54d517b4a9a58acadaf9442e80d91cb173923784d4115ec7601e1e",
     "frontend/site/Games.jsx": "d9e13f10a65bed67fc84748bb3017d35e56a05cab3bee2f28d30b3282ffa21fa",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
     "frontend/site/Mine.jsx": "08ee58151c96e486b33e19ddbf2c4e21f6e03211eba28c617981fbc70250ad4c",
@@ -41,7 +42,7 @@
     "frontend/site/main.jsx": "da28e493ad298d35b0128c7c29525926a848f5b5fd180ecf5190beac2facaf63",
     "frontend/site/ui.jsx": "d95696fac23b90db0b5e5ace4ffe2cd6d3dadc5869e5956e38eb93df137ac221",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
-    "frontend/viewer/App.jsx": "fef435dcb5ab6abd17b725033c08b3a0d112d85ba651b487a32e9fd5e0f11c9a",
+    "frontend/viewer/App.jsx": "e096fabd8b5aa0777e45694e77bd078b326b050f1e85844a9ac2b47816723779",
     "frontend/viewer/ChartPanel.jsx": "1ae0a3cba7cd425dbdb4bba58ad6c31d58462e6ce2644a50016070b09c4a05be",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "0924ef749d5cd711e01175d123a9f47e3bfe9e29165b4000dc990fb625f42bfa",
@@ -51,12 +52,13 @@
     "frontend/viewer/Pager.jsx": "3e750b495fffda8fd24ebf00f3f0dd928b1ea2b202ad560f532643c672693df7",
     "frontend/viewer/Played.jsx": "442404ed6dc9c004ce7c23b60cd089818088642495b6bd86db5bc54ff1e9406e",
     "frontend/viewer/Report.jsx": "c52a28d9789026141379daee371285bc1893999fd0d823f61e64ac3acac2035d",
+    "frontend/viewer/Teams.jsx": "74bbed7e6f80a148fb7a8d36a25ed7331b82fe0ba1c742129605e6c0bc0d5658",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
     "frontend/viewer/Watch.jsx": "2e7de47175de0cbd87b75ed400def1d76e407ce366ac90b5569c3690fa0e4f5e",
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "45753e5e0cb8003c42399a46cc57757d9dcaf152a37f1b022d4e0abc69058224",
-    "src/curling_score/viewer/app.js": "85b8cf495ee8cfa77f1e3f23e0d41fb5711b36a13c6b05999ea3259ee146ac36"
+    "src/curling_score/viewer/app.js": "5606c30c15d492941d16fdf34fec2e5cf84904f2d2f3745c3567ada7ce7aadf9"
   }
 }
