@@ -72,6 +72,40 @@ class TestReplayRecording:
         rec.stop()
         assert not rec.ended()
 
+    def test_a_window_begins_at_the_keyframe_before_its_start(self, tmp_path, clip):
+        rec = replay.ReplayRecording(clip, tmp_path / "rec.ts", speed=8.0,
+                                     start_s=5.5, end_s=12.0)
+        rec.start()
+        try:
+            deadline = time.monotonic() + 30
+            while not rec.ended() and time.monotonic() < deadline:
+                time.sleep(0.1)
+        finally:
+            rec.stop()
+        assert rec.t0_s == pytest.approx(5.0, abs=0.02)   # keyframes every second
+        # The recording's clock is the source's, less t0_s, to the frame.
+        got = next(iter(F.window(rec.path, 2.0, 2.01, 30.0)))[1]
+        want = next(iter(F.window(clip, rec.t0_s + 2.0, rec.t0_s + 2.01, 30.0)))[1]
+        assert (got == want).all()
+        assert rec.head_s() >= 6.0
+
+    def test_a_lookback_burst_arrives_at_once_then_real_time(self, tmp_path, clip):
+        rec = replay.ReplayRecording(clip, tmp_path / "rec.ts", speed=1.0, burst_s=10.0)
+        rec.start()
+        try:
+            began = time.monotonic()
+            while rec.head_s() < 9.0 and time.monotonic() - began < 5.0:
+                time.sleep(0.05)
+            assert rec.head_s() >= 9.0 and time.monotonic() - began < 4.0
+            assert rec.head_s() < 16.0                     # not the whole clip at once
+        finally:
+            rec.stop()
+
+    def test_a_replay_from_the_beginning_starts_at_zero(self, tmp_path, clip):
+        rec = replay.ReplayRecording(clip, tmp_path / "rec.ts", speed=8.0).start()
+        rec.stop()
+        assert rec.t0_s == 0.0
+
 
 class TestTheVideoPipeline:
     def test_a_picture_with_no_panels_is_a_calibration_failure_to_wait_out(self, clip):
