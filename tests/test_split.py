@@ -178,6 +178,34 @@ class TestSpeedAtLine:
         assert 0.2 < pair[1][0] - pair[0][0] <= split.SPEED_SPAN_MAX_S
         assert split.speed_at_line(dropped, LINE) == pytest.approx(0.8, abs=0.01)
 
+    def test_at_10_fps_the_rate_is_read_over_at_least_0_2_s(self):
+        """A one-sample jump at the paint -- S1 10/06 e6 r5's arrival read 0.16
+        in 0.1 s against 0.03-0.05 either side -- is read past: a neighbour
+        each side, so the span is 0.3 s and neither straddling sample is an
+        end of it. A 5 fps pair already spans 0.2 s and is read as before."""
+        steady = list(arriving(y0=4.8, speed=0.8, fps=10.0))
+        i = next(k for k, p in enumerate(steady) if p[2] < 4.44)        # first past the line
+        t, x, y = steady[i]
+        jumped = steady[:i] + [(t, x, y - 0.08)] + steady[i + 1:]      # one sample 0.08 early
+        pair = (steady[i - 1][2] - (y - 0.08)) / 0.1                     # what the pair alone reads
+        got = split.speed_at_line(tuple(jumped), LINE)
+        assert pair == pytest.approx(1.6, abs=0.01)
+        assert got == pytest.approx(0.8, abs=0.01)                       # (y[i-2] - y[i+1]) / 0.3
+        assert split.SPEED_SPAN_MIN_S == 0.2
+
+    def test_a_5_fps_pair_is_read_alone(self):
+        steady = climbing(speed=2.0, fps=5.0)
+        trip = LINE.departure_y_at(0.0)
+        i = next(k for k, p in enumerate(steady) if p[2] > trip)
+        jumped = steady[:i] + ((steady[i][0], steady[i][1], steady[i][2] + 0.2),) + steady[i + 1:]
+        assert split.speed_at_line(jumped, LINE, departing=True) == pytest.approx(
+            (steady[i][2] + 0.2 - steady[i - 1][2]) / 0.2, abs=1e-6)
+
+    def test_widening_never_crosses_a_gap_or_the_span_limit(self):
+        trip = 4.44
+        lone = ((20.0, 0.0, trip + 0.05), (20.1, 0.0, trip - 0.03), (21.0, 0.0, trip - 0.5))
+        assert split.speed_at_line(lone, LINE) == pytest.approx(0.8, abs=0.01)   # the pair alone
+
     def test_the_departing_line_is_held_to_the_same_span(self):
         """S1 10/06 e7 r16, read at the live run's sample phase: 4.18 at
         6055.72, then 5.51 at 6058.72 -- 0.44 against the arrival's 0.63."""

@@ -52,6 +52,14 @@ SPEED_TOLERANCE = 1.4
 # the 11-video harness 102 throwing-panel and 32 arriving-panel speeds were
 # read across such gaps; dropping them gained one split and lost none.
 SPEED_SPAN_MAX_S = 0.5
+# ...and the shortest span a speed is read over. A 5 fps release pair always
+# spanned 0.2 s; at 10 fps the pair straddling the paint spans 0.1 s, and one
+# sample a few centimetres off -- a box drawn a little long -- then doubles the
+# rate, which the speed tolerance below reads as a stone that sped up. So a
+# pair shorter than this takes in a neighbour each side (0.3 s at 10 fps),
+# never across a gap and never past SPEED_SPAN_MAX_S in all. Arrivals have
+# always been 10 fps.
+SPEED_SPAN_MIN_S = 0.2
 
 # How far the side view and the panel may disagree about the same crossing
 # before both are disbelieved. They are independent cameras timing one painted
@@ -284,11 +292,38 @@ def speed_at_line(track, line, *, departing: bool = False) -> float | None:
     """
     tripwire = line.departure_y_at if departing else line.y_at
     pts = [(float(t), float(x), float(y)) for t, x, y in track or ()]
-    for (t0, x0, y0), (t1, x1, y1) in zip(pts, pts[1:]):
+    for i, ((t0, x0, y0), (t1, x1, y1)) in enumerate(zip(pts, pts[1:])):
         d0, d1 = y0 - tripwire(x0), y1 - tripwire(x1)
         if d0 * d1 <= 0 and d0 != d1 and 0 < t1 - t0 <= SPEED_SPAN_MAX_S:
-            return abs(y1 - y0) / (t1 - t0)
+            lo, hi = _widen(pts, i, i + 1)
+            return abs(pts[hi][2] - pts[lo][2]) / (pts[hi][0] - pts[lo][0])
     return None
+
+
+def _widen(pts, lo, hi):
+    """``(lo, hi)`` grown a neighbour each side at a time until it spans
+    SPEED_SPAN_MIN_S -- never across a step of more than SPEED_SPAN_MAX_S, nor
+    past SPEED_SPAN_MAX_S in all; one side alone where the other cannot grow.
+    Both sides, so neither sample straddling the paint -- either of which can
+    be the box drawn long -- is left as an end of the span."""
+
+    def step(i, j):
+        return pts[j][0] - pts[i][0] if 0 <= min(i, j) and max(i, j) < len(pts) else None
+
+    while pts[hi][0] - pts[lo][0] < SPEED_SPAN_MIN_S - 1e-9:
+        span = pts[hi][0] - pts[lo][0]
+        after, before = step(hi, hi + 1), step(lo - 1, lo)
+        ok_after = after is not None and 0 < after <= SPEED_SPAN_MAX_S
+        ok_before = before is not None and 0 < before <= SPEED_SPAN_MAX_S
+        if ok_after and ok_before and span + after + before <= SPEED_SPAN_MAX_S:
+            lo, hi = lo - 1, hi + 1
+        elif ok_after and span + after <= SPEED_SPAN_MAX_S:
+            hi += 1
+        elif ok_before and span + before <= SPEED_SPAN_MAX_S:
+            lo -= 1
+        else:
+            break
+    return lo, hi
 
 
 def long_split(delivery, *, t_hog, v_hog, far) -> Split | None:

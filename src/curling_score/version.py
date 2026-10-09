@@ -151,7 +151,12 @@ from pathlib import Path
 # League sheet 1 e7 r16 and e8 r12 lost their splits to near-line speeds read
 # across 3.0 and 3.4 s gaps in the release track. On the 11-video harness 134
 # such speeds drop, one split is gained and none lost.
-PIPELINE_VERSION = "2026.10.08.2"
+# 2026.10.08.3: a panel's speed at a hog line is read over at least 0.2 s
+# (`split.SPEED_SPAN_MIN_S`): a pair straddling the paint 0.1 s apart takes in
+# a neighbour each side, so one box drawn long no longer doubles the rate and
+# trips the speed tolerance. 5 fps pairs already spanned 0.2 s; arrivals have
+# always been 10 fps.
+PIPELINE_VERSION = "2026.10.08.3"
 
 
 def model_id(weights) -> str:
