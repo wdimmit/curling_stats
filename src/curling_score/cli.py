@@ -629,6 +629,45 @@ def _live_replay(args) -> int:
     return 0
 
 
+def _practice_replay(args) -> int:
+    """A cached video watched as a practice session: the stream picked up a
+    lookback before Start, each throw reported as it comes to rest, and how
+    long after that each one was published."""
+    from curling_score.live import replay, session as live
+    from curling_score.practice import harness
+    from curling_score.practice.pipeline import PracticePipeline
+    from curling_score.practice.watch import PracticeWatch
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    weights = None if (args.weights or "").lower() in ("", "none", "classical") \
+        else args.weights
+    detector, broom_model, line_model = analyze_mod.load_models(
+        weights, args.imgsz, args.device, skip_longview=args.no_longview,
+        skip_line=args.no_line, progress=print)
+    start = max(0.0, args.from_s - args.lookback)
+    rec = replay.ReplayRecording(args.video, out / "recording.ts", speed=args.speed,
+                                 start_s=start, end_s=args.to_s,
+                                 burst_s=args.from_s - start).start()
+    heads = harness.HeadClock().start(rec)
+    sink = harness.Sink(out, heads)
+    watch = PracticeWatch(
+        recording=rec,
+        pipeline=PracticePipeline(weights=weights, skip_longview=args.no_longview,
+                                  line=line_model is not None, progress=print),
+        models=live.Models(detector=detector, broom_model=broom_model,
+                           line_model=line_model),
+        since_s=args.from_s - rec.t0_s, t0_s=rec.t0_s, publish=sink.publish,
+        progress=print)
+    try:
+        harness.run(watch)
+    finally:
+        rec.stop()
+        heads.stop()
+    print(f"{len(sink.seen)} throw(s); see {out / 'throws.jsonl'}")
+    return 0
+
+
 def main(argv=None) -> int:
     from curling_score.diagnostics import enable_stack_dumps
 
@@ -689,6 +728,28 @@ def main(argv=None) -> int:
     p.add_argument("--no-line", action="store_true",
                    help="skip measuring where each rock's line passed the broom")
     p.set_defaults(func=_live_replay)
+
+    p = sub.add_parser("practice-replay",
+                       help="replay a cached video as a practice session, one throw at a time")
+    p.add_argument("video", help="a cached video file")
+    p.add_argument("--from", dest="from_s", type=float, required=True,
+                   help="where the session starts (Start), in seconds into the video")
+    p.add_argument("--to", dest="to_s", type=float, required=True,
+                   help="where the replay stops, in seconds into the video")
+    p.add_argument("--lookback", type=float, default=1200.0,
+                   help="footage before Start to calibrate from, written at once (default: 1200)")
+    p.add_argument("--speed", type=float, default=1.0,
+                   help="playback speed against real time after the lookback (default: 1)")
+    p.add_argument("--out", default="out/practice/run", help="output directory")
+    p.add_argument("--weights", default=_default_weights(),
+                   help="a trained YOLO model to detect with, or 'none'")
+    p.add_argument("--imgsz", type=int, default=448)
+    p.add_argument("--device", default=None)
+    p.add_argument("--no-longview", action="store_true",
+                   help="skip the side views (hog times, brooms, lines)")
+    p.add_argument("--no-line", action="store_true",
+                   help="skip measuring where each rock's line passed the broom")
+    p.set_defaults(func=_practice_replay)
 
     _add_harvest(sub)
     _add_sideframes(sub)
