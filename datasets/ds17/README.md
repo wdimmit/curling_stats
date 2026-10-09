@@ -36,3 +36,25 @@ covers are cut directly, `extra-arrivals.json`) -- pre-labelled by ds16a.
 |---|---|
 | `manifest-arrivals.json` | round 2's frames |
 | `edits/label-edits-ds17b-*.json` | its review (scope `ds17b:train`) |
+
+## Training and the model shipped
+
+`scripts/ds17/make_folds.py --ds17b` adds both rounds to ds16a's set (fold `all`, 1,973
+frames; ds11 val for validation). `scripts/ds17/train.sh` trains with ds11a's recipe in the
+worker image (`queue.sh` ran the three below on the Ryzen's 3080 in ~25 min each).
+`scripts/ds17/fullgames.py` reads every timed throw (10 fps) and arrival (5 fps) of the 76
+hosted games with every model in one decode; `fg_summary.py` tallies it.
+
+| model | thrower runs | thrower boxes ≥0.5 | arrival frames seen | arrivals with 2+ frames lost vs ds16a | ds12 mAP50 / 50-95 | live end |
+|---|---|---|---|---|---|---|
+| ds16a | 304 | 2,223 | 89.94% | — | .9874 / .9386 | 138 s |
+| round 1, YOLO11n | 114 | 856 | 89.59% | 618 | — | — |
+| **ds17b, YOLO11n** | **76** | **653** | **91.74%** | **234** | .9878 / .9343 | 132 s |
+| ds17b, YOLO26n | 92 | 686 | 90.99% | 481 | .9787 / .9315 | 142 s |
+| ds17b, YOLO26s | 95 | 893 | 92.22% | 350 | .9884 / .9436 | 146 s |
+| ds17b, YOLO26s, 300 epochs (stopped at 242) | 86 | 1,024 | 92.09% | 346 | .9844 / .9471 | — |
+
+The stone on a throw is found 98.3-98.4% of the time by all of them. `weights/ds17b.pt` is
+the YOLO11n run: fewest thrower boxes, fewest lost arrivals, ds16a's architecture and
+cost. The 26s runs draw tighter boxes and see a few more arrival frames, but box more
+throwers.
