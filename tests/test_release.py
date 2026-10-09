@@ -522,3 +522,101 @@ def test_a_matched_release_is_reported_alongside_its_arrival():
     assert un == []
     assert list(matched.values()) == [a]
     assert list(matched)[0].t == pytest.approx(100.0)
+
+
+# PGltvgB2yIM 3886-3894 s, the top panel at 10 fps: every box the detector drew,
+# as (colour, x, y). The red climbs y -1.98 -> +3.99 on the centre line, is lost
+# at the panel's far edge, is seen once more at 3890.5, and 2.6 s later one
+# box at (-0.50, +4.41) reads red at 0.39 -- the yellow at rest beside it,
+# misread for a frame.
+PGLT_E5_R9 = {
+    3886.7: [('red', 0.118, -1.984)],
+    3886.8: [('red', 0.142, -1.793)],
+    3886.9: [('red', 0.163, -1.563)],
+    3887.0: [('red', 0.182, -1.346)],
+    3887.1: [('red', 0.202, -1.107)],
+    3887.2: [('red', 0.225, -0.871)],
+    3887.3: [('red', 0.255, -0.64)],
+    3887.4: [('red', 0.272, -0.395)],
+    3887.5: [('red', 0.291, -0.157)],
+    3887.6: [('red', 0.308, 0.073)],
+    3887.7: [('red', 0.319, 0.3)],
+    3887.8: [('red', 0.36, 0.523)],
+    3887.9: [('red', 0.37, 0.756)],
+    3888.0: [('red', 0.385, 0.974)],
+    3888.3: [('yellow', 0.49, 1.649)],
+    3888.4: [('red', 0.55, 1.902)],
+    3888.5: [('red', 0.55, 2.113)],
+    3888.6: [('red', 0.556, 2.316)],
+    3888.7: [('red', 0.557, 2.507)],
+    3888.8: [('red', 0.557, 2.684)],
+    3888.9: [('red', 0.557, 2.861)],
+    3889.0: [('red', 0.554, 3.015)],
+    3889.1: [('red', 0.548, 3.165)],
+    3889.2: [('red', 0.548, 3.3)],
+    3889.3: [('red', 0.546, 3.432)],
+    3889.4: [('red', 0.546, 3.556)],
+    3889.5: [('red', 0.542, 3.676)],
+    3889.6: [('red', 0.537, 3.789)],
+    3889.7: [('red', 0.529, 3.898)],
+    3889.8: [('red', 0.535, 3.988)],
+    3890.5: [('red', 0.518, 4.51)],
+    3892.9: [('yellow', -0.778, 4.533)],
+    3893.0: [('yellow', -0.786, 4.533)],
+    3893.1: [('yellow', -0.784, 4.525), ('red', -0.498, 4.413)],
+    3893.2: [('yellow', -0.73, 4.533)],
+}
+
+
+class TestATrackEndsAtItsGaps:
+    """PGlt e5 r9 at 10 fps: the misread box was joined onto the release track,
+    which then averaged 1.00 m/s from hack to edge and failed MIN_SPEED_M_S --
+    at 5 fps neither late frame was sampled and the climb read 1.93 m/s. A
+    release track is cut at every gap longer than GAP_SPLIT_S and each piece is
+    a candidate of its own.""" 
+
+    def _frames(self):
+        times = [round(3886.0 + k / 10, 1) for k in range(81)]
+        return [(t, [det(c, x, y) for c, x, y in PGLT_E5_R9.get(t, [])]) for t in times]
+
+    def test_the_climb_is_the_release(self):
+        got = release.find_releases(self._frames(), -2.08, view_x_limit_m=1.85)
+        assert [(r.color, round(r.t, 1)) for r in got] == [("red", 3886.7)]
+        (r,) = got
+        # The stone's own sighting at the panel's edge 0.7 s on stays in; the
+        # misread box 2.6 s after that does not.
+        assert r.track[-1][0] == pytest.approx(3890.5)
+        assert all(t < 3893.0 for t, _x, _y in r.track)
+        assert r.speed_m_s == pytest.approx((4.51 + 1.984) / (3890.5 - 3886.7), abs=0.02)
+
+    def test_the_bound(self):
+        assert release.GAP_SPLIT_S == 1.0
+
+    def test_the_thrower_hiding_the_stone_at_the_tee_is_not_a_gap(self):
+        """AEqL e2 r6 at 10 fps: the stone is unseen for 0.6 s as it crosses the
+        stage-1 line under the thrower's body -- y -0.52 at 834.0, +0.89 at
+        834.6. Cut there, neither piece is a release: one never reaches the
+        line, the other is first seen above it."""
+        times = [round(832.5 + k / 10, 1) for k in range(41)]
+        frames = [(t, [det(c, x, y) for c, x, y in AEQL_E2_R6.get(t, [])]) for t in times]
+        got = release.find_releases(frames, -2.21, view_x_limit_m=1.85)
+        assert [(r.color, round(r.t, 1)) for r in got] == [("red", 833.2)]
+        assert got[0].speed_m_s == pytest.approx(2.17, abs=0.02)
+
+
+# AEqLTgM25Tc 832.5-836.5 s, the bottom panel at 10 fps (colour, x, y).
+AEQL_E2_R6 = {
+    833.2: [('red', 0.185, -2.173)],
+    833.3: [('red', 0.195, -2.081)],
+    833.4: [('red', 0.204, -1.89)],
+    833.6: [('red', 0.222, -1.448)],
+    833.7: [('red', 0.226, -1.219), ('red', 0.23, -1.547)],
+    833.8: [('red', 0.238, -0.99), ('red', 0.258, -1.295)],
+    833.9: [('red', 0.243, -0.761)],
+    834.0: [('red', 0.264, -0.516)],
+    834.6: [('red', 0.327, 0.888)],
+    834.7: [('red', 0.336, 1.134)],
+    834.8: [('red', 0.34, 1.365)],
+    835.1: [('red', 0.349, 1.972)],
+    835.2: [('red', 0.345, 2.169)],
+}

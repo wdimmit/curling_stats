@@ -156,7 +156,14 @@ from pathlib import Path
 # a neighbour each side, so one box drawn long no longer doubles the rate and
 # trips the speed tolerance. 5 fps pairs already spanned 0.2 s; arrivals have
 # always been 10 fps.
-PIPELINE_VERSION = "2026.10.08.3"
+# 2026.10.08.4: the throwing panel is read at 10 fps, not 5
+# (`release.RELEASE_FPS`); a release track must still span 0.4 s
+# (`MIN_SPAN_S`), and is cut at any gap over 1.0 s (`GAP_SPLIT_S`), each piece
+# a candidate. On the 11-video harness: releases 1654 -> 1694 (+46/-6), splits
+# 1659 -> 1663, tee crossings estimated 43 -> 17; a one-frame phase shift now
+# moves 13 releases rather than 37, and 2 release times by more than 0.2 s
+# rather than 20.
+PIPELINE_VERSION = "2026.10.08.4"
 
 
 def model_id(weights) -> str:

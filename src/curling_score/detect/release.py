@@ -40,9 +40,11 @@ from dataclasses import dataclass
 from curling_score.detect import delivery as D
 from curling_score.geometry import constants as C
 
-# Half the rate the houses are watched at: a stone leaving at 2 m/s still
-# moves only 0.4 m between samples, well inside the tracker's bootstrap gate.
-RELEASE_FPS = 5.0
+# The rate the houses are watched at. It was half that, 5 fps, while decoding
+# was the cost; at 5 fps which frames a pass reads depends on where its window
+# starts -- one of six phases -- and a live run and a reprocess of the same
+# recording could read different frames and so different release tracks.
+RELEASE_FPS = 10.0
 # Stage 1 of a throw: the stone leaves the hack and crosses this line. One foot
 # behind the tee, in sheet metres -- the tee is y = 0 by calibration, so it is
 # the same number on every panel.
@@ -66,6 +68,23 @@ STAGE1_Y_M = -0.3048
 # three times -- y -2.16 -> +0.57 at 2.73 m/s, on the centre line -- and four
 # costs that rock and no other.
 MIN_SAMPLES = 3
+# ...and they must span this long. MIN_SAMPLES was set at 5 fps, where three
+# samples are 0.4 s of track; held in time, a faster rate does not let a
+# shorter track -- the thrower's arm, a box that flickered -- through.
+MIN_SPAN_S = 0.4
+# A track is cut at every gap longer than this, and each piece is a candidate
+# of its own. The tracker's gate widens with the time since it last saw the
+# stone, so a track the panel loses at its far edge will take whatever box
+# turns up seconds later: PGlt e5 r9's red climbed -1.98 -> +3.99 at 1.93 m/s,
+# and at 10 fps a one-frame "red" 2.6 s after its last sighting -- the yellow
+# at rest a metre across the sheet, misread at 0.39 -- was joined on, the
+# climb averaged 1.00 m/s and failed MIN_SPEED_M_S; hOKZ e8 r11's took a red
+# at rest by the far line 3.5 s on. At 5 fps those frames were not sampled.
+# Not shorter: the thrower's body hides the stone for about 0.6 s as it
+# crosses STAGE1_Y_M -- five releases measured at 0.6 s -- and 0.5 cut each of
+# them in two exactly at the line, so neither piece was a release. Joins of
+# another object came 2.2-3.5 s on; the stone's own gaps ran to 1.1 s.
+GAP_SPLIT_S = 1.0
 MIN_SPEED_M_S = 1.0
 MAX_SPEED_M_S = 4.5
 # How far off the centre line a delivery may run, as a fraction of the panel's
@@ -272,6 +291,21 @@ def _merge_fragments(tracks):
     return out
 
 
+def _split_at_gaps(track):
+    """``track`` as the pieces between its gaps longer than GAP_SPLIT_S."""
+    cuts = [i for i in range(1, len(track.ts)) if track.ts[i] - track.ts[i - 1] > GAP_SPLIT_S]
+    if not cuts:
+        return [track]
+    pieces, lo = [], 0
+    for hi in cuts + [len(track.ts)]:
+        piece = D._Track(track.color, track.ts[lo], track.xs[lo], track.ys[lo])
+        for t, x, y in zip(track.ts[lo + 1:hi], track.xs[lo + 1:hi], track.ys[lo + 1:hi]):
+            piece.add(t, x, y)
+        pieces.append(piece)
+        lo = hi
+    return pieces
+
+
 def find_releases(frames, view_y_min_m: float,
                   view_x_limit_m: float | None = None) -> list[Release]:
     """Every stone seen leaving the hack and crossing the stage-1 line.
@@ -302,8 +336,9 @@ def find_releases(frames, view_y_min_m: float,
             f"the stage-1 line at {STAGE1_Y_M:.4f} m: it cannot watch a stone "
             f"leave the hack, so no throw here could ever be confirmed")
     out: list[Release] = []
-    for track in _merge_fragments(D._build_tracks(frames)):
-        if len(track.ts) < MIN_SAMPLES:
+    pieces = [p for tr in _merge_fragments(D._build_tracks(frames)) for p in _split_at_gaps(tr)]
+    for track in pieces:
+        if len(track.ts) < MIN_SAMPLES or track.ts[-1] - track.ts[0] < MIN_SPAN_S - 1e-6:
             continue
         if track.ys[0] >= STAGE1_Y_M:
             continue  # first seen above the line: not watched leaving the hack
