@@ -141,6 +141,13 @@ code { background:var(--line); padding:1px 5px; border-radius:4px; }
    are on reads as a place, not a destination. */
 header a.here { text-decoration:none; font-weight:650; }
 body[data-page="thinking"] main { max-width:920px; }
+/* Source Sans 3, as on the game list, the logo keeping the display face. The
+   table, its headings and the tabs each name the display face for
+   themselves, so they are told to inherit. It sets smaller than the
+   condensed face at a size, so the rows take the game list's 15px. */
+body[data-page="thinking"] { font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif; }
+body[data-page="thinking"] :is(table, th, h2, .pill, .tabs button.tab, .lhead h1) { font-family:inherit; }
+#thinking td { font-size:15px; }
 .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 16px; }
 .tabs button.tab { font-family:var(--display); font-size:13px; padding:4px 10px;
                    border-radius:999px; white-space:nowrap; }
