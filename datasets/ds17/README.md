@@ -20,3 +20,19 @@ moment in a delivery where ds16a drew a box on the thrower sliding behind or ove
 
 Pre-labelled by ds16a at conf 0.05, imgsz 448, as ds15 and ds16 were. The images rebuild
 from the cached videos with the builder (on the laptop: `/data/wdd/scratch/ds17/ds17set`).
+
+## Round 2 — the arriving stone under a person
+
+Trained on round 1, the model (`ds17-all`) stopped boxing throwers but lost some real stones:
+on the 11-video harness, 11 arrivals ds16a saw (5 then read as hogged), mostly stones with a
+sweeper or skip over them in the far house. `scripts/ds17/mine_arrivals.py` ran both models
+along every served arrival track (6,510 arrivals): ds16a saw the stone in 90.6% of those
+frames, the round-1 model in 90.2%; 551 arrivals have the new model missing it 3+ frames
+running. `scripts/ds17/build_arrivals.py` cut 131 frames from 34 videos -- the longest runs of
+misses first, plus every harness arrival lost (`must-arrivals.json`; the five no served track
+covers are cut directly, `extra-arrivals.json`) -- pre-labelled by ds16a.
+
+| file | what it is |
+|---|---|
+| `manifest-arrivals.json` | round 2's frames |
+| `edits/label-edits-ds17b-*.json` | its review (scope `ds17b:train`) |

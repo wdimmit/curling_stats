@@ -1,0 +1,72 @@
+[
+ [
+  "AEqLTgM25Tc",
+  "s_0dW4NmTxKpIgseaAR",
+  "top",
+  1460.0,
+  "e2s16 red house-remove, +0.3 s after entering"
+ ],
+ [
+  "AEqLTgM25Tc",
+  "s_0dW4NmTxKpIgseaAR",
+  "top",
+  1461.0,
+  "e2s16 red house-remove, +1.3 s after entering"
+ ],
+ [
+  "entTaSBFK3A",
+  "s_0NOnuMHZoSp23r6n4",
+  "top",
+  5023.97,
+  "e6s8 yellow house-appear, +0.3 s after entering"
+ ],
+ [
+  "entTaSBFK3A",
+  "s_0NOnuMHZoSp23r6n4",
+  "top",
+  5024.97,
+  "e6s8 yellow house-appear, +1.3 s after entering"
+ ],
+ [
+  "_OGoqF5W9-I",
+  "s_0eVn6Mx0au4MpUsD2",
+  "bottom",
+  689.7,
+  "e2s5 red left-view, +0.3 s after entering"
+ ],
+ [
+  "_OGoqF5W9-I",
+  "s_0eVn6Mx0au4MpUsD2",
+  "bottom",
+  690.7,
+  "e2s5 red left-view, +1.3 s after entering"
+ ],
+ [
+  "_OGoqF5W9-I",
+  "s_0eVn6Mx0au4MpUsD2",
+  "top",
+  1014.7,
+  "e3s6 yellow gap-search, +0.3 s after entering"
+ ],
+ [
+  "_OGoqF5W9-I",
+  "s_0eVn6Mx0au4MpUsD2",
+  "top",
+  1015.7,
+  "e3s6 yellow gap-search, +1.3 s after entering"
+ ],
+ [
+  "PGltvgB2yIM",
+  "s_0yQ2U3LTLXavqwIXW",
+  "top",
+  7116.9,
+  "e8s14 red house-appear, +0.3 s after entering"
+ ],
+ [
+  "PGltvgB2yIM",
+  "s_0yQ2U3LTLXavqwIXW",
+  "top",
+  7117.9,
+  "e8s14 red house-appear, +1.3 s after entering"
+ ]
+]
