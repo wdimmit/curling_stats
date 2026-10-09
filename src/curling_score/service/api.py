@@ -919,13 +919,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return {"ok": True, "league": league, "games": len(games)}
 
     @app.get("/api/reports/thinking")
-    def api_thinking_report(top: int = Query(thinking_report.TOP, ge=1, le=100)):
+    def api_thinking_report(request: Request,
+                            top: int = Query(thinking_report.TOP, ge=1, le=100)):
         """Per league, the teams with the most thinking per end, one row per
         team per game. Public, like the catalogue, and read from the
-        summaries on the sources alone -- never a timeline."""
+        summaries on the sources alone -- never a timeline.
+
+        Asked about on every load rather than kept for five minutes: a team
+        named on a game's page has to be on this one when the person who
+        named it comes back to look."""
         report = thinking_report.build(games_listed(repo.list_sources(limit=EVERY_SOURCE)),
                                        top=top)
-        return JSONResponse(report, headers={"Cache-Control": "public, max-age=300"})
+        return json_revalidated(request, report, "public")
 
     @app.post("/api/admin/backfill-thinking")
     def admin_backfill_thinking(limit: int = Query(50, ge=1, le=500),

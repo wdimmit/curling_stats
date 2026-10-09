@@ -56,10 +56,26 @@ class TestSummarisedOnCompletion:
         assert rows["red"]["ends"] == 1 and league["teams"][0]["colour"] == "red"
         assert report(world)["pending"] == 0
 
-    def test_the_report_is_public_and_cacheable(self, world):
+    def test_the_report_is_public_and_kept_but_asked_about(self, world):
         r = world["client"].get("/api/reports/thinking")
         assert r.status_code == 200 and r.json()["leagues"] == []
-        assert r.headers["cache-control"] == "public, max-age=300"
+        assert r.headers["cache-control"] == "public, no-cache" and r.headers["etag"]
+
+    def test_a_team_named_since_the_last_look_shows_on_the_next(self, world):
+        """2026-10-09: names typed in on a game's page did not reach the report
+        until a hard refresh -- it was sent with max-age=300."""
+        submit(world)
+        work_through(world, doc=with_thinking(sample_doc(1)), games=1)
+        c = world["client"]
+        first = c.get("/api/reports/thinking")
+        tag = first.headers["etag"]
+        assert c.get("/api/reports/thinking", headers={"If-None-Match": tag}).status_code == 304
+        world["repo"].update_source(the_source(world).id, team_red="Dimmit", team_yellow="Grant")
+        again = c.get("/api/reports/thinking", headers={"If-None-Match": tag})
+        assert again.status_code == 200 and again.headers["etag"] != tag
+        (league,) = again.json()["leagues"]
+        assert {(r["colour"], r["team"]) for r in league["teams"]} == {("red", "Dimmit"),
+                                                                      ("yellow", "Grant")}
 
     def test_a_timeline_without_a_clock_is_left_out_rather_than_pending(self, world):
         submit(world)
