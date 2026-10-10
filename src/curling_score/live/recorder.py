@@ -65,6 +65,11 @@ def first_media_sequence(playlist: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def segment_durations(playlist: str) -> list:
+    """Each segment's length in a media playlist, in order."""
+    return [float(d) for d in re.findall(r"#EXTINF:([\d.]+)", playlist or "")]
+
+
 class _Part:
     def __init__(self, path, proc):
         self.path, self.proc, self.head = path, proc, 0.0
@@ -111,6 +116,11 @@ class YtDlpRecorder:
         self.lookback_s = lookback_s
         if lookback_s is not None:
             self.require_first_segment = False
+        # What a lookback start actually got -- a stream younger than the
+        # lookback gives what it has -- and when, by the wall clock, the
+        # recording began: the watch's Start and its wall times come from them.
+        self.lookback_got_s = self.wall_started = None
+        self._start_back = 0
         self.pot_provider, self.cookies = pot_provider, cookies
         self._resolve = resolve or self._resolve_hls
         self._fetch = fetch or self._fetch_text
@@ -128,9 +138,36 @@ class YtDlpRecorder:
 
     def start(self):
         self._require_first_segment()
+        if self.lookback_s is not None:
+            self._start_back, self.lookback_got_s = self._lookback_start()
+            self.wall_started = time.time()
         self._spawn()
         self._started_at = self._progress_at = self.clock()
         return self
+
+    def _lookback_start(self):
+        """How many segments back to start, and how many seconds that is: the
+        trailing segments that reach ``lookback_s``, or the whole window of a
+        younger stream -- read off the live playlist. Practice starts when the
+        leagues end, so its stream may be minutes old; and segments are
+        counted, not assumed. Five-second ones are assumed only when the
+        playlist cannot be read."""
+        durations = []
+        try:
+            url = self._resolve()
+            if url:
+                durations = segment_durations(self._fetch(url))
+        except Exception as exc:  # noqa: BLE001 - fall back to the usual segments
+            log.warning("could not read %s's live playlist: %s", self.video_id, exc)
+        if not durations:
+            n = math.ceil(self.lookback_s / SEGMENT_S)
+            return n, n * SEGMENT_S
+        got, n = 0.0, 0
+        for d in reversed(durations):
+            if got >= self.lookback_s:
+                break
+            got, n = got + d, n + 1
+        return n, got
 
     def _require_first_segment(self):
         """Refuse unless the live playlist still begins at the stream's start.
@@ -153,7 +190,7 @@ class YtDlpRecorder:
         self.dir.mkdir(parents=True, exist_ok=True)
         with self._lock:
             path = self.dir / f"rec.{len(self._parts)}.ts"
-        start = 0 if self.lookback_s is None else -math.ceil(self.lookback_s / SEGMENT_S)
+        start = -self._start_back
         cmd = [sys.executable, "-m", "yt_dlp", "--no-part", "--newline", "--no-warnings",
                *self._extractor_args(), "-f", cache.FORMAT, "--hls-use-mpegts",
                "--downloader-args", f"ffmpeg_i:-live_start_index {start}",

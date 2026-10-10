@@ -281,15 +281,19 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             from curling_score.practice.pipeline import PracticePipeline
             from curling_score.practice.watch import LOOKBACK_S, PracticeWatch
 
-            lookback = float(job.get("lookback_s") or LOOKBACK_S)
-            # Until the API passes the session's Start (phase 3), Start is now:
-            # the recording began `lookback` behind the live edge.
+            # Until the API passes the session's Start (phase 3), Start is when
+            # the recorder began: as far behind the live edge as it actually
+            # got (a young stream gives what it has), by the recorder's own
+            # wall clock -- the lane may build this session minutes later.
+            got = getattr(stream.recorder, "lookback_got_s", None)
+            lookback = float(got or job.get("lookback_s") or LOOKBACK_S)
+            began = getattr(stream.recorder, "wall_started", None) or _time.time()
             return PracticeWatch(
                 recording=stream.recorder,
                 pipeline=PracticePipeline(weights=weights, skip_longview=skip_longview,
                                           line=models.line_model is not None,
                                           progress=progress),
-                models=models, since_s=lookback, wall_t0=_time.time() - lookback,
+                models=models, since_s=lookback, wall_t0=began - lookback,
                 publish=publish, progress=progress)
         return live.LiveSession(
             video_id=job["video_id"], url=source.canonical_url(job["video_id"]),

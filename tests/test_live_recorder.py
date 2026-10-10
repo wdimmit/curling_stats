@@ -261,14 +261,51 @@ def test_a_recording_is_cut_off_by_the_wall_clock_too(tmp_path):
     assert rec.ended()
 
 
+def window(n, seg_s=5.0, seq=4321):
+    """A live playlist holding ``n`` segments of ``seg_s`` seconds."""
+    return ("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:5\n"
+            f"#EXT-X-MEDIA-SEQUENCE:{seq}\n"
+            + "".join(f"#EXTINF:{seg_s},\nseg{i}.ts\n" for i in range(n)))
+
+
 def test_a_practice_recording_starts_its_lookback_back_from_the_live_edge(tmp_path):
     # A sheet's practice stream has run for hours; its window reaches back
     # about an hour. A watch wants twenty minutes of it to calibrate from.
     rec, spawned = make(tmp_path, [Proc(["00:20:00.00"], code=None)], seq=4321,
                         still_live=True, lookback_s=1200.0)
+    rec._fetch = lambda url: window(720)
     rec.start()                                    # no refusal: it never wanted segment 0
     (cmd,) = spawned
     assert "ffmpeg_i:-live_start_index -240" in cmd
+    assert rec.lookback_got_s == 1200.0 and rec.wall_started is not None
+
+
+def test_a_young_stream_gives_the_lookback_it_has(tmp_path):
+    # Practice starts when the leagues end, so its stream may be minutes old.
+    rec, spawned = make(tmp_path, [Proc(["00:05:00.00"], code=None)], seq=0,
+                        still_live=True, lookback_s=1200.0)
+    rec._fetch = lambda url: window(60)            # five minutes so far
+    rec.start()
+    assert "ffmpeg_i:-live_start_index -60" in spawned[0]
+    assert rec.lookback_got_s == 300.0
+
+
+def test_short_segments_are_counted_not_assumed(tmp_path):
+    rec, spawned = make(tmp_path, [Proc(["00:20:00.00"], code=None)], seq=99,
+                        still_live=True, lookback_s=1200.0)
+    rec._fetch = lambda url: window(1000, seg_s=2.0)
+    rec.start()
+    assert "ffmpeg_i:-live_start_index -600" in spawned[0]
+    assert rec.lookback_got_s == 1200.0
+
+
+def test_a_playlist_that_cannot_be_read_falls_back_to_five_second_segments(tmp_path):
+    rec, spawned = make(tmp_path, [Proc(["00:20:00.00"], code=None)], still_live=True,
+                        lookback_s=1200.0)
+    rec._resolve = lambda: None
+    rec.start()
+    assert "ffmpeg_i:-live_start_index -240" in spawned[0]
+    assert rec.lookback_got_s == 1200.0
 
 
 def test_a_practice_recording_that_drops_out_cannot_resume(tmp_path):

@@ -657,3 +657,14 @@ class TestPracticeInTheLane:
         assert practice.rec is ps.recorder
         assert practice.since_s == LOOKBACK_S and practice.models is live.models
         assert practice.wall_t0 is not None
+
+    def test_start_and_the_wall_clock_come_from_what_the_recorder_got(self, monkeypatch):
+        # A young stream gave 300 s, not the 1200 asked for; and the lane may
+        # build the session minutes after the recorder began (mid-end).
+        from curling_score import analyze
+
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
+        ps = pstream(1)
+        ps.recorder.lookback_got_s, ps.recorder.wall_started = 300.0, 1.7e9
+        practice = lane_mod.video_sessions("w.pt", progress=lambda m: None)(ps, lambda d: None)
+        assert practice.since_s == 300.0 and practice.wall_t0 == 1.7e9 - 300.0
