@@ -138,6 +138,13 @@ def summarize(pairs, false, missed, throws) -> dict:
         "latency_s": _stats(latency),
         "unreleased": {"n": len(unreleased),
                        "matched": sum(1 for th in unreleased if id(th) in paired_ids)},
+        # A stone pushed by hand would most likely come out as "side": the long
+        # camera fills any arrival the overhead saw no release for, and a push
+        # at walking pace can pass for a slide.
+        "release_sources": {
+            "overhead": sum(1 for th in throws if th.get("release_source") == "overhead"),
+            "side": sum(1 for th in throws if th.get("release_source") == "side"),
+            "none": sum(1 for th in throws if th.get("release_source") is None)},
     }
 
 

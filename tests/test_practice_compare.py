@@ -82,3 +82,5 @@ def test_the_summary_counts_and_measures():
     assert s["broom"] == {"both": 1, "neither": 0, "throw_only": 0, "reference_only": 0}
     assert s["latency_s"] == {"n": 2, "p50": 12.0, "p90": 20.0, "max": 20.0}
     assert s["unreleased"] == {"n": 1, "matched": 0}
+    # By source, so a push the long camera took for a slide shows as "side".
+    assert s["release_sources"] == {"overhead": 1, "side": 0, "none": 1}
