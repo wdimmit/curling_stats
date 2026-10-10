@@ -71,7 +71,7 @@ def find_reusable_run(runs: list[Run], processing_version: str,
     candidates = [
         r for r in runs
         if r.processing_version == processing_version and r.status in live
-        and (r.format or "fours") == game_format
+        and (r.format or "fours") == game_format and r.kind != "practice"
         and r.covers(start_s)
     ]
     # Prefer one that is already done, then the most recent.

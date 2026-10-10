@@ -1883,9 +1883,9 @@ class TestFlags:
 
 def test_the_site_learns_whether_doubles_is_on(world):
     r = world["client"].get("/api/features")
-    assert r.status_code == 200 and r.json() == {"doubles": False}
+    assert r.status_code == 200 and r.json() == {"doubles": False, "practice": False}
     world["settings"].doubles_enabled = True
-    assert world["client"].get("/api/features").json() == {"doubles": True}
+    assert world["client"].get("/api/features").json() == {"doubles": True, "practice": False}
 
 
 class TestTheChartSaysWhichGameAndWhen:

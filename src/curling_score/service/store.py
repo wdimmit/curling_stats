@@ -115,5 +115,10 @@ def meta_key(video_id: str, run_id: str) -> str:
     return f"runs/{video_id}/{run_id}/meta.json"
 
 
+def practice_key(video_id: str, run_id: str) -> str:
+    """A practice watch's document: every throw on the sheet while it ran."""
+    return f"runs/{video_id}/{run_id}/practice.json"
+
+
 def detcache_key(video_id: str, digest: str) -> str:
     return f"detcache/{video_id}/{digest}.npz"

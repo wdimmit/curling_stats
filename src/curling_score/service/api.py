@@ -36,14 +36,15 @@ from starlette.middleware.gzip import GZipMiddleware
 from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
-from curling_score.service import dedupe, playlist_index, playlists, slug, thinking_report
+from curling_score.service import (dedupe, playlist_index, playlists, practice, slug,
+                                   thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
     JOB_KINDS, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team, User, Worker,
     play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
-from curling_score.service.store import detcache_key, meta_key, timeline_key
+from curling_score.service.store import detcache_key, meta_key, practice_key, timeline_key
 from curling_score.service.youtube import SubmissionError, validate_submission
 
 log = logging.getLogger(__name__)
@@ -111,6 +112,9 @@ FLAG_DAY_LIMIT = 100
 # season's worth of games tagged in one sitting is the expected use.
 PLAY_HOUR_LIMIT = 60
 PLAY_DAY_LIMIT = 300
+# Starting practice sessions: a few an hour is a busy morning on the ice.
+PRACTICE_HOUR_LIMIT = 20
+PRACTICE_DAY_LIMIT = 60
 # The page a flag was sent from: an edit, view-only or review link.
 FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
 _PLACE_INTS = ("game_index", "end", "rock")
@@ -159,6 +163,9 @@ class Settings:
     # worker claims would stand in for the recording and keep it from ever
     # being queued the ordinary way.
     live_enabled: bool = False
+    # Practice sessions: /practice/sheet/N and its API. Off until a worker
+    # that can watch a practice stream (WORKER_PRACTICE=1) is running.
+    practice_enabled: bool = False
     # The club's own clock, which playlists' schedules are written in.
     club_tz: str = "America/Los_Angeles"
     model_id: str = "classical"
@@ -200,6 +207,7 @@ class Settings:
             require_approval=env("REQUIRE_APPROVAL", "0") in ("1", "true", "yes"),
             doubles_enabled=env("DOUBLES_ENABLED", "0") in ("1", "true", "yes"),
             live_enabled=env("LIVE_ENABLED", "0") in ("1", "true", "yes"),
+            practice_enabled=env("PRACTICE_ENABLED", "0") in ("1", "true", "yes"),
             club_tz=env("CLUB_TZ", "America/Los_Angeles"),
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
@@ -813,6 +821,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def shots_page():
         return page("shots.html")
 
+    @app.get("/practice/sheet/{n}", response_class=HTMLResponse)
+    def practice_page(n: int):
+        if not settings.practice_enabled:
+            raise HTTPException(404, "no such page")
+        return page("practice.html")
+
     @app.get("/join/{token}", response_class=HTMLResponse)
     def join_page(token: str):
         # The token is read back off the URL by the page itself; nothing is
@@ -872,7 +886,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # Games queued or in flight have no sources yet; list their runs too so
         # a person can make a link now and have it fill in.
         for run in repo.list_runs():
-            if run.status in ("ready", "failed", "live"):
+            # A practice watch is not a game, at any stage.
+            if run.status in ("ready", "failed", "live") or run.kind == "practice":
                 continue
             out.append({
                 "source_id": None, "video_id": run.video_id, "title": run.title,
@@ -1307,7 +1322,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         """What the site pages may offer. Doubles stays off until the viewer and
         pipeline are ready for it, and the submit form only shows the choice
         when it is on."""
-        return JSONResponse({"doubles": bool(settings.doubles_enabled)},
+        return JSONResponse({"doubles": bool(settings.doubles_enabled),
+                             "practice": bool(settings.practice_enabled)},
                             headers={"Cache-Control": "public, max-age=300"})
 
     @app.get("/api/auth/config")
@@ -1933,6 +1949,127 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         doc = timeline.for_player(doc, play.color, play.slot)
         return json_revalidated(request, {"doc": doc, "fallback": fallback}, "private")
 
+    # ------------------------------------------------------------- practice
+    def practice_on():
+        if not settings.practice_enabled:
+            raise HTTPException(404, "practice is not switched on")
+
+    def practice_doc(watch):
+        """A watch's latest practice.json, or None before its first publish."""
+        if watch is None or watch.revised_at is None:
+            return None
+        run = repo.get_run(watch.run_id)
+        try:
+            return load_doc(practice_key(run.video_id, run.id), _iso(watch.revised_at))
+        except KeyError:
+            return None
+
+    def my_session(session_id, me):
+        s = repo.get_session(session_id)
+        if s is None or s.user_id != me.id:
+            raise HTTPException(404, "no such session")
+        return s
+
+    @app.post("/api/practice/sessions", status_code=201)
+    async def practice_start(request: Request,
+                             authorization: str | None = Header(default=None)):
+        practice_on()
+        me = require_user(authorization)
+        body = await request.json()
+        try:
+            sheet = int(body.get("sheet"))
+        except (TypeError, ValueError):
+            raise HTTPException(422, "say which sheet") from None
+        if not repo.bump_rate_limit("practice:" + me.id, now(), PRACTICE_HOUR_LIMIT,
+                                    PRACTICE_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of sessions; try again later")
+        try:
+            s = practice.start(repo, youtube, me, sheet, body.get("hand", "right"), now(),
+                               settings.processing_version)
+        except practice.NoStream:
+            raise HTTPException(404, f"no live stream on sheet {sheet}") from None
+        return {"id": s.id, "watch_id": s.watch_id}
+
+    @app.get("/api/practice/sessions/{session_id}")
+    def practice_read(session_id: str, request: Request,
+                      authorization: str | None = Header(default=None)):
+        practice_on()
+        s = my_session(session_id, require_user(authorization))
+        view = practice.session_view(repo, practice_doc(repo.get_watch(s.watch_id)), s, now())
+        return json_revalidated(request, view, "private")
+
+    @app.post("/api/practice/sessions/{session_id}/stop")
+    def practice_stop(session_id: str, authorization: str | None = Header(default=None)):
+        practice_on()
+        s = my_session(session_id, require_user(authorization))
+        practice.stop(repo, s, now())
+        return {"ok": True}
+
+    @app.patch("/api/practice/sessions/{session_id}/throws/{throw_id}")
+    async def practice_hide(session_id: str, throw_id: str, request: Request,
+                            authorization: str | None = Header(default=None)):
+        practice_on()
+        s = my_session(session_id, require_user(authorization))
+        body = await request.json()
+        practice.hide(repo, s, throw_id, bool(body.get("hidden")))
+        return {"ok": True}
+
+    @app.get("/api/me/practice")
+    def my_practice(authorization: str | None = Header(default=None)):
+        practice_on()
+        me = require_user(authorization)
+        return {"sessions": [
+            {"id": s.id, "sheet": s.sheet, "started_at": _iso(s.started_at),
+             "ended_at": _iso(s.ended_at), "end_reason": s.end_reason, "active": s.active}
+            for s in repo.sessions_for_user(me.id)]}
+
+    def practice_watch_of(job):
+        run = repo.get_run(job.run_id)
+        return run, next((w for w in repo.watches_for_sheet(run.sheet) if w.job_id == job.id),
+                         None)
+
+    def practice_should_stop(job) -> bool:
+        """A practice job's sessions' clocks, run: True when no session is
+        watching any more and the worker should stop."""
+        _, watch = practice_watch_of(job)
+        if watch is None:
+            return True
+        return practice.sweep(repo, watch, practice_doc(watch), now()) == 0
+
+    def practice_publish(job, body):
+        """A practice watch's latest document is up: say so on the watch (its
+        revised_at is what readers' caches key on), keep the lease, and say
+        whether anyone is still watching."""
+        run, watch = practice_watch_of(job)
+        if not store.exists(practice_key(run.video_id, run.id)):
+            raise HTTPException(409, "practice.json has not been uploaded")
+        t = now()
+        got = body.get("practice") or {}
+        repo.update_run(run.id, status="live", revised_at=t, error=None)
+        repo.update_job(job.id, progress_at=t, phase="live",
+                        lease_expires_at=t + timedelta(seconds=settings.lease_s))
+        if watch is None:
+            return {"ok": True, "stop": True}
+        repo.update_watch(watch.id, status=got.get("status", watch.status), revised_at=t,
+                          recorded_s=got.get("recorded_s"), throws=int(got.get("throws") or 0))
+        return {"ok": True, "stop": practice_should_stop(job)}
+
+    def practice_complete(job, body):
+        """A practice watch has ended -- stopped, out of stream, or given up
+        calibrating: its job is done and any session still on it ends."""
+        run, watch = practice_watch_of(job)
+        t = now()
+        got = body.get("practice") or {}
+        repo.update_run(run.id, status="ready", ready_at=t, error=None)
+        repo.update_job(job.id, state="done", finished_at=t, phase="done", fraction=1.0)
+        if watch is not None:
+            failed = got.get("status") == "failed"
+            repo.update_watch(watch.id, status="failed" if failed else "ended",
+                              recorded_s=got.get("recorded_s", watch.recorded_s),
+                              throws=int(got.get("throws") or watch.throws))
+            practice.end_all(repo, watch, t, "failed" if failed else "stream_ended")
+        return {"ok": True}
+
     # ------------------------------------------------------------- worker
     @app.post("/api/worker/claim")
     async def claim(request: Request, authorization: str | None = Header(default=None)):
@@ -1971,6 +2108,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             "format": run.format or "fours", "kind": job.kind or "vod",
             "title": run.title,
             "attempt": job.attempts, "lease_s": settings.lease_s,
+            **({"lookback_s": practice.LOOKBACK_S} if job.kind == "practice" else {}),
         }}
 
     def owned_job(job_id: str, worker_id: str | None) -> Job:
@@ -2013,6 +2151,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 version=getattr(known, "version", None),
                 model_id=getattr(known, "model_id", None),
                 gpu=getattr(known, "gpu", None)))
+        if job.kind == "practice" and practice_should_stop(job):
+            # Nobody is watching this sheet any more (stopped, idle, or out of
+            # time): the worker reads what it has, publishes, and completes.
+            return {"ok": True, "lease_expires_at": _iso(lease), "stop": True}
         return {"ok": True, "lease_expires_at": _iso(lease)}
 
     @app.post("/api/worker/jobs/{job_id}/artifacts")
@@ -2033,10 +2175,15 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         uploads = []
         for f in body.get("files", []):
             name = f["name"]
-            if name not in ("timeline.json", "meta.json"):
+            if job.kind == "practice":
+                if name != "practice.json":
+                    raise HTTPException(400, f"a practice job uploads practice.json, not {name}")
+                key = practice_key(run.video_id, run.id)
+            elif name not in ("timeline.json", "meta.json"):
                 raise HTTPException(400, f"unknown artifact {name}")
-            key = timeline_key(run.video_id, run.id) if name == "timeline.json" \
-                else meta_key(run.video_id, run.id)
+            else:
+                key = timeline_key(run.video_id, run.id) if name == "timeline.json" \
+                    else meta_key(run.video_id, run.id)
             uploads.append({"name": name, "key": key, **signed(key, "application/json")})
         det = []
         for d in body.get("detcache", []):
@@ -2056,7 +2203,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if job is None or job.state != "running":
             raise HTTPException(409, "this job is not running")
         run = repo.get_run(job.run_id)
-        allowed = (timeline_key(run.video_id, run.id), meta_key(run.video_id, run.id))
+        allowed = (timeline_key(run.video_id, run.id), meta_key(run.video_id, run.id),
+                   practice_key(run.video_id, run.id))
         if key not in allowed and not key.startswith(f"detcache/{run.video_id}/"):
             raise HTTPException(400, "that key does not belong to this job")
         data = await request.body()
@@ -2085,6 +2233,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         require_worker(authorization)
         body = await request.json()
         job = owned_job(job_id, body.get("worker_id"))
+        if job.kind == "practice":
+            return practice_publish(job, body)
         if (job.kind or "vod") != "live":
             raise HTTPException(400, "only a live run publishes before it completes")
         run = repo.get_run(job.run_id)
@@ -2122,6 +2272,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if job.state == "done":
             return {"ok": True, "charts_resolved": 0, "already": True}
         owned_job(job_id, body.get("worker_id"))
+        if job.kind == "practice":
+            return practice_complete(job, body)
         # A worker that predates formats sends none and builds fours whatever
         # it was asked; storing that as a doubles reading would be wrong in
         # every end. Old fours runs are unaffected.
@@ -2475,6 +2627,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                         raise ValueError(f"{key} is at least 60 seconds")
             if "live_poll_s" in fields and fields["live_poll_s"] is None:
                 raise ValueError("live_poll_s cannot be empty")
+            if "practice" in fields and not isinstance(fields["practice"], bool):
+                raise ValueError("practice is true or false")
         except (ValueError, TypeError) as e:
             raise HTTPException(422, str(e)) from e
         return fields
@@ -2487,7 +2641,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if any(p.playlist_id == pid for p in repo.list_playlists()):
             raise HTTPException(409, f"playlist {pid} is already watched")
         label = str(body.pop("label", None) or pid).strip()
-        fields = playlist_fields(body, {"schedule", "live_poll_s", "idle_poll_s"})
+        fields = playlist_fields(body, {"schedule", "live_poll_s", "idle_poll_s", "practice"})
         pl = playlists.new_watched_playlist(pid, label, now())
         for key, value in fields.items():
             setattr(pl, key, value)
@@ -2503,7 +2657,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if repo.get_playlist(pid) is None:
             raise HTTPException(404, "no such playlist")
         fields = playlist_fields(await request.json(),
-                                 {"label", "enabled", "schedule", "live_poll_s", "idle_poll_s"})
+                                 {"label", "enabled", "schedule", "live_poll_s", "idle_poll_s",
+                                  "practice"})
         if fields.get("enabled") is True:
             fields.update(failures=0, last_error=None)
         pl = repo.update_playlist(pid, **fields)
