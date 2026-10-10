@@ -557,3 +557,95 @@ def test_a_stream_waiting_for_its_first_calibration_goes_before_any_end():
         "j_2": uncal})
     ln.step()
     assert made["j_2"].calibrated and api.published == []
+
+
+class Watch:
+    """A practice watch: does work while it has some, ends when told or out of it."""
+
+    def __init__(self, stream, publish, work=3):
+        self.stream, self.publish, self.work = stream, publish, work
+        self.done, self.stops, self.steps = False, 0, 0
+
+    def request_stop(self):
+        self.stops += 1
+        self.work = 0
+
+    def step(self):
+        self.steps += 1
+        if self.work > 0:
+            self.work -= 1
+            self.publish(pdoc(3 - self.work))
+            return True
+        self.done = True
+        self.publish(pdoc(3, status="ended"))
+        return True
+
+
+def pdoc(n, status="watching"):
+    return {"practice": 1, "status": status, "t0_s": 0.0, "wall_t0": 1.7e9,
+            "since_s": 1200.0, "recorded_s": 1300.0 + n, "throws": [{"id": f"t_{n}"}] * n}
+
+
+def pstream(n):
+    return manager_mod.Stream(job=practice_job(n), recorder=Recorder(practice_job(n)))
+
+
+class TestPracticeInTheLane:
+    def test_practice_goes_before_an_end_that_is_due(self):
+        api = Api()
+        ln, _, _ = lane(api, [stream(1), pstream(1)], {
+            "j_1": lambda st, pub: Session(st, pub, due=600.0, ends=5),
+            "p_1": lambda st, pub: Watch(st, pub)})
+        ln.step()
+        assert [p[0] for p in api.published] == ["p_1"]
+
+    def test_with_nothing_to_do_a_practice_watch_lets_a_due_end_be_built(self):
+        class Idle(Watch):
+            def step(self):
+                self.steps += 1
+                return False
+
+        api = Api()
+        ln, _, _ = lane(api, [pstream(1), stream(1)], {
+            "j_1": lambda st, pub: Session(st, pub, due=600.0, ends=5),
+            "p_1": lambda st, pub: Idle(st, pub)})
+        assert ln.step()
+        assert [p[0] for p in api.published] == ["j_1"]
+
+    def test_a_practice_publish_is_its_document_and_a_summary(self):
+        api = Api()
+        ln, _, _ = lane(api, [pstream(1)], {"p_1": lambda st, pub: Watch(st, pub)})
+        ln.step()
+        assert api.artifact_files[-1] == [{"name": "practice.json",
+                                           "bytes": len(api.uploads[-1][1])}]
+        (job_id, payload), = api.published
+        assert job_id == "p_1"
+        assert payload == {"practice": {"status": "watching", "recorded_s": 1301.0,
+                                        "throws": 1}, "sheet": 1}
+
+    def test_a_stop_from_the_api_reaches_the_watch_and_it_completes(self):
+        api = Api()
+        s = pstream(1)
+        ln, m, _ = lane(api, [s], {"p_1": lambda st, pub: Watch(st, pub)})
+        s.stop_requested = True
+        for _ in range(20):
+            if not ln.busy():
+                break
+            ln.step()
+        assert s.session.stops >= 1
+        (job_id, payload), = api.completed
+        assert job_id == "p_1" and payload["practice"]["status"] == "ended"
+        assert m.finished == ["p_1"] and m.kept == [False]
+
+    def test_a_practice_job_gets_a_watch_sharing_the_models(self, monkeypatch):
+        from curling_score import analyze
+        from curling_score.practice.watch import LOOKBACK_S, PracticeWatch
+
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
+        make = lane_mod.video_sessions("w.pt", progress=lambda m: None)
+        ps = pstream(1)
+        live, practice = make(stream(1), lambda d: None), make(ps, lambda d: None)
+        assert isinstance(practice, PracticeWatch)
+        assert practice.rec is ps.recorder
+        assert practice.since_s == LOOKBACK_S and practice.models is live.models
+        assert practice.wall_t0 is not None

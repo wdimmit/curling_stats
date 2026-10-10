@@ -13,6 +13,7 @@ import time
 
 from curling_score import timeline
 from curling_score.ingest import source
+from curling_score.live.manager import is_practice
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -30,6 +31,11 @@ def _games(doc):
 
 def _sheet(job):
     return job.get("sheet") or source.sheet_from_title(job.get("title"))
+
+
+def _practice_summary(doc) -> dict:
+    return {"status": doc["status"], "recorded_s": doc["recorded_s"],
+            "throws": len(doc["throws"])}
 
 
 class LiveLane:
@@ -67,6 +73,24 @@ class LiveLane:
         for stream in ready:
             if stream.pending is not None:
                 return self._resend(stream)
+        # Practice first: a card is due seconds after a stone stops, an end
+        # minutes after it closes. A watch with nothing to read says so, and
+        # one step reads at most STEP_MAX_S, so league ends are never starved.
+        for stream in ready:
+            if not is_practice(stream.job):
+                continue
+            try:
+                if stream.stop_requested:
+                    stream.session.request_stop()
+                did = stream.session.step()
+            except Exception as exc:  # noqa: BLE001
+                return self._trouble(stream, exc)
+            stream.failures = 0
+            if stream.session.done:
+                return self._complete(stream)
+            if did:
+                return True
+        ready = [s for s in ready if not is_practice(s.job)]
         first, due, idle = [], [], []
         for i, stream in enumerate(ready):
             try:
@@ -141,15 +165,20 @@ class LiveLane:
         from curling_score.service.worker import Lost
 
         job, doc = stream.job, stream.pending
+        if is_practice(job):
+            name = "practice.json"
+            summary = {"practice": _practice_summary(doc), "sheet": _sheet(job)}
+        else:
+            name = "timeline.json"
+            summary = {"games": _games(doc), "title": job.get("title"),
+                       "sheet": _sheet(job), "duration_s": doc["live"]["recorded_s"]}
         try:
             data = json.dumps(doc).encode()
             plan = self.api.artifacts(job["id"], self.worker_id,
-                                      [{"name": "timeline.json", "bytes": len(data)}], [])
+                                      [{"name": name, "bytes": len(data)}], [])
             for up in plan["uploads"]:
                 self.api.upload(up["url"], up["headers"], data)
-            self.api.publish(job["id"], self.worker_id, {
-                "games": _games(doc), "title": job.get("title"), "sheet": _sheet(job),
-                "duration_s": doc["live"]["recorded_s"]})
+            self.api.publish(job["id"], self.worker_id, summary)
         except Lost:
             raise
         except Exception as exc:  # noqa: BLE001 - the API may be down; send it again
@@ -158,8 +187,11 @@ class LiveLane:
             stream.retry_at = self.clock() + RETRY_S
             return False
         stream.pending, stream.last_doc = None, doc
-        log.info("live job %s: published %s end(s)", job["id"],
-                 [len(g["ends"]) for g in doc["games"]])
+        if is_practice(job):
+            log.info("practice job %s: published %d throw(s)", job["id"], len(doc["throws"]))
+        else:
+            log.info("live job %s: published %s end(s)", job["id"],
+                     [len(g["ends"]) for g in doc["games"]])
         return True
 
     def _resend(self, stream) -> bool:
@@ -179,6 +211,8 @@ class LiveLane:
 
         if stream.pending is not None:
             return self._resend(stream)       # the final document goes first
+        if is_practice(stream.job):
+            return self._complete_practice(stream)
         job, doc = stream.job, stream.last_doc or {"games": [], "live": {"recorded_s": 0}}
         try:
             self.api.complete(job["id"], self.worker_id, {
@@ -195,6 +229,27 @@ class LiveLane:
             log.info("live job %s complete", job["id"])
         # A sheet nobody played has nothing to reprocess: its recording goes.
         self.manager.finish(stream, keep=bool(doc["games"]))
+        return True
+
+    def _complete_practice(self, stream) -> bool:
+        """A practice watch that has ended: its job completed with a summary.
+        Its recording is a window on a stream that runs all day, not a game,
+        so it is not kept."""
+        from curling_score.service.worker import Lost
+
+        job, doc = stream.job, stream.last_doc
+        summary = (_practice_summary(doc) if doc is not None
+                   else {"status": "ended", "recorded_s": 0.0, "throws": 0})
+        try:
+            self.api.complete(job["id"], self.worker_id,
+                              {"practice": summary, "sheet": _sheet(job)})
+        except Lost:
+            log.warning("practice job %s was taken away before it completed", job["id"])
+        except Exception as exc:  # noqa: BLE001 - try again shortly
+            log.warning("practice job %s: completing did not go through (%s)", job["id"], exc)
+            stream.retry_at = self.clock() + RETRY_S
+            return True
+        self.manager.finish(stream, keep=False)
         return True
 
 
@@ -220,6 +275,22 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             loaded.append(live.Models(detector=detector, broom_model=broom_model,
                                       line_model=line_model))
         models, job = loaded[0], stream.job
+        if is_practice(job):
+            import time as _time
+
+            from curling_score.practice.pipeline import PracticePipeline
+            from curling_score.practice.watch import LOOKBACK_S, PracticeWatch
+
+            lookback = float(job.get("lookback_s") or LOOKBACK_S)
+            # Until the API passes the session's Start (phase 3), Start is now:
+            # the recording began `lookback` behind the live edge.
+            return PracticeWatch(
+                recording=stream.recorder,
+                pipeline=PracticePipeline(weights=weights, skip_longview=skip_longview,
+                                          line=models.line_model is not None,
+                                          progress=progress),
+                models=models, since_s=lookback, wall_t0=_time.time() - lookback,
+                publish=publish, progress=progress)
         return live.LiveSession(
             video_id=job["video_id"], url=source.canonical_url(job["video_id"]),
             recording=stream.recorder, fmt=format_mod.by_name(job.get("format") or "fours"),
