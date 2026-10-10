@@ -1,0 +1,66 @@
+/* A practice throw in a curler's words: where it stopped, its line, its
+ * weight, which way it curled -- and which throws the page shows at all. Pure
+ * functions of the throw records the API serves (service/practice.py), so the
+ * page and its tests agree on every word. */
+
+import { feetInches } from "./line.mjs";
+
+const RINGS = {
+  button: "Button", 4: "4-foot", 8: "8-foot", 12: "12-foot",
+  short: "In front", long: "Behind", out: "Out of play",
+};
+// A miss this small is on the broom: under the detector's own accuracy.
+const ON_BROOM_M = 0.0254;
+// "On the broom" for the summary strip: within six inches.
+const NEAR_BROOM_M = 0.1524;
+
+export function ringWord(rest) {
+  return rest ? RINGS[rest.ring] ?? null : null;
+}
+
+export function restText(rest) {
+  if (!rest) return null;
+  const ring = ringWord(rest);
+  if (rest.ring === "out" || rest.to_tee_m == null) return ring;
+  return `${ring} · ${feetInches(rest.to_tee_m)} from the tee`;
+}
+
+export function lineText(line) {
+  if (!line) return null;
+  if (line.miss_m != null) {
+    if (Math.abs(line.miss_m) < ON_BROOM_M) return "On the broom";
+    return `${feetInches(line.miss_m)} ${line.side ?? (line.miss_m < 0 ? "left" : "right")} of the broom`;
+  }
+  if (line.aim_x != null) {
+    return `aimed ${feetInches(line.aim_x)} ${line.aim_x < 0 ? "left" : "right"} of centre`;
+  }
+  return null;
+}
+
+export function weightText(split) {
+  return split == null ? null : `${split.toFixed(1)} s`;
+}
+
+export function curlText(curl) {
+  return curl === "left" || curl === "right" ? `Curled ${curl}` : null;
+}
+
+/* The throws to show: a stone that arrived with nothing seen releasing it
+ * was not thrown -- on real practice footage, every one was a stone placed by
+ * hand for a drill. A release that never arrived stays: that is a hog. */
+export function shown(throws) {
+  return (throws ?? []).filter(t => !(t.arrived && t.release_source == null));
+}
+
+export function summary(throws) {
+  const mine = (throws ?? []).filter(t => !t.hidden);
+  const splits = mine.map(t => t.split_s).filter(s => s != null);
+  const misses = mine.map(t => t.line?.miss_m).filter(m => m != null);
+  return {
+    count: mine.length,
+    weightMin: splits.length ? Math.min(...splits) : null,
+    weightMax: splits.length ? Math.max(...splits) : null,
+    onBroom: misses.filter(m => Math.abs(m) <= NEAR_BROOM_M).length,
+    withBroom: misses.length,
+  };
+}
