@@ -35,6 +35,9 @@ from curling_score.practice.releases import ReleaseBook
 log = logging.getLogger(__name__)
 
 HOUSES = ("top", "bottom")
+# The footage before Start a watch is given to calibrate from: twenty minutes
+# of the stream's DVR window, which on a long stream holds about an hour.
+LOOKBACK_S = 1200.0
 # Both panels, twice the release finder's rate (it is thinned back for that).
 DETECT_FPS = 10.0
 # The last packets of a growing MPEG-TS may not decode yet.
@@ -57,11 +60,14 @@ def _thrown_at(arrival, rel) -> float:
 
 class PracticeWatch:
     def __init__(self, *, recording, pipeline, models, since_s: float, t0_s: float = 0.0,
-                 publish=None, clock=time.monotonic, progress=log.info):
+                 wall_t0=None, publish=None, clock=time.monotonic, progress=log.info):
         """``since_s`` is Start on the recording's clock; ``t0_s`` is where the
-        recording begins on the stream's, which every published time is on."""
+        recording begins on the stream's, which every published time is on.
+        ``wall_t0`` is when the recording begins by the wall clock (epoch
+        seconds), for a live stream whose own clock is not known."""
         self.rec, self.pipeline, self.models = recording, pipeline, models
-        self.since_s, self.t0_s = float(since_s), float(t0_s)
+        self.since_s, self.t0_s, self.wall_t0 = float(since_s), float(t0_s), wall_t0
+        self._stop = False
         self.publish = publish or (lambda doc: None)
         self.clock, self.progress = clock, progress
         self.cal = None
@@ -74,17 +80,25 @@ class PracticeWatch:
         self.throws: list = []
         self.done = False
 
+    def request_stop(self) -> None:
+        """No session is watching any more: read what is recorded, then end."""
+        self._stop = True
+
     def step(self) -> bool:
         if self.done:
             return False
         head, ended = self.rec.head_s(), self.rec.ended()
         if self.finders is None:
+            if self._stop:
+                self.status, self.done = "ended", True
+                self._publish()
+                return True
             return self._calibrate(head, ended)
         upto = head if ended else head - HEAD_MARGIN_S
-        if upto - self.done_s >= STEP_MIN_S or (ended and upto > self.done_s):
+        if upto - self.done_s >= STEP_MIN_S or ((ended or self._stop) and upto > self.done_s):
             self._watch(min(upto, self.done_s + STEP_MAX_S))
             return True
-        if ended:
+        if ended or self._stop:
             self.status, self.done = "ended", True
             self._publish()
             return True
@@ -92,6 +106,7 @@ class PracticeWatch:
 
     def document(self) -> dict:
         return {"practice": 1, "status": self.status, "t0_s": self.t0_s,
+                "wall_t0": self.wall_t0,
                 "since_s": round(self.t0_s + self.since_s, 2),
                 "recorded_s": round(self.t0_s + self.done_s, 2),
                 "throws": list(self.throws)}

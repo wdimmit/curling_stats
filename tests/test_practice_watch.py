@@ -152,6 +152,34 @@ def test_it_gives_up_after_its_calibration_tries():
     assert w.step() is False
 
 
+def test_told_to_stop_it_reads_what_is_recorded_then_ends():
+    p, rec, docs = Pipeline(), Rec(head=20.0), []
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=SimpleNamespace(detector=None),
+                        since_s=20.0, publish=docs.append, clock=lambda: 0.0)
+    w.step()                                       # calibrated
+    rec.head = 31.0
+    w.request_stop()
+    while w.step():
+        pass
+    assert w.done and w.status == "ended" and docs[-1]["status"] == "ended"
+    assert p.spans[-1][1] == 29.0                  # read to the head, less its margin
+
+
+def test_a_stop_while_calibrating_ends_it():
+    p, rec = Pipeline(), Rec(head=5.0)             # the lookback is still arriving
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=20.0,
+                        clock=lambda: 0.0)
+    w.request_stop()
+    assert w.step() is True
+    assert w.done and w.status == "ended" and p.calibrated == []
+
+
+def test_the_document_says_when_the_recording_began_by_the_wall_clock():
+    w = W.PracticeWatch(recording=Rec(), pipeline=Pipeline(), models=None, since_s=20.0,
+                        wall_t0=1760000000.0)
+    assert w.document()["wall_t0"] == 1760000000.0
+
+
 def test_a_long_catch_up_is_read_in_pieces_from_the_look_back():
     p = Pipeline()
     rec = Rec(head=500.0)
