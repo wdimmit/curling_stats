@@ -668,3 +668,56 @@ class TestPracticeInTheLane:
         ps.recorder.lookback_got_s, ps.recorder.wall_started = 300.0, 1.7e9
         practice = lane_mod.video_sessions("w.pt", progress=lambda m: None)(ps, lambda d: None)
         assert practice.since_s == 300.0 and practice.wall_t0 == 1.7e9 - 300.0
+
+
+class TestPracticeClipsInTheLane:
+    def test_a_clip_goes_up_as_an_artifact_of_the_job(self, tmp_path):
+        api = Api()
+        s = pstream(1)
+        ln, _, _ = lane(api, [s], {"p_1": lambda st, pub: Watch(st, pub)})
+        ln.step()
+        clip = tmp_path / "t_22.0.mp4"
+        clip.write_bytes(b"\x00" * 1000)
+        assert s.send_clip("t_22.0", clip) is True
+        assert api.artifact_files[-1] == [{"name": "clips/t_22.0.mp4", "bytes": 1000}]
+        assert api.uploads[-1][1] == b"\x00" * 1000
+
+    def test_a_clip_that_cannot_go_up_says_so(self, tmp_path):
+        api = Api()
+        s = pstream(1)
+        ln, _, _ = lane(api, [s], {"p_1": lambda st, pub: Watch(st, pub)})
+        ln.step()
+
+        def down(*a, **k):
+            raise RuntimeError("503")
+
+        api.artifacts = down
+        clip = tmp_path / "t_22.0.mp4"
+        clip.write_bytes(b"x")
+        assert s.send_clip("t_22.0", clip) is False
+
+    def test_a_lost_job_while_uploading_a_clip_is_raised(self, tmp_path):
+        api = Api()
+        s = pstream(1)
+        ln, _, _ = lane(api, [s], {"p_1": lambda st, pub: Watch(st, pub)})
+        ln.step()
+
+        def lost(*a, **k):
+            raise Lost("p_1")
+
+        api.artifacts = lost
+        clip = tmp_path / "t_22.0.mp4"
+        clip.write_bytes(b"x")
+        with pytest.raises(Lost):
+            s.send_clip("t_22.0", clip)
+
+    def test_a_practice_watch_gets_a_clipper_that_sends_through_the_lane(self, monkeypatch):
+        from curling_score import analyze
+        from curling_score.practice.clips import Clipper
+
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
+        ps = pstream(1)
+        ps.send_clip = lambda tid, path: True
+        watch = lane_mod.video_sessions("w.pt", progress=lambda m: None)(ps, lambda d: None)
+        assert isinstance(watch.clipper, Clipper) and watch.clipper.deliver is ps.send_clip
+        assert watch.clipper.keep is False

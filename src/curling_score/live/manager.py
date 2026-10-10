@@ -40,6 +40,8 @@ class Stream:
     lost: bool = False
     # The API said no session watches this practice stream any more.
     stop_requested: bool = False
+    # A practice stream's way to send a throw's clip up: set by the lane.
+    send_clip: object = field(default=None, repr=False)
     last_beat: float = 0.0
     last_doc: dict | None = field(default=None, repr=False)
     # The lane's: a document not yet published, unexpected errors in a row,

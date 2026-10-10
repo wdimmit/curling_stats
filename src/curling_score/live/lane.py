@@ -10,6 +10,7 @@ ended. Everything here runs on the main thread, the only one that decodes.
 import json
 import logging
 import time
+from pathlib import Path
 
 from curling_score import timeline
 from curling_score.ingest import source
@@ -64,6 +65,8 @@ class LiveLane:
         ready = [s for s in streams if s.retry_at <= now]
         for stream in ready:
             if stream.session is None:
+                if is_practice(stream.job):
+                    stream.send_clip = lambda tid, path, s=stream: self._send_clip(s, tid, path)
                 try:
                     stream.session = self.make_session(
                         stream, lambda doc, s=stream: self._publish(s, doc))
@@ -194,6 +197,27 @@ class LiveLane:
                      [len(g["ends"]) for g in doc["games"]])
         return True
 
+    def _send_clip(self, stream, throw_id, path) -> bool:
+        """One throw's clip, uploaded as the job's ``clips/<id>.mp4``. False
+        when it did not go: that throw stays without a clip. A lost job is
+        raised, as for a document."""
+        from curling_score.service.worker import Lost
+
+        job = stream.job
+        try:
+            data = Path(path).read_bytes()
+            plan = self.api.artifacts(job["id"], self.worker_id,
+                                      [{"name": f"clips/{throw_id}.mp4", "bytes": len(data)}],
+                                      [])
+            for up in plan["uploads"]:
+                self.api.upload(up["url"], up["headers"], data)
+        except Lost:
+            raise
+        except Exception as exc:  # noqa: BLE001 - the throw goes without a clip
+            log.warning("practice job %s: clip %s did not upload (%s)", job["id"], throw_id, exc)
+            return False
+        return True
+
     def _resend(self, stream) -> bool:
         from curling_score.service.worker import Lost
 
@@ -288,13 +312,21 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             got = getattr(stream.recorder, "lookback_got_s", None)
             lookback = float(got or job.get("lookback_s") or LOOKBACK_S)
             began = getattr(stream.recorder, "wall_started", None) or _time.time()
+            clipper = None
+            if getattr(stream, "send_clip", None) is not None:
+                import tempfile
+
+                from curling_score.practice.clips import Clipper
+                clipper = Clipper(stream.recorder, stream.send_clip,
+                                  tempfile.mkdtemp(prefix="practice-clips-"),
+                                  progress=progress)
             return PracticeWatch(
                 recording=stream.recorder,
                 pipeline=PracticePipeline(weights=weights, skip_longview=skip_longview,
                                           line=models.line_model is not None,
                                           progress=progress),
                 models=models, since_s=lookback, wall_t0=began - lookback,
-                publish=publish, progress=progress)
+                publish=publish, progress=progress, clipper=clipper)
         return live.LiveSession(
             video_id=job["video_id"], url=source.canonical_url(job["video_id"]),
             recording=stream.recorder, fmt=format_mod.by_name(job.get("format") or "fours"),
