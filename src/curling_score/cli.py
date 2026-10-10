@@ -651,6 +651,10 @@ def _practice_replay(args) -> int:
                                  burst_s=args.from_s - start).start()
     heads = harness.HeadClock().start(rec)
     sink = harness.Sink(out, heads)
+    clipper = None
+    if args.clips:
+        from curling_score.practice.clips import Clipper
+        clipper = Clipper(rec, lambda tid, path: True, out / "clips", keep=True, progress=print)
     watch = PracticeWatch(
         recording=rec,
         pipeline=PracticePipeline(weights=weights, skip_longview=args.no_longview,
@@ -658,7 +662,7 @@ def _practice_replay(args) -> int:
         models=live.Models(detector=detector, broom_model=broom_model,
                            line_model=line_model),
         since_s=args.from_s - rec.t0_s, t0_s=rec.t0_s, publish=sink.publish,
-        progress=print)
+        clipper=clipper, progress=print)
     try:
         harness.run(watch, recording=rec)
     finally:
@@ -749,6 +753,8 @@ def main(argv=None) -> int:
                    help="skip the side views (hog times, brooms, lines)")
     p.add_argument("--no-line", action="store_true",
                    help="skip measuring where each rock's line passed the broom")
+    p.add_argument("--clips", action="store_true",
+                   help="cut each throw's clip into <out>/clips, as a worker would upload it")
     p.set_defaults(func=_practice_replay)
 
     _add_harvest(sub)
