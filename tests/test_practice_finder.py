@@ -80,7 +80,18 @@ class TestArrivalFinder:
         # 0.3-3 s after a reported stone came to rest -- a fragment, a sweeper
         # nudging it -- that the house read then put on that very stone.
         finder = ArrivalFinder(SETUP)
-        finder.reported.append(SimpleNamespace(color="red", t_enter=40.0, t_rest=49.4))
-        after = SimpleNamespace(color="red", t_enter=49.7, t_rest=52.0)
-        later = SimpleNamespace(color="red", t_enter=75.0, t_rest=84.0)
+        finder.reported.append(SimpleNamespace(color="red", t_enter=40.0, t_rest=49.4,
+                                               entry_y_m=4.5))
+        after = SimpleNamespace(color="red", t_enter=49.7, t_rest=52.0, entry_y_m=2.9)
+        later = SimpleNamespace(color="red", t_enter=75.0, t_rest=84.0, entry_y_m=2.9)
         assert finder._reported(after) and not finder._reported(later)
+
+    def test_a_throw_coming_in_from_the_top_just_after_a_rest_is_a_new_throw(self):
+        # Partners throwing one colour without waiting: the next stone comes
+        # into view at the top of the panel, as every real arrival on VXU9 did
+        # (4.44-4.57 m), seconds after the last one stopped.
+        finder = ArrivalFinder(SETUP)
+        finder.reported.append(SimpleNamespace(color="red", t_enter=40.0, t_rest=49.4,
+                                               entry_y_m=4.5))
+        rapid = SimpleNamespace(color="red", t_enter=52.0, t_rest=60.0, entry_y_m=4.5)
+        assert not finder._reported(rapid)
