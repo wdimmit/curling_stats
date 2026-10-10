@@ -23,6 +23,12 @@ KEEP_S = 90.0
 # The same delivery found again in a later window: the same colour, entering
 # within this. Two stones of one colour cannot come down a sheet this close.
 SAME_ENTRY_S = 3.0
+# A stone of the colour just reported, coming into view again this soon after
+# that one rested, is still that one: a fragment of its track, or a sweeper
+# nudging it. An end's rules drop these (one rock per turn); practice has no
+# turns. On VXU9 they came 0.3-3 s after the rest, three in 30 throws; the
+# next real throw of a colour arrives tens of seconds later.
+AFTER_REST_S = 10.0
 
 
 class Buffer:
@@ -75,5 +81,7 @@ class ArrivalFinder:
         return out
 
     def _reported(self, d) -> bool:
-        return any(r.color == d.color and abs(r.t_enter - d.t_enter) <= SAME_ENTRY_S
+        return any(r.color == d.color
+                   and (abs(r.t_enter - d.t_enter) <= SAME_ENTRY_S
+                        or r.t_rest - 1.0 <= d.t_enter <= r.t_rest + AFTER_REST_S)
                    for r in self.reported)

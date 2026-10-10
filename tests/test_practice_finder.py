@@ -69,8 +69,18 @@ class TestArrivalFinder:
 
     def test_the_same_colour_entering_within_seconds_is_the_same_delivery(self):
         finder = ArrivalFinder(SETUP)
-        a = SimpleNamespace(color="red", t_enter=40.0)
-        b = SimpleNamespace(color="red", t_enter=41.5)
-        c = SimpleNamespace(color="yellow", t_enter=41.5)
+        a = SimpleNamespace(color="red", t_enter=40.0, t_rest=49.4)
+        b = SimpleNamespace(color="red", t_enter=41.5, t_rest=50.0)
+        c = SimpleNamespace(color="yellow", t_enter=41.5, t_rest=50.0)
         finder.reported.append(a)
         assert finder._reported(b) and not finder._reported(c)
+
+    def test_a_stone_seen_again_just_after_it_rested_is_not_a_new_throw(self):
+        # VXU9 8638.5, 9310.1, 9789.3: a few frames of the same colour moving
+        # 0.3-3 s after a reported stone came to rest -- a fragment, a sweeper
+        # nudging it -- that the house read then put on that very stone.
+        finder = ArrivalFinder(SETUP)
+        finder.reported.append(SimpleNamespace(color="red", t_enter=40.0, t_rest=49.4))
+        after = SimpleNamespace(color="red", t_enter=49.7, t_rest=52.0)
+        later = SimpleNamespace(color="red", t_enter=75.0, t_rest=84.0)
+        assert finder._reported(after) and not finder._reported(later)
