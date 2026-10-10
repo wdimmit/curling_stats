@@ -120,5 +120,10 @@ def practice_key(video_id: str, run_id: str) -> str:
     return f"runs/{video_id}/{run_id}/practice.json"
 
 
+def clip_key(video_id: str, run_id: str, throw_id: str) -> str:
+    """One practice throw's clip (practice/clips.py)."""
+    return f"runs/{video_id}/{run_id}/clips/{throw_id}.mp4"
+
+
 def detcache_key(video_id: str, digest: str) -> str:
     return f"detcache/{video_id}/{digest}.npz"

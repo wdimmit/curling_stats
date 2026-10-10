@@ -11,7 +11,7 @@ from curling_score.service.api import Settings, create_app
 from curling_score.service.auth import FakeVerifier
 from curling_score.service.records import WatchedPlaylist
 from curling_score.service.repo import MemoryRepo
-from curling_score.service.store import MemoryStore, practice_key
+from curling_score.service.store import MemoryStore, clip_key, practice_key
 from curling_score.service.youtube import FakeYouTube, VideoMeta
 from tests.test_service_api import CLUB, T0, WORKER, Clock
 
@@ -338,3 +338,80 @@ class TestKeptApart:
 
 def test_the_practice_document_has_a_key_of_its_own():
     assert practice_key("vid", "r_1") == "runs/vid/r_1/practice.json"
+
+
+def clip_artifact(w, job, name, size=1000):
+    return w["client"].post(f"/api/worker/jobs/{job['id']}/artifacts", headers=WORKER,
+                            json={"worker_id": "ryzen", "detcache": [],
+                                  "files": [{"name": name, "bytes": size}]})
+
+
+class TestClipUploads:
+    def test_a_practice_job_may_upload_a_throws_clip(self, w):
+        start(w)
+        job = claim(w)
+        r = clip_artifact(w, job, "clips/t_1260.0.mp4")
+        assert r.status_code == 200, r.text
+        (up,) = r.json()["uploads"]
+        run = w["repo"].get_run(job["run_id"])
+        assert up["key"] == clip_key(run.video_id, run.id, "t_1260.0")
+        assert up["key"] == f"runs/{S3}/{run.id}/clips/t_1260.0.mp4"
+        assert up["headers"]["Content-Type"] == "video/mp4"
+
+    @pytest.mark.parametrize("name", ["clips/../practice.json", "clips/t_1.mp4.exe",
+                                      "t_1260.0.mp4", "clips/x.mp4", "clips/t_1260.0.mov"])
+    def test_anything_else_is_refused(self, w, name):
+        start(w)
+        assert clip_artifact(w, claim(w), name).status_code == 400
+
+    def test_a_clip_over_20_mb_is_refused(self, w):
+        start(w)
+        assert clip_artifact(w, claim(w), "clips/t_1260.0.mp4",
+                             size=20_000_001).status_code == 400
+
+    def test_the_fallback_upload_takes_a_clip(self, w):
+        start(w)
+        job = claim(w)
+        (up,) = clip_artifact(w, job, "clips/t_1260.0.mp4").json()["uploads"]
+        path = up["url"].split("chart.example", 1)[1]
+        r = w["client"].put(path, content=b"mp4", headers={**WORKER, "Content-Type": "video/mp4"})
+        assert r.status_code == 200, r.text
+        assert w["store"].get_bytes(up["key"]) == b"mp4"
+
+
+def clip_url(w, sid, tid, who=SARAH):
+    return w["client"].get(f"/api/practice/sessions/{sid}/throws/{tid}/clip", headers=who)
+
+
+class TestClipLinks:
+    def published(self, w, clip=True):
+        sid = start(w).json()["id"]
+        job = claim(w)
+        wall_t0 = T0.timestamp() - 1200.0
+        publish(w, job, doc([{**throw(1140.0), "clip": clip}, {**throw(1260.0), "clip": clip},
+                             {**throw(1320.0), "clip": False}], wall_t0))
+        w["clock"].advance(300)
+        return sid, job
+
+    def test_the_owner_gets_a_link_to_a_throws_clip(self, w):
+        sid, job = self.published(w)
+        r = clip_url(w, sid, "t_1260.0")
+        assert r.status_code == 200, r.text
+        run = w["repo"].get_run(job["run_id"])
+        assert r.json() == {"url": "memory://" + clip_key(run.video_id, run.id, "t_1260.0")}
+
+    def test_a_throw_without_a_clip_yet_is_a_404(self, w):
+        sid, _ = self.published(w)
+        assert clip_url(w, sid, "t_1320.0").status_code == 404
+
+    def test_a_throw_outside_the_sessions_window_is_a_404(self, w):
+        sid, _ = self.published(w)
+        assert clip_url(w, sid, "t_1140.0").status_code == 404
+
+    def test_someone_elses_session_is_a_404(self, w):
+        sid, _ = self.published(w)
+        assert clip_url(w, sid, "t_1260.0", who=ALEX).status_code == 404
+
+    def test_not_a_throw_is_a_404(self, w):
+        sid, _ = self.published(w)
+        assert clip_url(w, sid, "..%2Fpractice.json").status_code == 404

@@ -44,7 +44,8 @@ from curling_score.service.records import (
     play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
-from curling_score.service.store import detcache_key, meta_key, practice_key, timeline_key
+from curling_score.service.store import (clip_key, detcache_key, meta_key, practice_key,
+                                         timeline_key)
 from curling_score.service.youtube import SubmissionError, validate_submission
 
 log = logging.getLogger(__name__)
@@ -117,6 +118,11 @@ PRACTICE_HOUR_LIMIT = 20
 PRACTICE_DAY_LIMIT = 60
 # A practice throw's id, as the worker writes it (practice/throws.py).
 PRACTICE_THROW_ID = re.compile(r"^t_[0-9]{1,8}(\.[0-9])?$")
+# A practice throw's clip, as the worker names the artifact.
+PRACTICE_CLIP = re.compile(r"^clips/(t_[0-9]{1,8}(\.[0-9])?)\.mp4$")
+CLIP_MAX_BYTES = 20_000_000
+# How long a signed link to a clip lasts; the page asks again after 50 minutes.
+CLIP_URL_S = 3600
 # The page a flag was sent from: an edit, view-only or review link.
 FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
 _PLACE_INTS = ("game_index", "end", "rock")
@@ -2022,6 +2028,23 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         practice.hide(repo, s, throw_id, bool(body.get("hidden")))
         return {"ok": True}
 
+    @app.get("/api/practice/sessions/{session_id}/throws/{throw_id}/clip")
+    def practice_clip(session_id: str, throw_id: str,
+                      authorization: str | None = Header(default=None)):
+        """A short-lived link to one throw's clip, for the session's owner, when
+        the throw is in their window and its clip is up."""
+        practice_on()
+        s = my_session(session_id, require_user(authorization))
+        if not PRACTICE_THROW_ID.match(throw_id):
+            raise HTTPException(404, "no such throw")
+        watch = repo.get_watch(s.watch_id)
+        doc = practice_doc(watch)
+        if not any(th["id"] == throw_id and th.get("clip")
+                   for th, _ in practice.in_window(doc, s, now())):
+            raise HTTPException(404, "no clip for that throw")
+        run = repo.get_run(watch.run_id)
+        return {"url": store.presign_get(clip_key(run.video_id, run.id, throw_id), CLIP_URL_S)}
+
     @app.get("/api/me/practice")
     def my_practice(authorization: str | None = Header(default=None)):
         """Every session of mine, on any sheet, newest first, with its count of
@@ -2193,8 +2216,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         for f in body.get("files", []):
             name = f["name"]
             if job.kind == "practice":
+                clip = PRACTICE_CLIP.match(name)
+                if clip is not None:
+                    if int(f.get("bytes") or 0) > CLIP_MAX_BYTES:
+                        raise HTTPException(400, f"{name} is over {CLIP_MAX_BYTES} bytes")
+                    key = clip_key(run.video_id, run.id, clip.group(1))
+                    uploads.append({"name": name, "key": key, **signed(key, "video/mp4")})
+                    continue
                 if name != "practice.json":
-                    raise HTTPException(400, f"a practice job uploads practice.json, not {name}")
+                    raise HTTPException(400, "a practice job uploads practice.json or "
+                                             f"clips/<throw>.mp4, not {name}")
                 key = practice_key(run.video_id, run.id)
             elif name not in ("timeline.json", "meta.json"):
                 raise HTTPException(400, f"unknown artifact {name}")
@@ -2222,9 +2253,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         run = repo.get_run(job.run_id)
         allowed = (timeline_key(run.video_id, run.id), meta_key(run.video_id, run.id),
                    practice_key(run.video_id, run.id))
-        if key not in allowed and not key.startswith(f"detcache/{run.video_id}/"):
+        clips = f"runs/{run.video_id}/{run.id}/"
+        is_clip = (job.kind == "practice" and key.startswith(clips)
+                   and PRACTICE_CLIP.match(key[len(clips):]) is not None)
+        if key not in allowed and not is_clip and not key.startswith(f"detcache/{run.video_id}/"):
             raise HTTPException(400, "that key does not belong to this job")
         data = await request.body()
+        if is_clip and len(data) > CLIP_MAX_BYTES:
+            raise HTTPException(413, "that clip is too big")
         store.put_bytes(key, data, request.headers.get("content-type", "application/octet-stream"))
         return {"ok": True, "bytes": len(data)}
 
