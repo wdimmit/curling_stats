@@ -25,8 +25,8 @@ import json
 from datetime import timedelta
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, Source, Team, User,
-    WatchedPlaylist, Worker, play_id,
+    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
+    Review, Run, Source, Team, User, WatchedPlaylist, Worker, play_id,
 )
 from curling_score.service.repo import (
     LEASE_S, MAX_STORED_OVERRIDES_BYTES, _day_bucket, _hour_bucket,
@@ -37,6 +37,7 @@ SHARES, WORKERS, PLAYLISTS, RATES = "share_slugs", "workers", "watched_playlists
 USERS, TEAMS, INVITES, CLAIMS = "users", "teams", "invites", "chart_claims"
 FLAGS, PLAYLIST_INDEX, PLAYS = "flags", "yt_playlists", "plays"
 REVIEWS = "reviews"
+WATCHES, SESSIONS = "practice_watches", "practice_sessions"
 
 
 def _claim_id(owner_key: str, source_id: str) -> str:
@@ -149,9 +150,14 @@ class FirestoreRepo:
             if "live" in kinds:
                 docs = list(tx.get(self._ready_query(now, kind="live").limit(1)))
                 snap = docs[0] if docs else None
+            # Practice next: a card is due seconds after a stone stops.
+            if snap is None and "practice" in kinds:
+                docs = list(tx.get(self._ready_query(now, kind="practice").limit(1)))
+                snap = docs[0] if docs else None
             if snap is None and "vod" in kinds:
                 snap = next((d for d in tx.get(self._ready_query(now).limit(20))
-                             if (d.to_dict().get("kind") or "vod") != "live"), None)
+                             if (d.to_dict().get("kind") or "vod") not in ("live", "practice")),
+                            None)
             if snap is None:
                 return None
             data = snap.to_dict()
@@ -518,6 +524,41 @@ class FirestoreRepo:
         docs = [Play.from_dict(d.to_dict()) for d in q.stream()]
         return sorted(docs, key=lambda p: p.updated_at, reverse=True)[:limit]
 
+    # ---- practice -----------------------------------------------------
+    # One equality filter each, sorted here: no composite index to keep.
+    def put_watch(self, watch):
+        self._col(WATCHES).document(watch.id).set(watch.to_dict())
+
+    def get_watch(self, watch_id):
+        return self._get(WATCHES, watch_id, PracticeWatch)
+
+    def update_watch(self, watch_id, **fields):
+        return self._update(WATCHES, watch_id, PracticeWatch, fields)
+
+    def watches_for_sheet(self, sheet):
+        docs = [PracticeWatch.from_dict(d.to_dict())
+                for d in self._where(WATCHES, "sheet", "==", sheet).stream()]
+        return sorted(docs, key=lambda w: w.created_at, reverse=True)
+
+    def put_session(self, session):
+        self._col(SESSIONS).document(session.id).set(session.to_dict())
+
+    def get_session(self, session_id):
+        return self._get(SESSIONS, session_id, PracticeSession)
+
+    def update_session(self, session_id, **fields):
+        return self._update(SESSIONS, session_id, PracticeSession, fields)
+
+    def sessions_for_watch(self, watch_id):
+        docs = [PracticeSession.from_dict(d.to_dict())
+                for d in self._where(SESSIONS, "watch_id", "==", watch_id).stream()]
+        return sorted(docs, key=lambda s: s.started_at)
+
+    def sessions_for_user(self, user_id, limit=50):
+        docs = [PracticeSession.from_dict(d.to_dict())
+                for d in self._where(SESSIONS, "user_id", "==", user_id).stream()]
+        return sorted(docs, key=lambda s: s.started_at, reverse=True)[:limit]
+
     # ---- rate limit ---------------------------------------------------
     def bump_rate_limit(self, ip_hash, now, hour_limit, day_limit):
         ref = self._col(RATES).document(ip_hash)
@@ -551,7 +592,8 @@ class FirestoreRepo:
                 "charts": dump(CHARTS), "workers": dump(WORKERS),
                 "watched_playlists": dump(PLAYLISTS), "users": dump(USERS),
                 "teams": dump(TEAMS), "invites": dump(INVITES), "flags": dump(FLAGS),
-                "plays": dump(PLAYS), "reviews": dump(REVIEWS)}
+                "plays": dump(PLAYS), "reviews": dump(REVIEWS),
+                "practice_watches": dump(WATCHES), "practice_sessions": dump(SESSIONS)}
 
     def import_all(self, data):
         for d in data.get("runs", []):
@@ -578,6 +620,10 @@ class FirestoreRepo:
             self.put_play(Play.from_dict(d))
         for d in data.get("reviews", []):
             self.put_review(Review.from_dict(d))
+        for d in data.get("practice_watches", []):
+            self.put_watch(PracticeWatch.from_dict(d))
+        for d in data.get("practice_sessions", []):
+            self.put_session(PracticeSession.from_dict(d))
         # Claims are derivable, so they are not exported -- rebuilt here
         # instead, because a restore that lost them would start handing a team
         # a second chart for a game it already has.

@@ -40,7 +40,7 @@ def _firestore_repo():
     for col in ("vod_runs", "jobs", "sources", "charts", "share_slugs",
                 "workers", "watched_playlists", "rate_limits",
                 "users", "teams", "invites", "chart_claims", "flags", "yt_playlists",
-                "plays", "reviews"):
+                "plays", "reviews", "practice_watches", "practice_sessions"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -149,6 +149,13 @@ class TestJobsAndClaiming:
                          created_at=at(50), run_after=at(50)))
         assert repo.claim_job("w", at(100), kinds=("live", "vod")).id == "j_live"
         assert repo.claim_job("w", at(100), kinds=("live", "vod")).id == "j_vod"
+
+    def test_a_practice_job_goes_only_to_a_worker_that_asks_for_practice(self, repo):
+        repo.put_run(run(id="r_p", kind="practice"))
+        repo.put_job(job(id="j_p", run_id="r_p", kind="practice"))
+        assert repo.claim_job("w", at(10), kinds=("vod",)) is None
+        assert repo.claim_job("w", at(10), kinds=("live",)) is None
+        assert repo.claim_job("w", at(10), kinds=("live", "practice")).id == "j_p"
 
     def test_a_worker_asking_only_for_live_work_gets_no_recording(self, repo):
         repo.put_run(run())
@@ -686,3 +693,26 @@ class TestBackup:
         got = fresh.get_play("u1", "src_1")
         assert (got.color, got.slot, got.chart_id) == ("yellow", 2, "c_1")
         assert fresh.get_review("s_1_r_1").flag_id == "fa_1"
+
+
+class TestPractice:
+    def test_watches_by_sheet_newest_first(self, repo):
+        from curling_score.service.records import PracticeWatch
+
+        for i, sheet in enumerate((3, 3, 4)):
+            repo.put_watch(PracticeWatch(id=f"pw_{i}", sheet=sheet, video_id="v", run_id="r",
+                                         job_id="j", created_at=at(i)))
+        assert [w.id for w in repo.watches_for_sheet(3)] == ["pw_1", "pw_0"]
+        assert repo.update_watch("pw_0", status="ended", throws=4).throws == 4
+        assert repo.get_watch("pw_0").status == "ended"
+
+    def test_sessions_by_watch_and_by_user(self, repo):
+        from curling_score.service.records import PracticeSession
+
+        for i, (user, watch) in enumerate((("u1", "pw_a"), ("u2", "pw_a"), ("u1", "pw_b"))):
+            repo.put_session(PracticeSession(id=f"ps_{i}", user_id=user, sheet=3,
+                                             watch_id=watch, started_at=at(i)))
+        assert [s.id for s in repo.sessions_for_watch("pw_a")] == ["ps_0", "ps_1"]
+        assert [s.id for s in repo.sessions_for_user("u1")] == ["ps_2", "ps_0"]
+        got = repo.update_session("ps_0", ended_at=at(9), end_reason="stop", hidden=["t_1"])
+        assert (got.active, got.hidden) == (False, ["t_1"])

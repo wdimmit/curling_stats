@@ -16,8 +16,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, Source, Team, User,
-    WatchedPlaylist, Worker, play_id,
+    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
+    Review, Run, Source, Team, User, WatchedPlaylist, Worker, play_id,
 )
 
 LEASE_S = 600.0
@@ -119,6 +119,16 @@ class Repo(Protocol):
     def get_play(self, user_id: str, source_id: str) -> Play | None: ...
     def delete_play(self, user_id: str, source_id: str) -> bool: ...
     def plays_for_user(self, user_id: str, limit: int = 500) -> list[Play]: ...
+    # practice
+    def put_watch(self, watch: PracticeWatch) -> None: ...
+    def get_watch(self, watch_id: str) -> PracticeWatch | None: ...
+    def update_watch(self, watch_id: str, **fields) -> PracticeWatch | None: ...
+    def watches_for_sheet(self, sheet: int) -> list[PracticeWatch]: ...
+    def put_session(self, session: PracticeSession) -> None: ...
+    def get_session(self, session_id: str) -> PracticeSession | None: ...
+    def update_session(self, session_id: str, **fields) -> PracticeSession | None: ...
+    def sessions_for_watch(self, watch_id: str) -> list[PracticeSession]: ...
+    def sessions_for_user(self, user_id: str, limit: int = 50) -> list[PracticeSession]: ...
     # rate limit
     def bump_rate_limit(self, ip_hash: str, now: datetime,
                         hour_limit: int, day_limit: int) -> bool: ...
@@ -161,6 +171,8 @@ class MemoryRepo:
         self.plays: dict[str, Play] = {}
         self.reviews: dict[str, Review] = {}
         self.playlist_index: dict[str, PlaylistIndexEntry] = {}
+        self.watches: dict[str, PracticeWatch] = {}
+        self.sessions: dict[str, PracticeSession] = {}
 
     # ---- runs ---------------------------------------------------------
     def put_run(self, run):
@@ -563,6 +575,51 @@ class MemoryRepo:
         out.sort(key=lambda p: p.updated_at, reverse=True)
         return out[:limit]
 
+    # ---- practice -----------------------------------------------------
+    def put_watch(self, watch):
+        with self._lock:
+            self.watches[watch.id] = watch
+
+    def get_watch(self, watch_id):
+        return self.watches.get(watch_id)
+
+    def update_watch(self, watch_id, **fields):
+        with self._lock:
+            w = self.watches.get(watch_id)
+            if w is None:
+                return None
+            for k, v in fields.items():
+                setattr(w, k, v)
+            return w
+
+    def watches_for_sheet(self, sheet):
+        out = [w for w in self.watches.values() if w.sheet == sheet]
+        return sorted(out, key=lambda w: w.created_at, reverse=True)
+
+    def put_session(self, session):
+        with self._lock:
+            self.sessions[session.id] = session
+
+    def get_session(self, session_id):
+        return self.sessions.get(session_id)
+
+    def update_session(self, session_id, **fields):
+        with self._lock:
+            s = self.sessions.get(session_id)
+            if s is None:
+                return None
+            for k, v in fields.items():
+                setattr(s, k, v)
+            return s
+
+    def sessions_for_watch(self, watch_id):
+        out = [s for s in self.sessions.values() if s.watch_id == watch_id]
+        return sorted(out, key=lambda s: s.started_at)
+
+    def sessions_for_user(self, user_id, limit=50):
+        out = [s for s in self.sessions.values() if s.user_id == user_id]
+        return sorted(out, key=lambda s: s.started_at, reverse=True)[:limit]
+
     # ---- rate limit ---------------------------------------------------
     def bump_rate_limit(self, ip_hash, now, hour_limit, day_limit):
         with self._lock:
@@ -593,6 +650,8 @@ class MemoryRepo:
             "flags": [f.to_dict() for f in self.flags.values()],
             "plays": [p.to_dict() for p in self.plays.values()],
             "reviews": [r.to_dict() for r in self.reviews.values()],
+            "practice_watches": [w.to_dict() for w in self.watches.values()],
+            "practice_sessions": [s.to_dict() for s in self.sessions.values()],
         }
 
     def import_all(self, data):
@@ -621,6 +680,10 @@ class MemoryRepo:
                 self.put_play(Play.from_dict(d))
             for d in data.get("reviews", []):
                 self.put_review(Review.from_dict(d))
+            for d in data.get("practice_watches", []):
+                self.put_watch(PracticeWatch.from_dict(d))
+            for d in data.get("practice_sessions", []):
+                self.put_session(PracticeSession.from_dict(d))
             # Claims are derivable, so they are not exported -- rebuilt here
             # instead, because a restore that lost them would start handing a
             # team a second chart for a game it already has.

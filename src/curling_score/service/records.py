@@ -18,7 +18,8 @@ RUN_STATUSES = ("pending_approval", "queued", "processing", "live", "ready",
                 "failed")
 # A job is a recording to analyse whole, or a stream to follow while it plays.
 # Live jobs are claimed first; a record from before kinds is a recording.
-JOB_KINDS = ("vod", "live")
+# "practice" follows a sheet's practice stream while someone practises on it.
+JOB_KINDS = ("vod", "live", "practice")
 JOB_STATES = ("queued", "running", "done", "failed")
 FAIL_KINDS = ("transient", "blocked", "permanent")
 
@@ -315,6 +316,9 @@ class WatchedPlaylist:
     schedule: list = field(default_factory=list)
     live_poll_s: float = 180.0
     idle_poll_s: float | None = 3600.0
+    # A sheet's practice streams, not league games: never polled for games;
+    # a practice session looks in it for the sheet's live stream.
+    practice: bool = False
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
@@ -442,6 +446,54 @@ class Play:
     format: str = "fours"
     chart_id: str | None = None
     link: str = "g"
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class PracticeWatch:
+    """One sheet's practice stream being watched: the work a worker does for
+    it (a practice run and job), and what it last published -- its throws live
+    in the run's practice.json. Every practice session on the sheet while it
+    runs is a window on it."""
+
+    id: str
+    sheet: int
+    video_id: str
+    run_id: str
+    job_id: str
+    created_at: datetime
+    status: str = "starting"          # starting | calibrating | watching | ended | failed
+    revised_at: datetime | None = None
+    recorded_s: float | None = None
+    throws: int = 0
+    busy_s: float | None = None
+    error: str | None = None
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class PracticeSession:
+    """A person's practice: the throws on a sheet between their Start and
+    their Stop (or the time it ran out). `hand` turns curl into in- or
+    out-turn; `hidden` are throws they said were not theirs."""
+
+    id: str
+    user_id: str
+    sheet: int
+    watch_id: str
+    started_at: datetime
+    hand: str = "right"
+    ended_at: datetime | None = None
+    end_reason: str | None = None     # stop | idle | max | stream_ended | failed
+    hidden: list = field(default_factory=list)
+
+    @property
+    def active(self) -> bool:
+        return self.ended_at is None
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
