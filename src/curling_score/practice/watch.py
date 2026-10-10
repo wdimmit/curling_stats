@@ -67,7 +67,10 @@ class PracticeWatch:
         seconds), for a live stream whose own clock is not known."""
         self.rec, self.pipeline, self.models = recording, pipeline, models
         self.since_s, self.t0_s, self.wall_t0 = float(since_s), float(t0_s), wall_t0
-        self._stop = False
+        self._stop, self._stop_at = False, None
+        # Lane seconds spent calibrating and reading: what a practice stream
+        # costs the lane a league night shares.
+        self.busy_s = 0.0
         self.publish = publish or (lambda doc: None)
         self.clock, self.progress = clock, progress
         self.cal = None
@@ -95,6 +98,13 @@ class PracticeWatch:
                 return True
             return self._calibrate(head, ended)
         upto = head if ended else head - HEAD_MARGIN_S
+        if self._stop:
+            # Read to where the head was when told, not after it: nothing stops
+            # the recorder until the job completes, and chasing a head that
+            # keeps moving would end only by the luck of the segment cadence.
+            if self._stop_at is None:
+                self._stop_at = upto
+            upto = min(upto, self._stop_at)
         if upto - self.done_s >= STEP_MIN_S or ((ended or self._stop) and upto > self.done_s):
             self._watch(min(upto, self.done_s + STEP_MAX_S))
             return True
@@ -106,7 +116,7 @@ class PracticeWatch:
 
     def document(self) -> dict:
         return {"practice": 1, "status": self.status, "t0_s": self.t0_s,
-                "wall_t0": self.wall_t0,
+                "wall_t0": self.wall_t0, "busy_s": round(self.busy_s, 2),
                 "since_s": round(self.t0_s + self.since_s, 2),
                 "recorded_s": round(self.t0_s + self.done_s, 2),
                 "throws": list(self.throws)}
@@ -117,11 +127,14 @@ class PracticeWatch:
         if (head < self.since_s and not ended) or self.clock() < self.calib_next:
             return False
         self.calib_tries += 1
+        began = self.clock()
         try:
             cal = self.pipeline.calibrate(self.rec.path, head)
         except CalibrationError as exc:
             self.progress(f"practice: calibration {self.calib_tries} failed: {exc}")
             cal = None
+        finally:
+            self.busy_s += self.clock() - began
         if cal is not None and (self.cal is None or _worth(cal) > _worth(self.cal)):
             self.cal = cal
         self.calib_next = self.clock() + CALIB_RETRY_S
@@ -139,6 +152,13 @@ class PracticeWatch:
     # --- watching ----------------------------------------------------------------
 
     def _watch(self, upto) -> None:
+        began = self.clock()
+        try:
+            self._read(upto)
+        finally:
+            self.busy_s += self.clock() - began
+
+    def _read(self, upto) -> None:
         got = self.pipeline.detect(self.rec.path, self.cal.setups, self.done_s, upto,
                                    self.models.detector)
         for h in HOUSES:

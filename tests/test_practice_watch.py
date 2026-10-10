@@ -165,6 +165,24 @@ def test_told_to_stop_it_reads_what_is_recorded_then_ends():
     assert p.spans[-1][1] == 29.0                  # read to the head, less its margin
 
 
+def test_told_to_stop_it_ends_even_while_the_recording_keeps_growing():
+    # Nothing stops the recorder until the job completes: a stop that chased
+    # the head would end only when a step happened to land between segments.
+    p, rec = Pipeline(), Rec(head=20.0)
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=SimpleNamespace(detector=None),
+                        since_s=20.0, clock=lambda: 0.0)
+    w.step()
+    rec.head = 31.0
+    w.request_stop()
+    for _ in range(10):
+        w.step()
+        rec.head += 1.0
+        if w.done:
+            break
+    assert w.done and w.status == "ended"
+    assert p.spans[-1][1] == 29.0                  # where the head was when told
+
+
 def test_a_stop_while_calibrating_ends_it():
     p, rec = Pipeline(), Rec(head=5.0)             # the lookback is still arriving
     w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=20.0,
@@ -178,6 +196,25 @@ def test_the_document_says_when_the_recording_began_by_the_wall_clock():
     w = W.PracticeWatch(recording=Rec(), pipeline=Pipeline(), models=None, since_s=20.0,
                         wall_t0=1760000000.0)
     assert w.document()["wall_t0"] == 1760000000.0
+
+
+def test_the_document_says_how_much_lane_the_watch_has_used():
+    # What a practice stream costs the lane a league night shares, measured
+    # rather than guessed before WORKER_PRACTICE goes on a league worker.
+    now = [0.0]
+
+    class Slow(Pipeline):
+        def detect(self, *args):
+            now[0] += 1.5
+            return super().detect(*args)
+
+    rec = Rec(head=20.0)
+    w = W.PracticeWatch(recording=rec, pipeline=Slow(), models=SimpleNamespace(detector=None),
+                        since_s=20.0, clock=lambda: now[0])
+    w.step()                                       # calibrated, instantly
+    rec.head = 26.0
+    w.step()                                       # one read of 1.5 s
+    assert w.document()["busy_s"] == 1.5
 
 
 def test_a_long_catch_up_is_read_in_pieces_from_the_look_back():
