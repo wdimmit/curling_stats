@@ -217,6 +217,17 @@ class TestClipper:
         assert c.make(th, C.plan(th, both()), self.cal())
         assert (tmp_path / "t_100.0.mp4").read_bytes() == b"x"
 
+    def test_its_overlay_is_drawn_in_the_calibrations_views(self):
+        from curling_score.geometry.sideview import SideView
+
+        v = SideView(rect=(0, 0, 800, 1080), tee_row=350.0, hog_row=430.0, centre_col=400.0,
+                     lat_px_per_m_at_tee=60.0)
+        th = {**throw(), "line": {"miss_m": 0.0, "at_hog_x": 0.0, "aim_x": None, "start": None},
+              "broom": {"x": 0.0, "y": 0.0}}
+        c = C.Clipper(SimpleNamespace(path="rec.ts"), lambda *a: True, ".")
+        got = c.overlay(th, C.plan(th, both()), SimpleNamespace(sideviews={"left": v, "right": v}))
+        assert len(got) == 2 and got[1]["broom"] == pytest.approx([0.5, 350 / 1080], abs=1e-3)
+
     def test_its_plan_is_the_throws_with_the_calibrations_views(self):
         c = C.Clipper(SimpleNamespace(path="rec.ts"), lambda *a: True, ".")
         assert c.plan(throw(), SimpleNamespace(sideviews=both())) is not None

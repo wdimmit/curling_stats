@@ -65,7 +65,7 @@ class TestThrowRecord:
         assert got["curl"] == "left"
         assert got["broom"] == {"x": -0.45, "y": 0.0}
         assert got["line"] == {"miss_m": -0.12, "side": "narrow", "hog_offset_m": 0.08,
-                               "confirmed": True, "aim_x": None,
+                               "at_hog_x": 0.1, "confirmed": True, "aim_x": None,
                                "start": {"x": 0.0, "y": -3.6}, "delivery": []}
         # Where it rests is the house read's stone, not the track's last point.
         assert got["rest"] == {"x": 0.12, "y": -0.41, "to_tee_m": 0.427, "ring": "4"}
@@ -124,6 +124,6 @@ class TestThrowRecord:
         shot = Shot(number=1, color="red", stones=[], t_rest_s=dv.t_rest, delivery=dv)
         shot.line = line(at_broom_x=None, miss=None, side=None, at_tee_x=-0.21)
         got = throws.throw_record(shot, house="top")["line"]
-        assert got == {"miss_m": None, "side": None, "hog_offset_m": 0.08,
+        assert got == {"miss_m": None, "side": None, "hog_offset_m": 0.08, "at_hog_x": 0.1,
                        "confirmed": True, "aim_x": -0.21,
                        "start": {"x": 0.0, "y": -3.6}, "delivery": []}

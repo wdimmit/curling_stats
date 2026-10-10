@@ -228,6 +228,11 @@ class PracticeWatch:
                 self._clip_tried.add(th["id"])
                 made = False
             th["clip"] = True if made else None
+            if made:
+                try:
+                    th["overlay"] = self.clipper.overlay(th, plan, self.cal)
+                except Exception as exc:  # noqa: BLE001 - the clip stands without it
+                    log.warning("practice: overlay %s failed: %r", th["id"], exc)
             changed = True
         return changed
 

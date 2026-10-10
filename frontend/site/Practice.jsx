@@ -5,17 +5,20 @@
  *   /practice/session/ID  one session's throws, running or long over
  * The words for a throw are core/practice.mjs's; the API is
  * service/practice.py's. */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Pill, Warn } from "./ui.jsx";
-import { clipState, curlText, lengthText, lineText, linkFresh, restText, shown, summary,
-         weightText } from "../core/practice.mjs";
+import { clipState, curlText, lengthText, lineText, linkFresh, overlayAt, restText, shown,
+         summary, weightText } from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
 import { DeliveryChart } from "../viewer/Delivery.jsx";
 
 const POLL_MS = 3000;
 const HAND_KEY = "practice.hand";
+const LINES_KEY = "practice.lines";
+// A clip's picture, as the worker scales it (practice/clips.py CLIP_SIZE).
+const CLIP_W = 600, CLIP_H = 810;
 const ENDED = {
   stop: "you ended it", idle: "20 minutes without a throw", max: "the 3-hour limit",
   stream_ended: "the stream ended", failed: "the stream could not be watched",
@@ -48,6 +51,14 @@ function savedHand() {
 
 function saveHand(hand) {
   try { localStorage.setItem(HAND_KEY, hand); } catch { /* private window */ }
+}
+
+function savedLines() {
+  try { return localStorage.getItem(LINES_KEY) !== "off"; } catch { return true; }
+}
+
+function saveLines(on) {
+  try { localStorage.setItem(LINES_KEY, on ? "on" : "off"); } catch { /* private window */ }
 }
 
 function ago(iso) {
@@ -94,12 +105,56 @@ async function clipLink(sid, tid, again = false) {
   return url;
 }
 
+/* The broom and lines over the playing clip, for the piece on screen
+ * (practice/overlay.py): points are fractions of the picture, which the box
+ * holds at the clip's own shape. Read every frame while it plays; React
+ * skips the render while the piece is the same. */
+function ClipLines({ overlay, video }) {
+  const [piece, setPiece] = useState(() => overlayAt(overlay, 0));
+  useEffect(() => {
+    const v = video.current;
+    if (!v) return undefined;
+    let frame = 0;
+    const update = () => setPiece(overlayAt(overlay, v.currentTime));
+    const loop = () => { update(); frame = requestAnimationFrame(loop); };
+    const play = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(loop); };
+    const stop = () => { cancelAnimationFrame(frame); update(); };
+    const on = { play, pause: stop, ended: stop, seeked: update, loadedmetadata: update };
+    Object.entries(on).forEach(([e, f]) => v.addEventListener(e, f));
+    if (v.paused) update(); else play();
+    return () => {
+      cancelAnimationFrame(frame);
+      Object.entries(on).forEach(([e, f]) => v.removeEventListener(e, f));
+    };
+  }, [overlay, video]);
+  if (!piece) return null;
+  const pts = line => line.map(([u, v]) => `${(u * CLIP_W).toFixed(1)},${(v * CLIP_H).toFixed(1)}`)
+    .join(" ");
+  const drawn = (line, kind) => line && [
+    <polyline key={`${kind}-under`} points={pts(line)} className="under" />,
+    <polyline key={kind} points={pts(line)} className={kind} />];
+  return (
+    <svg className="clip-lines" viewBox={`0 0 ${CLIP_W} ${CLIP_H}`} preserveAspectRatio="none"
+         aria-hidden="true">
+      {drawn(piece.aim, "aim")}
+      {drawn(piece.thrown, "thrown")}
+      {piece.broom && <>
+        <circle cx={piece.broom[0] * CLIP_W} cy={piece.broom[1] * CLIP_H} r="13" className="under" />
+        <circle cx={piece.broom[0] * CLIP_W} cy={piece.broom[1] * CLIP_H} r="13" className="broom" />
+      </>}
+    </svg>
+  );
+}
+
 /* The throw's clip: the camera facing the thrower, then the one behind. The
  * newest throw of a live session plays by itself, muted, as phones allow. A
- * link that has expired under an open page is asked for once more. */
+ * link that has expired under an open page is asked for once more. With an
+ * overlay, the broom and lines are drawn over it, and can be switched off. */
 function Clip({ sid, t, autoPlay }) {
   const [url, setUrl] = useState(null);
   const [again, setAgain] = useState(false);
+  const [lines, setLines] = useState(savedLines);
+  const video = useRef(null);
   useEffect(() => {
     let on = true;
     setUrl(null);
@@ -113,9 +168,21 @@ function Clip({ sid, t, autoPlay }) {
     setAgain(true);
     clipLink(sid, t.id, true).then(setUrl);
   };
+  const toggle = () => { setLines(!lines); saveLines(!lines); };
   return (
-    <video key={url} className="practice-clip" src={url} controls playsInline
-           muted={autoPlay} autoPlay={autoPlay} preload="metadata" onError={retry} />
+    <>
+      <div className="clip-box" key={url}>
+        <video ref={video} className="practice-clip" src={url} controls playsInline
+               muted={autoPlay} autoPlay={autoPlay} preload="metadata" onError={retry} />
+        {lines && t.overlay && <ClipLines overlay={t.overlay} video={video} />}
+      </div>
+      {t.overlay && (
+        <p className="clip-tools muted">
+          <button onClick={toggle}>{lines ? "Hide lines" : "Show lines"}</button>
+          {lines && <> Solid: the line it was thrown on · dashed: hack to broom · ring: the broom</>}
+        </p>
+      )}
+    </>
   );
 }
 

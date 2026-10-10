@@ -88,3 +88,13 @@ def test_a_link_is_fetched_again_before_it_expires():
     assert js("P.linkFresh({url: 'u', at: 0}, 49 * 60 * 1000)") is True
     assert js("P.linkFresh({url: 'u', at: 0}, 51 * 60 * 1000)") is False
     assert js("P.linkFresh(undefined, 0)") is False
+
+
+def test_the_overlay_for_the_piece_playing():
+    ov = '[{t0: 0, t1: 13.2, thrown: [[0.5, 0.2], [0.5, 0.9]]}, {t0: 13.2, t1: 26.7, broom: [0.5, 0.3]}]'
+    assert js(f'P.overlayAt({ov}, 0)')["t1"] == 13.2
+    assert js(f'P.overlayAt({ov}, 13.19)')["t1"] == 13.2
+    assert js(f'P.overlayAt({ov}, 13.2)')["t0"] == 13.2
+    assert js(f'P.overlayAt({ov}, 26.7)')["t0"] == 13.2       # the last frame
+    assert js(f'P.overlayAt({ov}, 40)') is None
+    assert js('P.overlayAt(null, 1)') is None and js('P.overlayAt(undefined, 1)') is None

@@ -212,6 +212,11 @@ class Clipper:
     def plan(self, throw, cal):
         return plan(throw, getattr(cal, "sideviews", None))
 
+    def overlay(self, throw, plan_, cal):
+        """Where the broom and the lines fall in each piece (practice/overlay.py)."""
+        from curling_score.practice import overlay
+        return overlay.overlay(throw, plan_, getattr(cal, "sideviews", None))
+
     def make(self, throw, plan_, cal, *, t0_s: float = 0.0) -> bool:
         """Cut and deliver one clip; False if either did not happen."""
         views = {name: (self.recording.path, sv.rect) for name, sv in cal.sideviews.items()}

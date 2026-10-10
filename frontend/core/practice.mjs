@@ -91,3 +91,14 @@ export const CLIP_LINK_MS = 50 * 60 * 1000;
 export function linkFresh(entry, nowMs) {
   return !!entry && nowMs - entry.at < CLIP_LINK_MS;
 }
+
+/* The overlay entry for the piece of a clip playing at ``t`` seconds
+ * (practice/overlay.py): the camera's broom and lines, or null. The last
+ * frame belongs to the last piece. */
+export function overlayAt(overlay, t) {
+  if (!overlay || !overlay.length) return null;
+  const hit = overlay.find(p => t >= p.t0 && t < p.t1);
+  if (hit) return hit;
+  const last = overlay[overlay.length - 1];
+  return Math.abs(t - last.t1) < 1e-6 ? last : null;
+}

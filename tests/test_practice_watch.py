@@ -250,6 +250,9 @@ class Clips:
         self.made.append((throw["id"], plan.end))
         return self.works
 
+    def overlay(self, throw, plan, cal):
+        return [{"t0": 0.0, "t1": round(plan.end - plan.pieces[0].t0, 2)}]
+
 
 def clipped(clipper, until_s=100.0):
     rec, docs = Rec(), []
@@ -339,3 +342,24 @@ def test_a_watch_that_ends_first_cuts_what_was_recorded():
 def test_without_a_clipper_no_clip_is_coming():
     w, _ = clipped(None)
     assert w.throws[0]["clip"] is None
+
+
+def test_a_clip_carries_its_overlay():
+    w, docs = clipped(Clips())
+    th = w.throws[0]
+    assert th["overlay"] == [{"t0": 0.0, "t1": round(th["t_rest_s"] + 1.5 - th["t_release_s"] + 5.0, 2)}]
+    assert docs[-1]["throws"][0]["overlay"] == th["overlay"]
+
+
+def test_no_clip_no_overlay():
+    w, _ = clipped(Clips(works=False))
+    assert "overlay" not in w.throws[0]
+
+
+def test_an_overlay_that_breaks_keeps_the_clip():
+    class BadOverlay(Clips):
+        def overlay(self, throw, plan, cal):
+            raise ZeroDivisionError("a degenerate calibration")
+
+    w, _ = clipped(BadOverlay())
+    assert w.throws[0]["clip"] is True and w.throws[0].get("overlay") is None
