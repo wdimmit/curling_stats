@@ -103,3 +103,44 @@ None of the three cached videos (VXU9, hOKZ, AEqL) has any real practice in it: 
 - **Log per-stage timings.**
 - **Decide what happens at session end:** releases younger than 60 s and arrivals not yet confirmed are currently dropped.
 - **Runs are not deterministic** (sample phase): split p90 was 0.09, 0.14 and 0.12 over three runs of the same footage, and rest after hits moved by tens of cm.
+
+## Real practice footage (added 2026-10-10)
+
+The user approved copying two practice recordings from the Ryzen worker's cache. The copy was capped at 20 MB/s at idle IO priority, because the Friday league was live on that box.
+- `Qzh8XQrxqww`: 10/04, doubles sheet 1, two people practising.
+- `uKWnmVG9mA8`: 10/02, Friday sheet 5, one person after the league game.
+- EUpp (10/04 Sunday S5) was already pruned.
+
+The practice windows and the reference come from the long camera's slide scan, not from the hosted exports (fetching those was blocked as personal-data handling). A slide out of either hack at ≥ 1.4 m/s is a reference throw; slower slides are people walking.
+
+| | Qzh8, 3650-6350 s | uKWn, 7560-9620 s |
+|---|---|---|
+| Throw-speed slides | 38 | 32 |
+| Found | **37 (97.4%)** | **32 (100%)** |
+| Throws reported | 42 | 65 |
+| On no slide | 5, all with no release | 31: 25 with no release, 6 with one |
+| Release - slide | median 0.33 s | median 0.00 s, max 0.20 s |
+| Release sources | overhead 29, side 8, none 5 | overhead 37, side 3, none 25 |
+| Latency | p50 9.3, p90 12.0, max 12.9 s | p50 7.9, p90 9.4, max 14.5 s |
+| Target broom held | 17 of 42 | none |
+
+**Qzh8.**
+- **Five false throws, all with no release from either camera.** They are stones placed by hand: a player arranging reds and yellows in the bottom house for a drill (frames checked). The no-release flag catches every one, so a page that leaves out arrivals nothing released shows no false throws here.
+- **One miss:** a yellow slide at 1.69 m/s that never reached the house (hogged or short), whose release the thrower hid from the overhead camera. Phase 1 had nothing to trigger on; a long-camera slide trigger would have reported it as "released, didn't arrive".
+- **The long camera supplied 8 releases** the overhead lost under the thrower's body.
+
+**uKWn.**
+- **Every real throw was found.**
+- **31 phantom "throws", nearly all yellow** and nearly all running out of view: the solo player, in a yellow jacket, walking up the sheet and through the house to the far end after each throw. ds16a reads the jacket as a yellow stone coming down the sheet.
+- 25 have no release and are caught by the flag. 6 picked one up: the same jacket sliding out of the hack reads as a release.
+- This is the "thrower read as a stone" weakness the ds17b work targets. Per the user's preference it wants a model fix (hard negatives of people in stone colours walking and sliding), not a rule.
+
+**Broomless throws get no line.** Practice runs the line pass in its fours mode, which measures a rock only when a broom was held. Qzh8's 25 broomless throws and every one of uKWn's have no line. The broomless line built for doubles (aimed X at the far tee) should be on for practice.
+
+**A replay clock bug, fixed** (`replay: keyframes from packet flags...`). uKWn's replay began at a keyframe whose frames are reordered (pts 6360.0, dts 6359.967). ffmpeg, aimed exactly at it, began the copy at the keyframe before. And the keyframe time came from a `-skip_frame nokey` decode, which with B-frames labels keyframes with the wrong time. The fix reads keyframes from the packets' flags and seeks half a second into the chosen keyframe's group. A test against the cached uKWn video pins it (marked slow; skipped where the video isn't cached). Qzh8 and VXU9 were frame-checked and were not affected.
+
+**What this adds to phase 2:**
+- Don't show an arrival nothing released as a throw.
+- Turn on the broomless line for practice.
+- Use the long camera's slide as the release, and as a trigger for throws that never arrive.
+- Get a detector that doesn't read people in yellow or red as stones.
