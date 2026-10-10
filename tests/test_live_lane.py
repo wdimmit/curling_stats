@@ -19,7 +19,8 @@ class Api:
         self.jobs = list(jobs)
         self.claims, self.progress_calls, self.failed = [], [], []
         self.uploads, self.published, self.completed = [], [], []
-        self.lose = set()
+        self.artifact_files = []
+        self.lose, self.stop = set(), set()
 
     def claim(self, worker_id, model_id, gpu, kinds=None):
         self.claims.append(kinds)
@@ -29,11 +30,13 @@ class Api:
         if job_id in self.lose:
             raise Lost("not yours")
         self.progress_calls.append((job_id, phase, message))
+        return {"stop": True} if job_id in self.stop else None
 
     def fail(self, job_id, worker_id, error, kind, retry_after_s=None):
         self.failed.append((job_id, kind, error))
 
     def artifacts(self, job_id, worker_id, files, detcache):
+        self.artifact_files.append(files)
         return {"uploads": [{"name": "timeline.json", "url": f"memory://{job_id}",
                              "headers": {}}]}
 
@@ -68,13 +71,49 @@ class Recorder:
         self.stopped = True
 
 
-def manager(api, max_streams=6, fail=(), clock=None):
+def manager(api, max_streams=6, fail=(), clock=None, kinds=("live",)):
     t = [0.0]
     m = manager_mod.LiveManager(
         api, "home", model_id="m-abc", gpu=None, max_streams=max_streams,
         make_recorder=lambda job: Recorder(job, fail=job["id"] in fail),
-        heartbeat_s=60.0, clock=clock or (lambda: t[0]))
+        heartbeat_s=60.0, clock=clock or (lambda: t[0]), kinds=kinds)
     return m, t
+
+
+def practice_job(n):
+    return {"id": f"p_{n}", "run_id": f"pr_{n}", "video_id": f"pracVid000{n}",
+            "kind": "practice", "sheet": n, "title": f"Sheet {n} practice"}
+
+
+class TestPracticeInTheManager:
+    def test_it_claims_the_kinds_it_was_given(self):
+        api = Api([practice_job(1)])
+        m, _ = manager(api, kinds=("live", "practice"))
+        m.poll_once()
+        assert api.claims[0] == ["live", "practice"]
+        assert m.streams()[0].job["kind"] == "practice"
+
+    def test_a_stop_in_a_heartbeat_is_passed_on_to_the_stream(self):
+        api = Api([practice_job(1)])
+        m, t = manager(api, kinds=("live", "practice"))
+        m.poll_once()
+        assert not m.streams()[0].stop_requested
+        api.stop.add("p_1")
+        t[0] = 61.0
+        m.poll_once()
+        assert m.streams()[0].stop_requested
+
+    def test_a_practice_job_is_recorded_from_its_lookback(self, monkeypatch, tmp_path):
+        from curling_score.live import recorder
+
+        made = {}
+        monkeypatch.setattr(recorder, "YtDlpRecorder",
+                            lambda vid, d, **kw: made.update(vid=vid, **kw) or "rec")
+        m = manager_mod.LiveManager(Api(), "home", model_id="m", gpu=None, root=tmp_path)
+        assert m._recorder(practice_job(1)) == "rec"
+        assert made["vid"] == "pracVid0001" and made["lookback_s"] == 1200.0
+        m._recorder(live_job(1))
+        assert made["lookback_s"] is None
 
 
 class TestTheManager:

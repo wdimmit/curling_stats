@@ -25,6 +25,11 @@ POLL_S = 20.0          # how often to look for live jobs and check recorders
 HEARTBEAT_S = 60.0     # well inside the API's ten-minute lease
 
 
+def is_practice(job) -> bool:
+    """A practice watch on a sheet's stream, not a league game."""
+    return job.get("kind") == "practice"
+
+
 @dataclass
 class Stream:
     """One live job in hand: its recorder, and the lane's session for it."""
@@ -33,6 +38,8 @@ class Stream:
     recorder: object
     session: object = None
     lost: bool = False
+    # The API said no session watches this practice stream any more.
+    stop_requested: bool = False
     last_beat: float = 0.0
     last_doc: dict | None = field(default=None, repr=False)
     # The lane's: a document not yet published, unexpected errors in a row,
@@ -50,11 +57,13 @@ class LiveManager:
     def __init__(self, api, worker_id, *, model_id, gpu, root=None,
                  max_streams: int = MAX_STREAMS, make_recorder=None,
                  heartbeat_s: float = HEARTBEAT_S, clock=time.monotonic,
-                 prune=None, background=_in_background):
+                 prune=None, background=_in_background, kinds=("live",)):
         """``prune`` is called once a recording has been kept, to hold the
         cache to its budget; ``background`` runs the keeping, which copies
-        gigabytes, somewhere other than the lane's thread."""
+        gigabytes, somewhere other than the lane's thread. ``kinds`` are the
+        jobs it claims: league games, and practice where the worker allows."""
         self.api, self.worker_id, self.model_id, self.gpu = api, worker_id, model_id, gpu
+        self.kinds = tuple(kinds)
         self.root = Path(root) if root is not None else None
         self.max_streams, self.heartbeat_s, self.clock = max_streams, heartbeat_s, clock
         self.make_recorder = make_recorder or self._recorder
@@ -69,9 +78,14 @@ class LiveManager:
 
         from curling_score.live.recorder import YtDlpRecorder
 
+        lookback = None
+        if is_practice(job):
+            from curling_score.practice.watch import LOOKBACK_S
+
+            lookback = float(job.get("lookback_s") or LOOKBACK_S)
         return YtDlpRecorder(job["video_id"], self.root / "live" / job["video_id"],
                              pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
-                             cookies=os.environ.get("YTDLP_COOKIES"))
+                             cookies=os.environ.get("YTDLP_COOKIES"), lookback_s=lookback)
 
     # --- what the lane sees ---------------------------------------------------
 
@@ -133,7 +147,8 @@ class LiveManager:
     def poll_once(self):
         while len(self.streams()) < self.max_streams:
             try:
-                job = self.api.claim(self.worker_id, self.model_id, self.gpu, kinds=["live"])
+                job = self.api.claim(self.worker_id, self.model_id, self.gpu,
+                                     kinds=list(self.kinds))
             except Exception as exc:  # noqa: BLE001 - the API may be down; next poll
                 log.warning("live claim failed: %s", exc)
                 break
@@ -182,9 +197,12 @@ class LiveManager:
         head = getattr(stream.recorder, "head_s", lambda: 0.0)()
         ends = sum(len(g["ends"]) for g in (stream.last_doc or {}).get("games", []))
         try:
-            self.api.progress(stream.job["id"], self.worker_id, "live", None,
-                              f"recorded {head / 60:.0f} min, {ends} end(s) published")
+            got = self.api.progress(stream.job["id"], self.worker_id, "live", None,
+                                    f"recorded {head / 60:.0f} min, {ends} end(s) published")
             stream.last_beat = self.clock()
+            # A practice stream nobody watches any more: the API says stop.
+            if isinstance(got, dict) and got.get("stop"):
+                stream.stop_requested = True
         except Exception as exc:  # noqa: BLE001
             from curling_score.service.worker import Lost
 
