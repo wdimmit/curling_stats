@@ -405,6 +405,17 @@ class TestBuildingTheLiveLane:
         assert got.manager.max_streams == 4 and got.manager.root == tmp_path
 
 
+    def test_practice_is_claimed_only_when_asked_for(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.delenv("WORKER_PRACTICE", raising=False)
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False)
+        assert got.manager.kinds == ("live",)
+        monkeypatch.setenv("WORKER_PRACTICE", "1")
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False)
+        assert got.manager.kinds == ("live", "practice")
+
     def test_the_live_lane_prunes_with_the_recording_window(self, monkeypatch, tmp_path):
         monkeypatch.setenv("WORKER_LIVE", "1")
         calls = []

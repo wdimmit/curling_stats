@@ -397,7 +397,8 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     when its lease runs out, and is recorded again from the first segment.
     A recording is kept once its stream ends -- whole as the cached video,
     partial under ``kept/`` -- and the cache is then pruned as after any job,
-    recordings older than ``recording_days`` first.
+    recordings older than ``recording_days`` first. Practice jobs are claimed
+    too when ``WORKER_PRACTICE=1``.
     """
     if os.environ.get("WORKER_LIVE") != "1":
         return None
@@ -416,7 +417,8 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
         ApiClient(api_url, token), worker_id, model_id=version.model_id(weights),
         gpu=gpu_name() if start else None, root=root,
         max_streams=int(os.environ.get("LIVE_MAX_STREAMS", manager.MAX_STREAMS)),
-        prune=prune_cache if cache_gb is not None else None)
+        prune=prune_cache if cache_gb is not None else None,
+        kinds=("live", "practice") if os.environ.get("WORKER_PRACTICE") == "1" else ("live",))
     if start:
         mgr.start()
     return lane.LiveLane(mgr, ApiClient(api_url, token), worker_id,
