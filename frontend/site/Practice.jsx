@@ -6,6 +6,8 @@ import { authedFetch, signIn } from "./auth.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Warn } from "./ui.jsx";
 import { curlText, lineText, restText, shown, summary, weightText } from "../core/practice.mjs";
+import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
+import { DeliveryChart } from "../viewer/Delivery.jsx";
 
 const POLL_MS = 3000;
 const HAND_KEY = "practice.hand";
@@ -51,12 +53,20 @@ function House({ rest, broom }) {
   );
 }
 
+/* The viewer's Delivery chart: the rock from the hack to past the hog line. */
+function Delivery({ t, n }) {
+  if (!(t.line?.delivery?.length >= 2)) return null;
+  const g = deliveryGeometry({ line: t.line, target_broom: t.broom }, DELIVERYBOX);
+  return g ? <DeliveryChart g={g} fluid label={`Throw ${n}: the delivery from the hack`} /> : null;
+}
+
 function Latest({ t, n }) {
   return (
     <Card>
       <p className="muted" style={{ margin: 0 }}>
         Throw {n}{curlText(t.curl) ? ` · ${curlText(t.curl)}` : ""} · {ago(t.released_at)}
       </p>
+      <Delivery t={t} n={n} />
       {!t.arrived ? <p><strong>Released, didn't arrive</strong> (hogged?)</p> : (
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
           <dl style={{ flex: 1, margin: 0 }}>
@@ -77,6 +87,8 @@ function Latest({ t, n }) {
 function Live({ id, onDone }) {
   const [view, setView] = useState(null);
   const [err, setErr] = useState("");
+  // The throw the card shows: the latest unless one was picked from the table.
+  const [picked, setPicked] = useState(null);
   const load = useCallback(async () => {
     const res = await authedFetch(`/api/practice/sessions/${id}`, { cache: "no-cache" });
     if (res.ok) { setView(await res.json()); setErr(""); }
@@ -93,7 +105,9 @@ function Live({ id, onDone }) {
   const { session, watch } = view;
   const throws = shown(view.throws);
   const mine = throws.filter(t => !t.hidden);
-  const latest = mine[mine.length - 1];
+  const shownIndex = picked != null ? throws.findIndex(t => t.id === picked) : -1;
+  const card = shownIndex >= 0 ? throws[shownIndex] : mine[mine.length - 1];
+  const cardN = shownIndex >= 0 ? shownIndex + 1 : throws.indexOf(card) + 1;
   const sum = summary(throws);
   const live = session.status === "active";
   const hide = async (t, hidden) => {
@@ -117,7 +131,8 @@ function Live({ id, onDone }) {
         {!live && <> <button className="primary" onClick={onDone}>Start another</button></>}
       </p>
       {err && <Warn>{err}</Warn>}
-      {latest && <Latest t={latest} n={sum.count} />}
+      {card && <Latest t={card} n={cardN} />}
+      {picked != null && <p><button onClick={() => setPicked(null)}>Show the latest throw</button></p>}
       {sum.count > 0 && (
         <p>
           <strong>{sum.count} throw{sum.count === 1 ? "" : "s"}</strong>
@@ -130,12 +145,14 @@ function Live({ id, onDone }) {
           <thead><tr><th>#</th><th>Weight</th><th>Line</th><th>Rest</th><th /></tr></thead>
           <tbody>
             {throws.map((t, i) => [t, i]).reverse().map(([t, i]) => (
-              <tr key={t.id} className={t.hidden ? "muted" : undefined}>
+              <tr key={t.id} className={t.hidden ? "muted" : undefined}
+                  onClick={() => setPicked(t.id)} style={{ cursor: "pointer",
+                    background: t.id === card?.id ? "rgba(242,194,0,0.18)" : undefined }}>
                 <td>{i + 1}</td>
                 <td>{weightText(t.split_s) ?? "–"}</td>
                 <td>{t.arrived ? lineText(t.line) ?? "–" : "didn't arrive"}</td>
                 <td>{t.arrived ? restText(t.rest) ?? "–" : "–"}</td>
-                <td><button onClick={() => hide(t, !t.hidden)}>
+                <td><button onClick={e => { e.stopPropagation(); hide(t, !t.hidden); }}>
                   {t.hidden ? "Mine after all" : "Not mine"}</button></td>
               </tr>
             ))}

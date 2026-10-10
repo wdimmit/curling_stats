@@ -85,7 +85,14 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
             "miss_m": _r(line.miss, 4), "side": line.side,
             "hog_offset_m": _r(line.at_hog_offset, 4), "confirmed": line.confirmed,
             # Where it was aimed at the far tee: only when no broom was held.
-            "aim_x": _r(getattr(line, "at_tee_x", None), 4)},
+            "aim_x": _r(getattr(line, "at_tee_x", None), 4),
+            # The delivery from the hack, as the viewer's Delivery chart reads
+            # it (timeline._line): where the rock sat before the push, and
+            # [t, y, x] from there to past the hog line.
+            "start": None if line.start is None else {"x": _r(line.start[0], 4),
+                                                      "y": _r(line.start[1], 3)},
+            "delivery": [[_r(t, 2), _r(y, 2), _r(x, 3)]
+                         for t, y, x in getattr(line, "delivery", ())]},
         "rest": _rest(shot),
         "track": [] if dv is None else _thin(dv.track, t0_s),
     }
