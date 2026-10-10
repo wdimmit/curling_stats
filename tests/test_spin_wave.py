@@ -130,3 +130,48 @@ class TestPage:
         assert '"v_e1s01_0000100"' in html and '"spin:test"' in html
         assert 'fetch("/save"' in html
         assert "__ITEMS__" not in html and "__SCOPE__" not in html
+
+
+reorder = _load("reorder")
+
+
+def frames(counts):
+    return [dict(stem=f"{v}_{k:03d}", video=v) for v, n in counts.items() for k in range(n)]
+
+
+class TestInterleave:
+    COUNTS = {"PHbZ": 188, "0SWB": 96, "VVgL": 92, "QQpN": 93, "dea7": 92}
+
+    def test_every_run_of_frames_holds_every_game_in_proportion(self):
+        order = wave.interleave(frames(self.COUNTS), seed=3)
+        total = sum(self.COUNTS.values())
+        for prefix in (50, 100, 250, 400):
+            seen = [it["video"] for it in order[:prefix]]
+            for v, n in self.COUNTS.items():
+                assert abs(seen.count(v) - prefix * n / total) <= 2.5, (prefix, v)
+
+    def test_frames_already_done_stay_first_in_their_order(self):
+        items = frames(self.COUNTS)
+        done = [it["stem"] for it in items[:47]]
+        order = wave.interleave(items, first=done, seed=1)
+        assert [it["stem"] for it in order[:47]] == done
+        assert sorted(it["stem"] for it in order) == sorted(it["stem"] for it in items)
+
+    def test_the_same_seed_gives_the_same_order(self):
+        a = [it["stem"] for it in wave.interleave(frames(self.COUNTS), seed=5)]
+        b = [it["stem"] for it in wave.interleave(frames(self.COUNTS), seed=5)]
+        assert a == b
+
+
+class TestReorder:
+    def test_keeps_the_scope_the_page_already_has(self, tmp_path):
+        items = [dict(stem="v_e1s01_0000100", size=[80, 60], stone_box=[10, 15, 60, 50], color="red",
+                      video="v", end=1, shot=1, y_m=12.0)]
+        page.render(tmp_path, items, "spin:wave1")
+        assert reorder.page_scope(tmp_path) == "spin:wave1"
+
+    def test_done_is_every_frame_with_points_or_a_flag_in_any_sitting(self, tmp_path):
+        serve.save_edits(tmp_path, {"scope": "s", "sitting": "a",
+                                    "points": {"x": {"neck": [1, 2], "grip": [3, 4]}}})
+        serve.save_edits(tmp_path, {"scope": "s", "sitting": "b", "points": {}, "flags": {"y": "unclear"}})
+        assert reorder.done_stems(tmp_path) == {"x", "y"}

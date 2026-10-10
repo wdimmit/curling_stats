@@ -110,6 +110,31 @@ def anim_strip(recs, rec):
     return strip
 
 
+def interleave(items, first=(), seed=1):
+    """The page's order: ``first`` (frames already labelled) as they were, then
+    the rest mixed so that any run of frames holds every game in proportion --
+    a person who stops partway still leaves a set that spans the cameras.
+
+    Each game's frames are shuffled and given a jittered fractional rank, and
+    the ranks are merged, so a game with half the frames turns up half as often
+    all the way through rather than bunching at either end.
+    """
+    first = set(first)
+    head = [it for it in items if it["stem"] in first]
+    rng = random.Random(seed)
+    by_game = {}
+    for it in items:
+        if it["stem"] not in first:
+            by_game.setdefault(it["video"], []).append(it)
+    keyed = []
+    for video in sorted(by_game):
+        frames = by_game[video]
+        rng.shuffle(frames)
+        keyed += [((k + rng.random()) / len(frames), it["stem"], it) for k, it in enumerate(frames)]
+    keyed.sort(key=lambda x: (x[0], x[1]))
+    return head + [it for _, _, it in keyed]
+
+
 def build(games, out, manifest, scope, per_rock=2, seed=1):
     out = Path(out).expanduser()
     (out / "images").mkdir(parents=True, exist_ok=True)
@@ -133,6 +158,7 @@ def build(games, out, manifest, scope, per_rock=2, seed=1):
                     y_m=round(rec["y_m"], 2), box=[round(v, 1) for v in rec["box"]],
                     origin=[int(ox), int(oy)], size=[int(rec["patch"].shape[1]), int(rec["patch"].shape[0])],
                     stone_box=[round(x0 - ox, 1), round(y0 - oy, 1), round(x1 - ox, 1), round(y1 - oy, 1)]))
+    items = interleave(items, seed=seed)
     (out / "items.json").write_text(json.dumps(items, indent=1) + "\n")
     page.render(out, items, scope)
     if manifest:
