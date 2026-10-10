@@ -240,3 +240,24 @@ class TestTiered:
         order = reorder.tiered(self.items(), [], seed=1, colour_first="yellow", early_first=True)
         first_tier = [it for it in order if it["color"] == "yellow" and it["y_m"] < reorder.EARLY_MAX_M]
         assert {it["video"] for it in first_tier[:4]} == {"a", "b"}
+
+
+class TestSavedLabels:
+    def test_every_sitting_merged_later_ones_winning(self, tmp_path):
+        serve.save_edits(tmp_path, {"scope": "s", "sitting": "20261010T100000",
+                                    "points": {"a": {"neck": [1, 1], "grip": [2, 2]},
+                                               "b": {"neck": [1, 1], "grip": [2, 2]}}})
+        serve.save_edits(tmp_path, {"scope": "s", "sitting": "20261010T120000",
+                                    "points": {"a": {"neck": [5, 5], "grip": [6, 6]}}, "flags": {"b": "occluded"}})
+        got = serve.saved_labels(tmp_path)
+        assert got == {"points": {"a": {"neck": [5, 5], "grip": [6, 6]}}, "flags": {"b": "occluded"}}
+
+    def test_no_sittings_yet_is_nothing_done(self, tmp_path):
+        assert serve.saved_labels(tmp_path) == {"points": {}, "flags": {}}
+
+    def test_the_page_starts_from_what_the_server_has_saved(self, tmp_path):
+        items = [dict(stem="v_e1s01_0000100", size=[80, 60], stone_box=[10, 15, 60, 50], color="red",
+                      video="v", end=1, shot=1, y_m=12.0)]
+        page.render(tmp_path, items, "spin:test")
+        html = (tmp_path / "index.html").read_text()
+        assert 'fetch("/labels"' in html and 'addEventListener("storage"' in html

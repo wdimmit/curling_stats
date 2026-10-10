@@ -99,10 +99,27 @@ img.onload = draw; sprite.onload = drawAnim;
 
 function st(it) { return state[it.stem] || (state[it.stem] = {}); }
 function done(it) { const s = state[it.stem]; return !!(s && (s.flag || (s.neck && s.grip))); }
+// Several tabs share one localStorage entry. Each writes only the frame it
+// changed, over whatever is there now, and adopts every other frame from it --
+// writing its whole in-memory copy let a stale tab wipe a newer one's work.
+function fresh() {
+  try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; }
+}
+function adopt(other) {
+  for (const k in other) if (k !== ITEMS[idx].stem || !drag) state[k] = other[k];
+}
 function keep() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  const stem = ITEMS[idx].stem, now = fresh();
+  for (const k in state) if (!(k in now)) now[k] = state[k];   // mend a copy a stale tab cut short
+  now[stem] = state[stem] || {};
+  adopt(now);
+  try { localStorage.setItem(KEY, JSON.stringify(now)); } catch (e) {}
   dirty = true;
 }
+window.addEventListener("storage", ev => {
+  if (ev.key !== KEY) return;
+  adopt(fresh()); status();
+});
 function note(t) { document.getElementById("note").textContent = t; }
 
 function show(i) {
@@ -269,8 +286,27 @@ document.getElementById("dl").onclick = () => {
 };
 window.addEventListener("beforeunload", ev => { if (dirty) { saveNow(true); } });
 
-const first = ITEMS.findIndex(it => !done(it));
-show(first < 0 ? 0 : first);
+// What counts as done comes from the server's saved sittings too, so a fresh
+// browser, a cleared one or a tab that lost a race still starts where the
+// work actually stopped. A frame this browser holds is kept as it is.
+async function start() {
+  try {
+    const r = await fetch("/labels", {cache: "no-store"});
+    const saved = await r.json();
+    let n = 0;
+    for (const [stem, pt] of Object.entries(saved.points || {}))
+      if (!done({stem})) { state[stem] = {neck: pt.neck, grip: pt.grip}; n++; }
+    for (const [stem, f] of Object.entries(saved.flags || {}))
+      if (!done({stem})) { state[stem] = {flag: f}; n++; }
+    if (n) { const now = Object.assign(fresh(), state); try { localStorage.setItem(KEY, JSON.stringify(now)); } catch (e) {} }
+    note(n ? ("picked up " + n + " frames saved earlier") : "");
+  } catch (e) {
+    note("could not read saved labels from the server; showing this browser's own");
+  }
+  const first = ITEMS.findIndex(it => !done(it));
+  show(first < 0 ? 0 : first);
+}
+start();
 </script>
 </body></html>
 """
