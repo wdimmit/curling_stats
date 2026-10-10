@@ -83,7 +83,9 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
         "broom": None if broom is None else {"x": _r(broom.x_m, 4), "y": _r(broom.y_m, 4)},
         "line": None if line is None else {
             "miss_m": _r(line.miss, 4), "side": line.side,
-            "hog_offset_m": _r(line.at_hog_offset, 4), "confirmed": line.confirmed},
+            "hog_offset_m": _r(line.at_hog_offset, 4), "confirmed": line.confirmed,
+            # Where it was aimed at the far tee: only when no broom was held.
+            "aim_x": _r(getattr(line, "at_tee_x", None), 4)},
         "rest": _rest(shot),
         "track": [] if dv is None else _thin(dv.track, t0_s),
     }

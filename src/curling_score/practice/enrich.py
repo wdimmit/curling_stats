@@ -95,9 +95,11 @@ def enrich(video, setups, sideviews, models, *, house, arrival, release, house_f
         _run("side release", stages.side_release, shots, video, hog_view)
         _run("broom", stages.broom, shots, video, dest_view, model=models.broom_model)
         if arrival is not None:
-            # The line follows the stone to where it stopped.
+            # The line follows the stone to where it stopped. Practice is often
+            # solo, so a rock nobody held a broom for is measured too: its line
+            # says where it was aimed at the far tee (as in doubles).
             _run("line", stages.line, shots, video, hog_view, dest_view,
-                 model=models.line_model)
+                 model=models.line_model, without_broom=True)
     _run("far hog", fartime.time_far_crossings, shots,
          near_line=setups[throwing].hog_line, far_line=setups[house].hog_line)
     return shot

@@ -19,10 +19,12 @@ def arrival(color="red", t_enter=40.0, x=0.1, y=-0.4):
                     track=((t_enter, x, 3.8), (t_enter + 9.4, x, y)))
 
 
-def recording(calls, fail=()):
+def recording(calls, fail=(), kwargs=None):
     def stage(name):
-        def run(shots, video, *views, model=None):
+        def run(shots, video, *views, model=None, **kw):
             calls.append((name, *[v.name for v in views], model))
+            if kwargs is not None:
+                kwargs[name] = kw
             if name in fail:
                 raise RuntimeError(f"{name} fell over")
         return run
@@ -80,3 +82,12 @@ def test_the_house_is_read_just_before_the_arrival_and_just_after_the_rest():
         ("red", 0.1), ("yellow", 0.8)]
     assert shot.stones[shot.delivered_stone_index].color == "red"
     assert [s["color"] for s in shot.house_delta["added"]] == ["red"]
+
+
+def test_a_throw_nobody_held_a_broom_for_still_gets_its_line():
+    # Practice is often solo: Qzh8 had a broom on 17 of 42 throws, uKWn on none.
+    calls, kwargs = [], {}
+    E.enrich("rec.ts", SETUPS, SIDEVIEWS, MODELS, house="top", arrival=arrival(),
+             release=Release("red", 22.0, 1.0, 2.0), house_frames=[], throw_frames=[],
+             stages=recording(calls, kwargs=kwargs))
+    assert kwargs["line"] == {"without_broom": True}
