@@ -25,12 +25,18 @@ from curling_score.practice.enrich import OTHER_HOUSE
 
 log = logging.getLogger(__name__)
 
-# Before the release, to take in the push from the hack and the slide.
-PUSH_LEAD_S = 5.0
+# Before the release -- which the tracker times from the rock leaving the
+# hack, the start of the slide -- to take in the crouch and the push.
+PUSH_LEAD_S = 3.0
 # A throw nothing saw arrive, or with no hog line times: this long after release.
 FRONT_MAX_S = 10.0
 # After the rock stops, so the clip does not end on the stop itself.
 REST_TAIL_S = 1.5
+# No clip runs longer after release than this: the window a release is given to
+# arrive in (detect/release.py measured slide to rest at 11-24 s). A rest read
+# late -- a rock that ran out of play, a track that held on -- would otherwise
+# leave the camera on a thrower standing about.
+MAX_AFTER_RELEASE_S = 30.0
 
 # The two hog lines, as metres from the throwing tee.
 NEAR_HOG_M = G.TEE_TO_HOGLINE_M
@@ -102,7 +108,8 @@ def plan(throw: dict, sideviews) -> ClipPlan | None:
         return None
     start = rel - PUSH_LEAD_S
     rest = throw.get("t_rest_s")
-    last = rest + REST_TAIL_S if throw.get("arrived") and rest is not None else None
+    last = (min(rest + REST_TAIL_S, rel + MAX_AFTER_RELEASE_S)
+            if throw.get("arrived") and rest is not None else None)
     if facing not in sideviews or behind not in sideviews or last is None:
         one = facing if facing in sideviews else behind
         if last is None:

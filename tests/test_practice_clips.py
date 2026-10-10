@@ -40,7 +40,7 @@ class TestCameras:
 
     def test_it_starts_before_the_push_and_ends_after_rest(self):
         p = C.plan(throw(), both())
-        assert p.pieces[0].t0 == 95.0
+        assert p.pieces[0].t0 == 97.0
         assert p.pieces[1].t0 == 114.0 and p.pieces[1].t1 == 127.5
         assert p.end == 127.5
 
@@ -80,19 +80,27 @@ class TestWhatIsMissing:
 
     def test_a_throw_that_never_arrived_is_one_piece(self):
         p = C.plan(throw(arrived=False, t_far=None), both())
-        assert [(x.view, x.t0, x.t1) for x in p.pieces] == [("right", 95.0, 110.0)]
+        assert [(x.view, x.t0, x.t1) for x in p.pieces] == [("right", 97.0, 110.0)]
 
     def test_only_the_camera_behind_is_one_piece_from_it(self):
         p = C.plan(throw(house="top"), {"left": view()})
-        assert [(x.view, x.t0, x.t1) for x in p.pieces] == [("left", 95.0, 127.5)]
+        assert [(x.view, x.t0, x.t1) for x in p.pieces] == [("left", 97.0, 127.5)]
 
     def test_only_the_camera_facing_is_one_piece_from_it(self):
         p = C.plan(throw(house="top"), {"right": view()})
-        assert [(x.view, x.t0, x.t1) for x in p.pieces] == [("right", 95.0, 127.5)]
+        assert [(x.view, x.t0, x.t1) for x in p.pieces] == [("right", 97.0, 127.5)]
 
     def test_no_release_or_no_side_views_is_no_clip(self):
         assert C.plan({**throw(), "t_release_s": None}, both()) is None
         assert C.plan(throw(), None) is None and C.plan(throw(), {}) is None
+
+
+class TestLongTails:
+    def test_no_clip_runs_past_thirty_seconds_after_release(self):
+        # A rock whose rest was read late (it ran out of play, or the track
+        # held on) would otherwise leave the thrower standing on camera.
+        assert C.plan(throw(rest=150.0), both()).end == 130.0
+        assert C.plan(throw(rest=150.0), {"left": view()}).end == 130.0
 
 
 class TestUntil:
