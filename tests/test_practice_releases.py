@@ -61,6 +61,29 @@ def test_a_release_waits_a_minute_for_its_arrival(monkeypatch):
     assert b.unarrived(200.0) == []                       # given up on once
 
 
+def test_a_release_is_found_once_as_the_buffer_front_passes_through_its_climb():
+    # The real finder, over a stone leaving the hack at 1.8 m/s. Once the
+    # buffer's front edge cuts into the climb, what is left still crosses the
+    # stage-1 line at a legal speed -- the same throw, first seen 1.2 s later.
+    from curling_score.detect.rocks import Detection
+    from curling_score.practice.finder import Buffer
+
+    def stone(y):
+        return Detection(color="red", x_m=0.0, y_m=y, x_px=0.0, y_px=0.0,
+                         area_px=140.0, confidence=0.9)
+
+    frames = []
+    for i in range(0, 40 * 5):
+        t = round(i / 5, 3)
+        y = -3.6 + 1.8 * (t - 19.7)
+        frames.append((t, [stone(y)] if t >= 19.7 and y < 6.5 else []))
+    buf, b = Buffer(keep_s=10.0), R.ReleaseBook(SETUP)
+    for head in range(1, 41):
+        buf.extend([f for f in frames if f[0] <= head])
+        b.update(buf.frames)
+    assert [round(r.t, 1) for r in b.releases] == [19.8]
+
+
 def test_a_claimed_release_is_never_given_up(monkeypatch):
     b = book(monkeypatch, [rel("red", 22.0)])
     b.claim(arrival("red", 40.0))

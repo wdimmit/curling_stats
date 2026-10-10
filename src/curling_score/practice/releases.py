@@ -11,6 +11,12 @@ from curling_score.game.sidereleases import TYPICAL_LAG_S
 
 # The same release found again in a later window: the same colour, within this.
 SAME_RELEASE_S = 1.0
+# A release first seen this close to the front of the window is that window
+# cutting through a climb already found: what is left of it still crosses the
+# stage-1 line at a legal speed, "first seen" where the window begins. Every
+# real release is first found near the head, long before the front reaches it,
+# and a stone takes at most ~3.3 s from the hack to the stage-1 line.
+FRONT_GUARD_S = 5.0
 # A release nothing arrived from this long after it is reported as a throw
 # that never arrived. Not release.MAX_LAG_S (30 s) alone: that bounds the
 # release-to-entry lag, and the arrival is only confirmed once the stone has
@@ -40,8 +46,13 @@ class ReleaseBook:
         self._done: set[int] = set()     # paired with an arrival, or given up on
 
     def update(self, frames) -> None:
+        if not frames:
+            return
+        front = frames[0][0]
         for r in release.find_releases(on_grid(frames, release.RELEASE_FPS),
                                        self.setup.view_y_min_m, self.setup.view_x_limit_m):
+            if r.t < front + FRONT_GUARD_S:
+                continue
             if not any(k.color == r.color and abs(k.t - r.t) <= SAME_RELEASE_S
                        for k in self.releases):
                 self.releases.append(r)
