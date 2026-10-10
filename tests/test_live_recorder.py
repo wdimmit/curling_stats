@@ -259,3 +259,31 @@ def test_a_recording_is_cut_off_by_the_wall_clock_too(tmp_path):
     clock.t = 3600.0 + recorder.WALL_MARGIN_S + 1
     rec.check()
     assert rec.ended()
+
+
+def test_a_practice_recording_starts_its_lookback_back_from_the_live_edge(tmp_path):
+    # A sheet's practice stream has run for hours; its window reaches back
+    # about an hour. A watch wants twenty minutes of it to calibrate from.
+    rec, spawned = make(tmp_path, [Proc(["00:20:00.00"], code=None)], seq=4321,
+                        still_live=True, lookback_s=1200.0)
+    rec.start()                                    # no refusal: it never wanted segment 0
+    (cmd,) = spawned
+    assert "ffmpeg_i:-live_start_index -240" in cmd
+
+
+def test_a_practice_recording_that_drops_out_cannot_resume(tmp_path):
+    procs = [Proc(["00:25:00.00"], code=1), Proc(["00:01:00.00"], code=None)]
+    rec, spawned = make(tmp_path, procs, seq=4321, still_live=True, lookback_s=1200.0)
+    rec.start()
+    with pytest.raises(LiveError):
+        for _ in range(50):
+            rec.check()
+            time.sleep(0.01)
+    assert len(spawned) == 1
+
+
+def test_a_practice_recording_is_never_whole(tmp_path):
+    rec, _ = make(tmp_path, [Proc(["00:30:00.00"], code=0)], seq=4321, lookback_s=1200.0)
+    rec.start()
+    settle(rec)
+    assert rec.ended() and not rec.whole()

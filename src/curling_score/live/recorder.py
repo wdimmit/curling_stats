@@ -18,6 +18,7 @@ threads and a second thread doing PyAV work have deadlocked before (see
 """
 
 import logging
+import math
 import re
 import subprocess
 import sys
@@ -45,6 +46,8 @@ STALL_S = 600.0
 EXIT_GRACE_S = 240.0
 # While waiting that out, YouTube is asked at most this often.
 LIVE_ASK_S = 30.0
+# YouTube's HLS segments: a stream's clock is its segment number times this.
+SEGMENT_S = 5.0
 _TIME_RE = re.compile(r"time=(\d+):(\d\d):(\d\d(?:\.\d+)?)")
 _SEQ_RE = re.compile(r"#EXT-X-MEDIA-SEQUENCE:(\d+)")
 
@@ -95,12 +98,19 @@ class YtDlpRecorder:
     def __init__(self, video_id, directory, *, pot_provider=None, cookies=None,
                  resolve=None, fetch=None, popen=subprocess.Popen, is_live=None,
                  max_s: float = MAX_RECORD_S, require_first_segment: bool = True,
-                 clock=time.monotonic, exit_grace_s: float = EXIT_GRACE_S):
+                 clock=time.monotonic, exit_grace_s: float = EXIT_GRACE_S,
+                 lookback_s: float | None = None):
         """``require_first_segment=False`` records a stream whose window has
         already moved on, on a clock that starts where the window did -- only
-        for exercising the recorder on a stream that is not a game."""
+        for exercising the recorder on a stream that is not a game.
+        ``lookback_s`` records a long-running stream from that far behind its
+        live edge, on a clock of its own (a practice watch's): it never needs
+        segment 0, is never whole, and does not resume after a dropout."""
         self.video_id, self.dir = video_id, Path(directory)
         self.require_first_segment = require_first_segment
+        self.lookback_s = lookback_s
+        if lookback_s is not None:
+            self.require_first_segment = False
         self.pot_provider, self.cookies = pot_provider, cookies
         self._resolve = resolve or self._resolve_hls
         self._fetch = fetch or self._fetch_text
@@ -143,9 +153,10 @@ class YtDlpRecorder:
         self.dir.mkdir(parents=True, exist_ok=True)
         with self._lock:
             path = self.dir / f"rec.{len(self._parts)}.ts"
+        start = 0 if self.lookback_s is None else -math.ceil(self.lookback_s / SEGMENT_S)
         cmd = [sys.executable, "-m", "yt_dlp", "--no-part", "--newline", "--no-warnings",
                *self._extractor_args(), "-f", cache.FORMAT, "--hls-use-mpegts",
-               "--downloader-args", "ffmpeg_i:-live_start_index 0",
+               "--downloader-args", f"ffmpeg_i:-live_start_index {start}",
                "-o", str(path), source.canonical_url(self.video_id)]
         proc = self._popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         with self._lock:
@@ -199,6 +210,11 @@ class YtDlpRecorder:
             return
         if self._stopped or now - self._exited_at < self.exit_grace_s:
             return
+        if self.lookback_s is not None:
+            # A lookback recording's clock starts wherever the window did when
+            # it began; a new one would start somewhere else. Its watch has
+            # nothing to stand on, so its job fails and its sessions end.
+            raise LiveError("the practice recording dropped out and cannot resume on its clock")
         log.warning("recording %s stopped (exit %s) while still live; restarting",
                     self.video_id, code)
         # Only while the rewind window still reaches the first segment; past
