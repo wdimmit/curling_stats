@@ -102,7 +102,10 @@ class LiveManager:
         after filing it, unless ``keep`` is turned down: a whole recording as
         the video's cached copy, so reprocessing the game needs no download; a
         partial one under ``kept/``, for investigation. The pruner lets either
-        go after a week (WORKER_RECORDING_DAYS), or sooner if the disk needs it."""
+        go after a week (WORKER_RECORDING_DAYS), or sooner if the disk needs it.
+        A practice recording is never kept, however its stream ends: it is a
+        window on a sheet's all-day stream, not a game."""
+        keep = keep and not is_practice(stream.job)
         stream.recorder.stop()
         with self._lock:
             if stream in self._streams:

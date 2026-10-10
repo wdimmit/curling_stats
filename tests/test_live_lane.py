@@ -176,7 +176,8 @@ class TestKeepingTheRecording:
     so reprocessing the game needs no download; anything else is deleted."""
 
     def _finish(self, tmp_path, monkeypatch, whole=True, keep=True, fails=False,
-                no_file=False):
+                no_file=False, job=None):
+        job = job or live_job(1)
         kept, partial, pruned = [], [], []
 
         def keep_recording(path, vid, root):
@@ -192,12 +193,12 @@ class TestKeepingTheRecording:
         monkeypatch.setattr(manager_mod.cache, "keep_recording", keep_recording)
         monkeypatch.setattr(manager_mod.cache, "keep_partial", keep_partial)
         m = manager_mod.LiveManager(
-            Api([live_job(1)]), "home", model_id="m-abc", gpu=None, root=tmp_path,
+            Api([job]), "home", model_id="m-abc", gpu=None, root=tmp_path,
             make_recorder=lambda job: Recorder(job), prune=lambda: pruned.append(1),
-            background=lambda fn: fn())
+            background=lambda fn: fn(), kinds=("live", "practice"))
         m.poll_once()
         (s,) = m.streams()
-        directory = tmp_path / "live" / "liveVid0001"
+        directory = tmp_path / "live" / job["video_id"]
         directory.mkdir(parents=True)
         (directory / "rec.0.ts").write_bytes(b"ts")
         s.recorder.whole = lambda: whole
@@ -227,6 +228,13 @@ class TestKeepingTheRecording:
     def test_a_recording_that_cannot_be_kept_is_still_deleted(self, tmp_path, monkeypatch):
         _, _, _, pruned, directory = self._finish(tmp_path, monkeypatch, fails=True)
         assert not directory.exists() and pruned == [1]
+
+    def test_a_practice_recording_is_never_kept_however_it_ends(self, tmp_path, monkeypatch):
+        # Lost, failed or finished: a window on a sheet's all-day stream is not
+        # a game, and a dropout two hours in would file gigabytes under kept/.
+        _, kept, partial, _, directory = self._finish(tmp_path, monkeypatch, whole=False,
+                                                      job=practice_job(1))
+        assert kept == [] and partial == [] and not directory.exists()
 
     def test_a_recorder_that_never_wrote_a_file_keeps_nothing(self, tmp_path, monkeypatch):
         _, kept, partial, pruned, directory = self._finish(tmp_path, monkeypatch,
