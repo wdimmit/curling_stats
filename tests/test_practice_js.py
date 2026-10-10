@@ -79,6 +79,9 @@ def test_where_a_clip_goes():
     assert js('P.clipState({clip: false, t_release_s: 1}, {live: true, newest: false})') is None
     assert js('P.clipState({clip: false, t_release_s: 1}, {live: false, newest: true})') is None
     assert js('P.clipState({clip: false, t_release_s: null}, {live: true, newest: true})') is None
+    # null: none is coming; absent: a document from before clips.
+    assert js('P.clipState({clip: null, t_release_s: 1}, {live: true, newest: true})') is None
+    assert js('P.clipState({t_release_s: 1}, {live: true, newest: true})') is None
 
 
 def test_a_link_is_fetched_again_before_it_expires():

@@ -134,6 +134,8 @@ CLIP_SIZE = (600, 810)
 CLIP_FPS = 30
 CLIP_MAX_BYTES = 20_000_000
 CUT_TIMEOUT_S = 120.0
+# Shorter than this is a cut that found no footage, not a clip.
+MIN_CLIP_S = 0.5
 
 
 def cut(plan: ClipPlan, views: dict, out_path, *, t0_s: float = 0.0, size=CLIP_SIZE,
@@ -186,8 +188,14 @@ def cut(plan: ClipPlan, views: dict, out_path, *, t0_s: float = 0.0, size=CLIP_S
              "-c:v", "libx264", "-preset", "veryfast", "-crf", "27", "-pix_fmt", "yuv420p",
              "-movflags", "+faststart", "-fs", str(CLIP_MAX_BYTES), str(out_path)]
     run(args, check=True, capture_output=True, timeout=timeout_s)
-    if not Path(out_path).is_file() or Path(out_path).stat().st_size == 0:
-        raise OSError(f"ffmpeg wrote no clip at {out_path}")
+    # A piece past the end of the source is not an error to ffmpeg: it writes
+    # an MP4 with no frames, which would play as a dead player.
+    try:
+        got = frames.probe(out_path)
+    except Exception as exc:  # noqa: BLE001 - no file, or no video stream in it
+        raise OSError(f"ffmpeg wrote no clip at {out_path}: {exc}") from exc
+    if got.duration_s < MIN_CLIP_S:
+        raise OSError(f"the clip at {out_path} is {got.duration_s:.2f} s long")
 
 
 class Clipper:

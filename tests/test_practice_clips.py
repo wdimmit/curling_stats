@@ -163,6 +163,12 @@ class TestCut:
         assert frames.probe(out).duration_s == pytest.approx(2.0, abs=0.3)
         assert is_colour(colour_at(out, 0.5), (0, 0, 255))       # left view, red
 
+    def test_a_cut_past_the_end_of_the_recording_raises(self, composite, tmp_path):
+        # ffmpeg exits 0 and writes an MP4 with no frames in it.
+        p = C.ClipPlan((C.Piece("left", 20.0, 22.0),))
+        with pytest.raises(OSError):
+            C.cut(p, views(composite), tmp_path / "t.mp4", size=(60, 90), fps=10)
+
     def test_a_failed_cut_raises(self, tmp_path):
         p = C.ClipPlan((C.Piece("left", 1.0, 2.0),))
         with pytest.raises((subprocess.SubprocessError, OSError)):

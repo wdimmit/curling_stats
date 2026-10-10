@@ -186,32 +186,50 @@ class PracticeWatch:
                 self.rec.path, self.cal, self.models, house=house, arrival=arrival,
                 release=rel, house_frames=self.buffers[house].frames,
                 throw_frames=self.buffers[OTHER_HOUSE[house]].frames)
-            self.throws.append(throws.throw_record(shot, house=house, t0_s=self.t0_s))
+            th = throws.throw_record(shot, house=house, t0_s=self.t0_s)
+            if self.clipper is None:
+                th["clip"] = None              # no clip is coming
+            self.throws.append(th)
             added += 1
-        if self._clip() or added:
+        # The throw first, as soon as it is read; its clip follows.
+        if added:
+            self._publish()
+        if self._clip():
             self._publish()
 
     def _clip(self, final: bool = False) -> bool:
         """Cut the clips whose footage is now recorded, oldest first; True if
-        any was made. Each throw is tried once. ``final``: the watch is ending,
-        so a clip runs to where the recording stops rather than waiting."""
+        any throw's clip changed. Each throw is tried once: ``clip`` becomes
+        True, or None when none is coming (no plan, or the cut or upload
+        failed) so the page stops waiting. ``final``: the watch is ending, so a
+        clip runs to where the recording stops rather than waiting. A clip
+        that breaks costs that clip, never the watch; only a lost job ends it."""
         if self.clipper is None or self.cal is None:
             return False
         recorded = self.t0_s + self.done_s
-        made = False
+        changed = False
         for th in self.throws:
-            if th.get("clip") or th["id"] in self._clip_tried:
+            if th.get("clip") is not False or th["id"] in self._clip_tried:
                 continue
-            plan = self.clipper.plan(th, self.cal)
-            if plan is not None and plan.end > recorded:
-                if not final:
-                    continue
-                plan = plan.until(recorded)
-            self._clip_tried.add(th["id"])
-            if plan is not None and self.clipper.make(th, plan, self.cal, t0_s=self.t0_s):
-                th["clip"] = True
-                made = True
-        return made
+            try:
+                plan = self.clipper.plan(th, self.cal)
+                if plan is not None and plan.end > recorded:
+                    if not final:
+                        continue
+                    plan = plan.until(recorded)
+                self._clip_tried.add(th["id"])
+                made = plan is not None and self.clipper.make(th, plan, self.cal,
+                                                              t0_s=self.t0_s)
+            except Exception as exc:  # noqa: BLE001 - one clip, not the watch
+                from curling_score.service.worker import Lost
+                if isinstance(exc, Lost):
+                    raise
+                log.warning("practice: clip %s failed: %r", th["id"], exc)
+                self._clip_tried.add(th["id"])
+                made = False
+            th["clip"] = True if made else None
+            changed = True
+        return changed
 
     def _publish(self) -> None:
         self.publish(self.document())

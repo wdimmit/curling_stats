@@ -75,12 +75,13 @@ export function lengthText(seconds) {
 }
 
 /* What the card shows where a clip goes: "play" when the throw has one,
- * "wait" for the newest throw of a live session (the worker cuts a clip a few
- * seconds after the rock stops), else nothing. A stone nobody released has no
- * clip coming. */
+ * "wait" for the newest throw of a live session while its clip is still to be
+ * cut (clip false: the worker cuts it a few seconds after the rock stops), else
+ * nothing. null is a clip that is not coming; a throw with no clip field is
+ * from before clips. A stone nobody released has no clip coming. */
 export function clipState(t, { live, newest }) {
   if (t.clip) return "play";
-  if (live && newest && t.t_release_s != null) return "wait";
+  if (live && newest && t.clip === false && t.t_release_s != null) return "wait";
   return null;
 }
 

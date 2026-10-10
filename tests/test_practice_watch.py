@@ -1,5 +1,6 @@
 """One sheet's practice, watched step by step, with no video."""
 
+import copy
 from types import SimpleNamespace
 
 import pytest
@@ -252,11 +253,13 @@ class Clips:
 
 def clipped(clipper, until_s=100.0):
     rec, docs = Rec(), []
+    # Each document as it was sent: the watch keeps changing its throws.
     w = W.PracticeWatch(recording=rec, pipeline=Pipeline(
                             top=sheet(thrown("red", t0=40.0), until_s=until_s),
                             bottom=sheet(hack("red", 22.0), until_s=until_s)),
                         models=SimpleNamespace(detector=None), since_s=20.0,
-                        publish=docs.append, clock=lambda: 0.0, clipper=clipper)
+                        publish=lambda d: docs.append(copy.deepcopy(d)), clock=lambda: 0.0,
+                        clipper=clipper)
     while rec.head < until_s:
         rec.head = min(until_s, rec.head + 1.0)
         while w.step():
@@ -278,8 +281,52 @@ def test_each_throw_is_clipped_once_its_footage_is_recorded():
 def test_a_clip_that_fails_is_not_tried_again_and_the_watch_carries_on():
     clips = Clips(works=False)
     w, docs = clipped(clips)
-    assert w.throws[0]["clip"] is False and len(clips.made) == 1
+    # None: no clip is coming, so the page stops saying one is on its way.
+    assert w.throws[0]["clip"] is None and len(clips.made) == 1
     assert docs[-1]["status"] == "ended"
+
+
+def test_a_throw_is_published_before_its_clip_is_cut():
+    w, docs = clipped(Clips())
+    first = next(d for d in docs if d["throws"])
+    assert first["throws"][0]["clip"] is False
+    assert docs[-1]["throws"][0]["clip"] is True
+
+
+def test_a_throw_with_no_clip_plan_says_none_is_coming():
+    class NoPlan(Clips):
+        def plan(self, throw, cal):
+            return None
+
+    w, docs = clipped(NoPlan())
+    assert w.throws[0]["clip"] is None and docs[-1]["throws"][0]["clip"] is None
+
+
+@pytest.mark.parametrize("where", ["plan", "make"])
+def test_a_clipper_that_breaks_costs_that_clip_not_the_watch(where):
+    class Broken(Clips):
+        def plan(self, throw, cal):
+            if where == "plan":
+                raise ValueError("a bad record")
+            return super().plan(throw, cal)
+
+        def make(self, throw, plan, cal, *, t0_s=0.0):
+            raise RuntimeError("an unexpected failure")
+
+    w, docs = clipped(Broken())
+    assert w.throws[0]["clip"] is None
+    assert docs[-1]["status"] == "ended" and len(docs[-1]["throws"]) == 1
+
+
+def test_a_lost_job_while_clipping_is_raised():
+    from curling_score.service.worker import Lost
+
+    class Gone(Clips):
+        def make(self, throw, plan, cal, *, t0_s=0.0):
+            raise Lost("p_1")
+
+    with pytest.raises(Lost):
+        clipped(Gone())
 
 
 def test_a_watch_that_ends_first_cuts_what_was_recorded():
@@ -289,6 +336,6 @@ def test_a_watch_that_ends_first_cuts_what_was_recorded():
     assert clips.made[0][1] == pytest.approx(w.t0_s + w.done_s)
 
 
-def test_without_a_clipper_nothing_is_clipped():
+def test_without_a_clipper_no_clip_is_coming():
     w, _ = clipped(None)
-    assert w.throws[0]["clip"] is False
+    assert w.throws[0]["clip"] is None
