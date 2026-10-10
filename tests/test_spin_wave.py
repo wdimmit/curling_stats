@@ -216,3 +216,27 @@ class TestMakeTree:
         val = {p.stem.rsplit("_", 1)[0] for p in (tmp_path / "tree" / "labels" / "val").iterdir()}
         train = {p.stem.rsplit("_", 1)[0] for p in (tmp_path / "tree" / "labels" / "train").iterdir()}
         assert not val & train and "v_e1s00" not in val | train
+
+
+class TestTiered:
+    def items(self):
+        out = []
+        for v in ("a", "b"):
+            for k in range(20):
+                out.append(dict(stem=f"{v}_{k:03d}", video=v, color="yellow" if k % 2 else "red",
+                                y_m=10.0 if k % 4 < 2 else 24.0))
+        return out
+
+    def test_done_then_colour_then_early(self):
+        items = self.items()
+        done = [items[0]["stem"], items[25]["stem"]]
+        order = reorder.tiered(items, done, seed=1, colour_first="yellow", early_first=True)
+        assert [it["stem"] for it in order[:2]] == done
+        tiers = [(it["color"] != "yellow", it["y_m"] >= reorder.EARLY_MAX_M) for it in order[2:]]
+        assert tiers == sorted(tiers)
+        assert sorted(it["stem"] for it in order) == sorted(it["stem"] for it in items)
+
+    def test_each_tier_still_spans_the_games(self):
+        order = reorder.tiered(self.items(), [], seed=1, colour_first="yellow", early_first=True)
+        first_tier = [it for it in order if it["color"] == "yellow" and it["y_m"] < reorder.EARLY_MAX_M]
+        assert {it["video"] for it in first_tier[:4]} == {"a", "b"}
