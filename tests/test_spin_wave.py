@@ -212,7 +212,7 @@ class TestMakeTree:
         ed = tmp_path / "e.json"
         ed.write_text(json.dumps({"points": {it["stem"]: {"neck": [35, 22], "grip": [20, 12]} for it in items}}))
         counts, _ = make_tree.build(wave_dir, [ed], tmp_path / "tree", hold=["v_e1s00"], val_frac=0.3)
-        assert counts == {"train": 12, "val": 6, "held": 2}
+        assert counts == {"train": 12, "val": 6, "held": 2, "unsure": 0}
         val = {p.stem.rsplit("_", 1)[0] for p in (tmp_path / "tree" / "labels" / "val").iterdir()}
         train = {p.stem.rsplit("_", 1)[0] for p in (tmp_path / "tree" / "labels" / "train").iterdir()}
         assert not val & train and "v_e1s00" not in val | train
