@@ -19,6 +19,9 @@ from pathlib import Path
 
 DT_S = 3.0
 POS_M = 0.5
+# Two releases of one throw: the overhead's and the long camera's agree to a
+# few tenths (sidereleases: -0.11..+0.23 s, 0.45 s at worst).
+SAME_RELEASE_S = 1.0
 TAIL_S = 45.0
 # A shot with no release is dated this long before its rest.
 REST_TO_THROW_S = 20.0
@@ -68,6 +71,11 @@ def reference(doc, t_from, t_to) -> list:
 def _gap(th, r):
     if r["house"] != th["house"] or r["color"] != th["color"] or r["arrived"] != th["arrived"]:
         return None
+    # Both seen released: the release names the throw. A stone that ran out of
+    # view has no rest to agree on -- its "rest" is when it left, on each side.
+    if th["t_release_s"] is not None and r["t_release_s"] is not None:
+        gap = abs(r["t_release_s"] - th["t_release_s"])
+        return gap if gap <= SAME_RELEASE_S else None
     if th["arrived"]:
         if r["t_rest_s"] is None or abs(r["t_rest_s"] - th["t_rest_s"]) > DT_S:
             return None

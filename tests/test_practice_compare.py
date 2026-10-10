@@ -48,6 +48,16 @@ def test_a_throw_matches_a_shot_of_its_colour_house_time_and_place():
     assert pairs == []
 
 
+def test_a_stone_that_ran_out_matches_by_its_release_whatever_its_rest_time():
+    # VXU9 8862: a takeout that left the view. The tracker's "rest" is when it
+    # left; the end's is 5 s later. The release names the throw.
+    refs = ct.reference(doc("top", shot("yellow", 8882.47, t_release=8862.07, x=1.7, y=0.8)),
+                        8000.0, 9000.0)
+    pairs, false, missed = ct.match(
+        [throw("yellow", 8877.43, t_release=8862.13, x=1.74, y=0.80)], refs)
+    assert len(pairs) == 1 and false == [] and missed == []
+
+
 def test_a_throw_that_never_arrived_matches_a_hogged_shot_by_its_release():
     refs = ct.reference(doc("top", shot("yellow", None, t_release=100.0, reason="hogged")),
                         0.0, 1000.0)
