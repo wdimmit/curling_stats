@@ -115,6 +115,8 @@ PLAY_DAY_LIMIT = 300
 # Starting practice sessions: a few an hour is a busy morning on the ice.
 PRACTICE_HOUR_LIMIT = 20
 PRACTICE_DAY_LIMIT = 60
+# A practice throw's id, as the worker writes it (practice/throws.py).
+PRACTICE_THROW_ID = re.compile(r"^t_[0-9]{1,8}(\.[0-9])?$")
 # The page a flag was sent from: an edit, view-only or review link.
 FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
 _PLACE_INTS = ("game_index", "end", "rock")
@@ -1994,7 +1996,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def practice_read(session_id: str, request: Request,
                       authorization: str | None = Header(default=None)):
         practice_on()
-        s = my_session(session_id, require_user(authorization))
+        s = practice.settle(repo, my_session(session_id, require_user(authorization)), now())
         view = practice.session_view(repo, practice_doc(repo.get_watch(s.watch_id)), s, now())
         return json_revalidated(request, view, "private")
 
@@ -2010,6 +2012,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                             authorization: str | None = Header(default=None)):
         practice_on()
         s = my_session(session_id, require_user(authorization))
+        if not PRACTICE_THROW_ID.match(throw_id):
+            raise HTTPException(422, "not a throw")
         body = await request.json()
         practice.hide(repo, s, throw_id, bool(body.get("hidden")))
         return {"ok": True}
@@ -2018,15 +2022,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def my_practice(authorization: str | None = Header(default=None)):
         practice_on()
         me = require_user(authorization)
+        t = now()
         return {"sessions": [
             {"id": s.id, "sheet": s.sheet, "started_at": _iso(s.started_at),
              "ended_at": _iso(s.ended_at), "end_reason": s.end_reason, "active": s.active}
-            for s in repo.sessions_for_user(me.id)]}
+            for s in (practice.settle(repo, s, t) for s in repo.sessions_for_user(me.id))]}
 
     def practice_watch_of(job):
-        run = repo.get_run(job.run_id)
-        return run, next((w for w in repo.watches_for_sheet(run.sheet) if w.job_id == job.id),
-                         None)
+        return repo.get_run(job.run_id), repo.watch_for_job(job.id)
 
     def practice_should_stop(job) -> bool:
         """A practice job's sessions' clocks, run: True when no session is
@@ -2326,6 +2329,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if kind == "permanent" or job.attempts >= job.max_attempts:
             repo.update_job(job.id, state="failed", error=error, error_kind=kind, finished_at=t)
             repo.update_run(job.run_id, status="failed", error=error)
+            if job.kind == "practice":
+                # Nothing will send this watch's heartbeats again: end its
+                # sessions now, so the sheet's page can start afresh.
+                _, watch = practice_watch_of(job)
+                if watch is not None:
+                    repo.update_watch(watch.id, status="failed", error=error)
+                    practice.end_all(repo, watch, t, "failed")
             return {"ok": True, "final": True}
         if kind == "blocked":
             ladder = (300, 600, 1200)

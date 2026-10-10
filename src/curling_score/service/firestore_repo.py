@@ -540,6 +540,11 @@ class FirestoreRepo:
                 for d in self._where(WATCHES, "sheet", "==", sheet).stream()]
         return sorted(docs, key=lambda w: w.created_at, reverse=True)
 
+    def watch_for_job(self, job_id):
+        # Every heartbeat asks: one document, not every watch the sheet has had.
+        docs = list(self._where(WATCHES, "job_id", "==", job_id).limit(1).stream())
+        return PracticeWatch.from_dict(docs[0].to_dict()) if docs else None
+
     def put_session(self, session):
         self._col(SESSIONS).document(session.id).set(session.to_dict())
 

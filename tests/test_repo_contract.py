@@ -703,6 +703,8 @@ class TestPractice:
             repo.put_watch(PracticeWatch(id=f"pw_{i}", sheet=sheet, video_id="v", run_id="r",
                                          job_id="j", created_at=at(i)))
         assert [w.id for w in repo.watches_for_sheet(3)] == ["pw_1", "pw_0"]
+        assert repo.watch_for_job("j").id in ("pw_0", "pw_1", "pw_2")
+        assert repo.watch_for_job("j_none") is None
         assert repo.update_watch("pw_0", status="ended", throws=4).throws == 4
         assert repo.get_watch("pw_0").status == "ended"
 

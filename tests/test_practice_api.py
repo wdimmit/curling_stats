@@ -232,6 +232,40 @@ class TestTheWorkersSide:
         assert start(w).json()["watch_id"] != w["repo"].get_session(sid).watch_id
 
 
+class TestWhenTheWorkerGivesUp:
+    def test_a_failed_job_ends_its_sessions_and_frees_the_sheet(self, w):
+        # The recorder dropped out (a LiveError) or the watch raised three
+        # times: the worker fails the job and stops sending heartbeats.
+        sid = start(w).json()["id"]
+        job = claim(w)
+        w["client"].post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER, json={
+            "worker_id": "ryzen", "error": "the practice recording dropped out",
+            "kind": "permanent"})
+        got = w["client"].get("/api/me/practice", headers=SARAH).json()["sessions"]
+        assert got[0]["active"] is False and got[0]["end_reason"] == "failed"
+        assert w["repo"].get_watch(w["repo"].get_session(sid).watch_id).status == "failed"
+
+    def test_a_session_whose_watch_died_unannounced_is_ended_when_listed(self, w):
+        sid = start(w).json()["id"]
+        watch = w["repo"].get_watch(w["repo"].get_session(sid).watch_id)
+        w["repo"].update_job(watch.job_id, state="failed")      # no fail call reached us
+        got = w["client"].get("/api/me/practice", headers=SARAH).json()["sessions"]
+        assert got[0]["active"] is False
+
+
+class TestHiding:
+    def test_only_a_throw_id_can_be_hidden_and_the_list_is_bounded(self, w):
+        sid = start(w).json()["id"]
+        c = w["client"]
+        bad = c.patch(f"/api/practice/sessions/{sid}/throws/{'x' * 200}",
+                      json={"hidden": True}, headers=SARAH)
+        assert bad.status_code == 422
+        for i in range(520):
+            c.patch(f"/api/practice/sessions/{sid}/throws/t_{i}.0", json={"hidden": True},
+                    headers=SARAH)
+        assert len(w["repo"].get_session(sid).hidden) == 500
+
+
 class TestMine:
     def test_my_sessions_newest_first(self, w):
         a = start(w).json()["id"]

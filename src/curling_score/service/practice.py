@@ -104,7 +104,8 @@ def session_view(repo, doc, session, now) -> dict:
     """What the page reads: the session, its watch, and the throws in its
     window, each saying when it was thrown and whether it was hidden."""
     watch = repo.get_watch(session.watch_id)
-    status = "active" if session.active else "ended"
+    status = ("active" if session.active
+              else "failed" if session.end_reason == "failed" else "ended")
     if session.active and watch is not None and not watch_alive(repo, watch):
         job = repo.get_job(watch.job_id)
         status = "failed" if (watch.status == "failed"
@@ -131,11 +132,32 @@ def session_view(repo, doc, session, now) -> dict:
 def stop(repo, session, now, reason="stop"):
     if session.active:
         repo.update_session(session.id, ended_at=now, end_reason=reason)
+        session.ended_at, session.end_reason = now, reason
+
+
+def settle(repo, session, now):
+    """End a session whose watch is gone -- its job failed or was finished
+    without a word reaching us -- so it never reads as active for ever and
+    the sheet's page can start afresh."""
+    if not session.active:
+        return session
+    watch = repo.get_watch(session.watch_id)
+    if watch is not None and watch_alive(repo, watch):
+        return session
+    job = repo.get_job(watch.job_id) if watch is not None else None
+    failed = watch is None or watch.status == "failed" or (job is not None
+                                                           and job.state == "failed")
+    stop(repo, session, now, "failed" if failed else "stream_ended")
+    return session
+
+
+# The throws a session can hide: a session is a few hundred throws at most.
+MAX_HIDDEN = 500
 
 
 def hide(repo, session, throw_id: str, hidden: bool):
     ids = [t for t in session.hidden if t != throw_id] + ([throw_id] if hidden else [])
-    repo.update_session(session.id, hidden=ids)
+    repo.update_session(session.id, hidden=ids[-MAX_HIDDEN:])
 
 
 def sweep(repo, watch, doc, now) -> int:
