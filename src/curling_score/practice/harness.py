@@ -83,8 +83,12 @@ class Sink:
         (self.out / "practice.json").write_text(json.dumps(doc))
 
 
-def run(watch, *, sleep=time.sleep, idle_s: float = 0.25) -> None:
-    """Step ``watch`` until it is done, resting whenever it has nothing to do."""
+def run(watch, *, recording=None, sleep=time.sleep, idle_s: float = 0.25) -> None:
+    """Step ``watch`` until it is done, resting whenever it has nothing to do.
+    A ``recording`` that failed ends the run: the watch would wait for its
+    footage for ever."""
     while not watch.done:
+        if recording is not None and recording.failed():
+            raise RuntimeError("the recording failed; see ffmpeg's error above")
         if not watch.step():
             sleep(idle_s)

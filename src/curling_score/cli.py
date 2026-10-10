@@ -660,7 +660,7 @@ def _practice_replay(args) -> int:
         since_s=args.from_s - rec.t0_s, t0_s=rec.t0_s, publish=sink.publish,
         progress=print)
     try:
-        harness.run(watch)
+        harness.run(watch, recording=rec)
     finally:
         rec.stop()
         heads.stop()

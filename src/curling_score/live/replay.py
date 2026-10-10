@@ -86,7 +86,9 @@ class ReplayRecording:
                 self._finished = True
 
     def head_s(self) -> float:
-        return self._head_s
+        # ffmpeg's progress counts from the -ss target; the file, and so the
+        # recording's clock, starts at the keyframe before it.
+        return self._head_s + (self.start_s - self.t0_s if self.start_s > 0 else 0.0)
 
     def check(self):
         """A replay needs no keeping: it has no network to drop out of."""
@@ -96,6 +98,13 @@ class ReplayRecording:
             return False
         self._reader.join(timeout=5)
         return self._finished and self._proc.returncode == 0
+
+    def failed(self) -> bool:
+        """ffmpeg gave up: a source it could not read, an option it lacks
+        (-readrate_initial_burst needs ffmpeg 6). Without this a replay that
+        never began looks exactly like one still waiting for its first bytes."""
+        return (not self._stopped and self._proc is not None
+                and self._proc.poll() is not None and self._proc.returncode != 0)
 
     def stop(self):
         if self._proc is not None and self._proc.poll() is None:

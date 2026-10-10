@@ -87,7 +87,10 @@ class TestReplayRecording:
         got = next(iter(F.window(rec.path, 2.0, 2.01, 30.0)))[1]
         want = next(iter(F.window(clip, rec.t0_s + 2.0, rec.t0_s + 2.01, 30.0)))[1]
         assert (got == want).all()
-        assert rec.head_s() >= 6.0
+        # The head is on the recording's clock too: ffmpeg's own progress counts
+        # from the -ss target, half a second after the keyframe the file starts at.
+        last = max(t for t, _ in F.window(rec.path, 0.0, 30.0, 30.0))
+        assert rec.head_s() == pytest.approx(last, abs=0.3)
 
     def test_a_lookback_burst_arrives_at_once_then_real_time(self, tmp_path, clip):
         rec = replay.ReplayRecording(clip, tmp_path / "rec.ts", speed=1.0, burst_s=10.0)
@@ -100,6 +103,13 @@ class TestReplayRecording:
             assert rec.head_s() < 16.0                     # not the whole clip at once
         finally:
             rec.stop()
+
+    def test_a_replay_ffmpeg_could_not_make_has_failed_not_ended(self, tmp_path):
+        rec = replay.ReplayRecording(tmp_path / "no-such.mp4", tmp_path / "rec.ts").start()
+        deadline = time.monotonic() + 10
+        while not rec.failed() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert rec.failed() and not rec.ended()
 
     def test_a_replay_from_the_beginning_starts_at_zero(self, tmp_path, clip):
         rec = replay.ReplayRecording(clip, tmp_path / "rec.ts", speed=8.0).start()

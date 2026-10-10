@@ -63,3 +63,18 @@ def test_run_steps_until_the_watch_is_done_and_rests_when_idle():
     slept = []
     harness.run(Watch(), sleep=slept.append, idle_s=0.25)
     assert slept == [0.25]
+
+
+def test_run_stops_when_the_recording_failed_instead_of_waiting_for_ever():
+    class Watch:
+        done = False
+
+        def step(self):
+            return False
+
+    class Rec:
+        def failed(self):
+            return True
+
+    with pytest.raises(RuntimeError, match="recording failed"):
+        harness.run(Watch(), recording=Rec(), sleep=lambda s: None)
