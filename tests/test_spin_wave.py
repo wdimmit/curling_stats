@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from PIL import Image
 
 _DIR = Path(__file__).parents[1] / "scripts" / "spin"
 sys.path.insert(0, str(_DIR))
@@ -175,3 +176,43 @@ class TestReorder:
                                     "points": {"x": {"neck": [1, 2], "grip": [3, 4]}}})
         serve.save_edits(tmp_path, {"scope": "s", "sitting": "b", "points": {}, "flags": {"y": "unclear"}})
         assert reorder.done_stems(tmp_path) == {"x", "y"}
+
+
+make_tree = _load("make_tree")
+
+
+class TestMakeTree:
+    def test_a_later_sitting_wins_and_a_flag_drops_the_points(self, tmp_path):
+        a = tmp_path / "s-20261010T100000.json"
+        b = tmp_path / "s-20261010T110000.json"
+        a.write_text(json.dumps({"points": {"x": {"neck": [1, 1], "grip": [2, 2]},
+                                            "y": {"neck": [1, 1], "grip": [2, 2]}}, "flags": {}}))
+        b.write_text(json.dumps({"points": {"x": {"neck": [5, 5], "grip": [6, 6]}}, "flags": {"y": "unclear"}}))
+        points, flags = make_tree.merged([b, a])          # file-name order, not argument order
+        assert points == {"x": {"neck": [5, 5], "grip": [6, 6]}} and flags == {"y": "unclear"}
+
+    def test_the_box_takes_in_the_handle_above_the_detectors_box(self):
+        item = {"stone_box": [10.0, 20.0, 60.0, 50.0]}      # ds13c's box stops at the cap
+        line = make_tree.label_line(item, {"neck": [35.0, 22.0], "grip": [20.0, 12.0]}, (80, 60))
+        cls, cx, cy, bw, bh, nx, ny, nv, gx, gy, gv = line.split()
+        top = float(cy) * 60 - float(bh) * 60 / 2
+        assert cls == "0" and top < 12.0 and (nv, gv) == ("2", "2")
+        assert float(gx) * 80 == pytest.approx(20.0, abs=1e-3)
+
+    def test_both_frames_of_a_rock_land_on_one_side(self, tmp_path):
+        wave_dir = tmp_path / "w"
+        (wave_dir / "images").mkdir(parents=True)
+        items = []
+        for r in range(10):
+            for k in range(2):
+                stem = f"v_e1s{r:02d}_{k:07d}"
+                Image.new("RGB", (80, 60)).save(wave_dir / "images" / f"{stem}.png")
+                items.append({"stem": stem, "stone_box": [10, 20, 60, 50]})
+        (wave_dir / "items.json").write_text(json.dumps(items))
+        ed = tmp_path / "e.json"
+        ed.write_text(json.dumps({"points": {it["stem"]: {"neck": [35, 22], "grip": [20, 12]} for it in items}}))
+        counts, _ = make_tree.build(wave_dir, [ed], tmp_path / "tree", hold=["v_e1s00"], val_frac=0.3)
+        assert counts == {"train": 12, "val": 6, "held": 2}
+        val = {p.stem.rsplit("_", 1)[0] for p in (tmp_path / "tree" / "labels" / "val").iterdir()}
+        train = {p.stem.rsplit("_", 1)[0] for p in (tmp_path / "tree" / "labels" / "train").iterdir()}
+        assert not val & train and "v_e1s00" not in val | train
