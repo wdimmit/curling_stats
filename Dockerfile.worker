@@ -23,8 +23,13 @@ RUN curl -fsSL "https://github.com/denoland/deno/releases/download/${DENO_VERSIO
  && deno --version
 
 WORKDIR /app
-COPY pyproject.toml README.md ./
-COPY src ./src
+
+# Layers run from what changes least to what changes most, and the source comes
+# last: when `COPY src` sat above the pip installs, every code change
+# reinstalled ~10 GB of torch and took ten minutes. Now a code change rebuilds
+# only the final layer. The pip cache is a BuildKit cache mount -- kept on the
+# builder, never in the image -- so a layer that does rerun (a new pin, a new
+# apt package) installs from it rather than downloading torch again.
 
 # cu121, deliberately: the worker host's driver is 525.105.17, which is CUDA
 # 12.0, and PyTorch's cu121 build needs only >= 525.60.13. A cu124 build would
@@ -34,21 +39,20 @@ COPY src ./src
 # on the source of rocks.py, yolo.py and calibrate.py but not on library
 # versions, so a silent torch or opencv bump would change detections while
 # every cache key stayed the same.
-#
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch==2.5.1 torchvision==0.20.1 \
+        --index-url https://download.pytorch.org/whl/cu121
+
 # The client half of the proof-of-origin token setup. yt-dlp reads the
 # `youtubepot-bgutilhttp` extractor args that ingest/cache.py sets only when
 # this plugin is installed -- without it the sidecar in
 # docker-compose.worker.yml runs, answers nothing, and YouTube goes on saying
 # "Sign in to confirm you're not a bot". Pinned to match the sidecar image.
-RUN pip install --no-cache-dir \
-        torch==2.5.1 torchvision==0.20.1 \
-        --index-url https://download.pytorch.org/whl/cu121 \
- && pip install --no-cache-dir \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
         "ultralytics==8.4.143" "numpy==2.5.3" \
         "opencv-python-headless==5.0.0.93" "av==18.1.0" \
- && pip install --no-cache-dir --no-deps . \
- && pip install --no-cache-dir "httpx>=0.27" "yt-dlp>=2026.8.19" \
-        "bgutil-ytdlp-pot-provider==2.0.0"
+        "httpx>=0.27" "bgutil-ytdlp-pot-provider==2.0.0"
 
 # The production detector, pinned through the documented environment variable
 # so `weights.default_path()` resolves it the same way everywhere.
@@ -82,5 +86,15 @@ ENV CURLING_SCORE_WEIGHTS=/opt/curling/weights/${MODEL} \
     CURLING_SCORE_SIDE_WEIGHTS=/opt/curling/weights/${SIDE_MODEL} \
     CURLING_SCORE_BROOM_WEIGHTS=/opt/curling/weights/${BROOM_MODEL} \
     CURLING_SCORE_CACHE=/data/cache PYTHONUNBUFFERED=1
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+# yt-dlp deliberately floats, since a stale one simply stops working, so it is
+# installed here, in the layer every code change rebuilds: each deploy still
+# picks up the newest release, as it did when all the dependencies lived in
+# this layer. -U because the pot plugin above may have pulled in an older one.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-deps . \
+ && pip install -U "yt-dlp>=2026.8.19"
 VOLUME /data/cache
 CMD ["python", "-m", "curling_score.service.worker"]

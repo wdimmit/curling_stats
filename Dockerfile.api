@@ -1,9 +1,17 @@
 # The web/API service: small, no GPU, no torch.
 FROM python:3.12-slim
 WORKDIR /app
-COPY pyproject.toml README.md ./
+# The dependencies first, read from pyproject.toml alone, so a code change
+# reuses their layer on any builder that keeps layers (docker compose locally;
+# Cloud Build starts empty every time either way). No BuildKit cache mount
+# here: Cloud Build's docker step runs the legacy builder, which refuses one.
+COPY pyproject.toml ./
+RUN python -c 'import tomllib; p = tomllib.load(open("pyproject.toml", "rb"))["project"]; print("\n".join(p["dependencies"] + p["optional-dependencies"]["service"]))' \
+        > /tmp/requirements.txt \
+ && pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+COPY README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir ".[service]"
+RUN pip install --no-cache-dir --no-deps .
 ENV PORT=8080 PYTHONUNBUFFERED=1
 EXPOSE 8080
 CMD ["sh", "-c", "uvicorn curling_score.service.asgi:app --host 0.0.0.0 --port ${PORT}"]
