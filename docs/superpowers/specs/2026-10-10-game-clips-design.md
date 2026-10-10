@@ -1,6 +1,7 @@
 # Game clips: a video of each rock you claimed
 
 **Date:** 2026-10-10. **Status:** approved in conversation; this is the written spec.
+Revised the same day at the user's ask: a dedicated clips worker (section 3a).
 **Builds on:** `2026-10-04-my-shots-design.md` (plays and the /shots report) and
 `2026-10-10-practice-clips-design.md` (the clip cutter, the overlay, signed links).
 
@@ -19,6 +20,8 @@ and the aim line drawn over it, the way a practice throw's clip is shown today.
   No video is downloaded again for clips; a game whose video is gone gets none, and the
   report says so.
 - **Approach A** (below): a clip job queued by the claim, cutting only that player's rocks.
+- **A dedicated clips worker** beside the three main workers, since cutting is light
+  (asked during spec review).
 
 ## Assumptions (stated in conversation, not contradicted)
 
@@ -32,8 +35,8 @@ and the aim line drawn over it, the way a practice throw's clip is shown today.
 
 ## Approach
 
-The claim queues a short `clips` job. A worker that has the video in its cache cuts the
-player's rocks with the practice cutter, using the calibration and rock times the game's
+The claim queues a short `clips` job. A dedicated clips worker, which can read every main
+worker's cache, cuts the player's rocks with the practice cutter, using the calibration and rock times the game's
 timeline already holds, and uploads them; the API keeps each rock's clip state on the play,
 and the report asks for a signed link when a clip is opened.
 
@@ -71,11 +74,14 @@ Rocks that were never seen (`missing`) are not asked for.
 - **A clips job never touches its run.** `claim_job` (both repos) sets the run to
   `processing` today; it must not for `clips`, and the clips job's completion and failure
   paths must leave the run's status, timeline and `ready_at` alone.
-- **Who claims it:** the worker's one-shot loop, which today claims only `vod`, claims
-  `("clips", "vod")` with clips first when `WORKER_CLIPS=1`. The live lane is unchanged.
-  - Consequence: on a league night every worker holding a live stream pauses its one-shot
-    loop, so a clips job waits for a free worker -- often until the night's last draw ends.
-    League ends are never slowed by clips.
+- **Who claims it:** only the dedicated clips worker (section 3a). The three main workers
+  keep claiming `vod` in their one-shot loop and `live`/`practice` in their lanes, and
+  never see a clips job. If the clips worker is down, clips jobs wait in the queue.
+- **Not while the game is still live.** A live-charted game's recording reaches the cache's
+  `videos/` only when its stream ends (`LiveManager.finish` remuxes it then). `claim_job`
+  skips a clips job whose run's status is `live`; it becomes claimable once the run is
+  `ready`. A claim made mid-stream therefore gets its clips minutes after the stream ends,
+  not a wrong "video no longer kept".
 - **When a job is queued** (API, only with `GAME_CLIPS_ENABLED=1`):
   1. `PUT /api/me/plays/{source_id}` saves a new play, or changes its colour or slot;
   2. `GET /api/me/plays/{source_id}/doc` finds `play.clips` missing, or made for a run
@@ -93,9 +99,11 @@ New module `src/curling_score/game/clips.py` (the game side; it calls into
 `practice/clips.py` and `practice/overlay.py`, which stay as they are apart from any shared
 helper that moves):
 
-1. **Find the video in the cache**: `videos/<id>.mp4`, the cached VOD or the kept whole
-   live recording. Partial recordings under `kept/` are not used: where they start on the
-   stream's clock is not certain. No video: complete the job with every rock
+1. **Find the video in any worker's cache**: `<cache>/videos/<id>.mp4` in each of the
+   caches listed in `WORKER_CLIP_SOURCES` (section 3a), first found wins -- the cached VOD
+   or the kept whole live recording, on whichever main worker ran the game. Partial
+   recordings under `kept/` are not used: where they start on the stream's clock is not
+   certain. In none of them: complete the job with every rock
    `{"clip": null, "reason": "video_gone"}`. Nothing is downloaded.
 2. **Rebuild the `left` and `right` `SideView`s** from the spec's `calibration` (`rect`, `tee_row`,
    `hog_row`, `centre_col`, `lat_px_per_m_at_tee`, `centre_line`) -- the inverse of
@@ -132,6 +140,31 @@ The job's progress posts keep its lease alive as other jobs do; about 1.5 s a ro
 recording's clock. A kept whole recording starts at segment 0, so its clock should be the
 stream's; this is verified on a real kept recording during the build, before live-charted
 games are clipped. If it does not hold, those games get `video_gone` until it is fixed.
+
+## 3a. The clips worker
+
+A fourth service in `deploy/docker-compose.worker.yml`, beside `worker`, `worker2` and
+`worker3`, running the same image:
+
+- **Why its own:** each main worker has a cache of its own (`curling-cache`,
+  `curling-cache-2`, `curling-cache-3`), so a main worker could only clip the games it ran
+  itself. The clips worker mounts all three, **read-only**, and finds a game's video
+  wherever it is. It also never waits behind a VOD run or a league night's streams.
+- **What it claims:** a new `WORKER_KINDS` env, `clips` here, makes the worker's one-shot
+  loop claim only those kinds; unset, it stays `vod` as today. `WORKER_LIVE` and
+  `WORKER_PRACTICE` are set to `"0"` on this service (it shares `worker.env`), so it starts
+  no live lane.
+- **Its own scratch:** `CURLING_SCORE_CACHE` is a small volume of its own
+  (`/data/wdd/curling-clips`); cut clips are written there and deleted once uploaded. It
+  prunes nothing and empties nothing in the other caches -- the read-only mounts make sure.
+- **Sources:** `WORKER_CLIP_SOURCES=/data/src1:/data/src2:/data/src3`, the three caches.
+- **Light:** no GPU reservation (`deploy: !reset {}`), no `pot` dependency (it never
+  talks to YouTube), and `cpus: "2"` so a burst of cuts cannot crowd the main workers'
+  CPU-bound lanes on a league night.
+- **Its id:** `WORKER_ID: ryzen-clips`.
+- **A file pruned mid-cut:** a main worker may prune a video the clips worker is reading.
+  An open file survives being unlinked, so a cut in progress finishes; a cut that starts
+  after finds no file, and that rock is `cut_failed`.
 
 ## 4. Timeline: the hog times a clip cuts at
 
@@ -196,6 +229,10 @@ For runs without them the camera switch falls back to the rock's arrival in the 
 | Play cleared while its job runs | Completion finds no play; result dropped |
 | Two people claim the same rock | Each play has its own job and state; the second job cuts the rock again to the same key (harmless) |
 | Worker restart mid-job | Lease expires, job requeued, rocks re-cut to the same keys |
+| Claimed while the game's stream is still live | Job waits (run `live`), runs once the run is `ready` and the recording is kept |
+| Video on another main worker's cache | Found there: the clips worker reads all three |
+| Video pruned while being cut | The cut in progress finishes; a later one is `cut_failed` |
+| Clips worker down | Jobs wait in the queue; the page keeps saying "clips on their way" |
 | `GAME_CLIPS_ENABLED` off | Nothing queued, nothing shown |
 
 ## 8. Testing
@@ -207,7 +244,10 @@ Python unit tests:
   (round trip);
 - queueing: on a new play, on a changed slot, on a changed run at /doc, never twice for one
   play and run, not with the flag off;
-- `claim_job` leaves a clips job's run status alone (both repos);
+- `claim_job` leaves a clips job's run status alone, and skips a clips job whose run is
+  `live` (both repos);
+- `WORKER_KINDS=clips` claims only clips and starts no live lane; unset claims `vod`;
+- the video lookup across several cache roots: first found, none found, `kept/` ignored;
 - the worker clips job with a fake cache: video missing, a rock with no release, a cut that
   raises, a good cut (with `cut` stubbed);
 - completion merges into the play; a cleared or re-run play drops the result;
@@ -226,7 +266,9 @@ End to end, before shipping:
 ## 9. Rollout
 
 1. API deploy with `GAME_CLIPS_ENABLED=1`.
-2. Worker rebuild with `WORKER_CLIPS=1` in the compose environment.
+2. On the worker box: create `/data/wdd/curling-clips`, rsync, then
+   `docker compose -f docker-compose.worker.yml up -d --build`, which adds the `clips`
+   service (and recreates the three main workers, so do it with no stream in hand).
 3. No reprocess; the new timeline fields arrive with new runs.
 
-Rollback: `GAME_CLIPS_ENABLED=0` and `deploy-api.sh`; drop `WORKER_CLIPS` and `up -d`.
+Rollback: `GAME_CLIPS_ENABLED=0` and `deploy-api.sh`; `docker compose stop clips`.
