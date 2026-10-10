@@ -34,14 +34,14 @@ BUCKET = "curling-chart-curling-stats-508323"
 
 def upload_clips(doc, clips_dir, video_id, run_id) -> int:
     """Upload the clips the document says it has; a throw whose file is
-    missing is marked as having none. How many went up."""
+    missing is marked as having none coming (null). How many went up."""
     files = []
     for th in doc["throws"]:
         f = os.path.join(clips_dir, f"{th['id']}.mp4") if clips_dir else None
         if th.get("clip") and f and os.path.isfile(f):
             files.append(f)
         else:
-            th["clip"] = False
+            th["clip"] = None
     if files:
         subprocess.run(["gcloud", "storage", "cp", "--content-type=video/mp4", *files,
                         f"gs://{BUCKET}/runs/{video_id}/{run_id}/clips/"], check=True)
