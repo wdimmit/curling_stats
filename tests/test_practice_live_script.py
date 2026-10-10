@@ -20,6 +20,19 @@ def test_it_serves_one_practice_job_and_says_stop_when_the_time_is_up(tmp_path):
     assert api.progress(job["id"], "w", "live", None, "") == {"stop": True}
 
 
+def test_the_recording_is_kept_beside_the_throws_before_the_worker_deletes_it(tmp_path):
+    # The check compares the throws with the footage; by then the DVR window
+    # has moved on, and the worker deletes a practice recording on completion.
+    api = lp.FakeApi(lp.practice_job("abcdefghijk", 1200.0), out=tmp_path,
+                     stop_after_s=60.0, clock=lambda: 0.0)
+    rec = tmp_path / "live" / "abcdefghijk"
+    rec.mkdir(parents=True)
+    (rec / "rec.0.ts").write_bytes(b"short")
+    (rec / "rec.1.ts").write_bytes(b"the longer one")
+    api.complete("p_live", "w", {"practice": {"throws": 3}})
+    assert (tmp_path / "recording.ts").read_bytes() == b"the longer one"
+
+
 def test_each_publish_is_written_where_it_can_be_read(tmp_path):
     api = lp.FakeApi(lp.practice_job("abcdefghijk", 1200.0), out=tmp_path,
                      stop_after_s=60.0, clock=lambda: 0.0)

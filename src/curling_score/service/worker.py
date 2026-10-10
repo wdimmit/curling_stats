@@ -398,7 +398,10 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     A recording is kept once its stream ends -- whole as the cached video,
     partial under ``kept/`` -- and the cache is then pruned as after any job,
     recordings older than ``recording_days`` first. Practice jobs are claimed
-    too when ``WORKER_PRACTICE=1``.
+    too when ``WORKER_PRACTICE=1``. Practice only runs when no league is on,
+    so it never shares the lane with league ends; but a practice stream in
+    hand pauses this worker's VOD jobs as a live game does, for as long as
+    its sessions last.
     """
     if os.environ.get("WORKER_LIVE") != "1":
         return None

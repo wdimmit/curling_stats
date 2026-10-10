@@ -26,6 +26,7 @@ class FakeApi:
 
     def __init__(self, job, *, out, stop_after_s, clock=time.monotonic):
         self.job, self.out, self.clock = job, Path(out), clock
+        self.video_id = job["video_id"]
         self.stop_at = clock() + stop_after_s
         self.pending, self.count, self.completed = None, 0, None
         (self.out / "publishes").mkdir(parents=True, exist_ok=True)
@@ -52,12 +53,25 @@ class FakeApi:
         print(f"[{time.strftime('%H:%M:%S')}] published {payload}", flush=True)
 
     def complete(self, job_id, worker_id, payload):
+        self._keep_recording()
         self.completed = payload
         print(f"[{time.strftime('%H:%M:%S')}] complete {payload}", flush=True)
 
     def fail(self, job_id, worker_id, error, kind, retry_after_s=None):
+        self._keep_recording()
         self.completed = {"failed": error}
         print(f"failed: {error}", flush=True)
+
+    def _keep_recording(self):
+        """The footage the throws are checked against: the worker deletes a
+        practice recording once its job is done, and by then the stream's DVR
+        window has moved on."""
+        import shutil
+
+        parts = sorted((self.out / "live" / self.video_id).glob("rec.*.ts"),
+                       key=lambda p: p.stat().st_size)
+        if parts:
+            shutil.copyfile(parts[-1], self.out / "recording.ts")
 
 
 def main(argv=None) -> int:
