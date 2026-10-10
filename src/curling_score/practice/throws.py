@@ -66,8 +66,9 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
     ``t0_s`` is where the recording begins on the stream's clock."""
     dv, rel = shot.delivery, shot.release
     line, broom = shot.line, shot.target_broom
-    sp = split.long_split(dv, t_hog=hogtime.crossing(shot),
-                          v_hog=hogtime.speed_at_hog(shot), far=fartime.crossing(shot))
+    far = fartime.crossing(shot)
+    t_hog = hogtime.crossing(shot)
+    sp = split.long_split(dv, t_hog=t_hog, v_hog=hogtime.speed_at_hog(shot), far=far)
     t_thrown = rel.t if rel is not None else dv.t_enter
     return {
         "id": f"t_{t0_s + t_thrown:.1f}",
@@ -79,6 +80,13 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
         "release_source": None if rel is None else getattr(rel, "source", "overhead"),
         "split_s": None if sp is None else _r(sp.seconds, 2),
         "release_speed": None if rel is None else _r(rel.speed_m_s),
+        # Where a clip cuts (practice/clips.py): the throwing end's hog line,
+        # from the side view, and the destination's, from its panel.
+        "t_hog_s": None if t_hog is None else _r(t0_s + t_hog, 2),
+        "v_hog_m_s": _r(hogtime.speed_at_hog(shot)),
+        "t_far_s": None if far is None or far.t is None else _r(t0_s + far.t, 2),
+        # Set once the worker has cut and uploaded this throw's clip.
+        "clip": False,
         "curl": None if line is None else line.curl,
         "broom": None if broom is None else {"x": _r(broom.x_m, 4), "y": _r(broom.y_m, 4)},
         "line": None if line is None else {

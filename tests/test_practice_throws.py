@@ -49,6 +49,7 @@ class TestThrowRecord:
                     t_rest_s=dv.t_rest, delivery=dv,
                     release=Release("red", 22.0, 1.0, 2.4), delivered_stone_index=1)
         shot.t_hog_s = 24.0
+        shot.v_hog_m_s = 2.41
         shot.far_crossing = split.FarCrossing(t=37.8)
         shot.target_broom = TargetBroom(x_m=-0.45, y_m=0.0, seen=0.9, confidence=0.8)
         shot.line = line()
@@ -68,6 +69,10 @@ class TestThrowRecord:
                                "start": {"x": 0.0, "y": -3.6}, "delivery": []}
         # Where it rests is the house read's stone, not the track's last point.
         assert got["rest"] == {"x": 0.12, "y": -0.41, "to_tee_m": 0.427, "ring": "4"}
+        # What a clip is cut on: both hog lines, on the stream's clock.
+        assert got["t_hog_s"] == 1024.0 and got["v_hog_m_s"] == 2.41
+        assert got["t_far_s"] == 1037.8
+        assert got["clip"] is False
 
     def test_the_track_is_thinned_to_five_points_a_second(self):
         dv = arrival()
@@ -95,6 +100,8 @@ class TestThrowRecord:
         assert got["broom"] is None and got["line"] is None and got["curl"] is None
         # No house read: the rest comes from the delivery itself.
         assert got["rest"]["x"] == 0.1 and got["rest"]["ring"] == "4"
+        assert got["t_hog_s"] is None and got["v_hog_m_s"] is None
+        assert got["t_far_s"] is None and got["clip"] is False
 
     def test_a_stone_that_ran_out_of_play_is_out(self):
         dv = arrival(came_to_rest=False, y=-2.3)
