@@ -276,6 +276,33 @@ class TestMine:
         assert [s["id"] for s in got] == [b, a]
         assert got[0]["sheet"] == 4 and got[0]["active"] is True
 
+    def test_each_session_counts_its_own_throws(self, w):
+        # Two sessions on one watch, one after the other: each counts the
+        # throws in its window that the page shows -- not a hidden one, and
+        # not a stone placed by hand (arrived, nothing seen releasing it).
+        a = start(w).json()["id"]
+        job = claim(w)
+        wall_t0 = T0.timestamp() - 1200.0
+        w["clock"].advance(200)
+        w["client"].post(f"/api/practice/sessions/{a}/stop", headers=SARAH)
+        b = start(w).json()["id"]
+        placed = {**throw(1400.0), "id": "t_1400.0", "t_release_s": None,
+                  "release_source": None}
+        publish(w, job, doc([throw(1140.0), throw(1260.0), throw(1300.0), throw(1420.0),
+                             throw(1440.0), placed], wall_t0))
+        w["clock"].advance(300)                    # read once they have all been thrown
+        w["client"].patch(f"/api/practice/sessions/{b}/throws/t_1440.0", json={"hidden": True},
+                          headers=SARAH)
+        got = {s["id"]: s for s in
+               w["client"].get("/api/me/practice", headers=SARAH).json()["sessions"]}
+        assert got[a]["throws"] == 2 and got[a]["active"] is False
+        assert got[b]["throws"] == 1
+
+    def test_a_session_with_nothing_published_yet_has_no_throws(self, w):
+        start(w)
+        (s,) = w["client"].get("/api/me/practice", headers=SARAH).json()["sessions"]
+        assert s["throws"] == 0
+
 
 class TestKeptApart:
     def test_a_practice_run_is_not_a_game(self, w):
@@ -293,8 +320,14 @@ class TestKeptApart:
 
     def test_the_page_and_the_flag(self, w):
         c = w["client"]
-        assert 'data-page="practice"' in c.get("/practice/sheet/3").text
+        for path in ("/practice/sheet/3", "/practice", "/practice/session/ps_abc"):
+            assert 'data-page="practice"' in c.get(path).text, path
         assert c.get("/api/features").json()["practice"] is True
+
+    def test_the_pages_are_not_there_when_switched_off(self):
+        c = _world(practice=False)["client"]
+        for path in ("/practice/sheet/3", "/practice", "/practice/session/ps_abc"):
+            assert c.get(path).status_code == 404, path
 
     def test_an_admin_can_mark_a_playlist_as_practice(self, w):
         r = w["client"].post("/api/admin/playlists", headers={"Authorization": "Bearer admin-secret"},

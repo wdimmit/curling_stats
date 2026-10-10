@@ -65,3 +65,9 @@ def test_the_summary_strip():
              '{split_s: null, line: {miss_m: 0.1}, hidden: false}])')
     assert got == {"count": 3, "weightMin": 13.6, "weightMax": 14.6, "onBroom": 2,
                    "withBroom": 3}
+
+
+def test_how_long_a_session_ran():
+    got = js('[0, 40, 600, 3540, 3600, 5520, 10800].map(P.lengthText)')
+    assert got == ["under a minute", "under a minute", "10 min", "59 min", "1 h",
+                   "1 h 32 min", "3 h"]

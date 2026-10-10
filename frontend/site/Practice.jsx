@@ -1,11 +1,16 @@
-/* /practice/sheet/N: start a practice session on a sheet and see each throw a
- * few seconds after it stops. The words for a throw are core/practice.mjs's;
- * the API is service/practice.py's. */
+/* The practice pages, told apart by path:
+ *   /practice             every session of mine, on any sheet
+ *   /practice/sheet/N     start a session on a sheet; see each throw a few
+ *                         seconds after it stops
+ *   /practice/session/ID  one session's throws, running or long over
+ * The words for a throw are core/practice.mjs's; the API is
+ * service/practice.py's. */
 import { useCallback, useEffect, useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
 import { useAuthUser, useResource } from "./useAuth.js";
-import { Card, Header, Warn } from "./ui.jsx";
-import { curlText, lineText, restText, shown, summary, weightText } from "../core/practice.mjs";
+import { Card, Header, Pill, Warn } from "./ui.jsx";
+import { curlText, lengthText, lineText, restText, shown, summary, weightText }
+  from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
 import { DeliveryChart } from "../viewer/Delivery.jsx";
 
@@ -16,9 +21,24 @@ const ENDED = {
   stream_ended: "the stream ended", failed: "the stream could not be watched",
 };
 
-function sheetFromPath() {
-  const m = location.pathname.match(/\/practice\/sheet\/(\d+)/);
-  return m ? Number(m[1]) : null;
+// The club's sheets, for starting a session from the list of them.
+const SHEETS = [1, 2, 3, 4, 5];
+
+function route() {
+  const p = location.pathname;
+  const sheet = p.match(/^\/practice\/sheet\/(\d+)/);
+  if (sheet) return { sheet: Number(sheet[1]) };
+  const session = p.match(/^\/practice\/session\/([^/]+)/);
+  if (session) return { session: decodeURIComponent(session[1]) };
+  return {};
+}
+
+function dayText(iso) {
+  return new Date(iso).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+}
+
+function timeText(iso) {
+  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 function savedHand() {
@@ -84,22 +104,30 @@ function Latest({ t, n }) {
   );
 }
 
-function Live({ id, onDone }) {
+/* One session: its throws, kept up to date while it runs. ``onDone`` is the
+ * sheet page's way to start another; without it, that is a link to the sheet.
+ * ``heading`` says which sheet and when, for a page that has not. */
+function Live({ id, onDone, heading }) {
   const [view, setView] = useState(null);
   const [err, setErr] = useState("");
   // The throw the card shows: the latest unless one was picked from the table.
   const [picked, setPicked] = useState(null);
   const load = useCallback(async () => {
-    const res = await authedFetch(`/api/practice/sessions/${id}`, { cache: "no-cache" });
+    const res = await authedFetch(`/api/practice/sessions/${encodeURIComponent(id)}`,
+                                  { cache: "no-cache" });
     if (res.ok) { setView(await res.json()); setErr(""); }
-    else setErr(`Could not load the session (${res.status}).`);
+    else setErr(res.status === 404 ? "No such session." : `Could not load the session (${res.status}).`);
   }, [id]);
 
+  // Polled while it runs; an ended session never changes again.
+  const loaded = view != null;
+  const running = view?.session.status === "active";
+  useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    load();
+    if (loaded && !running) return undefined;
     const t = setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, loaded, running]);
 
   if (!view) return <p className="muted">{err || "Loading…"}</p>;
   const { session, watch } = view;
@@ -123,12 +151,14 @@ function Live({ id, onDone }) {
   const calibrating = !watch.status || ["starting", "calibrating"].includes(watch.status);
   return (
     <>
+      {heading && <h2>Sheet {session.sheet} · {dayText(session.started_at)}, {timeText(session.started_at)}</h2>}
       <p className="muted">
         {live ? (calibrating ? "Getting ready: learning the sheet from the stream (a minute or two)…"
                              : `Watching for throw ${sum.count + 1}`)
               : `Session ended: ${ENDED[session.end_reason] ?? ENDED[session.status] ?? "ended"}.`}
         {live && <> <button onClick={stop}>End session</button></>}
-        {!live && <> <button className="primary" onClick={onDone}>Start another</button></>}
+        {!live && onDone && <> <button className="primary" onClick={onDone}>Start another</button></>}
+        {!live && !onDone && <> <a className="btn primary" href={`/practice/sheet/${session.sheet}`}>Practise on sheet {session.sheet} again</a></>}
       </p>
       {err && <Warn>{err}</Warn>}
       {card && <Latest t={card} n={cardN} />}
@@ -198,33 +228,99 @@ function Start({ sheet, onStarted }) {
   );
 }
 
-export function Practice() {
-  const sheet = sheetFromPath();
-  const { user, ready, accounts } = useAuthUser();
-  const mine = useResource("/api/me/practice", { skip: !ready || !user, deps: [user?.uid] });
-  const [sessionId, setSessionId] = useState(null);
+/* Every session of mine, newest first, by day. */
+function Sessions() {
+  const mine = useResource("/api/me/practice");
+  const sessions = mine.data?.sessions ?? [];
+  const days = [];
+  for (const s of sessions) {
+    const day = dayText(s.started_at);
+    if (days[days.length - 1]?.day !== day) days.push({ day, sessions: [] });
+    days[days.length - 1].sessions.push(s);
+  }
+  return (
+    <>
+      <h2>My practice</h2>
+      <p style={{ marginBottom: 6 }}>Start a session on sheet</p>
+      <p className="sheets">
+        {SHEETS.map(n => <a key={n} className="btn" href={`/practice/sheet/${n}`}>{n}</a>)}
+      </p>
+      <Card>
+        {mine.loading && !mine.data ? <span className="muted">Loading…</span>
+         : mine.error ? "Could not load your sessions."
+         : !sessions.length ? <span className="muted">No sessions yet.</span>
+         : (
+          <table className="practice-sessions">
+            <tbody>
+              {days.map(({ day, sessions: ss }) => [
+                <tr key={day}><th colSpan={4}>{day}</th></tr>,
+                ...ss.map(s => {
+                  const end = s.ended_at ? Date.parse(s.ended_at) : Date.now();
+                  return (
+                    <tr key={s.id} onClick={() => { location.href = `/practice/session/${s.id}`; }}
+                        style={{ cursor: "pointer" }}>
+                      <td><a className="plain" href={`/practice/session/${s.id}`}>{timeText(s.started_at)}</a></td>
+                      <td>Sheet {s.sheet}</td>
+                      <td>{s.throws} throw{s.throws === 1 ? "" : "s"}</td>
+                      <td>{s.active ? <Pill kind="live">Live</Pill>
+                           : lengthText((end - Date.parse(s.started_at)) / 1000)}</td>
+                    </tr>
+                  );
+                })])}
+            </tbody>
+          </table>
+        )}
+      </Card>
+    </>
+  );
+}
+
+function SignIn({ what }) {
+  const { accounts } = useAuthUser();
   const [err, setErr] = useState("");
+  return (
+    <Card>
+      <p>{what}</p>
+      {accounts && <button className="primary"
+        onClick={() => signIn().catch(e => setErr(e.code || e.message))}>Sign in with Google</button>}
+      {(!accounts || err) && <p className="muted">{err || "Accounts are not switched on for this site."}</p>}
+    </Card>
+  );
+}
+
+function Sheet({ sheet }) {
+  const mine = useResource("/api/me/practice");
+  const [sessionId, setSessionId] = useState(null);
   const active = mine.data?.sessions?.find(s => s.active && s.sheet === sheet);
   const current = sessionId ?? active?.id ?? null;
   return (
     <>
-      <Header links={[["/", "All games"], ["/shots", "My shots"],
-                      [location.pathname, `Practice · sheet ${sheet}`, true]]} />
+      <h2>Sheet {sheet}</h2>
+      {mine.loading && !mine.data ? <p className="muted">Loading…</p>
+        : current ? <Live id={current} onDone={() => { setSessionId(null); mine.reload(); }} />
+        : <Start sheet={sheet} onStarted={setSessionId} />}
+    </>
+  );
+}
+
+export function Practice() {
+  const where = route();
+  const { user, ready } = useAuthUser();
+  const links = [["/", "All games"], ["/practice", "My practice", where.sheet == null && !where.session],
+                 ["/shots", "My shots"]];
+  if (where.sheet != null) links.push([location.pathname, `Sheet ${where.sheet}`, true]);
+  const ask = where.sheet != null
+    ? `Sign in to practise on sheet ${where.sheet}: every throw you make shows up here a few seconds after it stops.`
+    : "Sign in to see your practice sessions.";
+  return (
+    <>
+      <Header links={links} />
       <main id="practice">
-        <h2>Sheet {sheet}</h2>
         {!ready && <p className="muted">Loading…</p>}
-        {ready && !user && (
-          <Card>
-            <p>Sign in to practise on sheet {sheet}: every throw you make shows up here a few
-              seconds after it stops.</p>
-            {accounts && <button className="primary"
-              onClick={() => signIn().catch(e => setErr(e.code || e.message))}>Sign in with Google</button>}
-            {(!accounts || err) && <p className="muted">{err || "Accounts are not switched on for this site."}</p>}
-          </Card>
-        )}
-        {ready && user && (mine.loading && !mine.data ? <p className="muted">Loading…</p>
-          : current ? <Live id={current} onDone={() => { setSessionId(null); mine.reload(); }} />
-          : <Start sheet={sheet} onStarted={setSessionId} />)}
+        {ready && !user && <SignIn what={ask} />}
+        {ready && user && (where.sheet != null ? <Sheet key={user.uid} sheet={where.sheet} />
+          : where.session ? <Live key={user.uid} id={where.session} heading />
+          : <Sessions key={user.uid} />)}
       </main>
     </>
   );

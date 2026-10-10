@@ -100,6 +100,30 @@ def _iso(dt):
     return None if dt is None else dt.isoformat()
 
 
+def in_window(doc, session, now):
+    """The throws in ``doc`` released between the session's Start and Stop
+    (or ``now``), each with when that was."""
+    doc = doc or {}
+    end = session.ended_at or now
+    for th in doc.get("throws", []):
+        at = thrown_at(doc, th)
+        if at is not None and session.started_at <= at <= end:
+            yield th, at
+
+
+def placed(th) -> bool:
+    """A stone that arrived with nothing seen releasing it was placed by hand
+    for a drill, not thrown. The page leaves these out (core/practice.mjs
+    shown), so the count does too."""
+    return th.get("arrived") and th.get("release_source") is None
+
+
+def throw_count(doc, session, now) -> int:
+    """How many throws the session's page shows as the owner's."""
+    return sum(1 for th, _ in in_window(doc, session, now)
+               if not placed(th) and th["id"] not in session.hidden)
+
+
 def session_view(repo, doc, session, now) -> dict:
     """What the page reads: the session, its watch, and the throws in its
     window, each saying when it was thrown and whether it was hidden."""
@@ -110,14 +134,8 @@ def session_view(repo, doc, session, now) -> dict:
         job = repo.get_job(watch.job_id)
         status = "failed" if (watch.status == "failed"
                               or (job is not None and job.state == "failed")) else "ended"
-    doc = doc or {}
-    end = session.ended_at or now
-    throws = []
-    for th in doc.get("throws", []):
-        at = thrown_at(doc, th)
-        if at is None or not session.started_at <= at <= end:
-            continue
-        throws.append({**th, "released_at": _iso(at), "hidden": th["id"] in session.hidden})
+    throws = [{**th, "released_at": _iso(at), "hidden": th["id"] in session.hidden}
+              for th, at in in_window(doc, session, now)]
     return {
         "session": {"id": session.id, "sheet": session.sheet, "hand": session.hand,
                     "started_at": _iso(session.started_at), "ended_at": _iso(session.ended_at),

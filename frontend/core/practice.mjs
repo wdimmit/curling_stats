@@ -64,3 +64,12 @@ export function summary(throws) {
     withBroom: misses.length,
   };
 }
+
+/* How long a session ran, for the list of sessions. */
+export function lengthText(seconds) {
+  const min = Math.floor(seconds / 60);
+  if (min < 1) return "under a minute";
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}

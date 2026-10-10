@@ -823,8 +823,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def shots_page():
         return page("shots.html")
 
+    # One page for all three: every session of mine, a sheet's Start, and one
+    # session's throws. The page reads which off the path.
+    @app.get("/practice", response_class=HTMLResponse)
     @app.get("/practice/sheet/{n}", response_class=HTMLResponse)
-    def practice_page(n: int):
+    @app.get("/practice/session/{session_id}", response_class=HTMLResponse)
+    def practice_page():
         if not settings.practice_enabled:
             raise HTTPException(404, "no such page")
         return page("practice.html")
@@ -2020,13 +2024,23 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     @app.get("/api/me/practice")
     def my_practice(authorization: str | None = Header(default=None)):
+        """Every session of mine, on any sheet, newest first, with its count of
+        throws. Sessions on one sheet in a morning share a watch, so each
+        watch's document is read once."""
         practice_on()
         me = require_user(authorization)
         t = now()
-        return {"sessions": [
-            {"id": s.id, "sheet": s.sheet, "started_at": _iso(s.started_at),
-             "ended_at": _iso(s.ended_at), "end_reason": s.end_reason, "active": s.active}
-            for s in (practice.settle(repo, s, t) for s in repo.sessions_for_user(me.id))]}
+        docs = {}
+        out = []
+        for s in repo.sessions_for_user(me.id):
+            practice.settle(repo, s, t)
+            if s.watch_id not in docs:
+                docs[s.watch_id] = practice_doc(repo.get_watch(s.watch_id))
+            out.append({"id": s.id, "sheet": s.sheet, "started_at": _iso(s.started_at),
+                        "ended_at": _iso(s.ended_at), "end_reason": s.end_reason,
+                        "active": s.active,
+                        "throws": practice.throw_count(docs[s.watch_id], s, t)})
+        return {"sessions": out}
 
     def practice_watch_of(job):
         return repo.get_run(job.run_id), repo.watch_for_job(job.id)
