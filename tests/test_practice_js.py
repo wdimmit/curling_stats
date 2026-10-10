@@ -71,3 +71,17 @@ def test_how_long_a_session_ran():
     got = js('[0, 40, 600, 3540, 3600, 5520, 10800].map(P.lengthText)')
     assert got == ["under a minute", "under a minute", "10 min", "59 min", "1 h",
                    "1 h 32 min", "3 h"]
+
+
+def test_where_a_clip_goes():
+    assert js('P.clipState({clip: true, t_release_s: 1}, {live: false, newest: false})') == "play"
+    assert js('P.clipState({clip: false, t_release_s: 1}, {live: true, newest: true})') == "wait"
+    assert js('P.clipState({clip: false, t_release_s: 1}, {live: true, newest: false})') is None
+    assert js('P.clipState({clip: false, t_release_s: 1}, {live: false, newest: true})') is None
+    assert js('P.clipState({clip: false, t_release_s: null}, {live: true, newest: true})') is None
+
+
+def test_a_link_is_fetched_again_before_it_expires():
+    assert js("P.linkFresh({url: 'u', at: 0}, 49 * 60 * 1000)") is True
+    assert js("P.linkFresh({url: 'u', at: 0}, 51 * 60 * 1000)") is False
+    assert js("P.linkFresh(undefined, 0)") is False

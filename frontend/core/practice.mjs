@@ -73,3 +73,20 @@ export function lengthText(seconds) {
   const h = Math.floor(min / 60), m = min % 60;
   return m ? `${h} h ${m} min` : `${h} h`;
 }
+
+/* What the card shows where a clip goes: "play" when the throw has one,
+ * "wait" for the newest throw of a live session (the worker cuts a clip a few
+ * seconds after the rock stops), else nothing. A stone nobody released has no
+ * clip coming. */
+export function clipState(t, { live, newest }) {
+  if (t.clip) return "play";
+  if (live && newest && t.t_release_s != null) return "wait";
+  return null;
+}
+
+// A signed link lasts an hour (CLIP_URL_S); one older than this is asked for again.
+export const CLIP_LINK_MS = 50 * 60 * 1000;
+
+export function linkFresh(entry, nowMs) {
+  return !!entry && nowMs - entry.at < CLIP_LINK_MS;
+}

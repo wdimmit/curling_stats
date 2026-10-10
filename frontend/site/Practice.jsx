@@ -9,8 +9,8 @@ import { useCallback, useEffect, useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Pill, Warn } from "./ui.jsx";
-import { curlText, lengthText, lineText, restText, shown, summary, weightText }
-  from "../core/practice.mjs";
+import { clipState, curlText, lengthText, lineText, linkFresh, restText, shown, summary,
+         weightText } from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
 import { DeliveryChart } from "../viewer/Delivery.jsx";
 
@@ -80,12 +80,54 @@ function Delivery({ t, n }) {
   return g ? <DeliveryChart g={g} fluid label={`Throw ${n}: the delivery from the hack`} /> : null;
 }
 
-function Latest({ t, n }) {
+// Signed links to clips, by throw id: { url, at }.
+const links = new Map();
+
+async function clipLink(sid, tid, again = false) {
+  const hit = links.get(tid);
+  if (!again && linkFresh(hit, Date.now())) return hit.url;
+  const res = await authedFetch(`/api/practice/sessions/${encodeURIComponent(sid)}/throws/`
+                                + `${encodeURIComponent(tid)}/clip`);
+  if (!res.ok) return null;
+  const { url } = await res.json();
+  links.set(tid, { url, at: Date.now() });
+  return url;
+}
+
+/* The throw's clip: the camera facing the thrower, then the one behind. The
+ * newest throw of a live session plays by itself, muted, as phones allow. A
+ * link that has expired under an open page is asked for once more. */
+function Clip({ sid, t, autoPlay }) {
+  const [url, setUrl] = useState(null);
+  const [again, setAgain] = useState(false);
+  useEffect(() => {
+    let on = true;
+    setUrl(null);
+    setAgain(false);
+    clipLink(sid, t.id).then(u => { if (on) setUrl(u); });
+    return () => { on = false; };
+  }, [sid, t.id]);
+  if (!url) return null;
+  const retry = () => {
+    if (again) return;
+    setAgain(true);
+    clipLink(sid, t.id, true).then(setUrl);
+  };
+  return (
+    <video key={url} className="practice-clip" src={url} controls playsInline
+           muted={autoPlay} autoPlay={autoPlay} preload="metadata" onError={retry} />
+  );
+}
+
+function Latest({ t, n, sid, live, newest }) {
+  const clip = clipState(t, { live, newest });
   return (
     <Card>
       <p className="muted" style={{ margin: 0 }}>
         Throw {n}{curlText(t.curl) ? ` · ${curlText(t.curl)}` : ""} · {ago(t.released_at)}
       </p>
+      {clip === "play" && <Clip sid={sid} t={t} autoPlay={live && newest} />}
+      {clip === "wait" && <p className="muted">Clip on its way…</p>}
       <Delivery t={t} n={n} />
       {!t.arrived ? <p><strong>Released, didn't arrive</strong> (hogged?)</p> : (
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
@@ -161,7 +203,7 @@ function Live({ id, onDone, heading }) {
         {!live && !onDone && <> <a className="btn primary" href={`/practice/sheet/${session.sheet}`}>Practise on sheet {session.sheet} again</a></>}
       </p>
       {err && <Warn>{err}</Warn>}
-      {card && <Latest t={card} n={cardN} />}
+      {card && <Latest t={card} n={cardN} sid={id} live={live} newest={picked == null} />}
       {picked != null && <p><button onClick={() => setPicked(null)}>Show the latest throw</button></p>}
       {sum.count > 0 && (
         <p>
