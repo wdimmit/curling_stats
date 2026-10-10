@@ -40,6 +40,11 @@ spec:
             # deployed with it. One box keeps up with five sheets (~83% of its
             # time); a sixth falls behind.
             - { name: LIVE_ENABLED,       value: "1" }
+            # PRACTICE_ENABLED ("1", "true" or "yes") opens /practice/sheet/N and
+            # its API: a signed-in player starts a session on a sheet's live
+            # practice stream (a playlist marked practice) and sees each throw.
+            # Only with workers running WORKER_PRACTICE=1. On since 2026-10-10.
+            - { name: PRACTICE_ENABLED,   value: "1" }
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'

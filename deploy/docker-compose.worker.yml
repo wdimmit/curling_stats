@@ -30,6 +30,10 @@ services:
       # five of a night's streams. Three workers at 3 give 9 slots: most of
       # Tuesday's and Thursday's two back-to-back leagues (10 streams).
       LIVE_MAX_STREAMS: "3"
+      # Practice sessions' streams too (from LIVE_MAX_STREAMS' slots). The
+      # club only runs practice ice when no league is on, so practice never
+      # shares a lane with a league night; a session does pause VOD jobs.
+      WORKER_PRACTICE: "1"
     depends_on: [pot]
     volumes:
       # /data is a 1.5 TB volume of its own (1.4 TB free on 2026-10-06). The
