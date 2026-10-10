@@ -228,3 +228,67 @@ def test_a_long_catch_up_is_read_in_pieces_from_the_look_back():
     assert all(b - a <= W.STEP_MAX_S for a, b in p.spans)
     assert all(p.spans[i][1] == p.spans[i + 1][0] for i in range(len(p.spans) - 1))
     assert p.spans[-1][1] == 498.0                 # just behind the head
+
+
+from curling_score.practice import clips as CL  # noqa: E402
+
+
+class Clips:
+    """A clipper that plans from the release to ``tail`` after rest."""
+
+    def __init__(self, works=True, tail=1.5):
+        self.works, self.tail, self.made = works, tail, []
+
+    def plan(self, throw, cal):
+        if throw["t_release_s"] is None:
+            return None
+        end = (throw["t_rest_s"] or throw["t_release_s"]) + self.tail
+        return CL.ClipPlan((CL.Piece("right", throw["t_release_s"] - 5.0, end),))
+
+    def make(self, throw, plan, cal, *, t0_s=0.0):
+        self.made.append((throw["id"], plan.end))
+        return self.works
+
+
+def clipped(clipper, until_s=100.0):
+    rec, docs = Rec(), []
+    w = W.PracticeWatch(recording=rec, pipeline=Pipeline(
+                            top=sheet(thrown("red", t0=40.0), until_s=until_s),
+                            bottom=sheet(hack("red", 22.0), until_s=until_s)),
+                        models=SimpleNamespace(detector=None), since_s=20.0,
+                        publish=docs.append, clock=lambda: 0.0, clipper=clipper)
+    while rec.head < until_s:
+        rec.head = min(until_s, rec.head + 1.0)
+        while w.step():
+            pass
+    rec.over = True
+    while w.step():
+        pass
+    return w, docs
+
+
+def test_each_throw_is_clipped_once_its_footage_is_recorded():
+    clips = Clips()
+    w, docs = clipped(clips)
+    (th,) = w.throws
+    assert th["clip"] is True and docs[-1]["throws"][0]["clip"] is True
+    assert len(clips.made) == 1 and clips.made[0][1] == th["t_rest_s"] + 1.5
+
+
+def test_a_clip_that_fails_is_not_tried_again_and_the_watch_carries_on():
+    clips = Clips(works=False)
+    w, docs = clipped(clips)
+    assert w.throws[0]["clip"] is False and len(clips.made) == 1
+    assert docs[-1]["status"] == "ended"
+
+
+def test_a_watch_that_ends_first_cuts_what_was_recorded():
+    clips = Clips(tail=500.0)                  # wants far more than is recorded
+    w, _ = clipped(clips)
+    assert w.throws[0]["clip"] is True
+    assert clips.made[0][1] == pytest.approx(w.t0_s + w.done_s)
+
+
+def test_without_a_clipper_nothing_is_clipped():
+    w, _ = clipped(None)
+    assert w.throws[0]["clip"] is False

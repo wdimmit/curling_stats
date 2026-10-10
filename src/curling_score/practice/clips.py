@@ -11,8 +11,10 @@ one composite stream; with the club's own cameras each view will be a file of
 its own, and nothing else changes.
 """
 
+import logging
 import math
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +22,8 @@ from curling_score.game.hogtime import CAMERA_FOR
 from curling_score.geometry import constants as G
 from curling_score.ingest import frames
 from curling_score.practice.enrich import OTHER_HOUSE
+
+log = logging.getLogger(__name__)
 
 # Before the release, to take in the push from the hack and the slide.
 PUSH_LEAD_S = 5.0
@@ -177,3 +181,41 @@ def cut(plan: ClipPlan, views: dict, out_path, *, t0_s: float = 0.0, size=CLIP_S
     run(args, check=True, capture_output=True, timeout=timeout_s)
     if not Path(out_path).is_file() or Path(out_path).stat().st_size == 0:
         raise OSError(f"ffmpeg wrote no clip at {out_path}")
+
+
+class Clipper:
+    """Cuts each throw's clip from the recording a watch is reading, and hands
+    the file to ``deliver(throw_id, path) -> bool``: an upload on a worker, a
+    directory on a replay. The file is removed afterwards unless ``keep``."""
+
+    def __init__(self, recording, deliver, workdir, *, keep: bool = False, cut=cut,
+                 progress=log.info):
+        self.recording, self.deliver = recording, deliver
+        self.workdir, self.keep = Path(workdir), keep
+        self.cut, self.progress = cut, progress
+
+    def plan(self, throw, cal):
+        return plan(throw, getattr(cal, "sideviews", None))
+
+    def make(self, throw, plan_, cal, *, t0_s: float = 0.0) -> bool:
+        """Cut and deliver one clip; False if either did not happen."""
+        views = {name: (self.recording.path, sv.rect) for name, sv in cal.sideviews.items()}
+        self.workdir.mkdir(parents=True, exist_ok=True)
+        out = self.workdir / f"{throw['id']}.mp4"
+        began = time.monotonic()
+        try:
+            self.cut(plan_, views, out, t0_s=t0_s)
+        except (subprocess.SubprocessError, OSError) as exc:
+            log.warning("clip %s was not cut: %s", throw["id"], exc)
+            out.unlink(missing_ok=True)
+            return False
+        took, size = time.monotonic() - began, out.stat().st_size
+        try:
+            sent = bool(self.deliver(throw["id"], out))
+        finally:
+            if not self.keep:
+                out.unlink(missing_ok=True)
+        self.progress(f"clip {throw['id']}: {plan_.end - plan_.pieces[0].t0:.1f} s of "
+                      f"video, cut in {took:.1f} s, {size / 1e6:.2f} MB"
+                      + ("" if sent else ", not delivered"))
+        return sent

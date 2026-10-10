@@ -60,7 +60,8 @@ def _thrown_at(arrival, rel) -> float:
 
 class PracticeWatch:
     def __init__(self, *, recording, pipeline, models, since_s: float, t0_s: float = 0.0,
-                 wall_t0=None, publish=None, clock=time.monotonic, progress=log.info):
+                 wall_t0=None, publish=None, clipper=None, clock=time.monotonic,
+                 progress=log.info):
         """``since_s`` is Start on the recording's clock; ``t0_s`` is where the
         recording begins on the stream's, which every published time is on.
         ``wall_t0`` is when the recording begins by the wall clock (epoch
@@ -82,6 +83,9 @@ class PracticeWatch:
         self.finders = self.books = None
         self.throws: list = []
         self.done = False
+        # Cuts each throw's clip once its footage is recorded (practice/clips.py).
+        self.clipper = clipper
+        self._clip_tried: set = set()
 
     def request_stop(self) -> None:
         """No session is watching any more: read what is recorded, then end."""
@@ -110,6 +114,7 @@ class PracticeWatch:
             return True
         if ended or self._stop:
             self.status, self.done = "ended", True
+            self._clip(final=True)
             self._publish()
             return True
         return False
@@ -183,8 +188,30 @@ class PracticeWatch:
                 throw_frames=self.buffers[OTHER_HOUSE[house]].frames)
             self.throws.append(throws.throw_record(shot, house=house, t0_s=self.t0_s))
             added += 1
-        if added:
+        if self._clip() or added:
             self._publish()
+
+    def _clip(self, final: bool = False) -> bool:
+        """Cut the clips whose footage is now recorded, oldest first; True if
+        any was made. Each throw is tried once. ``final``: the watch is ending,
+        so a clip runs to where the recording stops rather than waiting."""
+        if self.clipper is None or self.cal is None:
+            return False
+        recorded = self.t0_s + self.done_s
+        made = False
+        for th in self.throws:
+            if th.get("clip") or th["id"] in self._clip_tried:
+                continue
+            plan = self.clipper.plan(th, self.cal)
+            if plan is not None and plan.end > recorded:
+                if not final:
+                    continue
+                plan = plan.until(recorded)
+            self._clip_tried.add(th["id"])
+            if plan is not None and self.clipper.make(th, plan, self.cal, t0_s=self.t0_s):
+                th["clip"] = True
+                made = True
+        return made
 
     def _publish(self) -> None:
         self.publish(self.document())

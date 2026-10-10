@@ -159,3 +159,51 @@ class TestCut:
         p = C.ClipPlan((C.Piece("left", 1.0, 2.0),))
         with pytest.raises((subprocess.SubprocessError, OSError)):
             C.cut(p, views(tmp_path / "missing.ts"), tmp_path / "t.mp4")
+
+
+class TestClipper:
+    def cal(self):
+        return SimpleNamespace(sideviews={"left": SimpleNamespace(rect=(0, 0, 120, 180)),
+                                          "right": SimpleNamespace(rect=(200, 0, 120, 180))})
+
+    def test_a_cut_clip_is_delivered_then_removed(self, tmp_path):
+        got, cuts = [], []
+
+        def fake_cut(plan, views, out, *, t0_s=0.0):
+            cuts.append((views["right"], t0_s))
+            out.write_bytes(b"mp4")
+
+        def deliver(tid, path):
+            got.append((tid, path.read_bytes()))
+            return True
+
+        c = C.Clipper(SimpleNamespace(path="rec.ts"), deliver, tmp_path, cut=fake_cut)
+        th = throw()
+        assert c.make(th, C.plan(th, both()), self.cal(), t0_s=7.0) is True
+        assert got == [("t_100.0", b"mp4")]
+        assert cuts == [(("rec.ts", (200, 0, 120, 180)), 7.0)]
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_failed_cut_is_not_delivered(self, tmp_path):
+        def bad_cut(plan, views, out, *, t0_s=0.0):
+            out.write_bytes(b"half")
+            raise subprocess.CalledProcessError(1, "ffmpeg")
+
+        got = []
+        c = C.Clipper(SimpleNamespace(path="rec.ts"), lambda *a: got.append(a), tmp_path,
+                      cut=bad_cut)
+        th = throw()
+        assert c.make(th, C.plan(th, both()), self.cal()) is False
+        assert got == [] and list(tmp_path.iterdir()) == []
+
+    def test_kept_clips_stay_where_they_were_cut(self, tmp_path):
+        c = C.Clipper(SimpleNamespace(path="rec.ts"), lambda tid, p: True, tmp_path,
+                      keep=True, cut=lambda plan, views, out, **k: out.write_bytes(b"x"))
+        th = throw()
+        assert c.make(th, C.plan(th, both()), self.cal())
+        assert (tmp_path / "t_100.0.mp4").read_bytes() == b"x"
+
+    def test_its_plan_is_the_throws_with_the_calibrations_views(self):
+        c = C.Clipper(SimpleNamespace(path="rec.ts"), lambda *a: True, ".")
+        assert c.plan(throw(), SimpleNamespace(sideviews=both())) is not None
+        assert c.plan(throw(), SimpleNamespace(sideviews=None)) is None
