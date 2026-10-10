@@ -59,7 +59,24 @@ def label_line(item, pt, size):
     return " ".join(f"{v:.6f}" if isinstance(v, float) else str(v) for v in vals)
 
 
-def build(wave, edits, out, hold=(), val_frac=0.2, seed=1):
+def unsure_line(item, size):
+    """A frame a person could not read: the stone is there, its two points are
+    not labelled (visibility 0). The keypoint confidence is trained towards 0
+    on these, so the model learns to say when it cannot see the handle.
+
+    Tried 2026-10-10 (p3) and NOT used for rates: the model then doubts 22% of
+    yellow frames, but those bunch at particular handle angles, so dropping
+    them leaves the swing with gaps at the same phase every turn and skews the
+    fit -- yellow signal/noise fell 3.3 -> 2.7 and e3s15's early rate read 0.177
+    against 0.25 by eye. Off by default."""
+    W, H = size
+    x0, y0, x1, y1 = item["stone_box"]
+    w = x1 - x0
+    by0 = max(0.0, y0 - 0.25 * w)
+    return f"0 {(x0 + x1) / 2 / W:.6f} {(by0 + y1) / 2 / H:.6f} {w / W:.6f} {(y1 - by0) / H:.6f} 0 0 0 0 0 0"
+
+
+def build(wave, edits, out, hold=(), val_frac=0.2, seed=1, flags_as_unsure=False):
     wave, out = Path(wave).expanduser(), Path(out).expanduser()
     items = {it["stem"]: it for it in json.loads((wave / "items.json").read_text())}
     points, flags = merged(edits)
@@ -71,7 +88,7 @@ def build(wave, edits, out, hold=(), val_frac=0.2, seed=1):
     val_rocks = set(rocks[:n_val])
     if out.exists():
         shutil.rmtree(out)
-    counts = {"train": 0, "val": 0, "held": 0}
+    counts = {"train": 0, "val": 0, "held": 0, "unsure": 0}
     for split in ("train", "val"):
         (out / "images" / split).mkdir(parents=True)
         (out / "labels" / split).mkdir(parents=True)
@@ -86,6 +103,17 @@ def build(wave, edits, out, hold=(), val_frac=0.2, seed=1):
             size = im.size
         (out / "labels" / split / f"{stem}.txt").write_text(label_line(items[stem], pt, size) + "\n")
         counts[split] += 1
+    if flags_as_unsure:
+        for stem in sorted(flags):
+            if rock_of(stem) in hold or stem not in items:
+                continue
+            split = "val" if rock_of(stem) in val_rocks else "train"
+            src = wave / "images" / f"{stem}.png"
+            shutil.copy(src, out / "images" / split / src.name)
+            with Image.open(src) as im:
+                size = im.size
+            (out / "labels" / split / f"{stem}.txt").write_text(unsure_line(items[stem], size) + "\n")
+            counts["unsure"] += 1
     (out / "data.yaml").write_text(
         f"path: {out}\ntrain: images/train\nval: images/val\n"
         "kpt_shape: [2, 3]\nflip_idx: [0, 1]\nnames:\n  0: stone\n")
@@ -103,8 +131,11 @@ def main() -> int:
     ap.add_argument("--hold", action="append", default=[], help="a rock to keep out, e.g. PHbZ3EKOhMI_e3s15")
     ap.add_argument("--val-frac", type=float, default=0.2)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--flags-as-unsure", action="store_true",
+                    help="keep flagged frames as stones whose points are not visible (hurt rates; see unsure_line)")
     args = ap.parse_args()
-    counts, n_flags = build(args.wave, args.edits, args.out, args.hold, args.val_frac, args.seed)
+    counts, n_flags = build(args.wave, args.edits, args.out, args.hold, args.val_frac, args.seed,
+                            args.flags_as_unsure)
     print(f"{counts} ({n_flags} flagged frames left out)")
     return 0
 

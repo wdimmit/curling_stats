@@ -166,7 +166,7 @@ def hog_time(recs, t_rel, hog_m=6.401):
     return float(np.interp(hog_m, np.maximum.accumulate(ys), ts)) if ys.max() > hog_m else None
 
 
-def rate(model, path, min_conf=0.5):
+def rate(model, path, min_conf=0.5):  # noqa: C901
     d = pickle.load(gzip.open(path))   # written by our own extract.py
     meta = d["meta"]
     recs = [r for r in d["recs"] if r["y_m"] >= Y_START_M and r["box"][3] < FRAME_BOTTOM_ROW]
@@ -195,13 +195,15 @@ def main() -> int:
     ap.add_argument("out")
     ap.add_argument("rocks", nargs="+")
     ap.add_argument("--plot")
+    ap.add_argument("--min-conf", type=float, default=0.5,
+                    help="skip frames whose weaker point is below this keypoint confidence")
     args = ap.parse_args()
     from ultralytics import YOLO
 
     model = YOLO(args.model)
     results, series = [], []
     for p in args.rocks:
-        res, kp = rate(model, p)
+        res, kp = rate(model, p, args.min_conf)
         results.append(res)
         series.append((res, kp))
         print(f"{res['rock']} {res['color']:6s} {str(res.get('shot_type')):6s} {res['n']:3d}/{res['frames']:3d} frames  "
