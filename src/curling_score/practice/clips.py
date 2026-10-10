@@ -12,10 +12,13 @@ its own, and nothing else changes.
 """
 
 import math
+import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 from curling_score.game.hogtime import CAMERA_FOR
 from curling_score.geometry import constants as G
+from curling_score.ingest import frames
 from curling_score.practice.enrich import OTHER_HOUSE
 
 # Before the release, to take in the push from the hack and the slide.
@@ -113,3 +116,64 @@ def plan(throw: dict, sideviews) -> ClipPlan | None:
     if last > picks_up:
         pieces.append(Piece(behind, picks_up, last))
     return ClipPlan(tuple(pieces))
+
+
+# Portrait, for a phone: a long camera's panel is about 800x1080 of the stream.
+CLIP_SIZE = (600, 810)
+CLIP_FPS = 30
+CLIP_MAX_BYTES = 20_000_000
+CUT_TIMEOUT_S = 120.0
+
+
+def cut(plan: ClipPlan, views: dict, out_path, *, t0_s: float = 0.0, size=CLIP_SIZE,
+        fps: int = CLIP_FPS, timeout_s: float = CUT_TIMEOUT_S, run=subprocess.run) -> None:
+    """Cut ``plan`` into ``out_path`` with one ffmpeg run.
+
+    ``views`` maps a view to ``(source, crop)``: the file it is in and the
+    rectangle of it, or None for a whole frame. Times are on the stream's
+    clock; ``t0_s`` is where the sources begin on it.
+
+    Timestamps are kept (``-copyts``) and each piece is trimmed by the source's
+    own timestamps, the first frame's start added, which is the frame reader's
+    convention (`frames.window`): a release read at t is at t here. An MPEG-TS
+    recording has no index and a seek lands on the keyframe after its target,
+    so each input is entered `frames.seek_lead` early. Bounded by `-fs` and a
+    timeout, as `harvest/clips.py` learned to be.
+    """
+    sources = list(dict.fromkeys(views[p.view][0] for p in plan.pieces))
+    width, height = size
+    args = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-copyts"]
+    offsets = {}
+    for src in sources:
+        try:
+            offsets[src] = frames.stream_start_s(src)
+        except Exception as exc:  # noqa: BLE001 - PyAV raises its own kinds
+            raise OSError(f"cannot read {src}: {exc}") from exc
+        mine = [p for p in plan.pieces if views[p.view][0] == src]
+        lo = min(p.t0 for p in mine) - t0_s
+        hi = max(p.t1 for p in mine) - t0_s
+        args += ["-ss", f"{max(0.0, lo - frames.seek_lead(src)):.3f}",
+                 "-to", f"{hi + 1.0:.3f}", "-i", str(src)]
+    graph, branches = [], {}
+    for i, src in enumerate(sources):
+        n = sum(1 for p in plan.pieces if views[p.view][0] == src)
+        labels = [f"s{i}_{j}" for j in range(n)]
+        branches[src] = list(labels)
+        graph.append(f"[{i}:v]split={n}" + "".join(f"[{x}]" for x in labels)
+                     if n > 1 else f"[{i}:v]null[{labels[0]}]")
+    for k, p in enumerate(plan.pieces):
+        src, crop = views[p.view]
+        a = p.t0 - t0_s + offsets[src]
+        b = p.t1 - t0_s + offsets[src]
+        box = f"crop={crop[2]}:{crop[3]}:{crop[0]}:{crop[1]}," if crop else ""
+        graph.append(f"[{branches[src].pop(0)}]trim=start={a:.3f}:end={b:.3f},"
+                     f"setpts=PTS-STARTPTS,{box}scale={width}:{height},setsar=1,"
+                     f"fps={fps}[p{k}]")
+    graph.append("".join(f"[p{k}]" for k in range(len(plan.pieces)))
+                 + f"concat=n={len(plan.pieces)}:v=1:a=0[v]")
+    args += ["-filter_complex", ";".join(graph), "-map", "[v]", "-an",
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", "27", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", "-fs", str(CLIP_MAX_BYTES), str(out_path)]
+    run(args, check=True, capture_output=True, timeout=timeout_s)
+    if not Path(out_path).is_file() or Path(out_path).stat().st_size == 0:
+        raise OSError(f"ffmpeg wrote no clip at {out_path}")
