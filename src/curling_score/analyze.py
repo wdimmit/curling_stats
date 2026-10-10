@@ -51,22 +51,56 @@ PHASES = ("download", "proxy", "calibrate", "profile", "scoreboard", "detect",
 OTHER_HOUSE = {"top": "bottom", "bottom": "top"}
 
 
+# The ring's lateral fit stands where it puts the 4 ft strip's edges within this
+# of their paint, everywhere below the house; past it, the strip's replaces it.
+# The two agree to 3% (under 2 cm at the edges) where the ring fit is right.
+STRIP_AGREES_M = 0.03
+
+
 def _with_lateral(plate, view, name, progress):
-    """``view`` with its across-the-sheet calibration, or unchanged if the ring's
-    sides could not be read -- which costs that view its brooms and lines and
-    nothing else. The hog tripwire is depth alone and never waits on this.
-    The painted centre line is then traced; a view whose line cannot be read
-    keeps the ring's centre."""
+    """``view`` with its across-the-sheet calibration, or unchanged if neither
+    the ring's sides nor the 4 ft strip down the sheet could be read -- which
+    costs that view its brooms and lines and nothing else. The hog tripwire is
+    depth alone and never waits on this.
+
+    The ring is fitted first and the painted centre line traced (a view whose
+    line cannot be read keeps the ring's centre). Then the strip is found from
+    paint alone and checked against it: a crowded house can throw the ring's
+    fit off by 20% (sheet 2, 10/01) or leave it unreadable (sheet 5, 10/04),
+    and in either case the strip's calibration is used instead."""
+    ring = None
     try:
-        view = sideview.solve_lateral(plate, view, name=name)
+        ring = sideview.solve_lateral(plate, view, name=name)
     except sideview.SideViewError as exc:
-        progress(f"{name} view has no lateral calibration, so no brooms from it: {exc}")
-        return view
+        ring_error = exc
+    else:
+        try:
+            ring = sideview.solve_centre_line(plate, ring, name=name)
+        except sideview.SideViewError as exc:
+            progress(f"{name} view: no painted centre line, lateral figures from the ring's centre: {exc}")
     try:
-        return sideview.solve_centre_line(plate, view, name=name)
+        strip = sideview.solve_strip(plate, view, name=name)
     except sideview.SideViewError as exc:
-        progress(f"{name} view: no painted centre line, lateral figures from the ring's centre: {exc}")
-        return view
+        if ring is None:
+            progress(f"{name} view has no lateral calibration, so no brooms from it: "
+                     f"{ring_error}; {exc}")
+            return view
+        return ring
+    if ring is not None:
+        off = sideview.strip_disagreement_m(ring, strip)
+        if off <= STRIP_AGREES_M:
+            return ring
+        why = f"the ring's fit puts the 4 ft strip {off * 100:.0f} cm off its paint"
+    else:
+        why = f"the ring's sides were not read ({ring_error})"
+    try:
+        got = sideview.lateral_from_strip(view, strip)
+    except sideview.SideViewError as exc:
+        progress(f"{name} view: {why}, and the strip gives no calibration: {exc}")
+        return ring or view
+    progress(f"{name} view: {why}; lateral calibration from the strip instead "
+             f"({got.lat_px_per_m_at_tee:.1f} px/m)")
+    return got
 
 
 def _side_calibration(sideviews) -> dict:

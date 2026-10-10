@@ -187,3 +187,27 @@ def side_view_stone(img, row, width_px=52, color="red", x=None):
     out[max(0, r - body_h - hw // 2):max(0, r - body_h) + 1,
         cx - hw:cx + hw] = rgb
     return out
+
+
+def side_view_strip(img, view, *, centre=40.0, edges=40.0, half_m=0.6096, smear_m=None,
+                    smear=12.0, from_row=None):
+    """Paint the centre line and the 4 ft strip's two edges down the sheet, as
+    ``view``'s lateral calibration places them: thin dark lines ``centre`` and
+    ``edges`` levels below the ice. ``smear_m``: a broad, faint sweep smear that
+    far out on both sides, as brooms leave beside the strip."""
+    out = img.astype(float).copy()
+    h, w = out.shape[:2]
+    lines = [(0.0, centre, 1.2), (-half_m, edges, 1.2), (half_m, edges, 1.2)]
+    if smear_m is not None:
+        lines += [(-smear_m, smear, 5.0), (smear_m, smear, 5.0)]
+    for r in range(int(from_row if from_row is not None else view.tee_row + 20), h):
+        y = view.metres_at(r)
+        for x_m, depth, width in lines:
+            if depth <= 0:
+                continue
+            c = view.to_image(x_m, y)[0]
+            cols = np.arange(int(c) - 8, int(c) + 9)
+            cols = cols[(cols >= 0) & (cols < w)]
+            wgt = np.clip(1.0 - np.abs(cols - c) / width, 0.0, 1.0)
+            out[r, cols] -= depth * wgt[:, None]
+    return out.clip(0, 255).astype(np.uint8)

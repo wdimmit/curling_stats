@@ -6,6 +6,10 @@ line is about half a metre beneath it, out of frame. So the throwing end's
 crossing is seen by the camera at the target end.
 """
 
+import dataclasses
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -482,3 +486,99 @@ class TestLateralFromThePaint:
         col, row = self.V.to_image(0.7, 5.0)
         x, y = self.V.to_house(col, row)
         assert (x, y) == pytest.approx((0.7, 5.0), abs=1e-6)
+
+
+# The 4 ft strip down the middle of the sheet (the club's, per the user
+# 2026-10-10): a check on the ring's lateral fit, and a fallback for it.
+def strip_view(**kw):
+    base = dict(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0, centre_col=400.0,
+                lat_px_per_m_at_tee=148.0)
+    return SideView(**{**base, **kw})
+
+
+def depth_only(v):
+    return SideView(rect=v.rect, tee_row=v.tee_row, hog_row=v.hog_row)
+
+
+class TestStrip:
+    def test_the_edges_and_centre_line_are_found_without_the_ring(self):
+        truth = strip_view()
+        plate = synth.side_view_strip(synth.side_view(430.0, 520.0), truth)
+        s = sideview.solve_strip(plate, depth_only(truth))
+        for r in (520, 800, 1070):
+            y = truth.metres_at(r)
+            assert s.col("left", r) == pytest.approx(truth.to_image(-0.6096, y)[0], abs=0.6)
+            assert s.col("right", r) == pytest.approx(truth.to_image(0.6096, y)[0], abs=0.6)
+            assert s.col("centre", r) == pytest.approx(truth.to_image(0.0, y)[0], abs=0.6)
+
+    def test_edges_painted_darker_than_the_centre_line_are_still_the_edges(self):
+        # Sheets 1 and 5: the strip's edges read darker than the centre line.
+        truth = strip_view(lat_px_per_m_at_tee=155.0)
+        plate = synth.side_view_strip(synth.side_view(430.0, 520.0), truth, centre=12, edges=55)
+        s = sideview.solve_strip(plate, depth_only(truth))
+        r = 900
+        assert s.col("left", r) == pytest.approx(truth.to_image(-0.6096, truth.metres_at(r))[0], abs=0.6)
+
+    def test_a_sweep_smear_beside_the_strip_is_not_taken_for_its_edge(self):
+        truth = strip_view()
+        plate = synth.side_view_strip(synth.side_view(430.0, 520.0), truth, smear_m=0.74)
+        s = sideview.solve_strip(plate, depth_only(truth))
+        r = 1000
+        assert s.col("right", r) == pytest.approx(truth.to_image(0.6096, truth.metres_at(r))[0], abs=0.6)
+
+    def test_a_sheet_with_no_strip_says_so(self):
+        with pytest.raises(sideview.SideViewError):
+            sideview.solve_strip(synth.side_view(430.0, 520.0), depth_only(strip_view()))
+
+    def test_the_lateral_calibration_the_strip_gives(self):
+        truth = strip_view()
+        plate = synth.side_view_strip(synth.side_view(430.0, 520.0), truth)
+        got = sideview.lateral_from_strip(depth_only(truth), sideview.solve_strip(plate, depth_only(truth)))
+        assert got.has_lateral
+        assert got.lat_px_per_m_at_tee == pytest.approx(148.0, rel=0.01)
+        assert got.centre_col_at(430.0) == pytest.approx(400.0, abs=0.6)
+        assert got.to_image(1.8, 0.0)[0] == pytest.approx(truth.to_image(1.8, 0.0)[0], abs=2.0)
+
+    def test_how_far_a_calibration_puts_the_strip_from_its_paint(self):
+        truth = strip_view()
+        plate = synth.side_view_strip(synth.side_view(430.0, 520.0), truth)
+        s = sideview.solve_strip(plate, depth_only(truth))
+        assert sideview.strip_disagreement_m(truth, s) < 0.005
+        # A ring fit that read the scale 17% low places the edges 12.5 cm out.
+        off = dataclasses.replace(truth, lat_px_per_m_at_tee=148.0 * 0.83)
+        assert sideview.strip_disagreement_m(off, s) == pytest.approx(0.6096 * 0.17 / 0.83, abs=0.01)
+
+
+STRIP_FIXTURES = Path(__file__).parent / "fixtures" / "strip"
+
+
+def club_plate(name):
+    from PIL import Image
+
+    cal = json.loads((STRIP_FIXTURES / f"{name}.json").read_text())
+    img = np.asarray(Image.open(STRIP_FIXTURES / f"{name}.png").convert("RGB"))
+    h, w = img.shape[:2]
+    ring = SideView(rect=(0, 0, w, h), tee_row=cal["tee_row"], hog_row=cal["hog_row"],
+                    d_m=cal["d_m"], centre_col=cal["centre_col"],
+                    lat_px_per_m_at_tee=cal["lat_px_per_m_at_tee"],
+                    centre_line=tuple(cal["centre_line"]) if cal["centre_line"] else None)
+    return img, ring
+
+
+class TestStripOnTheClubsSheets:
+    def test_a_ring_fit_a_crowded_house_threw_off_is_caught_and_corrected(self):
+        img, ring = club_plate("32Dkqsf2t2M-right")
+        s = sideview.solve_strip(img, depth_only(ring))
+        assert sideview.strip_disagreement_m(ring, s) > 0.05
+        got = sideview.lateral_from_strip(depth_only(ring), s)
+        assert got.lat_px_per_m_at_tee == pytest.approx(117.0, rel=0.03)
+
+    def test_a_camera_whose_ring_could_not_be_read_gets_one_from_the_strip(self):
+        img, ring = club_plate("_NLZnNXts0c-right")
+        assert not ring.has_lateral
+        got = sideview.lateral_from_strip(ring, sideview.solve_strip(img, ring))
+        assert got.lat_px_per_m_at_tee == pytest.approx(149.5, rel=0.03)
+
+    def test_a_good_ring_fit_agrees_with_the_strip(self):
+        img, ring = club_plate("qJhDHMMtHsE-left")
+        assert sideview.strip_disagreement_m(ring, sideview.solve_strip(img, depth_only(ring))) < 0.02

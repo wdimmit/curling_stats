@@ -615,3 +615,155 @@ def solve_centre_line(plate, view: SideView, name: str = "side") -> SideView:
     if rms > _CL_MAX_RMS_PX or abs(q[0]) > _CL_MAX_SLOPE:
         raise SideViewError(f"{name}: centre line fit {rms:.2f} px RMS, slope {q[0]:.4f}")
     return dataclasses.replace(view, centre_line=(float(q[1]), float(q[0])))
+
+
+# The 4 ft strip down the middle of the club's sheets (per the user,
+# 2026-10-10): a painted line on each side, 1.2192 m apart, with the centre line
+# between them, the whole length of the sheet. Three lines a known distance
+# apart, right where the rock travels -- a check on the ring's lateral fit, and
+# what replaces it when a crowded house throws that fit off or it cannot be
+# read at all. Measured 2026-10-10 on all ten of the club's long cameras: the
+# ring and the strip agree to 3% where the ring fit is right, and the strip's
+# edges are straight image lines to the bottom of the picture.
+STRIP_HALF_M = 1.2192 / 2
+_ST_BELOW_TEE_ROWS = 40
+_ST_STEP_ROWS = 3
+_ST_MIN_DIP = 3.0
+_ST_K_BIN = 0.002
+_ST_K_SPAN = 1.5
+_ST_SEARCH = (0.3, 0.7)      # where in the view the vanishing column may be
+_ST_STRONG = 0.25            # a line worth considering, against the strongest
+_ST_CENTRE_MAX_K = 0.06      # the centre line runs nearly straight up the view
+_ST_SYMMETRY = 0.06          # the edges' spread either side of it may differ by this
+_ST_NARROW_PX = 4
+_ST_MIN_ROWS = 60
+_ST_MAX_RMS_PX = 1.5
+
+
+@dataclass(frozen=True)
+class Strip:
+    """The centre line and the strip's two edges as a view sees them: each a
+    straight image line, ``col = a + b * row`` as ``(a, b)``. ``centre`` is None
+    when only the edges could be traced."""
+
+    left: tuple
+    right: tuple
+    centre: tuple | None
+
+    def col(self, line: str, row: float) -> float:
+        if line == "centre" and self.centre is None:
+            return (self.col("left", row) + self.col("right", row)) / 2
+        a, b = getattr(self, line)
+        return a + b * row
+
+
+def _row_dips(lum, rows):
+    """Every dark dip on each row, against a 21 px running mean: (rows, cols,
+    depths)."""
+    kernel = np.ones(21) / 21
+    rr, cc, dd = [], [], []
+    for r in rows:
+        band = lum[r - 1:r + 2].mean(axis=0)
+        seg = band - np.convolve(band, kernel, mode="same")
+        seg[:_CL_MARGIN_PX] = 0
+        seg[-_CL_MARGIN_PX:] = 0
+        mid = seg[1:-1]
+        hit = np.nonzero((mid < seg[:-2]) & (mid <= seg[2:]) & (mid < -_ST_MIN_DIP))[0] + 1
+        rr.extend([r] * len(hit))
+        cc.extend(hit.tolist())
+        dd.extend((-seg[hit]).tolist())
+    return np.array(rr, float), np.array(cc, float), np.array(dd, float)
+
+
+def solve_strip(plate, view: SideView, name: str = "side") -> Strip:
+    """Find the centre line and the strip's edges from paint alone, without
+    the ring's lateral fit -- only the depth fit's horizon.
+
+    Lines along the sheet all meet at one vanishing point on the horizon row,
+    so every dark dip below the house lies on a line through it, and the rate
+    it moves across per row, ``k``, names the line. The vanishing column is the
+    one that gathers the dips into the sharpest few ``k``. The centre line is
+    the strongest of those near ``k = 0``; the strip's edges are the strongest
+    pair either side of it at equal spread and a plausible scale -- which a
+    broad sweep smear beside the strip is not, as it is not one sharp line.
+    Each of the three is then traced narrowly and fitted on its own.
+    """
+    x0, y0, w, h = view.rect
+    lum = np.asarray(plate, dtype=np.float32)[y0:y0 + h, x0:x0 + w].mean(axis=2)
+    _c, yh = view._map()
+    rows = np.arange(int(view.tee_row) + _ST_BELOW_TEE_ROWS, h - 2, _ST_STEP_ROWS)
+    rr, cc, dd = _row_dips(lum, rows)
+    if len(rr) < _ST_MIN_ROWS:
+        raise SideViewError(f"{name}: almost no paint lines below the house")
+    bins = np.arange(-_ST_K_SPAN, _ST_K_SPAN + _ST_K_BIN, _ST_K_BIN)
+    best = None
+    for vc in np.arange(_ST_SEARCH[0] * w, _ST_SEARCH[1] * w, 1.0):
+        hist, _ = np.histogram((cc - vc) / (rr - yh), bins=bins, weights=dd)
+        score = float((hist ** 2).sum())
+        if best is None or score > best[0]:
+            best = (score, vc, hist)
+    _score, vc, hist = best
+    ks = (bins[:-1] + bins[1:]) / 2
+    sm = np.convolve(hist, np.ones(3), mode="same")
+    peaks = [(ks[i], sm[i]) for i in range(1, len(sm) - 1)
+             if sm[i] >= sm[i - 1] and sm[i] > sm[i + 1]]
+    top = max((p[1] for p in peaks), default=0.0)
+    peaks = [p for p in peaks if p[1] >= _ST_STRONG * top]
+    near = [p for p in peaks if abs(p[0]) < _ST_CENTRE_MAX_K]
+    if not near:
+        raise SideViewError(f"{name}: no centre line among the paint below the house")
+    k0 = max(near, key=lambda p: p[1])[0]
+    pairs = []
+    for kl, sl in peaks:
+        for kr, sr in peaks:
+            a, b = k0 - kl, kr - k0
+            if a <= 0 or b <= 0 or abs(a - b) > _ST_SYMMETRY * (a + b) / 2:
+                continue
+            lat = (kr - kl) / (2 * STRIP_HALF_M) * (view.tee_row - yh)
+            if PLAUSIBLE_LAT_PX_PER_M[0] <= lat <= PLAUSIBLE_LAT_PX_PER_M[1]:
+                pairs.append((min(sl, sr), kl, kr))
+    if not pairs:
+        raise SideViewError(f"{name}: no pair of strip edges either side of the centre line")
+    _s, kl, kr = max(pairs)
+
+    def traced(k):
+        rs, cs = _trace_dips(lum, rows, lambda r: vc + k * (r - yh), _ST_NARROW_PX)
+        q, keep = _robust_line(rs, cs)
+        if q is None or keep.sum() < _ST_MIN_ROWS:
+            return None
+        if float(np.std(cs[keep] - np.polyval(q, rs[keep]))) > _ST_MAX_RMS_PX:
+            return None
+        return float(q[1]), float(q[0])
+
+    left, right = traced(kl), traced(kr)
+    if left is None or right is None:
+        raise SideViewError(f"{name}: the strip's edges could not be traced down the sheet")
+    return Strip(left=left, right=right, centre=traced(k0))
+
+
+def strip_disagreement_m(view: SideView, strip: Strip) -> float:
+    """How far ``view``'s lateral calibration puts the strip's edges from their
+    paint, in metres across the sheet: the worst row below the house."""
+    view._need_lateral()
+    worst = 0.0
+    for r in np.arange(view.tee_row + _ST_BELOW_TEE_ROWS, view.rect[3] - 2, 10.0):
+        y = view.metres_at(r)
+        for line, x_m in (("left", -STRIP_HALF_M), ("right", STRIP_HALF_M)):
+            off = abs(strip.col(line, r) - view.to_image(x_m, y)[0]) / view.lateral_px_per_m(r)
+            worst = max(worst, off)
+    return worst
+
+
+def lateral_from_strip(view: SideView, strip: Strip) -> SideView:
+    """``view`` with its across-the-sheet calibration taken from the strip: the
+    centre from the painted centre line (else midway between the edges), and
+    the scale from the edges' spread on the tee row."""
+    lat = (strip.col("right", view.tee_row) - strip.col("left", view.tee_row)) / (2 * STRIP_HALF_M)
+    if not PLAUSIBLE_LAT_PX_PER_M[0] <= lat <= PLAUSIBLE_LAT_PX_PER_M[1]:
+        raise SideViewError(f"the strip gives {lat:.1f} px/m across the sheet")
+    if strip.centre is not None:
+        line = strip.centre
+    else:
+        line = tuple((p + q) / 2 for p, q in zip(strip.left, strip.right))
+    return dataclasses.replace(view, centre_col=line[0] + line[1] * view.tee_row,
+                               lat_px_per_m_at_tee=float(lat), centre_line=line)
