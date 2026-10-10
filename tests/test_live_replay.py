@@ -4,6 +4,7 @@ only the part of a recording that exists so far."""
 import shutil
 import subprocess
 import time
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,8 @@ from curling_score.ingest import frames as F
 from curling_score.live import replay
 
 pytestmark = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+
+UKWN = Path.home() / ".cache" / "curling_score" / "videos" / "uKWnmVG9mA8.mp4"
 
 
 @pytest.fixture(scope="module")
@@ -91,6 +94,51 @@ class TestReplayRecording:
         # from the -ss target, half a second after the keyframe the file starts at.
         last = max(t for t, _ in F.window(rec.path, 0.0, 30.0, 30.0))
         assert rec.head_s() == pytest.approx(last, abs=0.3)
+
+    def test_a_window_starting_on_a_keyframe_is_on_that_keyframes_clock(self, tmp_path):
+        # uKWnmVG9mA8 from 6360.0, a keyframe: ffmpeg began the copy at the one
+        # before (6355.0) while t0_s said 6360.0, so every time was 5 s off. At
+        # 29.97 fps a keyframe's time (5.005005...) is never what -ss is given.
+        ntsc = tmp_path / "ntsc.mp4"
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+             "-i", "testsrc=size=320x240:rate=30000/1001", "-t", "12", "-g", "30",
+             "-keyint_min", "30", "-sc_threshold", "0", "-c:v", "libx264",
+             "-pix_fmt", "yuv420p", str(ntsc)], check=True)
+        start = replay.keyframe_at_or_before(ntsc, 5.5)
+        rec = replay.ReplayRecording(ntsc, tmp_path / "rec.ts", speed=8.0, start_s=start)
+        rec.start()
+        try:
+            deadline = time.monotonic() + 30
+            while not rec.ended() and time.monotonic() < deadline:
+                time.sleep(0.1)
+        finally:
+            rec.stop()
+        got = next(iter(F.window(rec.path, 2.0, 2.01, 30.0)))[1]
+        want = next(iter(F.window(ntsc, rec.t0_s + 2.0, rec.t0_s + 2.01, 30.0)))[1]
+        assert (got == want).all()
+        last = max(t for t, _ in F.window(rec.path, 0.0, 30.0, 30.0))
+        assert rec.head_s() == pytest.approx(last, abs=0.3)
+
+    @pytest.mark.slow
+    @pytest.mark.skipif(not UKWN.exists(), reason="needs the cached uKWnmVG9mA8")
+    def test_a_window_on_a_reordered_keyframe_starts_where_it_says(self, tmp_path):
+        # Its keyframe at 6360.0 decodes at 6359.967; a copy cut with -ss on
+        # that very keyframe began at the one before, 6355.0. No synthetic
+        # clip reproduced it, so this reads the real one.
+        rec = replay.ReplayRecording(UKWN, tmp_path / "rec.ts", speed=64.0,
+                                     start_s=6360.0, end_s=6372.0)
+        rec.start()
+        try:
+            deadline = time.monotonic() + 60
+            while not rec.ended() and time.monotonic() < deadline:
+                time.sleep(0.1)
+        finally:
+            rec.stop()
+        got = next(iter(F.window(rec.path, 2.0, 2.01, 30.0)))[1]
+        want = next(iter(F.window(UKWN, rec.t0_s + 2.0, rec.t0_s + 2.01, 30.0)))[1]
+        assert rec.t0_s == pytest.approx(6360.0, abs=0.02)
+        assert (got == want).all()
 
     def test_a_lookback_burst_arrives_at_once_then_real_time(self, tmp_path, clip):
         rec = replay.ReplayRecording(clip, tmp_path / "rec.ts", speed=1.0, burst_s=10.0)
