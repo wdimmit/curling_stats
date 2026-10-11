@@ -45,6 +45,14 @@ export function curlText(curl) {
   return curl === "left" || curl === "right" ? `Curled ${curl}` : null;
 }
 
+/* In-turn or out-turn: the way it curled, read through the thrower's hand.
+ * Seen from above, a rock turning clockwise curls to the thrower's right --
+ * a right-hander's in-turn, a left-hander's out-turn. */
+export function turnText(curl, hand) {
+  if (curl !== "left" && curl !== "right") return null;
+  return curl === (hand === "left" ? "left" : "right") ? "In" : "Out";
+}
+
 /* The throws to show: a stone that arrived with nothing seen releasing it
  * was not thrown -- on real practice footage, every one was a stone placed by
  * hand for a drill. A release that never arrived stays: that is a hog. */

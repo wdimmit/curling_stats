@@ -46,6 +46,14 @@ def test_weight_and_curl():
         "Curled left", "Curled right", None]
 
 
+def test_in_or_out_turn_from_the_curl_and_the_hand():
+    # A right-hander's in-turn spins clockwise and curls right; a left-hander's
+    # in-turn spins the other way and curls left.
+    assert js('[P.turnText("right", "right"), P.turnText("left", "right")]') == ["In", "Out"]
+    assert js('[P.turnText("left", "left"), P.turnText("right", "left")]') == ["In", "Out"]
+    assert js('[P.turnText(null, "right"), P.turnText("right", undefined)]') == [None, "In"]
+
+
 def test_a_stone_nothing_released_is_not_shown_as_a_throw():
     # Real practice (Qzh8): every arrival with no release from either camera
     # was a stone placed by hand for a drill.
