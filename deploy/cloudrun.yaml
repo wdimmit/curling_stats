@@ -48,8 +48,8 @@ spec:
             # GAME_CLIPS_ENABLED ("1", "true" or "yes") asks for clips of the
             # rocks a person says they threw, and shows them on My shots. Only
             # with the worker box running the `clips` service (WORKER_ROLE=clips):
-            # clip jobs no worker claims just wait.
-            - { name: GAME_CLIPS_ENABLED, value: "0" }
+            # clip jobs no worker claims just wait. On since 2026-10-10.
+            - { name: GAME_CLIPS_ENABLED, value: "1" }
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'
