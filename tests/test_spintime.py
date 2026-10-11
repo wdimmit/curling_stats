@@ -88,3 +88,96 @@ class TestCrop:
     def test_it_stays_inside_the_frame(self):
         x0, y0, x1, y1 = ST.crop_box((5.0, 1050.0, 65.0, 1079.0, 0.9), (1080, 810, 3))
         assert (x0, y1) == (0, 1080)
+
+
+from curling_score.game import spinfit
+
+
+class Stubs:
+    """A decode, a detector and a handle-point model for one rock turning at
+    ``f`` turns a second: the grip swings 0.2 stone widths either side."""
+
+    def __init__(self, f=0.2, speed=2.2, fail=0):
+        self.f, self.speed, self.fail, self.calls = f, speed, fail, 0     # fail: the first n calls
+
+    def decode(self, video, rect, t0, t1, fps):
+        times = list(np.arange(t0, t1, 1 / fps))
+        return np.zeros((len(times), 1080, 810, 3), np.uint8), times
+
+    def detect(self, model, frames, times, lo, hi, color, **kw):
+        self.calls += 1
+        if self.calls <= self.fail:
+            raise RuntimeError("decoder fell over")
+        return [[box_at(5.0 + self.speed * (t - 100.0))] for t in times]
+
+    def points(self, pose, patches):
+        out = []
+        for k, p in enumerate(patches):
+            t = self.t[k]
+            w = self.w[k]
+            s = 0.2 * np.sin(2 * np.pi * self.f * t)
+            out.append(((30.0, 20.0), (30.0 + s * w, 12.0), 0.9))
+        return out
+
+
+def shot(n=1, cross=True, missing=False, speed=2.2):
+    return SimpleNamespace(number=n, color="red", missing=missing, t_hog_s=100.6 if cross else None,
+                           hog_crossing=crossing(speed=speed) if cross else None)
+
+
+def run(shots, stubs, **kw):
+    # `points` needs each crop's time and box width: read_spin passes crops in
+    # the order of `follow`, so the stub records them from a wrapped follow.
+    real = ST.follow
+
+    def spy(times, boxes, seed, view, frame_h):
+        got = real(times, boxes, seed, view, frame_h)
+        stubs.t = [t for _i, t, _b in got]
+        stubs.w = [b[2] - b[0] for _i, _t, b in got]
+        return got
+
+    ST.follow = spy
+    try:
+        return ST.time_spins(shots, "v.mp4", VIEW, model=object(), pose=object(),
+                             decode=stubs.decode, detect=stubs.detect, points=stubs.points, **kw)
+    finally:
+        ST.follow = real
+
+
+class TestTimeSpins:
+    def test_a_turning_rock_gets_its_spin_and_nothing_else(self):
+        s = shot()
+        before = dict(vars(s))
+        assert run([s], Stubs(f=0.2)) == 1
+        assert isinstance(s.spin, spinfit.Spin)
+        assert s.spin.rpm == pytest.approx(12.0, rel=0.05)
+        assert {k: v for k, v in vars(s).items() if k != "spin"} == before
+
+    def test_a_rock_hogtime_never_followed_gets_none_and_the_rest_still_read(self):
+        a, b, c = shot(1, cross=False), shot(2, missing=True), shot(3)
+        assert run([a, b, c], Stubs()) == 1
+        assert not hasattr(a, "spin") and not hasattr(b, "spin") and hasattr(c, "spin")
+
+    def test_a_failure_on_one_rock_costs_that_rock_only(self):
+        a, b = shot(1), shot(2)
+        assert run([a, b], Stubs(fail=1)) == 1
+        assert not hasattr(a, "spin") and hasattr(b, "spin")
+
+    def test_no_model_or_no_lateral_calibration_is_a_no_op(self):
+        s = shot()
+        assert ST.time_spins([s], "v.mp4", VIEW, model=None, pose=object()) == 0
+        flat = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0)
+        assert ST.time_spins([s], "v.mp4", flat, model=object(), pose=object()) == 0
+        assert not hasattr(s, "spin")
+
+    def test_no_pose_model_configured_is_no_spin(self, monkeypatch):
+        from curling_score.detect import spinmodel
+        monkeypatch.setattr(spinmodel, "default_model", lambda: None)
+        s = shot()
+        assert ST.time_spins([s], "v.mp4", VIEW, model=object()) == 0
+
+    def test_frames_before_8_m_are_left_out(self):
+        s = shot(speed=0.9)
+        stubs = Stubs(f=0.2, speed=0.9)          # slow: the first frames sit short of 8 m
+        run([s], stubs)
+        assert s.spin.samples < len(stubs.t)

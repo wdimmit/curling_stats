@@ -29,6 +29,7 @@ from curling_score.game import (
     segment,
     shots as shots_mod,
     sidereleases,
+    spintime,
     thinking,
 )
 from curling_score.game import format as format_mod
@@ -580,6 +581,15 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
             without_broom=fmt.line_without_broom)
         progress(f"    end {end.number}: lines {n_lines}/{len(shots)} "
                  f"in {time.monotonic() - t_lines:.1f} s")
+        # How fast the thrower set the rock turning: hogtime's camera again,
+        # its own 10 fps read from just past the hog line. Needs hogtime's
+        # crossing to start from; timed, for the live lane's budget.
+        t_spin = time.monotonic()
+        n_spin = spintime.time_spins(
+            shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
+            model=ctx.line_model)
+        progress(f"    end {end.number}: spin {n_spin}/{len(shots)} "
+                 f"in {time.monotonic() - t_spin:.1f} s")
     # Stage 3, the destination hog line, from that panel's painted line.
     # In this block ``setup`` is the destination panel and ``far`` is
     # the THROWING panel -- far from the house being played to.
