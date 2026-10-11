@@ -17,8 +17,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, Source, Team, User,
-    WatchedPlaylist, Worker, play_id, review_id,
+    Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, Source, Team,
+    User, WatchedPlaylist, Worker, play_id, review_id,
 )
 from curling_score.service.repo import MemoryRepo
 
@@ -40,7 +40,8 @@ def _firestore_repo():
     for col in ("vod_runs", "jobs", "sources", "charts", "share_slugs",
                 "workers", "watched_playlists", "rate_limits",
                 "users", "teams", "invites", "chart_claims", "flags", "yt_playlists",
-                "plays", "reviews", "practice_watches", "practice_sessions"):
+                "plays", "reviews", "practice_watches", "practice_sessions",
+                "clip_jobs"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -718,3 +719,44 @@ class TestPractice:
         assert [s.id for s in repo.sessions_for_user("u1")] == ["ps_2", "ps_0"]
         got = repo.update_session("ps_0", ended_at=at(9), end_reason="stop", hidden=["t_1"])
         assert (got.active, got.hidden) == (False, ["t_1"])
+
+
+def clip_job(id="cj_1", play="p1", state="queued", seconds=0, **kw):
+    return ClipJob(id=id, play_id=play, user_id="u", source_id="s", run_id="r", video_id="v",
+                   state=state, created_at=at(seconds), run_after=at(seconds),
+                   spec={"rocks": [{"name": "0.1.1"}]}, **kw)
+
+
+class TestTheClipQueue:
+    """Clip jobs (records.ClipJob): a queue of their own for the clips worker."""
+
+    def test_a_queued_job_is_taken_once(self, repo):
+        repo.put_clip_job(clip_job())
+        got = repo.take_clip_job("cj_1", "clips", T0, 600.0)
+        assert (got.state, got.worker_id, got.attempts) == ("running", "clips", 1)
+        assert got.lease_expires_at == T0 + timedelta(seconds=600)
+        assert repo.get_clip_job("cj_1").state == "running"
+        assert repo.take_clip_job("cj_1", "other", T0, 600.0) is None
+        assert repo.take_clip_job("nope", "clips", T0, 600.0) is None
+
+    def test_by_play_and_by_state_oldest_first(self, repo):
+        repo.put_clip_job(clip_job("cj_b", seconds=5))
+        repo.put_clip_job(clip_job("cj_a"))
+        repo.put_clip_job(clip_job("cj_c", play="p2", state="done"))
+        assert [j.id for j in repo.clip_jobs_for_play("p1")] == ["cj_a", "cj_b"]
+        assert [j.id for j in repo.clip_jobs_in_state("queued")] == ["cj_a", "cj_b"]
+        assert [j.id for j in repo.clip_jobs_in_state("done")] == ["cj_c"]
+
+    def test_an_update_changes_only_what_it_names(self, repo):
+        repo.put_clip_job(clip_job())
+        got = repo.update_clip_job("cj_1", state="done", rocks={"0.1.1": {"clip": True}})
+        assert (got.state, got.rocks, got.play_id) == ("done", {"0.1.1": {"clip": True}}, "p1")
+        assert repo.update_clip_job("nope", state="done") is None
+
+    def test_a_backup_keeps_them(self, repo):
+        repo.put_clip_job(clip_job(rocks={"0.1.1": {"clip": True}}))
+        fresh = MemoryRepo()
+        fresh.import_all(repo.export_all())
+        got = fresh.get_clip_job("cj_1")
+        assert (got.play_id, got.state, got.rocks, got.spec) == \
+            ("p1", "queued", {"0.1.1": {"clip": True}}, {"rocks": [{"name": "0.1.1"}]})

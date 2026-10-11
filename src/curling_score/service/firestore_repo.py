@@ -25,7 +25,7 @@ import json
 from datetime import timedelta
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
+    Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
     Review, Run, Source, Team, User, WatchedPlaylist, Worker, play_id,
 )
 from curling_score.service.repo import (
@@ -36,6 +36,7 @@ RUNS, JOBS, SOURCES, CHARTS = "vod_runs", "jobs", "sources", "charts"
 SHARES, WORKERS, PLAYLISTS, RATES = "share_slugs", "workers", "watched_playlists", "rate_limits"
 USERS, TEAMS, INVITES, CLAIMS = "users", "teams", "invites", "chart_claims"
 FLAGS, PLAYLIST_INDEX, PLAYS = "flags", "yt_playlists", "plays"
+CLIP_JOBS = "clip_jobs"
 REVIEWS = "reviews"
 WATCHES, SESSIONS = "practice_watches", "practice_sessions"
 
@@ -524,6 +525,49 @@ class FirestoreRepo:
         docs = [Play.from_dict(d.to_dict()) for d in q.stream()]
         return sorted(docs, key=lambda p: p.updated_at, reverse=True)[:limit]
 
+    # ---- clip jobs ----------------------------------------------------
+    # One equality filter each, sorted here: no composite index to keep. The
+    # queue is short -- a job per claimed game, done in seconds.
+    def put_clip_job(self, job):
+        self._col(CLIP_JOBS).document(job.id).set(job.to_dict())
+
+    def get_clip_job(self, job_id):
+        return self._get(CLIP_JOBS, job_id, ClipJob)
+
+    def update_clip_job(self, job_id, **fields):
+        if not self._col(CLIP_JOBS).document(job_id).get().exists:
+            return None
+        return self._update(CLIP_JOBS, job_id, ClipJob, fields)
+
+    def clip_jobs_for_play(self, play_id):
+        docs = [ClipJob.from_dict(d.to_dict())
+                for d in self._where(CLIP_JOBS, "play_id", "==", play_id).stream()]
+        return sorted(docs, key=lambda j: j.created_at)
+
+    def clip_jobs_in_state(self, state):
+        docs = [ClipJob.from_dict(d.to_dict())
+                for d in self._where(CLIP_JOBS, "state", "==", state).stream()]
+        return sorted(docs, key=lambda j: j.created_at)
+
+    def take_clip_job(self, job_id, worker_id, now, lease_s):
+        ref = self._col(CLIP_JOBS).document(job_id)
+
+        @self._fs.transactional
+        def _take(tx):
+            snap = ref.get(transaction=tx)
+            if not snap.exists:
+                return None
+            data = snap.to_dict()
+            if data.get("state") != "queued":
+                return None
+            update = {"state": "running", "worker_id": worker_id,
+                      "attempts": int(data.get("attempts", 0)) + 1,
+                      "lease_expires_at": now + timedelta(seconds=lease_s)}
+            tx.update(ref, update)
+            return ClipJob.from_dict({**data, **update})
+
+        return _take(self.db.transaction())
+
     # ---- practice -----------------------------------------------------
     # One equality filter each, sorted here: no composite index to keep.
     def put_watch(self, watch):
@@ -597,7 +641,8 @@ class FirestoreRepo:
                 "charts": dump(CHARTS), "workers": dump(WORKERS),
                 "watched_playlists": dump(PLAYLISTS), "users": dump(USERS),
                 "teams": dump(TEAMS), "invites": dump(INVITES), "flags": dump(FLAGS),
-                "plays": dump(PLAYS), "reviews": dump(REVIEWS),
+                "plays": dump(PLAYS), "clip_jobs": dump(CLIP_JOBS),
+                "reviews": dump(REVIEWS),
                 "practice_watches": dump(WATCHES), "practice_sessions": dump(SESSIONS)}
 
     def import_all(self, data):
@@ -623,6 +668,8 @@ class FirestoreRepo:
             self.put_flag(Flag.from_dict(d))
         for d in data.get("plays", []):
             self.put_play(Play.from_dict(d))
+        for d in data.get("clip_jobs", []):
+            self.put_clip_job(ClipJob.from_dict(d))
         for d in data.get("reviews", []):
             self.put_review(Review.from_dict(d))
         for d in data.get("practice_watches", []):

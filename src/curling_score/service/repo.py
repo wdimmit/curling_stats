@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from curling_score.service.records import (
-    Chart, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
+    Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
     Review, Run, Source, Team, User, WatchedPlaylist, Worker, play_id,
 )
 
@@ -119,6 +119,14 @@ class Repo(Protocol):
     def get_play(self, user_id: str, source_id: str) -> Play | None: ...
     def delete_play(self, user_id: str, source_id: str) -> bool: ...
     def plays_for_user(self, user_id: str, limit: int = 500) -> list[Play]: ...
+    # clip jobs -- clips of a play's rocks, a queue of their own (service/gameclips.py)
+    def put_clip_job(self, job: ClipJob) -> None: ...
+    def get_clip_job(self, job_id: str) -> ClipJob | None: ...
+    def update_clip_job(self, job_id: str, **fields) -> ClipJob | None: ...
+    def clip_jobs_for_play(self, play_id: str) -> list[ClipJob]: ...
+    def clip_jobs_in_state(self, state: str) -> list[ClipJob]: ...
+    def take_clip_job(self, job_id: str, worker_id: str, now: datetime,
+                      lease_s: float) -> ClipJob | None: ...
     # practice
     def put_watch(self, watch: PracticeWatch) -> None: ...
     def get_watch(self, watch_id: str) -> PracticeWatch | None: ...
@@ -170,6 +178,7 @@ class MemoryRepo:
         self.claims: dict[tuple[str, str], str] = {}
         self.flags: dict[str, Flag] = {}
         self.plays: dict[str, Play] = {}
+        self.clip_jobs: dict[str, ClipJob] = {}
         self.reviews: dict[str, Review] = {}
         self.playlist_index: dict[str, PlaylistIndexEntry] = {}
         self.watches: dict[str, PracticeWatch] = {}
@@ -576,6 +585,41 @@ class MemoryRepo:
         out.sort(key=lambda p: p.updated_at, reverse=True)
         return out[:limit]
 
+    # ---- clip jobs ----------------------------------------------------
+    def put_clip_job(self, job):
+        with self._lock:
+            self.clip_jobs[job.id] = job
+
+    def get_clip_job(self, job_id):
+        return self.clip_jobs.get(job_id)
+
+    def update_clip_job(self, job_id, **fields):
+        with self._lock:
+            job = self.clip_jobs.get(job_id)
+            if job is None:
+                return None
+            for k, v in fields.items():
+                setattr(job, k, v)
+            return job
+
+    def clip_jobs_for_play(self, play_id):
+        return sorted((j for j in self.clip_jobs.values() if j.play_id == play_id),
+                      key=lambda j: j.created_at)
+
+    def clip_jobs_in_state(self, state):
+        return sorted((j for j in self.clip_jobs.values() if j.state == state),
+                      key=lambda j: j.created_at)
+
+    def take_clip_job(self, job_id, worker_id, now, lease_s):
+        with self._lock:
+            job = self.clip_jobs.get(job_id)
+            if job is None or job.state != "queued":
+                return None
+            job.state, job.worker_id = "running", worker_id
+            job.attempts += 1
+            job.lease_expires_at = now + timedelta(seconds=lease_s)
+            return job
+
     # ---- practice -----------------------------------------------------
     def put_watch(self, watch):
         with self._lock:
@@ -653,6 +697,7 @@ class MemoryRepo:
             "invites": [i.to_dict() for i in self.invites.values()],
             "flags": [f.to_dict() for f in self.flags.values()],
             "plays": [p.to_dict() for p in self.plays.values()],
+            "clip_jobs": [j.to_dict() for j in self.clip_jobs.values()],
             "reviews": [r.to_dict() for r in self.reviews.values()],
             "practice_watches": [w.to_dict() for w in self.watches.values()],
             "practice_sessions": [s.to_dict() for s in self.sessions.values()],
@@ -682,6 +727,8 @@ class MemoryRepo:
                 self.put_flag(Flag.from_dict(d))
             for d in data.get("plays", []):
                 self.put_play(Play.from_dict(d))
+            for d in data.get("clip_jobs", []):
+                self.put_clip_job(ClipJob.from_dict(d))
             for d in data.get("reviews", []):
                 self.put_review(Review.from_dict(d))
             for d in data.get("practice_watches", []):

@@ -451,6 +451,47 @@ class Play:
     from_dict = classmethod(_from_dict)
 
 
+CLIP_JOB_STATES = ("queued", "running", "done", "failed")
+
+
+@dataclass
+class ClipJob:
+    """Clips of some of one play's rocks, to be cut from one run's video by
+    the clips worker (service/clipworker.py) -- the only thing that claims
+    these. A queue of its own, apart from `Job`: a `Job` stands for its run,
+    and the job routes write the run's status from it, where a clip job only
+    reads the run it was cut for.
+
+    ``spec`` is all the worker cuts from: ``{"calibration": {"left",
+    "right"}, "rocks": [rock specs]}`` (service/gameclips.player_rocks), so
+    it never loads a timeline. ``rocks`` is what came of each once done:
+    name -> ``{"clip": True, "overlay"?}`` or ``{"clip": None, "reason"}``.
+    The jobs are the record of a play's clips; nothing is written to the
+    play, so saving it again never loses them.
+    """
+
+    id: str
+    play_id: str
+    user_id: str
+    source_id: str
+    run_id: str
+    video_id: str
+    state: str
+    created_at: datetime
+    run_after: datetime
+    spec: dict = field(default_factory=dict)
+    attempts: int = 0
+    max_attempts: int = 3
+    worker_id: str | None = None
+    lease_expires_at: datetime | None = None
+    finished_at: datetime | None = None
+    error: str | None = None
+    rocks: dict = field(default_factory=dict)
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
 @dataclass
 class PracticeWatch:
     """One sheet's practice stream being watched: the work a worker does for
