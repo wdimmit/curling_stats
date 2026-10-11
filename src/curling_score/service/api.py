@@ -1892,6 +1892,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 ask_for_clips(play, doc, run)
             except HTTPException as exc:
                 log.info("clips for play %s not asked for: %s", play.id, exc.detail)
+            except Exception:  # noqa: BLE001
+                log.exception("clips for play %s not asked for", play.id)
         log.info("play %s %d (%s) on %s by %s", color, slot, link, src.id, me.id)
         return {"play": play_json(play)}
 
@@ -1971,14 +1973,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return doc, run, fallback
 
     def report_run(play: Play, src: Source) -> Run | None:
-        """The run play_doc reads, without loading its document."""
+        """The run play_doc reads, without loading its document; None where
+        play_doc would refuse."""
         if play.chart_id:
             chart = live_chart(repo.get_chart(play.chart_id))
-            if chart and chart.game_index is not None:
-                run = repo.get_run(chart.run_id)
-                if run is not None:
-                    return run
-        return repo.get_run(src.current_run_id)
+            run = repo.get_run(chart.run_id) if chart else None
+            if chart and run and chart.game_index is not None:
+                return run if run.status == "ready" else None
+        try:
+            return lookup_source(src.id)[1]
+        except HTTPException:
+            return None
 
     def ask_for_clips(play: Play, doc: dict, run: Run) -> dict | None:
         """Clips of the rocks this play names in ``doc`` (service/gameclips.py),

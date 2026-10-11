@@ -4,6 +4,7 @@ and the player's (service/api.py, service/gameclips.py)."""
 from datetime import timedelta
 
 from curling_score.service.records import ClipJob, play_id
+from curling_score.service.store import timeline_key
 from tests.test_plays import a_played_game, get, put  # noqa: F401
 from tests.test_service_api import T0, VID, WORKER
 from tests.test_service_auth import ALEX, SARAH, w  # noqa: F401  (fixtures)
@@ -164,6 +165,17 @@ class TestAskingForClips:
         assert get(w, f"/api/me/plays/{src}/clips").status_code == 404
         assert get(w, f"/api/me/plays/{src}/clips/0.1.13").status_code == 404
 
+    def test_a_save_stands_when_the_document_cannot_be_read(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        w["settings"].game_clips_enabled = True
+        run_id = w["repo"].get_source(src).current_run_id
+        # Another key, so the cached document is not the one asked for.
+        w["repo"].update_run(run_id, timeline_key=timeline_key(VID, "missing"))
+        r = put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
+        assert r.status_code == 200, r.text
+        assert w["repo"].get_play("uid-sarah", src) is not None
+        assert jobs(w, src) == []
+
     def test_saving_a_play_asks_for_its_rocks(self, w):  # noqa: F811
         src = claimed(w)
         (job,) = jobs(w, src)
@@ -239,3 +251,13 @@ class TestReadingClips:
         assert get(w, f"/api/me/plays/{src}/clips/0.1.13", headers=ALEX).status_code == 404
         assert get(w, f"/api/me/plays/{src}/clips/..%2Fx").status_code == 404
         assert get(w, f"/api/me/plays/{src}/clips/0.1.13", headers=None).status_code == 401
+
+    def test_a_run_being_analysed_again_is_not_answered_for(self, w):  # noqa: F811
+        slug, _, src = a_played_game(w)
+        w["settings"].game_clips_enabled = True
+        r = put(w, src, {"path": f"/c/{slug}/", "color": "red", "slot": 4})
+        assert r.status_code == 200, r.text
+        run_id = w["repo"].get_chart(w["repo"].get_play("uid-sarah", src).chart_id).run_id
+        w["repo"].update_run(run_id, status="processing")
+        assert get(w, f"/api/me/plays/{src}/clips").status_code == 404
+        assert get(w, f"/api/me/plays/{src}/doc").status_code == 409
