@@ -99,9 +99,11 @@ class Stubs:
     """A decode, a detector and a handle-point model for one rock turning at
     ``f`` turns a second: the grip swings 0.2 stone widths either side."""
 
-    def __init__(self, f=0.2, speed=2.2, fail=0, decel=0.0, amp=0.2, centre=0.0):
+    def __init__(self, f=0.2, speed=2.2, fail=0, decel=0.0, amp=0.2, centre=0.0, noise=0.0):
         self.f, self.speed, self.fail, self.calls = f, speed, fail, 0     # fail: the first n calls
         self.amp, self.centre = amp, centre                               # the handle's swing
+        self.noise = np.random.default_rng(7) if noise else None
+        self.noise_sd = noise
         # decel: the rock slows from `speed` at t=100 and comes to rest in
         # view, and its handle stops with it.
         self.decel, self.decoded = decel, []
@@ -128,6 +130,8 @@ class Stubs:
             t = min(self.t[k], self.t_stop)
             w = self.w[k]
             s = self.centre + self.amp * np.sin(2 * np.pi * self.f * t)
+            if self.noise is not None:
+                s += self.noise.normal(0, self.noise_sd)
             out.append(((30.0, 20.0), (30.0 + s * w, 12.0), 0.9))
         return out
 
@@ -211,7 +215,7 @@ class TestTimeSpins:
     def test_a_rock_that_comes_to_rest_in_view_reads_its_spin_while_moving(self):
         s = shot(speed=2.8)
         s.hog_crossing = crossing(speed=2.8, decel=2.8 / 6.0)
-        run([s], Stubs(f=0.2, speed=2.8, decel=2.8 / 6.0, amp=0.226, centre=-0.024))  # at rest 6 s on, 13.4 m out
+        run([s], Stubs(f=0.2, speed=2.8, decel=2.8 / 6.0))      # at rest 6 s on, 13.4 m out
         assert s.spin.rpm == pytest.approx(12.0, rel=0.05)
 
     def test_a_refused_crossing_starts_where_its_own_track_met_the_hog_row(self):
@@ -319,6 +323,19 @@ class TestSlowRocks:
         stubs = Stubs(f=0.07, speed=2.2, amp=self.RED[0], centre=self.RED[1])
         run([self.rock(2.2)], stubs)                         # past the bottom at 8 s
         assert len(stubs.decoded) == 1
+
+    def test_a_rock_gone_out_of_the_frame_just_before_the_window_ends_is_not_followed_on(self):
+        stubs = Stubs(f=0.07, speed=1.68, amp=self.RED[0], centre=self.RED[1])
+        run([self.rock(1.68)], stubs)                        # at the frame's bottom 0.4 s before
+        assert len(stubs.decoded) == 1
+
+    def test_a_rock_refused_with_a_turn_or_more_in_view_is_not_followed_on(self):
+        # Turning fast but too noisy to read: noise, not slowness -- more of
+        # its track would not change that.
+        stubs = Stubs(f=0.3, speed=1.2, amp=self.RED[0], centre=self.RED[1], noise=0.25)
+        s = self.rock(1.2)
+        run([s], stubs)
+        assert not hasattr(s, "spin") and len(stubs.decoded) == 1
 
     def test_a_rock_read_in_full_is_not_followed_on(self):
         stubs = Stubs(f=0.2, speed=1.2)

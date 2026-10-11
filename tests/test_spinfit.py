@@ -90,7 +90,7 @@ def slow(f, seconds=7.0, phase=0.7, noise=0.03, a=0.22, c=-0.02, seed=3):
 
 
 def held(t, s, swing_=SWING):
-    return spinfit.read_with_swing(t, s, swing_, spinfit.read(t, s))
+    return spinfit.read_with_swing(t, s, swing_, spinfit.read(t, s)).spin
 
 
 @pytest.mark.parametrize("phase", [0.0, 0.7, 1.6, 2.5])
@@ -112,7 +112,30 @@ def test_between_half_a_turn_and_one_it_is_one_number():
 def test_a_turn_or_more_reads_as_it_always_has():
     t, s = swing(f=0.2)
     first = spinfit.read(t, s)
-    assert spinfit.read_with_swing(t, s, SWING, first) is first
+    got = spinfit.read_with_swing(t, s, SWING, first)
+    assert got.spin is first and not got.under_a_turn
+
+
+def test_a_fast_rock_reads_as_it_always_has():
+    t, s = swing(f=0.7)                            # 42 rpm, past the held fit's grid
+    first = spinfit.read(t, s)
+    assert first.rpm == pytest.approx(42.0, rel=0.03)
+    assert spinfit.read_with_swing(t, s, SWING, first).spin is first
+
+
+def test_today_s_read_of_a_turn_or_more_stands_whatever_the_held_fit_says():
+    t, s = slow(f=0.06)
+    first = spinfit.Spin(rpm=6.9, rpm_avg=6.9, turns_in_view=1.04, samples=t.size)
+    assert spinfit.read_with_swing(t, s, SWING, first).spin is first
+
+
+def test_a_loose_held_fit_keeps_today_s_read():
+    # 0.64 turns of a handle swinging 0.2 about 0, held at 0.22 about -0.02:
+    # the held range runs 6-14 rpm, too loose, and today's 12.4 stands.
+    t, s = swing(f=0.2, seconds=3.9, a=0.2, noise=0.03, seed=3)
+    first = spinfit.read(t, s)
+    got = spinfit.read_with_swing(t, s, SWING, first)
+    assert first is not None and got.spin is first and got.under_a_turn
 
 
 def test_a_faint_rock_of_many_turns_is_not_rescued():

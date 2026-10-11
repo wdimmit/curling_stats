@@ -188,10 +188,25 @@ def _read_window(model, pose, video, view, color, t0, t1, seed, *, decode, detec
             continue
         ts.append(t)
         ss.append((p[1][0] - p[0][0]) / (b[2] - b[0]))
-    # Still followed at the last frame decoded, and not coming to rest: a
-    # rock that went out of the frame's bottom was let go before it.
-    open_ = t_stop is None and times[-1] - tracked[-1][1] <= LOST_S
-    return Track(ts, ss, [(t, b) for _i, t, b in tracked[-SEED_TAIL:]], float(times[-1]), open_)
+    # Still in the frame at the last frame decoded, and not coming to rest: a
+    # rock lost for a moment at the end is where its speed puts it, and one
+    # that went out of the frame's bottom was let go below the pad.
+    last = [(t, b) for _i, t, b in tracked[-SEED_TAIL:]]
+    t_last, _cx, row, _vx, vy = _motion(last)
+    gap = times[-1] - t_last
+    open_ = (t_stop is None and gap <= LOST_S
+             and row + max(vy, 0.0) * gap < frame_h - BOTTOM_PAD_PX)
+    return Track(ts, ss, last, float(times[-1]), open_)
+
+
+def _motion(last):
+    """Where the last tracked frames have the rock and how fast it goes:
+    ``(t, cx, bottom_row, vx, vy)`` at the last of them."""
+    ts = np.array([t for t, _b in last])
+    cx = np.array([(b[0] + b[2]) / 2 for _t, b in last])
+    row = np.array([b[3] for _t, b in last])
+    vx, vy = (np.polyfit(ts, cx, 1)[0], np.polyfit(ts, row, 1)[0]) if np.ptp(ts) > 0 else (0.0, 0.0)
+    return float(ts[-1]), float(cx[-1]), float(row[-1]), float(vx), float(vy)
 
 
 def track_spin(model, pose, video, view, shot, *, decode, detect, points):
@@ -215,11 +230,7 @@ def track_spin(model, pose, video, view, shot, *, decode, detect, points):
 def follow_on(track, model, pose, video, view, color, *, decode, detect, points):
     """``track`` read on for EXTEND_S past its window, from where its last
     frames had it and how fast it was going there."""
-    ts = np.array([t for t, _b in track.last])
-    cx = np.array([(b[0] + b[2]) / 2 for _t, b in track.last])
-    row = np.array([b[3] for _t, b in track.last])
-    vx, vy = (np.polyfit(ts, cx, 1)[0], np.polyfit(ts, row, 1)[0]) if np.ptp(ts) > 0 else (0.0, 0.0)
-    seed = (float(ts[-1]), float(cx[-1]), float(row[-1]), float(vx), float(vy))
+    seed = _motion(track.last)
     more = _read_window(model, pose, video, view, color, track.t_end + 1 / SPIN_FPS,
                         track.t_end + EXTEND_S, seed, decode=decode, detect=detect, points=points)
     if more is None:
@@ -288,13 +299,13 @@ def time_spins(shots, video, hog_view, *, model, pose=None, decode=None, detect=
     n = 0
     for shot, track, first in reads:
         try:
-            got = spinfit.read_with_swing(track.ts, track.ss, swings[shot.color], first)
-            if (got is None or got.turns_in_view < spinfit.HELD_BELOW_TURNS) and track.open:
+            got, under_a_turn = spinfit.read_with_swing(track.ts, track.ss, swings[shot.color], first)
+            if under_a_turn and track.open:
                 # Under a turn so far and still in view: more of its turn.
                 more = follow_on(track, model, pose, video, hog_view, shot.color, **kw)
                 if len(more.ts) > len(track.ts):
                     again = spinfit.read_with_swing(more.ts, more.ss, swings[shot.color],
-                                                    spinfit.read(more.ts, more.ss))
+                                                    spinfit.read(more.ts, more.ss)).spin
                     got = again if again is not None else got
         except Exception:
             log.exception("spin pass failed on shot %s; it keeps no spin",

@@ -18,6 +18,7 @@ Direction is not here: the swing is the same either way round.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import numpy as np
 
@@ -151,22 +152,33 @@ def fit_held(t, x, amp, centre):
     return float(HELD_F[i]), float(HELD_F[ok.min()]), float(HELD_F[ok.max()])
 
 
-def read_with_swing(t, s, swing, first) -> Spin | None:
-    """``first`` (``read``'s answer), unless the rock showed under a turn in
+class Reading(NamedTuple):
+    spin: Spin | None
+    under_a_turn: bool      # held, it showed under a turn: more of its track would help
+
+
+def read_with_swing(t, s, swing, first) -> Reading:
+    """``first`` (``read``'s answer) unless the rock showed under a turn in
     view: then the read with its handle's ``swing`` (amplitude, centre) held --
-    one rate from half a turn, a range under it, None where even the range is
-    loose. A rock with a turn or more in view keeps ``first``, refused or not:
-    one the free fit could not read is noise, not slowness."""
+    one rate from half a turn, a range under it.
+
+    Today's read of a turn or more stands as it is, and so does today's read
+    (or its absence) wherever the held fit cannot do better: a held fit that
+    finds a turn or more (a rock the free fit refused there is noise, not
+    slowness), or whose range is loose. A held rate is the whole stretch's, a
+    few per cent under a slowing rock's as-thrown rate."""
+    if first is not None and first.turns_in_view >= HELD_BELOW_TURNS:
+        return Reading(first, False)
     t, s = np.asarray(t, float), np.asarray(s, float)
     if t.size < MIN_SAMPLES:
-        return first
+        return Reading(first, True)
     order = np.argsort(t)
     t, s = t[order], s[order]
     f, lo, hi = fit_held(t, s, *swing)
     turns = f * float(t[-1] - t[0])
     if turns >= HELD_BELOW_TURNS:
-        return first
+        return Reading(first, False)
     if turns < HELD_MIN_TURNS or (hi - lo) / f > MAX_RANGE:
-        return None
-    return Spin(rpm=60.0 * f, rpm_avg=60.0 * f, turns_in_view=turns, samples=int(t.size),
-                rpm_range=(60.0 * lo, 60.0 * hi) if turns < RANGE_BELOW_TURNS else None)
+        return Reading(first, True)
+    return Reading(Spin(rpm=60.0 * f, rpm_avg=60.0 * f, turns_in_view=turns, samples=int(t.size),
+                        rpm_range=(60.0 * lo, 60.0 * hi) if turns < RANGE_BELOW_TURNS else None), True)
