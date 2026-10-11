@@ -9,7 +9,7 @@
  * Firebase SDK for every viewer of every game (runtime/auth.mjs). */
 import { useEffect, useRef, useState } from "react";
 import { accountsOn, signInNow, whoIsSignedIn } from "../runtime/auth.mjs";
-import { sendTeams } from "../runtime/teams.mjs";
+import { fetchTeamNames, sendTeams } from "../runtime/teams.mjs";
 
 export function TeamsDialog({ naming, onClose, onSaved }) {
   const ref = useRef(null);
@@ -37,6 +37,16 @@ function TeamsForm({ naming, onClose, onSaved }) {
   const [yellow, setYellow] = useState(naming.names.yellow);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // The names the league's other games go by, offered in both boxes so the
+  // same team is not a new spelling every night. Asked for alongside the
+  // sign-in check, so they are there by the time the boxes are.
+  const [known, setKnown] = useState([]);
+
+  useEffect(() => {
+    let live = true;
+    fetchTeamNames(naming.sourceId).then(names => { if (live) setKnown(names); });
+    return () => { live = false; };
+  }, [naming.sourceId]);
 
   useEffect(() => {
     let live = true;
@@ -113,13 +123,16 @@ function TeamsForm({ naming, onClose, onSaved }) {
       <label className="tm-team">
         <span className="dot red" aria-hidden="true" />Red
         <input maxLength={60} autoFocus value={red} placeholder="Team name"
-               onChange={e => setRed(e.target.value)} />
+               list="teamNames" autoComplete="off" onChange={e => setRed(e.target.value)} />
       </label>
       <label className="tm-team">
         <span className="dot yellow" aria-hidden="true" />Yellow
         <input maxLength={60} value={yellow} placeholder="Team name"
-               onChange={e => setYellow(e.target.value)} />
+               list="teamNames" autoComplete="off" onChange={e => setYellow(e.target.value)} />
       </label>
+      <datalist id="teamNames">
+        {known.map(n => <option key={n} value={n} />)}
+      </datalist>
       {error && <p className="tm-error" role="alert">{error}</p>}
       <div className="tm-foot">
         <button type="button" disabled={busy} onClick={onClose}>Cancel</button>

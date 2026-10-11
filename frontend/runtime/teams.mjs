@@ -21,3 +21,19 @@ export async function sendTeams(sourceId, body, token) {
     return { ok: false, status: 0, error: null };
   }
 }
+
+/* The names this game's league has already given its teams (api.py,
+ * "team-names"), the most used first, to offer while somebody types. Public,
+ * so no token. Only ever a help: anything that goes wrong is no names, and
+ * the boxes take whatever is typed as they always did. */
+export const teamNamesUrl = sourceId => `/api/games/${encodeURIComponent(sourceId)}/team-names`;
+
+export async function fetchTeamNames(sourceId) {
+  try {
+    const r = await fetch(teamNamesUrl(sourceId));
+    const data = r.ok ? await r.json() : null;
+    return Array.isArray(data?.names) ? data.names.filter(n => typeof n === "string") : [];
+  } catch {
+    return [];
+  }
+}

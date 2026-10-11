@@ -4346,6 +4346,47 @@ class TestNamingTheTeams:
     def test_no_network_is_a_failure_not_a_throw(self):
         assert self.send(0, {}, throws=True)["res"] == {"ok": False, "status": 0, "error": None}
 
+    def known(self, status, reply, *, throws=False):
+        """fetchTeamNames against a stubbed fetch: what it asked for, and the names."""
+        module = (self.ROOT / "frontend/runtime/teams.mjs").as_uri()
+        fetch = ("async () => { throw new Error('offline'); }" if throws else
+                 f"async (url, init) => {{ asked.push({{url, init: init || null}});"
+                 f" return {{ ok: {str(200 <= status < 300).lower()}, status: {status},"
+                 f" json: async () => ({json.dumps(reply)}) }}; }}")
+        script = (f"const asked = [];\nglobalThis.fetch = {fetch};\n"
+                  f"const M = await import({module!r});\n"
+                  "const names = await M.fetchTeamNames('s 1');\n"
+                  "console.log(JSON.stringify({asked, names}));")
+        proc = subprocess.run([node, "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_the_leagues_names_are_asked_for_without_a_token(self):
+        got = self.known(200, {"league": "Monday", "names": ["Dimmit", "Grant"]})
+        assert got["asked"] == [{"url": "/api/games/s%201/team-names", "init": None}]
+        assert got["names"] == ["Dimmit", "Grant"]
+
+    def test_no_names_is_all_that_can_go_wrong(self):
+        assert self.known(404, {"detail": "no such game"})["names"] == []
+        assert self.known(200, {"names": "Dimmit"})["names"] == []
+        assert self.known(200, {"names": ["Dimmit", None, 3]})["names"] == ["Dimmit"]
+        assert self.known(0, {}, throws=True)["names"] == []
+
+    def test_both_boxes_offer_the_leagues_names(self):
+        teams = self.src("frontend/viewer/Teams.jsx")
+        form = teams[teams.index("function TeamsForm("):]
+        assert "fetchTeamNames(naming.sourceId)" in form
+        assert form.count('list="teamNames" autoComplete="off"') == 2
+        assert '<datalist id="teamNames">' in form
+
+    def test_so_do_the_game_lists(self):
+        games = self.src("frontend/site/Games.jsx")
+        cell = games[games.index("function TeamsCell("):games.index("const STATUS =")]
+        assert "fetchTeamNames(game.source_id)" in cell
+        assert cell.count("list={listId} autoComplete=\"off\"") == 2
+        assert "<datalist id={listId}>" in cell
+
     def test_the_button_is_only_where_there_is_a_game_and_a_server(self):
         app = self.src("frontend/viewer/App.jsx")
         button = app[app.index('<button id="teamsBtn"'):]

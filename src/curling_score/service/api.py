@@ -37,7 +37,7 @@ from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
 from curling_score.service import (dedupe, gameclips, playlist_index, playlists, practice,
-                                   slug, thinking_report)
+                                   slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
     JOB_KINDS, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team, User,
@@ -1080,6 +1080,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         log.info("teams %s set on %s by %s", names, src.id, me.id)
         return {"ok": True, **{c: names.get("team_" + c, getattr(src, "team_" + c))
                                for c in ("red", "yellow")}}
+
+    @app.get("/api/games/{source_id}/team-names")
+    def api_team_names(source_id: str, request: Request):
+        """The names this game's league has already given its teams, to
+        offer while somebody names this one's, so a team is one name in the
+        thinking report rather than a spelling per night. Public, like the
+        names on every game's page, and asked about on every open: a name
+        typed on the last game has to be offered on the next."""
+        src = repo.get_source(source_id)
+        if src is None:
+            raise HTTPException(404, "no such game")
+        return json_revalidated(request, team_names.suggest(
+            games_listed(repo.list_sources(limit=EVERY_SOURCE)), src), "public")
 
     @app.post("/api/games/{source_id}/scores")
     def api_enter_score(source_id: str, body: dict,

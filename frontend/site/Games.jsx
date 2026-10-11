@@ -17,6 +17,7 @@ import { authedFetch } from "./auth.js";
 import { clockParts, dayParts, localDay } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Header, TeamPicker, useCommitOnExit } from "./ui.jsx";
+import { fetchTeamNames } from "../runtime/teams.mjs";
 
 const leaguesIn = games => [...new Set(games.map(g => g.league).filter(Boolean))].sort();
 
@@ -143,6 +144,17 @@ function TeamsCell({ game, editable, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [red, setRed] = useState(game.team_red || "");
   const [yellow, setYellow] = useState(game.team_yellow || "");
+  // The names the league's other games go by, offered in both boxes so the
+  // same team is not a new spelling every night; asked for each time the
+  // boxes open, so the one just typed on the row above is among them.
+  const [names, setNames] = useState([]);
+  useEffect(() => {
+    if (!editing || !game.source_id) return;
+    let live = true;
+    fetchTeamNames(game.source_id).then(n => { if (live) setNames(n); });
+    return () => { live = false; };
+  }, [editing, game.source_id]);
+  const listId = `teamnames-${game.source_id}`;
 
   const named = game.team_red || game.team_yellow;
   const shown = named ? (
@@ -188,10 +200,15 @@ function TeamsCell({ game, editable, onSaved }) {
     <div className="teams">
       <span className="teamedit">
         <input className="red" maxLength={60} placeholder="red" aria-label="Red team"
+               list={listId} autoComplete="off"
                autoFocus value={red} onChange={e => setRed(e.target.value)} {...exit} />
         <span className="muted">v</span>
         <input className="yellow" maxLength={60} placeholder="yellow" aria-label="Yellow team"
+               list={listId} autoComplete="off"
                value={yellow} onChange={e => setYellow(e.target.value)} {...exit} />
+        <datalist id={listId}>
+          {names.map(n => <option key={n} value={n} />)}
+        </datalist>
       </span>
     </div>
   );

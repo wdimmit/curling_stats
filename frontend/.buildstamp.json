@@ -29,8 +29,8 @@
     "frontend/runtime/plays.mjs": "4317cb5bddd799126943375928138b768da436e6b0ab7633782e31f786802927",
     "frontend/runtime/prefs.mjs": "238969881d352d08606f188215c1adda730be7f8489cc049204df324f655d6fb",
     "frontend/runtime/scores.mjs": "51f0984f02f825dcc93ed3bc375e47130ec4026984b1fdab9c643ffe91b6deed",
-    "frontend/runtime/teams.mjs": "f124b06f3e54d517b4a9a58acadaf9442e80d91cb173923784d4115ec7601e1e",
-    "frontend/site/Games.jsx": "d9e13f10a65bed67fc84748bb3017d35e56a05cab3bee2f28d30b3282ffa21fa",
+    "frontend/runtime/teams.mjs": "6332ba23eb58dec48013b29e812b1724718b803c11f237b4437c1f8b31c0978d",
+    "frontend/site/Games.jsx": "2dc6bd9b3f8773c5cfe5822d093774a181cec3c71c5c2a71e8afb0ab1a5c1c87",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
     "frontend/site/Mine.jsx": "08ee58151c96e486b33e19ddbf2c4e21f6e03211eba28c617981fbc70250ad4c",
     "frontend/site/Practice.jsx": "f3c7523b1156f960f62b2371576c033bd8efdf6d198aa2ff78f911ec2d255567",
@@ -55,13 +55,13 @@
     "frontend/viewer/Pager.jsx": "3e750b495fffda8fd24ebf00f3f0dd928b1ea2b202ad560f532643c672693df7",
     "frontend/viewer/Played.jsx": "442404ed6dc9c004ce7c23b60cd089818088642495b6bd86db5bc54ff1e9406e",
     "frontend/viewer/Report.jsx": "c52a28d9789026141379daee371285bc1893999fd0d823f61e64ac3acac2035d",
-    "frontend/viewer/Teams.jsx": "74bbed7e6f80a148fb7a8d36a25ed7331b82fe0ba1c742129605e6c0bc0d5658",
+    "frontend/viewer/Teams.jsx": "8139510cb6c5d6d008d869021351706d5135ecea111253ca6fca73d7c9009a81",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
     "frontend/viewer/Watch.jsx": "2e7de47175de0cbd87b75ed400def1d76e407ce366ac90b5569c3690fa0e4f5e",
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "068caac9ed215a124d0ecf3f06d2fa9a36a43e256ba8770309f5c30c04e78078",
-    "src/curling_score/viewer/app.js": "6a80f9a9428fea4aa03631180c138c8365c72b550faab83dfb058bd1aa390f4d"
+    "src/curling_score/service/static/site.js": "bc416eb87506dfaf64f8ccf789d33cf85bd98258a43f62ac51cd183a820642b9",
+    "src/curling_score/viewer/app.js": "0c4c717d07e320a83b842167e694d0381fdba98f97f2aed5f5ffe545226ceda0"
   }
 }
