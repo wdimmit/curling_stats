@@ -80,6 +80,9 @@ services:
     build: !reset null
     pull_policy: never
     depends_on: !reset []
+    # Named, so an image built without the clips worker fails to start rather
+    # than running the pipeline with no GPU.
+    command: ["python", "-m", "curling_score.service.clipworker"]
     environment:
       WORKER_ID: ryzen-clips
       WORKER_ROLE: clips

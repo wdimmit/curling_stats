@@ -467,11 +467,7 @@ def main(argv=None) -> int:
         # The clips worker: no model, no live lane, only the clip queue.
         from curling_score.service import clipworker
 
-        clipworker.run_forever(
-            ApiClient(api_url, token), worker_id,
-            sources=clipworker.sources_from_env(os.environ.get("WORKER_CLIP_SOURCES")),
-            workdir=root / "clips", once="--once" in (argv or sys.argv[1:]))
-        return 0
+        return clipworker.main(argv)
     weights = resolve_weights()
     cache_gb = float(os.environ.get("WORKER_CACHE_GB", "300"))
     min_free_gb = float(os.environ.get("WORKER_MIN_FREE_GB", "40"))
