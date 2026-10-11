@@ -65,31 +65,37 @@ Rocks that were never seen (`missing`) are not asked for.
 
 ## 2. The job and the queue
 
-- `JOB_KINDS` gains **`"clips"`**. A clips job has `run_id` = the run the report reads and a
-  new `Job.spec` dict carrying everything the worker needs, so it never loads a timeline:
-  `{"video_id", "play_id", "calibration": {"left", "right"}, "rocks": [...]}`, where each
+- **A queue of its own.** A new `ClipJob` record in a new `clip_jobs` collection, with its
+  own worker routes (`/api/worker/clips/...`), rather than a fourth `Job` kind: the job
+  routes and both repos write a run's status from its job in eight places (`claim_job`,
+  `requeue_expired`, the claim, fail and yield routes, `job_for_run`, `queue_position`,
+  `count_queued`), and every one would have needed a clips exception. A `ClipJob` has
+  `run_id` = the run the report reads and a `spec` dict carrying everything the worker
+  needs, so it never loads a timeline:
+  `{"calibration": {"left", "right"}, "rocks": [...]}` (the video and play are fields of
+  the job), where each
   rock is `{"name", "house"}` (the end's) plus the rock's own `t_release_s`, `t_rest_s`,
   `t_enter_s`, `t_hog_s`, `v_hog_m_s`, `t_far_s`, `target_broom` and `line`. The API takes
   `calibration` from the document before `for_player` drops it.
-- **A clips job never touches its run.** `claim_job` (both repos) sets the run to
-  `processing` today; it must not for `clips`, and the clips job's completion and failure
-  paths must leave the run's status, timeline and `ready_at` alone.
+- **A clips job never touches its run**: nothing in the clip routes writes a run.
 - **Who claims it:** only the dedicated clips worker (section 3a). The three main workers
   keep claiming `vod` in their one-shot loop and `live`/`practice` in their lanes, and
   never see a clips job. If the clips worker is down, clips jobs wait in the queue.
+- **Leases:** the worker renews its lease after each rock (`/progress`); a lease that runs
+  out puts the job back in the queue, and one that has had `max_attempts` (3) fails.
 - **Not while the game is still live.** A live-charted game's recording reaches the cache's
-  `videos/` only when its stream ends (`LiveManager.finish` remuxes it then). `claim_job`
-  skips a clips job whose run's status is `live`; it becomes claimable once the run is
-  `ready`. A claim made mid-stream therefore gets its clips minutes after the stream ends,
+  `videos/` only when its stream ends (`LiveManager.finish` remuxes it then). The clips
+  claim skips a job whose run's status is `live`, pushing its `run_after` 5 minutes on; it
+  becomes claimable once the run is `ready`. A claim made mid-stream therefore gets its clips minutes after the stream ends,
   not a wrong "video no longer kept".
 - **When a job is queued** (API, only with `GAME_CLIPS_ENABLED=1`):
   1. `PUT /api/me/plays/{source_id}` saves a new play, or changes its colour or slot;
-  2. `GET /api/me/plays/{source_id}/doc` finds `play.clips` missing, or made for a run
-     other than the one it is reading (a reprocess since; or a play saved before this
-     feature -- the backfill needs no script).
-- **Never twice:** at most one queued or running clips job per play and run. A rock this
-  play already has a clip for on that run (`clip: true` in its `clips.rocks`) is left out
-  of the next job's `rocks`; a job with no rocks left is not queued.
+  2. `GET /api/me/plays/{source_id}/doc` finds rocks of the player's that no clip job of
+     this play has asked for on the run it is reading (a reprocess since; or a play saved
+     before this feature -- the backfill needs no script).
+- **Never twice:** a rock this play has any clip state for on that run (on its way, made,
+  or none coming) is left out of the next job's `rocks`; a job with no rocks left is not
+  queued. A rock whose clip failed is not tried again on that run.
 - The play rate limit (`PLAY_HOUR_LIMIT`/`PLAY_DAY_LIMIT`) already bounds the PUTs; the
   one-job-per-run rule bounds the doc reads.
 
@@ -131,7 +137,9 @@ helper that moves):
 5. **Upload** each clip through the existing artifacts flow to
    `store.clip_key(video_id, run_id, rock_name)` =
    `runs/<video>/<run>/clips/<game>.<end>.<id>.mp4`.
-6. **Complete** with `{"clips": {rock_name: {"clip": true, "overlay": [...]}, ...}}`.
+6. **Complete** with `{"rocks": {rock_name: {"clip": true, "overlay": [...]}, ...}}`.
+   A plan that comes out empty for a released rock (no long camera in the calibration)
+   gets `{"clip": null, "reason": "no_camera"}`.
 
 The job's progress posts keep its lease alive as other jobs do; about 1.5 s a rock, so
 ~30 s for a four-player game's 16 rocks once the video is cached.
@@ -150,10 +158,10 @@ A fourth service in `deploy/docker-compose.worker.yml`, beside `worker`, `worker
   `curling-cache-2`, `curling-cache-3`), so a main worker could only clip the games it ran
   itself. The clips worker mounts all three, **read-only**, and finds a game's video
   wherever it is. It also never waits behind a VOD run or a league night's streams.
-- **What it claims:** a new `WORKER_KINDS` env, `clips` here, makes the worker's one-shot
-  loop claim only those kinds; unset, it stays `vod` as today. `WORKER_LIVE` and
-  `WORKER_PRACTICE` are set to `"0"` on this service (it shares `worker.env`), so it starts
-  no live lane.
+- **What it runs:** `WORKER_ROLE=clips` makes `worker.main` run the clips loop
+  (`service/clipworker.py`) instead of the pipeline loop: it loads no model and starts no
+  live lane, and it claims only from the clip queue. `WORKER_LIVE` and `WORKER_PRACTICE`
+  are set to `"0"` on this service too (it shares `worker.env`).
 - **Its own scratch:** `CURLING_SCORE_CACHE` is a small volume of its own
   (`/data/wdd/curling-clips`); cut clips are written there and deleted once uploaded. It
   prunes nothing and empties nothing in the other caches -- the read-only mounts make sure.
@@ -180,18 +188,24 @@ For runs without them the camera switch falls back to the rock's arrival in the 
 
 ## 5. API and storage
 
-- **`Play.clips`** (new, default None):
-  `{"run_id", "job_id", "state": "queued"|"done", "rocks": {rock_name: {"clip", "reason"?,
-  "overlay"?}}}`. `clip` follows the practice convention: `false` on its way, `true`
-  uploaded, `null` none coming, with `reason` one of `no_release`, `video_gone`,
-  `cut_failed`. The overlay is the practice per-piece list (~1 KB a rock).
-- **Completion** (`POST /api/worker/jobs/{id}/complete` for a clips job) merges the rocks
-  into the play named in `Job.spec`, if it still exists and its `clips.run_id` is still the
-  job's run; otherwise the result is dropped (the uploads stay, reusable by rock name).
-  A clips job that fails for good marks its rocks `cut_failed`.
-- **`GET /api/me/plays/{source_id}/doc`** puts each of the player's rocks' clip state and
-  overlay on the rock (`rock.clip`, `rock.overlay`), and a game-level `clips` summary
-  (`state`, counts, `reason` when every rock shares one).
+- **The clip jobs are the record.** A finished `ClipJob` keeps what came of each rock in
+  `rocks`: `{rock_name: {"clip", "reason"?, "overlay"?}}`. Nothing is written to the play,
+  so saving a play again can never wipe its clips. A play's clip state on a run is read
+  from its clip jobs on that run, oldest first (`service/gameclips.state_for`): a queued or
+  running job's rocks are `{"clip": false}`, a finished job's are its results, a failed
+  job's are `cut_failed`, and a rock once `true` stays `true`.
+- `clip` follows the practice convention: `false` on its way, `true` uploaded, `null` none
+  coming, with `reason` one of `no_release`, `no_camera` (the timeline has no long-camera
+  calibration to cut from), `video_gone`, `cut_failed` (the cut or its upload failed).
+  The overlay is the practice per-piece list (~1 KB a rock; over 16 KB it is dropped).
+- **Completion** (`POST /api/worker/clips/{id}/complete`) stores the results, kept to the
+  rocks the job asked for and the shapes above. A play cleared meanwhile leaves them on
+  the job, harmlessly, keyed by its play id.
+- **`GET /api/me/plays/{source_id}/doc`** marks each of the player's rocks with its name
+  (`rock.rock`) and returns the play's clip state beside the document:
+  `{"doc", "fallback", "clips": {"rocks": {...}, "pending": bool}}`.
+- **`GET /api/me/plays/{source_id}/clips`** returns that `clips` object alone, cheaply (no
+  document is loaded), for the page to poll while `pending`.
 - **`GET /api/me/plays/{source_id}/clips/{rock_name}`** returns `{"url"}`, a 1-hour signed
   GCS link, only to the play's owner and only for a rock whose `clip` is `true`; 404
   otherwise. Same signing as `practice_clip`.
@@ -214,8 +228,8 @@ For runs without them the camera switch falls back to the rock's arrival in the 
   pages import them.
 - **Games table** (`PlayRow`): the Rocks cell adds the clip status -- "clips on their way",
   "14 of 16 clips", or "no clips: video no longer kept".
-- **Polling:** while any shown play's clips are `queued`, the page re-reads those plays'
-  docs every 15 s; it stops when none are.
+- **Polling:** while any shown play's clips are `pending`, the page reads those plays'
+  `/clips` every 15 s; it stops when none are.
 
 ## 7. Edge cases
 
@@ -226,7 +240,7 @@ For runs without them the camera switch falls back to the rock's arrival in the 
 | Side view without a lateral fit | Clip cut, overlay piece has no lines |
 | Game reprocessed after the claim | Next /shots read sees a new run and queues a job; if the video was pruned meanwhile, `video_gone` |
 | Slot or colour changed | New job for the new rocks; rocks already cut on that run reused |
-| Play cleared while its job runs | Completion finds no play; result dropped |
+| Play cleared while its job runs | The results stay on the job; a new play by the same person on that game (same play id) finds them again |
 | Two people claim the same rock | Each play has its own job and state; the second job cuts the rock again to the same key (harmless) |
 | Worker restart mid-job | Lease expires, job requeued, rocks re-cut to the same keys |
 | Claimed while the game's stream is still live | Job waits (run `live`), runs once the run is `ready` and the recording is kept |
@@ -244,9 +258,10 @@ Python unit tests:
   (round trip);
 - queueing: on a new play, on a changed slot, on a changed run at /doc, never twice for one
   play and run, not with the flag off;
-- `claim_job` leaves a clips job's run status alone, and skips a clips job whose run is
-  `live` (both repos);
-- `WORKER_KINDS=clips` claims only clips and starts no live lane; unset claims `vod`;
+- the clips claim, progress, complete and fail routes leave the run untouched, and the
+  claim skips a job whose run is `live`;
+- an expired lease requeues a clip job, and fails it after `max_attempts`;
+- `WORKER_ROLE=clips` runs the clips loop and nothing else;
 - the video lookup across several cache roots: first found, none found, `kept/` ignored;
 - the worker clips job with a fake cache: video missing, a rock with no release, a cut that
   raises, a good cut (with `cut` stubbed);
