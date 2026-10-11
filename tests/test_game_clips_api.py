@@ -126,3 +126,116 @@ class TestTheClipsWorkersRoutes:
         assert wpost(w, "/api/worker/clips/cj_1/fail", {"error": "again"}).json()["final"]
         assert w["repo"].get_clip_job("cj_1").state == "failed"
         assert w["repo"].get_run(run.id).status == "ready"
+
+
+from tests.test_service_api import ADMIN, work_through  # noqa: E402
+from tests.test_plays import played_doc  # noqa: E402
+
+G = "/g/{}/"
+
+
+def claimed(w, slot=4, color="red"):  # noqa: F811
+    _, _, src = a_played_game(w)
+    w["settings"].game_clips_enabled = True
+    r = put(w, src, {"path": G.format(src), "color": color, "slot": slot})
+    assert r.status_code == 200, r.text
+    return src
+
+
+def jobs(w, src):  # noqa: F811
+    return w["repo"].clip_jobs_for_play(play_id("uid-sarah", src))
+
+
+def worker_finishes(w, results):  # noqa: F811
+    job = claim(w).json()["job"]
+    assert wpost(w, f"/api/worker/clips/{job['id']}/complete",
+                 {"rocks": results}).status_code == 200
+    return job
+
+
+class TestAskingForClips:
+    def test_off_nothing_is_asked_and_nothing_shown(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
+        assert jobs(w, src) == []
+        body = get(w, f"/api/me/plays/{src}/doc").json()
+        assert "clips" not in body
+        assert all("rock" not in s for s in body["doc"]["games"][0]["ends"][0]["shots"])
+        assert get(w, f"/api/me/plays/{src}/clips").status_code == 404
+        assert get(w, f"/api/me/plays/{src}/clips/0.1.13").status_code == 404
+
+    def test_saving_a_play_asks_for_its_rocks(self, w):  # noqa: F811
+        src = claimed(w)
+        (job,) = jobs(w, src)
+        assert [r["name"] for r in job.spec["rocks"]] == ["0.1.13", "0.1.15"]
+        assert job.run_id == w["repo"].get_source(src).current_run_id
+
+    def test_saving_the_same_rocks_again_queues_nothing(self, w):  # noqa: F811
+        src = claimed(w)
+        worker_finishes(w, {"0.1.13": {"clip": True}, "0.1.15": {"clip": True}})
+        put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
+        assert len(jobs(w, src)) == 1
+        assert get(w, f"/api/me/plays/{src}/clips").json()["clips"]["pending"] is False
+
+    def test_other_rocks_are_asked_for_and_the_old_clips_kept(self, w):  # noqa: F811
+        src = claimed(w)
+        worker_finishes(w, {"0.1.13": {"clip": True}, "0.1.15": {"clip": True}})
+        put(w, src, {"color": "yellow", "slot": 4})
+        assert [r["name"] for r in jobs(w, src)[-1].spec["rocks"]] == ["0.1.14", "0.1.16"]
+        put(w, src, {"color": "red", "slot": 4})
+        assert len(jobs(w, src)) == 2
+
+    def test_the_report_marks_the_rocks_and_says_where_they_stand(self, w):  # noqa: F811
+        src = claimed(w)
+        body = get(w, f"/api/me/plays/{src}/doc").json()
+        shots = body["doc"]["games"][0]["ends"][0]["shots"]
+        assert [s.get("rock") for s in shots if s.get("rock")] == ["0.1.13", "0.1.15"]
+        assert body["clips"] == {"rocks": {"0.1.13": {"clip": False}, "0.1.15": {"clip": False}},
+                                 "pending": True}
+
+    def test_reading_again_queues_nothing(self, w):  # noqa: F811
+        src = claimed(w)
+        get(w, f"/api/me/plays/{src}/doc")
+        get(w, f"/api/me/plays/{src}/doc")
+        assert len(jobs(w, src)) == 1
+
+    def test_a_play_from_before_clips_is_asked_for_when_the_report_is_read(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
+        w["settings"].game_clips_enabled = True
+        assert get(w, f"/api/me/plays/{src}/doc").json()["clips"]["pending"] is True
+        assert len(jobs(w, src)) == 1
+
+    def test_a_reprocess_asks_again_on_the_new_run(self, w):  # noqa: F811
+        src = claimed(w)
+        worker_finishes(w, {"0.1.13": {"clip": True}, "0.1.15": {"clip": True}})
+        first = w["repo"].get_source(src).current_run_id
+        w["client"].post("/api/admin/reprocess", headers=ADMIN, json={"video_id": VID})
+        work_through(w, doc=played_doc(), games=1)
+        assert w["repo"].get_source(src).current_run_id != first
+        clips = get(w, f"/api/me/plays/{src}/doc").json()["clips"]
+        assert clips["pending"] is True
+        assert jobs(w, src)[-1].run_id == w["repo"].get_source(src).current_run_id
+
+
+class TestReadingClips:
+    def test_the_state_as_the_worker_left_it(self, w):  # noqa: F811
+        src = claimed(w)
+        worker_finishes(w, {"0.1.13": {"clip": True, "overlay": [{"t0": 0.0, "t1": 2.0}]},
+                            "0.1.15": {"clip": None, "reason": "video_gone"}})
+        got = get(w, f"/api/me/plays/{src}/clips").json()["clips"]
+        assert got == {"rocks": {"0.1.13": {"clip": True, "overlay": [{"t0": 0.0, "t1": 2.0}]},
+                                 "0.1.15": {"clip": None, "reason": "video_gone"}},
+                       "pending": False}
+
+    def test_the_link_is_the_owners_alone(self, w):  # noqa: F811
+        src = claimed(w)
+        job = worker_finishes(w, {"0.1.13": {"clip": True},
+                                  "0.1.15": {"clip": None, "reason": "no_release"}})
+        r = get(w, f"/api/me/plays/{src}/clips/0.1.13")
+        assert r.status_code == 200, r.text
+        assert r.json()["url"] == f"memory://runs/{VID}/{job['run_id']}/clips/0.1.13.mp4"
+        assert get(w, f"/api/me/plays/{src}/clips/0.1.15").status_code == 404
+        assert get(w, f"/api/me/plays/{src}/clips/0.1.13", headers=ALEX).status_code == 404
+        assert get(w, f"/api/me/plays/{src}/clips/..%2Fx").status_code == 404
+        assert get(w, f"/api/me/plays/{src}/clips/0.1.13", headers=None).status_code == 401

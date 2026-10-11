@@ -177,6 +177,10 @@ class Settings:
     # Practice sessions: /practice/sheet/N and its API. Off until a worker
     # that can watch a practice stream (WORKER_PRACTICE=1) is running.
     practice_enabled: bool = False
+    # Clips of the rocks a person says they threw, on My shots: asked for when
+    # a play is saved or its report read, cut by the clips worker. Off until a
+    # worker running WORKER_ROLE=clips is up.
+    game_clips_enabled: bool = False
     # The club's own clock, which playlists' schedules are written in.
     club_tz: str = "America/Los_Angeles"
     model_id: str = "classical"
@@ -219,6 +223,7 @@ class Settings:
             doubles_enabled=env("DOUBLES_ENABLED", "0") in ("1", "true", "yes"),
             live_enabled=env("LIVE_ENABLED", "0") in ("1", "true", "yes"),
             practice_enabled=env("PRACTICE_ENABLED", "0") in ("1", "true", "yes"),
+            game_clips_enabled=env("GAME_CLIPS_ENABLED", "0") in ("1", "true", "yes"),
             club_tz=env("CLUB_TZ", "America/Los_Angeles"),
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
@@ -1879,6 +1884,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.put_play(play)
         if existing is not None and existing.source_id != src.id:
             repo.delete_play(me.id, existing.source_id)
+        if settings.game_clips_enabled:
+            # Asked for now, while the game's video is surely still cached;
+            # the report asks again for anything this misses.
+            try:
+                doc, run, _ = play_doc(play, src)
+                ask_for_clips(play, doc, run)
+            except HTTPException as exc:
+                log.info("clips for play %s not asked for: %s", play.id, exc.detail)
         log.info("play %s %d (%s) on %s by %s", color, slot, link, src.id, me.id)
         return {"play": play_json(play)}
 
@@ -1933,16 +1946,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         out.sort(key=lambda p: p["played_at"] or "", reverse=True)
         return {"plays": out}
 
-    @app.get("/api/me/plays/{source_id}/doc")
-    def api_my_play_doc(source_id: str, request: Request,
-                        authorization: str | None = Header(default=None)):
-        """The game as the report reads it: graded by the chart the play was
-        saved from, if it was, then cut down to this player's rocks and the
-        little the browser needs of everyone else's (timeline.for_player)."""
-        me = require_user(authorization)
-        play, src = find_play(me.id, source_id)
-        if play is None or src is None:
-            raise HTTPException(404, "you have not said which rocks you threw in that game")
+    def play_doc(play: Play, src: Source) -> tuple[dict, Run, str | None]:
+        """The game as this play's report reads it -- graded by the chart the
+        play was saved from, if it was -- not yet cut down to the player:
+        (doc, the run it is from, why it is ungraded when it should be)."""
         doc, fallback = None, None
         if play.chart_id:
             chart = live_chart(repo.get_chart(play.chart_id))
@@ -1961,8 +1968,78 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if doc is None:
             src, run = lookup_source(src.id)
             doc = game_doc(run, src.game_index, src, src.play_start_s)
+        return doc, run, fallback
+
+    def report_run(play: Play, src: Source) -> Run | None:
+        """The run play_doc reads, without loading its document."""
+        if play.chart_id:
+            chart = live_chart(repo.get_chart(play.chart_id))
+            if chart and chart.game_index is not None:
+                run = repo.get_run(chart.run_id)
+                if run is not None:
+                    return run
+        return repo.get_run(src.current_run_id)
+
+    def ask_for_clips(play: Play, doc: dict, run: Run) -> dict | None:
+        """Clips of the rocks this play names in ``doc`` (service/gameclips.py),
+        asked for if they have not been, and where they stand; None if that
+        went wrong -- the report and the play stand without them. Marks the
+        player's rocks in ``doc`` with their names."""
+        try:
+            rocks = gameclips.player_rocks(doc, play.color, play.slot)
+            return gameclips.ensure(repo, play, run, rocks, doc.get("calibration"), now())
+        except Exception:  # noqa: BLE001
+            log.exception("clips for play %s were not asked for", play.id)
+            return None
+
+    def clips_on():
+        if not settings.game_clips_enabled:
+            raise HTTPException(404, "clips are not switched on")
+
+    @app.get("/api/me/plays/{source_id}/doc")
+    def api_my_play_doc(source_id: str, request: Request,
+                        authorization: str | None = Header(default=None)):
+        """The game as the report reads it: graded by the chart the play was
+        saved from, if it was, then cut down to this player's rocks and the
+        little the browser needs of everyone else's (timeline.for_player)."""
+        me = require_user(authorization)
+        play, src = find_play(me.id, source_id)
+        if play is None or src is None:
+            raise HTTPException(404, "you have not said which rocks you threw in that game")
+        doc, run, fallback = play_doc(play, src)
+        clips = ask_for_clips(play, doc, run) if settings.game_clips_enabled else None
         doc = timeline.for_player(doc, play.color, play.slot)
-        return json_revalidated(request, {"doc": doc, "fallback": fallback}, "private")
+        out = {"doc": doc, "fallback": fallback}
+        if clips is not None:
+            out["clips"] = clips
+        return json_revalidated(request, out, "private")
+
+    @app.get("/api/me/plays/{source_id}/clips")
+    def api_my_play_clips(source_id: str, authorization: str | None = Header(default=None)):
+        """Where this play's clips stand, without the document: the page asks
+        this while any are on their way."""
+        clips_on()
+        me = require_user(authorization)
+        play, src = find_play(me.id, source_id)
+        run = report_run(play, src) if play and src else None
+        if run is None:
+            raise HTTPException(404, "you have not said which rocks you threw in that game")
+        return {"clips": gameclips.state_for(repo, play.id, run.id)}
+
+    @app.get("/api/me/plays/{source_id}/clips/{rock}")
+    def api_my_play_clip(source_id: str, rock: str,
+                         authorization: str | None = Header(default=None)):
+        """A short-lived link to one of this play's clips, for the play's owner."""
+        clips_on()
+        me = require_user(authorization)
+        play, src = find_play(me.id, source_id)
+        run = report_run(play, src) if play and src else None
+        if run is None or not gameclips.GAME_ROCK.match(rock):
+            raise HTTPException(404, "no clip for that rock")
+        got = gameclips.state_for(repo, play.id, run.id)["rocks"].get(rock) or {}
+        if got.get("clip") is not True:
+            raise HTTPException(404, "no clip for that rock")
+        return {"url": store.presign_get(clip_key(run.video_id, run.id, rock), CLIP_URL_S)}
 
     # ------------------------------------------------------------- practice
     def practice_on():
