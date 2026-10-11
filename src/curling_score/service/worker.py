@@ -130,6 +130,31 @@ class ApiClient:
                           {"worker_id": worker_id, "error": error, "kind": kind,
                            "retry_after_s": retry_after_s})
 
+    # The clips worker's queue (service/clipworker.py).
+    def claim_clips(self, worker_id):
+        r = self._http.post(f"{self.base}/api/worker/clips/claim", headers=self._headers,
+                            json={"worker_id": worker_id, "version": version.PIPELINE_VERSION})
+        if r.status_code == 204:
+            return None
+        r.raise_for_status()
+        return r.json()["job"]
+
+    def clip_progress(self, job_id, worker_id):
+        return self._post(f"/api/worker/clips/{job_id}/progress", {"worker_id": worker_id},
+                          timeout=PROGRESS_TIMEOUT_S)
+
+    def clip_artifacts(self, job_id, worker_id, files):
+        return self._post(f"/api/worker/clips/{job_id}/artifacts",
+                          {"worker_id": worker_id, "files": files})
+
+    def clip_complete(self, job_id, worker_id, rocks):
+        return self._post(f"/api/worker/clips/{job_id}/complete",
+                          {"worker_id": worker_id, "rocks": rocks})
+
+    def clip_fail(self, job_id, worker_id, error):
+        return self._post(f"/api/worker/clips/{job_id}/fail",
+                          {"worker_id": worker_id, "error": error})
+
 
 def classify_error(exc: BaseException) -> str:
     """Which kind of failure this is, which decides whether and when to retry."""
@@ -437,8 +462,17 @@ def main(argv=None) -> int:
     token = os.environ["WORKER_TOKEN"]
     root = Path(os.environ.get("CURLING_SCORE_CACHE") or cache.default_root())
     os.environ["CURLING_SCORE_CACHE"] = str(root)
-    weights = resolve_weights()
     worker_id = os.environ.get("WORKER_ID") or socket.gethostname()
+    if os.environ.get("WORKER_ROLE") == "clips":
+        # The clips worker: no model, no live lane, only the clip queue.
+        from curling_score.service import clipworker
+
+        clipworker.run_forever(
+            ApiClient(api_url, token), worker_id,
+            sources=clipworker.sources_from_env(os.environ.get("WORKER_CLIP_SOURCES")),
+            workdir=root / "clips", once="--once" in (argv or sys.argv[1:]))
+        return 0
+    weights = resolve_weights()
     cache_gb = float(os.environ.get("WORKER_CACHE_GB", "300"))
     min_free_gb = float(os.environ.get("WORKER_MIN_FREE_GB", "40"))
     recording_days = float(os.environ.get("WORKER_RECORDING_DAYS", "7"))
