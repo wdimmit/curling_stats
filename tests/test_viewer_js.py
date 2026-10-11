@@ -4406,3 +4406,56 @@ class TestTheGameFilterOnThePage:
         page = self.page()
         assert "left={off.has(p.source_id)}" in page
         assert "Not in the report" in page
+
+
+class TestClipsOnTheShotsPage:
+    """My shots plays a clip of each rock that has one; core says where the
+    clips stand, the page only lays it out."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def test_each_row_knows_its_rock(self):
+        mine = aimed(13, "red", 4)
+        mine["rock"] = "0.1.13"
+        d = doc([mine, aimed(14, "yellow", 4), aimed(15, "red", 4)])
+        d["schema_version"] = 8
+        got = run_js(f"out(playerRocks({json.dumps(play())}, {json.dumps(d)}).rows"
+                     ".map(r => r.rock));")
+        assert got == ["0.1.13", None]
+
+    def test_only_a_made_clip_plays(self):
+        clips = {"rocks": {"0.1.13": {"clip": True, "overlay": [{"t0": 0, "t1": 1}]},
+                           "0.1.15": {"clip": None, "reason": "no_release"},
+                           "0.1.11": {"clip": False}}, "pending": True}
+        got = run_js(f"const c = {json.dumps(clips)};"
+                     "out(['0.1.13', '0.1.15', '0.1.11', null].map(k => rockClip({rock: k}, c))"
+                     ".concat([rockClip({rock: '0.1.13'}, undefined)]));")
+        assert got == [{"clip": True, "overlay": [{"t0": 0, "t1": 1}]}, None, None, None, None]
+
+    @pytest.mark.parametrize("states,want", [
+        ([{"clip": False}, {"clip": True}], "Clips on their way…"),
+        ([None, {"clip": True}], "Clips on their way…"),
+        ([{"clip": True}, {"clip": True}], "2 clips"),
+        ([{"clip": True}, {"clip": None, "reason": "no_release"}], "1 of 2 clips"),
+        ([{"clip": None, "reason": "video_gone"}] * 2, "No clips: the video is no longer kept"),
+        ([{"clip": None, "reason": "no_release"}, {"clip": None, "reason": "video_gone"}],
+         "No clips"),
+    ])
+    def test_the_games_table_says_where_they_stand(self, states, want):
+        rows = [{"rock": f"0.1.{n}"} for n in range(len(states))]
+        clips = {"rocks": {f"0.1.{n}": s for n, s in enumerate(states) if s is not None}}
+        assert run_js(f"out(clipText({json.dumps(rows)}, {json.dumps(clips)}));") == want
+
+    def test_with_clips_off_it_says_nothing(self):
+        assert run_js("out([clipText([{rock: '0.1.1'}], undefined), clipText([], {rocks: {}})]);") \
+            == [None, None]
+
+    def test_the_page_polls_only_while_clips_are_on_their_way(self):
+        page = (self.ROOT / "frontend/site/Shots.jsx").read_text()
+        assert "const CLIP_POLL_MS = 15000;" in page
+        assert "`${playUrl(p.source_id)}/clips`" in page
+        assert "?.clips?.pending" in page
+
+    def test_practice_and_my_shots_share_one_player(self):
+        for rel in ("frontend/site/Practice.jsx", "frontend/site/Shots.jsx"):
+            assert 'import { ClipPlayer } from "./clip.jsx";' in (self.ROOT / rel).read_text()
+        assert "function ClipLines" not in (self.ROOT / "frontend/site/Practice.jsx").read_text()

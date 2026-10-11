@@ -12,18 +12,22 @@
  *
  * Every number and word in the groups is core's (core/myshots.mjs); this
  * only lays them out. */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
-  pickedText, pickerRow, playText, playerRocks, positionChoices, shotGroups, summaryText,
+  clipText, pickedText, pickerRow, playText, playerRocks, positionChoices, rockClip, shotGroups,
+  summaryText,
 } from "../core/myshots.mjs";
 import { playUrl } from "../runtime/plays.mjs";
 import { authedFetch, signIn } from "./auth.js";
 import { day } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Warn } from "./ui.jsx";
+import { ClipPlayer } from "./clip.jsx";
 import { DeliveryOverlay, MissScatter } from "./ShotCharts.jsx";
 
 const AT_ONCE = 3;
+// While a game's clips are on their way, ask after them this often.
+const CLIP_POLL_MS = 15000;
 const playKey = p => `${p.source_id}|${p.color}|${p.slot}|${p.updated_at}`;
 
 /* The games left out of the report, kept across visits in this browser. The
@@ -132,8 +136,8 @@ function useRocks(plays) {
         try {
           const res = await authedFetch(`${playUrl(p.source_id)}/doc`);
           if (res.ok) {
-            const { doc, fallback } = await res.json();
-            one = { ...playerRocks(p, doc), fallback };
+            const { doc, fallback, clips } = await res.json();
+            one = { ...playerRocks(p, doc), fallback, clips };
           } else {
             one = { failed: true, status: res.status };
           }
@@ -145,7 +149,29 @@ function useRocks(plays) {
     };
     for (let i = 0; i < AT_ONCE; i++) worker();
   }, [plays]);
-  return got;
+  return [got, setGot];
+}
+
+/* While any game's clips are on their way, ask after just those games every
+ * CLIP_POLL_MS -- /clips, no document -- and stop once none are. */
+function useClipPoll(plays, rocks, setRocks) {
+  const waiting = (plays || []).filter(p => rocks[playKey(p)]?.clips?.pending);
+  const keys = waiting.map(playKey).join(",");
+  useEffect(() => {
+    if (!waiting.length) return undefined;
+    const id = setInterval(async () => {
+      for (const p of waiting) {
+        try {
+          const res = await authedFetch(`${playUrl(p.source_id)}/clips`);
+          if (!res.ok) continue;
+          const { clips } = await res.json();
+          setRocks(g => (g[playKey(p)] ? { ...g, [playKey(p)]: { ...g[playKey(p)], clips } } : g));
+        } catch { /* asked again next time */ }
+      }
+    }, CLIP_POLL_MS);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keys]);
 }
 
 function Summary({ group }) {
@@ -160,32 +186,53 @@ function Summary({ group }) {
   );
 }
 
-function RockTable({ rows }) {
+function RockTable({ rows, clips }) {
+  const [open, setOpen] = useState(null);
   const heads = rows[0].figures.map(f => f.label);
   return (
     <table className="rocks">
       <tbody>
         <tr><th>Game</th><th>End</th><th>Rock</th><th>Shot</th>
             {heads.map(h => <th key={h}>{h}</th>)}<th /></tr>
-        {rows.map(r => (
-          <tr key={r.key}>
-            <td className="game">{r.game}</td>
-            <td data-label="End">{r.end}</td>
-            <td data-label="Rock">{r.number}</td>
-            <td data-label="Shot">{r.typeName}</td>
-            {r.figures.map(f => (
-              <td key={f.key} data-label={f.label} title={f.note || undefined}
-                  className={f.dim ? "dim" : undefined}>{f.value}</td>
-            ))}
-            <td className="actions">{r.href && <a className="btn" href={r.href}>Watch</a>}</td>
-          </tr>
-        ))}
+        {rows.map(r => {
+          const clip = rockClip(r, clips?.[r.sourceId]);
+          const shown = clip && open === r.key;
+          return (
+            <Fragment key={r.key}>
+              <tr>
+                <td className="game">{r.game}</td>
+                <td data-label="End">{r.end}</td>
+                <td data-label="Rock">{r.number}</td>
+                <td data-label="Shot">{r.typeName}</td>
+                {r.figures.map(f => (
+                  <td key={f.key} data-label={f.label} title={f.note || undefined}
+                      className={f.dim ? "dim" : undefined}>{f.value}</td>
+                ))}
+                <td className="actions">
+                  {clip && (
+                    <button aria-expanded={shown}
+                            onClick={() => setOpen(shown ? null : r.key)}>Clip</button>
+                  )}
+                  {r.href && <a className="btn" href={r.href}>Watch</a>}
+                </td>
+              </tr>
+              {shown && (
+                <tr className="clip-row">
+                  <td colSpan={heads.length + 5}>
+                    <ClipPlayer src={`${playUrl(r.sourceId)}/clips/${encodeURIComponent(r.rock)}`}
+                                overlay={clip.overlay} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
       </tbody>
     </table>
   );
 }
 
-function Group({ group }) {
+function Group({ group, clips }) {
   // Open to begin with when short, then the reader's: a group that grows
   // past twelve as games arrive must not snap shut under them.
   const [open, setOpen] = useState(group.rows.length <= 12);
@@ -199,7 +246,7 @@ function Group({ group }) {
       </div>
       <details open={open} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary>Every rock ({group.rows.length})</summary>
-        <RockTable rows={group.rows} />
+        <RockTable rows={group.rows} clips={clips} />
       </details>
     </section>
   );
@@ -240,6 +287,7 @@ function PlayRow({ p, rocks, left, onChanged }) {
                                            : "Could not load this game.")
     : `${rocks.rows.length} rock${rocks.rows.length === 1 ? "" : "s"}`
       + (rocks.missing ? `, ${rocks.missing} never seen` : "");
+  const clips = rocks && !rocks.failed ? clipText(rocks.rows, rocks.clips) : null;
   return (
     <tr className={left ? "left" : undefined}>
       <td className="when">{day(p.played_at)}</td>
@@ -251,7 +299,7 @@ function PlayRow({ p, rocks, left, onChanged }) {
         {note && <Warn>{note}</Warn>}
       </td>
       <td data-label="Grading">{p.graded ? "The chart's" : "As detected"}</td>
-      <td data-label="Rocks">{state}</td>
+      <td data-label="Rocks">{state}{clips && <div className="muted">{clips}</div>}</td>
       <td className="actions">
         <select aria-label="Which rocks were yours" disabled={busy}
                 value={`${p.color}|${p.slot}`} onChange={change}>
@@ -268,7 +316,8 @@ export function Shots() {
   const { user, ready, accounts } = useAuthUser();
   const list = useResource("/api/me/plays", { skip: !ready || !user, deps: [user?.uid] });
   const plays = list.data?.plays ?? null;
-  const rocks = useRocks(plays);
+  const [rocks, setRocks] = useRocks(plays);
+  useClipPoll(plays, rocks, setRocks);
   const [err, setErr] = useState("");
   const [off, setOffState] = useState(loadOff);
   // Only games still listed are kept: a cleared game's id would linger for ever.
@@ -280,6 +329,8 @@ export function Shots() {
   };
 
   const live = (plays || []).filter(p => p.status === "ok");
+  // Each game's clip state, by game, for the rows the groups mix together.
+  const clipsBy = Object.fromEntries(live.map(p => [p.source_id, rocks[playKey(p)]?.clips]));
   const loaded = live.filter(p => rocks[playKey(p)]).length;
   const groups = useMemo(
     () => shotGroups(live.filter(p => !off.has(p.source_id))
@@ -326,7 +377,7 @@ export function Shots() {
                   <GamePicker plays={plays} rocks={rocks} off={off} setOff={setOff} />
                   <p className="muted intro">{picked.intro}
                   {loaded < live.length ? ` Loaded ${loaded} of ${live.length}…` : ""}</p>
-                  {groups.length ? groups.map(g => <Group key={g.id} group={g} />)
+                  {groups.length ? groups.map(g => <Group key={g.id} group={g} clips={clipsBy} />)
                    : picked.on && loaded === live.length
                      ? <Card>None of your rocks in these games were seen.</Card>
                    : null}

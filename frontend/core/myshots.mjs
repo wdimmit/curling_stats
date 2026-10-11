@@ -114,7 +114,9 @@ export function playerRocks(play, doc, day = shortDay) {
       const nums = lineNumbers(s, doc);
       rows.push({
         key: `${play.source_id}.${end.number}.${s.number}`,
-        sourceId: play.source_id, playedAt: play.played_at || "", game,
+        sourceId: play.source_id,
+        // Its name for its clip (service/gameclips.py), when clips are on.
+        rock: s.rock ?? null, playedAt: play.played_at || "", game,
         end: end.number, number: s.number,
         type, typeName: TYPE[type]?.name ?? type, group: groupOf(type),
         turn: nums.turn, nums, figures: lineFigures(s, doc, nums).figures,
@@ -247,4 +249,24 @@ export function missScatter(rows, turn, box = SCATTERBOX) {
     skipped: rows.length - plotted.length,
     clipped: plotted.filter(r => Math.abs(r.nums.miss_m) > half).length,
   };
+}
+
+/* A rock's clip from its game's clip state (/api/me/plays/{id}/doc's
+ * `clips`), when one can be played: {clip: true, overlay?}; else null. */
+export function rockClip(row, clips) {
+  const c = row.rock ? clips?.rocks?.[row.rock] : null;
+  return c && c.clip === true ? c : null;
+}
+
+/* The games table's word on a game's clips, over the rocks the report lists
+ * for it; null when clips are not on. */
+export function clipText(rows, clips) {
+  if (!clips || !rows.length) return null;
+  const states = rows.map(r => (r.rock && clips.rocks?.[r.rock]) || null);
+  if (states.some(c => !c || c.clip === false)) return "Clips on their way…";
+  const made = states.filter(c => c.clip === true).length;
+  if (made === rows.length) return `${made} clip${made === 1 ? "" : "s"}`;
+  if (made) return `${made} of ${rows.length} clips`;
+  if (states.every(c => c.reason === "video_gone")) return "No clips: the video is no longer kept";
+  return "No clips";
 }
