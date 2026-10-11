@@ -163,7 +163,10 @@ from pathlib import Path
 # 1659 -> 1663, tee crossings estimated 43 -> 17; a one-frame phase shift now
 # moves 13 releases rather than 37, and 2 release times by more than 0.2 s
 # rather than 20.
-PIPELINE_VERSION = "2026.10.08.4"
+# 2026.10.10.1: every rock's spin, rpm at release, from the camera facing the
+# thrower (`game/spintime.py`, model weights/spin1.pt); timeline schema 9.
+# Nothing else moves: the pass is attach-only.
+PIPELINE_VERSION = "2026.10.10.1"
 
 
 def model_id(weights) -> str:

@@ -365,8 +365,11 @@ class TestTimingFields:
         8 adds `delivery` to every measured line: the rock from its rest to
         1.5 m past the throwing hog line, [t, y, x] every 0.1 s. A 7's line
         has no such key, which readers must treat as not measured -- not as a
-        rock the camera never followed, which is an empty list."""
-        assert timeline.SCHEMA_VERSION == 8
+        rock the camera never followed, which is an empty list.
+        9 adds `spin` to every shot: rpm at release from the camera facing the
+        thrower, or null when not read. An 8 has no such key, which readers
+        must treat as not measured -- the viewer shows no Rotation figure."""
+        assert timeline.SCHEMA_VERSION == 9
 
     def test_a_placeholder_shot_has_no_timings(self):
         end = timeline.build_end(
@@ -967,7 +970,7 @@ class TestTheFormatIsRecorded:
     def test_a_fours_document_has_no_format_block(self):
         doc = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[])
         assert "format" not in doc
-        assert doc["schema_version"] == 8
+        assert doc["schema_version"] == 9
 
     def test_a_doubles_document_says_so(self):
         doc = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[],
@@ -1434,3 +1437,20 @@ class TestTheHogTimesAClipCutsAt:
         got = timeline.build_end(number=1, house="top", start_s=0.0, end_s=900.0,
                                  shots=[s])["shots"][0]
         assert got["t_far_s"] is None
+
+
+class TestSpin:
+    def test_a_rock_with_spin_carries_it_rounded(self):
+        from curling_score.game.spinfit import Spin
+        s = shot(1, "red", [])
+        s.spin = Spin(rpm=10.347, rpm_avg=9.91, turns_in_view=1.8333, samples=74)
+        end = timeline.build_end(1, "top", 0.0, 900.0, [s])
+        assert end["shots"][0]["spin"] == {"rpm": 10.3, "rpm_avg": 9.9, "turns_in_view": 1.83,
+                                           "samples": 74}
+
+    def test_a_rock_without_is_null_not_absent(self):
+        end = timeline.build_end(1, "top", 0.0, 900.0, [shot(1, "red", [])])
+        assert "spin" in end["shots"][0] and end["shots"][0]["spin"] is None
+
+    def test_the_schema_says_spin_was_read(self):
+        assert timeline.SCHEMA_VERSION == 9

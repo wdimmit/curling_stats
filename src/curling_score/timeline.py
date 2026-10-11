@@ -13,7 +13,8 @@ from curling_score.game import format as format_mod
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
-SCHEMA_VERSION = 8
+# 9: each shot's "spin" (rpm at release, game/spintime.py).
+SCHEMA_VERSION = 9
 
 # To watch the shot being called and thrown, the video starts this far back
 # from the release.
@@ -57,6 +58,14 @@ def _line(l):
     if tee is not None:
         out["at_tee"] = {"x": r(tee)}
     return out
+
+
+def _spin(sp):
+    """A `spinfit.Spin`, or None: the rock's rotation in rpm."""
+    if sp is None:
+        return None
+    return {"rpm": round(float(sp.rpm), 1), "rpm_avg": round(float(sp.rpm_avg), 1),
+            "turns_in_view": round(float(sp.turns_in_view), 2), "samples": int(sp.samples)}
 
 
 def _stone(d) -> dict:
@@ -246,6 +255,11 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None,
                 # Where the rock's thrown line passed the broom, where it sat
                 # before the push and where it went; null when not measured.
                 "line": _line(getattr(s, "line", None)),
+                # How fast the thrower set the rock turning, rpm: the first
+                # turn and a quarter from 8 m past the throwing tee, from the
+                # camera facing the thrower (game/spintime.py). null when not
+                # read: a hogged rock, a fast hit gone after half a turn.
+                "spin": _spin(getattr(s, "spin", None)),
             }
         )
 
