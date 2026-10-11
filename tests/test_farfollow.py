@@ -298,6 +298,59 @@ class TestPlace:
         _a, pairs, out, n = FF.place([], {r: hit}, [hit], [], follow_fn=lambda c, t: calls.append(t))
         assert (n, pairs, out, calls) == (0, {r: hit}, [], [])
 
+    def _push_past_the_window(self, **kw):
+        """Friday Evening 10/09 S4 end 2 rock 12: stopped on the far hog line,
+        then pushed into the house 32 s after its release, out of view beside
+        the player after 2.5 m."""
+        fields = dict(color="red", t_enter=T0 + 31.8, t_rest=T0 + 37.5, entry_y_m=4.215,
+                      rest_x_m=1.8, rest_y_m=1.74, travel_m=2.475, came_to_rest=False,
+                      reason="left-view")
+        fields.update(kw)
+        return D.Delivery(**fields)
+
+    def test_an_unpaired_push_past_the_pairing_window_goes_with_its_hog(self):
+        r = _release()
+        pushed = self._push_past_the_window()
+        follow = lambda c, t: FF.Outcome(FF.HOG, T0 + 26, 1.4, 6.4, 80)
+        arrivals, pairs, out, n = FF.place([R.as_delivery(r)], {}, [pushed], [],
+                                           follow_fn=follow)
+        assert (n, arrivals, pairs) == (1, [], {})
+        assert out[0].reason == R.REASON and out[0].release is r
+
+    def test_so_does_one_the_camera_could_not_follow(self):
+        r = _release()
+        arrivals, _p, out, n = FF.place([R.as_delivery(r)], {}, [self._push_past_the_window()], [],
+                                        follow_fn=lambda c, t: None)
+        assert (n, arrivals, out[0].reason) == (1, [], R.REASON)
+
+    def test_but_not_once_the_camera_placed_the_throw(self):
+        r = _release()
+        pushed = self._push_past_the_window()
+        follow = lambda c, t: FF.Outcome(FF.REST, T0 + 24, -0.6, 4.9, 80)
+        arrivals, _p, out, _n = FF.place([R.as_delivery(r)], {}, [pushed], [], follow_fn=follow)
+        assert arrivals == [pushed] and out[0].reason == R.REASON_REST
+
+    @pytest.mark.parametrize("kw", [
+        dict(color="yellow"),                       # the other team's
+        dict(t_enter=T0 + 50.0),                    # later than a hog is moved
+        dict(reason="house-remove"),                # it changed the house
+        dict(came_to_rest=True, rest_y_m=1.2),      # it stopped in play
+        dict(entry_y_m=2.0),                        # first seen inside the house
+    ])
+    def test_an_unpaired_arrival_that_is_not_that_push_is_kept(self, kw):
+        r = _release()
+        other = self._push_past_the_window(**kw)
+        arrivals, _p, out, n = FF.place([R.as_delivery(r)], {}, [other], [],
+                                        follow_fn=lambda c, t: None)
+        assert (n, arrivals, out[0].reason) == (0, [other], R.REASON)
+
+    def test_an_arrival_paired_with_another_release_is_not_this_push(self):
+        r, mine = _release(), _release(t=T0 + 10.0)
+        theirs = self._push_past_the_window()
+        arrivals, pairs, out, n = FF.place([R.as_delivery(r)], {mine: theirs}, [theirs], [],
+                                           follow_fn=lambda c, t: None)
+        assert (n, arrivals, pairs) == (0, [theirs], {mine: theirs})
+
     def test_a_late_arrival_that_came_to_rest_is_kept(self):
         """A light draw reaches the far edge late; that is not a push."""
         r = _release()
