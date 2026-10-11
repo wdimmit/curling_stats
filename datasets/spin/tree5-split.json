@@ -1,0 +1,63 @@
+{
+ "counts": {
+  "train": 203,
+  "val": 50,
+  "held": 5,
+  "unsure": 0
+ },
+ "flagged": 62,
+ "val_rocks": [
+  "0SWB4g3SJoE_e2s15",
+  "0SWB4g3SJoE_e2s16",
+  "0SWB4g3SJoE_e3s01",
+  "0SWB4g3SJoE_e3s08",
+  "0SWB4g3SJoE_e3s11",
+  "0SWB4g3SJoE_e3s12",
+  "0SWB4g3SJoE_e3s13",
+  "0SWB4g3SJoE_e4s10",
+  "0SWB4g3SJoE_e4s12",
+  "PHbZ3EKOhMI_e1s03",
+  "PHbZ3EKOhMI_e1s09",
+  "PHbZ3EKOhMI_e1s12",
+  "PHbZ3EKOhMI_e1s13",
+  "PHbZ3EKOhMI_e1s14",
+  "PHbZ3EKOhMI_e1s15",
+  "PHbZ3EKOhMI_e2s08",
+  "PHbZ3EKOhMI_e2s13",
+  "PHbZ3EKOhMI_e3s05",
+  "PHbZ3EKOhMI_e4s01",
+  "PHbZ3EKOhMI_e5s04",
+  "PHbZ3EKOhMI_e6s13",
+  "QQpN3nOmSm0_e2s06",
+  "QQpN3nOmSm0_e2s09",
+  "QQpN3nOmSm0_e3s14",
+  "QQpN3nOmSm0_e4s03",
+  "QQpN3nOmSm0_e4s11",
+  "VVgLH4uBxYs_e2s02",
+  "VVgLH4uBxYs_e2s14",
+  "VVgLH4uBxYs_e3s03",
+  "VVgLH4uBxYs_e3s10",
+  "VVgLH4uBxYs_e3s16",
+  "VVgLH4uBxYs_e4s15",
+  "dea75KXakFc_e2s06",
+  "dea75KXakFc_e2s09",
+  "dea75KXakFc_e3s10",
+  "dea75KXakFc_e4s01",
+  "dea75KXakFc_e4s15"
+ ],
+ "held": [
+  "PHbZ3EKOhMI_e1s05",
+  "PHbZ3EKOhMI_e3s02",
+  "PHbZ3EKOhMI_e3s14",
+  "PHbZ3EKOhMI_e3s15",
+  "PHbZ3EKOhMI_e4s14"
+ ],
+ "edits": [
+  "spin-wave1-20261010T161343.json",
+  "spin-wave1-20261010T205154.json",
+  "spin-wave1-20261010T205735.json",
+  "spin-wave1-20261010T223923.json",
+  "spin-wave1-20261010T223942.json",
+  "spin-wave1-20261010T224531.json"
+ ]
+}

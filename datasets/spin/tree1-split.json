@@ -1,0 +1,44 @@
+{
+ "counts": {
+  "train": 109,
+  "val": 24,
+  "held": 4
+ },
+ "flagged": 35,
+ "val_rocks": [
+  "0SWB4g3SJoE_e3s01",
+  "0SWB4g3SJoE_e3s07",
+  "0SWB4g3SJoE_e3s13",
+  "0SWB4g3SJoE_e4s01",
+  "PHbZ3EKOhMI_e1s01",
+  "PHbZ3EKOhMI_e1s03",
+  "PHbZ3EKOhMI_e1s09",
+  "PHbZ3EKOhMI_e2s06",
+  "PHbZ3EKOhMI_e2s11",
+  "PHbZ3EKOhMI_e2s16",
+  "PHbZ3EKOhMI_e5s07",
+  "QQpN3nOmSm0_e4s09",
+  "VVgLH4uBxYs_e2s01",
+  "VVgLH4uBxYs_e2s02",
+  "VVgLH4uBxYs_e2s16",
+  "VVgLH4uBxYs_e3s12",
+  "VVgLH4uBxYs_e4s04",
+  "VVgLH4uBxYs_e4s06",
+  "VVgLH4uBxYs_e4s07",
+  "dea75KXakFc_e2s01",
+  "dea75KXakFc_e3s04",
+  "dea75KXakFc_e4s06"
+ ],
+ "held": [
+  "PHbZ3EKOhMI_e1s05",
+  "PHbZ3EKOhMI_e3s02",
+  "PHbZ3EKOhMI_e3s14",
+  "PHbZ3EKOhMI_e3s15",
+  "PHbZ3EKOhMI_e4s14"
+ ],
+ "edits": [
+  "spin-wave1-20261010T161343.json",
+  "spin-wave1-20261010T205154.json",
+  "spin-wave1-20261010T205735.json"
+ ]
+}
