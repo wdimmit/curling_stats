@@ -36,12 +36,12 @@ from starlette.middleware.gzip import GZipMiddleware
 from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
-from curling_score.service import (dedupe, playlist_index, playlists, practice, slug,
-                                   thinking_report)
+from curling_score.service import (dedupe, gameclips, playlist_index, playlists, practice,
+                                   slug, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team, User, Worker,
-    play_id, review_id,
+    JOB_KINDS, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team, User,
+    Worker, play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import (clip_key, detcache_key, meta_key, practice_key,
@@ -121,6 +121,9 @@ PRACTICE_THROW_ID = re.compile(r"^t_[0-9]{1,8}(\.[0-9])?$")
 # A practice throw's clip, as the worker names the artifact.
 PRACTICE_CLIP = re.compile(r"^clips/(t_[0-9]{1,8}(\.[0-9])?)\.mp4$")
 CLIP_MAX_BYTES = 20_000_000
+# A claimed game rock's clip, as the clips worker names the artifact
+# (service/gameclips.py names the rock).
+GAME_CLIP = re.compile(r"^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.mp4$")
 # How long a signed link to a clip lasts; the page asks again after 50 minutes.
 CLIP_URL_S = 3600
 # The page a flag was sent from: an edit, view-only or review link.
@@ -2404,6 +2407,105 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         require_worker(authorization)
         keys = store.list_keys(f"detcache/{video_id}/")
         return [{"digest": Path(k).stem, "url": store.presign_get(k)} for k in keys]
+
+    # ------------------------------------------------------------ clip jobs
+    # The clips worker's own queue (service/gameclips.py): clips of the rocks
+    # people say they threw. Nothing here writes a run -- a clip job only
+    # reads the run it is cut from.
+    def owned_clip_job(job_id: str, worker_id: str | None) -> ClipJob:
+        job = repo.get_clip_job(job_id)
+        if job is None:
+            raise HTTPException(404, "no such clip job")
+        if job.state != "running" or (worker_id and job.worker_id != worker_id):
+            raise HTTPException(409, "this clip job is not yours any more")
+        return job
+
+    def clip_names(job: ClipJob) -> set:
+        return {r["name"] for r in job.spec.get("rocks", [])}
+
+    @app.post("/api/worker/clips/claim")
+    async def clips_claim(request: Request, authorization: str | None = Header(default=None)):
+        require_worker(authorization)
+        body = await request.json()
+        job = gameclips.claim(repo, str(body.get("worker_id", "clips")), now(), settings.lease_s)
+        if job is None:
+            return Response(status_code=204)
+        return {"job": {"id": job.id, "run_id": job.run_id, "video_id": job.video_id,
+                        "spec": job.spec, "attempt": job.attempts, "lease_s": settings.lease_s}}
+
+    @app.post("/api/worker/clips/{job_id}/progress")
+    async def clips_progress(job_id: str, request: Request,
+                             authorization: str | None = Header(default=None)):
+        require_worker(authorization)
+        body = await request.json()
+        job = owned_clip_job(job_id, body.get("worker_id"))
+        lease = now() + timedelta(seconds=settings.lease_s)
+        repo.update_clip_job(job.id, lease_expires_at=lease)
+        return {"ok": True, "lease_expires_at": _iso(lease)}
+
+    @app.post("/api/worker/clips/{job_id}/artifacts")
+    async def clips_artifacts(job_id: str, request: Request,
+                              authorization: str | None = Header(default=None)):
+        require_worker(authorization)
+        body = await request.json()
+        job = owned_clip_job(job_id, body.get("worker_id"))
+        asked = clip_names(job)
+        uploads = []
+        for f in body.get("files", []):
+            name = str(f.get("name", ""))
+            m = GAME_CLIP.match(name)
+            if m is None or m.group(1) not in asked:
+                raise HTTPException(400, f"{name} is not a clip this job asked for")
+            if int(f.get("bytes") or 0) > CLIP_MAX_BYTES:
+                raise HTTPException(400, f"{name} is over {CLIP_MAX_BYTES} bytes")
+            key = clip_key(job.video_id, job.run_id, m.group(1))
+            target = store.presign_put(key, "video/mp4")
+            if target["url"].startswith("memory://"):
+                # No real bucket behind this store: take the bytes ourselves.
+                target = {"url": url_for(f"/api/worker/clips/{job.id}/upload?key={key}"),
+                          "headers": {"Content-Type": "video/mp4"}}
+            uploads.append({"name": name, "key": key, **target})
+        return {"uploads": uploads}
+
+    @app.put("/api/worker/clips/{job_id}/upload")
+    async def clips_upload(job_id: str, request: Request, key: str = Query(...),
+                           authorization: str | None = Header(default=None)):
+        """The fallback upload path, used only when the store cannot sign URLs."""
+        require_worker(authorization)
+        job = repo.get_clip_job(job_id)
+        if job is None or job.state != "running":
+            raise HTTPException(409, "this clip job is not running")
+        if key not in {clip_key(job.video_id, job.run_id, n) for n in clip_names(job)}:
+            raise HTTPException(400, "that key does not belong to this clip job")
+        data = await request.body()
+        if len(data) > CLIP_MAX_BYTES:
+            raise HTTPException(413, "that clip is too big")
+        store.put_bytes(key, data, "video/mp4")
+        return {"ok": True, "bytes": len(data)}
+
+    @app.post("/api/worker/clips/{job_id}/complete")
+    async def clips_complete(job_id: str, request: Request,
+                             authorization: str | None = Header(default=None)):
+        require_worker(authorization)
+        body = await request.json()
+        job = repo.get_clip_job(job_id)
+        if job is None:
+            raise HTTPException(404, "no such clip job")
+        if job.state == "done":
+            return {"ok": True, "already": True}
+        job = owned_clip_job(job_id, body.get("worker_id"))
+        repo.update_clip_job(job.id, state="done", finished_at=now(), lease_expires_at=None,
+                             rocks=gameclips.clean_results(job, body.get("rocks")))
+        return {"ok": True}
+
+    @app.post("/api/worker/clips/{job_id}/fail")
+    async def clips_fail(job_id: str, request: Request,
+                         authorization: str | None = Header(default=None)):
+        require_worker(authorization)
+        body = await request.json()
+        job = owned_clip_job(job_id, body.get("worker_id"))
+        final = gameclips.fail(repo, job, str(body.get("error", ""))[:500], now())
+        return {"ok": True, "final": final}
 
     # -------------------------------------------------------------- admin
     @app.get("/api/admin/runs")
