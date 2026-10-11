@@ -151,3 +151,12 @@ class TestDetectBand:
         assert model.i == 2                # each frame predicted once
         assert yellow == [[pytest.approx((225.0, 340.0, 50.0, 0.8))], []]
         assert red == [[pytest.approx((125.0, 340.0, 50.0, 0.9))], []]
+
+
+class TestDetectBoxes:
+    def test_whole_boxes_of_the_colour_come_back_in_view_rows(self):
+        lo = 500
+        per = [[[10, 20, 60, 50, 0, 0.9], [100, 30, 150, 60, 1, 0.8]]]     # crop rows; red is class 0
+        got = sidemodel.detect_boxes(FakeModel(per), [np.zeros((1080, 810, 3), np.uint8)], [1.0],
+                                     lo, 1080, "red")
+        assert got == [[(10.0, 520.0, 60.0, 550.0, 0.9)]]

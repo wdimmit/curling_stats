@@ -196,6 +196,28 @@ def detect_bands(model, frames, times, lo, hi, colors, *, imgsz=800, conf=CONF_M
     return out
 
 
+def detect_boxes(model, frames, times, lo, hi, color, *, imgsz=800, conf=CONF_MIN):
+    """Every box of ``color`` in rows ``lo:hi`` of each frame, whole: per frame,
+    a list of (x0, y0, x1, y1, conf) in view pixels. The spin pass crops the
+    stone from these, so it needs the box's top as well as its bottom."""
+    want = _CLASS_FOR[color]
+    lo = max(0, int(lo))
+    crops = [np.ascontiguousarray(np.asarray(f)[lo:min(np.asarray(f).shape[0], int(hi)), :, ::-1])
+             for f in frames]
+    out = []
+    for i in range(0, len(crops), BATCH):
+        for res in model.predict(crops[i:i + BATCH], imgsz=imgsz, conf=conf, verbose=False):
+            got = []
+            if res.boxes is not None:
+                for b, c, cf in zip(res.boxes.xyxy.cpu().numpy(), res.boxes.cls.cpu().numpy(),
+                                    res.boxes.conf.cpu().numpy()):
+                    if int(c) == want and float(cf) >= conf:
+                        x0, y0, x1, y1 = (float(v) for v in b)
+                        got.append((x0, y0 + lo, x1, y1 + lo, float(cf)))
+            out.append(got)
+    return out
+
+
 def default_model():
     """The side-view detector itself, or None when none is configured."""
     from curling_score import weights as weights_mod
