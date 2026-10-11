@@ -4460,6 +4460,20 @@ class TestClipsOnTheShotsPage:
             assert 'import { ClipPlayer } from "./clip.jsx";' in (self.ROOT / rel).read_text()
         assert "function ClipLines" not in (self.ROOT / "frontend/site/Practice.jsx").read_text()
 
+    def test_clip_is_the_filled_button_beside_an_outlined_watch(self):
+        page = (self.ROOT / "frontend/site/Shots.jsx").read_text()
+        table = page[page.index("function RockTable"):page.index("function Group")]
+        assert 'className="primary"' in table and "▶ Clip" in table
+        assert '<a className="btn watch" href={r.href}>Watch ↗</a>' in table
+        css = (self.ROOT / "src/curling_score/service/static/site.css").read_text()
+        assert "#shots table.rocks td.actions a.btn.watch { border:2px solid var(--ink);" in css
+        # On a phone every rocks cell is made a block by `#shots table.rocks
+        # td` (1,1,2), which stacked Watch under Clip; the actions cell needs
+        # a rule that outranks it, after it, to sit them side by side.
+        phone = css[css.index("@media (max-width: 640px) {\n  #shots table"):]
+        block = phone.index("#shots td, #shots table.rocks td { display:block;")
+        assert phone.index("#shots table.rocks td.actions { display:flex;") > block
+
     def test_one_clip_is_open_at_a_time_across_groups(self):
         page = (self.ROOT / "frontend/site/Shots.jsx").read_text()
         table = page[page.index("function RockTable"):page.index("function Group")]

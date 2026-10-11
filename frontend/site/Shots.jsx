@@ -209,10 +209,10 @@ function RockTable({ rows, clips, open, setOpen }) {
                 ))}
                 <td className="actions">
                   {clip && (
-                    <button aria-expanded={shown}
-                            onClick={() => setOpen(shown ? null : r.key)}>Clip</button>
+                    <button className="primary" aria-expanded={shown}
+                            onClick={() => setOpen(shown ? null : r.key)}>▶ Clip</button>
                   )}
-                  {r.href && <a className="btn" href={r.href}>Watch</a>}
+                  {r.href && <a className="btn watch" href={r.href}>Watch ↗</a>}
                 </td>
               </tr>
               {shown && (

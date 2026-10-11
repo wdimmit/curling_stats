@@ -340,6 +340,11 @@ body[data-page="shots"] main { max-width:980px; }
 .shotgrp summary { cursor:pointer; font:700 14px var(--display); padding:6px 0; }
 #shots table.rocks th, #shots table.rocks td { padding:5px 6px; font-size:13px; }
 #shots table.rocks td.dim { color:var(--muted); }
+/* A rock's own actions: its clip is the thing to play here, so it is the
+   filled button; Watch leaves for the game's page and keeps an outline, but
+   in ink, so it still reads as a button against the card. */
+#shots table.rocks td.actions > * { padding:6px 12px; font-weight:600; border-width:2px; }
+#shots table.rocks td.actions a.btn.watch { border:2px solid var(--ink); }
 #plays .game .muted { font-size:13px; }
 #plays td.actions select { max-width:15em; padding:6px 8px; }
 #plays td.actions button, #plays td.actions a.btn { padding:6px 10px; }
@@ -362,6 +367,10 @@ body[data-page="shots"] main { max-width:980px; }
   #shots td.actions > * { flex:1 1 auto; min-height:44px; }
   #plays td.actions select { flex:1 1 100%; max-width:none; }
   #shots td.actions a.btn { display:flex; align-items:center; justify-content:center; }
+  /* `#shots table.rocks td` above makes every rocks cell a block, this one
+     too, which stacked Watch under Clip. Side by side, half the row each. */
+  #shots table.rocks td.actions { display:flex; flex-wrap:nowrap; }
+  #shots table.rocks td.actions > * { flex:1 1 0; }
 }
 
 /* The game filter at the top of My shots: a menu button, then a dropdown list
