@@ -79,14 +79,14 @@ class TestPlayerRocks:
 
 class TestStateFor:
     def test_on_its_way_made_none_coming_and_failed(self):
-        repo, _, _ = world()
+        repo, run, _ = world()
         queued(repo, ["1.2.13"], state="done", id="cj_a",
                results={"1.2.13": {"clip": True, "overlay": [{"t0": 0.0, "t1": 1.0}]}})
         queued(repo, ["1.2.15"], state="running", id="cj_b", at=T + timedelta(seconds=1))
         queued(repo, ["1.2.11"], state="failed", id="cj_c", at=T + timedelta(seconds=2))
         queued(repo, ["1.2.9"], state="done", id="cj_d", at=T + timedelta(seconds=3),
                results={"1.2.9": {"clip": None, "reason": "video_gone"}})
-        got = gameclips.state_for(repo, "p1", "r1")
+        got = gameclips.state_for(repo, "p1", run)
         assert got == {"rocks": {"1.2.13": {"clip": True, "overlay": [{"t0": 0.0, "t1": 1.0}]},
                                  "1.2.15": {"clip": False},
                                  "1.2.11": {"clip": None, "reason": "cut_failed"},
@@ -94,12 +94,21 @@ class TestStateFor:
                        "pending": True}
 
     def test_only_this_run_and_a_made_clip_stays_made(self):
-        repo, _, _ = world()
+        repo, run, _ = world()
         queued(repo, ["1.2.13"], state="done", id="cj_a", results={"1.2.13": {"clip": True}})
         queued(repo, ["1.2.13"], state="queued", id="cj_b", at=T + timedelta(seconds=1))
         queued(repo, ["1.2.15"], state="queued", id="cj_c", run_id="r0")
-        assert gameclips.state_for(repo, "p1", "r1") == {"rocks": {"1.2.13": {"clip": True}},
+        assert gameclips.state_for(repo, "p1", run) == {"rocks": {"1.2.13": {"clip": True}},
                                                           "pending": False}
+
+
+    def test_jobs_from_before_the_run_was_analysed_again_do_not_count(self):
+        repo, run, _ = world()
+        queued(repo, ["1.2.13"], state="done", id="cj_old", results={"1.2.13": {"clip": True}})
+        queued(repo, ["1.2.15"], state="queued", id="cj_new", at=T + timedelta(seconds=120))
+        run.ready_at = T + timedelta(seconds=60)
+        assert gameclips.state_for(repo, "p1", run) == {"rocks": {"1.2.15": {"clip": False}},
+                                                         "pending": True}
 
 
 class TestEnsure:
@@ -144,6 +153,33 @@ class TestClaim:
         repo.update_run("r1", status="ready")
         assert gameclips.claim(repo, "clips", T + timedelta(seconds=301), 600.0).id == "cj_x"
         assert repo.get_run("r1").status == "ready"
+
+    def test_a_job_from_before_a_re_analysis_fails_and_nothing_is_taken(self):
+        repo, run, _ = world()
+        queued(repo, ["1.2.13"])
+        repo.update_run("r1", ready_at=T + timedelta(seconds=60))
+        assert gameclips.claim(repo, "clips", T + timedelta(seconds=90), 600.0) is None
+        job = repo.get_clip_job("cj_x")
+        assert (job.state, job.finished_at) == ("failed", T + timedelta(seconds=90))
+        assert "analysed again" in job.error
+
+    def test_a_live_run_just_ready_waits_for_its_recording_to_be_kept(self):
+        repo, _, _ = world()
+        ready = T + timedelta(seconds=10)
+        repo.update_run("r1", kind="live", ready_at=ready)
+        queued(repo, ["1.2.13"], at=T + timedelta(seconds=20))
+        assert gameclips.claim(repo, "clips", T + timedelta(seconds=30), 600.0) is None
+        job = repo.get_clip_job("cj_x")
+        assert (job.state, job.run_after) == (
+            "queued", ready + timedelta(seconds=gameclips.LIVE_SETTLE_S))
+        after = ready + timedelta(seconds=gameclips.LIVE_SETTLE_S)
+        assert gameclips.claim(repo, "clips", after, 600.0).id == "cj_x"
+
+    def test_a_vod_run_just_ready_is_taken_at_once(self):
+        repo, _, _ = world()
+        repo.update_run("r1", kind="vod", ready_at=T + timedelta(seconds=10))
+        queued(repo, ["1.2.13"], at=T + timedelta(seconds=20))
+        assert gameclips.claim(repo, "clips", T + timedelta(seconds=30), 600.0).id == "cj_x"
 
     def test_not_before_its_time(self):
         repo, _, _ = world()
@@ -195,3 +231,14 @@ class TestResults:
         repo.update_clip_job("cj_x", attempts=3)
         assert gameclips.fail(repo, repo.get_clip_job("cj_x"), "boom", T) is True
         assert repo.get_clip_job("cj_x").state == "failed"
+
+
+class TestResultsFromAnythingElse:
+    def test_a_result_that_is_not_a_dict_fails_every_rock(self):
+        job = ClipJob(id="cj_x", play_id="p1", user_id="u1", source_id="s1", run_id="r1",
+                      video_id="VID", state="running", created_at=T, run_after=T,
+                      spec={"rocks": [{"name": "1.2.13"}, {"name": "1.2.15"}]})
+        for junk in (None, [], "no", 3):
+            assert gameclips.clean_results(job, junk) == {
+                "1.2.13": {"clip": None, "reason": "cut_failed"},
+                "1.2.15": {"clip": None, "reason": "cut_failed"}}

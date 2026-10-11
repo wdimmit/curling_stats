@@ -2029,7 +2029,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         run = report_run(play, src) if play and src else None
         if run is None:
             raise HTTPException(404, "you have not said which rocks you threw in that game")
-        return {"clips": gameclips.state_for(repo, play.id, run.id)}
+        return {"clips": gameclips.state_for(repo, play.id, run)}
 
     @app.get("/api/me/plays/{source_id}/clips/{rock}")
     def api_my_play_clip(source_id: str, rock: str,
@@ -2041,7 +2041,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         run = report_run(play, src) if play and src else None
         if run is None or not gameclips.GAME_ROCK.match(rock):
             raise HTTPException(404, "no clip for that rock")
-        got = gameclips.state_for(repo, play.id, run.id)["rocks"].get(rock) or {}
+        got = gameclips.state_for(repo, play.id, run)["rocks"].get(rock) or {}
         if got.get("clip") is not True:
             raise HTTPException(404, "no clip for that rock")
         return {"url": store.presign_get(clip_key(run.video_id, run.id, rock), CLIP_URL_S)}
