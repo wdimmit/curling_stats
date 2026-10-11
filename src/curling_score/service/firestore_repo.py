@@ -41,6 +41,20 @@ REVIEWS = "reviews"
 WATCHES, SESSIONS = "practice_watches", "practice_sessions"
 
 
+# Held as JSON text in Firestore, which has no array directly inside an array
+# (an overlay is lists of [u, v] points).
+_CLIP_JSON_FIELDS = ("spec", "rocks")
+
+
+def _clip_to_store(fields: dict) -> dict:
+    return {k: json.dumps(v) if k in _CLIP_JSON_FIELDS else v for k, v in fields.items()}
+
+
+def _clip_from_store(data: dict) -> ClipJob:
+    return ClipJob.from_dict({k: json.loads(v) if k in _CLIP_JSON_FIELDS and isinstance(v, str)
+                              else v for k, v in data.items()})
+
+
 def _claim_id(owner_key: str, source_id: str) -> str:
     """The document whose existence *is* the claim.
 
@@ -528,24 +542,29 @@ class FirestoreRepo:
     # ---- clip jobs ----------------------------------------------------
     # One equality filter each, sorted here: no composite index to keep. The
     # queue is short -- a job per claimed game, done in seconds.
+    # `spec` and `rocks` are held as JSON text: Firestore stores no array
+    # directly inside an array, and an overlay is lists of [u, v] points.
     def put_clip_job(self, job):
-        self._col(CLIP_JOBS).document(job.id).set(job.to_dict())
+        self._col(CLIP_JOBS).document(job.id).set(_clip_to_store(job.to_dict()))
 
     def get_clip_job(self, job_id):
-        return self._get(CLIP_JOBS, job_id, ClipJob)
+        snap = self._col(CLIP_JOBS).document(job_id).get()
+        return _clip_from_store(snap.to_dict()) if snap.exists else None
 
     def update_clip_job(self, job_id, **fields):
-        if not self._col(CLIP_JOBS).document(job_id).get().exists:
+        ref = self._col(CLIP_JOBS).document(job_id)
+        if not ref.get().exists:
             return None
-        return self._update(CLIP_JOBS, job_id, ClipJob, fields)
+        ref.update(_clip_to_store(fields))
+        return _clip_from_store(ref.get().to_dict())
 
     def clip_jobs_for_play(self, play_id):
-        docs = [ClipJob.from_dict(d.to_dict())
+        docs = [_clip_from_store(d.to_dict())
                 for d in self._where(CLIP_JOBS, "play_id", "==", play_id).stream()]
         return sorted(docs, key=lambda j: j.created_at)
 
     def clip_jobs_in_state(self, state):
-        docs = [ClipJob.from_dict(d.to_dict())
+        docs = [_clip_from_store(d.to_dict())
                 for d in self._where(CLIP_JOBS, "state", "==", state).stream()]
         return sorted(docs, key=lambda j: j.created_at)
 
@@ -564,7 +583,7 @@ class FirestoreRepo:
                       "attempts": int(data.get("attempts", 0)) + 1,
                       "lease_expires_at": now + timedelta(seconds=lease_s)}
             tx.update(ref, update)
-            return ClipJob.from_dict({**data, **update})
+            return _clip_from_store({**data, **update})
 
         return _take(self.db.transaction())
 
@@ -641,7 +660,9 @@ class FirestoreRepo:
                 "charts": dump(CHARTS), "workers": dump(WORKERS),
                 "watched_playlists": dump(PLAYLISTS), "users": dump(USERS),
                 "teams": dump(TEAMS), "invites": dump(INVITES), "flags": dump(FLAGS),
-                "plays": dump(PLAYS), "clip_jobs": dump(CLIP_JOBS),
+                "plays": dump(PLAYS),
+                "clip_jobs": [_clip_from_store(d.to_dict()).to_dict()
+                              for d in self._col(CLIP_JOBS).stream()],
                 "reviews": dump(REVIEWS),
                 "practice_watches": dump(WATCHES), "practice_sessions": dump(SESSIONS)}
 

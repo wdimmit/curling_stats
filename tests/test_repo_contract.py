@@ -722,9 +722,9 @@ class TestPractice:
 
 
 def clip_job(id="cj_1", play="p1", state="queued", seconds=0, **kw):
+    kw.setdefault("spec", {"rocks": [{"name": "0.1.1"}]})
     return ClipJob(id=id, play_id=play, user_id="u", source_id="s", run_id="r", video_id="v",
-                   state=state, created_at=at(seconds), run_after=at(seconds),
-                   spec={"rocks": [{"name": "0.1.1"}]}, **kw)
+                   state=state, created_at=at(seconds), run_after=at(seconds), **kw)
 
 
 class TestTheClipQueue:
@@ -760,3 +760,27 @@ class TestTheClipQueue:
         got = fresh.get_clip_job("cj_1")
         assert (got.play_id, got.state, got.rocks, got.spec) == \
             ("p1", "queued", {"0.1.1": {"clip": True}}, {"rocks": [{"name": "0.1.1"}]})
+
+    def test_a_finished_job_with_an_overlay_round_trips(self, repo):
+        # An overlay is lists of [u, v] points; Firestore holds no array
+        # directly inside an array, so the repo must store it another way.
+        spec = {"rocks": [{"name": "0.1.1", "house": "top",
+                           "line": {"start": {"x": 0.1, "y": 38.0}, "at_hog": {"x": 0.2}}}]}
+        rocks = {"0.1.1": {"clip": True, "overlay": [
+            {"t0": 0.0, "t1": 16.0},
+            {"t0": 16.0, "t1": 24.5, "thrown": [[0.5, 0.6], [0.51, 0.7]],
+             "aim": [[0.4, 0.9], [0.5, 0.6]], "broom": [0.5, 0.58]}]}}
+        repo.put_clip_job(clip_job(spec=spec))
+        assert repo.take_clip_job("cj_1", "clips", T0, 600.0).spec == spec
+        done = repo.update_clip_job("cj_1", state="done", rocks=rocks, finished_at=T0)
+        assert (done.spec, done.rocks) == (spec, rocks)
+        assert repo.get_clip_job("cj_1").rocks == rocks
+        assert repo.clip_jobs_for_play("p1")[0].rocks == rocks
+        assert repo.clip_jobs_in_state("done")[0].rocks == rocks
+        assert repo.clip_jobs_in_state("done")[0].spec == spec
+        exported = repo.export_all()["clip_jobs"][0]
+        assert (exported["spec"], exported["rocks"]) == (spec, rocks)
+        fresh = MemoryRepo()
+        fresh.import_all(repo.export_all())
+        assert fresh.get_clip_job("cj_1").rocks == rocks
+        assert fresh.get_clip_job("cj_1").spec == spec
