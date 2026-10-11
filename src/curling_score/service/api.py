@@ -2663,6 +2663,33 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t, run_after=t))
         return {"ok": True, "run_id": run.id}
 
+    @app.post("/api/admin/clips/backfill")
+    def admin_clips_backfill(authorization: str | None = Header(default=None)):
+        """Ask for clips of every play's rocks, as opening each play's report
+        would: for plays saved before clips existed. Nothing is cut here, and
+        a game whose video has left every cache comes back video_gone from the
+        clips worker. A game that cannot be read now is skipped and said."""
+        require_admin(authorization)
+        clips_on()
+        skipped, done = [], 0
+        for play in repo.all_plays():
+            src = canonical_source(play.source_id)
+            try:
+                if src is None:
+                    raise HTTPException(404, "no such game")
+                doc, run, _ = play_doc(play, src)
+            except HTTPException as exc:
+                skipped.append({"play_id": play.id, "source_id": play.source_id,
+                                "why": exc.detail})
+                continue
+            if ask_for_clips(play, doc, run) is None:
+                skipped.append({"play_id": play.id, "source_id": play.source_id,
+                                "why": "asking failed; see the log"})
+                continue
+            done += 1
+        log.info("clips backfill: %d plays asked for, %d skipped", done, len(skipped))
+        return {"plays": done + len(skipped), "asked": done, "skipped": skipped}
+
     @app.get("/api/admin/export")
     def admin_export(authorization: str | None = Header(default=None)):
         require_admin(authorization)

@@ -630,6 +630,14 @@ class TestPlays:
         base.update(kw)
         return Play(id=play_id(base["user_id"], base["source_id"]), **base)
 
+    def test_everyones_plays(self, repo):
+        repo.put_play(self.play())
+        repo.put_play(self.play(user_id="u2", updated_at=at(5)))
+        repo.put_play(self.play(source_id="src_2", updated_at=at(9)))
+        got = repo.all_plays()
+        assert [(p.user_id, p.source_id) for p in got] == [
+            ("u1", "src_2"), ("u2", "src_1"), ("u1", "src_1")]
+
     def test_put_and_get(self, repo):
         repo.put_play(self.play(chart_id="c_1", link="s"))
         got = repo.get_play("u1", "src_1")

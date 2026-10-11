@@ -261,3 +261,39 @@ class TestReadingClips:
         w["repo"].update_run(run_id, status="processing")
         assert get(w, f"/api/me/plays/{src}/clips").status_code == 404
         assert get(w, f"/api/me/plays/{src}/doc").status_code == 409
+
+
+class TestBackfill:
+    """Plays saved before clips existed get theirs asked for in one go."""
+
+    def backfill(self, w, headers=ADMIN):  # noqa: F811
+        return w["client"].post("/api/admin/clips/backfill", headers=headers)
+
+    def test_for_the_admin_alone_and_only_with_clips_on(self, w):  # noqa: F811
+        assert self.backfill(w, headers={}).status_code == 401
+        assert self.backfill(w, headers=SARAH).status_code == 401
+        assert self.backfill(w).status_code == 404
+
+    def test_every_persons_plays_are_asked_for_once(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
+        put(w, src, {"path": G.format(src), "color": "yellow", "slot": 1}, headers=ALEX)
+        w["settings"].game_clips_enabled = True
+        r = self.backfill(w)
+        assert r.status_code == 200, r.text
+        assert r.json()["plays"] == 2 and r.json()["skipped"] == []
+        assert [x["name"] for x in jobs(w, src)[0].spec["rocks"]] == ["0.1.13", "0.1.15"]
+        alex = lambda: w["repo"].clip_jobs_for_play(play_id("uid-alex", src))  # noqa: E731
+        assert [x["name"] for x in alex()[0].spec["rocks"]] == ["0.1.2", "0.1.4"]
+        self.backfill(w)
+        assert len(jobs(w, src)) == 1 and len(alex()) == 1
+
+    def test_a_game_that_cannot_be_read_is_skipped_and_said(self, w):  # noqa: F811
+        slug, _, src = a_played_game(w)
+        put(w, src, {"path": f"/c/{slug}/", "color": "red", "slot": 4})
+        w["settings"].game_clips_enabled = True
+        w["repo"].update_run(w["repo"].get_chart(slug).run_id, status="processing")
+        got = self.backfill(w).json()
+        assert got["plays"] == 1 and len(got["skipped"]) == 1
+        assert got["skipped"][0]["source_id"] == src
+        assert jobs(w, src) == []

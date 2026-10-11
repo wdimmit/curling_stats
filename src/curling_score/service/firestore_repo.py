@@ -539,6 +539,12 @@ class FirestoreRepo:
         docs = [Play.from_dict(d.to_dict()) for d in q.stream()]
         return sorted(docs, key=lambda p: p.updated_at, reverse=True)[:limit]
 
+    def all_plays(self):
+        # Every play there is: an admin's backfill, read once. A play is a
+        # small document, one per person per game.
+        docs = [Play.from_dict(d.to_dict()) for d in self._col(PLAYS).stream()]
+        return sorted(docs, key=lambda p: p.updated_at, reverse=True)
+
     # ---- clip jobs ----------------------------------------------------
     # One equality filter each, sorted here: no composite index to keep. The
     # queue is short -- a job per claimed game, done in seconds.
