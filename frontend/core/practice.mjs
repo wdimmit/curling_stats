@@ -25,11 +25,13 @@ export function restText(rest) {
   return `${ring} · ${feetInches(rest.to_tee_m)} from the tee`;
 }
 
-export function lineText(line) {
+/* ``short`` is the throws table's: "5 in narrow", the broom left understood. */
+export function lineText(line, { short = false } = {}) {
   if (!line) return null;
   if (line.miss_m != null) {
     if (Math.abs(line.miss_m) < ON_BROOM_M) return "On the broom";
-    return `${feetInches(line.miss_m)} ${line.side ?? (line.miss_m < 0 ? "left" : "right")} of the broom`;
+    const off = `${feetInches(line.miss_m)} ${line.side ?? (line.miss_m < 0 ? "left" : "right")}`;
+    return short ? off : `${off} of the broom`;
   }
   if (line.aim_x != null) {
     return `aimed ${feetInches(line.aim_x)} ${line.aim_x < 0 ? "left" : "right"} of centre`;
@@ -43,6 +45,14 @@ export function weightText(split) {
 
 export function curlText(curl) {
   return curl === "left" || curl === "right" ? `Curled ${curl}` : null;
+}
+
+/* In-turn or out-turn: the way it curled, read through the thrower's hand.
+ * Seen from above, a rock turning clockwise curls to the thrower's right --
+ * a right-hander's in-turn, a left-hander's out-turn. */
+export function turnText(curl, hand) {
+  if (curl !== "left" && curl !== "right") return null;
+  return curl === (hand === "left" ? "left" : "right") ? "In" : "Out";
 }
 
 /* The throws to show: a stone that arrived with nothing seen releasing it

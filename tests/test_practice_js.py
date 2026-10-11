@@ -39,11 +39,28 @@ def test_the_line_against_the_broom_or_where_it_was_aimed():
     assert js("P.lineText(null)") is None
 
 
+def test_the_tables_line_leaves_off_the_broom():
+    assert js('P.lineText({miss_m: -0.12, side: "narrow", aim_x: null}, {short: true})') == \
+        "5 in narrow"
+    assert js('P.lineText({miss_m: 0.33, side: "wide", aim_x: null}, {short: true})') == \
+        "1 ft 1 in wide"
+    assert js('P.lineText({miss_m: 0.01, side: "wide", aim_x: null}, {short: true})') == \
+        "On the broom"
+
+
 def test_weight_and_curl():
     assert js("P.weightText(13.82)") == "13.8 s"
     assert js("P.weightText(null)") is None
     assert js('[P.curlText("left"), P.curlText("right"), P.curlText(null)]') == [
         "Curled left", "Curled right", None]
+
+
+def test_in_or_out_turn_from_the_curl_and_the_hand():
+    # A right-hander's in-turn spins clockwise and curls right; a left-hander's
+    # in-turn spins the other way and curls left.
+    assert js('[P.turnText("right", "right"), P.turnText("left", "right")]') == ["In", "Out"]
+    assert js('[P.turnText("left", "left"), P.turnText("right", "left")]') == ["In", "Out"]
+    assert js('[P.turnText(null, "right"), P.turnText("right", undefined)]') == [None, "In"]
 
 
 def test_a_stone_nothing_released_is_not_shown_as_a_throw():
