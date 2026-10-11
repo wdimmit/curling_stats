@@ -393,6 +393,28 @@ class TestTimeLines:
         assert (6.5, 9.0, 30.0) not in self.run([long_])
         assert (6.5, 9.0, 30.0) in self.run([short])
 
+    def path_window(self, decoded):
+        return [w for w in decoded if w[2] == L.PATH_FPS]
+
+    def test_the_path_is_read_to_a_second_past_the_rest(self):
+        s = self.shot(crossing_for(self.stone_to(11.5)))
+        assert self.path_window(self.run([s])) == [(4.8, 21.0, L.PATH_FPS)]
+
+    def test_a_rock_the_overhead_lost_still_running_is_followed_past_it(self):
+        """s_0MZM5biOgc46X2jEa e4 r9: a sweeper hid it from above 2.8 m out,
+        running 0.7 m/s, and its t_rest is that moment; it hit a stone at the
+        side of the four-foot two seconds later. Here the track ends 0.4 m/s
+        at 3.0 m and the rock rests at the tee: held open 0.4 / 0.08 = 5 s."""
+        running = tuple((118.0 + 0.1 * i, 0.0, round(3.8 - 0.04 * i, 3)) for i in range(21))
+        rest = [SimpleNamespace(x_m=0.5, y_m=0.0)]
+        lost = self.shot(crossing_for(self.stone_to(11.5)), delivery=SimpleNamespace(track=running),
+                         stones=rest, delivered_stone_index=0)
+        assert self.path_window(self.run([lost])) == [(4.8, 26.0, L.PATH_FPS)]
+        # Followed to where it rests, the track says when it stopped.
+        stopped = self.shot(crossing_for(self.stone_to(11.5)), delivery=SimpleNamespace(track=running),
+                            stones=[SimpleNamespace(x_m=0.05, y_m=3.0)], delivered_stone_index=0)
+        assert self.path_window(self.run([stopped])) == [(4.8, 21.0, L.PATH_FPS)]
+
     def test_a_refused_crossing_with_samples_is_still_measured(self):
         c = crossing_for(self.stone_to(11.5))
         refused = longview.Crossing(None, "speed 3.44 m/s is not a delivery", longview.KEY_BAD_SPEED,

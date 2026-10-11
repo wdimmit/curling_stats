@@ -357,11 +357,28 @@ def entry(frames, color, t_release):
 PUSHED_AS = ("gap-search", "left-view")
 
 
-def _ran_in(arrival) -> bool:
-    """An arrival that came in at the far edge and ran on, never resting in play
-    and changing nothing: what a pushed hog looks like."""
+# A push can come later than `release.pair` looks, and is then paired with
+# nothing. Friday Evening 10/09 S4 end 2 rock 12 stopped on the far hog line
+# and was pushed into the house 32 s after its release -- the reviewed pushes
+# came in 19.9-27.4 s -- and the rules kept the push as the shot and dropped
+# the hog. Nothing thrown arrives that late: the slowest reviewed guards came
+# in by 22.3 s, and the next stone of the same colour is two throws away. This
+# is as far as the camera follows a hog being moved (`WINDOW_S`).
+PUSH_MAX_LAG_S = WINDOW_S[1]
+
+
+def _pushed_in(arrival) -> bool:
+    """An arrival that came in at the far edge and was still moving when it left
+    the panel, changing nothing: what a stone pushed down the sheet looks like."""
     return (arrival.reason in PUSHED_AS and not arrival.came_to_rest
-            and arrival.entry_y_m >= ENTRY_MIN_Y_M and arrival.travel_m >= ENTRY_MIN_TRAVEL_M)
+            and arrival.entry_y_m >= ENTRY_MIN_Y_M)
+
+
+def _ran_in(arrival) -> bool:
+    """A push that also ran on across the house, as a throw with through-weight
+    would. Paired with a release, a late arrival needs this much to be taken
+    for a push: a light draw reaching the far edge late is not one."""
+    return _pushed_in(arrival) and arrival.travel_m >= ENTRY_MIN_TRAVEL_M
 
 
 def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
@@ -382,6 +399,9 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     * A release paired with an arrival that came in late and ran on is a hog
       pushed down the sheet, unless the camera saw the throw itself arrive:
       the arrival is dropped and the release is hogged.
+    * An arrival paired with nothing, of a hogged release's colour, that came
+      in later than any throw could (up to `PUSH_MAX_LAG_S`) and changed
+      nothing is that hog being pushed, and is dropped.
 
     Returns ``(arrivals, thrown_by, unaccounted, changed)``, ``changed``
     counting the releases this placed differently.
@@ -433,6 +453,20 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
                 changed += 1
                 continue
         pairs[r] = a
+    # Every release still hogged here has had the camera's say already, and
+    # the camera did not see its throw arrive.
+    claimed = {id(a) for a in pairs.values()} | {id(a) for a in dropped}
+    for d in out:
+        r = getattr(d, "release", None)
+        if d.reason != R.REASON or r is None:
+            continue
+        for a in arrivals:
+            if (id(a) not in claimed and a.color == r.color
+                    and THROUGH_MAX_LAG_S < a.t_enter - r.t <= PUSH_MAX_LAG_S
+                    and _pushed_in(a)):
+                dropped.append(a)
+                claimed.add(id(a))
+                changed += 1
     if dropped:
         arrivals = [a for a in arrivals if not any(a is x for x in dropped)]
     return arrivals, pairs, out, changed

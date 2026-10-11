@@ -28,6 +28,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from curling_score.detect import delivery as dlv
 from curling_score.game.rules import other_color
 from curling_score.geometry import constants as C
 from curling_score.harvest import sidepool
@@ -413,6 +414,33 @@ def _rest(shot):
     return float(s.x_m), float(s.y_m)
 
 
+def path_until(shot):
+    """When the rock stopped, as near as the shot says: its ``t_rest_s``,
+    unless the overhead lost it still running. A delivery the house diff
+    confirmed (``house-add``) keeps the moment its track was lost as its rest,
+    and a sweeper over the rock is the usual reason: s_0MZM5biOgc46X2jEa e4 r9
+    was lost 2.8 m out at 0.7 m/s and hit a stone at the side of the four-foot
+    two seconds later, and its path, read to a second past that rest, stopped
+    1.7 m short of the stone. Lost is resting further than a stone's width from
+    where the track ended; the window is then held open as long as the rock
+    could still have been running, as the house diff's own is
+    (``delivery._runout_s``)."""
+    t = getattr(shot, "t_rest_s", None)
+    track = getattr(getattr(shot, "delivery", None), "track", None) or ()
+    rest = _rest(shot)
+    if t is None or not track or rest is None:
+        return t
+    t_end, x_end, y_end = track[-1]
+    if np.hypot(rest[0] - x_end, rest[1] - y_end) <= dlv.CHANGE_TOLERANCE_M:
+        return t
+    j = len(track) - 1
+    while j > 0 and t_end - track[j - 1][0] < dlv.VELOCITY_SPAN_S:
+        j -= 1
+    dt = t_end - track[j][0]
+    speed = np.hypot(x_end - track[j][1], y_end - track[j][2]) / dt if dt > 0 else 0.0
+    return t + min(float(speed) / dlv.STONE_DECEL_M_S2, dlv.MAX_RUNOUT_S)
+
+
 def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, detect=None,
                without_broom=False) -> int:
     """Give each shot its ``line``, in place; return how many it gave one.
@@ -464,7 +492,7 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
                               getattr(shot, "number", "?"))
                 delivery = ()
             path = find_path(model, video, dest_view, shot.color, getattr(shot, "t_hog_s", None),
-                             getattr(shot, "t_rest_s", None), fit, decode=decode, detect=detect_bands)
+                             path_until(shot), fit, decode=decode, detect=detect_bands)
             shot.line = measure(fit, track, frames.start,
                                 None if broom is None else (broom.x_m, broom.y_m),
                                 rest=_rest(shot), path=path, delivery=delivery)

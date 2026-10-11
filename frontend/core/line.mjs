@@ -125,6 +125,16 @@ const BREAK_SPEED_MIN = 0.25;             // m/s
 // that disturbed nothing were deeper than this.
 const BREAK_FAR_Y = 3.8;
 
+// The path from behind the thrower loses a rock as it closes on a stone --
+// from that far back the two read as one box -- so it often ends just out of
+// reach of the stone it struck. Past where the overhead lost the rock (a
+// sweeper over it: s_0MZM5biOgc46X2jEa e4 r9), the path's nearest sample
+// within this places the hit. Measured on the 161 hosted charts of
+// 2026-10-10, on the 500 hits the overhead placed whose path came within this
+// but never within reach: read there, 9 cm from the overhead's reading (p90
+// 28 cm); read to rest, 42 cm (p90 1.40 m).
+const PATH_CONTACT_M = CONTACT_M + 0.10;
+
 /* Least-squares velocity through {t, x, y} samples. */
 function velocity(pts) {
   const tm = pts.reduce((a, p) => a + p.t, 0) / pts.length;
@@ -171,9 +181,10 @@ function trackBreak(track, standing) {
  * also moves stones a rock never touched (a detection dropout, a stone it
  * knocked on). Except where its track breaks beside a stone that stood there
  * (`stones_before`, which buildGameView gives each rock): the stone it struck
- * moved too little for the diff to count it, under 0.30 m. `hit` without a
- * position: it was already touching when first seen. null: nothing to
- * measure to. */
+ * moved too little for the diff to count it, under 0.30 m. Or where the path
+ * came nearest a stone its throw disturbed, a little out of reach of it
+ * (PATH_CONTACT_M). `hit` without a position: it was already touching when
+ * first seen. null: nothing to measure to. */
 export function curlEnd(shot) {
   const hits = struckStones(shot);
   if (hits.length) {
@@ -195,6 +206,13 @@ export function curlEnd(shot) {
       .filter(p => typeof p?.x === "number" && typeof p?.y === "number");
     const i = trackBreak(track, standing);
     if (i > 0) return { x: track[i - 1][1], y: track[i - 1][2], hit: true };
+    // Only past where the overhead lost it: a rock it followed by the stone
+    // and on without a break did not hit it (s_1WB80m666M2idwp59 e3 r5, a
+    // guard read the other colour after and so "removed", passed 0.39 m off).
+    const lost = track.length ? track[track.length - 1][2] : Infinity;
+    const unseen = sources[1].filter(p => p.y < lost);
+    const near = unseen.reduce((a, p) => (!a || reach(p) < reach(a) ? p : a), null);
+    if (near && reach(near) <= PATH_CONTACT_M) return { x: near.x, y: near.y, hit: true };
   }
   const path = shot?.line?.path;
   const end = restOf(shot) ?? (path?.length ? { x: path[path.length - 1][1], y: path[path.length - 1][0] } : null);

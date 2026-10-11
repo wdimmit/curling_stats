@@ -163,10 +163,18 @@ from pathlib import Path
 # 1659 -> 1663, tee crossings estimated 43 -> 17; a one-frame phase shift now
 # moves 13 releases rather than 37, and 2 release times by more than 0.2 s
 # rather than 20.
-# 2026.10.10.1: every rock's spin, rpm at release, from the camera facing the
+# 2026.10.10.1: an arrival paired with nothing, of a still-hogged release's
+# colour, that came in 19-45 s after it and changed nothing is the hog being
+# pushed down the sheet, and is dropped (`farfollow.PUSH_MAX_LAG_S`). 10/09
+# Friday Evening S4 end 2 rock 12 was pushed in 32.7 s on, past
+# `release.pair`'s 30 s, and the rules kept the push -- no release, no line --
+# over the hog. Full-game A/B on the worker against 2026.10.08.4: that rock
+# becomes the hog with its line and delivery, and 428 rocks in four games
+# (41 ends, 10 hogged releases) are unchanged.
+# 2026.10.11.1: every rock's spin, rpm at release, from the camera facing the
 # thrower (`game/spintime.py`, model weights/spin1.pt); timeline schema 9.
 # Nothing else moves: the pass is attach-only.
-PIPELINE_VERSION = "2026.10.10.1"
+PIPELINE_VERSION = "2026.10.11.1"
 
 
 def model_id(weights) -> str:
