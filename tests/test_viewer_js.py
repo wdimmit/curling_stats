@@ -4459,3 +4459,10 @@ class TestClipsOnTheShotsPage:
         for rel in ("frontend/site/Practice.jsx", "frontend/site/Shots.jsx"):
             assert 'import { ClipPlayer } from "./clip.jsx";' in (self.ROOT / rel).read_text()
         assert "function ClipLines" not in (self.ROOT / "frontend/site/Practice.jsx").read_text()
+
+    def test_one_clip_is_open_at_a_time_across_groups(self):
+        page = (self.ROOT / "frontend/site/Shots.jsx").read_text()
+        table = page[page.index("function RockTable"):page.index("function Group")]
+        assert "useState" not in table
+        assert "const [openClip, setOpenClip] = useState(null);" in page
+        assert "setOpenClip={setOpenClip}" in page

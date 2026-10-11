@@ -186,8 +186,7 @@ function Summary({ group }) {
   );
 }
 
-function RockTable({ rows, clips }) {
-  const [open, setOpen] = useState(null);
+function RockTable({ rows, clips, open, setOpen }) {
   const heads = rows[0].figures.map(f => f.label);
   return (
     <table className="rocks">
@@ -232,7 +231,7 @@ function RockTable({ rows, clips }) {
   );
 }
 
-function Group({ group, clips }) {
+function Group({ group, clips, openClip, setOpenClip }) {
   // Open to begin with when short, then the reader's: a group that grows
   // past twelve as games arrive must not snap shut under them.
   const [open, setOpen] = useState(group.rows.length <= 12);
@@ -246,7 +245,7 @@ function Group({ group, clips }) {
       </div>
       <details open={open} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary>Every rock ({group.rows.length})</summary>
-        <RockTable rows={group.rows} clips={clips} />
+        <RockTable rows={group.rows} clips={clips} open={openClip} setOpen={setOpenClip} />
       </details>
     </section>
   );
@@ -318,6 +317,8 @@ export function Shots() {
   const plays = list.data?.plays ?? null;
   const [rocks, setRocks] = useRocks(plays);
   useClipPoll(plays, rocks, setRocks);
+  // The one clip that is open, by row key: another rock's Clip closes it, in any group.
+  const [openClip, setOpenClip] = useState(null);
   const [err, setErr] = useState("");
   const [off, setOffState] = useState(loadOff);
   // Only games still listed are kept: a cleared game's id would linger for ever.
@@ -377,7 +378,8 @@ export function Shots() {
                   <GamePicker plays={plays} rocks={rocks} off={off} setOff={setOff} />
                   <p className="muted intro">{picked.intro}
                   {loaded < live.length ? ` Loaded ${loaded} of ${live.length}…` : ""}</p>
-                  {groups.length ? groups.map(g => <Group key={g.id} group={g} clips={clipsBy} />)
+                  {groups.length ? groups.map(g => <Group key={g.id} group={g} clips={clipsBy} openClip={openClip}
+                                                      setOpenClip={setOpenClip} />)
                    : picked.on && loaded === live.length
                      ? <Card>None of your rocks in these games were seen.</Card>
                    : null}
