@@ -1898,6 +1898,89 @@ class TestCurlStopsAtAHit:
         assert self.figs(dict(s, house_delta=None))["broom"]["value"] == "1 ft wide"
 
 
+
+class TestContactFromThePath:
+    """A hit the overhead never saw -- a sweeper over the rock -- is placed
+    from the camera behind the thrower, whose path loses the rock as it closes
+    on the stone: the two read as one box from that far back."""
+
+    def figs(self, s):
+        return {f["key"]: f for f in run_js(f"out(lineFigures({json.dumps(s)}, {{schema_version: 6}}));")["figures"]}
+
+    def s_0MZM_e4_s9(self, **kw):
+        """s_0MZM5biOgc46X2jEa, end 4, rock 9: a sweeper hid it from above
+        2.8 m out; it took the yellow at (1.26, 0.14) off the side of the
+        four-foot and rolled a metre left to rest beside the button. Checked
+        against the video, 2026-10-10. The path is the one read past its lost
+        track (`linetime.path_until`): last seen at 0.57 m, 0.47 m from the
+        yellow."""
+        base = dict(
+            target_broom={"x": 1.5346, "y": 0.3737}, delivered_stone_index=0,
+            stones=[{"color": "red", "x": 0.2664, "y": -0.3264}],
+            house_delta={"added": [{"color": "red", "x": 0.2664, "y": -0.3264}],
+                         "removed": [{"color": "yellow", "x": 1.2594, "y": 0.1442}], "moved": []},
+            track=[[3423.7, 0.984, 3.323], [3423.9, 1.006, 3.14], [3424.0, 1.026, 3.045],
+                   [3424.1, 1.039, 2.934], [3424.2, 1.052, 2.835]],
+            line={"start": {"x": -0.052, "y": 37.774}, "at_hog": {"x": 0.4661, "offset_m": 0.1182},
+                  "at_broom": {"x": 2.028, "miss_m": 0.4934}, "side": "wide", "curl": "left",
+                  "confirmed": True, "hog_path": [],
+                  "path": [[20.14, 0.895], [15.25, 1.075], [10.07, 1.175], [5.09, 1.2], [3.34, 1.176],
+                           [2.19, 1.156], [1.52, 1.134], [0.88, 1.118], [0.57, 1.058]]})
+        base.update(kw)
+        return shot(9, "red", "third", **base)
+
+    def test_the_path_s_closest_approach_to_the_stone_it_struck_is_where_it_hit(self):
+        # Read at (1.058, 0.57), 0.96 m left of the line; to rest it was 1.80.
+        f = self.figs(self.s_0MZM_e4_s9())
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("3 ft 2 in", "from its line to where it hit a stone")
+
+    def test_a_path_cut_short_well_before_the_stone_is_measured_to_rest(self):
+        # As first published: the path read only to a second past the lost
+        # track, 1.85 m out and 1.7 m from the yellow. The roll counts.
+        s = self.s_0MZM_e4_s9()
+        s["line"]["path"] = [[20.14, 0.895], [10.07, 1.175], [3.36, 1.167], [2.18, 1.15], [1.85, 1.136]]
+        f = self.figs(s)
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("5 ft 11 in", "from its line to where it stopped")
+
+    def test_a_path_that_passed_more_than_a_hand_from_reach_did_not_hit(self):
+        # Its nearest, 0.57 m from the yellow's centre.
+        s = self.s_0MZM_e4_s9()
+        s["line"]["path"] = s["line"]["path"][:-1] + [[0.62, 0.95]]
+        assert self.figs(s)["curl"]["note"] == "from its line to where it stopped"
+
+    def test_only_past_where_the_overhead_lost_it(self):
+        """s_1WB80m666M2idwp59 e3 r5: a draw to the button that passed a guard
+        the house read in the other colour after, so "removed" it. The path
+        came 0.44 m from it; the overhead followed the rock past it, 0.39 m
+        off, and on to rest without a break. Its curl stays a draw's, to rest."""
+        s = shot(5, "red", "second", target_broom={"x": -1.6404, "y": 0.0441}, delivered_stone_index=0,
+                 stones=[{"color": "red", "x": -0.0707, "y": -0.1114}],
+                 house_delta={"added": [{"color": "red", "x": -0.1859, "y": 2.751},
+                                        {"color": "red", "x": -0.0707, "y": -0.1114}],
+                              "removed": [{"color": "yellow", "x": -0.1585, "y": 2.8992}], "moved": []},
+                 track=[[9508.87, -0.545, 2.952], [9508.97, -0.545, 2.893], [9509.07, -0.545, 2.849],
+                        [9509.17, -0.545, 2.786], [9509.27, -0.536, 2.745], [9509.67, -0.53, 2.528],
+                        [9511.27, -0.444, 1.598], [9513.27, -0.269, 0.564], [9514.87, -0.111, 0.023],
+                        [9515.27, -0.093, -0.035]],
+                 line={"start": None, "at_hog": {"x": -0.7563, "offset_m": -0.1872},
+                       "at_broom": {"x": -1.9693, "miss_m": -0.3289}, "curl": "right", "confirmed": None,
+                       "hog_path": [], "path": [[3.97, -0.716], [3.4, -0.639], [2.81, -0.585], [2.21, -0.52],
+                                                [1.09, -0.309], [-0.11, 0.017]]})
+        f = self.figs(s)
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("6 ft 3 in", "from its line to where it stopped")
+        # Lost before the guard, the same path would place a hit there.
+        s["track"] = s["track"][:1]
+        assert self.figs(s)["curl"]["note"] == "from its line to where it hit a stone"
+
+    def test_the_overhead_s_own_contact_comes_first(self):
+        # A track that reached the yellow places the hit, not the path: read
+        # at (0.98, 0.70), the sample before (1.08, 0.40) came within reach.
+        s = self.s_0MZM_e4_s9()
+        s["track"] = s["track"] + [[3425.9, 0.98, 0.70], [3426.0, 1.08, 0.40]]
+        f = self.figs(s)
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("3 ft 5 in", "from its line to where it hit a stone")
+
+
 def turning(y_break, speed, standing=(0.10, -0.22)):
     """A rock running straight down the sheet at `speed` that turns off
     sideways at depth `y_break`, with a stone standing `standing` from where
