@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -43,6 +44,8 @@ SEED_TAIL = 9                   # hogtime samples (30 fps) the seed's velocity c
 CROP = (0.35, 0.5, 0.25)        # the training crop: each side, above, below
 STOP_MPS = 0.5                  # slower than this down the sheet, the rock is coming to rest
 STOP_SPAN_S = 1.0               # judged over this much of its track
+EXTEND_S = 5.0                  # a slow rock still in view at the window's end: followed this much on
+SWING_FROM_MIN = 3              # clean reads of a colour in the end, for the end's own swing
 
 
 def track_of(crossing, view):
@@ -145,25 +148,28 @@ def stopping_at(ts, ms):
     return None
 
 
-def read_spin(model, pose, video, view, shot, *, decode, detect, points):
-    """One rock's spin from the camera facing its thrower, or None."""
-    crossing = shot.hog_crossing
-    chain = track_of(crossing, view)
-    t_ref = shot.t_hog_s if shot.t_hog_s is not None else getattr(crossing, "t", None)
-    if t_ref is None:
-        # A crossing refused for speed keeps its samples but no time: take
-        # where its own track met the hog row.
-        t_ref = next((s[0] for s in chain if s[2] >= view.hog_row), None)
-        if t_ref is None:
-            return None
-    seed = seed_of(crossing, view, t_ref + WINDOW_S[0])
-    if seed is None:
-        return None
-    frames, times = decode(video, view.rect, t_ref + WINDOW_S[0], t_ref + WINDOW_S[1], SPIN_FPS)
+@dataclass
+class Track:
+    """One rock's samples: when, and its grip's offset across from the neck in
+    stone widths. ``last`` is its last tracked frames, ``(t, box)``, to follow
+    it on from; ``open`` says it was still followed, moving, at ``t_end``, the
+    last frame decoded."""
+
+    ts: list
+    ss: list
+    last: list
+    t_end: float
+    open: bool
+
+
+def _read_window(model, pose, video, view, color, t0, t1, seed, *, decode, detect, points):
+    """The rock from ``seed`` through ``[t0, t1]``: a Track, or None where it
+    was not followed at all."""
+    frames, times = decode(video, view.rect, t0, t1, SPIN_FPS)
     if not len(frames):
         return None
     frame_h = frames.shape[1]
-    boxes = detect(model, frames, times, int(view.hog_row) - ABOVE_HOG_ROWS, frame_h, shot.color,
+    boxes = detect(model, frames, times, int(view.hog_row) - ABOVE_HOG_ROWS, frame_h, color,
                    imgsz=800, conf=0.25)
     tracked = follow(times, boxes, seed, view, frame_h)
     if not tracked:
@@ -182,7 +188,53 @@ def read_spin(model, pose, video, view, shot, *, decode, detect, points):
             continue
         ts.append(t)
         ss.append((p[1][0] - p[0][0]) / (b[2] - b[0]))
-    return spinfit.read(np.array(ts), np.array(ss))
+    # Still followed at the last frame decoded, and not coming to rest: a
+    # rock that went out of the frame's bottom was let go before it.
+    open_ = t_stop is None and times[-1] - tracked[-1][1] <= LOST_S
+    return Track(ts, ss, [(t, b) for _i, t, b in tracked[-SEED_TAIL:]], float(times[-1]), open_)
+
+
+def track_spin(model, pose, video, view, shot, *, decode, detect, points):
+    """One rock's samples from the camera facing its thrower: a Track, or None."""
+    crossing = shot.hog_crossing
+    chain = track_of(crossing, view)
+    t_ref = shot.t_hog_s if shot.t_hog_s is not None else getattr(crossing, "t", None)
+    if t_ref is None:
+        # A crossing refused for speed keeps its samples but no time: take
+        # where its own track met the hog row.
+        t_ref = next((s[0] for s in chain if s[2] >= view.hog_row), None)
+        if t_ref is None:
+            return None
+    seed = seed_of(crossing, view, t_ref + WINDOW_S[0])
+    if seed is None:
+        return None
+    return _read_window(model, pose, video, view, shot.color, t_ref + WINDOW_S[0],
+                        t_ref + WINDOW_S[1], seed, decode=decode, detect=detect, points=points)
+
+
+def follow_on(track, model, pose, video, view, color, *, decode, detect, points):
+    """``track`` read on for EXTEND_S past its window, from where its last
+    frames had it and how fast it was going there."""
+    ts = np.array([t for t, _b in track.last])
+    cx = np.array([(b[0] + b[2]) / 2 for _t, b in track.last])
+    row = np.array([b[3] for _t, b in track.last])
+    vx, vy = (np.polyfit(ts, cx, 1)[0], np.polyfit(ts, row, 1)[0]) if np.ptp(ts) > 0 else (0.0, 0.0)
+    seed = (float(ts[-1]), float(cx[-1]), float(row[-1]), float(vx), float(vy))
+    more = _read_window(model, pose, video, view, color, track.t_end + 1 / SPIN_FPS,
+                        track.t_end + EXTEND_S, seed, decode=decode, detect=detect, points=points)
+    if more is None:
+        return track
+    return Track(track.ts + more.ts, track.ss + more.ss, more.last, more.t_end, more.open)
+
+
+def swing_for(colour, firsts):
+    """The swing, ``(amplitude, centre)``, to time this end's slow rocks of
+    ``colour`` with: the median of its clean reads' (``firsts``, spinfit.read's
+    answers) when there are SWING_FROM_MIN of them, else the colour's usual."""
+    got = [f.swing for f in firsts if f is not None and f.swing is not None]
+    if len(got) >= SWING_FROM_MIN:
+        return float(np.median([a for a, _c in got])), float(np.median([c for _a, c in got]))
+    return spinfit.SWING.get(colour, spinfit.SWING["red"])
 
 
 def time_spins(shots, video, hog_view, *, model, pose=None, decode=None, detect=None,
@@ -217,13 +269,33 @@ def time_spins(shots, video, hog_view, *, model, pose=None, decode=None, detect=
     if points is None:
         from curling_score.detect import spinmodel
         points = spinmodel.handle_points
-    n = 0
+    kw = dict(decode=decode, detect=detect, points=points)
+    # Every rock first, as far as its window: the end's clean reads give the
+    # swing its slow rocks are timed with.
+    reads = []
     for shot in shots:
         if getattr(shot, "missing", False) or getattr(shot, "hog_crossing", None) is None:
             continue
         try:
-            got = read_spin(model, pose, video, hog_view, shot,
-                            decode=decode, detect=detect, points=points)
+            track = track_spin(model, pose, video, hog_view, shot, **kw)
+            if track is not None:
+                reads.append((shot, track, spinfit.read(track.ts, track.ss)))
+        except Exception:
+            log.exception("spin pass failed on shot %s; it keeps no spin",
+                          getattr(shot, "number", "?"))
+    swings = {c: swing_for(c, [f for s, _t, f in reads if s.color == c])
+              for c in {s.color for s, _t, _f in reads}}
+    n = 0
+    for shot, track, first in reads:
+        try:
+            got = spinfit.read_with_swing(track.ts, track.ss, swings[shot.color], first)
+            if (got is None or got.turns_in_view < spinfit.HELD_BELOW_TURNS) and track.open:
+                # Under a turn so far and still in view: more of its turn.
+                more = follow_on(track, model, pose, video, hog_view, shot.color, **kw)
+                if len(more.ts) > len(track.ts):
+                    again = spinfit.read_with_swing(more.ts, more.ss, swings[shot.color],
+                                                    spinfit.read(more.ts, more.ss))
+                    got = again if again is not None else got
         except Exception:
             log.exception("spin pass failed on shot %s; it keeps no spin",
                           getattr(shot, "number", "?"))

@@ -99,8 +99,9 @@ class Stubs:
     """A decode, a detector and a handle-point model for one rock turning at
     ``f`` turns a second: the grip swings 0.2 stone widths either side."""
 
-    def __init__(self, f=0.2, speed=2.2, fail=0, decel=0.0):
+    def __init__(self, f=0.2, speed=2.2, fail=0, decel=0.0, amp=0.2, centre=0.0):
         self.f, self.speed, self.fail, self.calls = f, speed, fail, 0     # fail: the first n calls
+        self.amp, self.centre = amp, centre                               # the handle's swing
         # decel: the rock slows from `speed` at t=100 and comes to rest in
         # view, and its handle stops with it.
         self.decel, self.decoded = decel, []
@@ -126,7 +127,7 @@ class Stubs:
         for k, p in enumerate(patches):
             t = min(self.t[k], self.t_stop)
             w = self.w[k]
-            s = 0.2 * np.sin(2 * np.pi * self.f * t)
+            s = self.centre + self.amp * np.sin(2 * np.pi * self.f * t)
             out.append(((30.0, 20.0), (30.0 + s * w, 12.0), 0.9))
         return out
 
@@ -202,13 +203,15 @@ class TestTimeSpins:
         decel = speed / rest_s
         s = shot(speed=speed)
         s.hog_crossing = crossing(speed=speed, decel=decel)
-        run([s], Stubs(f=f, speed=speed, decel=decel))
+        # The handle swings as a red one usually does (spinfit.SWING): a rock
+        # under a turn is timed with that swing held.
+        run([s], Stubs(f=f, speed=speed, decel=decel, amp=0.226, centre=-0.024))
         assert getattr(s, "spin", None) is None or s.spin.rpm == pytest.approx(60 * f, rel=0.05)
 
     def test_a_rock_that_comes_to_rest_in_view_reads_its_spin_while_moving(self):
         s = shot(speed=2.8)
         s.hog_crossing = crossing(speed=2.8, decel=2.8 / 6.0)
-        run([s], Stubs(f=0.2, speed=2.8, decel=2.8 / 6.0))      # at rest 6 s on, 13.4 m out
+        run([s], Stubs(f=0.2, speed=2.8, decel=2.8 / 6.0, amp=0.226, centre=-0.024))  # at rest 6 s on, 13.4 m out
         assert s.spin.rpm == pytest.approx(12.0, rel=0.05)
 
     def test_a_refused_crossing_starts_where_its_own_track_met_the_hog_row(self):
@@ -284,3 +287,57 @@ class TestModelsAreLoadedAtTheStart:
             raise FileNotFoundError("CURLING_SCORE_SPIN_WEIGHTS=/x/spin1.pt does not exist")
         with pytest.raises(FileNotFoundError):
             self.load(monkeypatch, broken)
+
+
+class TestSlowRocks:
+    """A rock showing under a turn in view is timed with its handle's swing
+    held (spinfit.read_with_swing); one still in view and moving when the
+    window ends is followed on for more of its turn."""
+
+    RED = (0.226, -0.024)                      # spinfit.SWING["red"]
+
+    def rock(self, speed):
+        s = shot(speed=speed)
+        s.hog_crossing = crossing(speed=speed)
+        return s
+
+    def test_a_slow_rock_is_read_with_the_swing_held(self):
+        s = self.rock(1.5)
+        run([s], Stubs(f=0.07, speed=1.5, amp=self.RED[0], centre=self.RED[1]))      # 4.2 rpm
+        assert s.spin.rpm == pytest.approx(4.2, rel=0.12)
+
+    def test_a_slow_rock_still_in_view_when_the_window_ends_is_followed_on(self):
+        s = self.rock(1.2)                                   # at 18 m of the frame's 23 when it ends
+        stubs = Stubs(f=0.07, speed=1.2, amp=self.RED[0], centre=self.RED[1])
+        run([s], stubs)
+        assert len(stubs.decoded) == 2
+        assert stubs.decoded[1][0] == pytest.approx(stubs.decoded[0][1], abs=0.15)
+        assert s.spin.samples > len([t for t in np.arange(*stubs.decoded[0], 0.1)
+                                     if 5.0 + 1.2 * (t - 100.0) >= ST.FROM_M])
+
+    def test_a_rock_gone_out_of_the_frame_is_not_followed_on(self):
+        stubs = Stubs(f=0.07, speed=2.2, amp=self.RED[0], centre=self.RED[1])
+        run([self.rock(2.2)], stubs)                         # past the bottom at 8 s
+        assert len(stubs.decoded) == 1
+
+    def test_a_rock_read_in_full_is_not_followed_on(self):
+        stubs = Stubs(f=0.2, speed=1.2)
+        s = self.rock(1.2)
+        run([s], stubs)
+        assert len(stubs.decoded) == 1 and s.spin.rpm == pytest.approx(12.0, rel=0.05)
+
+
+class TestSwingFor:
+    """The swing a slow rock is timed with: its end's own, from the clean reads
+    of its colour when there are enough, else the colour's usual one."""
+
+    def read(self, swing):
+        return spinfit.Spin(rpm=12.0, rpm_avg=12.0, turns_in_view=1.8, samples=80, swing=swing)
+
+    def test_three_clean_reads_of_its_colour_give_the_end_s_own(self):
+        firsts = [self.read((0.24, -0.01)), self.read((0.25, -0.03)), self.read((0.26, -0.02)), None]
+        assert ST.swing_for("red", firsts) == pytest.approx((0.25, -0.02))
+
+    def test_fewer_give_the_colour_s_usual_swing(self):
+        firsts = [self.read((0.30, 0.0)), self.read(None), None]
+        assert ST.swing_for("yellow", firsts) == spinfit.SWING["yellow"]

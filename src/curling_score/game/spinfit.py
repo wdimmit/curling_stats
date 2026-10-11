@@ -31,6 +31,25 @@ MIN_TURNS_IN_VIEW = 0.5
 EARLY_AGREE = 0.25                       # the early rate against the whole stretch's, at most
 DRIFTS = tuple(np.linspace(-0.02, 0.01, 13))   # turns/s^2, the whole stretch only
 
+# A rock showing under a turn in view is timed with its handle's swing held --
+# how far the grip swings across the neck, in stone widths, and about where.
+# It is near-constant across stones, sheets and games (six replay windows over
+# four videos, 2026-10-11: red 0.226, IQR 0.220-0.235; yellow 0.210, IQR
+# 0.201-0.219; centre -0.02), which leaves only the rate and phase to fit. On
+# clean rocks cut short: 5% median error at 0.5-0.75 turns (the free fit 19%),
+# 10% at 0.35-0.5 (73%), the range holding the true rate 83-91% of the time.
+SWING = {"red": (0.226, -0.024), "yellow": (0.210, -0.021)}
+CLEAN_TURNS = 1.0              # a read this long and this clean carries its handle's swing
+CLEAN_SNR = 5.0
+HELD_BELOW_TURNS = 1.0         # under this in view, the held fit is the read
+HELD_MIN_TURNS = 0.3           # under this not even a range holds
+RANGE_BELOW_TURNS = 0.5        # under this the rate is given as a range
+RANGE_REL = 0.5                # the range: every rate whose best cost is within 50% of the least
+MAX_RANGE = 0.6                # a range wider than this share of its rate is not a reading
+HELD_F = np.arange(0.005, 0.60, 0.0025)        # turns/s: 0.3 to 36 rpm
+HELD_PH = np.linspace(0, 2 * np.pi, 120, endpoint=False)
+HUBER_SCALE = 0.05             # stone widths: residuals past this count linearly
+
 
 @dataclass(frozen=True)
 class Spin:
@@ -38,6 +57,8 @@ class Spin:
     rpm_avg: float          # the whole stretch in view
     turns_in_view: float
     samples: int
+    rpm_range: tuple | None = None     # (lo, hi) rpm, for a rock showing under half a turn
+    swing: tuple | None = None         # (amplitude, centre) of a clean read's handle
 
 
 def periodogram(t, x, freqs=FREQS):
@@ -56,9 +77,9 @@ def periodogram(t, x, freqs=FREQS):
 def fit(t, x, f0, drifts=DRIFTS):
     """x = a sin(2pi(f tm + k tm^2 / 2) + ph) + c, f within 30% of f0. For a
     given (f, k) it is linear in (a cos ph, a sin ph, c): the grid searches f
-    and k, least squares (Huber-reweighted) the rest. Returns (f, k, a, noise),
-    noise the residuals' robust spread (1.4826 x their median absolute value),
-    so a few stray frames -- a box on a broom -- do not read as noise."""
+    and k, least squares (Huber-reweighted) the rest. Returns (f, k, a, noise,
+    c), noise the residuals' robust spread (1.4826 x their median absolute
+    value), so a few stray frames -- a box on a broom -- do not read as noise."""
     tm = t - t.mean()
     best = None
     for f in np.linspace(0.7 * f0, 1.3 * f0, 121):
@@ -74,8 +95,9 @@ def fit(t, x, f0, drifts=DRIFTS):
             cost = float(np.sum((wts * r) ** 2))
             if best is None or cost < best[0]:
                 best = (cost, f, k, coef, r)
-    _, f, k, (bs, bc, _c), r = best
-    return float(f), float(k), float(np.hypot(bs, bc)), float(1.4826 * np.median(np.abs(r)))
+    _, f, k, (bs, bc, c), r = best
+    return (float(f), float(k), float(np.hypot(bs, bc)), float(1.4826 * np.median(np.abs(r))),
+            float(c))
 
 
 def _peak(t, x, freqs=FREQS) -> float:
@@ -89,7 +111,7 @@ def read(t, s) -> Spin | None:
         return None
     order = np.argsort(t)
     t, s = t[order], s[order]
-    f_all, _k, a, noise = fit(t, s, _peak(t, s - np.polyval(np.polyfit(t, s, 1), t)))
+    f_all, _k, a, noise, c = fit(t, s, _peak(t, s - np.polyval(np.polyfit(t, s, 1), t)))
     span = float(t[-1] - t[0])
     turns = f_all * span
     if a < MIN_AMPLITUDE or a / max(noise, 1e-9) < MIN_SNR or turns < MIN_TURNS_IN_VIEW:
@@ -109,4 +131,42 @@ def read(t, s) -> Spin | None:
     # the whole-stretch fit reads 40-50% fast, past the turns gate.
     if abs(f_early / f_all - 1) > EARLY_AGREE:
         return None
-    return Spin(rpm=60.0 * f_early, rpm_avg=60.0 * f_all, turns_in_view=turns, samples=int(t.size))
+    clean = turns >= CLEAN_TURNS and a / max(noise, 1e-9) >= CLEAN_SNR
+    return Spin(rpm=60.0 * f_early, rpm_avg=60.0 * f_all, turns_in_view=turns, samples=int(t.size),
+                swing=(a, c) if clean else None)
+
+
+def fit_held(t, x, amp, centre):
+    """x = amp sin(2pi f t + ph) + centre, amp and centre held: the f x ph grid,
+    Huber cost. Returns (f, f_lo, f_hi), the span of every rate whose best cost
+    is within RANGE_REL of the least -- how sharply the frames pin it."""
+    tm = (t - t[0])[None, :]
+    prof = np.empty(HELD_F.size)
+    for i, f in enumerate(HELD_F):
+        r = np.abs(x[None, :] - (amp * np.sin(2 * np.pi * f * tm + HELD_PH[:, None]) + centre))
+        prof[i] = np.where(r < HUBER_SCALE, 0.5 * r ** 2,
+                           HUBER_SCALE * (r - 0.5 * HUBER_SCALE)).sum(axis=1).min()
+    i = int(np.argmin(prof))
+    ok = np.flatnonzero(prof <= prof[i] * (1 + RANGE_REL))
+    return float(HELD_F[i]), float(HELD_F[ok.min()]), float(HELD_F[ok.max()])
+
+
+def read_with_swing(t, s, swing, first) -> Spin | None:
+    """``first`` (``read``'s answer), unless the rock showed under a turn in
+    view: then the read with its handle's ``swing`` (amplitude, centre) held --
+    one rate from half a turn, a range under it, None where even the range is
+    loose. A rock with a turn or more in view keeps ``first``, refused or not:
+    one the free fit could not read is noise, not slowness."""
+    t, s = np.asarray(t, float), np.asarray(s, float)
+    if t.size < MIN_SAMPLES:
+        return first
+    order = np.argsort(t)
+    t, s = t[order], s[order]
+    f, lo, hi = fit_held(t, s, *swing)
+    turns = f * float(t[-1] - t[0])
+    if turns >= HELD_BELOW_TURNS:
+        return first
+    if turns < HELD_MIN_TURNS or (hi - lo) / f > MAX_RANGE:
+        return None
+    return Spin(rpm=60.0 * f, rpm_avg=60.0 * f, turns_in_view=turns, samples=int(t.size),
+                rpm_range=(60.0 * lo, 60.0 * hi) if turns < RANGE_BELOW_TURNS else None)

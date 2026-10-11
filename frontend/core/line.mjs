@@ -298,11 +298,14 @@ export function turnName(shot, curlDir = turnOf(shot)) {
   return curlDir === hack ? "out-turn" : "in-turn";
 }
 
-/* The rock's spin as thrown, in whole rpm, and which turn. */
+/* The rock's spin as thrown, in whole rpm, and which turn. A rock showing
+ * under half a turn in view is timed only to a range, and shows it. */
 function rotationFig(shot, curlDir) {
   const rpm = shot?.spin?.rpm;
   if (typeof rpm !== "number") return fig("rotation", "Rotation", "–", "not read");
-  return fig("rotation", "Rotation", `${Math.round(rpm)} rpm`, turnName(shot, curlDir) ?? "turn not known");
+  const [lo, hi] = (shot.spin.rpm_range ?? [rpm, rpm]).map(Math.round);
+  const value = lo === hi ? `${lo} rpm` : `${lo}–${hi} rpm`;
+  return fig("rotation", "Rotation", value, turnName(shot, curlDir) ?? "turn not known");
 }
 
 const curlFig = c => c?.m != null

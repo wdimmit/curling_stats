@@ -1446,7 +1446,15 @@ class TestSpin:
         s.spin = Spin(rpm=10.347, rpm_avg=9.91, turns_in_view=1.8333, samples=74)
         end = timeline.build_end(1, "top", 0.0, 900.0, [s])
         assert end["shots"][0]["spin"] == {"rpm": 10.3, "rpm_avg": 9.9, "turns_in_view": 1.83,
-                                           "samples": 74}
+                                           "samples": 74, "rpm_range": None}
+
+    def test_a_rock_under_half_a_turn_in_view_carries_its_range(self):
+        from curling_score.game.spinfit import Spin
+        s = shot(1, "yellow", [])
+        s.spin = Spin(rpm=3.83, rpm_avg=3.83, turns_in_view=0.43, samples=76, rpm_range=(3.14, 4.46),
+                      swing=None)
+        spin = timeline.build_end(1, "top", 0.0, 900.0, [s])["shots"][0]["spin"]
+        assert (spin["rpm"], spin["rpm_range"]) == (3.8, [3.1, 4.5])
 
     def test_a_rock_without_is_null_not_absent(self):
         end = timeline.build_end(1, "top", 0.0, 900.0, [shot(1, "red", [])])

@@ -61,11 +61,15 @@ def _line(l):
 
 
 def _spin(sp):
-    """A `spinfit.Spin`, or None: the rock's rotation in rpm."""
+    """A `spinfit.Spin`, or None: the rock's rotation in rpm. ``rpm_range`` is
+    [lo, hi] for a rock showing under half a turn in view, which is timed
+    only that closely; null otherwise."""
     if sp is None:
         return None
+    rng = getattr(sp, "rpm_range", None)
     return {"rpm": round(float(sp.rpm), 1), "rpm_avg": round(float(sp.rpm_avg), 1),
-            "turns_in_view": round(float(sp.turns_in_view), 2), "samples": int(sp.samples)}
+            "turns_in_view": round(float(sp.turns_in_view), 2), "samples": int(sp.samples),
+            "rpm_range": None if rng is None else [round(float(rng[0]), 1), round(float(rng[1]), 1)]}
 
 
 def _stone(d) -> dict:

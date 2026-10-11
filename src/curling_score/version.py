@@ -174,7 +174,13 @@ from pathlib import Path
 # 2026.10.11.1: every rock's spin, rpm at release, from the camera facing the
 # thrower (`game/spintime.py`, model weights/spin1.pt); timeline schema 9.
 # Nothing else moves: the pass is attach-only.
-PIPELINE_VERSION = "2026.10.11.1"
+# 2026.10.11.2: a rock showing under a turn in view is timed with its handle's
+# swing held (`spinfit.read_with_swing`: the end's own swing from its clean
+# reads, else the colour's usual), as a range under half a turn; one still in
+# view when its window ends is followed on 5 s (`spintime.follow_on`). Rocks
+# with a turn or more in view read as before. Six replay windows: 16 of 22
+# refused rocks were slow ones, 3.4-8.4 rpm.
+PIPELINE_VERSION = "2026.10.11.2"
 
 
 def model_id(weights) -> str:

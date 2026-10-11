@@ -76,3 +76,63 @@ def test_under_half_a_turn_is_not_read_fast(n, phase):
     t = 101.4 + np.arange(n) / 10
     got = spinfit.read(t, 0.2 * np.sin(2 * np.pi * 0.15 * t + phase))
     assert got is None or got.rpm == pytest.approx(9.0, rel=0.05)
+
+
+# --- A rock under a turn in view: the handle's swing held -----------------
+
+SWING = (0.22, -0.02)
+
+
+def slow(f, seconds=7.0, phase=0.7, noise=0.03, a=0.22, c=-0.02, seed=3):
+    """A rock turning ``f`` turns a second whose handle swings ``a`` about ``c``."""
+    t, s = swing(f=f, seconds=seconds, a=a, noise=noise, phase=phase, seed=seed)
+    return t, s + c
+
+
+def held(t, s, swing_=SWING):
+    return spinfit.read_with_swing(t, s, swing_, spinfit.read(t, s))
+
+
+@pytest.mark.parametrize("phase", [0.0, 0.7, 1.6, 2.5])
+def test_under_half_a_turn_is_read_with_the_swing_held_and_given_as_a_range(phase):
+    t, s = slow(f=0.06, phase=phase)               # 3.6 rpm: 0.42 turns in 7 s
+    got = held(t, s)
+    assert got.rpm == pytest.approx(3.6, rel=0.10)
+    lo, hi = got.rpm_range
+    assert lo <= 3.6 <= hi and (hi - lo) / got.rpm <= spinfit.MAX_RANGE
+
+
+def test_between_half_a_turn_and_one_it_is_one_number():
+    t, s = slow(f=0.11)                            # 6.6 rpm: 0.77 turns
+    got = held(t, s)
+    assert got.rpm == pytest.approx(6.6, rel=0.06) and got.rpm_range is None
+    assert got.turns_in_view == pytest.approx(0.77, abs=0.08)
+
+
+def test_a_turn_or_more_reads_as_it_always_has():
+    t, s = swing(f=0.2)
+    first = spinfit.read(t, s)
+    assert spinfit.read_with_swing(t, s, SWING, first) is first
+
+
+def test_a_faint_rock_of_many_turns_is_not_rescued():
+    t, s = swing(f=0.3, a=0.08, noise=0.06)
+    assert held(t, s) is None
+
+
+def test_nothing_there_is_not_a_slow_rock():
+    rng = np.random.default_rng(5)
+    t = np.arange(0, 8, 0.1)
+    assert held(t, rng.normal(0, 0.03, t.size) - 0.02) is None
+
+
+def test_a_clean_read_carries_its_handle_s_swing():
+    t, s = swing(f=0.2, a=0.23)
+    a, c = spinfit.read(t, s - 0.02).swing
+    assert a == pytest.approx(0.23, abs=0.01) and c == pytest.approx(-0.02, abs=0.01)
+
+
+def test_a_read_under_a_turn_carries_no_swing():
+    t, s = slow(f=0.11)
+    first = spinfit.read(t, s)
+    assert first is None or first.swing is None

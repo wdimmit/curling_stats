@@ -4660,6 +4660,20 @@ class TestRotationFigure:
         _, keys = self.fig(self.rock(), {"schema_version": 8})
         assert "rotation" not in keys
 
+    def ranged(self, lo, hi):
+        s = self.rock()
+        s["spin"] = {"rpm": (lo + hi) / 2, "rpm_avg": (lo + hi) / 2, "turns_in_view": 0.43,
+                     "samples": 76, "rpm_range": [lo, hi]}
+        return s
+
+    def test_a_rock_timed_only_as_a_range_shows_the_range(self):
+        f, _ = self.fig(self.ranged(3.1, 4.6))
+        assert (f["rotation"]["value"], f["rotation"]["note"]) == ("3–5 rpm", "in-turn")
+
+    def test_a_range_that_rounds_to_one_number_shows_one(self):
+        f, _ = self.fig(self.ranged(3.6, 4.4))
+        assert f["rotation"]["value"] == "4 rpm"
+
     def test_turn_name_on_its_own(self):
         got = run_js("out([turnName({hack: {side: 'left'}}, 'right'), turnName({hack: {side: 'left'}}, 'left'),"
                      " turnName({hack: {side: 'right'}}, 'left'), turnName({}, 'right'),"
