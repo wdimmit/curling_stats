@@ -91,3 +91,6 @@ frontend/node_modules/
 # broom3 supersedes broom2 (2026-09-30): round 4, the 09/28 misses (a navy pad on
 # sheet 5's green ring). broom2 is kept as the baseline broom3 was measured against.
 !weights/broom3.pt
+# spin1: the handle-point model (neck, grip end) the spin pass reads a rock's
+# rotation with -- datasets/spin, the spike's p5. See game/spintime.py.
+!weights/spin1.pt

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from curling_score import weights
@@ -63,6 +65,16 @@ class TestTheWorkerImageShipsBothDetectors:
         assert "COPY weights/${BROOM_MODEL}" in df
         assert "CURLING_SCORE_BROOM_WEIGHTS=/opt/curling/weights/${BROOM_MODEL}" in df
 
+    def test_it_ships_and_pins_the_spin_model(self):
+        """`spin_path` treats a missing file as "no spin", so an image built
+        without it would publish every rock with a null spin. Pinned, a missing
+        file is a failure."""
+        from curling_score import weights
+        df = self._dockerfile()
+        assert f"ARG SPIN_MODEL={weights.SPIN_NAME}" in df
+        assert "COPY weights/${SPIN_MODEL}" in df
+        assert "CURLING_SCORE_SPIN_WEIGHTS=/opt/curling/weights/${SPIN_MODEL}" in df
+
 
 class TestBroomPath:
     """No broom model means no brooms, never a broken run."""
@@ -85,3 +97,29 @@ class TestBroomPath:
         p = tmp_path / "b.pt"; p.write_bytes(b"x")
         monkeypatch.setenv(weights.BROOM_ENV_VAR, str(p))
         assert weights.broom_path() == p
+
+
+class TestSpinPath:
+    """No spin model means no spin, never a broken run."""
+
+    def test_absent_is_no_spin_not_an_error(self, monkeypatch):
+        monkeypatch.delenv(weights.SPIN_ENV_VAR, raising=False)
+        monkeypatch.setattr(weights, "_candidates", lambda name=None: iter(()))
+        assert weights.spin_path() is None
+
+    def test_none_switches_it_off(self, monkeypatch):
+        monkeypatch.setenv(weights.SPIN_ENV_VAR, "none")
+        assert weights.spin_path() is None
+
+    def test_a_set_but_missing_path_raises(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(weights.SPIN_ENV_VAR, str(tmp_path / "nope.pt"))
+        with pytest.raises(FileNotFoundError):
+            weights.spin_path()
+
+    def test_a_set_path_is_used(self, monkeypatch, tmp_path):
+        p = tmp_path / "s.pt"; p.write_bytes(b"x")
+        monkeypatch.setenv(weights.SPIN_ENV_VAR, str(p))
+        assert weights.spin_path() == p
+
+    def test_the_repository_ships_the_default(self):
+        assert (Path(__file__).resolve().parents[1] / "weights" / weights.SPIN_NAME).is_file()

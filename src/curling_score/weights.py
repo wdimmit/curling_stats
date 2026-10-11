@@ -74,6 +74,18 @@ SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 BROOM_NAME = "broom4.pt"
 BROOM_ENV_VAR = "CURLING_SCORE_BROOM_WEIGHTS"
 
+# The handle-point model the spin pass reads a rock's rotation with: two
+# keypoints, the handle's neck (its pivot) and its grip end, on a crop of the
+# stone from the long camera facing the thrower. Like SIDE_NAME it is optional:
+# a missing file means no spin, not a broken run. See `game/spintime.py`.
+#
+# spin1 as of 2026-10-10: yolo11n-pose at 224 px on 258 hand-labelled frames of
+# five 2026-27 games, one per sheet (datasets/spin, the spike's p5). On rocks it
+# never saw, its early rates sit within ~10% of frame-by-frame eye readings, and
+# it reads 122 of 128 rocks of four games' unlabelled ends.
+SPIN_NAME = "spin1.pt"
+SPIN_ENV_VAR = "CURLING_SCORE_SPIN_WEIGHTS"
+
 
 def _candidates(name=DEFAULT_NAME):
     here = Path(__file__).resolve()
@@ -150,6 +162,28 @@ def broom_path():
                 f"file, or to 'none' for no brooms.")
         return path
     for path in _candidates(BROOM_NAME):
+        if path.is_file():
+            return path
+    return None
+
+
+def spin_path():
+    """The handle-point model, or None: no model means no spin, not an error.
+
+    Resolved like :func:`broom_path`: ``none`` or unset-and-absent gives None,
+    and a path that is set but missing raises.
+    """
+    chosen = os.environ.get(SPIN_ENV_VAR)
+    if chosen:
+        if chosen.strip().lower() in ("none", ""):
+            return None
+        path = Path(chosen)
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"{SPIN_ENV_VAR}={chosen} does not exist. Set it to a weights "
+                f"file, or to 'none' for no spin.")
+        return path
+    for path in _candidates(SPIN_NAME):
         if path.is_file():
             return path
     return None
