@@ -65,3 +65,14 @@ def test_gaps_in_the_frames_are_fine():
     t, s = swing(f=0.2)
     keep = np.ones(t.size, bool); keep[30:45] = False                       # a sweeper in the way
     assert spinfit.read(t[keep], s[keep]).rpm == pytest.approx(12.0, rel=0.04)
+
+
+@pytest.mark.parametrize("n, phase", [(31, 0.0), (31, 1.0), (31, 2.0), (32, 0.5), (31, 3.0)])
+def test_under_half_a_turn_is_not_read_fast(n, phase):
+    # Three seconds of a 9 rpm rock -- a track lost early, or a rock coming to
+    # rest -- is under half a turn. The whole-stretch fit reads it 40-50% fast,
+    # enough to pass the turns gate, and the early fit then runs out to the
+    # edge of its anchor: 9.0-12.2 rpm before this gate.
+    t = 101.4 + np.arange(n) / 10
+    got = spinfit.read(t, 0.2 * np.sin(2 * np.pi * 0.15 * t + phase))
+    assert got is None or got.rpm == pytest.approx(9.0, rel=0.05)

@@ -12,7 +12,7 @@ import numpy as np
 
 from curling_score import timeline, version
 from curling_score import weights as weights_mod
-from curling_score.detect import broommodel, delivery, release, sequence, sidemodel
+from curling_score.detect import broommodel, delivery, release, sequence, sidemodel, spinmodel
 from curling_score.game import (
     boardsplit,
     broomtime,
@@ -354,6 +354,13 @@ def load_models(weights, imgsz: int, device, *, skip_longview: bool,
     # against either.
     line_model = (None if (skip_longview or skip_line or broom_model is None)
                   else sidemodel.default_model())
+    # The rock's spin: the handle-point model on the line model's boxes, so it
+    # comes with the line (and, through it, with the broom model). Loaded here,
+    # not on the first end, so a pinned file that is missing or will not load
+    # stops the job before any detection runs; `spintime` takes it from the
+    # same cache.
+    if line_model is not None and spinmodel.default_model() is not None:
+        progress(f"reading spin with {weights_mod.spin_path()}")
     return detector, broom_model, line_model
 
 
@@ -933,7 +940,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         # it -- `hogtime` takes the same default.
         processing_version=version.processing_version(
             weights, weights_mod.side_path(), weights_mod.broom_path(),
-            line=line_model is not None and sideviews is not None),
+            line=line_model is not None and sideviews is not None,
+            spin_weights=weights_mod.spin_path()),
         fmt=fmt,
         check=check,
     )

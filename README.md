@@ -190,6 +190,7 @@ radius 0.142).
 | Stones in the overhead panels                             | `weights/ds17b.pt`                                | `CURLING_SCORE_WEIGHTS`       | the colour detector |
 | Stones crossing the throwing hog line, in the long camera | `weights/ds13c.pt`                                | `CURLING_SCORE_SIDE_WEIGHTS`  | the colour scan     |
 | The skip's broom head, in the long camera                 | `weights/broom2.pt`                               | `CURLING_SCORE_BROOM_WEIGHTS` | no brooms           |
+| A stone's handle, for its spin, in the long camera        | `weights/spin1.pt`                                | `CURLING_SCORE_SPIN_WEIGHTS`  | no spin             |
 | Card in a scoreboard slot, and its digit                  | `game/slot_weights.npz`, `game/digit_weights.npz` | —                             | —                   |
 
 The two board models run in numpy, so reading the board needs no `gpu` extra.

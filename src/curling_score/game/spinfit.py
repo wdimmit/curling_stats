@@ -28,6 +28,7 @@ MIN_SAMPLES = 30                         # 3 s at 10 fps
 MIN_AMPLITUDE = 0.10                     # stone widths
 MIN_SNR = 3.0
 MIN_TURNS_IN_VIEW = 0.5
+EARLY_AGREE = 0.25                       # the early rate against the whole stretch's, at most
 DRIFTS = tuple(np.linspace(-0.02, 0.01, 13))   # turns/s^2, the whole stretch only
 
 
@@ -102,4 +103,10 @@ def read(t, s) -> Spin | None:
     # around it may then not reach the true rate. The early rate sits within
     # -2% to +12% of the whole stretch's on most rocks (spike, 84 rocks).
     f_early, *_ = fit(t[m], s[m], f_all, drifts=(0.0,))
+    # The two fits of one rock disagreeing by more than any real rock's do
+    # (-14% to +19%, the spike's 388) -- the early one run out to the edge of
+    # its anchor -- is a stretch too short to say: under half a turn, which
+    # the whole-stretch fit reads 40-50% fast, past the turns gate.
+    if abs(f_early / f_all - 1) > EARLY_AGREE:
+        return None
     return Spin(rpm=60.0 * f_early, rpm_avg=60.0 * f_all, turns_in_view=turns, samples=int(t.size))

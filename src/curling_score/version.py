@@ -185,7 +185,8 @@ def model_id(weights) -> str:
     return f"{path.stem}-{h.hexdigest()[:8]}"
 
 
-def processing_version(weights, side_weights=None, broom_weights=None, line=False) -> str:
+def processing_version(weights, side_weights=None, broom_weights=None, line=False,
+                       spin_weights=None) -> str:
     """The full identity of one analysis configuration.
 
     ``side_weights`` is folded in because the side-view detector changes the
@@ -205,8 +206,15 @@ def processing_version(weights, side_weights=None, broom_weights=None, line=Fals
     without a side model there is no hog-line split to measure the line from,
     so the suffix would say nothing true. The line is measured per shot, so
     when it did run it changes the timeline, and is named to say so.
+
+    ``spin_weights``, the handle-point model, gives every shot its spin, so a
+    new one changes every rock's rpm. It is named after the line, and only
+    with it: the spin pass reads the rock's boxes with the line's model.
     """
     base = f"{PIPELINE_VERSION}+{model_id(weights)}"
     out = base if side_weights is None else f"{base}+side-{model_id(side_weights)}"
     out = out if broom_weights is None else f"{out}+broom-{model_id(broom_weights)}"
-    return f"{out}+line" if line and side_weights is not None else out
+    if not (line and side_weights is not None):
+        return out
+    out = f"{out}+line"
+    return out if spin_weights is None else f"{out}+spin-{model_id(spin_weights)}"

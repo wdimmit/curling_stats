@@ -41,20 +41,30 @@ LOST_S = 0.8                    # unseen this long, the rock is let go
 SEED_LOST_S = 1.0               # not found this long after the seed, give up
 SEED_TAIL = 9                   # hogtime samples (30 fps) the seed's velocity comes from
 CROP = (0.35, 0.5, 0.25)        # the training crop: each side, above, below
+STOP_MPS = 0.5                  # slower than this down the sheet, the rock is coming to rest
+STOP_SPAN_S = 1.0               # judged over this much of its track
+
+
+def track_of(crossing, view):
+    """hogtime's samples of this rock, relinked frame to frame as
+    ``linetime.hog_track`` does: ``[(t, cx, row, w)]``, or []. Not the
+    crossing's samples as they stand, which are every detection of the rock's
+    colour in the window, a stone on the next sheet's among them."""
+    if crossing is None or getattr(crossing, "track_key", None) is None \
+            or not getattr(crossing, "samples", ()):
+        return []
+    edge = sidepool.band_crop(view)[1] - linetime.CROP_EDGE_ROWS
+    samples = [s for s in crossing.samples if s[2] < edge]
+    if not samples:
+        return []
+    t_seed = crossing.t if crossing.t is not None else samples[len(samples) // 2][0]
+    return linetime.relink(samples, crossing.track_key, t_seed)
 
 
 def seed_of(crossing, view, t_start):
     """Where hogtime's track has the rock at ``t_start``, in view pixels, and
     how fast it is moving there: ``(t, cx, bottom_row, vx, vy)``, or None."""
-    if crossing is None or getattr(crossing, "track_key", None) is None \
-            or not getattr(crossing, "samples", ()):
-        return None
-    edge = sidepool.band_crop(view)[1] - linetime.CROP_EDGE_ROWS
-    samples = [s for s in crossing.samples if s[2] < edge]
-    if not samples:
-        return None
-    t_seed = crossing.t if crossing.t is not None else samples[len(samples) // 2][0]
-    chain = linetime.relink(samples, crossing.track_key, t_seed)
+    chain = track_of(crossing, view)
     if len(chain) < 3:
         return None
     i = min(range(len(chain)), key=lambda j: abs(chain[j][0] - t_start))
@@ -115,39 +125,63 @@ def crop_box(box, shape):
             min(W, int(x1 + side * w) + 1), min(H, int(y1 + below * h) + 1))
 
 
+def stopping_at(ts, ms):
+    """When the rock came to rest in view, or None: the first frame from which
+    it covers less than ``STOP_MPS`` down the sheet over the next
+    ``STOP_SPAN_S``, each half of that span by its median, so one wild box does
+    not stop it. A rock at rest -- a hogged one -- keeps its box and its
+    handle still, and those frames read as a swing that stopped: a slower
+    rate, given as fact."""
+    ts, ms = np.asarray(ts, float), np.asarray(ms, float)
+    for k in range(ts.size):
+        w = (ts >= ts[k]) & (ts <= ts[k] + STOP_SPAN_S)
+        if np.ptp(ts[w]) < 0.8 * STOP_SPAN_S:
+            return None                         # too little track left to say
+        early = w & (ts < ts[k] + STOP_SPAN_S / 2)
+        late = w & ~early
+        dt = np.median(ts[late]) - np.median(ts[early])
+        if (np.median(ms[late]) - np.median(ms[early])) / dt < STOP_MPS:
+            return float(ts[k])
+    return None
+
+
 def read_spin(model, pose, video, view, shot, *, decode, detect, points):
     """One rock's spin from the camera facing its thrower, or None."""
     crossing = shot.hog_crossing
+    chain = track_of(crossing, view)
     t_ref = shot.t_hog_s if shot.t_hog_s is not None else getattr(crossing, "t", None)
     if t_ref is None:
         # A crossing refused for speed keeps its samples but no time: take
-        # where its track met the hog row.
-        rows = [s for s in crossing.samples if s[2] >= view.hog_row]
-        if not rows:
+        # where its own track met the hog row.
+        t_ref = next((s[0] for s in chain if s[2] >= view.hog_row), None)
+        if t_ref is None:
             return None
-        t_ref = min(rows)[0]
+    seed = seed_of(crossing, view, t_ref + WINDOW_S[0])
+    if seed is None:
+        return None
     frames, times = decode(video, view.rect, t_ref + WINDOW_S[0], t_ref + WINDOW_S[1], SPIN_FPS)
     if not len(frames):
         return None
     frame_h = frames.shape[1]
     boxes = detect(model, frames, times, int(view.hog_row) - ABOVE_HOG_ROWS, frame_h, shot.color,
                    imgsz=800, conf=0.25)
-    tracked = follow(times, boxes, seed_of(crossing, view, times[0]), view, frame_h)
+    tracked = follow(times, boxes, seed, view, frame_h)
     if not tracked:
         return None
+    # How far down the sheet each frame has it: from 8 m on, and until it
+    # comes to rest.
+    metres = [view.metres_at(b[3] - 0.12 * (b[2] - b[0])) for _i, _t, b in tracked]
+    t_stop = stopping_at([t for _i, t, _b in tracked], metres)
     patches = []
     for i, _t, b in tracked:
         x0, y0, x1, y1 = crop_box(b, frames.shape[1:])
         patches.append(frames[i][y0:y1, x0:x1])
     ts, ss = [], []
-    for (_i, t, b), p in zip(tracked, points(pose, patches)):
-        if p is None or p[2] < MIN_CONF:
-            continue
-        w = b[2] - b[0]
-        if view.metres_at(b[3] - 0.12 * w) < FROM_M:
+    for (_i, t, b), m, p in zip(tracked, metres, points(pose, patches)):
+        if p is None or p[2] < MIN_CONF or m < FROM_M or (t_stop is not None and t >= t_stop):
             continue
         ts.append(t)
-        ss.append((p[1][0] - p[0][0]) / w)
+        ss.append((p[1][0] - p[0][0]) / (b[2] - b[0]))
     return spinfit.read(np.array(ts), np.array(ss))
 
 
@@ -157,14 +191,21 @@ def time_spins(shots, video, hog_view, *, model, pose=None, decode=None, detect=
 
     ``model`` is the side detector the line pass uses (``ctx.line_model``);
     ``pose`` defaults to the handle-point model, resolved per call so importing
-    this loads nothing. A no-op without either, or without a laterally
+    this loads nothing -- ``analyze.load_models`` has already loaded it, so a
+    pinned file that will not load stops the job at its start, and this takes
+    it from the same cache. A no-op without either, or without a laterally
     calibrated hog-camera view. A failure on one rock is logged and costs that
-    rock its spin, not the end its analysis."""
+    rock its spin, not the end its analysis; one loading the model costs the
+    end its spins."""
     if model is None or hog_view is None or not hog_view.has_lateral:
         return 0
     if pose is None:
         from curling_score.detect import spinmodel
-        pose = spinmodel.default_model()
+        try:
+            pose = spinmodel.default_model()
+        except Exception:
+            log.exception("the handle-point model would not load; no spin this end")
+            return 0
         if pose is None:
             return 0
     if decode is None:

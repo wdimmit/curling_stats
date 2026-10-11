@@ -54,3 +54,30 @@ def test_the_line_pass_is_named_when_it_ran(tmp_path):
     assert version.processing_version(w, side, broom, line=True).endswith("+line")
     assert not version.processing_version(w, side, broom).endswith("+line")
     assert not version.processing_version(w, None, None, line=True).endswith("+line")
+
+
+class TestTheSpinModelIsPartOfTheIdentity:
+    """The handle-point model gives every shot its spin: a new one changes
+    every rock's rpm, so it is named -- with the line, whose side model the
+    spin pass reads the rock's boxes with, and only then."""
+
+    def files(self, tmp_path):
+        out = [tmp_path / n for n in ("w.pt", "side.pt", "broom.pt", "spin1.pt")]
+        for i, f in enumerate(out):
+            f.write_bytes(bytes([i]))
+        return out
+
+    def test_a_spin_model_is_named_after_the_line(self, tmp_path):
+        w, side, broom, spin = self.files(tmp_path)
+        got = version.processing_version(w, side, broom, line=True, spin_weights=spin)
+        assert got.startswith(version.processing_version(w, side, broom, line=True) + "+spin-spin1-")
+
+    def test_without_the_line_it_is_not_named(self, tmp_path):
+        w, side, broom, spin = self.files(tmp_path)
+        assert version.processing_version(w, side, broom, spin_weights=spin) == \
+            version.processing_version(w, side, broom)
+
+    def test_no_spin_model_keeps_the_identity(self, tmp_path):
+        w, side, broom, _spin = self.files(tmp_path)
+        assert version.processing_version(w, side, broom, line=True, spin_weights=None) == \
+            version.processing_version(w, side, broom, line=True)

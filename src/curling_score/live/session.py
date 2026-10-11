@@ -541,4 +541,4 @@ class VideoPipeline:
 
         return version.processing_version(
             self.weights, weights_mod.side_path(), weights_mod.broom_path(),
-            line=self.line and sideviews is not None)
+            line=self.line and sideviews is not None, spin_weights=weights_mod.spin_path())
