@@ -13,7 +13,7 @@
     "frontend/core/line.mjs": "1f71ef0d065c4e381037a6a51bd26f6aebeb9d0ad2402d3121078d169e9fd390",
     "frontend/core/myshots.mjs": "b7c735c361688fc70bd5f1cc9510aa599d39770a2c03474b79251388ee119a2a",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
-    "frontend/core/practice.mjs": "1501f75829854d8ed2010b47c2d0d3db60f0662aad5479407fa4b2bf0f357aac",
+    "frontend/core/practice.mjs": "013b0d541412707da28830ce5ad74ced6fc6a791b810c123153f845c328e428c",
     "frontend/core/report.mjs": "b68f5eb1883e899be9fc9774f269e68dc8756e2ab364c7397848225f44db4026",
     "frontend/core/shots.mjs": "32dad29e6eef0c4de59ca66dd2a9ea640ac42cec4f092c47583ebaa719777731",
     "frontend/core/stats.mjs": "67387a12686219c8a66d89631afa54750b6f051b324ad3caaabab641e6be27bb",
@@ -33,7 +33,7 @@
     "frontend/site/Games.jsx": "d9e13f10a65bed67fc84748bb3017d35e56a05cab3bee2f28d30b3282ffa21fa",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
     "frontend/site/Mine.jsx": "08ee58151c96e486b33e19ddbf2c4e21f6e03211eba28c617981fbc70250ad4c",
-    "frontend/site/Practice.jsx": "90bc10f98f4ac85ca838bf625361d4a0d5edb106aecd2f62bda636f208bda887",
+    "frontend/site/Practice.jsx": "0a882389075b741178c8d386f6d6319f8b8dd2cb04504e5f446dd0648f09132f",
     "frontend/site/ShotCharts.jsx": "902842e520bdb47b45cc19c448449c0be9ca29104310c0a8a22a49bcd20531f0",
     "frontend/site/Shots.jsx": "6d052d4e946c838d7f74049dd82c9c94cb237589d70b0b7ead2ec4ad538c0877",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
@@ -60,7 +60,7 @@
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "6ed159f2ba352649ffafa1a594933ae4ce6e52b0ef8c40606420df029505722b",
+    "src/curling_score/service/static/site.js": "4adb536de93e400f0c39cabfd7c669ae806b567a951da1608f0d047e5e90d4e6",
     "src/curling_score/viewer/app.js": "b969eb2c58254640a343a8642687e42de04b82900f5cf31ce64df05ef0aabc53"
   }
 }

@@ -25,11 +25,13 @@ export function restText(rest) {
   return `${ring} · ${feetInches(rest.to_tee_m)} from the tee`;
 }
 
-export function lineText(line) {
+/* ``short`` is the throws table's: "5 in narrow", the broom left understood. */
+export function lineText(line, { short = false } = {}) {
   if (!line) return null;
   if (line.miss_m != null) {
     if (Math.abs(line.miss_m) < ON_BROOM_M) return "On the broom";
-    return `${feetInches(line.miss_m)} ${line.side ?? (line.miss_m < 0 ? "left" : "right")} of the broom`;
+    const off = `${feetInches(line.miss_m)} ${line.side ?? (line.miss_m < 0 ? "left" : "right")}`;
+    return short ? off : `${off} of the broom`;
   }
   if (line.aim_x != null) {
     return `aimed ${feetInches(line.aim_x)} ${line.aim_x < 0 ? "left" : "right"} of centre`;

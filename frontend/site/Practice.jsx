@@ -290,7 +290,7 @@ function Live({ id, onDone, heading }) {
                 <td>{i + 1}</td>
                 <td>{turnText(t.curl, session.hand) ?? "–"}</td>
                 <td>{weightText(t.split_s) ?? "–"}</td>
-                <td>{t.arrived ? lineText(t.line) ?? "–" : "didn't arrive"}</td>
+                <td>{t.arrived ? lineText(t.line, { short: true }) ?? "–" : "didn't arrive"}</td>
                 <td>{t.arrived ? restText(t.rest) ?? "–" : "–"}</td>
                 <td><button onClick={e => { e.stopPropagation(); hide(t, !t.hidden); }}>
                   {t.hidden ? "Mine after all" : "Not mine"}</button></td>
