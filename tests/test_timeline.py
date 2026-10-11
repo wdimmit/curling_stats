@@ -1408,3 +1408,29 @@ class TestForPlayer:
     def test_an_end_with_no_shots_is_left_alone(self):
         doc = {"games": [{"index": 0, "ends": [{"number": 1}]}]}
         assert timeline.for_player(doc, "red", 1)["games"][0]["ends"][0] == {"number": 1}
+
+
+class TestTheHogTimesAClipCutsAt:
+    """game/clips.py switches cameras at the far hog line and times the rock
+    leaving the facing camera from the throwing one: both go on the rock."""
+
+    def test_a_rock_carries_them(self):
+        s = shot(1, "red", [])
+        s.t_hog_s = 103.456
+        s.v_hog_m_s = 3.2104
+        s.far_crossing = split.FarCrossing(t=117.891)
+        got = timeline.build_end(number=1, house="top", start_s=0.0, end_s=900.0,
+                                 shots=[s])["shots"][0]
+        assert (got["t_hog_s"], got["v_hog_m_s"], got["t_far_s"]) == (103.46, 3.21, 117.89)
+
+    def test_unmeasured_they_are_null(self):
+        got = timeline.build_end(number=1, house="top", start_s=0.0, end_s=900.0,
+                                 shots=[shot(1, "red", [])])["shots"][0]
+        assert (got["t_hog_s"], got["v_hog_m_s"], got["t_far_s"]) == (None, None, None)
+
+    def test_a_far_crossing_with_no_time_is_null(self):
+        s = shot(1, "red", [])
+        s.far_crossing = split.FarCrossing(t=None)
+        got = timeline.build_end(number=1, house="top", start_s=0.0, end_s=900.0,
+                                 shots=[s])["shots"][0]
+        assert got["t_far_s"] is None

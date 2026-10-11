@@ -152,9 +152,8 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None,
         throw = fmt.throw_info(s.number)
         dv = getattr(s, "delivery", None)
         rel = getattr(s, "release", None)
-        sp = split.long_split(dv, t_hog=hogtime.crossing(s),
-                              v_hog=hogtime.speed_at_hog(s),
-                              far=fartime.crossing(s))
+        t_hog, v_hog, far = hogtime.crossing(s), hogtime.speed_at_hog(s), fartime.crossing(s)
+        sp = split.long_split(dv, t_hog=t_hog, v_hog=v_hog, far=far)
         t_tee = thinking.tee_crossing(s)
         think = clock.per_shot[i] if i < len(clock.per_shot) else None
         kind, kind_conf = classify.classify_shot(s)
@@ -200,6 +199,13 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None,
                 "release_source": (
                     None if rel is None else getattr(rel, "source", "overhead")
                 ),
+                # Where a clip of this rock switches cameras and how long the
+                # facing camera keeps it (game/clips.py, practice/clips.py):
+                # the throwing hog line from the side view and the speed
+                # there, and the far hog line from the destination panel.
+                "t_hog_s": None if t_hog is None else round(float(t_hog), 2),
+                "v_hog_m_s": None if v_hog is None else round(float(v_hog), 3),
+                "t_far_s": None if far is None or far.t is None else round(float(far.t), 2),
                 "t_tee_s": None if t_tee is None else round(float(t_tee), 2),
                 # True when the crossing -- and so the interval below -- is the
                 # typical lag taken off the arrival rather than a sighting.
