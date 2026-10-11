@@ -68,6 +68,31 @@ services:
       WORKER_CACHE_GB: "200"
     volumes:
       - /data/wdd/curling-cache-3:/data/cache
+  # Cuts the clips of the rocks people say they threw (service/clipworker.py),
+  # for My shots. Light: no GPU, no YouTube, two CPUs, so a burst of cuts never
+  # crowds the lanes above on a league night. Each worker above keeps its own
+  # cache, and a game's video is in whichever ran it, so this reads all three
+  # -- read-only: it prunes nothing and empties nothing there -- and writes
+  # only to a scratch of its own. A game whose video has left every cache gets
+  # no clips; nothing is downloaded for one.
+  clips:
+    extends: { service: worker }
+    build: !reset null
+    pull_policy: never
+    depends_on: !reset []
+    environment:
+      WORKER_ID: ryzen-clips
+      WORKER_ROLE: clips
+      WORKER_LIVE: "0"
+      WORKER_PRACTICE: "0"
+      WORKER_CLIP_SOURCES: /data/src1:/data/src2:/data/src3
+    volumes:
+      - /data/wdd/curling-clips:/data/cache
+      - /data/wdd/curling-cache:/data/src1:ro
+      - /data/wdd/curling-cache-2:/data/src2:ro
+      - /data/wdd/curling-cache-3:/data/src3:ro
+    cpus: "2.0"
+    deploy: !reset null
   # Mints the proof-of-origin tokens YouTube demands before it will serve a
   # video. This used to be off, on the theory that a residential IP rarely
   # needs it; "Sign in to confirm you're not a bot" on a cold request is what
