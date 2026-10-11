@@ -4480,3 +4480,64 @@ class TestClipsOnTheShotsPage:
         assert "useState" not in table
         assert "const [openClip, setOpenClip] = useState(null);" in page
         assert "setOpenClip={setOpenClip}" in page
+
+
+class TestRotationFigure:
+    """The rock's spin, rpm at release, in-turn or out-turn from the curl and
+    the hack: in-turn when it curls away from its hack's side."""
+
+    DOC9 = {"schema_version": 9}
+
+    def rock(self, curl="right", start_x=-0.23, rpm=10.6, **kw):
+        line = {"start": {"x": start_x, "y": 38.07},
+                "at_hog": {"x": -0.757, "offset_m": -0.163},
+                "at_broom": {"x": -2.359, "miss_m": -0.712},
+                "side": "wide", "curl": curl, "confirmed": True,
+                "hog_path": [[28.35, -0.757], [25.0, -0.95]],
+                "path": [[20.0, -1.18], [1.35, -1.15]], "fit": {"n": 53, "rms_m": 0.004}}
+        base = dict(target_broom={"x": -1.647, "y": 0.17}, long_split_s=13.79,
+                    delivered_stone_index=0, stones=[{"color": "yellow", "x": -1.1529, "y": 1.3486}],
+                    line=line, spin=None if rpm is None else {"rpm": rpm, "rpm_avg": rpm - 0.4,
+                                                               "turns_in_view": 1.8, "samples": 74})
+        base.update(kw)
+        return shot(11, "yellow", "third", **base)
+
+    def fig(self, s, doc=None):
+        got = run_js(f"out(lineFigures({json.dumps(s)}, {json.dumps(doc or self.DOC9)}));")
+        return {f["key"]: f for f in got["figures"]}, [f["key"] for f in got["figures"]]
+
+    def test_left_hack_curling_right_is_an_in_turn(self):
+        f, keys = self.fig(self.rock(curl="right", start_x=-0.23))
+        assert (f["rotation"]["label"], f["rotation"]["value"], f["rotation"]["note"]) == (
+            "Rotation", "11 rpm", "in-turn")
+        assert keys.index("rotation") == keys.index("weight") + 1
+
+    def test_left_hack_curling_left_is_an_out_turn(self):
+        f, _ = self.fig(self.rock(curl="left", start_x=-0.23))
+        assert f["rotation"]["note"] == "out-turn"
+
+    def test_right_hack_mirrors_it(self):
+        assert self.fig(self.rock(curl="left", start_x=0.20))[0]["rotation"]["note"] == "in-turn"
+        assert self.fig(self.rock(curl="right", start_x=0.20))[0]["rotation"]["note"] == "out-turn"
+
+    def test_no_curl_says_the_turn_is_not_known_but_keeps_the_rpm(self):
+        f, _ = self.fig(self.rock(curl=None))
+        assert (f["rotation"]["value"], f["rotation"]["note"]) == ("11 rpm", "turn not known")
+
+    def test_a_rock_without_a_line_still_shows_its_rpm(self):
+        f, _ = self.fig(self.rock(line=None))
+        assert (f["rotation"]["value"], f["rotation"]["note"]) == ("11 rpm", "turn not known")
+
+    def test_a_rock_not_read_says_so(self):
+        f, _ = self.fig(self.rock(rpm=None))
+        assert (f["rotation"]["value"], f["rotation"]["note"]) == ("–", "not read")
+
+    def test_a_chart_from_before_spin_has_no_rotation_figure(self):
+        _, keys = self.fig(self.rock(), {"schema_version": 8})
+        assert "rotation" not in keys
+
+    def test_turn_name_on_its_own(self):
+        got = run_js("out([turnName({hack: {side: 'left'}}, 'right'), turnName({hack: {side: 'left'}}, 'left'),"
+                     " turnName({hack: {side: 'right'}}, 'left'), turnName({}, 'right'),"
+                     " turnName({hack: {side: 'left'}}, null)]);")
+        assert got == ["in-turn", "out-turn", "in-turn", None, None]

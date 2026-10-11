@@ -263,6 +263,30 @@ function hackFig(shot) {
   return fig("hack", "Hack", side === "left" ? "Left" : "Right", note);
 }
 
+/* Has this chart's pipeline read spin at all: schema 9 on. Charts from before
+ * were not reprocessed, so they show no Rotation figure rather than a dash on
+ * every rock. */
+export function spinReadable(doc) {
+  return (doc?.schema_version ?? 0) >= 9;
+}
+
+/* In-turn or out-turn. A stone curls the way it turns, and a right-hander --
+ * on the left hack, as nearly everyone is -- turns an in-turn clockwise, which
+ * curls right. So in-turn when the rock curls away from its hack's side,
+ * out-turn when it curls toward it; null without both. */
+export function turnName(shot, curlDir = turnOf(shot)) {
+  const hack = hackOf(shot);
+  if (!hack || (curlDir !== "left" && curlDir !== "right")) return null;
+  return curlDir === hack ? "out-turn" : "in-turn";
+}
+
+/* The rock's spin as thrown, in whole rpm, and which turn. */
+function rotationFig(shot, curlDir) {
+  const rpm = shot?.spin?.rpm;
+  if (typeof rpm !== "number") return fig("rotation", "Rotation", "–", "not read");
+  return fig("rotation", "Rotation", `${Math.round(rpm)} rpm`, turnName(shot, curlDir) ?? "turn not known");
+}
+
 const curlFig = c => c?.m != null
   ? fig("curl", "Curl", feetInches(c.m), c.hit ? "from its line to where it hit a stone" : "from its line to where it stopped")
   : fig("curl", "Curl", "–", c?.hit ? "hit a stone before it was seen" : "no rest position");
@@ -326,14 +350,18 @@ export function lineFigures(shot, doc, n = lineNumbers(shot, doc)) {
     ? fig("weight", "Weight", `${n.split_s.toFixed(1)} s`,
           n.split_estimated ? "hog line to hog line, estimated" : "hog line to hog line")
     : fig("weight", "Weight", "–", "not timed");
+  // After Weight: the two things the thrower set, how hard and how much turn.
+  const withRotation = figs => (spinReadable(doc)
+    ? figs.flatMap(f => (f.key === "weight" ? [f, rotationFig(shot, n.turn)] : [f]))
+    : figs);
   const restFig = n.rest
     ? fig("rest", "Came to rest", zone(n.rest), `${Math.hypot(n.rest.x, n.rest.y).toFixed(1)} m from the button`)
     : fig("rest", "Came to rest", "–", "not matched to a stone");
   if (reason) {
-    return { predates, reason, figures: [
+    return { predates, reason, figures: withRotation([
       fig("broom", "At the broom", "–", reason),
       hackFig(shot), fig("hog", "At the hog line", "–", reason),
-      weight, fig("curl", "Curl", "–", ""), restFig] };
+      weight, fig("curl", "Curl", "–", ""), restFig]) };
   }
   const { tick, note: tickNote } = confirmTick(shot.line);
   if (n.broomless) {
@@ -343,11 +371,11 @@ export function lineFigures(shot, doc, n = lineNumbers(shot, doc)) {
     // thrower confirmed this line, since nothing else here can.
     const curlBase = curlFig(n.curl);
     const curl = { ...curlBase, tick, dim: tick === "disagrees", note: `${curlBase.note} · ${tickNote}` };
-    return { predates, reason, figures: [
+    return { predates, reason, figures: withRotation([
       fig("broom", "At the broom", "–", "no broom held in the house"),
       hackFig(shot),
       fig("hog", "At the hog line", "–", "no broom to aim at"),
-      weight, curl, restFig] };
+      weight, curl, restFig]) };
   }
   const broom = fig("broom", "At the broom",
                     n.on_broom ? "On the broom" : `${feetInches(n.miss_m)} ${sideWord(n.miss_m, n.turn)}`,
@@ -357,7 +385,7 @@ export function lineFigures(shot, doc, n = lineNumbers(shot, doc)) {
     : fig("hog", "At the hog line",
           Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, n.turn)}`,
           "of the hack-to-broom line");
-  return { predates, reason, figures: [broom, hackFig(shot), hog, weight, curlFig(n.curl), restFig] };
+  return { predates, reason, figures: withRotation([broom, hackFig(shot), hog, weight, curlFig(n.curl), restFig]) };
 }
 
 const SWIPE_MIN_PX = 50;
