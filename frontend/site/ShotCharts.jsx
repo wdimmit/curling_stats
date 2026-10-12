@@ -103,17 +103,17 @@ export function DeliveryOverlay({ rows, turn }) {
                                  strokeLinejoin="round" />}
         </g>
         {g.labels.map(l => <text key={l.kind} x={l.x} y={l.y} textAnchor={l.anchor}>{l.text}</text>)}
-        {/* A tick every 10 cm, a figure every 20. */}
+        {/* A tick every 3 in, a figure every 6 or 12. */}
         {g.ticks.map(t => (
-          <g key={t.label}>
+          <g key={t.key}>
             <line x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} className="sc-tick" />
-            {Number(t.label) % 20 === 0 && <text x={t.lx} y={t.ly} textAnchor="middle">{t.label}</text>}
+            {t.label && <text x={t.lx} y={t.ly} textAnchor="middle">{t.label}</text>}
           </g>
         ))}
         <Sides sides={g.sides} />
       </svg>
       <figcaption>
-        Every delivery, hack to past the hog line, as cm off its own line from the
+        Every delivery, hack to past the hog line, in inches off its own line from the
         foothold to the broom: straight up the dashed line is dead on. Blue is the
         median. Across is stretched ×{g.stretch}.
       </figcaption>

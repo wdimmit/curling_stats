@@ -3427,6 +3427,16 @@ class TestDeliveryGeometry:
         assert all(l["x1"] == l["x2"] for l in g["lines"] if l["kind"] != "centre")
         assert g["stretch"] == 4
 
+    def test_across_is_ticked_every_six_inches(self):
+        g = self.geom(delivery_shot())
+        assert [t["label"] for t in g["ticks"]] == ["30 in", "24 in", "18 in", "12 in", "6 in", "0",
+                                                    "6 in", "12 in", "18 in", "24 in", "30 in"]
+        xs = [t["x1"] for t in g["ticks"]]
+        # 316 px for 1.6 m: 6 in is 30.1 px.
+        assert all(b - a == pytest.approx(0.1524 * 316 / 1.6, abs=0.15) for a, b in zip(xs, xs[1:]))
+        side = self.geom(delivery_shot(), "DESKDELIVERYBOX")
+        assert "0" in [t["label"] for t in side["ticks"]] and all(t["label"] for t in side["ticks"])
+
     def test_the_thrower_s_foothold_is_filled_and_the_aim_leaves_it(self):
         g = self.geom(delivery_shot())
         left, right = g["holds"]
@@ -4093,12 +4103,13 @@ class TestPlayerRocks:
                  aimed(14, "yellow", 4)], end_number=3)
         d["schema_version"] = 8
         got = run_js(f"const {{rows}} = playerRocks({json.dumps(play())}, {json.dumps(d)}, {DAY});"
-                     "out(rows.map(r => ({n: r.number, turn: r.turn, miss: r.nums.miss_m,"
+                     "out(rows.map(r => ({n: r.number, turn: r.turn, name: r.turnName, miss: r.nums.miss_m,"
                      " broom: r.figures[0].value, path: r.path && r.path.pts.map(p => +p.dx.toFixed(3)),"
                      " start: r.path && r.path.start, key: r.key})));")
         assert [r["n"] for r in got] == [13, 15]
         first = got[0]
         assert first["turn"] == "right" and first["miss"] == -0.2
+        assert first["name"] == "in-turn"                # curling right off the left hack
         assert first["broom"] == "8 in wide"
         assert first["path"] == [0.05] * 8          # every sample 5 cm right of its aim line
         assert first["start"]["yp"] == pytest.approx(-3.45)
@@ -4120,25 +4131,55 @@ class TestPlayerRocks:
         assert got == [3, 5, 7]
 
 
-def _row(group, turn, *, miss=None, split=None, on=False, path=True, played="2026-09-29", end=1,
-         number=13, est=False, tick="confirmed"):
-    return {"key": f"{played}.{end}.{number}", "group": group, "turn": turn, "playedAt": played,
-            "end": end, "number": number, "href": f"/g/x/#e={end}&s={number}",
+def _row(group, turn, *, hack="left", miss=None, split=None, on=False, path=True, played="2026-09-29",
+         end=1, number=13, est=False, tick="confirmed"):
+    name = None if turn is None or hack is None else "out-turn" if turn == hack else "in-turn"
+    return {"key": f"{played}.{end}.{number}", "group": group, "turn": turn, "turnName": name,
+            "playedAt": played, "end": end, "number": number, "href": f"/g/x/#e={end}&s={number}",
             "path": {"pts": []} if path else None,
             "nums": {"miss_m": miss, "split_s": split, "on_broom": on, "split_estimated": est,
-                     "tick": tick}}
+                     "tick": tick, "hack": hack, "turn": turn}}
 
 
 class TestShotGroups:
     def test_fixed_order_and_no_empty_groups(self):
         rows = [_row("Draw", "left"), _row("Hit", None), _row("Draw", "right"), _row("Hit", "right"),
-                _row("Other", "left")]
-        got = run_js(f"out(shotGroups({json.dumps(rows)}).map(g => [g.id, g.label, g.rows.length]));")
-        assert got == [["Hit-right", "Hits · Clockwise", 1],
-                       ["Hit-unmeasured", "Hits · Turn not measured", 1],
-                       ["Draw-right", "Draws · Clockwise", 1],
-                       ["Draw-left", "Draws · Counter-clockwise", 1],
-                       ["Other-left", "Other rocks · Counter-clockwise", 1]]
+                _row("Other", "left"), _row("Hit", "left", hack=None)]
+        got = run_js(f"out(shotGroups({json.dumps(rows)}).map(g => [g.id, g.label, g.rows.length, g.turn]));")
+        assert got == [["Hit-in-turn", "Hits · In-turn", 1, "right"],
+                       ["Hit-unknown", "Hits · Turn not known", 2, None],
+                       ["Draw-in-turn", "Draws & guards · In-turn", 1, "right"],
+                       ["Draw-out-turn", "Draws & guards · Out-turn", 1, "left"],
+                       ["Other-out-turn", "Other rocks · Out-turn", 1, "left"]]
+
+    def test_draws_and_guards_are_one_group(self):
+        rows = [_row("Guard", "right", number=3), _row("Draw", "right", number=13),
+                _row("Guard", "left", number=5)]
+        got = run_js(f"out(shotGroups({json.dumps(rows)}).map(g => [g.id, g.rows.map(r => r.number), g.turn]));")
+        assert got == [["Draw-in-turn", [3, 13], "right"], ["Draw-out-turn", [5], "left"]]
+
+    def test_an_in_turn_from_the_other_hack_is_drawn_mirrored(self):
+        # The left hack's in-turn curls right, the right hack's curls left: both
+        # 30 cm left of the broom, wide for the first and narrow for the second.
+        rows = [_row("Draw", "right", miss=-0.3, split=14.0, played="2026-09-29"),
+                _row("Draw", "right", miss=-0.2, split=14.1, played="2026-09-29", number=15),
+                _row("Draw", "left", hack="right", miss=-0.3, split=14.0, played="2026-09-22")]
+        rows[2]["path"] = {"pts": [{"t": 0, "yp": 1.0, "dx": 0.04}], "start": {"yp": -3.45, "dx": -0.01}}
+        got = run_js(f"const [g] = shotGroups({json.dumps(rows)}); const t = summaryText(g.summary, g.turn);"
+                     "out([g.id, g.turn, t.broom, t.notes, g.drawn[2].nums.miss_m, g.drawn[2].path,"
+                     " g.rows[2].nums.miss_m, g.rows[2].turn]);")
+        assert got[:4] == ["Draw-in-turn", "right", "0 on · 2 wide · 1 narrow",
+                           ["1 from the right hack, drawn mirrored"]]
+        assert got[4] == 0.3
+        assert got[5] == {"pts": [{"t": 0, "yp": 1.0, "dx": -0.04}], "start": {"yp": -3.45, "dx": 0.01}}
+        assert got[6:] == [-0.3, "left"]                 # the table's rows as thrown
+
+    def test_a_tie_is_drawn_from_the_left_hack(self):
+        rows = [_row("Hit", "right", miss=0.1, split=9.0), _row("Hit", "left", hack="right", miss=0.1, split=9.0),
+                _row("Hit", "left", miss=0.1, split=9.0, number=15),
+                _row("Hit", "right", hack="right", miss=0.1, split=9.0, number=15)]
+        got = run_js(f"out(shotGroups({json.dumps(rows)}).map(g => [g.id, g.turn, g.summary.mirrored]));")
+        assert got == [["Hit-in-turn", "right", 1], ["Hit-out-turn", "left", 1]]
 
     def test_two_games_on_one_day_are_not_interleaved(self):
         rows = [dict(_row("Draw", "right", played="", end=e, number=n), sourceId=g, key=f"{g}.{e}.{n}")
@@ -4248,7 +4289,8 @@ class TestDeliveryOverlay:
         assert [s["text"] for s in g["sides"]] == ["wide", "narrow"]
         assert {q["kind"] for q in g["lines"]} == {"hack", "tee", "hog"}
         assert all(r["start"] for r in g["rocks"])
-        assert "0" in [t["label"] for t in g["ticks"]]
+        # 0.6 m across: a tick every 3 in, figured every 6.
+        assert [t["label"] for t in g["ticks"]] == ["", "6 in", "", "0", "", "6 in", ""]
 
     def test_fewer_than_three_rocks_have_no_median_and_a_wild_one_caps_the_window(self):
         rocks = [aimed(13, "red", 4, off=off) for off in (0.02, 3.0)]
@@ -4256,7 +4298,9 @@ class TestDeliveryOverlay:
                    f"const paths = {json.dumps(rocks)}.map((s, i) => ({{key: 'k' + i, ...aimFrame(s, d)}}));"
                    "out(deliveryOverlay(paths, null));")
         assert g["median"] is None and g["n"] == 2
-        assert len(g["ticks"]) == 17                       # 1.6 m at most: -80 cm to +80
+        # 1.6 m at most, -30 in to +30 every 3 in, figured every foot past a metre.
+        assert len(g["ticks"]) == 21
+        assert [t["label"] for t in g["ticks"] if t["label"]] == ["24 in", "12 in", "0", "12 in", "24 in"]
 
 
 class TestThePlayedDialog:
@@ -4462,7 +4506,8 @@ class TestTheGameFilter:
     def test_every_game(self):
         t = self.text(self.plays(6), [])
         assert (t["label"], t["names"], t["all"]) == ("All 6 games", "", True)
-        assert t["intro"].startswith("Every rock you threw in all 6 games, by shot and by turn.")
+        assert t["intro"] == ("Every rock you threw in all 6 games, by shot and by turn."
+                              " The turn is read from the way the rock curled and the hack you threw from.")
 
     def test_some_games_are_named_up_to_three(self):
         t = self.text(self.plays(6), ["s3", "s4", "s5"])

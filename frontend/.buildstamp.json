@@ -5,13 +5,13 @@
   "sources": {
     "frontend/core/charts.mjs": "30eec1a0654d5fd43b547bbb0523b194c5f257d8ef7d7021849b6c3f48688d2e",
     "frontend/core/constants.mjs": "46c838eecab061f81317fe2ff24d64f0080edd094aaa78fff28a905c3114233c",
-    "frontend/core/delivery.mjs": "4a3269eac70379eff1c3c7e59e3e299b8af7383f9750639f143efea2f3cd5b47",
+    "frontend/core/delivery.mjs": "931fa6b7591fc11d632609d3e8d055610f2c1e819f1b7b475665eab8b5d912bd",
     "frontend/core/flag.mjs": "61002c1dd367a4665463f8f363d0eafb6cbcdc0be5fa669b747afc9c659ae7cc",
     "frontend/core/format.mjs": "8f937075dcb79136dd18bbd49cbeff639c9bf9027701b6e46fab35ced6bc4a50",
     "frontend/core/house.mjs": "94d64eae255dc61ae56b90901710908c5016eee29601b86133d4aeb7717a0631",
     "frontend/core/index.mjs": "a2a86fa58de3d3d15a3ffabdcf19e9ed2f2aa0b9319f2557c635a459a401dedb",
     "frontend/core/line.mjs": "34908496ff359f15cf9c6461215e72b1d2fe32bcf4437766ad012e0e86bc120d",
-    "frontend/core/myshots.mjs": "e5f41b4c2e8a77ac48a29d30159a264832a2b450d0389c7e10d37582efbd070d",
+    "frontend/core/myshots.mjs": "04736e113ad3b695b8e511dfea28a5c2a378eeda3bb53842207292d272134c5c",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
     "frontend/core/practice.mjs": "013b0d541412707da28830ce5ad74ced6fc6a791b810c123153f845c328e428c",
     "frontend/core/report.mjs": "b68f5eb1883e899be9fc9774f269e68dc8756e2ab364c7397848225f44db4026",
@@ -34,8 +34,8 @@
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
     "frontend/site/Mine.jsx": "08ee58151c96e486b33e19ddbf2c4e21f6e03211eba28c617981fbc70250ad4c",
     "frontend/site/Practice.jsx": "f3c7523b1156f960f62b2371576c033bd8efdf6d198aa2ff78f911ec2d255567",
-    "frontend/site/ShotCharts.jsx": "902842e520bdb47b45cc19c448449c0be9ca29104310c0a8a22a49bcd20531f0",
-    "frontend/site/Shots.jsx": "ecaca11d4ed50f03838b2c1bdae087f74a3391846bfb044c4798db7dcfd55837",
+    "frontend/site/ShotCharts.jsx": "8d74e5b4bb19b7ef19a2668ad8944964465987a4b16f79b02470aeba15c5ab79",
+    "frontend/site/Shots.jsx": "b760064001e946493e2e3f8dffa11218e086c8f4d5c4627eb289d56403621e36",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
     "frontend/site/Submit.jsx": "f2421d5e11b7d04d053da43253ef8499f7fc0d3c32a9fe01a95fef45850b1b02",
     "frontend/site/Thinking.jsx": "bb51d73d82b0e53b5d59eddaf20446d266bcdd1368065f8b539d8d97e5747736",
@@ -61,7 +61,7 @@
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "fe77bf229757895bb0576d3b3194388ccc4ae17bcca50e3a818adf4d7146f353",
-    "src/curling_score/viewer/app.js": "7a374013676c538f135cc60691dedaed0f925bc67a82e20b5366b470bd61728a"
+    "src/curling_score/service/static/site.js": "2a1c3bf30cdfe5c2a018d1bdf22669caf6d087e80fc8ab27333f0ec1b6fa0bb1",
+    "src/curling_score/viewer/app.js": "c29cc0281b9cd3d5808eda465bee12aeff14dbaa174f21f5b22e819c76350c46"
   }
 }

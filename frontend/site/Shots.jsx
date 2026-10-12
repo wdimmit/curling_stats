@@ -240,8 +240,8 @@ function Group({ group, clips, openClip, setOpenClip }) {
       <h3>{group.label} <span className="muted">{summaryText(group.summary, group.turn).count}</span></h3>
       <Summary group={group} />
       <div className="shotgrp-charts">
-        <MissScatter rows={group.rows} turn={group.turn} />
-        <DeliveryOverlay rows={group.rows} turn={group.turn} />
+        <MissScatter rows={group.drawn} turn={group.turn} />
+        <DeliveryOverlay rows={group.drawn} turn={group.turn} />
       </div>
       <details open={open} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary>Every rock ({group.rows.length})</summary>

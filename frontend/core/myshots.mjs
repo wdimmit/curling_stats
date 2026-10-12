@@ -12,16 +12,18 @@ import { SCATTERBOX, TYPE } from "./constants.mjs";
 import { roleText } from "./format.mjs";
 import { aimFrame } from "./delivery.mjs";
 import {
-  ON_M, feetInches, formatHash, lineFigures, lineNumbers, median, narrowOf, sideNames, withHash,
+  ON_M, feetInches, formatHash, lineFigures, lineNumbers, median, narrowOf, sideNames, turnName, withHash,
 } from "./line.mjs";
 import { groupOf, positionLabel } from "./report.mjs";
 import { typeOf } from "./shots.mjs";
 import { buildGameView } from "./timeline.mjs";
 
-export const SHOT_GROUPS = ["Hit", "Draw", "Guard", "Other"];
-const PLURAL = { Hit: "Hits", Draw: "Draws", Guard: "Guards", Other: "Other rocks" };
-// Seen from above, a rock turning clockwise curls to the thrower's right.
-export const TURNS = [["right", "Clockwise"], ["left", "Counter-clockwise"], [null, "Turn not measured"]];
+// The report's groups as this page shows them: a guard is a draw that stops
+// short, so the two are one group here. The rocks table still names each.
+export const SHOT_GROUPS = [["Hit", ["Hit"], "Hits"], ["Draw", ["Draw", "Guard"], "Draws & guards"],
+                            ["Other", ["Other"], "Other rocks"]];
+// From the curl and the hack the player threw from (line.turnName).
+export const TURNS = [["in-turn", "In-turn"], ["out-turn", "Out-turn"], [null, "Turn not known"]];
 
 const OTHER = { red: "yellow", yellow: "red" };
 const capital = w => (w ? w[0].toUpperCase() + w.slice(1) : w);
@@ -81,7 +83,7 @@ export function pickedText(plays, off, day = shortDay) {
     label: !on.length ? "No games" : all ? (n === 1 ? "1 game" : `All ${n} games`) : `${on.length} of ${games(n)}`,
     names: !all && on.length && on.length <= 3 ? on.map(p => gameText(p, day)).join(", ") : "",
     intro: !on.length ? "Pick at least one game to see your rocks."
-      : `Every rock you threw in ${which}, by shot and by turn. A clockwise rock curls to the thrower's right.`,
+      : `Every rock you threw in ${which}, by shot and by turn. The turn is read from the way the rock curled and the hack you threw from.`,
   };
 }
 
@@ -119,7 +121,7 @@ export function playerRocks(play, doc, day = shortDay) {
         rock: s.rock ?? null, playedAt: play.played_at || "", game,
         end: end.number, number: s.number,
         type, typeName: TYPE[type]?.name ?? type, group: groupOf(type),
-        turn: nums.turn, nums, figures: lineFigures(s, doc, nums).figures,
+        turn: nums.turn, turnName: turnName(s, nums.turn), nums, figures: lineFigures(s, doc, nums).figures,
         path: aimFrame(s, doc),
         href: play.view_path ? withHash(play.view_path, formatHash({ e: end.number, s: s.number })) : null,
       });
@@ -130,7 +132,8 @@ export function playerRocks(play, doc, day = shortDay) {
 
 /* A group's numbers. The broom counts are by side of the turn when there is
  * one -- `plus` narrow, `minus` wide -- and by the thrower's right and left
- * when there is not. */
+ * when there is not. `rows` are shotGroups' drawn rows: `mirrored` counts the
+ * ones from the other hack. */
 export function summarize(rows, turn) {
   const splits = rows.map(r => r.nums.split_s).filter(Number.isFinite);
   const missed = rows.filter(r => typeof r.nums.miss_m === "number");
@@ -150,6 +153,8 @@ export function summarize(rows, turn) {
     noMiss: rows.length - missed.length,
     noWeight: rows.length - splits.length,
     noPath: rows.filter(r => !r.path).length,
+    mirrored: rows.filter(r => r.mirrored).length,
+    mirroredHack: rows.find(r => r.mirrored)?.nums.hack ?? null,
   };
 }
 
@@ -168,26 +173,59 @@ export function summaryText(sum, turn) {
     broom: b.n === 0 ? "–" : `${b.on} on · ${b.minus} ${minus} · ${b.plus} ${plus}`,
     typical,
     notes: [some(sum.noMiss, "not measured at the broom"), some(sum.noWeight, "not timed"),
-            some(sum.noPath, "with no delivery path")].filter(Boolean),
+            some(sum.noPath, "with no delivery path"),
+            some(sum.mirrored, `from the ${sum.mirroredHack ?? "other"} hack, drawn mirrored`)].filter(Boolean),
   };
 }
 
-/* The rocks in fixed order -- Hit, Draw, Guard, Other, each clockwise, then
- * counter-clockwise, then unmeasured -- with the groups nobody threw left out.
- * Within a group, newest game first, a game's rocks together, then by end
- * and rock. */
+/* The way a group's rocks are drawn as curling, which names the sides of its
+ * summary and charts wide and narrow. An in-turn from the other hack curls
+ * the other way, so an in-turn or out-turn group takes the way most of its
+ * rocks curled -- on a tie, the left hack's, which nearly everyone throws
+ * from. A turn not known has it only when every rock curled the same way. */
+function frameOf(rows, name) {
+  if (!name) {
+    const curls = new Set(rows.map(r => r.turn ?? null));
+    return curls.size === 1 ? [...curls][0] : null;
+  }
+  const right = rows.filter(r => r.turn === "right").length, left = rows.length - right;
+  return right > left ? "right" : left > right ? "left" : name === "in-turn" ? "right" : "left";
+}
+
+/* A rock as its group draws it: one that curled against the group's way --
+ * thrown from the other hack -- mirrored, so its wide side lands on the
+ * others' wide side. */
+function framed(r, turn) {
+  if (!turn || !r.turn || r.turn === turn) return r;
+  const flip = v => (typeof v === "number" ? -v : v);
+  const p = r.path;
+  return {
+    ...r, turn, mirrored: true,
+    nums: { ...r.nums, miss_m: flip(r.nums.miss_m), turn },
+    path: p && { ...p, pts: p.pts.map(q => ({ ...q, dx: -q.dx })),
+                 start: p.start && { ...p.start, dx: -p.start.dx } },
+  };
+}
+
+/* The rocks in fixed order -- Hit, Draw & guard, Other, each in-turn, then
+ * out-turn, then not known -- with the groups nobody threw left out. Within
+ * a group, newest game first, a game's rocks together, then by end and rock.
+ * `rows` are the rocks as thrown, for the table; `drawn` the same rocks as
+ * the summary and the charts read them, in the frame `turn` names. */
 export function shotGroups(rows) {
   const out = [];
-  for (const group of SHOT_GROUPS) {
-    for (const [turn, turnName] of TURNS) {
-      const these = rows.filter(r => r.group === group && (r.turn ?? null) === turn);
+  for (const [group, kinds, plural] of SHOT_GROUPS) {
+    for (const [name, words] of TURNS) {
+      const these = rows.filter(r => kinds.includes(r.group) && (r.turnName ?? null) === name);
       if (!these.length) continue;
       const desc = (x, y) => (x < y ? 1 : x > y ? -1 : 0);
       these.sort((a, b) => desc(a.playedAt, b.playedAt) || desc(a.sourceId, b.sourceId)
         || a.end - b.end || a.number - b.number);
-      out.push({ id: `${group}-${turn ?? "unmeasured"}`, group, turn,
-                 label: `${PLURAL[group]} · ${turnName}`, rows: these,
-                 summary: summarize(these, turn) });
+      const turn = frameOf(these, name);
+      const drawn = these.map(r => framed(r, turn));
+      out.push({ id: `${group}-${name ?? "unknown"}`, group, turnName: name, turn,
+                 label: `${plural} · ${words}`, rows: these, drawn,
+                 summary: summarize(drawn, turn) });
     }
   }
   return out;

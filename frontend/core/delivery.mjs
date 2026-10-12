@@ -18,6 +18,7 @@ const HACK_PAST = -(HACK_Y - TEE_Y);          // -3.658: the hack, in metres pas
 const HOG_PAST = 6.401;
 const MARGIN_M = 0.06;                        // room between the data and the window's edge
 const SNAP_M = 0.1;
+const INCH_M = 0.0254;
 
 /* The rock's samples as {t, yp, x}: yp metres past the throwing tee. */
 export function deliveryPoints(shot) {
@@ -49,6 +50,20 @@ export function rampColor(f) {
 }
 
 const r1 = v => +(+v).toFixed(1);
+
+/* Ticks across a window `span` metres wide from `x0`: one every `every`
+ * inches, figured every `figure` inches as the miss scatter figures its feet
+ * -- "6 in" either side of a bare 0, the chart itself showing which side.
+ * Counted in whole inches, so they do not drift. */
+function inchTicks(x0, span, every, figure) {
+  const out = [];
+  for (let k = Math.ceil(x0 / (every * INCH_M) - 1e-9); k * every * INCH_M <= x0 + span + 1e-9; k++) {
+    const inches = k * every;
+    out.push({ c: inches * INCH_M, inches,
+               label: inches % figure ? "" : inches === 0 ? "0" : `${Math.abs(inches)} in` });
+  }
+  return out;
+}
 
 /* The across window: `across` metres wide, centred on the centre line when
  * everything fits, shifted the least that makes it fit (snapped to 10 cm),
@@ -109,17 +124,15 @@ export function deliveryGeometry(shot, box) {
   const labels = lines.filter(q => q.kind !== "centre").map(q => side
     ? { x: q.x1, y: r1(pad.t - 4), text: q.kind, anchor: "middle", kind: q.kind }
     : { x: r1(pad.l - 4), y: r1(q.y1 + 3), text: q.kind, anchor: "end", kind: q.kind });
-  // Ticks every 20 cm across, labelled in cm off the centre line.
-  const ticks = [];
-  for (let c = Math.ceil(x0 / 0.2) * 0.2; c <= x0 + win.span + 1e-9; c += 0.2) {
-    const v = Math.round(c * 100);
+  // A tick every 6 in across, each figured, off the centre line.
+  const ticks = inchTicks(x0, win.span, 6, 6).map(({ c, label }) => {
     const a = pt(c, from);
-    ticks.push(side
+    return side
       ? { x1: r1(pad.l + plotW), y1: a.y, x2: r1(pad.l + plotW + 4), y2: a.y,
-          label: `${v > 0 ? "+" : ""}${v}`, lx: r1(pad.l + plotW + 6), ly: r1(a.y + 3), anchor: "start" }
+          label, lx: r1(pad.l + plotW + 6), ly: r1(a.y + 3), anchor: "start" }
       : { x1: a.x, y1: r1(pad.t + plotH), x2: a.x, y2: r1(pad.t + plotH + 4),
-          label: `${v > 0 ? "+" : ""}${v}`, lx: a.x, ly: r1(pad.t + plotH + 14), anchor: "middle" });
-  }
+          label, lx: a.x, ly: r1(pad.t + plotH + 14), anchor: "middle" };
+  });
   // The two footholds: 0.15 m wide, 0.2 m along, their centres ±HACK_X_M on the hack line.
   const holds = [-HACK_X_M, HACK_X_M].map(hx => {
     const a = pt(hx - 0.075, HACK_PAST - 0.2), b = pt(hx + 0.075, HACK_PAST);
@@ -206,13 +219,13 @@ export function deliveryOverlay(paths, turn = null, box = OVERLAYBOX) {
   const labels = lines.map(q => ({ x: r1(pad.l - 4), y: r1(q.y1 + 3), text: q.kind, anchor: "end", kind: q.kind }));
   const a = pt(0, from), b = pt(0, to);
   const aim = { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
-  // Every 10 cm off the aim line, labelled in cm.
-  const ticks = [];
-  for (let c = Math.ceil((x0 - 1e-9) / 0.1) * 0.1; c <= x0 + win.span + 1e-9; c += 0.1) {
-    const v = Math.round(c * 100), q = pt(c, from);
-    ticks.push({ x1: q.x, y1: r1(pad.t + plotH), x2: q.x, y2: r1(pad.t + plotH + 4),
-                 label: `${v > 0 ? "+" : ""}${v}`, lx: q.x, ly: r1(pad.t + plotH + 14) });
-  }
+  // A tick every 3 in off the aim line, figured every 6 -- every foot once
+  // a wild rock has widened the window past a metre.
+  const ticks = inchTicks(x0, win.span, 3, win.span > 1 ? 12 : 6).map(({ c, inches, label }) => {
+    const q = pt(c, from);
+    return { key: inches, x1: q.x, y1: r1(pad.t + plotH), x2: q.x, y2: r1(pad.t + plotH + 4),
+             label, lx: q.x, ly: r1(pad.t + plotH + 14) };
+  });
   const sides = sideNames(turn);
   const drawn = rocks.map(p => ({ key: p.key, d: poly(p.pts.map(q => [q.dx, q.yp])), dim: !!p.dim,
     start: p.start && p.start.yp >= from && p.start.yp <= to ? pt(p.start.dx, p.start.yp) : null }));
