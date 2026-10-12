@@ -12,16 +12,20 @@ them: each one's run-up starts where the one before it closed.
 
 ``--calib`` keeps the calibration in a pickle, so two code versions compared
 against each other build from the same one. ``--profile`` writes a cProfile
-of the first end. The output holds, per end, its wall time, every progress
+of the first end (which, from Python 3.12, mixes every thread's calls).
+``--sample`` instead reads every thread's stack 100 times a second and prints
+where each thread spent the end, by its innermost frames. The output holds, per end, its wall time, every progress
 line it logged (``end N: stages ...`` among them) and the built end itself,
 for ``compare_ends.py``.
 """
 
 import argparse
 import cProfile
+import collections
 import json
 import pickle
 import sys
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,6 +46,46 @@ def calibration(video, until_s, pkl):
     return got
 
 
+class Sampler:
+    """Every thread's Python stack, sampled: where each one spends its time."""
+
+    def __init__(self, hz=100.0, depth=3):
+        self.hz, self.depth = hz, depth
+        self.counts = collections.defaultdict(collections.Counter)
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self._run, daemon=True, name="sampler")
+
+    def _run(self):
+        names = {}
+        while not self.stop.wait(1.0 / self.hz):
+            for t in threading.enumerate():
+                names[t.ident] = t.name.split("_")[0]
+            for ident, frame in sys._current_frames().items():
+                if ident == threading.get_ident():
+                    continue
+                where = []
+                while frame is not None and len(where) < self.depth:
+                    code = frame.f_code
+                    where.append(f"{code.co_filename.rsplit('/', 1)[-1]}:{code.co_name}:{frame.f_lineno}")
+                    frame = frame.f_back
+                self.counts[names.get(ident, ident)][" < ".join(where)] += 1
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.stop.set()
+        self.thread.join()
+
+    def report(self, top=12):
+        for name, counter in self.counts.items():
+            total = sum(counter.values())
+            print(f"SAMPLES {name}: {total / self.hz:.1f} s")
+            for where, n in counter.most_common(top):
+                print(f"  {n / self.hz:6.1f} s  {where}")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("video")
@@ -53,6 +97,7 @@ def main(argv=None) -> int:
                    help="HOUSE:NUMBER:START:END, in order")
     p.add_argument("--out", required=True)
     p.add_argument("--profile", default=None)
+    p.add_argument("--sample", action="store_true")
     p.add_argument("--imgsz", type=int, default=448)
     args = p.parse_args(argv)
 
@@ -89,7 +134,13 @@ def main(argv=None) -> int:
         t0 = time.monotonic()
         if prof is not None:
             prof.enable()
-        built, closed = analyze.build_one_end(ctx, game, end, prev, board_score=None)
+        sampler = Sampler() if args.sample else None
+        if sampler is not None:
+            with sampler:
+                built, closed = analyze.build_one_end(ctx, game, end, prev, board_score=None)
+            sampler.report()
+        else:
+            built, closed = analyze.build_one_end(ctx, game, end, prev, board_score=None)
         if prof is not None:
             prof.disable()
             prof.dump_stats(args.profile)
