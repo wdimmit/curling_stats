@@ -598,7 +598,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     stages.mark("rules")
     if sideviews is not None:
         # Each pass decodes its next rock's window while it reads this one's.
-        with longview.reading_ahead():
+        with longview.reading_ahead() as ahead:
             hogtime.time_hog_crossings(
                 shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
             stages.mark("hog")
@@ -639,6 +639,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
             progress(f"    end {end.number}: spin {n_spin}/{len(shots)} "
                      f"in {time.monotonic() - t_spin:.1f} s")
             stages.mark("spin")
+            progress(f"    end {end.number}: side views {ahead.summary()}")
     # Stage 3, the destination hog line, from that panel's painted line.
     # In this block ``setup`` is the destination panel and ``far`` is
     # the THROWING panel -- far from the house being played to.

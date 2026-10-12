@@ -16,6 +16,7 @@ from __future__ import annotations
 import dataclasses
 import math
 import subprocess
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -529,6 +530,9 @@ class _ReadAhead:
 
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="longview")
         self.waiting = OrderedDict()
+        # What it bought: windows collected ready-decoded, the time spent
+        # waiting for them, and the windows no plan foresaw, decoded then.
+        self.ahead, self.waited_s, self.then, self.then_s = 0, 0.0, 0, 0.0
 
     def soon(self, key):
         if key in self.waiting:
@@ -542,7 +546,22 @@ class _ReadAhead:
 
     def take(self, key):
         got = self.waiting.pop(key, None)
-        return None if got is None else got.result()
+        if got is None:
+            return None
+        tic = time.monotonic()
+        try:
+            return got.result()
+        finally:
+            self.ahead += 1
+            self.waited_s += time.monotonic() - tic
+
+    def decoded_then(self, seconds):
+        self.then += 1
+        self.then_s += seconds
+
+    def summary(self) -> str:
+        return (f"{self.ahead + self.then} windows, {self.ahead} read ahead "
+                f"(waited {self.waited_s:.1f} s), {self.then} decoded then ({self.then_s:.1f} s)")
 
     def close(self):
         for got in self.waiting.values():
@@ -608,11 +627,15 @@ class Plan:
 
 def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
     """Frames of one window, cropped to the side view. About 0.25 s a call."""
-    if _reading is not None:
-        got = _reading.take(_key(video, rect, t0, t1, fps))
-        if got is not None:
-            return got
-    return _decode_now(video, rect, t0, t1, fps, _lead(video, t0))
+    if _reading is None:
+        return _decode_now(video, rect, t0, t1, fps, _lead(video, t0))
+    got = _reading.take(_key(video, rect, t0, t1, fps))
+    if got is not None:
+        return got
+    tic = time.monotonic()
+    got = _decode_now(video, rect, t0, t1, fps, _lead(video, t0))
+    _reading.decoded_then(time.monotonic() - tic)
+    return got
 
 
 def find_crossing(video, view, color: str, t0: float, t1: float,
