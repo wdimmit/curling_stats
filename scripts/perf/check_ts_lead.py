@@ -44,7 +44,7 @@ def main(argv=None) -> int:
         t_new += time.perf_counter() - tic
         tic = time.perf_counter()
         want, want_t = longview._run(
-            longview._command(args.video, rect, t0, t1, fps, F.TS_SEEK_LEAD_S), rect, t0, fps)
+            longview._command(args.video, rect, t0, t1, fps, F.TS_SEEK_LEAD_S), rect, t0, fps, t1)
         t_flat += time.perf_counter() - tic
         leads.append(lead)
         ok = got_t == want_t and got.tobytes() == want.tobytes()

@@ -483,12 +483,37 @@ def _command(video, rect, t0, t1, fps, lead=None) -> list:
             "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
 
 
-def _run(command, rect, t0, fps):
+def _run(command, rect, t0, fps, t1=None):
     """Run a decode command and frame its output. Only ever a subprocess, so it
-    may run on any thread: PyAV is never touched here."""
+    may run on any thread: PyAV is never touched here.
+
+    The frames are read straight into one array sized for the window, through
+    a 1 MB pipe. ``subprocess.run`` read them 32 KB at a time in a Python loop
+    and joined the pieces -- up to ~430 MB a 30 fps window, holding the GIL
+    the main thread wants -- 713 ms against 504 for a 5.5 s window here."""
     _x, _y, w, h = rect
-    raw = subprocess.run(command, capture_output=True).stdout
-    frames = np.frombuffer(raw, dtype=np.uint8).reshape(-1, h, w, 3)
+    frame = w * h * 3
+    span = 0.0 if t1 is None else t1 - t0
+    room = (math.ceil((span + 0.05) * fps) + 2) * frame
+    buf = np.empty(room, dtype=np.uint8)
+    view, got, more = memoryview(buf), 0, []
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                          bufsize=0, pipesize=1 << 20) as proc:
+        while True:
+            if got < room:
+                n = proc.stdout.readinto(view[got:])
+                if not n:
+                    break
+                got += n
+            else:
+                chunk = proc.stdout.read(1 << 20)
+                if not chunk:
+                    break
+                more.append(chunk)
+    data = buf[:got]
+    if more:
+        data = np.concatenate([data, np.frombuffer(b"".join(more), dtype=np.uint8)])
+    frames = data[:len(data) - len(data) % frame].reshape(-1, h, w, 3)
     return frames, [t0 + i / fps for i in range(frames.shape[0])]
 
 
@@ -504,10 +529,10 @@ def _decode_now(video, rect, t0, t1, fps, lead):
     listing that is wrong costs time, never frames."""
     from curling_score.ingest.frames import seek_lead
 
-    frames, times = _run(_command(video, rect, t0, t1, fps, lead), rect, t0, fps)
+    frames, times = _run(_command(video, rect, t0, t1, fps, lead), rect, t0, fps, t1)
     flat = seek_lead(video)
     if lead and lead < flat and _short(frames, t0, t1, fps):
-        frames, times = _run(_command(video, rect, t0, t1, fps, flat), rect, t0, fps)
+        frames, times = _run(_command(video, rect, t0, t1, fps, flat), rect, t0, fps, t1)
     return frames, times
 
 
