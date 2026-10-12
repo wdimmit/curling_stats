@@ -186,7 +186,12 @@ from pathlib import Path
 # second's grid, as before), the follow-back's speed over the same half
 # second. A line's start and its offset at the hog line move ~1 mm on a few
 # rocks an end; nothing else.
-PIPELINE_VERSION = "2026.10.12.1"
+# 2026.10.12.2: a delivery path no longer steps where the read hands it to the
+# band (`linetime._seam_offset`): the read runs 0.4 s past the band's first
+# sample, the two are compared in the frames both saw, and the read's last
+# half second is eased onto the band. The rock at rest and line.start are not
+# moved; nothing outside line.delivery changes.
+PIPELINE_VERSION = "2026.10.12.2"
 
 
 def model_id(weights) -> str:

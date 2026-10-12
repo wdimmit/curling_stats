@@ -541,7 +541,8 @@ yp_of = lambda p: TEE - p[1]
 class TestReadDelivery(Delivery):
     def test_one_read_from_before_the_push_to_just_past_the_band_s_first_sample(self):
         self.read()
-        assert self.decoded == [(-3.0, round(self.track()[0][0] + 0.1 - self.T, 2), L.DELIVERY_FPS)]
+        assert self.decoded == [(-3.0, round(self.track()[0][0] + L.DELIVERY_PAST_BAND_S - self.T, 2),
+                                 L.DELIVERY_FPS)]
 
     def test_the_read_stops_five_seconds_after_the_release(self):
         self.read(t_band=108.0)
@@ -625,6 +626,7 @@ class TestDeliveryPath(Delivery):
         assert self.path(hidden=[(97.5, 98.9)])[0][0] == pytest.approx(-1.1)
 
     def test_a_band_sample_read_short_gives_way_to_the_next(self, monkeypatch):
+        monkeypatch.setattr(L, "BAND_EDGE_S", 0.0)             # the anchor's own rule, alone
         track = self.track()
         t, x, _y, yp = track[0]
         track[0] = (t, x, TEE - (yp - 0.6), yp - 0.6)
@@ -658,7 +660,7 @@ class TestTheLineCarriesItsDelivery:
         s = self.t.shot(crossing_for(self.t.stone_to(11.5)))
         decoded = self.t.run([s])
         assert s.line.delivery and yp_of(s.line.delivery[-1]) > L.DELIVERY_END_M
-        assert (-3.0, 0.1, L.DELIVERY_FPS) in decoded
+        assert (-3.0, L.DELIVERY_PAST_BAND_S, L.DELIVERY_FPS) in decoded
         assert (-3.0, -0.2, 5.0) not in decoded
 
     def test_a_delivery_that_fails_to_assemble_costs_only_the_delivery(self, monkeypatch):
@@ -668,3 +670,73 @@ class TestTheLineCarriesItsDelivery:
         s = self.t.shot(crossing_for(self.t.stone_to(11.5)))
         self.t.run([s])
         assert s.line is not None and s.line.delivery == ()
+
+
+class TestTheSeamWithTheBand(Delivery):
+    """The band is boxes of the same rock in another crop; where the two read
+    it differently the path must not step at the hand-over."""
+    OFF = (0.02, 0.06)          # the band reads the rock 2 cm right and 6 cm further on
+
+    def shifted(self):
+        return [(t, x + self.OFF[0], y - self.OFF[1], yp + self.OFF[1]) for t, x, y, yp in self.track()]
+
+    def seam(self, d):
+        """The last read dot and the first band dot either side of the hand-over,
+        BAND_EDGE_S past the band's first sample."""
+        t_hand = self.track()[0][0] - self.T + L.BAND_EDGE_S
+        before = [p for p in d if p[0] < t_hand - 1e-6][-1]
+        after = [p for p in d if p[0] >= t_hand - 1e-6][0]
+        return before, after
+
+    def test_the_offset_is_measured_in_the_frames_both_saw(self):
+        frames = self.read()
+        got = L._seam_offset(frames, self.shifted(), self.track()[0][0])
+        assert got == (pytest.approx(self.OFF[0], abs=1e-6), pytest.approx(self.OFF[1], abs=1e-6))
+
+    def test_no_step_at_the_hand_over(self):
+        before, after = self.seam(self.path(track=self.shifted()))
+        dt = after[0] - before[0]
+        # Only the rock's own motion across the one frame between them.
+        assert after[2] - before[2] == pytest.approx(0.04 * dt, abs=1e-6)
+        assert yp_of(after) - yp_of(before) == pytest.approx(2.0 * dt, abs=1e-6)
+
+    def test_the_rock_at_rest_is_not_moved(self):
+        d = self.path(track=self.shifted())
+        rest = [p for p in d if abs(yp_of(p) + 3.2) < 1e-6]
+        assert [round(p[0], 2) for p in rest] == [-3.0, -0.5]
+        assert all(p[2] == pytest.approx(-0.15, abs=1e-6) for p in rest)
+
+    def test_too_little_overlap_moves_nothing(self):
+        # A read that stops at the band's first sample shares no frames with it.
+        unshifted = self.path(track=self.shifted(), t_band=self.track()[0][0] - L.DELIVERY_PAST_BAND_S)
+        assert all(abs(p[2] - (-0.15 + 0.04 * max(0.0, p[0] + 0.5))) < 1e-6
+                   for p in unshifted if p[0] < self.track()[0][0] - self.T - 1e-6)
+
+
+class TestTheBandsFirstSamples(Delivery):
+    """A rock entering the band's crop is boxed short by its top edge: the
+    hand-over waits for the band to have it whole."""
+
+    def entering(self):
+        tr = self.track()
+        t0 = tr[0][0]
+        # The first two samples read 15 cm further on and 3 cm right.
+        return [(t, x + 0.03, y - 0.15, yp + 0.15) if t < t0 + 0.05 else (t, x, y, yp)
+                for t, x, y, yp in tr]
+
+    def test_the_cut_samples_are_not_in_the_path(self):
+        d = self.path(track=self.entering())
+        assert all(p[2] == pytest.approx(self.rock(p[0] + self.T)[0], abs=1e-6) for p in d)
+
+    def test_the_read_carries_the_path_to_the_hand_over(self):
+        d = self.path(track=self.entering())
+        t_band = self.track()[0][0] - self.T
+        times = [round(p[0], 3) for p in d]
+        for k in range(4):                       # the band's first frames, every one a dot
+            assert round(t_band + k / L.DELIVERY_FPS, 3) in times
+
+    def test_with_no_read_there_the_band_starts_the_path(self):
+        # The read stops before the band begins: the band's first samples are all there is.
+        d = self.path(track=self.entering(), t_band=self.track()[0][0] - L.DELIVERY_PAST_BAND_S)
+        t_band = self.track()[0][0] - self.T
+        assert any(abs(p[0] - t_band) < 1e-6 for p in d)
