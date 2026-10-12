@@ -17,6 +17,7 @@ from pathlib import Path
 
 import av
 import numpy as np
+from av.video.reformatter import VideoReformatter
 
 
 
@@ -225,6 +226,16 @@ def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
             yield held[0], (held[1].to_ndarray(format="bgr24") if decode else None)
 
 
+def _converter():
+    """``frame -> BGR ndarray`` for one pass over a file, exactly as
+    ``frame.to_ndarray(format="bgr24")`` converts it, but on one kept swscale
+    context: ``to_ndarray`` builds a new one for every frame, which cost a
+    quarter of each conversion (1.62 against 1.22 ms a 1080p frame) on the
+    thread a live end's decode runs on."""
+    reformatter = VideoReformatter()
+    return lambda frame: reformatter.reformat(frame, format="bgr24").to_ndarray()
+
+
 def window(path, start_s: float, end_s: float, fps: float, crop=None):
     """Yield ``(t, frame)`` sampled at ``fps`` across ``[start_s, end_s]``.
 
@@ -245,6 +256,7 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
         container.seek(target_pts, backward=True, stream=stream)
 
         next_wanted = start_s
+        to_bgr = _converter()
         for frame in container.decode(stream):
             if frame.pts is None:
                 continue
@@ -253,7 +265,7 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
                 continue
             if t > end_s + 1e-9:
                 break
-            img = frame.to_ndarray(format="bgr24")
+            img = to_bgr(frame)
             if crop is not None:
                 x, y, w, h = crop
                 img = np.ascontiguousarray(img[y : y + h, x : x + w])
@@ -283,6 +295,7 @@ def windows(path, specs, end_s: float):
         offset = _stream_start(stream)
         target_pts = int((min(wanted) - lead + offset) / stream.time_base)
         container.seek(target_pts, backward=True, stream=stream)
+        to_bgr = _converter()
         for frame in container.decode(stream):
             if frame.pts is None:
                 continue
@@ -292,7 +305,7 @@ def windows(path, specs, end_s: float):
                 continue
             if t > end_s + 1e-9:
                 break
-            img = frame.to_ndarray(format="bgr24")
+            img = to_bgr(frame)
             for i in due:
                 crop = specs[i][2]
                 if crop is None:

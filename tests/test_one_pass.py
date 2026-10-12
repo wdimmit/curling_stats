@@ -153,3 +153,14 @@ class TestDetectingBehindTheDecode:
         monkeypatch.setattr(sequence, "BATCH", 8)
         with pytest.raises(RuntimeError, match="GPU went away"):
             sequence.detect_spans(clip, [(panel(A), 9.0, 10.0)], 20.0, FakeDetector(fail_on=2))
+
+
+def test_the_kept_converter_gives_what_to_ndarray_gives(clip):
+    import av
+
+    to_bgr = F._converter()
+    with av.open(str(clip)) as container:
+        for i, frame in enumerate(container.decode(video=0)):
+            assert np.array_equal(to_bgr(frame), frame.to_ndarray(format="bgr24"))
+            if i >= 40:
+                break
