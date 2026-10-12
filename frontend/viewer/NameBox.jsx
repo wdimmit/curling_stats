@@ -23,7 +23,9 @@ export function NameBox({ names, value, onValue, onKeyDown, onBlur, ...input }) 
   const shown = open ? namesMatching(names, value) : [];
   const lit = hi < shown.length ? hi : -1;
 
-  const pick = name => { onValue(name); setHi(-1); };
+  // Picked, the list goes until more is typed: the names this one is the
+  // start of are not offered over it.
+  const pick = name => { onValue(name); setHi(-1); setOpen(false); };
 
   // Only a highlighted name takes Enter or Escape from the editor around the
   // box; with none, Enter still saves or submits and Escape still cancels.

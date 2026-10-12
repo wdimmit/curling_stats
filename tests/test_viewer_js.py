@@ -3499,6 +3499,20 @@ class TestDeliveryGeometry:
         assert g["every"] == {"short": "0.1 s", "words": "tenth of a second"}
         assert g["dotR"] == 2.3
 
+    def test_dropped_samples_do_not_change_the_rate(self):
+        """Samples go missing where the side model loses the rock; the rate is
+        still the one the path was read at."""
+        for fps, every, r in ((10, "0.1 s", 2.3), (30, "frame (30 a second)", 1.3)):
+            pts = [p for i, p in enumerate(delivery_points(fps=fps)) if i % 6 != 3]
+            g = self.geom(delivery_shot(pts))
+            assert (g["every"]["short"], g["dotR"]) == (every, r), fps
+
+    def test_a_brief_loss_at_30_a_second_is_still_one_line(self):
+        """A fifth of a second, 0.4 m: bridged at 10 a second, so at 30 too."""
+        assert len(self.geom(delivery_shot(delivery_points(fps=30, gap=(1.0, 1.2))))["runs"]) == 1
+        assert len(self.geom(delivery_shot(delivery_points(fps=10, gap=(1.0, 1.2))))["runs"]) == 1
+        assert len(self.geom(delivery_shot(delivery_points(fps=30, gap=(0.5, 1.6))))["runs"]) == 2
+
     def test_every_frame_is_said_so_and_drawn_smaller(self):
         # Times to the hundredth: steps of 0.03 and 0.04 by turns.
         g = self.geom(delivery_shot(delivery_points(fps=30)))
@@ -4453,11 +4467,19 @@ class TestNamingTheTeams:
         assert self.matching(["Hart", "Grant", "Arnold"], "ar") == ["Arnold", "Hart"]
         assert self.matching(self.LEAGUE, "zz") == []
 
-    def test_a_name_already_in_the_box_offers_nothing_more(self):
-        """What a tap leaves behind: the list goes, rather than offering the
-        name just picked, or ones it is the start of, again."""
-        assert self.matching(["Hart", "Hartung"], "hart ") == []
+    def test_a_name_already_in_the_box_is_not_offered_again(self):
+        """Typing toward a longer name goes on offering it: "Hart" on the way
+        to "Hartung" still shows "Hartung"."""
         assert self.matching(["Hart", "Hartung"], "Har") == ["Hart", "Hartung"]
+        assert self.matching(["Hart", "Hartung"], "hart ") == ["Hartung"]
+        assert self.matching(["Hart", "Hartung"], "Hartung") == []
+
+    def test_a_pick_closes_the_list_until_more_is_typed(self):
+        """What a tap leaves behind: the list goes, rather than offering the
+        names the one just picked is the start of."""
+        box = self.src("frontend/viewer/NameBox.jsx")
+        assert "const pick = name => { onValue(name); setHi(-1); setOpen(false); };" in box
+        assert "onChange={e => { onValue(e.target.value); setHi(-1); setOpen(true); }}" in box
 
     def test_both_boxes_offer_the_leagues_names(self):
         teams = self.src("frontend/viewer/Teams.jsx")

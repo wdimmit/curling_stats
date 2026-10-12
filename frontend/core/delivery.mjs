@@ -147,16 +147,17 @@ export function deliveryGeometry(shot, box) {
   const dots = pts.map((p, i) => ({ ...pt(p.x, p.yp), fill: rampColor(moving < 0 || i < moving ? 0 : (p.t - t0) / Math.max(1e-6, t1 - t0)) }));
   const steps = pts.slice(1).map((p, i) => p.t - pts[i].t).sort((a, b) => a - b);
   const stepS = steps.length ? steps[steps.length >> 1] : 0.1;
-  const gapS = 2.5 * stepS;
   // How often the path has a dot: a tenth of a second until pipeline
-  // 2026.10.12.1, every frame (30 a second) since. The mean of the ordinary
-  // steps, not their median: times come to the hundredth, so a 30 fps path's
-  // steps are 0.03 and 0.04 by turns. Denser dots are smaller, or at a rock's
-  // pace they run into one band.
-  const ordinary = steps.filter(d => d > 0 && d <= 2 * stepS);
-  const meanS = ordinary.length ? ordinary.reduce((a, b) => a + b, 0) / ordinary.length : stepS;
-  const perSecond = Math.max(1, Math.round(1 / Math.max(meanS, 1e-3)));
+  // 2026.10.12.1, every frame (30 a second) since -- whichever of the rates a
+  // path is read at its median step is nearest. Not worked out from the steps
+  // alone: samples go missing where the rock is lost, and times come to the
+  // hundredth (a 30 fps path's steps are 0.03 and 0.04 by turns). Denser dots
+  // are smaller, or at a rock's pace they run into one band.
+  const perSecond = nearestRate(stepS);
   const dotR = r1(Math.min(2.3, 2.3 * Math.sqrt(10 / perSecond)));
+  // The faint line breaks where the camera lost the rock for a while: a
+  // quarter of a second, at any rate, as 2.5 steps were at 10 a second.
+  const gapS = Math.max(GAP_MIN_S, 2.5 / perSecond);
   const runs = [];
   let run = [];
   pts.forEach((p, i) => {
@@ -181,6 +182,16 @@ export function deliveryGeometry(shot, box) {
     start: start && start.yp >= from && start.yp <= to ? pt(start.x, start.yp) : null,
     points: pts.length,
   };
+}
+
+// The rates a delivery path is read at (linetime.DELIVERY_FPS, now and before).
+const PATH_RATES = [30, 10];
+const GAP_MIN_S = 0.25;
+
+/* The path rate whose step is nearest `stepS`, as a ratio. */
+function nearestRate(stepS) {
+  const off = r => Math.abs(Math.log(Math.max(stepS, 1e-3) * r));
+  return PATH_RATES.reduce((a, b) => (off(b) < off(a) ? b : a));
 }
 
 /* How often a delivery path has a dot, for its caption and its label. */

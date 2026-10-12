@@ -5,7 +5,7 @@
   "sources": {
     "frontend/core/charts.mjs": "30eec1a0654d5fd43b547bbb0523b194c5f257d8ef7d7021849b6c3f48688d2e",
     "frontend/core/constants.mjs": "6dff65b3186be96030c10855a6e4884f8452f9f2b10d61c9b82f285954e250ad",
-    "frontend/core/delivery.mjs": "c7d85f0df36fce758ae6d08f5f23016e94dc126c7d7a7fd0b4176157b528ddd7",
+    "frontend/core/delivery.mjs": "141e738718e2a9233846b92a1747ab541b681c0ada2d7808846d92580a0a1469",
     "frontend/core/flag.mjs": "61002c1dd367a4665463f8f363d0eafb6cbcdc0be5fa669b747afc9c659ae7cc",
     "frontend/core/format.mjs": "8f937075dcb79136dd18bbd49cbeff639c9bf9027701b6e46fab35ced6bc4a50",
     "frontend/core/house.mjs": "94d64eae255dc61ae56b90901710908c5016eee29601b86133d4aeb7717a0631",
@@ -29,7 +29,7 @@
     "frontend/runtime/plays.mjs": "455203902dbe3f76bb58f8532b4b2c5f6178c40254a76b4dbd7a36ea719debcd",
     "frontend/runtime/prefs.mjs": "238969881d352d08606f188215c1adda730be7f8489cc049204df324f655d6fb",
     "frontend/runtime/scores.mjs": "51f0984f02f825dcc93ed3bc375e47130ec4026984b1fdab9c643ffe91b6deed",
-    "frontend/runtime/teams.mjs": "54a3fc7cce4a4a320058c04c5a8aaecdd673a47e2a3133d46799a1b9141f85e3",
+    "frontend/runtime/teams.mjs": "bdcfaea8c74360181f5b2ae4ec2c066f051580061c4594d90c43a00c64e0dad3",
     "frontend/site/Games.jsx": "7c0ca512c7eb73307f913ba6603b04a77b3e0c5b1eaa4638106a6a1965bfd52a",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
     "frontend/site/Mine.jsx": "08ee58151c96e486b33e19ddbf2c4e21f6e03211eba28c617981fbc70250ad4c",
@@ -52,7 +52,7 @@
     "frontend/viewer/Detail.jsx": "80823a0fdf9d282eb0e028c4506a1697eea83d683bd5b38c36e4840819437680",
     "frontend/viewer/Flag.jsx": "7f2b7a7d3e63d89d1d356c257546b7c844896bce6fec4dc276dcd8a0e5a88c90",
     "frontend/viewer/House.jsx": "868238509dfdfb62700f2320d20b78923ac87bc285ce4ea5ae9908130a6560e4",
-    "frontend/viewer/NameBox.jsx": "79e670e0672b2a1d03adbba126558460b7f7c3854c6d00861b840d73efceebf8",
+    "frontend/viewer/NameBox.jsx": "b3d5db36376c90674ffa7f329a092db110e27f878e3b17266816f37b883f6246",
     "frontend/viewer/Pager.jsx": "3e750b495fffda8fd24ebf00f3f0dd928b1ea2b202ad560f532643c672693df7",
     "frontend/viewer/Played.jsx": "442404ed6dc9c004ce7c23b60cd089818088642495b6bd86db5bc54ff1e9406e",
     "frontend/viewer/Report.jsx": "c52a28d9789026141379daee371285bc1893999fd0d823f61e64ac3acac2035d",
@@ -62,7 +62,7 @@
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "3b04a6e986a90f2aa96cd537cea34cd584156231ddb46b7bbff911aa633b99e2",
-    "src/curling_score/viewer/app.js": "9aae1ef14b03d6181b29d2344166500ac2f8f706c7896439da98701fc7ff08d3"
+    "src/curling_score/service/static/site.js": "69ccce295d8c6929b32e5c74249aeeabef6795a585d02fb420c2241b7bd4523d",
+    "src/curling_score/viewer/app.js": "bc99da55910cef54df3b03e1e86543d58fb2b7c1d501be63fe6b6183d7f9f05e"
   }
 }
