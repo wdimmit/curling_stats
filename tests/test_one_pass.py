@@ -98,3 +98,58 @@ def test_a_live_end_decodes_its_window_once(monkeypatch):
     assert call == ("spans", "rec.ts",
                     [(top.rect, min(1000.0 - REQUIRED_LOOKBACK_S, from_s), analyze.SHOT_FPS),
                      (bottom.rect, from_s, analyze.release.RELEASE_FPS)], 1900.0)
+
+
+class FakeDetector:
+    """One 'stone' per panel -- its mean pixel -- and where each batch ran."""
+
+    def __init__(self, fail_on=None):
+        self.threads, self.calls, self.fail_on = set(), 0, fail_on
+
+    def find_stones_batch(self, panels, calib):
+        import threading
+
+        self.calls += 1
+        if self.calls == self.fail_on:
+            raise RuntimeError("the GPU went away")
+        self.threads.add(threading.current_thread().name)
+        return [[float(p.mean())] for p in panels]
+
+
+def serially(clip, setup, start, fps, end):
+    return [(t, [float(img.mean())]) for t, img in F.window(clip, start, end, fps, crop=setup.rect)]
+
+
+class TestDetectingBehindTheDecode:
+    def test_both_panels_get_what_a_serial_loop_gave(self, clip, monkeypatch):
+        monkeypatch.setattr(sequence, "BATCH", 16)
+        near, far = panel(A), panel(B)
+        det = FakeDetector()
+        both = sequence.detect_spans(clip, [(near, 9.0, 10.0), (far, 11.3, 5.0)], 20.0, det)
+        assert both[0] == serially(clip, near, 9.0, 10.0, 20.0)
+        assert both[1] == serially(clip, far, 11.3, 5.0, 20.0)
+        assert det.threads and all(n.startswith("detect") for n in det.threads)
+
+    def test_one_panel_too(self, clip, monkeypatch):
+        monkeypatch.setattr(sequence, "BATCH", 16)
+        near = panel(A)
+        got = sequence.detect_span(clip, near, 9.0, 20.0, 10.0, FakeDetector(), use_cache=False)
+        assert got == serially(clip, near, 9.0, 10.0, 20.0)
+
+    def test_the_decode_runs_at_most_one_batch_ahead(self, clip, monkeypatch):
+        monkeypatch.setattr(sequence, "BATCH", 8)
+        seen = []
+        collect = sequence._DetectBehind._collect
+
+        def watch(self, keep):
+            seen.append(len(self.pending))
+            return collect(self, keep)
+
+        monkeypatch.setattr(sequence._DetectBehind, "_collect", watch)
+        sequence.detect_spans(clip, [(panel(A), 9.0, 10.0)], 20.0, FakeDetector())
+        assert max(seen) <= sequence.IN_FLIGHT + 1
+
+    def test_a_detector_that_fails_fails_the_caller(self, clip, monkeypatch):
+        monkeypatch.setattr(sequence, "BATCH", 8)
+        with pytest.raises(RuntimeError, match="GPU went away"):
+            sequence.detect_spans(clip, [(panel(A), 9.0, 10.0)], 20.0, FakeDetector(fail_on=2))
