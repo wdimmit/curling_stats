@@ -103,8 +103,13 @@ class TestHalfPrecisionKeepsOnePredictor:
         def __init__(self, **overrides):
             self.overrides = overrides
 
-    def test_half_is_asked_for_as_quantize(self):
+    def test_half_is_asked_for_as_quantize(self, monkeypatch):
+        monkeypatch.setattr(yolo, "_knows_quantize", lambda: True)
         assert yolo._precision(self.Model(half=True)) == {"quantize": 16}
+
+    def test_an_ultralytics_from_before_quantize_is_asked_for_half_as_ever(self, monkeypatch):
+        monkeypatch.setattr(yolo, "_knows_quantize", lambda: False)
+        assert yolo._precision(self.Model(half=True)) == {}
 
     def test_full_precision_asks_for_nothing(self):
         assert yolo._precision(self.Model()) == {}
