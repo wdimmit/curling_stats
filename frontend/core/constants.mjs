@@ -43,7 +43,7 @@ export const RELEASE_TO_ARRIVAL_S = 15;  // timeline.RELEASE_TO_ARRIVAL_S: an un
  * the stylesheet gate being the same string is what keeps the behaviour that
  * assumes the phone shell from applying where the shell does not. A test
  * asserts the two are equal. */
-export const PHONE_QUERY = "(max-width: 640px) and (min-height: 521px)";
+export const PHONE_QUERY = "(max-width: 640px) and (min-height: 461px)";
 
 /* The phone viewer's bottom tabs, in order: the one table the tab bar draws
  * and a link's #tab= is checked against. */

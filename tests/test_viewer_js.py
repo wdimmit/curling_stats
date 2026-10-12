@@ -3258,8 +3258,8 @@ class TestDoublesStatsAndSummary:
         box rendered into them, and a tap beside a transport button landed on
         a swap label and saved a swap."""
         css = (VIEWER / "style.css").read_text()
-        start = css.index("@media (max-width: 640px) and (min-height: 521px)")
-        phone = css[start:css.index("@media (max-width: 640px) and (max-height: 520px)")]
+        start = css.index("@media (max-width: 640px) and (min-height: 461px)")
+        phone = css[start:css.index("@media (max-width: 640px) and (max-height: 460px)")]
         at = phone.index('body[data-sheet="peek"] #chart #endBox')
         assert "display: none" in phone[at:phone.index("}", at)]
 
@@ -3269,8 +3269,8 @@ class TestDoublesStatsAndSummary:
         checkbox. Its band is painted in the sheet's colour, under the buttons
         (z-index -1 inside .transport) and over the sheet."""
         css = (VIEWER / "style.css").read_text()
-        start = css.index("@media (max-width: 640px) and (min-height: 521px)")
-        short = css.index("@media (max-width: 640px) and (max-height: 520px)")
+        start = css.index("@media (max-width: 640px) and (min-height: 461px)")
+        short = css.index("@media (max-width: 640px) and (max-height: 460px)")
         phone = css[start:short]
         rule = lambda block, sel: block[block.index(sel):block.index("}", block.index(sel))]
         band = rule(phone, ".transport::before {")

@@ -783,7 +783,7 @@ body[data-mode="review"] #house { cursor:default; }
    house takes what is left, and the chart panel becomes a sheet over both.
    Everything is placed with fixed/absolute positioning because the player
    iframe must never be reparented -- see app.js's one-player invariant. */
-@media (max-width: 640px) and (min-height: 521px) {
+@media (max-width: 640px) and (min-height: 461px) {
   body { height: 100dvh; overflow: hidden; }
   /* The shell is a fixed-height page; the report is not. It is a sibling of
      main in normal flow, taller than any phone screen, and `overflow:hidden`
@@ -1238,8 +1238,15 @@ body[data-mode="review"] #house { cursor:default; }
 /* --- short screens ------------------------------------------------------ */
 /* The shell needs a tall viewport. Below that the pre-existing single-column
    layout already scrolls and clips nothing, so the only thing worth adding is
-   keeping the transport within reach of a thumb. */
-@media (max-width: 640px) and (max-height: 520px) {
+   keeping the transport within reach of a thumb.
+   Where "tall" starts is set by the House tab, which gets what the video,
+   pager and tabs leave (about height - 380px on a 375px-wide phone): at 460
+   that is an 80px house, and below it the single-column page reads better.
+   It was 520, which sent a phone held upright here whenever its browser left
+   under 521px of page: a report from Firefox for iOS, which keeps both an
+   address bar and a toolbar on screen, saw this page as "the desktop view".
+   Page zoom shrinks the page's height the same way. */
+@media (max-width: 640px) and (max-height: 460px) {
   main { margin-bottom: calc(84px + env(safe-area-inset-bottom)); }
   .transport { position: fixed; left: 12px; right: 12px; z-index: 5;
                bottom: calc(12px + env(safe-area-inset-bottom));
