@@ -146,9 +146,9 @@ class TestReadingAhead:
     def test_only_the_newest_announcements_are_held(self, clips):
         _mp4, ts = clips
         with longview.reading_ahead() as ahead:
-            for t0 in (11.0, 12.0, 13.0, 14.0):
+            for t0 in (11.0, 12.0, 13.0, 14.0, 15.0):
                 longview.soon(ts, RECT, t0, t0 + 0.5, fps=5.0)
-            assert [k[2] for k in ahead.waiting] == [13.0, 14.0]
+            assert [k[2] for k in ahead.waiting] == [13.0, 14.0, 15.0][-ahead.MAX_WAITING:]
 
     def test_soon_does_nothing_with_no_read_ahead_open(self, clips):
         _mp4, ts = clips
@@ -190,7 +190,7 @@ class TestAPlan:
             for i, w in enumerate(self.WINDOWS):
                 got.append(plan.decode(ts, *w))
                 waiting = [k[2] for k in ahead.waiting]
-                assert waiting == ([self.WINDOWS[i + 1][1]] if i + 1 < len(self.WINDOWS) else [])
+                assert waiting == [v[1] for v in self.WINDOWS[i + 1:i + 1 + longview.AHEAD]]
         for (a, at), (b, bt) in zip(got, want):
             assert at == bt and a.tobytes() == b.tobytes()
 
@@ -201,7 +201,7 @@ class TestAPlan:
             plan.decode(ts, *self.WINDOWS[0])
             frames, _ = plan.decode(ts, RECT, 30.0, 30.5, 10.0)
             assert len(frames) == 6
-            assert [k[2] for k in ahead.waiting] == [13.0]     # still next
+            assert [k[2] for k in ahead.waiting] == [13.0, 15.5]     # still next
 
     def test_skipping_ahead_starts_the_window_after_it(self, clips):
         _mp4, ts = clips
@@ -219,6 +219,7 @@ class TestAPlan:
             plan.decode(ts, RECT, 30.0, 30.5, 10.0)            # not in the plan
             plan.decode(ts, RECT, 31.0, 31.5, 10.0)
             assert [k[2] for k in ahead.waiting] == [15.5]
+            assert plan.started == {1, 2}                      # each started once
 
     def test_with_no_read_ahead_open_it_just_decodes(self, clips):
         _mp4, ts = clips

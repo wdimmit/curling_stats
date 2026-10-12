@@ -536,6 +536,13 @@ def _decode_now(video, rect, t0, t1, fps, lead):
     return frames, times
 
 
+# Windows decoded ahead of the one a pass is reading, at once. One ffmpeg on
+# a short window leaves most of the CPU idle -- its start, its seek and its
+# keyframe are serial -- and on the GPU worker the passes still waited ~18 s
+# an end on one at a time.
+AHEAD = 2
+
+
 class _ReadAhead:
     """Windows a pass will want soon, decoding on a thread of their own.
 
@@ -546,14 +553,14 @@ class _ReadAhead:
 
     # Windows decoded ahead and not yet collected; the oldest beyond this is
     # dropped. A window is up to ~1 GB of full-view frames (a 12 s search at
-    # 30 fps), so two is the most worth holding.
-    MAX_WAITING = 2
+    # 30 fps), though most are 150-400 MB.
+    MAX_WAITING = AHEAD + 1
 
     def __init__(self):
         from collections import OrderedDict
         from concurrent.futures import ThreadPoolExecutor
 
-        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="longview")
+        self.pool = ThreadPoolExecutor(max_workers=AHEAD, thread_name_prefix="longview")
         self.waiting = OrderedDict()
         # What it bought: windows collected ready-decoded, the time spent
         # waiting for them, and the windows no plan foresaw, decoded then.
@@ -637,8 +644,8 @@ def soon(video, view, t0: float, t1: float, fps: float = 30.0) -> None:
 
 
 class Plan:
-    """A pass's windows in the order it will decode them, each started as the
-    one before it is taken: ``decode`` for a pass that takes one.
+    """A pass's windows in the order it will decode them, the next `AHEAD` of
+    them started as each is taken: ``decode`` for a pass that takes one.
 
     Planned from what the pass reads its windows from, before it starts. A
     window the pass asks for that is not in the plan is decoded then; one in
@@ -655,10 +662,11 @@ class Plan:
         key = _key(video, rect, t0, t1, fps)
         if key in self.keys[self.next:]:
             self.next = self.keys.index(key, self.next) + 1
-        if self.next < len(self.keys) and self.next not in self.started:
-            self.started.add(self.next)
-            if _reading is not None:
-                _reading.soon(self.keys[self.next])
+        for i in range(self.next, min(self.next + AHEAD, len(self.keys))):
+            if i not in self.started:
+                self.started.add(i)
+                if _reading is not None:
+                    _reading.soon(self.keys[i])
         return decode(video, rect, t0, t1, fps)
 
 

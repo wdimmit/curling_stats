@@ -58,10 +58,10 @@ def time_hog_crossings(shots, video, view, *, find=None) -> None:
         find = sidemodel.default_finder() or longview.find_crossing
     todo = [(shot, win) for shot in shots if (win := window_for(shot)) is not None]
     for i, (shot, (t0, t1)) in enumerate(todo):
-        if i + 1 < len(todo):
-            # The next rock's window decodes while this one's is searched
-            # (`longview.reading_ahead`).
-            longview.soon(video, view, *todo[i + 1][1], READ_FPS)
+        # The next rocks' windows decode while this one's is searched
+        # (`longview.reading_ahead`).
+        for _ahead, win in todo[i + 1:i + 1 + longview.AHEAD]:
+            longview.soon(video, view, *win, READ_FPS)
         got = find(video, view, shot.color, t0, t1)
         if getattr(got, "samples", ()):
             shot.hog_crossing = got
