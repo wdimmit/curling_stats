@@ -581,13 +581,16 @@ def _extend_for(shot, view, video, t_release, model, decode, detect):
 # middle way: on a 30 fps camera it takes alternate gaps of one frame and two.
 DELIVERY_FPS = 30.0
 DELIVERY_MAX_AFTER_S = 5.0      # the band's first sample comes 2.0-3.1 s after the release
+# The read runs on past the band's first sample, so both see the rock for a
+# dozen frames and the seam between them can be measured (`_seam_offset`).
+DELIVERY_PAST_BAND_S = 0.4
 
 
 def delivery_window(t_release, t_band):
-    """The hog camera's one read of a delivery: from before the push to just
-    past ``t_band``, the band's first sample."""
+    """The hog camera's one read of a delivery: from before the push to a
+    little past ``t_band``, the band's first sample."""
     return (t_release + START_WINDOW_S[0],
-            min(t_release + DELIVERY_MAX_AFTER_S, max(t_release, t_band) + 0.1))
+            min(t_release + DELIVERY_MAX_AFTER_S, max(t_release, t_band) + DELIVERY_PAST_BAND_S))
 DELIVERY_TO_M = 4.5             # the read's crop runs past the band's first rows
 DELIVERY_END_M = C.TEE_TO_HOGLINE_M + 1.5
 DELIVERY_KEEP_M = 8.2
@@ -756,6 +759,52 @@ def _collapse_rest(pts, t0: float):
     return [p for p in pts if not any(a < p[0] < b for a, b in spans)]
 
 
+# The seam where the read hands the path to the band. The two are boxes of
+# one rock in different crops of the same frames, and on lJREEPDFNbE's ends
+# 5-6 (2026-10-12) they disagreed by up to 1.6 cm across and 2.5-5 cm along,
+# a step the chart's stretched across axis shows as a kink. Measured in the
+# frames both saw -- a read detection this close to a band sample is the same
+# rock -- and eased into the read's last half second, so the rock at rest and
+# the line's start, read near the hack, are not moved.
+SEAM_MATCH_M = (0.10, 0.60)     # across, along
+SEAM_MIN_FRAMES = 3
+SEAM_RAMP_S = 0.5
+
+
+def _seam_offset(frames: DeliveryFrames, band, t_from: float):
+    """The band's position less the read's, (across, along), by their medians
+    over the frames both saw from ``t_from`` on; None in fewer than
+    SEAM_MIN_FRAMES."""
+    reads = [(t, dets) for t, dets in zip(frames.times, frames.dets) if t >= t_from - 1 / 60]
+    dx, dyp = [], []
+    for t, x, _y, yp in band:
+        if t < t_from - 1e-6:
+            continue
+        at = min(reads, key=lambda r: abs(r[0] - t), default=None)
+        if at is None or abs(at[0] - t) > 1 / 60:
+            continue
+        near = [d for d in at[1] if abs(d[0] - x) <= SEAM_MATCH_M[0] and abs(d[1] - yp) <= SEAM_MATCH_M[1]]
+        if near:
+            d = min(near, key=lambda d: 3 * abs(d[0] - x) + abs(d[1] - yp))
+            dx.append(x - d[0])
+            dyp.append(yp - d[1])
+    if len(dx) < SEAM_MIN_FRAMES:
+        return None
+    return float(np.median(dx)), float(np.median(dyp))
+
+
+def _ease_into(back, offset):
+    """The read's samples moved toward the band by ``offset``: all of it at
+    the last, next to the band's first, none SEAM_RAMP_S before that."""
+    dx, dyp = offset
+    t_last = back[-1][0]
+    out = []
+    for t, x, yp in back:
+        w = min(max(1.0 - (t_last - t) / SEAM_RAMP_S, 0.0), 1.0)
+        out.append((t, x + w * dx, yp + w * dyp))
+    return out
+
+
 def delivery_path(track, frames: DeliveryFrames, t_release: float) -> tuple:
     """The rock from its rest to just past DELIVERY_END_M as ((t, y, x), ...),
     t seconds from the release. Anchored on the band, which is certainly the
@@ -776,6 +825,9 @@ def delivery_path(track, frames: DeliveryFrames, t_release: float) -> tuple:
         if back and min(p[2] for p in back) < DELIVERY_REST_BEHIND_M:
             break
     i, back = best
+    offset = _seam_offset(frames, track[i:], track[i][0])
+    if offset is not None and back:
+        back = _ease_into(back, offset)
     pts = back + _on_grid(track[i:], t0, DELIVERY_FPS)
     pts = _collapse_rest(_to_end(pts), t0)
     return tuple((t - t_release, TEE_Y - yp, x) for t, x, yp in pts)
