@@ -18,6 +18,7 @@ import { clockParts, dayParts, localDay } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Header, TeamPicker, useCommitOnExit } from "./ui.jsx";
 import { fetchTeamNames } from "../runtime/teams.mjs";
+import { NameBox } from "../viewer/NameBox.jsx";
 
 const leaguesIn = games => [...new Set(games.map(g => g.league).filter(Boolean))].sort();
 
@@ -154,7 +155,6 @@ function TeamsCell({ game, editable, onSaved }) {
     fetchTeamNames(game.source_id).then(n => { if (live) setNames(n); });
     return () => { live = false; };
   }, [editing, game.source_id]);
-  const listId = `teamnames-${game.source_id}`;
 
   const named = game.team_red || game.team_yellow;
   const shown = named ? (
@@ -199,16 +199,11 @@ function TeamsCell({ game, editable, onSaved }) {
   return (
     <div className="teams">
       <span className="teamedit">
-        <input className="red" maxLength={60} placeholder="red" aria-label="Red team"
-               list={listId} autoComplete="off"
-               autoFocus value={red} onChange={e => setRed(e.target.value)} {...exit} />
+        <NameBox className="red" names={names} maxLength={60} placeholder="red"
+                 aria-label="Red team" autoFocus value={red} onValue={setRed} {...exit} />
         <span className="muted">v</span>
-        <input className="yellow" maxLength={60} placeholder="yellow" aria-label="Yellow team"
-               list={listId} autoComplete="off"
-               value={yellow} onChange={e => setYellow(e.target.value)} {...exit} />
-        <datalist id={listId}>
-          {names.map(n => <option key={n} value={n} />)}
-        </datalist>
+        <NameBox className="yellow" names={names} maxLength={60} placeholder="yellow"
+                 aria-label="Yellow team" value={yellow} onValue={setYellow} {...exit} />
       </span>
     </div>
   );

@@ -7,9 +7,10 @@
  * open it; only someone signed in may save. Sign-in is asked about only here,
  * once the dialog is open -- never as the page loads, which would fetch the
  * Firebase SDK for every viewer of every game (runtime/auth.mjs). */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { accountsOn, signInNow, whoIsSignedIn } from "../runtime/auth.mjs";
 import { fetchTeamNames, sendTeams } from "../runtime/teams.mjs";
+import { NameBox } from "./NameBox.jsx";
 
 export function TeamsDialog({ naming, onClose, onSaved }) {
   const ref = useRef(null);
@@ -41,6 +42,7 @@ function TeamsForm({ naming, onClose, onSaved }) {
   // same team is not a new spelling every night. Asked for alongside the
   // sign-in check, so they are there by the time the boxes are.
   const [known, setKnown] = useState([]);
+  const box = useId();
 
   useEffect(() => {
     let live = true;
@@ -120,19 +122,20 @@ function TeamsForm({ naming, onClose, onSaved }) {
   return (
     <form onSubmit={save}>
       {head}
-      <label className="tm-team">
-        <span className="dot red" aria-hidden="true" />Red
-        <input maxLength={60} autoFocus value={red} placeholder="Team name"
-               list="teamNames" autoComplete="off" onChange={e => setRed(e.target.value)} />
-      </label>
-      <label className="tm-team">
-        <span className="dot yellow" aria-hidden="true" />Yellow
-        <input maxLength={60} value={yellow} placeholder="Team name"
-               list="teamNames" autoComplete="off" onChange={e => setYellow(e.target.value)} />
-      </label>
-      <datalist id="teamNames">
-        {known.map(n => <option key={n} value={n} />)}
-      </datalist>
+      {/* A div with a label in it, not a label around the box: the names
+          listed under the box would otherwise be read out as its name. */}
+      <div className="tm-team">
+        <span className="dot red" aria-hidden="true" />
+        <label htmlFor={`${box}red`}>Red</label>
+        <NameBox id={`${box}red`} names={known} maxLength={60} autoFocus value={red}
+                 placeholder="Team name" onValue={setRed} />
+      </div>
+      <div className="tm-team">
+        <span className="dot yellow" aria-hidden="true" />
+        <label htmlFor={`${box}yellow`}>Yellow</label>
+        <NameBox id={`${box}yellow`} names={known} maxLength={60} value={yellow}
+                 placeholder="Team name" onValue={setYellow} />
+      </div>
       {error && <p className="tm-error" role="alert">{error}</p>}
       <div className="tm-foot">
         <button type="button" disabled={busy} onClick={onClose}>Cancel</button>

@@ -4417,19 +4417,68 @@ class TestNamingTheTeams:
         assert self.known(200, {"names": ["Dimmit", None, 3]})["names"] == ["Dimmit"]
         assert self.known(0, {}, throws=True)["names"] == []
 
+    def matching(self, names, typed, *limit):
+        """namesMatching, run in node: the names shown under a box."""
+        module = (self.ROOT / "frontend/runtime/teams.mjs").as_uri()
+        args = ", ".join(json.dumps(a) for a in (names, typed, *limit))
+        script = (f"const M = await import({module!r});\n"
+                  f"console.log(JSON.stringify(M.namesMatching({args})));")
+        proc = subprocess.run([node, "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    LEAGUE = ["Casey", "Dimmit", "McAll In The Fam", "Hartung", "Reich", "Singh", "Harrison"]
+
+    def test_an_empty_box_offers_the_most_used_names(self):
+        assert self.matching(self.LEAGUE, "") == self.LEAGUE
+        assert self.matching(self.LEAGUE, "  ", 3) == ["Casey", "Dimmit", "McAll In The Fam"]
+
+    def test_names_that_start_with_the_typing_come_before_ones_that_hold_it(self):
+        assert self.matching(self.LEAGUE, "ha") == ["Hartung", "Harrison"]
+        assert self.matching(self.LEAGUE, "  FAM ") == ["McAll In The Fam"]
+        assert self.matching(["Hart", "Grant", "Arnold"], "ar") == ["Arnold", "Hart"]
+        assert self.matching(self.LEAGUE, "zz") == []
+
+    def test_a_name_already_in_the_box_offers_nothing_more(self):
+        """What a tap leaves behind: the list goes, rather than offering the
+        name just picked, or ones it is the start of, again."""
+        assert self.matching(["Hart", "Hartung"], "hart ") == []
+        assert self.matching(["Hart", "Hartung"], "Har") == ["Hart", "Hartung"]
+
     def test_both_boxes_offer_the_leagues_names(self):
         teams = self.src("frontend/viewer/Teams.jsx")
         form = teams[teams.index("function TeamsForm("):]
         assert "fetchTeamNames(naming.sourceId)" in form
-        assert form.count('list="teamNames" autoComplete="off"') == 2
-        assert '<datalist id="teamNames">' in form
+        assert form.count("<NameBox ") == 2
+        assert form.count("names={known}") == 2
 
     def test_so_do_the_game_lists(self):
         games = self.src("frontend/site/Games.jsx")
         cell = games[games.index("function TeamsCell("):games.index("const STATUS =")]
         assert "fetchTeamNames(game.source_id)" in cell
-        assert cell.count("list={listId} autoComplete=\"off\"") == 2
-        assert "<datalist id={listId}>" in cell
+        assert cell.count("<NameBox ") == 2
+        assert cell.count("names={names}") == 2
+
+    def test_the_names_are_drawn_by_the_page_not_a_datalist(self):
+        """Firefox for Android draws nothing for a datalist on a text box, so
+        a phone there was offered no names."""
+        box = self.src("frontend/viewer/NameBox.jsx")
+        teams = self.src("frontend/viewer/Teams.jsx")
+        games = self.src("frontend/site/Games.jsx")
+        cell = games[games.index("function TeamsCell("):games.index("const STATUS =")]
+        assert "<datalist" not in teams and "<datalist" not in cell
+        assert 'role="listbox"' in box and 'role="option"' in box
+        # A press on the list keeps focus in the box: the game list saves as
+        # soon as focus leaves the pair.
+        assert "onMouseDown={e => e.preventDefault()}" in box
+
+    def test_the_names_are_not_inside_the_boxs_label(self):
+        """Inside a <label>, the listed names would be read out as the box's name."""
+        teams = self.src("frontend/viewer/Teams.jsx")
+        form = teams[teams.index("function TeamsForm("):]
+        assert '<label className="tm-team">' not in form
+        assert form.count("<label htmlFor=") == 2
 
     def test_the_button_is_only_where_there_is_a_game_and_a_server(self):
         app = self.src("frontend/viewer/App.jsx")

@@ -37,3 +37,19 @@ export async function fetchTeamNames(sourceId) {
     return [];
   }
 }
+
+/* Which of those to show under a box as somebody types in it: the names that
+ * start with what is typed, then the ones that hold it anywhere ("fam" finds
+ * "McAll In The Fam"), each kept in the league's most-used order, case and
+ * spacing aside. An empty box shows the most used. Nothing once the box
+ * already says one of them -- it has been picked -- and never more than
+ * `limit`, so the list stays short enough to sit above a phone's keyboard. */
+const said = s => s.trim().replace(/\s+/g, " ").toLowerCase();
+
+export function namesMatching(names, typed, limit = 8) {
+  const t = said(typed);
+  if (t && names.some(n => said(n) === t)) return [];
+  const first = names.filter(n => said(n).startsWith(t));
+  const then = names.filter(n => !said(n).startsWith(t) && said(n).includes(t));
+  return [...first, ...then].slice(0, limit);
+}

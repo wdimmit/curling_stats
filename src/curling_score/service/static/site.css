@@ -53,6 +53,18 @@ a.btn.primary { background:var(--accent); color:var(--onaccent); border-color:tr
 .teamedit input { padding:2px 4px; width:7em; border-bottom-width:2px; }
 .teamedit input.red { border-bottom-color:var(--red); }
 .teamedit input.yellow { border-bottom-color:var(--yellow); }
+/* The names the league already uses (viewer/NameBox.jsx): chips on a line of
+   their own below the pair -- below the box being typed in, where the boxes
+   stack on a phone. The lit one is the one Enter takes. */
+.teamedit { flex-wrap:wrap; }
+.teamedit .namelist { order:9; flex:1 1 100%; display:flex; flex-wrap:wrap; gap:5px;
+                      margin:2px 0 0; padding:0; list-style:none; font-weight:400;
+                      white-space:normal; }
+.teamedit .namelist li { padding:3px 10px; border:1px solid var(--line); border-radius:14px;
+                         background:var(--bg); font-size:14px; cursor:pointer; }
+.teamedit .namelist li[aria-selected="true"] { background:var(--accent); color:var(--onaccent);
+                                               border-color:transparent; }
+@media (hover: hover) { .teamedit .namelist li:hover { border-color:var(--ink); } }
 button:disabled { opacity:.5; cursor:default; }
 .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .warn { background:var(--warnbg); color:var(--warn); border-radius:7px; padding:9px 12px; margin-top:12px; font-size:14px; }
@@ -297,6 +309,8 @@ body[data-page="games"] .pill { font-family:inherit; }
                          text-overflow:ellipsis; padding-bottom:3px; }
   .drawrow .who .teams .muted { font-weight:400; }
   .drawrow .teamedit input { flex:1 1 100%; font-weight:400; }
+  .drawrow .teamedit .namelist { order:0; margin:0 0 4px; }
+  .drawrow .teamedit .namelist li { padding:8px 12px; font-size:15px; border-radius:18px; }
   .drawrow .who .league { font-size:12px; white-space:nowrap; overflow:hidden;
                           text-overflow:ellipsis; }
   .drawrow .ends { gap:4px 6px; font-size:13px; }

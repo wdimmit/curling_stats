@@ -652,6 +652,17 @@ body.reporting main { display:none; }
 #teamsDialog .tm-error { margin: 0 0 10px; color: var(--warn); font-weight: 600; }
 #teamsDialog .tm-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 #teamsDialog .tm-foot button { min-height: 44px; padding: 0 16px; font: inherit; }
+/* The names the league already uses (NameBox.jsx), under the box being typed
+   in: chips a thumb can hit, wrapping onto a second line rather than
+   scrolling. The lit one is the one Enter takes. */
+#teamsDialog .namelist { grid-column: 3; display: flex; flex-wrap: wrap; gap: 6px;
+  margin: 0; padding: 0; list-style: none; font-weight: 400; }
+#teamsDialog .namelist li { min-height: 40px; padding: 0 12px; display: flex;
+  align-items: center; border: 1px solid var(--line); border-radius: 20px;
+  background: var(--soft); cursor: pointer; }
+#teamsDialog .namelist li[aria-selected="true"] { background: var(--accent);
+  color: var(--onaccent); border-color: transparent; }
+@media (hover: hover) { #teamsDialog .namelist li:hover { border-color: var(--ink); } }
 
 /* --- phone-only elements: present, wired, dormant on desktop ------------ */
 #stoneChip, #sheetHandle, #orderRow, .housebar, #placeStones { display: none; }
