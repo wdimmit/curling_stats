@@ -12,7 +12,8 @@ import numpy as np
 
 from curling_score import timeline, version
 from curling_score import weights as weights_mod
-from curling_score.detect import broommodel, delivery, release, sequence, sidemodel, spinmodel
+from curling_score.detect import (broommodel, delivery, longview, release, sequence,
+                                  sidemodel, spinmodel)
 from curling_score.game import (
     boardsplit,
     broomtime,
@@ -596,46 +597,48 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     thinking.time_shots(shots, far_seq, far.view_y_min_m)
     stages.mark("rules")
     if sideviews is not None:
-        hogtime.time_hog_crossings(
-            shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
-        stages.mark("hog")
-        # The releases the throwing panel lost -- a thrower whose body hides
-        # the stone from above -- from hogtime's camera, which faces the
-        # delivery. Before the brooms and lines: both read what it gives.
-        n_side = sidereleases.time_side_releases(
-            shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
-        stages.mark("side")
-        if n_side:
-            progress(f"    end {end.number}: {n_side} release(s) from the long camera")
-        # The skip's target broom, from the camera that sees the
-        # destination house -- the OTHER camera from hogtime's.
-        broomtime.time_target_brooms(
-            shots, path, sideviews[hogtime.CAMERA_FOR[end.house]],
-            model=ctx.broom_model)
-        stages.mark("brooms")
-        # Where the rock's thrown line passed the skip's broom -- the
-        # hog-crossing camera for the line, the destination camera for
-        # where it went. Needs hogtime's crossing and broomtime's broom.
-        # In doubles, a rock nobody held a broom for is measured too.
-        # Timed: the delivery's read costs the live lane most of what this adds.
-        t_lines = time.monotonic()
-        n_lines = linetime.time_lines(
-            shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
-            sideviews[hogtime.CAMERA_FOR[end.house]], model=ctx.line_model,
-            without_broom=fmt.line_without_broom)
-        progress(f"    end {end.number}: lines {n_lines}/{len(shots)} "
-                 f"in {time.monotonic() - t_lines:.1f} s")
-        stages.mark("lines")
-        # How fast the thrower set the rock turning: hogtime's camera again,
-        # its own 10 fps read from just past the hog line. Needs hogtime's
-        # crossing to start from; timed, for the live lane's budget.
-        t_spin = time.monotonic()
-        n_spin = spintime.time_spins(
-            shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
-            model=ctx.line_model)
-        progress(f"    end {end.number}: spin {n_spin}/{len(shots)} "
-                 f"in {time.monotonic() - t_spin:.1f} s")
-        stages.mark("spin")
+        # Each pass decodes its next rock's window while it reads this one's.
+        with longview.reading_ahead():
+            hogtime.time_hog_crossings(
+                shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+            stages.mark("hog")
+            # The releases the throwing panel lost -- a thrower whose body hides
+            # the stone from above -- from hogtime's camera, which faces the
+            # delivery. Before the brooms and lines: both read what it gives.
+            n_side = sidereleases.time_side_releases(
+                shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+            stages.mark("side")
+            if n_side:
+                progress(f"    end {end.number}: {n_side} release(s) from the long camera")
+            # The skip's target broom, from the camera that sees the
+            # destination house -- the OTHER camera from hogtime's.
+            broomtime.time_target_brooms(
+                shots, path, sideviews[hogtime.CAMERA_FOR[end.house]],
+                model=ctx.broom_model)
+            stages.mark("brooms")
+            # Where the rock's thrown line passed the skip's broom -- the
+            # hog-crossing camera for the line, the destination camera for
+            # where it went. Needs hogtime's crossing and broomtime's broom.
+            # In doubles, a rock nobody held a broom for is measured too.
+            # Timed: the delivery's read costs the live lane most of what this adds.
+            t_lines = time.monotonic()
+            n_lines = linetime.time_lines(
+                shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
+                sideviews[hogtime.CAMERA_FOR[end.house]], model=ctx.line_model,
+                without_broom=fmt.line_without_broom)
+            progress(f"    end {end.number}: lines {n_lines}/{len(shots)} "
+                     f"in {time.monotonic() - t_lines:.1f} s")
+            stages.mark("lines")
+            # How fast the thrower set the rock turning: hogtime's camera again,
+            # its own 10 fps read from just past the hog line. Needs hogtime's
+            # crossing to start from; timed, for the live lane's budget.
+            t_spin = time.monotonic()
+            n_spin = spintime.time_spins(
+                shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
+                model=ctx.line_model)
+            progress(f"    end {end.number}: spin {n_spin}/{len(shots)} "
+                     f"in {time.monotonic() - t_spin:.1f} s")
+            stages.mark("spin")
     # Stage 3, the destination hog line, from that panel's painted line.
     # In this block ``setup`` is the destination panel and ``far`` is
     # the THROWING panel -- far from the house being played to.

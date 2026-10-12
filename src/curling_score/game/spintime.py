@@ -209,8 +209,9 @@ def _motion(last):
     return float(ts[-1]), float(cx[-1]), float(row[-1]), float(vx), float(vy)
 
 
-def track_spin(model, pose, video, view, shot, *, decode, detect, points):
-    """One rock's samples from the camera facing its thrower: a Track, or None."""
+def spin_start(shot, view):
+    """Where a rock's read begins: ``(t_ref, seed)`` -- the hog crossing its
+    window runs from, and hogtime's track there -- or None to leave it be."""
     crossing = shot.hog_crossing
     chain = track_of(crossing, view)
     t_ref = shot.t_hog_s if shot.t_hog_s is not None else getattr(crossing, "t", None)
@@ -223,6 +224,16 @@ def track_spin(model, pose, video, view, shot, *, decode, detect, points):
     seed = seed_of(crossing, view, t_ref + WINDOW_S[0])
     if seed is None:
         return None
+    return t_ref, seed
+
+
+def track_spin(model, pose, video, view, shot, *, decode, detect, points, start=None):
+    """One rock's samples from the camera facing its thrower: a Track, or None.
+    ``start`` is its `spin_start`, where the caller already has it."""
+    start = spin_start(shot, view) if start is None else start
+    if not start:
+        return None
+    t_ref, seed = start
     return _read_window(model, pose, video, view, shot.color, t_ref + WINDOW_S[0],
                         t_ref + WINDOW_S[1], seed, decode=decode, detect=detect, points=points)
 
@@ -271,9 +282,22 @@ def time_spins(shots, video, hog_view, *, model, pose=None, decode=None, detect=
             return 0
         if pose is None:
             return 0
+    todo = [shot for shot in shots
+            if not getattr(shot, "missing", False) and getattr(shot, "hog_crossing", None) is not None]
+    # Where each rock's read begins, all of them first: the windows are then
+    # known, and each decodes while the rock before it is read. A start that
+    # fails is that rock's failure, logged where its read would have been.
+    starts = []
+    for shot in todo:
+        try:
+            starts.append(spin_start(shot, hog_view) or False)
+        except Exception as exc:  # noqa: BLE001 - raised again in the rock's own try
+            starts.append(exc)
     if decode is None:
         from curling_score.detect import longview
-        decode = longview.decode
+        decode = longview.Plan(video, [
+            (hog_view.rect, st[0] + WINDOW_S[0], st[0] + WINDOW_S[1], SPIN_FPS)
+            for st in starts if isinstance(st, tuple)]).decode
     if detect is None:
         from curling_score.detect import sidemodel
         detect = sidemodel.detect_boxes
@@ -284,11 +308,11 @@ def time_spins(shots, video, hog_view, *, model, pose=None, decode=None, detect=
     # Every rock first, as far as its window: the end's clean reads give the
     # swing its slow rocks are timed with.
     reads = []
-    for shot in shots:
-        if getattr(shot, "missing", False) or getattr(shot, "hog_crossing", None) is None:
-            continue
+    for shot, start in zip(todo, starts):
         try:
-            track = track_spin(model, pose, video, hog_view, shot, **kw)
+            if isinstance(start, Exception):
+                raise start
+            track = track_spin(model, pose, video, hog_view, shot, start=start, **kw)
             if track is not None:
                 reads.append((shot, track, spinfit.read(track.ts, track.ss)))
         except Exception:

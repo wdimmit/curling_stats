@@ -572,12 +572,38 @@ def _key(video, rect, t0, t1, fps):
     return (str(video), tuple(rect), float(t0), float(t1), float(fps))
 
 
-def soon(video, rect, t0: float, t1: float, fps: float = 30.0) -> None:
-    """Say this window will be decoded soon. Exactly the arguments `decode`
-    will be given, or it is simply decoded then; a no-op with no read-ahead
-    open."""
+def soon(video, view, t0: float, t1: float, fps: float = 30.0) -> None:
+    """Say this window of ``view`` (a side view, or its rect) will be decoded
+    soon. Exactly the arguments `decode` will be given, or it is simply
+    decoded then; a no-op with no read-ahead open."""
     if _reading is not None:
-        _reading.soon(_key(video, rect, t0, t1, fps))
+        _reading.soon(_key(video, getattr(view, "rect", view), t0, t1, fps))
+
+
+class Plan:
+    """A pass's windows in the order it will decode them, each started as the
+    one before it is taken: ``decode`` for a pass that takes one.
+
+    Planned from what the pass reads its windows from, before it starts. A
+    window the pass asks for that is not in the plan is decoded then; one in
+    the plan it never asks for costs a decode and nothing else.
+    """
+
+    def __init__(self, video, windows):
+        self.video = video
+        self.keys = [_key(video, rect, t0, t1, fps) for rect, t0, t1, fps in windows]
+        self.next = 0
+        self.started = set()
+
+    def decode(self, video, rect, t0, t1, fps=30.0):
+        key = _key(video, rect, t0, t1, fps)
+        if key in self.keys[self.next:]:
+            self.next = self.keys.index(key, self.next) + 1
+        if self.next < len(self.keys) and self.next not in self.started:
+            self.started.add(self.next)
+            if _reading is not None:
+                _reading.soon(self.keys[self.next])
+        return decode(video, rect, t0, t1, fps)
 
 
 def decode(video, rect, t0: float, t1: float, fps: float = 30.0):

@@ -25,6 +25,27 @@ CAMERA_FOR = {"top": "left", "bottom": "right"}
 ARRIVAL_LOOKBACK_S = (8.0, 20.0)
 
 
+# The rate ``find`` reads at when it is not told one (`sidemodel.find_crossing`,
+# `longview.find_crossing`): what the next rock's window is decoded ahead at.
+READ_FPS = 30.0
+
+
+def window_for(shot):
+    """The span searched for a shot's crossing, ``(t0, t1)``: after its
+    release, or before its arrival when no release was seen. None to leave
+    the shot be."""
+    if getattr(shot, "missing", False):
+        return None
+    release = getattr(shot, "release", None)
+    if release is not None:
+        return release.t + longview.WINDOW_S[0], release.t + longview.WINDOW_S[1]
+    delivery = getattr(shot, "delivery", None)
+    if delivery is None:
+        return None
+    return (delivery.t_enter - ARRIVAL_LOOKBACK_S[1],
+            delivery.t_enter - ARRIVAL_LOOKBACK_S[0])
+
+
 def time_hog_crossings(shots, video, view, *, find=None) -> None:
     """Give every shot its throwing-end hog crossing, in place.
 
@@ -35,19 +56,12 @@ def time_hog_crossings(shots, video, view, *, find=None) -> None:
     """
     if find is None:
         find = sidemodel.default_finder() or longview.find_crossing
-    for shot in shots:
-        if getattr(shot, "missing", False):
-            continue
-        release = getattr(shot, "release", None)
-        if release is not None:
-            t0 = release.t + longview.WINDOW_S[0]
-            t1 = release.t + longview.WINDOW_S[1]
-        else:
-            delivery = getattr(shot, "delivery", None)
-            if delivery is None:
-                continue
-            t0 = delivery.t_enter - ARRIVAL_LOOKBACK_S[1]
-            t1 = delivery.t_enter - ARRIVAL_LOOKBACK_S[0]
+    todo = [(shot, win) for shot in shots if (win := window_for(shot)) is not None]
+    for i, (shot, (t0, t1)) in enumerate(todo):
+        if i + 1 < len(todo):
+            # The next rock's window decodes while this one's is searched
+            # (`longview.reading_ahead`).
+            longview.soon(video, view, *todo[i + 1][1], READ_FPS)
         got = find(video, view, shot.color, t0, t1)
         if getattr(got, "samples", ()):
             shot.hog_crossing = got

@@ -176,3 +176,52 @@ class TestReadingAhead:
             for t0 in (11.0, 31.0):
                 longview.decode(ts, RECT, t0, t0 + 1.0, fps=10.0)
         assert listed_on and all(listed_on)
+
+
+class TestAPlan:
+    WINDOWS = [(RECT, 11.0, 12.0, 10.0), (RECT, 13.0, 14.0, 10.0), (RECT, 15.5, 16.0, 5.0)]
+
+    def test_each_window_starts_as_the_one_before_is_taken(self, clips):
+        _mp4, ts = clips
+        want = [longview.decode(ts, *w) for w in self.WINDOWS]
+        with longview.reading_ahead() as ahead:
+            plan = longview.Plan(ts, self.WINDOWS)
+            got = []
+            for i, w in enumerate(self.WINDOWS):
+                got.append(plan.decode(ts, *w))
+                waiting = [k[2] for k in ahead.waiting]
+                assert waiting == ([self.WINDOWS[i + 1][1]] if i + 1 < len(self.WINDOWS) else [])
+        for (a, at), (b, bt) in zip(got, want):
+            assert at == bt and a.tobytes() == b.tobytes()
+
+    def test_a_window_out_of_the_plan_is_decoded_then(self, clips):
+        _mp4, ts = clips
+        with longview.reading_ahead() as ahead:
+            plan = longview.Plan(ts, self.WINDOWS)
+            plan.decode(ts, *self.WINDOWS[0])
+            frames, _ = plan.decode(ts, RECT, 30.0, 30.5, 10.0)
+            assert len(frames) == 6
+            assert [k[2] for k in ahead.waiting] == [13.0]     # still next
+
+    def test_skipping_ahead_starts_the_window_after_it(self, clips):
+        _mp4, ts = clips
+        with longview.reading_ahead() as ahead:
+            plan = longview.Plan(ts, self.WINDOWS)
+            plan.decode(ts, *self.WINDOWS[1])
+            assert [k[2] for k in ahead.waiting] == [15.5]
+
+    def test_a_window_taken_is_never_started_again(self, clips):
+        _mp4, ts = clips
+        with longview.reading_ahead() as ahead:
+            plan = longview.Plan(ts, self.WINDOWS)
+            plan.decode(ts, *self.WINDOWS[0])
+            plan.decode(ts, *self.WINDOWS[1])
+            plan.decode(ts, RECT, 30.0, 30.5, 10.0)            # not in the plan
+            plan.decode(ts, RECT, 31.0, 31.5, 10.0)
+            assert [k[2] for k in ahead.waiting] == [15.5]
+
+    def test_with_no_read_ahead_open_it_just_decodes(self, clips):
+        _mp4, ts = clips
+        plan = longview.Plan(ts, self.WINDOWS)
+        frames, _ = plan.decode(ts, *self.WINDOWS[0])
+        assert frames.tobytes() == longview.decode(ts, *self.WINDOWS[0])[0].tobytes()

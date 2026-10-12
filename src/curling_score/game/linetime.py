@@ -387,8 +387,7 @@ def find_path(model, video, view, color, t_hog, t_rest, fit, *, decode, detect):
     ``sidemodel.detect_bands``: the other colour's boxes come from the same pass."""
     if view is None or not view.has_lateral or t_hog is None:
         return []
-    t1 = (t_rest if t_rest is not None else t_hog + 24.0) + 1.0
-    frames, times = decode(video, view.rect, t_hog + 1.0, t1, PATH_FPS)
+    frames, times = decode(video, view.rect, *path_window(t_hog, t_rest), PATH_FPS)
     if not len(frames):
         return []
     colors = (color, other_color(color))
@@ -403,6 +402,17 @@ def find_path(model, video, view, color, t_hog, t_rest, fit, *, decode, detect):
 
 EXTEND_WINDOW_S = (6.5, 9.0)        # after the release, past hogtime's window
 EXTEND_IF_SHORT_OF_M = 10.0         # ...for a track that stops short of here
+EXTEND_FPS = 30.0
+
+
+def extend_window(t_release):
+    return t_release + EXTEND_WINDOW_S[0], t_release + EXTEND_WINDOW_S[1]
+
+
+def path_window(t_hog, t_rest):
+    """The destination camera's read of the rock: a second past the hog line
+    to a second past its rest, or 25 s on where the rest is not known."""
+    return t_hog + 1.0, (t_rest if t_rest is not None else t_hog + 24.0) + 1.0
 
 
 def _rest(shot):
@@ -441,6 +451,39 @@ def path_until(shot):
     return t + min(float(speed) / dlv.STONE_DECEL_M_S2, dlv.MAX_RUNOUT_S)
 
 
+def _measured(shot, without_broom):
+    """The shots `time_lines` measures: thrown, released, crossing the hog
+    line, and with a broom held unless ``without_broom``."""
+    if getattr(shot, "missing", False) or getattr(shot, "release", None) is None \
+            or getattr(shot, "hog_crossing", None) is None:
+        return False
+    return getattr(shot, "target_broom", None) is not None or without_broom
+
+
+def planned_windows(shots, hog_view, dest_view, without_broom):
+    """The windows `time_lines` will decode, in order, as ``(rect, t0, t1,
+    fps)``: what each rock's hogtime track says it will ask for. A rock whose
+    track cannot be read is left out, and is decoded when it is asked for."""
+    out = []
+    for shot in shots:
+        if not _measured(shot, without_broom):
+            continue
+        try:
+            track = hog_track(shot.hog_crossing, hog_view)
+        except Exception:  # noqa: BLE001 - the pass itself logs it
+            continue
+        if not track:
+            continue
+        t_release = shot.release.t
+        if max(p[3] for p in track) < EXTEND_IF_SHORT_OF_M:
+            out.append((hog_view.rect, *extend_window(t_release), EXTEND_FPS))
+        out.append((hog_view.rect, *delivery_window(t_release, track[0][0]), DELIVERY_FPS))
+        t_hog = getattr(shot, "t_hog_s", None)
+        if dest_view is not None and dest_view.has_lateral and t_hog is not None:
+            out.append((dest_view.rect, *path_window(t_hog, path_until(shot)), PATH_FPS))
+    return out
+
+
 def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, detect=None,
                without_broom=False) -> int:
     """Give each shot its ``line``, in place; return how many it gave one.
@@ -456,7 +499,9 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
         return 0
     if decode is None:
         from curling_score.detect import longview
-        decode = longview.decode
+        # Each window decodes while the one before it is read.
+        decode = longview.Plan(video, planned_windows(
+            shots, hog_view, dest_view, without_broom)).decode
     if detect is None:
         from curling_score.detect import sidemodel
         detect, detect_bands = sidemodel.detect_band, sidemodel.detect_bands
@@ -466,13 +511,10 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
             detect(model, frames, times, lo, hi, c, **kw) for c in colors]
     n = 0
     for shot in shots:
+        if not _measured(shot, without_broom):
+            continue
         broom = getattr(shot, "target_broom", None)
-        rel = getattr(shot, "release", None)
-        crossing = getattr(shot, "hog_crossing", None)
-        if getattr(shot, "missing", False) or rel is None or crossing is None:
-            continue
-        if broom is None and not without_broom:
-            continue
+        rel, crossing = shot.release, shot.hog_crossing
         try:
             track = hog_track(crossing, hog_view)
             if track and max(p[3] for p in track) < EXTEND_IF_SHORT_OF_M:
@@ -506,8 +548,7 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
 def _extend_for(shot, view, video, t_release, model, decode, detect):
     """Detections in the seconds past hogtime's window, as proposer samples."""
     from curling_score.detect import longview, sidemodel
-    frames, times = decode(video, view.rect, t_release + EXTEND_WINDOW_S[0],
-                           t_release + EXTEND_WINDOW_S[1], 30.0)
+    frames, times = decode(video, view.rect, *extend_window(t_release), EXTEND_FPS)
     if not len(frames):
         return []
     lo, hi = sidepool.band_crop(view)
@@ -536,6 +577,13 @@ def _extend_for(shot, view, video, t_release, model, decode, detect):
 # bought nothing past that and would take the live lane to its limit.
 DELIVERY_FPS = 10.0
 DELIVERY_MAX_AFTER_S = 5.0      # the band's first sample comes 2.0-3.1 s after the release
+
+
+def delivery_window(t_release, t_band):
+    """The hog camera's one read of a delivery: from before the push to just
+    past ``t_band``, the band's first sample."""
+    return (t_release + START_WINDOW_S[0],
+            min(t_release + DELIVERY_MAX_AFTER_S, max(t_release, t_band) + 0.1))
 DELIVERY_TO_M = 4.5             # the read's crop runs past the band's first rows
 DELIVERY_END_M = C.TEE_TO_HOGLINE_M + 1.5
 DELIVERY_KEEP_M = 8.2
@@ -575,8 +623,7 @@ def read_delivery(model, video, view, color, t_release, t_band, *, decode, detec
     """One read of the hog camera from before the push to ``t_band``, the
     band's first sample: the stone at rest, which is the line's start, and the
     rock's way from there to the band."""
-    t0 = t_release + START_WINDOW_S[0]
-    t1 = min(t_release + DELIVERY_MAX_AFTER_S, max(t_release, t_band) + 0.1)
+    t0, t1 = delivery_window(t_release, t_band)
     frames, times = decode(video, view.rect, t0, t1, fps)
     if not len(frames):
         return DeliveryFrames((), (), None)

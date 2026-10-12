@@ -98,13 +98,12 @@ def time_target_brooms(shots, video, view, *, model=None, decode=None) -> None:
     """
     if model is None or view is None or not view.has_lateral:
         return
+    todo = [(shot, win) for shot in shots if (win := window_for(shot)) is not None]
     if decode is None:
         from curling_score.detect import longview
-        decode = longview.decode
-    for shot in shots:
-        win = window_for(shot)
-        if win is None:
-            continue
+        # Each rock's window decodes while the one before it is read.
+        decode = longview.Plan(video, [(view.rect, w[0], w[1], FPS) for _s, w in todo]).decode
+    for shot, win in todo:
         frames, _times = decode(video, view.rect, win[0], win[1], FPS)
         if not len(frames):
             continue
