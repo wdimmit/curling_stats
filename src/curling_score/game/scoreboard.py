@@ -767,14 +767,30 @@ def is_readable(image, geom: BoardGeometry) -> bool:
     return True
 
 
+# Threads a median is taken on, a band of rows each.
+MEDIAN_THREADS = 8
+
+
 def median_frame(frames):
     """Median of several frames: removes anyone walking past the board.
 
     Cards stay hung for a whole end, so a window of a minute or two is far
     shorter than the board changes but far longer than anyone stands still.
+
+    Taken a band of rows at a time on `MEDIAN_THREADS` threads: each pixel's
+    median is its own, so the bands put back together are the whole frame's
+    exactly. A 40-frame 1080p median took 1.4 s on one, and a live stream
+    reads the board up to five times after every end.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     stack = np.stack([np.asarray(f) for f in frames])
-    return np.median(stack, axis=0).astype(np.uint8)
+    rows = stack.shape[1]
+    step = max(1, -(-rows // (2 * MEDIAN_THREADS)))
+    with ThreadPoolExecutor(MEDIAN_THREADS, thread_name_prefix="median") as pool:
+        bands = list(pool.map(lambda r0: np.median(stack[:, r0:r0 + step], axis=0),
+                              range(0, rows, step)))
+    return np.concatenate(bands, axis=0).astype(np.uint8)
 
 
 # The board accumulates and never resets mid-game, so one good late read

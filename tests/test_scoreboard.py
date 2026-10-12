@@ -492,3 +492,16 @@ class TestPersonInFrontOfTheBoard:
         img = known_frame("board_sheet2_t11700_person.png")
         r = SB.read_slots(img, SB.find_board(img))
         assert SB.cumulative(r) == {"yellow": 4, "red": 2}
+
+
+class TestMedianFrameInBands:
+    """The board's median, taken a band of rows at a time, is the whole
+    frame's median exactly."""
+
+    @pytest.mark.parametrize("n, shape", [(40, (1080, 1920, 3)), (37, (1081, 1920, 3)),
+                                          (6, (7, 5, 3)), (5, (3, 4))])
+    def test_the_same_as_one_median(self, n, shape):
+        rng = np.random.default_rng(n)
+        frames = [rng.integers(0, 256, shape, dtype=np.uint8) for _ in range(n)]
+        want = np.median(np.stack(frames), axis=0).astype(np.uint8)
+        assert np.array_equal(SB.median_frame(frames), want)
