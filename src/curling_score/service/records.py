@@ -233,6 +233,9 @@ class User:
     name: str | None = None
     picture_url: str | None = None
     last_seen_at: datetime | None = None
+    share_shots: bool = False
+    """Whether their teammates may read their "My shots" report. Off until
+    they say so: plays were private when they were saved."""
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

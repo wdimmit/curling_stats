@@ -419,6 +419,21 @@ body[data-page="shots"] main { max-width:980px; }
 .picker-rocks { width:5em; text-align:right; color:var(--muted); font-size:13px; }
 .picker-foot { padding:10px 14px; }
 .picker-foot p { margin:0; font-size:13px; }
+
+/* Whose shots, above the heading: you, then each teammate sharing theirs. */
+.whose { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 4px; }
+.whose a { display:inline-flex; align-items:center; min-height:36px; padding:0 14px;
+           border:2px solid var(--line); border-radius:999px; color:var(--ink);
+           font-weight:600; text-decoration:none; }
+.whose a[aria-current="page"] { background:var(--accent); border-color:var(--accent); color:var(--onaccent); }
+/* The switch that shares your own, at the foot of it. The bare `label` and
+   `input` rules are for forms, so this undoes them as .picker-row does. */
+#share { margin-top:16px; }
+#share .share-row { display:flex; gap:12px; align-items:flex-start; margin:0; cursor:pointer;
+                    font-size:15px; font-weight:400; }
+#share .share-row input { flex:none; width:20px; height:20px; margin:2px 0 0; padding:0;
+                          accent-color:var(--accent); }
+#share .share-row .muted { display:block; margin-top:2px; font-size:14px; }
 .picker-done { display:none; }
 .picker-names { font-size:14px; }
 .picker button.linky { border:0; background:none; padding:4px 6px; font-size:14px;

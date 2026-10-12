@@ -11,7 +11,7 @@
     "frontend/core/house.mjs": "94d64eae255dc61ae56b90901710908c5016eee29601b86133d4aeb7717a0631",
     "frontend/core/index.mjs": "a2a86fa58de3d3d15a3ffabdcf19e9ed2f2aa0b9319f2557c635a459a401dedb",
     "frontend/core/line.mjs": "34908496ff359f15cf9c6461215e72b1d2fe32bcf4437766ad012e0e86bc120d",
-    "frontend/core/myshots.mjs": "04736e113ad3b695b8e511dfea28a5c2a378eeda3bb53842207292d272134c5c",
+    "frontend/core/myshots.mjs": "54a9085729351d6a672d78cf7d7c2095bb8175c5b6158e63958e21469e4943dd",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
     "frontend/core/practice.mjs": "013b0d541412707da28830ce5ad74ced6fc6a791b810c123153f845c328e428c",
     "frontend/core/report.mjs": "b68f5eb1883e899be9fc9774f269e68dc8756e2ab364c7397848225f44db4026",
@@ -26,7 +26,7 @@
     "frontend/runtime/flag.mjs": "5be5eeb900c2056f6666966b5485709ca21ea3eaceabb5a5b2dc3559d3732f3c",
     "frontend/runtime/overridesStore.mjs": "a55fd55bdc0a9eae8d950329ac12dfbfd55bf78b265300307bb53b6fde0bbd46",
     "frontend/runtime/player.mjs": "6fea60197a05c0994abcf3f179c2be83901609d9980d938dd1d64854065dd34e",
-    "frontend/runtime/plays.mjs": "4317cb5bddd799126943375928138b768da436e6b0ab7633782e31f786802927",
+    "frontend/runtime/plays.mjs": "455203902dbe3f76bb58f8532b4b2c5f6178c40254a76b4dbd7a36ea719debcd",
     "frontend/runtime/prefs.mjs": "238969881d352d08606f188215c1adda730be7f8489cc049204df324f655d6fb",
     "frontend/runtime/scores.mjs": "51f0984f02f825dcc93ed3bc375e47130ec4026984b1fdab9c643ffe91b6deed",
     "frontend/runtime/teams.mjs": "54a3fc7cce4a4a320058c04c5a8aaecdd673a47e2a3133d46799a1b9141f85e3",
@@ -35,7 +35,7 @@
     "frontend/site/Mine.jsx": "08ee58151c96e486b33e19ddbf2c4e21f6e03211eba28c617981fbc70250ad4c",
     "frontend/site/Practice.jsx": "f3c7523b1156f960f62b2371576c033bd8efdf6d198aa2ff78f911ec2d255567",
     "frontend/site/ShotCharts.jsx": "8d74e5b4bb19b7ef19a2668ad8944964465987a4b16f79b02470aeba15c5ab79",
-    "frontend/site/Shots.jsx": "b760064001e946493e2e3f8dffa11218e086c8f4d5c4627eb289d56403621e36",
+    "frontend/site/Shots.jsx": "a7953acc46f8353ea89b9e987905410c0469f98bed6899bead4ced07a1ae1581",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
     "frontend/site/Submit.jsx": "f2421d5e11b7d04d053da43253ef8499f7fc0d3c32a9fe01a95fef45850b1b02",
     "frontend/site/Thinking.jsx": "bb51d73d82b0e53b5d59eddaf20446d266bcdd1368065f8b539d8d97e5747736",
@@ -62,7 +62,7 @@
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "2ecf2112d9aaecc6c6022c986ba90f720682b2c5954c57e73e564602bd46c3e7",
-    "src/curling_score/viewer/app.js": "bf60a5e9df7795702660561d97488c6a4076021e66f79bd987d8f7867b40d868"
+    "src/curling_score/service/static/site.js": "3b04a6e986a90f2aa96cd537cea34cd584156231ddb46b7bbff911aa633b99e2",
+    "src/curling_score/viewer/app.js": "9aae1ef14b03d6181b29d2344166500ac2f8f706c7896439da98701fc7ff08d3"
   }
 }

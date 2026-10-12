@@ -1810,10 +1810,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     # ------------------------------------------------------------- plays
     # Which rocks of a game a person threw -- their team's colour and their
     # slot in the throwing order -- said on the game's page and read back by
-    # the "My shots" report. Private to whoever said it. A play said on a
-    # chart link remembers that chart, whose grading the report reads; the
-    # chart's id is its edit link, so it never leaves the server: these routes
-    # answer with play_json and, for watching, the share or review link.
+    # the "My shots" report. Private to whoever said it, until they let their
+    # teammates read the report too (shares_shots_with); only they ever change
+    # it. A play said on a chart link remembers that chart, whose grading the
+    # report reads; the chart's id is its edit link, so it never leaves the
+    # server: these routes answer with play_json and, for watching, the share
+    # or review link.
     def play_json(play: Play) -> dict:
         return {"source_id": play.source_id, "color": play.color, "slot": play.slot,
                 "format": format_mod.FORMATS.get(play.format, format_mod.FOURS).to_json(),
@@ -1926,14 +1928,65 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(429, "that is a lot of changes; try again later")
         return {"ok": True, "removed": repo.delete_play(me.id, play.source_id)}
 
-    @app.get("/api/me/plays")
-    def api_my_plays(authorization: str | None = Header(default=None)):
+    def shares_shots_with(viewer: User, owner_id: str) -> bool:
+        """Whether ``viewer`` may read ``owner_id``'s report: their own, or a
+        teammate's who has let their teams see it. Asked afresh every time, so
+        turning sharing off or leaving the team ends it at once."""
+        if viewer.id == owner_id:
+            return True
+        owner = repo.get_user(owner_id)
+        if owner is None or not owner.share_shots:
+            return False
+        return any(owner_id in team.member_ids for team in repo.teams_for_user(viewer.id))
+
+    def require_reader(authorization, owner_id: str) -> None:
+        """404, not 403, for anyone else: nobody learns whether there is
+        anything to see, or whether such a person exists."""
+        if not shares_shots_with(require_user(authorization), owner_id):
+            raise HTTPException(404, "no shots shared with you")
+
+    def shots_sharing(me: User) -> dict:
+        """Whether this person shares their report, the teams that would see
+        it, and the teammates sharing theirs with them, each once."""
+        teams = repo.teams_for_user(me.id)
+        players, users = {}, {}
+        for team in teams:
+            for uid in team.member_ids:
+                if uid == me.id:
+                    continue
+                if uid not in users:
+                    users[uid] = repo.get_user(uid)
+                u = users[uid]
+                if u is None or not u.share_shots:
+                    continue
+                players.setdefault(uid, {"id": uid, "name": u.name or u.email or "A teammate",
+                                         "teams": []})["teams"].append(team.name)
+        return {"share": bool(me.share_shots), "teams": [t.name for t in teams],
+                "players": sorted(players.values(), key=lambda p: p["name"].lower())}
+
+    @app.get("/api/me/shots-sharing")
+    def api_shots_sharing(authorization: str | None = Header(default=None)):
+        return shots_sharing(require_user(authorization))
+
+    @app.put("/api/me/shots-sharing")
+    def api_set_shots_sharing(body: dict, authorization: str | None = Header(default=None)):
+        """Let everyone on a team with you read your report, or stop: ``share``."""
+        me = require_user(authorization)
+        on = body.get("share")
+        if not isinstance(on, bool):
+            raise HTTPException(422, "share must be true or false")
+        if not repo.bump_rate_limit("share:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of changes; try again later")
+        me = repo.update_user(me.id, share_shots=on) or me
+        log.info("shots sharing %s for %s", "on" if on else "off", me.id)
+        return shots_sharing(me)
+
+    def plays_list(user_id: str) -> dict:
         """Every game this person said they played, newest first, with what the
         report lists it by and the link to watch it on -- the chart's share
         link when the play came from a chart, else the game's review link."""
-        me = require_user(authorization)
         out, seen = [], set()
-        for play in repo.plays_for_user(me.id):   # newest first
+        for play in repo.plays_for_user(user_id):   # newest first
             src = canonical_source(play.source_id)
             # Two plays on one game: one saved before its page was folded
             # into another. The newer is the one the person meant.
@@ -1960,6 +2013,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             out.append(item)
         out.sort(key=lambda p: p["played_at"] or "", reverse=True)
         return {"plays": out}
+
+    @app.get("/api/me/plays")
+    def api_my_plays(authorization: str | None = Header(default=None)):
+        return plays_list(require_user(authorization).id)
+
+    @app.get("/api/players/{user_id}/plays")
+    def api_players_plays(user_id: str, authorization: str | None = Header(default=None)):
+        """A teammate's list, read-only, once they share it."""
+        require_reader(authorization, user_id)
+        return plays_list(user_id)
 
     def play_doc(play: Play, src: Source) -> tuple[dict, Run, str | None]:
         """The game as this play's report reads it -- graded by the chart the
@@ -2014,14 +2077,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if not settings.game_clips_enabled:
             raise HTTPException(404, "clips are not switched on")
 
-    @app.get("/api/me/plays/{source_id}/doc")
-    def api_my_play_doc(source_id: str, request: Request,
-                        authorization: str | None = Header(default=None)):
+    def report_doc(user_id: str, source_id: str, request: Request):
         """The game as the report reads it: graded by the chart the play was
         saved from, if it was, then cut down to this player's rocks and the
         little the browser needs of everyone else's (timeline.for_player)."""
-        me = require_user(authorization)
-        play, src = find_play(me.id, source_id)
+        play, src = find_play(user_id, source_id)
         if play is None or src is None:
             raise HTTPException(404, "you have not said which rocks you threw in that game")
         doc, run, fallback = play_doc(play, src)
@@ -2032,25 +2092,41 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             out["clips"] = clips
         return json_revalidated(request, out, "private")
 
-    @app.get("/api/me/plays/{source_id}/clips")
-    def api_my_play_clips(source_id: str, authorization: str | None = Header(default=None)):
-        """Where this play's clips stand, without the document: the page asks
+    @app.get("/api/me/plays/{source_id}/doc")
+    def api_my_play_doc(source_id: str, request: Request,
+                        authorization: str | None = Header(default=None)):
+        return report_doc(require_user(authorization).id, source_id, request)
+
+    @app.get("/api/players/{user_id}/plays/{source_id}/doc")
+    def api_players_play_doc(user_id: str, source_id: str, request: Request,
+                             authorization: str | None = Header(default=None)):
+        require_reader(authorization, user_id)
+        return report_doc(user_id, source_id, request)
+
+    def report_clips(user_id: str, source_id: str) -> dict:
+        """Where a play's clips stand, without the document: the page asks
         this while any are on their way."""
         clips_on()
-        me = require_user(authorization)
-        play, src = find_play(me.id, source_id)
+        play, src = find_play(user_id, source_id)
         run = report_run(play, src) if play and src else None
         if run is None:
             raise HTTPException(404, "you have not said which rocks you threw in that game")
         return {"clips": gameclips.state_for(repo, play.id, run)}
 
-    @app.get("/api/me/plays/{source_id}/clips/{rock}")
-    def api_my_play_clip(source_id: str, rock: str,
-                         authorization: str | None = Header(default=None)):
-        """A short-lived link to one of this play's clips, for the play's owner."""
+    @app.get("/api/me/plays/{source_id}/clips")
+    def api_my_play_clips(source_id: str, authorization: str | None = Header(default=None)):
+        return report_clips(require_user(authorization).id, source_id)
+
+    @app.get("/api/players/{user_id}/plays/{source_id}/clips")
+    def api_players_play_clips(user_id: str, source_id: str,
+                               authorization: str | None = Header(default=None)):
+        require_reader(authorization, user_id)
+        return report_clips(user_id, source_id)
+
+    def report_clip(user_id: str, source_id: str, rock: str) -> dict:
+        """A short-lived link to one of a play's clips."""
         clips_on()
-        me = require_user(authorization)
-        play, src = find_play(me.id, source_id)
+        play, src = find_play(user_id, source_id)
         run = report_run(play, src) if play and src else None
         if run is None or not gameclips.GAME_ROCK.match(rock):
             raise HTTPException(404, "no clip for that rock")
@@ -2058,6 +2134,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if got.get("clip") is not True:
             raise HTTPException(404, "no clip for that rock")
         return {"url": store.presign_get(clip_key(run.video_id, run.id, rock), CLIP_URL_S)}
+
+    @app.get("/api/me/plays/{source_id}/clips/{rock}")
+    def api_my_play_clip(source_id: str, rock: str,
+                         authorization: str | None = Header(default=None)):
+        return report_clip(require_user(authorization).id, source_id, rock)
+
+    @app.get("/api/players/{user_id}/plays/{source_id}/clips/{rock}")
+    def api_players_play_clip(user_id: str, source_id: str, rock: str,
+                              authorization: str | None = Header(default=None)):
+        require_reader(authorization, user_id)
+        return report_clip(user_id, source_id, rock)
 
     # ------------------------------------------------------------- practice
     def practice_on():

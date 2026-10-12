@@ -137,6 +137,7 @@ export const positionLabel = core.positionLabel;
 export const playText = core.playText;
 export const gameText = core.gameText;
 export const pickedText = core.pickedText;
+export const sharingText = core.sharingText;
 export const pickerRow = core.pickerRow;
 export const playerRocks = core.playerRocks;
 export const rockClip = core.rockClip;

@@ -5,6 +5,13 @@
  * `error` the server's own words when it gave any. */
 export const playUrl = sourceId => `/api/me/plays/${encodeURIComponent(sourceId)}`;
 
+/* Where the report reads its games: your own plays, or -- with `player`, a
+ * teammate sharing theirs -- that teammate's, read-only. */
+export const playsUrl = player => (player
+  ? `/api/players/${encodeURIComponent(player)}/plays` : "/api/me/plays");
+export const reportUrl = (sourceId, player) => (player
+  ? `${playsUrl(player)}/${encodeURIComponent(sourceId)}` : playUrl(sourceId));
+
 async function call(url, init) {
   try {
     const r = await fetch(url, init);

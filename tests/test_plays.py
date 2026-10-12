@@ -1,8 +1,8 @@
 """Saying which rocks of a game you threw, and reading them back.
 
-A play is private to the person who saved it, and a chart's id -- its edit
-link -- never comes back out of any of these routes, however the play was
-saved."""
+A play is private to the person who saved it until they share their report
+with their teams (test_shared_shots.py), and a chart's id -- its edit link --
+never comes back out of any of these routes, however the play was saved."""
 
 import dataclasses
 

@@ -10,14 +10,18 @@
  * A filter at the top picks which games the report draws on. Every game is
  * still fetched, so putting one back is instant.
  *
+ * A teammate who shares theirs is read the same way at /shots?player=<id>,
+ * from /api/players/<id>/plays, with nothing on it to change; the switch that
+ * shares your own sits at the foot of yours.
+ *
  * Every number and word in the groups is core's (core/myshots.mjs); this
  * only lays them out. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
-  clipText, pickedText, pickerRow, playText, playerRocks, positionChoices, rockClip, shotGroups,
-  summaryText,
+  clipText, pickedText, pickerRow, playText, playerRocks, positionChoices, rockClip, sharingText,
+  shotGroups, summaryText,
 } from "../core/myshots.mjs";
-import { playUrl } from "../runtime/plays.mjs";
+import { playUrl, playsUrl, reportUrl } from "../runtime/plays.mjs";
 import { authedFetch, signIn } from "./auth.js";
 import { day } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
@@ -32,32 +36,34 @@ const playKey = p => `${p.source_id}|${p.color}|${p.slot}|${p.updated_at}`;
 
 /* The games left out of the report, kept across visits in this browser. The
  * games left OUT, not the ones in: a game you mark later is in the report
- * until you take it out. Storage can be blocked, and then every game is in. */
+ * until you take it out. Storage can be blocked, and then every game is in.
+ * A teammate's report keeps its own, so neither filter moves the other. */
 const OFF = "curlchart:shots-off";
+const offKey = player => (player ? `${OFF}:${player}` : OFF);
 
-function loadOff() {
+function loadOff(key) {
   try {
-    const ids = JSON.parse(localStorage.getItem(OFF) || "[]");
+    const ids = JSON.parse(localStorage.getItem(key) || "[]");
     return new Set(Array.isArray(ids) ? ids.filter(id => typeof id === "string") : []);
   } catch {
     return new Set();
   }
 }
 
-function saveOff(off) {
+function saveOff(key, off) {
   try {
-    if (off.size) localStorage.setItem(OFF, JSON.stringify([...off]));
-    else localStorage.removeItem(OFF);
+    if (off.size) localStorage.setItem(key, JSON.stringify([...off]));
+    else localStorage.removeItem(key);
   } catch { /* the filter just forgets */ }
 }
 
 /* Which games the report draws on: a button saying how many, opening a list
  * to tick. A dropdown on a desktop, a list in the page on a phone, where Done
  * closes it (site.css). */
-function GamePicker({ plays, rocks, off, setOff }) {
+function GamePicker({ plays, rocks, off, setOff, who }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
-  const t = pickedText(plays, off);
+  const t = pickedText(plays, off, undefined, who);
 
   // Shut by Escape or by a press anywhere else, as a menu is.
   useEffect(() => {
@@ -110,7 +116,7 @@ function GamePicker({ plays, rocks, off, setOff }) {
             })}
             <div className="picker-foot">
               <button type="button" className="picker-done primary" onClick={() => setOpen(false)}>Done</button>
-              <p className="muted">Remembered in this browser. Games you mark later are included.</p>
+              <p className="muted">Remembered in this browser. Games {who ? "they" : "you"} mark later are included.</p>
             </div>
           </div>
         )}
@@ -122,7 +128,7 @@ function GamePicker({ plays, rocks, off, setOff }) {
 }
 
 /* Each game's rocks, by playKey: {rows, missing, fallback}, or {failed, status}. */
-function useRocks(plays) {
+function useRocks(plays, player) {
   const [got, setGot] = useState({});
   const asked = useRef(new Set());
   useEffect(() => {
@@ -134,7 +140,7 @@ function useRocks(plays) {
         const p = queue.shift();
         let one;
         try {
-          const res = await authedFetch(`${playUrl(p.source_id)}/doc`);
+          const res = await authedFetch(`${reportUrl(p.source_id, player)}/doc`);
           if (res.ok) {
             const { doc, fallback, clips } = await res.json();
             one = { ...playerRocks(p, doc), fallback, clips };
@@ -148,13 +154,14 @@ function useRocks(plays) {
       }
     };
     for (let i = 0; i < AT_ONCE; i++) worker();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plays]);
   return [got, setGot];
 }
 
 /* While any game's clips are on their way, ask after just those games every
  * CLIP_POLL_MS -- /clips, no document -- and stop once none are. */
-function useClipPoll(plays, rocks, setRocks) {
+function useClipPoll(plays, rocks, setRocks, player) {
   const waiting = (plays || []).filter(p => rocks[playKey(p)]?.clips?.pending);
   const keys = waiting.map(playKey).join(",");
   useEffect(() => {
@@ -162,7 +169,7 @@ function useClipPoll(plays, rocks, setRocks) {
     const id = setInterval(async () => {
       for (const p of waiting) {
         try {
-          const res = await authedFetch(`${playUrl(p.source_id)}/clips`);
+          const res = await authedFetch(`${reportUrl(p.source_id, player)}/clips`);
           if (!res.ok) continue;
           const { clips } = await res.json();
           setRocks(g => (g[playKey(p)] ? { ...g, [playKey(p)]: { ...g[playKey(p)], clips } } : g));
@@ -186,7 +193,7 @@ function Summary({ group }) {
   );
 }
 
-function RockTable({ rows, clips, open, setOpen }) {
+function RockTable({ rows, clips, open, setOpen, player }) {
   const heads = rows[0].figures.map(f => f.label);
   return (
     <table className="rocks">
@@ -218,7 +225,7 @@ function RockTable({ rows, clips, open, setOpen }) {
               {shown && (
                 <tr className="clip-row">
                   <td colSpan={heads.length + 5}>
-                    <ClipPlayer src={`${playUrl(r.sourceId)}/clips/${encodeURIComponent(r.rock)}`}
+                    <ClipPlayer src={`${reportUrl(r.sourceId, player)}/clips/${encodeURIComponent(r.rock)}`}
                                 overlay={clip.overlay} />
                   </td>
                 </tr>
@@ -231,7 +238,7 @@ function RockTable({ rows, clips, open, setOpen }) {
   );
 }
 
-function Group({ group, clips, openClip, setOpenClip }) {
+function Group({ group, clips, openClip, setOpenClip, player }) {
   // Open to begin with when short, then the reader's: a group that grows
   // past twelve as games arrive must not snap shut under them.
   const [open, setOpen] = useState(group.rows.length <= 12);
@@ -245,14 +252,16 @@ function Group({ group, clips, openClip, setOpenClip }) {
       </div>
       <details open={open} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary>Every rock ({group.rows.length})</summary>
-        <RockTable rows={group.rows} clips={clips} open={openClip} setOpen={setOpenClip} />
+        <RockTable rows={group.rows} clips={clips} open={openClip} setOpen={setOpenClip}
+                   player={player} />
       </details>
     </section>
   );
 }
 
-/* One game you said you played: which rocks, changeable here, and clearable. */
-function PlayRow({ p, rocks, left, onChanged }) {
+/* One game you said you played: which rocks, changeable here, and clearable.
+ * A teammate's only says which, and links to watch it. */
+function PlayRow({ p, rocks, left, onChanged, readOnly }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
   const teams = { red: p.teams?.red || "Red", yellow: p.teams?.yellow || "Yellow" };
@@ -300,33 +309,92 @@ function PlayRow({ p, rocks, left, onChanged }) {
       <td data-label="Grading">{p.graded ? "The chart's" : "As detected"}</td>
       <td data-label="Rocks">{state}{clips && <div className="muted">{clips}</div>}</td>
       <td className="actions">
-        <select aria-label="Which rocks were yours" disabled={busy}
-                value={`${p.color}|${p.slot}`} onChange={change}>
-          {choices.map(c => <option key={c.value} value={c.value}>{c.text}</option>)}
-        </select>
-        <button disabled={busy} onClick={() => send("DELETE")}>Clear</button>
+        {!readOnly && (
+          <>
+            <select aria-label="Which rocks were yours" disabled={busy}
+                    value={`${p.color}|${p.slot}`} onChange={change}>
+              {choices.map(c => <option key={c.value} value={c.value}>{c.text}</option>)}
+            </select>
+            <button disabled={busy} onClick={() => send("DELETE")}>Clear</button>
+          </>
+        )}
         {p.view_path && <a className="btn" href={p.view_path}>Watch</a>}
       </td>
     </tr>
   );
 }
 
+/* Whose shots: yours, then each teammate sharing theirs. Plain links, so a
+ * teammate's report is a page of its own to send round the team. */
+function Whose({ players, theirs }) {
+  return (
+    <nav className="whose" aria-label="Whose shots">
+      <a href="/shots" aria-current={theirs ? undefined : "page"}>Me</a>
+      {players.map(p => (
+        <a key={p.id} href={`/shots?player=${encodeURIComponent(p.id)}`} title={p.teams.join(", ")}
+           aria-current={theirs === p.id ? "page" : undefined}>{p.name}</a>
+      ))}
+    </nav>
+  );
+}
+
+/* Sharing your report with everyone on a team with you, or not. */
+function ShareSwitch({ sharing, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  const t = sharingText(sharing);
+
+  async function flip(e) {
+    const share = e.target.checked;
+    setBusy(true);
+    setNote(null);
+    let res = null;
+    try {
+      res = await authedFetch("/api/me/shots-sharing", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ share }) });
+    } catch { /* offline: res stays null */ }
+    if (res?.ok) onChanged(await res.json());
+    else setNote(res?.status === 429 ? "That is a lot of changes; try again later."
+                                     : "Could not change it. Try again.");
+    setBusy(false);
+  }
+
+  return (
+    <div className="card" id="share">
+      <label className="share-row">
+        <input type="checkbox" checked={sharing.share} disabled={busy} onChange={flip} />
+        <span><b>{t.label}</b><span className="muted">{t.note}</span></span>
+      </label>
+      {note && <Warn>{note}</Warn>}
+    </div>
+  );
+}
+
 export function Shots() {
   const { user, ready, accounts } = useAuthUser();
-  const list = useResource("/api/me/plays", { skip: !ready || !user, deps: [user?.uid] });
+  const [asked] = useState(() => new URL(location.href).searchParams.get("player"));
+  // Your own id in the link is just your own report.
+  const theirs = asked && user && asked !== user.uid ? asked : null;
+  const list = useResource(playsUrl(theirs), { skip: !ready || !user, deps: [user?.uid] });
+  const sharing = useResource("/api/me/shots-sharing", { skip: !ready || !user, deps: [user?.uid] });
+  const players = sharing.data?.players ?? [];
+  const owner = theirs ? (players.find(p => p.id === theirs)?.name || "Your teammate") : null;
+  // Not shared, or not a teammate: the server will not say which.
+  const denied = Boolean(theirs) && list.error?.status === 404;
   const plays = list.data?.plays ?? null;
-  const [rocks, setRocks] = useRocks(plays);
-  useClipPoll(plays, rocks, setRocks);
+  const [rocks, setRocks] = useRocks(plays, theirs);
+  useClipPoll(plays, rocks, setRocks, theirs);
   // The one clip that is open, by row key: another rock's Clip closes it, in any group.
   const [openClip, setOpenClip] = useState(null);
   const [err, setErr] = useState("");
-  const [off, setOffState] = useState(loadOff);
+  const [off, setOffState] = useState(() => loadOff(offKey(asked)));
   // Only games still listed are kept: a cleared game's id would linger for ever.
   const setOff = next => {
     const listed = new Set((plays || []).map(p => p.source_id));
     const kept = new Set([...next].filter(id => listed.has(id)));
     setOffState(kept);
-    saveOff(kept);
+    saveOff(offKey(theirs), kept);
   };
 
   const live = (plays || []).filter(p => p.status === "ok");
@@ -338,7 +406,7 @@ export function Shots() {
       .flatMap(p => rocks[playKey(p)]?.rows ?? [])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [plays, rocks, off]);
-  const picked = pickedText(plays || [], off);
+  const picked = pickedText(plays || [], off, undefined, owner);
 
   return (
     <>
@@ -364,9 +432,18 @@ export function Shots() {
 
         {ready && user && (
           <>
-            <h2>My shots</h2>
+            {(theirs || players.length > 0) && <Whose players={players} theirs={theirs} />}
+            <h2>{!theirs ? "My shots" : sharing.data && !denied ? `${owner}'s shots` : "Shots"}</h2>
             {list.loading && !plays ? <p className="muted">Loading…</p>
-             : list.error ? <Warn>Could not load your games.</Warn>
+             : denied ? (
+                <Card>
+                  <p style={{ marginTop: 0 }}>These shots are not shared with you. They may
+                  have stopped sharing them, or you are no longer on a team together.</p>
+                  <a className="btn" href="/shots">My shots</a>
+                </Card>
+              )
+             : list.error ? <Warn>Could not load {theirs ? "these" : "your"} games.</Warn>
+             : !plays?.length && theirs ? <Card>{owner} has not marked any games yet.</Card>
              : !plays?.length ? (
                 <Card>
                   <p style={{ marginTop: 0 }}>No games yet. Open a game you played, press
@@ -375,21 +452,21 @@ export function Shots() {
                 </Card>
               ) : (
                 <>
-                  <GamePicker plays={plays} rocks={rocks} off={off} setOff={setOff} />
+                  <GamePicker plays={plays} rocks={rocks} off={off} setOff={setOff} who={owner} />
                   <p className="muted intro">{picked.intro}
                   {loaded < live.length ? ` Loaded ${loaded} of ${live.length}…` : ""}</p>
                   {groups.length ? groups.map(g => <Group key={g.id} group={g} clips={clipsBy} openClip={openClip}
-                                                      setOpenClip={setOpenClip} />)
+                                                      setOpenClip={setOpenClip} player={theirs} />)
                    : picked.on && loaded === live.length
-                     ? <Card>None of your rocks in these games were seen.</Card>
+                     ? <Card>None of {theirs ? `${owner}'s` : "your"} rocks in these games were seen.</Card>
                    : null}
-                  <h2>Games you played</h2>
+                  <h2>Games {theirs ? `${owner} played` : "you played"}</h2>
                   <div className="card" id="plays">
                     <table>
                       <tbody>
                         <tr><th>Played</th><th>Game</th><th>Grading</th><th>Rocks</th><th /></tr>
                         {plays.map(p => (
-                          <PlayRow key={p.source_id} p={p} rocks={rocks[playKey(p)]}
+                          <PlayRow key={p.source_id} p={p} rocks={rocks[playKey(p)]} readOnly={Boolean(theirs)}
                                    left={off.has(p.source_id)} onChanged={list.reload} />
                         ))}
                       </tbody>
@@ -397,10 +474,15 @@ export function Shots() {
                   </div>
                 </>
               )}
+            {!theirs && sharing.data?.teams.length > 0 && (
+              <ShareSwitch sharing={sharing.data} onChanged={sharing.setData} />
+            )}
           </>
         )}
       </main>
-      <footer>Only you can see which games you played and this page.</footer>
+      <footer>{denied ? null
+               : theirs ? `${owner} shares this page with their teams. Only they can change it.`
+               : sharingText(sharing.data).footer}</footer>
     </>
   );
 }

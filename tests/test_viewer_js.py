@@ -4542,7 +4542,7 @@ class TestTheShotsPage:
         assert "const AT_ONCE = 3;" in page
         assert "for (let i = 0; i < AT_ONCE; i++) worker();" in page
         assert "!asked.current.has(playKey(p))" in page
-        assert "`${playUrl(p.source_id)}/doc`" in page
+        assert "`${reportUrl(p.source_id, player)}/doc`" in page
 
     def test_changing_a_play_from_here_sends_no_path(self):
         page = self.src("frontend/site/Shots.jsx")
@@ -4621,7 +4621,7 @@ class TestTheGameFilterOnThePage:
 
     def test_what_is_kept_is_the_games_left_out_and_storage_may_fail(self):
         page = self.page()
-        load = page[page.index("function loadOff()"):page.index("function saveOff(")]
+        load = page[page.index("function loadOff("):page.index("function saveOff(")]
         save = page[page.index("function saveOff("):page.index("function GamePicker(")]
         assert "try {" in load and "catch" in load and "Array.isArray(ids)" in load
         assert "try {" in save and "catch" in save
@@ -4637,6 +4637,58 @@ class TestTheGameFilterOnThePage:
         page = self.page()
         assert "left={off.has(p.source_id)}" in page
         assert "Not in the report" in page
+
+
+class TestATeammatesShots:
+    """A teammate sharing theirs is read at /shots?player=<id>: the same
+    report from their plays, in their name, with nothing to change."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def page(self):
+        return (self.ROOT / "frontend/site/Shots.jsx").read_text()
+
+    def test_the_words_name_them(self):
+        p = [play(source_id="s0")]
+        got = run_js(f"const p = {json.dumps(p)};"
+                     f"out([pickedText(p, new Set(), {DAY}, 'Sam').intro,"
+                     f" pickedText(p, new Set(['s0']), {DAY}, 'Sam').intro]);")
+        assert got == ["Every rock Sam threw in 1 game, by shot and by turn."
+                       " The turn is read from the way the rock curled and the hack they threw from.",
+                       "Pick at least one game to see Sam's rocks."]
+
+    def test_where_each_report_reads_from(self):
+        got = run_js(
+            f"const P = await import({(self.ROOT / 'frontend/runtime/plays.mjs').as_uri()!r});"
+            "out([P.playsUrl(null), P.playsUrl('u/1'), P.reportUrl('g 1', null), P.reportUrl('g', 'u1')]);")
+        assert got == ["/api/me/plays", "/api/players/u%2F1/plays", "/api/me/plays/g%201",
+                       "/api/players/u1/plays/g"]
+
+    def test_the_switch_and_the_footer_say_who_can_see_it(self):
+        got = run_js("out([sharingText(null), sharingText({share: false, teams: ['Thistles']}),"
+                     " sharingText({share: true, teams: ['Thistles', 'Brooms', 'Hogs']})]);")
+        assert got[0]["footer"] == "Only you can see which games you played and this page."
+        assert got[1]["label"] == "Let my teammates see this page"
+        assert got[1]["note"] == ("Members of Thistles would see your games and rocks here,"
+                                  " but not change them.")
+        assert got[1]["footer"] == got[0]["footer"]
+        assert got[2]["note"] == "Members of Thistles, Brooms and Hogs can see your games and rocks here."
+        assert got[2]["footer"] == ("You and members of Thistles, Brooms and Hogs can see this page."
+                                    " Only you can change it.")
+
+    def test_a_teammates_report_has_nothing_to_change(self):
+        page = self.page()
+        row = page[page.index("function PlayRow("):page.index("function Whose(")]
+        assert "{!readOnly && (" in row
+        assert row.index("{!readOnly && (") < row.index('send("DELETE")')
+        assert "readOnly={Boolean(theirs)}" in page
+
+    def test_its_own_filter_and_only_your_own_switch(self):
+        page = self.page()
+        assert "const offKey = player => (player ? `${OFF}:${player}` : OFF);" in page
+        assert "{!theirs && sharing.data?.teams.length > 0 && (" in page
+
+    def test_your_own_id_in_the_link_is_your_own_report(self):
+        assert "asked && user && asked !== user.uid ? asked : null" in self.page()
 
 
 class TestClipsOnTheShotsPage:
@@ -4683,7 +4735,7 @@ class TestClipsOnTheShotsPage:
     def test_the_page_polls_only_while_clips_are_on_their_way(self):
         page = (self.ROOT / "frontend/site/Shots.jsx").read_text()
         assert "const CLIP_POLL_MS = 15000;" in page
-        assert "`${playUrl(p.source_id)}/clips`" in page
+        assert "`${reportUrl(p.source_id, player)}/clips`" in page
         assert "?.clips?.pending" in page
 
     def test_practice_and_my_shots_share_one_player(self):

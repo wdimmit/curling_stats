@@ -71,7 +71,7 @@ export function gameText(play, day = shortDay) {
 /* The game filter's words. `off` is the Set of games left out, by source id:
  * the button's label, the games named beside it -- three at most, past which
  * the count says it -- and the line over the report. */
-export function pickedText(plays, off, day = shortDay) {
+export function pickedText(plays, off, day = shortDay, who = null) {
   const n = plays.length;
   const on = plays.filter(p => !off.has(p.source_id));
   const all = on.length === n;
@@ -82,8 +82,26 @@ export function pickedText(plays, off, day = shortDay) {
     all,
     label: !on.length ? "No games" : all ? (n === 1 ? "1 game" : `All ${n} games`) : `${on.length} of ${games(n)}`,
     names: !all && on.length && on.length <= 3 ? on.map(p => gameText(p, day)).join(", ") : "",
-    intro: !on.length ? "Pick at least one game to see your rocks."
-      : `Every rock you threw in ${which}, by shot and by turn. The turn is read from the way the rock curled and the hack you threw from.`,
+    intro: !on.length ? `Pick at least one game to see ${who ? `${who}'s` : "your"} rocks.`
+      : `Every rock ${who || "you"} threw in ${which}, by shot and by turn. The turn is read from the way the rock curled and the hack ${who ? "they" : "you"} threw from.`,
+  };
+}
+
+const andList = names => (names.length < 2 ? names[0] || ""
+  : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
+
+/* The words for sharing your report with your teams: the switch's, and the
+ * page's footer either way. `sharing` is /api/me/shots-sharing's answer, or
+ * null while it loads. */
+export function sharingText(sharing) {
+  const teams = andList(sharing?.teams || []);
+  const on = Boolean(sharing?.share);
+  return {
+    label: "Let my teammates see this page",
+    note: on ? `Members of ${teams} can see your games and rocks here.`
+      : `Members of ${teams} would see your games and rocks here, but not change them.`,
+    footer: on ? `You and members of ${teams} can see this page. Only you can change it.`
+      : "Only you can see which games you played and this page.",
   };
 }
 
