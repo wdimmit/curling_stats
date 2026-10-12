@@ -264,7 +264,8 @@ function Actions({ game, mine, team }) {
           used to hand back a blank chart with the first one's grading
           stranded behind it. */}
       {have ? <a className="btn primary" href={`/c/${have}/`}>Open your chart</a>
-            : <button disabled={busy || game.status === "failed"} onClick={chart}>Chart</button>}
+            : <button className="chart" disabled={busy || game.status === "failed"}
+                      onClick={chart}>Chart</button>}
     </div>
   );
 }
@@ -361,8 +362,9 @@ export function Games() {
       <main>
         <p className="muted">Every game we've processed. <strong>Watch</strong> steps
         through a game shot by shot — no link to keep, nothing to fill in.{" "}
-        <strong>Chart</strong> gets you your own charting link, private to whoever has
-        it, so a team can grade a game without anyone else seeing.</p>
+        <span className="chartnote"><strong>Chart</strong> gets you your own charting
+        link, private to whoever has it, so a team can grade a game without anyone
+        else seeing.</span></p>
         <TeamPicker value={team} onChange={setTeam} />
         <div id="list">
           {catalogue.loading ? <p className="muted">Loading…</p>
