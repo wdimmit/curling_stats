@@ -64,6 +64,9 @@ weights/*.pt
 # ds13c supersedes ds13b (2026-09-29): ds13b's set plus the hack wave, the hack to
 # the tee. ds13b is kept as its baseline.
 !weights/ds13c.pt
+# ds13d supersedes ds13c (2026-10-12): ds13c's set plus the broom wave, the stone
+# boxed alone where a broom, shoe or hand touches it. ds13c is kept as its baseline.
+!weights/ds13d.pt
 
 # Harvested board frames for the card-digit training set. What training
 # consumes is the ~24x22 px card window, and those are committed in

@@ -54,10 +54,21 @@ ENV_VAR = "CURLING_SCORE_WEIGHTS"
 # four games it loses no line, times 414 crossings against 412, and moves the
 # line 0.1-0.2 cm at the hog line (median). See datasets/ds13/manifest-hack1.json.
 #
+# ds13d replaced it on 2026-10-12: ds13c's set plus 80 band frames where a
+# broom head, a shoe or the thrower's hand touched the rock, boxed round the
+# stone alone (datasets/ds13/manifest-broom1.json). ds13c boxed the stone with
+# whatever touched it for 3-5 frames at a time, which at 30 fps stepped the
+# delivery chart sideways. On held-out frames a person redrew, the centre's
+# error across went from 6.5 to 1.9 px (p90) and the box's width over the
+# stone from +13 to +3 px; on a game neither trained on, widened frames went
+# from 2.2% to 1.0%. Over 508 rocks of five games: crossings 503 against 502,
+# lines 507 against 507, the line 0.13 cm apart at the hog line (median), the
+# broom figure 0.57 in; band val mAP50 0.884 -> 0.908.
+#
 # `none` selects the colour scan, and so does a missing file -- the side view
 # is an improvement on a pipeline that worked without it, not a dependency of
 # it. Unlike DEFAULT_NAME, absence here is not an error.
-SIDE_NAME = "ds13c.pt"
+SIDE_NAME = "ds13d.pt"
 SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 
 # The broom-head detector, which finds the skip's target broom in the camera
