@@ -147,7 +147,7 @@ class TestDetectingBehindTheDecode:
 
         monkeypatch.setattr(sequence._DetectBehind, "_collect", watch)
         sequence.detect_spans(clip, [(panel(A), 9.0, 10.0)], 20.0, FakeDetector())
-        assert max(seen) <= sequence.IN_FLIGHT + 1
+        assert max(seen) <= 2
 
     def test_a_detector_that_fails_fails_the_caller(self, clip, monkeypatch):
         monkeypatch.setattr(sequence, "BATCH", 8)
@@ -164,3 +164,40 @@ def test_the_kept_converter_gives_what_to_ndarray_gives(clip):
             assert np.array_equal(to_bgr(frame), frame.to_ndarray(format="bgr24"))
             if i >= 40:
                 break
+
+
+class TwinnedDetector(FakeDetector):
+    """A fake whose twin is another fake, as `YoloDetector.twin` gives one."""
+
+    def __init__(self, fail_on=None):
+        super().__init__(fail_on)
+        self.made = []
+
+    def twin(self):
+        if not self.made:
+            self.made.append(FakeDetector())
+        return self.made[0]
+
+
+class TestTwoDetectionThreads:
+    def test_both_panels_still_get_what_a_serial_loop_gave(self, clip, monkeypatch):
+        monkeypatch.setattr(sequence, "BATCH", 8)
+        near, far = panel(A), panel(B)
+        det = TwinnedDetector()
+        both = sequence.detect_spans(clip, [(near, 9.0, 10.0), (far, 11.3, 5.0)], 20.0, det)
+        assert both[0] == serially(clip, near, 9.0, 10.0, 20.0)
+        assert both[1] == serially(clip, far, 11.3, 5.0, 20.0)
+        assert det.calls and det.made[0].calls          # both detectors were used
+
+    def test_at_most_a_batch_a_thread_waits(self, clip, monkeypatch):
+        monkeypatch.setattr(sequence, "BATCH", 4)
+        seen = []
+        collect = sequence._DetectBehind._collect
+
+        def watch(self, keep):
+            seen.append(len(self.pending))
+            return collect(self, keep)
+
+        monkeypatch.setattr(sequence._DetectBehind, "_collect", watch)
+        sequence.detect_spans(clip, [(panel(A), 9.0, 10.0)], 20.0, TwinnedDetector())
+        assert max(seen) <= 2 * sequence.DETECT_THREADS - 1 + 1

@@ -109,6 +109,18 @@ class YoloDetector:
         self.device = device
         self.imgsz = imgsz
 
+    def twin(self):
+        """Another detector on the same weights and settings, with a predictor
+        of its own, so that two threads can detect at once. Made once and kept:
+        a live lane's detector is shared by every stream it follows."""
+        twin = self.__dict__.get("_twin")
+        if twin is None:
+            twin = YoloDetector(self.model.ckpt_path, conf=self.conf, device=self.device,
+                                imgsz=self.imgsz)
+            twin.model.overrides.update(self.model.overrides)
+            self._twin = twin
+        return twin
+
     def _predict(self, source):
         return self.model.predict(
             source, conf=self.conf, imgsz=self.imgsz, device=self.device,

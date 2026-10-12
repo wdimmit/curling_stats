@@ -18,33 +18,44 @@ from curling_score.ingest import frames as F
 # Enough frames to keep a GPU busy, few enough that a 16-minute end at 10 fps
 # does not sit in memory as 4.4 GB of decoded panels.
 BATCH = 64
-# Batches waiting on the detection thread behind the one it is running. One
-# is enough to keep the decoder and the GPU both busy; each is ~30 MB of
-# full-resolution panels.
-IN_FLIGHT = 1
+# Detection threads, each with its own copy of the detector (`twin`). A
+# batch's letterboxing is CPU work in ultralytics, single-threaded, and on the
+# GPU worker one thread of it could not keep up with the decode.
+DETECT_THREADS = 2
 
 
 class _DetectBehind:
-    """The detector runs on a thread of its own, a batch behind the decode.
+    """The detector runs on threads of its own, behind the decode.
 
     Decoding stays on the caller's thread -- the only one that ever touches
-    PyAV (see ``frames._quiet_ffmpeg``) -- and keeps going while the GPU works
-    on the batch before. Each batch's stones land in its ``sink`` in the order
+    PyAV (see ``frames._quiet_ffmpeg``) -- and keeps going while the detection
+    threads work on the batches before, taking them in turn, each with its own
+    copy of the detector. Each batch's stones land in its ``sink`` in the order
     the batches were handed over, and the batches are the ones a serial loop
     would make, so nothing a detector returns can differ. An end on a live
     recording spent as long decoding as detecting, one after the other.
+
+    At most one batch per thread waits behind the ones running: each is ~30 MB
+    of full-resolution panels.
     """
 
     def __init__(self, detector):
-        self.detector = detector
-        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="detect")
+        self.detectors = [detector]
+        if hasattr(detector, "twin"):
+            self.detectors += [detector.twin()][:DETECT_THREADS - 1]
+        self.pools = [ThreadPoolExecutor(max_workers=1, thread_name_prefix="detect")
+                      for _ in self.detectors]
+        self.in_flight = len(self.detectors)
+        self.turn = 0
         self.pending = deque()
 
     def submit(self, sink, batch, calib):
-        got = self.pool.submit(self.detector.find_stones_batch,
-                               [img for _, img in batch], calib)
+        k = self.turn % len(self.detectors)
+        self.turn += 1
+        got = self.pools[k].submit(self.detectors[k].find_stones_batch,
+                                   [img for _, img in batch], calib)
         self.pending.append((sink, [t for t, _ in batch], got))
-        self._collect(IN_FLIGHT)
+        self._collect(self.in_flight)
 
     def _collect(self, keep):
         while len(self.pending) > keep:
@@ -59,7 +70,8 @@ class _DetectBehind:
             if exc_type is None:
                 self._collect(0)
         finally:
-            self.pool.shutdown(wait=True)
+            for pool in self.pools:
+                pool.shutdown(wait=True)
 
 
 def detect_end(path, setup, end, fps: float, detector=None,
