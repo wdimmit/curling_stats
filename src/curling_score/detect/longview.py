@@ -483,6 +483,17 @@ def _command(video, rect, t0, t1, fps, lead=None) -> list:
             "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
 
 
+def _popen(command):
+    """ffmpeg with its output on a 1 MB pipe -- or the default pipe, where the
+    kernel will not grow one: past a user's pipe-buffer allowance it refuses
+    anyone without CAP_SYS_RESOURCE, and every container's root is one user."""
+    kw = dict(stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+    try:
+        return subprocess.Popen(command, pipesize=1 << 20, **kw)
+    except PermissionError:
+        return subprocess.Popen(command, **kw)
+
+
 def _run(command, rect, t0, fps, t1=None):
     """Run a decode command and frame its output. Only ever a subprocess, so it
     may run on any thread: PyAV is never touched here.
@@ -497,8 +508,7 @@ def _run(command, rect, t0, fps, t1=None):
     room = (math.ceil((span + 0.05) * fps) + 2) * frame
     buf = np.empty(room, dtype=np.uint8)
     view, got, more = memoryview(buf), 0, []
-    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                          bufsize=0, pipesize=1 << 20) as proc:
+    with _popen(command) as proc:
         while True:
             if got < room:
                 n = proc.stdout.readinto(view[got:])

@@ -236,3 +236,20 @@ class TestToBgr:
             want = np.ascontiguousarray(crop[:, :, ::-1])
             got = longview.to_bgr(crop)
             assert got.shape == want.shape and got.tobytes() == want.tobytes()
+
+
+def test_a_pipe_the_kernel_will_not_grow_still_decodes(clips, monkeypatch):
+    import subprocess
+
+    _mp4, ts = clips
+    want, _ = longview.decode(ts, RECT, 17.3, 18.3, fps=10.0)
+    real = subprocess.Popen
+
+    def popen(*a, **kw):
+        if "pipesize" in kw:
+            raise PermissionError("F_SETPIPE_SZ")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    got, _ = longview.decode(ts, RECT, 17.3, 18.3, fps=10.0)
+    assert got.tobytes() == want.tobytes()

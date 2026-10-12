@@ -41,8 +41,8 @@ class _DetectBehind:
 
     def __init__(self, detector):
         self.detectors = [detector]
-        if hasattr(detector, "twin"):
-            self.detectors += [detector.twin()][:DETECT_THREADS - 1]
+        if DETECT_THREADS > 1 and hasattr(detector, "twin"):
+            self.detectors.append(detector.twin())
         self.pools = [ThreadPoolExecutor(max_workers=1, thread_name_prefix="detect")
                       for _ in self.detectors]
         self.in_flight = len(self.detectors)
