@@ -149,6 +149,36 @@ def seek_lead(path) -> float:
     return TS_SEEK_LEAD_S if Path(path).suffix.lower() == ".ts" else 0.0
 
 
+def keyframe_times(path, start_s: float, end_s: float):
+    """Keyframe times around ``[start_s, end_s]`` from the packets alone, and
+    how far the file was read: ``(times, read_to_s)``.
+
+    Nothing is decoded -- a packet says whether it begins a keyframe -- so
+    minutes of a recording list in a fraction of a second. Times are on the
+    clock ffmpeg's ``-ss`` reads, the container's: pts less the container's
+    start, not the video stream's (``_stream_start``). The listing begins a
+    ``seek_lead`` early, since an unindexed file's seek can land past
+    ``start_s``; ``read_to_s`` stops short of ``end_s`` where the file does.
+    """
+    _quiet_ffmpeg()
+    with av.open(str(path)) as container:
+        stream = container.streams.video[0]
+        origin = (container.start_time or 0) / 1e6
+        target = int((start_s - seek_lead(path) + origin) / stream.time_base)
+        container.seek(max(0, target), backward=True, stream=stream)
+        times, read_to = [], start_s
+        for packet in container.demux(stream):
+            if packet.pts is None:
+                continue
+            t = float(packet.pts * stream.time_base) - origin
+            read_to = max(read_to, t)
+            if packet.is_keyframe:
+                times.append(t)
+            if t > end_s:
+                break
+    return sorted(times), read_to
+
+
 def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
     """Yield ``(t, frame)`` for every keyframe in the video.
 

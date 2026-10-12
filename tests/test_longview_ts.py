@@ -70,3 +70,109 @@ def test_a_keyframe_sweep_of_the_recording_sees_the_videos_keyframes(clips, star
     want = [t for t, _ in F.keyframe_sweep(mp4, decode=False, start_s=start, end_s=start + 12)]
     got = [t for t, _ in F.keyframe_sweep(ts, decode=False, start_s=start, end_s=start + 12)]
     assert got == pytest.approx(want, abs=1e-3)
+
+
+class TestEnteringJustBeforeTheKeyframe:
+    """A recording is entered whole seconds before the keyframe a window
+    needs, not a flat 10 s, and still gives the video's frames."""
+
+    def test_the_keyframes_are_listed_from_the_packets(self, clips):
+        from curling_score.ingest import frames as F
+
+        _mp4, ts = clips
+        times, read_to = F.keyframe_times(ts, 12.0, 30.0)
+        assert [round(t, 2) for t in times if 9.0 <= t <= 31.0] == [10.0, 15.0, 20.0, 25.0, 30.0]
+        assert read_to >= 30.0
+
+    @pytest.mark.parametrize("t0, lead", [(17.3, 4.0), (15.5, 2.0), (19.99, 6.0)])
+    def test_the_lead_is_whole_seconds_short_of_ten(self, clips, t0, lead):
+        _mp4, ts = clips
+        longview._keyframes.clear()
+        assert longview._lead(ts, t0) == lead
+
+    def test_an_indexed_video_needs_none(self, clips):
+        mp4, _ts = clips
+        assert longview._lead(mp4, 17.3) == 0.0
+
+    def test_a_listing_that_is_wrong_costs_time_not_frames(self, clips, monkeypatch):
+        mp4, ts = clips
+        # A keyframe claimed at 17.0 that is not one: entered at 15.3, past
+        # the real one at 15, the decoder drops all it has until 20.
+        monkeypatch.setattr(longview, "_keyframe_before", lambda video, t0: 17.0)
+        want, _ = longview.decode(mp4, RECT, 17.3, 20.3, fps=10.0)
+        got, _ = longview.decode(ts, RECT, 17.3, 20.3, fps=10.0)
+        assert len(got) == len(want)
+        assert all(np.array_equal(a, b) for a, b in zip(got, want))
+
+
+@pytest.mark.parametrize("t0", [11.0, 14.99, 15.01, 15.5, 17.3, 19.97, 23.9, 31.234])
+@pytest.mark.parametrize("fps", [30.0, 10.0, 5.0, 4.0])
+def test_the_short_lead_reads_what_the_flat_lead_read(clips, t0, fps):
+    """Whatever the recording gave before, frame for frame -- including where
+    that is not quite the video's (a 30 fps window's phase can differ)."""
+    from curling_score.ingest.frames import TS_SEEK_LEAD_S
+
+    _mp4, ts = clips
+    longview._keyframes.clear()
+    assert longview._lead(ts, t0) < TS_SEEK_LEAD_S
+    want, want_t = longview._run(
+        longview._command(ts, RECT, t0, t0 + 3.0, fps, TS_SEEK_LEAD_S), RECT, t0, fps)
+    got, got_t = longview.decode(ts, RECT, t0, t0 + 3.0, fps=fps)
+    assert got_t == want_t
+    assert got.tobytes() == want.tobytes()
+
+
+class TestReadingAhead:
+    def test_a_window_read_ahead_is_the_window_read_then(self, clips):
+        _mp4, ts = clips
+        want, want_t = longview.decode(ts, RECT, 17.3, 20.3, fps=10.0)
+        with longview.reading_ahead() as ahead:
+            longview.soon(ts, RECT, 17.3, 20.3, fps=10.0)
+            assert len(ahead.waiting) == 1
+            got, got_t = longview.decode(ts, RECT, 17.3, 20.3, fps=10.0)
+            assert not ahead.waiting
+        assert got_t == want_t
+        assert all(np.array_equal(a, b) for a, b in zip(got, want))
+
+    def test_a_window_not_announced_is_decoded_then(self, clips):
+        _mp4, ts = clips
+        want, _ = longview.decode(ts, RECT, 11.0, 12.0, fps=5.0)
+        with longview.reading_ahead() as ahead:
+            longview.soon(ts, RECT, 11.0, 12.5, fps=5.0)      # not what is asked for
+            got, _ = longview.decode(ts, RECT, 11.0, 12.0, fps=5.0)
+            assert len(ahead.waiting) == 1
+        assert all(np.array_equal(a, b) for a, b in zip(got, want))
+
+    def test_only_the_newest_announcements_are_held(self, clips):
+        _mp4, ts = clips
+        with longview.reading_ahead() as ahead:
+            for t0 in (11.0, 12.0, 13.0, 14.0):
+                longview.soon(ts, RECT, t0, t0 + 0.5, fps=5.0)
+            assert [k[2] for k in ahead.waiting] == [13.0, 14.0]
+
+    def test_soon_does_nothing_with_no_read_ahead_open(self, clips):
+        _mp4, ts = clips
+        longview.soon(ts, RECT, 11.0, 12.0)
+        assert longview._reading is None
+
+    def test_the_recording_is_only_listed_on_the_callers_thread(self, clips, monkeypatch):
+        import threading
+
+        from curling_score.ingest import frames as F
+
+        _mp4, ts = clips
+        longview._keyframes.clear()
+        listed_on = []
+        real = F.keyframe_times
+
+        def listing(*a, **k):
+            listed_on.append(threading.current_thread() is threading.main_thread())
+            return real(*a, **k)
+
+        monkeypatch.setattr(F, "keyframe_times", listing)
+        with longview.reading_ahead():
+            for t0 in (11.0, 31.0):
+                longview.soon(ts, RECT, t0, t0 + 1.0, fps=10.0)
+            for t0 in (11.0, 31.0):
+                longview.decode(ts, RECT, t0, t0 + 1.0, fps=10.0)
+        assert listed_on and all(listed_on)

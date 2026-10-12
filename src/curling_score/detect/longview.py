@@ -14,7 +14,9 @@ crossing has to survive every gate below or it does not exist.
 from __future__ import annotations
 
 import dataclasses
+import math
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -388,29 +390,84 @@ def find_in_frames(frames, view, color, times) -> Crossing:
     return crossing_from_tracks(tracks, view)
 
 
-def _seek(video, t0: float) -> list:
-    """ffmpeg arguments that open ``video`` at exactly ``t0``.
+# A recording is entered this many whole seconds before the keyframe it needs
+# (`_lead`), for an input seek that lands a little past where it was sent.
+KEY_MARGIN_S = 1
+# How far a keyframe listing reaches past what was asked: one listing covers
+# most of an end's windows, which are asked for in order.
+KEY_LIST_AHEAD_S = 600.0
+# Listings kept per file, newest last; a live lane runs for hours.
+KEY_LISTS_KEPT = 32
+# Longest gap between keyframes the listing must span to know the one before a
+# window; the club's streams put them at most 5 s apart.
+KEY_GAP_MAX_S = 6.0
 
-    A finished MP4 is indexed, and an input seek lands on the keyframe before
-    ``t0`` and decodes forward to it. A live recording is MPEG-TS, which has
-    no index: the input seek can land past that keyframe, and the decoder then
-    drops everything up to the next one -- measured on a live recording, a 4 s
-    window came back starting 2 s late with 62 of its 122 frames. So a
-    recording is entered well before ``t0`` and trimmed exactly on the output
-    side, which gives the same frames the MP4 does. Only the recording pays
-    for the extra decode.
+_keyframes = {}     # str(path) -> [(from_s, to_s, sorted keyframe times)]
+
+
+def _keyframe_before(video, t0: float):
+    """The last keyframe at or before ``t0`` in a recording, from a listing
+    kept per file (`frames.keyframe_times`), or None where none is known."""
+    import bisect
+
+    from curling_score.ingest.frames import keyframe_times
+
+    spans = _keyframes.setdefault(str(video), [])
+    span = next((s for s in spans if s[0] <= t0 - KEY_GAP_MAX_S and t0 <= s[1]), None)
+    if span is None:
+        lo = t0 - KEY_GAP_MAX_S - 10.0
+        times, read_to = keyframe_times(video, lo, t0 + KEY_LIST_AHEAD_S)
+        span = (lo, read_to, times)
+        spans.append(span)
+        del spans[:-KEY_LISTS_KEPT]
+    i = bisect.bisect_right(span[2], t0 + 1e-6)
+    return span[2][i - 1] if i else None
+
+
+def _lead(video, t0: float) -> float:
+    """Seconds to enter ``video`` before ``t0``: none for an indexed MP4.
+
+    A live recording is MPEG-TS, which has no index: the input seek can land
+    past the keyframe before ``t0``, and the decoder then drops everything up
+    to the next one -- measured on a live recording, a 4 s window came back
+    starting 2 s late with 62 of its 122 frames. Entering a flat 10 s early
+    (`frames.TS_SEEK_LEAD_S`) always reaches it, at the cost of decoding those
+    10 s for every window; a live end asks for ~90 windows. So the recording's
+    keyframes are listed and it is entered just before the one it needs.
+
+    The lead stays whole seconds. The ``fps`` filter takes its grid from the
+    first frame it is given, and only a whole-second shift moves that frame by
+    a whole number of grid steps at every rate the passes read at (30, 10, 5,
+    4 fps), so the frames picked are the ones the 10 s lead picked.
     """
     from curling_score.ingest.frames import seek_lead
 
     lead = seek_lead(video)
+    if not lead:
+        return 0.0
+    k = _keyframe_before(video, t0)
+    if k is None:
+        return lead
+    return float(min(lead, math.ceil(t0 - k) + KEY_MARGIN_S))
+
+
+def _seek(video, t0: float, lead: float | None = None) -> list:
+    """ffmpeg arguments that open ``video`` at exactly ``t0``.
+
+    A finished MP4 is indexed, and an input seek lands on the keyframe before
+    ``t0`` and decodes forward to it. A recording is entered ``lead`` seconds
+    early (`_lead`) and trimmed exactly on the output side, which gives the
+    same frames the MP4 does.
+    """
+    if lead is None:
+        lead = _lead(video, t0)
     if not lead:
         return ["-ss", f"{t0}", "-i", str(video)]
     start = max(0.0, t0 - lead)
     return ["-ss", f"{start}", "-i", str(video), "-ss", f"{t0 - start}"]
 
 
-def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
-    """Frames of one window, cropped to the side view. About 0.25 s a call."""
+def _command(video, rect, t0, t1, fps, lead=None) -> list:
     x, y, w, h = rect
     # crop's dimensions are otherwise rounded down to the input's chroma
     # subsampling (yuv420p halves both axes), silently handing back an even
@@ -419,14 +476,117 @@ def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
     # as often as even, so this bites about half of them: real footage did,
     # at rect width 813, and the reshape below failed on the size mismatch.
     # exact=1 crops to the exact pixel count regardless of chroma alignment.
-    raw = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", *_seek(video, t0),
-         "-t", f"{t1 - t0 + 0.05}",
-         "-vf", f"crop={w}:{h}:{x}:{y}:exact=1,fps={fps}",
-         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-        capture_output=True).stdout
+    return ["ffmpeg", "-hide_banner", "-loglevel", "error", *_seek(video, t0, lead),
+            "-t", f"{t1 - t0 + 0.05}",
+            "-vf", f"crop={w}:{h}:{x}:{y}:exact=1,fps={fps}",
+            "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+
+
+def _run(command, rect, t0, fps):
+    """Run a decode command and frame its output. Only ever a subprocess, so it
+    may run on any thread: PyAV is never touched here."""
+    _x, _y, w, h = rect
+    raw = subprocess.run(command, capture_output=True).stdout
     frames = np.frombuffer(raw, dtype=np.uint8).reshape(-1, h, w, 3)
     return frames, [t0 + i / fps for i in range(frames.shape[0])]
+
+
+def _short(frames, t0, t1, fps) -> bool:
+    """Fewer frames than the window holds by more than a rounding: a recording
+    entered past the keyframe it needed, or a window running off its end."""
+    return len(frames) < math.floor((t1 - t0) * fps) - 1
+
+
+def _decode_now(video, rect, t0, t1, fps, lead):
+    """One window decoded here and now; a recording entered on its listed
+    keyframe that comes back short is read again from the flat lead, so a
+    listing that is wrong costs time, never frames."""
+    from curling_score.ingest.frames import seek_lead
+
+    frames, times = _run(_command(video, rect, t0, t1, fps, lead), rect, t0, fps)
+    flat = seek_lead(video)
+    if lead and lead < flat and _short(frames, t0, t1, fps):
+        frames, times = _run(_command(video, rect, t0, t1, fps, flat), rect, t0, fps)
+    return frames, times
+
+
+class _ReadAhead:
+    """Windows a pass will want soon, decoding on a thread of their own.
+
+    `soon` starts one; `decode` with exactly the same arguments collects it.
+    The command, keyframe listing and all, is made on the caller's thread;
+    the thread only waits on ffmpeg, a process of its own.
+    """
+
+    # Windows decoded ahead and not yet collected; the oldest beyond this is
+    # dropped. A window is up to ~1 GB of full-view frames (a 12 s search at
+    # 30 fps), so two is the most worth holding.
+    MAX_WAITING = 2
+
+    def __init__(self):
+        from collections import OrderedDict
+        from concurrent.futures import ThreadPoolExecutor
+
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="longview")
+        self.waiting = OrderedDict()
+
+    def soon(self, key):
+        if key in self.waiting:
+            return
+        video, rect, t0, t1, fps = key
+        lead = _lead(video, t0)
+        self.waiting[key] = self.pool.submit(_decode_now, video, rect, t0, t1, fps, lead)
+        while len(self.waiting) > self.MAX_WAITING:
+            _key, dropped = self.waiting.popitem(last=False)
+            dropped.cancel()
+
+    def take(self, key):
+        got = self.waiting.pop(key, None)
+        return None if got is None else got.result()
+
+    def close(self):
+        for got in self.waiting.values():
+            got.cancel()
+        self.waiting.clear()
+        self.pool.shutdown(wait=True)
+
+
+_reading = None     # the read-ahead of the passes running now, if any
+
+
+@contextmanager
+def reading_ahead():
+    """While open, windows announced with `soon` decode in the background and
+    `decode` collects them. Opened around an end's side-view passes, which
+    otherwise left the GPU idle through every one of their ~90 decodes."""
+    global _reading
+    before, _reading = _reading, _ReadAhead()
+    try:
+        yield _reading
+    finally:
+        ahead, _reading = _reading, before
+        ahead.close()
+
+
+def _key(video, rect, t0, t1, fps):
+    return (str(video), tuple(rect), float(t0), float(t1), float(fps))
+
+
+def soon(video, rect, t0: float, t1: float, fps: float = 30.0) -> None:
+    """Say this window will be decoded soon. Exactly the arguments `decode`
+    will be given, or it is simply decoded then; a no-op with no read-ahead
+    open."""
+    if _reading is not None:
+        _reading.soon(_key(video, rect, t0, t1, fps))
+
+
+def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
+    """Frames of one window, cropped to the side view. About 0.25 s a call."""
+    if _reading is not None:
+        got = _reading.take(_key(video, rect, t0, t1, fps))
+        if got is not None:
+            return got
+    return _decode_now(video, rect, t0, t1, fps, _lead(video, t0))
 
 
 def find_crossing(video, view, color: str, t0: float, t1: float,
