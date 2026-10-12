@@ -66,3 +66,46 @@ class TestSeparationIsEnforced:
         )
         assert len(got) == 1
         assert got[0].confidence == pytest.approx(0.59)
+
+
+class TestABatchLeavesTheGpuOnce:
+    """`result_rows` reads a batch in one copy; the stones must be exactly the
+    ones reading every box on its own gives."""
+
+    def _results(self):
+        import torch
+        from ultralytics.engine.results import Boxes
+
+        def boxes(rows):
+            data = torch.tensor(rows, dtype=torch.float32).reshape(-1, 6)
+            return Boxes(data, orig_shape=(300, 300))
+
+        return [
+            FakeResult(boxes([[137.1, 139.3, 159.7, 161.2, 0.91, 0.0],
+                              [60.25, 80.5, 81.75, 103.0, 0.42, 1.0]])),
+            FakeResult(boxes([])),
+            FakeResult(boxes([[10.0, 12.5, 33.0, 35.25, 0.33, 1.0]])),
+        ]
+
+    def test_the_same_stones_as_box_by_box(self, cal):
+        results = self._results()
+        rows = yolo.result_rows(results)
+        assert [len(r) for r in rows] == [2, 0, 1]
+        for r, got in zip(results, rows):
+            assert yolo.stones_from_rows(got, cal) == yolo.boxes_to_stones(r.boxes, cal)
+
+    def test_no_results_no_rows(self):
+        assert yolo.result_rows([]) == []
+
+
+class TestHalfPrecisionKeepsOnePredictor:
+    class Model:
+        def __init__(self, **overrides):
+            self.overrides = overrides
+
+    def test_half_is_asked_for_as_quantize(self):
+        assert yolo._precision(self.Model(half=True)) == {"quantize": 16}
+
+    def test_full_precision_asks_for_nothing(self):
+        assert yolo._precision(self.Model()) == {}
+        assert yolo._precision(self.Model(half=False)) == {}
