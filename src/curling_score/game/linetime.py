@@ -769,6 +769,12 @@ def _collapse_rest(pts, t0: float):
 SEAM_MATCH_M = (0.10, 0.60)     # across, along
 SEAM_MIN_FRAMES = 3
 SEAM_RAMP_S = 0.5
+# The band's first samples are a rock still entering its crop, the box cut by
+# the crop's top edge: against the read in the same frames, the first was 0.45
+# cm across and 5.5 cm along out at the median, the second 0.31 and 3.7, the
+# rest ~0.2 and 2-3 (32 rocks). The hand-over waits this long past the band's
+# first sample; the read, which runs on past it, has those frames.
+BAND_EDGE_S = 0.1
 
 
 def _seam_offset(frames: DeliveryFrames, band, t_from: float):
@@ -815,9 +821,12 @@ def delivery_path(track, frames: DeliveryFrames, t_release: float) -> tuple:
     if not track:
         return ()
     t0 = t_release + START_WINDOW_S[0]
+    first = next((k for k, p in enumerate(track) if p[0] >= track[0][0] + BAND_EDGE_S - 1e-6), 0)
+    if not frames.times or max(frames.times) < track[first][0] - 1 / 60:
+        first = 0                       # no read to carry the path that far
     best = None
-    for i, (ta, xa, _ya, ypa) in enumerate(track):
-        if ta > track[0][0] + DELIVERY_ANCHOR_S:
+    for i, (ta, xa, _ya, ypa) in enumerate(track[first:], first):
+        if ta > track[first][0] + DELIVERY_ANCHOR_S:
             break
         back = _follow_back(frames, (ta, xa, ypa), _band_speed(track[i:]))
         if best is None or len(back) > len(best[1]):
