@@ -388,6 +388,22 @@ class TestTimeLines:
         assert ok.line is not None
         assert n == 1
 
+    def test_a_rock_that_cannot_be_planned_is_decoded_when_asked_for(self, monkeypatch):
+        """The plan is only read-ahead: a rock it cannot work out is left out
+        of it, whole, and the pass still measures every rock."""
+        bad = self.shot(crossing_for(self.stone_to(11.5)), release=SimpleNamespace(t=200.0))
+        ok = self.shot(crossing_for(self.stone_to(11.5)))
+        real = L.path_until
+
+        def until(shot):
+            if shot is bad:
+                raise ValueError("a shot the plan cannot read")
+            return real(shot)
+
+        monkeypatch.setattr(L, "path_until", until)
+        got = L.planned_windows([bad, ok], HOG_VIEW, DEST_VIEW, False)
+        assert got == L.planned_windows([ok], HOG_VIEW, DEST_VIEW, False) and got
+
     def test_the_window_is_extended_only_for_a_track_that_stops_short(self):
         long_, short = self.shot(crossing_for(self.stone_to(11.5))), self.shot(crossing_for(self.stone_to(8.7)))
         assert (6.5, 9.0, 30.0) not in self.run([long_])

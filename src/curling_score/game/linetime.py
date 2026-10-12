@@ -468,20 +468,28 @@ def planned_windows(shots, hog_view, dest_view, without_broom):
     for shot in shots:
         if not _measured(shot, without_broom):
             continue
+        # Whole or not at all: the plan only reads ahead, and the pass logs
+        # whatever it is that stops it.
         try:
-            track = hog_track(shot.hog_crossing, hog_view)
-        except Exception:  # noqa: BLE001 - the pass itself logs it
+            out.extend(_rock_windows(shot, hog_view, dest_view))
+        except Exception:  # noqa: BLE001
             continue
-        if not track:
-            continue
-        t_release = shot.release.t
-        if max(p[3] for p in track) < EXTEND_IF_SHORT_OF_M:
-            out.append((hog_view.rect, *extend_window(t_release), EXTEND_FPS))
-        out.append((hog_view.rect, *delivery_window(t_release, track[0][0]), DELIVERY_FPS))
-        t_hog = getattr(shot, "t_hog_s", None)
-        if dest_view is not None and dest_view.has_lateral and t_hog is not None:
-            out.append((dest_view.rect, *path_window(t_hog, path_until(shot)), PATH_FPS))
     return out
+
+
+def _rock_windows(shot, hog_view, dest_view):
+    track = hog_track(shot.hog_crossing, hog_view)
+    if not track:
+        return []
+    t_release = shot.release.t
+    got = []
+    if max(p[3] for p in track) < EXTEND_IF_SHORT_OF_M:
+        got.append((hog_view.rect, *extend_window(t_release), EXTEND_FPS))
+    got.append((hog_view.rect, *delivery_window(t_release, track[0][0]), DELIVERY_FPS))
+    t_hog = getattr(shot, "t_hog_s", None)
+    if dest_view is not None and dest_view.has_lateral and t_hog is not None:
+        got.append((dest_view.rect, *path_window(t_hog, path_until(shot)), PATH_FPS))
+    return got
 
 
 def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, detect=None,
