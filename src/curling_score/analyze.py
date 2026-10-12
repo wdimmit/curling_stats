@@ -412,6 +412,31 @@ def recording_board_reader(path, progress=log.info):
                                        back_to_s=game.ends[0].end_s)
 
 
+class StageClock:
+    """Seconds an end spends in each stage, for the log line a live lane's
+    budget is read from. ``mark(name)`` charges the time since the previous
+    mark to ``name``; stages marked more than once add up."""
+
+    ORDER = ("detect", "rules", "follow", "lost", "hog", "side", "brooms",
+             "lines", "spin")
+
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.started = self._last = clock()
+        self.seconds = {}
+
+    def mark(self, name):
+        now = self.clock()
+        self.seconds[name] = self.seconds.get(name, 0.0) + now - self._last
+        self._last = now
+
+    def line(self) -> str:
+        names = [n for n in self.ORDER if n in self.seconds]
+        names += sorted(n for n in self.seconds if n not in self.ORDER)
+        parts = ", ".join(f"{n} {self.seconds[n]:.1f}" for n in names)
+        return f"{parts} s (total {self._last - self.started:.1f} s)"
+
+
 def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     """One end, from detection to the timeline's record of it.
 
@@ -424,6 +449,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     sideviews = ctx.sideviews
     setup = read_setups[end.house]
     progress(f"  game {game.index + 1} end {end.number} ({end.house})...")
+    stages = StageClock()
     from_s = run_up_from(prev_end_s, end.start_s,
                          crossed_games=end is game.ends[0])
     far = read_setups[OTHER_HOUSE[end.house]]
@@ -439,6 +465,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         seq = sequence.detect_end(read_path, setup, end, ctx.shot_fps,
                                   ctx.detector, use_cache=ctx.use_cache,
                                   from_s=from_s)
+    stages.mark("detect")
     # Anything thrown since the previous end closed is this end's;
     # anything earlier on this panel is not.
     deliveries = [
@@ -475,10 +502,12 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     # only now, after the second pass: an arrival the gap search
     # recovers is still an arrival, and a release standing in for it
     # would have hidden the very gap that finds it.
+    stages.mark("rules")
     if not ctx.one_pass:
         far_seq = list(sequence.detect_span(
             read_path, far, from_s, end.end_s,
             release.RELEASE_FPS, ctx.detector, use_cache=ctx.use_cache))
+        stages.mark("detect")
     since = from_s if placed is None else max(from_s, placed.t_s)
     arrivals = deliveries
     releases, thrown_by, unaccounted = release.find_and_pair(
@@ -492,9 +521,11 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     # house followed each to where it stopped. Without that camera, the
     # overhead's timing alone (`farfollow.entry_track`).
     dest_view = sideviews[hogtime.CAMERA_FOR[end.house]] if sideviews is not None else None
+    stages.mark("rules")
     arrivals, thrown_by, unaccounted, n_followed = farfollow.place(
         unaccounted, thrown_by, arrivals, seq,
         follow_fn=lambda color, t: farfollow.follow(path, dest_view, color, t))
+    stages.mark("follow")
     if n_followed:
         progress(f"    end {end.number}: {n_followed} throw(s) the overhead could not "
                  f"place, placed from the long camera")
@@ -522,10 +553,12 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     lost = []
     short = fmt.delivered_per_end - len(kept)
     if sideviews is not None and 0 < short <= shots_mod.MAX_FILL:
+        stages.mark("rules")
         lost = sidereleases.lost_rocks(
             path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]],
             kept=kept, releases=releases, thrown_by=thrown_by, arrivals=arrivals,
             house_frames=seq, t0=since, t1=end.end_s)
+        stages.mark("lost")
         if lost:
             progress(f"    end {end.number}: {len(lost)} rock(s) the overhead saw at "
                      f"neither end, from the long camera")
@@ -561,14 +594,17 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     # weaker thing to ask of the same footage than a release was, and
     # cannot reach back into the shot list.
     thinking.time_shots(shots, far_seq, far.view_y_min_m)
+    stages.mark("rules")
     if sideviews is not None:
         hogtime.time_hog_crossings(
             shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+        stages.mark("hog")
         # The releases the throwing panel lost -- a thrower whose body hides
         # the stone from above -- from hogtime's camera, which faces the
         # delivery. Before the brooms and lines: both read what it gives.
         n_side = sidereleases.time_side_releases(
             shots, path, sideviews[hogtime.CAMERA_FOR[OTHER_HOUSE[end.house]]])
+        stages.mark("side")
         if n_side:
             progress(f"    end {end.number}: {n_side} release(s) from the long camera")
         # The skip's target broom, from the camera that sees the
@@ -576,6 +612,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         broomtime.time_target_brooms(
             shots, path, sideviews[hogtime.CAMERA_FOR[end.house]],
             model=ctx.broom_model)
+        stages.mark("brooms")
         # Where the rock's thrown line passed the skip's broom -- the
         # hog-crossing camera for the line, the destination camera for
         # where it went. Needs hogtime's crossing and broomtime's broom.
@@ -588,6 +625,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
             without_broom=fmt.line_without_broom)
         progress(f"    end {end.number}: lines {n_lines}/{len(shots)} "
                  f"in {time.monotonic() - t_lines:.1f} s")
+        stages.mark("lines")
         # How fast the thrower set the rock turning: hogtime's camera again,
         # its own 10 fps read from just past the hog line. Needs hogtime's
         # crossing to start from; timed, for the live lane's budget.
@@ -597,6 +635,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
             model=ctx.line_model)
         progress(f"    end {end.number}: spin {n_spin}/{len(shots)} "
                  f"in {time.monotonic() - t_spin:.1f} s")
+        stages.mark("spin")
     # Stage 3, the destination hog line, from that panel's painted line.
     # In this block ``setup`` is the destination panel and ``far`` is
     # the THROWING panel -- far from the house being played to.
@@ -639,6 +678,8 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         f"placement {p['hammer']}"
         + (f" power play {p['power_play']}" if p["power_play"] else "") + ", ")
     n_before = (p or {}).get("candidates_dropped", 0)
+    stages.mark("rules")
+    progress(f"    end {end.number}: stages {stages.line()}")
     progress(
         f"    {len(kept)}/{fmt.delivered_per_end} deliveries "
         f"(R{audit.thrown['red']} Y{audit.thrown['yellow']} offered"
