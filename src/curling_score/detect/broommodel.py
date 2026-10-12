@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from curling_score.detect import longview
 from curling_score.geometry import constants as C
 
 ABOVE_TEE_ROWS = 130            # the skip's legs and the shaft, above the house
@@ -57,7 +58,7 @@ def find(model, frames, view, conf: float = CONF_MIN) -> list[list[Pad]]:
         # `longview.decode` already cropped to view.rect, so a frame may arrive
         # either full-width or view-width; take the rows from whichever.
         win = arr if arr.shape[1] == w else arr[:, x:x + w]
-        crops.append(np.ascontiguousarray(win[top:bot, :, ::-1]))   # RGB -> BGR
+        crops.append(longview.to_bgr(win[top:bot]))
     out = []
     for i in range(0, len(crops), BATCH):
         for res in model.predict(crops[i:i + BATCH], imgsz=800, conf=conf,

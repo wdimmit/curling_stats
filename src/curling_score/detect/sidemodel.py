@@ -80,7 +80,7 @@ def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
         # either full-width or view-width; take the band from whichever.
         win = arr if arr.shape[1] == w else arr[:, x:x + w]
         lo, hi = max(0, y0), min(win.shape[0], y1)
-        crops.append(np.ascontiguousarray(win[lo:hi, :, ::-1]))   # RGB -> BGR
+        crops.append(longview.to_bgr(win[lo:hi]))
     if not crops:
         return tracks
 
@@ -179,7 +179,7 @@ def detect_bands(model, frames, times, lo, hi, colors, *, imgsz=800, conf=CONF_M
     crops = []
     for frame in frames:
         arr = np.asarray(frame)
-        crops.append(np.ascontiguousarray(arr[lo:min(arr.shape[0], int(hi)), :, ::-1]))
+        crops.append(longview.to_bgr(arr[lo:min(arr.shape[0], int(hi))]))
     out = [[] for _ in colors]
     for i in range(0, len(crops), BATCH):
         for res in model.predict(crops[i:i + BATCH], imgsz=imgsz, conf=conf, verbose=False):
@@ -202,7 +202,7 @@ def detect_boxes(model, frames, times, lo, hi, color, *, imgsz=800, conf=CONF_MI
     stone from these, so it needs the box's top as well as its bottom."""
     want = _CLASS_FOR[color]
     lo = max(0, int(lo))
-    crops = [np.ascontiguousarray(np.asarray(f)[lo:min(np.asarray(f).shape[0], int(hi)), :, ::-1])
+    crops = [longview.to_bgr(np.asarray(f)[lo:min(np.asarray(f).shape[0], int(hi))])
              for f in frames]
     out = []
     for i in range(0, len(crops), BATCH):

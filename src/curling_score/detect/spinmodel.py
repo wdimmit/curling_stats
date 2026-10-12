@@ -12,6 +12,8 @@ import functools
 
 import numpy as np
 
+from curling_score.detect import longview
+
 IMGSZ = 224
 CONF = 0.25
 BATCH = 64
@@ -38,7 +40,7 @@ def handle_points(model, patches, imgsz: int = IMGSZ):
     stone is the one read. Patches go in as BGR, as training read its PNGs."""
     out = []
     for i in range(0, len(patches), BATCH):
-        batch = [np.ascontiguousarray(p[:, :, ::-1]) for p in patches[i:i + BATCH]]
+        batch = [longview.to_bgr(p) for p in patches[i:i + BATCH]]
         for r in model.predict(batch, imgsz=imgsz, conf=CONF, verbose=False):
             if r.keypoints is None or len(r.boxes) == 0:
                 out.append(None)

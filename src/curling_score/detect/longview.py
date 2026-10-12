@@ -612,6 +612,18 @@ def reading_ahead():
         ahead.close()
 
 
+def to_bgr(rgb):
+    """A decoded window's RGB pixels as the BGR the side models read: the
+    same bytes as ``np.ascontiguousarray(rgb[:, :, ::-1])``, but OpenCV's
+    channel swap rather than numpy's strided copy -- 0.63 ms against 1.94 a
+    600 x 810 crop, about nine thousand crops an end."""
+    import cv2
+
+    if rgb.size == 0:
+        return np.ascontiguousarray(rgb[:, :, ::-1])
+    return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+
 def _key(video, rect, t0, t1, fps):
     return (str(video), tuple(rect), float(t0), float(t1), float(fps))
 

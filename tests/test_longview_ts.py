@@ -225,3 +225,13 @@ class TestAPlan:
         plan = longview.Plan(ts, self.WINDOWS)
         frames, _ = plan.decode(ts, *self.WINDOWS[0])
         assert frames.tobytes() == longview.decode(ts, *self.WINDOWS[0])[0].tobytes()
+
+
+class TestToBgr:
+    def test_the_bytes_numpy_gave(self):
+        rng = np.random.default_rng(3)
+        frame = rng.integers(0, 256, (60, 81, 3), dtype=np.uint8)
+        for crop in (frame, frame[7:41], frame[:, 5:70], frame[3:3]):
+            want = np.ascontiguousarray(crop[:, :, ::-1])
+            got = longview.to_bgr(crop)
+            assert got.shape == want.shape and got.tobytes() == want.tobytes()
