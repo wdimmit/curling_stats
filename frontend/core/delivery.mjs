@@ -146,7 +146,17 @@ export function deliveryGeometry(shot, box) {
   const t1 = pts.length ? pts[pts.length - 1].t : 1;
   const dots = pts.map((p, i) => ({ ...pt(p.x, p.yp), fill: rampColor(moving < 0 || i < moving ? 0 : (p.t - t0) / Math.max(1e-6, t1 - t0)) }));
   const steps = pts.slice(1).map((p, i) => p.t - pts[i].t).sort((a, b) => a - b);
-  const gapS = 2.5 * (steps.length ? steps[steps.length >> 1] : 0.1);
+  const stepS = steps.length ? steps[steps.length >> 1] : 0.1;
+  const gapS = 2.5 * stepS;
+  // How often the path has a dot: a tenth of a second until pipeline
+  // 2026.10.12.1, every frame (30 a second) since. The mean of the ordinary
+  // steps, not their median: times come to the hundredth, so a 30 fps path's
+  // steps are 0.03 and 0.04 by turns. Denser dots are smaller, or at a rock's
+  // pace they run into one band.
+  const ordinary = steps.filter(d => d > 0 && d <= 2 * stepS);
+  const meanS = ordinary.length ? ordinary.reduce((a, b) => a + b, 0) / ordinary.length : stepS;
+  const perSecond = Math.max(1, Math.round(1 / Math.max(meanS, 1e-3)));
+  const dotR = r1(Math.min(2.3, 2.3 * Math.sqrt(10 / perSecond)));
   const runs = [];
   let run = [];
   pts.forEach((p, i) => {
@@ -166,10 +176,18 @@ export function deliveryGeometry(shot, box) {
     aimLabel: aimEnd ? (side ? { x: r1(aimEnd.x - 3), y: r1(aimEnd.y - 4), text: "to the broom", anchor: "end" }
                                : { x: r1(aimEnd.x + (roomLeft ? -4 : 4)), y: r1(aimEnd.y + 10), text: "to the broom",
                                    anchor: roomLeft ? "end" : "start" }) : null,
-    runs, dots,
+    runs, dots, dotR,
+    every: dotEvery(perSecond),
     start: start && start.yp >= from && start.yp <= to ? pt(start.x, start.yp) : null,
     points: pts.length,
   };
+}
+
+/* How often a delivery path has a dot, for its caption and its label. */
+export function dotEvery(perSecond) {
+  if (perSecond === 10) return { short: "0.1 s", words: "tenth of a second" };
+  if (perSecond === 30) return { short: "frame (30 a second)", words: "frame, thirty a second" };
+  return { short: `1/${perSecond} s`, words: `1/${perSecond} of a second` };
 }
 
 /* One rock's delivery in the frame every rock can share: along, metres past

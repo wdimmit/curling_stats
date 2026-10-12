@@ -118,11 +118,11 @@ export function DeskDetail({ shot, doc }) {
     <>
       <Strip shot={shot} shapes={sideways(stripShapes(stripGeometry(shot, DESKBOX)))} fluid
              label={`The sheet from above, thrower at the left: ${seen}`} />
-      {g ? <DeliveryChart g={g} label={deliveryLabel(shot, true)} fluid /> : null}
+      {g ? <DeliveryChart g={g} label={deliveryLabel(shot, true, g)} fluid /> : null}
       {why ? <p className="dlvnone">{why}</p> : null}
       <Figures figures={f.figures} />
       <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±4 in{wideGloss}
-        {g ? ` · below it, the hack to 1.5 m past the hog line, across ×${g.stretch}, a dot every 0.1 s` : ""}</p>
+        {g ? ` · below it, the hack to 1.5 m past the hog line, across ×${g.stretch}, a dot every ${g.every.short}` : ""}</p>
     </>
   );
 }

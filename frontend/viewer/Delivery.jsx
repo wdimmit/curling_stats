@@ -1,5 +1,6 @@
 /* The delivery, close up: the rock from the hack to 1.5 m past the hog line,
- * a dot every tenth of a second, beside the line from the hack to the broom.
+ * a dot every frame (every tenth of a second before pipeline 2026.10.12.1),
+ * beside the line from the hack to the broom.
  * Everything it draws comes from core/delivery.mjs; this file only turns it
  * into markup. The ice is painted in literal PAINT colours and stays light in
  * dark mode, as the strip does. */
@@ -58,16 +59,16 @@ export function DeliveryChart({ g, label, fluid, className = "dlv" }) {
       {g.runs.map((r, i) => (
         <polyline key={`r${i}`} points={r} fill="none" stroke={MUTED} strokeOpacity={0.45} strokeWidth={1} />
       ))}
-      {g.dots.map((d, i) => <circle key={`d${i}`} cx={d.x} cy={d.y} r={2.3} fill={d.fill} />)}
+      {g.dots.map((d, i) => <circle key={`d${i}`} cx={d.x} cy={d.y} r={g.dotR} fill={d.fill} />)}
       {g.start ? <circle cx={g.start.x} cy={g.start.y} r={4.2} fill="none" stroke={PAINT.accent} strokeWidth={1.3} /> : null}
       <Legend g={g} />
     </svg>
   );
 }
 
-export const deliveryLabel = (shot, side) =>
+export const deliveryLabel = (shot, side, g) =>
   `The delivery from above, thrower at the ${side ? "left" : "bottom"}: the rock from the hack to 1.5 m past the hog line, ` +
-  `a dot every tenth of a second, darker earlier${shot?.target_broom ? ", with the line from the hack to the broom" : ""}`;
+  `a dot every ${g.every.words}, darker earlier${shot?.target_broom ? ", with the line from the hack to the broom" : ""}`;
 
 /* The phone's Delivery tab. Fluid: 358 px is the pane at 390 wide, and a
  * narrower phone scales the whole chart rather than scrolling it sideways. */
@@ -78,8 +79,8 @@ export function Delivery({ shot, doc }) {
   const g = deliveryGeometry(shot, DELIVERYBOX);
   return (
     <>
-      <DeliveryChart g={g} label={deliveryLabel(shot, false)} fluid />
-      <p className="dcap">From above, thrower at the bottom · across ×{g.stretch} · a dot every 0.1 s, dark at rest to gold past the hog line</p>
+      <DeliveryChart g={g} label={deliveryLabel(shot, false, g)} fluid />
+      <p className="dcap">From above, thrower at the bottom · across ×{g.stretch} · a dot every {g.every.short}, dark at rest to gold past the hog line</p>
     </>
   );
 }

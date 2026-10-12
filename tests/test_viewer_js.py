@@ -3358,12 +3358,13 @@ class TestWhichLiveDocumentToShow:
 TEE_Y = 34.747
 
 
-def delivery_points(gap=None, corner=0.0, t_end=4.7):
+def delivery_points(gap=None, corner=0.0, t_end=4.7, fps=10):
     """A rock at rest at (-0.15, 3.2 m behind the tee) until 0.5 s before the
-    release, then 2 m/s up the sheet drifting right: [t, y, x] every 0.1 s."""
+    release, then 2 m/s up the sheet drifting right: [t, y, x] every 1/fps s,
+    t to the hundredth as the timeline writes it."""
     out = []
-    for i in range(int(round((t_end + 3.0) * 10)) + 1):
-        t = round(-3.0 + i / 10, 2)
+    for i in range(int(round((t_end + 3.0) * fps)) + 1):
+        t = round(-3.0 + i / fps, 2)
         if gap and gap[0] < t < gap[1]:
             continue
         moving = max(0.0, t + 0.5)
@@ -3493,6 +3494,18 @@ class TestDeliveryGeometry:
     def test_no_shot_is_nothing_to_draw(self):
         assert run_js("out(deliveryGeometry(null, DELIVERYBOX));") is None
 
+    def test_a_tenth_of_a_second_path_keeps_its_dots_and_its_words(self):
+        g = self.geom(delivery_shot(delivery_points(fps=10)))
+        assert g["every"] == {"short": "0.1 s", "words": "tenth of a second"}
+        assert g["dotR"] == 2.3
+
+    def test_every_frame_is_said_so_and_drawn_smaller(self):
+        # Times to the hundredth: steps of 0.03 and 0.04 by turns.
+        g = self.geom(delivery_shot(delivery_points(fps=30)))
+        assert g["every"] == {"short": "frame (30 a second)", "words": "frame, thirty a second"}
+        assert g["dotR"] == 1.3
+        assert g["points"] > 2.5 * self.geom(delivery_shot())["points"]
+
 
 class TestTheDeliveryChart:
     SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/Delivery.jsx"
@@ -3507,7 +3520,7 @@ class TestTheDeliveryChart:
             assert needle in body, needle
 
     def test_the_caption_says_which_way_up_and_how_stretched(self):
-        assert ("From above, thrower at the bottom · across ×{g.stretch} · a dot every 0.1 s, "
+        assert ("From above, thrower at the bottom · across ×{g.stretch} · a dot every {g.every.short}, "
                 "dark at rest to gold past the hog line") in self.SRC.read_text()
 
     def test_it_is_an_image_with_a_label_and_no_ids(self):
@@ -3521,7 +3534,7 @@ class TestTheDeliveryChart:
         src = self.DETAIL.read_text()
         body = src[src.index("export function DeskDetail("):]
         i_strip = body.index("<Strip ")
-        i_chart = body.index("<DeliveryChart g={g} label={deliveryLabel(shot, true)} fluid />")
+        i_chart = body.index("<DeliveryChart g={g} label={deliveryLabel(shot, true, g)} fluid />")
         i_why = body.index('<p className="dlvnone">{why}</p>')
         i_figs = body.index("<Figures ")
         assert i_strip < i_chart < i_why < i_figs
