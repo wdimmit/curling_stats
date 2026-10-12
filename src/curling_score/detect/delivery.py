@@ -78,6 +78,12 @@ LATE_ENTRY_MIN_Y_M = 0.0
 # neighbouring stones.
 MATCH_BASE_M = 0.30
 MATCH_SPEED_SLACK = 0.6   # share of the predicted travel allowed as error
+# Two stones of a colour cannot sit closer than a stone's radius, so two
+# sightings that do in one frame are one stone seen twice. The detector's own
+# suppression leaves none (s_0WTr end 2: 0 in 10,241 frames), but the tracker
+# hands sightings out nearest first, and a spare box would start a track on
+# the very spot that out-predicts the stone's own.
+SAME_STONE_M = 0.15
 MATCH_MAX_M = 1.2
 TRACK_TIMEOUT_S = 2.5
 # Until a track has seen two frames it has no velocity to predict with, so its
@@ -352,31 +358,44 @@ def _candidate_tracks(frames):
 
 
 def _build_tracks(frames):
+    """Each frame's sightings handed to the tracks that expect them, nearest
+    first, each inside its own track's gate; a sighting no track takes starts
+    one.
+
+    Nearest first, not track by track: asked in turn, the oldest track took
+    whatever fell inside its gate. A stone sitting all end, hidden by the
+    sweepers just as the shot slid past 0.29 m away, took the shot's sightings
+    from the shot's own track, which had them within a centimetre --
+    s_0WTrSBTjUazkTDnZB end 2's last rock, whose track then ran on into the
+    clearing (TestAStoneHiddenAsAnotherPasses).
+    """
     tracks: list[_Track] = []
     live: list[_Track] = []
     for t, dets in frames:
-        used = set()
-        for track in list(live):
+        dets = _one_per_stone(dets)
+        live = [tr for tr in live if t - tr.ts[-1] <= TRACK_TIMEOUT_S]
+        pairs = []
+        for k, track in enumerate(live):
             dt = t - track.ts[-1]
-            if dt > TRACK_TIMEOUT_S:
-                live.remove(track)
-                continue
             px, py = track.predict(t)
             if len(track.ts) < 2:
                 gate = min(MATCH_BASE_M + BOOTSTRAP_SPEED_M_S * dt, BOOTSTRAP_MAX_M)
             else:
                 speed = (track.vx**2 + track.vy**2) ** 0.5
                 gate = min(MATCH_BASE_M + MATCH_SPEED_SLACK * speed * dt, MATCH_MAX_M)
-            best, best_d = None, gate
             for i, d in enumerate(dets):
-                if i in used or d.color != track.color:
+                if d.color != track.color:
                     continue
                 dist = ((d.x_m - px) ** 2 + (d.y_m - py) ** 2) ** 0.5
-                if dist < best_d:
-                    best, best_d = i, dist
-            if best is not None:
-                used.add(best)
-                track.add(t, dets[best].x_m, dets[best].y_m)
+                if dist < gate:
+                    pairs.append((dist, k, i))
+        used, fed = set(), set()
+        for _dist, k, i in sorted(pairs):
+            if k in fed or i in used:
+                continue
+            fed.add(k)
+            used.add(i)
+            live[k].add(t, dets[i].x_m, dets[i].y_m)
         for i, d in enumerate(dets):
             if i in used:
                 continue
@@ -384,6 +403,18 @@ def _build_tracks(frames):
             tracks.append(track)
             live.append(track)
     return _link_continuations(tracks)
+
+
+def _one_per_stone(dets):
+    """A frame's sightings, in order, less any second sighting of one stone:
+    of two of a colour within SAME_STONE_M, the less confident (or, as sure,
+    the later) goes."""
+    def beaten(i, d):
+        return any(j != i and o.color == d.color
+                   and (o.x_m - d.x_m) ** 2 + (o.y_m - d.y_m) ** 2 < SAME_STONE_M ** 2
+                   and (o.confidence, -j) > (d.confidence, -i)
+                   for j, o in enumerate(dets))
+    return [d for i, d in enumerate(dets) if not beaten(i, d)]
 
 
 def _link_continuations(tracks):

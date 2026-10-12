@@ -1166,6 +1166,11 @@ class TestAParkedStoneAnnexedByAPassingOne:
         guard += resting("red", 0.36, 4.22, 41.6, 200.0)
         guard = drop(guard, [(99.3, 100.2)])          # hidden as the shooter passes
         shooter = thrown("red", y0=4.60, y1=-1.0, t0=99.0, speed=0.8, fps=10.0, x=0.10)
+        # Seen once as it came in, then not until it was beside the guard: its
+        # own track had no speed to say where it would be, and the guard's,
+        # 0.26 m away, was the nearer claim. (A shooter followed all the way in
+        # keeps its own sightings -- TestAStoneHiddenAsAnotherPasses.)
+        shooter = drop(shooter, [(99.05, 99.45)])
         return quiet + merge(guard, shooter)
 
     def test_the_tracker_really_does_hand_the_track_over(self):
@@ -1206,6 +1211,56 @@ class TestAParkedStoneAnnexedByAPassingOne:
         got = delivery.find_deliveries(self._frames())
         assert not any(d.travel_m < 1.0 and d.t_enter > 60 for d in got), \
             [(d.t_enter, d.travel_m, d.reason) for d in got]
+
+
+class TestAStoneHiddenAsAnotherPasses:
+    """s_0WTrSBTjUazkTDnZB end 2's last rock (10/06 Tuesday Super, sheet 1).
+
+    A yellow came down beside the four-foot at 0.45 m/s and passed 0.29 m from
+    a yellow that had sat there all end, just as the sweepers hid the sitting
+    one for 0.7 s. Its older track, asked first, took the moving stone's
+    sightings -- inside its 0.3 m gate, though the moving stone's own track had
+    them within a centimetre. The two swapped: the shot's track went to the
+    sitting stone when it reappeared and then on into the players clearing the
+    house, so the end's last rock "rested" 19 s late in an empty house. Each
+    sighting goes to the track that expects it nearest.
+    """
+
+    def _frames(self):
+        sitting = drop(static("yellow", -0.63, 2.18, 0.0, 60.0, fps=10.0), [(38.65, 39.35)])
+        shot = interp([(29.8, -0.59, 5.29), (38.6, -0.38, 2.35), (40.4, -0.25, 1.92)],
+                      fps=10.0, color="yellow")
+        shot += static("yellow", -0.25, 1.92, 40.5, 60.0, fps=10.0)
+        return merge(sitting, shot)
+
+    def test_each_sighting_goes_to_the_track_that_expects_it(self):
+        tracks = delivery._build_tracks(self._frames())
+        shot = next(t for t in tracks if t.ts[0] == pytest.approx(29.8))
+        sat = next(t for t in tracks if t.ts[0] == 0.0)
+        assert (shot.xs[-1], shot.ys[-1]) == pytest.approx((-0.25, 1.92), abs=0.01)
+        assert all(abs(x + 0.63) < 0.01 and abs(y - 2.18) < 0.01 for x, y in zip(sat.xs, sat.ys))
+
+    def test_the_shot_rests_where_it_stopped(self):
+        got = [d for d in delivery.find_deliveries(self._frames()) if d.t_enter > 20]
+        assert len(got) == 1
+        assert got[0].came_to_rest
+        # Settled by the rest rule's measure (under 0.1 m in a second) a
+        # little before this straight-line slide stops dead; anywhere near the
+        # sitting stone, 0.4 m off, is the swap.
+        assert (got[0].rest_x_m, got[0].rest_y_m) == pytest.approx((-0.25, 1.92), abs=0.12)
+        assert 39.8 <= got[0].t_rest <= 40.6
+
+
+class TestOneStoneSeenTwice:
+    def test_two_boxes_on_one_stone_are_one_sighting(self):
+        a, b = det("red", 0.37, 3.68, conf=0.6), det("red", 0.40, 3.70, conf=0.9)
+        other, near = det("yellow", 0.38, 3.69), det("red", 0.37, 3.40)
+        assert delivery._one_per_stone([a, other, b, near]) == [other, b, near]
+
+    def test_as_sure_the_first_stays(self):
+        a, b = det("red", 0.37, 3.68), det("red", 0.37, 3.68)
+        got = delivery._one_per_stone([a, b])
+        assert len(got) == 1 and got[0] is a
 
 
 class TestAStoneLostWhileStillRunning:
