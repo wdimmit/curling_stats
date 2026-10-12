@@ -80,7 +80,37 @@ def fit(t, x, f0, drifts=DRIFTS):
     given (f, k) it is linear in (a cos ph, a sin ph, c): the grid searches f
     and k, least squares (Huber-reweighted) the rest. Returns (f, k, a, noise,
     c), noise the residuals' robust spread (1.4826 x their median absolute
-    value), so a few stray frames -- a box on a broom -- do not read as noise."""
+    value), so a few stray frames -- a box on a broom -- do not read as noise.
+
+    Every (f, k) cell is fitted at once, each least squares by a QR solve: the
+    cell-by-cell loop (`_fit_cells`) made ~6,300 calls to lstsq a rock, 0.2 s
+    of the main thread. The best cell is the loop's -- the first of the least
+    cost, f outer, k inner."""
+    x = np.asarray(x, float)
+    tm = t - t.mean()
+    fs = np.linspace(0.7 * f0, 1.3 * f0, 121)
+    ks = np.asarray(drifts, float)
+    ph = 2 * np.pi * (fs[:, None, None] * tm + 0.5 * ks[None, :, None] * tm ** 2)
+    A = np.stack([np.sin(ph), np.cos(ph), np.ones_like(ph)], axis=-1)     # (F, K, N, 3)
+    wts = np.ones(ph.shape)
+    try:
+        for _ in range(4):
+            q, rr = np.linalg.qr(A * wts[..., None])
+            coef = np.linalg.solve(rr, np.einsum("fkni,fkn->fki", q, x * wts)[..., None])[..., 0]
+            r = x - np.einsum("fkni,fki->fkn", A, coef)
+            scale = 1.4826 * np.median(np.abs(r), axis=-1, keepdims=True) + 1e-6
+            wts = np.sqrt(np.minimum(1.0, 1.5 * scale / np.maximum(np.abs(r), 1e-9)))
+    except np.linalg.LinAlgError:
+        return _fit_cells(t, x, f0, drifts)
+    cost = np.sum((wts * r) ** 2, axis=-1)
+    i, j = np.unravel_index(int(np.argmin(cost)), cost.shape)
+    bs, bc, c = coef[i, j]
+    return (float(fs[i]), float(ks[j]), float(np.hypot(bs, bc)),
+            float(1.4826 * np.median(np.abs(r[i, j]))), float(c))
+
+
+def _fit_cells(t, x, f0, drifts=DRIFTS):
+    """`fit`, one (f, k) cell at a time with lstsq."""
     tm = t - t.mean()
     best = None
     for f in np.linspace(0.7 * f0, 1.3 * f0, 121):

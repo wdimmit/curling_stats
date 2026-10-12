@@ -159,3 +159,24 @@ def test_a_read_under_a_turn_carries_no_swing():
     t, s = slow(f=0.11)
     first = spinfit.read(t, s)
     assert first is None or first.swing is None
+
+
+class TestTheGridFittedAtOnce:
+    """`fit` fits every (f, k) cell at once; it must pick the cell the
+    cell-by-cell loop picks, with the same amplitude, noise and centre."""
+
+    @pytest.mark.parametrize("seed", range(12))
+    def test_the_same_fit_as_cell_by_cell(self, seed):
+        rng = np.random.default_rng(seed)
+        f, span = rng.uniform(0.06, 0.45), rng.choice([3.0, 6.0, 10.0])
+        t = np.arange(0.5, 0.5 + span, 0.1)
+        s = 0.21 * np.sin(2 * np.pi * f * t + rng.uniform(0, 6.3)) - 0.02 \
+            + rng.normal(0, 0.04, t.size)
+        stray = rng.random(t.size) < 0.05
+        s[stray] += rng.normal(0, 0.4, stray.sum())
+        f0 = f * rng.uniform(0.85, 1.15)
+        for drifts in (spinfit.DRIFTS, (0.0,)):
+            want = spinfit._fit_cells(t, s, f0, drifts)
+            got = spinfit.fit(t, s, f0, drifts)
+            assert got[:2] == want[:2]
+            assert got[2:] == pytest.approx(want[2:], rel=1e-9, abs=1e-12)
