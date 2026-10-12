@@ -541,11 +541,11 @@ yp_of = lambda p: TEE - p[1]
 class TestReadDelivery(Delivery):
     def test_one_read_from_before_the_push_to_just_past_the_band_s_first_sample(self):
         self.read()
-        assert self.decoded == [(-3.0, round(self.track()[0][0] + 0.1 - self.T, 2), 10.0)]
+        assert self.decoded == [(-3.0, round(self.track()[0][0] + 0.1 - self.T, 2), L.DELIVERY_FPS)]
 
     def test_the_read_stops_five_seconds_after_the_release(self):
         self.read(t_band=108.0)
-        assert self.decoded == [(-3.0, 5.0, 10.0)]
+        assert self.decoded == [(-3.0, 5.0, L.DELIVERY_FPS)]
 
     def test_the_crop_runs_from_a_metre_behind_the_hack_to_past_the_band_s_first_rows(self):
         self.read()
@@ -580,11 +580,22 @@ class TestDeliveryPath(Delivery):
         rest = [p for p in self.path() if abs(yp_of(p) + 3.2) < 1e-6]
         assert [round(p[0], 2) for p in rest] == [-3.0, -0.5]
 
-    def test_it_is_on_the_tenth_of_a_second_throughout(self):
+    def test_it_is_on_the_read_s_grid_throughout(self):
         d = self.path()
-        assert all(abs(p[0] * 10 - round(p[0] * 10)) < 1e-6 for p in d)
-        steps = [round((b[0] - a[0]) * 10) for a, b in zip(d[1:], d[2:])]
+        f = L.DELIVERY_FPS
+        assert all(abs(p[0] * f - round(p[0] * f)) < 1e-6 for p in d)
+        steps = [round((b[0] - a[0]) * f) for a, b in zip(d[1:], d[2:])]
         assert set(steps) == {1}
+
+    def test_every_frame_of_the_slide_is_a_dot(self):
+        # Off the rest a rock moves less than the still envelope from one
+        # frame to the next at 30 fps; the slide keeps every frame all the
+        # same, the stone at rest still one dot drawn twice.
+        d = self.path()
+        moving = [p for p in d if p[0] > -0.5 + 1e-6 and yp_of(p) < L.DELIVERY_REST_BEHIND_M]
+        assert moving
+        steps = {round((b[0] - a[0]) * L.DELIVERY_FPS) for a, b in zip(moving, moving[1:])}
+        assert steps == {1}
 
     def test_it_ends_at_the_first_sample_past_the_hog_line_and_a_half(self):
         yps = [yp_of(p) for p in self.path()]
@@ -647,7 +658,7 @@ class TestTheLineCarriesItsDelivery:
         s = self.t.shot(crossing_for(self.t.stone_to(11.5)))
         decoded = self.t.run([s])
         assert s.line.delivery and yp_of(s.line.delivery[-1]) > L.DELIVERY_END_M
-        assert (-3.0, 0.1, 10.0) in decoded
+        assert (-3.0, 0.1, L.DELIVERY_FPS) in decoded
         assert (-3.0, -0.2, 5.0) not in decoded
 
     def test_a_delivery_that_fails_to_assemble_costs_only_the_delivery(self, monkeypatch):

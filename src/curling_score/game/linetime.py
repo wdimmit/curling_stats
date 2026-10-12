@@ -562,20 +562,24 @@ def _extend_for(shot, view, video, t_release, model, decode, detect):
 
 
 # The delivery, close up: the rock from where it sat in front of the hack to
-# 1.5 m past the throwing hog line, a sample every tenth of a second, for the
+# 1.5 m past the throwing hog line, every frame the camera has, for the
 # viewer's delivery chart (schema 8's ``line.delivery``). Most of the sideways
 # movement a thrower puts on a rock happens in the hand -- at the push-off and
 # in late steering -- where no figure above looks. The band's own 30 fps track
 # covers it from hogtime's window on (2 s after the release, 2-3 m past the
-# tee); one read at 10 fps from before the push to the band's first sample
-# covers the rest, and replaces the start's own read, the start being picked
-# from that read's frames on START_FPS's grid.
+# tee); one read from before the push to the band's first sample covers the
+# rest, and replaces the start's own read, the start being picked from that
+# read's frames on START_FPS's grid.
 #
-# 10 fps, measured 2026-09-29 on s_0N8Q's 94 rocks against the 30 fps path:
-# 0.4 cm p95 across (4.1 cm worst), the biggest sideways move in the slide
-# 0.2 cm short at the median, every rock followed back to its rest. 15 fps
-# bought nothing past that and would take the live lane to its limit.
-DELIVERY_FPS = 10.0
+# 30 fps, every frame, since 2026-10-12 (asked for: a more detailed path).
+# 10 fps had been measured 2026-09-29 on s_0N8Q's 94 rocks against this 30 fps
+# path -- 0.4 cm p95 across (4.1 cm worst), every rock followed back to its
+# rest -- and kept for the live lane's sake. On s1's ends 7-8 (2026-10-12,
+# after the lane's speed-ups) 30 fps costs 3 s an end against 10 and gives
+# ~160 dots a rock against ~60; the paths agree across to 0.6 cm p95, and
+# along only where the 10 fps read labelled its frames late. 20 fps is no
+# middle way: on a 30 fps camera it takes alternate gaps of one frame and two.
+DELIVERY_FPS = 30.0
 DELIVERY_MAX_AFTER_S = 5.0      # the band's first sample comes 2.0-3.1 s after the release
 
 
@@ -594,8 +598,9 @@ DELIVERY_V0 = 2.0               # m/s at the band, when its track is too short t
 # its last one: at the hack's distance one reading can be 0.5 m out along, and
 # a speed taken from it runs every prediction after it off (AEqL e1 r1). The
 # speed is held to what a rock does here, forward and back over 0.3 s, measured
-# on s_0N8Q's 94 rocks: 3.9 m/s and -1.0 at the most.
-DELIVERY_FIT_N, DELIVERY_FIT_S = 5, 0.6
+# on s_0N8Q's 94 rocks: 3.9 m/s and -1.0 at the most. Half a second of
+# samples, whatever the rate: five at the 10 fps it was set at.
+DELIVERY_FIT_N, DELIVERY_FIT_S = round(0.5 * DELIVERY_FPS), 0.6
 DELIVERY_V_M_S = (-1.1, 4.0)
 # The follow's gates, (base, per second unseen, cap), across and along: capped,
 # because an open-ended gate reaches the stones parked at the side.
@@ -719,19 +724,36 @@ def _to_end(pts):
     return out
 
 
-def _collapse_rest(pts):
-    """Each run of samples sitting still in front of the hack as its first and last."""
+# The still rule's grid: a tenth of a second, the rate it was set at.
+STILL_STEP_S = 0.1
+
+
+def _collapse_rest(pts, t0: float):
+    """Each run of samples sitting still in front of the hack as its first and last.
+
+    Still is judged on the samples on a tenth-of-a-second grid from ``t0``,
+    whatever the rate: a rock just off its rest moves 0.2 m in a tenth of a
+    second, but at 30 fps its first frames sit inside the still envelope of
+    the one before, and judged frame by frame every third frame of the slide's
+    first metre was taken for a stone sitting still and dropped. A still run
+    found on that grid drops every sample strictly inside it; at 10 fps that
+    is exactly the samples the rule has always dropped."""
     along, across = DELIVERY_STILL_M
-    out, i = [], 0
-    while i < len(pts):
+    on_grid = [p for p in pts
+               if abs((p[0] - t0) / STILL_STEP_S - round((p[0] - t0) / STILL_STEP_S))
+               * STILL_STEP_S <= 0.5 / 30 + 1e-6]
+    spans, i = [], 0
+    while i < len(on_grid):
         j = i
-        if pts[i][2] < DELIVERY_REST_BEHIND_M:
-            while j + 1 < len(pts) and pts[j + 1][2] < DELIVERY_REST_BEHIND_M \
-                    and abs(pts[j + 1][2] - pts[i][2]) <= along and abs(pts[j + 1][1] - pts[i][1]) <= across:
+        if on_grid[i][2] < DELIVERY_REST_BEHIND_M:
+            while j + 1 < len(on_grid) and on_grid[j + 1][2] < DELIVERY_REST_BEHIND_M \
+                    and abs(on_grid[j + 1][2] - on_grid[i][2]) <= along \
+                    and abs(on_grid[j + 1][1] - on_grid[i][1]) <= across:
                 j += 1
-        out += [pts[i], pts[j]] if j - i >= 2 else list(pts[i:j + 1])
+        if j - i >= 2:
+            spans.append((on_grid[i][0], on_grid[j][0]))
         i = j + 1
-    return out
+    return [p for p in pts if not any(a < p[0] < b for a, b in spans)]
 
 
 def delivery_path(track, frames: DeliveryFrames, t_release: float) -> tuple:
@@ -755,5 +777,5 @@ def delivery_path(track, frames: DeliveryFrames, t_release: float) -> tuple:
             break
     i, back = best
     pts = back + _on_grid(track[i:], t0, DELIVERY_FPS)
-    pts = _collapse_rest(_to_end(pts))
+    pts = _collapse_rest(_to_end(pts), t0)
     return tuple((t - t_release, TEE_Y - yp, x) for t, x, yp in pts)

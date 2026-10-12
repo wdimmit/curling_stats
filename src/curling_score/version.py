@@ -180,7 +180,13 @@ from pathlib import Path
 # view when its window ends is followed on 5 s (`spintime.follow_on`). Rocks
 # with a turn or more in view read as before. Six replay windows: 16 of 22
 # refused rocks were slow ones, 3.4-8.4 rpm.
-PIPELINE_VERSION = "2026.10.11.2"
+# 2026.10.12.1: the delivery chart's path read at 30 fps, every frame, not 10
+# (`linetime.DELIVERY_FPS`): ~160 dots a rock against ~60, the slide's first
+# metre now every frame (`_collapse_rest` judges a stone still on a tenth of a
+# second's grid, as before), the follow-back's speed over the same half
+# second. A line's start and its offset at the hog line move ~1 mm on a few
+# rocks an end; nothing else.
+PIPELINE_VERSION = "2026.10.12.1"
 
 
 def model_id(weights) -> str:
