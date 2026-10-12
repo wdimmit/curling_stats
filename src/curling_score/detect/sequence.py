@@ -8,12 +8,15 @@ rule (never hold a whole end of decoded panels in memory) in a single place.
 
 from __future__ import annotations
 
+import logging
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 
 from curling_score.detect import cache
 from curling_score.ingest import frames as F
+
+log = logging.getLogger(__name__)
 
 # Enough frames to keep a GPU busy, few enough that a 16-minute end at 10 fps
 # does not sit in memory as 4.4 GB of decoded panels.
@@ -42,7 +45,12 @@ class _DetectBehind:
     def __init__(self, detector):
         self.detectors = [detector]
         if DETECT_THREADS > 1 and hasattr(detector, "twin"):
-            self.detectors.append(detector.twin())
+            # A second copy is only speed: one that cannot be made -- the GPU
+            # out of memory -- leaves the one detector doing every batch.
+            try:
+                self.detectors.append(detector.twin())
+            except Exception:  # noqa: BLE001
+                log.warning("no second detector; detecting on one thread", exc_info=True)
         self.pools = [ThreadPoolExecutor(max_workers=1, thread_name_prefix="detect")
                       for _ in self.detectors]
         self.in_flight = len(self.detectors)

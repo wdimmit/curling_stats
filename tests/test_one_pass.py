@@ -179,7 +179,21 @@ class TwinnedDetector(FakeDetector):
         return self.made[0]
 
 
+class UntwinnableDetector(FakeDetector):
+    """A detector whose copy cannot be made: the GPU is out of memory."""
+
+    def twin(self):
+        raise RuntimeError("CUDA out of memory")
+
+
 class TestTwoDetectionThreads:
+    def test_with_no_second_detector_it_detects_on_one_thread(self, clip, monkeypatch, caplog):
+        monkeypatch.setattr(sequence, "BATCH", 8)
+        near = panel(A)
+        got = sequence.detect_span(clip, near, 9.0, 20.0, 10.0, UntwinnableDetector(), use_cache=False)
+        assert got == serially(clip, near, 9.0, 10.0, 20.0)
+        assert "one thread" in caplog.text
+
     def test_both_panels_still_get_what_a_serial_loop_gave(self, clip, monkeypatch):
         monkeypatch.setattr(sequence, "BATCH", 8)
         near, far = panel(A), panel(B)
