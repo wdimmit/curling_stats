@@ -14,6 +14,7 @@ crossing has to survive every gate below or it does not exist.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import math
 import subprocess
 import time
@@ -22,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+log = logging.getLogger(__name__)
 
 # Measured by hand on 27 deliveries (``datasets/hogmarks``): a stone crosses
 # its hog line between 2.83 s and 5.43 s after the panel first sees it leave
@@ -410,17 +413,38 @@ KEY_LISTS_KEPT = 32
 # window; the club's streams put them at most 5 s apart.
 KEY_GAP_MAX_S = 6.0
 
-_keyframes = {}     # str(path) -> [(from_s, to_s, sorted keyframe times)]
+# The bytes a recording is known by: its first packets, which carry its own
+# timestamps, and which a recording that grows never changes.
+KEY_HEAD_BYTES = 4096
+
+_keyframes = {}     # str(path) -> (head, [(from_s, to_s, sorted keyframe times)])
+
+
+def _head(video) -> bytes:
+    try:
+        with open(video, "rb") as f:
+            return f.read(KEY_HEAD_BYTES)
+    except OSError:
+        return b""
 
 
 def _keyframe_before(video, t0: float):
     """The last keyframe at or before ``t0`` in a recording, from a listing
-    kept per file (`frames.keyframe_times`), or None where none is known."""
+    kept per recording (`frames.keyframe_times`), or None where none is known.
+
+    Kept by the recording's first bytes as well as its path: a live lane's
+    recording is deleted when its stream ends, and the next stream on that
+    sheet records to the same path on another clock. Its inode is no help --
+    the filesystem hands a freed one straight back out."""
     import bisect
 
     from curling_score.ingest.frames import keyframe_times
 
-    spans = _keyframes.setdefault(str(video), [])
+    head = _head(video)
+    known = _keyframes.get(str(video))
+    if known is None or known[0] != head:
+        known = _keyframes[str(video)] = (head, [])
+    spans = known[1]
     span = next((s for s in spans if s[0] <= t0 - KEY_GAP_MAX_S and t0 <= s[1]), None)
     if span is None:
         lo = t0 - KEY_GAP_MAX_S - 10.0
@@ -453,7 +477,12 @@ def _lead(video, t0: float) -> float:
     lead = seek_lead(video)
     if not lead:
         return 0.0
-    k = _keyframe_before(video, t0)
+    try:
+        k = _keyframe_before(video, t0)
+    except Exception:  # noqa: BLE001 - a listing only saves time; the flat lead always works
+        log.info("keyframes of %s around %.1f s not listed; entering %.0f s early",
+                 video, t0, lead, exc_info=True)
+        return lead
     if k is None:
         return lead
     return float(min(lead, math.ceil(t0 - k) + KEY_MARGIN_S))
@@ -512,7 +541,7 @@ def _run(command, rect, t0, fps, t1=None):
     the main thread wants -- 713 ms against 504 for a 5.5 s window here."""
     _x, _y, w, h = rect
     frame = w * h * 3
-    span = 0.0 if t1 is None else t1 - t0
+    span = 0.0 if t1 is None else max(0.0, t1 - t0)
     room = (math.ceil((span + 0.05) * fps) + 2) * frame
     buf = np.empty(room, dtype=np.uint8)
     view, got, more = memoryview(buf), 0, []
@@ -531,7 +560,9 @@ def _run(command, rect, t0, fps, t1=None):
     data = buf[:got]
     if more:
         data = np.concatenate([data, np.frombuffer(b"".join(more), dtype=np.uint8)])
-    frames = data[:len(data) - len(data) % frame].reshape(-1, h, w, 3)
+    if len(data) % frame:
+        raise ValueError(f"ffmpeg gave {len(data)} bytes, not whole {w}x{h} frames")
+    frames = data.reshape(-1, h, w, 3)
     return frames, [t0 + i / fps for i in range(frames.shape[0])]
 
 
@@ -547,6 +578,10 @@ def _decode_now(video, rect, t0, t1, fps, lead):
     listing that is wrong costs time, never frames."""
     from curling_score.ingest.frames import seek_lead
 
+    if t1 < t0:
+        # Nothing to read: ffmpeg refuses a negative duration and writes no frames.
+        _x, _y, w, h = rect
+        return np.empty((0, h, w, 3), dtype=np.uint8), []
     frames, times = _run(_command(video, rect, t0, t1, fps, lead), rect, t0, fps, t1)
     flat = seek_lead(video)
     if lead and lead < flat and _short(frames, t0, t1, fps):

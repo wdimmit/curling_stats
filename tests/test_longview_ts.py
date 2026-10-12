@@ -8,6 +8,7 @@ late with 62 of its 122 frames, and the 1 s broom window often came back
 empty -- no brooms, so no lines.
 """
 
+import os
 import shutil
 import subprocess
 
@@ -253,3 +254,83 @@ def test_a_pipe_the_kernel_will_not_grow_still_decodes(clips, monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", popen)
     got, _ = longview.decode(ts, RECT, 17.3, 18.3, fps=10.0)
     assert got.tobytes() == want.tobytes()
+
+
+class TestWhatGoesWrongCostsAWindowAtMost:
+    """A side-view pass reads ~90 windows an end. Whatever goes wrong with one
+    of them must cost that window or its rock, never the end -- the same
+    reasoning as ``analyze.read_board``."""
+
+    def test_a_listing_that_cannot_be_read_enters_at_the_flat_lead(self, clips, monkeypatch):
+        from curling_score.ingest import frames as F
+
+        mp4, ts = clips
+        longview._keyframes.clear()
+
+        def broken(*a, **kw):
+            raise RuntimeError("Invalid data found when processing input")
+
+        monkeypatch.setattr(F, "keyframe_times", broken)
+        assert longview._lead(ts, 17.3) == F.TS_SEEK_LEAD_S
+        want, _ = longview.decode(mp4, RECT, 17.3, 18.3, fps=10.0)
+        with longview.reading_ahead():
+            longview.soon(ts, RECT, 17.3, 18.3, 10.0)
+            got, _ = longview.decode(ts, RECT, 17.3, 18.3, fps=10.0)
+        assert got.tobytes() == want.tobytes()
+
+    @pytest.mark.parametrize("fps", [30.0, 5.0])
+    def test_a_window_that_ends_before_it_starts_is_empty(self, clips, fps):
+        """What ffmpeg gave such a window -- nothing -- not an error."""
+        for video in clips:
+            frames, times = longview.decode(video, RECT, 18.0, 17.0, fps=fps)
+            assert frames.shape == (0, 240, 320, 3) and times == []
+        with longview.reading_ahead():
+            longview.soon(clips[1], RECT, 18.0, 17.0, fps)
+            assert len(longview.decode(clips[1], RECT, 18.0, 17.0, fps=fps)[0]) == 0
+
+    def test_bytes_that_are_not_whole_frames_are_an_error(self):
+        """Re-cut into frames of the size asked for, they would be scrambled
+        images the side models read without complaint -- how a crop rounded
+        one px short was caught (``_command``)."""
+        rect = (0, 0, 10, 10)              # 300 bytes a frame
+        frames, times = longview._run(["sh", "-c", "head -c 900 /dev/zero"], rect, 0.0, 10.0, 1.0)
+        assert frames.shape == (3, 10, 10, 3) and len(times) == 3
+        with pytest.raises(ValueError, match="whole"):
+            longview._run(["sh", "-c", "head -c 1000 /dev/zero"], rect, 0.0, 10.0, 1.0)
+
+
+class TestTheKeyframeListingIsTheRecordings:
+    """A listing is kept per recording, not per path: a live recording's path
+    is used again by the next stream on that sheet."""
+
+    def test_a_recording_replaced_at_the_same_path_is_listed_again(self, clips, tmp_path):
+        _mp4, ts = clips
+        other = tmp_path / "other.ts"          # keyframes 2 s apart, not 5
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+             "-i", "testsrc=size=320x240:rate=30", "-t", "40", "-g", "60",
+             "-keyint_min", "60", "-sc_threshold", "0", "-c:v", "libx264",
+             "-pix_fmt", "yuv420p", "-f", "mpegts", str(other)], check=True)
+        path = tmp_path / "rec.0.ts"
+        shutil.copy(ts, path)
+        longview._keyframes.clear()
+        assert round(longview._keyframe_before(path, 17.3), 2) == 15.0
+        os.replace(other, path)
+        assert round(longview._keyframe_before(path, 17.3), 2) == 16.0
+
+    def test_a_recording_that_grows_keeps_its_listing(self, clips, tmp_path, monkeypatch):
+        from curling_score.ingest import frames as F
+
+        _mp4, ts = clips
+        data = ts.read_bytes()
+        cut = len(data) * 3 // 4 // 188 * 188     # whole TS packets, as a recorder writes
+        path = tmp_path / "rec.0.ts"
+        path.write_bytes(data[:cut])
+        calls, real = [], F.keyframe_times
+        monkeypatch.setattr(F, "keyframe_times", lambda *a: calls.append(a) or real(*a))
+        longview._keyframes.clear()
+        first = longview._keyframe_before(path, 17.3)
+        with open(path, "ab") as f:
+            f.write(data[cut:])
+        assert longview._keyframe_before(path, 17.3) == first
+        assert len(calls) == 1
