@@ -319,6 +319,11 @@ body[data-page="games"] .pill { font-family:inherit; }
   .dots i { width:6px; height:6px; }
   .drawrow .actions > * { min-height:44px; padding:0 12px; font-size:15px;
                           display:flex; align-items:center; justify-content:center; }
+  /* A phone gets Watch and no Chart, so the sentence about Chart and the
+     "Chart as" team picker go too. A chart already started still shows as
+     "Open your chart". */
+  .drawrow .actions button.chart,
+  body[data-page="games"] :is(.chartnote, #teamrow) { display:none; }
 }
 
 /* My games: moving a chart charted as yourself onto a team. */
