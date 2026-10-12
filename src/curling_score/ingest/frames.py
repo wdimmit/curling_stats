@@ -226,6 +226,13 @@ def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
             yield held[0], (held[1].to_ndarray(format="bgr24") if decode else None)
 
 
+# Decoder threads for a pass over a file. PyAV's own choice is one per core,
+# and on the GPU worker -- three workers on 32 threads -- that was slower
+# alone (60 s of 1080p in 1.6 s against 1.25 at eight) and slower still with
+# three passes at once (6.3 s against 5.1). Decoding is exact at any count.
+DECODE_THREADS = 8
+
+
 def _converter():
     """``frame -> BGR ndarray`` for one pass over a file, exactly as
     ``frame.to_ndarray(format="bgr24")`` converts it, but on one kept swscale
@@ -250,6 +257,7 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
         stream.thread_type = "AUTO"
+        stream.thread_count = DECODE_THREADS
         offset = _stream_start(stream)
 
         target_pts = int((start_s - seek_lead(path) + offset) / stream.time_base)
@@ -292,6 +300,7 @@ def windows(path, specs, end_s: float):
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
         stream.thread_type = "AUTO"
+        stream.thread_count = DECODE_THREADS
         offset = _stream_start(stream)
         target_pts = int((min(wanted) - lead + offset) / stream.time_base)
         container.seek(target_pts, backward=True, stream=stream)

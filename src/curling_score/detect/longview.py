@@ -391,6 +391,13 @@ def find_in_frames(frames, view, color, times) -> Crossing:
     return crossing_from_tracks(tracks, view)
 
 
+# Decoder threads for one window. ffmpeg's own choice is one per core, which
+# on the GPU worker made each short window slower (484 ms against 402 at four)
+# and six at once slower still (2.4 windows a second against 2.8): three
+# workers read two windows ahead each, on 32 threads. Decoding is exact at
+# any count.
+FFMPEG_THREADS = 4
+
 # A recording is entered this many whole seconds before the keyframe it needs
 # (`_lead`), for an input seek that lands a little past where it was sent.
 KEY_MARGIN_S = 1
@@ -477,7 +484,8 @@ def _command(video, rect, t0, t1, fps, lead=None) -> list:
     # as often as even, so this bites about half of them: real footage did,
     # at rect width 813, and the reshape below failed on the size mismatch.
     # exact=1 crops to the exact pixel count regardless of chroma alignment.
-    return ["ffmpeg", "-hide_banner", "-loglevel", "error", *_seek(video, t0, lead),
+    return ["ffmpeg", "-hide_banner", "-loglevel", "error", "-threads", str(FFMPEG_THREADS),
+            *_seek(video, t0, lead),
             "-t", f"{t1 - t0 + 0.05}",
             "-vf", f"crop={w}:{h}:{x}:{y}:exact=1,fps={fps}",
             "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
