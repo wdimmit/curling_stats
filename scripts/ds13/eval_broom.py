@@ -4,11 +4,14 @@ from the stone a person boxed alone, broom or shoe beside it.
     ./.venv/bin/python scripts/ds13/eval_broom.py ~/curling-work/ds13broom/tree-broom1 \\
         datasets/ds13/manifest-broom1.json ds13c=weights/ds13c.pt ds13d=path/to/best.pt
 
-Per model, over every labelled stone in the held-out frames (``pick`` wide:
-ds13c's box had widened there; random: anywhere along the band): matched to
+Per model, over every labelled stone in the held-out frames, by the frame's
+``pick`` (the broom wave's wide: ds13c's box had widened there; random:
+anywhere along the band; the kink wave's hack, slide, edge, hog): matched to
 the model's same-colour box of best IoU (>= 0.3) at the pipeline's 0.25 cut,
 the centre's error across and the box's width over the label's, in px, and
-the stones it missed. The centre across is what a delivery dot is made of.
+the stones it missed, and the bottom edge's error, in px. The centre across
+and the bottom edge (the distance along: 6-12 cm a row) are what a delivery
+dot is made of.
 """
 import json
 import sys
@@ -45,8 +48,9 @@ def main(argv) -> int:
     import cv2
     for name, weights in models.items():
         model = YOLO(str(Path(weights).expanduser()))
-        rows = {"wide": [], "random": []}
-        missed = {"wide": 0, "random": 0}
+        picks = sorted(set(pick.values()))
+        rows = {k: [] for k in picks}
+        missed = {k: 0 for k in picks}
         for img_path in images:
             img = cv2.imread(str(img_path))
             h, w = img.shape[:2]
@@ -63,14 +67,16 @@ def main(argv) -> int:
                     continue
                 dcx = (best[1] + best[3]) / 2 - (t[1] + t[3]) / 2
                 dw = (best[3] - best[1]) - (t[3] - t[1])
-                rows[k].append((abs(dcx), dw, iou(t[1:], best[1:])))
-        for k in ("wide", "random"):
-            a = np.array(rows[k]) if rows[k] else np.zeros((0, 3))
+                dbot = best[4] - t[4]
+                rows[k].append((abs(dcx), dw, iou(t[1:], best[1:]), abs(dbot)))
+        for k in picks:
+            a = np.array(rows[k]) if rows[k] else np.zeros((0, 4))
             if not len(a):
                 print(f"{name} {k}: no matched stones, {missed[k]} missed"); continue
             print(f"{name} {k}: {len(a)} stones, {missed[k]} missed; centre across |err| median "
                   f"{np.median(a[:, 0]):.2f} p90 {np.percentile(a[:, 0], 90):.2f} px; width over the "
                   f"label median {np.median(a[:, 1]):+.2f} p90 {np.percentile(a[:, 1], 90):+.2f} px; "
+                  f"bottom |err| median {np.median(a[:, 3]):.2f} p90 {np.percentile(a[:, 3], 90):.2f} px; "
                   f"IoU median {np.median(a[:, 2]):.3f}")
     return 0
 
