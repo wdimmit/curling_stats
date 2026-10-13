@@ -191,7 +191,13 @@ from pathlib import Path
 # sample, the two are compared in the frames both saw, and the read's last
 # half second is eased onto the band. The rock at rest and line.start are not
 # moved; nothing outside line.delivery changes.
-PIPELINE_VERSION = "2026.10.12.2"
+# 2026.10.12.3: the overhead tracker hands each frame's sightings to the
+# tracks that expect them nearest, not oldest track first: a stone at rest,
+# hidden as a shot slid past within its gate, no longer takes the shot's
+# track -- the shot's rest, its house and its house_delta were the other
+# stone's (s_0WTrSBTjUazkTDnZB e2 r16), and a shooter is followed past the
+# stone it struck. Shot lists are unchanged on the 16 harness games.
+PIPELINE_VERSION = "2026.10.12.3"
 
 
 def model_id(weights) -> str:
