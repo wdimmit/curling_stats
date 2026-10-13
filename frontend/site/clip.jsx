@@ -12,17 +12,18 @@ const LINES_KEY = "practice.lines";
 // A clip's picture, as the worker scales it (practice/clips.py CLIP_SIZE).
 const CLIP_W = 600, CLIP_H = 810;
 
-// Signed links to clips, by the API path they came from: { url, at }.
+// Signed links to clips, by the API path they came from: { url, download, at }.
 const links = new Map();
 
 async function clipLink(src, again = false) {
   const hit = links.get(src);
-  if (!again && linkFresh(hit, Date.now())) return hit.url;
+  if (!again && linkFresh(hit, Date.now())) return hit;
   const res = await authedFetch(src);
   if (!res.ok) return null;
-  const { url } = await res.json();
-  links.set(src, { url, at: Date.now() });
-  return url;
+  const { url, download } = await res.json();
+  const got = { url, download, at: Date.now() };
+  links.set(src, got);
+  return got;
 }
 
 function savedLines() {
@@ -75,33 +76,34 @@ function ClipLines({ overlay, video }) {
 }
 
 export function ClipPlayer({ src, overlay, burned = false, autoPlay = false }) {
-  const [url, setUrl] = useState(null);
+  const [link, setLink] = useState(null);
   const [again, setAgain] = useState(false);
   const [lines, setLines] = useState(savedLines);
   const video = useRef(null);
   useEffect(() => {
     let on = true;
-    setUrl(null);
+    setLink(null);
     setAgain(false);
-    clipLink(src).then(u => { if (on) setUrl(u); });
+    clipLink(src).then(l => { if (on) setLink(l); });
     return () => { on = false; };
   }, [src]);
-  if (!url) return null;
+  if (!link?.url) return null;
   const retry = () => {
     if (again) return;
     setAgain(true);
-    clipLink(src, true).then(setUrl);
+    clipLink(src, true).then(setLink);
   };
   const toggle = () => { setLines(!lines); saveLines(!lines); };
   return (
     <>
-      <div className="clip-box" key={url}>
-        <video ref={video} className="practice-clip" src={url} controls playsInline
+      <div className="clip-box" key={link.url}>
+        <video ref={video} className="practice-clip" src={link.url} controls playsInline
                muted={autoPlay} autoPlay={autoPlay} preload="metadata" onError={retry} />
         {lines && overlay && !burned && <ClipLines overlay={overlay} video={video} />}
       </div>
       {burned ? (
         <p className="clip-tools muted">
+          {link.download && <><a href={link.download} download>⬇ Download</a>{" "}</>}
           Solid: the line it was thrown on · dashed: hack to broom · ring: the broom · dots: the
           rock from the hack to past the hog line
         </p>

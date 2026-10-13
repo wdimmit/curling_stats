@@ -18,3 +18,4 @@ export * from "./line.mjs";
 export * from "./delivery.mjs";
 export * from "./flag.mjs";
 export * from "./myshots.mjs";
+export * from "./shotclip.mjs";

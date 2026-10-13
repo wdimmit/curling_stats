@@ -2724,6 +2724,62 @@ class TestThePhoneTabsCss:
             assert gone not in css, gone
 
 
+class TestShotClip:
+    """A clip of the rock on screen, from the menu (core/shotclip.mjs)."""
+
+    def name(self, d, ei=0, si=0):
+        return run_js(f"out(shotClipName(buildGameView({json.dumps(d)}, 0, {{}}), {ei}, {si}));")
+
+    def test_named_by_the_numbers_the_run_detected(self):
+        assert self.name(doc([shot(1, "red", "lead")], end_number=4)) == "0.4.1"
+        assert self.name(doc([shot(1, "red", "lead")], end_number=2, end_id=5)) == "0.5.1"
+        assert self.name(doc([shot(3, "red", "lead", id=7)])) == "0.1.7"
+        assert self.name(doc([shot(1, "red", "lead")], game_index=1)) == "1.1.1"
+
+    def test_none_without_a_rock_or_for_one_never_seen(self):
+        assert self.name(doc([])) is None
+        assert self.name(doc([shot(1, "red", "lead", missing=True)])) is None
+
+    def offered(self, d, days):
+        return run_js(f"const d = {json.dumps(d)};"
+                      f"out(shotClipsOffered(d, d.games[0], Date.parse(d.source.analysed_at)"
+                      f" + {days} * 86400000));")
+
+    def test_offered_for_ten_days_after_the_game_was_analysed(self):
+        d = doc([shot(1, "red", "lead")])
+        d["source"]["analysed_at"] = "2026-10-12T21:07:24+00:00"
+        assert self.offered(d, 0) is True and self.offered(d, 9.9) is True
+        assert self.offered(d, 10.01) is False
+
+    def test_not_while_the_game_is_live_or_without_a_date(self):
+        d = doc([shot(1, "red", "lead")])
+        d["source"]["analysed_at"] = "2026-10-12T21:07:24+00:00"
+        d["live"] = {"in_progress": True}
+        assert self.offered(d, 0) is False
+        d = doc([shot(1, "red", "lead")])
+        d["source"].pop("analysed_at", None)
+        assert run_js(f"const d = {json.dumps(d)}; out(shotClipsOffered(d, d.games[0], 0));") is False
+
+    def test_what_the_dialog_says(self):
+        got = run_js("out([{state: 'queued', ahead: 0}, {state: 'queued', ahead: 2},"
+                     " {state: 'cutting'}, {state: 'ready'}, {state: 'gone'}, {state: 'expired'},"
+                     " {state: 'failed', reason: 'no_release'}, {state: 'failed'},"
+                     " {state: 'live'}].map(shotClipStatus));")
+        assert [g["busy"] for g in got] == [True, True, True] + [False] * 6
+        assert got[1]["text"] == "Waiting for the clips worker: 2 ahead of this one…"
+        assert got[2]["text"] == "Cutting the clip…"
+        assert got[3]["text"] is None
+        assert "no longer kept" in got[4]["text"] and got[4] == got[5]
+        assert "never seen released" in got[6]["text"]
+
+    def test_the_menu_offers_it_and_the_page_names_the_dialog(self):
+        app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()
+        assert 'id="clipBtn"' in app and "shotClipsOffered(doc, view.game, openedAt)" in app
+        assert "<ShotClipDialog clipping={ui.clipping}" in app
+        css = (VIEWER / "style.css").read_text()
+        assert "header #clipBtn    { order: 15; }" in css, "the desktop header puts it first"
+
+
 class TestFlagPlace:
     """What a flag records about the rock it was sent from."""
 

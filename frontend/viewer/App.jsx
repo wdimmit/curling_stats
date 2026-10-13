@@ -7,7 +7,7 @@
  * React's scheduling in the middle of it.
  */
 import {
-  useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef,
+  useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState,
   useSyncExternalStore,
 } from "react";
 import {
@@ -17,6 +17,7 @@ import {
   identity, isBlank, isGraded, liveGame, nextBlankAfter, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames,
+  shotClipName, shotClipsOffered,
 } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
@@ -29,6 +30,7 @@ import { Report } from "./Report.jsx";
 import { FlagDialog } from "./Flag.jsx";
 import { PlayedDialog } from "./Played.jsx";
 import { TeamsDialog } from "./Teams.jsx";
+import { ShotClipDialog } from "./ShotClip.jsx";
 import { Watch } from "./Watch.jsx";
 import { useSwipe } from "./Pager.jsx";
 
@@ -70,7 +72,7 @@ export function App({ doc, config, cursor, reload }) {
     return {
       gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
       sheet: "peek", houseMode: "", menu: undefined, reporting: false, flagging: null, playing: null,
-      naming: null,
+      naming: null, clipping: null,
       notice: null,
       following: true,
       // A link or a restored session names a rock the video is not at yet:
@@ -122,6 +124,7 @@ export function App({ doc, config, cursor, reload }) {
   const closeFlag = useCallback(() => dispatch({ type: "set", patch: { flagging: null } }), []);
   const closePlayed = useCallback(() => dispatch({ type: "set", patch: { playing: null } }), []);
   const closeNaming = useCallback(() => dispatch({ type: "set", patch: { naming: null } }), []);
+  const closeClipping = useCallback(() => dispatch({ type: "set", patch: { clipping: null } }), []);
 
   /* --------------------------------------------------------------- actions */
 
@@ -509,6 +512,7 @@ export function App({ doc, config, cursor, reload }) {
       <FlagDialog flagging={ui.flagging} onClose={closeFlag} />
       <PlayedDialog playing={ui.playing} onClose={closePlayed} />
       <TeamsDialog naming={ui.naming} onClose={closeNaming} onSaved={reload} />
+      <ShotClipDialog clipping={ui.clipping} onClose={closeClipping} />
     </>
   );
 }
@@ -549,6 +553,9 @@ function Flags({ doc, shot, trimmed }) {
 
 function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) {
   const src = doc.source;
+  // Read once: a page left open across the tenth day keeps its Clip until reloaded.
+  const [openedAt] = useState(() => Date.now());
+  const clipName = shotClipName(view, ui.ei, ui.si);
   const unplaced = view.game.ends.reduce((n, e) => n + (e.unplaced_shots || 0), 0);
   const blanks = queue.length
     ? `${queue.length} to chart →`
@@ -631,6 +638,15 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
                   opened: Date.now(), sourceId: doc.chart.source_id,
                   names: typedTeamNames(view.game) } } })}>
           Name teams…
+        </button>
+        {/* A clip of this rock, while the game's video is kept: one already
+            cut plays at once, and asking for one needs someone signed in. */}
+        <button id="clipBtn" title="A clip of this rock, to watch or save"
+                hidden={!config.hosted || !clipName || !shotClipsOffered(doc, view.game, openedAt)}
+                onClick={() => dispatch({ type: "set", patch: { clipping: {
+                  opened: Date.now(), path: location.pathname, rock: clipName,
+                  text: flagPlace(view, ui.ei, ui.si, view.format).text } } })}>
+          Clip…
         </button>
       </div>
     </header>
