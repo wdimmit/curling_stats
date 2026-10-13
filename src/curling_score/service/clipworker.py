@@ -64,6 +64,11 @@ def process(job: dict, api, worker_id: str, *, sources, workdir, cut=None,
 def _process(job, api, worker_id, sources, scratch, cut, sleep) -> dict:
     rocks = job["spec"].get("rocks", [])
     video = game_clips.find_video(job["video_id"], sources)
+    if video is None and job["spec"].get("live"):
+        # Asked for while its stream was on: between the stream ending and
+        # its recording being filed under videos/ there is a moment with
+        # neither. Failed, the job is tried again shortly (gameclips.fail).
+        raise RuntimeError("the live recording is in no cache just now")
     if video is None:
         results = {r["name"]: {"clip": None, "reason": "video_gone"} for r in rocks}
         _complete(api, job["id"], worker_id, results, sleep)

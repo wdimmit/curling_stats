@@ -89,6 +89,22 @@ class TestFindVideo:
     def test_nowhere(self, tmp_path):
         assert gc.find_video("VID", [tmp_path, tmp_path / "missing"]) is None
 
+    def test_while_its_stream_is_on_the_longest_recording_of_it(self, tmp_path):
+        a, b = tmp_path / "a", tmp_path / "b"
+        for root, part, size in ((a, "rec.0.ts", 300), (b, "rec.0.ts", 500), (b, "rec.1.ts", 200)):
+            (root / "live" / "VID").mkdir(parents=True, exist_ok=True)
+            (root / "live" / "VID" / part).write_bytes(b"x" * size)
+        (a / "live" / "OTHER").mkdir()
+        (a / "live" / "OTHER" / "rec.0.ts").write_bytes(b"x" * 900)
+        assert gc.find_video("VID", [a, b]) == b / "live" / "VID" / "rec.0.ts"
+
+    def test_a_filed_video_beats_the_recording(self, tmp_path):
+        (tmp_path / "live" / "VID").mkdir(parents=True)
+        (tmp_path / "live" / "VID" / "rec.0.ts").write_bytes(b"x" * 900)
+        (tmp_path / "videos").mkdir()
+        (tmp_path / "videos" / "VID.mp4").write_bytes(b"x")
+        assert gc.find_video("VID", [tmp_path]) == tmp_path / "videos" / "VID.mp4"
+
 
 class TestClipRocks:
     VIEWS = {"left": LEFT, "right": RIGHT}

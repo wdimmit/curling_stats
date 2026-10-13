@@ -2263,11 +2263,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.get("/api/shot-clips")
     def api_shot_clip(path: str = Query(...), rock: str = Query(...)):
         """Where a clip of one shot stands; the page asks every few seconds
-        while it is on its way."""
+        while it is on its way. A game still being streamed has clips of the
+        rocks in its published ends, cut from the recording being made."""
         clips_on()
         sid, run = shot_clip_target(path, rock)
-        if run.status != "ready":
-            return {"state": "live" if run.status == "live" else "busy"}
+        if run.status not in ("ready", "live"):
+            return {"state": "busy"}
         return shot_clip_answer(run, rock, sid, gameclips.shot_state(repo, run, rock, now()))
 
     @app.post("/api/shot-clips")
@@ -2284,9 +2285,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(400, "send a JSON object")
         rock = str(body.get("rock") or "")
         sid, run = shot_clip_target(body.get("path"), rock)
-        if run.status == "live":
-            raise HTTPException(409, "clips are cut once the game's stream has ended")
-        if run.status != "ready":
+        if run.status not in ("ready", "live"):
             raise HTTPException(409, "this game is being analysed again; try later")
         t = now()
         state = gameclips.shot_state(repo, run, rock, t)

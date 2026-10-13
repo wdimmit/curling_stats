@@ -144,7 +144,9 @@ def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
              calibration: dict | None, now) -> dict:
     """Ask for a clip of one shot, ``rock`` as `find_rock` gives it, unless
     one is made, on its way or cannot be: a failed one is asked for again.
-    Where it then stands, as `shot_state` says."""
+    Where it then stands, as `shot_state` says. One asked for while its
+    stream is on says so (``spec.live``), so the clips worker waits out the
+    moment its recording is in no cache rather than calling it gone."""
     name = rock["name"]
     state = shot_state(repo, run, name, now)
     if state["state"] in ("queued", "cutting", "ready", "gone"):
@@ -155,7 +157,8 @@ def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
     repo.put_clip_job(ClipJob(
         id=shot_job_id(run.id, name), play_id="", user_id=user_id, source_id=source_id,
         run_id=run.id, video_id=run.video_id, state="queued", created_at=now, run_after=now,
-        spec={"calibration": sides, "rocks": [rock]}))
+        spec={"calibration": sides, "rocks": [rock],
+              **({"live": True} if run.status == "live" else {})}))
     return shot_state(repo, run, name, now)
 
 
@@ -216,9 +219,13 @@ def claim(repo, worker_id: str, now, lease_s: float):
     asked for first, then the plays' batches, oldest first.
 
     A lease that ran out puts its job back (or fails it, at its last try). A
-    job whose game is still live waits: its video reaches a cache only when
-    the stream ends, and a live run's a while after that. A job whose run is
-    gone, or was analysed again since it was asked for, fails. None of it touches a run.
+    play's batch whose game is still live waits: its video reaches a cache
+    only when the stream ends, and a live run's a while after that, and the
+    report asks again for the game's final rocks. A shot somebody asked for
+    does not: the clips worker cuts it from the recording the stream is
+    being written to (game/clips.find_video), and every rock the page could
+    name is in an end already published. A job whose run is gone, or was
+    analysed again since it was asked for, fails. None of it touches a run.
     """
     for job in repo.clip_jobs_in_state("running"):
         if job.lease_expires_at is not None and job.lease_expires_at < now:
@@ -236,14 +243,15 @@ def claim(repo, worker_id: str, now, lease_s: float):
         if run is None:
             repo.update_clip_job(job.id, state="failed", finished_at=now, error="its run is gone")
             continue
-        if run.status == "live":
+        batch = bool(job.play_id)
+        if run.status == "live" and batch:
             repo.update_clip_job(job.id, run_after=now + timedelta(seconds=LIVE_RETRY_S))
             continue
         if run.ready_at is not None and job.created_at < run.ready_at:
             repo.update_clip_job(job.id, state="failed", finished_at=now,
                                  error="its run was analysed again since it was asked for")
             continue
-        if run.kind == "live" and run.ready_at is not None:
+        if run.kind == "live" and run.ready_at is not None and batch:
             settled = run.ready_at + timedelta(seconds=LIVE_SETTLE_S)
             if now < settled:
                 repo.update_clip_job(job.id, run_after=settled)

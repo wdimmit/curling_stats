@@ -426,15 +426,21 @@ class TestShotClips:
         assert ask(w, "/x/y/").status_code == 404
         assert shot(w, "/g/nope/").status_code == 404
 
-    def test_not_while_live_or_being_analysed_again(self, w):  # noqa: F811
+    def test_not_while_being_analysed_again(self, w):  # noqa: F811
         slug, src = released_game(w)
         run_id = w["repo"].get_chart(slug).run_id
         w["repo"].update_run(run_id, status="processing")
         assert shot(w, f"/c/{slug}/").json() == {"state": "busy"}
         assert ask(w, f"/c/{slug}/").status_code == 409
-        w["repo"].update_run(run_id, status="live")
-        assert shot(w, f"/c/{slug}/").json() == {"state": "live"}
-        assert ask(w, f"/c/{slug}/").status_code == 409
+
+    def test_while_live_cut_from_the_recording_being_made(self, w):  # noqa: F811
+        slug, src = released_game(w)
+        run_id = w["repo"].get_chart(slug).run_id
+        w["repo"].update_run(run_id, status="live", kind="live")
+        assert shot(w, f"/c/{slug}/").json() == {"state": "none"}
+        assert ask(w, f"/c/{slug}/").json() == {"state": "queued", "ahead": 0}
+        job = claim(w).json()["job"]
+        assert job["spec"]["live"] is True
 
     def test_asking_is_rate_limited(self, w, monkeypatch):  # noqa: F811
         monkeypatch.setattr(api_mod, "SHOT_CLIP_HOUR_LIMIT", 2)

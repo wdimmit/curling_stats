@@ -70,13 +70,24 @@ def sideviews_from_calibration(cal: dict | None) -> dict:
 def find_video(video_id: str, roots) -> Path | None:
     """The game's video in the first of ``roots`` (the main workers' caches)
     that has it whole: ``videos/<id>.mp4``, a downloaded VOD or a kept live
-    recording. A partial recording under ``kept/`` is not used: where it
-    starts on the stream's clock is not certain."""
+    recording. Failing that, while its stream is still on, the recording a
+    main worker is writing: ``live/<id>/rec.<n>.ts``, the longest of them.
+    Every one of those starts from the stream's first segment (live/recorder),
+    so each is on the timeline's clock, and a rock in an end already
+    published is all there. A partial recording under ``kept/`` is not used:
+    where it starts on the stream's clock is not certain."""
     for root in roots:
         path = Path(root) / "videos" / f"{video_id}.mp4"
         if path.is_file():
             return path
-    return None
+    live = []
+    for root in roots:
+        for path in (Path(root) / "live" / video_id).glob("rec.*.ts"):
+            try:
+                live.append((path.stat().st_size, path))
+            except FileNotFoundError:     # the stream ended and it was filed just now
+                continue
+    return max(live)[1] if live else None
 
 
 def clip_rocks(rocks, video, sideviews, workdir, deliver, *, cut=clipburn.cut,

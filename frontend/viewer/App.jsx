@@ -642,7 +642,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
         {/* A clip of this rock, while the game's video is kept: one already
             cut plays at once, and asking for one needs someone signed in. */}
         <button id="clipBtn" title="A clip of this rock, to watch or save"
-                hidden={!config.hosted || !clipName || !shotClipsOffered(doc, view.game, openedAt)}
+                hidden={!config.hosted || !clipName || !shotClipsOffered(doc, openedAt)}
                 onClick={() => dispatch({ type: "set", patch: { clipping: {
                   opened: Date.now(), path: location.pathname, rock: clipName,
                   text: flagPlace(view, ui.ei, ui.si, view.format).text } } })}>

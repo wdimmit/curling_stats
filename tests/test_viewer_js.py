@@ -2742,7 +2742,7 @@ class TestShotClip:
 
     def offered(self, d, days):
         return run_js(f"const d = {json.dumps(d)};"
-                      f"out(shotClipsOffered(d, d.games[0], Date.parse(d.source.analysed_at)"
+                      f"out(shotClipsOffered(d, Date.parse(d.source.analysed_at)"
                       f" + {days} * 86400000));")
 
     def test_offered_for_fourteen_days_after_the_game_was_analysed(self):
@@ -2751,21 +2751,24 @@ class TestShotClip:
         assert self.offered(d, 0) is True and self.offered(d, 13.9) is True
         assert self.offered(d, 14.01) is False
 
-    def test_not_while_the_game_is_live_or_without_a_date(self):
+    def test_while_the_game_is_live_too_but_not_without_a_date(self):
+        """Every rock a live page shows is in an end already published, and
+        the clips worker cuts it from the recording being made."""
         d = doc([shot(1, "red", "lead")])
         d["source"]["analysed_at"] = "2026-10-12T21:07:24+00:00"
         d["live"] = {"in_progress": True}
-        assert self.offered(d, 0) is False
+        d["games"][0]["in_progress"] = True
+        assert self.offered(d, 0) is True
         d = doc([shot(1, "red", "lead")])
         d["source"].pop("analysed_at", None)
-        assert run_js(f"const d = {json.dumps(d)}; out(shotClipsOffered(d, d.games[0], 0));") is False
+        assert run_js(f"const d = {json.dumps(d)}; out(shotClipsOffered(d, 0));") is False
 
     def test_what_the_dialog_says(self):
         got = run_js("out([{state: 'queued', ahead: 0}, {state: 'queued', ahead: 2},"
                      " {state: 'cutting'}, {state: 'ready'}, {state: 'gone'}, {state: 'expired'},"
-                     " {state: 'failed', reason: 'no_release'}, {state: 'failed'},"
-                     " {state: 'live'}].map(shotClipStatus));")
-        assert [g["busy"] for g in got] == [True, True, True] + [False] * 6
+                     " {state: 'failed', reason: 'no_release'}, {state: 'failed'}]"
+                     ".map(shotClipStatus));")
+        assert [g["busy"] for g in got] == [True, True, True] + [False] * 5
         assert got[1]["text"] == "Waiting for the clips worker: 2 ahead of this one…"
         assert got[2]["text"] == "Cutting the clip…"
         assert got[3]["text"] is None
@@ -2774,7 +2777,7 @@ class TestShotClip:
 
     def test_the_menu_offers_it_and_the_page_names_the_dialog(self):
         app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()
-        assert 'id="clipBtn"' in app and "shotClipsOffered(doc, view.game, openedAt)" in app
+        assert 'id="clipBtn"' in app and "shotClipsOffered(doc, openedAt)" in app
         assert "<ShotClipDialog clipping={ui.clipping}" in app
         css = (VIEWER / "style.css").read_text()
         assert "header #clipBtn    { order: 15; }" in css, "the desktop header puts it first"

@@ -308,6 +308,19 @@ class TestShotClips:
         again = gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T + timedelta(seconds=90))
         assert again["state"] == "queued"
 
+    def test_while_live_a_shot_is_cut_at_once_and_a_plays_batch_waits(self):
+        repo, run, _ = world(status="live")
+        run.kind = "live"
+        spec = gameclips.find_rock(a_doc([shot(13, "red", 4)]), "1.2.13")
+        queued(repo, ["1.2.15"], id="cj_batch")
+        gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T + timedelta(seconds=1))
+        shot_job = repo.get_clip_job(gameclips.shot_job_id("r1", "1.2.13"))
+        assert shot_job.spec["live"] is True
+        later = T + timedelta(seconds=2)
+        assert gameclips.claim(repo, "clips", later, 600.0).id == shot_job.id
+        assert gameclips.claim(repo, "clips", later, 600.0) is None
+        assert repo.get_clip_job("cj_batch").run_after > later
+
     def test_kept_ten_days_from_the_runs_latest_stamp(self):
         _, run, _ = world()
         days = timedelta(days=gameclips.SHOT_CLIP_DAYS)

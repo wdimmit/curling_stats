@@ -5,7 +5,6 @@
  * Plain ESM with no React and no DOM, so the Python suite can run it under
  * bare node -- see tests/test_viewer_js.py. */
 import { cursor, endIdentity, identity } from "./timeline.mjs";
-import { liveGame } from "./watch.mjs";
 
 // How long a game's video is taken to be kept after it was analysed
 // (service/gameclips.py SHOT_CLIP_DAYS). Past it, the menu has no Clip.
@@ -24,11 +23,11 @@ export function shotClipName(view, ei, si) {
   return `${gi}.${endIdentity(e)}.${identity(raw)}`;
 }
 
-/* Whether to offer a clip of this game's shots now: not while it is being
- * played (its video is in no cache until the stream ends), and not once its
- * video is past the days it is kept. */
-export function shotClipsOffered(doc, game, nowMs) {
-  if (liveGame(doc, game)) return false;
+/* Whether to offer a clip of this game's shots now: until its video is past
+ * the days it is kept. A game still being streamed is no exception: every
+ * rock on the page is in an end already published, and the clips worker cuts
+ * it from the recording being made. */
+export function shotClipsOffered(doc, nowMs) {
   const at = Date.parse(doc?.source?.analysed_at ?? "");
   return Number.isFinite(at) && nowMs - at <= SHOT_CLIP_DAYS * DAY_MS;
 }
@@ -46,7 +45,6 @@ export function shotClipStatus(got) {
   if (s === "ready") return { busy: false, text: null };
   if (s === "gone" || s === "expired")
     return { busy: false, text: "This game's video is no longer kept, so there is no clip of it." };
-  if (s === "live") return { busy: false, text: "Clips are cut once the game's stream has ended." };
   if (s === "busy") return { busy: false, text: "This game is being analysed again. Try later." };
   if (s === "failed" && got.reason === "no_release")
     return { busy: false, text: "This rock was never seen released, so there is nothing to cut." };

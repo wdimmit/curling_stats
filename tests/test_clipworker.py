@@ -61,6 +61,17 @@ class TestOneJob:
                        "0.3.7": {"clip": None, "reason": "video_gone"}}
         assert api.completed == [("cj_1", got)] and api.uploads == {}
 
+    def test_one_asked_while_live_waits_out_a_recording_in_no_cache(self, tmp_path):
+        """Between the stream ending and its recording being filed there is
+        a moment with neither: tried again shortly, not called gone."""
+        api = FakeClipApi([])
+        job = a_job()
+        job["spec"]["live"] = True
+        with pytest.raises(RuntimeError):
+            clipworker.process(job, api, "w", sources=[tmp_path], workdir=tmp_path / "w",
+                               cut=made)
+        assert api.completed == []
+
     def test_clips_are_cut_from_whichever_cache_has_the_video(self, cache, tmp_path):
         seen = []
 
