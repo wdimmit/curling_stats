@@ -553,7 +553,7 @@ function Flags({ doc, shot, trimmed }) {
 
 function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) {
   const src = doc.source;
-  // Read once: a page left open across the tenth day keeps its Clip until reloaded.
+  // Read once: a page left open past the last day keeps its Clip until reloaded.
   const [openedAt] = useState(() => Date.now());
   const clipName = shotClipName(view, ui.ei, ui.si);
   const unplaced = view.game.ends.reduce((n, e) => n + (e.unplaced_shots || 0), 0);

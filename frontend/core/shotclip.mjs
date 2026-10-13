@@ -9,7 +9,7 @@ import { liveGame } from "./watch.mjs";
 
 // How long a game's video is taken to be kept after it was analysed
 // (service/gameclips.py SHOT_CLIP_DAYS). Past it, the menu has no Clip.
-export const SHOT_CLIP_DAYS = 10;
+export const SHOT_CLIP_DAYS = 14;
 const DAY_MS = 86_400_000;
 // While one is on its way, the dialog asks after it this often.
 export const SHOT_CLIP_POLL_MS = 2000;

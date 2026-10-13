@@ -41,8 +41,10 @@ MAX_OVERLAY_BYTES = 16_000
 # A clip of one shot, asked for from its page: its job's id begins so.
 SHOT_JOB = "cs_"
 # How long a game's video is taken to stay in the workers' caches after its
-# run was analysed: past it, no clip of a shot is offered.
-SHOT_CLIP_DAYS = 10
+# run was analysed: past it, no clip of a shot is offered. A live game's
+# recording is kept as long (deploy/docker-compose.worker.yml
+# WORKER_RECORDING_DAYS); a download, until its cache needs the room.
+SHOT_CLIP_DAYS = 14
 
 _ROCK_KEYS = ("t_release_s", "t_rest_s", "t_enter_s", "t_hog_s", "v_hog_m_s", "t_far_s",
               "target_broom")
