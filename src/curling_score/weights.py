@@ -65,10 +65,21 @@ ENV_VAR = "CURLING_SCORE_WEIGHTS"
 # lines 507 against 507, the line 0.13 cm apart at the hog line (median), the
 # broom figure 0.57 in; band val mAP50 0.884 -> 0.908.
 #
+# ds13e replaced it on 2026-10-13: ds13d's set plus 120 frames where 2026-10-12's
+# delivery paths kinked -- the hack with the thrower's hand on the stone, the
+# slide, the band's top edge, the release -- boxed round the stone alone
+# (datasets/ds13/manifest-kink1.json). Rebuilt through the production delivery
+# code on 699 rocks of seven games neither trained on, the path's kinks went
+# from 401 to 313 (across 123 -> 79, behind the tee 79 -> 42), fewer in every
+# game; crossings 696 against 693, the line 0.13 cm apart at the hog line
+# (median), the broom figure 0.47 in, the start 2.7 cm (along only, unbiased).
+# It scores lower against the hack wave's own labels (val mAP50-95 0.70 ->
+# 0.65), which take in a hand or shoe the kink wave's rule leaves out.
+#
 # `none` selects the colour scan, and so does a missing file -- the side view
 # is an improvement on a pipeline that worked without it, not a dependency of
 # it. Unlike DEFAULT_NAME, absence here is not an error.
-SIDE_NAME = "ds13d.pt"
+SIDE_NAME = "ds13e.pt"
 SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 
 # The broom-head detector, which finds the skip's target broom in the camera

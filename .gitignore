@@ -67,6 +67,9 @@ weights/*.pt
 # ds13d supersedes ds13c (2026-10-12): ds13c's set plus the broom wave, the stone
 # boxed alone where a broom, shoe or hand touches it. ds13c is kept as its baseline.
 !weights/ds13d.pt
+# ds13e supersedes ds13d (2026-10-13): ds13d's set plus the kink wave, frames where
+# the delivery path kinked, the stone boxed alone. ds13d is kept as its baseline.
+!weights/ds13e.pt
 
 # Harvested board frames for the card-digit training set. What training
 # consumes is the ~24x22 px card window, and those are committed in

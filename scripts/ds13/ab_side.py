@@ -8,7 +8,8 @@ find_start); only the model differs.
         --timeline T.json --out ab_marks_vxu9.json A=weights/ds13b.pt B=ds13c.pt
 
     # every rock of a game: crossing time, the line at the hog line and the
-    # broom, the start -- against each other and against the published chart
+    # broom, the start, and the delivery path with its kinks (harvest_kinks's
+    # measure) -- against each other and against the published chart
     ab_side.py line --timeline T.json --video V.mp4 --out ab_line.json A=... B=...
     ab_side.py line --timeline T.json --clips DIR --offsets offsets.txt ...
 
@@ -27,6 +28,9 @@ from curling_score.analyze import OTHER_HOUSE
 from curling_score.detect import longview, sidemodel
 from curling_score.game import hogtime, linetime
 from curling_score.geometry import sideview
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from harvest_kinks import DEPTHS, depth_of, kinks_of  # noqa: E402
 
 
 def view_from(e: dict) -> sideview.SideView:
@@ -128,10 +132,16 @@ def line(args) -> int:
             fit = linetime.fit_line(track)
             st = linetime.find_start(model, video, hv, s["color"], t_rel, decode=dec,
                                      detect=sidemodel.detect_band)
+            delivery = ()
+            if track and fit is not None:
+                frames_d = linetime.read_delivery(model, video, hv, s["color"], t_rel, track[0][0],
+                                                  decode=dec, detect=sidemodel.detect_band)
+                delivery = linetime.delivery_path(track, frames_d, t_rel)
             row[mname] = {"t": got.t, "key": got.key, "n": len(track),
                           "at_hog": None if fit is None else fit.x(linetime.HOG_Y),
                           "at_broom": None if fit is None or b is None else fit.x(b["y"]),
-                          "start": None if st is None else {"x": st[0], "y": st[1]}}
+                          "start": None if st is None else {"x": st[0], "y": st[1]},
+                          "delivery": [[round(v, 4) for v in p] for p in delivery]}
         rows.append(row)
         with part.open("a") as fh:
             fh.write(json.dumps(row) + "\n")
@@ -147,6 +157,12 @@ def line(args) -> int:
               f"(published {sum(x['pub']['at_hog'] is not None for x in rows)}), start {sum(q['start'] is not None for q in r)} "
               f"(published {sum(bool(x['pub']['start']) for x in rows)}); at the hog line vs published: "
               f"max |d| {max(dh) * 100 if dh else float('nan'):.2f} cm")
+    for mname, _ in models:
+        ks = [(x["rock"], k) for x in rows for k in kinks_of(x[mname].get("delivery") or [])]
+        across = [k for _r, k in ks if abs(k[2]) > 0.015]
+        print(f"  {mname} delivery: {sum(bool(x[mname].get('delivery')) for x in rows)} paths, kinks across "
+              f"{len(across)} (" + ", ".join(f"{d} {sum(depth_of(k[1]) == d for k in across)}" for d, _lo, _hi in DEPTHS)
+              + f"), along {len(ks) - len(across)}; rocks with any {len({r for r, _k in ks})}")
     return 0
 
 
