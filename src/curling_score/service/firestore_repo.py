@@ -9,12 +9,10 @@ Composite indexes this needs (``deploy/firestore.indexes.json``):
     jobs      (state ASC, run_after ASC, created_at ASC)
     jobs      (state ASC, lease_expires_at ASC)
     vod_runs  (video_id ASC, created_at DESC)
-    sources   (league ASC, played_at DESC)
-    charts    (run_id ASC)
     flags     (status ASC, created_at DESC)
 
-Single-field ranges only, which Firestore indexes by itself:
-``vod_runs.ready_at`` and ``reviews.run_ready_at``.
+Single-field ranges and orderings only, which Firestore indexes by itself:
+``vod_runs.ready_at``, ``reviews.run_ready_at`` and ``sources.played_at``.
 
 Field-index exemptions the same file carries: charts.overrides and
 charts.overrides_meta are maps whose every subfield Firestore would otherwise
@@ -252,12 +250,46 @@ class FirestoreRepo:
         return [Source.from_dict(d.to_dict()) for d in q.stream()]
 
     def list_sources(self, league=None, limit=500):
-        q = self._col(SOURCES)
-        if league is not None:
-            q = self._where(SOURCES, "league", "==", league)
-        docs = [Source.from_dict(d.to_dict()) for d in q.limit(limit * 2).stream()]
+        """The newest `limit`, by when played -- or arrived, for a game with no
+        date read off its video.
+
+        Never limited before sorting: ids are random slugs, so the first n in
+        id order are n games from anywhere in the catalogue. One league is a
+        season's worth at most, so that is one equality filter sorted here --
+        no composite index.
+        """
+        if league is None:
+            return self.sources_played(limit=limit)
+        docs = [Source.from_dict(d.to_dict())
+                for d in self._where(SOURCES, "league", "==", league).stream()]
         docs.sort(key=lambda s: (s.played_at or s.created_at), reverse=True)
         return docs[:limit]
+
+    def sources_played(self, since=None, before=None, limit=None):
+        """Played in [since, before), newest first, ordered and cut in the query.
+
+        Every source carries `played_at`, null or not, so the ranged query sees
+        the dated ones and an equality on null finds the rest -- placed by when
+        they arrived, and none today, so one read.
+        """
+        when = lambda s: s.played_at or s.created_at
+        dated = self._col(SOURCES)
+        if since is not None:
+            dated = dated.where(filter=self._fs.FieldFilter("played_at", ">=", since))
+        if before is not None:
+            dated = dated.where(filter=self._fs.FieldFilter("played_at", "<", before))
+        dated = dated.order_by("played_at", direction=self._fs.Query.DESCENDING)
+        if limit is not None:
+            dated = dated.limit(limit)
+        found = {}
+        for d in dated.stream():
+            found[d.id] = Source.from_dict(d.to_dict())
+        for d in self._where(SOURCES, "played_at", "==", None).stream():
+            s = Source.from_dict(d.to_dict())
+            if (since is None or when(s) >= since) and (before is None or when(s) < before):
+                found[d.id] = s
+        docs = sorted(found.values(), key=when, reverse=True)
+        return docs if limit is None else docs[:limit]
 
     # ---- charts -------------------------------------------------------
     def put_chart(self, chart):

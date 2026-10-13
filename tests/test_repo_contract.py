@@ -435,6 +435,42 @@ class TestSources:
         assert [x.id for x in repo.list_sources(league="Tue")] == ["s_1"]
         assert repo.list_sources(league="Other") == []
 
+    def test_listed_newest_first_whatever_the_ids(self, repo):
+        # Source ids are random slugs, so id order says nothing about age.
+        # Here it runs the other way: the newest games sort last by id, where
+        # a fetch of the first few ids and a sort afterwards never sees them.
+        for i in range(8):
+            repo.put_source(Source(id=f"s_{i}", video_id=f"vid{i}", game_start_s=0.0,
+                                   game_end_s=6000.0, current_run_id=f"r_{i}", game_index=0,
+                                   created_at=T0, played_at=at(i * 86400),
+                                   league="Tue" if i % 2 else "Wed"))
+        # No date read off the video: it is as old as when it arrived.
+        repo.put_source(Source(id="s_8", video_id="vid8", game_start_s=0.0, game_end_s=6000.0,
+                               current_run_id="r_8", game_index=0,
+                               created_at=at(10 * 86400), league="Tue"))
+        assert [x.id for x in repo.list_sources(limit=3)] == ["s_8", "s_7", "s_6"]
+        assert [x.id for x in repo.list_sources(league="Tue", limit=2)] == ["s_8", "s_7"]
+        assert [x.id for x in repo.list_sources(league="Wed", limit=2)] == ["s_6", "s_4"]
+        assert len(repo.list_sources()) == 9
+
+    def test_played_between_two_times(self, repo):
+        for i in range(6):
+            repo.put_source(Source(id=f"s_{i}", video_id=f"vid{i}", game_start_s=0.0,
+                                   game_end_s=6000.0, current_run_id=f"r_{i}", game_index=0,
+                                   created_at=T0, played_at=at(i * 86400)))
+        # Undated, so placed by when it arrived: between days 2 and 3.
+        repo.put_source(Source(id="s_u", video_id="vidU", game_start_s=0.0, game_end_s=6000.0,
+                               current_run_id="r_u", game_index=0, created_at=at(2.5 * 86400)))
+        ids = lambda xs: [x.id for x in xs]
+        assert ids(repo.sources_played()) == ["s_5", "s_4", "s_3", "s_u", "s_2", "s_1", "s_0"]
+        # since is inclusive, before is not -- so a cursor never repeats a game.
+        assert ids(repo.sources_played(since=at(2 * 86400), before=at(4 * 86400))) == [
+            "s_3", "s_u", "s_2"]
+        assert ids(repo.sources_played(before=at(3 * 86400), limit=1)) == ["s_u"]
+        assert ids(repo.sources_played(before=at(2 * 86400), limit=1)) == ["s_1"]
+        assert ids(repo.sources_played(since=at(5 * 86400))) == ["s_5"]
+        assert repo.sources_played(before=at(0)) == []
+
     def test_the_report_fields_round_trip(self, repo):
         repo.put_source(Source(id="s_1", video_id="vidA", game_start_s=0.0, game_end_s=6000.0,
                                current_run_id="r_1", game_index=0, created_at=T0))

@@ -245,6 +245,7 @@ body[data-page="games"] .pill { font-family:inherit; }
    the dark theme gets its own for free. */
 #list { --rule:color-mix(in srgb, var(--line) 55%, var(--panel));
         --band:color-mix(in srgb, var(--bg) 55%, var(--panel)); }
+#older { margin:28px 0 8px; text-align:center; }
 .dayhead { display:flex; align-items:baseline; gap:10px; margin:26px 0 10px; }
 .dayhead h2 { margin:0; font-family:inherit; font-size:26px; line-height:1.1;
               text-transform:none; letter-spacing:0; }

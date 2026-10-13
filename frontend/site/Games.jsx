@@ -85,7 +85,7 @@ function commonest(games, key) {
  * and a recording's games in the draws either side move with it. The playlist
  * watcher labels everything it queues; this is for the links pasted by hand,
  * which arrive with nothing. */
-function LeagueLabel({ league, games, all, editable, onSaved }) {
+function LeagueLabel({ league, games, leagues, editable, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(league || "");
   const recordings = [...new Map(games.filter(g => g.source_id)
@@ -131,7 +131,7 @@ function LeagueLabel({ league, games, all, editable, onSaved }) {
       <input list="leagues" maxLength={60} aria-label="League" autoFocus
              value={text} onChange={e => setText(e.target.value)} {...exit} />
       <datalist id="leagues">
-        {leaguesIn(all).map(l => <option key={l} value={l} />)}
+        {leagues.map(l => <option key={l} value={l} />)}
       </datalist>
     </div>
   );
@@ -271,7 +271,7 @@ function Actions({ game, mine, team }) {
 }
 
 /* One draw: its time and league, then its games by sheet. */
-function Draw({ at, games, all, editable, onSaved, mine, team }) {
+function Draw({ at, games, leagues, editable, onSaved, mine, team }) {
   const league = commonest(games, "league");
   const doubles = commonest(games, "format") === "doubles";
   const clock = at == null ? { time: "—", period: "" } : clockParts(at);
@@ -279,8 +279,8 @@ function Draw({ at, games, all, editable, onSaved, mine, team }) {
     <section className="draw">
       <div className="drawhead">
         <h3>{clock.time}{clock.period && <small>{clock.period}</small>}</h3>
-        <LeagueLabel league={league || null} all={all} onSaved={onSaved} editable={editable}
-                     games={games.filter(g => (g.league || "") === league)} />
+        <LeagueLabel league={league || null} leagues={leagues} onSaved={onSaved}
+                     editable={editable} games={games.filter(g => (g.league || "") === league)} />
         {doubles && <span className="pill doubles">doubles</span>}
       </div>
       <div className="drawgames">
@@ -293,7 +293,7 @@ function Draw({ at, games, all, editable, onSaved, mine, team }) {
                 <div className="who">
                   <TeamsCell game={g} onSaved={onSaved} editable={own} />
                   {(g.league || "") !== league && (
-                    <LeagueLabel league={g.league} games={[g]} all={all}
+                    <LeagueLabel league={g.league} games={[g]} leagues={leagues}
                                  onSaved={onSaved} editable={own} />
                   )}
                   {g.format === "doubles" && !doubles &&
@@ -310,30 +310,61 @@ function Draw({ at, games, all, editable, onSaved, mine, team }) {
   );
 }
 
+/* The catalogue opens on the last two weeks of play, and "Show older games"
+ * goes back a week at a time (`older` is where the next week starts). A league
+ * picked is the whole league in one go, so it needs no going back. */
+const gamesUrl = league => league ? `/api/games?league=${encodeURIComponent(league)}`
+                                  : "/api/games";
+const NO_OLDER = { games: [], next: undefined, loading: false, failed: false };
+
 export function Games() {
   const { user, ready } = useAuthUser();
-  const catalogue = useResource("/api/games", { auth: false });
+  const [league, setLeague] = useState(loadLeague);
+  const catalogue = useResource(gamesUrl(league), { auth: false });
   const charts = useResource("/api/me/charts",
                              { skip: !ready || !user, deps: [user?.uid] });
-  const [league, setLeague] = useState(loadLeague);
   const [team, setTeam] = useState("");
+  // The weeks fetched since, oldest last; the first page stays the catalogue's.
+  const [older, setOlder] = useState(NO_OLDER);
 
-  const all = catalogue.data?.games || [];
-  // A live game's end count grows as it is played; keep the list current.
+  const all =[...(catalogue.data?.games || []), ...older.games];
+  // A live game's end count grows as it is played; keep the list current. Only
+  // the first page can hold one, and only it is asked for again.
   const anyLive = all.some(g => g.status === "live");
   useEffect(() => {
     if (!anyLive) return undefined;
     const id = setInterval(catalogue.reload, 60000);
     return () => clearInterval(id);
   }, [anyLive, catalogue.reload]);
-  const setAll = fn => catalogue.setData({ ...catalogue.data, games: fn(all) });
+  const setAll = fn => {
+    catalogue.setData({ ...catalogue.data, games: fn(catalogue.data?.games || []) });
+    setOlder(o => ({ ...o, games: fn(o.games) }));
+  };
   const mine = new Map((charts.data?.charts || [])
     .filter(c => c.source_id).map(c => [c.source_id, c.slug]));
   const editable = !!user;
 
-  const leagues = leaguesIn(all);
+  const next = older.next === undefined ? catalogue.data?.older : older.next;
+  const showOlder = async () => {
+    setOlder(o => ({ ...o, loading: true, failed: false }));
+    try {
+      const res = await fetch(`/api/games?before=${encodeURIComponent(next)}`);
+      if (!res.ok) throw new Error(res.statusText);
+      const data = await res.json();
+      setOlder(o => ({ games: [...o.games, ...data.games], next: data.older ?? null,
+                       loading: false, failed: false }));
+    } catch {
+      setOlder(o => ({ ...o, loading: false, failed: true }));
+    }
+  };
+  const pick = value => { setLeague(value); saveLeague(value); setOlder(NO_OLDER); };
+
+  // Every league, not only the ones loaded -- plus any just named here.
+  const leagues = [...new Set([...(catalogue.data?.leagues || []), ...leaguesIn(all)])].sort();
   // A remembered league the catalogue no longer has -- renamed, or its season
-  // gone -- would hide every game behind a select reading "All leagues".
+  // gone -- asked for nothing at all; ask for the newest games instead.
+  if (league && catalogue.data && !catalogue.loading && !leagues.includes(league))
+    setLeague("");
   const active = leagues.includes(league) ? league : "";
   const shown = all.filter(g => !active || g.league === active)
     .sort((a, b) => (slotAt(a) ?? 0) - (slotAt(b) ?? 0)
@@ -353,8 +384,7 @@ export function Games() {
   return (
     <>
       <Header links={[["/thinking", "Thinking time"], ["/submit", "Submit a link"]]}>
-        <select id="league" value={active}
-                onChange={e => { setLeague(e.target.value); saveLeague(e.target.value); }}>
+        <select id="league" value={active} onChange={e => pick(e.target.value)}>
           <option value="">All leagues</option>
           {leagues.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
@@ -367,7 +397,9 @@ export function Games() {
         else seeing.</span></p>
         <TeamPicker value={team} onChange={setTeam} />
         <div id="list">
-          {catalogue.loading ? <p className="muted">Loading…</p>
+          {/* Only before the first answer: the live refresh must not fold the
+              page up under someone reading a week they went back to. */}
+          {catalogue.loading && !catalogue.data ? <p className="muted">Loading…</p>
            : !shown.length ? <p className="muted">No games yet.</p>
            : [...byDate.keys()].sort().reverse().map(date => {
               const draws = byDate.get(date);
@@ -383,7 +415,7 @@ export function Games() {
                   </div>
                   <div className="draws">
                     {[...draws].map(([at, games]) => (
-                      <Draw key={at ?? "none"} at={at} games={games} all={all}
+                      <Draw key={at ?? "none"} at={at} games={games} leagues={leagues}
                             editable={editable} onSaved={setAll} mine={mine} team={team} />
                     ))}
                   </div>
@@ -391,6 +423,14 @@ export function Games() {
               );
             })}
         </div>
+        {!active && next && catalogue.data && (
+          <p id="older">
+            <button type="button" onClick={showOlder} disabled={older.loading}>
+              {older.loading ? "Loading…" : "Show older games"}
+            </button>
+            {older.failed && <span className="muted"> Those didn't load. Try again?</span>}
+          </p>
+        )}
       </main>
     </>
   );

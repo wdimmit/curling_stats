@@ -32,7 +32,7 @@
     "frontend/runtime/scores.mjs": "51f0984f02f825dcc93ed3bc375e47130ec4026984b1fdab9c643ffe91b6deed",
     "frontend/runtime/shotclips.mjs": "1ce664cc2de5e571674b6714a5840c18e9d05414cbb07db7ded0983a43e835c8",
     "frontend/runtime/teams.mjs": "bdcfaea8c74360181f5b2ae4ec2c066f051580061c4594d90c43a00c64e0dad3",
-    "frontend/site/Games.jsx": "7c0ca512c7eb73307f913ba6603b04a77b3e0c5b1eaa4638106a6a1965bfd52a",
+    "frontend/site/Games.jsx": "50da238b5caf77645383f34a3083185db3450a4096cfa4e7dc7349c829cb56bb",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
     "frontend/site/Mine.jsx": "08ee58151c96e486b33e19ddbf2c4e21f6e03211eba28c617981fbc70250ad4c",
     "frontend/site/Practice.jsx": "f3c7523b1156f960f62b2371576c033bd8efdf6d198aa2ff78f911ec2d255567",
@@ -65,7 +65,7 @@
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "c348f777ea89db87332c6b2751a814e7995d8a60482b32df60acc25ebd4232bd",
+    "src/curling_score/service/static/site.js": "4390c982f51f286cb23f0126c027389ab8a55bd11b3be44f7ef4b30d8c427454",
     "src/curling_score/viewer/app.js": "5c0b5f9b3221ecd02c4169a8bfad030507e4e3f64013e07a513f81b83530ed77"
   }
 }

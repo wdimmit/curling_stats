@@ -9,6 +9,7 @@ night. Every external system is its in-memory twin.
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +17,7 @@ from fastapi.testclient import TestClient
 from curling_score import timeline as timeline_mod
 from curling_score.service import dedupe, slug
 from curling_score.service.api import Settings, create_app
-from curling_score.service.records import WatchedPlaylist
+from curling_score.service.records import Run, Source, WatchedPlaylist
 from curling_score.service.repo import MemoryRepo
 from curling_score.service.store import MemoryStore, timeline_key
 from curling_score.service.youtube import FakeYouTube, VideoMeta
@@ -777,6 +778,93 @@ class TestCatalogueAndAdmin:
         # The only thing it may reach for is the Firebase SDK, deliberately
         # left external so the CDN copy is shared and cached.
         assert 'https://www.gstatic.com/firebasejs' in c.get("/static/site.js").text
+
+
+PT = ZoneInfo("America/Los_Angeles")
+
+
+def pt(*args):
+    return datetime(*args, tzinfo=PT)
+
+
+def put_game(w, sid, played_at, league="Tuesday Super League 2026-2027", practice=False):
+    """A ready game straight into the repo, played when it says."""
+    w["repo"].put_run(Run(id=f"r_{sid}", video_id=f"v_{sid}", processing_version="p+m",
+                          status="ready", created_at=played_at, published_at=played_at,
+                          league=league,
+                          games=[{"index": 0, "start_s": 0.0, "end_s": 6000.0, "ends": 8}]))
+    w["repo"].put_source(Source(id=sid, video_id=f"v_{sid}", game_start_s=0.0,
+                                game_end_s=6000.0, current_run_id=f"r_{sid}", game_index=0,
+                                created_at=played_at, played_at=played_at, league=league,
+                                practice=practice))
+
+
+class TestTheCatalogueGoesBackInTime:
+    """The home page opens on the last two weeks of play and goes back a week
+    at a time; a league picked is the whole league. Weeks are the club's days,
+    so no evening is split across two pages."""
+
+    @pytest.fixture
+    def season(self, world):
+        put_game(world, "g1", pt(2026, 10, 11, 19))        # the newest: a Sunday evening
+        put_game(world, "g2", pt(2026, 9, 28, 0, 30))      # first minutes of the landing's first day
+        put_game(world, "g3", pt(2026, 9, 27, 23, 30))     # the night before: the next page
+        put_game(world, "g4", pt(2026, 9, 22, 19), league="Monday Open League 2026-2027")
+        put_game(world, "g5", pt(2026, 9, 20, 19))
+        put_game(world, "g6", pt(2026, 6, 18, 19), league="Spring Friday Open League 2026")
+        return world
+
+    @staticmethod
+    def page(w, **params):
+        r = w["client"].get("/api/games", params=params)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        return [g["source_id"] for g in data["games"]], data["older"], data
+
+    def test_it_opens_on_two_weeks_of_the_clubs_days(self, season):
+        ids, older, _ = self.page(season)
+        assert ids == ["g1", "g2"]
+        # Midnight at the club starts the window -- not midnight in UTC, which
+        # would put 23:30 the night before on this page.
+        assert datetime.fromisoformat(older) == pt(2026, 9, 28, 0, 0)
+
+    def test_then_a_week_at_a_time_across_the_summer_until_there_is_no_more(self, season):
+        _, older, _ = self.page(season)
+        seen = []
+        for want in (["g3", "g4"], ["g5"], ["g6"]):
+            ids, older, _ = self.page(season, before=older)
+            assert ids == want
+            seen += ids
+        assert older is None
+        assert sorted(seen) == ["g3", "g4", "g5", "g6"]
+
+    def test_a_league_is_the_whole_league_at_once(self, season):
+        ids, older, _ = self.page(season, league="Tuesday Super League 2026-2027")
+        assert sorted(ids) == ["g1", "g2", "g3", "g5"] and older is None
+
+    def test_every_league_is_offered_not_just_the_ones_on_the_page(self, season):
+        _, _, data = self.page(season)
+        assert data["leagues"] == ["Monday Open League 2026-2027",
+                                   "Spring Friday Open League 2026",
+                                   "Tuesday Super League 2026-2027"]
+
+    def test_a_fortnight_of_nothing_but_practice_is_passed_over(self, world):
+        put_game(world, "p1", pt(2026, 10, 11, 10), practice=True)
+        put_game(world, "g1", pt(2026, 9, 1, 19))
+        ids, older, _ = self.page(world)
+        assert ids == ["g1"] and older is None
+
+    def test_runs_still_in_the_queue_are_on_the_first_page_only(self, season):
+        submit(season)
+        ids, older, _ = self.page(season)
+        assert ids.count(None) == 1
+        assert None not in self.page(season, before=older)[0]
+
+    def test_one_video_is_found_however_old(self, season):
+        assert self.page(season, video_id="v_g6")[0] == ["g6"]
+
+    def test_a_cursor_that_is_not_a_time_is_refused(self, season):
+        assert season["client"].get("/api/games", params={"before": "soon"}).status_code == 422
 
 
 class TestTokensWithStraySurroundingWhitespace:

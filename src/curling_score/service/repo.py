@@ -59,6 +59,8 @@ class Repo(Protocol):
                           entry: dict | None) -> Source | None: ...
     def sources_for_video(self, video_id: str) -> list[Source]: ...
     def list_sources(self, league: str | None = None, limit: int = 500) -> list[Source]: ...
+    def sources_played(self, since: datetime | None = None, before: datetime | None = None,
+                       limit: int | None = None) -> list[Source]: ...
     # charts
     def put_chart(self, chart: Chart) -> None: ...
     def get_chart(self, slug: str) -> Chart | None: ...
@@ -322,6 +324,15 @@ class MemoryRepo:
         out = [s for s in self.sources.values() if league is None or s.league == league]
         out.sort(key=lambda s: (s.played_at or s.created_at), reverse=True)
         return out[:limit]
+
+    def sources_played(self, since=None, before=None, limit=None):
+        """Played in [since, before), newest first: by played_at, or by when it
+        arrived for a game with no date read off its video."""
+        when = lambda s: s.played_at or s.created_at
+        out = [s for s in self.sources.values()
+               if (since is None or when(s) >= since) and (before is None or when(s) < before)]
+        out.sort(key=when, reverse=True)
+        return out if limit is None else out[:limit]
 
     # ---- charts -------------------------------------------------------
     def put_chart(self, chart):

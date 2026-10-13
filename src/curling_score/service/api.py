@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -53,9 +54,15 @@ log = logging.getLogger(__name__)
 VIEWER_DIR = Path(viewer.__file__).parent
 STATIC_DIR = Path(__file__).parent / "static"
 # What "every game" means to the report, its backfill and the league stamp.
-# list_sources defaults to the newest 500, which suits a catalogue page; the
-# report must see a league's old games too.
+# list_sources defaults to the newest 500; the report must see a league's old
+# games too.
 EVERY_SOURCE = 5000
+# The catalogue opens on this many of the club's days of play, ending with the
+# newest game's, and goes back OLDER_DAYS at a time.
+LANDING_DAYS, OLDER_DAYS = 14, 7
+# Every league there is, for the filter: a read of the whole catalogue, so kept
+# this long per instance. A league edit here drops it at once.
+LEAGUES_TTL_S = 600.0
 VIEWER_ASSETS = {"app.js": "application/javascript", "style.css": "text/css",
                  "source-sans-3.woff2": "font/woff2"}
 # One bundle for every page. This was nine hand-kept names, one per script
@@ -888,11 +895,69 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         practice (Source.is_practice)."""
         return [s for s in sources if s.merged_into is None and not s.is_practice]
 
+    leagues_kept = {"at": None, "names": []}
+
+    def every_league() -> list[str]:
+        """Every league a listed game is filed under, for the filter -- kept
+        LEAGUES_TTL_S, since it reads the whole catalogue."""
+        t = now()
+        if (leagues_kept["at"] is None
+                or (t - leagues_kept["at"]).total_seconds() >= LEAGUES_TTL_S):
+            leagues_kept["names"] = sorted({s.league for s in games_listed(
+                repo.list_sources(limit=EVERY_SOURCE)) if s.league})
+            leagues_kept["at"] = t
+        return leagues_kept["names"]
+
+    def forget_leagues() -> None:
+        leagues_kept["at"] = None
+
+    def catalogue_page(before: datetime | None) -> tuple[list, datetime | None]:
+        """(games, older): the club's days of play ending with the day of the
+        newest game before `before` -- LANDING_DAYS of them for the first page,
+        OLDER_DAYS after -- and where the next page starts, or None.
+
+        Whole days in the club's time, so an evening's draws are never split
+        across two pages, and anchored on a game rather than on today, so the
+        summer is one step back rather than months of empty pages. A stretch
+        holding nothing listable (practice, say) is passed over the same way.
+        """
+        tz = ZoneInfo(settings.club_tz)
+        days = OLDER_DAYS if before else LANDING_DAYS
+        while True:
+            newest = repo.sources_played(before=before, limit=1)
+            if not newest:
+                return [], None
+            day = (newest[0].played_at or newest[0].created_at).astimezone(tz).date()
+            day = day - timedelta(days=days - 1)
+            since = datetime(day.year, day.month, day.day, tzinfo=tz)
+            games = games_listed(repo.sources_played(since=since, before=before))
+            older = since if repo.sources_played(before=since, limit=1) else None
+            if games or older is None:
+                return games, older
+            before, days = since, OLDER_DAYS
+
     @app.get("/api/games")
-    def api_games(league: str | None = None, video_id: str | None = None):
-        sources = games_listed(repo.list_sources(league=league))
+    def api_games(league: str | None = None, video_id: str | None = None,
+                  before: str | None = None):
+        """The catalogue: one video's games, one whole league, or else a page
+        of the club's days of play (catalogue_page) -- the newest, or the page
+        before `before`, which is the `older` the last page handed back."""
+        cursor = None
+        if before is not None:
+            try:
+                cursor = datetime.fromisoformat(before)
+            except ValueError:
+                raise HTTPException(422, "before is a time, as the last page's older gave it")
+            if cursor.tzinfo is None:
+                cursor = cursor.replace(tzinfo=timezone.utc)
+        older = None
         if video_id:
-            sources = [s for s in sources if s.video_id == video_id]
+            sources = [s for s in games_listed(repo.sources_for_video(video_id))
+                       if league is None or s.league == league]
+        elif league is not None:
+            sources = games_listed(repo.list_sources(league=league, limit=EVERY_SOURCE))
+        else:
+            sources, older = catalogue_page(cursor)
         runs = {}
         out = []
         for s in sources:
@@ -914,10 +979,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 "format": s.format or "fours",
             })
         # Games queued or in flight have no sources yet; list their runs too so
-        # a person can make a link now and have it fill in.
-        for run in repo.list_runs():
+        # a person can make a link now and have it fill in. They are the
+        # newest there are, so the first page has them and no other.
+        for run in repo.list_runs() if cursor is None else []:
             # A practice watch is not a game, at any stage.
             if run.status in ("ready", "failed", "live") or run.kind == "practice":
+                continue
+            if (video_id and run.video_id != video_id) or (league and run.league != league):
                 continue
             out.append({
                 "source_id": None, "video_id": run.video_id, "title": run.title,
@@ -927,8 +995,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 "status": run.status, "ends": None,
                 "format": run.format or "fours",
             })
-        leagues = sorted({g["league"] for g in out if g["league"]})
-        return {"games": out, "leagues": leagues}
+        # The page's own as well as the kept list: a league that arrived since
+        # it was read is at least offered where its games are showing.
+        leagues = sorted(set(every_league()) | {g["league"] for g in out if g["league"]})
+        return {"games": out, "leagues": leagues,
+                "older": _iso(older.astimezone(timezone.utc)) if older else None}
 
     @app.post("/api/games/{source_id}/league")
     def api_set_league(source_id: str, body: dict,
@@ -959,6 +1030,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             repo.update_source(s.id, league=league)
         for run in repo.runs_for_video(src.video_id):
             repo.update_run(run.id, league=league)
+        forget_leagues()
         log.info("league %r set on %s (%d games) by %s",
                  league, src.video_id, len(games), me.id)
         return {"ok": True, "league": league, "games": len(games)}
@@ -1173,7 +1245,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             if league := source.league_from_title(run.title):
                 repo.update_run(run.id, league=league)
                 runs += 1
-        for s in repo.list_sources():
+        for s in repo.list_sources(limit=EVERY_SOURCE):
             if s.league:
                 continue
             run = repo.get_run(s.current_run_id)
@@ -1181,6 +1253,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             if league:
                 repo.update_source(s.id, league=league)
                 games += 1
+        forget_leagues()
         log.info("relabelled %d runs and %d games from their titles", runs, games)
         return {"ok": True, "runs": runs, "games": games}
 

@@ -9,15 +9,17 @@ Nothing here talks to Google. `FakeVerifier` hands out claims the same way
 `FakeYouTube` hands out metadata.
 """
 
+from datetime import timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
-from curling_score.service.api import Settings, create_app
+from curling_score.service.api import LEAGUES_TTL_S, Settings, create_app
 from curling_score.service.auth import FakeVerifier
 from curling_score.service.repo import MemoryRepo
 from curling_score.service.store import MemoryStore
 from curling_score.service.youtube import FakeYouTube, VideoMeta
-from tests.test_service_api import ADMIN, CLUB, T0, VID, Clock, work_through
+from tests.test_service_api import ADMIN, CLUB, T0, VID, Clock, put_game, work_through
 
 SARAH = {"Authorization": "Bearer tok-sarah"}
 ALEX = {"Authorization": "Bearer tok-alex"}
@@ -380,6 +382,9 @@ class TestNamingALeague:
             w["repo"].update_source(s.id, league=None)
         for r in w["repo"].runs_for_video(vid):
             w["repo"].update_run(r.id, league=None)
+        # Cleared behind the API's back, so the kept list of leagues has to
+        # lapse before it can know.
+        w["clock"].advance(LEAGUES_TTL_S)
         assert w["client"].get("/api/games").json()["leagues"] == []
         got = post(w, "/api/admin/relabel", {}, ADMIN).json()
         assert got["runs"] == 1 and got["games"] == 2
@@ -397,6 +402,17 @@ class TestNamingALeague:
         assert r.status_code == 200 and r.json()["league"] == "Tuesday Super League"
         listed = w["client"].get("/api/games").json()
         assert listed["leagues"] == ["Tuesday Super League"]
+
+    def test_a_rename_is_offered_at_once_even_for_a_league_off_the_page(self, w):
+        """The list of every league is kept a while; a rename must not wait
+        for it, or the filter offers a name nothing is filed under."""
+        a_ready_game(w)
+        put_game(w, "old", T0 - timedelta(days=200), league="Spring Thursday")
+        w["clock"].advance(LEAGUES_TTL_S)
+        assert "Spring Thursday" in w["client"].get("/api/games").json()["leagues"]
+        post(w, "/api/games/old/league", {"league": "Spring Thursday League 2026"}, SARAH)
+        assert w["client"].get("/api/games").json()["leagues"] == [
+            "Spring League", "Spring Thursday League 2026"]
 
     def test_it_names_every_game_in_the_recording(self, w):
         """One recording is one sheet for one night, so both its games are it."""
