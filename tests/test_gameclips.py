@@ -276,3 +276,42 @@ class TestResultsFromAnythingElse:
             assert gameclips.clean_results(job, junk) == {
                 "1.2.13": {"clip": None, "reason": "cut_failed"},
                 "1.2.15": {"clip": None, "reason": "cut_failed"}}
+
+
+class TestShotClips:
+    """A clip of one shot, asked for from its page."""
+
+    def test_a_rock_is_found_by_its_name_as_a_play_would_record_it(self):
+        doc = a_doc([shot(13, "red", 4), shot(14, "yellow", 4, missing=True)])
+        assert gameclips.find_rock(doc, "1.2.13") == gameclips.player_rocks(doc, "red", 4)[0]
+        assert gameclips.find_rock(doc, "1.2.14") is None
+        assert gameclips.find_rock(doc, "1.2.99") is None
+
+    def test_where_it_stands_and_how_many_are_ahead(self):
+        repo, run, _ = world()
+        spec = gameclips.find_rock(a_doc([shot(13, "red", 4)]), "1.2.13")
+        queued(repo, ["1.1.1"], state="running", id="cj_busy")
+        queued(repo, ["1.1.2"], id="cj_batch")                  # a play's: after ours
+        got = gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T + timedelta(seconds=9))
+        assert got == {"state": "queued", "ahead": 1}
+        job = repo.get_clip_job(gameclips.shot_job_id("r1", "1.2.13"))
+        assert set(job.spec["calibration"]) == {"left", "right"}
+        repo.update_clip_job(job.id, state="done", rocks={"1.2.13": {"clip": True}})
+        assert gameclips.shot_state(repo, run, "1.2.13", T) == {"state": "ready"}
+
+    def test_one_from_before_the_run_was_analysed_again_is_none(self):
+        repo, run, _ = world()
+        spec = gameclips.find_rock(a_doc([shot(13, "red", 4)]), "1.2.13")
+        gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T)
+        run.ready_at = T + timedelta(seconds=60)
+        assert gameclips.shot_state(repo, run, "1.2.13", T) == {"state": "none"}
+        again = gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T + timedelta(seconds=90))
+        assert again["state"] == "queued"
+
+    def test_kept_ten_days_from_the_runs_latest_stamp(self):
+        _, run, _ = world()
+        days = timedelta(days=gameclips.SHOT_CLIP_DAYS)
+        assert not gameclips.shot_expired(run, T + days)
+        assert gameclips.shot_expired(run, T + days + timedelta(seconds=1))
+        run.ready_at = T + timedelta(days=3)
+        assert not gameclips.shot_expired(run, T + days + timedelta(days=2))

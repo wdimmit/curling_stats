@@ -126,6 +126,16 @@ CLIP_MAX_BYTES = 20_000_000
 GAME_CLIP = re.compile(r"^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.mp4$")
 # How long a signed link to a clip lasts; the page asks again after 50 minutes.
 CLIP_URL_S = 3600
+# Asking for clips of shots from their pages: a long evening's review of one's
+# own games, not a stranger keeping the clips worker busy.
+SHOT_CLIP_HOUR_LIMIT = 40
+SHOT_CLIP_DAY_LIMIT = 200
+# The clips worker asks for work every few seconds (clipworker.POLL_IDLE_S),
+# so somebody waiting on a clip is not left waiting on its poll. An instance
+# that found the queue empty answers so from memory for this long, unless it
+# queued a clip job itself since: Firestore is asked twice a minute, not
+# twenty times, and a job queued on the other instance waits at most this.
+CLIP_QUIET_S = 30.0
 # The page a flag was sent from: an edit, view-only or review link.
 FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
 _PLACE_INTS = ("game_index", "end", "rock")
@@ -2061,6 +2071,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         except HTTPException:
             return None
 
+    # When this instance last found no clip job to hand out, until when it
+    # may say so again without asking (CLIP_QUIET_S).
+    clip_quiet = {"until": None}
+
+    def clip_queue_stirred():
+        clip_quiet["until"] = None
+
     def ask_for_clips(play: Play, doc: dict, run: Run, again: bool = False) -> dict | None:
         """Clips of the rocks this play names in ``doc`` (service/gameclips.py),
         asked for if they have not been, and where they stand; None if that
@@ -2069,6 +2086,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         marks the page draws are cut again, with their marks burned in."""
         try:
             rocks = gameclips.player_rocks(doc, play.color, play.slot)
+            clip_queue_stirred()
             return gameclips.ensure(repo, play, run, rocks, doc.get("calibration"), now(),
                                     again=again)
         except Exception:  # noqa: BLE001
@@ -2135,7 +2153,84 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         got = gameclips.state_for(repo, play.id, run)["rocks"].get(rock) or {}
         if got.get("clip") is not True:
             raise HTTPException(404, "no clip for that rock")
-        return {"url": store.presign_get(clip_key(run.video_id, run.id, rock), CLIP_URL_S)}
+        return clip_links(run, rock, src.id)
+
+    def clip_links(run: Run, rock: str, source_id: str | None) -> dict:
+        """Short-lived links to a rock's clip: one to play, one that saves it."""
+        key = clip_key(run.video_id, run.id, rock)
+        name = "curling-{}-e{}-r{}.mp4".format(source_id or run.video_id,
+                                              *rock.split(".")[1:])
+        return {"url": store.presign_get(key, CLIP_URL_S),
+                "download": store.presign_get(key, CLIP_URL_S, download_as=name)}
+
+    # --------------------------------------------------------- shot clips
+    # A clip of any one shot, from its game's page (service/gameclips.py,
+    # ask_shot): anyone may see where one stands and play or save it, and
+    # anyone signed in may ask for one while the game's video is kept.
+    def shot_clip_target(path: str, rock: str) -> tuple[str | None, Run]:
+        """The game a page shows, as (its source id, the run it is read
+        from), for a clip of ``rock`` on it."""
+        m = FLAG_PATH.match(str(path or ""))
+        if not m or not gameclips.GAME_ROCK.match(str(rock or "")):
+            raise HTTPException(404, "no such shot")
+        kind, key = m.groups()
+        if kind == "g":
+            src, run = lookup_source(key)
+            return src.id, run
+        chart, run, _ = lookup(kind, key)
+        return chart.source_id, run
+
+    def shot_clip_answer(run: Run, rock: str, source_id: str | None, state: dict) -> dict:
+        if state["state"] == "ready":
+            return {**state, **clip_links(run, rock, source_id)}
+        if state["state"] == "none" and gameclips.shot_expired(run, now()):
+            return {"state": "expired"}
+        return state
+
+    @app.get("/api/shot-clips")
+    def api_shot_clip(path: str = Query(...), rock: str = Query(...)):
+        """Where a clip of one shot stands; the page asks every few seconds
+        while it is on its way."""
+        clips_on()
+        sid, run = shot_clip_target(path, rock)
+        if run.status != "ready":
+            return {"state": "live" if run.status == "live" else "busy"}
+        return shot_clip_answer(run, rock, sid, gameclips.shot_state(repo, run, rock, now()))
+
+    @app.post("/api/shot-clips")
+    async def api_ask_shot_clip(request: Request, authorization: str | None = Header(default=None)):
+        """Ask for a clip of one shot: ``{path, rock}``, the page and the
+        rock's name (`gameclips.rock_name`)."""
+        clips_on()
+        user = require_user(authorization)
+        try:
+            body = await request.json()
+        except ValueError:
+            raise HTTPException(400, "send JSON") from None
+        if not isinstance(body, dict):
+            raise HTTPException(400, "send a JSON object")
+        rock = str(body.get("rock") or "")
+        sid, run = shot_clip_target(body.get("path"), rock)
+        if run.status == "live":
+            raise HTTPException(409, "clips are cut once the game's stream has ended")
+        if run.status != "ready":
+            raise HTTPException(409, "this game is being analysed again; try later")
+        t = now()
+        state = gameclips.shot_state(repo, run, rock, t)
+        if state["state"] in ("none", "failed"):
+            if gameclips.shot_expired(run, t):
+                raise HTTPException(410, "this game's video is no longer kept")
+            doc = run_doc(run)
+            spec = gameclips.find_rock(doc, rock)
+            if spec is None:
+                raise HTTPException(404, "no such shot")
+            if not repo.bump_rate_limit("shotclip:" + user.id, t, SHOT_CLIP_HOUR_LIMIT,
+                                        SHOT_CLIP_DAY_LIMIT):
+                raise HTTPException(429, "that is a lot of clips; try again later")
+            clip_queue_stirred()
+            state = gameclips.ask_shot(repo, run, sid or "", user.id, spec,
+                                       doc.get("calibration"), t)
+        return shot_clip_answer(run, rock, sid, state)
 
     @app.get("/api/me/plays/{source_id}/clips/{rock}")
     def api_my_play_clip(source_id: str, rock: str,
@@ -2611,8 +2706,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     async def clips_claim(request: Request, authorization: str | None = Header(default=None)):
         require_worker(authorization)
         body = await request.json()
-        job = gameclips.claim(repo, str(body.get("worker_id", "clips")), now(), settings.lease_s)
+        t = now()
+        if clip_quiet["until"] is not None and t < clip_quiet["until"]:
+            return Response(status_code=204)
+        job = gameclips.claim(repo, str(body.get("worker_id", "clips")), t, settings.lease_s)
         if job is None:
+            clip_quiet["until"] = t + timedelta(seconds=CLIP_QUIET_S)
             return Response(status_code=204)
         return {"job": {"id": job.id, "run_id": job.run_id, "video_id": job.video_id,
                         "spec": job.spec, "attempt": job.attempts, "lease_s": settings.lease_s}}

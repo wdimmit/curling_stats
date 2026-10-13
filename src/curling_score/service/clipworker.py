@@ -22,7 +22,10 @@ from curling_score.service.worker import ApiClient, Lost
 
 log = logging.getLogger("curling_score.clipworker")
 
-POLL_IDLE_S = 30.0    # a clip job is asked for when a play is saved: seldom
+# Somebody may be waiting on a clip of one shot (gameclips.ask_shot). The API
+# answers an idle poll from memory (api.CLIP_QUIET_S), so this costs requests,
+# not Firestore reads.
+POLL_IDLE_S = 5.0
 COMPLETE_TRIES = 3    # a finished job's clips are uploaded; a blip must not lose them
 COMPLETE_RETRY_S = 5.0
 POLL_BUSY_S = 2.0     # after one, look again soon: a report opened asks for several

@@ -17,7 +17,7 @@ class Store(Protocol):
     def exists(self, key: str) -> bool: ...
     def list_keys(self, prefix: str) -> list[str]: ...
     def presign_put(self, key: str, content_type: str, expires_s: int = 3600) -> dict: ...
-    def presign_get(self, key: str, expires_s: int = 3600) -> str: ...
+    def presign_get(self, key: str, expires_s: int = 3600, download_as: str | None = None) -> str: ...
 
 
 class MemoryStore:
@@ -44,8 +44,8 @@ class MemoryStore:
     def presign_put(self, key, content_type, expires_s=3600):
         return {"url": f"memory://{key}", "headers": {"Content-Type": content_type}}
 
-    def presign_get(self, key, expires_s=3600):
-        return f"memory://{key}"
+    def presign_get(self, key, expires_s=3600, download_as=None):
+        return f"memory://{key}" + (f"?download={download_as}" if download_as else "")
 
 
 class GcsStore:
@@ -100,10 +100,15 @@ class GcsStore:
         )
         return {"url": url, "headers": {"Content-Type": content_type}}
 
-    def presign_get(self, key, expires_s=3600):
+    def presign_get(self, key, expires_s=3600, download_as=None):
+        """A link to read ``key``; with ``download_as``, one a browser saves
+        under that name rather than plays: a page's own ``download``
+        attribute is ignored for another origin's file."""
+        extra = ({"response_disposition": f'attachment; filename="{download_as}"'}
+                 if download_as else {})
         return self._blob(key).generate_signed_url(
             version="v4", expiration=timedelta(seconds=expires_s), method="GET",
-            **self._sign_kwargs(),
+            **extra, **self._sign_kwargs(),
         )
 
 

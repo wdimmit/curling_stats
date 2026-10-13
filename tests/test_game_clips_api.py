@@ -314,3 +314,158 @@ class TestBackfill:
         assert got["plays"] == 1 and len(got["skipped"]) == 1
         assert got["skipped"][0]["source_id"] == src
         assert jobs(w, src) == []
+
+
+# ------------------------------------------------------------------ shot clips
+from curling_score.service import api as api_mod  # noqa: E402
+from curling_score.service import gameclips  # noqa: E402
+
+
+def released_game(w):  # noqa: F811
+    """A processed game whose rocks were seen released; (chart id, source id)."""
+    doc = played_doc()
+    for s in doc["games"][0]["ends"][0]["shots"]:
+        s["t_release_s"] = s["t_rest_s"] - 20.0
+    w["settings"].game_clips_enabled = True
+    slug, _, src = a_played_game(w, doc)
+    return slug, src
+
+
+def shot(w, path, rock="0.1.13"):  # noqa: F811
+    return w["client"].get("/api/shot-clips", params={"path": path, "rock": rock})
+
+
+def ask(w, path, rock="0.1.13", headers=SARAH):  # noqa: F811
+    return w["client"].post("/api/shot-clips", json={"path": path, "rock": rock},
+                            headers=headers or {})
+
+
+class TestShotClips:
+    """A clip of any shot, asked for from its page."""
+
+    def test_off_there_are_none(self, w):  # noqa: F811
+        _, src = released_game(w)
+        w["settings"].game_clips_enabled = False
+        assert shot(w, G.format(src)).status_code == 404
+        assert ask(w, G.format(src)).status_code == 404
+
+    def test_anyone_may_look_only_someone_signed_in_may_ask(self, w):  # noqa: F811
+        _, src = released_game(w)
+        assert shot(w, G.format(src)).json() == {"state": "none"}
+        assert ask(w, G.format(src), headers=None).status_code == 401
+        r = ask(w, G.format(src))
+        assert r.status_code == 200, r.text
+        assert r.json() == {"state": "queued", "ahead": 0}
+        (job,) = w["repo"].clip_jobs_in_state("queued")
+        run = w["repo"].get_run(w["repo"].get_source(src).current_run_id)
+        assert job.id == gameclips.shot_job_id(run.id, "0.1.13")
+        assert (job.play_id, job.user_id, job.source_id) == ("", "uid-sarah", src)
+        assert [r["name"] for r in job.spec["rocks"]] == ["0.1.13"]
+        assert job.spec["rocks"][0]["line"]["delivery"] == [[0.0, 38.0, 0.1]]
+        assert ask(w, G.format(src), headers=ALEX).json()["state"] == "queued"
+        assert len(w["repo"].clip_jobs_in_state("queued")) == 1
+
+    def test_cut_then_played_and_saved_by_anyone(self, w):  # noqa: F811
+        slug, src = released_game(w)
+        ask(w, G.format(src))
+        job = claim(w).json()["job"]
+        assert shot(w, G.format(src)).json() == {"state": "cutting"}
+        wpost(w, f"/api/worker/clips/{job['id']}/complete",
+              {"rocks": {"0.1.13": {"clip": True, "burned": True}}})
+        got = shot(w, f"/c/{slug}/").json()
+        run = w["repo"].get_run(w["repo"].get_source(src).current_run_id)
+        key = f"runs/{VID}/{run.id}/clips/0.1.13.mp4"
+        assert got == {"state": "ready", "url": f"memory://{key}",
+                       "download": f"memory://{key}?download=curling-{src}-e1-r13.mp4"}
+
+    def test_a_shot_somebody_waits_on_comes_before_a_plays_batch(self, w):  # noqa: F811
+        _, src = released_game(w)
+        put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
+        assert len(jobs(w, src)) == 1
+        w["clock"].advance(5)
+        ask(w, G.format(src), rock="0.1.14", headers=ALEX)
+        assert claim(w).json()["job"]["id"].startswith(gameclips.SHOT_JOB)
+        assert claim(w).json()["job"]["id"] == jobs(w, src)[0].id
+
+    def test_none_once_the_video_is_past_keeping_but_a_cut_one_stays(self, w):  # noqa: F811
+        _, src = released_game(w)
+        ask(w, G.format(src))
+        job = claim(w).json()["job"]
+        wpost(w, f"/api/worker/clips/{job['id']}/complete",
+              {"rocks": {"0.1.13": {"clip": True, "burned": True}}})
+        w["clock"].advance(gameclips.SHOT_CLIP_DAYS * 86400 + 60)
+        assert shot(w, G.format(src)).json()["state"] == "ready"
+        assert shot(w, G.format(src), rock="0.1.15").json() == {"state": "expired"}
+        assert ask(w, G.format(src), rock="0.1.15").status_code == 410
+
+    def test_gone_failed_and_asked_again(self, w):  # noqa: F811
+        _, src = released_game(w)
+        ask(w, G.format(src))
+        ask(w, G.format(src), rock="0.1.15")
+        for _ in range(2):
+            job = claim(w).json()["job"]
+            name = job["spec"]["rocks"][0]["name"]
+            wpost(w, f"/api/worker/clips/{job['id']}/complete", {"rocks": {
+                name: {"clip": None, "reason": "video_gone" if name == "0.1.13" else "cut_failed"}}})
+        assert shot(w, G.format(src)).json() == {"state": "gone"}
+        assert ask(w, G.format(src)).json() == {"state": "gone"}
+        assert shot(w, G.format(src), rock="0.1.15").json() == {"state": "failed",
+                                                                 "reason": "cut_failed"}
+        assert ask(w, G.format(src), rock="0.1.15").json()["state"] == "queued"
+
+    def test_a_rock_never_released_has_nothing_to_cut(self, w):  # noqa: F811
+        w["settings"].game_clips_enabled = True
+        _, _, src = a_played_game(w)
+        assert ask(w, G.format(src)).json() == {"state": "failed", "reason": "no_release"}
+        assert w["repo"].clip_jobs_in_state("queued") == []
+
+    def test_no_such_shot_or_page(self, w):  # noqa: F811
+        _, src = released_game(w)
+        assert ask(w, G.format(src), rock="0.1.99").status_code == 404
+        assert ask(w, G.format(src), rock="13").status_code == 404
+        assert ask(w, "/x/y/").status_code == 404
+        assert shot(w, "/g/nope/").status_code == 404
+
+    def test_not_while_live_or_being_analysed_again(self, w):  # noqa: F811
+        slug, src = released_game(w)
+        run_id = w["repo"].get_chart(slug).run_id
+        w["repo"].update_run(run_id, status="processing")
+        assert shot(w, f"/c/{slug}/").json() == {"state": "busy"}
+        assert ask(w, f"/c/{slug}/").status_code == 409
+        w["repo"].update_run(run_id, status="live")
+        assert shot(w, f"/c/{slug}/").json() == {"state": "live"}
+        assert ask(w, f"/c/{slug}/").status_code == 409
+
+    def test_asking_is_rate_limited(self, w, monkeypatch):  # noqa: F811
+        monkeypatch.setattr(api_mod, "SHOT_CLIP_HOUR_LIMIT", 2)
+        _, src = released_game(w)
+        assert ask(w, G.format(src), rock="0.1.13").status_code == 200
+        assert ask(w, G.format(src), rock="0.1.14").status_code == 200
+        assert ask(w, G.format(src), rock="0.1.13").status_code == 200    # on its way: free
+        assert ask(w, G.format(src), rock="0.1.15").status_code == 429
+
+
+class TestTheClaimsQuietWindow:
+    """An idle clips worker asks every few seconds; Firestore is asked less."""
+
+    def test_an_empty_queue_is_remembered_until_this_instance_queues_a_job(self, w):  # noqa: F811
+        _, src = released_game(w)
+        assert claim(w).status_code == 204
+        a_clip_job(w, src)                                  # queued on the other instance
+        assert claim(w).status_code == 204
+        w["clock"].advance(api_mod.CLIP_QUIET_S + 1)
+        assert claim(w).json()["job"]["id"] == "cj_1"
+        assert claim(w).status_code == 204
+        ask(w, G.format(src))                               # queued here: asked at once
+        assert claim(w).json()["job"]["id"].startswith(gameclips.SHOT_JOB)
+
+
+class TestPlaysClipsSave:
+    def test_a_claimed_rocks_clip_has_a_link_that_saves_it(self, w):  # noqa: F811
+        _, src = released_game(w)
+        put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
+        worker_finishes(w, {"0.1.13": {"clip": True, "burned": True},
+                            "0.1.15": {"clip": True, "burned": True}})
+        got = get(w, f"/api/me/plays/{src}/clips/0.1.13").json()
+        assert got["download"].endswith(f"?download=curling-{src}-e1-r13.mp4")
+        assert got["url"].endswith("/clips/0.1.13.mp4")

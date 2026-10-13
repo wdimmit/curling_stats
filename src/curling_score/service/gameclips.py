@@ -9,6 +9,11 @@ the run the report reads; nothing is written to the play or the run.
 A rock is named ``<game>.<end>.<shot>`` by the numbers the run detected,
 which grading and a start trim keep in ``id``: a clip stays with its rock
 whatever order the chart puts the end in.
+
+Anyone signed in may also ask for a clip of any one shot from its game's page
+(`ask_shot`): a clip job with no play, named for its run and rock, so asking
+twice is one job, and cut to the same file a claimed rock's clip is. The
+clips worker takes these before the plays' batches: somebody is waiting.
 """
 
 import json
@@ -33,6 +38,11 @@ LIVE_SETTLE_S = 600.0
 RETRY_S = 60.0
 # An overlay is ~1 KB a rock; one far bigger is not one.
 MAX_OVERLAY_BYTES = 16_000
+# A clip of one shot, asked for from its page: its job's id begins so.
+SHOT_JOB = "cs_"
+# How long a game's video is taken to stay in the workers' caches after its
+# run was analysed: past it, no clip of a shot is offered.
+SHOT_CLIP_DAYS = 10
 
 _ROCK_KEYS = ("t_release_s", "t_rest_s", "t_enter_s", "t_hog_s", "v_hog_m_s", "t_far_s",
               "target_broom")
@@ -43,6 +53,25 @@ _LINE_KEYS = ("start", "at_hog", "at_broom", "at_tee", "delivery")
 
 def rock_name(game: dict, end: dict, shot: dict) -> str:
     return f"{game['index']}.{timeline.end_identity(end)}.{timeline.shot_identity(shot)}"
+
+
+def rock_spec(game: dict, end: dict, shot: dict) -> dict:
+    """What a clip of ``shot`` is cut from: the clip job's record of a rock."""
+    line = shot.get("line") or {}
+    kept = {k: line[k] for k in _LINE_KEYS if k in line}
+    return {"name": rock_name(game, end, shot), "house": end.get("house"),
+            **{k: shot.get(k) for k in _ROCK_KEYS}, "line": kept or None}
+
+
+def find_rock(doc: dict, name: str) -> dict | None:
+    """The rock named ``name`` in ``doc``, as `rock_spec` records it; None
+    when there is none, or it was never seen."""
+    for game in doc.get("games", []):
+        for end in game.get("ends", []):
+            for s in end.get("shots") or []:
+                if not s.get("missing") and rock_name(game, end, s) == name:
+                    return rock_spec(game, end, s)
+    return None
 
 
 def player_rocks(doc: dict, color: str, slot: int) -> list[dict]:
@@ -59,13 +88,73 @@ def player_rocks(doc: dict, color: str, slot: int) -> list[dict]:
                 if (s.get("color") != color or timeline.slot_of(s, fmt) != slot
                         or s.get("missing")):
                     continue
-                name = rock_name(game, end, s)
-                s["rock"] = name
-                line = s.get("line") or {}
-                kept = {k: line[k] for k in _LINE_KEYS if k in line}
-                out.append({"name": name, "house": end.get("house"),
-                            **{k: s.get(k) for k in _ROCK_KEYS}, "line": kept or None})
+                spec = rock_spec(game, end, s)
+                s["rock"] = spec["name"]
+                out.append(spec)
     return out
+
+
+def shot_job_id(run_id: str, name: str) -> str:
+    return f"{SHOT_JOB}{run_id}_{name}"
+
+
+def shot_expired(run, now) -> bool:
+    """Whether ``run``'s video is past the days it is taken to be kept."""
+    stamps = [t for t in (run.created_at, run.ready_at, run.revised_at) if t is not None]
+    return now - max(stamps) > timedelta(days=SHOT_CLIP_DAYS)
+
+
+def _claim_order(job):
+    # Somebody waiting on one shot comes before a play's batch.
+    return (bool(job.play_id), job.run_after, job.created_at)
+
+
+def queue_ahead(repo, job, now) -> int:
+    """How many clip jobs the worker will take before ``job``, the one it
+    is cutting now among them."""
+    queued = sorted((j for j in repo.clip_jobs_in_state("queued") if j.run_after <= now),
+                    key=_claim_order)
+    before = next((i for i, j in enumerate(queued) if j.id == job.id), len(queued))
+    return before + len(repo.clip_jobs_in_state("running"))
+
+
+def shot_state(repo, run, name: str, now) -> dict:
+    """Where a clip of one shot stands, as its page shows it: ``none`` (not
+    asked for), ``queued`` (with how many are ``ahead``), ``cutting``,
+    ``ready``, ``gone`` (the video has left every cache) or ``failed`` (with
+    its ``reason``). A job from before the run was last analysed is none."""
+    job = repo.get_clip_job(shot_job_id(run.id, name))
+    if job is None or (run.ready_at is not None and job.created_at < run.ready_at):
+        return {"state": "none"}
+    if job.state == "queued":
+        return {"state": "queued", "ahead": queue_ahead(repo, job, now)}
+    if job.state == "running":
+        return {"state": "cutting"}
+    got = (job.rocks.get(name) or {}) if job.state == "done" else {}
+    if got.get("clip") is True:
+        return {"state": "ready"}
+    if got.get("reason") == "video_gone":
+        return {"state": "gone"}
+    return {"state": "failed", "reason": got.get("reason") or "cut_failed"}
+
+
+def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
+             calibration: dict | None, now) -> dict:
+    """Ask for a clip of one shot, ``rock`` as `find_rock` gives it, unless
+    one is made, on its way or cannot be: a failed one is asked for again.
+    Where it then stands, as `shot_state` says."""
+    name = rock["name"]
+    state = shot_state(repo, run, name, now)
+    if state["state"] in ("queued", "cutting", "ready", "gone"):
+        return state
+    if rock.get("t_release_s") is None:
+        return {"state": "failed", "reason": "no_release"}
+    sides = {k: v for k, v in (calibration or {}).items() if k in ("left", "right")}
+    repo.put_clip_job(ClipJob(
+        id=shot_job_id(run.id, name), play_id="", user_id=user_id, source_id=source_id,
+        run_id=run.id, video_id=run.video_id, state="queued", created_at=now, run_after=now,
+        spec={"calibration": sides, "rocks": [rock]}))
+    return shot_state(repo, run, name, now)
 
 
 def state_for(repo, play_id: str, run) -> dict:
@@ -121,7 +210,8 @@ def ensure(repo, play, run, rocks: list[dict], calibration: dict | None, now, *,
 
 
 def claim(repo, worker_id: str, now, lease_s: float):
-    """The next clip job for the clips worker, or None.
+    """The next clip job for the clips worker, or None: a shot somebody
+    asked for first, then the plays' batches, oldest first.
 
     A lease that ran out puts its job back (or fails it, at its last try). A
     job whose game is still live waits: its video reaches a cache only when
@@ -138,7 +228,7 @@ def claim(repo, worker_id: str, now, lease_s: float):
                 repo.update_clip_job(job.id, state="queued", worker_id=None,
                                      lease_expires_at=None, run_after=now)
     ready = sorted((j for j in repo.clip_jobs_in_state("queued") if j.run_after <= now),
-                   key=lambda j: (j.run_after, j.created_at))
+                   key=_claim_order)
     for job in ready:
         run = repo.get_run(job.run_id)
         if run is None:
