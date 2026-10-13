@@ -39,7 +39,7 @@ class TestThrowFromRock:
                      "arrived": True, "t_hog_s": 1003.1, "v_hog_m_s": 3.2, "t_far_s": 1015.5,
                      "broom": {"x": 0.4, "y": 0.0},
                      "line": {"at_hog_x": 0.12, "miss_m": 0.05, "aim_x": None,
-                              "start": {"x": -0.1, "y": 38.2}}}
+                              "start": {"x": -0.1, "y": 38.2}, "delivery": None}}
 
     def test_without_the_far_hog_time_the_arrival_stands_in(self):
         assert gc.throw_from_rock(rock())["t_far_s"] == 1013.0
@@ -49,7 +49,13 @@ class TestThrowFromRock:
                                     line={"at_hog": {"x": 0.1}, "at_broom": None,
                                           "at_tee": {"x": -0.2}}))
         assert t["broom"] is None
-        assert t["line"] == {"at_hog_x": 0.1, "miss_m": None, "aim_x": -0.2, "start": None}
+        assert t["line"] == {"at_hog_x": 0.1, "miss_m": None, "aim_x": -0.2, "start": None,
+                             "delivery": None}
+
+    def test_the_delivery_comes_along_for_its_dots(self):
+        d = [[-3.0, 38.0, 0.1], [0.5, 30.0, 0.15]]
+        line = {**rock()["line"], "delivery": d}
+        assert gc.throw_from_rock(rock(line=line))["line"]["delivery"] == d
 
     def test_no_line_and_never_arrived(self):
         t = gc.throw_from_rock(rock(line=None, t_enter_s=None))
@@ -87,11 +93,11 @@ class TestFindVideo:
 class TestClipRocks:
     VIEWS = {"left": LEFT, "right": RIGHT}
 
-    def test_a_clip_is_cut_from_both_cameras_delivered_and_overlaid(self, tmp_path):
+    def test_a_clip_is_cut_from_both_cameras_marked_and_delivered(self, tmp_path):
         cuts, sent = [], []
 
         def cut(plan, views, out, **kw):
-            cuts.append((plan, views))
+            cuts.append((plan, views, kw))
             Path(out).write_bytes(b"mp4")
 
         def deliver(name, path):
@@ -107,10 +113,11 @@ class TestClipRocks:
         # arrival (1013), the end 1.5 s after rest.
         pieces = [(p.view, p.t0, p.t1) for p in cuts[0][0].pieces]
         assert pieces == [("right", 997.0, 1013.0), ("left", 1013.0, 1021.5)]
-        overlay = got["0.3.5"]["overlay"]
-        assert got["0.3.5"]["clip"] is True
-        assert [(p["t0"], p["t1"]) for p in overlay] == [(0.0, 16.0), (16.0, 24.5)]
-        assert "thrown" not in overlay[0] and "broom" in overlay[1]
+        # The cutter marks it from the rock and the cameras; nothing is left
+        # for the page to draw.
+        assert cuts[0][2]["throw"]["id"] == "0.3.5"
+        assert cuts[0][2]["sideviews"] is self.VIEWS
+        assert got["0.3.5"] == {"clip": True, "burned": True}
         assert list((tmp_path / "w").iterdir()) == []
 
     def test_no_release_no_camera_and_a_failed_cut(self, tmp_path):

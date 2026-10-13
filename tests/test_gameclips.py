@@ -61,7 +61,8 @@ class TestPlayerRocks:
                           "target_broom": {"x": 0.3, "y": 0.0, "seen": 2.0, "confidence": 0.9},
                           "line": {"start": {"x": 0.1, "y": 38.0},
                                    "at_hog": {"x": 0.2, "offset_m": 0.0},
-                                   "at_broom": {"x": 0.35, "miss_m": 0.05}}}
+                                   "at_broom": {"x": 0.35, "miss_m": 0.05},
+                                   "delivery": [[0.0, 38.0, 0.1]]}}
         shots = doc["games"][0]["ends"][0]["shots"]
         assert [s.get("rock") for s in shots] == ["1.2.13", None, "1.2.15", None]
 
@@ -101,6 +102,20 @@ class TestStateFor:
         assert gameclips.state_for(repo, "p1", run) == {"rocks": {"1.2.13": {"clip": True}},
                                                           "pending": False}
 
+    def test_a_clip_cut_again_replaces_it_and_one_on_its_way_or_failed_does_not(self):
+        repo, run, _ = world()
+        queued(repo, ["1.2.13", "1.2.15", "1.2.11"], state="done", id="cj_a",
+               results={n: {"clip": True, "overlay": [{"t0": 0.0, "t1": 1.0}]}
+                        for n in ("1.2.13", "1.2.15", "1.2.11")})
+        queued(repo, ["1.2.13"], state="done", id="cj_b", at=T + timedelta(seconds=1),
+               results={"1.2.13": {"clip": True, "burned": True}})
+        queued(repo, ["1.2.15"], state="running", id="cj_c", at=T + timedelta(seconds=2))
+        queued(repo, ["1.2.11"], state="done", id="cj_d", at=T + timedelta(seconds=3),
+               results={"1.2.11": {"clip": None, "reason": "video_gone"}})
+        got = gameclips.state_for(repo, "p1", run)
+        old = {"clip": True, "overlay": [{"t0": 0.0, "t1": 1.0}]}
+        assert got == {"rocks": {"1.2.13": {"clip": True, "burned": True},
+                                 "1.2.15": old, "1.2.11": old}, "pending": False}
 
     def test_jobs_from_before_the_run_was_analysed_again_do_not_count(self):
         repo, run, _ = world()
@@ -132,6 +147,22 @@ class TestEnsure:
         gameclips.ensure(repo, play, run, rocks, CAL, T)
         newest = repo.clip_jobs_for_play("p1")[-1]
         assert [r["name"] for r in newest.spec["rocks"]] == ["1.2.15"]
+
+    def test_again_asks_for_clips_whose_marks_the_page_draws(self):
+        repo, run, play = world()
+        queued(repo, ["1.2.13", "1.2.15", "1.2.11"], state="done",
+               results={"1.2.13": {"clip": True, "overlay": []},
+                        "1.2.15": {"clip": True, "burned": True},
+                        "1.2.11": {"clip": None, "reason": "video_gone"}})
+        rocks = gameclips.player_rocks(a_doc([shot(n, "red", 4) for n in (11, 13, 15)]),
+                                       "red", 4)
+        gameclips.ensure(repo, play, run, rocks, CAL, T + timedelta(seconds=1))
+        assert len(repo.clip_jobs_for_play("p1")) == 1
+        got = gameclips.ensure(repo, play, run, rocks, CAL, T + timedelta(seconds=1), again=True)
+        newest = repo.clip_jobs_for_play("p1")[-1]
+        assert [r["name"] for r in newest.spec["rocks"]] == ["1.2.13"]
+        # The old clip plays on until the new one is cut.
+        assert got["rocks"]["1.2.13"] == {"clip": True, "overlay": []}
 
 
 class TestClaim:
@@ -213,11 +244,14 @@ class TestResults:
             "1.2.13": {"clip": True, "overlay": [{"t0": 0.0, "t1": 2.0}], "extra": 1},
             "1.2.15": {"clip": None, "reason": "video_gone"},
             "1.2.9": {"clip": True, "overlay": [{"t0": 0.0, "pts": "x" * 20_000}]},
+            "1.2.7": {"clip": True, "burned": True},
             "1.2.99": {"clip": True}})
         assert got == {"1.2.13": {"clip": True, "overlay": [{"t0": 0.0, "t1": 2.0}]},
                        "1.2.15": {"clip": None, "reason": "video_gone"},
                        "1.2.9": {"clip": True},
-                       "1.2.7": {"clip": None, "reason": "cut_failed"}}
+                       "1.2.7": {"clip": True, "burned": True}}
+        assert gameclips.clean_results(job, {"1.2.7": {"clip": True, "burned": "yes"}})[
+            "1.2.7"] == {"clip": True}
         assert gameclips.clean_results(job, {"1.2.13": {"clip": None, "reason": "nonsense"}})[
             "1.2.13"] == {"clip": None, "reason": "cut_failed"}
 

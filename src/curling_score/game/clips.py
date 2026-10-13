@@ -4,7 +4,8 @@ The clips worker (service/clipworker.py) is handed each rock as the game's
 timeline has it (service/gameclips.player_rocks) and the long cameras as the
 run calibrated them. A rock is turned into the practice throw record, so the
 practice cutter plans its pieces -- the camera facing the thrower, then the one
-behind -- and the practice overlay places the broom and lines in each.
+behind -- and the practice overlay places the broom and lines in each, which
+game/clipburn.py burns into the picture with the delivery's dots.
 
 A game's times are on its video's own clock, so the cut needs no offset. The
 far hog line is the camera switch; timelines from before it was recorded
@@ -16,9 +17,9 @@ import subprocess
 import time
 from pathlib import Path
 
+from curling_score.game import clipburn
 from curling_score.geometry.sideview import SideView
 from curling_score.practice import clips as practice_clips
-from curling_score.practice import overlay as practice_overlay
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ def throw_from_rock(rock: dict) -> dict:
         out_line = {"at_hog_x": (line.get("at_hog") or {}).get("x"),
                     "miss_m": (line.get("at_broom") or {}).get("miss_m"),
                     "aim_x": (line.get("at_tee") or {}).get("x"),
-                    "start": line.get("start")}
+                    "start": line.get("start"), "delivery": line.get("delivery")}
     return {
         "id": rock["name"], "house": rock["house"],
         "t_release_s": rock.get("t_release_s"), "t_rest_s": rock.get("t_rest_s"),
@@ -78,9 +79,9 @@ def find_video(video_id: str, roots) -> Path | None:
     return None
 
 
-def clip_rocks(rocks, video, sideviews, workdir, deliver, *, cut=practice_clips.cut,
+def clip_rocks(rocks, video, sideviews, workdir, deliver, *, cut=clipburn.cut,
                on_rock=None) -> dict:
-    """Cut, deliver and overlay each rock's clip, one at a time.
+    """Cut, mark and deliver each rock's clip, one at a time.
 
     ``deliver(name, path) -> bool`` sends a cut clip on; the file is removed
     afterwards whatever happens. ``on_rock(name, result)`` hears of each rock
@@ -109,7 +110,7 @@ def _one(throw, plan, views, sideviews, workdir, deliver, cut) -> dict:
     out = workdir / f"{throw['id']}.mp4"
     began = time.monotonic()
     try:
-        cut(plan, views, out)
+        cut(plan, views, out, throw=throw, sideviews=sideviews)
     except (subprocess.SubprocessError, OSError) as exc:
         log.warning("clip %s was not cut: %s", throw["id"], exc)
         out.unlink(missing_ok=True)
@@ -122,9 +123,5 @@ def _one(throw, plan, views, sideviews, workdir, deliver, cut) -> dict:
         return {"clip": None, "reason": "cut_failed"}
     log.info("clip %s: %.1f s of video, cut in %.1f s", throw["id"],
              plan.end - plan.pieces[0].t0, time.monotonic() - began)
-    try:
-        lines = practice_overlay.overlay(throw, plan, sideviews)
-    except Exception as exc:  # noqa: BLE001 - the clip stands without its lines
-        log.warning("overlay %s failed: %r", throw["id"], exc)
-        lines = None
-    return {"clip": True, "overlay": lines} if lines else {"clip": True}
+    # Its marks are in its pixels: the page draws nothing over it.
+    return {"clip": True, "burned": True}

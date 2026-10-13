@@ -266,8 +266,8 @@ class TestReadingClips:
 class TestBackfill:
     """Plays saved before clips existed get theirs asked for in one go."""
 
-    def backfill(self, w, headers=ADMIN):  # noqa: F811
-        return w["client"].post("/api/admin/clips/backfill", headers=headers)
+    def backfill(self, w, headers=ADMIN, **params):  # noqa: F811
+        return w["client"].post("/api/admin/clips/backfill", headers=headers, params=params)
 
     def test_for_the_admin_alone_and_only_with_clips_on(self, w):  # noqa: F811
         assert self.backfill(w, headers={}).status_code == 401
@@ -287,6 +287,23 @@ class TestBackfill:
         assert [x["name"] for x in alex()[0].spec["rocks"]] == ["0.1.2", "0.1.4"]
         self.backfill(w)
         assert len(jobs(w, src)) == 1 and len(alex()) == 1
+
+    def test_recut_asks_again_for_clips_without_their_marks_burned_in(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
+        w["settings"].game_clips_enabled = True
+        self.backfill(w)
+        worker_finishes(w, {"0.1.13": {"clip": True, "overlay": [{"t0": 0.0, "t1": 2.0}]},
+                            "0.1.15": {"clip": None, "reason": "video_gone"}})
+        self.backfill(w)
+        assert len(jobs(w, src)) == 1
+        assert self.backfill(w, recut="true").status_code == 200
+        assert [x["name"] for x in jobs(w, src)[-1].spec["rocks"]] == ["0.1.13"]
+        worker_finishes(w, {"0.1.13": {"clip": True, "burned": True}})
+        got = get(w, f"/api/me/plays/{src}/clips").json()["clips"]
+        assert got["rocks"]["0.1.13"] == {"clip": True, "burned": True}
+        self.backfill(w, recut="true")
+        assert len(jobs(w, src)) == 2
 
     def test_a_game_that_cannot_be_read_is_skipped_and_said(self, w):  # noqa: F811
         slug, _, src = a_played_game(w)

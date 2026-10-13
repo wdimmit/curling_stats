@@ -146,12 +146,38 @@ def cut(plan: ClipPlan, views: dict, out_path, *, t0_s: float = 0.0, size=CLIP_S
     rectangle of it, or None for a whole frame. Times are on the stream's
     clock; ``t0_s`` is where the sources begin on it.
 
+    Bounded by `-fs` and a timeout, as `harvest/clips.py` learned to be.
+    """
+    args = decode_args(plan, views, t0_s=t0_s, size=size, fps=fps)
+    args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "27", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", "-fs", str(CLIP_MAX_BYTES), str(out_path)]
+    run(args, check=True, capture_output=True, timeout=timeout_s)
+    check_clip(out_path)
+
+
+def check_clip(out_path) -> None:
+    """Raise unless ``out_path`` is a clip with footage in it. A piece past the
+    end of the source is not an error to ffmpeg: it writes an MP4 with no
+    frames, which would play as a dead player."""
+    try:
+        got = frames.probe(out_path)
+    except Exception as exc:  # noqa: BLE001 - no file, or no video stream in it
+        raise OSError(f"ffmpeg wrote no clip at {out_path}: {exc}") from exc
+    if got.duration_s < MIN_CLIP_S:
+        raise OSError(f"the clip at {out_path} is {got.duration_s:.2f} s long")
+
+
+def decode_args(plan: ClipPlan, views: dict, *, t0_s: float = 0.0, size=CLIP_SIZE,
+                fps: int = CLIP_FPS) -> list:
+    """ffmpeg's arguments up to its output: ``plan``'s pieces cut from their
+    views, each scaled to ``size`` at ``fps``, joined and mapped as the one
+    video stream. `cut` encodes it; a burner (game/clipburn.py) reads it raw.
+
     Timestamps are kept (``-copyts``) and each piece is trimmed by the source's
     own timestamps, the first frame's start added, which is the frame reader's
     convention (`frames.window`): a release read at t is at t here. An MPEG-TS
     recording has no index and a seek lands on the keyframe after its target,
-    so each input is entered `frames.seek_lead` early. Bounded by `-fs` and a
-    timeout, as `harvest/clips.py` learned to be.
+    so each input is entered `frames.seek_lead` early.
     """
     sources = list(dict.fromkeys(views[p.view][0] for p in plan.pieces))
     width, height = size
@@ -184,18 +210,7 @@ def cut(plan: ClipPlan, views: dict, out_path, *, t0_s: float = 0.0, size=CLIP_S
                      f"fps={fps}[p{k}]")
     graph.append("".join(f"[p{k}]" for k in range(len(plan.pieces)))
                  + f"concat=n={len(plan.pieces)}:v=1:a=0[v]")
-    args += ["-filter_complex", ";".join(graph), "-map", "[v]", "-an",
-             "-c:v", "libx264", "-preset", "veryfast", "-crf", "27", "-pix_fmt", "yuv420p",
-             "-movflags", "+faststart", "-fs", str(CLIP_MAX_BYTES), str(out_path)]
-    run(args, check=True, capture_output=True, timeout=timeout_s)
-    # A piece past the end of the source is not an error to ffmpeg: it writes
-    # an MP4 with no frames, which would play as a dead player.
-    try:
-        got = frames.probe(out_path)
-    except Exception as exc:  # noqa: BLE001 - no file, or no video stream in it
-        raise OSError(f"ffmpeg wrote no clip at {out_path}: {exc}") from exc
-    if got.duration_s < MIN_CLIP_S:
-        raise OSError(f"the clip at {out_path} is {got.duration_s:.2f} s long")
+    return args + ["-filter_complex", ";".join(graph), "-map", "[v]", "-an"]
 
 
 class Clipper:

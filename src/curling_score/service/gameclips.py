@@ -36,8 +36,9 @@ MAX_OVERLAY_BYTES = 16_000
 
 _ROCK_KEYS = ("t_release_s", "t_rest_s", "t_enter_s", "t_hog_s", "v_hog_m_s", "t_far_s",
               "target_broom")
-# What the cutter and overlay read of a line; its paths are left behind.
-_LINE_KEYS = ("start", "at_hog", "at_broom", "at_tee")
+# What the cutter and its marks read of a line: the delivery is drawn, the
+# other paths are left behind.
+_LINE_KEYS = ("start", "at_hog", "at_broom", "at_tee", "delivery")
 
 
 def rock_name(game: dict, end: dict, shot: dict) -> str:
@@ -71,16 +72,19 @@ def state_for(repo, play_id: str, run) -> dict:
     """What has come of this play's clips on ``run``, from its clip jobs
     there, oldest first: a queued or running job's rocks are on their way, a
     finished one's are its results, a failed one's failed. A rock once made
-    stays made. Jobs asked for before the run was last analysed (its
-    ``ready_at``) are ignored: they were cut from older times, so the report
-    asks again with the run's current rocks."""
+    stays made, and a later clip of it replaces it (the same file, cut again:
+    `recut`); one still being cut, or that failed, leaves it as it was. Jobs
+    asked for before the run was last analysed (its ``ready_at``) are
+    ignored: they were cut from older times, so the report asks again with
+    the run's current rocks."""
     rocks = {}
     jobs = [j for j in repo.clip_jobs_for_play(play_id) if j.run_id == run.id
             and (run.ready_at is None or j.created_at >= run.ready_at)]
     for job in sorted(jobs, key=lambda j: j.created_at):
         for r in job.spec.get("rocks", []):
             name = r["name"]
-            if (rocks.get(name) or {}).get("clip") is True:
+            if ((rocks.get(name) or {}).get("clip") is True
+                    and not (job.state == "done" and (job.rocks.get(name) or {}).get("clip") is True)):
                 continue
             if job.state in ("queued", "running"):
                 rocks[name] = {"clip": False}
@@ -91,12 +95,21 @@ def state_for(repo, play_id: str, run) -> dict:
     return {"rocks": rocks, "pending": any(v.get("clip") is False for v in rocks.values())}
 
 
-def ensure(repo, play, run, rocks: list[dict], calibration: dict | None, now) -> dict:
+def recut(state: dict, name: str) -> bool:
+    """Whether a rock's clip is from before marks were burned in."""
+    got = state["rocks"].get(name) or {}
+    return got.get("clip") is True and not got.get("burned")
+
+
+def ensure(repo, play, run, rocks: list[dict], calibration: dict | None, now, *,
+           again: bool = False) -> dict:
     """Ask for clips of those of ``rocks`` this play has nothing for on
     ``run`` yet -- none twice, and a failed one not again on that run -- and
-    say where they all stand."""
+    say where they all stand. ``again`` asks too for those whose clip has its
+    marks drawn by the page rather than in it (`recut`)."""
     state = state_for(repo, play.id, run)
-    todo = [r for r in rocks if r["name"] not in state["rocks"]]
+    todo = [r for r in rocks if r["name"] not in state["rocks"]
+            or (again and recut(state, r["name"]))]
     if not todo:
         return state
     sides = {k: v for k, v in (calibration or {}).items() if k in ("left", "right")}
@@ -151,8 +164,8 @@ def claim(repo, worker_id: str, now, lease_s: float):
 
 def clean_results(job, got) -> dict:
     """The worker's word on each rock the job asked for, in the shapes the
-    page reads: a clip with its overlay, or none and why. Anything else it
-    says is dropped; a rock it says nothing of failed."""
+    page reads: a clip, its marks burned in or with its overlay, or none and
+    why. Anything else it says is dropped; a rock it says nothing of failed."""
     out = {}
     got = got if isinstance(got, dict) else {}
     for r in job.spec.get("rocks", []):
@@ -160,6 +173,8 @@ def clean_results(job, got) -> dict:
         one = got.get(name)
         if isinstance(one, dict) and one.get("clip") is True:
             item = {"clip": True}
+            if one.get("burned") is True:
+                item["burned"] = True
             lines = one.get("overlay")
             if isinstance(lines, list) and len(json.dumps(lines)) <= MAX_OVERLAY_BYTES:
                 item["overlay"] = lines
