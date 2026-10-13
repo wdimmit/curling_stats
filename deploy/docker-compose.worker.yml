@@ -22,9 +22,11 @@ services:
       # ~4 GB each, before any is kept in the cache. The disk also holds the
       # training data, under /data/curling.
       WORKER_MIN_FREE_GB: "100"
-      # Live recordings are kept this many days -- a rolling week of league
-      # nights, for replaying what the nightly review flags -- then go.
-      WORKER_RECORDING_DAYS: "7"
+      # Live recordings are kept this many days -- ten days of league nights,
+      # for replaying what the nightly review flags and for the Clip… of a
+      # shot the game page offers that long (service/gameclips.py
+      # SHOT_CLIP_DAYS) -- then go. A league week records ~80-90 GB.
+      WORKER_RECORDING_DAYS: "10"
       YTDLP_POT_PROVIDER: http://pot:4416
       # A worker claims live jobs greedily up to this, so 6 here would take all
       # five of a night's streams. Three workers at 3 give 9 slots: most of
