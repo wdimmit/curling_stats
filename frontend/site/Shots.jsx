@@ -226,7 +226,7 @@ function RockTable({ rows, clips, open, setOpen, player }) {
                 <tr className="clip-row">
                   <td colSpan={heads.length + 5}>
                     <ClipPlayer src={`${reportUrl(r.sourceId, player)}/clips/${encodeURIComponent(r.rock)}`}
-                                overlay={clip.overlay} />
+                                overlay={clip.overlay} burned={clip.burned} />
                   </td>
                 </tr>
               )}

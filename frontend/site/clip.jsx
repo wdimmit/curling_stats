@@ -1,6 +1,8 @@
 /* A clip of one throw with the broom and lines drawn over it -- the practice
  * pages' and My shots'. `src` is the API path that answers with a short-lived
  * link ({url}); `overlay` is the worker's per-piece list (practice/overlay.py).
+ * A `burned` clip has its marks in its own pixels (game/clipburn.py), so a
+ * saved copy keeps them: nothing is drawn over it, and they cannot be hidden.
  * A link that has expired under an open page is asked for once more. */
 import { useEffect, useRef, useState } from "react";
 import { authedFetch } from "./auth.js";
@@ -72,7 +74,7 @@ function ClipLines({ overlay, video }) {
   );
 }
 
-export function ClipPlayer({ src, overlay, autoPlay = false }) {
+export function ClipPlayer({ src, overlay, burned = false, autoPlay = false }) {
   const [url, setUrl] = useState(null);
   const [again, setAgain] = useState(false);
   const [lines, setLines] = useState(savedLines);
@@ -96,9 +98,14 @@ export function ClipPlayer({ src, overlay, autoPlay = false }) {
       <div className="clip-box" key={url}>
         <video ref={video} className="practice-clip" src={url} controls playsInline
                muted={autoPlay} autoPlay={autoPlay} preload="metadata" onError={retry} />
-        {lines && overlay && <ClipLines overlay={overlay} video={video} />}
+        {lines && overlay && !burned && <ClipLines overlay={overlay} video={video} />}
       </div>
-      {overlay && (
+      {burned ? (
+        <p className="clip-tools muted">
+          Solid: the line it was thrown on · dashed: hack to broom · ring: the broom · dots: the
+          rock from the hack to past the hog line
+        </p>
+      ) : overlay && (
         <p className="clip-tools muted">
           <button onClick={toggle}>{lines ? "Hide lines" : "Show lines"}</button>
           {lines && <> Solid: the line it was thrown on · dashed: hack to broom · ring: the broom</>}

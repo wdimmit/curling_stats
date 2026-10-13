@@ -308,7 +308,7 @@ export function missScatter(rows, turn, box = SCATTERBOX) {
 }
 
 /* A rock's clip from its game's clip state (/api/me/plays/{id}/doc's
- * `clips`), when one can be played: {clip: true, overlay?}; else null. */
+ * `clips`), when one can be played: {clip: true, burned?, overlay?}; else null. */
 export function rockClip(row, clips) {
   const c = row.rock ? clips?.rocks?.[row.rock] : null;
   return c && c.clip === true ? c : null;
