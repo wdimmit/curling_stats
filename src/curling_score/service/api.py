@@ -2155,8 +2155,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         """Clips of the rocks this play names in ``doc`` (service/gameclips.py),
         asked for if they have not been, and where they stand; None if that
         went wrong -- the report and the play stand without them. Marks the
-        player's rocks in ``doc`` with their names. ``again``: those whose
-        marks the page draws are cut again, with their marks burned in."""
+        player's rocks in ``doc`` with their names. ``again``: those cut in
+        an older style are cut again."""
         try:
             rocks = gameclips.player_rocks(doc, play.color, play.slot)
             clip_queue_stirred()
@@ -2943,8 +2943,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         would: for plays saved before clips existed. Nothing is cut here, and
         a game whose video has left every cache comes back video_gone from the
         clips worker. A game that cannot be read now is skipped and said.
-        ``recut`` asks again for clips cut before their marks were burned in;
-        each keeps its old clip until the new one is made. Ask it once: a
+        ``recut`` asks again for clips cut in an older style
+        (gameclips.CLIP_STYLE); each keeps its old clip until the new one is
+        made. Ask it once: a
         second ask before the first is cut queues every rock again."""
         require_admin(authorization)
         clips_on()

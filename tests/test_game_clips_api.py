@@ -3,6 +3,7 @@ and the player's (service/api.py, service/gameclips.py)."""
 
 from datetime import timedelta
 
+from curling_score.service import gameclips
 from curling_score.service.records import ClipJob, play_id
 from curling_score.service.store import timeline_key
 from tests.test_plays import a_played_game, get, put  # noqa: F401
@@ -299,9 +300,11 @@ class TestBackfill:
         assert len(jobs(w, src)) == 1
         assert self.backfill(w, recut="true").status_code == 200
         assert [x["name"] for x in jobs(w, src)[-1].spec["rocks"]] == ["0.1.13"]
-        worker_finishes(w, {"0.1.13": {"clip": True, "burned": True}})
+        worker_finishes(w, {"0.1.13": {"clip": True, "burned": True,
+                                       "style": gameclips.CLIP_STYLE}})
         got = get(w, f"/api/me/plays/{src}/clips").json()["clips"]
-        assert got["rocks"]["0.1.13"] == {"clip": True, "burned": True}
+        assert got["rocks"]["0.1.13"] == {"clip": True, "burned": True,
+                                          "style": gameclips.CLIP_STYLE}
         self.backfill(w, recut="true")
         assert len(jobs(w, src)) == 2
 
@@ -318,7 +321,6 @@ class TestBackfill:
 
 # ------------------------------------------------------------------ shot clips
 from curling_score.service import api as api_mod  # noqa: E402
-from curling_score.service import gameclips  # noqa: E402
 
 
 def released_game(w):  # noqa: F811

@@ -15,6 +15,11 @@ back to the whole camera once the rock is past them: zoomed for its whole
 piece, the rock runs out of the bottom of the picture seconds before the cut
 to the other camera (s_1JVE e3 r12, 2026-10-12).
 
+The rock's arrival is shown from the overhead camera above the house it was
+thrown to (game/clips.plan), turned so the rock comes up the picture as it
+would seen from behind the thrower, and kept at its own shape: full height,
+black either side (`Panel`). Its marks are placed by its own calibration.
+
 ffmpeg cuts the pieces as `practice/clips.cut` does, but hands them over raw;
 this frames and marks each picture and pipes it to a second ffmpeg to encode.
 """
@@ -69,6 +74,64 @@ DOT_R = 3                        # in the zoomed picture; smaller as it pulls ba
 DOT_R_MIN = 2
 DOT_GAP = 6                      # dots closer than this in the zoomed picture are one
 DOT_GAP_WHOLE = 5                # ... or in a picture of the whole camera
+
+
+@dataclass(frozen=True)
+class Panel:
+    """An overhead panel as a run calibrated it (geometry/calibrate.PanelCalib,
+    as the timeline records it): where it is in the stream, where its house's
+    tee is in it, its scale, and whether the thrower's end is at its top."""
+    rect: tuple
+    center_px: tuple
+    px_per_m: float
+    flipped: bool
+
+    @classmethod
+    def from_calibration(cls, cal: dict | None):
+        """The panel the timeline's ``calibration[house]`` records, or None."""
+        try:
+            return cls(rect=tuple(int(v) for v in cal["rect"]),
+                         center_px=(float(cal["center_px"][0]), float(cal["center_px"][1])),
+                         px_per_m=float(cal["px_per_m"]), flipped=bool(cal["flipped"]))
+        except (KeyError, TypeError, ValueError, IndexError):
+            return None
+
+    def to_frac(self, x: float, y: float) -> list:
+        """A point on the ice of this panel's house, in the house's frame (as
+        `calibrate.PanelCalib.to_pixels` takes it), as ``[u, v]`` fractions
+        of the panel turned so the thrower's end is at the bottom."""
+        if self.flipped:
+            x, y = -x, -y
+        u = (self.center_px[0] + x * self.px_per_m) / self.rect[2]
+        v = (self.center_px[1] + y * self.px_per_m) / self.rect[3]
+        return [1 - u, 1 - v] if self.flipped else [u, v]
+
+    def box(self, size) -> tuple:
+        """The part of the panel the clip's picture shows: all of its height,
+        at its own shape, with black either side."""
+        width, height = size
+        w = width * self.rect[3] / (height * self.rect[2])
+        return ((1 - w) / 2, 0.0, w, 1.0)
+
+
+# A line on the ice is sampled this finely when drawn over a panel.
+PANEL_SAMPLES = 40
+
+
+def panel_marks(throw, panel: Panel) -> dict:
+    """The thrown line, the aim line and the broom over the overhead panel."""
+    def line(ends):
+        if ends is None:
+            return None
+        (ax, ay), (bx, by) = ends
+        n = PANEL_SAMPLES
+        return [panel.to_frac(ax + (bx - ax) * i / (n - 1), ay + (by - ay) * i / (n - 1))
+                for i in range(n)]
+    thrown, aim = practice_overlay.lines_on_ice(throw)
+    broom = throw.get("broom")
+    return {"thrown": line(thrown), "aim": line(aim),
+            "broom": None if broom is None else panel.to_frac(broom["x"], broom["y"]),
+            "dots": []}
 
 
 @dataclass(frozen=True)
@@ -265,16 +328,20 @@ def _frame(img, box, size):
     sx = width / (w * img.shape[1])
     sy = height / (h * img.shape[0])
     m = np.array([[sx, 0, -u0 * img.shape[1] * sx], [0, sy, -v0 * img.shape[0] * sy]])
-    return cv2.warpAffine(img, m, size, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    # A box past the panel's sides (a `Panel.box`) is black there.
+    return cv2.warpAffine(img, m, size, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
 
 
 def render(plan, views, out_path, piece_marks, fr: Framing | None = None, *,
-           size=practice_clips.CLIP_SIZE, fps: int = practice_clips.CLIP_FPS,
+           panels: dict | None = None, size=practice_clips.CLIP_SIZE,
+           fps: int = practice_clips.CLIP_FPS,
            timeout_s: float = practice_clips.CUT_TIMEOUT_S) -> None:
     """Cut ``plan`` from ``views`` (as `practice_clips.cut` takes them) into
     ``out_path``, framed by ``fr`` and with ``piece_marks`` (one per piece,
-    `marks`) burned in. Raises OSError or a SubprocessError when no clip was
-    made, as `cut` does."""
+    `marks`) burned in. A view named in ``panels`` is an overhead panel
+    (`Panel`): turned and kept at its own shape. Raises OSError or a
+    SubprocessError when no clip was made, as `cut` does."""
+    panels = panels or {}
     width, height = size
     work = (int(round(width * WORK_SCALE)), int(round(height * WORK_SCALE)))
     frame_bytes = work[0] * work[1] * 3
@@ -319,7 +386,13 @@ def render(plan, views, out_path, piece_marks, fr: Framing | None = None, *,
                 k = next((j for j, (a, b) in enumerate(spans) if tc < b), len(spans) - 1)
                 p = plan.pieces[k]
                 ts = p.t0 + (tc - spans[k][0])
-                box = box_at(fr, p.view, ts)
+                panel = panels.get(p.view)
+                if panel is not None:
+                    box = panel.box(size)
+                    if panel.flipped:
+                        img = cv2.flip(img, -1)
+                else:
+                    box = box_at(fr, p.view, ts)
                 out = _frame(img, box, size)
                 draw(out, pieces[k], box, ts)
                 try:
@@ -351,14 +424,18 @@ def render(plan, views, out_path, piece_marks, fr: Framing | None = None, *,
     practice_clips.check_clip(out_path)
 
 
-def cut(plan, views, out_path, *, throw=None, sideviews=None, **kw) -> None:
-    """`render` for ``throw``: its framing and its marks from ``sideviews``.
+def cut(plan, views, out_path, *, throw=None, sideviews=None, panels=None, **kw) -> None:
+    """`render` for ``throw``: its framing, and its marks from ``sideviews``
+    and, on a piece from an overhead panel, from ``panels`` (view -> `Panel`).
     Marks that cannot be placed cost the clip its marks, not the clip."""
+    panels = panels or {}
     fr, m = None, [{} for _ in plan.pieces]
     if throw is not None:
         try:
             fr, m = framing(throw, plan, sideviews), marks(throw, plan, sideviews)
+            m = [panel_marks(throw, panels[p.view]) if p.view in panels else got
+                 for p, got in zip(plan.pieces, m)]
         except Exception as exc:  # noqa: BLE001
             log.warning("marks for %s failed: %r", throw.get("id"), exc)
             fr, m = None, [{} for _ in plan.pieces]
-    render(plan, views, out_path, m, fr, **kw)
+    render(plan, views, out_path, m, fr, panels=panels, **kw)

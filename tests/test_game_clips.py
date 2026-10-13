@@ -7,7 +7,9 @@ import pytest
 
 from curling_score import analyze
 from curling_score.game import clips as gc
+from curling_score.game.clipburn import Panel
 from curling_score.geometry.sideview import SideView
+from curling_score.service import gameclips
 
 # The left camera with a lateral fit, the right without: the right's piece
 # of a clip is cut but has no lines.
@@ -37,6 +39,7 @@ class TestThrowFromRock:
         t = gc.throw_from_rock(rock(t_hog_s=1003.1, v_hog_m_s=3.2, t_far_s=1015.5))
         assert t == {"id": "0.3.5", "house": "top", "t_release_s": 1000.0, "t_rest_s": 1020.0,
                      "arrived": True, "t_hog_s": 1003.1, "v_hog_m_s": 3.2, "t_far_s": 1015.5,
+                     "t_enter_s": 1013.0,
                      "broom": {"x": 0.4, "y": 0.0},
                      "line": {"at_hog_x": 0.12, "miss_m": 0.05, "aim_x": None,
                               "start": {"x": -0.1, "y": 38.2}, "delivery": None}}
@@ -133,8 +136,29 @@ class TestClipRocks:
         # for the page to draw.
         assert cuts[0][2]["throw"]["id"] == "0.3.5"
         assert cuts[0][2]["sideviews"] is self.VIEWS
-        assert got["0.3.5"] == {"clip": True, "burned": True}
+        assert got["0.3.5"] == {"clip": True, "burned": True, "style": gc.CLIP_STYLE}
         assert list((tmp_path / "w").iterdir()) == []
+
+    def test_with_the_overhead_panel_the_arrival_is_seen_from_above(self, tmp_path):
+        cuts = []
+
+        def cut(plan, views, out, **kw):
+            cuts.append((plan, views, kw))
+            Path(out).write_bytes(b"mp4")
+
+        video = tmp_path / "v.mp4"
+        top = Panel(rect=(812, 11, 298, 510), center_px=(145.0, 136.0), px_per_m=67.0,
+                    flipped=False)
+        got = gc.clip_rocks([rock()], video, self.VIEWS, tmp_path / "w", lambda n, p: True,
+                            panels={"top": top}, cut=cut)
+        plan, views, kw = cuts[0]
+        # To the top house: the right camera faces the thrower; the top panel
+        # takes over half a second before the rock enters it (1013).
+        assert [(p.view, p.t0, p.t1) for p in plan.pieces] == \
+            [("right", 997.0, 1012.5), (gc.OVERHEAD, 1012.5, 1021.5)]
+        assert views[gc.OVERHEAD] == (video, top.rect)
+        assert kw["panels"] == {gc.OVERHEAD: top}
+        assert got["0.3.5"]["style"] == gc.CLIP_STYLE
 
     def test_no_release_no_camera_and_a_failed_cut(self, tmp_path):
         def cut(plan, views, out, **kw):
@@ -169,3 +193,56 @@ class TestClipRocks:
             gc.clip_rocks([rock()], tmp_path / "v.mp4", self.VIEWS, tmp_path / "w", deliver,
                           cut=made)
         assert list((tmp_path / "w").iterdir()) == []
+
+
+PANEL = Panel(rect=(812, 554, 298, 516), center_px=(139.5, 347.7), px_per_m=75.4, flipped=True)
+
+
+class TestPlan:
+    """A game clip's pieces: the camera facing the thrower, then the overhead
+    camera above the house the rock was thrown to."""
+    VIEWS = {"left": LEFT, "right": RIGHT}
+
+    def pieces(self, throw, panel=PANEL, views=None):
+        got = gc.plan(throw, views or self.VIEWS, panel)
+        return None if got is None else [(p.view, p.t0, p.t1) for p in got.pieces]
+
+    def test_from_just_before_the_rock_enters_the_panel_or_crosses_the_far_hog(self):
+        t = gc.throw_from_rock(rock(t_far_s=1014.0))
+        assert self.pieces(t) == [("right", 997.0, 1012.5), (gc.OVERHEAD, 1012.5, 1021.5)]
+        t = gc.throw_from_rock(rock(t_far_s=1011.0))
+        assert self.pieces(t) == [("right", 997.0, 1010.5), (gc.OVERHEAD, 1010.5, 1021.5)]
+
+    def test_the_camera_behind_where_there_is_no_panel_or_no_arrival(self):
+        t = gc.throw_from_rock(rock())
+        assert self.pieces(t, panel=None) == [("right", 997.0, 1013.0), ("left", 1013.0, 1021.5)]
+        never = gc.throw_from_rock(rock(t_enter_s=None))
+        assert self.pieces(never) == self.pieces(never, panel=None)
+
+    def test_the_camera_behind_where_none_faces_the_thrower(self):
+        t = gc.throw_from_rock(rock())
+        assert self.pieces(t, views={"left": LEFT}) == [("left", 997.0, 1021.5)]
+
+    def test_the_overhead_camera_even_without_the_one_behind(self):
+        t = gc.throw_from_rock(rock())
+        assert self.pieces(t, views={"right": RIGHT}) == \
+            [("right", 997.0, 1012.5), (gc.OVERHEAD, 1012.5, 1021.5)]
+
+    def test_too_short_a_look_from_overhead_is_not_worth_the_cut(self):
+        t = gc.throw_from_rock(rock(t_rest_s=1011.0, t_enter_s=1012.5))
+        assert self.pieces(t) == self.pieces(t, panel=None)
+
+
+class TestPanelsFromCalibration:
+    def test_the_panels_the_run_recorded(self):
+        got = gc.panels_from_calibration({**CAL, "bottom": {
+            "rect": [812, 554, 298, 516], "center_px": [139.5, 347.7], "px_per_m": 75.4,
+            "flipped": True, "hog_line": {}}, "top": {"rect": [1, 2, 3, 4]}})
+        assert got == {"bottom": PANEL}
+
+    def test_none(self):
+        assert gc.panels_from_calibration(None) == {}
+
+
+def test_the_worker_and_the_api_agree_on_the_clip_style():
+    assert gc.CLIP_STYLE == gameclips.CLIP_STYLE

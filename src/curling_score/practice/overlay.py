@@ -49,9 +49,10 @@ def _polyline(view, facing, a, b):
     return pts if len(pts) >= 2 else None
 
 
-def _lines(throw):
+def lines_on_ice(throw):
     """The thrown line's two ends and the aim line's, in the destination frame;
-    either None."""
+    either None. A game clip draws them over the overhead panel too
+    (game/clipburn.py)."""
     line, broom = throw.get("line") or {}, throw.get("broom")
     thrown = aim = None
     hog_x = line.get("at_hog_x")
@@ -77,7 +78,7 @@ def overlay(throw, plan, sideviews):
     piece's camera. None when the throw has neither a line nor a broom."""
     if not throw.get("line") and not throw.get("broom"):
         return None
-    thrown, aim = _lines(throw)
+    thrown, aim = lines_on_ice(throw)
     broom = throw.get("broom")
     facing_view = CAMERA_FOR[OTHER_HOUSE[throw["house"]]]
     out, t = [], 0.0

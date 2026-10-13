@@ -74,6 +74,7 @@ def _process(job, api, worker_id, sources, scratch, cut, sleep) -> dict:
         _complete(api, job["id"], worker_id, results, sleep)
         return results
     sideviews = game_clips.sideviews_from_calibration(job["spec"].get("calibration"))
+    panels = game_clips.panels_from_calibration(job["spec"].get("calibration"))
 
     def deliver(name, path):
         data = Path(path).read_bytes()
@@ -99,7 +100,7 @@ def _process(job, api, worker_id, sources, scratch, cut, sleep) -> dict:
 
     kw = {} if cut is None else {"cut": cut}
     results = game_clips.clip_rocks(rocks, video, sideviews, scratch,
-                                    deliver, on_rock=on_rock, **kw)
+                                    deliver, panels=panels, on_rock=on_rock, **kw)
     _complete(api, job["id"], worker_id, results, sleep)
     return results
 

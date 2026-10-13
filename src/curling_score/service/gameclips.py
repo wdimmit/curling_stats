@@ -40,6 +40,12 @@ RETRY_S = 60.0
 MAX_OVERLAY_BYTES = 16_000
 # A clip of one shot, asked for from its page: its job's id begins so.
 SHOT_JOB = "cs_"
+# How a clip is cut, as the clips worker says (game/clips.CLIP_STYLE, which
+# must agree): 2, the arrival from the overhead camera. A clip of an older
+# style is cut again when the backfill asks for that (`recut`).
+CLIP_STYLE = 2
+# Of each overhead panel's calibration, what a clip is drawn by.
+_PANEL_KEYS = ("rect", "center_px", "px_per_m", "flipped")
 # How long a game's video is taken to stay in the workers' caches after its
 # run was analysed: past it, no clip of a shot is offered. A live game's
 # recording is kept as long (deploy/docker-compose.worker.yml
@@ -55,6 +61,18 @@ _LINE_KEYS = ("start", "at_hog", "at_broom", "at_tee", "delivery")
 
 def rock_name(game: dict, end: dict, shot: dict) -> str:
     return f"{game['index']}.{timeline.end_identity(end)}.{timeline.shot_identity(shot)}"
+
+
+def clip_calibration(calibration: dict | None) -> dict:
+    """The cameras a clip is cut and drawn from, out of a timeline's
+    ``calibration``: the long cameras whole, and of the overhead panels the
+    four facts a clip needs (the rest of their record is the hog line's)."""
+    cal = calibration or {}
+    out = {k: cal[k] for k in ("left", "right") if k in cal}
+    for house in ("top", "bottom"):
+        if isinstance(cal.get(house), dict):
+            out[house] = {k: cal[house][k] for k in _PANEL_KEYS if k in cal[house]}
+    return out
 
 
 def rock_spec(game: dict, end: dict, shot: dict) -> dict:
@@ -153,7 +171,7 @@ def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
         return state
     if rock.get("t_release_s") is None:
         return {"state": "failed", "reason": "no_release"}
-    sides = {k: v for k, v in (calibration or {}).items() if k in ("left", "right")}
+    sides = clip_calibration(calibration)
     repo.put_clip_job(ClipJob(
         id=shot_job_id(run.id, name), play_id="", user_id=user_id, source_id=source_id,
         run_id=run.id, video_id=run.video_id, state="queued", created_at=now, run_after=now,
@@ -190,23 +208,24 @@ def state_for(repo, play_id: str, run) -> dict:
 
 
 def recut(state: dict, name: str) -> bool:
-    """Whether a rock's clip is from before marks were burned in."""
+    """Whether a rock's clip is cut in an older style: before its marks were
+    burned in, or before its arrival was seen from overhead."""
     got = state["rocks"].get(name) or {}
-    return got.get("clip") is True and not got.get("burned")
+    return got.get("clip") is True and (got.get("style") or 0) < CLIP_STYLE
 
 
 def ensure(repo, play, run, rocks: list[dict], calibration: dict | None, now, *,
            again: bool = False) -> dict:
     """Ask for clips of those of ``rocks`` this play has nothing for on
     ``run`` yet -- none twice, and a failed one not again on that run -- and
-    say where they all stand. ``again`` asks too for those whose clip has its
-    marks drawn by the page rather than in it (`recut`)."""
+    say where they all stand. ``again`` asks too for those whose clip is cut
+    in an older style (`recut`)."""
     state = state_for(repo, play.id, run)
     todo = [r for r in rocks if r["name"] not in state["rocks"]
             or (again and recut(state, r["name"]))]
     if not todo:
         return state
-    sides = {k: v for k, v in (calibration or {}).items() if k in ("left", "right")}
+    sides = clip_calibration(calibration)
     repo.put_clip_job(ClipJob(
         id=slug.new_slug(slug.SHORT_BYTES, "cj_"), play_id=play.id, user_id=play.user_id,
         source_id=play.source_id, run_id=run.id, video_id=run.video_id, state="queued",
@@ -275,6 +294,8 @@ def clean_results(job, got) -> dict:
             item = {"clip": True}
             if one.get("burned") is True:
                 item["burned"] = True
+            if isinstance(one.get("style"), int) and not isinstance(one.get("style"), bool):
+                item["style"] = one["style"]
             lines = one.get("overlay")
             if isinstance(lines, list) and len(json.dumps(lines)) <= MAX_OVERLAY_BYTES:
                 item["overlay"] = lines

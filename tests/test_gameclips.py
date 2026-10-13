@@ -135,7 +135,8 @@ class TestEnsure:
                        "pending": True}
         (job,) = repo.clip_jobs_for_play("p1")
         assert (job.state, job.run_id, job.video_id, job.user_id) == ("queued", "r1", "VID", "u1")
-        assert set(job.spec["calibration"]) == {"left", "right"}
+        assert set(job.spec["calibration"]) == {"left", "right", "top"}
+        assert job.spec["calibration"]["top"] == {"rect": [810, 0, 300, 540], "px_per_m": 50.0}
         assert [r["name"] for r in job.spec["rocks"]] == ["1.2.13", "1.2.15"]
         gameclips.ensure(repo, play, run, rocks, CAL, T + timedelta(seconds=5))
         assert len(repo.clip_jobs_for_play("p1")) == 1
@@ -148,11 +149,12 @@ class TestEnsure:
         newest = repo.clip_jobs_for_play("p1")[-1]
         assert [r["name"] for r in newest.spec["rocks"]] == ["1.2.15"]
 
-    def test_again_asks_for_clips_whose_marks_the_page_draws(self):
+    def test_again_asks_for_clips_cut_in_an_older_style(self):
         repo, run, play = world()
         queued(repo, ["1.2.13", "1.2.15", "1.2.11"], state="done",
                results={"1.2.13": {"clip": True, "overlay": []},
-                        "1.2.15": {"clip": True, "burned": True},
+                        "1.2.15": {"clip": True, "burned": True,
+                                   "style": gameclips.CLIP_STYLE},
                         "1.2.11": {"clip": None, "reason": "video_gone"}})
         rocks = gameclips.player_rocks(a_doc([shot(n, "red", 4) for n in (11, 13, 15)]),
                                        "red", 4)
@@ -252,6 +254,10 @@ class TestResults:
                        "1.2.7": {"clip": True, "burned": True}}
         assert gameclips.clean_results(job, {"1.2.7": {"clip": True, "burned": "yes"}})[
             "1.2.7"] == {"clip": True}
+        assert gameclips.clean_results(job, {"1.2.7": {"clip": True, "burned": True,
+                                                       "style": 2}})["1.2.7"]["style"] == 2
+        assert "style" not in gameclips.clean_results(job, {"1.2.7": {
+            "clip": True, "style": "2"}})["1.2.7"]
         assert gameclips.clean_results(job, {"1.2.13": {"clip": None, "reason": "nonsense"}})[
             "1.2.13"] == {"clip": None, "reason": "cut_failed"}
 
@@ -295,7 +301,7 @@ class TestShotClips:
         got = gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T + timedelta(seconds=9))
         assert got == {"state": "queued", "ahead": 1}
         job = repo.get_clip_job(gameclips.shot_job_id("r1", "1.2.13"))
-        assert set(job.spec["calibration"]) == {"left", "right"}
+        assert set(job.spec["calibration"]) == {"left", "right", "top"}
         repo.update_clip_job(job.id, state="done", rocks={"1.2.13": {"clip": True}})
         assert gameclips.shot_state(repo, run, "1.2.13", T) == {"state": "ready"}
 
@@ -328,3 +334,21 @@ class TestShotClips:
         assert gameclips.shot_expired(run, T + days + timedelta(seconds=1))
         run.ready_at = T + timedelta(days=3)
         assert not gameclips.shot_expired(run, T + days + timedelta(days=2))
+
+
+class TestRecut:
+    def test_a_clip_older_than_the_style_now(self):
+        state = {"rocks": {"a": {"clip": True}, "b": {"clip": True, "burned": True},
+                           "c": {"clip": True, "burned": True, "style": gameclips.CLIP_STYLE},
+                           "d": {"clip": None, "reason": "video_gone"}, "e": {"clip": False}}}
+        assert [n for n in "abcde" if gameclips.recut(state, n)] == ["a", "b"]
+
+
+def test_a_clip_is_drawn_by_four_facts_of_each_panel():
+    cal = {"left": {"rect": [0, 0, 1, 1], "tee_row": 1.0}, "top": {
+        "rect": [1, 2, 3, 4], "center_px": [5, 6], "px_per_m": 7.0, "flipped": False,
+        "residual_m": 0.01, "hog_line": {"columns": 9}}, "bottom": None}
+    assert gameclips.clip_calibration(cal) == {
+        "left": {"rect": [0, 0, 1, 1], "tee_row": 1.0},
+        "top": {"rect": [1, 2, 3, 4], "center_px": [5, 6], "px_per_m": 7.0, "flipped": False}}
+    assert gameclips.clip_calibration(None) == {}

@@ -228,3 +228,97 @@ class TestRender:
         B.cut(p, {"left": (stream, (0, 0, 120, 180))}, tmp_path / "c.mp4", throw=throw(),
               sideviews=VIEWS, size=(60, 90), fps=10)
         assert frames.probe(tmp_path / "c.mp4").duration_s == pytest.approx(1.0, abs=0.3)
+
+
+# ------------------------------------------------------------- overhead panels
+UPRIGHT = B.Panel(rect=(812, 11, 298, 510), center_px=(145.0, 136.0), px_per_m=67.0,
+                  flipped=False)
+TURNED = B.Panel(rect=(812, 554, 298, 516), center_px=(139.5, 347.7), px_per_m=75.4,
+                 flipped=True)
+
+
+class TestPanel:
+    """The house as the clip shows it: the thrower's end at the bottom, the
+    thrower's right to the right."""
+
+    def test_an_upright_panel_as_it_is(self):
+        assert UPRIGHT.to_frac(0.0, 0.0) == pytest.approx([145 / 298, 136 / 510])
+        u, v = UPRIGHT.to_frac(1.0, 1.0)
+        assert u > 145 / 298 and v > 136 / 510          # right, and toward the thrower
+
+    def test_a_flipped_panel_turned_the_same_way_round(self):
+        assert TURNED.to_frac(0.0, 0.0) == pytest.approx([1 - 139.5 / 298, 1 - 347.7 / 516])
+        u0, v0 = TURNED.to_frac(0.0, 0.0)
+        u, v = TURNED.to_frac(1.0, 1.0)
+        assert u - u0 == pytest.approx(75.4 / 298) and v - v0 == pytest.approx(75.4 / 516)
+
+    def test_full_height_at_its_own_shape_black_either_side(self):
+        u, v, w, h = TURNED.box((600, 810))
+        assert (v, h) == (0.0, 1.0)
+        assert w == pytest.approx(600 * 516 / (810 * 298))
+        assert u == pytest.approx((1 - w) / 2)
+
+    def test_from_the_timelines_record(self):
+        rec = {"rect": [812, 554, 298, 516], "center_px": [139.5, 347.7], "px_per_m": 75.4,
+               "flipped": True, "residual_m": 0.007}
+        assert B.Panel.from_calibration(rec) == TURNED
+        assert B.Panel.from_calibration({"rect": [1, 2, 3, 4]}) is None
+        assert B.Panel.from_calibration(None) is None
+
+    def test_the_lines_and_the_broom_over_it(self):
+        m = B.panel_marks(throw(), TURNED)
+        assert m["broom"] == TURNED.to_frac(-0.6, 1.8)
+        assert len(m["thrown"]) == B.PANEL_SAMPLES and len(m["aim"]) == B.PANEL_SAMPLES
+        assert m["dots"] == []
+        # The thrown line ends at the broom's depth, off it by the miss.
+        assert m["thrown"][-1] == pytest.approx(TURNED.to_frac(-0.6 - 0.08, 1.8))
+
+    def test_cut_marks_the_overhead_piece_from_its_panel(self, monkeypatch):
+        seen = {}
+
+        def render(plan, views, out, marks, fr, **kw):
+            seen.update(marks=marks, fr=fr, panels=kw["panels"])
+
+        monkeypatch.setattr(B, "render", render)
+        p = practice_clips.ClipPlan((practice_clips.Piece("left", 97.0, 110.0),
+                                     practice_clips.Piece("overhead", 112.5, 126.5)))
+        B.cut(p, {}, "x.mp4", throw=throw(), sideviews=VIEWS, panels={"overhead": TURNED})
+        assert seen["marks"][1] == B.panel_marks(throw(), TURNED)
+        assert seen["marks"][0]["dots"] and seen["fr"].view == "left"
+        assert seen["panels"] == {"overhead": TURNED}
+
+
+@pytest.fixture(scope="module")
+def with_panel(tmp_path_factory):
+    """Six seconds of a 'stream': a left view red above blue, and beside it a
+    60x120 overhead panel white above green (black below it)."""
+    out = tmp_path_factory.mktemp("panel") / "rec.mp4"
+    graph = ("color=red:s=120x90:r=10:d=6[a];color=blue:s=120x90:r=10:d=6[b];[a][b]vstack[L];"
+             "color=white:s=60x60:r=10:d=6[c];color=green:s=60x60:r=10:d=6[d];[c][d]vstack,"
+             "pad=60:180:0:0:black[P];[L][P]hstack[v]")
+    subprocess.run(["ffmpeg", "-v", "error", "-filter_complex", graph, "-map", "[v]",
+                    "-c:v", "libx264", "-g", "10", "-pix_fmt", "yuv420p", str(out)], check=True)
+    return out
+
+
+@needs_ffmpeg
+class TestRenderOverhead:
+    def test_turned_at_its_own_shape_and_marked(self, with_panel, tmp_path):
+        out = tmp_path / "c.mp4"
+        panel = B.Panel(rect=(120, 0, 60, 120), center_px=(30.0, 60.0), px_per_m=10.0,
+                        flipped=True)
+        p = practice_clips.ClipPlan((practice_clips.Piece("left", 0.5, 1.5),
+                                     practice_clips.Piece("overhead", 2.0, 3.0)))
+        views = {"left": (with_panel, (0, 0, 120, 180)), "overhead": (with_panel, panel.rect)}
+        marks = [{}, {"thrown": [[0.25, 0.0], [0.25, 1.0]]}]
+        B.render(p, views, out, marks, panels={"overhead": panel}, size=(60, 90), fps=10)
+        img = frame_at(out, 1.5)
+        mid = img[:, 20:40]
+        # Flipped, so turned: the green half on top, the white below.
+        assert near(mid[5:35].reshape(-1, 3).mean(0), (0, 128, 0))
+        assert near(mid[55:85].reshape(-1, 3).mean(0), (255, 255, 255))
+        # Kept at its shape: black down both sides.
+        assert img[:, :4].mean() < 30 and img[:, -4:].mean() < 30
+        u0, _v, w, _h = panel.box((60, 90))
+        x = int(round((0.25 - u0) * 60 / w))
+        assert magenta(img)[:, x - 3:x + 4].any()
