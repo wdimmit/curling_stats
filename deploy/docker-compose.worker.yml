@@ -76,14 +76,14 @@ services:
       resources:
         reservations:
           devices: [{ driver: nvidia, device_ids: ["1"], capabilities: [gpu] }]
-  # worker3 (ryzen-3080-3, cache /data/wdd/curling-cache-3) was retired on
-  # 2026-10-14. The clips worker below still reads its cache for the
-  # recordings it holds; nothing prunes it now.
+  # worker3 (ryzen-3080-3) was retired on 2026-10-14, and its cache folded
+  # into worker2's (what worker2 lacked moved in, kept recordings with their
+  # markers), so worker2's pruning ages it out.
   # Cuts the clips of the rocks people say they threw (service/clipworker.py),
   # for My shots. Light: no GPU, no YouTube, four CPUs of the 5950X's sixteen,
   # so a burst of cuts never crowds the lanes above on a league night (at two,
   # a rock took ~20 s to cut, decoding 1080p60). Each worker above keeps its own
-  # cache, and a game's video is in whichever ran it, so this reads all three
+  # cache, and a game's video is in whichever ran it, so this reads both
   # -- read-only: it prunes nothing and empties nothing there -- and writes
   # only to a scratch of its own. A game whose video has left every cache gets
   # no clips; nothing is downloaded for one.
@@ -100,12 +100,11 @@ services:
       WORKER_ROLE: clips
       WORKER_LIVE: "0"
       WORKER_PRACTICE: "0"
-      WORKER_CLIP_SOURCES: /data/src1:/data/src2:/data/src3
+      WORKER_CLIP_SOURCES: /data/src1:/data/src2
     volumes:
       - /data/wdd/curling-clips:/data/cache
       - /data/wdd/curling-cache:/data/src1:ro
       - /data/wdd/curling-cache-2:/data/src2:ro
-      - /data/wdd/curling-cache-3:/data/src3:ro
     cpus: "4.0"
     deploy: !reset null
   # Mints the proof-of-origin tokens YouTube demands before it will serve a
