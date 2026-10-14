@@ -1,5 +1,6 @@
-# The worker box: the Ryzen 9 5950X + RTX 3080 (curling@, tailnet node
-# `curling`), since 2026-10-06 -- before that, the 3070 laptop. Copy
+# The worker box: the Ryzen 9 5950X (curling@, tailnet node `curling`), since
+# 2026-10-06 -- before that, the 3070 laptop. Its RTX 3080 gave way to two RTX
+# 4070s on 2026-10-14, and it has run two workers, one card each, since. Copy
 # deploy/worker.env.example to deploy/worker.env, fill it in, then:
 #   docker compose -f deploy/docker-compose.worker.yml up -d --build
 services:
@@ -30,8 +31,11 @@ services:
       WORKER_RECORDING_DAYS: "14"
       YTDLP_POT_PROVIDER: http://pot:4416
       # A worker claims live jobs greedily up to this, so 6 here would take all
-      # five of a night's streams. Three workers at 3 give 9 slots: most of
-      # Tuesday's and Thursday's two back-to-back leagues (10 streams).
+      # five of a night's streams; at 3 a five-sheet night splits 3/2. Two
+      # workers give 6 slots: on Tuesday's and Thursday's back-to-back leagues
+      # (10 streams) the later league's wait for the earlier games to end,
+      # which must come inside that stream's first hour (the live first-hour
+      # rule) or it is charted from the recording instead.
       LIVE_MAX_STREAMS: "3"
       # Practice sessions' streams too (from LIVE_MAX_STREAMS' slots). The
       # club only runs practice ice when no league is on, so practice never
@@ -42,13 +46,17 @@ services:
       # /data is a 1.5 TB volume of its own (1.4 TB free on 2026-10-06). The
       # /data/wdd paths are the laptop's, kept so its scripts still apply.
       - /data/wdd/curling-cache:/data/cache
+    # One card each: this one card 0, worker2 card 1 (the models are loaded
+    # per worker, and one card took all three workers' before).
     deploy:
       resources:
         reservations:
-          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
-  # More workers on the same GPU. The pipeline is bound by one CPU thread, so
-  # each worker is a lane: on the 5950X two ran ends in 127 s each against 116 s
-  # alone (measured 2026-10-05), with the CPU 30% busy.
+          devices: [{ driver: nvidia, device_ids: ["0"], capabilities: [gpu] }]
+  # A second worker, on the other card. Two building at once is the box's best:
+  # 65 ends an hour on 2026-10-14's benchmark (s1.ts ends 7-8, the live lane's
+  # own harness), against 62 with three and 58 alone -- a third oversubscribed
+  # the memory and cores. That was with the RAM at its rated speed: at the
+  # JEDEC 2133 it had run at until then, the box managed ~50 at any count.
   # None may share a cache: a worker empties <cache>/live at start, prunes
   # media another may be reading, and uploads every new detections/*.npz as
   # its own. Each needs its own WORKER_ID too -- the API knows workers by it
@@ -64,15 +72,13 @@ services:
       WORKER_CACHE_GB: "300"
     volumes:
       - /data/wdd/curling-cache-2:/data/cache
-  worker3:
-    extends: { service: worker }
-    build: !reset null
-    pull_policy: never
-    environment:
-      WORKER_ID: ryzen-3080-3
-      WORKER_CACHE_GB: "300"
-    volumes:
-      - /data/wdd/curling-cache-3:/data/cache
+    deploy: !override
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, device_ids: ["1"], capabilities: [gpu] }]
+  # worker3 (ryzen-3080-3, cache /data/wdd/curling-cache-3) was retired on
+  # 2026-10-14. The clips worker below still reads its cache for the
+  # recordings it holds; nothing prunes it now.
   # Cuts the clips of the rocks people say they threw (service/clipworker.py),
   # for My shots. Light: no GPU, no YouTube, four CPUs of the 5950X's sixteen,
   # so a burst of cuts never crowds the lanes above on a league night (at two,
