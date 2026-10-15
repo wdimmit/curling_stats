@@ -81,7 +81,10 @@ Promise.all([fetch("timeline.json").then(r => r.json()), loadOverrides(), loadAc
     // fresh for the close-of-tab save (chartAuth); any other page sends none.
     const auth = base.guarded && !config.readOnly ? chartAuth() : null;
     if (auth) { auth.keepFresh(); auth.fresh(); }
-    store.start(config, { overrides: ov.map, version: ov.version, auth });
+    // Any other hosted page that edits -- a chart nobody owns -- loads sign-in
+    // only if its chart is claimed while open and a save is refused.
+    const authLater = config.hosted && !config.readOnly && !auth ? () => chartAuth() : null;
+    store.start(config, { overrides: ov.map, version: ov.version, auth, authLater });
     createRoot(document.getElementById("root"))
       .render(<Live first={doc} cursor={loadCursor(config.slug)} config={config} />);
   })

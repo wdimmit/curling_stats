@@ -27,7 +27,7 @@
     "frontend/runtime/chartAuth.mjs": "5705a35f4dd192b28bf80fbf9a57e09c527e739ab5cfec87b418cfe9e7744648",
     "frontend/runtime/dragStore.mjs": "39cf427077c473e916a74c5e95b62ac0fd8eacde6b56f4fe8b4f1cc6d516d778",
     "frontend/runtime/flag.mjs": "5be5eeb900c2056f6666966b5485709ca21ea3eaceabb5a5b2dc3559d3732f3c",
-    "frontend/runtime/overridesStore.mjs": "60568facd13151112fca258f1811e6faa0afb533f48c02d615c8b2d577cb4b7a",
+    "frontend/runtime/overridesStore.mjs": "3f2d4c6c1a26ee1ccfd18ee868cfe256084b9d57aa1623d8582fc7bd2d11e7da",
     "frontend/runtime/player.mjs": "6fea60197a05c0994abcf3f179c2be83901609d9980d938dd1d64854065dd34e",
     "frontend/runtime/plays.mjs": "455203902dbe3f76bb58f8532b4b2c5f6178c40254a76b4dbd7a36ea719debcd",
     "frontend/runtime/prefs.mjs": "238969881d352d08606f188215c1adda730be7f8489cc049204df324f655d6fb",
@@ -66,10 +66,10 @@
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
     "frontend/viewer/ViewOnly.jsx": "64f55d2286440b32e65009598b96d11b7301e91731cc00c261b96441a9d7dcce",
     "frontend/viewer/Watch.jsx": "2e7de47175de0cbd87b75ed400def1d76e407ce366ac90b5569c3690fa0e4f5e",
-    "frontend/viewer/main.jsx": "c93a3815d33fdbc6cfcfa5f02371606fd72ac619fd174ed8f603b97e37b28c45"
+    "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "4d49f18d31a3b03257223ff89059ce0b88ed2b53023404e6a983acb2b4950233",
-    "src/curling_score/viewer/app.js": "496905a3c2cfc22bad912af56e64dda94577284c81bb88df06a7a2576bfdde08"
+    "src/curling_score/viewer/app.js": "f2511674ecb9ede9fe7da49dd3a985eb6e372ca480ea3db7f9b102957d458334"
   }
 }

@@ -338,6 +338,30 @@ class TestSavesCarryTheToken:
                        replies=[401, 200])
         assert got["n"] == 2 and got["status"].startswith("saved") and got["dirty"] is False
 
+    def test_a_chart_claimed_while_open_takes_a_token_at_the_first_refusal(self):
+        """An unowned chart open in one tab, claimed on /mine in another: the
+        tab had no token to send. It takes one at the first refusal, rather
+        than lose every edit made since."""
+        got = self.run("let made = 0, kept = 0;\n"
+                       "const later = () => { made++;"
+                       " return {...auth, keepFresh: () => { kept++; }}; };\n"
+                       "S.start(EDIT, {overrides: {}, version: 0, authLater: later});\n"
+                       "S.apply({a: {x: 1}}, 'a'); await S.save();\n"
+                       "S.apply({a: {x: 2}}, 'a'); await S.save();\n"
+                       "out({auths: calls.map(c => c.headers.Authorization ?? null), made, kept,"
+                       " status: S.getStatus().text});",
+                       replies=[401, 200, 200])
+        assert got["auths"] == [None, "Bearer t2", "Bearer t1"]
+        assert got["made"] == 1 and got["kept"] == 1 and got["status"].startswith("saved")
+
+    def test_an_open_chart_nobody_claims_never_asks_for_sign_in(self):
+        got = self.run("let made = 0;\n"
+                       "S.start(EDIT, {overrides: {}, version: 0,"
+                       " authLater: () => { made++; return auth; }});\n"
+                       "S.apply({a: {x: 1}}, 'a'); await S.save();\n"
+                       "out({made, auth: calls[0].headers.Authorization ?? null});")
+        assert got == {"made": 0, "auth": None}
+
     def test_the_close_of_tab_save_is_a_keepalive_fetch_with_the_token(self):
         got = self.run("S.start(EDIT, {overrides: {a: {x: 1}}, version: 3, auth});\n"
                        "S.apply({a: {x: 1}, b: {y: 2}}, 'b');\n"
@@ -442,7 +466,9 @@ class TestTheGuardedPage:
     def test_only_an_editable_guarded_page_keeps_a_token(self):
         main = self.src("frontend/viewer/main.jsx")
         assert "const auth = base.guarded && !config.readOnly ? chartAuth() : null;" in main
-        assert "store.start(config, { overrides: ov.map, version: ov.version, auth });" in main
+        assert "store.start(config, { overrides: ov.map, version: ov.version, auth, authLater });" in main
+        assert ("const authLater = config.hosted && !config.readOnly && !auth"
+                " ? () => chartAuth() : null;") in main
 
     def test_the_header_says_view_only_where_the_save_status_is(self):
         app = self.src("frontend/viewer/App.jsx")

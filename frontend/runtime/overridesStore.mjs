@@ -30,6 +30,7 @@ let status = { cls: "", text: "saved" };
 let busyOn = null;            // the shot being typed into or dragged on
 let onNotice = () => {};
 let auth = null;              // chartAuth() on a guarded chart this person edits
+let authLater = null;         // makes one if an unguarded page's chart is claimed
 
 const listeners = new Set();
 const announce = () => listeners.forEach(fn => fn());
@@ -46,11 +47,13 @@ function setStatus(cls, text) {
   announce();
 }
 
-export function start(cfg, { overrides: initial, version: v, auth: a = null }) {
+export function start(cfg, { overrides: initial, version: v, auth: a = null,
+                              authLater: later = null }) {
   config = cfg;
   overrides = initial || {};
   version = v ?? null;
   auth = a;
+  authLater = later;
   setStatus("saved", Object.keys(overrides).length ? "loaded" : "no edits yet");
   if (config.merge && !config.readOnly && config.shared) poll();
 }
@@ -119,6 +122,9 @@ export async function save() {
     // Refused: perhaps only a token that ran out while the tab slept. Renew
     // it once and try again; a second refusal is not something retrying can
     // fix, so the keys wait for the person to sign in, and ⬇ is still there.
+    // A page that opened with nobody to send a token for -- a chart nobody
+    // owned -- whose chart has since been claimed: take one now, and keep it.
+    if (refused(res) && !auth && authLater) { auth = authLater(); auth.keepFresh(); }
     if (refused(res) && auth)
       res = await fetch(url, { method: "POST", headers: headersWith(await auth.fresh(true)),
                                body: json });
