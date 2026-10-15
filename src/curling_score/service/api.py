@@ -382,6 +382,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             got = repo.update_user(uid, last_seen_at=t) or got
         return got
 
+    def claims_of(authorization) -> dict | None:
+        """The verified claims behind a bearer token, or None. Never raises."""
+        if not auth.enabled or not authorization or not authorization.startswith("Bearer "):
+            return None
+        claims = auth.verify(authorization[len("Bearer "):].strip())
+        return claims if claims and claims.get("sub") else None
+
+    def uid_of(authorization) -> str | None:
+        """Who is asking, by id alone. Reads no record: a save asks this every
+        800 ms while somebody charts, and may_edit_chart needs only the id."""
+        claims = claims_of(authorization)
+        return claims["sub"] if claims else None
+
     def current_user_or_none(authorization) -> User | None:
         """Who this request is, if it says so.
 
@@ -390,12 +403,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         every route here already handles, because it is the only state that
         existed before accounts did.
         """
-        if not auth.enabled or not authorization or not authorization.startswith("Bearer "):
-            return None
-        claims = auth.verify(authorization[len("Bearer "):].strip())
-        if not claims or not claims.get("sub"):
-            return None
-        return user_for_claims(claims)
+        claims = claims_of(authorization)
+        return user_for_claims(claims) if claims else None
 
     def require_user(authorization) -> User:
         if not auth.enabled:
@@ -425,6 +434,23 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     def may_use_team(user: User | None, team_id: str | None) -> bool:
         return bool(user and team_id and user.id in repo.team_members(team_id))
+
+    def may_edit_chart(chart: Chart, uid: str | None) -> bool:
+        """Whether `uid` may change this chart's grading.
+
+        A team's chart is its current members' -- whoever made it included,
+        and only while they stay on the team. A personal chart is its owner's.
+        A chart nobody owns (made before charting needed an account) is still
+        its link's, until somebody claims it. With accounts off every link
+        edits, as before accounts existed.
+        """
+        if not auth.enabled:
+            return True
+        if chart.team_id:
+            return uid is not None and uid in repo.team_members(chart.team_id)
+        if chart.owner_user_id:
+            return uid == chart.owner_user_id
+        return True
 
     def client_ip(request: Request) -> str:
         """The caller's address, as our own proxies saw it.
@@ -1756,10 +1782,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             changed and never refuses on a version -- two people editing
             different shots have nothing to conflict about, and the same shot is
             simply the later of the two.
+
+            Only whoever may_edit_chart allows may save: with accounts on, a
+            chart's owner or its team's members, or anyone for a chart nobody
+            owns. Refused before the body is read, so a refusal writes nothing.
             """
             chart, _run, read_only = lookup(kind, key)
             if read_only:
                 raise HTTPException(403, "this is a view-only link")
+            uid = uid_of(request.headers.get("authorization"))
+            if not may_edit_chart(chart, uid):
+                if uid is None:
+                    raise HTTPException(401, "sign in to change this chart")
+                raise HTTPException(403, "only the person or team who made this chart can change it")
             body = await request.body()
             if not body:
                 return JSONResponse({"ok": False, "error": "empty body"}, status_code=400)

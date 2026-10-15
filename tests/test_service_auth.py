@@ -103,6 +103,14 @@ def a_team(w, name="Thistles"):
     return post(w, "/api/teams", {"name": name}, SARAH).json()["id"]
 
 
+def save_grading(w, key, headers=None, *, kind="c", merge=True):
+    """One shot graded, sent as the page sends it: a merge, or the whole
+    document that `curling-score serve` and older pages send."""
+    url = f"/{kind}/{key}/overrides.json" + ("?merge=1" if merge else "")
+    return w["client"].post(url, json={"0.1.1": {"user_score": 3}},
+                            headers={"X-Forwarded-For": "1.2.3.4", **(headers or {})})
+
+
 class TestAccountsCanBeOff:
     def test_the_config_says_so(self, no_accounts):
         assert no_accounts["client"].get("/api/auth/config").json() == {"enabled": False}
@@ -265,7 +273,7 @@ class TestOneChartPerGame:
         sid = a_ready_game(w)
         slug = post(w, "/api/charts", {"source_id": sid}, SARAH).json()["slug"]
         w["client"].post(f"/c/{slug}/overrides.json?merge=1&v=0",
-                         json={"0.1.1": {"user_score": 3}})
+                         json={"0.1.1": {"user_score": 3}}, headers=SARAH)
         again = post(w, "/api/charts", {"source_id": sid}, SARAH).json()["slug"]
         assert w["client"].get(f"/c/{again}/overrides.json").json() == {
             "0.1.1": {"user_score": 3}}
@@ -338,13 +346,22 @@ class TestRacingOnANewVideo:
         first, second = self._both_submit(w, team)
         work_through(w)
         w["client"].post(f"/c/{first}/overrides.json?merge=1&v=0",
-                         json={"0.1.1": {"user_score": 3}})
+                         json={"0.1.1": {"user_score": 3}}, headers=SARAH)
         assert w["client"].get(f"/c/{second}/overrides.json").json() == {
             "0.1.1": {"user_score": 3}}
         # And editing through the old link reaches the same chart, not a fork.
         w["client"].post(f"/c/{second}/overrides.json?merge=1&v=1",
-                         json={"0.1.2": {"user_score": 4}})
+                         json={"0.1.2": {"user_score": 4}}, headers=ALEX)
         assert set(w["client"].get(f"/c/{first}/overrides.json").json()) == {"0.1.1", "0.1.2"}
+
+    def test_a_stranger_saving_through_the_loser_link_is_refused(self, w):
+        team = _joined_team(w)
+        first, second = self._both_submit(w, team)
+        work_through(w)
+        r = w["client"].post(f"/c/{second}/overrides.json?merge=1",
+                             json={"0.1.1": {"user_score": 3}}, headers=MAKER)
+        assert r.status_code == 403
+        assert w["repo"].get_chart(first).overrides == {}
 
     def test_exactly_one_of_them_survives_even_in_a_dead_heat(self, w):
         """Two submissions inside one clock tick still must not diverge."""
@@ -389,25 +406,83 @@ class TestRacingOnANewVideo:
         assert got.overrides == {"0.1.1": {"user_score": 2}}
 
 
-class TestCapabilityUrlsAreUntouched:
-    def test_a_teams_chart_is_still_editable_by_a_stranger_with_the_link(self, w):
-        """Deliberate. The link is the permission; an account only adds a list."""
-        team = _joined_team(w)
-        sid = a_ready_game(w)
-        slug = post(w, "/api/charts", {"source_id": sid, "team_id": team}, SARAH).json()["slug"]
-        r = w["client"].post(f"/c/{slug}/overrides.json?merge=1&v=0",
-                             json={"0.1.1": {"user_score": 3}})
-        assert r.status_code == 200
+class TestOnlyItsMakerChangesAChart:
+    """With accounts on, a chart's grading is its owner's, or its team's, to
+    change; anyone else holding the link watches."""
 
-    def test_a_share_link_is_still_read_only_for_a_member(self, w):
-        """Membership changes what you can find, never what a URL lets you do."""
-        team = _joined_team(w)
+    def a_personal_chart(self, w):
+        sid = a_ready_game(w)
+        return post(w, "/api/charts", {"source_id": sid}, SARAH).json()["slug"]
+
+    def a_team_chart(self, w):
+        team = _joined_team(w)                       # Sarah's; Alex joined
         sid = a_ready_game(w)
         got = post(w, "/api/charts", {"source_id": sid, "team_id": team}, SARAH).json()
-        share = got["share_url"].rstrip("/").split("/")[-1]
-        r = w["client"].post(f"/s/{share}/overrides.json?merge=1&v=0",
-                             json={"0.1.1": {"user_score": 3}}, headers=SARAH)
+        return team, got["slug"]
+
+    def test_the_owner_saves(self, w):
+        slug = self.a_personal_chart(w)
+        assert save_grading(w, slug, SARAH).status_code == 200
+        assert w["repo"].get_chart(slug).overrides == {"0.1.1": {"user_score": 3}}
+
+    def test_a_stranger_with_the_link_is_refused_and_nothing_changes(self, w):
+        slug = self.a_personal_chart(w)
+        r = save_grading(w, slug, ALEX)
         assert r.status_code == 403
+        assert r.json()["detail"] == "only the person or team who made this chart can change it"
+        assert w["repo"].get_chart(slug).overrides == {}
+
+    def test_signed_out_is_told_to_sign_in(self, w):
+        slug = self.a_personal_chart(w)
+        r = save_grading(w, slug)
+        assert r.status_code == 401 and r.json()["detail"] == "sign in to change this chart"
+
+    def test_a_forged_token_is_signed_out(self, w):
+        slug = self.a_personal_chart(w)
+        assert save_grading(w, slug, {"Authorization": "Bearer forged"}).status_code == 401
+
+    def test_a_whole_document_save_is_held_to_the_same_rule(self, w):
+        slug = self.a_personal_chart(w)
+        assert save_grading(w, slug, ALEX, merge=False).status_code == 403
+        assert save_grading(w, slug, SARAH, merge=False).status_code == 200
+
+    def test_every_member_of_the_team_saves(self, w):
+        _, slug = self.a_team_chart(w)
+        assert save_grading(w, slug, SARAH).status_code == 200
+        assert save_grading(w, slug, ALEX).status_code == 200
+
+    def test_a_stranger_cannot_save_a_team_chart(self, w):
+        _, slug = self.a_team_chart(w)
+        assert save_grading(w, slug, MAKER).status_code == 403
+
+    def test_leaving_the_team_ends_it_even_for_the_charts_maker(self, w):
+        """A team chart is the team's: whoever made it has no rights of their own."""
+        team, slug = self.a_team_chart(w)
+        w["repo"].update_chart(slug, owner_user_id="uid-alex")          # Alex made it ...
+        w["client"].delete(f"/api/teams/{team}/members/uid-alex", headers=ALEX)  # ... and left
+        assert save_grading(w, slug, ALEX).status_code == 403
+        assert save_grading(w, slug, SARAH).status_code == 200
+
+    def test_an_unowned_chart_stays_open_to_its_link(self, w):
+        assert save_grading(w, an_unowned_chart(w)).status_code == 200
+
+    def test_until_someone_claims_it(self, w):
+        slug = an_unowned_chart(w)
+        post(w, f"/api/me/charts/{slug}/claim", {}, SARAH)
+        assert save_grading(w, slug).status_code == 401
+        assert save_grading(w, slug, ALEX).status_code == 403
+        assert save_grading(w, slug, SARAH).status_code == 200
+
+    def test_a_share_link_never_saves_even_for_the_owner(self, w):
+        sid = a_ready_game(w)
+        got = post(w, "/api/charts", {"source_id": sid}, SARAH).json()
+        share = got["share_url"].rstrip("/").split("/")[-1]
+        assert save_grading(w, share, SARAH, kind="s").status_code == 403
+
+    def test_with_accounts_off_the_link_is_still_the_permission(self, no_accounts):
+        sid = a_ready_game(no_accounts)
+        slug = post(no_accounts, "/api/charts", {"source_id": sid}).json()["slug"]
+        assert save_grading(no_accounts, slug).status_code == 200
 
     def test_a_shared_chart_tells_the_page_to_poll(self, w):
         team = _joined_team(w)
@@ -416,7 +491,6 @@ class TestCapabilityUrlsAreUntouched:
         assert '"shared": true' in w["client"].get(f"/c/{slug}/").text
         solo = post(w, "/api/charts", {"source_id": sid}, ALEX).json()["slug"]
         assert '"shared": false' in w["client"].get(f"/c/{solo}/").text
-
 
 class TestNamingALeague:
     """The watcher labels what it queues; a pasted link arrives with nothing,
