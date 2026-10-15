@@ -237,6 +237,36 @@ class TestTheChartToken:
             "out({ticks, asked, tickMs: M.TOKEN_TICK_MS});")
         assert got == {"ticks": [300000], "asked": [False, False], "tickMs": 300000}
 
+    # A Firebase ID token, as far as chartAuth reads one: its payload's exp.
+    JWT = ("const jwt = (exp, tag) => 'h.' + Buffer.from(JSON.stringify({exp, tag}))"
+           ".toString('base64url') + '.s';\n"
+           "const inMin = m => Math.floor(Date.now() / 1000) + m * 60;\n")
+
+    def ticked(self, minutes_left, how="tick()"):
+        return self.run(
+            self.JWT +
+            "let tick = null;\n"
+            "globalThis.setInterval = (fn, ms) => { tick = fn; return 1; };\n"
+            "globalThis.addEventListener = (t, fn) => { on[t] = fn; };\n"
+            "globalThis.document = {visibilityState: 'visible'};\n"
+            f"const A = M.chartAuth(async ({{force}}) => {{ asked.push(force);"
+            f" return force ? jwt(inMin(60), 'new') : jwt(inMin({minutes_left}), 'old'); }});\n"
+            f"A.keepFresh(); {how};\n"
+            "await new Promise(r => setTimeout(r, 20));\n"
+            "out({asked, last: JSON.parse(Buffer.from(A.last().split('.')[1], 'base64url')).tag});")
+
+    def test_a_token_near_its_end_is_renewed_by_the_tick(self):
+        """Firebase renews a token only within 30 s of its end when asked, and
+        its own early refresh runs only for other Firebase products -- so the
+        tick has to look at the token's expiry and renew it itself."""
+        assert self.ticked(3) == {"asked": [False, True], "last": "new"}
+
+    def test_and_on_coming_back_to_the_tab(self):
+        assert self.ticked(3, "on.visibilitychange()") == {"asked": [False, True], "last": "new"}
+
+    def test_a_token_with_time_left_is_left_alone(self):
+        assert self.ticked(30) == {"asked": [False], "last": "old"}
+
 
 class TestSavesCarryTheToken:
     """overridesStore with fetch, timers and the page's events stood in for."""

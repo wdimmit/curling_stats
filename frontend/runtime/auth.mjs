@@ -45,8 +45,8 @@ export async function whoIsSignedIn(ms = SIGN_IN_WAIT_MS) {
 
 /* The signed-in person's ID token: a string, null for nobody, undefined when
  * auth has not answered within `ms`. Firebase hands back its cached token and
- * renews it itself in the token's last five minutes; `force` renews it now,
- * for a save the server has just refused. */
+ * renews it itself only within 30 seconds of its end; `force` renews it now,
+ * for a save the server has just refused or a token near its end (chartAuth). */
 export async function idToken({ force = false, ms = SIGN_IN_WAIT_MS } = {}) {
   const u = await settleWithin(signedIn(), ms, undefined);
   if (!u) return u;

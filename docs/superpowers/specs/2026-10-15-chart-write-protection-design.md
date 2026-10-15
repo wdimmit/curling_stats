@@ -72,7 +72,7 @@ One function on the server decides who may save a chart's grading, `may_edit_cha
   - `not-yours`: "View only — only the person or team who made this chart can change it". For a team chart it names the team ("only team Thistles…");
   - `unchecked`: "View only — couldn't check sign-in. Reload to try again."
 - **`runtime/overridesStore.mjs`:**
-  - **Token cache.** On a guarded edit page the store keeps a cached token from `whoIsSignedIn()`. It refreshes it before every save, every 5 minutes, and when the tab becomes visible again. Firebase renews a token in the last 5 minutes of its hour, so a 5-minute tick keeps the cache valid.
+  - **Token cache.** On a guarded edit page the store keeps a cached token from `whoIsSignedIn()`. It refreshes it before every save, every 5 minutes, and when the tab becomes visible again. Firebase renews a token only within 30 seconds of its end when asked (its own early refresh runs only for other Firebase products), so each tick reads the token's expiry and forces a renewal once less than 7 minutes are left; the next tick, 5 minutes on (6 in a throttled background tab), still finds it valid. (Corrected after review: the first version assumed Firebase renews in the last 5 minutes.)
   - **Saves** send `Authorization: Bearer <token>` whenever there is a token. Unguarded pages send none, as today.
   - **Close-of-tab save.** The `pagehide` save becomes `fetch(url, {method: "POST", keepalive: true, headers, body})` with the cached token, replacing `sendBeacon` everywhere. It still sends only the unsaved shots.
   - **A refused save (401/403):**
