@@ -197,6 +197,146 @@ class TestUnloadBeacon:
         assert got == {"url": "overrides.json", "body": {"a": {"x": 1}, "b": {"y": 2}}}
 
 
+
+class TestTheChartToken:
+    """runtime/chartAuth.mjs, with Firebase stood in for by `get`."""
+    MODULE = Path(__file__).resolve().parents[1] / "frontend/runtime/chartAuth.mjs"
+
+    def run(self, body):
+        script = ("const asked = [], ticks = [], on = {};\n"
+                  f"const M = await import({self.MODULE.as_uri()!r});\n"
+                  "function out(v) { console.log(JSON.stringify(v)); process.exit(0); }\n"
+                  + body)
+        proc = subprocess.run([node, "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_it_keeps_the_last_token_for_the_close_of_tab_save(self):
+        got = self.run(
+            "const answers = ['t1', undefined, 't2', null];\n"
+            "const A = M.chartAuth(async ({force}) => { asked.push(force); return answers.shift(); });\n"
+            "const seen = [];\n"
+            "seen.push(await A.fresh(), A.last());       // a token\n"
+            "seen.push(await A.fresh(), A.last());       // no answer: keep it\n"
+            "seen.push(await A.fresh(true), A.last());   // forced: the new one\n"
+            "seen.push(await A.fresh(), A.last());       // signed out: none\n"
+            "out({seen, asked});")
+        assert got["seen"] == ["t1", "t1", "t1", "t1", "t2", "t2", None, None]
+        assert got["asked"] == [False, False, True, False]
+
+    def test_it_is_renewed_every_five_minutes_and_on_coming_back(self):
+        got = self.run(
+            "let tick = null;\n"
+            "globalThis.setInterval = (fn, ms) => { ticks.push(ms); tick = fn; return 1; };\n"
+            "globalThis.addEventListener = (t, fn) => { on[t] = fn; };\n"
+            "globalThis.document = {visibilityState: 'visible'};\n"
+            "const A = M.chartAuth(async ({force}) => { asked.push(force); return 't'; });\n"
+            "A.keepFresh(); tick(); on.visibilitychange();\n"
+            "await new Promise(r => setImmediate(r));\n"
+            "out({ticks, asked, tickMs: M.TOKEN_TICK_MS});")
+        assert got == {"ticks": [300000], "asked": [False, False], "tickMs": 300000}
+
+
+class TestSavesCarryTheToken:
+    """overridesStore with fetch, timers and the page's events stood in for."""
+    MODULE = Path(__file__).resolve().parents[1] / "frontend/runtime/overridesStore.mjs"
+
+    def run(self, body, replies=()):
+        script = (
+            "const calls = [], timers = [], on = {}, asked = [];\n"
+            f"const replies = {json.dumps(list(replies))};\n"
+            "globalThis.addEventListener = (t, fn) => { on[t] = fn; };\n"
+            "globalThis.setTimeout = (fn, ms) => { timers.push(ms); return timers.length; };\n"
+            "globalThis.clearTimeout = () => {};\n"
+            "globalThis.fetch = async (url, init) => {\n"
+            "  calls.push({url, ...init, body: JSON.parse(init.body)});\n"
+            "  const status = replies.length ? replies.shift() : 200;\n"
+            "  return {ok: status < 300, status, headers: {get: () => null},\n"
+            "          json: async () => ({ok: status < 300, version: 1})};\n"
+            "};\n"
+            "const auth = {fresh: async (force = false) => { asked.push(force);"
+            " return force ? 't2' : 't1'; }, last: () => 't1'};\n"
+            "const EDIT = {mode: 'edit', readOnly: false, merge: true, shared: false};\n"
+            f"const S = await import({self.MODULE.as_uri()!r});\n"
+            "function out(v) { console.log(JSON.stringify(v)); process.exit(0); }\n"
+            + body)
+        proc = subprocess.run([node, "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_a_guarded_save_carries_the_token(self):
+        got = self.run("S.start(EDIT, {overrides: {}, version: 0, auth});\n"
+                       "S.apply({a: {x: 1}}, 'a'); await S.save();\n"
+                       "out({calls, asked, status: S.getStatus().text});")
+        (call,) = got["calls"]
+        assert call["headers"]["Authorization"] == "Bearer t1"
+        assert call["url"] == "overrides.json?merge=1&v=0" and call["body"] == {"a": {"x": 1}}
+        assert got["asked"] == [False] and got["status"].startswith("saved")
+
+    def test_every_save_asks_for_the_token_again(self):
+        """A tab open past the hour keeps saving: Firebase renews the token when
+        asked, so each save asks rather than reusing the first one."""
+        got = self.run("S.start(EDIT, {overrides: {}, version: 0, auth});\n"
+                       "S.apply({a: {x: 1}}, 'a'); await S.save();\n"
+                       "S.apply({a: {x: 2}}, 'a'); await S.save();\n"
+                       "out({asked});")
+        assert got["asked"] == [False, False]
+
+    def test_an_unguarded_save_carries_none(self):
+        got = self.run("S.start(EDIT, {overrides: {}, version: 0});\n"
+                       "S.apply({a: {x: 1}}, 'a'); await S.save();\n"
+                       "out(calls);")
+        assert "Authorization" not in got[0]["headers"]
+
+    def test_a_refusal_renews_the_token_once_then_stops(self):
+        got = self.run("S.start(EDIT, {overrides: {}, version: 0, auth});\n"
+                       "S.apply({a: {x: 1}}, 'a'); timers.length = 0; await S.save();\n"
+                       "out({calls, asked, timers, status: S.getStatus().text,"
+                       " dirty: S.isDirty()});",
+                       replies=[401, 403])
+        assert [c["headers"]["Authorization"] for c in got["calls"]] == ["Bearer t1", "Bearer t2"]
+        assert got["asked"] == [False, True]
+        assert got["status"] == "not saved — sign in again" and got["dirty"] is True
+        assert 5000 not in got["timers"]        # retrying cannot fix a refusal
+
+    def test_a_renewed_token_that_works_saves(self):
+        got = self.run("S.start(EDIT, {overrides: {}, version: 0, auth});\n"
+                       "S.apply({a: {x: 1}}, 'a'); await S.save();\n"
+                       "out({n: calls.length, status: S.getStatus().text, dirty: S.isDirty()});",
+                       replies=[401, 200])
+        assert got["n"] == 2 and got["status"].startswith("saved") and got["dirty"] is False
+
+    def test_the_close_of_tab_save_is_a_keepalive_fetch_with_the_token(self):
+        got = self.run("S.start(EDIT, {overrides: {a: {x: 1}}, version: 3, auth});\n"
+                       "S.apply({a: {x: 1}, b: {y: 2}}, 'b');\n"
+                       "on.pagehide(); await null;\n"
+                       "out(calls);")
+        (call,) = got
+        assert call["keepalive"] is True and call["method"] == "POST"
+        assert call["headers"]["Authorization"] == "Bearer t1"
+        assert call["url"] == "overrides.json?merge=1" and call["body"] == {"b": {"y": 2}}
+
+    def test_an_unguarded_close_of_tab_save_carries_no_token(self):
+        got = self.run("S.start(EDIT, {overrides: {}, version: 0});\n"
+                       "S.apply({a: {x: 1}}, 'a'); on.pagehide(); await null;\n"
+                       "out(calls);")
+        assert got[0]["keepalive"] is True and "Authorization" not in got[0]["headers"]
+
+    def test_a_close_of_tab_save_that_fails_is_swallowed(self):
+        """Offline, or a body over keepalive's 64 KB: the page is going, and
+        nothing may be thrown into it on the way out."""
+        got = self.run("let unhandled = 0, tried = 0;\n"
+                       "process.on('unhandledRejection', () => unhandled++);\n"
+                       "globalThis.fetch = () => { tried++;"
+                       " return Promise.reject(new TypeError('too big')); };\n"
+                       "S.start(EDIT, {overrides: {}, version: 0, auth});\n"
+                       "S.apply({a: {x: 1}}, 'a'); on.pagehide();\n"
+                       "await new Promise(r => setImmediate(r));\n"
+                       "out({tried, unhandled});")
+        assert got == {"tried": 1, "unhandled": 0}
+
 RECONCILE = """
 state.doc = %s; state.gi = 0; state.ei = 0; state.si = 0;
 state.overrides = %s; state.dirty = new Set(%s); state.dragging = %s;

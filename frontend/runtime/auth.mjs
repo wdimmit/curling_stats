@@ -43,6 +43,16 @@ export async function whoIsSignedIn(ms = SIGN_IN_WAIT_MS) {
   return token ? { email: u.email ?? null, token } : undefined;
 }
 
+/* The signed-in person's ID token: a string, null for nobody, undefined when
+ * auth has not answered within `ms`. Firebase hands back its cached token and
+ * renews it itself in the token's last five minutes; `force` renews it now,
+ * for a save the server has just refused. */
+export async function idToken({ force = false, ms = SIGN_IN_WAIT_MS } = {}) {
+  const u = await settleWithin(signedIn(), ms, undefined);
+  if (!u) return u;
+  return settleWithin(u.getIdToken(force), ms, undefined);
+}
+
 /* Google's sign-in popup. Resolves once signed in; throws if it was shut. */
 export async function signInNow() {
   const auth = await import("../site/auth.js");

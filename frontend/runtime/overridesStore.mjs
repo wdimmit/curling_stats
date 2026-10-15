@@ -5,8 +5,10 @@
  * scar tissue: the snapshot-then-clear ordering in save() is what stopped
  * edits made mid-flight from being dropped; the 409 branch adopts the server's
  * map wholesale because the alternative is two charters silently diverging;
- * busyKey() keeps a poll from redrawing the field the caret is in; the beacon
- * sends only dirty keys so a closing tab cannot erase a teammate's work.
+ * busyKey() keeps a poll from redrawing the field the caret is in; the
+ * close-of-tab save sends only dirty keys so a closing tab cannot erase a
+ * teammate's work, and a guarded chart's saves carry its person's token
+ * (chartAuth).
  * Putting that in an effect would make React's scheduling part of a
  * correctness argument, which is not a trade worth making. It was moved here,
  * not rewritten.
@@ -27,6 +29,7 @@ let timer = null;
 let status = { cls: "", text: "saved" };
 let busyOn = null;            // the shot being typed into or dragged on
 let onNotice = () => {};
+let auth = null;              // chartAuth() on a guarded chart this person edits
 
 const listeners = new Set();
 const announce = () => listeners.forEach(fn => fn());
@@ -43,10 +46,11 @@ function setStatus(cls, text) {
   announce();
 }
 
-export function start(cfg, { overrides: initial, version: v }) {
+export function start(cfg, { overrides: initial, version: v, auth: a = null }) {
   config = cfg;
   overrides = initial || {};
   version = v ?? null;
+  auth = a;
   setStatus("saved", Object.keys(overrides).length ? "loaded" : "no edits yet");
   if (config.merge && !config.readOnly && config.shared) poll();
 }
@@ -87,6 +91,15 @@ function schedule() {
 
 /* ------------------------------------------------------------------- save */
 
+/* A save's headers. A guarded chart's carry the person's token (api.py
+ * may_edit_chart); every other page's carry none, as they always have. */
+function headersWith(token) {
+  return token ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+               : { "Content-Type": "application/json" };
+}
+
+const refused = res => res.status === 401 || res.status === 403;
+
 export async function save() {
   if (saving) { again = true; return; }
   saving = true;
@@ -99,11 +112,21 @@ export async function save() {
   const payload = config.merge ? dirtyPayload(overrides, dirty) : overrides;
   dirty.clear();
   try {
-    const res = await fetch(saveUrl(config, version), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const url = saveUrl(config, version);
+    const json = JSON.stringify(payload);
+    let res = await fetch(url, { method: "POST", headers: headersWith(await auth?.fresh()),
+                                 body: json });
+    // Refused: perhaps only a token that ran out while the tab slept. Renew
+    // it once and try again; a second refusal is not something retrying can
+    // fix, so the keys wait for the person to sign in, and ⬇ is still there.
+    if (refused(res) && auth)
+      res = await fetch(url, { method: "POST", headers: headersWith(await auth.fresh(true)),
+                               body: json });
+    if (refused(res)) {
+      for (const k of sent) dirty.add(k);
+      setStatus("failed", "not saved — sign in again");
+      return;
+    }
     if (res.status === 409) {
       const body = await res.json();
       overrides = body.overrides || {};
@@ -160,13 +183,21 @@ function poll() {
 }
 
 /* Registered once at module scope, as it was before: a listener that came and
- * went with a component could fire after unmount or not at all. */
+ * went with a component could fire after unmount or not at all.
+ *
+ * A keepalive fetch, not sendBeacon: a beacon cannot carry the token a
+ * guarded chart's save needs. The token is the one in hand (chartAuth's
+ * last()), since nothing can be awaited here. Whatever goes wrong -- no
+ * network, a body over keepalive's 64 KB -- is swallowed: the page is going. */
 if (typeof addEventListener === "function")
   addEventListener("pagehide", () => {
     const beacon = unloadBeacon(config, overrides, dirty);
     if (!beacon) return;
-    navigator.sendBeacon?.(beacon.url,
-      new Blob([JSON.stringify(beacon.body)], { type: "application/json" }));
+    try {
+      fetch(beacon.url, { method: "POST", keepalive: true,
+                          headers: headersWith(auth?.last()),
+                          body: JSON.stringify(beacon.body) }).catch(() => {});
+    } catch { /* fetch can throw at once on a keepalive body it will not take */ }
   });
 
 /* The documented escape hatch when saving keeps failing. */
