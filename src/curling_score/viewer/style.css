@@ -1115,6 +1115,11 @@ body[data-mode="review"] #house { cursor:default; }
      and a header saying nothing at all is worse than one saying where you are. */
   body[data-mode="view"] header > h1, body[data-mode="review"] header > h1,
   body[data-mode="view"] #src, body[data-mode="review"] #src { display: block; }
+  /* Except on a chart this person may not edit: the view-only line and Sign
+     in need that room, or they and the menu are pushed off the screen. The
+     video's own title is right below, and the name ellipsises if it must. */
+  body:has(#viewOnly) #src { display: none; }
+  body:has(#viewOnly) header > h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   #watch { position: fixed; left: 0; right: 0; top: calc(48px + 56.25vw);
            bottom: 0; z-index: 4; flex-direction: column;

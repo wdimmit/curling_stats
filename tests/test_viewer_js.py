@@ -379,6 +379,16 @@ class TestTheGuardedPage:
         assert "#viewOnly .long { display: none; }" in phone
         assert "#viewOnly .short { display: inline; }" in phone
 
+    def test_on_a_phone_the_way_to_sign_in_stays_on_screen(self):
+        """Watch mode shows the site's name and #src in the 48px header; with
+        the view-only line and Sign in as well, the row ran to 523px at 390
+        and pushed Sign in and the menu off the screen."""
+        css = self.src("src/curling_score/viewer/style.css")
+        phone = css[css.index("@media (max-width: 640px) and (min-height: 461px)"):]
+        assert "body:has(#viewOnly) #src { display: none; }" in phone
+        assert ("body:has(#viewOnly) header > h1 { min-width: 0; overflow: hidden;"
+                " text-overflow: ellipsis; white-space: nowrap; }") in phone
+
 
 class TestChartingSignsYouInFirst:
     """With accounts on, Chart and Submit need somebody to own the chart."""
