@@ -12,6 +12,7 @@ from curling_score.game import format as F
 from curling_score.service.records import Play, Source, play_id
 from tests.test_service_api import T0, VID, sample_doc, work_through
 from tests.test_service_auth import ALEX, SARAH, no_accounts, post, w  # noqa: F401  (fixtures)
+from tests.test_service_auth import give_role
 
 
 def played_doc(fmt=F.FOURS):
@@ -212,6 +213,7 @@ class TestReadingAndClearingAPlay:
 class TestTheList:
     def test_each_game_with_what_the_report_page_shows(self, w):  # noqa: F811
         slug, share, src = a_played_game(w)
+        give_role(w, SARAH, "validated")
         post(w, f"/api/games/{src}/teams", {"red": "Dimmit", "yellow": "Grant"}, SARAH)
         put(w, src, {"path": f"/c/{slug}/", "color": "red", "slot": 4})
         r = get(w, "/api/me/plays")

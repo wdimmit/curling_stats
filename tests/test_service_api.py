@@ -746,7 +746,8 @@ class TestCatalogueAndAdmin:
         c = world["client"]
         for path, page in [("/", "games"), ("/games", "games"), ("/submit", "submit"),
                            ("/mine", "mine"), ("/join/i_whatever", "join"),
-                           ("/thinking", "thinking"), ("/shots", "shots")]:
+                           ("/thinking", "thinking"), ("/shots", "shots"),
+                           ("/users", "users")]:
             body = c.get(path).text
             assert f'data-page="{page}"' in body, f"{path} is not the {page} page"
             assert 'src="/static/site.js"' in body, f"{path} loads no bundle"
@@ -784,7 +785,7 @@ class TestCatalogueAndAdmin:
         """The allowlist is hand-kept, so a new page can reference a 404."""
         import re
         c = world["client"]
-        for path in ("/", "/games", "/mine", "/join/i_x", "/thinking", "/shots"):
+        for path in ("/", "/games", "/mine", "/join/i_x", "/thinking", "/shots", "/users"):
             for src in re.findall(r'src="(/static/[^"]+)"', c.get(path).text):
                 assert c.get(src).status_code == 200, f"{path} asks for {src}"
 

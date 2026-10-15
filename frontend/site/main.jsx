@@ -18,9 +18,10 @@ import { Status } from "./Status.jsx";
 import { Submit } from "./Submit.jsx";
 import { Thinking } from "./Thinking.jsx";
 import { LegalLinks } from "./ui.jsx";
+import { Users } from "./Users.jsx";
 
 const PAGES = { submit: Submit, games: Games, mine: Mine, join: Join, status: Status,
-                thinking: Thinking, shots: Shots, practice: Practice };
+                thinking: Thinking, shots: Shots, practice: Practice, users: Users };
 
 const which = document.body.dataset.page;
 const Page = PAGES[which];

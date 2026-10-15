@@ -60,6 +60,19 @@ def post(w, path, body=None, headers=None):
                             headers={"X-Forwarded-For": "1.2.3.4", **(headers or {})})
 
 
+def put(w, path, body=None, headers=None):
+    return w["client"].put(path, json=body if body is not None else {},
+                           headers={"X-Forwarded-For": "1.2.3.4", **(headers or {})})
+
+
+def give_role(w, headers, role):
+    """Make the account behind `headers` `role` the way the owner does: seen
+    once, then set with the admin token (scripts/users.py)."""
+    uid = w["client"].get("/api/me", headers=headers).json()["user"]["id"]
+    assert put(w, f"/api/admin/users/{uid}/role", {"role": role}, ADMIN).status_code == 200
+    return uid
+
+
 def a_ready_game(w):
     """Submit and process a video; return the source id the catalogue lists."""
     post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"})
@@ -465,6 +478,11 @@ class TestNamingTheTeams:
     """Per game, where the league is per recording. Nothing detects it: the
     cameras read stones, not scoreboards."""
 
+    @pytest.fixture(autouse=True)
+    def validated(self, w):
+        give_role(w, SARAH, "validated")
+        give_role(w, ALEX, "validated")
+
     def test_a_game_starts_with_nobody_named(self, w):
         a_ready_game(w)
         g = next(x for x in w["client"].get("/api/games").json()["games"] if x["source_id"])
@@ -540,8 +558,14 @@ class TestNamingTheTeams:
 
 
 class TestTeamNameHistory:
-    """Anyone signed in may rename any game's teams, and the names are public,
-    so every change is kept with who made it -- for the admin, nobody else."""
+    """Any validated account may rename any game's teams, and the names are
+    public, so every change is kept with who made it -- for the admin, nobody
+    else."""
+
+    @pytest.fixture(autouse=True)
+    def validated(self, w):
+        give_role(w, SARAH, "validated")
+        give_role(w, ALEX, "validated")
 
     def edits(self, w, query=""):
         r = w["client"].get(f"/api/admin/team-name-edits{query}", headers=ADMIN)
@@ -594,6 +618,123 @@ class TestTeamNameHistory:
         assert c.get("/api/admin/team-name-edits", headers=SARAH).status_code == 401
         timeline = c.get(f"/g/{src}/timeline.json").text
         assert "uid-sarah" not in timeline and "Sarah@Example.org" not in timeline
+
+
+class TestWhoMayNameTeams:
+    """Names are public and usually a skip's surname, so renaming them is kept
+    to accounts an admin has validated. Everything else stays open to anyone
+    signed in."""
+
+    def test_a_new_account_is_neither_validated_nor_admin(self, w):
+        assert w["client"].get("/api/me", headers=SARAH).json()["user"]["role"] is None
+
+    def test_me_says_the_role(self, w):
+        give_role(w, SARAH, "validated")
+        assert w["client"].get("/api/me", headers=SARAH).json()["user"]["role"] == "validated"
+
+    def test_an_account_not_yet_validated_is_refused(self, w):
+        src = a_ready_game(w)
+        r = post(w, f"/api/games/{src}/teams", {"red": "Cheats"}, SARAH)
+        assert r.status_code == 403 and "validated" in r.json()["detail"]
+        assert w["repo"].get_source(src).team_red is None
+        assert w["repo"].team_name_edits() == []
+
+    def test_a_validated_account_names_them(self, w):
+        src = a_ready_game(w)
+        give_role(w, SARAH, "validated")
+        assert post(w, f"/api/games/{src}/teams", {"red": "Rice"}, SARAH).status_code == 200
+
+    def test_so_does_an_admin(self, w):
+        src = a_ready_game(w)
+        give_role(w, SARAH, "admin")
+        assert post(w, f"/api/games/{src}/teams", {"red": "Rice"}, SARAH).status_code == 200
+
+    def test_the_rest_stays_open_to_anyone_signed_in(self, w):
+        src = a_ready_game(w)
+        assert post(w, f"/api/games/{src}/league", {"league": "Tuesday"}, SARAH).status_code == 200
+
+
+class TestAdminsValidateAccounts:
+    """Admins are made by the owner with the admin token (scripts/users.py).
+    A signed-in admin lists the accounts and validates them, and no more."""
+
+    def listed(self, w, headers):
+        r = w["client"].get("/api/admin/users", headers=headers)
+        assert r.status_code == 200
+        return r.json()["users"]
+
+    def test_an_admin_lists_every_account(self, w):
+        give_role(w, ALEX, "admin")
+        w["client"].get("/api/me", headers=SARAH)
+        got = {u["id"]: u for u in self.listed(w, ALEX)}
+        assert set(got) == {"uid-sarah", "uid-alex"}
+        assert got["uid-sarah"]["email"] == "sarah@example.org"
+        assert got["uid-sarah"]["name"] == "Sarah" and got["uid-sarah"]["role"] is None
+        assert got["uid-sarah"]["created_at"] and got["uid-sarah"]["last_seen_at"]
+        assert got["uid-alex"]["role"] == "admin"
+
+    def test_newest_account_first(self, w):
+        w["client"].get("/api/me", headers=SARAH)
+        w["clock"].advance(60)
+        w["client"].get("/api/me", headers=ALEX)
+        assert [u["id"] for u in self.listed(w, ADMIN)] == ["uid-alex", "uid-sarah"]
+
+    def test_nobody_else_sees_the_list(self, w):
+        c = w["client"]
+        assert c.get("/api/admin/users").status_code == 401
+        assert c.get("/api/admin/users", headers=SARAH).status_code == 403
+        give_role(w, SARAH, "validated")
+        assert c.get("/api/admin/users", headers=SARAH).status_code == 403
+
+    def test_an_admin_validates_and_unvalidates(self, w):
+        give_role(w, ALEX, "admin")
+        src = a_ready_game(w)
+        w["client"].get("/api/me", headers=SARAH)
+        r = put(w, "/api/admin/users/uid-sarah/role", {"role": "validated"}, ALEX)
+        assert r.status_code == 200
+        assert r.json()["id"] == "uid-sarah" and r.json()["role"] == "validated"
+        assert post(w, f"/api/games/{src}/teams", {"red": "Rice"}, SARAH).status_code == 200
+        assert put(w, "/api/admin/users/uid-sarah/role", {"role": None}, ALEX).status_code == 200
+        assert w["repo"].get_user("uid-sarah").role is None
+        assert post(w, f"/api/games/{src}/teams", {"red": "Casey"}, SARAH).status_code == 403
+
+    def test_an_admin_cannot_make_an_admin(self, w):
+        give_role(w, ALEX, "admin")
+        w["client"].get("/api/me", headers=SARAH)
+        assert put(w, "/api/admin/users/uid-sarah/role", {"role": "admin"}, ALEX).status_code == 403
+        assert w["repo"].get_user("uid-sarah").role is None
+
+    def test_nor_change_an_admins_role_their_own_included(self, w):
+        give_role(w, ALEX, "admin")
+        give_role(w, SARAH, "admin")
+        assert put(w, "/api/admin/users/uid-sarah/role", {"role": None}, ALEX).status_code == 403
+        assert put(w, "/api/admin/users/uid-alex/role", {"role": "validated"},
+                   ALEX).status_code == 403
+        assert w["repo"].get_user("uid-sarah").role == "admin"
+        assert w["repo"].get_user("uid-alex").role == "admin"
+
+    def test_the_admin_token_makes_and_unmakes_admins(self, w):
+        give_role(w, SARAH, "admin")
+        assert put(w, "/api/admin/users/uid-sarah/role", {"role": None}, ADMIN).status_code == 200
+        assert w["repo"].get_user("uid-sarah").role is None
+
+    def test_a_validated_account_validates_nobody(self, w):
+        give_role(w, SARAH, "validated")
+        w["client"].get("/api/me", headers=ALEX)
+        assert put(w, "/api/admin/users/uid-alex/role", {"role": "validated"},
+                   SARAH).status_code == 403
+        assert put(w, "/api/admin/users/uid-alex/role", {"role": "validated"}).status_code == 401
+        assert w["repo"].get_user("uid-alex").role is None
+
+    def test_a_role_that_does_not_exist_is_refused(self, w):
+        w["client"].get("/api/me", headers=SARAH)
+        assert put(w, "/api/admin/users/uid-sarah/role", {"role": "owner"}, ADMIN).status_code == 422
+        assert put(w, "/api/admin/users/uid-sarah/role", {}, ADMIN).status_code == 422
+        assert w["repo"].get_user("uid-sarah").role is None
+
+    def test_an_account_never_seen_is_404(self, w):
+        assert put(w, "/api/admin/users/uid-nope/role", {"role": "validated"},
+                   ADMIN).status_code == 404
 
 
 class TestAFlagCarriesTheAccount:

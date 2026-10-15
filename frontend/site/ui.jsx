@@ -63,11 +63,12 @@ export const Pill = ({ kind = "", children }) =>
   <span className={`pill ${kind}`}>{children}</span>;
 
 /* "Chart this as ..." -- shown only to somebody actually on a team, because
- * for everyone else there is nothing to choose. */
-export function TeamPicker({ value, onChange }) {
+ * for everyone else there is nothing to choose. A page that has fetched
+ * /api/me already passes it as `me`, rather than it being asked for twice. */
+export function TeamPicker({ value, onChange, me: given }) {
   const { user, ready } = useAuthUser();
-  const me = useResource("/api/me", { skip: !ready || !user, deps: [user?.uid] });
-  const teams = me.data?.teams || [];
+  const own = useResource("/api/me", { skip: !!given || !ready || !user, deps: [user?.uid] });
+  const teams = (given || own).data?.teams || [];
   if (!teams.length) return <div className="row" id="teamrow" hidden />;
   return (
     <div className="row" id="teamrow" style={{ marginBottom: 12 }}>

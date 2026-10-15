@@ -22,6 +22,24 @@ export async function sendTeams(sourceId, body, token) {
   }
 }
 
+/* Whether an account's role (api.py /api/me, User.role) lets it name a
+ * game's teams: validated accounts and admins. The server decides; this only
+ * spares everyone else a form that would be refused. */
+export const canNameTeams = role => role === "validated" || role === "admin";
+
+/* The signed-in person's role: the role, null for none, or undefined when
+ * the server did not say -- left to the server to decide at the save. */
+export async function fetchRole(token) {
+  try {
+    const r = await fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) return undefined;
+    const data = await r.json();
+    return data?.user?.role ?? null;
+  } catch {
+    return undefined;
+  }
+}
+
 /* The names this game's league has already given its teams (api.py,
  * "team-names"), the most used first, to offer while somebody types. Public,
  * so no token. Only ever a help: anything that goes wrong is no names, and

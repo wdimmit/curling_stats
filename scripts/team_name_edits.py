@@ -8,7 +8,7 @@ BASE_URL defaults to https://curling.dimmit.net. The admin token is the
     ADMIN_TOKEN=$(~/google-cloud-sdk/bin/gcloud secrets versions access latest \\
         --secret=curling-admin-token --project=curling-stats-508323)
 
-Anyone signed in may rename any game's teams, and the names are public, so
+Any validated account may rename any game's teams, and the names are public, so
 each change is kept with the account that made it. Each prints newest first
 with that account, the game's page, each name before and after, and what the
 names are now -- an edit somebody has since put right reads as settled. To

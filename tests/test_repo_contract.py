@@ -336,6 +336,21 @@ class TestUsers:
         repo.put_user(user(name="Sarah"))
         assert repo.get_user("fbuid1").name == "Sarah"
 
+    def test_a_role_is_kept(self, repo):
+        repo.put_user(user())
+        assert repo.get_user("fbuid1").role is None
+        repo.update_user("fbuid1", role="validated")
+        assert repo.get_user("fbuid1").role == "validated"
+        repo.update_user("fbuid1", role=None)
+        assert repo.get_user("fbuid1").role is None
+
+    def test_listed_newest_first(self, repo):
+        repo.put_user(user(id="u1", created_at=T0))
+        repo.put_user(user(id="u3", created_at=at(120)))
+        repo.put_user(user(id="u2", created_at=at(60)))
+        assert [u.id for u in repo.list_users()] == ["u3", "u2", "u1"]
+        assert [u.id for u in repo.list_users(limit=2)] == ["u3", "u2"]
+
 
 class TestTeams:
     def test_put_get_and_update(self, repo):

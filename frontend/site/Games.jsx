@@ -17,7 +17,7 @@ import { authedFetch } from "./auth.js";
 import { clockParts, dayParts, localDay } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Header, TeamPicker, useCommitOnExit } from "./ui.jsx";
-import { fetchTeamNames } from "../runtime/teams.mjs";
+import { canNameTeams, fetchTeamNames } from "../runtime/teams.mjs";
 import { NameBox } from "../viewer/NameBox.jsx";
 
 const leaguesIn = games => [...new Set(games.map(g => g.league).filter(Boolean))].sort();
@@ -271,7 +271,7 @@ function Actions({ game, mine, team }) {
 }
 
 /* One draw: its time and league, then its games by sheet. */
-function Draw({ at, games, leagues, editable, onSaved, mine, team }) {
+function Draw({ at, games, leagues, editable, canName, onSaved, mine, team }) {
   const league = commonest(games, "league");
   const doubles = commonest(games, "format") === "doubles";
   const clock = at == null ? { time: "—", period: "" } : clockParts(at);
@@ -291,7 +291,7 @@ function Draw({ at, games, leagues, editable, onSaved, mine, team }) {
               <div className="sheet"><span>Sheet</span> <b>{g.sheet ?? "?"}</b></div>
               <div className="mid">
                 <div className="who">
-                  <TeamsCell game={g} onSaved={onSaved} editable={own} />
+                  <TeamsCell game={g} onSaved={onSaved} editable={own && canName} />
                   {(g.league || "") !== league && (
                     <LeagueLabel league={g.league} games={[g]} leagues={leagues}
                                  onSaved={onSaved} editable={own} />
@@ -323,6 +323,9 @@ export function Games() {
   const catalogue = useResource(gamesUrl(league), { auth: false });
   const charts = useResource("/api/me/charts",
                              { skip: !ready || !user, deps: [user?.uid] });
+  // Who this is: their teams for the picker, and whether they may name a
+  // game's teams -- a validated account's to do; anyone else sees names only.
+  const me = useResource("/api/me", { skip: !ready || !user, deps: [user?.uid] });
   const [team, setTeam] = useState("");
   // The weeks fetched since, oldest last; the first page stays the catalogue's.
   const [older, setOlder] = useState(NO_OLDER);
@@ -343,6 +346,7 @@ export function Games() {
   const mine = new Map((charts.data?.charts || [])
     .filter(c => c.source_id).map(c => [c.source_id, c.slug]));
   const editable = !!user;
+  const canName = canNameTeams(me.data?.user?.role);
 
   const next = older.next === undefined ? catalogue.data?.older : older.next;
   const showOlder = async () => {
@@ -395,7 +399,7 @@ export function Games() {
         <span className="chartnote"><strong>Chart</strong> gets you your own charting
         link, private to whoever has it, so a team can grade a game without anyone
         else seeing.</span></p>
-        <TeamPicker value={team} onChange={setTeam} />
+        <TeamPicker value={team} onChange={setTeam} me={me} />
         <div id="list">
           {/* Only before the first answer: the live refresh must not fold the
               page up under someone reading a week they went back to. */}
@@ -416,7 +420,8 @@ export function Games() {
                   <div className="draws">
                     {[...draws].map(([at, games]) => (
                       <Draw key={at ?? "none"} at={at} games={games} leagues={leagues}
-                            editable={editable} onSaved={setAll} mine={mine} team={team} />
+                            editable={editable} canName={canName} onSaved={setAll}
+                            mine={mine} team={team} />
                     ))}
                   </div>
                 </div>

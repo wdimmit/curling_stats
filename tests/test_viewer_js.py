@@ -4601,9 +4601,96 @@ class TestNamingTheTeams:
         teams = self.src("frontend/viewer/Teams.jsx")
         assert teams.count("maxLength={60}") == 2
 
+    def role(self, status, reply, *, throws=False):
+        """fetchRole against a stubbed fetch: what it asked for, and the role
+        ("not known" standing in for undefined, which JSON drops)."""
+        module = (self.ROOT / "frontend/runtime/teams.mjs").as_uri()
+        fetch = ("async () => { throw new Error('offline'); }" if throws else
+                 f"async (url, init) => {{ asked.push({{url, init}});"
+                 f" return {{ ok: {str(200 <= status < 300).lower()}, status: {status},"
+                 f" json: async () => ({json.dumps(reply)}) }}; }}")
+        script = (f"const asked = [];\nglobalThis.fetch = {fetch};\n"
+                  f"const M = await import({module!r});\n"
+                  "const role = await M.fetchRole('tok');\n"
+                  "console.log(JSON.stringify({asked,"
+                  " role: role === undefined ? 'not known' : role}));")
+        proc = subprocess.run([node, "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_the_role_is_asked_of_me_with_the_token(self):
+        got = self.role(200, {"user": {"id": "u", "role": "validated"}, "teams": []})
+        (call,) = got["asked"]
+        assert call["url"] == "/api/me"
+        assert call["init"]["headers"]["Authorization"] == "Bearer tok"
+        assert got["role"] == "validated"
+
+    def test_no_role_is_null_and_no_answer_is_not_known(self):
+        assert self.role(200, {"user": {"id": "u", "role": None}})["role"] is None
+        assert self.role(200, {"user": {"id": "u"}})["role"] is None
+        assert self.role(500, {"detail": "boom"})["role"] == "not known"
+        assert self.role(0, {}, throws=True)["role"] == "not known"
+
+    def test_validated_accounts_and_admins_may_name_teams(self):
+        module = (self.ROOT / "frontend/runtime/teams.mjs").as_uri()
+        script = (f"const M = await import({module!r});\n"
+                  "console.log(JSON.stringify(['validated', 'admin', null, undefined, 'owner']"
+                  ".map(M.canNameTeams)));")
+        proc = subprocess.run([node, "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        assert json.loads(proc.stdout.strip()) == [True, True, False, False, False]
+
+    def test_an_account_not_yet_validated_is_told_so_not_shown_the_form(self):
+        teams = self.src("frontend/viewer/Teams.jsx")
+        form = teams[teams.index("function TeamsForm("):]
+        assert "await fetchRole(who.token)" in form
+        assert "canNameTeams(role)" in form
+        assert "Naming teams is open to accounts the site has validated." in form
+
+    def test_the_dialog_says_who_may_change_them(self):
+        teams = " ".join(self.src("frontend/viewer/Teams.jsx").split())
+        assert "Validated accounts can change them" in teams
+        assert "Anyone signed in can change them" not in teams
+
+    def test_the_game_list_offers_naming_only_to_those_who_may(self):
+        games = self.src("frontend/site/Games.jsx")
+        assert "canNameTeams(me.data?.user?.role)" in games
+        draw = games[games.index("function Draw("):games.index("/* The catalogue opens")]
+        assert "<TeamsCell game={g} onSaved={onSaved} editable={own && canName} />" in draw
+
     def test_on_the_desktop_it_sits_after_i_played(self):
         css = self.src("src/curling_score/viewer/style.css")
         assert "header #teamsBtn   { order: 14; }" in css
+
+
+class TestTheUsersPage:
+    """/users: an admin's list of accounts, with a box to validate each."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_it_is_a_page_of_the_site(self):
+        main = self.src("frontend/site/main.jsx")
+        assert 'import { Users } from "./Users.jsx";' in main
+        assert "users: Users" in main
+
+    def test_only_an_admin_is_shown_the_way_there(self):
+        mine = self.src("frontend/site/Mine.jsx")
+        assert 'me.data?.user?.role === "admin" ? [["/users", "Users"]] : []' in mine
+
+    def test_a_box_validates_or_unvalidates_and_an_admin_has_none(self):
+        page = self.src("frontend/site/Users.jsx")
+        assert "`/api/admin/users/${encodeURIComponent(u.id)}/role`" in page
+        assert 'method: "PUT"' in page
+        assert 'JSON.stringify({ role: on ? "validated" : null })' in page
+        assert 'u.role === "admin" ?' in page
+
+    def test_anyone_else_is_told_it_is_for_admins(self):
+        page = self.src("frontend/site/Users.jsx")
+        assert "users.error?.status === 403" in page
 
 
 class TestTheShotsPage:

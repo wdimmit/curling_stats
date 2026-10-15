@@ -236,9 +236,18 @@ class User:
     share_shots: bool = False
     """Whether their teammates may read their "My shots" report. Off until
     they say so: plays were private when they were saved."""
+    role: str | None = None
+    """None, "validated" or "admin" (one of ROLES). Validated accounts may
+    rename a game's teams -- public names, usually a skip's surname -- which
+    is all a role grants beyond being signed in. An admin is validated too,
+    and may list the accounts and validate them. One field rather than two
+    flags, so there is no admin who is not validated."""
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
+
+
+ROLES = ("validated", "admin")
 
 
 @dataclass

@@ -81,6 +81,7 @@ class Repo(Protocol):
     def put_user(self, user: User) -> None: ...
     def get_user(self, user_id: str) -> User | None: ...
     def update_user(self, user_id: str, **fields) -> User | None: ...
+    def list_users(self, limit: int = 500) -> list[User]: ...       # newest first
     # teams -- member storage is deliberately behind these four
     def put_team(self, team: Team) -> None: ...
     def get_team(self, team_id: str) -> Team | None: ...
@@ -440,6 +441,9 @@ class MemoryRepo:
             for k, v in fields.items():
                 setattr(got, k, v)
             return got
+
+    def list_users(self, limit=500):
+        return sorted(self.users.values(), key=lambda u: u.created_at, reverse=True)[:limit]
 
     # ---- teams --------------------------------------------------------
     def put_team(self, team):

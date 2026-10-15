@@ -488,7 +488,10 @@ carries. No account is needed for any of it.
 
 **Accounts** are optional and purely additive. Signing in with Google gives you
 a list at `/mine` of the games you have submitted or charted, so losing the
-link stops mattering. You can also name a game's teams and league. A **team**
+link stops mattering. You can also name a game's league, and its teams once an
+admin has validated your account: team names are public and usually a skip's
+surname. Admins validate accounts at `/users`; `scripts/users.py` lists the
+accounts and is the only way to make or unmake an admin. A **team**
 shares one chart per game, so everyone fills in the same sheet rather than four
 of them, and members see the same list. Anyone holding a chart link can still
 edit it whether or not they are signed in, and whether or not they are on the

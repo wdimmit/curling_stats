@@ -422,6 +422,12 @@ class FirestoreRepo:
     def update_user(self, user_id, **fields):
         return self._update(USERS, user_id, User, fields)
 
+    def list_users(self, limit=500):
+        # A handful of people, read only by an admin's page: one ordered
+        # query on a single field, so no composite index.
+        q = self._col(USERS).order_by("created_at", direction=self._fs.Query.DESCENDING)
+        return [User.from_dict(d.to_dict()) for d in q.limit(limit).stream()]
+
     # ---- teams --------------------------------------------------------
     def put_team(self, team):
         self._col(TEAMS).document(team.id).set(team.to_dict())

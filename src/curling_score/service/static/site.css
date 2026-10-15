@@ -473,3 +473,27 @@ body[data-page="shots"] main { max-width:980px; }
   .picker-done { display:block; width:100%; min-height:48px; margin-bottom:8px; }
   .picker-foot p { text-align:center; font-size:12px; }
 }
+
+/* --- users (admins only) ------------------------------------------------- */
+/* An email address is one unbreakable word, so it may break anywhere; on a
+   phone each account becomes a card, as My games' rows do. */
+#users td.who { overflow-wrap:anywhere; }
+#users td.who .email { display:block; color:var(--muted); font-size:13px; }
+#users td.box { text-align:right; white-space:nowrap; }
+/* The site's label is a block heading and its input a full-width box; this
+   one is a checkbox with its word beside it. */
+#users td.box label { display:inline-flex; align-items:center; gap:6px; margin:0;
+                      font-weight:400; font-size:14px; }
+#users td.box input { width:auto; margin:0; }
+@media (max-width: 640px) {
+  #users table, #users tbody { display:block; }
+  #users tr:first-child { display:none; }
+  #users tr { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 12px;
+              padding:12px 0; border-bottom:1px solid var(--line); }
+  #users tr:last-child { border-bottom:0; }
+  #users td { display:block; border:0; padding:0; }
+  #users td.who { flex:1 1 100%; font-size:15px; }
+  #users td[data-label]::before { content:attr(data-label) " "; color:var(--muted);
+    font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  #users td.box { margin-left:auto; }
+}

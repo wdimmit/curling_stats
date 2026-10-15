@@ -4,12 +4,13 @@
  *
  * A native <dialog> opened with showModal(), like I played…'s, and keyed per
  * opening so each one starts from the names the game has now. Anyone may
- * open it; only someone signed in may save. Sign-in is asked about only here,
- * once the dialog is open -- never as the page loads, which would fetch the
- * Firebase SDK for every viewer of every game (runtime/auth.mjs). */
+ * open it; only a validated account (User.role) may save, and anyone else
+ * signed in is told so rather than shown the form. Sign-in is asked about
+ * only here, once the dialog is open -- never as the page loads, which would
+ * fetch the Firebase SDK for every viewer of every game (runtime/auth.mjs). */
 import { useEffect, useId, useRef, useState } from "react";
 import { accountsOn, signInNow, whoIsSignedIn } from "../runtime/auth.mjs";
-import { fetchTeamNames, sendTeams } from "../runtime/teams.mjs";
+import { canNameTeams, fetchRole, fetchTeamNames, sendTeams } from "../runtime/teams.mjs";
 import { NameBox } from "./NameBox.jsx";
 
 export function TeamsDialog({ naming, onClose, onSaved }) {
@@ -31,7 +32,8 @@ export function TeamsDialog({ naming, onClose, onSaved }) {
 
 function TeamsForm({ naming, onClose, onSaved }) {
   // "checking", then "off" (no accounts here), "slow" (sign-in did not
-  // answer), "signin" (nobody), or "ready".
+  // answer), "signin" (nobody), "notvalidated" (signed in, but the account
+  // may not name teams), or "ready".
   const [phase, setPhase] = useState("checking");
   const [attempt, setAttempt] = useState(0);
   const [red, setRed] = useState(naming.names.red);
@@ -55,7 +57,10 @@ function TeamsForm({ naming, onClose, onSaved }) {
     (async () => {
       if (!(await accountsOn())) { if (live) setPhase("off"); return; }
       const who = await whoIsSignedIn();
-      if (live) setPhase(who ? "ready" : who === undefined ? "slow" : "signin");
+      if (!who) { if (live) setPhase(who === undefined ? "slow" : "signin"); return; }
+      // A role the server did not give is left to the save to find out.
+      const role = await fetchRole(who.token);
+      if (live) setPhase(role === undefined || canNameTeams(role) ? "ready" : "notvalidated");
     })();
     return () => { live = false; };
   }, [attempt]);
@@ -95,8 +100,8 @@ function TeamsForm({ naming, onClose, onSaved }) {
         of this game shows them, and so does the game list.</p>
       {/* Names are often people's surnames: say they are public, and that a
           change is kept with who made it, before anyone types one. */}
-      <p className="tm-public">Names are public, here and in the league's reports. Anyone
-        signed in can change them, and each change is kept with the account that made
+      <p className="tm-public">Names are public, here and in the league's reports. Validated
+        accounts can change them, and each change is kept with the account that made
         it. <a href="/terms" target="_blank" rel="noopener">Terms</a> · <a href="/privacy"
         target="_blank" rel="noopener">Privacy</a></p>
     </>
@@ -109,11 +114,16 @@ function TeamsForm({ naming, onClose, onSaved }) {
       off: "Accounts are not switched on here, so there is nowhere to keep this.",
       slow: "Sign-in is slow to answer.",
       signin: "Sign in to name the teams.",
+      notvalidated: "Naming teams is open to accounts the site has validated.",
     }[phase];
     return (
       <div>
         {head}
         <p className="tm-who">{say}</p>
+        {phase === "notvalidated" && (
+          <p className="tm-who">To have yours validated, write to <a
+            href="mailto:will@ultimatetrip.net">will@ultimatetrip.net</a>.</p>
+        )}
         {error && <p className="tm-error" role="alert">{error}</p>}
         <div className="tm-foot">
           {close}

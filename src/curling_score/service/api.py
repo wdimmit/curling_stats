@@ -41,8 +41,8 @@ from curling_score.service import (dedupe, gameclips, playlist_index, playlists,
                                    slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team, TeamNameEdit,
-    User, Worker, play_id, review_id,
+    JOB_KINDS, ROLES, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team,
+    TeamNameEdit, User, Worker, play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import (clip_key, detcache_key, meta_key, practice_key,
@@ -404,6 +404,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if got is None:
             raise HTTPException(401, "sign in to do that")
         return got
+
+    def require_any_admin(authorization) -> User | None:
+        """The owner's admin token (None back: a script, so no account) or a
+        signed-in admin (their account back). Anyone else is refused."""
+        if bearer_ok(authorization, settings.admin_token):
+            return None
+        me = require_user(authorization)
+        if me.role != "admin":
+            raise HTTPException(403, "that is for admins")
+        return me
 
     def owner_key_for(chart: Chart) -> str | None:
         """What a chart dedupes against, or None to never dedupe.
@@ -854,6 +864,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def shots_page():
         return page("shots.html")
 
+    # An admin's list of accounts. The shell is public like every other; the
+    # list behind it is not (/api/admin/users).
+    @app.get("/users", response_class=HTMLResponse)
+    def users_page():
+        return page("users.html")
+
     # One page for all three: every session of mine, a sheet's Start, and one
     # session's throws. The page reads which off the path.
     @app.get("/practice", response_class=HTMLResponse)
@@ -1160,10 +1176,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         charts made before anyone knew, which is why it lives on the source
         and not in the document the run produced.
 
-        The names are public and anybody signed in may change them, so each
-        change is kept with who made it (TeamNameEdit) for the admin to read.
+        The names are public and any validated account (User.role) may
+        change them, so each change is kept with who made it (TeamNameEdit)
+        for the admin to read.
         """
         me = require_user(authorization)
+        if me.role not in ROLES:
+            raise HTTPException(403, "naming teams is open to validated accounts")
         names = {}
         for colour in ("red", "yellow"):
             if colour not in body:
@@ -1494,7 +1513,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         me = require_user(authorization)
         teams = repo.teams_for_user(me.id)
         return {"user": {"id": me.id, "email": me.email, "name": me.name,
-                         "picture_url": me.picture_url},
+                         "picture_url": me.picture_url, "role": me.role},
                 "teams": [team_summary(t) for t in teams]}
 
     @app.get("/api/me/charts")
@@ -3061,6 +3080,39 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                         "now": ({c: getattr(src, "team_" + c) for c in ("red", "yellow")}
                                 if src else None)})
         return {"edits": out}
+
+    def _account_json(u: User) -> dict:
+        return {"id": u.id, "email": u.email, "name": u.name, "picture_url": u.picture_url,
+                "created_at": _iso(u.created_at), "last_seen_at": _iso(u.last_seen_at),
+                "role": u.role}
+
+    @app.get("/api/admin/users")
+    def admin_users(limit: int = Query(500, ge=1, le=1000),
+                    authorization: str | None = Header(default=None)):
+        """Every account, newest first, for an admin to validate: the admin
+        token (scripts/users.py) or a signed-in admin (/users)."""
+        require_any_admin(authorization)
+        return {"users": [_account_json(u) for u in repo.list_users(limit)]}
+
+    @app.put("/api/admin/users/{user_id}/role")
+    def admin_set_role(user_id: str, body: dict,
+                       authorization: str | None = Header(default=None)):
+        """Validate an account, or take that away: `{"role": "validated"}` or
+        `{"role": null}`. Admins are made and unmade only with the admin
+        token, so a signed-in admin can neither make one nor change an
+        admin's role, their own included."""
+        by = require_any_admin(authorization)
+        if "role" not in body or (body["role"] is not None and body["role"] not in ROLES):
+            raise HTTPException(422, f"role is one of {', '.join(ROLES)}, or null for neither")
+        role = body["role"]
+        target = repo.get_user(user_id)
+        if target is None:
+            raise HTTPException(404, "no such account")
+        if by is not None and "admin" in (role, target.role):
+            raise HTTPException(403, "admins are made and unmade by the site's owner")
+        got = repo.update_user(user_id, role=role) or target
+        log.info("role of %s set to %s by %s", user_id, role, by.id if by else "the admin token")
+        return _account_json(got)
 
     # ------------------------------------------------------------- review
     # Each night every game that finished processing is read for the signs

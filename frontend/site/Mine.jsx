@@ -189,7 +189,9 @@ export function Mine() {
   return (
     <>
       <Header links={[["/", "All games"], ["/shots", "My shots"], ["/thinking", "Thinking time"],
-                       ["/submit", "Submit a link"]]} />
+                       ["/submit", "Submit a link"],
+                       // The accounts, for an admin to validate.
+                       ...(me.data?.user?.role === "admin" ? [["/users", "Users"]] : [])]} />
       <main>
         {ready && !user && (
           <div id="signedout">
