@@ -7,8 +7,10 @@ The worker gets a claim/progress/complete protocol behind a bearer token. The
 operator gets an admin token for approvals, retries, playlists and a backup.
 
 The three human surfaces differ in what holding the URL means. ``/g/`` is
-public and grants nothing; the other two are unguessable, and holding one *is*
-the permission it carries. The kind of URL decides the mode, always.
+public and grants nothing; ``/s/`` is unguessable and shows a chart read-only.
+``/c/`` is unguessable too, but with accounts on, holding it lets you change
+only a chart that is yours or your team's (``may_edit_chart``); anyone else
+watches. The kind of URL still decides the most a link can do.
 
 The viewer is served under a directory-shaped URL on purpose: its page fetches
 bare ``timeline.json`` and ``overrides.json``, so mounted at ``/c/{slug}/`` it
@@ -1487,9 +1489,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 "status": run.status, "reused_chart": reused}
 
     # ---------------------------------------------------- account routes
-    # Accounts exist so a person can find their links again, and so a team can
-    # share one. They gate nothing: every route below is additive, and a chart
-    # URL keeps working for whoever holds it whether or not anyone is signed in.
+    # Accounts exist so a person can find their charts again, so a team can
+    # share one, and -- with accounts on -- so a chart belongs to someone: only
+    # its owner, or its team's members, may change it (may_edit_chart). A
+    # chart URL still shows the chart to whoever holds it.
     def chart_summary(chart: Chart, cache: dict | None = None) -> dict:
         # A list is mostly the same handful of runs and teams over and over.
         cache = {} if cache is None else cache
@@ -1593,8 +1596,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                         authorization: str | None = Header(default=None)):
         """Put a link you already hold into your list, or move it onto a team.
 
-        Holding the chart id is the whole permission -- it is the same thing
-        that lets you edit -- so nothing else is asked for. What is refused is
+        Holding the chart id is what lets you claim a chart nobody owns -- for
+        one made before charting needed an account, the link was its whole
+        permission -- and claiming it makes it yours, so it then locks to you
+        (may_edit_chart). What is refused is
         claiming a chart that already belongs to a team you are not on, which
         would otherwise let anyone you shared a link with take it. With
         ``team_id`` the chart moves onto that team: see below for who may.

@@ -769,6 +769,16 @@ class TestCatalogueAndAdmin:
             assert f'href="{other}"' in r.text
             assert 'href="/static/site.css"' in r.text
 
+    def test_the_terms_and_privacy_say_who_may_change_a_chart(self, world):
+        c = world["client"]
+        terms = " ".join(c.get("/terms").text.split())
+        privacy = " ".join(c.get("/privacy").text.split())
+        assert "edit a chart you have a link to" not in terms
+        assert "only the person or team who made a chart can change it" in terms
+        assert ("A chart's link shows that chart to whoever has it. Only the person or"
+                " team who made it can change it.") in privacy
+        assert "Charts you make, edits made through a chart's link" not in privacy
+
     def test_the_whole_site_is_closed_to_crawlers(self, world):
         r = world["client"].get("/robots.txt")
         assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")

@@ -486,16 +486,18 @@ can do with it:
 The two slugs are 22 random characters, and holding one _is_ the permission it
 carries. No account is needed for any of it.
 
-**Accounts** are optional and purely additive. Signing in with Google gives you
-a list at `/mine` of the games you have submitted or charted, so losing the
-link stops mattering. You can also name a game's league, and its teams once an
-admin has validated your account: team names are public and usually a skip's
-surname. Admins validate accounts at `/users`; `scripts/users.py` lists the
-accounts and is the only way to make or unmake an admin. A **team**
-shares one chart per game, so everyone fills in the same sheet rather than four
-of them, and members see the same list. Anyone holding a chart link can still
-edit it whether or not they are signed in, and whether or not they are on the
-team. An account changes what you can _find_, never what a URL lets you do.
+**Accounts.** Watching needs no account, and neither does looking at a chart
+someone sends you. Charting does: sign in with Google and the chart is yours,
+listed at `/mine`, and only you can change it. A **team** shares one chart per
+game, so everyone fills in the same sheet rather than four of them; only the
+team's current members can change it, and members see the same list. Anyone
+else holding a chart's link sees it view-only. Charts made before charting
+needed an account belong to nobody and stay editable by their link until
+someone claims one at `/mine`. You can also name a game's league, and its
+teams once an admin has validated your account: team names are public and
+usually a skip's surname. Admins validate accounts at `/users`;
+`scripts/users.py` lists the accounts and is the only way to make or unmake an
+admin.
 
 **⚑ Flag**, in the `⋯` menu of any hosted page, leaves a note about the rock
 on screen for whoever runs the service, signed in or not. `scripts/flags.py`
@@ -503,7 +505,8 @@ lists and resolves them. The **thinking report** at `/thinking` lists each
 league's 20 slowest teams by thinking time per end, one row per team per game.
 
 Leave `FIREBASE_PROJECT` unset and there are no accounts: no sign-in button,
-and the service behaves exactly as it did before any of it was added.
+and the service behaves exactly as it did before any of it was added: anyone
+charts, and a chart's link is all it takes to change it.
 `DOUBLES_ENABLED` and `LIVE_ENABLED` switch on doubles submissions and live
 jobs. Both default to off.
 
