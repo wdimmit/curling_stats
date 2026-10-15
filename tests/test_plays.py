@@ -13,6 +13,7 @@ from curling_score.service.records import Play, Source, play_id
 from tests.test_service_api import T0, VID, sample_doc, work_through
 from tests.test_service_auth import ALEX, SARAH, no_accounts, post, w  # noqa: F401  (fixtures)
 from tests.test_service_auth import give_role
+from tests.test_service_auth import MAKER
 
 
 def played_doc(fmt=F.FOURS):
@@ -46,7 +47,7 @@ def a_played_game(w, doc=None):  # noqa: F811  (w: the fixture, passed through)
     if fmt:
         w["settings"].doubles_enabled = True
     body = {"url": f"https://youtu.be/{VID}", **({"format": fmt} if fmt else {})}
-    slug = post(w, "/api/submissions", body).json()["slug"]
+    slug = post(w, "/api/submissions", body, MAKER).json()["slug"]
     work_through(w, doc=doc, games=1, fmt=fmt)
     chart = w["repo"].get_chart(slug)
     return slug, chart.share_slug, chart.source_id

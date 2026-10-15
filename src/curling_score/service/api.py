@@ -1307,6 +1307,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.post("/api/submissions", status_code=201)
     async def submit(request: Request, authorization: str | None = Header(default=None)):
         me = current_user_or_none(authorization)
+        # With accounts on, a chart always has somebody to protect it for
+        # (may_edit_chart): no account, no chart. Accounts off keeps charting
+        # anonymous, exactly as before accounts existed.
+        if auth.enabled and me is None:
+            raise HTTPException(401, "sign in to chart")
         try:
             body = await request.json()
         except ValueError:
@@ -1407,6 +1412,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         chart, rather than the blank second one the catalogue used to mint.
         """
         me = current_user_or_none(authorization)
+        # With accounts on, a chart always has somebody to protect it for
+        # (may_edit_chart): no account, no chart. Accounts off keeps charting
+        # anonymous, exactly as before accounts existed.
+        if auth.enabled and me is None:
+            raise HTTPException(401, "sign in to chart")
         source_id = str(body.get("source_id") or "")
         src = repo.get_source(source_id)
         if src is None:

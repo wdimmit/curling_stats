@@ -9,7 +9,7 @@ import logging
 import pytest
 
 from tests.test_service_api import VID, sample_doc, work_through
-from tests.test_service_auth import ALEX, SARAH, post, w  # noqa: F401  (w is a fixture)
+from tests.test_service_auth import ALEX, MAKER, SARAH, post, w  # noqa: F401  (w is a fixture)
 
 
 def scored_doc(unread=(3,), schema=8):
@@ -34,7 +34,7 @@ def scored_doc(unread=(3,), schema=8):
 
 
 def a_scored_game(w, doc=None):  # noqa: F811  (w: the fixture, passed through)
-    slug = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}).json()["slug"]
+    slug = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}, MAKER).json()["slug"]
     work_through(w, doc=doc or scored_doc(), games=1)
     chart = w["repo"].get_chart(slug)
     return slug, chart.share_slug, chart.source_id

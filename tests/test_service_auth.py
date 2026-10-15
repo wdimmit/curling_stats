@@ -23,6 +23,9 @@ from tests.test_service_api import ADMIN, CLUB, T0, VID, Clock, put_game, work_t
 
 SARAH = {"Authorization": "Bearer tok-sarah"}
 ALEX = {"Authorization": "Bearer tok-alex"}
+# Somebody who makes charts in the background of a test -- the game a test
+# needs, an unowned chart -- so that none of the test's own people own them.
+MAKER = {"Authorization": "Bearer tok-maker"}
 
 
 def _world(auth):
@@ -45,6 +48,7 @@ def w():
     auth = FakeVerifier()
     auth.add("tok-sarah", "uid-sarah", "Sarah@Example.org", "Sarah")
     auth.add("tok-alex", "uid-alex", "alex@example.org", "Alex")
+    auth.add("tok-maker", "uid-maker", "maker@example.org", "Maker")
     return _world(auth)
 
 
@@ -74,11 +78,25 @@ def give_role(w, headers, role):
 
 
 def a_ready_game(w):
-    """Submit and process a video; return the source id the catalogue lists."""
-    post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"})
+    """Submit (as Maker) and process a video; return the source id the
+    catalogue lists. With accounts on, charting needs somebody signed in."""
+    post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}, MAKER)
     work_through(w)
     games = w["client"].get("/api/games").json()["games"]
     return next(g["source_id"] for g in games if g["source_id"])
+
+
+def an_unowned_chart(w):
+    """A processed chart nobody owns, as every chart made before charting
+    needed an account is: made by Maker, then its owner taken off. After
+    a_ready_game the video is already processed and the chart already has its
+    game, and work_through would find no job to claim -- so only a new video
+    is worked through."""
+    slug = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}, MAKER).json()["slug"]
+    if w["repo"].get_chart(slug).source_id is None:
+        work_through(w)
+    w["repo"].update_chart(slug, owner_user_id=None)
+    return slug
 
 
 def a_team(w, name="Thistles"):
@@ -117,13 +135,6 @@ class TestSigningIn:
         assert w["client"].get("/api/me", headers={"Authorization": "Bearer forged"}
                                ).status_code == 401
 
-    def test_a_forged_token_is_simply_anonymous_everywhere_else(self, w):
-        """Failing closed here would break submitting for everyone."""
-        r = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"},
-                 {"Authorization": "Bearer forged"})
-        assert r.status_code == 201
-        assert w["repo"].get_chart(r.json()["slug"]).owner_user_id is None
-
 
 class TestMyGames:
     def test_a_submission_while_signed_in_is_mine(self, w):
@@ -136,8 +147,8 @@ class TestMyGames:
         assert w["client"].get("/api/me/charts", headers=ALEX).json()["charts"] == []
 
     def test_a_link_made_anonymously_can_be_claimed_later(self, w):
-        """The recovery path for every chart that exists today."""
-        slug = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}).json()["slug"]
+        """The recovery path for every chart made before charting needed an account."""
+        slug = an_unowned_chart(w)
         assert w["client"].get("/api/me/charts", headers=SARAH).json()["charts"] == []
         assert post(w, f"/api/me/charts/{slug}/claim", {}, SARAH).status_code == 200
         mine = w["client"].get("/api/me/charts", headers=SARAH).json()["charts"]
@@ -149,6 +160,36 @@ class TestMyGames:
         slug = post(w, "/api/submissions",
                     {"url": f"https://youtu.be/{VID}", "team_id": team}, SARAH).json()["slug"]
         assert post(w, f"/api/me/charts/{slug}/claim", {}, ALEX).status_code == 403
+
+
+class TestSignInToChart:
+    """With accounts on, a chart always has somebody to protect it for."""
+
+    def test_a_submission_signed_out_is_401_and_queues_nothing(self, w):
+        r = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"})
+        assert r.status_code == 401 and r.json()["detail"] == "sign in to chart"
+        assert w["repo"].runs_for_video(VID) == []
+
+    def test_charting_a_known_game_signed_out_is_401(self, w):
+        sid = a_ready_game(w)
+        r = post(w, "/api/charts", {"source_id": sid})
+        assert r.status_code == 401 and r.json()["detail"] == "sign in to chart"
+
+    def test_a_forged_token_is_signed_out(self, w):
+        r = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"},
+                 {"Authorization": "Bearer forged"})
+        assert r.status_code == 401
+
+    def test_signed_in_the_chart_is_theirs(self, w):
+        slug = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"},
+                    SARAH).json()["slug"]
+        assert w["repo"].get_chart(slug).owner_user_id == "uid-sarah"
+
+    def test_with_accounts_off_charting_stays_anonymous(self, no_accounts):
+        sid = a_ready_game(no_accounts)
+        r = post(no_accounts, "/api/charts", {"source_id": sid})
+        assert r.status_code == 201
+        assert no_accounts["repo"].get_chart(r.json()["slug"]).owner_user_id is None
 
 
 class TestTeams:
@@ -236,11 +277,11 @@ class TestOneChartPerGame:
         b = post(w, "/api/charts", {"source_id": sid, "team_id": t2}, SARAH).json()
         assert a["slug"] != b["slug"]
 
-    def test_anonymous_visitors_each_get_their_own(self, w):
-        """Unchanged from before accounts: no owner, no dedupe."""
-        sid = a_ready_game(w)
-        a = post(w, "/api/charts", {"source_id": sid}).json()
-        b = post(w, "/api/charts", {"source_id": sid}).json()
+    def test_anonymous_visitors_each_get_their_own(self, no_accounts):
+        """With accounts off, unchanged from before accounts: no owner, no dedupe."""
+        sid = a_ready_game(no_accounts)
+        a = post(no_accounts, "/api/charts", {"source_id": sid}).json()
+        b = post(no_accounts, "/api/charts", {"source_id": sid}).json()
         assert a["slug"] != b["slug"]
 
     def test_starting_a_chart_does_not_spend_a_submission(self, w):
@@ -249,11 +290,12 @@ class TestOneChartPerGame:
         for _ in range(8):
             assert post(w, "/api/charts", {"source_id": sid}, SARAH).status_code == 201
 
-    def test_making_new_charts_is_still_bounded(self, w):
+    def test_making_new_charts_is_still_bounded(self, no_accounts):
         """Free of the submission budget is not the same as free of any budget:
         an anonymous caller never dedupes, so every press makes a document."""
-        sid = a_ready_game(w)
-        codes = {post(w, "/api/charts", {"source_id": sid}).status_code for _ in range(40)}
+        sid = a_ready_game(no_accounts)
+        codes = {post(no_accounts, "/api/charts", {"source_id": sid}).status_code
+                 for _ in range(40)}
         assert codes == {201, 429}
 
     def test_but_reopening_your_own_chart_never_runs_out(self, w):
@@ -263,7 +305,7 @@ class TestOneChartPerGame:
             assert post(w, "/api/charts", {"source_id": sid}, SARAH).status_code == 201
 
     def test_a_game_still_processing_cannot_be_charted_this_way(self, w):
-        post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"})
+        post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}, MAKER)
         assert post(w, "/api/charts", {"source_id": "s_nope"}, SARAH).status_code == 404
 
 
@@ -815,8 +857,7 @@ class TestMovingAChartToATeam:
         assert w["repo"].get_chart(mine).team_id is None
 
     def test_claiming_without_a_team_is_unchanged(self, w):
-        slug = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}).json()["slug"]
-        work_through(w)
+        slug = an_unowned_chart(w)
         assert post(w, f"/api/me/charts/{slug}/claim", {}, SARAH).status_code == 200
         chart = w["repo"].get_chart(slug)
         assert chart.owner_user_id == "uid-sarah" and chart.team_id is None
