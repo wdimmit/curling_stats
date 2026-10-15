@@ -60,13 +60,13 @@
     "frontend/viewer/Played.jsx": "ecacd7d8f7dbc896cdcc2f987febe459ff5661c7935fe6f0ed9ac471c39ce6e2",
     "frontend/viewer/Report.jsx": "ff68b5469d16428880e1b2d47403fb74e012c60a8c7317ee868dd72ab464a744",
     "frontend/viewer/ShotClip.jsx": "9b81d357377afc80ca3742f6c643fe34d2278ca73e8049e5d0810ab5e0ee0f88",
-    "frontend/viewer/Teams.jsx": "8e331de51fcda8c945ac79d600b5ac55560075739d3232b9b39dc71dd929ea4b",
+    "frontend/viewer/Teams.jsx": "8998c4f6a35de0f1c62e514749fa1f1037c6476ef5fc9ecd361096a0a3183bc8",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
     "frontend/viewer/Watch.jsx": "2e7de47175de0cbd87b75ed400def1d76e407ce366ac90b5569c3690fa0e4f5e",
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "078eeb445a29db3eb1e27e7b63160688a0d13dd0ed80c0920f66de086c08a1f0",
-    "src/curling_score/viewer/app.js": "c40bebea6fe0730eaf6c6850ae1d7a5cbdbbbee2baf5037a659e2bb920746b7a"
+    "src/curling_score/viewer/app.js": "8274dc9807d019b729670509721a5330968d6f05dd55961ad7ab075565901f73"
   }
 }

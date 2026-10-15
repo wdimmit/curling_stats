@@ -4567,6 +4567,13 @@ class TestNamingTheTeams:
         got = self.send(200, {"ok": True, "short_handed": ["red"]}, body=body)
         assert json.loads(got["asked"][0]["init"]["body"]) == body
 
+    def test_each_box_says_which_team_it_marks(self):
+        """Both boxes read "Played with three"; a screen reader has to hear
+        which team a box marks, or the wrong team's rocks get re-credited."""
+        teams = self.src("frontend/viewer/Teams.jsx")
+        assert 'aria-label="Red team played with three"' in teams
+        assert 'aria-label="Yellow team played with three"' in teams
+
     def test_the_menu_says_teams_and_the_dialog_offers_three(self):
         assert ">\n          Teams…\n" in self.src("frontend/viewer/App.jsx")
         teams = self.src("frontend/viewer/Teams.jsx")

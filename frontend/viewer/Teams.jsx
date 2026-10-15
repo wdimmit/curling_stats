@@ -158,7 +158,7 @@ function TeamsForm({ naming, onClose, onSaved }) {
       </div>
       {!naming.doubles && (
         <label className="tm-three">
-          <input type="checkbox" checked={short.has("red")}
+          <input type="checkbox" checked={short.has("red")} aria-label="Red team played with three"
                  onChange={e => three("red", e.target.checked)} />
           Played with three
         </label>
@@ -171,7 +171,7 @@ function TeamsForm({ naming, onClose, onSaved }) {
       </div>
       {!naming.doubles && (
         <label className="tm-three">
-          <input type="checkbox" checked={short.has("yellow")}
+          <input type="checkbox" checked={short.has("yellow")} aria-label="Yellow team played with three"
                  onChange={e => three("yellow", e.target.checked)} />
           Played with three
         </label>
