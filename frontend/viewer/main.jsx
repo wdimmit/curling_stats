@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { LIVE_POLL_MS, acceptLiveDoc, accessMode, modeOf } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
-import { whoIsSignedIn } from "../runtime/auth.mjs";
+import { checkAccess } from "../runtime/access.mjs";
 import { chartAuth } from "../runtime/chartAuth.mjs";
 import { loadCursor } from "../runtime/prefs.mjs";
 import { App } from "./App.jsx";
@@ -33,22 +33,10 @@ async function loadOverrides() {
 }
 
 /* On a guarded page -- a chart somebody or a team owns -- whether this person
- * may edit it (api.py access.json). Asked alongside the timeline, so it costs
- * little time, and before the first render, so editing never appears and then
- * goes. Sign-in that does not answer in time is no answer (accessMode reads
- * it as "unchecked"), not "signed out": a slow SDK must not tell the owner
- * their own chart is someone else's. */
+ * may edit it (checkAccess). Asked alongside the timeline, so it costs little
+ * time, and before the first render, so editing never appears and then goes. */
 async function loadAccess() {
-  if (!base.guarded) return null;
-  const who = await whoIsSignedIn();
-  if (who === undefined) return null;
-  try {
-    const r = await fetch("access.json",
-      who ? { headers: { Authorization: `Bearer ${who.token}` } } : {});
-    return r.ok ? await r.json() : null;
-  } catch {
-    return null;
-  }
+  return base.guarded ? checkAccess() : null;
 }
 
 /* A game still being played is published an end at a time, so while the

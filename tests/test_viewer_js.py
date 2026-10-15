@@ -338,6 +338,58 @@ class TestSavesCarryTheToken:
         assert got == {"tried": 1, "unhandled": 0}
 
 
+
+class TestCheckingAccess:
+    """runtime/access.mjs checkAccess: what a guarded page asks before it
+    renders, with sign-in and fetch stood in for."""
+    MODULE = Path(__file__).resolve().parents[1] / "frontend/runtime/access.mjs"
+
+    def run(self, who, accounts=True, status=200, reply=None, throws=False):
+        fetch = ("async () => { throw new Error('offline'); }" if throws else
+                 "async (url, init) => { calls.push({url, init: init || null});"
+                 f" return {{ok: {str(200 <= status < 300).lower()}, status: {status},"
+                 f" json: async () => ({json.dumps(reply)})}}; }}")
+        script = ("const calls = [];\n"
+                  f"globalThis.fetch = {fetch};\n"
+                  f"const M = await import({self.MODULE.as_uri()!r});\n"
+                  f"const got = await M.checkAccess({{who: async () => {who},"
+                  f" accounts: async () => {str(accounts).lower()}}});\n"
+                  "console.log(JSON.stringify({got: got === undefined ? 'undefined' : got,"
+                  " calls}));")
+        proc = subprocess.run([node, "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    YES = {"edit": True, "reason": "owner", "team": None}
+
+    def test_a_signed_in_person_asks_with_their_token(self):
+        got = self.run("({email: 'a@x', token: 'tok'})", reply=self.YES)
+        assert got["got"] == self.YES
+        (call,) = got["calls"]
+        assert call["url"] == "access.json"
+        assert call["init"]["headers"]["Authorization"] == "Bearer tok"
+
+    def test_nobody_signed_in_asks_without_one(self):
+        reply = {"edit": False, "reason": "signin", "team": None}
+        got = self.run("null", reply=reply)
+        assert got["got"] == reply and got["calls"] == [{"url": "access.json", "init": None}]
+
+    def test_sign_in_that_does_not_answer_is_no_answer(self):
+        got = self.run("undefined")
+        assert got == {"got": None, "calls": []}
+
+    def test_a_sign_in_sdk_that_never_loaded_is_no_answer_not_signed_out(self):
+        """Blocked or offline: accounts read as off on a page the server only
+        marks guarded when they are on. "Sign in" there is a button that can
+        never work; only "couldn't check" is true."""
+        got = self.run("null", accounts=False)
+        assert got == {"got": None, "calls": []}
+
+    def test_a_refused_or_failed_ask_is_no_answer(self):
+        assert self.run("null", status=500, reply={"detail": "boom"})["got"] is None
+        assert self.run("null", throws=True)["got"] is None
+
 class TestTheGuardedPage:
     """The boot of a /c/ page whose chart is somebody's, and its view-only line."""
     ROOT = Path(__file__).resolve().parents[1]
@@ -350,13 +402,12 @@ class TestTheGuardedPage:
         assert ('Promise.all([fetch("timeline.json").then(r => r.json()), loadOverrides(),'
                 ' loadAccess()])') in main
         assert "const config = base.guarded ? accessMode(base, access) : base;" in main
-        assert "if (!base.guarded) return null;" in main
 
-    def test_slow_sign_in_is_no_answer_not_signed_out(self):
-        """A slow SDK must not tell the owner their own chart is someone else's."""
+    def test_the_boot_asks_checkaccess_only_on_a_guarded_page(self):
+        """What checkAccess answers is tested in TestCheckingAccess."""
         main = self.src("frontend/viewer/main.jsx")
         loader = main[main.index("async function loadAccess()"):]
-        assert "if (who === undefined) return null;" in loader[:400]
+        assert "return base.guarded ? checkAccess() : null;" in loader[:200]
 
     def test_only_an_editable_guarded_page_keeps_a_token(self):
         main = self.src("frontend/viewer/main.jsx")
