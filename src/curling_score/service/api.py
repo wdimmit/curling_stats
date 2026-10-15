@@ -452,6 +452,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return uid == chart.owner_user_id
         return True
 
+    def chart_access(chart: Chart, uid: str | None, read_only: bool) -> dict:
+        """What access.json answers: whether this person may edit the chart,
+        and why -- the reason picks the page's view-only line. A team's chart
+        carries the team's name; a personal chart never names its owner."""
+        team = repo.get_team(chart.team_id) if chart.team_id else None
+        named = {"name": team.name} if team else None
+        if read_only:
+            reason = "view-only-link"
+        elif not auth.enabled or not (chart.team_id or chart.owner_user_id):
+            reason = "open"
+        elif may_edit_chart(chart, uid):
+            reason = "team" if chart.team_id else "owner"
+        else:
+            reason = "signin" if uid is None else "not-yours"
+        return {"edit": reason in ("owner", "team", "open"), "reason": reason, "team": named}
+
     def client_ip(request: Request) -> str:
         """The caller's address, as our own proxies saw it.
 
@@ -1727,11 +1743,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # The viewer uses the slug only to key the tab's saved cursor, so a
             # view-only page keys it on the link it was opened by: the chart id
             # is the edit link, and would be readable in the page source.
+            # `guarded`: this chart is somebody's or a team's, so the page asks
+            # access.json before it unlocks editing (may_edit_chart). Never on
+            # a view link, an unowned chart, or with accounts off -- those boot
+            # exactly as they always have.
             return HTMLResponse(viewer.boot_page({
                 "slug": key if read_only else chart.id,
                 "mode": "view" if read_only else "edit",
                 "merge": True,
                 "shared": chart.team_id is not None,
+                "guarded": (not read_only and auth.enabled
+                            and bool(chart.owner_user_id or chart.team_id)),
             }))
 
         @app.get(prefix + "/status.json")
@@ -1769,6 +1791,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             chart, _run, _ro = lookup(kind, key)
             return JSONResponse(chart.overrides_meta,
                                 headers={"ETag": f'"{chart.overrides_version}"'})
+
+        @app.get(prefix + "/access.json")
+        def access_json(key: str, authorization: str | None = Header(default=None)):
+            """Whether the page should unlock editing for whoever is asking
+            (chart_access). A guarded page asks once, before it renders."""
+            chart, _run, read_only = lookup(kind, key)
+            return JSONResponse(chart_access(chart, uid_of(authorization), read_only),
+                                headers={"Cache-Control": "private, no-store"})
 
         @app.post(prefix + "/overrides.json")
         async def overrides_post(key: str, request: Request,

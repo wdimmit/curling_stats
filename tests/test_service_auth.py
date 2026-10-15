@@ -492,6 +492,61 @@ class TestOnlyItsMakerChangesAChart:
         solo = post(w, "/api/charts", {"source_id": sid}, ALEX).json()["slug"]
         assert '"shared": false' in w["client"].get(f"/c/{solo}/").text
 
+
+def access(w, key, headers=None, kind="c"):
+    r = w["client"].get(f"/{kind}/{key}/access.json", headers=headers or {})
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == "private, no-store"
+    return r.json()
+
+
+class TestWhoTheChartPageUnlocksFor:
+    """access.json: what a guarded /c/ page asks before it renders."""
+
+    def test_the_owner_and_everyone_else(self, w):
+        sid = a_ready_game(w)
+        slug = post(w, "/api/charts", {"source_id": sid}, SARAH).json()["slug"]
+        assert access(w, slug, SARAH) == {"edit": True, "reason": "owner", "team": None}
+        assert access(w, slug, ALEX) == {"edit": False, "reason": "not-yours", "team": None}
+        assert access(w, slug) == {"edit": False, "reason": "signin", "team": None}
+
+    def test_a_team_chart_names_its_team_and_nobody_else(self, w):
+        team = _joined_team(w)
+        sid = a_ready_game(w)
+        slug = post(w, "/api/charts", {"source_id": sid, "team_id": team}, SARAH).json()["slug"]
+        named = {"name": "Thistles"}
+        assert access(w, slug, ALEX) == {"edit": True, "reason": "team", "team": named}
+        assert access(w, slug, MAKER) == {"edit": False, "reason": "not-yours", "team": named}
+        assert access(w, slug) == {"edit": False, "reason": "signin", "team": named}
+
+    def test_an_unowned_chart_is_open(self, w):
+        assert access(w, an_unowned_chart(w)) == {"edit": True, "reason": "open", "team": None}
+
+    def test_a_share_link_is_view_only_even_for_its_owner(self, w):
+        sid = a_ready_game(w)
+        got = post(w, "/api/charts", {"source_id": sid}, SARAH).json()
+        share = got["share_url"].rstrip("/").split("/")[-1]
+        assert access(w, share, SARAH, kind="s") == {
+            "edit": False, "reason": "view-only-link", "team": None}
+
+    def test_with_accounts_off_everything_is_open(self, no_accounts):
+        sid = a_ready_game(no_accounts)
+        slug = post(no_accounts, "/api/charts", {"source_id": sid}).json()["slug"]
+        assert access(no_accounts, slug) == {"edit": True, "reason": "open", "team": None}
+
+    def test_only_an_owned_chart_page_asks(self, w):
+        sid = a_ready_game(w)
+        mine = post(w, "/api/charts", {"source_id": sid}, SARAH).json()
+        assert '"guarded": true' in w["client"].get(f"/c/{mine['slug']}/").text
+        share = mine["share_url"].rstrip("/").split("/")[-1]
+        assert '"guarded": false' in w["client"].get(f"/s/{share}/").text
+        assert '"guarded": false' in w["client"].get(f"/c/{an_unowned_chart(w)}/").text
+
+    def test_with_accounts_off_no_page_asks(self, no_accounts):
+        sid = a_ready_game(no_accounts)
+        slug = post(no_accounts, "/api/charts", {"source_id": sid}).json()["slug"]
+        assert '"guarded": false' in no_accounts["client"].get(f"/c/{slug}/").text
+
 class TestNamingALeague:
     """The watcher labels what it queues; a pasted link arrives with nothing,
     and an unlabelled game is findable only by scrolling to its date."""
