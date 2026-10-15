@@ -77,6 +77,56 @@ class TestModes:
         assert run_js_with_chart(None, "out([REVIEW, READ_ONLY]);") == [False, False]
 
 
+
+class TestTheChartPageAsksWhoMayEdit:
+    """modeOf / accessMode / viewOnlyText: the edit-or-watch decision a
+    guarded /c/ page makes once, before it renders."""
+    WIRE = Path(__file__).resolve().parents[1] / "frontend/core/wire.mjs"
+    EDIT = "W.modeOf({mode: 'edit', slug: 'a', merge: true, guarded: true})"
+
+    def js(self, expr):
+        script = (f"const W = await import({self.WIRE.as_uri()!r});\n"
+                  f"console.log(JSON.stringify({expr}));")
+        proc = subprocess.run([node, "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_only_a_page_the_server_marks_asks(self):
+        assert self.js("W.modeOf({mode: 'edit', slug: 'a', guarded: true}).guarded") is True
+        assert self.js("W.modeOf({mode: 'edit', slug: 'a'}).guarded") is False
+        assert self.js("W.modeOf(undefined).guarded") is False
+        assert self.js("W.modeOf({mode: 'edit', slug: 'a'}).viewOnly") is None
+
+    def test_a_yes_edits(self):
+        got = self.js(f"W.accessMode({self.EDIT}, {{edit: true, reason: 'owner', team: null}})")
+        assert got["readOnly"] is False and got["viewOnly"] is None and got["merge"] is True
+
+    def test_a_no_watches_and_says_why(self):
+        got = self.js(f"W.accessMode({self.EDIT},"
+                      " {edit: false, reason: 'not-yours', team: {name: 'Thistles'}})")
+        assert got["readOnly"] is True
+        assert got["viewOnly"] == {"reason": "not-yours", "team": "Thistles"}
+
+    def test_no_answer_watches_unchecked(self):
+        """Sign-in slow, offline, or a garbled reply: never editable, never blank."""
+        for answer in ("null", "undefined", "{}", "{edit: 'yes'}"):
+            got = self.js(f"W.accessMode({self.EDIT}, {answer})")
+            assert got["readOnly"] is True, answer
+            assert got["viewOnly"] == {"reason": "unchecked", "team": None}, answer
+
+    def test_the_lines_the_page_shows(self):
+        line = lambda why: self.js(f"W.viewOnlyText({why})")   # noqa: E731
+        assert line("{reason: 'signin', team: null}") == \
+            "View only — sign in to edit if this chart is yours or your team's"
+        assert line("{reason: 'not-yours', team: null}") == \
+            "View only — only the person or team who made this chart can change it"
+        assert line("{reason: 'not-yours', team: 'Thistles'}") == \
+            "View only — only team Thistles can change this chart"
+        assert line("{reason: 'unchecked', team: null}") == \
+            "View only — couldn't check sign-in. Reload to try again."
+        assert line("null") == ""
+
 class TestDirtyPayload:
     """What a merge actually puts on the wire."""
 

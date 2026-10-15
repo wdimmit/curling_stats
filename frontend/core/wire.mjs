@@ -25,9 +25,38 @@ export function modeOf(chart) {
     // `curling-score serve` does not -- it sets no window.CHART at all -- so
     // the page keeps sending whole documents there, exactly as it always has.
     merge: !!c.merge,
+    // Whether this /c/ page's chart is somebody's or a team's, so the page
+    // asks access.json before it unlocks editing (accessMode).
+    guarded: !!c.guarded,
+    // Why the page is read-only when access.json said so; null otherwise.
+    viewOnly: null,
     review,
     readOnly: c.mode === "view" || review,
   };
+}
+
+/* The config a guarded /c/ page renders with, from its access.json answer.
+ * Asked once, before the first render, so editing never appears and then
+ * goes. Anything but a clear yes is a page to watch: no answer means sign-in
+ * was slow or the network was down, and an editable page whose saves would
+ * all be refused is worse than one that says so. */
+export function accessMode(config, access) {
+  if (!access || typeof access.edit !== "boolean")
+    return { ...config, readOnly: true, viewOnly: { reason: "unchecked", team: null } };
+  if (access.edit) return { ...config, viewOnly: null };
+  return { ...config, readOnly: true,
+           viewOnly: { reason: access.reason, team: access.team?.name ?? null } };
+}
+
+/* The header's line on a page that may not edit (accessMode's viewOnly). */
+export function viewOnlyText(why) {
+  if (!why) return "";
+  if (why.reason === "signin")
+    return "View only — sign in to edit if this chart is yours or your team's";
+  if (why.reason === "not-yours")
+    return why.team ? `View only — only team ${why.team} can change this chart`
+                    : "View only — only the person or team who made this chart can change it";
+  return "View only — couldn't check sign-in. Reload to try again.";
 }
 
 /* The body of a merge: every dirty shot, and null for one edited away. A
