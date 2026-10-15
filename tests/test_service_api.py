@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from curling_score import timeline as timeline_mod
 from curling_score.service import dedupe, slug
-from curling_score.service.api import Settings, create_app
+from curling_score.service.api import VIEWER_DIR, Settings, create_app
 from curling_score.service.records import Run, Source, WatchedPlaylist
 from curling_score.service.repo import MemoryRepo
 from curling_score.service.store import MemoryStore, timeline_key
@@ -755,6 +755,30 @@ class TestCatalogueAndAdmin:
         for words in ("Get my link", "My games", "Join a team", "All leagues",
                       "Most lopsided", "Games you played"):
             assert words in bundle, f"{words!r} is in no page"
+
+    def test_the_terms_and_privacy_pages_load_without_a_script(self, world):
+        """Plain pages: what the site promises has to read whatever else broke.
+        Each names who to write to and links the other."""
+        c = world["client"]
+        for path, other in (("/terms", "/privacy"), ("/privacy", "/terms")):
+            r = c.get(path)
+            assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+            assert "<script" not in r.text
+            assert "mailto:will@ultimatetrip.net" in r.text
+            assert f'href="{other}"' in r.text
+            assert 'href="/static/site.css"' in r.text
+
+    def test_the_whole_site_is_closed_to_crawlers(self, world):
+        r = world["client"].get("/robots.txt")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+        assert r.text.splitlines() == ["User-agent: *", "Disallow: /"]
+
+    def test_every_page_links_the_terms_and_privacy(self, world):
+        """The site's pages from the bundle's footer; the viewer from its menu
+        and from Name teams, where a name is made public."""
+        c = world["client"]
+        for bundle in (c.get("/static/site.js").text, (VIEWER_DIR / "app.js").read_text()):
+            assert '"/terms"' in bundle and '"/privacy"' in bundle
 
     def test_every_script_a_page_asks_for_is_actually_served(self, world):
         """The allowlist is hand-kept, so a new page can reference a 404."""

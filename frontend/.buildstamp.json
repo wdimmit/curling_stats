@@ -44,8 +44,8 @@
     "frontend/site/auth.js": "5f8188503a00c70db4e696259d8ecef329f94be2e70f76186601fd02652f94ab",
     "frontend/site/clip.jsx": "a1f67b0d0b7ce4b911ee273074eb72dc9c24cc240723665690b1662ea7dba03c",
     "frontend/site/fmt.js": "30fe2055592328491abedc9a2537ba47777d2a11f26d0165c9585192272f1559",
-    "frontend/site/main.jsx": "59d37a3fc22e08bc2de2e328f8428e412974b232dc1885146126e07c777e3765",
-    "frontend/site/ui.jsx": "c1f836fee8b782fd70202831d4b30cce658b88c8aa4e802d23a771ca717b3f74",
+    "frontend/site/main.jsx": "88814ccab17d4c9fd42e3dd69562481ca46170dd9ae5dfefa86cc2ca25ae26fe",
+    "frontend/site/ui.jsx": "d1b1ba7453fe710decddd31dc67f194836b680efa4f9eac35701fc1bf2f9cbf7",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
     "frontend/viewer/App.jsx": "1c4c3360a3dc79c8cee3f05ed3d77f83aab1d3cef2dbb9a195bed49c943aa0f1",
     "frontend/viewer/ChartPanel.jsx": "1ae0a3cba7cd425dbdb4bba58ad6c31d58462e6ce2644a50016070b09c4a05be",
@@ -59,13 +59,13 @@
     "frontend/viewer/Played.jsx": "442404ed6dc9c004ce7c23b60cd089818088642495b6bd86db5bc54ff1e9406e",
     "frontend/viewer/Report.jsx": "c52a28d9789026141379daee371285bc1893999fd0d823f61e64ac3acac2035d",
     "frontend/viewer/ShotClip.jsx": "9b81d357377afc80ca3742f6c643fe34d2278ca73e8049e5d0810ab5e0ee0f88",
-    "frontend/viewer/Teams.jsx": "4345d4727bf818ca21a227bd72aefe816638c83b14590e4df9ccb03f5e4d6f6a",
+    "frontend/viewer/Teams.jsx": "e236877330817790cacb0627d9f40322f30b0e62dbfd9f3ef7ae8c813b923467",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
     "frontend/viewer/Watch.jsx": "2e7de47175de0cbd87b75ed400def1d76e407ce366ac90b5569c3690fa0e4f5e",
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "4390c982f51f286cb23f0126c027389ab8a55bd11b3be44f7ef4b30d8c427454",
-    "src/curling_score/viewer/app.js": "69ac7dd2fe1377580468b658344d2761835dc5505c9f2c94222882d46781fd39"
+    "src/curling_score/service/static/site.js": "d569d8eeb0d13fbb81ed942733763069328768ee5e0e195e5d09091e3e648a5a",
+    "src/curling_score/viewer/app.js": "a12821642132f2f8f0fda6fca310a36a60b3ccff0b3ff15754b5d938cf5ca376"
   }
 }

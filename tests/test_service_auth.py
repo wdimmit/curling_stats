@@ -532,6 +532,69 @@ class TestNamingTheTeams:
     def test_a_game_we_do_not_have_is_404(self, w):
         assert post(w, "/api/games/s_nope/teams", {"red": "Rice"}, SARAH).status_code == 404
 
+    def test_a_name_cannot_carry_a_terminal_escape(self, w):
+        """The history of names is read in the owner's terminal, as flags are."""
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice\x1b]52;c;bad\x07\u202e"}, SARAH)
+        assert w["repo"].get_source(src).team_red == "Rice]52;c;bad"
+
+
+class TestTeamNameHistory:
+    """Anyone signed in may rename any game's teams, and the names are public,
+    so every change is kept with who made it -- for the admin, nobody else."""
+
+    def edits(self, w, query=""):
+        r = w["client"].get(f"/api/admin/team-name-edits{query}", headers=ADMIN)
+        assert r.status_code == 200
+        return r.json()["edits"]
+
+    def test_each_change_is_kept_with_who_made_it(self, w):
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice", "yellow": "Casey"}, SARAH)
+        w["clock"].advance(60)
+        post(w, f"/api/games/{src}/teams", {"red": "Cheats", "yellow": "Casey"}, ALEX)
+        newest, first = self.edits(w)
+        assert newest["user"] == {"uid": "uid-alex", "email": "alex@example.org", "name": "Alex"}
+        assert (newest["before"], newest["after"]) == ({"red": "Rice"}, {"red": "Cheats"})
+        assert newest["now"] == {"red": "Cheats", "yellow": "Casey"}
+        assert first["user"]["uid"] == "uid-sarah"
+        assert first["before"] == {"red": None, "yellow": None}
+        assert first["after"] == {"red": "Rice", "yellow": "Casey"}
+        assert first["source_id"] == src and first["title"]
+        assert first["at"] < newest["at"]
+
+    def test_clearing_a_name_is_an_edit(self, w):
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice"}, SARAH)
+        w["clock"].advance(60)
+        post(w, f"/api/games/{src}/teams", {"red": ""}, ALEX)
+        assert self.edits(w)[0]["after"] == {"red": None}
+
+    def test_saving_the_names_it_already_has_is_not(self, w):
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice", "yellow": "Casey"}, SARAH)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice", "yellow": "Casey"}, ALEX)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice  "}, ALEX)
+        assert len(self.edits(w)) == 1
+
+    def test_one_games_history(self, w):
+        src = a_ready_game(w)
+        other = next(g["source_id"] for g in w["client"].get("/api/games").json()["games"]
+                     if g["source_id"] and g["source_id"] != src)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice"}, SARAH)
+        post(w, f"/api/games/{other}/teams", {"red": "Dimmit"}, SARAH)
+        assert [e["after"] for e in self.edits(w, f"?source_id={src}")] == [{"red": "Rice"}]
+        assert len(self.edits(w)) == 2
+
+    def test_nobody_but_the_admin_reads_it(self, w):
+        src = a_ready_game(w)
+        post(w, f"/api/games/{src}/teams", {"red": "Rice"}, SARAH)
+        c = w["client"]
+        assert c.get("/api/admin/team-name-edits").status_code == 401
+        assert c.get("/api/admin/team-name-edits", headers=SARAH).status_code == 401
+        timeline = c.get(f"/g/{src}/timeline.json").text
+        assert "uid-sarah" not in timeline and "Sarah@Example.org" not in timeline
+
 
 class TestAFlagCarriesTheAccount:
     def body(self, sid):

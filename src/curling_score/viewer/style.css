@@ -667,6 +667,8 @@ body.reporting main { display:none; }
 #teamsDialog::backdrop { background: rgb(0 0 0 / .35); }
 #teamsDialog h2 { margin: 0 0 4px; font: 600 18px var(--display); }
 #teamsDialog .tm-why, #teamsDialog .tm-who { margin: 0 0 12px; color: var(--muted); }
+#teamsDialog .tm-public { margin: -4px 0 12px; color: var(--muted); font-size: 13px; }
+#teamsDialog .tm-public a { color: inherit; }
 #teamsDialog .tm-team { display: grid; grid-template-columns: 12px 4.5em 1fr;
   align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 600; }
 #teamsDialog .tm-team input { min-height: 44px; padding: 0 10px; font: inherit;

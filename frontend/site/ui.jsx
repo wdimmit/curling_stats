@@ -47,6 +47,16 @@ export function Header({ links = [], children }) {
   );
 }
 
+/* Under every page: what the site promises, and what it keeps. Plain pages
+ * of their own (static/terms.html, privacy.html), so these are plain links. */
+export function LegalLinks() {
+  return (
+    <nav className="legal-links" aria-label="Terms and privacy">
+      <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
+    </nav>
+  );
+}
+
 export const Warn = ({ children }) => <div className="warn">{children}</div>;
 export const Card = ({ children, ...rest }) => <div className="card" {...rest}>{children}</div>;
 export const Pill = ({ kind = "", children }) =>

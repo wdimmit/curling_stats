@@ -93,6 +93,12 @@ function TeamsForm({ naming, onClose, onSaved }) {
       <h2 id="teamsTitle">Who played?</h2>
       <p className="tm-why">Each team's name, by the colour it threw. Every chart and link
         of this game shows them, and so does the game list.</p>
+      {/* Names are often people's surnames: say they are public, and that a
+          change is kept with who made it, before anyone types one. */}
+      <p className="tm-public">Names are public, here and in the league's reports. Anyone
+        signed in can change them, and each change is kept with the account that made
+        it. <a href="/terms" target="_blank" rel="noopener">Terms</a> · <a href="/privacy"
+        target="_blank" rel="noopener">Privacy</a></p>
     </>
   );
   const close = <button type="button" onClick={onClose}>Close</button>;

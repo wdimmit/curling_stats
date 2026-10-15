@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · curling.dimmit.net</title>
+<link rel="stylesheet" href="/static/site.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&amp;display=swap">
+<!-- Plain HTML, no bundle, like the terms. What it says is kept has to match
+     what the service keeps: records.py, the request logs, the workers' video
+     caches. Change this page when any of those changes. -->
+<body>
+<header>
+  <h1><a href="/">curling.dimmit.net</a></h1>
+  <a href="/terms">Terms</a>
+  <a href="/privacy" class="here" aria-current="page">Privacy</a>
+</header>
+<main class="legal">
+<h1>Privacy</h1>
+<p class="muted">Last updated October 15, 2026</p>
+
+<p>Will Dimmit runs curling.dimmit.net and is responsible for what it keeps. For questions, or to see, correct or delete your information, write to <a href="mailto:will@ultimatetrip.net">will@ultimatetrip.net</a>.</p>
+<p>In short, the site keeps what it needs to chart games and to let you keep track of your own. It does not sell anything about anyone. It shows no ads and uses no analytics or tracking services.</p>
+
+<h2>What is public</h2>
+<p>Anyone can see the following, with or without an account:</p>
+<ul>
+  <li>the games, their charts, and what the software read from the video;</li>
+  <li>team names, league names and scores people have typed in;</li>
+  <li>the game list, and reports such as Thinking time, which lists teams by name with how long they took per end.</li>
+</ul>
+<p>A chart's link opens that chart for whoever has it.</p>
+<p>Team names are often players' surnames. If one is yours and you would rather it were not on the site, write and it will be taken off.</p>
+<p>Search engines are asked not to index the site.</p>
+
+<h2>What is kept if you sign in</h2>
+<p>You sign in with Google, through Google's Firebase Authentication. The site keeps:</p>
+<ul>
+  <li><strong>Your account:</strong> your Google account's email address, name and profile picture, and when you last used the site.</li>
+  <li><strong>Changes you make, with your account:</strong> each team name you set or change on a game (the old name, the new name, and when), and each score you enter. Only the site's operator can see which account made a change.</li>
+  <li><strong>Your shots:</strong> which rocks you say you threw, and clips of them. You see these on My shots. Your teammates on the site see them too if you turn sharing on.</li>
+  <li><strong>Your charts and teams:</strong> charts you make, edits you make to them, and teams on the site you start or join, with their invites.</li>
+  <li><strong>Practice sessions</strong> you start, and clips of their throws.</li>
+  <li><strong>Flags</strong> you send, with your account's email address.</li>
+</ul>
+
+<h2>What is kept if you don't sign in</h2>
+<p>Charts you make, edits made through a chart's link, and flags are kept without a name. To limit abuse, the site keeps a scrambled, one-way code made from your IP address (a salted hash) with charts you create and flags you send. The same code is kept in rate-limit counters for two days. The address itself can't be read back from the code.</p>
+
+<h2>Logs</h2>
+<p>Google Cloud, which hosts the site, keeps a standard log of each request for 30 days: the IP address, the browser it came from, the page asked for and the time. The logs are used to keep the site running and to count visitors.</p>
+
+<h2>Game video</h2>
+<p>The site reads games from the club's public YouTube streams, which show the people playing. To read a game, the video is copied to processing computers run by the operator. Most copies are deleted within a few weeks. Some games' video, and still frames taken from games, are kept longer to test and train the software that reads them. Clips are kept in private cloud storage and shared only through links that expire. Nothing on the site identifies anyone from their face.</p>
+
+<h2>Who else handles it</h2>
+<ul>
+  <li><strong>Google</strong> hosts the site and its data (Cloud Run, Firestore, Cloud Storage, Cloud Logging) and handles sign-in (Firebase Authentication).</li>
+  <li><strong>YouTube</strong> plays the video on a game's page through its own embedded player. YouTube may set its own cookies.</li>
+  <li><strong>Google Fonts</strong> serves the site's fonts. Your browser fetches them from Google, which sees your IP address.</li>
+</ul>
+<p>Google's handling of all of these is covered by <a href="https://policies.google.com/privacy">Google's privacy policy</a>. Nothing is shared with anyone else unless the law requires it.</p>
+
+<h2>Your browser</h2>
+<p>The site keeps a few settings in your browser's own storage, such as the league you last picked and where you were in a game. Google's sign-in keeps you signed in the same way. There are no advertising cookies.</p>
+
+<h2>How long things are kept</h2>
+<ul>
+  <li>Your account, and what is tied to it, is kept until you ask for it to be deleted.</li>
+  <li>The record of team-name changes is kept as long as the game is on the site.</li>
+  <li>Rate-limit counters are kept for two days.</li>
+  <li>Request logs are kept for 30 days.</li>
+</ul>
+
+<h2>Your choices</h2>
+<p>Write to <a href="mailto:will@ultimatetrip.net">will@ultimatetrip.net</a> to ask what is kept about you, to correct it, or to delete your account and what is tied to it. You will get an answer within 30 days. You can turn off sharing your shots with your team at any time on My shots. You can also stop saying which rocks were yours.</p>
+
+<h2>Children</h2>
+<p>Signing in is for people 13 and older. If you learn that a child under 13 has signed in, write and the account will be deleted.</p>
+
+<h2>Changes</h2>
+<p>This policy may change. The date at the top says when it last did.</p>
+</main>
+<footer><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>

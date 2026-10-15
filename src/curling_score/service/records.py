@@ -414,6 +414,28 @@ class Review:
     from_dict = classmethod(_from_dict)
 
 
+@dataclass
+class TeamNameEdit:
+    """Somebody named a game's teams, or renamed them.
+
+    The names are public -- on the game, in the game list, in the league's
+    thinking report -- and anyone signed in may change them on any game. This
+    is how a name typed in spite is traced to whoever typed it and put back.
+    Nothing serves it but the admin route. `before` and `after` hold only the
+    colours this edit changed, ``{"red": "Rice"}``; None is no name.
+    """
+
+    id: str
+    source_id: str
+    user_id: str
+    at: datetime
+    before: dict = field(default_factory=dict)
+    after: dict = field(default_factory=dict)
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
 def play_id(user_id: str, source_id: str) -> str:
     """The id of a person's tag on a game: derived from the pair, so there is
     only ever one, and saving again replaces it rather than adding another."""

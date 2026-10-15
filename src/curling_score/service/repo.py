@@ -17,7 +17,7 @@ from typing import Protocol
 
 from curling_score.service.records import (
     Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
-    Review, Run, Source, Team, User, WatchedPlaylist, Worker, play_id,
+    Review, Run, Source, Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
 )
 
 LEASE_S = 600.0
@@ -111,6 +111,10 @@ class Repo(Protocol):
     def list_flags(self, status: str | None = None, limit: int = 200) -> list[Flag]: ...
     def resolve_flag(self, flag_id: str, now: datetime) -> Flag | None: ...
     def put_flag_if_absent(self, flag: Flag) -> bool: ...
+    # team-name edits -- who named a game's teams, and what they were before
+    def put_team_name_edit(self, edit: TeamNameEdit) -> None: ...
+    def team_name_edits(self, source_id: str | None = None,
+                        limit: int = 200) -> list[TeamNameEdit]: ...
     # reviews -- the nightly review's reading of each game, per run
     def put_review(self, review: Review) -> None: ...
     def get_review(self, review_id: str) -> Review | None: ...
@@ -186,6 +190,7 @@ class MemoryRepo:
         self.playlist_index: dict[str, PlaylistIndexEntry] = {}
         self.watches: dict[str, PracticeWatch] = {}
         self.sessions: dict[str, PracticeSession] = {}
+        self.team_name_edits_: dict[str, TeamNameEdit] = {}
 
     # ---- runs ---------------------------------------------------------
     def put_run(self, run):
@@ -564,6 +569,17 @@ class MemoryRepo:
             self.flags[flag.id] = flag
             return True
 
+    # ---- team-name edits ----------------------------------------------
+    def put_team_name_edit(self, edit):
+        with self._lock:
+            self.team_name_edits_[edit.id] = edit
+
+    def team_name_edits(self, source_id=None, limit=200):
+        out = [e for e in self.team_name_edits_.values()
+               if source_id is None or e.source_id == source_id]
+        out.sort(key=lambda e: e.at, reverse=True)
+        return out[:limit]
+
     # ---- reviews ------------------------------------------------------
     def put_review(self, review):
         with self._lock:
@@ -716,6 +732,7 @@ class MemoryRepo:
             "reviews": [r.to_dict() for r in self.reviews.values()],
             "practice_watches": [w.to_dict() for w in self.watches.values()],
             "practice_sessions": [s.to_dict() for s in self.sessions.values()],
+            "team_name_edits": [e.to_dict() for e in self.team_name_edits_.values()],
         }
 
     def import_all(self, data):
@@ -750,6 +767,8 @@ class MemoryRepo:
                 self.put_watch(PracticeWatch.from_dict(d))
             for d in data.get("practice_sessions", []):
                 self.put_session(PracticeSession.from_dict(d))
+            for d in data.get("team_name_edits", []):
+                self.put_team_name_edit(TeamNameEdit.from_dict(d))
             # Claims are derivable, so they are not exported -- rebuilt here
             # instead, because a restore that lost them would start handing a
             # team a second chart for a game it already has.

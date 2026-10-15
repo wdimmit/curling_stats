@@ -17,6 +17,7 @@ import { Shots } from "./Shots.jsx";
 import { Status } from "./Status.jsx";
 import { Submit } from "./Submit.jsx";
 import { Thinking } from "./Thinking.jsx";
+import { LegalLinks } from "./ui.jsx";
 
 const PAGES = { submit: Submit, games: Games, mine: Mine, join: Join, status: Status,
                 thinking: Thinking, shots: Shots, practice: Practice };
@@ -28,5 +29,5 @@ const root = document.getElementById("root");
 if (!Page || !root) {
   console.error(`no page for data-page=${JSON.stringify(which)}`);
 } else {
-  createRoot(root).render(<Page />);
+  createRoot(root).render(<><Page /><LegalLinks /></>);
 }

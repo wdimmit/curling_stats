@@ -90,6 +90,18 @@ h2 { font-family:var(--display); font-size:15px; margin:22px 0 8px; font-weight:
 .pill.doubles { background:var(--okbg); color:var(--ok); border-color:transparent; margin-left:6px; }
 .sw { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 footer { max-width:860px; margin:30px auto; padding:0 18px 30px; color:var(--muted); font-size:12px; }
+footer a, .legal-links a { color:inherit; }
+/* Terms and privacy, under every page (ui.jsx LegalLinks). */
+.legal-links { max-width:860px; margin:24px auto; padding:0 18px 24px; color:var(--muted);
+               font-size:12px; }
+/* The terms and privacy pages: prose, so a reading measure and body-sized
+   headings rather than the catalogue's small capitals. */
+.legal { line-height:1.6; }
+.legal h1 { font-family:var(--display); font-size:28px; margin:8px 0 2px; }
+.legal h2 { font-size:17px; text-transform:none; letter-spacing:0; margin:28px 0 6px; }
+.legal p, .legal ul { max-width:68ch; }
+.legal li { margin:4px 0; }
+.legal a { color:var(--ink); }
 code { background:var(--line); padding:1px 5px; border-radius:4px; }
 
 /* --- phone --------------------------------------------------------------- */
@@ -102,7 +114,7 @@ code { background:var(--line); padding:1px 5px; border-radius:4px; }
    until it became draws, below.) */
 @media (max-width: 640px) {
   main { padding: 16px 14px; }
-  footer { padding: 0 14px 24px; }
+  footer, .legal-links { padding: 0 14px 24px; }
   .card { padding: 12px 14px; }
   header { padding: 10px 14px; gap: 10px; }
 

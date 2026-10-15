@@ -12,7 +12,8 @@ Composite indexes this needs (``deploy/firestore.indexes.json``):
     flags     (status ASC, created_at DESC)
 
 Single-field ranges and orderings only, which Firestore indexes by itself:
-``vod_runs.ready_at``, ``reviews.run_ready_at`` and ``sources.played_at``.
+``vod_runs.ready_at``, ``reviews.run_ready_at``, ``sources.played_at`` and
+``team_name_edits.at``.
 
 Field-index exemptions the same file carries: charts.overrides and
 charts.overrides_meta are maps whose every subfield Firestore would otherwise
@@ -24,7 +25,7 @@ from datetime import timedelta
 
 from curling_score.service.records import (
     Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
-    Review, Run, Source, Team, User, WatchedPlaylist, Worker, play_id,
+    Review, Run, Source, Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
 )
 from curling_score.service.repo import (
     LEASE_S, MAX_STORED_OVERRIDES_BYTES, _day_bucket, _hour_bucket,
@@ -36,6 +37,7 @@ USERS, TEAMS, INVITES, CLAIMS = "users", "teams", "invites", "chart_claims"
 FLAGS, PLAYLIST_INDEX, PLAYS = "flags", "yt_playlists", "plays"
 CLIP_JOBS = "clip_jobs"
 REVIEWS = "reviews"
+TEAM_NAME_EDITS = "team_name_edits"
 WATCHES, SESSIONS = "practice_watches", "practice_sessions"
 
 
@@ -531,6 +533,22 @@ class FirestoreRepo:
             return False
         return True
 
+    # ---- team-name edits ----------------------------------------------
+    def put_team_name_edit(self, edit):
+        self._col(TEAM_NAME_EDITS).document(edit.id).set(edit.to_dict())
+
+    def team_name_edits(self, source_id=None, limit=200):
+        # One game's are a handful, sorted here, so the equality needs no
+        # composite index; the whole history is ordered and cut in Firestore,
+        # since it only grows.
+        if source_id is not None:
+            out = [TeamNameEdit.from_dict(d.to_dict())
+                   for d in self._where(TEAM_NAME_EDITS, "source_id", "==", source_id).stream()]
+            out.sort(key=lambda e: e.at, reverse=True)
+            return out[:limit]
+        q = self._col(TEAM_NAME_EDITS).order_by("at", direction=self._fs.Query.DESCENDING)
+        return [TeamNameEdit.from_dict(d.to_dict()) for d in q.limit(limit).stream()]
+
     # ---- reviews ------------------------------------------------------
     def put_review(self, review):
         self._col(REVIEWS).document(review.id).set(review.to_dict())
@@ -702,7 +720,8 @@ class FirestoreRepo:
                 "clip_jobs": [_clip_from_store(d.to_dict()).to_dict()
                               for d in self._col(CLIP_JOBS).stream()],
                 "reviews": dump(REVIEWS),
-                "practice_watches": dump(WATCHES), "practice_sessions": dump(SESSIONS)}
+                "practice_watches": dump(WATCHES), "practice_sessions": dump(SESSIONS),
+                "team_name_edits": dump(TEAM_NAME_EDITS)}
 
     def import_all(self, data):
         for d in data.get("runs", []):
@@ -735,6 +754,8 @@ class FirestoreRepo:
             self.put_watch(PracticeWatch.from_dict(d))
         for d in data.get("practice_sessions", []):
             self.put_session(PracticeSession.from_dict(d))
+        for d in data.get("team_name_edits", []):
+            self.put_team_name_edit(TeamNameEdit.from_dict(d))
         # Claims are derivable, so they are not exported -- rebuilt here
         # instead, because a restore that lost them would start handing a team
         # a second chart for a game it already has.

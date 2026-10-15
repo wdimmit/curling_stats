@@ -18,7 +18,7 @@ import pytest
 
 from curling_score.service.records import (
     Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, Source, Team,
-    User, WatchedPlaylist, Worker, play_id, review_id,
+    TeamNameEdit, User, WatchedPlaylist, Worker, play_id, review_id,
 )
 from curling_score.service.repo import MemoryRepo
 
@@ -41,7 +41,7 @@ def _firestore_repo():
                 "workers", "watched_playlists", "rate_limits",
                 "users", "teams", "invites", "chart_claims", "flags", "yt_playlists",
                 "plays", "reviews", "practice_watches", "practice_sessions",
-                "clip_jobs"):
+                "clip_jobs", "team_name_edits"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -601,6 +601,32 @@ class TestFlags:
         assert f.user == {"uid": "u1", "email": "a@b.c"} and f.overrides_version == 3
 
 
+class TestTeamNameEdits:
+    def edit(self, **kw):
+        base = dict(id="tn_1", source_id="s_1", user_id="u1", at=T0,
+                    before={"red": None}, after={"red": "Rice"})
+        base.update(kw)
+        return TeamNameEdit(**base)
+
+    def test_newest_first_one_game_or_all(self, repo):
+        repo.put_team_name_edit(self.edit(id="tn_1", at=T0))
+        repo.put_team_name_edit(self.edit(id="tn_2", at=at(60), source_id="s_2"))
+        repo.put_team_name_edit(self.edit(id="tn_3", at=at(30)))
+        assert [e.id for e in repo.team_name_edits()] == ["tn_2", "tn_3", "tn_1"]
+        assert [e.id for e in repo.team_name_edits("s_1")] == ["tn_3", "tn_1"]
+        assert [e.id for e in repo.team_name_edits("s_1", limit=1)] == ["tn_3"]
+        assert [e.id for e in repo.team_name_edits(limit=1)] == ["tn_2"]
+        assert repo.team_name_edits("s_nope") == []
+
+    def test_a_cleared_name_comes_back_as_none(self, repo):
+        repo.put_team_name_edit(self.edit(before={"red": "Rice", "yellow": "Casey"},
+                                          after={"red": None, "yellow": "Casey 2"}))
+        e = repo.team_name_edits()[0]
+        assert e.before == {"red": "Rice", "yellow": "Casey"}
+        assert e.after == {"red": None, "yellow": "Casey 2"}
+        assert (e.user_id, e.at.timestamp()) == ("u1", T0.timestamp())
+
+
 class TestReviews:
     def review(self, **kw):
         base = dict(id=review_id("s_1", "r_1"), source_id="s_1", run_id="r_1",
@@ -724,6 +750,8 @@ class TestBackup:
                            chart_id="c_1", link="c"))
         repo.put_review(Review(id="s_1_r_1", source_id="s_1", run_id="r_1",
                                reviewed_at=T0, run_ready_at=T0, flag_id="fa_1"))
+        repo.put_team_name_edit(TeamNameEdit(id="tn_1", source_id="s_1", user_id="u1", at=T0,
+                                             before={"red": None}, after={"red": "Rice"}))
         data = repo.export_all()
         assert {r["id"] for r in data["runs"]} == {"r_1"}
         assert {c["id"] for c in data["charts"]} == {"c_1"}
@@ -738,6 +766,7 @@ class TestBackup:
         got = fresh.get_play("u1", "src_1")
         assert (got.color, got.slot, got.chart_id) == ("yellow", 2, "c_1")
         assert fresh.get_review("s_1_r_1").flag_id == "fa_1"
+        assert [e.after for e in fresh.team_name_edits("s_1")] == [{"red": "Rice"}]
 
 
 class TestPractice:

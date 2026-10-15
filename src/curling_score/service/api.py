@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from curling_score import autoreview, timeline, version, viewer
@@ -41,8 +41,8 @@ from curling_score.service import (dedupe, gameclips, playlist_index, playlists,
                                    slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team, User,
-    Worker, play_id, review_id,
+    JOB_KINDS, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team, TeamNameEdit,
+    User, Worker, play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import (clip_key, detcache_key, meta_key, practice_key,
@@ -864,6 +864,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(404, "no such page")
         return page("practice.html")
 
+    # What the site promises and what it keeps. Plain pages, no script: they
+    # have to read the same whatever else is broken.
+    @app.get("/terms", response_class=HTMLResponse)
+    def terms_page():
+        return page("terms.html")
+
+    @app.get("/privacy", response_class=HTMLResponse)
+    def privacy_page():
+        return page("privacy.html")
+
+    # Nothing here is for search engines: the games carry people's names,
+    # and every page is reached from the club's own links or by being sent one.
+    @app.get("/robots.txt", response_class=PlainTextResponse)
+    def robots_txt():
+        return "User-agent: *\nDisallow: /\n"
+
     @app.get("/join/{token}", response_class=HTMLResponse)
     def join_page(token: str):
         # The token is read back off the URL by the page itself; nothing is
@@ -1143,13 +1159,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         It is served into the timeline of every chart of this game, including
         charts made before anyone knew, which is why it lives on the source
         and not in the document the run produced.
+
+        The names are public and anybody signed in may change them, so each
+        change is kept with who made it (TeamNameEdit) for the admin to read.
         """
         me = require_user(authorization)
         names = {}
         for colour in ("red", "yellow"):
             if colour not in body:
                 continue
-            name = str(body.get(colour) or "").strip()
+            # Printable, as a flag's note is: the history of these is read in
+            # the owner's terminal.
+            name = printable(str(body.get(colour) or ""), keep="").strip()
             if len(name) > 60:
                 raise HTTPException(422, "that name is too long for a team")
             names["team_" + colour] = name or None
@@ -1158,8 +1179,15 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         src = repo.get_source(source_id)
         if src is None:
             raise HTTPException(404, "no such game")
+        # Read before the update: an in-memory source is changed in place.
+        before = {c: getattr(src, "team_" + c) for c in ("red", "yellow")
+                  if "team_" + c in names and names["team_" + c] != getattr(src, "team_" + c)}
         repo.update_source(src.id, **names)
         log.info("teams %s set on %s by %s", names, src.id, me.id)
+        if before:
+            repo.put_team_name_edit(TeamNameEdit(
+                id=slug.new_team_name_edit_id(), source_id=src.id, user_id=me.id, at=now(),
+                before=before, after={c: names["team_" + c] for c in before}))
         return {"ok": True, **{c: names.get("team_" + c, getattr(src, "team_" + c))
                                for c in ("red", "yellow")}}
 
@@ -3007,6 +3035,32 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if got is None:
             raise HTTPException(404, "no such flag")
         return _flag_json(got)
+
+    @app.get("/api/admin/team-name-edits")
+    def admin_team_name_edits(source_id: str | None = None,
+                              limit: int = Query(200, ge=1, le=1000),
+                              authorization: str | None = Header(default=None)):
+        """Who named which game's teams what, newest first: one game's with
+        `source_id`, everyone's without. Each edit carries the account as it
+        is now and the game's title, so a listing reads without lookups."""
+        require_admin(authorization)
+        edits = repo.team_name_edits(source_id, limit)
+        users, games = {}, {}
+        out = []
+        for e in edits:
+            if e.user_id not in users:
+                users[e.user_id] = repo.get_user(e.user_id)
+            if e.source_id not in games:
+                games[e.source_id] = repo.get_source(e.source_id)
+            u, src = users[e.user_id], games[e.source_id]
+            out.append({"id": e.id, "source_id": e.source_id, "at": _iso(e.at),
+                        "title": src.title if src else None,
+                        "user": {"uid": e.user_id, "email": u.email if u else None,
+                                 "name": u.name if u else None},
+                        "before": e.before, "after": e.after,
+                        "now": ({c: getattr(src, "team_" + c) for c in ("red", "yellow")}
+                                if src else None)})
+        return {"edits": out}
 
     # ------------------------------------------------------------- review
     # Each night every game that finished processing is read for the signs
