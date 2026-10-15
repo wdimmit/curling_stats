@@ -32,6 +32,7 @@ import { PlayedDialog } from "./Played.jsx";
 import { TeamsDialog } from "./Teams.jsx";
 import { ShotClipDialog } from "./ShotClip.jsx";
 import { Watch } from "./Watch.jsx";
+import { ViewOnly } from "./ViewOnly.jsx";
 import { useSwipe } from "./Pager.jsx";
 
 const phone = () => matchMedia(PHONE_QUERY).matches;
@@ -582,6 +583,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
       <span id="save" className={`pill${status.cls === "saved" ? " ok"
                                       : status.cls === "failed" ? " bad" : ""}`}
             hidden={config.readOnly}>{status.text}</span>
+      {config.viewOnly ? <ViewOnly why={config.viewOnly} /> : null}
       <button id="menuBtn" title="More"
               onClick={() => dispatch({ type: "set",
                 patch: { menu: ui.menu === "open" ? "" : "open" } })}>⋯</button>

@@ -1,10 +1,11 @@
 "use strict";
 /* The only file that knows Firebase exists.
  *
- * Deliberately not loaded by the charting viewer. Saving grading is
- * unauthenticated on purpose -- the link is the permission -- so the page a
- * person spends an hour in stays free of all of this, and keeps working
- * offline under `curling-score serve`.
+ * The charting viewer loads this only where it has to: on a guarded /c/
+ * page (a chart somebody or a team owns), whose saves carry the person's
+ * token (api.py may_edit_chart), and when somebody opens Flag, I played… or
+ * Name teams. A view link, a review page, a chart nobody owns and the local
+ * `curling-score serve` never load it, so they keep working offline.
  *
  * Everything here fails soft. If the config says accounts are off, if the
  * network is down, if a token will not refresh, the page carries on as an

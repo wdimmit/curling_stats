@@ -337,6 +337,48 @@ class TestSavesCarryTheToken:
                        "out({tried, unhandled});")
         assert got == {"tried": 1, "unhandled": 0}
 
+
+class TestTheGuardedPage:
+    """The boot of a /c/ page whose chart is somebody's, and its view-only line."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_it_asks_before_the_first_render(self):
+        main = self.src("frontend/viewer/main.jsx")
+        assert ('Promise.all([fetch("timeline.json").then(r => r.json()), loadOverrides(),'
+                ' loadAccess()])') in main
+        assert "const config = base.guarded ? accessMode(base, access) : base;" in main
+        assert "if (!base.guarded) return null;" in main
+
+    def test_slow_sign_in_is_no_answer_not_signed_out(self):
+        """A slow SDK must not tell the owner their own chart is someone else's."""
+        main = self.src("frontend/viewer/main.jsx")
+        loader = main[main.index("async function loadAccess()"):]
+        assert "if (who === undefined) return null;" in loader[:400]
+
+    def test_only_an_editable_guarded_page_keeps_a_token(self):
+        main = self.src("frontend/viewer/main.jsx")
+        assert "const auth = base.guarded && !config.readOnly ? chartAuth() : null;" in main
+        assert "store.start(config, { overrides: ov.map, version: ov.version, auth });" in main
+
+    def test_the_header_says_view_only_where_the_save_status_is(self):
+        app = self.src("frontend/viewer/App.jsx")
+        assert "{config.viewOnly ? <ViewOnly why={config.viewOnly} /> : null}" in app
+        view = self.src("frontend/viewer/ViewOnly.jsx")
+        assert "viewOnlyText(why)" in view
+        assert 'why.reason === "signin"' in view and "location.reload()" in view
+        assert '<span className="short">View only</span>' in view
+
+    def test_a_phone_says_just_view_only(self):
+        css = self.src("src/curling_score/viewer/style.css")
+        assert "header > #viewOnly       { order: 9; }" in css
+        assert "#viewOnly .short { display: none; }" in css
+        phone = css[css.index("@media (max-width: 640px) and (min-height: 461px)"):]
+        assert "#viewOnly .long { display: none; }" in phone
+        assert "#viewOnly .short { display: inline; }" in phone
+
 RECONCILE = """
 state.doc = %s; state.gi = 0; state.ei = 0; state.si = 0;
 state.overrides = %s; state.dirty = new Set(%s); state.dragging = %s;

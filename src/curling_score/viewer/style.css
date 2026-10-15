@@ -578,6 +578,8 @@ body.reporting main { display:none; }
   header #copyLink   { order: 7; }
   header #shareLink  { order: 8; }
   header > #save     { order: 9; }
+  header > #viewOnly       { order: 9; }
+  header > #viewOnlySignIn { order: 9; }
   header #download   { order: 10; }
   header #reportBtn  { order: 11; }
   header #flagBtn    { order: 12; }
@@ -804,6 +806,12 @@ body[data-mode="review"] #houseCard .tools,
 body[data-mode="review"] .housebar { display: none; }
 body[data-mode="review"] #house { cursor:default; }
 
+/* A guarded chart this person may not edit says so where the save status
+   would be (ViewOnly.jsx): the whole line on a desktop, "View only" on a
+   phone, whose header is one 48px row. */
+#viewOnly { white-space: normal; }
+#viewOnly .short { display: none; }
+
 /* Watch mode is a phone layout only. At every other width the read-only
    surfaces keep the desktop three-column page they have always had. */
 #watch { display: none; }
@@ -861,6 +869,10 @@ body[data-mode="review"] #house { cursor:default; }
   #blanks { min-height: 44px; min-width: 0; overflow: hidden;
             text-overflow: ellipsis; }
   #save { flex: 0 0 auto; }
+  #viewOnly { flex: 0 0 auto; white-space: nowrap; }
+  #viewOnly .long { display: none; }
+  #viewOnly .short { display: inline; }
+  #viewOnlySignIn { min-height: 44px; flex: 0 0 auto; }
   #playback label.chk { min-height: 44px; }
 
   #stoneChip { display: grid; place-items: center; flex: 0 0 40px;

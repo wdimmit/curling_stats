@@ -7,15 +7,17 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { LIVE_POLL_MS, acceptLiveDoc, modeOf } from "../core/index.mjs";
+import { LIVE_POLL_MS, acceptLiveDoc, accessMode, modeOf } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
+import { whoIsSignedIn } from "../runtime/auth.mjs";
+import { chartAuth } from "../runtime/chartAuth.mjs";
 import { loadCursor } from "../runtime/prefs.mjs";
 import { App } from "./App.jsx";
 
-const config = modeOf(window.CHART);
+const base = modeOf(window.CHART);
 
 async function loadOverrides() {
-  if (config.review) return { map: {}, version: null };
+  if (base.review) return { map: {}, version: null };
   try {
     const r = await fetch("overrides.json");
     // The hosted API versions the overrides through an ETag; the local server
@@ -30,13 +32,32 @@ async function loadOverrides() {
   }
 }
 
+/* On a guarded page -- a chart somebody or a team owns -- whether this person
+ * may edit it (api.py access.json). Asked alongside the timeline, so it costs
+ * little time, and before the first render, so editing never appears and then
+ * goes. Sign-in that does not answer in time is no answer (accessMode reads
+ * it as "unchecked"), not "signed out": a slow SDK must not tell the owner
+ * their own chart is someone else's. */
+async function loadAccess() {
+  if (!base.guarded) return null;
+  const who = await whoIsSignedIn();
+  if (who === undefined) return null;
+  try {
+    const r = await fetch("access.json",
+      who ? { headers: { Authorization: `Bearer ${who.token}` } } : {});
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
 /* A game still being played is published an end at a time, so while the
  * timeline says so the page keeps asking for it. App keeps the viewer's place
  * across a new document -- the game, end and rock are its own state, and ends
  * are only ever appended -- so the next end simply appears. An answer that has
  * not moved on, or a restarted run's shorter rebuild, is dropped without a
  * render (acceptLiveDoc). */
-function Live({ first, cursor }) {
+function Live({ first, cursor, config }) {
   const [doc, setDoc] = useState(first);
   const live = !!doc.live?.in_progress;
   useEffect(() => {
@@ -65,11 +86,16 @@ function Live({ first, cursor }) {
   return <App doc={doc} config={config} cursor={cursor} reload={reload} />;
 }
 
-Promise.all([fetch("timeline.json").then(r => r.json()), loadOverrides()])
-  .then(([doc, ov]) => {
-    store.start(config, { overrides: ov.map, version: ov.version });
+Promise.all([fetch("timeline.json").then(r => r.json()), loadOverrides(), loadAccess()])
+  .then(([doc, ov, access]) => {
+    const config = base.guarded ? accessMode(base, access) : base;
+    // A guarded chart this person may edit saves with their token, kept
+    // fresh for the close-of-tab save (chartAuth); any other page sends none.
+    const auth = base.guarded && !config.readOnly ? chartAuth() : null;
+    if (auth) { auth.keepFresh(); auth.fresh(); }
+    store.start(config, { overrides: ov.map, version: ov.version, auth });
     createRoot(document.getElementById("root"))
-      .render(<Live first={doc} cursor={loadCursor(config.slug)} />);
+      .render(<Live first={doc} cursor={loadCursor(config.slug)} config={config} />);
   })
   .catch(err => {
     document.body.innerHTML =
