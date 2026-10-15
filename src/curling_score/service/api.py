@@ -557,6 +557,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # before the team names, because rebuilding a game resets those.
         if src is not None:
             doc = timeline.apply_entered_scores(doc, src.entered_scores)
+        # A team that played with three, if anybody has said: its rocks are
+        # credited 3/3/2. On the source for the same reason as the names
+        # below, and written into the format block so a renumbering -- the
+        # viewer's, or apply_overrides' -- keeps crediting it that way.
+        if (src is not None and src.short_handed
+                and format_mod.of_document(doc) is format_mod.FOURS):
+            doc["format"] = {**format_mod.FOURS.to_json(), **(doc.get("format") or {}),
+                             "short_handed": [c for c in ("red", "yellow")
+                                              if c in src.short_handed]}
+            timeline.assign_short_handed(doc)
         game = doc["games"][0] if doc["games"] else None
         doc["source"]["start_s"] = game["start_s"] if game else None
         # Who played, if anybody has said. The names live on the source rather
@@ -1210,6 +1220,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def api_set_teams(source_id: str, body: dict,
                       authorization: str | None = Header(default=None)):
         """Who played this game, by the colour they threw.
+        ``short_handed`` says which teams played with three.
 
         Per game, where the league is per recording: a night on one sheet is
         one league and two different pairs of teams. Nothing detects this --
@@ -1237,11 +1248,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             if len(name) > 60:
                 raise HTTPException(422, "that name is too long for a team")
             names["team_" + colour] = name or None
+        # Which teams played with three: a list of colours, empty to clear.
+        # Left out, it is left as it was, so naming a team never unmarks it.
+        if "short_handed" in body:
+            short = body["short_handed"]
+            if (not isinstance(short, list)
+                    or not all(isinstance(c, str) and c in ("red", "yellow") for c in short)
+                    or len(set(short)) != len(short)):
+                raise HTTPException(422, "short_handed is a list of colours: red, yellow")
+            names["short_handed"] = sorted(short) or None
         if not names:
             raise HTTPException(400, "name red, yellow, or both")
         src = repo.get_source(source_id)
         if src is None:
             raise HTTPException(404, "no such game")
+        if names.get("short_handed") and (src.format or "fours") != "fours":
+            raise HTTPException(422, "a doubles team is two players")
         # Read before the update: an in-memory source is changed in place.
         before = {c: getattr(src, "team_" + c) for c in ("red", "yellow")
                   if "team_" + c in names and names["team_" + c] != getattr(src, "team_" + c)}
@@ -1252,7 +1274,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 id=slug.new_team_name_edit_id(), source_id=src.id, user_id=me.id, at=now(),
                 before=before, after={c: names["team_" + c] for c in before}))
         return {"ok": True, **{c: names.get("team_" + c, getattr(src, "team_" + c))
-                               for c in ("red", "yellow")}}
+                               for c in ("red", "yellow")},
+                "short_handed": names.get("short_handed", src.short_handed) or []}
 
     @app.get("/api/games/{source_id}/team-names")
     def api_team_names(source_id: str, request: Request):
@@ -2100,6 +2123,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(422, "color must be red or yellow")
         if not isinstance(slot, int) or isinstance(slot, bool) or not 1 <= slot <= len(fmt.positions):
             raise HTTPException(422, f"slot must be 1 to {len(fmt.positions)}")
+        if (fmt.short_throw_table and color in (src.short_handed or [])
+                and slot not in fmt.short_throw_table):
+            raise HTTPException(422, "that team played with three: lead, second or skip")
         if not repo.bump_rate_limit("play:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
             raise HTTPException(429, "that is a lot of changes; try again later")
         t = now()
@@ -2216,6 +2242,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                                   or (run.published_at if run else None)),
                 "teams": {"red": src.team_red if src else None,
                           "yellow": src.team_yellow if src else None},
+                "short_handed": (src.short_handed if src else None) or [],
                 "view_path": (f"/s/{chart.share_slug}/" if chart and chart.share_slug
                               else f"/g/{src.id}/" if src else None),
                 "status": "ok" if src and run else "gone",

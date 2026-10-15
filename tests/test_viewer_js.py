@@ -3555,6 +3555,78 @@ class TestRoleSwapParity:
         assert got == [["B", "right"], ["A", "left"], ["A", "left"], ["A", "left"], ["B", "right"]]
 
 
+def short_doc(colours=("red",), end_number=2, credited=True):
+    """A fours end with the format block api.game_doc writes for a team of
+    three -- its rocks credited 3/3/2 as game_doc credits them, or, with
+    `credited` off, still as the pipeline wrote them."""
+    from curling_score import timeline
+    from curling_score.game import format as F
+    d = doc(_sliced_shots(16, "fours", end_number), end_number=end_number)
+    d["format"] = {**F.FOURS.to_json(), "short_handed": list(colours)}
+    return timeline.assign_short_handed(d) if credited else d
+
+
+THREE_ROWS = [("lead", 1), ("lead", 2), ("lead", 3), ("second", 1),
+              ("second", 2), ("second", 3), ("skip", 1), ("skip", 2)]
+
+
+class TestShortHandedFormat:
+    def test_short_of_reads_the_block(self):
+        from curling_score.game import format as F
+        dbl = {**F.DOUBLES.to_json(), "short_handed": ["red"]}
+        got = run_js(setup(short_doc()) +
+                     "const f = formatOf(state.doc);"
+                     "out([[...shortOf(f)], [...shortOf(formatOf({}))],"
+                     " [...shortOf({...f, short_handed: ['red', 'blue', 3]})],"
+                     " [...shortOf({...f, short_throw_table: 'x'})],"
+                     f" [...shortOf({json.dumps(dbl)})]]);")
+        assert got == [["red"], [], ["red"], [], []]
+
+    def test_the_throw_table_for_a_team_of_three(self):
+        got = run_js("const F4 = formatOf({});"
+                     "out([5, 7, 13].map(n => throwInfo(n, F4, false, true))"
+                     ".concat([shotLabel(2, 5, F4, false, true), roleText(F4, 1, true),"
+                     " roleText(F4, 2, true), roleText(F4, 3, true), roleText(F4, 4, true),"
+                     " roleText(F4, 1)]));")
+        assert got[:3] == [{"has_hammer": False, "thrower_slot": 1, "rock_of_player": 3},
+                           {"has_hammer": False, "thrower_slot": 2, "rock_of_player": 1},
+                           {"has_hammer": False, "thrower_slot": 4, "rock_of_player": 1}]
+        assert got[3:] == ["2nd end, lead's third rock", "1st–3rd", "4th–6th", "",
+                           "7th & 8th", "1st & 2nd"]
+
+    def test_the_report_heads_say_three_players(self):
+        got = run_js(setup(short_doc()) +
+                     "out(teamHeads({red: 'Dimmit', yellow: 'Grant'}, formatOf(state.doc)));")
+        assert got == {"red": "Dimmit · 3 players", "yellow": "Grant"}
+
+
+class TestShortHandedParity:
+    """The viewer credits a team of three exactly as apply_overrides does."""
+
+    def test_as_served(self):
+        py, js = both(short_doc(), {})
+        assert js == py
+        assert [(r[4], r[5]) for r in js if r[2] == "red"] == THREE_ROWS
+
+    def test_a_block_whose_rocks_are_not_yet_credited(self):
+        py, js = both(short_doc(credited=False), {})
+        assert js == py
+        assert [(r[4], r[5]) for r in js if r[2] == "red"] == THREE_ROWS
+
+    def test_a_moved_rock(self):
+        py, js = both(short_doc(), {"0.2.6": {"before": 5}})
+        assert js == py
+        assert (js[5][0], js[5][1], js[5][4], js[5][5]) == (5, 6, "lead", 3)
+
+    def test_a_rock_recoloured_onto_the_short_team(self):
+        py, js = both(short_doc(), {"0.2.6": {"color": "red"}})
+        assert js == py
+        assert (js[5][2], js[5][4], js[5][5]) == ("red", "lead", 3)
+
+    def test_the_players_slice_matches_the_view(self):
+        TestPlayerSliceParity()._check(short_doc(), {}, "red", 1)
+
+
 def _sliced_shots(n, fmt_name, end_number):
     """An end whose every rock has a house and a set position, so the slice
     has something to lose: `stones` for stones_before, `line.start` for the
@@ -4542,6 +4614,27 @@ class TestPositionChoices:
                        "Undated", "Red · Skip (7th & 8th)"]
 
 
+SHORT_JSON = {**FOURS_JSON, "short_throw_table": [1, 1, 1, 2, 2, 2, 4, 4]}
+
+
+class TestShortHandedPlays:
+    def test_choices_for_a_team_of_three(self):
+        got = run_js(f"out(positionChoices({json.dumps(SHORT_JSON)}, true));")
+        assert [(c["slot"], c["label"], c["role"]) for c in got] == [
+            (1, "Lead", "1st–3rd"), (2, "Second", "4th–6th"), (4, "Skip", "7th & 8th")]
+
+    def test_a_play_on_a_team_of_three(self):
+        plays = [play(slot=1, short_handed=["red"], format=SHORT_JSON),
+                 play(slot=3, short_handed=["red"], format=SHORT_JSON),
+                 play(slot=3, short_handed=["yellow"], format=SHORT_JSON),
+                 play(slot=4, format=SHORT_JSON)]
+        got = run_js(f"out({json.dumps(plays)}.map(playText));")
+        assert got == ["Dimmit · Lead (1st–3rd)",
+                       "Dimmit · This team played with three. Pick your rocks again",
+                       "Dimmit · Third (5th & 6th)",
+                       "Dimmit · Skip (7th & 8th)"]
+
+
 class TestPlayerRocks:
     """A player's rocks from the game the server baked and cut down for them."""
 
@@ -4798,7 +4891,7 @@ class TestThePlayedDialog:
         played = self.src("frontend/viewer/Played.jsx")
         save = played[played.index("const save = async"):played.index("const clear = async")]
         assert "await whoIsSignedIn()" in save
-        assert "{ path: location.pathname, color, slot }" in save
+        assert "{ path: location.pathname, color, slot: picked }" in save
 
     def test_the_calls_go_to_the_play_routes(self):
         plays = self.src("frontend/runtime/plays.mjs")
@@ -4818,8 +4911,9 @@ class TestNamingTheTeams:
     def src(self, rel):
         return (self.ROOT / rel).read_text()
 
-    def send(self, status, reply, *, throws=False):
+    def send(self, status, reply, *, throws=False, body=None):
         """sendTeams against a stubbed fetch: what it asked for, and what it said."""
+        body = body or {"red": "Dimmit", "yellow": ""}
         module = (self.ROOT / "frontend/runtime/teams.mjs").as_uri()
         fetch = ("async () => { throw new Error('offline'); }" if throws else
                  f"async (url, init) => {{ asked.push({{url, init}});"
@@ -4827,7 +4921,7 @@ class TestNamingTheTeams:
                  f" json: async () => ({json.dumps(reply)}) }}; }}")
         script = (f"const asked = [];\nglobalThis.fetch = {fetch};\n"
                   f"const M = await import({module!r});\n"
-                  "const res = await M.sendTeams('s 1', {red: 'Dimmit', yellow: ''}, 'tok');\n"
+                  f"const res = await M.sendTeams('s 1', {json.dumps(body)}, 'tok');\n"
                   "console.log(JSON.stringify({asked, res}));")
         proc = subprocess.run([node, "--input-type=module", "-e", script],
                               capture_output=True, text=True, timeout=60)
@@ -4849,6 +4943,23 @@ class TestNamingTheTeams:
         assert call["init"]["headers"]["Authorization"] == "Bearer tok"
         assert json.loads(call["init"]["body"]) == {"red": "Dimmit", "yellow": ""}
         assert got["res"] == {"ok": True, "status": 200, "red": "Dimmit", "yellow": None}
+
+    def test_it_sends_a_team_of_three_with_the_names(self):
+        body = {"red": "Dimmit", "yellow": "", "short_handed": ["red"]}
+        got = self.send(200, {"ok": True, "short_handed": ["red"]}, body=body)
+        assert json.loads(got["asked"][0]["init"]["body"]) == body
+
+    def test_each_box_says_which_team_it_marks(self):
+        """Both boxes read "Played with three"; a screen reader has to hear
+        which team a box marks, or the wrong team's rocks get re-credited."""
+        teams = self.src("frontend/viewer/Teams.jsx")
+        assert 'aria-label="Red team played with three"' in teams
+        assert 'aria-label="Yellow team played with three"' in teams
+
+    def test_the_menu_says_teams_and_the_dialog_offers_three(self):
+        assert ">\n          Teams…\n" in self.src("frontend/viewer/App.jsx")
+        teams = self.src("frontend/viewer/Teams.jsx")
+        assert "Played with three" in teams and "short_handed" in teams
 
     def test_a_refusal_carries_the_servers_words(self):
         got = self.send(422, {"detail": "that name is too long for a team"})
@@ -4976,7 +5087,8 @@ class TestNamingTheTeams:
         save = teams[teams.index("const save = async"):]
         save = save[:save.index("\n  };")]
         assert "await whoIsSignedIn()" in save
-        assert "{ red: red.trim(), yellow: yellow.trim() }" in save
+        assert "{ red: red.trim(), yellow: yellow.trim()," in save
+        assert "short_handed:" in save and "sendTeams(naming.sourceId, body, who.token)" in save
         assert save.index("await onSaved()") < save.index("onClose()")
 
     def test_a_name_is_as_long_as_the_server_takes(self):

@@ -635,7 +635,7 @@ body.reporting main { display:none; }
 #playedDialog .pl-clear { margin-right: auto; }
 
 /* --- "Clip…" dialog ------------------------------------------------------ */
-/* Name teams…'s look. The clip is portrait (600x810), so it is held to a
+/* Teams…'s look. The clip is portrait (600x810), so it is held to a
    height that leaves the buttons on screen. */
 #clipDialog { width: min(440px, calc(100vw - 32px)); padding: 16px;
   border: 1px solid var(--line); border-radius: 10px;
@@ -661,7 +661,7 @@ body.reporting main { display:none; }
 #clipDialog .on { background: var(--accent); color: var(--onaccent); border-radius: 6px;
   text-decoration: none; }
 
-/* --- "Name teams…" dialog ------------------------------------------------- */
+/* --- "Teams…" dialog ------------------------------------------------------- */
 /* I played…'s look. The boxes are 16px so a phone does not zoom in on them. */
 #teamsDialog { width: min(420px, calc(100vw - 32px)); padding: 16px;
   border: 1px solid var(--line); border-radius: 10px;
@@ -673,6 +673,10 @@ body.reporting main { display:none; }
 #teamsDialog .tm-public a { color: inherit; }
 #teamsDialog .tm-team { display: grid; grid-template-columns: 12px 4.5em 1fr;
   align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 600; }
+#teamsDialog .tm-three { display: flex; align-items: center; gap: 8px; min-height: 44px;
+  margin: -8px 0 10px calc(12px + 4.5em + 16px); color: var(--muted); font-weight: 400; }
+#teamsDialog .tm-three input { width: 20px; height: 20px; margin: 0;
+  accent-color: var(--accent); }
 #teamsDialog .tm-team input { min-height: 44px; padding: 0 10px; font: inherit;
   font-size: 16px; font-weight: 400; color: var(--ink); background: var(--panel);
   border: 1px solid var(--line); border-radius: 7px; min-width: 0; }

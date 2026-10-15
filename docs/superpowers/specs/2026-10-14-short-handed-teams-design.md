@@ -33,7 +33,7 @@ Decisions the user made:
 
 Assumptions, not yet contradicted:
 - The split is always 3/3/2 (WCF and Curling Canada rules); there are no league variants.
-- Anyone signed in may set it, as with team names.
+- Only a validated account (User.role) may set it, as with team names (since 309b073a; the spec first said anyone signed in).
 - Both teams may be short (3 v 3).
 - Fours only. A doubles team is two players by definition.
 
@@ -68,6 +68,7 @@ Assumptions, not yet contradicted:
 
 ### API
 - **`POST /api/games/{source_id}/teams`** also takes `short_handed`, a list of colours.
+  - It shares the endpoint's role check: an account nobody validated gets 403.
   - Entries must be distinct, and each must be `red` or `yellow`; otherwise 422.
   - A doubles game (`src.format == "doubles"`) gets 422 with "a doubles team is two players".
   - An empty list clears the mark. Leaving the key out leaves the mark as it is.

@@ -1,4 +1,4 @@
-/* "Name teams…": who played this game, by the colour they threw -- the same
+/* "Teams…": who played this game, and whether a team played with three, by the colour they threw -- the same
  * names the game list takes, kept on the game, so every chart and link of it
  * shows them once saved.
  *
@@ -38,6 +38,12 @@ function TeamsForm({ naming, onClose, onSaved }) {
   const [attempt, setAttempt] = useState(0);
   const [red, setRed] = useState(naming.names.red);
   const [yellow, setYellow] = useState(naming.names.yellow);
+  const [short, setShort] = useState(() => new Set(naming.short || []));
+  const three = (c, on) => setShort(s => {
+    const next = new Set(s);
+    if (on) next.add(c); else next.delete(c);
+    return next;
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   // The names the league's other games go by, offered in both boxes so the
@@ -84,8 +90,11 @@ function TeamsForm({ naming, onClose, onSaved }) {
     if (busy) return;
     setBusy(true);
     setError(null);
+    // A doubles team is two players: the box is not shown, and nothing is sent.
+    const body = { red: red.trim(), yellow: yellow.trim(),
+                   ...(naming.doubles ? {} : { short_handed: ["red", "yellow"].filter(c => short.has(c)) }) };
     const who = await whoIsSignedIn();
-    const res = who ? await sendTeams(naming.sourceId, { red: red.trim(), yellow: yellow.trim() }, who.token)
+    const res = who ? await sendTeams(naming.sourceId, body, who.token)
       : { ok: false, error: "You are signed out. Close this and sign in again." };
     if (res.ok) await onSaved();
     setBusy(false);
@@ -97,7 +106,8 @@ function TeamsForm({ naming, onClose, onSaved }) {
     <>
       <h2 id="teamsTitle">Who played?</h2>
       <p className="tm-why">Each team's name, by the colour it threw. Every chart and link
-        of this game shows them, and so does the game list.</p>
+        of this game shows them, and so does the game list. A team of three: its lead and
+        second threw three rocks each, its skip two.</p>
       {/* Names are often people's surnames: say they are public, and that a
           change is kept with who made it, before anyone types one. */}
       <p className="tm-public">Names are public, here and in the league's reports. Validated
@@ -146,12 +156,26 @@ function TeamsForm({ naming, onClose, onSaved }) {
         <NameBox id={`${box}red`} names={known} maxLength={60} autoFocus value={red}
                  placeholder="Team name" onValue={setRed} />
       </div>
+      {!naming.doubles && (
+        <label className="tm-three">
+          <input type="checkbox" checked={short.has("red")} aria-label="Red team played with three"
+                 onChange={e => three("red", e.target.checked)} />
+          Played with three
+        </label>
+      )}
       <div className="tm-team">
         <span className="dot yellow" aria-hidden="true" />
         <label htmlFor={`${box}yellow`}>Yellow</label>
         <NameBox id={`${box}yellow`} names={known} maxLength={60} value={yellow}
                  placeholder="Team name" onValue={setYellow} />
       </div>
+      {!naming.doubles && (
+        <label className="tm-three">
+          <input type="checkbox" checked={short.has("yellow")} aria-label="Yellow team played with three"
+                 onChange={e => three("yellow", e.target.checked)} />
+          Played with three
+        </label>
+      )}
       {error && <p className="tm-error" role="alert">{error}</p>}
       <div className="tm-foot">
         <button type="button" disabled={busy} onClick={onClose}>Cancel</button>

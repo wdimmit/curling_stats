@@ -6,7 +6,8 @@
  * server's own words when it gave any. */
 export const teamsUrl = sourceId => `/api/games/${encodeURIComponent(sourceId)}/teams`;
 
-/* `body` is {red, yellow}; an empty name clears that team's. */
+/* `body` is {red, yellow, short_handed?}: an empty name clears that team's;
+ * short_handed, when sent, is the colours that played with three. */
 export async function sendTeams(sourceId, body, token) {
   try {
     const r = await fetch(teamsUrl(sourceId), {

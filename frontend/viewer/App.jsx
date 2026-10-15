@@ -16,7 +16,7 @@ import {
   gatherStats, gatherThinking, formatWarning,
   identity, isBlank, isGraded, liveGame, nextBlankAfter, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
-  stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames,
+  stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
   shotClipName, shotClipsOffered,
 } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
@@ -638,8 +638,10 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
                 hidden={!config.hosted || !doc.chart?.source_id}
                 onClick={() => dispatch({ type: "set", patch: { naming: {
                   opened: Date.now(), sourceId: doc.chart.source_id,
-                  names: typedTeamNames(view.game) } } })}>
-          Name teams…
+                  names: typedTeamNames(view.game),
+                  short: [...shortOf(view.format)],
+                  doubles: view.format.name === "doubles" } } })}>
+          Teams…
         </button>
         {/* A clip of this rock, while the game's video is kept: one already
             cut plays at once, and asking for one needs someone signed in. */}

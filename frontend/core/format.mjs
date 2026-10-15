@@ -11,6 +11,7 @@ export const FOURS = Object.freeze({
   delivered_per_team: 8, delivered_per_end: 16,
   positions: ["lead", "second", "third", "skip"],
   throw_table: [1, 1, 2, 2, 3, 3, 4, 4],
+  short_throw_table: [1, 1, 1, 2, 2, 2, 4, 4],
   blank_passes_hammer: false, swappable: false,
 });
 
@@ -33,11 +34,27 @@ export function formatOf(doc) {
  * not carry -- so it goes by the format's name. */
 export const lineWithoutBroom = fmt => fmt?.name === "doubles";
 
+/* The colours that played with three, as api.game_doc writes them into the
+ * format block. Only a format with a three-player table of the right length
+ * honours it -- anything else is nobody. Mirrors format.short_handed_of. */
+export function shortOf(fmt) {
+  const t = fmt?.short_throw_table;
+  if (!Array.isArray(t) || t.length !== fmt.throw_table?.length || !t.every(Number.isInteger))
+    return new Set();
+  const said = Array.isArray(fmt.short_handed) ? fmt.short_handed : [];
+  return new Set(said.filter(c => c === "red" || c === "yellow"));
+}
+
+/* A team's table: the three-player one when it played with three. */
+const tableOf = (fmt, short) =>
+  (short && Array.isArray(fmt.short_throw_table) ? fmt.short_throw_table : fmt.throw_table);
+
 /* Who throws the end's n-th delivered rock. `swapped` says this team's two
  * players traded roles this end: the slot then names the person, and
- * rock_of_player still counts within the role. */
-export function throwInfo(n, fmt = FOURS, swapped = false) {
-  const table = fmt.throw_table;
+ * rock_of_player still counts within the role. `short` says this team played
+ * with three. */
+export function throwInfo(n, fmt = FOURS, swapped = false, short = false) {
+  const table = tableOf(fmt, short);
   const k = Math.min((n + 1) >> 1, table.length);   // this team's k-th rock
   const role = table[k - 1];
   let rock = 0;
@@ -49,15 +66,16 @@ export function throwInfo(n, fmt = FOURS, swapped = false) {
 export const ordinalOf = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th"
   : { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th");
 
-export function shotLabel(endNo, n, fmt = FOURS, swapped = false) {
-  const t = throwInfo(n, fmt, swapped);
+export function shotLabel(endNo, n, fmt = FOURS, swapped = false, short = false) {
+  const t = throwInfo(n, fmt, swapped, short);
   return `${ordinalOf(endNo)} end, ${fmt.positions[t.thrower_slot - 1]}'s `
        + `${NTH[t.rock_of_player - 1]} rock`;
 }
 
-/* Which of a team's rocks a player's role throws: "1st & 5th", "2nd–4th". */
-export function roleText(fmt, slot) {
-  const ks = fmt.throw_table.map((r, i) => (r === slot ? i + 1 : 0)).filter(Boolean);
+/* Which of a team's rocks a player's role throws: "1st & 5th", "2nd–4th";
+ * "" for the slot a team of three has nobody in. */
+export function roleText(fmt, slot, short = false) {
+  const ks = tableOf(fmt, short).map((r, i) => (r === slot ? i + 1 : 0)).filter(Boolean);
   if (!ks.length) return "";
   const run = ks.every((k, i) => i === 0 || k === ks[i - 1] + 1);
   if (run && ks.length > 2) return `${NUM[ks[0] - 1]}–${NUM[ks[ks.length - 1] - 1]}`;

@@ -120,6 +120,11 @@ class Source:
     # where the report has been headed "red" and "yellow" for want of them.
     team_red: str | None = None
     team_yellow: str | None = None
+    # The colours that played with three, if anybody has said. On the game
+    # for the same reason as the names, and served into every chart of it:
+    # api.game_doc credits that team's rocks 3/3/2 (format.short_throw_table).
+    # None is nobody.
+    short_handed: list[str] | None = None
     # Where the game actually starts, once somebody has told us -- and how
     # many ends are left once the warm-up in front of it is dropped.
     #

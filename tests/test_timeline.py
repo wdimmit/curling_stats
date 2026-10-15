@@ -1462,3 +1462,75 @@ class TestSpin:
 
     def test_the_schema_says_spin_was_read(self):
         assert timeline.SCHEMA_VERSION == 9
+
+
+def _short(doc, colours=("red",)):
+    """`doc` with the format block api.game_doc writes for a team of three."""
+    doc["format"] = {**F.FOURS.to_json(), "short_handed": list(colours)}
+    return doc
+
+
+def _who(doc, color):
+    return [(s["number"], s["position"], s["rock_of_player"])
+            for s in doc["games"][0]["ends"][0]["shots"] if s["color"] == color]
+
+
+THREE = [(1, "lead", 1), (3, "lead", 2), (5, "lead", 3), (7, "second", 1),
+         (9, "second", 2), (11, "second", 3), (13, "skip", 1), (15, "skip", 2)]
+
+
+class TestShortHanded:
+    """A team of three, credited 3/3/2 wherever the document says so."""
+
+    def test_the_short_team_is_credited_three_three_two(self):
+        doc = timeline.assign_short_handed(_short(_fours_doc()))
+        assert _who(doc, "red") == THREE
+        shots = doc["games"][0]["ends"][0]["shots"]
+        assert shots[4]["label"] == "2nd end, lead's third rock"
+        assert (shots[4]["thrower_slot"], shots[12]["thrower_slot"]) == (1, 4)
+
+    def test_the_full_team_is_left_as_it_was(self):
+        before = [s for s in _fours_doc()["games"][0]["ends"][0]["shots"] if s["color"] == "yellow"]
+        doc = timeline.assign_short_handed(_short(_fours_doc()))
+        assert [s for s in doc["games"][0]["ends"][0]["shots"] if s["color"] == "yellow"] == before
+
+    def test_both_teams_can_be_three(self):
+        doc = timeline.assign_short_handed(_short(_fours_doc(), ("red", "yellow")))
+        assert _who(doc, "red") == THREE
+        assert [p for _, p, _ in _who(doc, "yellow")] == ["lead"] * 3 + ["second"] * 3 + ["skip"] * 2
+
+    def test_a_document_that_does_not_say_is_untouched(self):
+        assert timeline.assign_short_handed(_fours_doc()) == _fours_doc()
+
+    def test_a_rock_never_seen_is_credited_by_its_number(self):
+        doc = _short(_fours_doc())
+        doc["games"][0]["ends"][0]["shots"][4]["missing"] = True     # red's 3rd rock
+        doc = timeline.assign_short_handed(doc)
+        assert doc["games"][0]["ends"][0]["shots"][4]["position"] == "lead"
+
+    def test_a_moved_rock_follows_its_new_number_by_the_short_table(self):
+        doc = timeline.assign_short_handed(_short(_fours_doc()))
+        shots = timeline.apply_overrides(doc, {"0.2.6": {"before": 5}})["games"][0]["ends"][0]["shots"]
+        moved, red5 = shots[4], shots[5]
+        assert (moved["id"], moved["color"], moved["position"], moved["rock_of_player"]) \
+            == (6, "yellow", "second", 1)
+        assert (red5["id"], red5["number"], red5["position"], red5["rock_of_player"]) \
+            == (5, 6, "lead", 3)
+        assert red5["label"] == "2nd end, lead's third rock"
+
+    def test_a_rock_recoloured_onto_the_short_team_is_credited_by_its_table(self):
+        doc = timeline.assign_short_handed(_short(_fours_doc()))
+        shots = timeline.apply_overrides(doc, {"0.2.6": {"color": "red"}})["games"][0]["ends"][0]["shots"]
+        assert (shots[5]["color"], shots[5]["position"], shots[5]["rock_of_player"]) == ("red", "lead", 3)
+
+    def test_the_leads_report_and_clips_get_all_three_rocks(self):
+        from curling_score.service import gameclips
+        doc = timeline.assign_short_handed(_short(_fours_doc()))
+        assert [r["name"] for r in gameclips.player_rocks(doc, "red", 1)] == ["0.2.1", "0.2.3", "0.2.5"]
+        cut = timeline.for_player(doc, "red", 1)["games"][0]["ends"][0]["shots"]
+        assert [s["number"] for s in cut if "track" in s] == [1, 3, 5]
+
+    def test_nobody_is_third_on_a_team_of_three(self):
+        doc = timeline.assign_short_handed(_short(_fours_doc()))
+        cut = timeline.for_player(doc, "red", 3)["games"][0]["ends"][0]["shots"]
+        assert [s["number"] for s in cut if "track" in s] == []

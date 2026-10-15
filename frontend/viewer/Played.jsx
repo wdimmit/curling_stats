@@ -9,7 +9,7 @@
  * page loads, which would fetch the Firebase SDK for every viewer of every
  * game (runtime/auth.mjs). */
 import { useEffect, useRef, useState } from "react";
-import { positionChoices } from "../core/index.mjs";
+import { positionChoices, shortOf } from "../core/index.mjs";
 import { accountsOn, signInNow, whoIsSignedIn } from "../runtime/auth.mjs";
 import { clearPlay, fetchPlay, savePlay } from "../runtime/plays.mjs";
 
@@ -75,13 +75,20 @@ function PlayedForm({ playing, onClose }) {
 
   // The token is asked for again at each send: a dialog left open past the
   // hour would otherwise send a dead one.
+  // A team of three offers its three players. A pick the team picked now
+  // does not have (Third, from the other team or a save before it was
+  // marked) is no pick, so Save waits for one.
+  const few = !!color && shortOf(playing.format).has(color);
+  const choices = positionChoices(playing.format, few);
+  const picked = choices.some(p => p.slot === slot) ? slot : null;
+
   const save = async ev => {
     ev.preventDefault();
-    if (busy || !color || !slot) return;
+    if (busy || !color || !picked) return;
     setBusy(true);
     setError(null);
     const who = await whoIsSignedIn();
-    const res = who ? await savePlay(playing.sourceId, { path: location.pathname, color, slot }, who.token)
+    const res = who ? await savePlay(playing.sourceId, { path: location.pathname, color, slot: picked }, who.token)
       : { ok: false, error: "You are signed out. Close this and sign in again." };
     setBusy(false);
     if (res.ok) { setCurrent(res.play); setPhase("saved"); }
@@ -150,10 +157,10 @@ function PlayedForm({ playing, onClose }) {
         ))}
       </div>
       <div className="pl-slots" role="group" aria-label="The rocks you threw"
-           style={{ "--n": playing.format.positions.length }}>
-        {positionChoices(playing.format).map(p => (
-          <button key={p.slot} type="button" className={slot === p.slot ? "on" : undefined}
-                  aria-pressed={slot === p.slot} onClick={() => setSlot(p.slot)}>
+           style={{ "--n": choices.length }}>
+        {choices.map(p => (
+          <button key={p.slot} type="button" className={picked === p.slot ? "on" : undefined}
+                  aria-pressed={picked === p.slot} onClick={() => setSlot(p.slot)}>
             <b>{p.label}</b><span>{p.role}</span>
           </button>
         ))}
@@ -165,7 +172,7 @@ function PlayedForm({ playing, onClose }) {
       <div className="pl-foot">
         {current && <button type="button" className="pl-clear" disabled={busy} onClick={clear}>Clear</button>}
         <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
-        <button type="submit" className="on" disabled={busy || !color || !slot}>
+        <button type="submit" className="on" disabled={busy || !color || !picked}>
           {busy ? "Saving…" : "Save"}
         </button>
       </div>

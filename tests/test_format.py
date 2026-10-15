@@ -92,3 +92,62 @@ class TestLineWithoutBroom:
     def test_the_document_block_does_not_carry_it(self):
         assert "line_without_broom" not in F.DOUBLES.to_json()
         assert "line_without_broom" not in F.FOURS.to_json()
+
+
+class TestShortHanded:
+    """A team of three throws its eight rocks 3/3/2: lead, second, skip. Slots
+    keep their four-player meaning, so the skip is still slot 4 and slot 3
+    throws nothing."""
+
+    @pytest.mark.parametrize("k, slot, rock", [
+        (1, 1, 1), (2, 1, 2), (3, 1, 3),
+        (4, 2, 1), (5, 2, 2), (6, 2, 3),
+        (7, 4, 1), (8, 4, 2),
+    ])
+    def test_the_team_stones_go_three_three_two(self, k, slot, rock):
+        for n in (2 * k - 1, 2 * k):          # either team's k-th rock
+            t = F.FOURS.throw_info(n, short=True)
+            assert (t.team_stone_number, t.position_slot, t.rock_of_player) == (k, slot, rock)
+            assert t.has_hammer == (n % 2 == 0)
+
+    def test_labels(self):
+        assert F.FOURS.shot_label(3, 5, short=True) == "3rd end, lead's third rock"
+        assert F.FOURS.shot_label(3, 7, short=True) == "3rd end, second's first rock"
+        assert F.FOURS.shot_label(3, 13, short=True) == "3rd end, skip's first rock"
+
+    def test_a_full_team_is_unchanged(self):
+        for n in range(1, 17):
+            assert F.FOURS.throw_info(n, short=False) == F.FOURS.throw_info(n)
+
+    def test_doubles_has_no_team_of_three(self):
+        assert F.DOUBLES.short_throw_table is None
+        assert F.DOUBLES.throw_info(3, short=True) == F.DOUBLES.throw_info(3)
+        assert "short_throw_table" not in F.DOUBLES.to_json()
+
+    def test_the_fours_block_carries_the_table(self):
+        assert F.FOURS.to_json()["short_throw_table"] == [1, 1, 1, 2, 2, 2, 4, 4]
+
+
+class TestShortHandedOf:
+    """Which colours played with three, as api.game_doc writes them into the
+    document's format block."""
+
+    def test_read_from_the_format_block(self):
+        doc = {"format": {**F.FOURS.to_json(), "short_handed": ["red"]}}
+        assert F.short_handed_of(doc) == frozenset({"red"})
+
+    @pytest.mark.parametrize("doc", [
+        {}, None, [], {"format": None}, {"format": {"name": "fours"}},
+        {"format": {"name": "fours", "short_handed": "red"}},
+        {"format": {"name": "fours", "short_handed": {"red": True}}},
+    ])
+    def test_anything_else_is_nobody(self, doc):
+        assert F.short_handed_of(doc) == frozenset()
+
+    def test_only_colours_count(self):
+        doc = {"format": {"name": "fours", "short_handed": ["red", "blue", 3, None, ["yellow"]]}}
+        assert F.short_handed_of(doc) == frozenset({"red"})
+
+    def test_doubles_ignores_it(self):
+        doc = {"format": {**F.DOUBLES.to_json(), "short_handed": ["red"]}}
+        assert F.short_handed_of(doc) == frozenset()

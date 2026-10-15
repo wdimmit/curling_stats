@@ -450,6 +450,15 @@ class TestSources:
         assert [x.id for x in repo.list_sources(league="Tue")] == ["s_1"]
         assert repo.list_sources(league="Other") == []
 
+    def test_short_handed_round_trips(self, repo):
+        repo.put_source(Source(id="s_3", video_id="vidC", game_start_s=0.0, game_end_s=6000.0,
+                               current_run_id="r_1", game_index=0, created_at=T0))
+        assert repo.get_source("s_3").short_handed is None
+        repo.update_source("s_3", short_handed=["red", "yellow"])
+        assert repo.get_source("s_3").short_handed == ["red", "yellow"]
+        repo.update_source("s_3", short_handed=None)
+        assert repo.get_source("s_3").short_handed is None
+
     def test_listed_newest_first_whatever_the_ids(self, repo):
         # Source ids are random slugs, so id order says nothing about age.
         # Here it runs the other way: the newest games sort last by id, where

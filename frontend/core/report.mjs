@@ -7,7 +7,7 @@
  * docs/superpowers/specs/2026-10-01-game-report-and-entered-scores-design.md.
  */
 import { GROUPS, TYPE, TYPES } from "./constants.mjs";
-import { FOURS, positionText } from "./format.mjs";
+import { FOURS, positionText, shortOf } from "./format.mjs";
 import { isGraded } from "./shots.mjs";
 import { boardReadable } from "./wire.mjs";
 
@@ -52,6 +52,13 @@ export function teamNames(game) {
  * that would name a team "Red". */
 export function typedTeamNames(game) {
   return { red: game?.teams?.red?.name || "", yellow: game?.teams?.yellow?.name || "" };
+}
+
+/* The names over the report's two columns: "Dimmit · 3 players" for a team
+ * that played with three, so its empty third's row reads as meant. */
+export function teamHeads(names, fmt) {
+  const short = shortOf(fmt);
+  return Object.fromEntries(COLORS.map(c => [c, short.has(c) ? `${names[c]} · 3 players` : names[c]]));
 }
 
 /* The line over the title: league, sheet, the day it was played, and the

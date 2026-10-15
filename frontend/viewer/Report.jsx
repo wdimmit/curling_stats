@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   byEnd, clockText, coverage, coverageText, detailRows, endList, headToHead, liveGame,
-  longestThinks, positionText, reportMeta, reportNotes, scoreChoices, scoreError, teamNames,
+  longestThinks, positionText, reportMeta, reportNotes, scoreChoices, scoreError, teamHeads, teamNames,
 } from "../core/index.mjs";
 import { accountsOn, signInNow, whoIsSignedIn } from "../runtime/auth.mjs";
 import { sendScore } from "../runtime/scores.mjs";
@@ -194,7 +194,7 @@ function Duel({ rows, names }) {
   );
 }
 
-function HeadToHead({ h2h, names }) {
+function HeadToHead({ h2h, names, heads }) {
   const rows = [...h2h.positions, { id: "team", label: "Team", ...h2h.team, total: true }];
   const others = h2h.other.map(o => `${names[o.color]} ${o.thrown} ${o.type.toLowerCase()}`);
   return (
@@ -202,7 +202,7 @@ function HeadToHead({ h2h, names }) {
       <div>
         <h2>By position</h2>
         <p className="sub">Shooting percentage, player against player</p>
-        <Duel rows={rows} names={names} />
+        <Duel rows={rows} names={heads} />
         <p className="rpt-cap">
           {h2h.perPlayer
             ? `Each player: ${h2h.perPlayer.graded} of ${h2h.perPlayer.thrown} rocks graded`
@@ -211,7 +211,7 @@ function HeadToHead({ h2h, names }) {
       </div>
       <div>
         <h2>By shot type</h2>
-        <Duel rows={h2h.types} names={names} />
+        <Duel rows={h2h.types} names={heads} />
         {others.length
           ? <p className="rpt-cap">Other — {others.join(", ")} — is in the detail below.</p>
           : null}
@@ -359,6 +359,7 @@ function ScoreDialog({ at, names, fmt, busy, error, onPick, onClear, onClose }) 
 
 export function Report({ view, stats, think, series, actions, config, open }) {
   const names = teamNames(view.game);
+  const heads = teamHeads(names, view.format);
   const table = useMemo(() => byEnd(view), [view]);
   const h2h = useMemo(() => headToHead(stats, view.format), [stats, view.format]);
   const cov = useMemo(() => coverage(view), [view]);
@@ -422,7 +423,7 @@ export function Report({ view, stats, think, series, actions, config, open }) {
           <h3>About these numbers</h3>
           <div className="rpt-notes">{notes.map((t, i) => <p key={i}>{t}</p>)}</div>
         </section>
-        <section className="card rpt-h2h"><HeadToHead h2h={h2h} names={names} /></section>
+        <section className="card rpt-h2h"><HeadToHead h2h={h2h} names={names} heads={heads} /></section>
       </div>
 
       {think.measured
@@ -436,7 +437,7 @@ export function Report({ view, stats, think, series, actions, config, open }) {
           some weren&rsquo;t graded).
         </p>
         <div className="rpt-detail-body">
-          {COLORS.map((c, i) => <Matrix key={c} table={detail[i]} c={c} names={names} />)}
+          {COLORS.map((c, i) => <Matrix key={c} table={detail[i]} c={c} names={heads} />)}
         </div>
       </section>
       <ScoreDialog at={at} names={names} fmt={view.format} busy={busy} error={error}

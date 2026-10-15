@@ -39,16 +39,21 @@ export function slotOf(shot, fmt) {
 }
 
 /* What "I played…" offers: each slot, by name and by the rocks it throws --
- * "Skip" and "7th & 8th", or in doubles "Player B" and "2nd–4th". */
-export const positionChoices = fmt => fmt.positions.map((p, i) => ({
-  slot: i + 1, label: positionLabel(p, fmt), role: roleText(fmt, i + 1),
-}));
+ * "Skip" and "7th & 8th", or in doubles "Player B" and "2nd–4th". For a team
+ * of three (`short`), only the three who threw: Lead, Second, Skip. */
+export const positionChoices = (fmt, short = false) => fmt.positions
+  .map((p, i) => ({ slot: i + 1, label: positionLabel(p, fmt), role: roleText(fmt, i + 1, short) }))
+  .filter(c => c.role);
 
-/* "Dimmit · Skip (7th & 8th)": a play as the report lists it. */
+/* "Dimmit · Skip (7th & 8th)": a play as the report lists it. A slot its
+ * team of three had nobody in -- saved before the team was marked -- says
+ * so rather than naming rocks nobody threw. */
 export function playText(play) {
   const team = play.teams?.[play.color] || capital(play.color);
   const fmt = play.format;
-  return `${team} · ${positionLabel(fmt.positions[play.slot - 1], fmt)} (${roleText(fmt, play.slot)})`;
+  const role = roleText(fmt, play.slot, (play.short_handed || []).includes(play.color));
+  if (!role) return `${team} · This team played with three. Pick your rocks again`;
+  return `${team} · ${positionLabel(fmt.positions[play.slot - 1], fmt)} (${role})`;
 }
 
 const shortDay = d => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });

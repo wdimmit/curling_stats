@@ -265,8 +265,10 @@ function PlayRow({ p, rocks, left, onChanged, readOnly }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
   const teams = { red: p.teams?.red || "Red", yellow: p.teams?.yellow || "Yellow" };
-  const choices = ["red", "yellow"].flatMap(c => positionChoices(p.format).map(k => ({
+  const threeOn = c => (p.short_handed || []).includes(c);
+  const choices = ["red", "yellow"].flatMap(c => positionChoices(p.format, threeOn(c)).map(k => ({
     value: `${c}|${k.slot}`, text: `${teams[c]} · ${k.label} (${k.role})` })));
+  const current = `${p.color}|${p.slot}`;
 
   async function send(method, body) {
     setBusy(true);
@@ -312,7 +314,9 @@ function PlayRow({ p, rocks, left, onChanged, readOnly }) {
         {!readOnly && (
           <>
             <select aria-label="Which rocks were yours" disabled={busy}
-                    value={`${p.color}|${p.slot}`} onChange={change}>
+                    value={current} onChange={change}>
+              {!choices.some(c => c.value === current) &&
+                <option value={current} disabled>Pick your rocks again</option>}
               {choices.map(c => <option key={c.value} value={c.value}>{c.text}</option>)}
             </select>
             <button disabled={busy} onClick={() => send("DELETE")}>Clear</button>

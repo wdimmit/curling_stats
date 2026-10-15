@@ -592,25 +592,28 @@ def _swapped(patch, fmt) -> dict:
     return {c: True for c in rules.COLORS if wanted.get(c) is True}
 
 
-def _assign_throwers(shots, end_number, fmt, swapped) -> None:
+def _assign_throwers(shots, end_number, fmt, swapped, short=frozenset()) -> None:
     """Who threw each rock of an end whose order did not change.
 
     A role swap moves the thrower fields and the label, never the number, the
-    colour or the hammer.
+    colour or the hammer. So does a team of three (``short``, its colours):
+    its rocks go by the format's three-player table.
     """
     for s in shots:
         n = s.get("number")
         if not isinstance(n, int) or not 1 <= n <= fmt.delivered_per_end:
             continue
         swap = bool(swapped.get(s.get("color")))
-        t = fmt.throw_info(n, swapped=swap)
+        few = s.get("color") in short
+        t = fmt.throw_info(n, swapped=swap, short=few)
         s["thrower_slot"] = t.position_slot
         s["position"] = fmt.positions[t.position_slot - 1]
         s["rock_of_player"] = t.rock_of_player
-        s["label"] = fmt.shot_label(end_number, n, swapped=swap)
+        s["label"] = fmt.shot_label(end_number, n, swapped=swap, short=few)
 
 
-def _renumber(shots: list, end_number: int, patched: set, fmt=None, swapped=None) -> None:
+def _renumber(shots: list, end_number: int, patched: set, fmt=None, swapped=None,
+              short=frozenset()) -> None:
     """Give a reordered end its numbers, throwers and labels afresh.
 
     Everything a shot's number implies follows it: who threw it, which of
@@ -621,7 +624,7 @@ def _renumber(shots: list, end_number: int, patched: set, fmt=None, swapped=None
 
     ``fmt`` is the :class:`format.GameFormat` the end was played under; ``None``
     means fours. ``swapped`` names the teams that traded roles this end
-    (doubles).
+    (doubles). ``short`` names the teams that played with three.
     """
     fmt = fmt or format_mod.FOURS
     swapped = swapped or {}
@@ -634,12 +637,13 @@ def _renumber(shots: list, end_number: int, patched: set, fmt=None, swapped=None
             j, color = min(anchors, key=lambda a: abs(a[0] - i))
             s["color"] = color if (i - j) % 2 == 0 else rules.other_color(color)
         swap = bool(swapped.get(s["color"]))
-        t = fmt.throw_info(i + 1, swapped=swap)
+        few = s["color"] in short
+        t = fmt.throw_info(i + 1, swapped=swap, short=few)
         s["has_hammer"] = t.has_hammer
         s["thrower_slot"] = t.position_slot
         s["position"] = fmt.positions[t.position_slot - 1]
         s["rock_of_player"] = t.rock_of_player
-        s["label"] = fmt.shot_label(end_number, i + 1, swapped=swap)
+        s["label"] = fmt.shot_label(end_number, i + 1, swapped=swap, short=few)
 
 
 def apply_overrides(document: dict, overrides: dict) -> dict:
@@ -653,6 +657,7 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
     original numbers kept in ``id`` so the keys still resolve.
     """
     fmt = format_mod.of_document(document)
+    short = format_mod.short_handed_of(document)
     patches: dict[tuple[int, int], dict[int, dict]] = {}
     end_patches: dict[tuple[int, int], dict] = {}
     for key, patch in (overrides or {}).items():
@@ -677,12 +682,32 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
             ordered = _reorder(end["shots"])
             if ordered is not end["shots"]:
                 colour_set = {s for s, p in here.items() if "color" in p}
-                _renumber(ordered, end["number"], colour_set, fmt, swapped)
+                _renumber(ordered, end["number"], colour_set, fmt, swapped, short)
                 end["shots"] = ordered
-            elif swapped:
-                _assign_throwers(end["shots"], end["number"], fmt, swapped)
+            elif swapped or short:
+                # A team of three is credited by colour, so a rock recoloured
+                # onto or off it changes hands even where nothing moved.
+                _assign_throwers(end["shots"], end["number"], fmt, swapped, short)
             if swapped:
                 end["roles_swapped"] = swapped
+    return document
+
+
+def assign_short_handed(document: dict) -> dict:
+    """Credit a team of three's rocks 3/3/2 (format.short_throw_table).
+
+    Which teams played with three is not the pipeline's to know: api.game_doc
+    writes it into the format block from the game's record, then calls this.
+    Edits and returns the document it is given; one that does not say is
+    left alone.
+    """
+    short = format_mod.short_handed_of(document)
+    if not short:
+        return document
+    fmt = format_mod.of_document(document)
+    for game in document.get("games", []):
+        for end in game.get("ends", []):
+            _assign_throwers(end.get("shots") or [], end["number"], fmt, {}, short)
     return document
 
 
