@@ -13,7 +13,7 @@
  */
 import { TYPICAL_GAP_S } from "./constants.mjs";
 import { playerHacks } from "./line.mjs";
-import { FOURS, formatOf, shotLabel, throwInfo } from "./format.mjs";
+import { FOURS, formatOf, shortOf, shotLabel, throwInfo } from "./format.mjs";
 
 /* A shot is known by the number detection gave it. Moving one renumbers the
  * end, so `id` keeps the original where that has happened. */
@@ -51,20 +51,22 @@ export function swappedOf(g, e, overrides, fmt = FOURS) {
 }
 
 /* Who threw each rock of an end whose order did not change. Mirrors
- * timeline._assign_throwers. */
-export function assignThrowers(shots, endNo, fmt, swapped) {
+ * timeline._assign_throwers. `short` is the set of colours that played with
+ * three (shortOf). */
+export function assignThrowers(shots, endNo, fmt, swapped, short = new Set()) {
   for (const s of shots) {
     if (!Number.isInteger(s.number) || s.number < 1 || s.number > fmt.delivered_per_end) continue;
     const swap = !!swapped[s.color];
-    const t = throwInfo(s.number, fmt, swap);
+    const few = short.has(s.color);
+    const t = throwInfo(s.number, fmt, swap, few);
     s.thrower_slot = t.thrower_slot;
     s.position = fmt.positions[t.thrower_slot - 1];
     s.rock_of_player = t.rock_of_player;
-    s.label = shotLabel(endNo, s.number, fmt, swap);
+    s.label = shotLabel(endNo, s.number, fmt, swap, few);
   }
 }
 
-export function renumber(shots, endNo, fixed, fmt = FOURS, swapped = {}) {
+export function renumber(shots, endNo, fixed, fmt = FOURS, swapped = {}, short = new Set()) {
   const anchors = [];
   shots.forEach((s, i) => {
     if (!s.color_inferred || fixed.has(identity(s))) anchors.push([i, s.color]);
@@ -78,12 +80,13 @@ export function renumber(shots, endNo, fixed, fmt = FOURS, swapped = {}) {
       s.color = (i - best[0]) % 2 === 0 ? best[1] : (best[1] === "red" ? "yellow" : "red");
     }
     const swap = !!swapped[s.color];
-    const t = throwInfo(i + 1, fmt, swap);
+    const few = short.has(s.color);
+    const t = throwInfo(i + 1, fmt, swap, few);
     s.has_hammer = t.has_hammer;
     s.thrower_slot = t.thrower_slot;
     s.position = fmt.positions[t.thrower_slot - 1];
     s.rock_of_player = t.rock_of_player;
-    s.label = shotLabel(endNo, i + 1, fmt, swap);
+    s.label = shotLabel(endNo, i + 1, fmt, swap, few);
   });
 }
 
@@ -114,6 +117,7 @@ export function layout(g, e, overrides, fmt = FOURS) {
   let shots = src.map(s => ({ ...merge(g, e, s, overrides) }));
   let raws = src;
   const swapped = swappedOf(g, e, overrides, fmt);
+  const short = shortOf(fmt);
   const ids = new Set(shots.map(identity));
   const moves = shots.filter(s => Number.isInteger(s.before) &&
                                   s.before !== identity(s) && ids.has(s.before));
@@ -127,11 +131,13 @@ export function layout(g, e, overrides, fmt = FOURS) {
     const fixed = new Set(Object.entries(overrides)
       .filter(([k, p]) => k.startsWith(prefix) && p && "color" in p)
       .map(([k]) => +k.slice(prefix.length)));
-    renumber(shots, e.number, fixed, fmt, swapped);
+    renumber(shots, e.number, fixed, fmt, swapped, short);
     const byId = new Map(src.map(s => [identity(s), s]));
     raws = shots.map(s => byId.get(identity(s)));
-  } else if (Object.keys(swapped).length) {
-    assignThrowers(shots, e.number, fmt, swapped);
+  } else if (Object.keys(swapped).length || short.size) {
+    // A team of three is credited by colour, so a recoloured rock changes
+    // hands even where nothing moved. Mirrors apply_overrides.
+    assignThrowers(shots, e.number, fmt, swapped, short);
   }
   guessTimes(shots);
   return { shots, raws, swapped };
