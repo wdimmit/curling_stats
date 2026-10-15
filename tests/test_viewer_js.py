@@ -379,6 +379,39 @@ class TestTheGuardedPage:
         assert "#viewOnly .long { display: none; }" in phone
         assert "#viewOnly .short { display: inline; }" in phone
 
+
+class TestChartingSignsYouInFirst:
+    """With accounts on, Chart and Submit need somebody to own the chart."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_chart_signs_in_then_carries_on_and_a_shut_popup_sends_nothing(self):
+        games = self.src("frontend/site/Games.jsx")
+        actions = games[games.index("function Actions("):games.index("/* One draw:")]
+        assert "if (accounts && !user) {" in actions
+        assert "try { await ensureSignedIn(); } catch { setBusy(false); return; }" in actions
+        assert actions.index("ensureSignedIn") < actions.index("authedFetch(url")
+
+    def test_the_game_list_says_only_you_can_change_your_chart(self):
+        games = " ".join(self.src("frontend/site/Games.jsx").split())
+        assert ("<strong>Chart</strong> starts your own chart of the game. Only you, or your"
+                " team, can change it; send the link and others can watch.") in games
+        assert "private to whoever has it" not in games
+
+    def test_submit_says_sign_in_and_signs_in_before_it_sends(self):
+        submit = self.src("frontend/site/Submit.jsx")
+        assert '{needsSignIn ? "Sign in to get your link" : "Get my link"}' in submit
+        assert "try { await ensureSignedIn(); } catch { return; }" in submit
+        assert submit.index("ensureSignedIn();") < submit.index('authedFetch("/api/submissions"')
+
+    def test_signing_in_waits_for_the_page_to_know_who(self):
+        auth = self.src("frontend/site/auth.js")
+        fn = auth[auth.index("export async function ensureSignedIn()"):]
+        assert "if (user) return user;" in fn and "await signIn();" in fn
+        assert "onUser(u =>" in fn
+
 RECONCILE = """
 state.doc = %s; state.gi = 0; state.ei = 0; state.si = 0;
 state.overrides = %s; state.dirty = new Set(%s); state.dragging = %s;

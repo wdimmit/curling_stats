@@ -73,6 +73,21 @@ export async function signIn() {
   return fb.signInWithPopup(auth, new fb.GoogleAuthProvider());
 }
 
+/** Sign in if nobody is, and resolve once this page knows who.
+ *
+ * signInWithPopup can settle a moment before onAuthStateChanged has told this
+ * module, and authedFetch reads the module's `user`, so the caller waits for
+ * that rather than for the popup. Throws if the popup was shut. */
+export async function ensureSignedIn() {
+  if (user) return user;
+  await signIn();
+  if (user) return user;
+  return new Promise(resolve => {
+    let off = null;
+    off = onUser(u => { if (u) { off?.(); resolve(u); } });
+  });
+}
+
 export async function signOff() { if (auth && fb) await fb.signOut(auth); }
 
 /** fetch(), carrying who you are if you are anybody. Never breaks the page. */

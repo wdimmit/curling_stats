@@ -13,7 +13,7 @@
  * Supper League 2026-2027", one letter apart.
  */
 import { useEffect, useState } from "react";
-import { authedFetch } from "./auth.js";
+import { authedFetch, ensureSignedIn } from "./auth.js";
 import { clockParts, dayParts, localDay } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Header, TeamPicker, useCommitOnExit } from "./ui.jsx";
@@ -235,10 +235,17 @@ function Ends({ game }) {
 
 function Actions({ game, mine, team }) {
   const [busy, setBusy] = useState(false);
+  const { user, accounts } = useAuthUser();
   const have = game.source_id && mine.get(game.source_id);
 
   async function chart() {
     setBusy(true);
+    // With accounts on, a chart needs somebody to belong to (api.py
+    // may_edit_chart): sign in first, then carry on. A shut popup is a change
+    // of mind, not an error.
+    if (accounts && !user) {
+      try { await ensureSignedIn(); } catch { setBusy(false); return; }
+    }
     // A game the catalogue knows goes through /api/charts, which queues no
     // work and so does not spend one of the five submissions an hour. One that
     // is still processing has no source yet, so it still goes through
@@ -396,9 +403,9 @@ export function Games() {
       <main>
         <p className="muted">Every game we've processed. <strong>Watch</strong> steps
         through a game shot by shot — no link to keep, nothing to fill in.{" "}
-        <span className="chartnote"><strong>Chart</strong> gets you your own charting
-        link, private to whoever has it, so a team can grade a game without anyone
-        else seeing.</span></p>
+        <span className="chartnote"><strong>Chart</strong> starts your own chart of the
+        game. Only you, or your team, can change it; send the link and others can
+        watch.</span></p>
         <TeamPicker value={team} onChange={setTeam} me={me} />
         <div id="list">
           {/* Only before the first answer: the live refresh must not fold the

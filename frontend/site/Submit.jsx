@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { authedFetch } from "./auth.js";
+import { authedFetch, ensureSignedIn } from "./auth.js";
 import { describe, parseClock } from "./fmt.js";
 import { Card, Header, TeamPicker, Warn } from "./ui.jsx";
+import { useAuthUser } from "./useAuth.js";
 
 export function Submit() {
   const [url, setUrl] = useState("");
@@ -13,6 +14,9 @@ export function Submit() {
   const [doubles, setDoubles] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const { user, accounts } = useAuthUser();
+  // With accounts on, the link is to a chart, and a chart needs an owner.
+  const needsSignIn = accounts && !user;
 
   useEffect(() => {
     fetch("/api/features").then(r => r.json()).then(f => setDoubles(!!f.doubles)).catch(() => {});
@@ -40,6 +44,9 @@ export function Submit() {
     if (team) body.team_id = team;
     if (format) body.format = format;
 
+    if (needsSignIn) {
+      try { await ensureSignedIn(); } catch { return; }
+    }
     setBusy(true);
     setMsg(<div className="muted" style={{ marginTop: 12 }}>Checking the video…</div>);
     try {
@@ -104,7 +111,8 @@ export function Submit() {
             </div>
             <TeamPicker value={team} onChange={setTeam} />
             <div className="row" style={{ marginTop: 16 }}>
-              <button className="primary" id="go" type="submit" disabled={busy}>Get my link</button>
+              <button className="primary" id="go" type="submit" disabled={busy}>
+                {needsSignIn ? "Sign in to get your link" : "Get my link"}</button>
               <span className="muted">Processing takes about half an hour the first time a video is seen.</span>
             </div>
           </form>

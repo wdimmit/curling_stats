@@ -33,17 +33,17 @@
     "frontend/runtime/scores.mjs": "51f0984f02f825dcc93ed3bc375e47130ec4026984b1fdab9c643ffe91b6deed",
     "frontend/runtime/shotclips.mjs": "1ce664cc2de5e571674b6714a5840c18e9d05414cbb07db7ded0983a43e835c8",
     "frontend/runtime/teams.mjs": "94b995e68d4c5c48c774bdb6438e884330d5e4570b4a6c6a6170375485591f64",
-    "frontend/site/Games.jsx": "c4300cbf83bdae0dffb9ad467ab8f1fe6cec75e4e1ba8ee1b66de9477439a697",
+    "frontend/site/Games.jsx": "92cc33b50dad93e901ecc197dd9d439b220cf43aee947779f2eb29c47f40338a",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
     "frontend/site/Mine.jsx": "99d74fe96e31c48e0a4bd58aca820f398f556b6c9c7cf4c4c17b643db223dd51",
     "frontend/site/Practice.jsx": "f3c7523b1156f960f62b2371576c033bd8efdf6d198aa2ff78f911ec2d255567",
     "frontend/site/ShotCharts.jsx": "8d74e5b4bb19b7ef19a2668ad8944964465987a4b16f79b02470aeba15c5ab79",
     "frontend/site/Shots.jsx": "5c6f71c0bdddb5e9c49069b9ce34eb6f8aaead4a96ca8fde7f49c8244aed3181",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
-    "frontend/site/Submit.jsx": "f2421d5e11b7d04d053da43253ef8499f7fc0d3c32a9fe01a95fef45850b1b02",
+    "frontend/site/Submit.jsx": "f008d1f962b67659f42299174175650bb51b96df910d2dbf04c1f6803df18114",
     "frontend/site/Thinking.jsx": "bb51d73d82b0e53b5d59eddaf20446d266bcdd1368065f8b539d8d97e5747736",
     "frontend/site/Users.jsx": "0adcdc3d46ab057a55ba735e502ffda0f0f6a5d970c6dec76b850df57420c5df",
-    "frontend/site/auth.js": "5035bc5dd6429d5ab81c8284e84cec42ac9105831f59ee0281f2e21773ced2dc",
+    "frontend/site/auth.js": "63ed8f0c984a56786674fdc19767f422a142973422bd0bcf727190f7e6eeeb0d",
     "frontend/site/clip.jsx": "a1f67b0d0b7ce4b911ee273074eb72dc9c24cc240723665690b1662ea7dba03c",
     "frontend/site/fmt.js": "30fe2055592328491abedc9a2537ba47777d2a11f26d0165c9585192272f1559",
     "frontend/site/main.jsx": "d8324c80b4375292a63c8309fd85a4290dc2f3a04c44d87cdc858978015e4d63",
@@ -68,7 +68,7 @@
     "frontend/viewer/main.jsx": "35178cfef8a24c17ba1113b25b390dc7b1e935861f24c6174eb5a6d22d5a5945"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "26ae068a15848dd1eb229e14e18bad0d5e43c38ec323b2613ef9e77fec5d886b",
-    "src/curling_score/viewer/app.js": "cc2b02f5fd0b770534167655e59f5617b7d16cbb6bfccc04b12d0fb0bfa84891"
+    "src/curling_score/service/static/site.js": "4d49f18d31a3b03257223ff89059ce0b88ed2b53023404e6a983acb2b4950233",
+    "src/curling_score/viewer/app.js": "0a2f8f8b69faa96bfddae92380db0f49d0840099d0d2bb9660c474807b20895f"
   }
 }
