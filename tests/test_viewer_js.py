@@ -4509,7 +4509,7 @@ class TestThePlayedDialog:
         played = self.src("frontend/viewer/Played.jsx")
         save = played[played.index("const save = async"):played.index("const clear = async")]
         assert "await whoIsSignedIn()" in save
-        assert "{ path: location.pathname, color, slot }" in save
+        assert "{ path: location.pathname, color, slot: picked }" in save
 
     def test_the_calls_go_to_the_play_routes(self):
         plays = self.src("frontend/runtime/plays.mjs")
@@ -4529,8 +4529,9 @@ class TestNamingTheTeams:
     def src(self, rel):
         return (self.ROOT / rel).read_text()
 
-    def send(self, status, reply, *, throws=False):
+    def send(self, status, reply, *, throws=False, body=None):
         """sendTeams against a stubbed fetch: what it asked for, and what it said."""
+        body = body or {"red": "Dimmit", "yellow": ""}
         module = (self.ROOT / "frontend/runtime/teams.mjs").as_uri()
         fetch = ("async () => { throw new Error('offline'); }" if throws else
                  f"async (url, init) => {{ asked.push({{url, init}});"
@@ -4538,7 +4539,7 @@ class TestNamingTheTeams:
                  f" json: async () => ({json.dumps(reply)}) }}; }}")
         script = (f"const asked = [];\nglobalThis.fetch = {fetch};\n"
                   f"const M = await import({module!r});\n"
-                  "const res = await M.sendTeams('s 1', {red: 'Dimmit', yellow: ''}, 'tok');\n"
+                  f"const res = await M.sendTeams('s 1', {json.dumps(body)}, 'tok');\n"
                   "console.log(JSON.stringify({asked, res}));")
         proc = subprocess.run([node, "--input-type=module", "-e", script],
                               capture_output=True, text=True, timeout=60)
@@ -4560,6 +4561,16 @@ class TestNamingTheTeams:
         assert call["init"]["headers"]["Authorization"] == "Bearer tok"
         assert json.loads(call["init"]["body"]) == {"red": "Dimmit", "yellow": ""}
         assert got["res"] == {"ok": True, "status": 200, "red": "Dimmit", "yellow": None}
+
+    def test_it_sends_a_team_of_three_with_the_names(self):
+        body = {"red": "Dimmit", "yellow": "", "short_handed": ["red"]}
+        got = self.send(200, {"ok": True, "short_handed": ["red"]}, body=body)
+        assert json.loads(got["asked"][0]["init"]["body"]) == body
+
+    def test_the_menu_says_teams_and_the_dialog_offers_three(self):
+        assert ">\n          Teams…\n" in self.src("frontend/viewer/App.jsx")
+        teams = self.src("frontend/viewer/Teams.jsx")
+        assert "Played with three" in teams and "short_handed" in teams
 
     def test_a_refusal_carries_the_servers_words(self):
         got = self.send(422, {"detail": "that name is too long for a team"})
@@ -4687,7 +4698,8 @@ class TestNamingTheTeams:
         save = teams[teams.index("const save = async"):]
         save = save[:save.index("\n  };")]
         assert "await whoIsSignedIn()" in save
-        assert "{ red: red.trim(), yellow: yellow.trim() }" in save
+        assert "{ red: red.trim(), yellow: yellow.trim()," in save
+        assert "short_handed:" in save and "sendTeams(naming.sourceId, body, who.token)" in save
         assert save.index("await onSaved()") < save.index("onClose()")
 
     def test_a_name_is_as_long_as_the_server_takes(self):
