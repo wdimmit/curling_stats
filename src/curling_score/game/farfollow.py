@@ -381,6 +381,18 @@ def _ran_in(arrival) -> bool:
     return _pushed_in(arrival) and arrival.travel_m >= ENTRY_MIN_TRAVEL_M
 
 
+def taken_back(unaccounted, thrown_by) -> list:
+    """The hogs `place` made of releases ``thrown_by`` had matched to an
+    arrival -- the arrival was the hog pushed down the sheet. ``thrown_by`` is
+    the release -> arrival map `place` was given, and ``unaccounted`` what it
+    returned. For `fit.paired_ids`."""
+    from curling_score.detect import release as R
+
+    matched = {id(r) for r in thrown_by}
+    return [d for d in unaccounted
+            if d.reason == R.REASON and id(getattr(d, "release", None)) in matched]
+
+
 def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     """Settle what the overhead could not, by what the long camera saw.
 

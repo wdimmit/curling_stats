@@ -523,9 +523,13 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     # overhead's timing alone (`farfollow.entry_track`).
     dest_view = sideviews[hogtime.CAMERA_FOR[end.house]] if sideviews is not None else None
     stages.mark("rules")
+    matched = thrown_by
     arrivals, thrown_by, unaccounted, n_followed = farfollow.place(
         unaccounted, thrown_by, arrivals, seq,
         follow_fn=lambda color, t: farfollow.follow(path, dest_view, color, t))
+    # A hog taken back from the arrival it was matched to keeps the match's
+    # standing in the fit (`fit.paired_ids`).
+    taken_back = farfollow.taken_back(unaccounted, matched)
     stages.mark("follow")
     if n_followed:
         progress(f"    end {end.number}: {n_followed} throw(s) the overhead could not "
@@ -542,7 +546,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         # look like deliveries in every way but one: nothing released them.
         return cands, fit.fit_end(fit.drop_clearing(
             cands, seq, fit.released_ids(thrown_by, unaccounted)),
-            paired=fit.paired_ids(thrown_by),
+            paired=fit.paired_ids(thrown_by, taken_back),
             per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
 
     deliveries, kept = by_the_rules(unaccounted)
