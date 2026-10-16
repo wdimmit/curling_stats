@@ -112,8 +112,7 @@ export function Thinking() {
         played. The league is the YouTube playlist the stream was published in.</p>
         {signedOut ? (
           <Card>
-            <p style={{ marginTop: 0 }}>Thinking time is for signed-in members. Sign in to see
-            each league's slowest teams.</p>
+            <p style={{ marginTop: 0 }}>Thinking time is for signed-in members.</p>
             <button className="primary"
                     onClick={() => signIn().catch(e => setErr(e.code || e.message))}>
               Sign in with Google</button>

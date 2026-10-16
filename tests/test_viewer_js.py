@@ -513,8 +513,18 @@ class TestThinkingTimeNeedsSignIn:
 
     def test_signed_out_it_offers_sign_in_instead(self):
         page = " ".join(self.src().split())
-        assert "Thinking time is for signed-in members." in page
+        assert "Thinking time is for signed-in members.</p>" in page
+        assert "each league's slowest teams" not in page
         assert "signIn().catch(" in page
+
+    def test_its_link_shows_only_to_someone_signed_in(self):
+        """Every page's header: hidden while auth is deciding, and for nobody;
+        shown when signed in, or when there are no accounts at all."""
+        ui = (self.ROOT / "frontend/site/ui.jsx").read_text()
+        header = ui[ui.index("export function Header("):]
+        assert 'const SIGNED_IN_ONLY = new Set(["/thinking"]);' in ui
+        assert ("links.filter(([href]) => !SIGNED_IN_ONLY.has(href)"
+                " || (ready && (!accounts || !!user)))") in " ".join(header.split())
 
 class TestChartingSignsYouInFirst:
     """With accounts on, Chart and Submit need somebody to own the chart."""

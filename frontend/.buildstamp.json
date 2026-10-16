@@ -42,13 +42,13 @@
     "frontend/site/Shots.jsx": "1f932dddf8c321dde641bc71d7cc81f206b03b86f9d210dd9b87a9f522bb8344",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
     "frontend/site/Submit.jsx": "f008d1f962b67659f42299174175650bb51b96df910d2dbf04c1f6803df18114",
-    "frontend/site/Thinking.jsx": "d714edd5a4a37d2cc8b947e9b423085f219b7a4870a5bf327f4f11a8e2bfb046",
+    "frontend/site/Thinking.jsx": "7940c5baa0aa8e51eeb432f88076cf1e4d97ecb49826e615976f2fbc679dc498",
     "frontend/site/Users.jsx": "0adcdc3d46ab057a55ba735e502ffda0f0f6a5d970c6dec76b850df57420c5df",
     "frontend/site/auth.js": "63ed8f0c984a56786674fdc19767f422a142973422bd0bcf727190f7e6eeeb0d",
     "frontend/site/clip.jsx": "a1f67b0d0b7ce4b911ee273074eb72dc9c24cc240723665690b1662ea7dba03c",
     "frontend/site/fmt.js": "30fe2055592328491abedc9a2537ba47777d2a11f26d0165c9585192272f1559",
     "frontend/site/main.jsx": "d8324c80b4375292a63c8309fd85a4290dc2f3a04c44d87cdc858978015e4d63",
-    "frontend/site/ui.jsx": "cb9e3007cf35e5c31f306e76e2b5dd22e019d88208c95a341711d92c8c09783e",
+    "frontend/site/ui.jsx": "19a9c87760a768cf44f05dec32d90eeab29cd0010e5553a91286eff18ec975dc",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
     "frontend/viewer/App.jsx": "13ff72bdd2b72943d5d45fd774dda8da0fe5be5787f52f82cdfc7bbe56ccae65",
     "frontend/viewer/ChartPanel.jsx": "1ae0a3cba7cd425dbdb4bba58ad6c31d58462e6ce2644a50016070b09c4a05be",
@@ -69,7 +69,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "e62bcd8b8eb819af0256c7aecc83c4a41e5009fd23bd1a18c6ad48ac19d913f7",
+    "src/curling_score/service/static/site.js": "19320245793f7996c78bffa363dec7a09be097d16fc788b02cb6b4fe6bbb12a1",
     "src/curling_score/viewer/app.js": "2e91e1547b663c81076d6cefd814faeabd3d804aceade6d73333353c903ca955"
   }
 }

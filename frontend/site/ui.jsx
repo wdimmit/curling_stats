@@ -31,12 +31,21 @@ export function IdentityChip() {
   );
 }
 
+/* Pages only somebody signed in can use (api.py api_thinking_report), so
+ * their links are left out for anyone else -- and while sign-in is still
+ * deciding, rather than shown and then taken away. With no accounts at all
+ * they are open, and shown. */
+const SIGNED_IN_ONLY = new Set(["/thinking"]);
+
 /* `links` are [href, text] pairs; a third element marks the page you are on. */
 export function Header({ links = [], children }) {
+  const { user, ready, accounts } = useAuthUser();
+  const shown = links.filter(([href]) => !SIGNED_IN_ONLY.has(href)
+                                         || (ready && (!accounts || !!user)));
   return (
     <header>
       <h1><a href="/">curling.dimmit.net</a></h1>
-      {links.map(([href, text, here]) => (
+      {shown.map(([href, text, here]) => (
         <a key={href} href={href} className={here ? "here" : undefined}
            aria-current={here ? "page" : undefined}>{text}</a>
       ))}
