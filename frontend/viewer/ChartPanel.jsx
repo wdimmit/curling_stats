@@ -66,7 +66,9 @@ function useTypedField(initial, commit, busy, owner) {
     ref: el,
     value: text,
     onChange: e => setText(e.target.value),
-    onFocus: e => { focused.current = e.currentTarget; busy(true); },
+    // A read-only field (the iPad's sheets on /s/) changes nothing, so reading
+    // it must not hold the rock busy against the polls that follow the game.
+    onFocus: e => { focused.current = e.currentTarget; if (!e.currentTarget.readOnly) busy(true); },
     onBlur: () => { focused.current = null; busy(false); },
   };
 }
