@@ -610,7 +610,7 @@ class WarmUpFirst(Pipeline):
                           for i in range(0 if idle else 16)]
         return built, closed
 
-    def samples(self, path, setups, from_s, until_s):
+    def samples(self, path, setups, from_s, until_s, detector=None):
         return [Sample(t=x.t, top_stones=warm_up_first(x.t)[0],
                        bottom_stones=warm_up_first(x.t)[1])
                 for x in super().samples(path, setups, from_s, until_s)]
