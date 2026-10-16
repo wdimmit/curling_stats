@@ -414,20 +414,26 @@ await check("dialogs", async () => {
     await sleep(500);
     if (!(await isOpen("deliveryDialog"))) { fail(`${where}: #lineOpen did not open #deliveryDialog`); continue; }
     await shot(`dialogs-delivery-${w}x${h}`);
-    // A text is as big as its font-size attribute, scaled the way its svg is drawn.
-    const small = await cdp.eval(`(() => {
-      const out = [];
+    // A text is as big as its font-size attribute, scaled the way its svg is drawn (the smaller
+    // of the two axes, as house() does: the viewBox letterboxes). The chart's texts may not be
+    // there yet, so wait for one, and count what was measured: nothing measured is a failure.
+    await waitFor(`!!document.querySelector("#deliveryDialog svg text")`, 3000).catch(() => {});
+    const sized = await cdp.eval(`(() => {
+      const small = []; let n = 0;
       for (const svg of document.querySelectorAll("#deliveryDialog svg")) {
         const r = svg.getBoundingClientRect(), vb = svg.viewBox?.baseVal;
-        if (!r.width) continue;
-        const k = vb && vb.width ? r.width / vb.width : 1;
+        if (!r.width || !r.height) continue;
+        const k = vb && vb.width && vb.height ? Math.min(r.width / vb.width, r.height / vb.height) : 1;
         for (const t of svg.querySelectorAll("text")) {
           const fs = parseFloat(t.getAttribute("font-size")) || parseFloat(getComputedStyle(t).fontSize);
-          if (fs * k < 11) out.push(\`"\${t.textContent.trim().slice(0, 14)}" \${(fs * k).toFixed(1)} px\`);
+          if (!(fs > 0)) continue;
+          n++;
+          if (fs * k < 11) small.push(\`"\${t.textContent.trim().slice(0, 14)}" \${(fs * k).toFixed(1)} px\`);
         }
       }
-      return out; })()`);
-    if (small.length) fail(`${where}: ${small.length} text(s) under 11 px: ${small.join(", ")}`);
+      return { n, small }; })()`);
+    if (!sized.n) fail(`${where}: no chart text measured`);
+    if (sized.small.length) fail(`${where}: ${sized.small.length} text(s) under 11 px: ${sized.small.join(", ")}`);
     const esc = await text("#deliveryDialog .dd-esc");
     if (esc !== "Tap outside to close") fail(`${where}: .dd-esc reads ${JSON.stringify(esc)}, not "Tap outside to close"`);
     await tapAt(8, h - 8);              // the backdrop
