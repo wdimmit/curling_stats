@@ -9,19 +9,22 @@ import {
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 import { Sheet } from "./Sheet.jsx";
 
-/* The typed field that had the caret when it was taken away, and where in
- * it: the window crossing 1700 px swaps the panel for the bar (or back) under
- * the caret, and the field that replaces it takes the caret back. Left on
- * <body>, the next keys would reach the page's shortcuts -- a digit sets the
- * score, Enter marks the rock charted, x deletes the selected stone. */
+/* The typed field that had the caret when it was taken away, where in it,
+ * and what it held: the window crossing 1700 px, or an iPad turning, swaps the
+ * panel for the bar (or back) under the caret, and the field that replaces it
+ * takes the caret back. Left on <body>, the next keys would reach the page's
+ * shortcuts -- a digit sets the score, Enter marks the rock charted, x deletes
+ * the selected stone. */
 let refocus = null;
 
 /* Local state keyed by the shot, so moving to another rock re-seeds the field
  * and staying on one never does. That is the React-shaped replacement for the
  * `document.activeElement !== el` guard the imperative version needed, and it
  * removes the caret-jump it was there to prevent. The upward dispatch is
- * debounced so the store sees keystroke batches rather than keystrokes. */
-function useTypedField(initial, commit, busy) {
+ * debounced so the store sees keystroke batches rather than keystrokes.
+ * `owner` is the shot's key: words are carried across a swap only to the same
+ * rock's field, never into another rock's. */
+function useTypedField(initial, commit, busy, owner) {
   const [text, setText] = useState(initial ?? "");
   const typed = useRef(false);
   const focused = useRef(null);     // the element, while it has the caret
@@ -31,6 +34,9 @@ function useTypedField(initial, commit, busy) {
     const r = refocus, node = el.current;
     if (!r || !node || r.id !== node.id) return;
     refocus = null;
+    // Typed in the last 150 ms, so never committed: the field it was typed in
+    // went with its debounce. This one takes the words over and commits them.
+    if (r.owner === owner && r.value !== node.value) setText(r.value);
     node.focus();
     node.setSelectionRange(r.start, r.end);
   }, []);
@@ -51,7 +57,7 @@ function useTypedField(initial, commit, busy) {
     const node = focused.current;
     if (!node) return;
     busy(false);
-    refocus = { id: node.id, start: node.selectionStart, end: node.selectionEnd };
+    refocus = { id: node.id, start: node.selectionStart, end: node.selectionEnd, value: node.value, owner };
     // Nothing took it back (no field of that id came in): forget it.
     setTimeout(() => { refocus = null; }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,9 +196,9 @@ function MoveBefore({ shot, others, readOnly, actions, title }) {
 
 function Grading({ shot, shotKey, openGroup, readOnly, others, actions }) {
   const miss = useTypedField(shot?.miss_reason, v => actions.patch({ miss_reason: v }),
-                             on => actions.setBusy(on ? shotKey : null));
+                             on => actions.setBusy(on ? shotKey : null), shotKey);
   const note = useTypedField(shot?.note, v => actions.patch({ note: v }),
-                             on => actions.setBusy(on ? shotKey : null));
+                             on => actions.setBusy(on ? shotKey : null), shotKey);
   const before = others.find(x => shot?.before === identity(x));
   return (
     <div id="grading">
@@ -244,14 +250,38 @@ function Grading({ shot, shotKey, openGroup, readOnly, others, actions }) {
 export function GradingBar({ shot, shotKey, openGroup, readOnly, others, notice, actions,
                              sheets = false, next = null }) {
   const t = useTypePicker({ shot, shotKey, openGroup, readOnly, actions });
-  const miss = useTypedField(shot?.miss_reason, v => actions.patch({ miss_reason: v }),
-                             on => actions.setBusy(on ? shotKey : null));
-  const note = useTypedField(shot?.note, v => actions.patch({ note: v }),
-                             on => actions.setBusy(on ? shotKey : null));
   // Which sheet is open: one at a time. A sheet's close event clears only
   // itself, so a close that lands late cannot shut the next one.
   const [open, setOpen] = useState(null);
   const shut = which => () => setOpen(o => (o === which ? null : o));
+  /* An iPad turned upright with the caret in Miss or Note: the field that takes
+   * it back is in a closed sheet, where it cannot. So open that sheet, and once
+   * it is open hand the field the caret (the effect after the fields'). This
+   * effect comes before the fields' hooks, whose own mount effects consume the
+   * note; it is there by now, since unmounts run before mounts in one commit. */
+  const caret = useRef(null);
+  useEffect(() => {
+    const r = refocus, which = !sheets ? null : r?.id === "note" ? "note" : r?.id === "missReason" ? "miss" : null;
+    if (!which) return;
+    caret.current = { which, start: r.start, end: r.end };
+    setOpen(which);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const miss = useTypedField(shot?.miss_reason, v => actions.patch({ miss_reason: v }),
+                             on => actions.setBusy(on ? shotKey : null), shotKey);
+  const note = useTypedField(shot?.note, v => actions.patch({ note: v }),
+                             on => actions.setBusy(on ? shotKey : null), shotKey);
+  // A child's effects run before its parent's, so the sheet has called
+  // showModal() by now, and its field can take focus.
+  useEffect(() => {
+    const c = caret.current;
+    if (!c || c.which !== open) return;
+    caret.current = null;
+    const node = (c.which === "note" ? note : miss).ref.current;
+    node?.focus();
+    node?.setSelectionRange(c.start, c.end);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   const before = others.find(x => shot?.before === identity(x));
   return (
     <div id="grading" className="gbar">
