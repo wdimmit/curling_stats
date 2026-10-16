@@ -20,7 +20,7 @@
     "frontend/core/shots.mjs": "32dad29e6eef0c4de59ca66dd2a9ea640ac42cec4f092c47583ebaa719777731",
     "frontend/core/speed.mjs": "0cc7174972cfa7fdf604fefe44da12be90acae57da3b810fc3bd14a6f1c78cbd",
     "frontend/core/stats.mjs": "67387a12686219c8a66d89631afa54750b6f051b324ad3caaabab641e6be27bb",
-    "frontend/core/tablet.mjs": "5efa72b23e459a079a2b1278ba648701be7f0a18dcbeca5037f9887dc9d55199",
+    "frontend/core/tablet.mjs": "9458c37883d15605f583ad07dc89a9d736935afd903da99cd779afe48f8e594d",
     "frontend/core/timeline.mjs": "6b3efe11ffb844ae70f525711790556068b6aada93c03fa6e45c7869bb2b7d07",
     "frontend/core/watch.mjs": "061f1ebf7cbd5c2ca2221133dcccad3ccfd45300f694f9b69ee5e765d8444f07",
     "frontend/core/wire.mjs": "f7d5fd9184377e808700c77115820cc9b0ffdd299c8a3b66040bbca02a4da5da",
@@ -56,7 +56,7 @@
     "frontend/site/ui.jsx": "19a9c87760a768cf44f05dec32d90eeab29cd0010e5553a91286eff18ec975dc",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
     "frontend/viewer/App.jsx": "18931775b1388cf27f9a6b6d19ed2f195d3db34f5014a76abb610b08cacf4b77",
-    "frontend/viewer/ChartPanel.jsx": "b51de5748c99f5468cfecf31e9297cd83c3280df274e9e88696701c280476e4e",
+    "frontend/viewer/ChartPanel.jsx": "6f224bf53b55fd1c4235a99eb3c8cbe62fd6160d5d3fab7f0475977ff340323d",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "65dfe05210a940423b6ea5ccd87ceafe59c6b2b457386555adfac82da758f890",
     "frontend/viewer/DeliveryDialog.jsx": "2acf31933507427f14edb2d86c404de2fd6c5f5dd61485dcc2bbe473a3891b38",
@@ -70,7 +70,7 @@
     "frontend/viewer/Report.jsx": "ff68b5469d16428880e1b2d47403fb74e012c60a8c7317ee868dd72ab464a744",
     "frontend/viewer/Sheet.jsx": "29c1f7e0a4c8eecb494c00c858aedbdccbaa3e5592ca723a062baa5fd21eaa6b",
     "frontend/viewer/ShotClip.jsx": "9b81d357377afc80ca3742f6c643fe34d2278ca73e8049e5d0810ab5e0ee0f88",
-    "frontend/viewer/Side.jsx": "1e9875580be1a69fffe1f15169dbf2f6fa1fff123ae4e6de2bfc58752c18dd4d",
+    "frontend/viewer/Side.jsx": "87c505f14933af62bb8ca75d4dbfbae801f105112eee79d3750c2448f06a023c",
     "frontend/viewer/Teams.jsx": "8998c4f6a35de0f1c62e514749fa1f1037c6476ef5fc9ecd361096a0a3183bc8",
     "frontend/viewer/ThinkingDialog.jsx": "6e25b3b58cd17c73482af2d66baeda160de4c135c91c9f84a1ddca4d34661a88",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
@@ -80,6 +80,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "36c9968c9de30c50acf336eb5716635fb9486a0c024d7bc5b8ef351668d248bc",
-    "src/curling_score/viewer/app.js": "310771f0b60a22bda84b0106308c1399913acff5da10181258a9419a836cae04"
+    "src/curling_score/viewer/app.js": "d5551040868c83b556bfebae9ff3de34ba743dae1c5854de391405f598d0882b"
   }
 }

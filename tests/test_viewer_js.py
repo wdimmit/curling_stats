@@ -6125,6 +6125,19 @@ class TestTheTabletBranch:
         assert "onClick={() => { if (tablet) { chartedTablet(); return; }" in app
         assert app.count("nextBlankAfter(queue, ui.ei, ui.si)") == 4   # n, Enter, Mark charted, the pill
 
+    def test_a_turn_opens_a_sheet_only_for_this_rock_s_field(self):
+        """R8: the bar opens the sheet holding the caret's field only when the
+        field it left was this rock's."""
+        src = (self.ROOT / "frontend/viewer/ChartPanel.jsx").read_text()
+        bar = src[src.index("export function GradingBar("):src.index("function Detail(")]
+        assert "const r = refocus?.owner === shotKey ? refocus : null;" in bar
+
+    def test_no_control_double_tap_zooms(self):
+        css = (VIEWER / "style.css").read_text()
+        block = css[css.index("@media (any-pointer: coarse) and (orientation: portrait) and (min-width: 700px) "
+                              "and (max-width: 1199px) {"):]
+        assert "button, select, a, .shot, label, input, textarea { touch-action: manipulation; }" in block
+
     def test_a_tap_opens_the_editor_on_the_tablet(self):
         src = (self.ROOT / "frontend/viewer/House.jsx").read_text()
         assert "if ((phone() || tabletNow()) && houseMode !== \"edit\")" in src

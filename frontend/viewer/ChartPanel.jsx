@@ -280,7 +280,9 @@ export function GradingBar({ shot, shotKey, openGroup, readOnly, others, notice,
    * note; it is there by now, since unmounts run before mounts in one commit. */
   const caret = useRef(null);
   useEffect(() => {
-    const r = refocus, which = !sheets ? null : r?.id === "note" ? "note" : r?.id === "missReason" ? "miss" : null;
+    // Only this rock's field: a note left by another rock's never opens a sheet here.
+    const r = refocus?.owner === shotKey ? refocus : null;
+    const which = !sheets ? null : r?.id === "note" ? "note" : r?.id === "missReason" ? "miss" : null;
     if (!which) return;
     caret.current = { which, start: r.start, end: r.end };
     setOpen(which);

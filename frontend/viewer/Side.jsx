@@ -34,7 +34,8 @@ export function FiguresCard({ shot, doc, onLine, children }) {
         : f.predates || shot.missing ? <p className="dnone">{f.reason}</p>
         : (
           <>
-            {/* One line of note each; the whole note is the figure's tooltip. */}
+            {/* On the wide desktop, one line of note each, the whole note the figure's
+                tooltip; on the portrait iPad every note wraps in full (no hover). */}
             <Figures figures={f.figures.map(x => ({ ...x, title: typeof x.note === "string" ? x.note : undefined }))}>
               {onLine && !lineChartGeometry(shot, doc, LINEBOX).why ? (
                 <div className="dfig dline">

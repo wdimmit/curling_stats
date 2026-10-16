@@ -1472,7 +1472,7 @@ body[data-mode="review"] #house { cursor:default; }
      fingertip, 44 px or more, and nothing is only in a tooltip. Sized from
      the board "P · Portrait" (out/mockups/ipad/mock/touch.js and P.js). */
   body { font-size: 15px; }
-  button, select, a, .shot { touch-action: manipulation; }
+  button, select, a, .shot, label, input, textarea { touch-action: manipulation; }
 
   /* The page (spec §1): the video, the chips, the house beside the figures,
      the bar. The rows share the height: the house row first gets its 320 px

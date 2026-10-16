@@ -1,9 +1,10 @@
 /* Pure helpers for the portrait iPad layout (spec 2026-10-16). Nothing here
  * touches the DOM. */
 
-/* The label on a sheet button (the ⋯ sheet's Miss, Note, Swapped roles...):
- * "Label…" when nothing is set, "Set label: value" when it is, the value cut
- * at a word (or at `max`) with "…" when it runs long. */
+/* The text on one of the bar's sheet buttons (Miss, Note, Order) or the
+ * doubles end box's Swapped roles: "Label…" when nothing is set, "Set label:
+ * value" when it is, the value cut at a word (or at `max`) with "…" when it
+ * runs long. */
 export function sheetButtonText(label, value, setLabel = label, max = 16) {
   if (!value) return `${label}…`;
   let v = value;
@@ -40,8 +41,9 @@ export function chartedNext(items, view, ei, si) {
   return nextBlankOther(need, ei, si);
 }
 
-/* The one-line end summary in the tablet's rock sheet header; `summary` is
- * endSummary(view, ei) or null, `name` maps a colour to its team's name. */
+/* The doubles end line, the tablet's compact end box above the figures;
+ * `summary` is endSummary(view, ei) or null, `name` maps a colour to its
+ * team's name. */
 export function endLineText(summary, endNumber, name) {
   let t = `End ${endNumber}`;
   if (!summary) return t;
