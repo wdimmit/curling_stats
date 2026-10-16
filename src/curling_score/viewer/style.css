@@ -1456,6 +1456,13 @@ body[data-mode="review"] #house { cursor:default; }
   header #clipBtn   { order: 16; }
 }
 
+/* --- portrait iPad (spec 2026-10-16) -------------------------------------- */
+/* A coarse pointer held upright, 700-1199 px wide. React renders this layout's
+   pieces only here (TABLET_QUERY in core/constants.mjs, byte-identical to this
+   query). */
+@media (any-pointer: coarse) and (orientation: portrait) and (min-width: 700px) and (max-width: 1199px) {
+}
+
 /* --- the large dialogs: delivery and thinking (spec 2026-10-15) ----------- */
 #deliveryDialog, #thinkingDialog { padding: 0; border: 1px solid var(--line); border-radius: 12px;
   background: var(--panel); color: var(--ink); box-sizing: border-box; max-height: calc(100vh - 48px);

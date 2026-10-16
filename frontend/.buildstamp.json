@@ -4,12 +4,12 @@
   "flags": "3814b6394471718919220a4072fed98a4853a93360e8ea70a4896d47dc55fa9a",
   "sources": {
     "frontend/core/charts.mjs": "30eec1a0654d5fd43b547bbb0523b194c5f257d8ef7d7021849b6c3f48688d2e",
-    "frontend/core/constants.mjs": "ebf1e13b37f68a99b1223ad5e442121c2ba62faf91e6d6b478338fd3bd78d4a8",
+    "frontend/core/constants.mjs": "72106d990f052d78b5634f3bf0d1d8254cc6d8a1b5aaedfeb7ad90e2e9f2af78",
     "frontend/core/delivery.mjs": "0d8f6c7f69805a0f8ba8844241249b675522a057c39ea70de2b9774f71b1ee9f",
     "frontend/core/flag.mjs": "61002c1dd367a4665463f8f363d0eafb6cbcdc0be5fa669b747afc9c659ae7cc",
     "frontend/core/format.mjs": "5b6852a008aa5b3ac6d6b426ccaea7e02b710bfe6e633eb1725c3aef7d6a2076",
     "frontend/core/house.mjs": "94d64eae255dc61ae56b90901710908c5016eee29601b86133d4aeb7717a0631",
-    "frontend/core/index.mjs": "07ca13ef0cfcab43d282ad583fbf9cdc96e73430904fd883d421b5cddd1b03f4",
+    "frontend/core/index.mjs": "567dfa425885b4aac7d5c2d105534eda8cddbcd6c35a2d252ce90e23ebe2d6d6",
     "frontend/core/line.mjs": "34908496ff359f15cf9c6461215e72b1d2fe32bcf4437766ad012e0e86bc120d",
     "frontend/core/linechart.mjs": "19d36999630b4984607e5ffee95d8d748a409485d77f22d473d2ffaaf8595923",
     "frontend/core/myshots.mjs": "25eb6c0c8f1ba3a3fa7628b33c8940dc350ceb9bb9b202388a8a07c36fa30425",
@@ -20,6 +20,7 @@
     "frontend/core/shots.mjs": "32dad29e6eef0c4de59ca66dd2a9ea640ac42cec4f092c47583ebaa719777731",
     "frontend/core/speed.mjs": "0cc7174972cfa7fdf604fefe44da12be90acae57da3b810fc3bd14a6f1c78cbd",
     "frontend/core/stats.mjs": "67387a12686219c8a66d89631afa54750b6f051b324ad3caaabab641e6be27bb",
+    "frontend/core/tablet.mjs": "b036b83dea673eae90ec502aec0ca0d1930ebd9727c9f58629d9c4357f5ae0fc",
     "frontend/core/timeline.mjs": "6b3efe11ffb844ae70f525711790556068b6aada93c03fa6e45c7869bb2b7d07",
     "frontend/core/watch.mjs": "061f1ebf7cbd5c2ca2221133dcccad3ccfd45300f694f9b69ee5e765d8444f07",
     "frontend/core/wire.mjs": "f7d5fd9184377e808700c77115820cc9b0ffdd299c8a3b66040bbca02a4da5da",
@@ -76,7 +77,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "0f72beb4483ecdff5613105a0c1f9e5cc449e86b88d28d2335a47cb5613a9c4a",
-    "src/curling_score/viewer/app.js": "45720be724cdefff0eaf76c5db8a752a63577d91cab5655202affea4b538e38f"
+    "src/curling_score/service/static/site.js": "36c9968c9de30c50acf336eb5716635fb9486a0c024d7bc5b8ef351668d248bc",
+    "src/curling_score/viewer/app.js": "a3611a5ba2d14807a41681a67c16f90d9d97aedf65b9377d1c087ec49ed9f70c"
   }
 }

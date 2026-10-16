@@ -51,6 +51,12 @@ export const PHONE_QUERY = "(max-width: 640px) and (min-height: 461px)";
  * string, byte for byte -- a test asserts it, as for PHONE_QUERY. */
 export const WIDE_QUERY = "(min-width: 1700px)";
 
+/* The portrait iPad layout (spec 2026-10-16): a coarse pointer held upright,
+ * between a phone and a desktop. React decides what renders by this;
+ * style.css lays it out by the same string, byte for byte -- a test asserts
+ * it, as for WIDE_QUERY. */
+export const TABLET_QUERY = "(any-pointer: coarse) and (orientation: portrait) and (min-width: 700px) and (max-width: 1199px)";
+
 /* The phone viewer's bottom tabs, in order: the one table the tab bar draws
  * and a link's #tab= is checked against. */
 export const WATCH_TABS = [["house", "House"], ["detail", "Detail"], ["delivery", "Delivery"],
@@ -83,6 +89,11 @@ export const STRIPE_HALF_M = 0.6096;
 export const BIGDELIVERYBOX = { w: 1000, h: 250, side: true, from: -4.0, to: 8.05, across: 0.9, minorInches: 2,
                                 paint: true, pad: { l: 10, r: 52, t: 18, b: 8 } };
 export const SPEEDBOX = { w: 1000, h: 170, from: -4.0, to: 8.05, pad: { l: 10, r: 52, t: 16, b: 22 } };
+/* The same two charts for the tablet's delivery dialog (spec 2026-10-16): 480
+ * units wide, so a 688 px drawing (an iPad mini's dialog) scales by 1.43 and
+ * the 8-unit labels draw at 11.5 px. The shared from/to/pads keep their x. */
+export const TABLETDELIVERYBOX = { ...BIGDELIVERYBOX, w: 480, h: 160 };
+export const TABLETSPEEDBOX = { ...SPEEDBOX, w: 480, h: 115 };
 export const SPEED_GRID_M_S = 0.5;
 /* The wide layout's line chart (core/linechart.mjs): a default size -- the
  * card measures its own box and passes w and h -- the band the funnel takes,

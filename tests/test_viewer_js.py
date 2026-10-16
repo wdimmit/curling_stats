@@ -4454,6 +4454,91 @@ class TestTheWideLayoutGate:
         assert want in queries, "WIDE_QUERY is not one of the stylesheet's media queries"
 
 
+class TestTheTabletLayoutGate:
+    def test_tablet_query_is_a_media_query_byte_for_byte(self):
+        css = (VIEWER / "style.css").read_text()
+        queries = [q.strip() for q in re.findall(r"@media ([^{]+)\{", css)]
+        want = run_js("out(TABLET_QUERY);")
+        assert want == ("(any-pointer: coarse) and (orientation: portrait) "
+                        "and (min-width: 700px) and (max-width: 1199px)")
+        assert want in queries, "TABLET_QUERY is not one of the stylesheet's media queries"
+
+
+class TestSheetButtonText:
+    def test_nothing_set_asks(self):
+        assert run_js('out([sheetButtonText("Miss", null), sheetButtonText("Miss", "")]);') == ["Miss…", "Miss…"]
+
+    def test_a_value_is_shown(self):
+        assert run_js('out(sheetButtonText("Miss", "wide"));') == "Miss: wide"
+
+    def test_a_long_value_is_cut(self):
+        got = run_js('out(sheetButtonText("Note", "came up two feet short of the tee"));')
+        assert got == "Note: came up two feet…"
+
+    def test_the_set_label_can_differ(self):
+        assert run_js('out([sheetButtonText("Swapped roles", null, "Swapped"), '
+                      'sheetButtonText("Swapped roles", "Red", "Swapped")]);') == ["Swapped roles…", "Swapped: Red"]
+
+
+class TestNextBlankOther:
+    ITEMS = [{"ei": 0, "si": 2}, {"ei": 1, "si": 0}]
+
+    def go(self, items, ei, si):
+        return run_js(f"out(nextBlankOther({json.dumps(items)}, {ei}, {si}));")
+
+    def test_the_next_one(self):
+        assert self.go(self.ITEMS, 0, 2) == {"ei": 1, "si": 0}
+
+    def test_it_wraps(self):
+        assert self.go(self.ITEMS, 1, 0) == {"ei": 0, "si": 2}
+
+    def test_never_the_rock_it_is_on(self):
+        assert self.go([{"ei": 0, "si": 2}], 0, 2) is None
+
+    def test_none_left(self):
+        assert self.go([], 0, 0) is None
+
+
+class TestEndLineText:
+    NAME = "c => ({ red: 'Red', yellow: 'Yellow' })[c]"
+
+    def line(self, summary, n=3):
+        return run_js(f"out(endLineText({json.dumps(summary)}, {n}, {self.NAME}));")
+
+    def test_hammer_and_power_play(self):
+        s = {"hammer": "red", "hammerSource": "throws", "powerPlay": {"color": "red", "side": "left"}}
+        assert self.line(s) == "End 3 · Red has hammer · power play, red, left"
+
+    def test_hammer_from_the_placement(self):
+        assert self.line({"hammer": "yellow", "hammerSource": "placement", "powerPlay": None}) \
+            == "End 3 · Yellow has hammer (from the placement)"
+
+    def test_no_summary(self):
+        assert self.line(None, 1) == "End 1"
+
+    def test_the_swapped_names(self):
+        assert run_js(f"out([swapText({{red: true, yellow: false}}, {self.NAME}), "
+                      f"swapText({{yellow: true, red: true}}, {self.NAME}), swapText({{}}, {self.NAME})]);") \
+            == ["Red", "Red, Yellow", None]
+
+
+class TestTheTabletBoxes:
+    def test_they_are_the_big_boxes_narrowed(self):
+        big, d = run_js("out([BIGDELIVERYBOX, TABLETDELIVERYBOX]);")
+        assert d == {**big, "w": 480, "h": 160}
+        sp, s = run_js("out([SPEEDBOX, TABLETSPEEDBOX]);")
+        assert s == {**sp, "w": 480, "h": 115}
+
+    def test_the_speed_and_the_delivery_share_their_x(self):
+        r = json.dumps(ROCKS["e2r4"])
+        g, sg = run_js(f"const s = {r}; out([deliveryGeometry(s, TABLETDELIVERYBOX), "
+                       "speedGeometry(deliverySpeed(s), TABLETSPEEDBOX, s)]);")
+        gx = {l["kind"]: l["x1"] for l in g["lines"] if l["kind"] != "centre"}
+        sx = {l["kind"]: l["x"] for l in sg["lines"]}
+        for kind in ("hack", "tee", "hog"):
+            assert sx[kind] == pytest.approx(gx[kind], abs=0.1), kind
+
+
 class TestTheReportByEnd:
     """The table at the top: the score, the hammer, and each team's
     shooting and clock, end by end."""

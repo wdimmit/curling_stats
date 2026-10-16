@@ -21,3 +21,4 @@ export * from "./linechart.mjs";
 export * from "./flag.mjs";
 export * from "./myshots.mjs";
 export * from "./shotclip.mjs";
+export * from "./tablet.mjs";

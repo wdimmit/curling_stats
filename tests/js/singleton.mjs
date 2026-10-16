@@ -158,6 +158,12 @@ export const shotGroups = core.shotGroups;
 export const missScatter = core.missScatter;
 export const endSpan = core.endSpan;
 
+/* The portrait iPad layout's helpers (spec 2026-10-16): pure, no state. */
+export const sheetButtonText = core.sheetButtonText;
+export const nextBlankOther = core.nextBlankOther;
+export const endLineText = core.endLineText;
+export const swapText = core.swapText;
+
 /* The report's numbers, by the view they are given -- not state's. */
 export const byEnd = core.byEnd;
 export const headToHead = core.headToHead;
