@@ -134,3 +134,11 @@ class YoloDetector:
         """Detect over many panels at once -- far faster on a GPU."""
         return [stones_from_rows(rows, calib)
                 for rows in result_rows(self._predict(panels))]
+
+    def find_stones_each(self, panels, calibs):
+        """Detect over several panels at once, each placed by its own
+        calibration -- both houses of a frame in one call."""
+        if not panels:
+            return []
+        return [stones_from_rows(rows, calib)
+                for rows, calib in zip(result_rows(self._predict(list(panels))), calibs)]

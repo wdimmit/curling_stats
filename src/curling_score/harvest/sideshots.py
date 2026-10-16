@@ -203,7 +203,7 @@ def windows_for_video(video_path, vid, root, views, *, detector=None,
     proxy_setups = analyze_mod._proxy_setups(setups, strip)
 
     progress(f"{vid}: building the whole-video activity profile...")
-    samples = profile.build_profile(read_path, proxy_setups)
+    samples = profile.build_profile(read_path, proxy_setups, detector=detector)
     games = segment.segment_games(samples)
     total_ends = sum(len(g.ends) for g in games)
     progress(f"{vid}: {len(games)} game(s), {total_ends} end(s) total")

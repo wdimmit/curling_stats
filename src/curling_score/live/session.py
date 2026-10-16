@@ -259,7 +259,7 @@ class LiveSession:
                 and head - self.profiled_to < PROFILE_EVERY_S):
             return
         new = self.pipeline.samples(self.recording.path, self.calibration.setups,
-                                    self.profiled_to, head)
+                                    self.profiled_to, head, detector=self.models.detector)
         new = [s for s in new if self.profiled_to is None or s.t > self.profiled_to]
         if new:
             self.samples.extend(new)
@@ -519,12 +519,13 @@ class VideoPipeline:
         return Calibration(panels=panels, setups=setups, sideviews=sideviews,
                            until_s=until_s, side_expected=not self.skip_longview)
 
-    def samples(self, path, setups, from_s, until_s):
+    def samples(self, path, setups, from_s, until_s, detector=None):
         from curling_score.game import profile
         from curling_score.ingest import frames as F
 
         return profile.build_profile(
-            path, setups, sweep=F.keyframe_sweep(path, start_s=from_s, end_s=until_s))
+            path, setups, sweep=F.keyframe_sweep(path, start_s=from_s, end_s=until_s),
+            detector=detector)
 
     def build_end(self, ctx, game, end, prev_end_s):
         # Built without a board score: the board is read again after every

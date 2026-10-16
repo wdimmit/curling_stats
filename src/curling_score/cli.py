@@ -120,7 +120,8 @@ def _review(args) -> int:
                                      imgsz=args.imgsz)
         detector.model.overrides["half"] = True
 
-    games = segment.segment_games(profile.build_profile(read_path, read_setups))
+    games = segment.segment_games(profile.build_profile(read_path, read_setups,
+                                                        detector=detector))
     rows = []
     prev_end_s = None
     for gi, game in enumerate(games, 1):

@@ -946,7 +946,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     sweep = None
     if start_s is not None or end_s is not None:
         sweep = F.keyframe_sweep(read_path, start_s=start_s, end_s=end_s)
-    samples = profile.build_profile(read_path, read_setups, sweep=sweep)
+    samples = profile.build_profile(read_path, read_setups, sweep=sweep, detector=detector)
     games = segment.segment_games(
         samples, min_end_s=fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S)
     if not skip_scoreboard:

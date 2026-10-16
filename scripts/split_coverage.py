@@ -319,7 +319,7 @@ def measure_video(video_path, root, detector):
     proxy_setups = analyze_mod._proxy_setups(setups, strip)
 
     print(f"  {vid}: building the whole-video activity profile...", flush=True)
-    samples = profile.build_profile(read_path, proxy_setups)
+    samples = profile.build_profile(read_path, proxy_setups, detector=detector)
     games = segment.segment_games(samples)
     total_ends = sum(len(g.ends) for g in games)
     print(f"  {vid}: {len(games)} game(s), {total_ends} end(s) total", flush=True)

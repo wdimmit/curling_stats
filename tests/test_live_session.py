@@ -83,7 +83,7 @@ class Pipeline:
             raise got
         return got
 
-    def samples(self, path, setups, from_s, until_s):
+    def samples(self, path, setups, from_s, until_s, detector=None):
         out, t = [], (int(from_s // 5) + 1) * 5.0 if from_s is not None else 0.0
         while t <= until_s:
             top, bottom = activity(t)
@@ -404,7 +404,7 @@ class TestTheStreamEnding:
         The API completes a job only once its timeline is uploaded, so the
         empty stream must publish too, or its job is refused and comes back."""
         class Empty(Pipeline):
-            def samples(self, path, setups, from_s, until_s):
+            def samples(self, path, setups, from_s, until_s, detector=None):
                 return [Sample(t=s.t, top_stones=0, bottom_stones=0)
                         for s in super().samples(path, setups, from_s, until_s)]
 
@@ -418,6 +418,27 @@ class TestTheStreamEnding:
         assert s.done
         assert pub[-1]["games"] == []
         assert pub[-1]["live"]["in_progress"] is False
+
+    def test_the_profile_is_counted_by_the_lanes_detector(self):
+        """The colour thresholds count people as stones (game/profile.py):
+        the profile follows the recording with the detector the ends use."""
+        class Counted(Pipeline):
+            def __init__(self):
+                super().__init__()
+                self.detectors = set()
+
+            def samples(self, path, setups, from_s, until_s, detector=None):
+                self.detectors.add(detector)
+                return super().samples(path, setups, from_s, until_s)
+
+        detector, pipe, rec, pub = object(), Counted(), Recording(), []
+        s = live.LiveSession(
+            video_id="liveVid0001", url="https://www.youtube.com/watch?v=liveVid0001",
+            recording=rec, fmt=format_mod.FOURS, pipeline=pipe, sheet=3,
+            models=live.Models(detector=detector),
+            publish=pub.append, progress=lambda m: None, now=lambda: NOW)
+        run_until(s, rec, 1800.0)
+        assert pipe.detectors == {detector}
 
 
 class TestCalibrationGivesUp:
@@ -611,7 +632,7 @@ class Paused(Pipeline):
         super().__init__(**kw)
         self.board_up, self.activity = board_up, activity
 
-    def samples(self, path, setups, from_s, until_s):
+    def samples(self, path, setups, from_s, until_s, detector=None):
         return [Sample(t=x.t, top_stones=self.activity(x.t)[0],
                        bottom_stones=self.activity(x.t)[1])
                 for x in super().samples(path, setups, from_s, until_s)]
