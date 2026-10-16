@@ -5,7 +5,7 @@
   "sources": {
     "frontend/core/charts.mjs": "30eec1a0654d5fd43b547bbb0523b194c5f257d8ef7d7021849b6c3f48688d2e",
     "frontend/core/constants.mjs": "ebf1e13b37f68a99b1223ad5e442121c2ba62faf91e6d6b478338fd3bd78d4a8",
-    "frontend/core/delivery.mjs": "ff87cbd63b82ddec3d4df38201e1e30fec07af752a5794155ca3776bb3f7dfbc",
+    "frontend/core/delivery.mjs": "0d8f6c7f69805a0f8ba8844241249b675522a057c39ea70de2b9774f71b1ee9f",
     "frontend/core/flag.mjs": "61002c1dd367a4665463f8f363d0eafb6cbcdc0be5fa669b747afc9c659ae7cc",
     "frontend/core/format.mjs": "5b6852a008aa5b3ac6d6b426ccaea7e02b710bfe6e633eb1725c3aef7d6a2076",
     "frontend/core/house.mjs": "94d64eae255dc61ae56b90901710908c5016eee29601b86133d4aeb7717a0631",
@@ -18,7 +18,7 @@
     "frontend/core/report.mjs": "95b76a30f70797d964a0daa22f676bb990ed8ae5e6e06b9f42d2ea7cd11da520",
     "frontend/core/shotclip.mjs": "6d16d3a122081decf123fce3115e2a6a2d2f06bccb0ab344db235c5202d078f3",
     "frontend/core/shots.mjs": "32dad29e6eef0c4de59ca66dd2a9ea640ac42cec4f092c47583ebaa719777731",
-    "frontend/core/speed.mjs": "ecd39f79a7f4f1b9e10dee3dafd2f325b02e23d9b256a5c1dbd09ec917ef09e3",
+    "frontend/core/speed.mjs": "0cc7174972cfa7fdf604fefe44da12be90acae57da3b810fc3bd14a6f1c78cbd",
     "frontend/core/stats.mjs": "67387a12686219c8a66d89631afa54750b6f051b324ad3caaabab641e6be27bb",
     "frontend/core/timeline.mjs": "6b3efe11ffb844ae70f525711790556068b6aada93c03fa6e45c7869bb2b7d07",
     "frontend/core/watch.mjs": "061f1ebf7cbd5c2ca2221133dcccad3ccfd45300f694f9b69ee5e765d8444f07",
@@ -77,6 +77,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "0f72beb4483ecdff5613105a0c1f9e5cc449e86b88d28d2335a47cb5613a9c4a",
-    "src/curling_score/viewer/app.js": "6f6d80578a549f4e5d902b2dcd60361b26ea3c0e3f9b4a7382b0635c3fa57d30"
+    "src/curling_score/viewer/app.js": "9da660df03fed6a2a9ceb9fd38503a9653a5d84c46ab828ba4bb9a6760233b76"
   }
 }

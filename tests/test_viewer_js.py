@@ -4199,6 +4199,21 @@ class TestSpeedNumbers:
         assert n["hog"] == "1.9 m/s"
         assert n["change"] == {"value": "0.5 m/s", "words": "lost between them"}
 
+    def test_the_loss_is_the_two_figures_shown_subtracted(self):
+        # Unrounded, 2.56 - 1.72 read 0.8 under 2.6 and 1.7.
+        n = run_js(f"out(speedNumbers(deliverySpeed({json.dumps(ROCKS['e2r2'])})));")
+        assert (n["peak"], n["hog"]) == ("2.6 m/s", "1.7 m/s")
+        assert n["change"] == {"value": "0.9 m/s", "words": "lost between them"}
+
+    @pytest.mark.parametrize("hog,change", [
+        (1.96, {"value": None, "words": "held its speed to the hog line"}),   # 2.0 and 2.0
+        (1.95, {"value": "0.1 m/s", "words": "lost between them"}),           # 2.0 and 1.9
+    ])
+    def test_the_boundary_is_the_rounded_figures(self, hog, change):
+        n = run_js("out(speedNumbers({series: [], peak: {t: 0, yp: 1, v: 2.0}, "
+                   f"hog: {{v: {hog}}}}}));")
+        assert n["change"] == change
+
     def test_a_rock_that_kept_its_speed_never_shows_a_negative_loss(self):
         for hog in (2.0, 2.03, 2.4):
             n = run_js("out(speedNumbers({series: [], peak: {t: 0, yp: 1, v: 2.0}, "

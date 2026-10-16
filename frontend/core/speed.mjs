@@ -21,7 +21,6 @@ const PUSH_FROM_M_S = 0.25;     // back from the peak until the rock is nearly s
 const HOG_FIT_FROM_M = 1.0;     // the hog fit starts this far short of the hog line
 const HOG_FIT_MIN_N = 6;
 const HOG_FIT_MIN_S = 0.5;
-const HELD_M_S = 0.05;          // a smaller loss than this is "held its speed"
 
 /* The slope of the least-squares line through (t, yp): metres a second. */
 function slope(pts) {
@@ -60,7 +59,9 @@ export function deliverySpeed(shot) {
 }
 
 /* The words over the speed chart: the peak and where, the hog speed, and what
- * was lost between them -- never a negative loss. */
+ * was lost between them. The loss is the two figures shown subtracted, so the
+ * three always add up -- and it is never negative: no loss, or a gain, is
+ * "held its speed". */
 export function speedNumbers(speed) {
   if (!speed) return null;
   const f = v => v.toFixed(1);
@@ -71,9 +72,10 @@ export function speedNumbers(speed) {
   };
   if (speed.hog) {
     out.hog = `${f(speed.hog.v)} m/s`;
-    const lost = speed.peak.v - speed.hog.v;
-    out.change = lost >= HELD_M_S ? { value: `${f(lost)} m/s`, words: "lost between them" }
-                                  : { value: null, words: "held its speed to the hog line" };
+    // Rounded again: 2.6 - 1.7 is 0.9000000000000001 in floating point.
+    const lost = +f(+f(speed.peak.v) - +f(speed.hog.v));
+    out.change = lost > 0 ? { value: `${f(lost)} m/s`, words: "lost between them" }
+                          : { value: null, words: "held its speed to the hog line" };
   }
   return out;
 }

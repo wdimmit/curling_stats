@@ -83,10 +83,6 @@ function acrossWindow(xs, across) {
   return { c, span: across };
 }
 
-/* The chart in pixels. `box.side` false is upright, the thrower at the bottom
- * and the thrower's right to the right, as the phone's strip; true turns it a
- * quarter as the desktop strip is turned, the hack at the left and the
- * thrower's left along the top. null only without a shot. */
 /* Where a path's colour ramp runs: from the push-off (the first sample
  * clearly moving) to its last sample. The speed chart takes the same span, so
  * a colour means the same moment in both. */
@@ -97,6 +93,10 @@ export function rampSpan(pts) {
   return { moving, t0, t1 };
 }
 
+/* The chart in pixels. `box.side` false is upright, the thrower at the bottom
+ * and the thrower's right to the right, as the phone's strip; true turns it a
+ * quarter as the desktop strip is turned, the hack at the left and the
+ * thrower's left along the top. null only without a shot. */
 export function deliveryGeometry(shot, box) {
   if (shot == null) return null;
   const { w, h, side, from, to, across, pad } = box;
