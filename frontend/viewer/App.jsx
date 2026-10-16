@@ -14,7 +14,7 @@ import {
   PHONE_QUERY, TABLET_QUERY,
   buildGameView, chartedNotice, cumulativeThinking, cursor as cursorOf, endKey, flagPlace,
   gatherStats, gatherThinking, formatWarning,
-  identity, isBlank, isGraded, liveGame, nextBlankAfter, blankQueue, peekMode,
+  identity, isBlank, isGraded, liveGame, nextBlankAfter, nextBlankOther, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
   shotClipName, shotClipsOffered,
@@ -455,6 +455,17 @@ export function App({ doc, config, cursor, reload }) {
   const markBtn = (
     <button id="markCharted" hidden={config.readOnly}
             onClick={() => { patch({ state_known: true });
+                             // On the iPad the editor stays open on the next rock that
+                             // needs charting (goTo keeps houseMode) and closes on the
+                             // last one. A rock never seen stays `missing` once charted,
+                             // so the queue here is by state_known, not isBlank.
+                             if (tablet) {
+                               const need = queue.filter(q => view.ends[q.ei]?.shots[q.si]?.state_known === false);
+                               const it = nextBlankOther(need, ui.ei, ui.si);
+                               if (it) goTo(it.ei, it.si);
+                               else if (ui.houseMode === "edit") dispatch({ type: "set", patch: { houseMode: "" } });
+                               return;
+                             }
                              const it = nextBlankAfter(queue, ui.ei, ui.si);
                              if (it) goTo(it.ei, it.si); }}>{tablet ? "✔ Charted" : "✔ Mark charted (Enter)"}</button>
   );

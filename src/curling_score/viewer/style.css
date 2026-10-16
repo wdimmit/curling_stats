@@ -1548,7 +1548,7 @@ body[data-mode="review"] #house { cursor:default; }
      here), so 16 chips and Replay fit on one line from 744 px up. */
   /* `safe`: below 744 px the row can run past its box, and then it starts at
      the left edge rather than spilling past it on both sides. */
-  #transport { grid-area: tp; margin: 0; gap: 6px; flex-wrap: nowrap; justify-content: safe center; }
+  #transport { grid-area: tp; margin: 0; gap: 6px; flex-wrap: nowrap; justify-content: center; justify-content: safe center; }
   #transport .shots { margin: 0; gap: 2px; flex-wrap: nowrap; }
   #shots .shot { width: clamp(36px, calc((100vw - 160px) / 16), 40px); height: 44px; font-size: 15px;
                  border-radius: 8px; flex: none; }
@@ -1598,6 +1598,37 @@ body[data-mode="review"] #house { cursor:default; }
   #houseOpen { width: 44px; height: 44px; padding: 0; margin-left: auto; }
   #houseOpen:not([hidden]) { display: grid; place-items: center; }
   .hc-tap { flex: none; margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+
+  /* The editor (spec §4): the card opens over the rows under the video, the
+     house drawn large at the left and its tools in a column at the right. The
+     chips, the figures and the bar are hidden, not removed, so the rows keep
+     their sizes and the video does not change size when the house opens. No
+     fixed positioning: nothing has to know the video's height. */
+  body[data-house="edit"] #houseCard { grid-row: 2 / 5; grid-column: 1 / 3; z-index: 2; align-self: stretch;
+    display: grid; grid-template-columns: auto minmax(0,1fr); grid-template-rows: auto 1fr auto;
+    grid-template-areas: "svg head" "svg tools" "svg bar"; column-gap: 14px; row-gap: 10px;
+    background: var(--panel); box-shadow: 0 10px 30px rgb(0 0 0 / .18); }
+  body[data-house="edit"] :is(#transport, #figCard, #grading) { visibility: hidden; }
+  /* The card has left its own row, which held the house row at 320 px: a spacer
+     holds it there, so the video above keeps the size it had. */
+  body[data-house="edit"] main::after { content: ""; grid-area: house; min-height: 320px; }
+  body[data-house="edit"] #house { grid-area: svg; height: 100%; width: auto; min-height: 0; max-width: 100%;
+    aspect-ratio: 5.2 / 8.6; }
+  body[data-house="edit"] #houseCard .hc-head { grid-area: head; position: static; display: flex;
+    flex-direction: column; align-items: stretch; gap: 8px; pointer-events: auto; }
+  body[data-house="edit"] #houseCard .hc-hint { display: block; font-size: 13px; color: var(--muted); }
+  body[data-house="edit"] #houseOpen:not([hidden]) { display: none; }
+  body[data-house="edit"] #houseCard .tools { grid-area: tools; display: flex; flex-wrap: wrap; align-content: flex-start;
+    gap: 8px; margin: 0; padding-top: 10px; border-top: 1px solid var(--line); }
+  body[data-house="edit"] #houseCard .tools > .grow { flex: 1 0 100%; height: 0; }
+  body[data-house="edit"] #houseCard .tools button { min-width: 44px; min-height: 44px; }
+  body[data-house="edit"] #houseCard .tools .swatchbtn { width: 44px; height: 44px; }
+  body[data-house="edit"] #houseCard .tools label.chk { min-height: 44px; display: inline-flex; align-items: center; }
+  body[data-house="edit"] #houseCard .housebar { grid-area: bar; display: flex; gap: 8px; }
+  body[data-house="edit"] #houseDone { flex: 1 1 auto; min-height: 48px; height: 48px; background: var(--accent);
+    color: var(--onaccent); border-color: transparent; font-weight: 700; }
+  body[data-house="edit"] #recolour { flex: 0 0 56px; min-height: 48px; height: 48px; }
+  body[data-house="edit"] .hc-tap { display: none; }
 
   /* The figures (spec §5): every note wraps in full, since a finger cannot
      hover for a cut-off one's tooltip; the eighth cell opens the delivery. */

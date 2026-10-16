@@ -339,16 +339,32 @@ await check("rotate", async () => {
 });
 
 await check("house", async () => {
-  await open(at(edit, ROCK), 820, 1080);
-  const card = await box("#houseCard");
-  await tap("#house");
-  await sleep(400);
-  if ((await data("house")) !== "edit") fail("house: tapping #house did not set body[data-house=edit]");
-  const hb = await box("#house");
-  if (!card || !hb || hb.h < 1.8 * card.h)
-    fail(`house: the open #house is ${Math.round(hb?.h ?? 0)} px tall, under 1.8 x the card's ${Math.round(card?.h ?? 0)}`);
-  for (const sel of ["#pickRed", "#houseDone"]) if (!(await vis(sel))) fail(`house: ${sel} is not visible in the editor`);
-  await shot("house-open-820x1080");
+  for (const [w, h] of [[744, 1050], [820, 1080]]) {
+    await open(at(edit, ROCK), w, h);
+    const card = await box("#houseCard");
+    const video = await box("#video");
+    // The spec's "about twice the card's house" is the drawing's box, not the card's: the card
+    // is 320 and the editor, under a video that keeps its size, is about 536.
+    const small = await box("#house");
+    const smallDrawn = await house();
+    await tap("#house");
+    await sleep(400);
+    if ((await data("house")) !== "edit") fail(`house: ${w}: tapping #house did not set body[data-house=edit]`);
+    const hb = await box("#house");
+    const video2 = await box("#video");
+    const bigDrawn = await house();
+    console.log(`house ${w}x${h}: card #house ${Math.round(small?.h ?? 0)} px tall (drawn ${smallDrawn?.w}x${smallDrawn?.drawn}, in a ${Math.round(card?.h ?? 0)} px card); `
+      + `open ${Math.round(hb?.h ?? 0)} px tall (drawn ${bigDrawn?.w}x${bigDrawn?.drawn})`);
+    if (!small || !hb || hb.h < 1.8 * small.h)
+      fail(`house: ${w}: the open #house is ${Math.round(hb?.h ?? 0)} px tall, under 1.8 x the card's ${Math.round(small?.h ?? 0)}`);
+    if (!video || !video2 || Math.abs(video.h - video2.h) > 1 || Math.abs(video.y - video2.y) > 1)
+      fail(`house: ${w}: the video moved or changed size when the editor opened (${Math.round(video?.w)}x${Math.round(video?.h)} at y ${Math.round(video?.y)} -> ${Math.round(video2?.w)}x${Math.round(video2?.h)} at y ${Math.round(video2?.y)})`);
+    for (const sel of ["#pickRed", "#houseDone", "#markCharted"]) if (!(await vis(sel))) fail(`house: ${w}: ${sel} is not visible in the editor`);
+    const ed = await box("#houseCard"), pg = await page();
+    if (!ed || !video2 || ed.y < video2.bottom - 1 || ed.bottom > pg.ih + 1) fail(`house: ${w}: the editor card is not under the video and inside the page`);
+    await shot(`house-open-${w}x${h}`);
+    if (w !== 820) await tap("#houseDone");
+  }
   await setSize(820, 1010);           // Safari's bar
   await sleep(400);
   if ((await data("house")) !== "edit") fail("house: the editor closed when the height went to 1010");
