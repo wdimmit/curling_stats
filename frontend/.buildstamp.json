@@ -20,7 +20,7 @@
     "frontend/core/shots.mjs": "32dad29e6eef0c4de59ca66dd2a9ea640ac42cec4f092c47583ebaa719777731",
     "frontend/core/speed.mjs": "0cc7174972cfa7fdf604fefe44da12be90acae57da3b810fc3bd14a6f1c78cbd",
     "frontend/core/stats.mjs": "67387a12686219c8a66d89631afa54750b6f051b324ad3caaabab641e6be27bb",
-    "frontend/core/tablet.mjs": "b036b83dea673eae90ec502aec0ca0d1930ebd9727c9f58629d9c4357f5ae0fc",
+    "frontend/core/tablet.mjs": "674211c73babb93862d91e0a18c546edb704127e92a53a1c31415537c939d676",
     "frontend/core/timeline.mjs": "6b3efe11ffb844ae70f525711790556068b6aada93c03fa6e45c7869bb2b7d07",
     "frontend/core/watch.mjs": "061f1ebf7cbd5c2ca2221133dcccad3ccfd45300f694f9b69ee5e765d8444f07",
     "frontend/core/wire.mjs": "f7d5fd9184377e808700c77115820cc9b0ffdd299c8a3b66040bbca02a4da5da",
@@ -80,6 +80,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "36c9968c9de30c50acf336eb5716635fb9486a0c024d7bc5b8ef351668d248bc",
-    "src/curling_score/viewer/app.js": "56e62045b0f8dcbd1751cf733d09bcec253a83ea9e19d276b26710439d2fbcfe"
+    "src/curling_score/viewer/app.js": "a60b6574ef214b441f6bc179a3d6eada9828e861abc8e32fd4e198160450d7d0"
   }
 }

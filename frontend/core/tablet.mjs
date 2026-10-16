@@ -15,13 +15,17 @@ export function sheetButtonText(label, value, setLabel = label, max = 16) {
   return `${setLabel}: ${v}`;
 }
 
-/* The "next blank" button on a rock sheet: the next item after (ei, si) in
- * `items`' order, wrapping round, never (ei, si) itself; null when there is none. */
+/* ✔ Charted's next rock on the house card: the first item after (ei, si) in
+ * the game's (ei, si) order, wrapping round, never (ei, si) itself; null when
+ * nothing else is left. `items` is in that order (blankQueue's). (ei, si) need
+ * not be in it: placing a stone marks the house known, so by the time ✔ Charted
+ * is tapped the rock has usually left the list, and the search still goes on
+ * from where the cursor is, as nextBlankAfter's does. */
 export function nextBlankOther(items, ei, si) {
-  const at = items.findIndex(it => it.ei === ei && it.si === si);
   const n = items.length;
-  for (let k = 1; k <= n; k++) {
-    const it = items[((at < 0 ? -1 : at) + k) % n];
+  const after = items.findIndex(it => it.ei > ei || (it.ei === ei && it.si > si));
+  for (let k = 0; k < n; k++) {
+    const it = items[((after < 0 ? 0 : after) + k) % n];
     if (!(it.ei === ei && it.si === si)) return it;
   }
   return null;

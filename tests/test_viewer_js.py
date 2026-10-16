@@ -4501,6 +4501,22 @@ class TestNextBlankOther:
     def test_none_left(self):
         assert self.go([], 0, 0) is None
 
+    # Placing a stone marks the house known, so by the time ✔ Charted is
+    # tapped the rock has left the list: the search goes on from the cursor's
+    # place in the game, not from the list's start.
+    SPREAD = [{"ei": 0, "si": 3}, {"ei": 2, "si": 5}, {"ei": 4, "si": 1}]
+
+    def test_a_cursor_not_in_the_list_goes_to_the_next_after_it(self):
+        assert self.go(self.SPREAD, 3, 0) == {"ei": 4, "si": 1}
+        assert self.go(self.SPREAD, 2, 4) == {"ei": 2, "si": 5}
+
+    def test_a_cursor_after_them_all_wraps_to_the_first(self):
+        assert self.go(self.SPREAD, 5, 0) == {"ei": 0, "si": 3}
+        assert self.go(self.SPREAD, 4, 2) == {"ei": 0, "si": 3}
+
+    def test_a_list_of_only_the_cursor_is_none(self):
+        assert self.go([{"ei": 4, "si": 1}], 4, 1) is None
+
 
 class TestEndLineText:
     NAME = "c => ({ red: 'Red', yellow: 'Yellow' })[c]"
