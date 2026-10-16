@@ -17,6 +17,7 @@ export * as overrides from "./overrides.mjs";
 export * from "./line.mjs";
 export * from "./delivery.mjs";
 export * from "./speed.mjs";
+export * from "./linechart.mjs";
 export * from "./flag.mjs";
 export * from "./myshots.mjs";
 export * from "./shotclip.mjs";

@@ -4310,6 +4310,85 @@ class TestThePaintUnderTheDelivery:
         assert run_js("out(STRIPE_HALF_M);") == pytest.approx(1.2192 / 2)
 
 
+class TestTheLineChart:
+    """One drawing for the wide layout's side column: the far end of the sheet
+    above, the delivery close up below, and a funnel between them."""
+    D9 = {"schema_version": 9}
+
+    def lc(self, shot, doc=None, box="LINEBOX"):
+        return run_js(f"out(lineChartGeometry({json.dumps(shot)}, {json.dumps(doc or self.D9)}, {box}));")
+
+    @staticmethod
+    def crowd(g, x, y, w=104, h=26):
+        return sum(1 for d in g["dots"] if x - 4 <= d["x"] <= x + w and y - h + 8 <= d["y"] <= y + 8)
+
+    def test_its_pads_are_the_delivery_s(self):
+        assert run_js("out(LINEBOX.pad);") == run_js("out(DELIVERYBOX.pad);")
+
+    def test_the_two_parts_meet_where_the_delivery_ends(self):
+        lc = self.lc(ROCKS["e2r4"])
+        ht = lc["top"]["h"]
+        y0, y1 = -2.3, TEE_Y - 8.05
+        hog = next(l for l in lc["top"]["shapes"]["lines"] if l["kind"] == "hog" and 0 <= l["y1"] <= ht)
+        assert hog["y1"] == pytest.approx((6.401 - y0) * ht / (y1 - y0), abs=0.1)
+        assert lc["bottom"]["y"] == ht + 13
+        assert ht + 13 + lc["bottom"]["h"] == lc["h"]
+        assert lc["bottom"]["h"] == lc["h"] // 2          # the delivery takes a full half
+
+    def test_the_funnel_spans_the_delivery_window_on_the_sheet(self):
+        lc = self.lc(ROCKS["e2r4"])
+        g, f, top = lc["bottom"]["g"], lc["funnel"], lc["top"]
+        kx = top["w"] / 4.75
+        assert f["xr"] - f["xl"] == pytest.approx(g["win"]["span"] * kx, abs=0.2)
+        assert f["xl"] == pytest.approx(top["x"] + top["w"] / 2 + g["win"]["x0"] * kx, abs=0.2)
+        assert f["bl"] == g["plot"]["x"]
+        assert f["br"] == pytest.approx(g["plot"]["x"] + g["plot"]["w"], abs=0.1)
+        assert (f["yt"], f["yb"]) == (top["h"], lc["bottom"]["y"] + g["plot"]["y"])
+
+    def test_the_legend_goes_where_the_dots_are_not(self):
+        for key, rock in ROCKS.items():
+            g = self.lc(rock)["bottom"]["g"]
+            assert self.crowd(g, g["legend"]["x"], g["legend"]["y"]) == 0, key
+
+    def test_the_aim_label_is_left_to_the_sheet_above(self):
+        assert self.lc(ROCKS["e2r4"])["bottom"]["g"]["aimLabel"] is None
+
+    def test_the_close_up_has_the_paint_under_it(self):
+        paint = self.lc(ROCKS["e2r4"])["bottom"]["g"]["paint"]
+        assert len(paint["house"]) == 4 and paint["stripe"] is not None
+
+    def test_it_says_how_stretched_each_part_is(self):
+        lc = self.lc(ROCKS["e2r4"])
+        assert lc["acrossTop"] == 5 and lc["acrossBottom"] == lc["bottom"]["g"]["stretch"]
+
+    def test_a_rock_not_followed_is_the_strip_at_full_height(self):
+        rock = {**ROCKS["e2r4"], "line": {**ROCKS["e2r4"]["line"], "delivery": []}}
+        lc = self.lc(rock)
+        assert lc["bottom"] is None and lc["funnel"] is None
+        assert lc["why"] == "The hog-line camera did not follow this rock from the hack"
+        assert lc["top"]["h"] == lc["h"]
+
+    def test_an_old_chart_is_the_strip_with_the_reason(self):
+        lc = self.lc(ROCKS["e2r4"], {"schema_version": 7})
+        assert lc["why"] == "This chart predates the delivery chart" and lc["bottom"] is None
+
+    def test_a_broomless_rock_still_draws(self):
+        # Only a doubles rock draws without a broom (lineReason fails closed for
+        # four-player charts), so the doc carries the doubles format.
+        rock = {**ROCKS["e2r4"], "target_broom": None}
+        lc = self.lc(rock, {**DOUBLES7, "schema_version": 9})
+        assert lc["bottom"]["g"]["aim"] is None and lc["funnel"] is not None
+        assert self.lc(rock)["why"] == "No broom was held still before the release"
+
+    def test_it_takes_the_box_it_is_given(self):
+        lc = self.lc(ROCKS["e2r4"], box="{...LINEBOX, w: 300, h: 600}")
+        assert (lc["w"], lc["h"]) == (300, 600)
+        assert (lc["bottom"]["h"], lc["top"]["h"]) == (300, 600 - 13 - 300)
+
+    def test_no_shot_is_nothing(self):
+        assert run_js("out(lineChartGeometry(null, {}, LINEBOX));") is None
+
+
 class TestTheReportByEnd:
     """The table at the top: the score, the hammer, and each team's
     shooting and clock, end by end."""

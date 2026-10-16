@@ -78,6 +78,12 @@ export const BIGDELIVERYBOX = { w: 1000, h: 250, side: true, from: -4.0, to: 8.0
                                 paint: true, pad: { l: 10, r: 52, t: 18, b: 8 } };
 export const SPEEDBOX = { w: 1000, h: 170, from: -4.0, to: 8.05, pad: { l: 10, r: 52, t: 16, b: 22 } };
 export const SPEED_GRID_M_S = 0.5;
+/* The wide layout's line chart (core/linechart.mjs): a default size -- the
+ * card measures its own box and passes w and h -- the band the funnel takes,
+ * the delivery's share of the whole height (a full half, per the user), the
+ * delivery's own pads (so the two parts line up), and the size of its legend. */
+export const LINEBOX = { w: 314, h: 760, funnel: 13, bottomShare: 0.5, pad: { l: 34, r: 8, t: 10, b: 26 },
+                         legend: { w: 104, h: 26 } };
 /* My shots (core/myshots.mjs): every rock of a group in one chart. The
  * overlay is the delivery close up with each rock's path measured off its own
  * hack-to-broom line -- `across` metres wide unless the rocks need more, and
