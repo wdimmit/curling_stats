@@ -14,8 +14,8 @@ export const DELIVERY_SCHEMA = 8;
 // Fail closed, as LINE_SCHEMA does: undefined >= 8 is false.
 export const deliveryReadable = doc => Number(doc?.schema_version) >= DELIVERY_SCHEMA;
 
-const HACK_PAST = -(HACK_Y - TEE_Y);          // -3.658: the hack, in metres past the throwing tee
-const HOG_PAST = 6.401;
+export const HACK_PAST = -(HACK_Y - TEE_Y);          // -3.658: the hack, in metres past the throwing tee
+export const HOG_PAST = 6.401;
 const MARGIN_M = 0.06;                        // room between the data and the window's edge
 const SNAP_M = 0.1;
 const INCH_M = 0.0254;

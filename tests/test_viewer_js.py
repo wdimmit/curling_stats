@@ -3927,6 +3927,11 @@ def delivery_shot(points=None, **kw):
 
 D8 = {"schema_version": 8}
 
+# Four real rocks, 30 fps paths: a hit, a hogged rock, a full-weight hit, and a
+# guard whose stone was nudged forward before the delivery (tl-s_0cYt.json).
+ROCKS = json.loads((Path(__file__).resolve().parent / "fixtures/delivery/s_0cYt_rocks.json")
+                   .read_text())["rocks"]
+
 
 class TestDeliveryReason:
     def reason(self, shot, doc=D8):
@@ -4122,6 +4127,70 @@ def report_js(body: str, document=None, overrides=None):
         "const stats = gatherStats(view);\n"
         "const think = gatherThinkingOf(view);\n"
         "const series = cumulativeThinkingOf(view);\n" + body)
+
+
+class TestDeliverySpeed:
+    """Speed along the delivery: a straight-line fit over ±0.5 s at each
+    sample, because along the ice the camera is ~10x noisier than across."""
+
+    def speed(self, shot):
+        return run_js(f"out(deliverySpeed({json.dumps(shot)}));")
+
+    @pytest.mark.parametrize("key,peak,peak_yp,hog", [
+        ("e2r4", 2.378, -1.39, 1.854),
+        ("e2r2", 2.562, -2.71, 1.723),
+        ("e1r4", 2.958, 0.47, 2.673),
+        ("e2r9", 2.243, -1.65, 1.844),
+    ])
+    def test_real_rocks(self, key, peak, peak_yp, hog):
+        s = self.speed(ROCKS[key])
+        assert s["peak"]["v"] == pytest.approx(peak, abs=0.005)
+        assert s["peak"]["yp"] == pytest.approx(peak_yp, abs=0.01)
+        assert s["hog"]["v"] == pytest.approx(hog, abs=0.005)
+
+    def test_a_stone_nudged_before_the_delivery_is_not_the_start(self):
+        s = self.speed(ROCKS["e2r9"])
+        assert s["series"][0]["t"] == pytest.approx(-0.5, abs=0.001)
+        assert all(q["t"] >= -0.5 for q in s["series"])
+
+    def test_a_steady_rock_reads_its_speed(self):
+        for fps in (10, 30):
+            s = self.speed(delivery_shot(delivery_points(fps=fps)))
+            assert s["peak"]["v"] == pytest.approx(2.0, abs=0.01), fps
+            assert s["hog"]["v"] == pytest.approx(2.0, abs=0.01), fps
+
+    def test_a_path_that_stops_short_of_the_hog_has_no_hog_speed(self):
+        s = self.speed(delivery_shot(delivery_points(t_end=2.0)))
+        assert s["hog"] is None
+        assert s["peak"]["v"] == pytest.approx(2.0, abs=0.01)
+
+    def test_too_little_to_read_is_nothing(self):
+        assert self.speed(delivery_shot(points=[[0.0, 30.0, 0.1], [0.1, 29.8, 0.1]])) is None
+        assert self.speed(delivery_shot(points=[])) is None
+        assert run_js("out(deliverySpeed(null));") is None
+
+
+class TestSpeedNumbers:
+    def test_the_three_numbers(self):
+        n = run_js(f"out(speedNumbers(deliverySpeed({json.dumps(ROCKS['e2r4'])})));")
+        assert n["peak"] == "2.4 m/s"
+        assert n["peakWhere"] == "at its fastest, 2.3 m out of the hack"
+        assert n["hog"] == "1.9 m/s"
+        assert n["change"] == {"value": "0.5 m/s", "words": "lost between them"}
+
+    def test_a_rock_that_kept_its_speed_never_shows_a_negative_loss(self):
+        for hog in (2.0, 2.03, 2.4):
+            n = run_js("out(speedNumbers({series: [], peak: {t: 0, yp: 1, v: 2.0}, "
+                       f"hog: {{v: {hog}}}}}));")
+            assert n["change"] == {"value": None, "words": "held its speed to the hog line"}, hog
+
+    def test_no_hog_speed_is_no_hog_number(self):
+        n = run_js("out(speedNumbers({series: [], peak: {t: 0, yp: -1.4, v: 2.38}, hog: null}));")
+        assert n["hog"] is None and n["change"] is None
+        assert n["peakWhere"] == "at its fastest, 2.3 m out of the hack"
+
+    def test_nothing_is_nothing(self):
+        assert run_js("out(speedNumbers(null));") is None
 
 
 class TestTheReportByEnd:
