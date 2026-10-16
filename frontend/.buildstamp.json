@@ -55,8 +55,8 @@
     "frontend/viewer/App.jsx": "13ff72bdd2b72943d5d45fd774dda8da0fe5be5787f52f82cdfc7bbe56ccae65",
     "frontend/viewer/ChartPanel.jsx": "1ae0a3cba7cd425dbdb4bba58ad6c31d58462e6ce2644a50016070b09c4a05be",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
-    "frontend/viewer/Delivery.jsx": "872fc7908599094de305daba61eb21c1bbf470c0c587d962a17698a54d3a7cf7",
-    "frontend/viewer/Detail.jsx": "80823a0fdf9d282eb0e028c4506a1697eea83d683bd5b38c36e4840819437680",
+    "frontend/viewer/Delivery.jsx": "65dfe05210a940423b6ea5ccd87ceafe59c6b2b457386555adfac82da758f890",
+    "frontend/viewer/Detail.jsx": "0db23c5f2558b1e92b669097564169e982b92d0c8095c369e984e2dc83f725a6",
     "frontend/viewer/Flag.jsx": "7f2b7a7d3e63d89d1d356c257546b7c844896bce6fec4dc276dcd8a0e5a88c90",
     "frontend/viewer/House.jsx": "868238509dfdfb62700f2320d20b78923ac87bc285ce4ea5ae9908130a6560e4",
     "frontend/viewer/NameBox.jsx": "b3d5db36376c90674ffa7f329a092db110e27f878e3b17266816f37b883f6246",
@@ -71,7 +71,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "a85c6da1e2ff08d2541bce2b0d6a1d48d1982461e363e05013ed22a64a1b1236",
-    "src/curling_score/viewer/app.js": "819b003577dce5bd90c5c2d60d0833792edeac5ee3ddd71f4d6fe4b82dabade6"
+    "src/curling_score/service/static/site.js": "0f72beb4483ecdff5613105a0c1f9e5cc449e86b88d28d2335a47cb5613a9c4a",
+    "src/curling_score/viewer/app.js": "f13fc33d272af04d8716d0e70e99036804bdb4c43e2e20c42548e4b809d76337"
   }
 }

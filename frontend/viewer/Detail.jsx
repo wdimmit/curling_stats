@@ -15,12 +15,12 @@ const PAINTED = [PAINT.iceLine, 0.8];   // tee, back, hack and centre lines
 /* One renderer for both orientations. `fluid` leaves the size to CSS: the
  * desktop card scales the drawing to its own width through the viewBox. The
  * attribute order below is the phone's markup, character for character. */
-function Strip({ shot, shapes: s, label, fluid }) {
+export function Strip({ shot, shapes: s, label, fluid, className = "dstrip", at }) {
   if (!s) return <div className="dstrip dstrip-none" aria-hidden="true" />;
   const own = shot.color === "red" ? PAINT.red : PAINT.yellow;
   return (
-    <svg className="dstrip" {...(fluid ? {} : { width: s.w, height: s.h })} viewBox={`0 0 ${s.w} ${s.h}`}
-         role="img" aria-label={label}>
+    <svg className={className} {...(fluid ? {} : { width: s.w, height: s.h })} viewBox={`0 0 ${s.w} ${s.h}`}
+         role="img" aria-label={label} {...(at ? { x: at.x, y: at.y } : {})}>
       {s.rings.map((r, i) => (
         <ellipse key={i} cx={r.cx} cy={r.cy} rx={r.rx} ry={r.ry} fill={RING[r.kind]} fillOpacity={0.55} />
       ))}
@@ -56,7 +56,7 @@ function Strip({ shot, shapes: s, label, fluid }) {
 
 // A doubles rock nobody held a broom for has no intended line to show
 // against the thrown one, and no curl direction to call "wide" against.
-const isBroomless = shot => !shot?.target_broom && shot?.line?.at_tee != null;
+export const isBroomless = shot => !shot?.target_broom && shot?.line?.at_tee != null;
 const stripWords = shot => isBroomless(shot)
   ? { seen: "the thrown line and where the rock went", wideGloss: "" }
   : { seen: "the intended line, the thrown line and where the rock went", wideGloss: " · wide = the side away from the curl" };
@@ -75,7 +75,7 @@ export function Figures({ figures }) {
         <div key={x.key} className={x.dim ? "dfig dim" : "dfig"}>
           <dt>{x.label}</dt>
           <dd className="dval">{x.value}</dd>
-          <dd className={x.tick ? `dnote ${x.tick}` : "dnote"}>
+          <dd className={x.tick ? `dnote ${x.tick}` : "dnote"} {...(x.title ? { title: x.title } : {})}>
             {x.tick === "confirmed" ? <Check /> : null}{x.note}
           </dd>
         </div>

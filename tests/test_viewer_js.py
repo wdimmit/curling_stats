@@ -3049,7 +3049,7 @@ class TestTheDetailPane:
 
     def test_it_draws_the_strip_and_the_six_figures_from_the_core(self):
         src = self.SRC.read_text()
-        for needle in ("lineFigures(shot, doc)", "stripGeometry(shot)", 'className="dstrip"',
+        for needle in ("lineFigures(shot, doc)", "stripGeometry(shot)", 'className = "dstrip"',
                        'className="dcap"', "f.predates"):
             assert needle in src, needle
 
@@ -4111,6 +4111,24 @@ class TestTheDeliveryChart:
         rule = css[css.index("#detailCard .dlv {"):css.index("}", css.index("#detailCard .dlv {"))]
         assert "width: 100%" in rule and "height: auto" in rule
 
+    def test_a_speed_chart_and_a_nested_chart_carry_no_ids(self):
+        src = self.SRC.read_text()
+        assert "export function SpeedChart(" in src
+        code = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+        assert "<defs" not in code and " id=" not in code
+        # Nesting is spread last and only when asked, so every existing chart's
+        # markup is unchanged.
+        assert "{...(at ? { x: at.x, y: at.y } : {})}" in src
+
+    def test_the_paint_is_under_everything_and_clipped_to_the_plot(self):
+        src = self.SRC.read_text()
+        body = src[src.index("export function DeliveryChart("):src.index("export const deliveryLabel")]
+        i_ice = body.index("<rect x={0} y={0} width={g.w} height={g.h} fill={PAINT.ice} />")
+        i_paint = body.index("{g.paint ? (")
+        i_lines = body.index("{g.lines.map(")
+        assert i_ice < i_paint < i_lines
+        assert "viewBox={`${g.plot.x} ${g.plot.y} ${g.plot.w} ${g.plot.h}`}" in body
+
 
 REPORT_FIXTURE = Path(__file__).resolve().parent / "fixtures/report/dimmit_grant.json"
 
@@ -4387,6 +4405,26 @@ class TestTheLineChart:
 
     def test_no_shot_is_nothing(self):
         assert run_js("out(lineChartGeometry(null, {}, LINEBOX));") is None
+
+
+class TestTheLineChartMarkup:
+    SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/LineChart.jsx"
+    DETAIL = Path(__file__).resolve().parents[1] / "frontend/viewer/Detail.jsx"
+
+    def test_it_is_an_image_with_no_ids(self):
+        src = self.SRC.read_text()
+        code = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+        assert 'role="img"' in code
+        assert "<defs" not in code and " id=" not in code and "clipPath" not in code
+
+    def test_the_strip_is_shared_not_copied(self):
+        assert "export function Strip(" in self.DETAIL.read_text()
+        assert 'import { Strip } from "./Detail.jsx";' in self.SRC.read_text()
+
+    def test_the_phone_strip_is_called_as_before(self):
+        src = self.DETAIL.read_text()
+        assert ("<Strip shot={shot} shapes={stripShapes(stripGeometry(shot))}\n"
+                "               label={`The sheet from above, thrower at the bottom: ${seen}`} />") in src
 
 
 class TestTheReportByEnd:
