@@ -36,7 +36,9 @@
  *   menu       the header's overflow menu: opens, holds the right things, a field in it keeps it
  *              open, closes
  *   next       the Next rock button steps across an end and is disabled on the last rock
- *   sheets     the Miss, Note and Order sheets open at the top, keep the keys out, and write back
+ *   sheets     at 820 x 1080 and 744 x 1050: the Miss, Note and Order sheets open at the top,
+ *              keep the keys out, and write back; with a long reason and a note set, each sheet
+ *              button's name is whole and seen, and only its value gives way
  *   rotate     a note typed in a sheet survives a turn to landscape; no sheet is left open
  *   house      tapping the house opens a full-height editor that survives Safari's bar
  *   blanks     (--blanks) the editor on a blank rock: Mark charted twice. Marks two rocks charted
@@ -282,36 +284,72 @@ await check("next", async () => {
   else if (!(await cdp.eval(`document.getElementById("nextRock").disabled`))) fail("next: #nextRock is not disabled on the last rock (e5 s16)");
 });
 
+/* A long reason, so the sheet buttons have to give way: only their values may. */
+const LONG_REASON = "came up two feet short of the button";
+/* Types `value` over what a sheet's field holds, then closes the sheet. */
+async function typeInSheet(btn, field, sheet, value) {
+  await tap(btn);
+  await sleep(300);
+  await tap(field);
+  await cdp.eval(`document.querySelector(${JSON.stringify(field)}).select()`);
+  await cdp.send("Input.insertText", { text: value });
+  await sleep(200);
+  await closeSheet(sheet);
+}
 await check("sheets", async () => {
-  await open(at(edit, ROCK), 820, 1080);
-  await tap("#missBtn");
-  await sleep(300);
-  if (!(await isOpen("missSheet"))) fail("sheets: #missBtn did not open #missSheet");
-  else {
-    const m = await box("#missSheet");
-    if (m.y > 120) fail(`sheets: #missSheet's top is at ${Math.round(m.y)}, below 120`);
-    await shot("sheets-miss-820x1080");
-    const before = (await page()).hash;
-    await key("ArrowRight");
+  for (const [w, h] of [[820, 1080], [744, 1050]]) {
+    const where = `sheets ${w}x${h}`;
+    await open(at(edit, ROCK), w, h);
+    await tap("#missBtn");
     await sleep(300);
-    if ((await page()).hash !== before) fail("sheets: → moved the rock behind #missSheet");
-    await tapExpr(`document.querySelector("#missSheet .reasons button")`, "the first miss reason");
-    await sleep(200);
-    await closeSheet("missSheet");
-    const mb = await text("#missBtn");
-    if (!(mb ?? "").startsWith("Miss: ")) fail(`sheets: #missBtn reads ${JSON.stringify(mb)} after a reason, not "Miss: …"`);
+    if (!(await isOpen("missSheet"))) fail(`${where}: #missBtn did not open #missSheet`);
+    else {
+      const m = await box("#missSheet");
+      if (m.y > 120) fail(`${where}: #missSheet's top is at ${Math.round(m.y)}, below 120`);
+      await shot(`sheets-miss-${w}x${h}`);
+      const before = (await page()).hash;
+      await key("ArrowRight");
+      await sleep(300);
+      if ((await page()).hash !== before) fail(`${where}: → moved the rock behind #missSheet`);
+      await tapExpr(`document.querySelector("#missSheet .reasons button")`, "the first miss reason");
+      await sleep(200);
+      await closeSheet("missSheet");
+      const mb = await text("#missBtn");
+      if (!(mb ?? "").startsWith("Miss: ")) fail(`${where}: #missBtn reads ${JSON.stringify(mb)} after a reason, not "Miss: …"`);
+    }
+    // Typed over what the first size left, so each size starts from the same note.
+    await typeInSheet("#noteBtn", "#note", "noteSheet", "ok");
+    const nb = await text("#noteBtn");
+    if (nb !== "Note: ok") fail(`${where}: #noteBtn reads ${JSON.stringify(nb)} after typing "ok", not "Note: ok"`);
+    await typeInSheet("#missBtn", "#missReason", "missSheet", LONG_REASON);
+    const lb = await text("#missBtn");
+    if (!(lb ?? "").startsWith("Miss: came")) fail(`${where}: #missBtn reads ${JSON.stringify(lb)} after a long reason, not "Miss: came…"`);
+    // With a long reason and a note set, every button's name is whole and seen, and each set
+    // value shows at least a little of itself; the row does not run past its card.
+    const row = await cdp.eval(`(() => {
+      const out = [];
+      for (const id of ["missBtn", "noteBtn", "orderBtn"]) {
+        const b = document.getElementById(id), l = b?.querySelector(".sb-lbl"), v = b?.querySelector(".sb-val");
+        if (!b || !l) { out.push(\`#\${id} has no name span\`); continue; }
+        const br = b.getBoundingClientRect(), lr = l.getBoundingClientRect();
+        const seen = lr.width > 0 && lr.height > 0 && getComputedStyle(l).visibility !== "hidden";
+        if (!seen) out.push(\`#\${id}'s name is not visible\`);
+        if (l.scrollWidth > l.clientWidth) out.push(\`#\${id}'s name is clipped (\${l.scrollWidth} > \${l.clientWidth})\`);
+        if (lr.left < br.left - 0.5 || lr.right > br.right + 0.5) out.push(\`#\${id}'s name runs out of its button\`);
+        if (v) { const vr = v.getBoundingClientRect();
+                 if (vr.width < Math.min(v.scrollWidth, 16)) out.push(\`#\${id}'s value shows \${Math.round(vr.width)} px\`); }
+      }
+      const r = document.querySelector("#missBtn")?.closest(".gbar-row");
+      if (r && r.scrollWidth > r.clientWidth + 1) out.push(\`the score row runs past its card (\${r.scrollWidth} > \${r.clientWidth})\`);
+      return out; })()`);
+    for (const m of row) fail(`${where}: ${m}`);
+    console.log(`${where}: ${JSON.stringify(await text("#missBtn"))} | ${JSON.stringify(await text("#noteBtn"))} | ${JSON.stringify(await text("#orderBtn"))}`);
+    await shot(`sheets-row-${w}x${h}`);
+    await tap("#orderBtn");
+    await sleep(300);
+    if (!(await vis("#orderSheet #moveBefore"))) fail(`${where}: #orderSheet has no visible #moveBefore`);
+    await closeSheet("orderSheet");
   }
-  await tap("#noteBtn");
-  await sleep(300);
-  await tap("#note");
-  await cdp.send("Input.insertText", { text: "ok" });
-  await closeSheet("noteSheet");
-  const nb = await text("#noteBtn");
-  if (nb !== "Note: ok") fail(`sheets: #noteBtn reads ${JSON.stringify(nb)} after typing "ok", not "Note: ok"`);
-  await tap("#orderBtn");
-  await sleep(300);
-  if (!(await vis("#orderSheet #moveBefore"))) fail("sheets: #orderSheet has no visible #moveBefore");
-  await closeSheet("orderSheet");
 
   await open(at(view, ROCK), 820, 1080);
   await tap("#missBtn");

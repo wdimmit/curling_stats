@@ -240,6 +240,23 @@ function Grading({ shot, shotKey, openGroup, readOnly, others, actions }) {
   );
 }
 
+/* A sheet's button on the iPad (spec §6): its name, then the value once one
+ * is set. Only the value gives way, ending in "…": the name never shrinks, so
+ * the button always says what it opens. The text is sheetButtonText's, the
+ * value cut at a word, so the accessible name is that whatever is drawn. */
+function SheetButton({ id, label, value, setLabel = label, onClick }) {
+  const text = sheetButtonText(label, value, setLabel);
+  const head = value ? `${setLabel}:` : text;
+  return (
+    <button id={id} type="button" className="sheetbtn" onClick={onClick}>
+      <span className="sb">
+        <span className="sb-lbl">{head}</span>
+        {value ? <>{" "}<span className="sb-val">{text.slice(head.length + 1)}</span></> : null}
+      </span>
+    </button>
+  );
+}
+
 /* The wide layout's grading (spec 2026-10-15 §1): the panel's controls in two
  * rows under the video. One of Grading and GradingBar renders, never both, so
  * every id stays unique. The renumbering notice goes with it: the panel that
@@ -306,19 +323,15 @@ export function GradingBar({ shot, shotKey, openGroup, readOnly, others, notice,
               <span className="gbar-lbl">Score</span>
               <ScoreButtons shot={shot} readOnly={readOnly} actions={actions} />
             </div>
-            <button id="missBtn" type="button" onClick={() => setOpen("miss")}>
-              {sheetButtonText("Miss", miss.value)}
-            </button>
-            <button id="noteBtn" type="button" onClick={() => setOpen("note")}>
-              {sheetButtonText("Note", note.value)}
-            </button>
-            {/* Not on /s/, as the panel hides #orderBox there. */}
-            {!readOnly ? (
-              <button id="orderBtn" type="button" onClick={() => setOpen("order")}>
-                {sheetButtonText("Order", before ? `#${before.number}` : null)}
-              </button>
-            ) : null}
-            <span className="mk-grow" />
+            <div className="gbar-sheets">
+              <SheetButton id="missBtn" label="Miss" value={miss.value} onClick={() => setOpen("miss")} />
+              <SheetButton id="noteBtn" label="Note" value={note.value} onClick={() => setOpen("note")} />
+              {/* Not on /s/, as the panel hides #orderBox there. */}
+              {!readOnly ? (
+                <SheetButton id="orderBtn" label="Order" value={before ? `#${before.number}` : null}
+                             onClick={() => setOpen("order")} />
+              ) : null}
+            </div>
             {next}
           </div>
           {/* On /s/ the two fields open read-only, so a long note can be read in full. */}
@@ -514,9 +527,8 @@ export function EndBox({ view, cursor, config, actions, compact }) {
         <p className="endline">{endLineText(s, at?.end.number, name)}</p>
         {!config.readOnly ? (
           <>
-            <button id="swapBtn" type="button" onClick={() => setOpen(true)}>
-              {sheetButtonText("Swapped roles", swapText(at?.swapped || {}, name), "Swapped")}
-            </button>
+            <SheetButton id="swapBtn" label="Swapped roles" value={swapText(at?.swapped || {}, name)}
+                         setLabel="Swapped" onClick={() => setOpen(true)} />
             <Sheet id="swapSheet" title="Swapped roles" open={open} onClose={() => setOpen(false)}>
               {swaps}
             </Sheet>

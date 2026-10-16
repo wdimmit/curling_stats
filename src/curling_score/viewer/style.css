@@ -1559,10 +1559,11 @@ body[data-mode="review"] #house { cursor:default; }
   /* The charting bar (spec §6), its own card along the bottom: the groups
      with the auto note at the right, the group's subtypes on a line of their
      own (Hit's ten fit on it at 744 px), then the score, the sheet buttons and
-     Next rock. That last row never wraps: a set value grows its sheet
-     button up to 180 px, and when the row runs out the three buttons give
-     way, ending in "…", so typing a note never changes the bar's height and
-     with it the video's size. */
+     Next rock. That last row never wraps, so typing a note never changes the
+     bar's height and with it the video's size: a set value grows its sheet
+     button up to 180 px, and when the row runs out only the values give way,
+     ending in "…". A button's name never does, so each still says what it
+     opens. */
   #grading { grid-area: bar; margin: 0; padding: 12px; background: var(--panel);
              border: 1px solid var(--line); border-radius: 10px; gap: 8px; }
   .gbar-row { gap: 6px; row-gap: 8px; }
@@ -1576,12 +1577,24 @@ body[data-mode="review"] #house { cursor:default; }
   .gbar #scoreBtns { gap: 5px; }
   .gbar #scoreBtns button { width: 50px; height: 48px; padding: 0; font-size: 20px; }
   .gbar .gbar-row:nth-child(2) { flex-wrap: nowrap; }
-  #missBtn, #noteBtn, #orderBtn { flex: 0 1 auto; min-width: 44px; min-height: 44px; max-width: 180px;
-                                  padding: 0 10px; font-size: 15px;
-                                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mk-grow { flex: 1 1 auto; }
-  #nextRock { flex: none; min-height: 48px; padding: 0 16px; font-weight: 700; white-space: nowrap;
-              background: var(--ink); color: var(--panel); border-color: transparent; }
+  /* The three share what the score and Next rock leave as a grid of their
+     own, which hands the room out evenly: a short value ("ok") is shown whole
+     before a long one takes the rest. A track's floor is its button's name. */
+  .gbar-sheets { flex: 0 1 auto; display: grid; grid-auto-flow: column;
+                 grid-auto-columns: minmax(min-content, max-content); gap: 6px; }
+  /* A sheet button: the name, then the value. The value's track has a floor
+     of 0, so the button's own min-content -- its floor -- is the name, which
+     never wraps or shrinks; only the value is cut, with "…". */
+  .sheetbtn { min-width: 44px; min-height: 44px; padding: 0 8px; font-size: 15px; white-space: nowrap; }
+  .sheetbtn .sb { display: grid; grid-auto-flow: column; grid-template-columns: auto;
+                  grid-auto-columns: minmax(0, max-content); column-gap: .3em; align-items: center;
+                  justify-content: center; }
+  .sheetbtn .sb-lbl { white-space: nowrap; }
+  .sheetbtn .sb-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #missBtn, #noteBtn { max-width: 180px; }
+  #orderBtn { min-width: max-content; }      /* never shrinks: its value is "#N" */
+  #nextRock { flex: none; margin-left: auto; min-height: 48px; padding: 0 16px; font-weight: 700;
+              white-space: nowrap; background: var(--ink); color: var(--panel); border-color: transparent; }
 
   /* The house card (spec §4) is for reading the house: drawn to fit, with
      Charted and "open it large" over its top corners. Its drawing must not
@@ -1646,11 +1659,19 @@ body[data-mode="review"] #house { cursor:default; }
   /* The line wraps, never ellipsises: what it says is not to be hidden. */
   #figCard #endBox .endline { flex: 1 1 0; min-width: 0; margin: 0; font-size: 13px; line-height: 1.25;
                               white-space: normal; overflow-wrap: anywhere; }
-  #swapBtn { flex: 0 1 auto; min-width: 44px; min-height: 44px; max-width: 180px; padding: 0 10px;
-             font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #swapBtn { flex: 0 1 auto; max-width: 180px; padding: 0 10px; }
   /* The swap sheet's two boxes are fingertip targets; #endBox label (1,0,1) would make them 20 px. */
   #swapSheet label.chk { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 0; }
   #swapSheet label.chk input { width: 20px; height: 20px; margin: 0; flex: none; }
+}
+
+/* The narrowest iPads (the mini, 744 px): the score row gives the sheet
+   buttons' values more room. The score buttons go to 44 px wide, still a
+   fingertip, and Next rock keeps its words with less padding. */
+@media (any-pointer: coarse) and (orientation: portrait) and (min-width: 700px) and (max-width: 799px) {
+  .gbar #scoreBtns { gap: 4px; }
+  .gbar #scoreBtns button { width: 44px; }
+  #nextRock { padding: 0 12px; }
 }
 
 /* --- the portrait iPad's sheets (spec 2026-10-16 §6) ---------------------- */
