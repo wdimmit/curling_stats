@@ -281,6 +281,19 @@ class TestPlace:
         assert (n, arrivals, pairs) == (1, [], {})
         assert out[0].reason == R.REASON and out[0].release is r
 
+    def test_a_hog_taken_back_from_its_arrival_was_matched(self):
+        """Wednesday Womens 10/14 S2 game 2 end 1 rock 1: the fit has to know
+        this hog was seen matched, or anything unreleased outranks it."""
+        r, pushed = self._late_pair()
+        before = {r: pushed}
+        _a, _p, out, _n = FF.place([], before, [pushed], [], follow_fn=lambda c, t: None)
+        assert FF.taken_back(out, before) == out
+
+    def test_a_release_never_matched_was_not_taken_back(self):
+        _a, _p, out, _n = FF.place([R.as_delivery(_release())], {}, [], [],
+                                   follow_fn=lambda c, t: None)
+        assert out[0].reason == R.REASON and FF.taken_back(out, {}) == []
+
     def test_unless_the_camera_saw_the_throw_itself_arrive(self):
         r, pushed = self._late_pair()
         follow = lambda c, t: FF.Outcome(FF.THROUGH, T0 + 19, 0.2, 0.5, 60)

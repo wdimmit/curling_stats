@@ -242,6 +242,14 @@ def released_ids(pairing, unaccounted=()) -> set:
     return {id(d) for d in pairing.values()} | {id(d) for d in unaccounted}
 
 
-def paired_ids(pairing) -> set:
-    """``id``s of the arrivals ``release.find_and_pair`` matched to a release."""
-    return {id(d) for d in pairing.values()}
+def paired_ids(pairing, taken_back=()) -> set:
+    """``id``s of the arrivals ``release.find_and_pair`` matched to a release.
+
+    ``taken_back`` are the hogs `farfollow.place` made of matched releases
+    (`farfollow.taken_back`): the arrival was the hog pushed down the sheet,
+    so the release now stands in for it. The match was still seen, and a hog
+    without it ranks below anything seen arriving -- Wednesday Womens 10/14
+    S2 game 2's rock 1 lost its slot to a broom head carried past the sheet
+    three minutes before the game.
+    """
+    return {id(d) for d in pairing.values()} | {id(d) for d in taken_back}

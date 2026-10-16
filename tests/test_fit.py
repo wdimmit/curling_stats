@@ -325,3 +325,31 @@ class TestAPairedArrivalOutranksAnUnpairedOne:
         fragment = dv("red", 309.0, reason="rest")
         kept = fit.fit_end(before + [flight, fragment])
         assert fragment in kept and flight not in kept
+
+
+class TestAHogTakenBackFromItsArrivalStaysPaired:
+    """Wednesday Womens 10/14 S2 game 2 end 1: rock 1, a red, was hogged and
+    pushed in 21.8 s after its release, so `farfollow.place` took the release
+    back from that arrival and charted it hogged. As a bare hog it ranked
+    below a five-sample "left-view" 200 s earlier -- a broom head carried past
+    the sheet before the game -- and the broom head took rock 1's slot."""
+
+    def end(self):
+        stray = dv("red", 6912.1, reason="left-view")
+        hog = dv("red", 7113.4, reason="hogged")
+        rest = [dv("yellow" if i % 2 == 0 else "red", 7151.9 + 50.0 * i) for i in range(15)]
+        return stray, hog, rest
+
+    def test_a_bare_hog_loses_its_slot_to_anything_seen_arriving(self):
+        stray, hog, rest = self.end()
+        kept = fit.fit_end([stray, hog] + rest)
+        assert stray in kept and hog not in kept
+
+    def test_taken_back_from_a_matched_arrival_it_keeps_the_match(self):
+        stray, hog, rest = self.end()
+        kept = fit.fit_end([stray, hog] + rest, paired=fit.paired_ids({}, [hog]))
+        assert hog in kept and stray not in kept and len(kept) == 16
+
+    def test_paired_ids_counts_both(self):
+        a, hog = dv("red", 10.0), dv("yellow", 60.0, reason="hogged")
+        assert fit.paired_ids({"r": a}, [hog]) == {id(a), id(hog)}

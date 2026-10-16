@@ -197,7 +197,12 @@ from pathlib import Path
 # track -- the shot's rest, its house and its house_delta were the other
 # stone's (s_0WTrSBTjUazkTDnZB e2 r16), and a shooter is followed past the
 # stone it struck. Shot lists are unchanged on the 16 harness games.
-PIPELINE_VERSION = "2026.10.12.3"
+# 2026.10.15.1: a hog farfollow took back from the arrival it was matched to
+# (that arrival was the hog pushed down the sheet) keeps the match's standing
+# in the fit (`farfollow.taken_back`, `fit.paired_ids`): as a bare hog it lost
+# its slot to anything seen arriving, and Wednesday Womens 10/14 S2 game 2's
+# rock 1 was a broom head carried past the sheet three minutes before play.
+PIPELINE_VERSION = "2026.10.15.1"
 
 
 def model_id(weights) -> str:
