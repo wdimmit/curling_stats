@@ -221,28 +221,41 @@ export function GradingBar({ shot, shotKey, openGroup, readOnly, others, notice,
                              on => actions.setBusy(on ? shotKey : null));
   return (
     <div id="grading" className="gbar">
+      {/* Each label and its control are one box (.gbar-pair), so a row that
+          wraps at the narrow end of the wide layout never strands a label at
+          the end of a line. The subtypes may take a line of their own. */}
       <div className="gbar-row">
-        <span className="gbar-lbl">Shot type</span>
-        <TypeGroups t={t} />
+        <div className="gbar-pair">
+          <span className="gbar-lbl">Shot type</span>
+          <TypeGroups t={t} />
+        </div>
         <span className="gbar-sep" aria-hidden="true" />
         <TypeList t={t} readOnly={readOnly} actions={actions} />
         <AutoType shot={shot} actions={actions} />
       </div>
       <div className="gbar-row">
-        <span className="gbar-lbl">Score</span>
-        <ScoreButtons shot={shot} readOnly={readOnly} actions={actions} />
+        <div className="gbar-pair">
+          <span className="gbar-lbl">Score</span>
+          <ScoreButtons shot={shot} readOnly={readOnly} actions={actions} />
+        </div>
         <span className="gbar-sep" aria-hidden="true" />
-        <label className="gbar-lbl" htmlFor="missReason">Miss</label>
-        <input type="text" id="missReason" list="missList" placeholder="&mdash;" {...miss} />
-        <MissList />
-        <label className="gbar-lbl" htmlFor="note">Note</label>
-        <textarea id="note" rows={1} placeholder="&mdash;" {...note} />
+        <div className="gbar-pair">
+          <label className="gbar-lbl" htmlFor="missReason">Miss</label>
+          <input type="text" id="missReason" list="missList" placeholder="&mdash;" {...miss} />
+          <MissList />
+        </div>
+        <div className="gbar-pair gbar-note">
+          <label className="gbar-lbl" htmlFor="note">Note</label>
+          <textarea id="note" rows={1} placeholder="&mdash;" {...note} />
+        </div>
         <span className="gbar-sep" aria-hidden="true" />
-        <label className="gbar-lbl" htmlFor="moveBefore">Order</label>
-        <MoveBefore shot={shot} others={others} readOnly={readOnly} actions={actions}
-                    title={"Where in the end this rock was really thrown. Detection missed a rock and put "
-                         + "its blank in the wrong place? Move the blank to where it was thrown; the whole "
-                         + "end renumbers."} />
+        <div className="gbar-pair">
+          <label className="gbar-lbl" htmlFor="moveBefore">Order</label>
+          <MoveBefore shot={shot} others={others} readOnly={readOnly} actions={actions}
+                      title={"Where in the end this rock was really thrown. Detection missed a rock and put "
+                           + "its blank in the wrong place? Move the blank to where it was thrown; the whole "
+                           + "end renumbers."} />
+        </div>
       </div>
       <div id="renumbered" role="status">{notice || ""}</div>
     </div>

@@ -8,7 +8,8 @@
  *
  * Give each URL a rock with a delivery: #e=2&s=4 for tl-s_0cYt.json.
  * Checks, by name:
- *   fit       five screen sizes x three surfaces: no scroll, every card above the fold
+ *   fit       five screen sizes x three surfaces: no scroll, every card above the fold,
+ *             the control row and the bar inside the video's card, each bar label on its control's line
  *   short     1920x768: the page may scroll, but no card overlaps another
  *   narrow    1699x900: the old layout, untouched
  *   resize    a note typed at 1920 survives crossing to 1600
@@ -74,6 +75,33 @@ const box = sel => cdp.eval(`(() => { const e = document.querySelector(${JSON.st
 const page = () => cdp.eval(`({ sh: document.documentElement.scrollHeight, sw: document.documentElement.scrollWidth,
   ih: innerHeight, iw: innerWidth, hash: location.hash })`);
 const isOpen = id => cdp.eval(`!!document.querySelector("#${id}[open]")`);
+/* Every control-row and bar item (and each item's own children) that has a
+ * box but lies outside #playCard's, by more than a pixel, named. */
+const strays = () => cdp.eval(`(() => {
+  const card = document.getElementById("playCard")?.getBoundingClientRect();
+  if (!card) return [];
+  const name = e => e.id ? "#" + e.id
+    : e.tagName.toLowerCase() + [...e.classList].map(c => "." + c).join("") + (e.textContent.trim() ? \` "\${e.textContent.trim().slice(0, 16)}"\` : "");
+  const out = [];
+  for (const e of document.querySelectorAll("#transport > *, #transport > * > *, .gbar-row > *, .gbar-row > * > *")) {
+    const r = e.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    if (r.left < card.left - 1 || r.right > card.right + 1 || r.top < card.top - 1 || r.bottom > card.bottom + 1)
+      out.push(\`\${name(e)} at x \${Math.round(r.left)}-\${Math.round(r.right)}, y \${Math.round(r.top)}-\${Math.round(r.bottom)} is outside #playCard \`
+             + \`(x \${Math.round(card.left)}-\${Math.round(card.right)}, y \${Math.round(card.top)}-\${Math.round(card.bottom)})\`);
+  }
+  return out; })()`);
+/* Every bar label on a different line from the control after it. */
+const stranded = () => cdp.eval(`(() => {
+  const out = [];
+  for (const l of document.querySelectorAll(".gbar .gbar-lbl")) {
+    const c = l.nextElementSibling, a = l.getBoundingClientRect(), b = c?.getBoundingClientRect();
+    if (!b || !a.height || !b.height) continue;
+    const mid = y => (y.top + y.bottom) / 2;
+    if (Math.abs(mid(a) - mid(b)) > b.height / 2)
+      out.push(\`the "\${l.textContent.trim()}" label (y \${Math.round(a.top)}) is not on the line of \${c.id ? "#" + c.id : c.tagName.toLowerCase()} (y \${Math.round(b.top)})\`);
+  }
+  return out; })()`);
 
 async function clickAt(x, y) {
   for (const type of ["mousePressed", "mouseReleased"])
@@ -116,6 +144,9 @@ await check("fit", async () => {
         if (g && g.w && g.h) fail(`${at}: #grading is visible on the review page`);
       }
       for (const sel of ["#detailCard", "#chart"]) if (await box(sel)) fail(`${at}: ${sel} is in the wide layout`);
+      // The control row and the bar wrap at the narrow end; nothing in them may run past the card.
+      for (const s of await strays()) fail(`${at}: ${s}`);
+      for (const s of await stranded()) fail(`${at}: ${s}`);
       const v = await box("#video");
       if (v && v.w < 640) fail(`${at}: the video is ${Math.round(v.w)} px wide`);
       await shot(`fit-${name}-${w}x${h}`);

@@ -479,14 +479,21 @@ export function App({ doc, config, cursor, reload }) {
           <div className="video" id="video" ref={videoRef} />
           {wide ? (
             <>
+              {/* Wraps at the narrow end of the wide layout, never past the
+                  card: the arrows stay round the chips, replay and mark
+                  charted follow while they fit, and the link and the gear
+                  keep together at the right. */}
               <div className="row transport" id="transport">
-                {prevBtn}{shotChips}{nextBtn}{replayBtn}{markBtn}
-                <span className="grow" />
-                {ytLink}
-                <button id="playGear" type="button" title="Playback: play on jump, lead-in"
-                        aria-label="Playback settings" aria-expanded={String(!!ui.prefs)}
-                        onClick={() => dispatch({ type: "set", patch: { prefs: !ui.prefs } })}>{GEAR}</button>
-                {ui.prefs ? <div id="playPrefs">{playback}</div> : null}
+                <div className="tp-rock">{prevBtn}{shotChips}{nextBtn}</div>
+                {replayBtn}{markBtn}
+                <div className="tp-end">
+                  {ytLink}
+                  <button id="playGear" type="button" title="Playback: play on jump, lead-in"
+                          aria-label="Playback settings" aria-controls="playPrefs"
+                          aria-expanded={String(!!ui.prefs)}
+                          onClick={() => dispatch({ type: "set", patch: { prefs: !ui.prefs } })}>{GEAR}</button>
+                  {ui.prefs ? <div id="playPrefs">{playback}</div> : null}
+                </div>
               </div>
               <GradingBar key={shotKey} shot={shot} shotKey={shotKey} openGroup={ui.openGroup}
                           readOnly={config.readOnly} others={others} notice={ui.notice} actions={actions} />

@@ -63,7 +63,7 @@ export function LineCard({ shot, doc, onExpand }) {
       <div className="lc-head">
         <h2>The line</h2>
         {open ? (
-          <button type="button" id="lineExpand" onClick={open} aria-label="Open the delivery large">
+          <button type="button" id="lineExpand" onClick={open} title="Open the delivery large">
             {EXPAND}Expand
           </button>
         ) : null}
