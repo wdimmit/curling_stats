@@ -141,6 +141,11 @@ export function App({ doc, config, cursor, reload }) {
   const closeClipping = useCallback(() => dispatch({ type: "set", patch: { clipping: null } }), []);
   const closeDelivering = useCallback(() => dispatch({ type: "set", patch: { delivering: null } }), []);
   const closeThinking = useCallback(() => dispatch({ type: "set", patch: { thinking: false } }), []);
+  // Narrowing unmounts the two wide-only dialogs; drop their state so widening
+  // again does not reopen a stale one.
+  useEffect(() => {
+    if (!wide) dispatch({ type: "set", patch: { delivering: null, thinking: false } });
+  }, [wide]);
 
   /* --------------------------------------------------------------- actions */
 
@@ -605,9 +610,13 @@ export function App({ doc, config, cursor, reload }) {
       <PlayedDialog playing={ui.playing} onClose={closePlayed} />
       <TeamsDialog naming={ui.naming} onClose={closeNaming} onSaved={reload} />
       <ShotClipDialog clipping={ui.clipping} onClose={closeClipping} />
-      <DeliveryDialog delivering={ui.delivering} onClose={closeDelivering} />
-      <ThinkingDialog open={ui.thinking} series={series} here={here} bars={ui.clockBars}
-                      actions={actions} onClose={closeThinking} />
+      {/* Both are opened only from the wide layout, so the narrow and phone DOM
+          never carries them (spec: byte-identical to before). */}
+      {wide ? <DeliveryDialog delivering={ui.delivering} onClose={closeDelivering} /> : null}
+      {wide ? (
+        <ThinkingDialog open={ui.thinking} series={series} here={here} bars={ui.clockBars}
+                        actions={actions} onClose={closeThinking} />
+      ) : null}
     </>
   );
 }
