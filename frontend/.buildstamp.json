@@ -56,7 +56,7 @@
     "frontend/site/ui.jsx": "19a9c87760a768cf44f05dec32d90eeab29cd0010e5553a91286eff18ec975dc",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
     "frontend/viewer/App.jsx": "18931775b1388cf27f9a6b6d19ed2f195d3db34f5014a76abb610b08cacf4b77",
-    "frontend/viewer/ChartPanel.jsx": "6f224bf53b55fd1c4235a99eb3c8cbe62fd6160d5d3fab7f0475977ff340323d",
+    "frontend/viewer/ChartPanel.jsx": "2b04fda310c7b004c2248ba07700cfa26a7abdd28c03f0549704bc127f0488c6",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "65dfe05210a940423b6ea5ccd87ceafe59c6b2b457386555adfac82da758f890",
     "frontend/viewer/DeliveryDialog.jsx": "2acf31933507427f14edb2d86c404de2fd6c5f5dd61485dcc2bbe473a3891b38",

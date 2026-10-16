@@ -39,6 +39,9 @@ function useTypedField(initial, commit, busy, owner) {
     if (r.owner === owner && r.value !== node.value) setText(r.value);
     node.focus();
     node.setSelectionRange(r.start, r.end);
+    // Once, on mount, by design: `owner` is the shot's key, constant for the
+    // field's life (its bar or panel is keyed by it).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     // Not on mount. The effect runs once with the value the shot already has,
