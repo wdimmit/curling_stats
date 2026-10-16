@@ -754,6 +754,16 @@ def played(game, out_ends):
     return replace(game, ends=ends, end_s=ends[-1].end_s), out_ends[:keep]
 
 
+def leaves_off_head(game, end, prev_end_s, recording_start_s: float = 0.0) -> bool:
+    """Whether ``end``, at a game's head with nothing thrown in it, is left
+    off: always in a later game (stones parked between games), and in the
+    recording's first game unless the recording joined it (`joined_late`),
+    since a stream that came up mid-end shows that end's last rocks or none.
+    Wednesday Womens 10/14 S4: people in the top house 45-365 s, before
+    anything was thrown, were end 1, and every end after it one too high."""
+    return bool(game.index) or not joined_late(prev_end_s, end.start_s, recording_start_s)
+
+
 def without_first_end(game):
     """``game`` without its first end, the rest numbered from one -- none, for
     a live game whose next end has not settled yet."""
@@ -806,15 +816,18 @@ def build_games(ctx: EndContext, games, *, read_board=None,
             end = game.ends[k]
             phase("detect", done_ends / total_ends,
                   f"game {game.index + 1} end {end.number}")
+            run_up = prev_end_s
             built, prev_end_s = build_one_end(
-                ctx, game, end, prev_end_s,
+                ctx, game, end, run_up,
                 board_score=(None if board is None
                              else board.scores.per_end.get(end.number)))
             done_ends += 1
-            if (game.index and not out_ends and k + 1 < len(game.ends)
+            if (not out_ends and k + 1 < len(game.ends)
+                    and leaves_off_head(game, end, run_up, ctx.recording_start_s)
                     and timeline.nothing_thrown(built)):
                 # Stones parked in a house before this game's first end, which
-                # the board split put at its head (`boardsplit.board_decides`).
+                # the board split put at its head (`boardsplit.board_decides`),
+                # or people in a house before the recording's first game.
                 # Left off before the next end is built, since an end's number
                 # is in its labels and picks its board score.
                 game = without_first_end(game)

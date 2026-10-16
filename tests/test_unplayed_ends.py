@@ -232,14 +232,26 @@ class TestALaterGameStartingWithParkedStones:
         assert [e["score"] for e in g2["ends"][:2]] == [{"red": 1, "yellow": 0},
                                                        {"red": 0, "yellow": 2}]
 
-    def test_the_first_game_keeps_its_first_end(self, ends_at):
-        """A stream joined late opens on an end with rocks missing; the first
-        game's first end is never dropped from the front."""
+    def test_the_first_game_keeps_a_first_end_the_recording_joined(self, ends_at):
+        """A stream joined late opens, with the recording, on an end with its
+        rocks missing; that end is real however few rocks it shows."""
         counts, _seen = ends_at
-        first, _second = self.games()
+        first = segment(6, start_s=10.0 - 900.0)          # end 1 opens at 10 s
         counts[first.ends[0].start_s] = (2, 0, 1)
         g1, = analyze.build_games(context(), [first])
         assert [e["number"] for e in g1["ends"]] == [1, 2, 3, 4, 5, 6]
+
+    def test_the_first_game_drops_an_empty_end_after_the_recording_began(self, ends_at):
+        """Wednesday Womens 10/14 S4: people in the top house 45-365 s before
+        the game, nothing thrown, kept as end 1 -- so every end of the game was
+        numbered one too high. Not joined late: it opened 45 s in."""
+        counts, seen = ends_at
+        first, _second = self.games()                     # end 1 opens at 900 s
+        counts[first.ends[0].start_s] = (0, 0, 0)
+        g1, = analyze.build_games(context(), [first])
+        assert [e["number"] for e in g1["ends"]] == [1, 2, 3, 4, 5]
+        assert g1["ends"][0]["start_s"] == first.ends[1].start_s
+        assert (0, 1, first.ends[1].start_s) in seen
 
     def test_a_later_game_of_nothing_but_parked_stones_is_no_game(self, ends_at):
         counts, _seen = ends_at

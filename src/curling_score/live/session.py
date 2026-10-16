@@ -279,7 +279,7 @@ class LiveSession:
     def _unparked(self, game):
         """``game`` without the ends at its head found to be stones parked in
         a house (see `_build`), the rest numbered from one."""
-        while game.index and game.ends and game.ends[0].start_s in self.parked:
+        while game.ends and game.ends[0].start_s in self.parked:
             game = analyze.without_first_end(game)
         return game
 
@@ -372,9 +372,11 @@ class LiveSession:
             one_pass=True, progress=self.progress)
         run_up = self.run_up[key] if again else self.prev_end_s
         built, closed = self.pipeline.build_end(ctx, game, end, run_up)
-        if not again and game.index and end.number == 1 and timeline.nothing_thrown(built):
+        if (not again and end.number == 1 and timeline.nothing_thrown(built)
+                and analyze.leaves_off_head(game, end, run_up)):
             # Stones parked in a house ahead of this game's first end, which
-            # the board split put at its head (`boardsplit.board_decides`).
+            # the board split put at its head (`boardsplit.board_decides`), or
+            # people in a house before the stream's first game.
             # Never published: the end after it is built as end 1, as
             # analyze.build_games does for a recording.
             self.parked.add(end.start_s)

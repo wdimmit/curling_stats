@@ -551,6 +551,49 @@ class TestNothingThrown:
         finish(s, rec, 3400.0)
         assert [e["number"] for e in pub[-1]["games"][0]["ends"]] == [1, 2, 3, 4]
 
+    def test_a_first_end_the_recording_joined_is_kept(self):
+        """The default sheet opens with rocks in the bottom house from 0 s:
+        a stream that came up mid-end, whatever it shows."""
+        pipe, rec, pub = Unplayed({(0, 1)}), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 3400.0)
+        assert [e["number"] for e in pub[-1]["games"][0]["ends"]] == [1, 2, 3, 4]
+
+    def test_an_empty_first_end_after_the_stream_began_is_never_published(self):
+        """Wednesday Womens 10/14 S4: people in a house before the game, kept
+        as end 1, numbered every end after it one too high."""
+        pipe, rec, pub = WarmUpFirst(), Recording(), []
+        s = session(pipe, rec, pub)
+        finish(s, rec, 3400.0)
+        game, = pub[-1]["games"]
+        assert [e["number"] for e in game["ends"]] == [1, 2, 3]
+        assert game["ends"][0]["start_s"] == pytest.approx(600.0, abs=10)
+        assert all(e["start_s"] >= 590.0 for doc in pub for g in doc["games"] for e in g["ends"])
+
+
+# Nothing until 300 s, people in the bottom house 300-600 s, then the game's
+# ends as `activity` has them: top 600-1500, bottom 1500-2400, top 2400-3300.
+def warm_up_first(t):
+    if t < 300:
+        return 0, 0
+    return activity(t)
+
+
+class WarmUpFirst(Pipeline):
+    def build_end(self, ctx, game, end, prev_end_s):
+        # By where the end is, as the real build is: a renumbered end is the same end.
+        built, closed = super().build_end(ctx, game, end, prev_end_s)
+        idle = end.start_s < 590.0
+        built["deliveries_seen"], built["releases_seen"] = (0, 0) if idle else (16, 16)
+        built["shots"] = [{"number": i + 1, "missing": False}
+                          for i in range(0 if idle else 16)]
+        return built, closed
+
+    def samples(self, path, setups, from_s, until_s):
+        return [Sample(t=x.t, top_stones=warm_up_first(x.t)[0],
+                       bottom_stones=warm_up_first(x.t)[1])
+                for x in super().samples(path, setups, from_s, until_s)]
+
 
 # A game, a pause of 400 s with both houses empty, and more of it -- or the
 # next game, if the board was cleared: top 0-900, bottom 900-1800, nothing

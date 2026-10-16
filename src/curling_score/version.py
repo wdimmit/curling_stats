@@ -202,7 +202,11 @@ from pathlib import Path
 # in the fit (`farfollow.taken_back`, `fit.paired_ids`): as a bare hog it lost
 # its slot to anything seen arriving, and Wednesday Womens 10/14 S2 game 2's
 # rock 1 was a broom head carried past the sheet three minutes before play.
-PIPELINE_VERSION = "2026.10.15.1"
+# 2026.10.16.1: the recording's first game drops an empty first end too, as
+# later games already did, unless the recording joined it at its start
+# (`analyze.leaves_off_head`): Wednesday Womens 10/14 S4's people in a house
+# before the game were end 1, and every end after it was one too high.
+PIPELINE_VERSION = "2026.10.16.1"
 
 
 def model_id(weights) -> str:
