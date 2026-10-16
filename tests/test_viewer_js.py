@@ -4193,6 +4193,123 @@ class TestSpeedNumbers:
         assert run_js("out(speedNumbers(null));") is None
 
 
+class TestTheBigDeliveryAndItsSpeed:
+    def geom(self, shot, box):
+        return run_js(f"out(deliveryGeometry({json.dumps(shot)}, {box}));")
+
+    def speed_geom(self, shot):
+        s = json.dumps(shot)
+        return run_js(f"const s = {s}; out(speedGeometry(deliverySpeed(s), SPEEDBOX, s));")
+
+    def test_the_window_is_returned_in_metres(self):
+        g = self.geom(delivery_shot(), "DELIVERYBOX")
+        assert g["win"]["span"] == pytest.approx(1.6)
+        zero = next(t for t in g["ticks"] if t["label"] == "0")
+        k = g["plot"]["w"] / g["win"]["span"]
+        assert zero["x1"] == pytest.approx(g["plot"]["x"] + (0 - g["win"]["x0"]) * k, abs=0.1)
+
+    def test_minor_ticks_only_where_a_box_asks(self):
+        small = self.geom(delivery_shot(), "DELIVERYBOX")
+        big = self.geom(delivery_shot(), "BIGDELIVERYBOX")
+        assert small["minor"] == [] and len(big["minor"]) > 0
+        figured = {t["y1"] for t in big["ticks"]}
+        assert not figured & {m["y1"] for m in big["minor"]}
+        ys = sorted({m["y1"] for m in big["minor"]} | figured)
+        k = big["plot"]["h"] / big["win"]["span"]
+        assert all(b - a == pytest.approx(2 * 0.0254 * k, abs=0.15) for a, b in zip(ys, ys[1:]))
+
+    def test_the_big_box_is_the_spec_s(self):
+        assert run_js("out(BIGDELIVERYBOX);") == {
+            "w": 1000, "h": 250, "side": True, "from": -4.0, "to": 8.05, "across": 0.9,
+            "minorInches": 2, "paint": True, "pad": {"l": 10, "r": 52, "t": 18, "b": 8}}
+        assert run_js("out(SPEEDBOX);") == {
+            "w": 1000, "h": 170, "from": -4.0, "to": 8.05, "pad": {"l": 10, "r": 52, "t": 16, "b": 22}}
+
+    def test_the_speed_and_the_delivery_share_their_x(self):
+        g = self.geom(ROCKS["e2r4"], "BIGDELIVERYBOX")
+        sg = self.speed_geom(ROCKS["e2r4"])
+        gx = {l["kind"]: l["x1"] for l in g["lines"] if l["kind"] != "centre"}
+        sx = {l["kind"]: l["x"] for l in sg["lines"]}
+        for kind in ("hack", "tee", "hog"):
+            assert sx[kind] == pytest.approx(gx[kind], abs=0.1), kind
+
+    def test_the_speed_chart_marks_the_peak_above_the_hog(self):
+        sg = self.speed_geom(ROCKS["e2r4"])
+        assert sg["peak"]["y"] < sg["hog"]["y"]            # faster is higher
+        assert sg["top"] >= 3
+        assert [q["label"] for q in sg["grid"][:3]] == ["0", "", "1 m/s"]
+        assert sg["hog"]["x"] == pytest.approx(next(l["x"] for l in sg["lines"] if l["kind"] == "hog"))
+
+    def test_the_line_takes_the_delivery_s_colours(self):
+        sg = self.speed_geom(ROCKS["e2r4"])
+        ramp = run_js("out(DELIVERY_RAMP);")
+        assert sg["segs"][-1]["color"] == ramp[-1]
+
+    def test_a_gap_in_the_path_breaks_the_speed_line(self):
+        whole = self.speed_geom(delivery_shot(delivery_points(fps=30)))
+        gapped = self.speed_geom(delivery_shot(delivery_points(fps=30, gap=(0.5, 1.6))))
+        widest = lambda sg: max(s["x2"] - s["x1"] for s in sg["segs"])   # noqa: E731
+        assert widest(whole) < 10
+        assert widest(gapped) < 10       # 2.2 m of ice is ~170 px: no segment bridges it
+        assert len(gapped["segs"]) < len(whole["segs"])
+
+    def test_nothing_to_draw(self):
+        assert run_js("out(speedGeometry(null, SPEEDBOX, null));") is None
+
+
+class TestThePaintUnderTheDelivery:
+    """The near house and the club's 4 ft stripe, faint under the close up, so
+    a slide can be read against the sheet. The stripe is painted in front of
+    the house only -- from where it meets the 12 ft out toward the hog line."""
+    PAINTED = "{...DELIVERYBOX, paint: true}"
+
+    def geom(self, box):
+        return run_js(f"out(deliveryGeometry({json.dumps(delivery_shot())}, {box}));")
+
+    def test_only_where_a_box_asks(self):
+        assert self.geom("DELIVERYBOX")["paint"] is None
+        assert self.geom("DESKDELIVERYBOX")["paint"] is None
+        assert self.geom(self.PAINTED)["paint"] is not None
+
+    def test_the_house_sits_on_the_throwing_tee_at_the_chart_s_stretch(self):
+        g = self.geom(self.PAINTED)
+        tee = next(l for l in g["lines"] if l["kind"] == "tee")
+        house = {r["kind"]: r for r in g["paint"]["house"]}
+        assert list(house) == ["twelve", "eight", "four", "button"]
+        kx = g["plot"]["w"] / g["win"]["span"]
+        ky = g["plot"]["h"] / 12.05
+        zero = next(t for t in g["ticks"] if t["label"] == "0")
+        for r in house.values():
+            assert (r["cx"], r["cy"]) == (pytest.approx(zero["x1"], abs=0.1), pytest.approx(tee["y1"], abs=0.1))
+        assert house["twelve"]["rx"] == pytest.approx(1.829 * kx, abs=0.1)
+        assert house["twelve"]["ry"] == pytest.approx(1.829 * ky, abs=0.1)
+
+    def test_the_stripe_is_in_front_of_the_house_only(self):
+        g = self.geom(self.PAINTED)
+        s = g["paint"]["stripe"]
+        kx = g["plot"]["w"] / g["win"]["span"]
+        ky = g["plot"]["h"] / 12.05
+        meet = (1.829 ** 2 - 0.6096 ** 2) ** 0.5     # metres past the tee where an edge meets the 12 ft
+        zero = next(t for t in g["ticks"] if t["label"] == "0")
+        tee = next(l for l in g["lines"] if l["kind"] == "tee")
+        for e, side in zip(s["edges"], (-1, 1)):
+            assert e["x1"] == e["x2"] == pytest.approx(zero["x1"] + side * 0.6096 * kx, abs=0.1)
+            assert e["y1"] == pytest.approx(tee["y1"] - meet * ky, abs=0.1)   # upright: in front is up
+            assert e["y2"] == pytest.approx(g["plot"]["y"], abs=0.1)          # out to the chart's far edge
+        assert " A" in s["d"] and s["d"].endswith("Z")
+
+    def test_on_its_side_in_front_is_to_the_right(self):
+        g = run_js(f"out(deliveryGeometry({json.dumps(delivery_shot())}, BIGDELIVERYBOX));")
+        tee = next(l for l in g["lines"] if l["kind"] == "tee")
+        for e in g["paint"]["stripe"]["edges"]:
+            assert e["x1"] > tee["x1"] and e["x2"] == pytest.approx(g["plot"]["x"] + g["plot"]["w"], abs=0.1)
+
+    def test_the_stripe_is_the_one_the_calibration_reads(self):
+        side = (Path(__file__).resolve().parents[1] / "src/curling_score/geometry/sideview.py").read_text()
+        assert "STRIP_HALF_M = 1.2192 / 2" in side
+        assert run_js("out(STRIPE_HALF_M);") == pytest.approx(1.2192 / 2)
+
+
 class TestTheReportByEnd:
     """The table at the top: the score, the hammer, and each team's
     shooting and clock, end by end."""

@@ -65,6 +65,19 @@ export const DELIVERYBOX = { w: 358, h: 395, side: false, from: -4.0, to: 8.05, 
                              pad: { l: 34, r: 8, t: 10, b: 26 } };
 export const DESKDELIVERYBOX = { w: 660, h: 230, side: true, from: -4.0, to: 8.05, across: 0.9,
                                  pad: { l: 10, r: 34, t: 18, b: 8 } };
+/* The club's 4 ft centre stripe: its edges, metres either side of the centre
+ * line. Mirrors geometry/sideview.py STRIP_HALF_M, which the long cameras'
+ * calibration reads off the same paint; a test pins the two together. It is
+ * painted in front of each house, not through or behind it. */
+export const STRIPE_HALF_M = 0.6096;
+/* The delivery opened large (spec 2026-10-15 §2): drawn ~1.5x, so a tick
+ * every 2 in between the figured 6 in ones, and the paint under it. SPEEDBOX
+ * is the speed chart under it: the same `from`/`to` and left and right pads,
+ * so a point on the ice is at the same x in both. */
+export const BIGDELIVERYBOX = { w: 1000, h: 250, side: true, from: -4.0, to: 8.05, across: 0.9, minorInches: 2,
+                                paint: true, pad: { l: 10, r: 52, t: 18, b: 8 } };
+export const SPEEDBOX = { w: 1000, h: 170, from: -4.0, to: 8.05, pad: { l: 10, r: 52, t: 16, b: 22 } };
+export const SPEED_GRID_M_S = 0.5;
 /* My shots (core/myshots.mjs): every rock of a group in one chart. The
  * overlay is the delivery close up with each rock's path measured off its own
  * hack-to-broom line -- `across` metres wide unless the rocks need more, and

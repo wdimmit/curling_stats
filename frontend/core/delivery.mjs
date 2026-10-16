@@ -7,7 +7,7 @@
  * sideways before it lets go.
  *
  * Pure -- core/** may not touch the DOM. */
-import { DELIVERY_RAMP, OVERLAYBOX } from "./constants.mjs";
+import { DELIVERY_RAMP, OVERLAYBOX, R, STRIPE_HALF_M } from "./constants.mjs";
 import { HACK_X_M, HACK_Y, TEE_Y, hackAimX, hackOf, lineReason, median, sideNames } from "./line.mjs";
 
 export const DELIVERY_SCHEMA = 8;
@@ -87,6 +87,16 @@ function acrossWindow(xs, across) {
  * and the thrower's right to the right, as the phone's strip; true turns it a
  * quarter as the desktop strip is turned, the hack at the left and the
  * thrower's left along the top. null only without a shot. */
+/* Where a path's colour ramp runs: from the push-off (the first sample
+ * clearly moving) to its last sample. The speed chart takes the same span, so
+ * a colour means the same moment in both. */
+export function rampSpan(pts) {
+  const moving = pts.findIndex(p => p.yp > pts[0].yp + 0.15);
+  const t0 = moving >= 0 ? pts[moving].t : pts.length ? pts[0].t : 0;
+  const t1 = pts.length ? pts[pts.length - 1].t : 1;
+  return { moving, t0, t1 };
+}
+
 export function deliveryGeometry(shot, box) {
   if (shot == null) return null;
   const { w, h, side, from, to, across, pad } = box;
@@ -133,6 +143,37 @@ export function deliveryGeometry(shot, box) {
       : { x1: a.x, y1: r1(pad.t + plotH), x2: a.x, y2: r1(pad.t + plotH + 4),
           label, lx: a.x, ly: r1(pad.t + plotH + 14), anchor: "middle" };
   });
+  // Unfigured ticks between the figured ones, for a box drawn big enough to use them.
+  const minor = !box.minorInches ? [] : inchTicks(x0, win.span, box.minorInches, box.minorInches)
+    .filter(({ inches }) => inches % 6 !== 0)
+    .map(({ c }) => {
+      const a = pt(c, from);
+      return side ? { x1: r1(pad.l + plotW), y1: a.y, x2: r1(pad.l + plotW + 2.5), y2: a.y }
+                  : { x1: a.x, y1: r1(pad.t + plotH), x2: a.x, y2: r1(pad.t + plotH + 2.5) };
+    });
+  // The paint under the close up, for a box that asks (the line chart's and
+  // the large view's): the near house, and the club's 4 ft centre stripe --
+  // painted in front of the house only, from where its edges meet the 12 ft,
+  // along that ring's curve, out to the chart's far edge.
+  let paint = null;
+  if (box.paint) {
+    const [cx, cy] = P(0, 0);
+    const radii = r => (side ? [r * kAlong, r * kAcross] : [r * kAcross, r * kAlong]);
+    const house = [[R.twelve, "twelve"], [R.eight, "eight"], [R.four, "four"], [R.button, "button"]]
+      .map(([r, kind]) => { const [rx, ry] = radii(r); return { cx: r1(cx), cy: r1(cy), rx: r1(rx), ry: r1(ry), kind }; });
+    const meet = Math.sqrt(R.twelve ** 2 - STRIPE_HALF_M ** 2);
+    let stripe = null;
+    if (meet < to) {
+      const at = (x, yp) => P(x, yp).map(v => v.toFixed(1)).join(",");
+      const [rx, ry] = radii(R.twelve).map(v => v.toFixed(1));
+      // Sweep 0 takes the arc round the front of the 12 ft, upright or on its side.
+      const d = `M${at(-STRIPE_HALF_M, to)} L${at(STRIPE_HALF_M, to)} L${at(STRIPE_HALF_M, meet)} `
+              + `A${rx},${ry} 0 0 0 ${at(-STRIPE_HALF_M, meet)} Z`;
+      const edge = x => { const a = pt(x, meet), b = pt(x, to); return { x1: a.x, y1: a.y, x2: b.x, y2: b.y }; };
+      stripe = { d, edges: [edge(-STRIPE_HALF_M), edge(STRIPE_HALF_M)] };
+    }
+    paint = { house, stripe };
+  }
   // The two footholds: 0.15 m wide, 0.2 m along, their centres ±HACK_X_M on the hack line.
   const holds = [-HACK_X_M, HACK_X_M].map(hx => {
     const a = pt(hx - 0.075, HACK_PAST - 0.2), b = pt(hx + 0.075, HACK_PAST);
@@ -141,9 +182,7 @@ export function deliveryGeometry(shot, box) {
   // The path: dots every sample, a faint line through them broken where the
   // camera lost the rock for a while. Colour runs from the push-off (the
   // first sample clearly moving) to the last; the rock at rest is the first stop.
-  const moving = pts.findIndex(p => p.yp > pts[0].yp + 0.15);
-  const t0 = moving >= 0 ? pts[moving].t : pts.length ? pts[0].t : 0;
-  const t1 = pts.length ? pts[pts.length - 1].t : 1;
+  const { moving, t0, t1 } = rampSpan(pts);
   const dots = pts.map((p, i) => ({ ...pt(p.x, p.yp), fill: rampColor(moving < 0 || i < moving ? 0 : (p.t - t0) / Math.max(1e-6, t1 - t0)) }));
   const steps = pts.slice(1).map((p, i) => p.t - pts[i].t).sort((a, b) => a - b);
   const stepS = steps.length ? steps[steps.length >> 1] : 0.1;
@@ -173,6 +212,7 @@ export function deliveryGeometry(shot, box) {
     stretch: Math.round(kAcross / kAlong),
     plot: { x: pad.l, y: pad.t, w: plotW, h: plotH },
     lines, labels, ticks, holds,
+    win: { x0: +x0.toFixed(4), span: +win.span.toFixed(4) }, minor, paint,
     aim: aim.length === 2 ? poly(aim) : null,
     aimLabel: aimEnd ? (side ? { x: r1(aimEnd.x - 3), y: r1(aimEnd.y - 4), text: "to the broom", anchor: "end" }
                                : { x: r1(aimEnd.x + (roomLeft ? -4 : 4)), y: r1(aimEnd.y + 10), text: "to the broom",
