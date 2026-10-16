@@ -1323,6 +1323,78 @@ body[data-mode="review"] #house { cursor:default; }
   .transport #label, .transport #link { display: none; }
 }
 
+/* --- the desk layouts' parts (wide and tablet) ---------------------------- */
+/* Rules on what only the desk layouts render -- the charting bar, the figures
+   card, the header's rock name, the playback gear and the line chart -- so
+   they apply in both: the wide desktop and the portrait iPad. Outside their
+   media queries because the elements exist only there (App.jsx's `desk` and
+   `wide` branches); each layout's block below then lays them out. */
+#figCard { grid-area: figs; }
+#lineCard { grid-area: line; }
+#playGear { display: inline-grid; place-items: center; padding: 6px 8px; color: var(--muted); }
+#playPrefs { position: absolute; right: 0; top: 100%; margin-top: 6px; z-index: 6;
+             background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+             padding: 8px 12px; box-shadow: 0 8px 24px rgb(0 0 0 / .18); }
+#playPrefs #playback { margin: 0; }
+
+/* The charting bar (ChartPanel.jsx GradingBar). */
+.gbar { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.gbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; row-gap: 6px; min-width: 0; }
+.gbar-lbl { font-family: var(--display); font-size: 12px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .07em; color: var(--muted); white-space: nowrap; }
+.gbar-sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; flex: none; }
+.gbar .pick button { white-space: nowrap; }
+.gbar #autoType { margin-left: auto; white-space: nowrap; font-size: 12px; }
+.gbar #missReason { width: 200px; flex: none; height: 30px; }
+/* A label and its control are one box that wraps whole. The note gives
+   way first: it takes what the row leaves, down to a usable width. */
+.gbar-pair { display: flex; align-items: center; gap: 8px; flex: none; }
+.gbar-pair .pick { flex-wrap: nowrap; }
+.gbar-pair.gbar-note { flex: 1 1 0; min-width: 180px; }
+.gbar #note { flex: 1 1 0; width: auto; min-width: 0; min-height: 0; height: 30px; resize: none; }
+.gbar #moveBefore { width: 170px; height: 30px; }
+/* No rule for #renumbered: the base one clips it out of sight and out of
+   the bar's grid, and keeps it in the accessibility tree, as everywhere on
+   the desktop. */
+
+/* The figures under the house: two columns, one line of note each. */
+#figCard .dfigs { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+#figCard .dfig { padding: 2px 0; border-bottom: 1px solid var(--line); line-height: 1.3; min-width: 0; }
+#figCard .dfig dt { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+                    color: var(--muted); font-weight: 600; }
+#figCard .dval { margin: 0; font-family: var(--display); font-size: 18px; font-weight: 700; line-height: 1.1;
+                 white-space: nowrap; font-variant-numeric: tabular-nums; }
+#figCard .dnote { margin: 0; font-size: 11.5px; color: var(--muted);
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#figCard .dnote.confirmed svg { stroke: var(--ok); vertical-align: -2px; margin-right: 4px; }
+#figCard .dfig.dim .dval { color: var(--muted); }
+#figCard .dnone { font-size: 14px; color: var(--muted); margin: 0; }
+#figCard #flags:not(:empty) { margin-bottom: 10px; }
+#figCard #flags .warn:first-child { margin-top: 0; }
+#figCard #endBox { margin: 0 0 10px; }
+#figCard #endBox h3 { margin-top: 0; }   /* the card's padding is its margin; 14 px back for the house */
+#figCard .dcap, #lineCard .dcap { font-size: 11px; color: var(--muted); margin: 4px 0 0; line-height: 1.35; }
+
+/* The line, the height of the page (Side.jsx LineCard draws to its box). */
+#lineCard { height: calc(100vh - 82px); min-height: 640px; box-sizing: border-box;
+            display: flex; flex-direction: column; }
+/* Tall enough for Expand, so the chart starts at the same place with or
+   without it. */
+#lineCard .lc-head { display: flex; align-items: center; justify-content: space-between; margin: -2px 0 6px;
+                     min-height: 26px; }
+#lineCard .lc-head h2 { margin: 0; }
+#lineExpand { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 3px 8px; }
+#lineCard .lc-box { flex: 1 1 0; min-height: 0; overflow: hidden; }
+#lineCard .lc-box.zoom { cursor: zoom-in; }
+#lineCard svg.linechart { display: block; border: 1px solid var(--line); border-radius: 6px; box-sizing: border-box; }
+#lineCard .dlvnone { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+#rockName .rn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#rockName .chip { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px;
+                  font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
+#rockName .chip.red { background: var(--red); color: #fff; }
+#rockName .chip.yellow { background: var(--yellow); color: #1a1a1a; }
+#rockName .chip.unknown { background: var(--panel); color: var(--warn); border: 2px dashed var(--warn); }
+
 /* --- wide desktop (spec 2026-10-15) --------------------------------------- */
 /* A 1080p screen and wider: video, house, grading, the rock's figures and its
    line on one screen. React renders this layout's pieces only here
@@ -1339,8 +1411,6 @@ body[data-mode="review"] #house { cursor:default; }
          grid-template-areas: "play house line" "play figs line";
          grid-template-rows: minmax(240px, 1fr) auto;
          height: calc(100vh - 54px); }
-  #figCard { grid-area: figs; }
-  #lineCard { grid-area: line; }
 
   /* The video gives up width before the page scrolls. K is everything in its
      column above and below it, plus the page's own padding; review has no
@@ -1359,31 +1429,6 @@ body[data-mode="review"] #house { cursor:default; }
   #playCard .transport .tp-end { display: flex; align-items: center; gap: 6px; flex: none;
                                  margin-left: auto; position: relative; }
   #playCard .transport button, #playCard .transport #link { white-space: nowrap; }
-  #playGear { display: inline-grid; place-items: center; padding: 6px 8px; color: var(--muted); }
-  #playPrefs { position: absolute; right: 0; top: 100%; margin-top: 6px; z-index: 6;
-               background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-               padding: 8px 12px; box-shadow: 0 8px 24px rgb(0 0 0 / .18); }
-  #playPrefs #playback { margin: 0; }
-
-  /* The charting bar (ChartPanel.jsx GradingBar). */
-  .gbar { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
-  .gbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; row-gap: 6px; min-width: 0; }
-  .gbar-lbl { font-family: var(--display); font-size: 12px; font-weight: 700; text-transform: uppercase;
-              letter-spacing: .07em; color: var(--muted); white-space: nowrap; }
-  .gbar-sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; flex: none; }
-  .gbar .pick button { white-space: nowrap; }
-  .gbar #autoType { margin-left: auto; white-space: nowrap; font-size: 12px; }
-  .gbar #missReason { width: 200px; flex: none; height: 30px; }
-  /* A label and its control are one box that wraps whole. The note gives
-     way first: it takes what the row leaves, down to a usable width. */
-  .gbar-pair { display: flex; align-items: center; gap: 8px; flex: none; }
-  .gbar-pair .pick { flex-wrap: nowrap; }
-  .gbar-pair.gbar-note { flex: 1 1 0; min-width: 180px; }
-  .gbar #note { flex: 1 1 0; width: auto; min-width: 0; min-height: 0; height: 30px; resize: none; }
-  .gbar #moveBefore { width: 170px; height: 30px; }
-  /* No rule for #renumbered: the base one clips it out of sight and out of
-     the bar's grid, and keeps it in the accessibility tree, as everywhere on
-     the desktop. */
 
   /* The house fills what its row leaves under the tools, drawn to fit: the
      SVG letterboxes its viewBox, and the editor maps the pointer through
@@ -1393,38 +1438,6 @@ body[data-mode="review"] #house { cursor:default; }
                display: flex; flex-direction: column; }
   #houseCard .tools { flex: none; }
   #house { flex: 1 1 0; min-height: 0; height: auto; }
-
-  /* The figures under the house: two columns, one line of note each. */
-  #figCard .dfigs { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
-  #figCard .dfig { padding: 2px 0; border-bottom: 1px solid var(--line); line-height: 1.3; min-width: 0; }
-  #figCard .dfig dt { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
-                      color: var(--muted); font-weight: 600; }
-  #figCard .dval { margin: 0; font-family: var(--display); font-size: 18px; font-weight: 700; line-height: 1.1;
-                   white-space: nowrap; font-variant-numeric: tabular-nums; }
-  #figCard .dnote { margin: 0; font-size: 11.5px; color: var(--muted);
-                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #figCard .dnote.confirmed svg { stroke: var(--ok); vertical-align: -2px; margin-right: 4px; }
-  #figCard .dfig.dim .dval { color: var(--muted); }
-  #figCard .dnone { font-size: 14px; color: var(--muted); margin: 0; }
-  #figCard #flags:not(:empty) { margin-bottom: 10px; }
-  #figCard #flags .warn:first-child { margin-top: 0; }
-  #figCard #endBox { margin: 0 0 10px; }
-  #figCard #endBox h3 { margin-top: 0; }   /* the card's padding is its margin; 14 px back for the house */
-  #figCard .dcap, #lineCard .dcap { font-size: 11px; color: var(--muted); margin: 4px 0 0; line-height: 1.35; }
-
-  /* The line, the height of the page (Side.jsx LineCard draws to its box). */
-  #lineCard { height: calc(100vh - 82px); min-height: 640px; box-sizing: border-box;
-              display: flex; flex-direction: column; }
-  /* Tall enough for Expand, so the chart starts at the same place with or
-     without it. */
-  #lineCard .lc-head { display: flex; align-items: center; justify-content: space-between; margin: -2px 0 6px;
-                       min-height: 26px; }
-  #lineCard .lc-head h2 { margin: 0; }
-  #lineExpand { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 3px 8px; }
-  #lineCard .lc-box { flex: 1 1 0; min-height: 0; overflow: hidden; }
-  #lineCard .lc-box.zoom { cursor: zoom-in; }
-  #lineCard svg.linechart { display: block; border: 1px solid var(--line); border-radius: 6px; box-sizing: border-box; }
-  #lineCard .dlvnone { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 
   /* The header: this rock beside the source, on one line at any width here.
      Everything keeps its size but the spacer and the rock's name, which
@@ -1440,12 +1453,6 @@ body[data-mode="review"] #house { cursor:default; }
   header > #src { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   header > #rockName { order: 2; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap;
                        flex: 1000 1 0; min-width: 24px; max-width: max-content; overflow: hidden; }
-  #rockName .rn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  #rockName .chip { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px;
-                    font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
-  #rockName .chip.red { background: var(--red); color: #fff; }
-  #rockName .chip.yellow { background: var(--yellow); color: #1a1a1a; }
-  #rockName .chip.unknown { background: var(--panel); color: var(--warn); border: 2px dashed var(--warn); }
 
   /* Thinking comes just before Report; the rest move up one. */
   header #thinkBtn  { order: 11; }
