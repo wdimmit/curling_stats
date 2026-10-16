@@ -16,7 +16,7 @@
  *   thinking  the header button opens it; a bar goes to its rock and closes it
  * devserve is in memory, so the note the resize check types goes nowhere.
  * Exits 1 naming each failure. */
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { attach } from "./cdp.mjs";
 
 const args = process.argv.slice(2);
@@ -28,10 +28,22 @@ if (!review) {
   console.error("usage: node scripts/deskcheck.mjs EDIT VIEW REVIEW [--only=fit,short,narrow,resize,delivery,thinking] [--shots=DIR]");
   process.exit(2);
 }
+const NAMES = ["fit", "short", "narrow", "resize", "delivery", "thinking"];
+const unknown = only.filter(n => !NAMES.includes(n));
+if (unknown.length) {
+  console.error(`unknown check ${unknown.join(", ")}; usage: node scripts/deskcheck.mjs EDIT VIEW REVIEW [--only=${NAMES.join(",")}] [--shots=DIR]`);
+  process.exit(2);
+}
+if (shots) mkdirSync(shots, { recursive: true });
 const want = name => !only.length || only.includes(name);
 const cdp = await attach("");
 const fails = [];
 const fail = msg => { fails.push(msg); console.log(`FAIL ${msg}`); };
+// An exception (a timeout, a missing page) fails that check and the run goes on.
+async function check(name, fn) {
+  if (!want(name)) return;
+  try { await fn(); } catch (err) { fail(`${name}: ${err.message}`); }
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function waitFor(expr, ms = 15000) {
@@ -73,7 +85,7 @@ async function click(sel) {
   await clickAt(b.x + b.w / 2, b.y + b.h / 2);
   return true;
 }
-const CODES = { ArrowRight: 39, Escape: 27 };
+const CODES = { ArrowLeft: 37, ArrowRight: 39, Escape: 27 };
 async function key(k) {
   for (const type of ["keyDown", "keyUp"])
     await cdp.send("Input.dispatchKeyEvent", { type, key: k, code: k, windowsVirtualKeyCode: CODES[k] ?? 0 });
@@ -84,7 +96,7 @@ async function shot(name) {
   writeFileSync(`${shots}/${name}.png`, Buffer.from(s.data, "base64"));
 }
 
-if (want("fit")) {
+await check("fit", async () => {
   for (const [w, h] of [[1920, 945], [1920, 860], [1920, 1032], [2560, 1305]]) {
     for (const [name, url] of [["c", edit], ["s", view], ["g", review]]) {
       await open(url, w, h);
@@ -98,15 +110,19 @@ if (want("fit")) {
         if (!b || !b.h) fail(`${at}: ${sel} is missing`);
         else if (b.bottom > p.ih + 0.5) fail(`${at}: ${sel} ends at ${Math.round(b.bottom)}, below the fold at ${p.ih}`);
       }
+      if (name === "g") {
+        const g = await box("#grading");
+        if (g && g.w && g.h) fail(`${at}: #grading is visible on the review page`);
+      }
       for (const sel of ["#detailCard", "#chart"]) if (await box(sel)) fail(`${at}: ${sel} is in the wide layout`);
       const v = await box("#video");
       if (v && v.w < 640) fail(`${at}: the video is ${Math.round(v.w)} px wide`);
       await shot(`fit-${name}-${w}x${h}`);
     }
   }
-}
+});
 
-if (want("short")) {
+await check("short", async () => {
   await open(edit, 1920, 768);
   const p = await page();
   if (p.sw > p.iw + 1) fail("short: the page scrolls sideways");
@@ -122,9 +138,9 @@ if (want("short")) {
   const v = await box("#video");
   if (v && v.w < 640) fail(`short: the video is ${Math.round(v.w)} px wide`);
   await shot("short-c-1920x768");
-}
+});
 
-if (want("narrow")) {
+await check("narrow", async () => {
   await open(edit, 1699, 900);
   for (const sel of ["#detailCard", "#chart", "#transport", "#playback"]) {
     const b = await box(sel);
@@ -132,10 +148,12 @@ if (want("narrow")) {
   }
   for (const sel of ["#figCard", "#lineCard", "#thinkBtn", "#rockName", "#playGear"])
     if (await box(sel)) fail(`narrow: ${sel} is in the old layout`);
-}
+});
 
-if (want("resize")) {
+await check("resize", async () => {
   await open(edit, 1920, 945);
+  // Without these the check passes when the layout never switches at all.
+  if (!(await box("#figCard")) || (await box("#detailCard"))) fail("resize: 1920 px is not the wide layout, so crossing proves nothing");
   const before = (await page()).hash;
   if (!(await click("#note"))) fail("resize: no note field in the bar");
   else {
@@ -143,13 +161,14 @@ if (want("resize")) {
     await sleep(400);                  // past the 150 ms commit
     await size(1600, 900);
     await sleep(900);
+    if (!(await box("#detailCard")) || (await box("#figCard"))) fail("resize: 1600 px is not the old layout, so the layout did not switch");
     const v = await cdp.eval(`document.getElementById("note")?.value`);
     if (v !== "resize check") fail(`resize: the note reads ${JSON.stringify(v)} after crossing 1700 px`);
     if ((await page()).hash !== before) fail("resize: the rock changed when the layout did");
   }
-}
+});
 
-if (want("delivery")) {
+await check("delivery", async () => {
   await open(edit, 1920, 945);
   const before = (await page()).hash;
   await click("#lineCard svg.linechart");
@@ -161,9 +180,17 @@ if (want("delivery")) {
     await key("ArrowRight");
     await sleep(400);
     if ((await page()).hash !== before) fail("delivery: → moved the rock behind the dialog");
+    await key("ArrowLeft");
+    await sleep(400);
+    if ((await page()).hash !== before) fail("delivery: ← moved the rock behind the dialog");
     await key("Escape");
     await sleep(400);
     if (await isOpen("deliveryDialog")) fail("delivery: Escape did not close it");
+    // The control: with it closed the same key must step the rock, or the
+    // checks above saw nothing.
+    await key("ArrowRight");
+    await sleep(400);
+    if ((await page()).hash === before) fail("delivery: → did not step the rock with the dialog closed (key check proves nothing)");
   }
   await click("#lineExpand");
   await sleep(400);
@@ -183,9 +210,9 @@ if (want("delivery")) {
     if (!(await isOpen("deliveryDialog"))) fail(`delivery: /${name}/ does not open it`);
     await key("Escape");
   }
-}
+});
 
-if (want("thinking")) {
+await check("thinking", async () => {
   for (const [name, url] of [["c", edit], ["s", view], ["g", review]]) {
     await open(url, 1920, 945);
     if (!(await click("#thinkBtn"))) { fail(`thinking: /${name}/ has no Thinking button`); continue; }
@@ -194,20 +221,27 @@ if (want("thinking")) {
     if (name !== "c") { await key("Escape"); continue; }
     await shot("thinking-c-1920x945");
     if (!(await box("#thinkingDialog rect.bar"))) { await click("#thinkingDialog .linky"); await sleep(400); }
-    // The tallest bar that is not this rock's: a rock to go to, big enough to hit.
+    // The tallest bar that is not this rock's: a rock to go to, big enough to
+    // hit. This rock's bar is the one the "you" marker sits on.
     const target = await cdp.eval(`(() => {
+      const you = document.querySelector("#thinkingDialog line.you")?.getBoundingClientRect();
       const bars = [...document.querySelectorAll("#thinkingDialog rect.bar")]
         .map(b => ({ b, r: b.getBoundingClientRect() })).filter(x => x.r.height > 3);
-      bars.sort((p, q) => q.r.height - p.r.height);
-      const x = bars[0]; return x ? { x: x.r.x + x.r.width / 2, y: x.r.y + x.r.height / 2 } : null; })()`);
+      const mid = x => x.r.x + x.r.width / 2;
+      let mine = null;
+      if (you) for (const x of bars) if (!mine || Math.abs(mid(x) - you.x) < Math.abs(mid(mine) - you.x)) mine = x;
+      const others = bars.filter(x => x !== mine);
+      others.sort((p, q) => q.r.height - p.r.height);
+      const x = others[0]; return x ? { x: mid(x), y: x.r.y + x.r.height / 2, you: !!you } : null; })()`);
     const before = (await page()).hash;
     if (!target) { fail("thinking: no bar to click"); continue; }
+    if (!target.you) fail("thinking: no marker on the chart, so this rock's bar cannot be excluded");
     await clickAt(target.x, target.y);
     await sleep(600);
     if (await isOpen("thinkingDialog")) fail("thinking: a bar did not close it");
     if ((await page()).hash === before) fail("thinking: a bar did not go to its rock");
   }
-}
+});
 
 if (fails.length) { console.log(`deskcheck: ${fails.length} failed`); process.exit(1); }
 console.log("deskcheck: all good");
