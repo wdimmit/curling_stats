@@ -195,9 +195,87 @@ class TestProcessJob:
         assert api.completed[0]["format"] == "fours"
 
 
+def _no_youtube(url):
+    raise AssertionError("asked YouTube about a video already on disk")
+
+
+def _cache(root, vid="VXU9xwmugRg"):
+    (root / "videos").mkdir(parents=True, exist_ok=True)
+    (root / "videos" / f"{vid}.mp4").write_bytes(b"mp4")
+
+
+CACHED_JOB = {**JOB, "title": "10/14 - Sheet 2 - Wednesday Womens League",
+              "duration_s": 16100.0, "channel_id": "UCclub"}
+
+
+class TestACachedVideoIsNotAskedOfYouTube:
+    """10/16 00:03: YouTube bot-checked the worker's address for two hours, and
+    every job failed at its metadata call -- even reprocesses of videos the
+    worker had on disk, which need nothing from YouTube at all."""
+
+    def probe(self, path):
+        from curling_score.ingest.frames import VideoProbe
+        return VideoProbe(width=1920, height=1080, duration_s=16200.0, avg_fps=30.0)
+
+    def test_its_details_come_from_the_job_and_the_file(self, tmp_path):
+        _cache(tmp_path)
+        api, seen = FakeApi([]), {}
+
+        def analyze_fn(url, **kw):
+            seen.update(kw)
+            return fake_doc()
+
+        worker.process_job(CACHED_JOB, api, "home", root=tmp_path, weights=None,
+                           out_dir=tmp_path / "out", analyze_fn=analyze_fn,
+                           fetch_info=_no_youtube, probe=self.probe)
+        info = seen["info"]
+        assert (info.video_id, info.title, info.duration_s, info.sheet) == (
+            "VXU9xwmugRg", CACHED_JOB["title"], 16200.0, 2)
+        assert api.completed[0]["channel_id"] == "UCclub"
+
+    def test_without_a_title_it_asks(self, tmp_path):
+        _cache(tmp_path)
+        assert worker.cached_info(JOB, tmp_path, probe=self.probe) is None
+
+    def test_not_on_disk_it_asks(self, tmp_path):
+        assert worker.cached_info(CACHED_JOB, tmp_path, probe=self.probe) is None
+
+    def test_a_file_that_will_not_probe_is_asked_about(self, tmp_path):
+        _cache(tmp_path)
+
+        def broken(path):
+            raise OSError("moov atom not found")
+
+        assert worker.cached_info(CACHED_JOB, tmp_path, probe=broken) is None
+
+    def test_a_channel_it_does_not_know_is_left_out_of_complete(self, tmp_path):
+        """complete keeps the run's channel when the key is absent; sent as
+        None it would wipe it."""
+        _cache(tmp_path)
+        api = FakeApi([])
+        job = {k: v for k, v in CACHED_JOB.items() if k != "channel_id"}
+        worker.process_job(job, api, "home", root=tmp_path, weights=None,
+                           out_dir=tmp_path / "out", analyze_fn=lambda url, **kw: fake_doc(),
+                           fetch_info=_no_youtube, probe=self.probe)
+        assert "channel_id" not in api.completed[0]
+
+
 class TestClassifyingFailures:
     def test_blocked(self):
         assert worker.classify_error(cache.BlockedError("not a bot")) == "blocked"
+
+    def test_a_bot_check_from_the_metadata_call_is_blocked(self):
+        """yt-dlp's own DownloadError, not a BlockedError: classified transient,
+        each job was retried a minute later into the same block, four times."""
+        exc = RuntimeError("ERROR: [youtube] BiG6EqYrWdQ: Sign in to confirm you’re not a bot. "
+                           "Use --cookies-from-browser or --cookies for the authentication.")
+        assert worker.classify_error(exc) == "blocked"
+
+    def test_too_many_requests_is_blocked(self):
+        assert worker.classify_error(RuntimeError("HTTP Error 429: Too Many Requests")) == "blocked"
+
+    def test_a_job_id_with_429_in_it_is_not(self):
+        assert worker.classify_error(OSError("lease lost for j_0429abc")) == "transient"
 
     def test_permanent(self):
         assert worker.classify_error(RuntimeError("ERROR: Private video")) == "permanent"

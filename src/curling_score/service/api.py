@@ -103,6 +103,12 @@ def asset_revalidated(request: Request, path: Path, media_type: str) -> Response
     if request.headers.get("if-none-match") == tag:
         return Response(status_code=304, headers=headers)
     return Response(body, media_type=media_type, headers=headers)
+# How long a job YouTube has refused ("blocked") waits before each try. A block
+# is the worker's address, not the job, so it spends none of the job's
+# attempts; the ladder is what bounds it, about six and a half hours in all.
+# 10/16 00:03-02:07 a bot check held for two hours, and the old 5/10/20-minute
+# ladder, drawn from the four attempts, could not have outlasted it.
+BLOCKED_LADDER_S = (600, 1800, 3600, 7200, 7200, 7200)
 # A whole-document save, and a merge patch. The first was 10 MB, which is ten
 # times what Firestore will hold in one document -- the commit fails with an
 # InvalidArgument the API turns into a bare 500, and MemoryRepo never
@@ -2662,7 +2668,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             "window_start_s": run.window_start_s, "window_end_s": run.window_end_s,
             "sheet": run.sheet, "processing_version": run.processing_version,
             "format": run.format or "fours", "kind": job.kind or "vod",
-            "title": run.title,
+            # What a worker with the video on disk needs instead of asking
+            # YouTube (`worker.cached_info`).
+            "title": run.title, "duration_s": run.duration_s, "channel_id": run.channel_id,
             "attempt": job.attempts, "lease_s": settings.lease_s,
             **({"lookback_s": practice.LOOKBACK_S} if job.kind == "practice" else {}),
         }}
@@ -2892,7 +2900,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         kind = body.get("kind", "transient")
         error = str(body.get("error", ""))[:500]
         t = now()
-        if kind == "permanent" or job.attempts >= job.max_attempts:
+        blocked_out = kind == "blocked" and job.blocked_retries >= len(BLOCKED_LADDER_S)
+        if (kind == "permanent" or blocked_out
+                or (kind != "blocked" and job.attempts >= job.max_attempts)):
             repo.update_job(job.id, state="failed", error=error, error_kind=kind, finished_at=t)
             repo.update_run(job.run_id, status="failed", error=error)
             if job.kind == "practice":
@@ -2903,15 +2913,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                     repo.update_watch(watch.id, status="failed", error=error)
                     practice.end_all(repo, watch, t, "failed")
             return {"ok": True, "final": True}
+        extra = {}
         if kind == "blocked":
-            ladder = (300, 600, 1200)
-            delay = ladder[min(job.attempts - 1, len(ladder) - 1)]
+            delay = BLOCKED_LADDER_S[job.blocked_retries]
+            # The claim counted an attempt; a block gives it back.
+            extra = {"attempts": max(0, job.attempts - 1),
+                     "blocked_retries": job.blocked_retries + 1}
         else:
             # `or` would turn an explicit 0 -- "retry now" -- into 60.
             asked = body.get("retry_after_s")
             delay = float(60 if asked is None else asked)
         repo.update_job(job.id, state="queued", worker_id=None, lease_expires_at=None,
-                        run_after=t + timedelta(seconds=delay), error=error, error_kind=kind)
+                        run_after=t + timedelta(seconds=delay), error=error, error_kind=kind,
+                        **extra)
         repo.update_run(job.run_id, status="queued", error=error)
         return {"ok": True, "final": False, "retry_after_s": delay}
 

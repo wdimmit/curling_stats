@@ -10,7 +10,7 @@ it is polled every few minutes, so a stream is caught as it goes live and, with
 ``live`` on, queued as a live job that follows the game while it is played.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from curling_score.ingest import source
@@ -21,6 +21,10 @@ from curling_score.service.youtube import SubmissionError, validate_submission
 # A backfill of a whole season should trickle, not flood: this many new runs
 # per poll, the rest next hour.
 MAX_AUTO_PER_POLL = 10
+# And the recordings one poll queues are each this much later than the last.
+# A full download takes 6-9 minutes. 10/16 two polls queued five apiece at
+# once, and YouTube bot-checked the worker's address for two hours.
+DOWNLOAD_STAGGER_S = 600
 # A playlist that fails this many polls running is probably gone; stop asking
 # and show it in admin rather than spend quota on it every hour.
 DISABLE_AFTER_FAILURES = 3
@@ -99,6 +103,7 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
     until its recording is archived.
     """
     created, live_created, skipped, errors = [], [], [], []
+    n_queued = 0
 
     def fmt_of(title):
         return source.format_from_title(title) if doubles_enabled else "fours"
@@ -186,8 +191,12 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
             )
             repo.put_run(run)
             if initial_status == "queued":
+                # One poll can find a whole draw's recordings at once; spaced
+                # out, the workers do not ask YouTube for them all together.
+                n_queued += 1
+                after = now + timedelta(seconds=DOWNLOAD_STAGGER_S * (n_queued - 1))
                 repo.put_job(Job(id=slug.new_job_id(), run_id=run.id,
-                                 state="queued", created_at=now, run_after=now))
+                                 state="queued", created_at=now, run_after=after))
             created.append(run.id)
             accepted_now.append(meta.video_id)
         repo.update_playlist(

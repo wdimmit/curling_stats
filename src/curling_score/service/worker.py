@@ -157,10 +157,16 @@ class ApiClient:
 
 
 def classify_error(exc: BaseException) -> str:
-    """Which kind of failure this is, which decides whether and when to retry."""
+    """Which kind of failure this is, which decides whether and when to retry.
+
+    A bot check is "blocked" wherever it came from. The metadata call raises
+    yt-dlp's own error, not a BlockedError, and read as transient each job went
+    back into the same block a minute later (10/16, four tries apiece)."""
     if isinstance(exc, cache.BlockedError):
         return "blocked"
     text = f"{type(exc).__name__}: {exc}".lower()
+    if cache.is_blocked_message(text):
+        return "blocked"
     permanent = ("private video", "video unavailable", "removed", "no panels",
                  "could not find two panels", "members-only", "no youtube video id",
                  "not a youtube")
@@ -186,10 +192,39 @@ def gpu_name() -> str | None:
     return None
 
 
+def cached_info(job: dict, root: Path, probe=None) -> source.VideoInfo | None:
+    """The video's details without asking YouTube, or None to ask.
+
+    A video already on disk needs nothing from YouTube: its title is the run's
+    (the claim sends it) and its length is the file's. 10/16 00:03, YouTube
+    bot-checked the worker's address for two hours, and reprocesses of cached
+    videos failed at their metadata call all the same. The file is read for
+    the length rather than the run trusted, because the file is what gets
+    analysed; one that will not read is asked about the usual way.
+    """
+    if probe is None:
+        from curling_score.ingest.frames import probe
+    title = job.get("title")
+    vid = source.video_id(job["video_id"])
+    if not title or not cache.is_cached(vid, root):
+        return None
+    try:
+        duration = probe(cache.video_path(vid, root)).duration_s
+    except Exception as exc:  # noqa: BLE001 - any unreadable file: ask YouTube
+        log.warning("cached %s will not probe (%s); asking YouTube", vid, exc)
+        return None
+    if not duration:
+        return None
+    return source.VideoInfo(
+        video_id=vid, title=title, duration_s=float(duration), was_live=False,
+        is_live=False, upload_date=None, sheet=source.sheet_from_title(title),
+        channel_id=job.get("channel_id"))
+
+
 def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
                 weights: str | None, out_dir: Path, skip_longview: bool = False,
                 analyze_fn=None, fetch_info=source.fetch_info,
-                clock=time.monotonic, should_yield=None) -> dict:
+                clock=time.monotonic, should_yield=None, probe=None) -> dict:
     """Run one job end to end. Raises on failure; the caller reports it.
 
     ``should_yield`` is asked at every progress report, and a yes raises
@@ -223,7 +258,11 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
             log.warning("progress (%s %.2f) not delivered: %s", name, fraction, exc)
 
     on_phase("download", 0.0, "checking the video")
-    info = fetch_info(url)
+    info = cached_info(job, root, probe)
+    if info is None:
+        info = fetch_info(url)
+    else:
+        log.info("job %s: %s is cached; not asking YouTube", job["id"], info.video_id)
     det_dir = root / "detections"
     before = _snapshot(det_dir)
 
@@ -274,7 +313,10 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     on_phase("upload", 1.0, "uploaded")
 
     return api.complete(job["id"], worker_id, {
-        "title": info.title, "channel_id": info.channel_id,
+        "title": info.title,
+        # Left out when unknown: complete keeps the run's for an absent key,
+        # and a None sent would wipe it.
+        **({"channel_id": info.channel_id} if info.channel_id else {}),
         "duration_s": info.duration_s, "sheet": doc["source"].get("sheet"),
         "games": games, "detcache_digests": [d["digest"] for d in detcache],
         "timings": timings, "format": fmt_name,

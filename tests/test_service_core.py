@@ -481,6 +481,17 @@ class TestPlaylistWatcher:
         assert all(r.status == "queued" and r.league == "Tuesday" for r in runs)
         assert repo.count_queued() == 2
 
+    def test_one_polls_downloads_are_spaced_out(self):
+        """10/16 two polls queued five full downloads apiece, all at once, and
+        YouTube bot-checked the worker for two hours after. Each further
+        recording in a poll waits one more DOWNLOAD_STAGGER_S."""
+        repo, yt = self._setup()
+        result = playlists.poll(repo, yt, processing_version="p+m", now=T0,
+                                allowed_channels={"UCclub"})
+        afters = sorted(repo.job_for_run(r).run_after for r in result["created"])
+        assert afters == [T0, T0 + timedelta(seconds=playlists.DOWNLOAD_STAGGER_S)]
+        assert playlists.DOWNLOAD_STAGGER_S == 600
+
     def test_a_live_stream_is_left_for_the_next_poll(self):
         repo, yt = self._setup()
         playlists.poll(repo, yt, processing_version="p+m", now=T0)

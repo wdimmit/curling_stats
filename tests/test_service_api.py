@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from curling_score import timeline as timeline_mod
-from curling_score.service import dedupe, slug
+from curling_score.service import api as api_mod, dedupe, slug
 from curling_score.service.api import VIEWER_DIR, Settings, create_app
 from curling_score.service.records import Run, Source, WatchedPlaylist
 from curling_score.service.repo import MemoryRepo
@@ -308,14 +308,49 @@ class TestWorkerProtocol:
                                    json={"worker_id": "home", "model_id": "m-abc"}).json()["job"]
         r = world["client"].post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER,
                                  json={"worker_id": "home", "error": "not a bot", "kind": "blocked"})
-        assert r.json() == {"ok": True, "final": False, "retry_after_s": 300}
+        assert r.json() == {"ok": True, "final": False, "retry_after_s": 600}
         assert world["client"].get(f"/c/{s}/status.json").json()["status"] == "queued"
         # Not claimable until the ladder step has passed.
         assert world["client"].post("/api/worker/claim", headers=WORKER,
                                     json={"worker_id": "home", "model_id": "m-abc"}).status_code == 204
-        world["clock"].advance(301)
+        world["clock"].advance(601)
         assert world["client"].post("/api/worker/claim", headers=WORKER,
                                     json={"worker_id": "home", "model_id": "m-abc"}).status_code == 200
+
+    def test_a_block_outlasts_the_attempts_and_climbs_the_ladder(self, world):
+        """10/16 00:03-02:07 YouTube bot-checked the worker for two hours. A
+        block is the address, not the job, so it spends none of the job's four
+        attempts: the job waits it out, up to about six and a half hours."""
+        s = submit(world).json()["slug"]
+        waits = []
+        for _ in range(len(api_mod.BLOCKED_LADDER_S)):
+            job = world["client"].post("/api/worker/claim", headers=WORKER,
+                                       json={"worker_id": "home", "model_id": "m-abc"}).json()["job"]
+            r = world["client"].post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER,
+                                     json={"worker_id": "home", "error": "not a bot",
+                                           "kind": "blocked"}).json()
+            assert r["final"] is False
+            assert job["attempt"] == 1, "a block must not spend the job's attempts"
+            waits.append(r["retry_after_s"])
+            world["clock"].advance(r["retry_after_s"] + 1)
+        assert waits == list(api_mod.BLOCKED_LADDER_S)
+        assert waits[:4] == [600, 1800, 3600, 7200]
+        # The ladder done, the next block is final.
+        job = world["client"].post("/api/worker/claim", headers=WORKER,
+                                   json={"worker_id": "home", "model_id": "m-abc"}).json()["job"]
+        r = world["client"].post(f"/api/worker/jobs/{job['id']}/fail", headers=WORKER,
+                                 json={"worker_id": "home", "error": "not a bot", "kind": "blocked"})
+        assert r.json()["final"] is True
+        assert world["client"].get(f"/c/{s}/status.json").json()["status"] == "failed"
+
+    def test_the_claim_carries_what_a_cached_video_needs(self, world):
+        """With the title, length and channel the worker can process a video it
+        has on disk without asking YouTube anything."""
+        submit(world)
+        job = world["client"].post("/api/worker/claim", headers=WORKER,
+                                   json={"worker_id": "home", "model_id": "m-abc"}).json()["job"]
+        assert {"title", "duration_s", "channel_id"} <= set(job)
+        assert job["duration_s"] and job["channel_id"]
 
     def test_a_permanent_failure_fails_the_run(self, world):
         s = submit(world).json()["slug"]

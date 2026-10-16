@@ -25,7 +25,9 @@ FORMAT = "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/bv*"
 # YouTube's refusals, as they surface in yt-dlp's messages. A burst of requests
 # from one address once got the whole public IP blocked for a quarter of an
 # hour; these are what that looked like.
-BLOCK_HINTS = ("sign in to confirm", "not a bot", "429", "too many requests")
+# "http error 429", not a bare "429": the hints now judge any failure a worker
+# reports (`worker.classify_error`), and a job id can hold those digits.
+BLOCK_HINTS = ("sign in to confirm", "not a bot", "http error 429", "too many requests")
 # Wait it out rather than spend the next hour rediscovering it.
 BACKOFF_S = (300, 600, 1200)
 

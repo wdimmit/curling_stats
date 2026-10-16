@@ -94,6 +94,9 @@ class Job:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     kind: str = "vod"
+    # How many times YouTube has refused this job: its step on
+    # api.BLOCKED_LADDER_S. Blocks do not count against max_attempts.
+    blocked_retries: int = 0
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
