@@ -5955,15 +5955,17 @@ class TestTheDeliveryDialog:
     def test_its_words_are_the_spec_s(self):
         src = self.SRC.read_text()
         for needle in (
-            "Esc or click outside to close",
+            'hint = "Esc or click outside to close"', "box = BIGDELIVERYBOX", "speedBox = SPEEDBOX",
             "From above, thrower at the left · across ×{g.stretch} · a dot every {g.every.short}, "
             "dark at the push-off to gold past the hog line · ticks every 2 in",
             "Speed along the same axis, smoothed over a second. Ripples smaller than about 0.2 m/s "
             "come from the camera, not the throw.",
             "The speed could not be read for this rock.",
-            "deliveryGeometry(shot, BIGDELIVERYBOX)", "speedGeometry(speed, SPEEDBOX, shot)",
+            "deliveryGeometry(shot, box)", "speedGeometry(speed, speedBox, shot)",
         ):
             assert needle in src, needle
+        app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()
+        assert 'hint={tablet ? "Tap outside to close" : undefined}' in app
 
     def test_it_is_a_modal_dialog_that_keeps_its_rock(self):
         src = self.SRC.read_text()

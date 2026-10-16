@@ -437,7 +437,7 @@ await check("dialogs", async () => {
     // there yet, so wait for one, and count what was measured: nothing measured is a failure.
     await waitFor(`!!document.querySelector("#deliveryDialog svg text")`, 3000).catch(() => {});
     const sized = await cdp.eval(`(() => {
-      const small = []; let n = 0;
+      const small = []; let n = 0, min = Infinity;
       for (const svg of document.querySelectorAll("#deliveryDialog svg")) {
         const r = svg.getBoundingClientRect(), vb = svg.viewBox?.baseVal;
         if (!r.width || !r.height) continue;
@@ -445,11 +445,12 @@ await check("dialogs", async () => {
         for (const t of svg.querySelectorAll("text")) {
           const fs = parseFloat(t.getAttribute("font-size")) || parseFloat(getComputedStyle(t).fontSize);
           if (!(fs > 0)) continue;
-          n++;
+          n++; min = Math.min(min, fs * k);
           if (fs * k < 11) small.push(\`"\${t.textContent.trim().slice(0, 14)}" \${(fs * k).toFixed(1)} px\`);
         }
       }
-      return { n, small }; })()`);
+      return { n, small, min }; })()`);
+    console.log(`${where}: ${sized.n} chart texts, smallest ${sized.min.toFixed(1)} px`);
     if (!sized.n) fail(`${where}: no chart text measured`);
     if (sized.small.length) fail(`${where}: ${sized.small.length} text(s) under 11 px: ${sized.small.join(", ")}`);
     const esc = await text("#deliveryDialog .dd-esc");

@@ -1640,6 +1640,13 @@ body[data-mode="review"] #house { cursor:default; }
   #figCard .dline dd { margin: 0; }
   #lineOpen { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center;
               gap: 8px; font-size: 15px; }
+
+  /* Doubles (spec §5): the end's facts in one line and the swap in a sheet. */
+  #figCard #endBox { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+  #figCard #endBox .endline { flex: 1 1 0; min-width: 0; margin: 0; font-size: 13px; white-space: nowrap;
+                              overflow: hidden; text-overflow: ellipsis; }
+  #swapBtn { flex: 0 1 auto; min-width: 44px; min-height: 44px; max-width: 180px; padding: 0 10px;
+             font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
 /* --- the portrait iPad's sheets (spec 2026-10-16 §6) ---------------------- */
@@ -1701,3 +1708,16 @@ body[data-mode="view"] dialog.sheet #note { pointer-events: auto; opacity: 1; }
 .dd-num { font-size: 13px; color: var(--muted); }
 .dd-num b { font-family: var(--display); font-size: 19px; color: var(--ink); margin-right: 4px;
             font-variant-numeric: tabular-nums; }
+
+/* The large dialogs drawn for the portrait iPad (spec 2026-10-16 §7). After the
+   rules above, which they override at equal weight. The delivery's drawing is
+   TABLETDELIVERYBOX / TABLETSPEEDBOX wide (App passes them), so the dialog
+   takes nearly the screen's width and its texts keep their size. */
+@media (any-pointer: coarse) and (orientation: portrait) and (min-width: 700px) and (max-width: 1199px) {
+  #deliveryDialog { width: calc(100vw - 24px); }
+  .dd-body { padding: 14px 16px 16px; }
+  .dd-close { width: 44px; height: 44px; }
+  #thinkingDialog .key button.linky { all: unset; cursor: pointer; color: var(--accent); min-height: 44px;
+    min-width: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px;
+    box-sizing: border-box; font-size: 13px; }
+}

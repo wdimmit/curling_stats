@@ -55,11 +55,11 @@
     "frontend/site/main.jsx": "d8324c80b4375292a63c8309fd85a4290dc2f3a04c44d87cdc858978015e4d63",
     "frontend/site/ui.jsx": "19a9c87760a768cf44f05dec32d90eeab29cd0010e5553a91286eff18ec975dc",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
-    "frontend/viewer/App.jsx": "577c4c8c171259228b604f75c503536d0361bc017120cd1f5553604b6aa6438a",
-    "frontend/viewer/ChartPanel.jsx": "145e41d67ce8df2850f2092127de13a42abfba5759facb572555e3228e1c199a",
+    "frontend/viewer/App.jsx": "2b73e8b24e84b6fb935472d08f3e4faec8987485bf085fbed2f24ae8114d7ad3",
+    "frontend/viewer/ChartPanel.jsx": "f63c44e5ede098b4400bbcf750164729b77497e3278becf35f71ac9fcc8c8dee",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "65dfe05210a940423b6ea5ccd87ceafe59c6b2b457386555adfac82da758f890",
-    "frontend/viewer/DeliveryDialog.jsx": "3e81daa4f431e88159aaaff8c57408a7fcb02a2bc48dedfb143f5724baf6881b",
+    "frontend/viewer/DeliveryDialog.jsx": "2acf31933507427f14edb2d86c404de2fd6c5f5dd61485dcc2bbe473a3891b38",
     "frontend/viewer/Detail.jsx": "3beb5f11c496635ad35c502f0732144dc74acb6830a35a2e92644fba54e071ff",
     "frontend/viewer/Flag.jsx": "7f2b7a7d3e63d89d1d356c257546b7c844896bce6fec4dc276dcd8a0e5a88c90",
     "frontend/viewer/House.jsx": "a5e87d0a2065eb1e9f5ff146bfdd0eb49f6c4d9acd096c66aaf8d44e79cdd9b4",
@@ -80,6 +80,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "36c9968c9de30c50acf336eb5716635fb9486a0c024d7bc5b8ef351668d248bc",
-    "src/curling_score/viewer/app.js": "96250f67a30cccd4a0ef47b01003b4cefefd68205bc56bf5964c8c25760a6789"
+    "src/curling_score/viewer/app.js": "56e62045b0f8dcbd1751cf733d09bcec253a83ea9e19d276b26710439d2fbcfe"
   }
 }

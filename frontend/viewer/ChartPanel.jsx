@@ -4,7 +4,7 @@ import {
   GROUPS, GROUP_TYPE, MISS_REASONS, TALLBOX, TYPES, subtypesOf,
   blankQueue, boardReadable, endSummary, identity, isBlank, liveGame, openGroupFor, scoreCell,
   unreadNote,
-  houseDeltaText, sheetButtonText, thinkText, throwerText, typeOf,
+  endLineText, houseDeltaText, sheetButtonText, swapText, thinkText, throwerText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 import { Sheet } from "./Sheet.jsx";
@@ -495,10 +495,36 @@ function Scoreboard({ game, doc }) {
  * former read in every mode (a desktop viewer or a review link never reaches
  * Timing/EndHead, which is phone-watch only), the latter only where a
  * charter can act on them. */
-export function EndBox({ view, cursor, config, actions }) {
+export function EndBox({ view, cursor, config, actions, compact }) {
   const at = view.ends[cursor.ei];
   const s = endSummary(view, cursor.ei);
   const name = c => view.game.teams[c]?.name || c;
+  const [open, setOpen] = useState(false);
+  const swaps = ["red", "yellow"].map(c => (
+    <label key={c} className="chk">
+      <input type="checkbox" checked={!!at?.swapped?.[c]}
+             onChange={e => actions.setSwapped(c, e.target.checked)} />
+      {` ${name(c)} swapped roles (player B threw first and last)`}
+    </label>
+  ));
+  // The iPad's doubles: the end's facts in one line, the checkboxes in a sheet.
+  if (compact) {
+    return (
+      <div id="endBox">
+        <p className="endline">{endLineText(s, at?.end.number, name)}</p>
+        {!config.readOnly ? (
+          <>
+            <button id="swapBtn" type="button" onClick={() => setOpen(true)}>
+              {sheetButtonText("Swapped roles", swapText(at?.swapped || {}, name), "Swapped")}
+            </button>
+            <Sheet id="swapSheet" title="Swapped roles" open={open} onClose={() => setOpen(false)}>
+              {swaps}
+            </Sheet>
+          </>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div id="endBox">
       <h3>End {at?.end.number}</h3>
@@ -511,13 +537,7 @@ export function EndBox({ view, cursor, config, actions }) {
             : null}
         </div>
       ) : null}
-      {!config.readOnly && ["red", "yellow"].map(c => (
-        <label key={c} className="chk">
-          <input type="checkbox" checked={!!at?.swapped?.[c]}
-                 onChange={e => actions.setSwapped(c, e.target.checked)} />
-          {` ${name(c)} swapped roles (player B threw first and last)`}
-        </label>
-      ))}
+      {!config.readOnly && swaps}
     </div>
   );
 }

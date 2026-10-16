@@ -24,7 +24,8 @@ export const CLOSE = (
        aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
 );
 
-export function DeliveryDialog({ delivering, onClose }) {
+export function DeliveryDialog({ delivering, onClose, box = BIGDELIVERYBOX, speedBox = SPEEDBOX,
+                                 hint = "Esc or click outside to close" }) {
   const ref = useRef(null);
   useEffect(() => {
     const d = ref.current;
@@ -36,15 +37,15 @@ export function DeliveryDialog({ delivering, onClose }) {
   const onClick = e => { if (e.target === e.currentTarget) e.currentTarget.close(); };
   return (
     <dialog id="deliveryDialog" ref={ref} onClose={onClose} onClick={onClick} aria-labelledby="deliveryTitle">
-      {delivering && <Large key={delivering.opened} shot={delivering.shot} />}
+      {delivering && <Large key={delivering.opened} shot={delivering.shot} box={box} speedBox={speedBox} hint={hint} />}
     </dialog>
   );
 }
 
-function Large({ shot }) {
-  const g = deliveryGeometry(shot, BIGDELIVERYBOX);
+function Large({ shot, box, speedBox, hint }) {
+  const g = deliveryGeometry(shot, box);
   const speed = deliverySpeed(shot);
-  const sg = speedGeometry(speed, SPEEDBOX, shot);
+  const sg = speedGeometry(speed, speedBox, shot);
   const n = speedNumbers(speed);
   const type = typeName(shot);
   return (
@@ -54,7 +55,7 @@ function Large({ shot }) {
         <span className={`dd-chip ${shot.color}${isBlank(shot) ? " unknown" : ""}`}>{isBlank(shot) ? "?" : shot.number}</span>
         <span className="dd-who">{shot.label || `shot ${shot.number}`}{type ? ` · ${type}` : ""}</span>
         <span className="grow" />
-        <span className="dd-esc">Esc or click outside to close</span>
+        <span className="dd-esc">{hint}</span>
         <form method="dialog"><button className="dd-close" aria-label="Close">{CLOSE}</button></form>
       </div>
       <DeliveryChart g={g} label={deliveryLabel(shot, true, g)} fluid className="dd-dlv" />

@@ -11,7 +11,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
-  PHONE_QUERY, TABLET_QUERY,
+  PHONE_QUERY, TABLET_QUERY, TABLETDELIVERYBOX, TABLETSPEEDBOX,
   buildGameView, chartedNotice, cumulativeThinking, cursor as cursorOf, endKey, flagPlace,
   gatherStats, gatherThinking, formatWarning,
   identity, isBlank, isGraded, liveGame, nextBlankAfter, nextBlankOther, blankQueue, peekMode,
@@ -642,7 +642,8 @@ export function App({ doc, config, cursor, reload }) {
             <FiguresCard shot={shot} doc={doc} onLine={tablet ? openDelivery : null}>
               {flags}
               {view.format.swappable ? (
-                <EndBox view={view} cursor={{ ei: ui.ei, si: ui.si }} config={config} actions={actions} />
+                <EndBox view={view} cursor={{ ei: ui.ei, si: ui.si }} config={config} actions={actions}
+                        compact={tablet} />
               ) : null}
             </FiguresCard>
             {wide ? <LineCard shot={shot} doc={doc} onExpand={openDelivery} /> : null}
@@ -673,7 +674,13 @@ export function App({ doc, config, cursor, reload }) {
       <ShotClipDialog clipping={ui.clipping} onClose={closeClipping} />
       {/* Both are opened only from the desk layouts, so the narrow and phone
           DOM never carries them (spec: byte-identical to before). */}
-      {desk ? <DeliveryDialog delivering={ui.delivering} onClose={closeDelivering} /> : null}
+      {/* The tablet's drawing is narrower; undefined takes the dialog's own defaults. */}
+      {desk ? (
+        <DeliveryDialog delivering={ui.delivering} onClose={closeDelivering}
+                        box={tablet ? TABLETDELIVERYBOX : undefined}
+                        speedBox={tablet ? TABLETSPEEDBOX : undefined}
+                        hint={tablet ? "Tap outside to close" : undefined} />
+      ) : null}
       {desk ? (
         <ThinkingDialog open={ui.thinking} series={series} here={here} bars={ui.clockBars}
                         actions={actions} onClose={closeThinking} />
