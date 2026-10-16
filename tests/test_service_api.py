@@ -769,6 +769,16 @@ class TestCatalogueAndAdmin:
             assert f'href="{other}"' in r.text
             assert 'href="/static/site.css"' in r.text
 
+    def test_the_terms_and_privacy_say_thinking_time_is_for_people_signed_in(self, world):
+        c = world["client"]
+        terms = " ".join(c.get("/terms").text.split())
+        privacy = " ".join(c.get("/privacy").text.split())
+        assert "in reports such as Thinking time" not in terms
+        assert "Thinking time, which ranks teams by name, is shown to anyone signed in." in terms
+        assert "reports such as Thinking time" not in privacy
+        assert ("Thinking time, which lists teams by name with how long they took per end,"
+                " is shown only to people signed in.") in privacy
+
     def test_the_terms_and_privacy_say_who_may_change_a_chart(self, world):
         c = world["client"]
         terms = " ".join(c.get("/terms").text.split())

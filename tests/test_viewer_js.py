@@ -497,6 +497,25 @@ class TestTheGuardedPage:
                 " text-overflow: ellipsis; white-space: nowrap; }") in phone
 
 
+
+class TestThinkingTimeNeedsSignIn:
+    """/thinking: with accounts on, the ranking is for people signed in."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self):
+        return (self.ROOT / "frontend/site/Thinking.jsx").read_text()
+
+    def test_it_asks_only_once_auth_has_decided_and_with_the_token(self):
+        page = " ".join(self.src().split())
+        assert ('useResource("/api/reports/thinking", { skip: !ready || (accounts && !user),'
+                ' deps: [user?.uid] })') in page
+        assert "auth: false" not in page
+
+    def test_signed_out_it_offers_sign_in_instead(self):
+        page = " ".join(self.src().split())
+        assert "Thinking time is for signed-in members." in page
+        assert "signIn().catch(" in page
+
 class TestChartingSignsYouInFirst:
     """With accounts on, Chart and Submit need somebody to own the chart."""
     ROOT = Path(__file__).resolve().parents[1]

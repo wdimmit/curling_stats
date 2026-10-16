@@ -1123,17 +1123,25 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     @app.get("/api/reports/thinking")
     def api_thinking_report(request: Request,
-                            top: int = Query(thinking_report.TOP, ge=1, le=100)):
+                            top: int = Query(thinking_report.TOP, ge=1, le=100),
+                            authorization: str | None = Header(default=None)):
         """Per league, the teams with the most thinking per end, one row per
-        team per game. Public, like the catalogue, and read from the
-        summaries on the sources alone -- never a timeline.
+        team per game, read from the summaries on the sources alone -- never
+        a timeline.
+
+        With accounts on it is for people signed in: it ranks teams by name,
+        slowest first, which a game's own page never does. Any account will
+        do. Kept privately for the same reason, so no shared cache hands it
+        to somebody signed out.
 
         Asked about on every load rather than kept for five minutes: a team
         named on a game's page has to be on this one when the person who
         named it comes back to look."""
+        if auth.enabled and uid_of(authorization) is None:
+            raise HTTPException(401, "sign in to see thinking time")
         report = thinking_report.build(games_listed(repo.list_sources(limit=EVERY_SOURCE)),
                                        top=top)
-        return json_revalidated(request, report, "public")
+        return json_revalidated(request, report, "private")
 
     @app.post("/api/admin/backfill-thinking")
     def admin_backfill_thinking(limit: int = Query(50, ge=1, le=500),

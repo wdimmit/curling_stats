@@ -8,6 +8,7 @@ from tests.test_service_api import (  # noqa: F401
     ADMIN, CLUB, DOUBLES_VID, VID, add_doubles_video, practice_doc, sample_doc, spans_doc,
     submit, work_through, world,
 )
+from tests.test_service_auth import SARAH, w  # noqa: F401  (w: accounts on)
 
 
 def with_thinking(doc, per_end=((90.0, 60.0),)):
@@ -56,10 +57,29 @@ class TestSummarisedOnCompletion:
         assert rows["red"]["ends"] == 1 and league["teams"][0]["colour"] == "red"
         assert report(world)["pending"] == 0
 
-    def test_the_report_is_public_and_kept_but_asked_about(self, world):
+    def test_with_accounts_off_it_is_open_kept_privately_but_asked_about(self, world):
         r = world["client"].get("/api/reports/thinking")
         assert r.status_code == 200 and r.json()["leagues"] == []
-        assert r.headers["cache-control"] == "public, no-cache" and r.headers["etag"]
+        assert r.headers["cache-control"] == "private, no-cache" and r.headers["etag"]
+
+
+class TestForSignedInPeople:
+    """With accounts on, the league ranking -- teams by name, slowest first --
+    is for people signed in. A game's own page still shows its own times."""
+
+    def test_signed_out_is_told_to_sign_in(self, w):
+        r = w["client"].get("/api/reports/thinking")
+        assert r.status_code == 401 and r.json()["detail"] == "sign in to see thinking time"
+
+    def test_a_forged_token_is_signed_out(self, w):
+        r = w["client"].get("/api/reports/thinking", headers={"Authorization": "Bearer forged"})
+        assert r.status_code == 401
+
+    def test_anyone_signed_in_sees_it_and_no_shared_cache_keeps_it(self, w):
+        """Signed in is enough: Sarah is not validated."""
+        r = w["client"].get("/api/reports/thinking", headers=SARAH)
+        assert r.status_code == 200 and r.json()["leagues"] == []
+        assert r.headers["cache-control"] == "private, no-cache"
 
     def test_a_team_named_since_the_last_look_shows_on_the_next(self, world):
         """2026-10-09: names typed in on a game's page did not reach the report

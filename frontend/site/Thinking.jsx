@@ -4,11 +4,15 @@
  * Everything is computed by the API from a summary kept on each game
  * (service/thinking_report.py); this page only lays it out. One league at a
  * time, chosen from tabs, with the choice in the URL hash so a league's page
- * can be sent to its players. */
+ * can be sent to its players.
+ *
+ * With accounts on it is for people signed in (api.py api_thinking_report):
+ * it ranks teams by name, slowest first. Anyone else is offered sign-in. */
 import { useEffect, useState } from "react";
+import { signIn } from "./auth.js";
 import { mmss } from "./fmt.js";
-import { Header } from "./ui.jsx";
-import { useResource } from "./useAuth.js";
+import { Card, Header } from "./ui.jsx";
+import { useAuthUser, useResource } from "./useAuth.js";
 
 const keyOf = lg => lg.format === "fours" ? lg.league : `${lg.league} · ${lg.format}`;
 const other = { red: "yellow", yellow: "red" };
@@ -81,7 +85,12 @@ function PaceTable({ rows }) {
 }
 
 export function Thinking() {
-  const report = useResource("/api/reports/thinking", { auth: false });
+  const { user, ready, accounts } = useAuthUser();
+  // Asked only once auth has decided, and then with the person's token.
+  const report = useResource("/api/reports/thinking",
+                             { skip: !ready || (accounts && !user), deps: [user?.uid] });
+  const signedOut = ready && accounts && !user;
+  const [err, setErr] = useState("");
   const [picked, setPicked] = useState(readHash);
   useEffect(() => {
     const on = () => setPicked(readHash());
@@ -101,7 +110,16 @@ export function Thinking() {
         <p className="muted" style={{ marginTop: 0 }}>How long a team took to decide its shots,
         divided by the ends it played, grouped by league. A team is listed once for each game it
         played. The league is the YouTube playlist the stream was published in.</p>
-        {report.loading ? <p className="muted">Loading…</p>
+        {signedOut ? (
+          <Card>
+            <p style={{ marginTop: 0 }}>Thinking time is for signed-in members. Sign in to see
+            each league's slowest teams.</p>
+            <button className="primary"
+                    onClick={() => signIn().catch(e => setErr(e.code || e.message))}>
+              Sign in with Google</button>
+            {err ? <p className="muted">{err}</p> : null}
+          </Card>
+        ) : !ready || report.loading ? <p className="muted">Loading…</p>
          : report.error ? <p className="warn">The report could not be loaded. Try again in a minute.</p>
          : !league ? <p className="muted">No games with timed rocks yet.</p>
          : (

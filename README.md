@@ -501,8 +501,9 @@ admin.
 
 **⚑ Flag**, in the `⋯` menu of any hosted page, leaves a note about the rock
 on screen for whoever runs the service, signed in or not. `scripts/flags.py`
-lists and resolves them. The **thinking report** at `/thinking` lists each
-league's 20 slowest teams by thinking time per end, one row per team per game.
+lists and resolves them. The **thinking report** at `/thinking`, for anyone
+signed in, lists each league's 20 slowest teams by thinking time per end, one
+row per team per game.
 
 Leave `FIREBASE_PROJECT` unset and there are no accounts: no sign-in button,
 and the service behaves exactly as it did before any of it was added: anyone
