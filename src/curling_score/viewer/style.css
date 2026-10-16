@@ -1643,10 +1643,14 @@ body[data-mode="review"] #house { cursor:default; }
 
   /* Doubles (spec §5): the end's facts in one line and the swap in a sheet. */
   #figCard #endBox { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
-  #figCard #endBox .endline { flex: 1 1 0; min-width: 0; margin: 0; font-size: 13px; white-space: nowrap;
-                              overflow: hidden; text-overflow: ellipsis; }
+  /* The line wraps, never ellipsises: what it says is not to be hidden. */
+  #figCard #endBox .endline { flex: 1 1 0; min-width: 0; margin: 0; font-size: 13px; line-height: 1.25;
+                              white-space: normal; overflow-wrap: anywhere; }
   #swapBtn { flex: 0 1 auto; min-width: 44px; min-height: 44px; max-width: 180px; padding: 0 10px;
              font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The swap sheet's two boxes are fingertip targets; #endBox label (1,0,1) would make them 20 px. */
+  #swapSheet label.chk { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 0; }
+  #swapSheet label.chk input { width: 20px; height: 20px; margin: 0; flex: none; }
 }
 
 /* --- the portrait iPad's sheets (spec 2026-10-16 §6) ---------------------- */

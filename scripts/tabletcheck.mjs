@@ -411,6 +411,14 @@ await check("doubles", async () => {
     const eb = await box("#endBox");
     if (!eb?.vis) fail(`doubles: /${name}/ #endBox is missing`);
     else if (eb.h > 56) fail(`doubles: /${name}/ #endBox is ${Math.round(eb.h)} px tall, over 56`);
+    // The line wraps and nothing is cut: no ellipsis, no clipped line.
+    const cut = await cdp.eval(`(() => { const e = document.querySelector("#endBox .endline"); if (!e) return null;
+      return { sw: e.scrollWidth, cw: e.clientWidth, sh: e.scrollHeight, ch: e.clientHeight, lines: Math.round(e.clientHeight / parseFloat(getComputedStyle(e).lineHeight)) }; })()`);
+    if (!cut) fail(`doubles: /${name}/ .endline is missing`);
+    else {
+      console.log(`doubles /${name}/ .endline ${cut.cw}x${cut.ch} px, ${cut.lines} line(s)`);
+      if (cut.sw > cut.cw || cut.sh > cut.ch + 1) fail(`doubles: /${name}/ .endline is cut (${cut.sw}x${cut.sh} in ${cut.cw}x${cut.ch})`);
+    }
   }
   await open(at(doublesUrl, "#e=2&s=3"), 820, 1080);
   await tap("#swapBtn");
@@ -419,6 +427,12 @@ await check("doubles", async () => {
   else {
     const n = await cdp.eval(`document.querySelectorAll("#swapSheet input[type=checkbox]").length`);
     if (n !== 2) fail(`doubles: #swapSheet has ${n} check-boxes, not 2`);
+    // Fingertip targets: every visible label and button in the sheet is 40 x 36 or more.
+    const small = await cdp.eval(`[...document.querySelectorAll("#swapSheet label.chk, #swapSheet button")].map(e => {
+      const r = e.getBoundingClientRect(); return { t: e.tagName + " " + e.textContent.trim().slice(0, 14), w: r.width, h: r.height };
+    }).filter(x => x.w > 0 && x.h > 0 && (x.h < 40 || x.w < 36)).map(x => x.t + " " + Math.round(x.w) + "x" + Math.round(x.h))`);
+    if (small.length) fail(`doubles: #swapSheet has small targets: ${small.join(", ")}`);
+    await shot("doubles-swap-sheet");
     await closeSheet("swapSheet");
   }
 });
