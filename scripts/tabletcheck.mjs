@@ -32,7 +32,8 @@
  *              there only where the rock has a delivery. Prints the house's drawn size.
  *   targets    every visible button, select, input, textarea, link, shot and check-label outside
  *              the video and outside a closed dialog is at least 36 x 40 (a check-box inside its
- *              label.chk is the label's to be)
+ *              label.chk is the label's to be); and at 820 x 1080 the same inside the open house
+ *              editor, the open Miss sheet and the open ⋯ dropdown
  *   menu       the header's overflow menu: opens, holds the right things, a field in it keeps it
  *              open, closes
  *   next       the Next rock button steps across an end and is disabled on the last rock
@@ -228,25 +229,53 @@ await check("fit", async () => {
 
 /* The names of the controls a finger has to hit, by id or by what they say. */
 const TARGETS = `button, select, input, textarea, a, .shot, label.chk`;
+/* The visible controls under 36 x 40 inside `scope` (a selector; the whole page when it is
+ * "body"), outside the video and outside a closed dialog, and how many were measured. */
+const smallTargets = scope => cdp.eval(`(() => {
+  const name = e => e.id ? "#" + e.id
+    : e.tagName.toLowerCase() + [...e.classList].map(c => "." + c).join("")
+      + ((e.textContent || e.value || e.getAttribute("aria-label") || e.title || "").trim()
+         ? \` "\${(e.textContent || e.value || e.getAttribute("aria-label") || e.title).trim().slice(0, 18)}"\` : "");
+  const out = []; let n = 0;
+  for (const root of document.querySelectorAll(${JSON.stringify(scope)}))
+    for (const e of root.querySelectorAll(${JSON.stringify(TARGETS)})) {
+      if (e.closest("#video") || e.closest("dialog:not([open])")) continue;
+      // A check-box inside its label.chk is the label's to be: the label is what is tapped.
+      if (e.matches("input[type=checkbox], input[type=radio]") && e.closest("label.chk")) continue;
+      const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
+      if (e.hidden || !r.width || !r.height || cs.visibility === "hidden" || cs.display === "none") continue;
+      n++;
+      if (r.width < 36 || r.height < 40) out.push(\`\${name(e)} \${Math.round(r.width)}x\${Math.round(r.height)}\`);
+    }
+  return { n, out }; })()`);
 await check("targets", async () => {
   for (const [w, h] of [[820, 1080], [744, 1050]]) {
     await open(at(edit, ROCK), w, h);
-    const bad = await cdp.eval(`(() => {
-      const name = e => e.id ? "#" + e.id
-        : e.tagName.toLowerCase() + [...e.classList].map(c => "." + c).join("")
-          + ((e.textContent || e.value || e.getAttribute("aria-label") || e.title || "").trim()
-             ? \` "\${(e.textContent || e.value || e.getAttribute("aria-label") || e.title).trim().slice(0, 18)}"\` : "");
-      const out = [];
-      for (const e of document.querySelectorAll(${JSON.stringify(TARGETS)})) {
-        if (e.closest("#video") || e.closest("dialog:not([open])")) continue;
-        // A check-box inside its label.chk is the label's to be: the label is what is tapped.
-        if (e.matches("input[type=checkbox], input[type=radio]") && e.closest("label.chk")) continue;
-        const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
-        if (e.hidden || !r.width || !r.height || cs.visibility === "hidden" || cs.display === "none") continue;
-        if (r.width < 36 || r.height < 40) out.push(\`\${name(e)} \${Math.round(r.width)}x\${Math.round(r.height)}\`);
-      }
-      return out; })()`);
+    const { out: bad } = await smallTargets("body");
     if (bad.length) fail(`targets ${w}x${h}: ${bad.length} under 36 x 40: ${bad.join(", ")}`);
+  }
+  // What only shows once opened: the house editor, a sheet and the ⋯ dropdown, at 820 x 1080.
+  const passes = [
+    ["the open house editor", "#houseCard", async () => {
+      await tap("#house"); await sleep(400);
+      if ((await data("house")) !== "edit") throw new Error("tapping #house did not open the editor");
+    }],
+    ["the open Miss sheet", "#missSheet", async () => {
+      await tap("#missBtn"); await sleep(300);
+      if (!(await isOpen("missSheet"))) throw new Error("#missBtn did not open #missSheet");
+    }],
+    ["the open ⋯ dropdown", "#menu, #playback", async () => {
+      await tap("#menuBtn"); await sleep(300);
+      if ((await data("menu")) !== "open") throw new Error("#menuBtn did not open the dropdown");
+    }],
+  ];
+  for (const [what, scope, openIt] of passes) {
+    await open(at(edit, ROCK), 820, 1080);
+    try { await openIt(); } catch (err) { fail(`targets 820x1080 ${what}: ${err.message}`); continue; }
+    const { n, out: bad } = await smallTargets(scope);
+    console.log(`targets 820x1080 ${what}: ${n} controls measured`);
+    if (!n) fail(`targets 820x1080 ${what}: no control measured in ${scope}`);
+    if (bad.length) fail(`targets 820x1080 ${what}: ${bad.length} under 36 x 40: ${bad.join(", ")}`);
   }
 });
 
