@@ -5874,3 +5874,36 @@ class TestTheDeliveryDialog:
         rule = css[css.index("#deliveryDialog, #thinkingDialog {"):].split("}")[0]
         assert "padding: 0" in rule
         assert ".dd-body { padding: 16px 24px 18px" in css
+
+
+class TestTheThinkingDialog:
+    SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/ThinkingDialog.jsx"
+    CSS = VIEWER / "style.css"
+
+    def test_it_is_the_panel_s_chart_in_a_dialog(self):
+        src = self.SRC.read_text()
+        for needle in ('id="thinkingDialog"', "showModal()", "<ThinkingBars", "<ThinkingChart", "<ClockKey",
+                       "box={TALLBOX}", "No thinking time was measured in this game."):
+            assert needle in src, needle
+
+    def test_its_content_sits_in_the_padded_wrapper(self):
+        # The padding is the wrapper's, so a click inside the card never reaches the <dialog>
+        # element and only the backdrop closes it.
+        src = self.SRC.read_text()
+        assert '<div className="dd-body">' in src
+        assert "e.target === e.currentTarget" in src
+        assert src.index('<div className="dd-body">') < src.index('className="dd-head"')
+
+    def test_the_clock_s_styles_apply_in_it(self):
+        css = self.CSS.read_text()
+        for rule in ("#clock .key {", "#clock .key i.sw {", "#clock .key button.linky {"):
+            sel = rule[:-2]
+            assert f"{sel}, #thinkingDialog {sel[len('#clock '):]}" in css, sel
+
+    def test_the_header_button_sits_before_report(self):
+        css = self.CSS.read_text()
+        wide = css[css.index("@media (min-width: 1700px)"):]
+        assert "header #thinkBtn  { order: 11; }" in wide
+        assert "header #reportBtn { order: 12; }" in wide
+        app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()
+        assert 'id="thinkBtn"' in app and "<ThinkingDialog" in app

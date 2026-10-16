@@ -34,6 +34,7 @@ import { PlayedDialog } from "./Played.jsx";
 import { TeamsDialog } from "./Teams.jsx";
 import { ShotClipDialog } from "./ShotClip.jsx";
 import { DeliveryDialog } from "./DeliveryDialog.jsx";
+import { ThinkingDialog } from "./ThinkingDialog.jsx";
 import { Watch } from "./Watch.jsx";
 import { ViewOnly } from "./ViewOnly.jsx";
 import { useSwipe } from "./Pager.jsx";
@@ -139,6 +140,7 @@ export function App({ doc, config, cursor, reload }) {
   const closeNaming = useCallback(() => dispatch({ type: "set", patch: { naming: null } }), []);
   const closeClipping = useCallback(() => dispatch({ type: "set", patch: { clipping: null } }), []);
   const closeDelivering = useCallback(() => dispatch({ type: "set", patch: { delivering: null } }), []);
+  const closeThinking = useCallback(() => dispatch({ type: "set", patch: { thinking: false } }), []);
 
   /* --------------------------------------------------------------- actions */
 
@@ -604,6 +606,8 @@ export function App({ doc, config, cursor, reload }) {
       <TeamsDialog naming={ui.naming} onClose={closeNaming} onSaved={reload} />
       <ShotClipDialog clipping={ui.clipping} onClose={closeClipping} />
       <DeliveryDialog delivering={ui.delivering} onClose={closeDelivering} />
+      <ThinkingDialog open={ui.thinking} series={series} here={here} bars={ui.clockBars}
+                      actions={actions} onClose={closeThinking} />
     </>
   );
 }
@@ -707,6 +711,10 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wi
                     hidden={!(doc.chart?.share_url && !config.readOnly)} />
         <button id="download" title="Save overrides.json to disk" hidden={config.readOnly}
                 onClick={() => store.download()}>⬇</button>
+        {wide ? (
+          <button id="thinkBtn" title="Thinking time, rock by rock"
+                  onClick={() => dispatch({ type: "set", patch: { thinking: true } })}>Thinking</button>
+        ) : null}
         <button id="reportBtn" className={ui.reporting ? "on" : undefined}
                 onClick={() => dispatch({ type: "set", patch: { reporting: !ui.reporting } })}>
           {ui.reporting ? "Close report" : "Report"}

@@ -53,7 +53,7 @@
     "frontend/site/main.jsx": "d8324c80b4375292a63c8309fd85a4290dc2f3a04c44d87cdc858978015e4d63",
     "frontend/site/ui.jsx": "19a9c87760a768cf44f05dec32d90eeab29cd0010e5553a91286eff18ec975dc",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
-    "frontend/viewer/App.jsx": "5dff2a4dc32c6c394de4a2341ba329ed65d97f4ac55356a649e3d27235e8c7e0",
+    "frontend/viewer/App.jsx": "2409d66d96312673b96375071a13cd9908ec1d23d1f465c7610aedeef2fd323d",
     "frontend/viewer/ChartPanel.jsx": "2af3b1a96f8bcb453628578473043a3124d774c2ef3efb62c70154a04edd7150",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "65dfe05210a940423b6ea5ccd87ceafe59c6b2b457386555adfac82da758f890",
@@ -69,6 +69,7 @@
     "frontend/viewer/ShotClip.jsx": "9b81d357377afc80ca3742f6c643fe34d2278ca73e8049e5d0810ab5e0ee0f88",
     "frontend/viewer/Side.jsx": "3f8de87486f7c0bd35f3485b58ced8f39a6dbaeb6572ca441d4804c1e3c856e0",
     "frontend/viewer/Teams.jsx": "8998c4f6a35de0f1c62e514749fa1f1037c6476ef5fc9ecd361096a0a3183bc8",
+    "frontend/viewer/ThinkingDialog.jsx": "6bf18b6669c65c5280c8d7c0cf7a627aa7d8492e4dbf6ce234e4b17a79d39123",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
     "frontend/viewer/ViewOnly.jsx": "64f55d2286440b32e65009598b96d11b7301e91731cc00c261b96441a9d7dcce",
     "frontend/viewer/Watch.jsx": "2e7de47175de0cbd87b75ed400def1d76e407ce366ac90b5569c3690fa0e4f5e",
@@ -76,6 +77,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "0f72beb4483ecdff5613105a0c1f9e5cc449e86b88d28d2335a47cb5613a9c4a",
-    "src/curling_score/viewer/app.js": "e92ce3bdd78f603866a2a50df394e23a9b2db3692004583b61d64d60b7469c77"
+    "src/curling_score/viewer/app.js": "094c8a2085f1d3e5926c483308f825e2d42cc62115775cfb33789734f904b67c"
   }
 }

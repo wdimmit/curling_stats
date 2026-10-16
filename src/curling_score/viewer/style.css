@@ -507,13 +507,14 @@ body.reporting main { display:none; }
 }
 /* In the aside the same 640-unit box is squeezed into a third of the width,
    so its labels need drawing larger there too. */
-#clock .clockchart .yl, #clock .clockchart .xl { font-size:24px; }
-#clock .clockchart { max-width:none; }
-#clock .key { display:flex; gap:12px; font-size:12px; margin-top:4px; }
-#clock .key i.sw { display:inline-block; width:9px; height:9px; border-radius:50%;
+#clock .clockchart .yl, #clock .clockchart .xl,
+#thinkingDialog .clockchart .yl, #thinkingDialog .clockchart .xl { font-size:24px; }
+#clock .clockchart, #thinkingDialog .clockchart { max-width:none; }
+#clock .key, #thinkingDialog .key { display:flex; gap:12px; font-size:12px; margin-top:4px; }
+#clock .key i.sw, #thinkingDialog .key i.sw { display:inline-block; width:9px; height:9px; border-radius:50%;
                    margin-right:4px; vertical-align:-1px; }
-#clock .key i.sw.red { background:var(--red); }
-#clock .key i.sw.yellow { background:var(--yellow); }
+#clock .key i.sw.red, #thinkingDialog .key i.sw.red { background:var(--red); }
+#clock .key i.sw.yellow, #thinkingDialog .key i.sw.yellow { background:var(--yellow); }
 /* One bar per rock. Clickable, because a tall bar is only useful if it takes
    you to the rock that made it. */
 .clockchart .bar { fill:var(--muted); cursor:pointer; }
@@ -532,9 +533,9 @@ body.reporting main { display:none; }
 /* The game's own median: what "long" means here rather than in the abstract. */
 .clockchart .median { stroke:var(--ink); stroke-width:1; stroke-dasharray:4 3;
                       opacity:.5; vector-effect:non-scaling-stroke; }
-#clock .key .grow { flex:1 1 auto; }
-#clock .key button.linky { all:unset; cursor:pointer; color:var(--accent); }
-#clock .key button.linky:hover { text-decoration:underline; }
+#clock .key .grow, #thinkingDialog .key .grow { flex:1 1 auto; }
+#clock .key button.linky, #thinkingDialog .key button.linky { all:unset; cursor:pointer; color:var(--accent); }
+#clock .key button.linky:hover, #thinkingDialog .key button.linky:hover { text-decoration:underline; }
 
 /* Where the viewer is in the game. Faint: it is context for the lines, and
    must not be mistaken for one of them. */
@@ -1446,6 +1447,14 @@ body[data-mode="review"] #house { cursor:default; }
   #rockName .chip.red { background: var(--red); color: #fff; }
   #rockName .chip.yellow { background: var(--yellow); color: #1a1a1a; }
   #rockName .chip.unknown { background: var(--panel); color: var(--warn); border: 2px dashed var(--warn); }
+
+  /* Thinking comes just before Report; the rest move up one. */
+  header #thinkBtn  { order: 11; }
+  header #reportBtn { order: 12; }
+  header #flagBtn   { order: 13; }
+  header #playedBtn { order: 14; }
+  header #teamsBtn  { order: 15; }
+  header #clipBtn   { order: 16; }
 }
 
 /* --- the large dialogs: delivery and thinking (spec 2026-10-15) ----------- */
