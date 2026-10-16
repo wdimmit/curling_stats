@@ -206,7 +206,16 @@ from pathlib import Path
 # later games already did, unless the recording joined it at its start
 # (`analyze.leaves_off_head`): Wednesday Womens 10/14 S4's people in a house
 # before the game were end 1, and every end after it was one too high.
-PIPELINE_VERSION = "2026.10.16.1"
+# 2026.10.16.2: the activity profile's stones are counted by the detector the
+# ends use, not the colour thresholds (`profile.count_frame`), which also count
+# people: 10/15 Thursday Mens sheet 1 went out live as one fourteen-end game,
+# and its game 2 end 2 lost its last five rocks. Over 132 cached videos 23
+# segment differently, mostly scraps the thresholds made out of people; 13 full
+# analyses: 2081 -> 2088 rocks, ends agreeing with the board 61/78 -> 67/81,
+# three pre-game "ends" gone (_OGo), a missed end found (ontE game 2). One
+# worse: last season's 5U Nationals sheet 5 (hOKZ), whose board cannot be read,
+# splits 4 + 4 at its 315 s mid-game break.
+PIPELINE_VERSION = "2026.10.16.2"
 
 
 def model_id(weights) -> str:
