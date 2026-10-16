@@ -93,6 +93,7 @@ const sans = url => url.replace(/#.*$/, "");
 const at = (url, hash) => sans(url) + hash;
 const ROCK = "#e=2&s=4";          // a rock with a delivery
 const NO_LINE = "#e=3&s=3";       // a rock without one
+const ROTATE = "#e=2&s=7";        // a rock no other section types into
 
 /* The window: a tablet (touch, mobile) unless told otherwise. */
 async function setSize(width, height, touch = true) {
@@ -322,7 +323,8 @@ await check("sheets", async () => {
 });
 
 await check("rotate", async () => {
-  await open(at(edit, ROCK), 820, 1080);
+  // Its own rock: devserve keeps edits in memory, and `sheets` has just typed into ROCK's note.
+  await open(at(edit, ROTATE), 820, 1080);
   await tap("#noteBtn");
   await sleep(300);
   await tap("#note");
