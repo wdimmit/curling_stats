@@ -654,7 +654,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wi
           <span className={`chip ${shot.color}${isBlank(shot) ? " unknown" : ""}`}>
             {isBlank(shot) ? "?" : shot.number}
           </span>
-          {shot.label || `shot ${shot.number}`}
+          <span className="rn-label">{shot.label || `shot ${shot.number}`}</span>
         </span>
       ) : null}
       {liveGame(doc, view.game)

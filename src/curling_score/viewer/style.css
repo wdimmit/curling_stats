@@ -1330,9 +1330,15 @@ body[data-mode="review"] #house { cursor:default; }
    the page is the three-column one above, untouched. Last in the file, so at
    equal specificity it wins over the min-width:641px header order. */
 @media (min-width: 1700px) {
+  /* The page is the screen's height under the one-line header (54 px; it
+     never wraps here, below). Column 2 shares it: the figures card takes its
+     natural height -- warnings and the doubles end box included -- and the
+     house card the rest, down to a floor below which the page scrolls rather
+     than the cards overlap. The video and the line chart span both rows. */
   main { grid-template-columns: minmax(0,1fr) 330px 340px;
          grid-template-areas: "play house line" "play figs line";
-         grid-template-rows: auto 1fr; }
+         grid-template-rows: minmax(240px, 1fr) auto;
+         height: calc(100vh - 54px); }
   #figCard { grid-area: figs; }
   #lineCard { grid-area: line; }
 
@@ -1369,8 +1375,14 @@ body[data-mode="review"] #house { cursor:default; }
      the bar's grid, and keeps it in the accessibility tree, as everywhere on
      the desktop. */
 
-  /* The house yields height on a short screen; its hint is the card's tooltip. */
-  #house { max-height: calc(100vh - 430px); }
+  /* The house fills what its row leaves under the tools, drawn to fit: the
+     SVG letterboxes its viewBox, and the editor maps the pointer through
+     getScreenCTM, so it stays exact at any size. Its hint is the card's
+     tooltip. */
+  #houseCard { align-self: stretch; min-height: 0; overflow: hidden;
+               display: flex; flex-direction: column; }
+  #houseCard .tools { flex: none; }
+  #house { flex: 1 1 0; min-height: 0; height: auto; }
 
   /* The figures under the house: two columns, one line of note each. */
   #figCard .dfigs { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
@@ -1387,12 +1399,16 @@ body[data-mode="review"] #house { cursor:default; }
   #figCard #flags:not(:empty) { margin-bottom: 10px; }
   #figCard #flags .warn:first-child { margin-top: 0; }
   #figCard #endBox { margin: 0 0 10px; }
+  #figCard #endBox h3 { margin-top: 0; }   /* the card's padding is its margin; 14 px back for the house */
   #figCard .dcap, #lineCard .dcap { font-size: 11px; color: var(--muted); margin: 4px 0 0; line-height: 1.35; }
 
   /* The line, the height of the page (Side.jsx LineCard draws to its box). */
   #lineCard { height: calc(100vh - 82px); min-height: 640px; box-sizing: border-box;
               display: flex; flex-direction: column; }
-  #lineCard .lc-head { display: flex; align-items: center; justify-content: space-between; margin: -2px 0 6px; }
+  /* Tall enough for Expand, so the chart starts at the same place with or
+     without it. */
+  #lineCard .lc-head { display: flex; align-items: center; justify-content: space-between; margin: -2px 0 6px;
+                       min-height: 26px; }
   #lineCard .lc-head h2 { margin: 0; }
   #lineExpand { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 3px 8px; }
   #lineCard .lc-box { flex: 1 1 0; min-height: 0; overflow: hidden; }
@@ -1400,10 +1416,17 @@ body[data-mode="review"] #house { cursor:default; }
   #lineCard svg.linechart { display: block; border: 1px solid var(--line); border-radius: 6px; box-sizing: border-box; }
   #lineCard .dlvnone { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 
-  /* The header: this rock beside the source. */
-  header > #rockName { order: 2; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap; }
+  /* The header: this rock beside the source, on one line at any width here.
+     Everything keeps its size but the spacer and the rock's name, which
+     gives way first -- its label ends in "…", the chip stays whole. */
+  header { flex-wrap: nowrap; }
+  header > *, header #menu > * { flex-shrink: 0; }
+  header > .grow { flex-shrink: 1; min-width: 0; }
+  header > #rockName { order: 2; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap;
+                       flex: 0 1 auto; min-width: 24px; overflow: hidden; }
+  #rockName .rn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   #rockName .chip { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px;
-                    font-size: 12px; font-variant-numeric: tabular-nums; }
+                    font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
   #rockName .chip.red { background: var(--red); color: #fff; }
   #rockName .chip.yellow { background: var(--yellow); color: #1a1a1a; }
   #rockName .chip.unknown { background: var(--panel); color: var(--warn); border: 2px dashed var(--warn); }

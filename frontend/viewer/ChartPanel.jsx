@@ -16,6 +16,7 @@ import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 function useTypedField(initial, commit, busy) {
   const [text, setText] = useState(initial ?? "");
   const typed = useRef(false);
+  const focused = useRef(false);
   useEffect(() => {
     // Not on mount. The effect runs once with the value the shot already has,
     // and committing that would write `{miss_reason: null}` for every rock the
@@ -25,11 +26,19 @@ function useTypedField(initial, commit, busy) {
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
+  /* A field removed while it has the caret never blurs -- React's onBlur
+   * does not fire for a node already gone -- and the rock would stay busy,
+   * closed to every poll and save reply. The window crossing 1700 px swaps
+   * the panel for the bar (or back) under the caret, so let go here. */
+  useEffect(() => () => {
+    if (focused.current) busy(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return {
     value: text,
     onChange: e => setText(e.target.value),
-    onFocus: () => busy(true),
-    onBlur: () => busy(false),
+    onFocus: () => { focused.current = true; busy(true); },
+    onBlur: () => { focused.current = false; busy(false); },
   };
 }
 

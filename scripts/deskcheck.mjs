@@ -8,7 +8,7 @@
  *
  * Give each URL a rock with a delivery: #e=2&s=4 for tl-s_0cYt.json.
  * Checks, by name:
- *   fit       four screen sizes x three surfaces: no scroll, every card above the fold
+ *   fit       five screen sizes x three surfaces: no scroll, every card above the fold
  *   short     1920x768: the page may scroll, but no card overlaps another
  *   narrow    1699x900: the old layout, untouched
  *   resize    a note typed at 1920 survives crossing to 1600
@@ -97,7 +97,8 @@ async function shot(name) {
 }
 
 await check("fit", async () => {
-  for (const [w, h] of [[1920, 945], [1920, 860], [1920, 1032], [2560, 1305]]) {
+  // 1700 is the gate itself: the narrowest the wide layout gets, header included.
+  for (const [w, h] of [[1700, 945], [1920, 945], [1920, 860], [1920, 1032], [2560, 1305]]) {
     for (const [name, url] of [["c", edit], ["s", view], ["g", review]]) {
       await open(url, w, h);
       const at = `fit ${name} ${w}x${h}`;
