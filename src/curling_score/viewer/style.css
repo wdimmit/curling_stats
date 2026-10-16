@@ -1546,7 +1546,9 @@ body[data-mode="review"] #house { cursor:default; }
      leaves down to 36. The width keeps 160 px for the rest of the row:
      main's padding, the chips' 2 px gaps, the row's gap and Replay (155 px
      here), so 16 chips and Replay fit on one line from 744 px up. */
-  #transport { grid-area: tp; margin: 0; gap: 6px; flex-wrap: nowrap; justify-content: center; }
+  /* `safe`: below 744 px the row can run past its box, and then it starts at
+     the left edge rather than spilling past it on both sides. */
+  #transport { grid-area: tp; margin: 0; gap: 6px; flex-wrap: nowrap; justify-content: safe center; }
   #transport .shots { margin: 0; gap: 2px; flex-wrap: nowrap; }
   #shots .shot { width: clamp(36px, calc((100vw - 160px) / 16), 40px); height: 44px; font-size: 15px;
                  border-radius: 8px; flex: none; }
