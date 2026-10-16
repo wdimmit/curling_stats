@@ -45,6 +45,12 @@ export const RELEASE_TO_ARRIVAL_S = 15;  // timeline.RELEASE_TO_ARRIVAL_S: an un
  * asserts the two are equal. */
 export const PHONE_QUERY = "(max-width: 640px) and (min-height: 461px)";
 
+/* The wide desktop layout (spec 2026-10-15): the charting bar under the
+ * video, the figures under the house, one line chart the height of the page.
+ * React decides what renders by this; style.css lays it out by the same
+ * string, byte for byte -- a test asserts it, as for PHONE_QUERY. */
+export const WIDE_QUERY = "(min-width: 1700px)";
+
 /* The phone viewer's bottom tabs, in order: the one table the tab bar draws
  * and a link's #tab= is checked against. */
 export const WATCH_TABS = [["house", "House"], ["detail", "Detail"], ["delivery", "Delivery"],

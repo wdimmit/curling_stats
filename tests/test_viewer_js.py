@@ -3793,7 +3793,10 @@ class TestDoublesStatsAndSummary:
         main = app[app.index("<main>"):app.index("</main>")]
         assert 'id="formatWarning"' in flags and 'id="formatWarning"' not in main
         assert flags.index('id="formatWarning"') < flags.index("flags.map(")
-        assert "<Flags doc={doc} " in main
+        # One element, placed by each layout: under the transport below
+        # 1700 px, at the top of the figures card from there (spec 2026-10-15).
+        assert "const flags = <Flags doc={doc} " in app
+        assert main.count("{flags}") == 2
 
     def test_a_phone_peek_hides_the_end_box(self):
         """The peek's bottom 84px belong to the fixed transport bar. The End
@@ -4425,6 +4428,15 @@ class TestTheLineChartMarkup:
         src = self.DETAIL.read_text()
         assert ("<Strip shot={shot} shapes={stripShapes(stripGeometry(shot))}\n"
                 "               label={`The sheet from above, thrower at the bottom: ${seen}`} />") in src
+
+
+class TestTheWideLayoutGate:
+    def test_wide_query_is_a_media_query_byte_for_byte(self):
+        css = (VIEWER / "style.css").read_text()
+        queries = [q.strip() for q in re.findall(r"@media ([^{]+)\{", css)]
+        want = run_js("out(WIDE_QUERY);")
+        assert want == "(min-width: 1700px)"
+        assert want in queries, "WIDE_QUERY is not one of the stylesheet's media queries"
 
 
 class TestTheReportByEnd:

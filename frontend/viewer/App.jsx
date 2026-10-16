@@ -21,11 +21,13 @@ import {
 } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
+import * as wideStore from "../runtime/wide.mjs";
 import { writeBodyState } from "../runtime/bodyState.mjs";
 import { loadPrefs, savePrefs, saveCursor } from "../runtime/prefs.mjs";
 import { House } from "./House.jsx";
 import { DeskDetail } from "./Detail.jsx";
-import { ChartPanel } from "./ChartPanel.jsx";
+import { ChartPanel, EndBox, GradingBar } from "./ChartPanel.jsx";
+import { FiguresCard, LineCard } from "./Side.jsx";
 import { Report } from "./Report.jsx";
 import { FlagDialog } from "./Flag.jsx";
 import { PlayedDialog } from "./Played.jsx";
@@ -36,6 +38,13 @@ import { ViewOnly } from "./ViewOnly.jsx";
 import { useSwipe } from "./Pager.jsx";
 
 const phone = () => matchMedia(PHONE_QUERY).matches;
+
+const GEAR = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+  </svg>
+);
 
 /* The rock a hash names, in the game as it is now charted. The hash is written
  * from the view with the overrides applied, so it is read back against the
@@ -73,7 +82,7 @@ export function App({ doc, config, cursor, reload }) {
     return {
       gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
       sheet: "peek", houseMode: "", menu: undefined, reporting: false, flagging: null, playing: null,
-      naming: null, clipping: null,
+      naming: null, clipping: null, delivering: null, thinking: false, prefs: false,
       notice: null,
       following: true,
       // A link or a restored session names a rock the video is not at yet:
@@ -88,6 +97,8 @@ export function App({ doc, config, cursor, reload }) {
 
   const overrides = useSyncExternalStore(store.subscribe, store.getOverrides);
   const status = useSyncExternalStore(store.subscribe, store.getStatus);
+  // Which desktop layout (spec 2026-10-15): by the stylesheet's own query.
+  const wide = useSyncExternalStore(wideStore.subscribe, wideStore.isWide);
 
   /* One relayout of the game, which the strip, the queue, the clock and the
    * report all read off. */
@@ -318,6 +329,16 @@ export function App({ doc, config, cursor, reload }) {
   }, [ui.menu]);
 
   useEffect(() => {
+    if (!ui.prefs) return undefined;
+    const onDown = ev => {
+      if (ev.target.closest("#playPrefs") || ev.target.closest("#playGear")) return;
+      dispatch({ type: "set", patch: { prefs: false } });
+    };
+    addEventListener("pointerdown", onDown, true);
+    return () => removeEventListener("pointerdown", onDown, true);
+  }, [ui.prefs]);
+
+  useEffect(() => {
     let t;
     const onResize = () => {
       clearTimeout(t);
@@ -365,7 +386,7 @@ export function App({ doc, config, cursor, reload }) {
         case "Enter": { patch({ state_known: true });
                         const it = nextBlankAfter(queue, ui.ei, ui.si);
                         if (it) goTo(it.ei, it.si); break; }
-        case "Escape": dispatch({ type: "set", patch: { reporting: false } }); break;
+        case "Escape": dispatch({ type: "set", patch: { reporting: false, prefs: false } }); break;
         case "0": case "1": case "2": case "3": case "4":
           patch({ user_score: +ev.key }); break;
         default: return;
@@ -391,10 +412,64 @@ export function App({ doc, config, cursor, reload }) {
   const href = t !== null ? `https://youtu.be/${doc.source.video_id}?t=${Math.floor(t)}`
                           : shot?.youtube_url;
 
+  const others = view.ends[ui.ei]?.shots.filter(x => shot && identity(x) !== identity(shot)) ?? [];
+  const prevBtn = (
+    <button id="prev" title="Previous shot (←)" disabled={ui.si <= 0}
+            onClick={() => goTo(ui.ei, ui.si - 1)}>←</button>
+  );
+  const nextBtn = (
+    <button id="next" title="Next shot (→)" disabled={ui.si >= shots.length - 1}
+            onClick={() => goTo(ui.ei, ui.si + 1)}>→</button>
+  );
+  const replayBtn = (
+    <button id="replay" title="Replay from before the throw (v)" onClick={() => seek(t)}>↻ Replay</button>
+  );
+  const markBtn = (
+    <button id="markCharted" hidden={config.readOnly}
+            onClick={() => { patch({ state_known: true });
+                             const it = nextBlankAfter(queue, ui.ei, ui.si);
+                             if (it) goTo(it.ei, it.si); }}>✔ Mark charted (Enter)</button>
+  );
+  const labelEl = (
+    <strong id="label" className="grow">
+      {shot ? (shot.label || `shot ${shot.number}`) : "no shots detected"}
+    </strong>
+  );
+  const ytLink = (
+    <a id="link" target="_blank" rel="noopener" href={href}
+       style={{ visibility: href ? "visible" : "hidden" }}>YouTube →</a>
+  );
+  const playback = (
+    <div className="row" id="playback">
+      <label className="chk">
+        <input type="checkbox" id="autoplay" checked={ui.autoplay}
+               onChange={e => setPref({ autoplay: e.target.checked })} /> play on jump
+      </label>
+      <label className="chk" title="How long before the release each shot starts">lead-in
+        <input type="number" id="leadin" min="0" max="60" step="1"
+               style={{ width: 58 }} defaultValue={ui.leadIn}
+               onChange={e => setPref({ leadIn: Math.max(0, +e.target.value || 0) })} />s
+      </label>
+    </div>
+  );
+  const flags = <Flags doc={doc} shot={shot} trimmed={ui.ei === 0 ? doc.chart?.ends_trimmed : 0} />;
+  const shotChips = (
+    <div className="shots" id="shots">
+      {shots.map((sh, i) => (
+        <div key={i} data-i={i} title={sh.label || ""}
+             className={`shot ${sh.color} ${isBlank(sh) ? "unknown" : ""} `
+                      + `${isGraded(sh) ? "graded" : ""} ${i === ui.si ? "sel" : ""}`}
+             onClick={() => goTo(ui.ei, i)}>
+          {isBlank(sh) ? "?" : sh.number}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <>
       <Header doc={doc} config={config} ui={ui} status={status} queue={queue}
-              view={view} shot={shot} dispatch={dispatch} goTo={goTo} />
+              view={view} shot={shot} dispatch={dispatch} goTo={goTo} wide={wide} />
 
       <main>
         <section className="card" id="playCard">
@@ -402,54 +477,43 @@ export function App({ doc, config, cursor, reload }) {
               React held a child for that slot one reconciliation would remove
               the iframe. */}
           <div className="video" id="video" ref={videoRef} />
-          <div className="row transport" id="transport">
-            <button id="prev" title="Previous shot (←)" disabled={ui.si <= 0}
-                    onClick={() => goTo(ui.ei, ui.si - 1)}>←</button>
-            <button id="next" title="Next shot (→)" disabled={ui.si >= shots.length - 1}
-                    onClick={() => goTo(ui.ei, ui.si + 1)}>→</button>
-            <button id="replay" title="Replay from before the throw (v)"
-                    onClick={() => seek(t)}>↻ Replay</button>
-            <button id="markCharted" hidden={config.readOnly}
-                    onClick={() => { patch({ state_known: true });
-                                     const it = nextBlankAfter(queue, ui.ei, ui.si);
-                                     if (it) goTo(it.ei, it.si); }}>✔ Mark charted (Enter)</button>
-            <strong id="label" className="grow">
-              {shot ? (shot.label || `shot ${shot.number}`) : "no shots detected"}
-            </strong>
-            <a id="link" target="_blank" rel="noopener" href={href}
-               style={{ visibility: href ? "visible" : "hidden" }}>YouTube →</a>
-          </div>
-          <div className="row" id="playback">
-            <label className="chk">
-              <input type="checkbox" id="autoplay" checked={ui.autoplay}
-                     onChange={e => setPref({ autoplay: e.target.checked })} /> play on jump
-            </label>
-            <label className="chk" title="How long before the release each shot starts">lead-in
-              <input type="number" id="leadin" min="0" max="60" step="1"
-                     style={{ width: 58 }} defaultValue={ui.leadIn}
-                     onChange={e => setPref({ leadIn: Math.max(0, +e.target.value || 0) })} />s
-            </label>
-          </div>
-          <Flags doc={doc} shot={shot} trimmed={ui.ei === 0 ? doc.chart?.ends_trimmed : 0} />
-          <div className="shots" id="shots">
-            {shots.map((sh, i) => (
-              <div key={i} data-i={i} title={sh.label || ""}
-                   className={`shot ${sh.color} ${isBlank(sh) ? "unknown" : ""} `
-                            + `${isGraded(sh) ? "graded" : ""} ${i === ui.si ? "sel" : ""}`}
-                   onClick={() => goTo(ui.ei, i)}>
-                {isBlank(sh) ? "?" : sh.number}
+          {wide ? (
+            <>
+              <div className="row transport" id="transport">
+                {prevBtn}{shotChips}{nextBtn}{replayBtn}{markBtn}
+                <span className="grow" />
+                {ytLink}
+                <button id="playGear" type="button" title="Playback: play on jump, lead-in"
+                        aria-label="Playback settings" aria-expanded={String(!!ui.prefs)}
+                        onClick={() => dispatch({ type: "set", patch: { prefs: !ui.prefs } })}>{GEAR}</button>
+                {ui.prefs ? <div id="playPrefs">{playback}</div> : null}
               </div>
-            ))}
-          </div>
+              <GradingBar key={shotKey} shot={shot} shotKey={shotKey} openGroup={ui.openGroup}
+                          readOnly={config.readOnly} others={others} notice={ui.notice} actions={actions} />
+            </>
+          ) : (
+            <>
+              <div className="row transport" id="transport">
+                {prevBtn}{nextBtn}{replayBtn}{markBtn}{labelEl}{ytLink}
+              </div>
+              {playback}
+              {flags}
+              {shotChips}
+            </>
+          )}
         </section>
 
-        {/* Always mounted: CSS decides who is visible (hidden on phones), the
-            same rule that keeps the player from ever being reparented. */}
-        <section className="card" id="detailCard" aria-label="Shot detail">
-          <DeskDetail shot={shot} doc={doc} />
-        </section>
+        {/* Not in the wide layout, which draws the line chart and the figures
+            instead (spec 2026-10-15). Elsewhere always mounted: CSS decides
+            who is visible (hidden on phones). */}
+        {!wide ? (
+          <section className="card" id="detailCard" aria-label="Shot detail">
+            <DeskDetail shot={shot} doc={doc} />
+          </section>
+        ) : null}
 
-        <section className="card" id="houseCard" {...(config.readOnly ? houseSwipe : {})}>
+        <section className="card" id="houseCard" {...(config.readOnly ? houseSwipe : {})}
+                 {...(wide && !config.readOnly ? { title: "Click the ice to add a stone, drag to move, drag off the sheet to remove." } : {})}>
           <div className="tools">
             <button className={`swatchbtn red${ui.placeColor === "red" ? " on" : ""}`}
                     id="pickRed" title="Place red (r)"
@@ -487,14 +551,30 @@ export function App({ doc, config, cursor, reload }) {
             <button id="houseDone" hidden={config.readOnly}
                     onClick={() => dispatch({ type: "set", patch: { houseMode: "" } })}>Done</button>
           </div>
-          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            Click the ice to add a stone, drag to move, drag off the sheet to remove.
-          </div>
+          {!wide ? (
+            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Click the ice to add a stone, drag to move, drag off the sheet to remove.
+            </div>
+          ) : null}
         </section>
 
-        <ChartPanel view={view} shot={shot} shotKey={shotKey}
-                    cursor={{ ei: ui.ei, si: ui.si }} ui={ui} config={config}
-                    series={series} here={here} notice={ui.notice} actions={actions} />
+        {wide ? (
+          <>
+            <FiguresCard shot={shot} doc={doc}>
+              {flags}
+              {view.format.swappable ? (
+                <EndBox view={view} cursor={{ ei: ui.ei, si: ui.si }} config={config} actions={actions} />
+              ) : null}
+            </FiguresCard>
+            <LineCard shot={shot} doc={doc}
+                      onExpand={() => dispatch({ type: "set",
+                        patch: { delivering: shot ? { opened: Date.now(), shot } : null } })} />
+          </>
+        ) : (
+          <ChartPanel view={view} shot={shot} shotKey={shotKey}
+                      cursor={{ ei: ui.ei, si: ui.si }} ui={ui} config={config}
+                      series={series} here={here} notice={ui.notice} actions={actions} />
+        )}
       </main>
 
       {/* Always mounted, like #report: CSS decides who is visible, so crossing
@@ -552,7 +632,7 @@ function Flags({ doc, shot, trimmed }) {
   );
 }
 
-function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) {
+function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wide }) {
   const src = doc.source;
   // Read once: a page left open past the last day keeps its Clip until reloaded.
   const [openedAt] = useState(() => Date.now());
@@ -569,6 +649,14 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo }) 
         sheet {src.sheet ?? "?"} &middot;{" "}
         <a href={src.url} target="_blank" rel="noopener">{src.video_id}</a>
       </span>
+      {wide && shot ? (
+        <span id="rockName">
+          <span className={`chip ${shot.color}${isBlank(shot) ? " unknown" : ""}`}>
+            {isBlank(shot) ? "?" : shot.number}
+          </span>
+          {shot.label || `shot ${shot.number}`}
+        </span>
+      ) : null}
       {liveGame(doc, view.game)
         ? <span id="livePill" className="pill live"
                 title="Still being played: each end appears here once it is over">live</span>

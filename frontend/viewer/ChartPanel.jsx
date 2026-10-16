@@ -47,7 +47,9 @@ function useOpenGroup(shotKey, current, openGroup, actions) {
   });
 }
 
-function TypePicker({ shot, shotKey, openGroup, readOnly, actions }) {
+/* The type picker's state, and its parts, so the panel (stacked, under a
+ * heading) and the wide layout's bar (one row) draw the same buttons. */
+function useTypePicker({ shot, shotKey, openGroup, readOnly, actions }) {
   const current = typeOf(shot);
   useOpenGroup(shotKey, current, openGroup, actions);
   const group = openGroup;
@@ -63,35 +65,94 @@ function TypePicker({ shot, shotKey, openGroup, readOnly, actions }) {
     if (!readOnly && b && !TYPES.some(t => t.group === g && t.id === current))
       actions.setType(b);
   };
+  return { current, group, base, pickGroup };
+}
 
+function TypeGroups({ t }) {
+  return (
+    <div className="pick" id="typeGroups">
+      {GROUPS.map(g => (
+        <button key={g} data-g={g} className={g === t.group ? "on" : ""}
+                onClick={() => t.pickGroup(g)}>{g}</button>
+      ))}
+    </div>
+  );
+}
+
+function TypeList({ t, readOnly, actions, style }) {
+  const { group, base, current } = t;
+  return (
+    <div className="pick" id="typeList" style={style}>
+      {/* Blank is a real answer, and the way back from a refinement. */}
+      {base && (
+        <button data-t="" title={`Just a ${group?.toLowerCase()}, with nothing more said`}
+                className={current === base ? "on" : ""}
+                onClick={() => !readOnly && actions.setType(base)}>&mdash;</button>
+      )}
+      {group && subtypesOf(group).map(x => (
+        <button key={x.id} data-t={x.id} className={x.id === current ? "on" : ""}
+                onClick={() => !readOnly && actions.setType(x.id)}>{x.name}</button>
+      ))}
+    </div>
+  );
+}
+
+function AutoType({ shot, actions, style }) {
+  return (
+    <div className="muted" id="autoType" style={style}>
+      {shot?.shot_type_source === "manual"
+        ? `detector said ${actions.rawType() || "unknown"}`
+        : `auto${shot?.shot_type_confidence
+            ? ` · confidence ${shot.shot_type_confidence.toFixed(2)}` : ""}`}
+    </div>
+  );
+}
+
+function TypePicker({ shot, shotKey, openGroup, readOnly, actions }) {
+  const t = useTypePicker({ shot, shotKey, openGroup, readOnly, actions });
   return (
     <>
       <h2>Shot type</h2>
-      <div className="pick" id="typeGroups">
-        {GROUPS.map(g => (
-          <button key={g} data-g={g} className={g === group ? "on" : ""}
-                  onClick={() => pickGroup(g)}>{g}</button>
-        ))}
-      </div>
-      <div className="pick" id="typeList" style={{ marginTop: 6 }}>
-        {/* Blank is a real answer, and the way back from a refinement. */}
-        {base && (
-          <button data-t="" title={`Just a ${group?.toLowerCase()}, with nothing more said`}
-                  className={current === base ? "on" : ""}
-                  onClick={() => !readOnly && actions.setType(base)}>&mdash;</button>
-        )}
-        {group && subtypesOf(group).map(t => (
-          <button key={t.id} data-t={t.id} className={t.id === current ? "on" : ""}
-                  onClick={() => !readOnly && actions.setType(t.id)}>{t.name}</button>
-        ))}
-      </div>
-      <div className="muted" id="autoType" style={{ fontSize: 12, marginTop: 6 }}>
-        {shot?.shot_type_source === "manual"
-          ? `detector said ${actions.rawType() || "unknown"}`
-          : `auto${shot?.shot_type_confidence
-              ? ` · confidence ${shot.shot_type_confidence.toFixed(2)}` : ""}`}
-      </div>
+      <TypeGroups t={t} />
+      <TypeList t={t} readOnly={readOnly} actions={actions} style={{ marginTop: 6 }} />
+      <AutoType shot={shot} actions={actions} style={{ fontSize: 12, marginTop: 6 }} />
     </>
+  );
+}
+
+function ScoreButtons({ shot, readOnly, actions }) {
+  return (
+    <div className="pick scorebtns" id="scoreBtns">
+      {[0, 1, 2, 3, 4].map(v => (
+        <button key={v} data-v={v} className={shot?.user_score === v ? "on" : ""}
+                onClick={() => !readOnly && actions.patch({ user_score: v })}>{v}</button>
+      ))}
+      <button data-v="" title="Clear the score"
+              onClick={() => !readOnly && actions.patch({ user_score: null })}>&mdash;</button>
+    </div>
+  );
+}
+
+function MissList() {
+  return (
+    <datalist id="missList">
+      {MISS_REASONS.map(r => <option key={r} value={r} />)}
+    </datalist>
+  );
+}
+
+function MoveBefore({ shot, others, readOnly, actions, title }) {
+  return (
+    <select id="moveBefore" title={title} disabled={!shot || readOnly}
+            value={shot?.before ?? ""}
+            onChange={e => actions.moveBefore(e.target.value)}>
+      <option value="">detected order</option>
+      {others.map(x => (
+        <option key={identity(x)} value={identity(x)}>
+          {`before #${x.number} (${x.color}${isBlank(x) ? ", blank" : ""})`}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -107,20 +168,11 @@ function Grading({ shot, shotKey, openGroup, readOnly, others, actions }) {
                   readOnly={readOnly} actions={actions} />
 
       <h3>Score</h3>
-      <div className="pick scorebtns" id="scoreBtns">
-        {[0, 1, 2, 3, 4].map(v => (
-          <button key={v} data-v={v} className={shot?.user_score === v ? "on" : ""}
-                  onClick={() => !readOnly && actions.patch({ user_score: v })}>{v}</button>
-        ))}
-        <button data-v="" title="Clear the score"
-                onClick={() => !readOnly && actions.patch({ user_score: null })}>&mdash;</button>
-      </div>
+      <ScoreButtons shot={shot} readOnly={readOnly} actions={actions} />
 
       <h3>Miss reason</h3>
       <input type="text" id="missReason" list="missList" placeholder="&mdash;" {...miss} />
-      <datalist id="missList">
-        {MISS_REASONS.map(r => <option key={r} value={r} />)}
-      </datalist>
+      <MissList />
 
       <h3>Note</h3>
       <textarea id="note" placeholder="&mdash;" {...note} />
@@ -137,22 +189,53 @@ function Grading({ shot, shotKey, openGroup, readOnly, others, actions }) {
         </button>
         <button id="placeStones" type="button" hidden={readOnly}
                 onClick={() => !readOnly && actions.openHouseEditor()}>Place the stones</button>
-        <select id="moveBefore" title="Where in the end this rock was really thrown"
-                disabled={!shot || readOnly}
-                value={shot?.before ?? ""}
-                onChange={e => actions.moveBefore(e.target.value)}>
-          <option value="">detected order</option>
-          {others.map(x => (
-            <option key={identity(x)} value={identity(x)}>
-              {`before #${x.number} (${x.color}${isBlank(x) ? ", blank" : ""})`}
-            </option>
-          ))}
-        </select>
+        <MoveBefore shot={shot} others={others} readOnly={readOnly} actions={actions}
+                    title="Where in the end this rock was really thrown" />
         <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
           Detection missed a rock and put its blank in the wrong place? Move the
           blank to where it was thrown; the whole end renumbers.
         </div>
       </div>
+    </div>
+  );
+}
+
+/* The wide layout's grading (spec 2026-10-15 §1): the panel's controls in two
+ * rows under the video. One of Grading and GradingBar renders, never both, so
+ * every id stays unique. The renumbering notice goes with it: the panel that
+ * carries it below 1700 px is not in the wide layout. */
+export function GradingBar({ shot, shotKey, openGroup, readOnly, others, notice, actions }) {
+  const t = useTypePicker({ shot, shotKey, openGroup, readOnly, actions });
+  const miss = useTypedField(shot?.miss_reason, v => actions.patch({ miss_reason: v }),
+                             on => actions.setBusy(on ? shotKey : null));
+  const note = useTypedField(shot?.note, v => actions.patch({ note: v }),
+                             on => actions.setBusy(on ? shotKey : null));
+  return (
+    <div id="grading" className="gbar">
+      <div className="gbar-row">
+        <span className="gbar-lbl">Shot type</span>
+        <TypeGroups t={t} />
+        <span className="gbar-sep" aria-hidden="true" />
+        <TypeList t={t} readOnly={readOnly} actions={actions} />
+        <AutoType shot={shot} actions={actions} />
+      </div>
+      <div className="gbar-row">
+        <span className="gbar-lbl">Score</span>
+        <ScoreButtons shot={shot} readOnly={readOnly} actions={actions} />
+        <span className="gbar-sep" aria-hidden="true" />
+        <label className="gbar-lbl" htmlFor="missReason">Miss</label>
+        <input type="text" id="missReason" list="missList" placeholder="&mdash;" {...miss} />
+        <MissList />
+        <label className="gbar-lbl" htmlFor="note">Note</label>
+        <textarea id="note" rows={1} placeholder="&mdash;" {...note} />
+        <span className="gbar-sep" aria-hidden="true" />
+        <label className="gbar-lbl" htmlFor="moveBefore">Order</label>
+        <MoveBefore shot={shot} others={others} readOnly={readOnly} actions={actions}
+                    title={"Where in the end this rock was really thrown. Detection missed a rock and put "
+                         + "its blank in the wrong place? Move the blank to where it was thrown; the whole "
+                         + "end renumbers."} />
+      </div>
+      <div id="renumbered" role="status">{notice || ""}</div>
     </div>
   );
 }
@@ -270,7 +353,7 @@ function Scoreboard({ game, doc }) {
  * former read in every mode (a desktop viewer or a review link never reaches
  * Timing/EndHead, which is phone-watch only), the latter only where a
  * charter can act on them. */
-function EndBox({ view, cursor, config, actions }) {
+export function EndBox({ view, cursor, config, actions }) {
   const at = view.ends[cursor.ei];
   const s = endSummary(view, cursor.ei);
   const name = c => view.game.teams[c]?.name || c;
