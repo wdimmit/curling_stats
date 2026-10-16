@@ -1449,8 +1449,12 @@ body[data-mode="review"] #house { cursor:default; }
 }
 
 /* --- the large dialogs: delivery and thinking (spec 2026-10-15) ----------- */
-#deliveryDialog, #thinkingDialog { padding: 16px 24px 18px; border: 1px solid var(--line); border-radius: 12px;
-  background: var(--panel); color: var(--ink); box-sizing: border-box; max-height: calc(100vh - 48px); }
+#deliveryDialog, #thinkingDialog { padding: 0; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel); color: var(--ink); box-sizing: border-box; max-height: calc(100vh - 48px);
+  overflow: hidden; }
+/* The padding lives on the wrapper, not the <dialog>: a click on the dialog element itself is the
+ * backdrop's, so every point of the visible card has to belong to a child. */
+.dd-body { padding: 16px 24px 18px; box-sizing: border-box; max-height: calc(100vh - 50px); overflow: auto; }
 #deliveryDialog { width: min(1560px, calc(100vw - 64px)); }
 #thinkingDialog { width: min(920px, calc(100vw - 64px)); }
 #deliveryDialog::backdrop, #thinkingDialog::backdrop { background: rgb(20 16 10 / .55); }

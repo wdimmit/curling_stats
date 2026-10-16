@@ -5868,3 +5868,9 @@ class TestTheDeliveryDialog:
         assert "key={delivering.opened}" in src
         # A click on the backdrop lands on the dialog itself.
         assert "e.target === e.currentTarget" in src
+        # The padding is the wrapper's, so the backdrop is the only thing that reaches the dialog.
+        assert '<div className="dd-body">' in src
+        css = (Path(__file__).resolve().parents[1] / "src/curling_score/viewer/style.css").read_text()
+        rule = css[css.index("#deliveryDialog, #thinkingDialog {"):].split("}")[0]
+        assert "padding: 0" in rule
+        assert ".dd-body { padding: 16px 24px 18px" in css

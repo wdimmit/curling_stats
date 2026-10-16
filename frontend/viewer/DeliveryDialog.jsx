@@ -47,7 +47,7 @@ function Large({ shot }) {
   const n = speedNumbers(speed);
   const type = typeName(shot);
   return (
-    <>
+    <div className="dd-body">
       <div className="dd-head">
         <h2 id="deliveryTitle">Delivery</h2>
         <span className={`dd-chip ${shot.color}`}>{shot.number}</span>
@@ -65,7 +65,7 @@ function Large({ shot }) {
             <span className="dd-num"><b>{n.peak}</b> {n.peakWhere}</span>
             {n.hog ? <span className="dd-num"><b>{n.hog}</b> at the hog line</span> : null}
             {n.change ? (
-              <span className="dd-num">{n.change.value ? <b>{n.change.value}</b> : null} {n.change.words}</span>
+              <span className="dd-num">{n.change.value ? <><b>{n.change.value}</b>{" "}</> : null}{n.change.words}</span>
             ) : null}
           </div>
           <SpeedChart sg={sg}
@@ -73,6 +73,6 @@ function Large({ shot }) {
           <p className="dcap">Speed along the same axis, smoothed over a second. Ripples smaller than about 0.2 m/s come from the camera, not the throw.</p>
         </>
       ) : <p className="dnone">The speed could not be read for this rock.</p>}
-    </>
+    </div>
   );
 }
