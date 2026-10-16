@@ -33,6 +33,7 @@ import { FlagDialog } from "./Flag.jsx";
 import { PlayedDialog } from "./Played.jsx";
 import { TeamsDialog } from "./Teams.jsx";
 import { ShotClipDialog } from "./ShotClip.jsx";
+import { DeliveryDialog } from "./DeliveryDialog.jsx";
 import { Watch } from "./Watch.jsx";
 import { ViewOnly } from "./ViewOnly.jsx";
 import { useSwipe } from "./Pager.jsx";
@@ -137,6 +138,7 @@ export function App({ doc, config, cursor, reload }) {
   const closePlayed = useCallback(() => dispatch({ type: "set", patch: { playing: null } }), []);
   const closeNaming = useCallback(() => dispatch({ type: "set", patch: { naming: null } }), []);
   const closeClipping = useCallback(() => dispatch({ type: "set", patch: { clipping: null } }), []);
+  const closeDelivering = useCallback(() => dispatch({ type: "set", patch: { delivering: null } }), []);
 
   /* --------------------------------------------------------------- actions */
 
@@ -601,6 +603,7 @@ export function App({ doc, config, cursor, reload }) {
       <PlayedDialog playing={ui.playing} onClose={closePlayed} />
       <TeamsDialog naming={ui.naming} onClose={closeNaming} onSaved={reload} />
       <ShotClipDialog clipping={ui.clipping} onClose={closeClipping} />
+      <DeliveryDialog delivering={ui.delivering} onClose={closeDelivering} />
     </>
   );
 }

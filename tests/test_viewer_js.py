@@ -5844,3 +5844,27 @@ class TestRotationFigure:
                      " turnName({hack: {side: 'right'}}, 'left'), turnName({}, 'right'),"
                      " turnName({hack: {side: 'left'}}, null)]);")
         assert got == ["in-turn", "out-turn", "in-turn", None, None]
+
+
+class TestTheDeliveryDialog:
+    SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/DeliveryDialog.jsx"
+
+    def test_its_words_are_the_spec_s(self):
+        src = self.SRC.read_text()
+        for needle in (
+            "Esc or click outside to close",
+            "From above, thrower at the left · across ×{g.stretch} · a dot every {g.every.short}, "
+            "dark at the push-off to gold past the hog line · ticks every 2 in",
+            "Speed along the same axis, smoothed over a second. Ripples smaller than about 0.2 m/s "
+            "come from the camera, not the throw.",
+            "The speed could not be read for this rock.",
+            "deliveryGeometry(shot, BIGDELIVERYBOX)", "speedGeometry(speed, SPEEDBOX, shot)",
+        ):
+            assert needle in src, needle
+
+    def test_it_is_a_modal_dialog_that_keeps_its_rock(self):
+        src = self.SRC.read_text()
+        assert 'id="deliveryDialog"' in src and "showModal()" in src
+        assert "key={delivering.opened}" in src
+        # A click on the backdrop lands on the dialog itself.
+        assert "e.target === e.currentTarget" in src

@@ -1447,3 +1447,30 @@ body[data-mode="review"] #house { cursor:default; }
   #rockName .chip.yellow { background: var(--yellow); color: #1a1a1a; }
   #rockName .chip.unknown { background: var(--panel); color: var(--warn); border: 2px dashed var(--warn); }
 }
+
+/* --- the large dialogs: delivery and thinking (spec 2026-10-15) ----------- */
+#deliveryDialog, #thinkingDialog { padding: 16px 24px 18px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel); color: var(--ink); box-sizing: border-box; max-height: calc(100vh - 48px); }
+#deliveryDialog { width: min(1560px, calc(100vw - 64px)); }
+#thinkingDialog { width: min(920px, calc(100vw - 64px)); }
+#deliveryDialog::backdrop, #thinkingDialog::backdrop { background: rgb(20 16 10 / .55); }
+.dd-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.dd-head h2 { margin: 0; font-size: 16px; }
+.dd-head .grow { flex: 1 1 auto; }
+.dd-head form { margin: 0; }
+.dd-chip { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px;
+           font-size: 12px; font-variant-numeric: tabular-nums; }
+.dd-chip.red { background: var(--red); color: #fff; }
+.dd-chip.yellow { background: var(--yellow); color: #1a1a1a; }
+.dd-who { font-size: 14px; font-weight: 600; }
+.dd-esc { font-size: 12px; color: var(--muted); }
+.dd-close { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; }
+#deliveryDialog svg.dd-dlv, #deliveryDialog svg.spd { display: block; width: 100%; height: auto;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--ice); }
+#deliveryDialog .dcap { font-size: 12px; color: var(--muted); margin: 5px 0 0; }
+#deliveryDialog .dnone, #thinkingDialog .dnone { color: var(--muted); margin: 12px 0 0; }
+.dd-speed { display: flex; align-items: baseline; gap: 22px; margin: 16px 0 8px; }
+.dd-speed h3 { margin: 0; color: var(--ink); }
+.dd-num { font-size: 13px; color: var(--muted); }
+.dd-num b { font-family: var(--display); font-size: 19px; color: var(--ink); margin-right: 4px;
+            font-variant-numeric: tabular-nums; }
