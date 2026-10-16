@@ -20,7 +20,7 @@
     "frontend/core/shots.mjs": "32dad29e6eef0c4de59ca66dd2a9ea640ac42cec4f092c47583ebaa719777731",
     "frontend/core/speed.mjs": "0cc7174972cfa7fdf604fefe44da12be90acae57da3b810fc3bd14a6f1c78cbd",
     "frontend/core/stats.mjs": "67387a12686219c8a66d89631afa54750b6f051b324ad3caaabab641e6be27bb",
-    "frontend/core/tablet.mjs": "674211c73babb93862d91e0a18c546edb704127e92a53a1c31415537c939d676",
+    "frontend/core/tablet.mjs": "5efa72b23e459a079a2b1278ba648701be7f0a18dcbeca5037f9887dc9d55199",
     "frontend/core/timeline.mjs": "6b3efe11ffb844ae70f525711790556068b6aada93c03fa6e45c7869bb2b7d07",
     "frontend/core/watch.mjs": "061f1ebf7cbd5c2ca2221133dcccad3ccfd45300f694f9b69ee5e765d8444f07",
     "frontend/core/wire.mjs": "f7d5fd9184377e808700c77115820cc9b0ffdd299c8a3b66040bbca02a4da5da",
@@ -55,7 +55,7 @@
     "frontend/site/main.jsx": "d8324c80b4375292a63c8309fd85a4290dc2f3a04c44d87cdc858978015e4d63",
     "frontend/site/ui.jsx": "19a9c87760a768cf44f05dec32d90eeab29cd0010e5553a91286eff18ec975dc",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
-    "frontend/viewer/App.jsx": "2b73e8b24e84b6fb935472d08f3e4faec8987485bf085fbed2f24ae8114d7ad3",
+    "frontend/viewer/App.jsx": "18931775b1388cf27f9a6b6d19ed2f195d3db34f5014a76abb610b08cacf4b77",
     "frontend/viewer/ChartPanel.jsx": "f63c44e5ede098b4400bbcf750164729b77497e3278becf35f71ac9fcc8c8dee",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "65dfe05210a940423b6ea5ccd87ceafe59c6b2b457386555adfac82da758f890",
@@ -80,6 +80,6 @@
   },
   "outputs": {
     "src/curling_score/service/static/site.js": "36c9968c9de30c50acf336eb5716635fb9486a0c024d7bc5b8ef351668d248bc",
-    "src/curling_score/viewer/app.js": "a60b6574ef214b441f6bc179a3d6eada9828e861abc8e32fd4e198160450d7d0"
+    "src/curling_score/viewer/app.js": "77f1c9c57ec18d08dc2d46369775ce6d67baf375dbd2308d42f143e5ec635bea"
   }
 }

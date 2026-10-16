@@ -4518,6 +4518,29 @@ class TestNextBlankOther:
         assert self.go([{"ei": 4, "si": 1}], 4, 1) is None
 
 
+class TestChartedNext:
+    """✔ Charted on the iPad, its button's and the Enter key's (ruling R14):
+    the queue is blankQueue's, filtered to the houses still unknown."""
+    VIEW = {"ends": [{"shots": [{"state_known": False}, {"state_known": True, "missing": True},
+                                {"state_known": False}, {"state_known": True}]},
+                     {"shots": [{"state_known": False}]}]}
+    QUEUE = [{"ei": 0, "si": 0}, {"ei": 0, "si": 1}, {"ei": 0, "si": 2}, {"ei": 1, "si": 0}]
+
+    def go(self, queue, ei, si):
+        return run_js(f"out(chartedNext({json.dumps(queue)}, {json.dumps(self.VIEW)}, {ei}, {si}));")
+
+    def test_a_charted_never_seen_rock_is_skipped(self):
+        assert self.go(self.QUEUE, 0, 0) == {"ei": 0, "si": 2}
+
+    def test_from_a_rock_just_charted_it_goes_on_from_there(self):
+        assert self.go(self.QUEUE, 0, 3) == {"ei": 1, "si": 0}
+        assert self.go(self.QUEUE, 0, 1) == {"ei": 0, "si": 2}
+
+    def test_it_wraps_and_ends_on_none(self):
+        assert self.go(self.QUEUE, 1, 0) == {"ei": 0, "si": 0}
+        assert self.go([{"ei": 0, "si": 1}, {"ei": 1, "si": 0}], 1, 0) is None
+
+
 class TestEndLineText:
     NAME = "c => ({ red: 'Red', yellow: 'Yellow' })[c]"
 
@@ -6092,6 +6115,15 @@ class TestTheTabletBranch:
     def test_the_resize_handler_knows_the_tablet_has_an_editor(self):
         app = (self.ROOT / "frontend/viewer/App.jsx").read_text()
         assert "if (!phone() && !tabletNow() && (ui.houseMode || ui.sheet !== \"peek\"))" in app
+
+    def test_the_tablet_s_charted_and_enter_are_one(self):
+        """Ruling R14: on the iPad, ✔ Charted and Enter run one helper; the
+        desktop's Mark charted and Enter keep nextBlankAfter."""
+        app = (self.ROOT / "frontend/viewer/App.jsx").read_text()
+        assert "const it = chartedNext(queue, view, ui.ei, ui.si);" in app
+        assert 'case "Enter": { if (tablet) { chartedTablet(); break; }' in app
+        assert "onClick={() => { if (tablet) { chartedTablet(); return; }" in app
+        assert app.count("nextBlankAfter(queue, ui.ei, ui.si)") == 4   # n, Enter, Mark charted, the pill
 
     def test_a_tap_opens_the_editor_on_the_tablet(self):
         src = (self.ROOT / "frontend/viewer/House.jsx").read_text()

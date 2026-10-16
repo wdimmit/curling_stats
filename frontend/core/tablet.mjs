@@ -31,6 +31,15 @@ export function nextBlankOther(items, ei, si) {
   return null;
 }
 
+/* ✔ Charted on the iPad, its button's and the Enter key's (ruling R14): the
+ * next rock after (ei, si) whose house still needs charting, or null. `items`
+ * is blankQueue(view).items; a rock never seen stays blank (`missing`) once
+ * its house is charted, so the queue is filtered by state_known, not isBlank. */
+export function chartedNext(items, view, ei, si) {
+  const need = items.filter(q => view.ends[q.ei]?.shots[q.si]?.state_known === false);
+  return nextBlankOther(need, ei, si);
+}
+
 /* The one-line end summary in the tablet's rock sheet header; `summary` is
  * endSummary(view, ei) or null, `name` maps a colour to its team's name. */
 export function endLineText(summary, endNumber, name) {

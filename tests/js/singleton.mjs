@@ -161,6 +161,7 @@ export const endSpan = core.endSpan;
 /* The portrait iPad layout's helpers (spec 2026-10-16): pure, no state. */
 export const sheetButtonText = core.sheetButtonText;
 export const nextBlankOther = core.nextBlankOther;
+export const chartedNext = core.chartedNext;
 export const endLineText = core.endLineText;
 export const swapText = core.swapText;
 

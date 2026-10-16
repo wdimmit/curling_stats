@@ -14,7 +14,7 @@ import {
   PHONE_QUERY, TABLET_QUERY, TABLETDELIVERYBOX, TABLETSPEEDBOX,
   buildGameView, chartedNotice, cumulativeThinking, cursor as cursorOf, endKey, flagPlace,
   gatherStats, gatherThinking, formatWarning,
-  identity, isBlank, isGraded, liveGame, nextBlankAfter, nextBlankOther, blankQueue, peekMode,
+  identity, isBlank, isGraded, liveGame, nextBlankAfter, chartedNext, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
   shotClipName, shotClipsOffered,
@@ -381,6 +381,18 @@ export function App({ doc, config, cursor, reload }) {
   const shots = view.ends[ui.ei]?.shots ?? [];
   const queue = blankQueue(view).items;
 
+  /* ✔ Charted on the portrait iPad, its button's and the Enter key's (ruling
+   * R14): mark the house known, then go on to the next rock after this one
+   * whose house still needs charting -- the editor stays open there (goTo
+   * keeps houseMode) -- or, with none left, close the editor. The desktop's
+   * Mark charted and Enter keep nextBlankAfter. */
+  const chartedTablet = useCallback(() => {
+    patch({ state_known: true });
+    const it = chartedNext(queue, view, ui.ei, ui.si);
+    if (it) goTo(it.ei, it.si);
+    else if (ui.houseMode === "edit") dispatch({ type: "set", patch: { houseMode: "" } });
+  }, [patch, queue, view, ui.ei, ui.si, ui.houseMode, goTo]);
+
   useEffect(() => {
     const typing = e => {
       const el = e.target;
@@ -409,7 +421,8 @@ export function App({ doc, config, cursor, reload }) {
                     const stones = edit.toggleStoneColor(shot, ui.selStone);
                     if (stones) patch({ stones, state_known: true });
                   } break;
-        case "Enter": { patch({ state_known: true });
+        case "Enter": { if (tablet) { chartedTablet(); break; }
+                        patch({ state_known: true });
                         const it = nextBlankAfter(queue, ui.ei, ui.si);
                         if (it) goTo(it.ei, it.si); break; }
         case "Escape": dispatch({ type: "set", patch: { reporting: false, prefs: false } }); break;
@@ -421,7 +434,7 @@ export function App({ doc, config, cursor, reload }) {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [ui, shots.length, queue, goTo, patch, seek, shot, actions, setPref]);
+  }, [ui, shots.length, queue, goTo, patch, seek, shot, actions, setPref, tablet, chartedTablet]);
 
   /* ------------------------------------------------------------------ view */
 
@@ -454,18 +467,8 @@ export function App({ doc, config, cursor, reload }) {
   // iPad's house card (it confirms the house), or the narrow control row.
   const markBtn = (
     <button id="markCharted" hidden={config.readOnly}
-            onClick={() => { patch({ state_known: true });
-                             // On the iPad the editor stays open on the next rock that
-                             // needs charting (goTo keeps houseMode) and closes on the
-                             // last one. A rock never seen stays `missing` once charted,
-                             // so the queue here is by state_known, not isBlank.
-                             if (tablet) {
-                               const need = queue.filter(q => view.ends[q.ei]?.shots[q.si]?.state_known === false);
-                               const it = nextBlankOther(need, ui.ei, ui.si);
-                               if (it) goTo(it.ei, it.si);
-                               else if (ui.houseMode === "edit") dispatch({ type: "set", patch: { houseMode: "" } });
-                               return;
-                             }
+            onClick={() => { if (tablet) { chartedTablet(); return; }   // the iPad's, as its Enter
+                             patch({ state_known: true });
                              const it = nextBlankAfter(queue, ui.ei, ui.si);
                              if (it) goTo(it.ei, it.si); }}>{tablet ? "✔ Charted" : "✔ Mark charted (Enter)"}</button>
   );
