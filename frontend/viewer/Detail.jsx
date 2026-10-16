@@ -67,8 +67,9 @@ const Check = () => (
 );
 
 /* The six figures. The phone stacks them; the desktop card's CSS lays them
- * out three across. */
-export function Figures({ figures }) {
+ * out three across. `children` is a last cell after them (the portrait iPad's
+ * Line & speed). */
+export function Figures({ figures, children }) {
   return (
     <dl className="dfigs">
       {figures.map(x => (
@@ -80,6 +81,7 @@ export function Figures({ figures }) {
           </dd>
         </div>
       ))}
+      {children}
     </dl>
   );
 }

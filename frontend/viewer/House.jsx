@@ -1,13 +1,14 @@
 /* The sheet, the stones on it, and the pointer gestures that edit them. */
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  DRAG_MIN_M, PAINT, PHONE_QUERY, R,
+  DRAG_MIN_M, PAINT, PHONE_QUERY, R, TABLET_QUERY,
   broomMark, clampX, clampY, ghostStones, houseViewBox, isBlank, onSheet, shouldCrop, stoneAt, trackPoints,
 } from "../core/index.mjs";
 import * as dragStore from "../runtime/dragStore.mjs";
 import { writeBodyState } from "../runtime/bodyState.mjs";
 
 const phone = () => matchMedia(PHONE_QUERY).matches;
+const tabletNow = () => matchMedia(TABLET_QUERY).matches;
 
 /* The crop is measured, and the measurement is the branch this layout gets
  * wrong. Gated on the phone media query rather than the measured box alone: a
@@ -196,9 +197,9 @@ export function House({ shot, shotKey, selStone, houseMode, showTrack, readOnly,
    * tree on every pointermove would relayout the whole game sixty times a
    * second and reset the save debounce with it. */
   const onPointerDown = ev => {
-    // On the phone the house is a picture until you enter the editor: one tap
-    // cannot both open the editor and place a stone.
-    if (phone() && houseMode !== "edit") {
+    // On the phone, and on the portrait iPad, the house is a picture until you
+    // enter the editor: one tap cannot both open the editor and place a stone.
+    if ((phone() || tabletNow()) && houseMode !== "edit") {
       if (!readOnly) actions.openHouseEditor();
       return;
     }

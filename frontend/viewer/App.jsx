@@ -11,7 +11,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
-  PHONE_QUERY,
+  PHONE_QUERY, TABLET_QUERY,
   buildGameView, chartedNotice, cumulativeThinking, cursor as cursorOf, endKey, flagPlace,
   gatherStats, gatherThinking, formatWarning,
   identity, isBlank, isGraded, liveGame, nextBlankAfter, blankQueue, peekMode,
@@ -22,6 +22,7 @@ import {
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
 import * as wideStore from "../runtime/wide.mjs";
+import * as tabletStore from "../runtime/tablet.mjs";
 import { writeBodyState } from "../runtime/bodyState.mjs";
 import { loadPrefs, savePrefs, saveCursor } from "../runtime/prefs.mjs";
 import { House } from "./House.jsx";
@@ -40,12 +41,19 @@ import { ViewOnly } from "./ViewOnly.jsx";
 import { useSwipe } from "./Pager.jsx";
 
 const phone = () => matchMedia(PHONE_QUERY).matches;
+const tabletNow = () => matchMedia(TABLET_QUERY).matches;
 
 const GEAR = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
   </svg>
+);
+
+/* The portrait iPad's "open the house large" (spec 2026-10-16 §4). */
+const OPEN_LARGE = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+       aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
 );
 
 /* The rock a hash names, in the game as it is now charted. The hash is written
@@ -101,6 +109,10 @@ export function App({ doc, config, cursor, reload }) {
   const status = useSyncExternalStore(store.subscribe, store.getStatus);
   // Which desktop layout (spec 2026-10-15): by the stylesheet's own query.
   const wide = useSyncExternalStore(wideStore.subscribe, wideStore.isWide);
+  // The portrait iPad (spec 2026-10-16), the same way. It takes the wide
+  // layout's pieces but the line chart: `desk` is either.
+  const tablet = useSyncExternalStore(tabletStore.subscribe, tabletStore.isTablet);
+  const desk = wide || tablet;
 
   /* One relayout of the game, which the strip, the queue, the clock and the
    * report all read off. */
@@ -141,13 +153,14 @@ export function App({ doc, config, cursor, reload }) {
   const closeClipping = useCallback(() => dispatch({ type: "set", patch: { clipping: null } }), []);
   const closeDelivering = useCallback(() => dispatch({ type: "set", patch: { delivering: null } }), []);
   const closeThinking = useCallback(() => dispatch({ type: "set", patch: { thinking: false } }), []);
-  // Narrowing unmounts the two wide-only dialogs and the playback gear's
-  // popover; drop their state so widening again does not reopen a stale one.
-  // Only when one is open: a narrow or phone page has nothing to reset.
+  // Leaving the desk layouts unmounts the two dialogs only they render, and
+  // the playback gear's popover; drop their state so coming back does not
+  // reopen a stale one. Only when one is open: a narrow or phone page has
+  // nothing to reset.
   const wideOpen = !!(ui.delivering || ui.thinking || ui.prefs);
   useEffect(() => {
-    if (!wide && wideOpen) dispatch({ type: "set", patch: { delivering: null, thinking: false, prefs: false } });
-  }, [wide, wideOpen]);
+    if (!desk && wideOpen) dispatch({ type: "set", patch: { delivering: null, thinking: false, prefs: false } });
+  }, [desk, wideOpen]);
 
   /* --------------------------------------------------------------- actions */
 
@@ -325,9 +338,11 @@ export function App({ doc, config, cursor, reload }) {
   }, [doc, ui.leadIn]);
 
   /* The crop is measured, so it has to be re-measured when the box changes --
-   * and a rotation that leaves the phone gate has to put the editor and the
-   * sheet down, or the charter is stranded in an editor whose Done button the
-   * short-screen layout never draws. */
+   * and a rotation that leaves the phone gate or the portrait iPad's has to
+   * put the editor and the sheet down, or the charter is stranded in an editor
+   * whose Done button the layout it lands in never draws. Within either, a
+   * resize is not a change of layout: Safari's bars coming and going resize
+   * the window under an open editor, and it stays open. */
   useEffect(() => {
     const onDown = ev => {
       if (ui.menu !== "open") return;
@@ -354,7 +369,7 @@ export function App({ doc, config, cursor, reload }) {
     const onResize = () => {
       clearTimeout(t);
       t = setTimeout(() => {
-        if (!phone() && (ui.houseMode || ui.sheet !== "peek"))
+        if (!phone() && !tabletNow() && (ui.houseMode || ui.sheet !== "peek"))
           dispatch({ type: "set", patch: { houseMode: "", sheet: "peek" } });
         else dispatch({ type: "set", patch: {} });   // re-measure
       }, 120);
@@ -435,12 +450,23 @@ export function App({ doc, config, cursor, reload }) {
   const replayBtn = (
     <button id="replay" title="Replay from before the throw (v)" onClick={() => seek(t)}>↻ Replay</button>
   );
+  // One button, in one place per layout: the wide control row, the portrait
+  // iPad's house card (it confirms the house), or the narrow control row.
   const markBtn = (
     <button id="markCharted" hidden={config.readOnly}
             onClick={() => { patch({ state_known: true });
                              const it = nextBlankAfter(queue, ui.ei, ui.si);
-                             if (it) goTo(it.ei, it.si); }}>✔ Mark charted (Enter)</button>
+                             if (it) goTo(it.ei, it.si); }}>{tablet ? "✔ Charted" : "✔ Mark charted (Enter)"}</button>
   );
+  // The portrait iPad's way on (spec 2026-10-16 §6): the next rock, across
+  // ends; it grades nothing.
+  const nextRockBtn = (
+    <button id="nextRock" type="button" disabled={!stepRock(view, ui.ei, ui.si, 1)}
+            onClick={() => actions.step(1)}>Next rock →</button>
+  );
+  // The delivery opened large: the line chart's Expand and the iPad's Line & speed.
+  const openDelivery = () => dispatch({ type: "set",
+    patch: { delivering: shot ? { opened: Date.now(), shot } : null } });
   const labelEl = (
     <strong id="label" className="grow">
       {shot ? (shot.label || `shot ${shot.number}`) : "no shots detected"}
@@ -480,7 +506,8 @@ export function App({ doc, config, cursor, reload }) {
   return (
     <>
       <Header doc={doc} config={config} ui={ui} status={status} queue={queue}
-              view={view} shot={shot} dispatch={dispatch} goTo={goTo} wide={wide} />
+              view={view} shot={shot} dispatch={dispatch} goTo={goTo} desk={desk} tablet={tablet}
+              ytLink={ytLink} setPref={setPref} />
 
       <main>
         <section className="card" id="playCard">
@@ -488,26 +515,35 @@ export function App({ doc, config, cursor, reload }) {
               React held a child for that slot one reconciliation would remove
               the iframe. */}
           <div className="video" id="video" ref={videoRef} />
-          {wide ? (
+          {desk ? (
             <>
-              {/* Wraps at the narrow end of the wide layout, never past the
-                  card: the arrows stay round the chips, replay and mark
-                  charted follow while they fit, and the link and the gear
-                  keep together at the right. */}
-              <div className="row transport" id="transport">
-                <div className="tp-rock">{prevBtn}{shotChips}{nextBtn}</div>
-                {replayBtn}{markBtn}
-                <div className="tp-end">
-                  {ytLink}
-                  <button id="playGear" type="button" title="Playback: play on jump, lead-in"
-                          aria-label="Playback settings" aria-controls="playPrefs"
-                          aria-expanded={String(!!ui.prefs)}
-                          onClick={() => dispatch({ type: "set", patch: { prefs: !ui.prefs } })}>{GEAR}</button>
-                  {ui.prefs ? <div id="playPrefs">{playback}</div> : null}
+              {/* The portrait iPad's row is the chips and replay: Next rock is
+                  in the bar, Charted on the house, and the link and the
+                  playback settings behind ⋯ (spec 2026-10-16 §3). */}
+              {tablet ? (
+                <div className="row transport" id="transport">{shotChips}{replayBtn}</div>
+              ) : (
+                /* Wraps at the narrow end of the wide layout, never past the
+                   card: the arrows stay round the chips, replay and mark
+                   charted follow while they fit, and the link and the gear
+                   keep together at the right. */
+                <div className="row transport" id="transport">
+                  <div className="tp-rock">{prevBtn}{shotChips}{nextBtn}</div>
+                  {replayBtn}{markBtn}
+                  <div className="tp-end">
+                    {ytLink}
+                    <button id="playGear" type="button" title="Playback: play on jump, lead-in"
+                            aria-label="Playback settings" aria-controls="playPrefs"
+                            aria-expanded={String(!!ui.prefs)}
+                            onClick={() => dispatch({ type: "set", patch: { prefs: !ui.prefs } })}>{GEAR}</button>
+                    {ui.prefs ? <div id="playPrefs">{playback}</div> : null}
+                  </div>
                 </div>
-              </div>
+              )}
+              {tablet ? playback : null}
               <GradingBar key={shotKey} shot={shot} shotKey={shotKey} openGroup={ui.openGroup}
-                          readOnly={config.readOnly} others={others} notice={ui.notice} actions={actions} />
+                          readOnly={config.readOnly} others={others} notice={ui.notice} actions={actions}
+                          sheets={tablet} next={tablet ? nextRockBtn : null} />
             </>
           ) : (
             <>
@@ -521,10 +557,10 @@ export function App({ doc, config, cursor, reload }) {
           )}
         </section>
 
-        {/* Not in the wide layout, which draws the line chart and the figures
-            instead (spec 2026-10-15). Elsewhere always mounted: CSS decides
-            who is visible (hidden on phones). */}
-        {!wide ? (
+        {/* Not in the desk layouts, which draw the figures (and the wide one
+            the line chart) instead (spec 2026-10-15). Elsewhere always
+            mounted: CSS decides who is visible (hidden on phones). */}
+        {!desk ? (
           <section className="card" id="detailCard" aria-label="Shot detail">
             <DeskDetail shot={shot} doc={doc} />
           </section>
@@ -532,6 +568,17 @@ export function App({ doc, config, cursor, reload }) {
 
         <section className="card" id="houseCard" {...(config.readOnly ? houseSwipe : {})}
                  {...(wide && !config.readOnly ? { title: "Click the ice to add a stone, drag to move, drag off the sheet to remove." } : {})}>
+          {/* The portrait iPad's card is for reading the house: Charted and
+              "open it large" on top, the tools only in the editor (spec
+              2026-10-16 §4). The hint is the editor's; CSS shows it there. */}
+          {tablet ? (
+            <div className="hc-head">
+              {markBtn}
+              <span className="hc-hint">Drag a stone · tap the ice to add one</span>
+              <button id="houseOpen" type="button" hidden={config.readOnly} aria-label="Open the house large"
+                      onClick={actions.openHouseEditor}>{OPEN_LARGE}</button>
+            </div>
+          ) : null}
           <div className="tools">
             <button className={`swatchbtn red${ui.placeColor === "red" ? " on" : ""}`}
                     id="pickRed" title="Place red (r)"
@@ -569,24 +616,25 @@ export function App({ doc, config, cursor, reload }) {
             <button id="houseDone" hidden={config.readOnly}
                     onClick={() => dispatch({ type: "set", patch: { houseMode: "" } })}>Done</button>
           </div>
-          {!wide ? (
+          {tablet ? (
+            <p className="hc-tap" hidden={config.readOnly}>Tap the house to open it large and move stones.</p>
+          ) : null}
+          {!desk ? (
             <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
               Click the ice to add a stone, drag to move, drag off the sheet to remove.
             </div>
           ) : null}
         </section>
 
-        {wide ? (
+        {desk ? (
           <>
-            <FiguresCard shot={shot} doc={doc}>
+            <FiguresCard shot={shot} doc={doc} onLine={tablet ? openDelivery : null}>
               {flags}
               {view.format.swappable ? (
                 <EndBox view={view} cursor={{ ei: ui.ei, si: ui.si }} config={config} actions={actions} />
               ) : null}
             </FiguresCard>
-            <LineCard shot={shot} doc={doc}
-                      onExpand={() => dispatch({ type: "set",
-                        patch: { delivering: shot ? { opened: Date.now(), shot } : null } })} />
+            {wide ? <LineCard shot={shot} doc={doc} onExpand={openDelivery} /> : null}
           </>
         ) : (
           <ChartPanel view={view} shot={shot} shotKey={shotKey}
@@ -612,10 +660,10 @@ export function App({ doc, config, cursor, reload }) {
       <PlayedDialog playing={ui.playing} onClose={closePlayed} />
       <TeamsDialog naming={ui.naming} onClose={closeNaming} onSaved={reload} />
       <ShotClipDialog clipping={ui.clipping} onClose={closeClipping} />
-      {/* Both are opened only from the wide layout, so the narrow and phone DOM
-          never carries them (spec: byte-identical to before). */}
-      {wide ? <DeliveryDialog delivering={ui.delivering} onClose={closeDelivering} /> : null}
-      {wide ? (
+      {/* Both are opened only from the desk layouts, so the narrow and phone
+          DOM never carries them (spec: byte-identical to before). */}
+      {desk ? <DeliveryDialog delivering={ui.delivering} onClose={closeDelivering} /> : null}
+      {desk ? (
         <ThinkingDialog open={ui.thinking} series={series} here={here} bars={ui.clockBars}
                         actions={actions} onClose={closeThinking} />
       ) : null}
@@ -657,7 +705,11 @@ function Flags({ doc, shot, trimmed }) {
   );
 }
 
-function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wide }) {
+/* The portrait iPad's header is one line (spec 2026-10-16 §2): the End select,
+ * Thinking and Report come out of #menu to sit just before ⋯, and the menu
+ * gains the YouTube link and, on the view-only surfaces, the track toggle.
+ * Everywhere else each stays where it always was. */
+function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, desk, tablet, ytLink, setPref }) {
   const src = doc.source;
   // Read once: a page left open past the last day keeps its Clip until reloaded.
   const [openedAt] = useState(() => Date.now());
@@ -666,6 +718,24 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wi
   const blanks = queue.length
     ? `${queue.length} to chart →`
     : unplaced ? `${unplaced} unaccounted for` : "all charted ✓";
+  const endSel = (
+    <select id="end" aria-label="End" value={ui.ei}
+            onChange={e => goTo(+e.target.value, 0)}>
+      {view.game.ends.map((e, i) => (
+        <option key={i} value={i}>{`End ${e.number} (${e.house})`}</option>
+      ))}
+    </select>
+  );
+  const thinkBtn = desk ? (
+    <button id="thinkBtn" title="Thinking time, rock by rock"
+            onClick={() => dispatch({ type: "set", patch: { thinking: true } })}>Thinking</button>
+  ) : null;
+  const reportBtn = (
+    <button id="reportBtn" className={ui.reporting ? "on" : undefined}
+            onClick={() => dispatch({ type: "set", patch: { reporting: !ui.reporting } })}>
+      {ui.reporting ? "Close report" : "Report"}
+    </button>
+  );
   return (
     <header>
       <h1>{config.hosted ? <a href="/games" title="All games">curling.dimmit.net</a>
@@ -674,7 +744,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wi
         sheet {src.sheet ?? "?"} &middot;{" "}
         <a href={src.url} target="_blank" rel="noopener">{src.video_id}</a>
       </span>
-      {wide && shot ? (
+      {desk && shot ? (
         <span id="rockName">
           <span className={`chip ${shot.color}${isBlank(shot) ? " unknown" : ""}`}>
             {isBlank(shot) ? "?" : shot.number}
@@ -697,6 +767,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wi
                                       : status.cls === "failed" ? " bad" : ""}`}
             hidden={config.readOnly}>{status.text}</span>
       {config.viewOnly ? <ViewOnly why={config.viewOnly} /> : null}
+      {tablet ? <>{endSel}{thinkBtn}{reportBtn}</> : null}
       <button id="menuBtn" title="More"
               onClick={() => dispatch({ type: "set",
                 patch: { menu: ui.menu === "open" ? "" : "open" } })}>⋯</button>
@@ -708,12 +779,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wi
             <option key={i} value={i}>{`Game ${i + 1} (${g.ends.length} ends)`}</option>
           ))}
         </select>
-        <select id="end" aria-label="End" value={ui.ei}
-                onChange={e => goTo(+e.target.value, 0)}>
-          {view.game.ends.map((e, i) => (
-            <option key={i} value={i}>{`End ${e.number} (${e.house})`}</option>
-          ))}
-        </select>
+        {tablet ? null : endSel}
         <CopyButton id="copyLink" title="Copy a link to this rock" label="Copy link"
                     text={() => location.href} />
         <CopyButton id="shareLink" title="Copy a view-only link to this rock"
@@ -722,14 +788,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wi
                     hidden={!(doc.chart?.share_url && !config.readOnly)} />
         <button id="download" title="Save overrides.json to disk" hidden={config.readOnly}
                 onClick={() => store.download()}>⬇</button>
-        {wide ? (
-          <button id="thinkBtn" title="Thinking time, rock by rock"
-                  onClick={() => dispatch({ type: "set", patch: { thinking: true } })}>Thinking</button>
-        ) : null}
-        <button id="reportBtn" className={ui.reporting ? "on" : undefined}
-                onClick={() => dispatch({ type: "set", patch: { reporting: !ui.reporting } })}>
-          {ui.reporting ? "Close report" : "Report"}
-        </button>
+        {tablet ? null : <>{thinkBtn}{reportBtn}</>}
         <button id="flagBtn" title="Flag an issue with this rock" hidden={!config.hosted}
                 onClick={() => {
                   // `opened` keys the dialog's form, so every opening starts fresh.
@@ -769,6 +828,15 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, wi
                   text: flagPlace(view, ui.ei, ui.si, view.format).text } } })}>
           Clip…
         </button>
+        {tablet ? ytLink : null}
+        {/* A view-only surface's house has no tools on the iPad, and the track
+            is the one that is a viewing preference (spec 2026-10-16 §4). */}
+        {tablet && config.readOnly ? (
+          <label className="chk">
+            <input type="checkbox" id="trackMenu" checked={ui.showTrack}
+                   onChange={e => setPref({ showTrack: e.target.checked })} /> track
+          </label>
+        ) : null}
       </div>
     </header>
   );

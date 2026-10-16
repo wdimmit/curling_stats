@@ -4,9 +4,10 @@ import {
   GROUPS, GROUP_TYPE, MISS_REASONS, TALLBOX, TYPES, subtypesOf,
   blankQueue, boardReadable, endSummary, identity, isBlank, liveGame, openGroupFor, scoreCell,
   unreadNote,
-  houseDeltaText, thinkText, throwerText, typeOf,
+  houseDeltaText, sheetButtonText, thinkText, throwerText, typeOf,
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
+import { Sheet } from "./Sheet.jsx";
 
 /* The typed field that had the caret when it was taken away, and where in
  * it: the window crossing 1700 px swaps the panel for the bar (or back) under
@@ -234,13 +235,24 @@ function Grading({ shot, shotKey, openGroup, readOnly, others, actions }) {
 /* The wide layout's grading (spec 2026-10-15 §1): the panel's controls in two
  * rows under the video. One of Grading and GradingBar renders, never both, so
  * every id stays unique. The renumbering notice goes with it: the panel that
- * carries it below 1700 px is not in the wide layout. */
-export function GradingBar({ shot, shotKey, openGroup, readOnly, others, notice, actions }) {
+ * carries it below 1700 px is not in the wide layout.
+ *
+ * With `sheets` (the portrait iPad, spec 2026-10-16 §6) the score row keeps
+ * the score and puts Miss, Note and Order behind buttons, each opening a
+ * small sheet that holds the same field, then `next` at the right. The typed
+ * fields are the same hooks either way, so the sheets save as the bar does. */
+export function GradingBar({ shot, shotKey, openGroup, readOnly, others, notice, actions,
+                             sheets = false, next = null }) {
   const t = useTypePicker({ shot, shotKey, openGroup, readOnly, actions });
   const miss = useTypedField(shot?.miss_reason, v => actions.patch({ miss_reason: v }),
                              on => actions.setBusy(on ? shotKey : null));
   const note = useTypedField(shot?.note, v => actions.patch({ note: v }),
                              on => actions.setBusy(on ? shotKey : null));
+  // Which sheet is open: one at a time. A sheet's close event clears only
+  // itself, so a close that lands late cannot shut the next one.
+  const [open, setOpen] = useState(null);
+  const shut = which => () => setOpen(o => (o === which ? null : o));
+  const before = others.find(x => shot?.before === identity(x));
   return (
     <div id="grading" className="gbar">
       {/* Each label and its control are one box (.gbar-pair), so a row that
@@ -255,35 +267,84 @@ export function GradingBar({ shot, shotKey, openGroup, readOnly, others, notice,
         <TypeList t={t} readOnly={readOnly} actions={actions} />
         <AutoType shot={shot} actions={actions} />
       </div>
-      <div className="gbar-row">
-        <div className="gbar-pair">
-          <span className="gbar-lbl">Score</span>
-          <ScoreButtons shot={shot} readOnly={readOnly} actions={actions} />
-        </div>
-        <span className="gbar-sep" aria-hidden="true" />
-        <div className="gbar-pair">
-          <label className="gbar-lbl" htmlFor="missReason">Miss</label>
-          <input type="text" id="missReason" list="missList" placeholder="&mdash;" {...miss} />
-          <MissList />
-        </div>
-        <div className="gbar-pair gbar-note">
-          <label className="gbar-lbl" htmlFor="note">Note</label>
-          <textarea id="note" rows={1} placeholder="&mdash;" {...note} />
-        </div>
-        {/* Not on /s/, as the panel hides #orderBox there. */}
-        {!readOnly ? (
-          <>
-            <span className="gbar-sep" aria-hidden="true" />
+      {sheets ? (
+        <>
+          <div className="gbar-row">
             <div className="gbar-pair">
-              <label className="gbar-lbl" htmlFor="moveBefore">Order</label>
-              <MoveBefore shot={shot} others={others} readOnly={readOnly} actions={actions}
-                          title={"Where in the end this rock was really thrown. Detection missed a rock and put "
-                               + "its blank in the wrong place? Move the blank to where it was thrown; the whole "
-                               + "end renumbers."} />
+              <span className="gbar-lbl">Score</span>
+              <ScoreButtons shot={shot} readOnly={readOnly} actions={actions} />
             </div>
-          </>
-        ) : null}
-      </div>
+            <button id="missBtn" type="button" onClick={() => setOpen("miss")}>
+              {sheetButtonText("Miss", miss.value)}
+            </button>
+            <button id="noteBtn" type="button" onClick={() => setOpen("note")}>
+              {sheetButtonText("Note", note.value)}
+            </button>
+            {/* Not on /s/, as the panel hides #orderBox there. */}
+            {!readOnly ? (
+              <button id="orderBtn" type="button" onClick={() => setOpen("order")}>
+                {sheetButtonText("Order", before ? `#${before.number}` : null)}
+              </button>
+            ) : null}
+            <span className="mk-grow" />
+            {next}
+          </div>
+          {/* On /s/ the two fields open read-only, so a long note can be read in full. */}
+          <Sheet id="missSheet" title="Miss reason" open={open === "miss"} onClose={shut("miss")}>
+            <div className="reasons">
+              {MISS_REASONS.map(r => (
+                <button key={r} type="button" disabled={readOnly} className={miss.value === r ? "on" : ""}
+                        onClick={() => miss.onChange({ target: { value: r } })}>{r}</button>
+              ))}
+            </div>
+            <input type="text" id="missReason" list="missList" placeholder="&mdash;" readOnly={readOnly} {...miss} />
+            <MissList />
+          </Sheet>
+          <Sheet id="noteSheet" title="Note" open={open === "note"} onClose={shut("note")}>
+            <textarea id="note" rows={4} placeholder="&mdash;" readOnly={readOnly} {...note} />
+          </Sheet>
+          {!readOnly ? (
+            <Sheet id="orderSheet" title="Order" open={open === "order"} onClose={shut("order")}>
+              <MoveBefore shot={shot} others={others} readOnly={readOnly} actions={actions}
+                          title="Where in the end this rock was really thrown" />
+              <p className="muted">
+                Detection missed a rock and put its blank in the wrong place? Move the
+                blank to where it was thrown; the whole end renumbers.
+              </p>
+            </Sheet>
+          ) : null}
+        </>
+      ) : (
+        <div className="gbar-row">
+          <div className="gbar-pair">
+            <span className="gbar-lbl">Score</span>
+            <ScoreButtons shot={shot} readOnly={readOnly} actions={actions} />
+          </div>
+          <span className="gbar-sep" aria-hidden="true" />
+          <div className="gbar-pair">
+            <label className="gbar-lbl" htmlFor="missReason">Miss</label>
+            <input type="text" id="missReason" list="missList" placeholder="&mdash;" {...miss} />
+            <MissList />
+          </div>
+          <div className="gbar-pair gbar-note">
+            <label className="gbar-lbl" htmlFor="note">Note</label>
+            <textarea id="note" rows={1} placeholder="&mdash;" {...note} />
+          </div>
+          {/* Not on /s/, as the panel hides #orderBox there. */}
+          {!readOnly ? (
+            <>
+              <span className="gbar-sep" aria-hidden="true" />
+              <div className="gbar-pair">
+                <label className="gbar-lbl" htmlFor="moveBefore">Order</label>
+                <MoveBefore shot={shot} others={others} readOnly={readOnly} actions={actions}
+                            title={"Where in the end this rock was really thrown. Detection missed a rock and put "
+                                 + "its blank in the wrong place? Move the blank to where it was thrown; the whole "
+                                 + "end renumbers."} />
+              </div>
+            </>
+          ) : null}
+        </div>
+      )}
       <div id="renumbered" role="status">{notice || ""}</div>
     </div>
   );

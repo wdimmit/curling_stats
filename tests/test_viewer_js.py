@@ -3366,7 +3366,10 @@ class TestTheFlagButton:
     def test_it_sits_in_the_menu_after_report_and_only_when_hosted(self):
         app = self.src("frontend/viewer/App.jsx")
         menu = app[app.index('<div id="menu"'):app.index("</header>")]
-        assert menu.index('id="reportBtn"') < menu.index('id="flagBtn"')
+        # Report is built once, above the header's markup: the portrait iPad
+        # puts it before ⋯, and everywhere else the menu renders it here.
+        assert 'const reportBtn = (\n    <button id="reportBtn"' in app
+        assert menu.index("{tablet ? null : <>{thinkBtn}{reportBtn}</>}") < menu.index('id="flagBtn"')
         assert "hidden={!config.hosted}" in menu[menu.index('id="flagBtn"'):]
 
     def test_review_mode_does_not_hide_it_and_the_desktop_orders_it(self):
@@ -6010,36 +6013,49 @@ class TestTheThinkingDialog:
 
 
 class TestTheWideLayoutKeepsToItsBranch:
-    """Below 1700 px the DOM is the base's, byte for byte: what the wide
-    layout adds renders only in App's `wide` branches, and the panel only in
-    the other. Source pins, so neither can drift across quietly."""
+    """Outside the desk layouts the DOM is the base's, byte for byte: what the
+    wide and tablet layouts add renders only in App's `wide`, `desk` or
+    `tablet` branches, and the panel only in the other. Source pins, so
+    neither can drift across quietly."""
     ROOT = Path(__file__).resolve().parents[1]
 
     @staticmethod
     def side(src, needle):
-        """'wide' or 'narrow': the branch of the nearest `{wide ? … : …}` (or
-        `{!wide ? …}`) the needle sits in; None outside one."""
+        """The flag and the side of the innermost line-start `{flag ? … : …}`
+        the needle sits in, flag being wide, desk or tablet: "desk", "!desk",
+        "tablet"…; None outside every one. A ternary whose first line ends in
+        "(" runs to its `) : null}` or `) : (` … `)}` at the same indent; any
+        other is one line."""
         i = src.index(needle)
-        m = [m for m in re.finditer(r"^( *)\{(!?)wide \? ", src, re.M) if m.start() < i][-1]
-        indent, eol = m.group(1), src.index("\n", m.start())
-        if i < eol:                                   # a one-line ternary
-            first = i < src.index(" : ", m.start())
-        else:
-            els = src.index(f"\n{indent}) : ", m.start())
-            end = els if src.startswith(") : null}", els + 1 + len(indent)) else src.index(f"\n{indent})}}", els)
-            if i > end:
-                return None
-            first = i < els
-        return "wide" if first != (m.group(2) == "!") else "narrow"
+        found = [m for m in re.finditer(r"^( *)\{(!?)(wide|desk|tablet) \? ", src, re.M) if m.start() < i]
+        for m in reversed(found):                     # the nearest first: the innermost holding it
+            indent, eol = m.group(1), src.index("\n", m.start())
+            if src[eol - 1] != "(":                   # a one-line ternary
+                if i > eol:
+                    continue
+                first = i < src.index(" : ", m.start())
+            else:
+                els = src.index(f"\n{indent}) : ", m.start())
+                end = els if src.startswith(") : null}", els + 1 + len(indent)) else src.index(f"\n{indent})}}", els)
+                if i > end:
+                    continue
+                first = i < els
+            flag = m.group(3)
+            return flag if first != (m.group(2) == "!") else f"!{flag}"
+        return None
 
-    def test_the_bar_and_side_cards_are_wide_and_the_panel_is_not(self):
+    def test_each_piece_is_in_its_layout_s_branch(self):
         app = (self.ROOT / "frontend/viewer/App.jsx").read_text()
-        for needle, want in (("<GradingBar ", "wide"), ("<FiguresCard ", "wide"), ("<LineCard ", "wide"),
-                             ("<DeliveryDialog ", "wide"), ("<ThinkingDialog ", "wide"),
-                             ("<ChartPanel ", "narrow"), ('id="detailCard"', "narrow")):
+        for needle, want in (("<GradingBar ", "desk"), ("<FiguresCard ", "desk"), ("<LineCard ", "wide"),
+                             ("<DeliveryDialog ", "desk"), ("<ThinkingDialog ", "desk"),
+                             ("<ChartPanel ", "!desk"), ('id="detailCard"', "!desk"),
+                             ('id="houseOpen"', "tablet")):
             assert app.count(needle) == 1, needle
             assert self.side(app, needle) == want, needle
         assert self.side(app, "<FlagDialog ") is None
+        # Next rock is a const passed to the bar as a prop, so it is pinned by
+        # the prop rather than by a block (ruling R2).
+        assert "next={tablet ? nextRockBtn : null}" in app
 
     def test_a_typed_field_lets_go_and_takes_the_caret_back(self):
         src = (self.ROOT / "frontend/viewer/ChartPanel.jsx").read_text()
@@ -6050,3 +6066,22 @@ class TestTheWideLayoutKeepsToItsBranch:
         mount = hook[:hook.index("useEffect(() => () => {")]
         assert "r.id !== node.id" in mount and "node.focus();" in mount
         assert "ref: el," in hook
+
+
+class TestTheTabletBranch:
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def test_the_resize_handler_knows_the_tablet_has_an_editor(self):
+        app = (self.ROOT / "frontend/viewer/App.jsx").read_text()
+        assert "if (!phone() && !tabletNow() && (ui.houseMode || ui.sheet !== \"peek\"))" in app
+
+    def test_a_tap_opens_the_editor_on_the_tablet(self):
+        src = (self.ROOT / "frontend/viewer/House.jsx").read_text()
+        assert "if ((phone() || tabletNow()) && houseMode !== \"edit\")" in src
+
+    def test_the_bar_s_sheets_keep_the_typed_fields(self):
+        src = (self.ROOT / "frontend/viewer/ChartPanel.jsx").read_text()
+        bar = src[src.index("export function GradingBar("):src.index("function Detail(")]
+        for needle in ('id="missSheet"', 'id="noteSheet"', 'id="orderSheet"', "{...miss}", "{...note}",
+                       "miss.onChange({ target: { value: r } })"):
+            assert needle in bar, needle

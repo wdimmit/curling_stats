@@ -1468,7 +1468,174 @@ body[data-mode="review"] #house { cursor:default; }
    pieces only here (TABLET_QUERY in core/constants.mjs, byte-identical to this
    query). */
 @media (any-pointer: coarse) and (orientation: portrait) and (min-width: 700px) and (max-width: 1199px) {
+  /* Charting a rock with no scroll and no hover: every control is a
+     fingertip, 44 px or more, and nothing is only in a tooltip. Sized from
+     the board "P · Portrait" (out/mockups/ipad/mock/touch.js and P.js). */
+  body { font-size: 15px; }
+  button, select, a, .shot { touch-action: manipulation; }
+
+  /* The page (spec §1): the video, the chips, the house beside the figures,
+     the bar. The rows share the height: the house row first gets its 320 px
+     floor (or the figures card's height, if that is more) and the video row
+     its 315 px (560 wide); what is left grows the video, up to the column's
+     full 16:9 height, and the house row takes the rest. When the floors do
+     not fit, the grid runs past main and the page scrolls: the cards never
+     overlap. The video's width follows its height, and the row's cap is the
+     column's 16:9 height, so it never has to give up width and lose 16:9. */
+  main { grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+         grid-template-areas: "video video" "tp tp" "house figs" "bar bar";
+         grid-template-rows: minmax(315px, calc((100vw - 28px) * 9 / 16)) auto minmax(auto, 1fr) auto;
+         gap: 14px; padding: 14px; box-sizing: border-box; height: calc(100dvh - 56px); }
+  /* The video, the chips and the bar are the grid's own items. */
+  #playCard { display: contents; }
+  #video { grid-area: video; height: 100%; width: auto; max-width: 100%; aspect-ratio: 16/9;
+           justify-self: center; }
+
+  /* The header, one line of 56 px (spec §2): the rock's name gives way
+     first, as in the wide layout; the source line is hidden, and #save shows
+     only its failures, as on the phone. */
+  header { height: 56px; padding: 0 10px 0 16px; gap: 8px; flex-wrap: nowrap; }
+  header > *, header #menu > * { flex-shrink: 0; }
+  header > .grow { flex-shrink: 1; min-width: 0; }
+  header > #src, #save:not(.bad) { display: none; }
+  header h1 a { display: block; min-height: 44px; line-height: 44px; }
+  /* After the rock's name, the charting count and the title give way, as on
+     the phone (which hides the title): a save failure in #save is the message
+     that must stay whole, and it is the widest thing the line ever holds. */
+  header > h1, header h1 a { overflow: hidden; text-overflow: ellipsis; }
+  header > h1 { flex-shrink: 1; min-width: 44px; }
+  header select, header button { min-height: 44px; font-size: 15px; }
+  header #end { padding: 0 10px; }
+  header > #blanks { padding: 0 12px; font-size: 15px; flex-shrink: 1; min-width: 44px;
+                     overflow: hidden; text-overflow: ellipsis; }
+  header > #rockName { order: 2; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;
+                       font-size: 16px; white-space: nowrap; flex: 1000 1 0; min-width: 30px;
+                       max-width: max-content; overflow: hidden; }
+  #rockName .chip { width: 30px; height: 30px; font-size: 15px; }
+  header #thinkBtn  { order: 11; }
+  header #reportBtn { order: 12; }
+  /* A guarded chart says "View only" here, as on the phone: the long line
+     would push the header past the screen. */
+  #viewOnly { white-space: nowrap; }
+  #viewOnly .long { display: none; }
+  #viewOnly .short { display: inline; }
+  #menuBtn { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; padding: 0;
+             order: 30; font-size: 22px; line-height: 1; }
+
+  /* Behind ⋯, the phone's pattern: the playback settings stay in #playCard,
+     so the two panels are lifted into one dropdown at fixed offsets, the
+     settings on top. #playback is not inside #menu, so tapping its number
+     box does not close the menu (App's pointerdown handler spares it). In
+     source order inside: Game, the links, ⬇, Flag … Clip, YouTube, track. */
+  #menu, #playback { display: none; }
+  body[data-menu="open"] #menu,
+  body[data-menu="open"] #playback {
+    position: fixed; right: 10px; width: 300px; z-index: 10; margin: 0; box-sizing: border-box;
+    background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; }
+  body[data-menu="open"] #playback { display: flex; flex-wrap: nowrap; top: 60px; height: 64px;
+    align-items: center; gap: 14px; border-bottom: 0; border-radius: 10px 10px 0 0; }
+  body[data-menu="open"] #menu { display: flex; flex-direction: column; gap: 8px; top: 124px;
+    max-height: calc(100dvh - 134px); overflow-y: auto;
+    border-radius: 0 0 10px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / .18); }
+  header #menu > * { order: 0; width: 100%; min-height: 44px; flex: none; }
+  #menu > a, #menu > label.chk { display: flex; align-items: center; font-size: 15px; }
+  #playback label.chk { min-height: 44px; font-size: 15px; }
+  #playback #leadin { min-height: 44px; font-size: 16px; }
+
+  /* The rock chips and Replay (spec §3): 44 tall, as wide as the row
+     leaves down to 36. The width keeps 160 px for the rest of the row:
+     main's padding, the chips' 2 px gaps, the row's gap and Replay (155 px
+     here), so 16 chips and Replay fit on one line from 744 px up. */
+  #transport { grid-area: tp; margin: 0; gap: 6px; flex-wrap: nowrap; justify-content: center; }
+  #transport .shots { margin: 0; gap: 2px; flex-wrap: nowrap; }
+  #shots .shot { width: clamp(36px, calc((100vw - 160px) / 16), 40px); height: 44px; font-size: 15px;
+                 border-radius: 8px; flex: none; }
+  #shots .shot.sel { outline-offset: 2px; }
+  #shots .shot.graded::after { width: 6px; height: 6px; right: 3px; bottom: 3px; }
+  #replay { min-height: 44px; padding: 0 12px; white-space: nowrap; }
+
+  /* The charting bar (spec §6), its own card along the bottom: the groups
+     with the auto note at the right, the group's subtypes on a line of their
+     own (Hit's ten fit on it at 744 px), then the score, the sheet buttons and
+     Next rock. That last row never wraps: a set value grows its sheet
+     button up to 180 px, and when the row runs out the three buttons give
+     way, ending in "…", so typing a note never changes the bar's height and
+     with it the video's size. */
+  #grading { grid-area: bar; margin: 0; padding: 12px; background: var(--panel);
+             border: 1px solid var(--line); border-radius: 10px; gap: 8px; }
+  .gbar-row { gap: 6px; row-gap: 8px; }
+  .gbar-lbl, .gbar-sep { display: none; }
+  .gbar .pick button { min-height: 44px; padding: 0 11px; font-size: 15px; }
+  .gbar #typeGroups button { min-width: 70px; font-weight: 600; }
+  .gbar #typeList button { min-width: 44px; padding: 0 8px; }
+  .gbar .gbar-row:first-child > .gbar-pair { order: 1; }
+  .gbar #autoType { order: 2; margin-left: auto; font-size: 13px; }
+  .gbar #typeList { order: 3; flex: 1 0 100%; }
+  .gbar #scoreBtns { gap: 5px; }
+  .gbar #scoreBtns button { width: 50px; height: 48px; padding: 0; font-size: 20px; }
+  .gbar .gbar-row:nth-child(2) { flex-wrap: nowrap; }
+  #missBtn, #noteBtn, #orderBtn { flex: 0 1 auto; min-width: 44px; min-height: 44px; max-width: 180px;
+                                  padding: 0 10px; font-size: 15px;
+                                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mk-grow { flex: 1 1 auto; }
+  #nextRock { flex: none; min-height: 48px; padding: 0 16px; font-weight: 700; white-space: nowrap;
+              background: var(--ink); color: var(--panel); border-color: transparent; }
+
+  /* The house card (spec §4) is for reading the house: drawn to fit, with
+     Charted and "open it large" over its top corners. Its drawing must not
+     size the row, so its size is contained. The tools are the editor's. */
+  #houseCard { grid-area: house; align-self: stretch; position: relative; contain: size; min-height: 320px;
+               display: flex; flex-direction: column; }
+  #house { flex: 1 1 0; min-height: 0; height: auto; }
+  #houseCard .tools, #houseCard .housebar { display: none; }
+  #houseCard .hc-head { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 2; display: flex;
+                        align-items: flex-start; justify-content: space-between; pointer-events: none; }
+  #houseCard .hc-head > * { pointer-events: auto; }
+  #houseCard .hc-hint { display: none; }
+  #markCharted { min-height: 44px; padding: 0 12px; font-size: 15px; }
+  #houseOpen { width: 44px; height: 44px; padding: 0; margin-left: auto; }
+  #houseOpen:not([hidden]) { display: grid; place-items: center; }
+  .hc-tap { flex: none; margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+
+  /* The figures (spec §5): every note wraps in full, since a finger cannot
+     hover for a cut-off one's tooltip; the eighth cell opens the delivery. */
+  #figCard { padding: 10px 12px; }
+  #figCard .dfig { padding: 3px 0 4px; }
+  #figCard .dnote { font-size: 12px; line-height: 1.25; white-space: normal; overflow: visible;
+                    text-overflow: clip; }
+  #figCard .dline { align-self: center; border-bottom: 0; }
+  #figCard .dline dd { margin: 0; }
+  #lineOpen { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center;
+              gap: 8px; font-size: 15px; }
 }
+
+/* --- the portrait iPad's sheets (spec 2026-10-16 §6) ---------------------- */
+/* Sheet.jsx: Miss, Note and Order, each a small modal at the top of the
+   screen, over the video, so the iPad's keyboard (up to about y = 700-770 of
+   1080) never covers it and Safari has no reason to pan the page. Not inside
+   the tablet's @media: only that layout renders one. The padding is the
+   wrapper's, so a tap on the <dialog> element itself is the backdrop's. The
+   fields keep their ids, so the bar's own rules on them reach in here and
+   are outranked: dialog.sheet #id is (1,1,1) over .gbar #id's (1,1,0). Text
+   is 16 px, or Safari zooms the page when a box takes the caret. */
+dialog.sheet { margin: 70px auto auto; width: min(560px, calc(100vw - 32px)); padding: 0;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink);
+  box-sizing: border-box; }
+dialog.sheet::backdrop { background: rgb(20 16 10 / .45); }
+.sheet-body { padding: 14px 16px 16px; }
+.sheet-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.sheet-head h2 { flex: 1 1 auto; margin: 0; font-size: 16px; }
+.sheet-head form { margin: 0; }
+.sheet-head button { min-height: 44px; padding: 0 18px; font-size: 15px; font-weight: 600; }
+dialog.sheet .reasons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+dialog.sheet .reasons button { min-height: 44px; padding: 0 14px; font-size: 15px; }
+dialog.sheet #missReason, dialog.sheet #moveBefore { width: 100%; height: 44px; font-size: 16px; }
+dialog.sheet #note { width: 100%; height: auto; min-height: 120px; resize: vertical; font-size: 16px; }
+dialog.sheet .muted { margin: 10px 0 0; font-size: 13px; }
+/* On /s/ the fields are read-only rather than inert, so a long note can be
+   scrolled and read in full; (1,2,2) over the view mode's (1,1,1). */
+body[data-mode="view"] dialog.sheet #missReason,
+body[data-mode="view"] dialog.sheet #note { pointer-events: auto; opacity: 1; }
 
 /* --- the large dialogs: delivery and thinking (spec 2026-10-15) ----------- */
 #deliveryDialog, #thinkingDialog { padding: 0; border: 1px solid var(--line); border-radius: 12px;

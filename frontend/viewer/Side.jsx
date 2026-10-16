@@ -1,7 +1,9 @@
 /* The wide layout's side cards (spec 2026-10-15 §1): the rock's figures under
  * the house, and the line chart the height of the page. Rendered only in the
- * wide layout, so the ids they carry -- theirs, and the #flags and #endBox
- * passed in -- are never in the page twice. */
+ * desk layouts -- the figures in the wide one and the portrait iPad's (spec
+ * 2026-10-16 §5), the line chart in the wide one alone -- so the ids they
+ * carry -- theirs, and the #flags and #endBox passed in -- are never in the
+ * page twice. */
 import { useLayoutEffect, useRef, useState } from "react";
 import { LINEBOX, lineChartGeometry, lineFigures } from "../core/index.mjs";
 import { Figures, isBroomless } from "./Detail.jsx";
@@ -9,11 +11,21 @@ import { LineChart } from "./LineChart.jsx";
 
 const LINE_MIN_H = 560;
 
+const TREND = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+       aria-hidden="true"><path d="M3 17c4-1 6-4 9-6s5-4 9-5" /><path d="M15 6h6v6" /></svg>
+);
+
 /* A rock never seen (`shot.missing`, lineReason's "This rock was never seen")
  * has no line, so its figures would be a grid of "–": one line says why
  * instead, and the house above keeps the room -- the queue's blanks are where
- * stones get placed. A blank that was seen keeps its figures. */
-export function FiguresCard({ shot, doc, children }) {
+ * stones get placed. A blank that was seen keeps its figures.
+ *
+ * `onLine` (the portrait iPad, which draws no line chart) adds an eighth cell
+ * that opens the delivery large, on a rock that has one -- the same test the
+ * line chart uses to offer Expand -- and drops the caption: the large view
+ * keeps its own. */
+export function FiguresCard({ shot, doc, onLine, children }) {
   const f = shot ? lineFigures(shot, doc) : null;
   return (
     <section className="card" id="figCard" aria-label="This rock's figures">
@@ -23,10 +35,19 @@ export function FiguresCard({ shot, doc, children }) {
         : (
           <>
             {/* One line of note each; the whole note is the figure's tooltip. */}
-            <Figures figures={f.figures.map(x => ({ ...x, title: typeof x.note === "string" ? x.note : undefined }))} />
-            <p className="dcap">
-              {isBroomless(shot) ? "Figures ±4 in" : "Figures ±4 in · wide = the side away from the curl"}
-            </p>
+            <Figures figures={f.figures.map(x => ({ ...x, title: typeof x.note === "string" ? x.note : undefined }))}>
+              {onLine && !lineChartGeometry(shot, doc, LINEBOX).why ? (
+                <div className="dfig dline">
+                  <dt className="sr">The line</dt>
+                  <dd><button type="button" id="lineOpen" onClick={onLine}>{TREND}Line &amp; speed</button></dd>
+                </div>
+              ) : null}
+            </Figures>
+            {onLine ? null : (
+              <p className="dcap">
+                {isBroomless(shot) ? "Figures ±4 in" : "Figures ±4 in · wide = the side away from the curl"}
+              </p>
+            )}
           </>
         )}
     </section>
