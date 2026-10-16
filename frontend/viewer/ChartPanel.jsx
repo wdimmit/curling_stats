@@ -8,6 +8,13 @@ import {
 } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 
+/* The typed field that had the caret when it was taken away, and where in
+ * it: the window crossing 1700 px swaps the panel for the bar (or back) under
+ * the caret, and the field that replaces it takes the caret back. Left on
+ * <body>, the next keys would reach the page's shortcuts -- a digit sets the
+ * score, Enter marks the rock charted, x deletes the selected stone. */
+let refocus = null;
+
 /* Local state keyed by the shot, so moving to another rock re-seeds the field
  * and staying on one never does. That is the React-shaped replacement for the
  * `document.activeElement !== el` guard the imperative version needed, and it
@@ -16,7 +23,16 @@ import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 function useTypedField(initial, commit, busy) {
   const [text, setText] = useState(initial ?? "");
   const typed = useRef(false);
-  const focused = useRef(false);
+  const focused = useRef(null);     // the element, while it has the caret
+  const el = useRef(null);
+  useEffect(() => {
+    // Unmounts run before mounts in one commit, so the swap is already noted.
+    const r = refocus, node = el.current;
+    if (!r || !node || r.id !== node.id) return;
+    refocus = null;
+    node.focus();
+    node.setSelectionRange(r.start, r.end);
+  }, []);
   useEffect(() => {
     // Not on mount. The effect runs once with the value the shot already has,
     // and committing that would write `{miss_reason: null}` for every rock the
@@ -31,14 +47,20 @@ function useTypedField(initial, commit, busy) {
    * closed to every poll and save reply. The window crossing 1700 px swaps
    * the panel for the bar (or back) under the caret, so let go here. */
   useEffect(() => () => {
-    if (focused.current) busy(false);
+    const node = focused.current;
+    if (!node) return;
+    busy(false);
+    refocus = { id: node.id, start: node.selectionStart, end: node.selectionEnd };
+    // Nothing took it back (no field of that id came in): forget it.
+    setTimeout(() => { refocus = null; }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return {
+    ref: el,
     value: text,
     onChange: e => setText(e.target.value),
-    onFocus: () => { focused.current = true; busy(true); },
-    onBlur: () => { focused.current = false; busy(false); },
+    onFocus: e => { focused.current = e.currentTarget; busy(true); },
+    onBlur: () => { focused.current = null; busy(false); },
   };
 }
 
@@ -248,14 +270,19 @@ export function GradingBar({ shot, shotKey, openGroup, readOnly, others, notice,
           <label className="gbar-lbl" htmlFor="note">Note</label>
           <textarea id="note" rows={1} placeholder="&mdash;" {...note} />
         </div>
-        <span className="gbar-sep" aria-hidden="true" />
-        <div className="gbar-pair">
-          <label className="gbar-lbl" htmlFor="moveBefore">Order</label>
-          <MoveBefore shot={shot} others={others} readOnly={readOnly} actions={actions}
-                      title={"Where in the end this rock was really thrown. Detection missed a rock and put "
-                           + "its blank in the wrong place? Move the blank to where it was thrown; the whole "
-                           + "end renumbers."} />
-        </div>
+        {/* Not on /s/, as the panel hides #orderBox there. */}
+        {!readOnly ? (
+          <>
+            <span className="gbar-sep" aria-hidden="true" />
+            <div className="gbar-pair">
+              <label className="gbar-lbl" htmlFor="moveBefore">Order</label>
+              <MoveBefore shot={shot} others={others} readOnly={readOnly} actions={actions}
+                          title={"Where in the end this rock was really thrown. Detection missed a rock and put "
+                               + "its blank in the wrong place? Move the blank to where it was thrown; the whole "
+                               + "end renumbers."} />
+            </div>
+          </>
+        ) : null}
       </div>
       <div id="renumbered" role="status">{notice || ""}</div>
     </div>

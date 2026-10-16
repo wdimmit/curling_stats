@@ -5,14 +5,19 @@
  *   google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
  *     --remote-debugging-port=9333 --user-data-dir=$(mktemp -d) about:blank &
  *   CDP_PORT=9333 node scripts/deskcheck.mjs EDIT_URL VIEW_URL REVIEW_URL [--only=…] [--shots=DIR]
+ *     [--blank=EDIT_URL#e=..&s=..]…
  *
  * Give each URL a rock with a delivery: #e=2&s=4 for tl-s_0cYt.json.
  * Checks, by name:
  *   fit       five screen sizes x three surfaces: no scroll, every card above the fold,
- *             the control row and the bar inside the video's card, each bar label on its control's line
+ *             the control row and the bar inside the video's card, each bar label on its control's line;
+ *             and the same on each --blank rock (a charting page on a blank: its warnings, and a never-seen
+ *             rock's figures), whose house must be drawn at least 380 px tall at 1920x945. Prints the
+ *             house's height at every size.
  *   short     1920x768: the page may scroll, but no card overlaps another
  *   narrow    1699x900: the old layout, untouched
- *   resize    a note typed at 1920 survives crossing to 1600
+ *   resize    a note typed at 1920 survives crossing to 1600 and keeps the caret: a digit typed
+ *             next goes into the note, not to the score
  *   delivery  the line chart opens the large view; keys stay out; it closes three ways
  *   thinking  the header button opens it; a bar goes to its rock and closes it
  * devserve is in memory, so the note the resize check types goes nowhere.
@@ -24,9 +29,11 @@ const args = process.argv.slice(2);
 const opt = name => (args.find(a => a.startsWith(`--${name}=`)) || "").slice(name.length + 3);
 const only = opt("only").split(",").filter(Boolean);
 const shots = opt("shots");
+// Repeatable: each is one charting URL on a blank rock (quote it: it has a # and a &).
+const blanks = args.filter(a => a.startsWith("--blank=")).map(a => a.slice("--blank=".length));
 const [edit, view, review] = args.filter(a => !a.startsWith("--"));
 if (!review) {
-  console.error("usage: node scripts/deskcheck.mjs EDIT VIEW REVIEW [--only=fit,short,narrow,resize,delivery,thinking] [--shots=DIR]");
+  console.error("usage: node scripts/deskcheck.mjs EDIT VIEW REVIEW [--only=fit,short,narrow,resize,delivery,thinking] [--shots=DIR] [--blank=EDIT#e=..&s=..]…");
   process.exit(2);
 }
 const NAMES = ["fit", "short", "narrow", "resize", "delivery", "thinking"];
@@ -75,6 +82,14 @@ const box = sel => cdp.eval(`(() => { const e = document.querySelector(${JSON.st
 const page = () => cdp.eval(`({ sh: document.documentElement.scrollHeight, sw: document.documentElement.scrollWidth,
   ih: innerHeight, iw: innerWidth, hash: location.hash })`);
 const isOpen = id => cdp.eval(`!!document.querySelector("#${id}[open]")`);
+/* The house as drawn: its <svg>'s box, and the drawing in it, which the
+ * viewBox letterboxes (xMidYMid meet). */
+const house = () => cdp.eval(`(() => {
+  const e = document.getElementById("house"); if (!e) return null;
+  const r = e.getBoundingClientRect(), vb = e.viewBox.baseVal;
+  const k = vb && vb.width && vb.height ? Math.min(r.width / vb.width, r.height / vb.height) : 0;
+  return { box: Math.round(r.height), drawn: Math.round(vb.height * k), w: Math.round(vb.width * k) }; })()`);
+const HOUSE_MIN_PX = 380;
 /* Every control-row and bar item (and each item's own children) that has a
  * box but lies outside #playCard's, by more than a pixel, named. */
 const strays = () => cdp.eval(`(() => {
@@ -124,32 +139,48 @@ async function shot(name) {
   writeFileSync(`${shots}/${name}.png`, Buffer.from(s.data, "base64"));
 }
 
+/* One page at one size: no scroll, every card above the fold, nothing in
+ * the control row or the bar outside the video's card. */
+async function fitAt(name, url, w, h) {
+  await open(url, w, h);
+  const at = `fit ${name} ${w}x${h}`;
+  const p = await page();
+  if (p.sh > p.ih + 1) fail(`${at}: the page scrolls (${p.sh} > ${p.ih})`);
+  if (p.sw > p.iw + 1) fail(`${at}: the page scrolls sideways (${p.sw} > ${p.iw})`);
+  const cards = ["#playCard", "#houseCard", "#figCard", "#lineCard", ...(name === "g" ? [] : ["#grading"])];
+  for (const sel of cards) {
+    const b = await box(sel);
+    if (!b || !b.h) fail(`${at}: ${sel} is missing`);
+    else if (b.bottom > p.ih + 0.5) fail(`${at}: ${sel} ends at ${Math.round(b.bottom)}, below the fold at ${p.ih}`);
+  }
+  if (name === "g") {
+    const g = await box("#grading");
+    if (g && g.w && g.h) fail(`${at}: #grading is visible on the review page`);
+  }
+  for (const sel of ["#detailCard", "#chart"]) if (await box(sel)) fail(`${at}: ${sel} is in the wide layout`);
+  // The control row and the bar wrap at the narrow end; nothing in them may run past the card.
+  for (const s of await strays()) fail(`${at}: ${s}`);
+  for (const s of await stranded()) fail(`${at}: ${s}`);
+  const v = await box("#video");
+  if (v && v.w < 640) fail(`${at}: the video is ${Math.round(v.w)} px wide`);
+  const hs = await house();
+  console.log(`${at}: #house ${hs ? `${hs.box} px tall, drawn ${hs.w}x${hs.drawn}` : "missing"}`);
+  await shot(`fit-${name}-${w}x${h}`);
+  return hs;
+}
+
 await check("fit", async () => {
   // 1700 is the gate itself: the narrowest the wide layout gets, header included.
-  for (const [w, h] of [[1700, 945], [1920, 945], [1920, 860], [1920, 1032], [2560, 1305]]) {
-    for (const [name, url] of [["c", edit], ["s", view], ["g", review]]) {
-      await open(url, w, h);
-      const at = `fit ${name} ${w}x${h}`;
-      const p = await page();
-      if (p.sh > p.ih + 1) fail(`${at}: the page scrolls (${p.sh} > ${p.ih})`);
-      if (p.sw > p.iw + 1) fail(`${at}: the page scrolls sideways (${p.sw} > ${p.iw})`);
-      const cards = ["#playCard", "#houseCard", "#figCard", "#lineCard", ...(name === "g" ? [] : ["#grading"])];
-      for (const sel of cards) {
-        const b = await box(sel);
-        if (!b || !b.h) fail(`${at}: ${sel} is missing`);
-        else if (b.bottom > p.ih + 0.5) fail(`${at}: ${sel} ends at ${Math.round(b.bottom)}, below the fold at ${p.ih}`);
-      }
-      if (name === "g") {
-        const g = await box("#grading");
-        if (g && g.w && g.h) fail(`${at}: #grading is visible on the review page`);
-      }
-      for (const sel of ["#detailCard", "#chart"]) if (await box(sel)) fail(`${at}: ${sel} is in the wide layout`);
-      // The control row and the bar wrap at the narrow end; nothing in them may run past the card.
-      for (const s of await strays()) fail(`${at}: ${s}`);
-      for (const s of await stranded()) fail(`${at}: ${s}`);
-      const v = await box("#video");
-      if (v && v.w < 640) fail(`${at}: the video is ${Math.round(v.w)} px wide`);
-      await shot(`fit-${name}-${w}x${h}`);
+  const SIZES = [[1700, 945], [1920, 945], [1920, 860], [1920, 1032], [2560, 1305]];
+  for (const [w, h] of SIZES)
+    for (const [name, url] of [["c", edit], ["s", view], ["g", review]]) await fitAt(name, url, w, h);
+  // A blank is where stones get placed: the house must keep its room under
+  // the warnings it brings.
+  for (const [i, url] of blanks.entries()) {
+    for (const [w, h] of SIZES) {
+      const hs = await fitAt(`blank${i + 1}`, url, w, h);
+      if (w === 1920 && h === 945 && !(hs && hs.drawn >= HOUSE_MIN_PX))
+        fail(`fit blank${i + 1} ${w}x${h}: the house is drawn ${hs ? hs.drawn : 0} px tall, under ${HOUSE_MIN_PX}`);
     }
   }
 });
@@ -197,6 +228,19 @@ await check("resize", async () => {
     const v = await cdp.eval(`document.getElementById("note")?.value`);
     if (v !== "resize check") fail(`resize: the note reads ${JSON.stringify(v)} after crossing 1700 px`);
     if ((await page()).hash !== before) fail("resize: the rock changed when the layout did");
+    // The caret came across with it: a digit typed now is the note's, not the score's.
+    const active = await cdp.eval("document.activeElement?.id || document.activeElement?.tagName");
+    if (active !== "note") fail(`resize: the caret is on ${active} after crossing 1700 px, not #note`);
+    const score = () => cdp.eval(`document.querySelector("#scoreBtns button.on")?.textContent ?? null`);
+    const was = await score(), d = was === "1" ? "2" : "1";   // a digit that would change it
+    for (const type of ["keyDown", "keyUp"])
+      await cdp.send("Input.dispatchKeyEvent", { type, key: d, code: `Digit${d}`, text: type === "keyDown" ? d : undefined,
+                                                 windowsVirtualKeyCode: 48 + +d });
+    await sleep(400);
+    const typed = await cdp.eval(`document.getElementById("note")?.value`);
+    if (typed !== `resize check${d}`) fail(`resize: a ${d} typed after crossing left the note reading ${JSON.stringify(typed)}`);
+    const now = await score();
+    if (now !== was) fail(`resize: a ${d} typed after crossing set the score (${was} -> ${now})`);
   }
 });
 

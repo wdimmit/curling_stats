@@ -9,13 +9,17 @@ import { LineChart } from "./LineChart.jsx";
 
 const LINE_MIN_H = 560;
 
+/* A rock never seen (`shot.missing`, lineReason's "This rock was never seen")
+ * has no line, so its figures would be a grid of "–": one line says why
+ * instead, and the house above keeps the room -- the queue's blanks are where
+ * stones get placed. A blank that was seen keeps its figures. */
 export function FiguresCard({ shot, doc, children }) {
   const f = shot ? lineFigures(shot, doc) : null;
   return (
     <section className="card" id="figCard" aria-label="This rock's figures">
       {children}
       {!shot ? <p className="dnone">No rocks were detected in this end</p>
-        : f.predates ? <p className="dnone">{f.reason}</p>
+        : f.predates || shot.missing ? <p className="dnone">{f.reason}</p>
         : (
           <>
             {/* One line of note each; the whole note is the figure's tooltip. */}

@@ -5922,3 +5922,46 @@ class TestTheThinkingDialog:
         assert "header #reportBtn { order: 12; }" in wide
         app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()
         assert 'id="thinkBtn"' in app and "<ThinkingDialog" in app
+
+
+class TestTheWideLayoutKeepsToItsBranch:
+    """Below 1700 px the DOM is the base's, byte for byte: what the wide
+    layout adds renders only in App's `wide` branches, and the panel only in
+    the other. Source pins, so neither can drift across quietly."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    @staticmethod
+    def side(src, needle):
+        """'wide' or 'narrow': the branch of the nearest `{wide ? … : …}` (or
+        `{!wide ? …}`) the needle sits in; None outside one."""
+        i = src.index(needle)
+        m = [m for m in re.finditer(r"^( *)\{(!?)wide \? ", src, re.M) if m.start() < i][-1]
+        indent, eol = m.group(1), src.index("\n", m.start())
+        if i < eol:                                   # a one-line ternary
+            first = i < src.index(" : ", m.start())
+        else:
+            els = src.index(f"\n{indent}) : ", m.start())
+            end = els if src.startswith(") : null}", els + 1 + len(indent)) else src.index(f"\n{indent})}}", els)
+            if i > end:
+                return None
+            first = i < els
+        return "wide" if first != (m.group(2) == "!") else "narrow"
+
+    def test_the_bar_and_side_cards_are_wide_and_the_panel_is_not(self):
+        app = (self.ROOT / "frontend/viewer/App.jsx").read_text()
+        for needle, want in (("<GradingBar ", "wide"), ("<FiguresCard ", "wide"), ("<LineCard ", "wide"),
+                             ("<DeliveryDialog ", "wide"), ("<ThinkingDialog ", "wide"),
+                             ("<ChartPanel ", "narrow"), ('id="detailCard"', "narrow")):
+            assert app.count(needle) == 1, needle
+            assert self.side(app, needle) == want, needle
+        assert self.side(app, "<FlagDialog ") is None
+
+    def test_a_typed_field_lets_go_and_takes_the_caret_back(self):
+        src = (self.ROOT / "frontend/viewer/ChartPanel.jsx").read_text()
+        hook = src[src.index("function useTypedField("):src.index("function useOpenGroup(")]
+        cleanup = hook[hook.index("useEffect(() => () => {"):]
+        assert "busy(false);" in cleanup                     # R9: the rock is not left busy
+        assert "refocus = { id: node.id," in cleanup
+        mount = hook[:hook.index("useEffect(() => () => {")]
+        assert "r.id !== node.id" in mount and "node.focus();" in mount
+        assert "ref: el," in hook

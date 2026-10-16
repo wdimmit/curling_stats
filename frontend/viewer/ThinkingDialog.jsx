@@ -1,6 +1,7 @@
 /* Thinking time, from the header (spec 2026-10-15 §1): in the wide layout the
  * chart panel's "Thinking time" box becomes this dialog. A bar is still a
- * rock you can go to; going there closes the dialog. */
+ * rock you can go to; going there closes the dialog, and the report if it is
+ * open, as a bar in the report does. */
 import { useEffect, useRef } from "react";
 import { TALLBOX } from "../core/index.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
@@ -31,7 +32,7 @@ export function ThinkingDialog({ open, series, here, bars, actions, onClose }) {
             <div className="tclock">
               {bars
                 ? <ThinkingBars series={series} at={here} box={TALLBOX}
-                                onSelect={b => { actions.goToBar(b); ref.current?.close(); }} />
+                                onSelect={b => { actions.goToBarFromReport(b); ref.current?.close(); }} />
                 : <ThinkingChart series={series} at={here} box={TALLBOX} />}
               <ClockKey series={series}>
                 <span className="grow" />

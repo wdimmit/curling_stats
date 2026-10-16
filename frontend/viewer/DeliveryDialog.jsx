@@ -8,7 +8,8 @@
  * under the person reading it. */
 import { useEffect, useRef } from "react";
 import {
-  BIGDELIVERYBOX, SPEEDBOX, TYPES, deliveryGeometry, deliverySpeed, speedGeometry, speedNumbers, typeOf,
+  BIGDELIVERYBOX, SPEEDBOX, TYPES, deliveryGeometry, deliverySpeed, isBlank, speedGeometry, speedNumbers,
+  typeOf,
 } from "../core/index.mjs";
 import { DeliveryChart, SpeedChart, deliveryLabel } from "./Delivery.jsx";
 
@@ -50,7 +51,7 @@ function Large({ shot }) {
     <div className="dd-body">
       <div className="dd-head">
         <h2 id="deliveryTitle">Delivery</h2>
-        <span className={`dd-chip ${shot.color}`}>{shot.number}</span>
+        <span className={`dd-chip ${shot.color}${isBlank(shot) ? " unknown" : ""}`}>{isBlank(shot) ? "?" : shot.number}</span>
         <span className="dd-who">{shot.label || `shot ${shot.number}`}{type ? ` · ${type}` : ""}</span>
         <span className="grow" />
         <span className="dd-esc">Esc or click outside to close</span>

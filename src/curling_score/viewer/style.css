@@ -507,8 +507,7 @@ body.reporting main { display:none; }
 }
 /* In the aside the same 640-unit box is squeezed into a third of the width,
    so its labels need drawing larger there too. */
-#clock .clockchart .yl, #clock .clockchart .xl,
-#thinkingDialog .clockchart .yl, #thinkingDialog .clockchart .xl { font-size:24px; }
+#clock .clockchart .yl, #clock .clockchart .xl { font-size:24px; }
 #clock .clockchart, #thinkingDialog .clockchart { max-width:none; }
 #clock .key, #thinkingDialog .key { display:flex; gap:12px; font-size:12px; margin-top:4px; }
 #clock .key i.sw, #thinkingDialog .key i.sw { display:inline-block; width:9px; height:9px; border-radius:50%;
@@ -1475,6 +1474,7 @@ body[data-mode="review"] #house { cursor:default; }
            font-size: 12px; font-variant-numeric: tabular-nums; }
 .dd-chip.red { background: var(--red); color: #fff; }
 .dd-chip.yellow { background: var(--yellow); color: #1a1a1a; }
+.dd-chip.unknown { background: var(--panel); color: var(--warn); border: 2px dashed var(--warn); }
 .dd-who { font-size: 14px; font-weight: 600; }
 .dd-esc { font-size: 12px; color: var(--muted); }
 .dd-close { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; }

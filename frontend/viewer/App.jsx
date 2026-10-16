@@ -141,11 +141,13 @@ export function App({ doc, config, cursor, reload }) {
   const closeClipping = useCallback(() => dispatch({ type: "set", patch: { clipping: null } }), []);
   const closeDelivering = useCallback(() => dispatch({ type: "set", patch: { delivering: null } }), []);
   const closeThinking = useCallback(() => dispatch({ type: "set", patch: { thinking: false } }), []);
-  // Narrowing unmounts the two wide-only dialogs; drop their state so widening
-  // again does not reopen a stale one.
+  // Narrowing unmounts the two wide-only dialogs and the playback gear's
+  // popover; drop their state so widening again does not reopen a stale one.
+  // Only when one is open: a narrow or phone page has nothing to reset.
+  const wideOpen = !!(ui.delivering || ui.thinking || ui.prefs);
   useEffect(() => {
-    if (!wide) dispatch({ type: "set", patch: { delivering: null, thinking: false } });
-  }, [wide]);
+    if (!wide && wideOpen) dispatch({ type: "set", patch: { delivering: null, thinking: false, prefs: false } });
+  }, [wide, wideOpen]);
 
   /* --------------------------------------------------------------- actions */
 
