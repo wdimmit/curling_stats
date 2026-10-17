@@ -322,9 +322,18 @@ def build_game(index, start_s, end_s, ends, board=None, fmt=None) -> dict:
     ends = [dict(e) for e in ends]
 
     # The running total is only meaningful while every end up to here is
-    # known. One unread end and everything after it is unknown too.
+    # known. One unread end and everything after it is unknown too -- the
+    # board's own for an end played before the recording, whose first end is
+    # then end 2 (`segment._played_before`).
     running = {c: 0 for c in rules.COLORS}
     broken = False
+    for number in range(1, ends[0]["number"] if ends else 1):
+        before = None if board is None else board.per_end.get(number)
+        if before is None:
+            broken = True
+            break
+        for c in rules.COLORS:
+            running[c] += before.get(c, 0)
     for end in ends:
         if end.get("score") is None:
             broken = True
@@ -928,7 +937,7 @@ def settle_board_scores(ends: list, block: dict, highest_end: int,
     ``fmt`` is the game's :class:`format.GameFormat` (None is fours); it only
     words the reason. The short-end test reads each end's ``shots_expected``.
     """
-    covers_every_end = int(highest_end) >= len(ends)
+    covers_every_end = int(highest_end) >= (ends[-1]["number"] if ends else 0)
     first_short = bool(ends) and reads_short(ends[0])
     block["accounts_for_every_end"] = covers_every_end
     if covers_every_end or not first_short:

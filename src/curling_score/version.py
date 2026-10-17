@@ -215,7 +215,14 @@ from pathlib import Path
 # three pre-game "ends" gone (_OGo), a missed end found (ontE game 2). One
 # worse: last season's 5U Nationals sheet 5 (hOKZ), whose board cannot be read,
 # splits 4 + 4 at its 315 s mid-game break.
-PIPELINE_VERSION = "2026.10.16.2"
+# 2026.10.16.3: a recording that opens on an end played before it -- that
+# end's rocks at rest in one house, brought back, and the first end shown
+# beginning in the other house within a changeover of their clearing
+# (`segment._played_before`) -- numbers its first game from end 2, so the
+# board's scores land on the ends they were posted for. 10/15 Thursday Mens
+# sheets 1-4, whose streams came up after end 1: board agreement 3/5, 1/7,
+# 1/5, 2/7 -> 4/4, 4/6, 4/4, 5/6. Of 132 cached recordings, only those four.
+PIPELINE_VERSION = "2026.10.16.3"
 
 
 def model_id(weights) -> str:

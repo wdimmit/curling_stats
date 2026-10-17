@@ -149,6 +149,12 @@ function ByEndKey({ table, live, entry }) {
         </span>
       ) : null}
       {ok && unread.length && table.total.score ? <span>totals count the ends with a score</span> : null}
+      {ok && table.earlier.length ? (
+        <span>
+          {endList(table.earlier.map(e => e.number))} played before the stream began
+          {table.earlier.every(e => e.score) ? ", in the totals from the wall board" : ""}
+        </span>
+      ) : null}
       {ungraded.length ? <span>— {endList(ungraded)} not graded</span> : null}
       <span><b>bold</b> = the better of the two</span>
     </div>

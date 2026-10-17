@@ -247,7 +247,7 @@ def read_board(path, game, progress=log.info, *, back_to_s=None):
     different responses from whoever reads the logs.
     """
     try:
-        return sb.read_game_board(path, game.start_s, game.end_s, len(game.ends),
+        return sb.read_game_board(path, game.start_s, game.end_s, game.ends[-1].number,
                                   back_to_s=back_to_s)
     except Exception:
         log.exception("game %s: the wall scoreboard pass failed", game.index + 1)
@@ -765,9 +765,12 @@ def leaves_off_head(game, end, prev_end_s, recording_start_s: float = 0.0) -> bo
 
 
 def without_first_end(game):
-    """``game`` without its first end, the rest numbered from one -- none, for
-    a live game whose next end has not settled yet."""
-    ends = [replace(e, number=i) for i, e in enumerate(game.ends[1:], start=1)]
+    """``game`` without its first end, the rest numbered from its number --
+    one, or two for a recording that opened on an end played before it
+    (`segment._played_before`) -- none, for a live game whose next end has
+    not settled yet."""
+    ends = [replace(e, number=i)
+            for i, e in enumerate(game.ends[1:], start=game.ends[0].number)]
     return replace(game, ends=ends, start_s=ends[0].start_s if ends else game.start_s)
 
 

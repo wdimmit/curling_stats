@@ -120,7 +120,7 @@ def join_games(games, read_board) -> list[GameSegment]:
                 and board_kept(read_board(prev.end_s - LOOK_BEFORE_S,
                                           g.start_s + LOOK_AFTER_S),
                                prev.end_s, g.start_s)):
-            ends = prev.ends + [replace(e, number=len(prev.ends) + i)
+            ends = prev.ends + [replace(e, number=prev.ends[-1].number + i)
                                 for i, e in enumerate(g.ends, start=1)]
             out[-1] = GameSegment(index=prev.index, start_s=prev.start_s,
                                   end_s=g.end_s, ends=ends, closed=g.closed)
@@ -149,7 +149,10 @@ def split_games(games, read_board) -> list[GameSegment]:
             else:
                 pieces[-1].append(b)
         for k, piece in enumerate(pieces):
-            ends = [replace(e, number=i) for i, e in enumerate(piece, start=1)]
+            # A game cut off the front keeps its first end's number: the
+            # recording's first may start at end 2 (`segment._played_before`).
+            first_number = piece[0].number if k == 0 else 1
+            ends = [replace(e, number=i) for i, e in enumerate(piece, start=first_number)]
             out.append(GameSegment(index=len(out), start_s=ends[0].start_s,
                                    end_s=ends[-1].end_s, ends=ends,
                                    closed=g.closed if k == len(pieces) - 1 else True))

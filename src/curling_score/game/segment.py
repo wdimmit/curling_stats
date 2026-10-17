@@ -41,6 +41,18 @@ MIN_END_S = C.STONES_PER_END * MIN_DELIVERY_GAP_S
 # end's stones were still in play (`_held`).
 WHOLE_END_FACTOR = 2.25
 WHOLE_END_S = WHOLE_END_FACTOR * MIN_END_S
+# A stream that came up just after an end was played opens on that end's
+# rocks at rest in one house, being brought back, and the first end it shows
+# begins in the other house soon after they clear: it is end 2. 10/15 Thursday
+# Mens: the 7 pm draw began before its 19:10 streams, and sheets 1-4 opened on
+# 4-10 stones in the bottom house for 105-175 s, 25-38 s before end 2 began in
+# the top; numbered from 1, every board score sat an end early. A house held
+# this long, not a person at the panel's edge for a keyframe or two (5-15 s
+# of one "stone" on four of 132 recordings) ...
+PLAYED_BEFORE_MIN_S = 30.0
+# ... and cleared less than a changeover before the first end begins, not
+# practice stones set out before the game (_OGoqF5W9-I: 425 s before it).
+PLAYED_BEFORE_MAX_GAP_S = 120.0
 # Both houses empty for longer than this means the sheet was reset -- or a
 # long pause in a game, which boardsplit.join_games puts back together when
 # the wall board stayed up through it.
@@ -138,6 +150,17 @@ def _runs(active, samples):
     return out
 
 
+def _played_before(samples, runs, first) -> bool:
+    """Whether the recording opens on the rocks of an end played before it
+    (``PLAYED_BEFORE_MIN_S``): a house of stones in the run it opens with,
+    other than ``first``'s -- the first end -- and cleared within a
+    within-game gap of that end beginning."""
+    house, i0, i1 = runs[0]
+    return (house is not None and house != first.house
+            and samples[i1 - 1].t - samples[i0].t >= PLAYED_BEFORE_MIN_S
+            and first.start_s - samples[i1 - 1].t < PLAYED_BEFORE_MAX_GAP_S)
+
+
 def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
     """Group an activity profile into games, each holding its ends in order."""
     samples = list(samples)
@@ -192,7 +215,10 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
             last_i1 = i1
         if not ends:
             continue
-        for n, end in enumerate(ends, start=1):
+        # The recording's first game is numbered from 2 when it opens on an
+        # end played before it (`_played_before`).
+        first_number = 2 if not games and _played_before(samples, runs, ends[0]) else 1
+        for n, end in enumerate(ends, start=first_number):
             end.number = n
         games.append(
             GameSegment(

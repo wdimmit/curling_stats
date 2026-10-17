@@ -372,7 +372,7 @@ class LiveSession:
             one_pass=True, progress=self.progress)
         run_up = self.run_up[key] if again else self.prev_end_s
         built, closed = self.pipeline.build_end(ctx, game, end, run_up)
-        if (not again and end.number == 1 and timeline.nothing_thrown(built)
+        if (not again and end.number == game.ends[0].number and timeline.nothing_thrown(built)
                 and analyze.leaves_off_head(game, end, run_up)):
             # Stones parked in a house ahead of this game's first end, which
             # the board split put at its head (`boardsplit.board_decides`), or
@@ -458,7 +458,7 @@ class LiveSession:
                 continue
             numbers = {e.number for e in played.ends}
             keys = [k for k in built if k[1] in numbers]
-            board = self._board_for(index, len(keys))
+            board = self._board_for(index, keys[-1][1])
             ends = []
             for key in keys:
                 end = deepcopy(self.built[key])

@@ -83,10 +83,18 @@ export function reportMeta(doc, gi, day = d => d.toLocaleDateString(undefined,
  * chart from before board reading (its ends hold the detector's guesses,
  * which nothing shows), "withheld" for a board read but not placed, "ok"
  * otherwise. A score of null is an end the board never gave one. The score
- * total adds the ends that have one; `complete` says whether that is all. */
+ * total adds the ends that have one; `complete` says whether that is all.
+ *
+ * `earlier` is the ends played before the recording began -- its first end
+ * is then numbered 2 -- with what the board says they scored, which the
+ * total counts too. */
 export function byEnd(view) {
   const readable = boardReadable(view.doc);
   const withheld = readable && !!view.game.scoreboard?.scores_withheld;
+  const perEnd = view.game.scoreboard?.per_end || {};
+  const earlier = [];
+  for (let n = 1; n < (view.ends[0]?.end.number ?? 1); n++)
+    earlier.push({ number: n, score: readable && !withheld ? perEnd[n] ?? null : null });
   const team = { red: zero(), yellow: zero() };
   const clock = { red: 0, yellow: 0 };
   const ends = view.ends.map(({ end, shots }) => {
@@ -107,16 +115,17 @@ export function byEnd(view) {
       thinking: { red: t.red ?? null, yellow: t.yellow ?? null },
     };
   });
-  const known = ends.filter(e => e.score);
+  const known = [...earlier, ...ends].filter(e => e.score);
   return {
     status: !readable ? "predates" : withheld ? "withheld" : "ok",
     boardRead: !!view.game.scoreboard,
     ends,
+    earlier,
     total: {
       score: known.length
         ? Object.fromEntries(COLORS.map(c => [c, known.reduce((n, e) => n + (e.score[c] || 0), 0)]))
         : null,
-      complete: ends.length > 0 && known.length === ends.length,
+      complete: ends.length > 0 && known.length === earlier.length + ends.length,
       shooting: { red: pctOf(team.red), yellow: pctOf(team.yellow) },
       thinking: clock,
     },

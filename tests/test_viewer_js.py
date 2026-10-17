@@ -4632,6 +4632,30 @@ class TestTheReportByEnd:
         assert got[1]["score"] == {"red": 5, "yellow": 0} and got[1]["complete"] is True
 
 
+    def test_an_end_played_before_the_stream_counts_from_the_board(self):
+        """10/15 Thursday Mens: the streams came up after end 1, so the first
+        end shown is end 2 and end 1's score is the board's alone."""
+        d = doc([shot(1, "red", "lead")])
+        first = d["games"][0]["ends"][0]
+        d["games"][0]["ends"] = [{**first, "number": n, "score": {"red": 0, "yellow": 1},
+                                  "shots": [dict(s) for s in first["shots"]]}
+                                 for n in (2, 3)]
+        d["games"][0]["scoreboard"] = {"per_end": {"1": {"red": 2, "yellow": 0},
+                                                   "2": {"red": 0, "yellow": 1},
+                                                   "3": {"red": 0, "yellow": 1}}}
+        got = report_js("const t = byEnd(view); out([t.earlier, t.total.score, t.total.complete]);", d)
+        assert got == [[{"number": 1, "score": {"red": 2, "yellow": 0}}],
+                       {"red": 2, "yellow": 2}, True]
+
+    def test_an_earlier_end_the_board_never_posted_leaves_the_total_partial(self):
+        d = doc([shot(1, "red", "lead")])
+        first = d["games"][0]["ends"][0]
+        d["games"][0]["ends"] = [{**first, "number": 2, "score": {"red": 0, "yellow": 1}}]
+        d["games"][0]["scoreboard"] = {"per_end": {"2": {"red": 0, "yellow": 1}}}
+        got = report_js("const t = byEnd(view); out([t.earlier, t.total.complete]);", d)
+        assert got == [[{"number": 1, "score": None}], False]
+
+
 class TestTheReportHeadToHead:
     def test_by_position(self):
         got = report_js("out(headToHead(stats, view.format).positions"
