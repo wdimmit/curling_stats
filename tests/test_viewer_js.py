@@ -4656,6 +4656,27 @@ class TestTheReportByEnd:
         assert got == [[{"number": 1, "score": None}], False]
 
 
+class TestARockNeverThrown:
+    """A game conceded part-way through its last end (`timeline.concede`):
+    the rocks after the last one thrown are ``not_thrown``. The report keeps
+    counting the type as a charter's ``not_thrown`` always has (every rock is
+    scored); the line panel says why there is no line."""
+
+    def conceded(self):
+        return doc([shot(1, "red", "lead"), shot(2, "yellow", "lead"),
+                    shot(3, "red", "second", missing=True, state_known=False,
+                         shot_type="not_thrown", shot_type_source="conceded"),
+                    shot(4, "yellow", "second", missing=True, state_known=False,
+                         shot_type="not_thrown", shot_type_source="conceded")])
+
+    def test_the_line_panel_says_it_was_never_thrown(self):
+        d = self.conceded()
+        d["schema_version"] = 9
+        got = run_js(f"const d = {json.dumps(d)}; "
+                     "out(lineReason(d.games[0].ends[0].shots[2], d));")
+        assert got == "This rock was never thrown"
+
+
 class TestTheReportHeadToHead:
     def test_by_position(self):
         got = report_js("out(headToHead(stats, view.format).positions"
@@ -5193,6 +5214,15 @@ class TestPlayerRocks:
         got = run_js(f"const r = playerRocks({json.dumps(play())}, {json.dumps(d)});"
                      "out([r.rows.length, r.missing]);")
         assert got == [1, 1]
+
+    def test_a_rock_a_conceded_end_never_threw_is_neither(self):
+        """Not lost and not thrown: the player never threw it (`timeline.concede`)."""
+        d = doc([aimed(13, "red", 4), shot(15, "red", "skip", thrower_slot=4, missing=True,
+                                           shot_type="not_thrown", shot_type_source="conceded")])
+        d["schema_version"] = 8
+        got = run_js(f"const r = playerRocks({json.dumps(play())}, {json.dumps(d)});"
+                     "out([r.rows.length, r.missing]);")
+        assert got == [1, 0]
 
     def test_doubles_by_the_person_across_a_swap(self):
         shots = doubles_shots()

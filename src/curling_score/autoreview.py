@@ -165,7 +165,9 @@ def _missing(end: dict, first: bool, last: bool) -> list:
     joining late, and a trailing run in its last end is a concession; anything
     else, or a middle end listing fewer rocks than it should, is not."""
     shots = sorted(end.get("shots", []), key=lambda s: s["number"])
-    gone = [s["number"] for s in shots if s.get("missing")]
+    # A rock a conceded end never threw is not lost (`timeline.concede`).
+    gone = [s["number"] for s in shots
+            if s.get("missing") and s.get("shot_type") != "not_thrown"]
     expected = end.get("shots_expected")
     if gone:
         leading = first and gone == list(range(1, len(gone) + 1))

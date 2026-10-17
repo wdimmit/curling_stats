@@ -567,7 +567,7 @@ class TestStonesOnTheSheetPlaceTheBlanks:
         # seen, so the first house read held three stones. Timing could not
         # place them -- the end's clock had not started -- but the count can.
         plan = self._plan(14, [3] + [4] * 13)
-        blanks = [i for i, (_c, dv) in enumerate(plan) if dv is None]
+        blanks = [i for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)]
         assert blanks == [0, 1]
         # The rock we saw first was the third thrown and keeps its colour.
         assert [c for c, _ in plan[:3]] == ["red", "yellow", "red"]
@@ -585,7 +585,7 @@ class TestStonesOnTheSheetPlaceTheBlanks:
         # stones after one seen delivery. A lone blank cannot go between two
         # alternating rocks, but before the first there is nothing to break.
         plan = self._plan(15, [2] + [3] * 14, first="yellow")
-        blanks = [i for i, (_c, dv) in enumerate(plan) if dv is None]
+        blanks = [i for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)]
         assert blanks == [0]
         assert [c for c, _ in plan[:3]] == ["red", "yellow", "red"]
         colors = [c for c, _ in plan]
@@ -594,39 +594,39 @@ class TestStonesOnTheSheetPlaceTheBlanks:
 
     def test_three_missed_at_the_front_take_three_blanks(self):
         plan = self._plan(13, [4] + [5] * 12, first="red")
-        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [0, 1, 2]
+        assert [i for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)] == [0, 1, 2]
         assert [c for c, _ in plan[:4]] == ["yellow", "red", "yellow", "red"]
 
     def test_a_house_that_never_outgrows_the_count_changes_nothing(self):
         # Fourteen rocks, houses of at most one stone each: blanks go where
         # they always did, at the end.
         plan = self._plan(14, [1] * 14)
-        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [14, 15]
+        assert [i for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)] == [14, 15]
 
     def test_one_stone_too_many_at_the_front_costs_one_blank(self):
         # Evidence for one rock before the first seen buys exactly one blank
         # there; the rest of the deficit goes to the tail as before.
         plan = self._plan(13, [2] + [3] * 12)
-        blanks = [i for i, (_c, dv) in enumerate(plan) if dv is None]
+        blanks = [i for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)]
         assert blanks == [0, 14, 15]
 
     def test_one_stone_too_many_mid_end_still_costs_a_pair(self):
         # Between two alternating neighbours a lone blank cannot exist.
         sizes = list(range(1, 8)) + [9, 10, 11, 12, 13, 14]
         plan = self._plan(13, sizes)
-        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [7, 8, 15]
+        assert [i for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)] == [7, 8, 15]
 
     def test_it_never_invents_more_rocks_than_the_end_is_short(self):
         plan = self._plan(15, [4] + [5] * 14)   # one short; the count says three
         assert len(plan) == 16
-        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [0]
+        assert [i for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)] == [0]
 
     def test_evidence_mid_end_puts_the_pair_there(self):
         # Ten rocks alternate cleanly, then the eleventh house holds two more
         # stones than have been thrown: the pair goes before it, not at the end.
         sizes = list(range(1, 11)) + [13, 14, 15, 16]
         plan = self._plan(14, sizes)
-        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == [10, 11]
+        assert [i for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)] == [10, 11]
 
     def test_from_deliveries_feeds_the_house_sizes_through(self):
         # Fourteen alternating deliveries; the first settles with three stones
@@ -693,7 +693,7 @@ class TestFillingAgainstRealEnds:
                                                       gaps, expected):
         plan = shots._fill_short_end(
             shots._with_placeholders(self._deliveries(first, gaps)), 16)
-        assert [i for i, (_c, dv) in enumerate(plan) if dv is None] == expected
+        assert [i for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)] == expected
 
     @pytest.mark.parametrize("label,first,gaps,expected", ENDS,
                              ids=[e[0] for e in ENDS])
@@ -715,7 +715,38 @@ class TestFillingAgainstRealEnds:
         assert len(long_gaps) == 3, long_gaps
         plan = shots._fill_short_end(
             shots._with_placeholders(self._deliveries(first, gaps)), 16)
-        assert sum(1 for _c, dv in plan if dv is None) == 1
+        assert sum(1 for _c, dv in plan if shots.unseen(dv)) == 1
+
+
+class TestWhyARockIsBlank:
+    """Each blank says what put it there (`shots.Unseen`): a conceded end
+    gives back the blanks that were only ever a guess (`timeline.concede`)."""
+
+    def _why(self, plan):
+        return [(i, dv.why) for i, (_c, dv) in enumerate(plan) if shots.unseen(dv)]
+
+    def test_a_long_gap_and_the_tail(self):
+        """g1e1 of the reference VOD: a pair in its 159 s gap, one at the end."""
+        label, first, gaps, _ = TestFillingAgainstRealEnds.ENDS[0]
+        dvs = TestFillingAgainstRealEnds()._deliveries(first, gaps)
+        plan = shots._fill_short_end(shots._with_placeholders(dvs), 16)
+        assert self._why(plan) == [(7, "gap"), (8, "gap"), (15, "tail")]
+
+    def test_stones_the_sheet_held_before_any_rock_was_seen(self):
+        dvs = TestStonesOnTheSheetPlaceTheBlanks()._alt(14)
+        plan = shots._fill_short_end(shots._with_placeholders(dvs), 16,
+                                     house_sizes=[3] + [4] * 13)
+        assert self._why(plan) == [(0, "house"), (1, "house")]
+
+    def test_two_rocks_of_one_colour_in_a_row(self):
+        dv = TestShortEndsAreFilledWithBlanks()._dv
+        plan = shots._with_placeholders([dv("red", 10), dv("red", 60), dv("yellow", 110)])
+        assert self._why(plan) == [(1, "alternation")]
+
+    def test_a_recording_that_began_inside_the_end(self):
+        dvs = TestShortEndsAreFilledWithBlanks()._alternating(14)
+        plan = shots._lead_blanks(shots._with_placeholders(dvs), 16)
+        assert self._why(plan) == [(0, "lead"), (1, "lead")]
 
 
 class TestAHoggedRockInTheSequence:

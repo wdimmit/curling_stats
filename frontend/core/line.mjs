@@ -7,6 +7,7 @@
 import { R, STRIPBOX, WATCH_TABS } from "./constants.mjs";
 import { isSplitEstimated } from "./stats.mjs";
 import { formatOf, lineWithoutBroom } from "./format.mjs";
+import { notThrown } from "./shots.mjs";
 
 export const LINE_SCHEMA = 6;
 export const HOG_Y = 34.747 - 6.401;      // the throwing hog line, house metres
@@ -260,6 +261,7 @@ export function lineReason(shot, doc) {
   // Fail closed: undefined < 6 is false, so undated charts would pass through.
   // See boardReadable in wire.mjs for the same convention.
   if (!(Number(doc?.schema_version) >= LINE_SCHEMA)) return "This chart predates line measurement";
+  if (notThrown(shot)) return "This rock was never thrown";
   if (shot?.missing) return "This rock was never seen";
   // A doubles rock nobody held a broom for still has its line.
   if (!shot?.target_broom && !lineWithoutBroom(formatOf(doc))) return "No broom was held still before the release";

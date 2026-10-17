@@ -222,7 +222,15 @@ from pathlib import Path
 # board's scores land on the ends they were posted for. 10/15 Thursday Mens
 # sheets 1-4, whose streams came up after end 1: board agreement 3/5, 1/7,
 # 1/5, 2/7 -> 4/4, 4/6, 4/4, 5/6. Of 132 cached recordings, only those four.
-PIPELINE_VERSION = "2026.10.16.3"
+# 2026.10.17.1: a game conceded part-way through its last end -- the team
+# behind going into it had fewer rocks to come than points it needed to tie --
+# lists the rocks after its last one seen as not thrown (shot_type
+# not_thrown, source conceded), not missing (`timeline.concede`); blanks the
+# filler put in a long pause give way so the rocks seen run on, and each blank
+# now says what put it there (`shots.Unseen`). Recorded 120 s past the end, so
+# a feed that died mid-end is not a concession. 10/15 Thursday Mens S2's 7 pm
+# game: conceded after rock 13. Of 226 hosted charts, about six would read so.
+PIPELINE_VERSION = "2026.10.17.1"
 
 
 def model_id(weights) -> str:

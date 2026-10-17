@@ -4,6 +4,9 @@ import { RELEASE_TO_ARRIVAL_S, TYPES } from "./constants.mjs";
 export const isBlank = s => s && (s.state_known === false || s.missing);
 export const typeOf = s => (s ? (s.shot_type || "unknown") : "unknown");
 export const isGraded = s => s && typeof s.user_score === "number";
+/* A rock a conceded end never threw (timeline.concede in the analyser), or
+ * one a charter typed so: listed for its place in the end, thrown by nobody. */
+export const notThrown = s => typeOf(s) === "not_thrown";
 
 /* Nobody can grade a rock nobody saw. A blank's fast path is saying where it
  * was thrown and what was on the ice, so its peek carries different controls. */

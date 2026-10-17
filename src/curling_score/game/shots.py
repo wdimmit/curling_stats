@@ -80,6 +80,31 @@ class Shot:
     house_delta: dict | None = None
     # Which entry in ``stones`` is the stone that was just thrown.
     delivered_stone_index: int | None = None
+    # For a ``missing`` shot, why the plan put a rock there (`Unseen`).
+    unseen: str | None = None
+
+
+@dataclass(frozen=True)
+class Unseen:
+    """A rock in an end's plan that nothing saw, and what put it there:
+
+    * ``alternation`` -- two rocks of one colour ran, so one went between;
+    * ``house`` -- the sheet held more stones than rocks seen so far;
+    * ``lead`` -- the recording began inside the end (`_lead_blanks`);
+    * ``gap`` -- a long pause between two rocks (`GAP_FACTOR`), the one guess;
+    * ``tail`` -- whatever the end is still short, after its last rock seen.
+
+    The first three are evidence a rock was thrown. A gap and a tail are only
+    where a missed rock would most likely be -- and in an end that was
+    conceded, rocks that were never thrown (`timeline.concede`).
+    """
+
+    why: str
+
+
+def unseen(dv) -> bool:
+    """Whether a plan entry's delivery is a rock nothing saw."""
+    return isinstance(dv, Unseen)
 
 
 def scoring_shot(shots):
@@ -422,15 +447,15 @@ def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL,
         p = 0
         while p < len(seq):
             color, dv = seq[p]
-            if dv is not None:
+            if not unseen(dv):
                 need = next(sizes, 0) - base - (p + 1)
                 if need > 0 and p == 0:
                     # Before the first rock seen there is no neighbour to
                     # alternate against, so any number of blanks fits: the
                     # colours simply run backwards from the first rock's.
                     k = min(need, short)
-                    lead = [(color if (k - i) % 2 == 0 else rules.other_color(color), None)
-                            for i in range(k)]
+                    lead = [(color if (k - i) % 2 == 0 else rules.other_color(color),
+                             Unseen("house")) for i in range(k)]
                     seq[0:0] = lead
                     short -= k
                     p += k
@@ -438,13 +463,13 @@ def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL,
                     # Mid-end, pairs -- for the same parity reason as below: a
                     # lone blank between two alternating neighbours cannot exist.
                     pairs = min((need + 1) // 2, short // 2)
-                    pair = [(color, None), (rules.other_color(color), None)]
+                    pair = [(color, Unseen("house")), (rules.other_color(color), Unseen("house"))]
                     seq[p:p] = pair * pairs
                     short -= 2 * pairs
                     p += 2 * pairs
             p += 1
 
-    real = [(i, dv) for i, (_c, dv) in enumerate(seq) if dv is not None]
+    real = [(i, dv) for i, (_c, dv) in enumerate(seq) if not unseen(dv)]
     if short >= 2 and len(real) >= 3:
         gaps = sorted(
             ((b.t_enter - a.t_enter, ib) for (_ia, a), (ib, b) in
@@ -463,12 +488,12 @@ def _fill_short_end(seq, per_end: int, max_fill: int = MAX_FILL,
         for at in sorted(chosen, reverse=True):
             before = seq[at - 1][0]
             first = rules.other_color(before)
-            seq[at:at] = [(first, None), (rules.other_color(first), None)]
+            seq[at:at] = [(first, Unseen("gap")), (rules.other_color(first), Unseen("gap"))]
 
     # Whatever is left was thrown after the last delivery we saw -- or was
     # never thrown at all, if the end was conceded. The charter can say which.
     for _ in range(short):
-        seq.append((rules.other_color(seq[-1][0]) if seq else "red", None))
+        seq.append((rules.other_color(seq[-1][0]) if seq else "red", Unseen("tail")))
     return seq
 
 
@@ -482,7 +507,7 @@ def _lead_blanks(seq, per_end: int):
     if short <= 0 or not seq:
         return seq
     first = seq[0][0]
-    lead = [(first if (short - i) % 2 == 0 else rules.other_color(first), None)
+    lead = [(first if (short - i) % 2 == 0 else rules.other_color(first), Unseen("lead"))
             for i in range(short)]
     return lead + list(seq)
 
@@ -499,7 +524,7 @@ def _with_placeholders(deliveries):
     prev = None
     for dv in deliveries:
         if prev is not None and dv.color == prev:
-            out.append((rules.other_color(prev), None))
+            out.append((rules.other_color(prev), Unseen("alternation")))
         out.append((dv.color, dv))
         prev = dv.color
     return out
@@ -573,7 +598,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     for color, dv in plan:
         if len(out) >= per_end:
             break
-        if dv is None:
+        if unseen(dv):
             # A delivery we never saw. Its house is unknown -- not empty -- and
             # the previous house is the last thing we actually observed, so the
             # next shot's delta is still measured against something real.
@@ -587,6 +612,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
                     missing=True,
                     confidence=0.0,
                     state_known=False,
+                    unseen=dv.why,
                 )
             )
             continue

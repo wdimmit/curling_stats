@@ -192,6 +192,8 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None,
                 "confidence": round(float(s.confidence), 3),
                 "color_inferred": bool(s.color_inferred),
                 "missing": bool(s.missing),
+                # For a rock nothing saw, what put it in the end (`shots.Unseen`).
+                "unseen": getattr(s, "unseen", None) if s.missing else None,
                 "state_known": bool(getattr(s, "state_known", True)),
                 "shot_type": kind,
                 "shot_type_confidence": round(float(kind_conf), 3),
@@ -653,6 +655,59 @@ def _renumber(shots: list, end_number: int, patched: set, fmt=None, swapped=None
         s["position"] = fmt.positions[t.position_slot - 1]
         s["rock_of_player"] = t.rock_of_player
         s["label"] = fmt.shot_label(end_number, i + 1, swapped=swap, short=few)
+
+
+# A team concedes the game when it does not have enough rocks left to tie or
+# win (the user, 2026-10-17): 10/15 Thursday Mens sheet 2's 7 pm game stopped
+# after rock 13 of its last end, red two down with one rock to come, and the
+# players cleared the house and left. An end seen for less than half of it is
+# too little to say where it stopped -- a scrap after a game, a fragment.
+CONCEDE_MIN_SEEN = 0.5
+
+
+def concede(end: dict, score_before: dict | None, fmt=None) -> bool:
+    """Whether a game's last ``end`` was conceded, and if so mark it so: the
+    rocks after its last one seen were never thrown. Changes ``end`` in place.
+
+    It was, when the team behind going into it (``score_before``) had fewer
+    rocks to come, after the last rock seen, than the points it needed to
+    tie. The blanks the filler put in a long pause only because a rock might
+    have gone there (`shots.Unseen` ``gap``) give way, so the rocks seen run
+    on from each other and the rest are ``not_thrown``; a blank the sheet's
+    stones or the colours proved was thrown stays missing. The rocks are
+    renumbered as a reordered end is (`_renumber`), the old numbers kept in
+    ``id``. A tied game, a game with no score, an end with nothing after its
+    last rock seen, or one seen for less than ``CONCEDE_MIN_SEEN`` is left as
+    it was.
+    """
+    fmt = fmt or format_mod.FOURS
+    shots = list(end.get("shots") or [])
+    seen = [i for i, s in enumerate(shots) if not s.get("missing")]
+    if not seen or len(seen) < CONCEDE_MIN_SEEN * fmt.delivered_per_end or not score_before:
+        return False
+    behind = min(rules.COLORS, key=lambda c: score_before.get(c, 0))
+    deficit = max(score_before.get(c, 0) for c in rules.COLORS) - score_before.get(behind, 0)
+    kept = [s for s in shots[:seen[-1] + 1]
+            if not (s.get("missing") and s.get("unseen") == "gap")]
+    kept_ids = {id(s) for s in kept}
+    rest = [s for s in shots if id(s) not in kept_ids]
+    if deficit <= 0 or not rest:
+        return False
+    colour, left = kept[-1]["color"], 0
+    for _ in rest:
+        colour = rules.other_color(colour)
+        left += colour == behind
+    if left >= deficit:
+        return False
+    for s in rest:
+        s.update(shot_type="not_thrown", shot_type_source="conceded", unseen="conceded")
+    end["shots"] = kept + rest
+    _renumber(end["shots"], end["number"], set(), fmt)
+    end["conceded_after"] = len(kept)
+    end["problems"] = ([p for p in end.get("problems") or [] if "deliveries, an end has" not in p]
+                       + [f"conceded after rock {len(kept)}"])
+    end["complete"] = not any(s.get("missing") for s in kept)
+    return True
 
 
 def apply_overrides(document: dict, overrides: dict) -> dict:

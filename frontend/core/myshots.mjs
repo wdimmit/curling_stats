@@ -15,7 +15,7 @@ import {
   ON_M, feetInches, formatHash, lineFigures, lineNumbers, median, narrowOf, sideNames, turnName, withHash,
 } from "./line.mjs";
 import { groupOf, positionLabel } from "./report.mjs";
-import { typeOf } from "./shots.mjs";
+import { notThrown, typeOf } from "./shots.mjs";
 import { buildGameView } from "./timeline.mjs";
 
 // The report's groups as this page shows them: a guard is a draw that stops
@@ -134,6 +134,7 @@ export function playerRocks(play, doc, day = shortDay) {
   for (const { end, shots } of view.ends) {
     for (const s of shots) {
       if (s.color !== play.color || slotOf(s, view.format) !== play.slot) continue;
+      if (notThrown(s)) continue;
       if (s.missing) { missing++; continue; }
       const type = typeOf(s);
       const nums = lineNumbers(s, doc);

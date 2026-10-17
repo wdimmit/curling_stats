@@ -25,6 +25,7 @@ from curling_score.game import (
     linetime,
     placement,
     profile,
+    rules,
     scoreboard as sb,
     secondpass,
     segment,
@@ -287,8 +288,11 @@ class EndContext:
     # rather than once each: for a live recording, read at full resolution
     # with no proxy and no cache, the decode is most of an end's cost.
     one_pass: bool = False
-    # Where the recording (or the window analysed) begins, for `joined_late`.
+    # Where the recording (or the window analysed) begins, for `joined_late`,
+    # and how far it was followed, for whether a game's last end was the
+    # feed stopping rather than a concession (`finish_game`).
     recording_start_s: float = 0.0
+    recording_end_s: float | None = None
 
 
 @dataclass
@@ -701,11 +705,39 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     return built, closed_s
 
 
+# A game whose recording ran on this long past its last end finished there:
+# shorter, and the end may be the feed dying (Kozai Draw 5, 16:01), not a
+# concession.
+CONCEDE_MIN_AFTER_S = 120.0
+
+
+def score_before_last(game, out_ends, scores) -> dict | None:
+    """The score going into a game's last end: the board's where it posted
+    every end before it, else what the detector made of them."""
+    last = out_ends[-1]["number"]
+    per_end = {} if scores is None else scores.per_end
+    if all(per_end.get(n) is not None for n in range(1, last)):
+        return {c: sum(per_end[n].get(c, 0) for n in range(1, last)) for c in rules.COLORS}
+    if out_ends[0]["number"] != 1:
+        return None
+    return {c: sum((e.get("detected_score") or {}).get(c, 0) for e in out_ends[:-1])
+            for c in rules.COLORS}
+
+
 def finish_game(game, out_ends, board: BoardRead | None, fmt,
-                progress=log.info) -> dict:
-    """A game's timeline dict from its built ends and its board, if read."""
+                progress=log.info, *, recorded_s=None) -> dict:
+    """A game's timeline dict from its built ends and its board, if read.
+
+    A finished game -- ``closed``, and recorded ``CONCEDE_MIN_AFTER_S`` past
+    its end (``recorded_s``) -- whose last end stopped short may have been
+    conceded (`timeline.concede`)."""
     scores = board.scores if board is not None else None
     board_block_ = board.block if board is not None else None
+    if (game.closed and out_ends and recorded_s is not None
+            and recorded_s - game.end_s >= CONCEDE_MIN_AFTER_S
+            and timeline.concede(out_ends[-1], score_before_last(game, out_ends, scores), fmt)):
+        progress(f"  game {game.index + 1}: conceded after rock "
+                 f"{out_ends[-1]['conceded_after']} of its last end")
     # The scores on the ends were attached by *detected* end number, which is
     # the board's real end number only when nothing but the game was
     # detected. Now that the ends are built we can see the practice
@@ -854,7 +886,7 @@ def build_games(ctx: EndContext, games, *, read_board=None,
                 board = read_board(kept)
                 put_board_scores(out_ends, board)
         out_game = finish_game(replace(kept, index=len(out_games)), out_ends,
-                               board, ctx.fmt, progress)
+                               board, ctx.fmt, progress, recorded_s=ctx.recording_end_s)
         # Kept, but marked: the service leaves practice out of the catalogue.
         out_game["practice"] = timeline.is_practice(out_game)
         if out_game["practice"]:
@@ -980,6 +1012,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         sideviews=sideviews, detector=detector, broom_model=broom_model,
         line_model=line_model, fmt=fmt, shot_fps=shot_fps, progress=progress,
         recording_start_s=float(start_s or 0.0),
+        recording_end_s=samples[-1].t if samples else None,
     )
     out_games = build_games(
         ctx, games, phase=phase,
