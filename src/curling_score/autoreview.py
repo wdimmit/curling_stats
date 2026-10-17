@@ -28,6 +28,13 @@ BROOM_BEHIND_M = 0.3
 BROOM_PAST_HOG_M = 1.0
 # Splits: p0.5 7.7 s and p99.5 20.8 s over 8,517 backtest rocks, max 27.8 s.
 SPLIT_MIN_S, SPLIT_MAX_S = 7.0, 22.0
+# A hit, or a rock flashed through the house, is thrown harder. Of 18,073
+# splits on 226 charts, 2026-09-27 to 10-16, the 33 under 7 s were all hits or
+# flashed rocks -- peel weight, 31 of the flags raised on them -- and no draw
+# or guard split under 7.2 s. The 8 under 6 s each ran between the hogs faster
+# than its own release speed allows: still worth a look.
+FAST_TYPES = frozenset({"hit", "flashed"})
+FAST_SPLIT_MIN_S = 6.0
 # Fewer ends is a fragment or a feed that died (Kozai Draw 5 lost all five).
 MIN_ENDS = 3
 # A last end this small after a real game is the next draw's first rocks.
@@ -245,7 +252,8 @@ def _odd_rocks(game: dict) -> list:
                 out.append(Finding("broom_off_sheet", "strong", n, r,
                                    f"broom at x {broom['x']:+.2f} m, y {broom['y']:+.2f} m", t))
             split = s.get("long_split_s")
-            if split is not None and not SPLIT_MIN_S <= split <= SPLIT_MAX_S:
+            low = FAST_SPLIT_MIN_S if s.get("shot_type") in FAST_TYPES else SPLIT_MIN_S
+            if split is not None and not low <= split <= SPLIT_MAX_S:
                 out.append(Finding("odd_split", "weak", n, r, f"split {split:.1f} s", t))
             if s.get("color_inferred"):
                 out.append(Finding("colour_inferred", "weak", n, r,

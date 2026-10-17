@@ -287,6 +287,19 @@ class TestOddRocks:
             ("odd_split", "weak", "split 23.4 s")]
         assert not got.raise_flag
 
+    @pytest.mark.parametrize("kind,split,odd", [
+        ("hit", 6.5, False),        # peel weight: 31 of this season's hits split 6-7 s
+        ("flashed", 6.2, False),
+        ("hit", 5.5, True),         # faster between the hogs than any release allows
+        ("draw", 6.5, True),        # no draw or guard has split under 7.2 s
+        ("guard", 6.9, True),
+    ])
+    def test_a_hit_can_split_faster_than_a_draw(self, kind, split, odd):
+        g = game()
+        g["ends"][1]["shots"][8].update(long_split_s=split, shot_type=kind)
+        got = autoreview.review_game(g, FLOOR)
+        assert [f.check for f in got.findings] == (["odd_split"] if odd else [])
+
     def test_two_weak_findings_flag_the_game(self):
         g = game()
         g["ends"][1]["shots"][8]["long_split_s"] = 6.5
