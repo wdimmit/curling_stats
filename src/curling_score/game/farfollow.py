@@ -393,6 +393,15 @@ def taken_back(unaccounted, thrown_by) -> list:
             if d.reason == R.REASON and id(getattr(d, "release", None)) in matched]
 
 
+# Releases `release.settle` placed from the house SETTLE_S on, rather than
+# found hogged. For the last rock of an end that read is the players clearing
+# it: Tuesday Super 10/13 S1 end 1 rock 16 (f_1XMj) stopped at (-0.72, +1.20),
+# was swept off seconds later -- so its arrival was refused -- and settle took a
+# yellow being pushed to (+1.75, -1.94), the far side of the house, for it. What
+# the overhead saw arrive in time is the better account, as it is for a hog.
+HOUSE_SETTLED = ("release-add", "release-remove")
+
+
 def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     """Settle what the overhead could not, by what the long camera saw.
 
@@ -402,9 +411,10 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     t_release)`` is `follow` bound to the video and the camera facing the house,
     returning None when it cannot say.
 
-    * A release settled as hogged that the overhead saw come in in time
-      (`entry`) rests where it stopped, or runs through. Otherwise the camera
-      is asked: one
+    * A release settled as hogged, or placed by the house (`HOUSE_SETTLED`),
+      that the overhead saw come in in time (`entry`) rests where it stopped,
+      or runs through. Otherwise a house placement stands, and for a hog the
+      camera is asked: one
       it saw stop in play becomes a rest there, one it saw run through runs
       through, and one it saw stop by the line and be moved on -- or could
       not follow -- stays hogged.
@@ -423,7 +433,7 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     out, changed = [], 0
     for d in unaccounted:
         r = getattr(d, "release", None)
-        if d.reason != R.REASON or r is None:
+        if r is None or (d.reason != R.REASON and d.reason not in HOUSE_SETTLED):
             out.append(d)
             continue
         # Seen by the overhead coming in, in time to be the throw: that is the
@@ -445,6 +455,9 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
             out.append(R.ran_through(r, o.t, o.x_m, track) if o.kind == THROUGH
                        else R.came_to_rest_at(r, o.t, o.x_m, o.y_m, track))
             changed += 1
+            continue
+        if d.reason != R.REASON:
+            out.append(d)       # the house saw its stone; more than a follow says
             continue
         o = follow_fn(r.color, r.t)
         if o is not None and o.kind == REST:

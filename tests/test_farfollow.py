@@ -257,6 +257,47 @@ class TestPlace:
         assert (n, out[0].reason, out[0].came_to_rest) == (1, R.REASON_REST, True)
         assert (out[0].rest_x_m, out[0].rest_y_m) == pytest.approx((0.05, 0.82), abs=0.05)
 
+    def _house_add(self, r, x=1.75, y=-1.94):
+        """The house's account of a throw it never saw arrive: a stone of its
+        colour that appeared somewhere by the time `release.settle` looked."""
+        return D.Delivery(color=r.color, t_enter=r.t, t_rest=r.t + 36.0, entry_y_m=C.HOGGED_Y_M,
+                          rest_x_m=x, rest_y_m=y, travel_m=C.HOGGED_Y_M - y, came_to_rest=True,
+                          reason=R.REASON_ADD, release=r)
+
+    def test_a_release_the_house_placed_rests_where_the_overhead_saw_it_stop(self):
+        """Tuesday Super 10/13 S1 end 1 rock 16 (f_1XMj): a draw stopped at
+        (-0.72, +1.20) and was swept off by the players clearing the house, so
+        its arrival was refused; 36 s on, `settle` read the clearing and took a
+        yellow being pushed to (+1.75, -1.94) for the rock. The overhead saw it
+        come in on time and stop: that is where it rests."""
+        r = _release(color="yellow")
+        _a, _p, out, n = FF.place([self._house_add(r)], {}, [], _stop_then_swept(T0 + 18.2),
+                                  follow_fn=lambda c, t: None)
+        assert (n, out[0].reason, out[0].came_to_rest) == (1, R.REASON_REST, True)
+        assert (out[0].rest_x_m, out[0].rest_y_m) == pytest.approx((0.05, 0.82), abs=0.05)
+        assert out[0].release is r
+
+    def test_a_release_the_house_says_rolled_out_runs_through_when_seen_to(self):
+        r = _release()
+        removed = D.Delivery(color="red", t_enter=T0, t_rest=T0 + 36.0, entry_y_m=C.HOGGED_Y_M,
+                             rest_x_m=0.0, rest_y_m=C.THROUGH_BACK_Y_M,
+                             travel_m=C.HOGGED_Y_M - C.THROUGH_BACK_Y_M, came_to_rest=False,
+                             reason=R.REASON_REMOVE, release=r)
+        frames = _track_frames("red", T0 + 15.0, [4.6 - 0.07 * k for k in range(90)])
+        _a, _p, out, n = FF.place([removed], {}, [], frames, follow_fn=lambda c, t: None)
+        assert (n, out[0].reason) == (1, R.REASON_THROUGH)
+
+    def test_house_settled_names_settle_s_two_placements(self):
+        assert set(FF.HOUSE_SETTLED) == {R.REASON_ADD, R.REASON_REMOVE}
+
+    def test_unseen_by_the_overhead_the_house_s_account_stands(self):
+        """The camera is not asked: the house saw the throw's stone, which is
+        more than a follow from the long camera says."""
+        r, calls = _release(color="yellow"), []
+        add = self._house_add(r)
+        _a, _p, out, n = FF.place([add], {}, [], [], follow_fn=lambda c, t: calls.append(t))
+        assert (n, out, calls) == (0, [add], [])
+
     def _at_the_back_edge(self):
         ys = [4.6 - 0.1 * k for k in range(66)]
         return _track_frames("red", T0 + 18.2, ys + [ys[-1]] * 20, x=-0.68)
