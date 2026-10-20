@@ -17,7 +17,7 @@ import {
   identity, isBlank, isGraded, liveGame, nextBlankAfter, chartedNext, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
-  shotClipName, shotClipsOffered,
+  shotClipName, shotClipsOffered, houseImageCaption, houseImageName,
 } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
@@ -25,6 +25,7 @@ import * as wideStore from "../runtime/wide.mjs";
 import * as tabletStore from "../runtime/tablet.mjs";
 import { writeBodyState } from "../runtime/bodyState.mjs";
 import { loadPrefs, savePrefs, saveCursor } from "../runtime/prefs.mjs";
+import { houseImage, keepImage } from "../runtime/houseImage.mjs";
 import { House } from "./House.jsx";
 import { DeskDetail } from "./Detail.jsx";
 import { ChartPanel, EndBox, GradingBar } from "./ChartPanel.jsx";
@@ -849,6 +850,14 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
                   text: flagPlace(view, ui.ei, ui.si, view.format).text } } })}>
           Clip…
         </button>
+        {/* The house as a picture to keep, from whichever tab is open. Only
+            behind ⋯ -- on the phone and the portrait iPad -- which CSS decides. */}
+        {shot ? (
+          <button id="houseImgBtn" title="Save the house as a picture"
+                  onClick={() => saveHouseImage(view, ui.ei, ui.si)}>
+            Save house image
+          </button>
+        ) : null}
         {tablet ? ytLink : null}
         {/* A view-only surface's house has no tools on the iPad, and the track
             is the one that is a viewing preference (spec 2026-10-16 §4). */}
@@ -861,6 +870,17 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
       </div>
     </header>
   );
+}
+
+async function saveHouseImage(view, ei, si) {
+  const svg = document.getElementById("house");
+  if (!svg) return;
+  try {
+    await keepImage(await houseImage(svg, houseImageCaption(view, ei, si)),
+                    houseImageName(view, ei, si));
+  } catch {
+    alert("Could not make the picture. Try again.");
+  }
 }
 
 function CopyButton({ id, title, label, text, hidden }) {

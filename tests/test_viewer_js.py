@@ -3194,6 +3194,52 @@ class TestShotClip:
         assert "header #clipBtn    { order: 15; }" in css, "the desktop header puts it first"
 
 
+class TestHouseImage:
+    """The house saved as a picture from the menu (core/houseimage.mjs)."""
+
+    def got(self, d, ei=0, si=0, gi=0):
+        return run_js(f"const v = buildGameView({json.dumps(d)}, {gi}, {{}});"
+                      f"out([houseImageCaption(v, {ei}, {si}), houseImageName(v, {ei}, {si})]);")
+
+    def test_captioned_with_the_rock_as_the_flag_dialog_names_it(self):
+        caption, name = self.got(doc([shot(1, "red", "lead"), shot(2, "yellow", "lead")],
+                                     end_number=4), si=1)
+        assert caption == {"title": None, "place": "End 4 · Rock 2 (yellow, lead)"}
+        assert name == "house-end4-rock2.png"
+
+    def test_named_teams_head_the_caption(self):
+        d = doc([shot(1, "red", "lead")])
+        d["games"][0]["teams"] = {"red": {"name": "Dimmit"}, "yellow": {"name": "Grant"}}
+        assert self.got(d)[0]["title"] == "Dimmit v Grant"
+        d["games"][0]["teams"]["yellow"]["name"] = None
+        assert self.got(d)[0]["title"] == "Dimmit v Yellow"
+
+    def test_a_page_with_two_games_names_the_game(self):
+        d = doc([shot(1, "red", "lead")])
+        d["games"].append({**d["games"][0], "index": 1})
+        caption, name = self.got(d, gi=1)
+        assert caption["place"] == "Game 2 · End 1 · Rock 1 (red, lead)"
+        assert name == "house-game2-end1-rock1.png"
+
+    def test_an_end_with_no_rocks(self):
+        assert self.got(doc([], end_number=3))[1] == "house-end3.png"
+
+    def test_offered_behind_the_menu_only(self):
+        app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()
+        assert 'id="houseImgBtn"' in app
+        css = (VIEWER / "style.css").read_text()
+        assert "\n#houseImgBtn { display: none; }" in css, "not in the desktop header"
+        phone = css[css.index("@media (max-width: 640px) and (min-height: 461px) {"):]
+        assert "  #houseImgBtn { display: block; }" in phone[:phone.index("\n}\n")]
+        assert "  header #houseImgBtn { display: block; }" in css
+
+    def test_the_picture_leaves_out_the_selection_ring(self):
+        house = (Path(__file__).resolve().parents[1] / "frontend/viewer/House.jsx").read_text()
+        assert '<circle className="selring"' in house
+        rt = (Path(__file__).resolve().parents[1] / "frontend/runtime/houseImage.mjs").read_text()
+        assert 'querySelectorAll("title, .selring")' in rt
+
+
 class TestFlagPlace:
     """What a flag records about the rock it was sent from."""
 

@@ -551,6 +551,9 @@ body.reporting main { display:none; }
    its children lay out in the header row on desktop, as they always have. */
 #menu { display: contents; }
 #menuBtn { display: none; }
+/* Saving the house as a picture is offered where ⋯ is a menu -- the phone and
+   the portrait iPad -- and not in the desktop header's row. */
+#houseImgBtn { display: none; }
 .transport { margin-top: 10px; }
 /* Base is (1,0,0); the phone's open-state `margin: 0` is (1,1,1) and still
    wins, so this only takes effect once the inline style it replaces is gone. */
@@ -866,6 +869,7 @@ body[data-mode="review"] #house { cursor:default; }
     border-radius: 0 0 10px 10px;
     box-shadow: 0 6px 24px rgb(0 0 0 / .18); }
   #menu > * { width: 100%; height: 44px; }
+  #houseImgBtn { display: block; }
   /* The header does not wrap here, so when #save is showing a failure the two
      pills have to share what is left of a narrow one. The failure is the
      message that matters, so it is the one that never shrinks; the charting
@@ -1538,6 +1542,7 @@ body[data-mode="review"] #house { cursor:default; }
     max-height: calc(100dvh - 134px); overflow-y: auto;
     border-radius: 0 0 10px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / .18); }
   header #menu > * { order: 0; width: 100%; min-height: 44px; flex: none; }
+  header #houseImgBtn { display: block; }
   #menu > a, #menu > label.chk { display: flex; align-items: center; font-size: 15px; }
   #playback label.chk { min-height: 44px; font-size: 15px; }
   #playback #leadin { min-height: 44px; font-size: 16px; }

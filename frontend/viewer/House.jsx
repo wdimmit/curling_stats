@@ -160,7 +160,7 @@ function Stones({ shot, selStone }) {
       <circle cx={st.x} cy={st.y} r={R.stone * 0.55}
               fill={st.color === "red" ? PAINT.red : PAINT.yellow} />
       {i === selStone && (
-        <circle cx={st.x} cy={st.y} r={R.stone + 0.05} fill="none"
+        <circle className="selring" cx={st.x} cy={st.y} r={R.stone + 0.05} fill="none"
                 stroke={PAINT.accent} strokeWidth={0.035} strokeDasharray="0.07 0.05" />
       )}
       <title>
