@@ -1400,12 +1400,13 @@ body[data-mode="review"] #house { cursor:default; }
 #rockName .chip.unknown { background: var(--panel); color: var(--warn); border: 2px dashed var(--warn); }
 
 /* --- wide desktop (spec 2026-10-15) --------------------------------------- */
-/* A 1080p screen and wider: video, house, grading, the rock's figures and its
-   line on one screen. React renders this layout's pieces only here
-   (WIDE_QUERY in core/constants.mjs, byte-identical to this query); below it
-   the page is the three-column one above, untouched. Last in the file, so at
+/* A 1080p screen and wider, down to a 14-inch laptop's 1512 x 827 window:
+   video, house, grading, the rock's figures and its line on one screen.
+   React renders this layout's pieces only here (WIDE_QUERY in
+   core/constants.mjs, byte-identical to this query); below it the page is
+   the three-column one above, untouched. Last in the file, so at
    equal specificity it wins over the min-width:641px header order. */
-@media (min-width: 1700px) {
+@media (min-width: 1500px) {
   /* The page is the screen's height under the one-line header (54 px; it
      never wraps here, below). Column 2 shares it: the figures card takes its
      natural height -- warnings and the doubles end box included -- and the

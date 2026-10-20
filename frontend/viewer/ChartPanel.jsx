@@ -10,7 +10,7 @@ import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 import { Sheet } from "./Sheet.jsx";
 
 /* The typed field that had the caret when it was taken away, where in it,
- * and what it held: the window crossing 1700 px, or an iPad turning, swaps the
+ * and what it held: the window crossing 1500 px, or an iPad turning, swaps the
  * panel for the bar (or back) under the caret, and the field that replaces it
  * takes the caret back. Left on <body>, the next keys would reach the page's
  * shortcuts -- a digit sets the score, Enter marks the rock charted, x deletes
@@ -54,7 +54,7 @@ function useTypedField(initial, commit, busy, owner) {
   }, [text]);
   /* A field removed while it has the caret never blurs -- React's onBlur
    * does not fire for a node already gone -- and the rock would stay busy,
-   * closed to every poll and save reply. The window crossing 1700 px swaps
+   * closed to every poll and save reply. The window crossing 1500 px swaps
    * the panel for the bar (or back) under the caret, so let go here. */
   useEffect(() => () => {
     const node = focused.current;
@@ -263,7 +263,7 @@ function SheetButton({ id, label, value, setLabel = label, onClick }) {
 /* The wide layout's grading (spec 2026-10-15 §1): the panel's controls in two
  * rows under the video. One of Grading and GradingBar renders, never both, so
  * every id stays unique. The renumbering notice goes with it: the panel that
- * carries it below 1700 px is not in the wide layout.
+ * carries it below 1500 px is not in the wide layout.
  *
  * With `sheets` (the portrait iPad, spec 2026-10-16 §6) the score row keeps
  * the score and puts Miss, Note and Order behind buttons, each opening a

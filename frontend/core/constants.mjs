@@ -47,9 +47,11 @@ export const PHONE_QUERY = "(max-width: 640px) and (min-height: 461px)";
 
 /* The wide desktop layout (spec 2026-10-15): the charting bar under the
  * video, the figures under the house, one line chart the height of the page.
+ * From 1500 px, so a 14-inch laptop (a 1512 x 827 window) gets it as well as
+ * a 1080p screen (amended 2026-10-20; it was 1700).
  * React decides what renders by this; style.css lays it out by the same
  * string, byte for byte -- a test asserts it, as for PHONE_QUERY. */
-export const WIDE_QUERY = "(min-width: 1700px)";
+export const WIDE_QUERY = "(min-width: 1500px)";
 
 /* The portrait iPad layout (spec 2026-10-16): a coarse pointer held upright,
  * between a phone and a desktop. React decides what renders by this;

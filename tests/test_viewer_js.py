@@ -3843,7 +3843,7 @@ class TestDoublesStatsAndSummary:
         assert 'id="formatWarning"' in flags and 'id="formatWarning"' not in main
         assert flags.index('id="formatWarning"') < flags.index("flags.map(")
         # One element, placed by each layout: under the transport below
-        # 1700 px, at the top of the figures card from there (spec 2026-10-15).
+        # 1500 px, at the top of the figures card from there (spec 2026-10-15).
         assert "const flags = <Flags doc={doc} " in app
         assert main.count("{flags}") == 2
 
@@ -4499,7 +4499,7 @@ class TestTheWideLayoutGate:
         css = (VIEWER / "style.css").read_text()
         queries = [q.strip() for q in re.findall(r"@media ([^{]+)\{", css)]
         want = run_js("out(WIDE_QUERY);")
-        assert want == "(min-width: 1700px)"
+        assert want == "(min-width: 1500px)"
         assert want in queries, "WIDE_QUERY is not one of the stylesheet's media queries"
 
 
@@ -6146,7 +6146,7 @@ class TestTheThinkingDialog:
 
     def test_the_header_button_sits_before_report(self):
         css = self.CSS.read_text()
-        wide = css[css.index("@media (min-width: 1700px)"):]
+        wide = css[css.index("@media (min-width: 1500px)"):]
         assert "header #thinkBtn  { order: 11; }" in wide
         assert "header #reportBtn { order: 12; }" in wide
         app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()

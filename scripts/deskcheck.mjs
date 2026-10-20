@@ -1,5 +1,6 @@
-/* The desktop at 1080p (spec 2026-10-15): from 1700 px wide, charting a rock
- * needs no scroll, and below that the page is the one it always was.
+/* The desktop at 1080p (spec 2026-10-15): from 1500 px wide (1700 until
+ * 2026-10-20; 1512 x 827 is a 14-inch laptop), charting a rock needs no
+ * scroll, and below that the page is the one it always was.
  *
  *   PYTHONPATH=src /home/tcuser/src/curling_score/.venv/bin/python scripts/devserve.py TIMELINE
  *   google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
@@ -9,14 +10,14 @@
  *
  * Give each URL a rock with a delivery: #e=2&s=4 for tl-s_0cYt.json.
  * Checks, by name:
- *   fit       five screen sizes x three surfaces: no scroll, every card above the fold,
+ *   fit       six screen sizes x three surfaces: no scroll, every card above the fold,
  *             the control row and the bar inside the video's card, each bar label on its control's line;
  *             and the same on each --blank rock (a charting page on a blank: its warnings, and a never-seen
  *             rock's figures), whose house must be drawn at least 380 px tall at 1920x945. Prints the
  *             house's height at every size.
  *   short     1920x768: the page may scroll, but no card overlaps another
- *   narrow    1699x900: the old layout, untouched
- *   resize    a note typed at 1920 survives crossing to 1600 and keeps the caret: a digit typed
+ *   narrow    1499x900: the old layout, untouched
+ *   resize    a note typed at 1920 survives crossing to 1400 and keeps the caret: a digit typed
  *             next goes into the note, not to the score
  *   delivery  the line chart opens the large view; keys stay out; it closes three ways
  *   thinking  the header button opens it; a bar goes to its rock and closes it
@@ -170,8 +171,9 @@ async function fitAt(name, url, w, h) {
 }
 
 await check("fit", async () => {
-  // 1700 is the gate itself: the narrowest the wide layout gets, header included.
-  const SIZES = [[1700, 945], [1920, 945], [1920, 860], [1920, 1032], [2560, 1305]];
+  // 1500 is the gate itself: the narrowest the wide layout gets, header
+  // included. 1512x827 is a 14-inch laptop's browser window.
+  const SIZES = [[1500, 827], [1512, 827], [1920, 945], [1920, 860], [1920, 1032], [2560, 1305]];
   for (const [w, h] of SIZES)
     for (const [name, url] of [["c", edit], ["s", view], ["g", review]]) await fitAt(name, url, w, h);
   // A blank is where stones get placed: the house must keep its room under
@@ -204,10 +206,10 @@ await check("short", async () => {
 });
 
 await check("narrow", async () => {
-  await open(edit, 1699, 900);
+  await open(edit, 1499, 900);
   for (const sel of ["#detailCard", "#chart", "#transport", "#playback"]) {
     const b = await box(sel);
-    if (!b || !b.h) fail(`narrow: ${sel} is missing below 1700 px`);
+    if (!b || !b.h) fail(`narrow: ${sel} is missing below 1500 px`);
   }
   for (const sel of ["#figCard", "#lineCard", "#thinkBtn", "#rockName", "#playGear"])
     if (await box(sel)) fail(`narrow: ${sel} is in the old layout`);
@@ -222,15 +224,15 @@ await check("resize", async () => {
   else {
     await cdp.send("Input.insertText", { text: "resize check" });
     await sleep(400);                  // past the 150 ms commit
-    await size(1600, 900);
+    await size(1400, 900);
     await sleep(900);
-    if (!(await box("#detailCard")) || (await box("#figCard"))) fail("resize: 1600 px is not the old layout, so the layout did not switch");
+    if (!(await box("#detailCard")) || (await box("#figCard"))) fail("resize: 1400 px is not the old layout, so the layout did not switch");
     const v = await cdp.eval(`document.getElementById("note")?.value`);
-    if (v !== "resize check") fail(`resize: the note reads ${JSON.stringify(v)} after crossing 1700 px`);
+    if (v !== "resize check") fail(`resize: the note reads ${JSON.stringify(v)} after crossing 1500 px`);
     if ((await page()).hash !== before) fail("resize: the rock changed when the layout did");
     // The caret came across with it: a digit typed now is the note's, not the score's.
     const active = await cdp.eval("document.activeElement?.id || document.activeElement?.tagName");
-    if (active !== "note") fail(`resize: the caret is on ${active} after crossing 1700 px, not #note`);
+    if (active !== "note") fail(`resize: the caret is on ${active} after crossing 1500 px, not #note`);
     const score = () => cdp.eval(`document.querySelector("#scoreBtns button.on")?.textContent ?? null`);
     const was = await score(), d = was === "1" ? "2" : "1";   // a digit that would change it
     for (const type of ["keyDown", "keyUp"])

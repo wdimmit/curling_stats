@@ -28,6 +28,7 @@ The layout was designed at 1440×900 (`2026-09-24-desktop-shot-detail-design.md`
 
 ## Decisions
 - **The new layout applies at 1700 px wide and up.** Below that, every layout is unchanged: `#detailCard`, the chart panel, This rock, Needs charting, Thinking time and Scoreboard all stay as they are. The 1440×900 laptop layout already fits and is not part of this.
+  - **Amended 2026-10-20:** the gate is now 1500 px, so a 14-inch laptop's 1512×827 browser window gets this layout too. The user approved it from a screenshot of the layout forced on at that size ("it looks good"): the video 760×428, the house 304×397, the bar on four rows, some figure notes cut short. Windows 1500–1699 wide get it as well; 1440×900 keeps the old layout.
   - The video column is about 1170 px inside at 1920, and about 950 px at 1700.
   - The bar needs about 1080 px to keep the shot-type row on one line. So below about 1830 px the subtypes wrap to a third row. The video is narrower there, so the height still fits.
 - **Heights:** everything fits with no page scroll at 1920×860 and taller. 860 is a maximised browser with a bookmarks bar and the taskbar showing.
