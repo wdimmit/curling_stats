@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import { Games } from "./Games.jsx";
 import { Join } from "./Join.jsx";
 import { Mine } from "./Mine.jsx";
+import { Playlists } from "./Playlists.jsx";
 import { Practice } from "./Practice.jsx";
 import { Shots } from "./Shots.jsx";
 import { Status } from "./Status.jsx";
@@ -21,7 +22,8 @@ import { LegalLinks } from "./ui.jsx";
 import { Users } from "./Users.jsx";
 
 const PAGES = { submit: Submit, games: Games, mine: Mine, join: Join, status: Status,
-                thinking: Thinking, shots: Shots, practice: Practice, users: Users };
+                thinking: Thinking, shots: Shots, practice: Practice, users: Users,
+                playlists: Playlists };
 
 const which = document.body.dataset.page;
 const Page = PAGES[which];

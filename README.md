@@ -495,9 +495,9 @@ else holding a chart's link sees it view-only. Charts made before charting
 needed an account belong to nobody and stay editable by their link until
 someone claims one at `/mine`. You can also name a game's league, and its
 teams once an admin has validated your account: team names are public and
-usually a skip's surname. Admins validate accounts at `/users`;
-`scripts/users.py` lists the accounts and is the only way to make or unmake an
-admin.
+usually a skip's surname. Admins validate accounts at `/users`, and keep the
+league playlists the site watches at `/playlists`; `scripts/users.py` lists the
+accounts and is the only way to make or unmake an admin.
 
 **⚑ Flag**, in the `⋯` menu of any hosted page, leaves a note about the rock
 on screen for whoever runs the service, signed in or not. `scripts/flags.py`
