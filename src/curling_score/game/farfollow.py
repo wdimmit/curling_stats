@@ -394,11 +394,17 @@ def taken_back(unaccounted, thrown_by) -> list:
 
 
 # Releases `release.settle` placed from the house SETTLE_S on, rather than
-# found hogged. For the last rock of an end that read is the players clearing
-# it: Tuesday Super 10/13 S1 end 1 rock 16 (f_1XMj) stopped at (-0.72, +1.20),
-# was swept off seconds later -- so its arrival was refused -- and settle took a
+# found hogged. For the end's last throw that read is the players clearing it:
+# Tuesday Super 10/13 S1 end 1 rock 16 (f_1XMj) stopped at (-0.72, +1.20), was
+# swept off seconds later -- so its arrival was refused -- and settle took a
 # yellow being pushed to (+1.75, -1.94), the far side of the house, for it. What
 # the overhead saw arrive in time is the better account, as it is for a hog.
+# Only for the last throw: mid-end the house is read before the next rock and
+# nobody is clearing it, and in a tap or a raise the house and a track can each
+# take a different stone of the colour for the throw. Of this season's 73
+# house placements (2026-10-20), 23 last throws would move -- the six checked
+# on video all for the better -- and two mid-end ones would have gone wrong
+# (Sunday Skips 10/11 S1 e3 r4, Thursday Morning 10/15 S2 e4 r13).
 HOUSE_SETTLED = ("release-add", "release-remove")
 
 
@@ -411,10 +417,10 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     t_release)`` is `follow` bound to the video and the camera facing the house,
     returning None when it cannot say.
 
-    * A release settled as hogged, or placed by the house (`HOUSE_SETTLED`),
-      that the overhead saw come in in time (`entry`) rests where it stopped,
-      or runs through. Otherwise a house placement stands, and for a hog the
-      camera is asked: one
+    * A release settled as hogged, or the end's last throw placed by the
+      house (`HOUSE_SETTLED`), that the overhead saw come in in time (`entry`)
+      rests where it stopped, or runs through. Otherwise a house placement
+      stands, and for a hog the camera is asked: one
       it saw stop in play becomes a rest there, one it saw run through runs
       through, and one it saw stop by the line and be moved on -- or could
       not follow -- stays hogged.
@@ -430,10 +436,14 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     """
     from curling_score.detect import release as R
 
+    releases = list(thrown_by) + [d.release for d in unaccounted
+                                  if getattr(d, "release", None) is not None]
+    last = max(releases, key=lambda r: r.t, default=None)
     out, changed = [], 0
     for d in unaccounted:
         r = getattr(d, "release", None)
-        if r is None or (d.reason != R.REASON and d.reason not in HOUSE_SETTLED):
+        house = d.reason in HOUSE_SETTLED and r is last
+        if r is None or (d.reason != R.REASON and not house):
             out.append(d)
             continue
         # Seen by the overhead coming in, in time to be the throw: that is the

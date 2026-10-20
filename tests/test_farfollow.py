@@ -287,6 +287,20 @@ class TestPlace:
         _a, _p, out, n = FF.place([removed], {}, [], frames, follow_fn=lambda c, t: None)
         assert (n, out[0].reason) == (1, R.REASON_THROUGH)
 
+    def test_only_the_end_s_last_throw(self):
+        """Mid-end the house is read before the next rock arrives and nobody is
+        clearing it, and a tap or a raise moves two stones of one colour --
+        which the house and a track can each take for the throw (Sunday Skips
+        10/11 S1 e3 r4 and Thursday Morning 10/15 S2 e4 r13 checked on video:
+        the house was right). Only the last throw's read falls in the clearing."""
+        r, later = _release(color="yellow"), _release(color="red", t=T0 + 40.0)
+        arrival = D.Delivery(color="red", t_enter=T0 + 55.0, t_rest=T0 + 60.0, entry_y_m=4.5,
+                             rest_x_m=0.0, rest_y_m=1.0, travel_m=3.5, came_to_rest=True)
+        add = self._house_add(r)
+        _a, _p, out, n = FF.place([add], {later: arrival}, [arrival], _stop_then_swept(T0 + 18.2),
+                                  follow_fn=lambda c, t: None)
+        assert (n, out) == (0, [add])
+
     def test_house_settled_names_settle_s_two_placements(self):
         assert set(FF.HOUSE_SETTLED) == {R.REASON_ADD, R.REASON_REMOVE}
 
