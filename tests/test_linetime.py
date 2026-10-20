@@ -309,6 +309,44 @@ class TestChain:
         path = L.chain(times, per, self.FIT)
         assert len(path) > 40 and path[0][0] > 22.0
 
+    def test_a_start_that_never_runs_down_the_sheet_is_not_the_rock(self):
+        # Knock the Dust Off 10/17 D1 S1 end 4 rock 9 (f_0k34): a sweeper's
+        # broom head on the line at 21.8 m, drifting across, was followed for
+        # 7 s while the rock, first seen 1.2 s in, ran on to the house.
+        times = [i * 0.2 for i in range(80)]
+        per = []
+        for t in times:
+            dets = [(t, self.FIT.x(21.8) - 0.15 * t, 21.8, 0, 0, 0.8)] if t <= 7.0 else []
+            y = 21.9 - 2.0 * (t - 1.2) + 0.05 * (t - 1.2) ** 2
+            if t >= 1.2 and y > 1.0:
+                dets.append((t, self.FIT.x(y), y, 0, 0, 0.9))
+            per.append(dets)
+        path = L.chain(times, per, self.FIT)
+        assert path[0][0] == pytest.approx(21.9) and path[-1][0] < 5.0
+
+    def test_only_where_the_rock_comes_into_view(self):
+        """Further down the sheet the thrower's head, rising from the slide,
+        reads as a stone running on (YHiOrlVjiaw e4 r14, 17.1 m to 14.9 m):
+        no better than a stone sitting on the line, which stays the path."""
+        times = [i * 0.2 for i in range(60)]
+        per = []
+        for t in times:
+            dets = [(t, self.FIT.x(3.3) + 0.2, 3.3, 0, 0, 0.9)]
+            if 1.8 <= t <= 3.0:
+                y = 17.1 - 1.8 * (t - 1.8)
+                dets.append((t, self.FIT.x(y) + 0.1, y, 0, 0, 0.7))
+            per.append(dets)
+        path = L.chain(times, per, self.FIT)
+        assert path and all(y == 3.3 for y, _x in path)
+
+    def test_a_rock_that_stops_soon_after_it_is_first_seen_keeps_its_path(self):
+        """A heavy hog: no start runs far, and the first is the rock's."""
+        times = [i * 0.2 for i in range(60)]
+        ys = [max(20.5, 21.5 - 0.5 * t) for t in times]
+        per = [[(t, self.FIT.x(y), y, 0, 0, 0.9)] for t, y in zip(times, ys)]
+        path = L.chain(times, per, self.FIT)
+        assert len(path) == 60 and path[-1][0] == 20.5
+
     def test_nothing_near_the_line_is_no_path(self):
         times = [0.0, 0.2]
         assert L.chain(times, [[(0.0, 2.0, 20.0, 0, 0, 0.9)], []], self.FIT) == []
