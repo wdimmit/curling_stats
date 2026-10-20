@@ -148,7 +148,10 @@ def _has(metric: str, shot: dict) -> bool:
     if metric == "broom":
         return bool(shot.get("target_broom"))
     if metric == "split":
-        return shot.get("long_split_s") is not None
+        # A hogged rock never reached the far hog line: there is no split to
+        # have. 10/14 Womens S3 game 2 opened on fresh pebble with three
+        # hogged leads' rocks, and its end 1 read "split on 11/16".
+        return shot.get("long_split_s") is not None or shot.get("shot_type") == "hogged"
     if metric == "line":
         return bool(shot.get("line"))
     return shot.get("t_release_s") is not None

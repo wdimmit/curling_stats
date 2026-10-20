@@ -244,6 +244,19 @@ class TestCoverage:
         base = Baseline({("fours", "broom"): 0.9}, {"fours": 500})
         assert checks(g, base) == []
 
+    def test_a_hogged_rock_has_no_split_to_miss(self):
+        """10/14 Womens S3 game 2 end 1: three leads' rocks hogged on fresh
+        pebble, plus one more, and two more without a far crossing."""
+        g = game()
+        without(g["ends"][0], "long_split_s", 10)       # 6/16 split
+        for s in g["ends"][0]["shots"][:4]:
+            s["shot_type"] = "hogged"                   # 10/16 accounted for
+        assert checks(g) == []
+        for s in g["ends"][0]["shots"][:4]:
+            s["shot_type"] = "draw"
+        assert [(f.check, f.end) for f in autoreview.review_game(g, FLOOR).findings] == [
+            ("coverage_split", 1)]
+
     def test_normal_comes_from_the_baseline(self):
         g = game()
         without(g["ends"][1], "target_broom", 10)       # 38%, above a 25% normal
