@@ -238,7 +238,15 @@ from pathlib import Path
 # being pushed to the far side of the house. 23 of this season's 73 house
 # placements move; 12 checked on video, all better. Shot lists unchanged on
 # the harness (5 last throws moved in 111 ends).
-PIPELINE_VERSION = "2026.10.20.1"
+# 2026.10.20.2: a stop the far overhead saw come under 0.5 m is the throw only
+# if the long camera saw it stop too (`farfollow.ENTRY_REST_MIN_RUN_M`):
+# players' feet at the far edge of its view read as a rock that came in and
+# stopped -- KTDO 10/17 D1 S1 e4 r3 (f_1A7j) was a hog. Of this season's 16
+# such rests, 6 change, 5 to hogs seen on video. And a long-camera path start
+# where the rock comes into view must run 2 m down the sheet
+# (`linetime.PATH_MIN_RUN_M`): rock 9 (f_0k34) followed a broom head. Of 437
+# re-read paths, 56 change, 45 end nearer their rest, none further.
+PIPELINE_VERSION = "2026.10.20.2"
 
 
 def model_id(weights) -> str:
