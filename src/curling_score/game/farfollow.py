@@ -113,6 +113,17 @@ OVERHEAD_STILL_S = 1.0
 # Its view ends 2.0-2.3 m behind the tee, where a stone running out of it is
 # cut off and looks still; a stop this far back is not the overhead's to call.
 BACK_EDGE_Y_M = -1.6
+# A stop it saw come barely any way is no throw arriving unless the camera saw
+# one stop too. Players' feet at the far edge of the view, where the scale
+# crushes metres into centimetres, read as a stone that came in a few cm and
+# stopped: Knock the Dust Off 10/17 D1 S1 end 4 rock 3 (f_1A7j) was placed at
+# (-0.38, +5.44) so, while the camera saw it stop 0.7 m short of the hog line
+# and be pushed off. A stone already in the house, seen again once a player
+# steps off it, looks the same. Of this season's 16 rests placed this way
+# (2026-10-20) the 8 under 0.5 m were all one or the other, checked on video:
+# five hogs, one stone already there, and two the camera saw stop nearby;
+# the rest came 0.67 m or more.
+ENTRY_REST_MIN_RUN_M = 0.5
 
 
 @dataclass(frozen=True)
@@ -419,8 +430,9 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
 
     * A release settled as hogged, or the end's last throw placed by the
       house (`HOUSE_SETTLED`), that the overhead saw come in in time (`entry`)
-      rests where it stopped, or runs through. Otherwise a house placement
-      stands, and for a hog the camera is asked: one
+      rests where it stopped, or runs through -- a stop it saw come barely any
+      way (`ENTRY_REST_MIN_RUN_M`) only if the camera saw one too. Otherwise a
+      house placement stands, and for a hog the camera is asked: one
       it saw stop in play becomes a rest there, one it saw run through runs
       through, and one it saw stop by the line and be moved on -- or could
       not follow -- stays hogged.
@@ -446,11 +458,23 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
         if r is None or (d.reason != R.REASON and not house):
             out.append(d)
             continue
+        asked = []
+
+        def camera():
+            if not asked:
+                asked.append(follow_fn(r.color, r.t))
+            return asked[0]
+
         # Seen by the overhead coming in, in time to be the throw: that is the
-        # stronger evidence, and the camera is not asked. Following a stone
-        # past a guard, the camera can lose it for a frame and take the guard
-        # (Sunday Skips 09/27 S2 end 6 rock 5).
+        # stronger evidence, and the camera is not asked unless the stone
+        # barely moved. Following a stone past a guard, the camera can lose it
+        # for a frame and take the guard (Sunday Skips 09/27 S2 end 6 rock 5).
         seen = entry(frames, r.color, r.t)
+        if seen is not None and seen[0].kind == REST \
+                and seen[1][0][2] - seen[0].y_m < ENTRY_REST_MIN_RUN_M:
+            seen_by_camera = camera()
+            if seen_by_camera is None or seen_by_camera.kind != REST:
+                seen = None
         if seen is not None:
             o, track = seen
             if o.kind == REST and o.y_m <= BACK_EDGE_Y_M:
@@ -459,7 +483,7 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
                 # view there and looks still (Sunday Skips 09/27 S2 end 6 rock
                 # 6). It reached here in time, so it crossed the hog line either
                 # way: a rest only if the camera saw one.
-                seen_by_camera = follow_fn(r.color, r.t)
+                seen_by_camera = camera()
                 if seen_by_camera is None or seen_by_camera.kind != REST:
                     o = Outcome(THROUGH, o.t, o.x_m, o.y_m, o.samples)
             out.append(R.ran_through(r, o.t, o.x_m, track) if o.kind == THROUGH
@@ -469,7 +493,7 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
         if d.reason != R.REASON:
             out.append(d)       # the house saw its stone; more than a follow says
             continue
-        o = follow_fn(r.color, r.t)
+        o = camera()
         if o is not None and o.kind == REST:
             out.append(R.came_to_rest_at(r, o.t, o.x_m, o.y_m))
             changed += 1

@@ -327,6 +327,40 @@ class TestPlace:
                                   follow_fn=lambda c, t: FF.Outcome(FF.REST, T0 + 28, -0.7, -1.8, 60))
         assert (n, out[0].reason) == (1, R.REASON_REST)
 
+    def _barely_moved(self):
+        """Knock the Dust Off 10/17 D1 S1 end 4 rock 3 (f_1A7j): 7 cm and
+        still, at the far edge of the overhead's view."""
+        ys = [5.51 - 0.01 * k for k in range(7)] + [5.44] * 6
+        return _track_frames("yellow", T0 + 18.3, ys, x=-0.38)
+
+    def test_a_stop_the_overhead_saw_come_barely_any_way_is_not_the_throw_the_camera_saw_hogged(self):
+        r, calls = _release(color="yellow"), []
+
+        def follow(color, t):
+            calls.append(t)
+            return FF.Outcome(FF.HOG, T0 + 25.8, -0.24, 7.11, 80)
+        _a, _p, out, n = FF.place([R.as_delivery(r)], {}, [], self._barely_moved(), follow_fn=follow)
+        assert (n, out[0].reason, calls) == (0, R.REASON, [T0])
+
+    def test_nor_one_the_camera_could_not_follow(self):
+        r = _release(color="yellow")
+        _a, _p, out, n = FF.place([R.as_delivery(r)], {}, [], self._barely_moved(),
+                                  follow_fn=lambda c, t: None)
+        assert (n, out[0].reason) == (0, R.REASON)
+
+    def test_but_one_the_camera_saw_stop_too_rests_where_the_overhead_saw_it(self):
+        r = _release(color="yellow")
+        follow = lambda c, t: FF.Outcome(FF.REST, T0 + 26, -0.3, 5.9, 80)
+        _a, _p, out, n = FF.place([R.as_delivery(r)], {}, [], self._barely_moved(), follow_fn=follow)
+        assert (n, out[0].reason) == (1, R.REASON_REST)
+        assert (out[0].rest_x_m, out[0].rest_y_m) == pytest.approx((-0.38, 5.44))
+
+    def test_a_house_placement_stands_against_a_stop_that_barely_moved(self):
+        r = _release(color="yellow")
+        add = self._house_add(r)
+        _a, _p, out, n = FF.place([add], {}, [], self._barely_moved(), follow_fn=lambda c, t: None)
+        assert (n, out) == (0, [add])
+
     def test_a_late_arrival_that_ran_on_is_the_hog_pushed_down_the_sheet(self):
         """Sunday Skips 09/27 S2 end 3 rock 15: paired with a gap-search arrival
         21.4 s on that ran through; the user saw a hog pushed down."""
