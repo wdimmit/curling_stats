@@ -4791,7 +4791,9 @@ class TestTheUsersPage:
 
     def test_only_an_admin_is_shown_the_way_there(self):
         mine = self.src("frontend/site/Mine.jsx")
-        assert 'me.data?.user?.role === "admin" ? [["/users", "Users"]] : []' in mine
+        assert ('me.data?.user?.role === "admin"\n'
+                '                         ? [["/users", "Users"], ["/playlists", "Playlists"]] : []'
+                ) in mine
 
     def test_a_box_validates_or_unvalidates_and_an_admin_has_none(self):
         page = self.src("frontend/site/Users.jsx")
@@ -4803,6 +4805,44 @@ class TestTheUsersPage:
     def test_anyone_else_is_told_it_is_for_admins(self):
         page = self.src("frontend/site/Users.jsx")
         assert "users.error?.status === 403" in page
+
+
+class TestThePlaylistsPage:
+    """/playlists: the playlists the site watches, for an admin to keep. Its
+    words and its form are core/playlists.mjs (tests/test_playlists_js.py)."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_it_is_a_page_of_the_site(self):
+        main = self.src("frontend/site/main.jsx")
+        assert 'import { Playlists } from "./Playlists.jsx";' in main
+        assert "playlists: Playlists" in main
+
+    def test_the_users_page_and_it_lead_to_each_other(self):
+        assert '["/playlists", "Playlists"]' in self.src("frontend/site/Users.jsx")
+        assert '["/users", "Users"]' in self.src("frontend/site/Playlists.jsx")
+
+    def test_it_makes_the_admin_tokens_calls_and_never_the_poll(self):
+        page = self.src("frontend/site/Playlists.jsx")
+        assert 'const API = "/api/admin/playlists";' in page
+        assert "const one = id => `${API}/${encodeURIComponent(id)}`;" in page
+        assert 'send(adding ? "POST" : "PATCH", adding ? API : one(initial.id), body)' in page
+        assert 'call("PATCH", { enabled: !pl.enabled }' in page
+        assert 'call("DELETE", null' in page
+        assert "poll-playlists" not in page
+
+    def test_removing_asks_first_and_says_what_it_forgets(self):
+        page = self.src("frontend/site/Playlists.jsx")
+        start = page.index("{removing ? (")
+        asking = page[start:page.index(") : (", start)]
+        assert "Removing it forgets which videos it has seen." in asking
+        assert 'call("DELETE"' in asking and page.count('call("DELETE"') == 1
+        assert "onClick={() => setRemoving(true)}>Remove</button>" in page
+
+    def test_anyone_else_is_told_it_is_for_admins(self):
+        assert "got.error?.status === 403" in self.src("frontend/site/Playlists.jsx")
 
 
 class TestTheShotsPage:

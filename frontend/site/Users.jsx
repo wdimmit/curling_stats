@@ -63,7 +63,8 @@ export function Users() {
 
   return (
     <>
-      <Header links={[["/", "All games"], ["/mine", "My games"], ["/users", "Users", true]]} />
+      <Header links={[["/", "All games"], ["/mine", "My games"], ["/users", "Users", true],
+                      ["/playlists", "Playlists"]]} />
       <main>
         <p className="muted" style={{ marginTop: 0 }}>Every account, newest first. A validated
         account can name a game's teams; everything else is open to anyone signed in. Only the

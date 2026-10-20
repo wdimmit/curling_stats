@@ -13,6 +13,7 @@
     "frontend/core/line.mjs": "34908496ff359f15cf9c6461215e72b1d2fe32bcf4437766ad012e0e86bc120d",
     "frontend/core/myshots.mjs": "25eb6c0c8f1ba3a3fa7628b33c8940dc350ceb9bb9b202388a8a07c36fa30425",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
+    "frontend/core/playlists.mjs": "7de9cd7eca0bc7cfbcbd630e04c165b9f40b864374b1d8c903bc575363792a3a",
     "frontend/core/practice.mjs": "013b0d541412707da28830ce5ad74ced6fc6a791b810c123153f845c328e428c",
     "frontend/core/report.mjs": "95b76a30f70797d964a0daa22f676bb990ed8ae5e6e06b9f42d2ea7cd11da520",
     "frontend/core/shotclip.mjs": "6d16d3a122081decf123fce3115e2a6a2d2f06bccb0ab344db235c5202d078f3",
@@ -34,18 +35,19 @@
     "frontend/runtime/teams.mjs": "9014e2f9b40520a21e2e3a5c8b3a2f6fab153a6818a1d485ce00a0cedb1b23df",
     "frontend/site/Games.jsx": "c4300cbf83bdae0dffb9ad467ab8f1fe6cec75e4e1ba8ee1b66de9477439a697",
     "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
-    "frontend/site/Mine.jsx": "99d74fe96e31c48e0a4bd58aca820f398f556b6c9c7cf4c4c17b643db223dd51",
+    "frontend/site/Mine.jsx": "df84f7fafff7759f8258be7b938c6f212c8fc91f1165822692af036d30100eb5",
+    "frontend/site/Playlists.jsx": "08149edc4fb9ae0ec24caf2185e74a25d8ee9c7ba993db509614230eef76f7b2",
     "frontend/site/Practice.jsx": "f3c7523b1156f960f62b2371576c033bd8efdf6d198aa2ff78f911ec2d255567",
     "frontend/site/ShotCharts.jsx": "8d74e5b4bb19b7ef19a2668ad8944964465987a4b16f79b02470aeba15c5ab79",
     "frontend/site/Shots.jsx": "1f932dddf8c321dde641bc71d7cc81f206b03b86f9d210dd9b87a9f522bb8344",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
     "frontend/site/Submit.jsx": "f2421d5e11b7d04d053da43253ef8499f7fc0d3c32a9fe01a95fef45850b1b02",
     "frontend/site/Thinking.jsx": "bb51d73d82b0e53b5d59eddaf20446d266bcdd1368065f8b539d8d97e5747736",
-    "frontend/site/Users.jsx": "0adcdc3d46ab057a55ba735e502ffda0f0f6a5d970c6dec76b850df57420c5df",
+    "frontend/site/Users.jsx": "77da20ee4d08f05e8588ac3fff6f0839b4ece63ca9e63dfb8ff5f5818f5d7186",
     "frontend/site/auth.js": "5f8188503a00c70db4e696259d8ecef329f94be2e70f76186601fd02652f94ab",
     "frontend/site/clip.jsx": "a1f67b0d0b7ce4b911ee273074eb72dc9c24cc240723665690b1662ea7dba03c",
     "frontend/site/fmt.js": "30fe2055592328491abedc9a2537ba47777d2a11f26d0165c9585192272f1559",
-    "frontend/site/main.jsx": "d8324c80b4375292a63c8309fd85a4290dc2f3a04c44d87cdc858978015e4d63",
+    "frontend/site/main.jsx": "098a2f13201bdbb76fe791fc5d385ead26bfdf18994916ac35d2bc91ca4c389c",
     "frontend/site/ui.jsx": "cb9e3007cf35e5c31f306e76e2b5dd22e019d88208c95a341711d92c8c09783e",
     "frontend/site/useAuth.js": "c2364ec8e9cf341cdd9ebb8fd16115c0f225cf0163eeb74e2d9df710def60298",
     "frontend/viewer/App.jsx": "12ce8ee34d7659d9a20f4770a5eca7bc5fa534c1adedf0db18dd67a3994cf749",
@@ -66,7 +68,7 @@
     "frontend/viewer/main.jsx": "13e34b409c2bef47e9782fa01e8e50836c37626d0f388ad90e2ce28b0207c808"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "078eeb445a29db3eb1e27e7b63160688a0d13dd0ed80c0920f66de086c08a1f0",
+    "src/curling_score/service/static/site.js": "d4b444b4803ea4f6163c4f730bc1e0baf800adf822680857cb375b0b6ee0b6e7",
     "src/curling_score/viewer/app.js": "8274dc9807d019b729670509721a5330968d6f05dd55961ad7ab075565901f73"
   }
 }

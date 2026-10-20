@@ -226,6 +226,10 @@ each end ~25% slower (2026-10-02); on the Ryzen 9 5950X, which replaced it on
 
 ## Watching a league
 
+Signed in as an admin, `/playlists` adds a playlist from its link, sets its
+nights and how often it is looked at, and stops watching it or removes it.
+The scheduler and the poll take the admin token:
+
 ```bash
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"playlist_id":"https://www.youtube.com/playlist?list=PLxxxxxxxx","label":"Tuesday Open League",

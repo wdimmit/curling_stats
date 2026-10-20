@@ -145,6 +145,8 @@ SHOT_CLIP_DAY_LIMIT = 200
 CLIP_QUIET_S = 30.0
 # The page a flag was sent from: an edit, view-only or review link.
 FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
+# A YouTube playlist's id: PL..., UU..., OL... and the rest, all URL-safe.
+PLAYLIST_ID = re.compile(r"^[A-Za-z0-9_-]{2,64}$")
 _PLACE_INTS = ("game_index", "end", "rock")
 _PLACE_TEXT = {"end_id": 40, "rock_id": 40, "key": 40, "label": 80}
 PLACE_INT_MAX = 1_000_000
@@ -879,6 +881,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.get("/users", response_class=HTMLResponse)
     def users_page():
         return page("users.html")
+
+    # The league playlists the poller watches, for an admin to change. Public
+    # shell, admin-only list (/api/admin/playlists), as /users.
+    @app.get("/playlists", response_class=HTMLResponse)
+    def playlists_page():
+        return page("playlists.html")
 
     # One page for all three: every session of mine, a sheet's Start, and one
     # session's throws. The page reads which off the path.
@@ -3281,18 +3289,26 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             out["would_flag"] = would
         return out
 
+    # The playlists take the admin token (deploy/README.md's curl) or a
+    # signed-in admin (/playlists). The poll below is the scheduler's alone.
     @app.get("/api/admin/playlists")
     def admin_playlists(authorization: str | None = Header(default=None)):
-        require_admin(authorization)
-        return {"playlists": [
+        require_any_admin(authorization)
+        # The schedules are in the club's time, which the page has to say.
+        return {"club_tz": settings.club_tz, "playlists": [
             {**p.to_dict(), "created_at": _iso(p.created_at), "last_polled_at": _iso(p.last_polled_at)}
             for p in repo.list_playlists()]}
 
-    def playlist_id_from(text: str) -> str:
-        """A playlist's id, from the id itself or any link that carries it."""
-        text = str(text).strip()
+    def playlist_id_from(text) -> str:
+        """A playlist's id, from the id itself or any link that carries it.
+        A video's link, or anything else that is not one, is refused: watched,
+        it would fail three polls and switch itself off."""
+        text = str(text or "").strip()
         found = parse_qs(urlparse(text).query).get("list")
-        return found[0] if found else text
+        pid = found[0] if found else text
+        if not PLAYLIST_ID.match(pid):
+            raise HTTPException(422, "that is not a YouTube playlist's link or id")
+        return pid
 
     def playlist_fields(body: dict, allowed: set) -> dict:
         unknown = set(body) - allowed
@@ -3300,6 +3316,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(422, f"not a playlist setting: {', '.join(sorted(unknown))}")
         fields = dict(body)
         try:
+            if "label" in fields:
+                # It becomes the league of every run the playlist queues.
+                fields["label"] = str(fields["label"] or "").strip()
+                if not fields["label"]:
+                    raise ValueError("a playlist needs a name")
+                if len(fields["label"]) > 60:
+                    raise ValueError("that name is too long for a league")
             if "schedule" in fields:
                 fields["schedule"] = playlists.check_schedule(fields["schedule"])
             for key in ("live_poll_s", "idle_poll_s"):
@@ -3317,14 +3340,15 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     @app.post("/api/admin/playlists", status_code=201)
     async def admin_add_playlist(request: Request, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+        require_any_admin(authorization)
         body = await request.json()
-        pid = playlist_id_from(body.pop("playlist_id"))
+        pid = playlist_id_from(body.pop("playlist_id", None))
         if any(p.playlist_id == pid for p in repo.list_playlists()):
             raise HTTPException(409, f"playlist {pid} is already watched")
-        label = str(body.pop("label", None) or pid).strip()
-        fields = playlist_fields(body, {"schedule", "live_poll_s", "idle_poll_s", "practice"})
-        pl = playlists.new_watched_playlist(pid, label, now())
+        body["label"] = str(body.get("label") or "").strip() or pid
+        fields = playlist_fields(body, {"label", "schedule", "live_poll_s", "idle_poll_s",
+                                        "practice"})
+        pl = playlists.new_watched_playlist(pid, fields.pop("label"), now())
         for key, value in fields.items():
             setattr(pl, key, value)
         repo.put_playlist(pl)
@@ -3335,7 +3359,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                                     authorization: str | None = Header(default=None)):
         """A playlist's label, schedule, polling intervals, or whether it is
         watched at all. Re-enabling one forgets the failures that disabled it."""
-        require_admin(authorization)
+        require_any_admin(authorization)
         if repo.get_playlist(pid) is None:
             raise HTTPException(404, "no such playlist")
         fields = playlist_fields(await request.json(),
@@ -3349,7 +3373,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     @app.delete("/api/admin/playlists/{pid}")
     def admin_delete_playlist(pid: str, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+        require_any_admin(authorization)
         repo.delete_playlist(pid)
         return {"ok": True}
 
