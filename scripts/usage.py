@@ -348,14 +348,17 @@ def _table(headers: list[str], rows: list[list]) -> str:
     return "\n".join([line(headers), *(line(r) for r in rows)])
 
 
-def render(rep: dict, excluded: dict, window: str) -> str:
-    ex = excluded
+def dropped(ex: dict) -> str:
+    """What screen() left out, as one line."""
     addresses = lambda n: f"{n} address" + ("" if n == 1 else "es")
-    out = [f"Usage {window}",
-           f"Dropped: your network ({addresses(ex['owner_addresses'])}, "
-           f"{ex['owner_requests']:,} requests), scanners ({addresses(ex['scanner_addresses'])}, "
-           f"{ex['scanner_requests']:,} requests), bots ({ex['bot_requests']:,} requests), "
-           f"link previews ({ex['preview_clients']} clients)", ""]
+    return (f"Dropped: your network ({addresses(ex['owner_addresses'])}, "
+            f"{ex['owner_requests']:,} requests), scanners ({addresses(ex['scanner_addresses'])}, "
+            f"{ex['scanner_requests']:,} requests), bots ({ex['bot_requests']:,} requests), "
+            f"link previews ({ex['preview_clients']} clients)")
+
+
+def render(rep: dict, excluded: dict, window: str) -> str:
+    out = [f"Usage {window}", dropped(excluded), ""]
     t = rep["totals"]
     have_users = "registered_users" in t
     cols = ["visitors", "charted", "viewed only", "returning", "chart sess", "view sess",
@@ -414,20 +417,25 @@ def fetch(gcloud: str, project: str, since: datetime) -> list[dict]:
     return json.loads(got.stdout or "[]")
 
 
-def fetch_users(gcloud: str, project: str) -> list[dict]:
-    """Every `users` document, holding only its created_at and last_seen_at."""
+def fetch_collection(gcloud: str, project: str, collection: str,
+                     fields: list[str]) -> list[dict]:
+    """Every document in a Firestore collection, holding only `fields`."""
     tok = subprocess.run([gcloud, "auth", "print-access-token"], capture_output=True, text=True)
     if tok.returncode:
         raise RuntimeError(tok.stderr.strip() or f"gcloud exited {tok.returncode}")
-    query = {"structuredQuery": {"from": [{"collectionId": "users"}],
-                                 "select": {"fields": [{"fieldPath": "created_at"},
-                                                       {"fieldPath": "last_seen_at"}]}}}
+    query = {"structuredQuery": {"from": [{"collectionId": collection}],
+                                 "select": {"fields": [{"fieldPath": f} for f in fields]}}}
     req = urllib.request.Request(FIRESTORE_QUERY.format(project=project), method="POST",
                                  data=json.dumps(query).encode(),
                                  headers={"Authorization": f"Bearer {tok.stdout.strip()}",
                                           "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.urlopen(req, timeout=60) as r:
         return [x["document"] for x in json.load(r) if "document" in x]
+
+
+def fetch_users(gcloud: str, project: str) -> list[dict]:
+    """Every `users` document, holding only its created_at and last_seen_at."""
+    return fetch_collection(gcloud, project, "users", ["created_at", "last_seen_at"])
 
 
 def main(argv=None) -> int:
