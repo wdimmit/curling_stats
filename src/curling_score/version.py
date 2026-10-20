@@ -230,7 +230,15 @@ from pathlib import Path
 # now says what put it there (`shots.Unseen`). Recorded 120 s past the end, so
 # a feed that died mid-end is not a concession. 10/15 Thursday Mens S2's 7 pm
 # game: conceded after rock 13. Of 226 hosted charts, about six would read so.
-PIPELINE_VERSION = "2026.10.17.1"
+# 2026.10.20.1: the end's last throw, placed by the house SETTLE_S on
+# (release-add / release-remove) because its arrival was refused, rests
+# where the far overhead saw it stop, or runs through, when the overhead saw
+# it come in on time (`farfollow.HOUSE_SETTLED`): that house read falls in the
+# clearing -- Tuesday Super 10/13 S1 e1 r16 (f_1XMj) was placed on a stone
+# being pushed to the far side of the house. 23 of this season's 73 house
+# placements move; 12 checked on video, all better. Shot lists unchanged on
+# the harness (5 last throws moved in 111 ends).
+PIPELINE_VERSION = "2026.10.20.1"
 
 
 def model_id(weights) -> str:
