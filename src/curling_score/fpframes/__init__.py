@@ -8,6 +8,15 @@ a few such frames per game are exactly what a labelling round wants. This
 package records them (``record``), picks a few per game (``choose``) and
 saves the frames (``store``).
 
+Operating it: frames live in ``<cache root>/harvest/fp/<video_id>/``
+(``/data/wdd/curling-cache`` and ``/data/wdd/curling-cache-2`` on the host),
+and the pruner never deletes them. Each cache is capped by
+``WORKER_FP_HARVEST_GB`` (20 each, so about 40 GB across both workers); when
+over, the worker stops saving and logs it once. ``scripts/fp_harvest.py list``
+shows the pile across both caches. The files are root-owned but
+world-readable. The switch is ``WORKER_FP_HARVEST`` in the compose file's
+``environment:``, which overrides worker.env.
+
 Off unless ``WORKER_FP_HARVEST=1``. Importing the package must stay cheap and
 must never touch the pipeline, so heavy imports happen inside functions.
 """

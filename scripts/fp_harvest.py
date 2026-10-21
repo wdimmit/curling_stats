@@ -16,6 +16,14 @@ Prints the frames kept by check, by ISO week saved, by camera and by league
 (the part of the title after its last " - "), then the disk each cache's
 harvest takes and the duplicate count. --caches defaults to the two worker
 caches on the box.
+
+Operating it: frames live in <cache root>/harvest/fp/<video_id>/
+(/data/wdd/curling-cache and /data/wdd/curling-cache-2 on the host) and the
+pruner never deletes them. Each cache is capped by WORKER_FP_HARVEST_GB (20
+each, so about 40 GB across both workers); when over, the worker stops saving
+and logs it once. The files are root-owned but world-readable. The switch is
+WORKER_FP_HARVEST in the compose file's environment:, which overrides
+worker.env.
 """
 
 import argparse

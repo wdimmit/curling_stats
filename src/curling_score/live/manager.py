@@ -109,7 +109,7 @@ class LiveManager:
         window on a sheet's all-day stream, not a game.
 
         ``on_kept`` is called, on the keeping thread, with the file the
-        recording became -- or with the recording itself when filing it failed
+        recording became -- or with the recording itself when it was not filed
         -- before the recording is deleted: the last moment its frames can be
         read. It is not called for a recording that is not kept, and what it
         raises is logged and goes no further."""

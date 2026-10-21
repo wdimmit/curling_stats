@@ -44,7 +44,8 @@ services:
       # Each VOD job (and each live end) saves a few whole frames where the
       # pipeline's own checks found the detectors wrong, for a labelling
       # round: <cache>/harvest/fp/<video>/ (scripts/fp_harvest.py list).
-      # Saving stops at this many GB per cache; worker2 inherits both.
+      # Saving stops at this many GB per cache; worker2 inherits both. This
+      # environment: block overrides worker.env; notes in fpframes/__init__.py.
       WORKER_FP_HARVEST: "1"
       WORKER_FP_HARVEST_GB: "20"
     depends_on: [pot]

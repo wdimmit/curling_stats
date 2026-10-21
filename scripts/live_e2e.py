@@ -56,8 +56,9 @@ def main(argv=None) -> int:
     p.add_argument("--fp-harvest", action="store_true",
                    help="save the whole frames the ends' checks flag, as a hosted worker "
                         "does with WORKER_FP_HARVEST=1: the manager gets a root (OUT), so "
-                        "each recording is kept as OUT/videos/ID.mp4 and its frames land "
-                        "in OUT/harvest/fp/ID/")
+                        "each recording is kept and its frames land in OUT/harvest/fp/ID/. "
+                        "A replayed recording is never whole, so it is kept as "
+                        "OUT/kept/ID.ts (a real whole stream would be OUT/videos/ID.mp4)")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     if args.calib_first is not None:
@@ -167,6 +168,9 @@ def main(argv=None) -> int:
         for t in threading.enumerate():
             if t.name == "live-keep":
                 t.join(timeout=600)
+                if t.is_alive():
+                    log.warning("the live-keep thread is still running after 600 s; "
+                                "its frames may not be saved")
     wall = time.monotonic() - t0
     summary = {"wall_s": round(wall, 1), "lane_busy_s": round(busy_s, 1),
                "lane_busy_fraction": round(busy_s / wall, 3) if wall else None,

@@ -86,6 +86,14 @@ def _mkdir(path: Path) -> None:
 
 
 def _row(recorder, firing, stem: str, saved_at: str) -> dict:
+    """The facts about one saved frame, as a ``frames.jsonl`` row.
+
+    ``game`` is the pipeline's game segment index, not the published game
+    index (skipped practice and nothing-thrown games shift later ones), so
+    link a row to a chart by ``video_id`` and ``t``. ``rect`` is the one panel
+    or view rect the box came from, and ``box`` is already in whole-frame
+    pixels.
+    """
     return {
         "stem": stem,
         "check": firing.check,
