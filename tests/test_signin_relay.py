@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 
 import pytest
 
+from curling_score.service import signin
 from curling_score.service.auth import FakeVerifier, NoAuth
 from tests.test_service_auth import _world
 
@@ -72,12 +73,29 @@ class TestRelay:
         link(base="https://chart.example/mine"), link(mode="resetPassword"),
         link(oobCode=""), link(apiKey="AIzaOther"), link(rid="short"),
         link(lang="x" * 2100), "not a url", 5, None,
+        link(link="https://evil.example/x?apiKey=AIzaOther&oobCode=ATTACKER&mode=signIn"),
+        link(deep_link_id="https://evil.example/x?apiKey=AIzaOther&oobCode=ATTACKER&mode=signIn"),
     ])
     def test_only_our_own_sign_in_links_are_held(self, w, bad):
         assert relay(w, bad).status_code == 422
 
     def test_a_link_with_two_oob_codes_is_refused(self, w):
         assert relay(w, link() + "&oobCode=oob-x").status_code == 422
+
+    def test_a_lone_surrogate_is_refused_not_a_500(self, w):
+        r = w["client"].post("/api/signin/relay", content=b'{"link": "\\ud800"}',
+                             headers={"Content-Type": "application/json",
+                                      "X-Forwarded-For": "1.2.3.4"})
+        assert r.status_code == 422
+
+    def test_with_no_base_url_nothing_is_held(self):
+        relative = f"/signin?r={RID}&apiKey=AIzaFake&oobCode=oob-1&mode=signIn"
+        assert signin.relay_id_of(relative, "", "AIzaFake") is None
+        assert signin.relay_id_of(link(), "", "AIzaFake") is None
+        assert signin.relay_id_of(link(), "chart.example", "AIzaFake") is None
+
+    def test_a_claim_for_a_malformed_request_id_is_refused(self, w):
+        assert claim(w, "123456", rid="short").status_code == 422
 
     @pytest.mark.parametrize("code", ["12345", "1234567", "abcdef", "", None])
     def test_a_code_is_six_digits(self, w, code):

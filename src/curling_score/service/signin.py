@@ -54,16 +54,24 @@ def relay_id_of(link, base_url: str, api_key: str) -> str | None:
     sign-in (not a password reset) action with its code, our API key, and the
     request id the asking browser put on it. Each parameter must appear exactly
     once, so there is no second `oobCode` for one reader to take and another
-    to ignore.
+    to ignore. A `link` or `deep_link_id` parameter is refused outright: the
+    Firebase SDK prefers the URL nested inside one over the outer URL and reads
+    `oobCode`, `mode` and `apiKey` from it, so it could point the sign-in
+    anywhere. No Firebase link carries non-ASCII, so none is accepted. With no
+    usable `base_url` (no scheme or host) nothing is accepted.
     """
-    if not isinstance(link, str) or len(link.encode()) > MAX_LINK_BYTES:
+    if not isinstance(link, str) or not link.isascii() or len(link) > MAX_LINK_BYTES:
         return None
     try:
         parts, base = urlsplit(link), urlsplit(base_url)
         query = parse_qs(parts.query, keep_blank_values=True)
     except ValueError:
         return None
+    if not (base.scheme and base.netloc):
+        return None
     if (parts.scheme, parts.netloc) != (base.scheme, base.netloc) or parts.path != "/signin":
+        return None
+    if "link" in query or "deep_link_id" in query:
         return None
 
     def one(name):
