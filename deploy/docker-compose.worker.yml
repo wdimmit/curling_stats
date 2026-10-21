@@ -41,6 +41,12 @@ services:
       # club only runs practice ice when no league is on, so practice never
       # shares a lane with a league night; a session does pause VOD jobs.
       WORKER_PRACTICE: "1"
+      # Each VOD job (and each live end) saves a few whole frames where the
+      # pipeline's own checks found the detectors wrong, for a labelling
+      # round: <cache>/harvest/fp/<video>/ (scripts/fp_harvest.py list).
+      # Saving stops at this many GB per cache; worker2 inherits both.
+      WORKER_FP_HARVEST: "1"
+      WORKER_FP_HARVEST_GB: "20"
     depends_on: [pot]
     volumes:
       # /data is a 1.5 TB volume of its own (1.4 TB free on 2026-10-06). The
@@ -101,6 +107,8 @@ services:
       WORKER_ROLE: clips
       WORKER_LIVE: "0"
       WORKER_PRACTICE: "0"
+      # It runs no pipeline, so it has no frames to save.
+      WORKER_FP_HARVEST: "0"
       WORKER_CLIP_SOURCES: /data/src1:/data/src2
     volumes:
       - /data/wdd/curling-clips:/data/cache
