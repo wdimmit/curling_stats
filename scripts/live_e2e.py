@@ -16,6 +16,7 @@ import argparse
 import json
 import logging
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -160,6 +161,12 @@ def main(argv=None) -> int:
                 time.sleep(2.0)
     finally:
         mgr.stop()
+        # The keeping (and, with --fp-harvest, the frame saving) runs on a
+        # daemon thread; a hosted worker outlives it, this script must not
+        # exit under it.
+        for t in threading.enumerate():
+            if t.name == "live-keep":
+                t.join(timeout=600)
     wall = time.monotonic() - t0
     summary = {"wall_s": round(wall, 1), "lane_busy_s": round(busy_s, 1),
                "lane_busy_fraction": round(busy_s / wall, 3) if wall else None,
