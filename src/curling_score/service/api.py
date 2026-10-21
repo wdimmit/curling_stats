@@ -40,7 +40,7 @@ from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
 from curling_score.service import (dedupe, gameclips, playlist_index, playlists, practice,
-                                   slug, team_names, thinking_report)
+                                   signin, slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
     JOB_KINDS, ROLES, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team,
@@ -387,9 +387,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             repo.put_user(got)
             return got
         # Throttled hard: without this every authenticated request is a write,
-        # and writes are the quota that runs out.
+        # and writes are the quota that runs out. A name the person never gave
+        # (they came by emailed link, which carries none) is filled from a
+        # later Google sign-in; it rides on the hourly write when that is due,
+        # and a name already here is never touched.
+        fields = {}
         if got.last_seen_at is None or (t - got.last_seen_at).total_seconds() > 3600:
-            got = repo.update_user(uid, last_seen_at=t) or got
+            fields["last_seen_at"] = t
+        if not got.name and claims.get("name"):
+            fields["name"] = claims["name"]
+        if fields:
+            got = repo.update_user(uid, **fields) or got
         return got
 
     def claims_of(authorization) -> dict | None:
@@ -2452,6 +2460,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         me = repo.update_user(me.id, share_shots=on) or me
         log.info("shots sharing %s for %s", "on" if on else "off", me.id)
         return shots_sharing(me)
+
+    @app.put("/api/me/name")
+    def api_set_name(body: dict, authorization: str | None = Header(default=None)):
+        """Say what teammates see: someone who came by emailed link has no name."""
+        me = require_user(authorization)
+        name = signin.clean_name(body.get("name"))
+        if name is None:
+            raise HTTPException(422, f"a name is 1 to {signin.NAME_MAX} characters of plain text")
+        if not repo.bump_rate_limit("name:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of changes; try again later")
+        me = repo.update_user(me.id, name=name) or me
+        log.info("name set for %s", me.id)
+        return {"name": me.name}
 
     def plays_list(user_id: str) -> dict:
         """Every game this person said they played, newest first, with what the

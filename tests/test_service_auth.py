@@ -1015,3 +1015,44 @@ class TestMovingAChartToATeam:
         assert post(w, f"/api/me/charts/{slug}/claim", {}, SARAH).status_code == 200
         chart = w["repo"].get_chart(slug)
         assert chart.owner_user_id == "uid-sarah" and chart.team_id is None
+
+
+LINK = {"Authorization": "Bearer tok-link"}
+
+
+def _came_by_link(w):
+    w["auth"].add("tok-link", "uid-link", "jo@example.org", None, provider="password")
+
+
+class TestNames:
+    def test_someone_who_came_by_link_can_give_a_name(self, w):
+        _came_by_link(w)
+        r = put(w, "/api/me/name", {"name": "  Jo \t  Smith "}, LINK)
+        assert r.status_code == 200 and r.json() == {"name": "Jo Smith"}
+        assert w["client"].get("/api/me", headers=LINK).json()["user"]["name"] == "Jo Smith"
+
+    def test_sixty_characters_is_fine(self, w):
+        _came_by_link(w)
+        assert put(w, "/api/me/name", {"name": "x" * 60}, LINK).status_code == 200
+
+    @pytest.mark.parametrize("bad", ["", "   ", "x" * 61, "Jo\u0000", "Jo​Smith", 5, None])
+    def test_a_name_is_one_to_sixty_characters_of_text(self, w, bad):
+        _came_by_link(w)
+        assert put(w, "/api/me/name", {"name": bad}, LINK).status_code == 422
+
+    def test_signed_out_names_nobody(self, w):
+        assert put(w, "/api/me/name", {"name": "Jo"}).status_code == 401
+
+    def test_a_later_google_sign_in_fills_in_a_missing_name(self, w):
+        _came_by_link(w)
+        w["client"].get("/api/me", headers=LINK)
+        w["auth"].add("tok-jo-g", "uid-link", "jo@example.org", "Joanne Smith")
+        w["client"].get("/api/me", headers={"Authorization": "Bearer tok-jo-g"})
+        assert w["repo"].get_user("uid-link").name == "Joanne Smith"
+
+    def test_a_name_they_gave_beats_googles(self, w):
+        _came_by_link(w)
+        put(w, "/api/me/name", {"name": "Jo"}, LINK)
+        w["auth"].add("tok-jo-g", "uid-link", "jo@example.org", "Joanne Smith")
+        w["client"].get("/api/me", headers={"Authorization": "Bearer tok-jo-g"})
+        assert w["repo"].get_user("uid-link").name == "Jo"
