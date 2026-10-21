@@ -40,6 +40,7 @@ import { TeamsDialog } from "./Teams.jsx";
 import { ShotClipDialog } from "./ShotClip.jsx";
 import { DeliveryDialog } from "./DeliveryDialog.jsx";
 import { ThinkingDialog } from "./ThinkingDialog.jsx";
+import { EndDialog } from "./EndDialog.jsx";
 import { Watch } from "./Watch.jsx";
 import { ViewOnly } from "./ViewOnly.jsx";
 import { useSwipe } from "./Pager.jsx";
@@ -96,7 +97,7 @@ export function App({ doc, config, cursor, reload }) {
     return {
       gi: 0, ei: 0, si: 0, selStone: null, placeColor: "red", openGroup: null,
       sheet: "peek", houseMode: "", menu: undefined, reporting: false, flagging: null, playing: null,
-      naming: null, clipping: null, delivering: null, thinking: false, prefs: false,
+      naming: null, clipping: null, delivering: null, thinking: false, ending: null, prefs: false,
       notice: null,
       following: true,
       // A link or a restored session names a rock the video is not at yet:
@@ -157,6 +158,7 @@ export function App({ doc, config, cursor, reload }) {
   const closeClipping = useCallback(() => dispatch({ type: "set", patch: { clipping: null } }), []);
   const closeDelivering = useCallback(() => dispatch({ type: "set", patch: { delivering: null } }), []);
   const closeThinking = useCallback(() => dispatch({ type: "set", patch: { thinking: false } }), []);
+  const closeEnding = useCallback(() => dispatch({ type: "set", patch: { ending: null } }), []);
   // Leaving the desk layouts unmounts the two dialogs only they render, and
   // the playback gear's popover; drop their state so coming back does not
   // reopen a stale one. Only when one is open: a narrow or phone page has
@@ -165,6 +167,11 @@ export function App({ doc, config, cursor, reload }) {
   useEffect(() => {
     if (!desk && wideOpen) dispatch({ type: "set", patch: { delivering: null, thinking: false, prefs: false } });
   }, [desk, wideOpen]);
+  // The end at a glance is the desktop's, every desktop's: the portrait iPad
+  // does not render it.
+  useEffect(() => {
+    if (tablet && ui.ending) dispatch({ type: "set", patch: { ending: null } });
+  }, [tablet, ui.ending]);
 
   /* --------------------------------------------------------------- actions */
 
@@ -373,7 +380,7 @@ export function App({ doc, config, cursor, reload }) {
     const onDown = ev => {
       if (ui.menu !== "open") return;
       if (ev.target.closest("#menuBtn") || ev.target.closest("#menu")
-          || ev.target.closest("#playback")) return;
+          || ev.target.closest("#more") || ev.target.closest("#playback")) return;
       dispatch({ type: "set", patch: { menu: "" } });
     };
     addEventListener("pointerdown", onDown, true);
@@ -451,7 +458,8 @@ export function App({ doc, config, cursor, reload }) {
                         patch({ state_known: true });
                         const it = nextBlankAfter(queue, ui.ei, ui.si);
                         if (it) goTo(it.ei, it.si); break; }
-        case "Escape": dispatch({ type: "set", patch: { reporting: false, prefs: false } }); break;
+        case "Escape": dispatch({ type: "set", patch: { reporting: false, prefs: false,
+                                                        ...(wide ? { menu: "" } : {}) } }); break;
         case "0": case "1": case "2": case "3": case "4":
           patch({ user_score: +ev.key }); break;
         default: return;
@@ -460,7 +468,7 @@ export function App({ doc, config, cursor, reload }) {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [ui, shots.length, queue, goTo, patch, seek, shot, actions, setPref, tablet, chartedTablet]);
+  }, [ui, shots.length, queue, goTo, patch, seek, shot, actions, setPref, tablet, wide, chartedTablet]);
 
   /* ------------------------------------------------------------------ view */
 
@@ -546,7 +554,7 @@ export function App({ doc, config, cursor, reload }) {
   return (
     <>
       <Header doc={doc} config={config} ui={ui} status={status} queue={queue}
-              view={view} shot={shot} dispatch={dispatch} goTo={goTo} desk={desk} tablet={tablet}
+              view={view} shot={shot} dispatch={dispatch} goTo={goTo} desk={desk} tablet={tablet} wide={wide}
               ytLink={ytLink} setPref={setPref} />
 
       <main>
@@ -714,6 +722,10 @@ export function App({ doc, config, cursor, reload }) {
         <ThinkingDialog open={ui.thinking} series={series} here={here} bars={ui.clockBars}
                         actions={actions} onClose={closeThinking} />
       ) : null}
+      {tablet ? null : (
+        <EndDialog ending={ui.ending} view={view} at={ui.ending?.ei === ui.ei ? ui.si : null}
+                   showTrack={ui.showTrack} actions={actions} onClose={closeEnding} />
+      )}
     </>
   );
 }
@@ -756,7 +768,7 @@ function Flags({ doc, shot, trimmed }) {
  * Thinking and Report come out of #menu to sit just before ⋯, and the menu
  * gains the YouTube link and, on the view-only surfaces, the track toggle.
  * Everywhere else each stays where it always was. */
-function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, desk, tablet, ytLink, setPref }) {
+function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, desk, tablet, wide, ytLink, setPref }) {
   const src = doc.source;
   // Read once: a page left open past the last day keeps its Clip until reloaded.
   const [openedAt] = useState(() => Date.now());
@@ -777,6 +789,63 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
     <button id="thinkBtn" title="Thinking time, rock by rock"
             onClick={() => dispatch({ type: "set", patch: { thinking: true } })}>Thinking</button>
   ) : null;
+  // Every rock's house in this end. Not on the portrait iPad, and CSS keeps
+  // it out of the phone's menu: it is the desktop's (2026-10-21).
+  const endBtn = tablet ? null : (
+    <button id="endBtn" title="Every rock's house in this end"
+            disabled={!view.ends[ui.ei]}
+            onClick={() => dispatch({ type: "set", patch: { ending: { ei: ui.ei } } })}>Whole end</button>
+  );
+  // In the wide layout these four are behind ⋯ (2026-10-21): the header has
+  // no room left for them there. Everywhere else each stays in #menu.
+  const downloadBtn = (
+    <button id="download" title="Save overrides.json to disk" hidden={config.readOnly}
+            onClick={() => store.download()}>{wide ? "⬇ Save overrides.json" : "⬇"}</button>
+  );
+  // Which rocks were yours, for My shots. Only where there is a game to keep
+  // it against and accounts to keep it with.
+  const playedBtn = (
+    <button id="playedBtn" title="Say which rocks of this game you threw"
+            hidden={!config.hosted || !doc.chart?.source_id}
+            onClick={() => dispatch({ type: "set", patch: { playing: {
+              opened: Date.now(), sourceId: doc.chart.source_id,
+              teams: teamNames(view.game), format: view.format,
+              review: !!doc.chart.review,
+              // A doubles pair may have switched order: the game's ends,
+              // and the ones each team is already marked as switching.
+              ends: endChoices(view),
+              switched: { red: switchedEnds(view, "red"),
+                          yellow: switchedEnds(view, "yellow") } } } })}>
+      I played…
+    </button>
+  );
+  // Who played, typed in from here as from the game list: kept on the game, so
+  // it needs one, and saving needs someone signed in.
+  const teamsBtn = (
+    <button id="teamsBtn" title="Say who played this game"
+            hidden={!config.hosted || !doc.chart?.source_id}
+            onClick={() => dispatch({ type: "set", patch: { naming: {
+              opened: Date.now(), sourceId: doc.chart.source_id,
+              names: typedTeamNames(view.game),
+              short: [...shortOf(view.format)],
+              doubles: view.format.name === "doubles" } } })}>
+      Teams…
+    </button>
+  );
+  // A clip of this rock, while the game's video is kept: one already cut plays
+  // at once, and asking for one needs someone signed in.
+  const clipBtn = (
+    <button id="clipBtn" title="A clip of this rock, to watch or save"
+            hidden={!config.hosted || !clipName || !shotClipsOffered(doc, openedAt)}
+            onClick={() => dispatch({ type: "set", patch: { clipping: {
+              opened: Date.now(), path: location.pathname, rock: clipName,
+              text: flagPlace(view, ui.ei, ui.si, view.format).text } } })}>
+      Clip…
+    </button>
+  );
+  // Whether the wide layout's ⋯ has any of them to offer.
+  const more = !config.readOnly || (config.hosted && !!doc.chart?.source_id)
+    || (config.hosted && !!clipName && shotClipsOffered(doc, openedAt));
   const reportBtn = (
     <button id="reportBtn" className={ui.reporting ? "on" : undefined}
             onClick={() => dispatch({ type: "set", patch: { reporting: !ui.reporting } })}>
@@ -815,9 +884,16 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
             hidden={config.readOnly}>{status.text}</span>
       {config.viewOnly ? <ViewOnly why={config.viewOnly} /> : null}
       {tablet ? <>{endSel}{thinkBtn}{reportBtn}</> : null}
-      <button id="menuBtn" title="More"
-              onClick={() => dispatch({ type: "set",
-                patch: { menu: ui.menu === "open" ? "" : "open" } })}>⋯</button>
+      {wide && !more ? null : (
+        <button id="menuBtn" title="More"
+                onClick={() => dispatch({ type: "set",
+                  patch: { menu: ui.menu === "open" ? "" : "open" } })}>⋯</button>
+      )}
+      {wide && ui.menu === "open" ? (
+        <div id="more" onClick={() => dispatch({ type: "set", patch: { menu: "" } })}>
+          {downloadBtn}{playedBtn}{teamsBtn}{clipBtn}
+        </div>
+      ) : null}
       <div id="menu" onClick={() => dispatch({ type: "set", patch: { menu: "" } })}
            onChange={() => dispatch({ type: "set", patch: { menu: "" } })}>
         <select id="game" aria-label="Game" value={ui.gi}
@@ -833,8 +909,8 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
                     label="View-only link"
                     text={() => withHash(doc.chart.share_url, location.hash)}
                     hidden={!(doc.chart?.share_url && !config.readOnly)} />
-        <button id="download" title="Save overrides.json to disk" hidden={config.readOnly}
-                onClick={() => store.download()}>⬇</button>
+        {wide ? null : downloadBtn}
+        {endBtn}
         {tablet ? null : <>{thinkBtn}{reportBtn}</>}
         <button id="flagBtn" title="Flag an issue with this rock" hidden={!config.hosted}
                 onClick={() => {
@@ -845,41 +921,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
                 }}>
           ⚑ Flag
         </button>
-        {/* Which rocks were yours, for My shots. Only where there is a game
-            to keep it against and accounts to keep it with. */}
-        <button id="playedBtn" title="Say which rocks of this game you threw"
-                hidden={!config.hosted || !doc.chart?.source_id}
-                onClick={() => dispatch({ type: "set", patch: { playing: {
-                  opened: Date.now(), sourceId: doc.chart.source_id,
-                  teams: teamNames(view.game), format: view.format,
-                  review: !!doc.chart.review,
-                  // A doubles pair may have switched order: the game's ends,
-                  // and the ones each team is already marked as switching.
-                  ends: endChoices(view),
-                  switched: { red: switchedEnds(view, "red"),
-                              yellow: switchedEnds(view, "yellow") } } } })}>
-          I played…
-        </button>
-        {/* Who played, typed in from here as from the game list: kept on
-            the game, so it needs one, and saving needs someone signed in. */}
-        <button id="teamsBtn" title="Say who played this game"
-                hidden={!config.hosted || !doc.chart?.source_id}
-                onClick={() => dispatch({ type: "set", patch: { naming: {
-                  opened: Date.now(), sourceId: doc.chart.source_id,
-                  names: typedTeamNames(view.game),
-                  short: [...shortOf(view.format)],
-                  doubles: view.format.name === "doubles" } } })}>
-          Teams…
-        </button>
-        {/* A clip of this rock, while the game's video is kept: one already
-            cut plays at once, and asking for one needs someone signed in. */}
-        <button id="clipBtn" title="A clip of this rock, to watch or save"
-                hidden={!config.hosted || !clipName || !shotClipsOffered(doc, openedAt)}
-                onClick={() => dispatch({ type: "set", patch: { clipping: {
-                  opened: Date.now(), path: location.pathname, rock: clipName,
-                  text: flagPlace(view, ui.ei, ui.si, view.format).text } } })}>
-          Clip…
-        </button>
+        {wide ? null : <>{playedBtn}{teamsBtn}{clipBtn}</>}
         {/* The house as a picture to keep, from whichever tab is open. Only
             behind ⋯ -- on the phone and the portrait iPad -- which CSS decides. */}
         {shot ? (

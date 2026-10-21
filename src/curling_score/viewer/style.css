@@ -557,6 +557,9 @@ body.reporting main { display:none; }
 /* Saving the house as a picture is offered where ⋯ is a menu -- the phone and
    the portrait iPad -- and not in the desktop header's row. */
 #houseImgBtn { display: none; }
+/* The end at a glance is the desktop's: not in the phone's ⋯ (App.jsx does
+   not render it on the portrait iPad). */
+@media (max-width: 640px) { #endBtn { display: none; } }
 .transport { margin-top: 10px; }
 /* Base is (1,0,0); the phone's open-state `margin: 0` is (1,1,1) and still
    wins, so this only takes effect once the inline style it replaces is gone. */
@@ -587,6 +590,9 @@ body.reporting main { display:none; }
   header > #viewOnly       { order: 9; }
   header > #viewOnlySignIn { order: 9; }
   header #download   { order: 10; }
+  /* Before Report -- and in the wide layout before Thinking, which shares
+     its 11 and follows it in the source. */
+  header #endBtn     { order: 11; }
   header #reportBtn  { order: 11; }
   header #flagBtn    { order: 12; }
   header #playedBtn  { order: 13; }
@@ -1484,6 +1490,16 @@ body[data-mode="review"] #house { cursor:default; }
   header #playedBtn { order: 14; }
   header #teamsBtn  { order: 15; }
   header #clipBtn   { order: 16; }
+
+  /* ⋯ is back, last in the row (2026-10-21): ⬇, I played…, Teams… and Clip…
+     are behind it, which is what leaves room for Whole end at 1500 px. App
+     renders #more only while it is open, under ⋯ at the header's right. */
+  header > #menuBtn { display: inline-grid; place-items: center; order: 20; }
+  header > #more { position: absolute; top: calc(100% + 4px); right: 12px; z-index: 6;
+    display: flex; flex-direction: column; gap: 6px; min-width: 210px; padding: 8px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 6px 24px rgb(0 0 0 / .18); }
+  header > #more > button { text-align: left; }
 }
 
 /* --- portrait iPad (spec 2026-10-16) -------------------------------------- */
@@ -1727,7 +1743,7 @@ body[data-mode="view"] dialog.sheet #missReason,
 body[data-mode="view"] dialog.sheet #note { pointer-events: auto; opacity: 1; }
 
 /* --- the large dialogs: delivery and thinking (spec 2026-10-15) ----------- */
-#deliveryDialog, #thinkingDialog { padding: 0; border: 1px solid var(--line); border-radius: 12px;
+#deliveryDialog, #thinkingDialog, #endDialog { padding: 0; border: 1px solid var(--line); border-radius: 12px;
   background: var(--panel); color: var(--ink); box-sizing: border-box; max-height: calc(100vh - 48px);
   overflow: hidden; }
 /* The padding lives on the wrapper, not the <dialog>: a click on the dialog element itself is the
@@ -1735,7 +1751,8 @@ body[data-mode="view"] dialog.sheet #note { pointer-events: auto; opacity: 1; }
 .dd-body { padding: 16px 24px 18px; box-sizing: border-box; max-height: calc(100vh - 50px); overflow: auto; }
 #deliveryDialog { width: min(1560px, calc(100vw - 64px)); }
 #thinkingDialog { width: min(920px, calc(100vw - 64px)); }
-#deliveryDialog::backdrop, #thinkingDialog::backdrop { background: rgb(20 16 10 / .55); }
+#endDialog { width: min(1560px, calc(100vw - 64px)); }
+#deliveryDialog::backdrop, #thinkingDialog::backdrop, #endDialog::backdrop { background: rgb(20 16 10 / .55); }
 .dd-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .dd-head h2 { margin: 0; font-size: 16px; }
 .dd-head .grow { flex: 1 1 auto; }
@@ -1751,12 +1768,28 @@ body[data-mode="view"] dialog.sheet #note { pointer-events: auto; opacity: 1; }
 #deliveryDialog svg.dd-dlv, #deliveryDialog svg.spd { display: block; width: 100%; height: auto;
   border: 1px solid var(--line); border-radius: 6px; background: var(--ice); }
 #deliveryDialog .dcap { font-size: 12px; color: var(--muted); margin: 5px 0 0; }
-#deliveryDialog .dnone, #thinkingDialog .dnone { color: var(--muted); margin: 12px 0 0; }
+#deliveryDialog .dnone, #thinkingDialog .dnone, #endDialog .dnone { color: var(--muted); margin: 12px 0 0; }
 .dd-speed { display: flex; align-items: baseline; gap: 22px; margin: 16px 0 8px; }
 .dd-speed h3 { margin: 0; color: var(--ink); }
 .dd-num { font-size: 13px; color: var(--muted); }
 .dd-num b { font-family: var(--display); font-size: 19px; color: var(--ink); margin-right: 4px;
             font-variant-numeric: tabular-nums; }
+
+/* The end at a glance: two rows of houses, `--cols` across (App passes half
+   the end's rocks, rounded up). Each house is as wide as its column, and no
+   taller than half of what the screen leaves for the two rows -- the
+   dialog's margins, padding and head, and each row's caption and border
+   come to about 230 px -- so both fit without a scroll; past that the
+   drawing letterboxes. */
+#endDialog .eh-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+#endDialog .eh-rock { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 4px;
+  border: 2px solid transparent; border-radius: 8px; background: none; }
+#endDialog .eh-rock:hover { border-color: var(--line); }
+#endDialog .eh-rock.here { border-color: var(--accent); }
+#endDialog .eh-house { display: block; width: 100%; height: auto; max-height: calc((100vh - 240px) / 2); }
+#endDialog .eh-cap { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0; }
+#endDialog .eh-type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* The large dialogs drawn for the portrait iPad (spec 2026-10-16 §7). After the
    rules above, which they override at equal weight. The delivery's drawing is

@@ -5635,7 +5635,7 @@ class TestNamingTheTeams:
         assert 'aria-label="Yellow team played with three"' in teams
 
     def test_the_menu_says_teams_and_the_dialog_offers_three(self):
-        assert ">\n          Teams…\n" in self.src("frontend/viewer/App.jsx")
+        assert ">\n      Teams…\n" in self.src("frontend/viewer/App.jsx")
         teams = self.src("frontend/viewer/Teams.jsx")
         assert "Played with three" in teams and "short_handed" in teams
 
@@ -6280,7 +6280,7 @@ class TestTheDeliveryDialog:
         # The padding is the wrapper's, so the backdrop is the only thing that reaches the dialog.
         assert '<div className="dd-body">' in src
         css = (Path(__file__).resolve().parents[1] / "src/curling_score/viewer/style.css").read_text()
-        rule = css[css.index("#deliveryDialog, #thinkingDialog {"):].split("}")[0]
+        rule = css[css.index("#deliveryDialog, #thinkingDialog, #endDialog {"):].split("}")[0]
         assert "padding: 0" in rule
         assert ".dd-body { padding: 16px 24px 18px" in css
 
@@ -6316,6 +6316,84 @@ class TestTheThinkingDialog:
         assert "header #reportBtn { order: 12; }" in wide
         app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()
         assert 'id="thinkBtn"' in app and "<ThinkingDialog" in app
+
+
+class TestTheEndDialog:
+    """Every rock's house in the end the cursor is in, from the desktop header
+    (2026-10-21)."""
+    ROOT = Path(__file__).resolve().parents[1]
+    CSS = VIEWER / "style.css"
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_it_is_a_modal_dialog_of_the_end_it_was_opened_on(self):
+        src = self.src("frontend/viewer/EndDialog.jsx")
+        for needle in ('id="endDialog"', "showModal()", "e.target === e.currentTarget",
+                       '<div className="dd-body">', "view.ends[ending.ei]", "<HouseThumb shot={s}",
+                       "No rocks were found in this end."):
+            assert needle in src, needle
+        assert src.index('<div className="dd-body">') < src.index('className="dd-head"')
+
+    def test_a_house_goes_to_its_rock_and_closes_it(self):
+        src = self.src("frontend/viewer/EndDialog.jsx")
+        assert "actions.goToBarFromReport({ ei: ending.ei, si }); ref.current?.close();" in src
+        app = self.src("frontend/viewer/App.jsx")
+        assert "at={ui.ending?.ei === ui.ei ? ui.si : null}" in app
+
+    def test_the_small_houses_name_ids_of_their_own(self):
+        # Sixteen drawings on one page: a shared clipPath or hatch id would be
+        # sixteen duplicates, and #house is the editor's (and the saved image's).
+        house = self.src("frontend/viewer/House.jsx")
+        thumb = house[house.index("export function HouseThumb("):house.index("function Unknown(")]
+        assert "useId()" in thumb and 'id="house"' not in thumb and "<Stones " not in thumb
+        assert "<StoneDiscs " in thumb and 'viewBox={houseViewBox("full")}' in thumb
+
+    def test_it_is_the_desktop_s(self):
+        app = self.src("frontend/viewer/App.jsx")
+        assert "const endBtn = tablet ? null : (" in app
+        assert "{tablet ? null : (\n        <EndDialog" in app
+        css = self.CSS.read_text()
+        assert "@media (max-width: 640px) { #endBtn { display: none; } }" in css
+        assert "header #endBtn     { order: 11; }" in css
+        # Its 11 is shared with Thinking in the wide layout: the source puts it first.
+        assert app.index("{endBtn}") < app.index("{tablet ? null : <>{thinkBtn}{reportBtn}</>}")
+
+    def test_two_rows_fit_the_screen(self):
+        css = self.CSS.read_text()
+        assert "grid-template-columns: repeat(var(--cols), minmax(0, 1fr));" in css
+        assert "max-height: calc((100vh - 240px) / 2);" in css
+        src = self.src("frontend/viewer/EndDialog.jsx")
+        assert '"--cols": Math.ceil(e.shots.length / 2)' in src
+
+
+class TestTheWideMoreMenu:
+    """In the wide layout ⬇, I played…, Teams… and Clip… are behind ⋯, which
+    leaves the header room for Whole end at 1500 px (2026-10-21). Everywhere
+    else they stay in #menu, where they always were."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def test_the_four_leave_the_menu_only_when_wide(self):
+        app = (self.ROOT / "frontend/viewer/App.jsx").read_text()
+        menu = app[app.index('<div id="menu"'):app.index("{/* The house as a picture to keep")]
+        assert "{wide ? null : downloadBtn}" in menu
+        assert "{wide ? null : <>{playedBtn}{teamsBtn}{clipBtn}</>}" in menu
+        assert '{wide && ui.menu === "open" ? (' in app
+        assert "{downloadBtn}{playedBtn}{teamsBtn}{clipBtn}" in app
+        # Nothing to offer, no ⋯.
+        assert "{wide && !more ? null : (" in app
+
+    def test_it_closes_like_the_phone_s(self):
+        app = (self.ROOT / "frontend/viewer/App.jsx").read_text()
+        assert '|| ev.target.closest("#more") || ev.target.closest("#playback")) return;' in app
+        assert '...(wide ? { menu: "" } : {})' in app
+
+    def test_wide_shows_the_button_and_drops_the_list_under_it(self):
+        css = (VIEWER / "style.css").read_text()
+        wide = css[css.index("@media (min-width: 1500px)"):]
+        wide = wide[:wide.index("/* --- portrait iPad")]
+        assert "header > #menuBtn { display: inline-grid; place-items: center; order: 20; }" in wide
+        assert "header > #more { position: absolute;" in wide
 
 
 class TestTheWideLayoutKeepsToItsBranch:

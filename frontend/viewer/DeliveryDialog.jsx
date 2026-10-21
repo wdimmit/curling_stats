@@ -13,7 +13,7 @@ import {
 } from "../core/index.mjs";
 import { DeliveryChart, SpeedChart, deliveryLabel } from "./Delivery.jsx";
 
-const typeName = shot => {
+export const typeName = shot => {
   const id = typeOf(shot);
   const t = TYPES.find(x => x.id === id);
   return t ? t.name : id === "unknown" ? "" : id[0].toUpperCase() + id.slice(1);

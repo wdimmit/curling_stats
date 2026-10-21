@@ -1,5 +1,5 @@
 /* The sheet, the stones on it, and the pointer gestures that edit them. */
-import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   DRAG_MIN_M, PAINT, PHONE_QUERY, R, TABLET_QUERY,
   broomMark, clampX, clampY, ghostStones, houseViewBox, isBlank, onSheet, shouldCrop, stoneAt, trackPoints,
@@ -60,13 +60,13 @@ function sheetPoint(evt, svg) {
  * the stone to where it stopped. Segments rather than one polyline so the
  * opacity can ramp without a gradient along the path. Where the camera behind
  * the thrower followed the rock, its path; otherwise the overhead panel's
- * track, as before. */
-function Track({ shot }) {
+ * track, as before. `clip` names the sheet's clipPath in this drawing. */
+function Track({ shot, clip = "sheetClip" }) {
   const pts = trackPoints(shot);
   if (pts.length < 2) return null;
   const color = shot.color === "red" ? PAINT.red : PAINT.yellow;
   return (
-    <g clipPath="url(#sheetClip)" pointerEvents="none">
+    <g clipPath={`url(#${clip})`} pointerEvents="none">
       {pts.slice(0, -1).map((p, i) => (
         <line key={i} x1={p[0]} y1={p[1]} x2={pts[i + 1][0]} y2={pts[i + 1][1]}
               stroke={color} strokeWidth={0.045} strokeLinecap="round"
@@ -147,8 +147,11 @@ function Ghosts({ shot }) {
 function Stones({ shot, selStone }) {
   const dragging = useSyncExternalStore(dragStore.subscribe, dragStore.getStones,
                                         () => null);
-  const stones = dragging ?? shot?.stones ?? [];
-  const thrown = shot?.delivered_stone_index;
+  return <StoneDiscs stones={dragging ?? shot?.stones ?? []}
+                     thrown={shot?.delivered_stone_index} selStone={selStone} />;
+}
+
+function StoneDiscs({ stones, thrown, selStone = null }) {
   return stones.map((st, i) => (
     <g key={i} className={"stone" + (i === selStone ? " sel" : "")} data-i={i}>
       {i === thrown && (
@@ -172,15 +175,68 @@ function Stones({ shot, selStone }) {
   ));
 }
 
-function Unknown() {
+/* The clip the track is cut to and the hatching of a blank house. Their ids
+ * are document-wide, so every drawing on the page names its own. */
+function Defs({ clip, hatch }) {
+  return (
+    <defs>
+      <clipPath id={clip}>
+        <rect x={-R.halfWidth} y={R.back} width={2 * R.halfWidth} height={R.hog - R.back} />
+      </clipPath>
+      <pattern id={hatch} width={0.36} height={0.36}
+               patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width={0.18} height={0.36} fill={PAINT.warn} opacity={0.22} />
+      </pattern>
+    </defs>
+  );
+}
+
+/* The ice, the rings, the tee and hog lines and the centre line. */
+function Sheet({ id }) {
+  return (
+    <>
+      <rect id={id} x={-R.halfWidth} y={R.back} width={2 * R.halfWidth}
+            height={R.hog - R.back} fill={PAINT.ice} stroke={PAINT.iceLine}
+            strokeWidth={0.02} />
+      {[[R.twelve, PAINT.twelve], [R.eight, PAINT.ice],
+        [R.four, PAINT.four], [R.button, PAINT.ice]].map(([r, fill]) => (
+        <circle key={r} cx={0} cy={0} r={r} fill={fill} />
+      ))}
+      {[0, R.hog].map(y => (
+        <line key={y} x1={-R.halfWidth} y1={y} x2={R.halfWidth} y2={y}
+              stroke={PAINT.rail} strokeWidth={y ? 0.05 : 0.02} />
+      ))}
+      <line x1={0} y1={R.back} x2={0} y2={R.hog} stroke={PAINT.rail} strokeWidth={0.015} />
+    </>
+  );
+}
+
+/* One rock's house drawn small, for the end at a glance: the same drawing as
+ * the editor's, the whole sheet, nothing to drag and no ids of its own. */
+export function HouseThumb({ shot, showTrack }) {
+  const id = useId().replace(/[^A-Za-z0-9_-]/g, "");
+  return (
+    <svg className="eh-house" viewBox={houseViewBox("full")} aria-hidden="true">
+      <Defs clip={`${id}clip`} hatch={`${id}hatch`} />
+      <Sheet />
+      {showTrack && <Track shot={shot} clip={`${id}clip`} />}
+      {showTrack && <Ghosts shot={shot} />}
+      {showTrack && <Broom shot={shot} />}
+      <StoneDiscs stones={shot?.stones ?? []} thrown={shot?.delivered_stone_index} />
+      {isBlank(shot) && <Unknown hatch={`${id}hatch`} text="STATE UNKNOWN" />}
+    </svg>
+  );
+}
+
+function Unknown({ hatch = "hatch", text = "STATE UNKNOWN — chart this shot" }) {
   return (
     <g pointerEvents="none">
       <rect x={-R.halfWidth} y={R.back} width={2 * R.halfWidth} height={R.hog - R.back}
-            fill="url(#hatch)" />
+            fill={`url(#${hatch})`} />
       <rect x={-R.halfWidth} y={R.back} width={2 * R.halfWidth} height={R.hog - R.back}
             fill="none" stroke={PAINT.warn} strokeWidth={0.05} strokeDasharray="0.25 0.18" />
       <text x={0} y={4.9} textAnchor="middle" fontSize={0.34} fill={PAINT.warn}
-            fontWeight="700">STATE UNKNOWN — chart this shot</text>
+            fontWeight="700">{text}</text>
     </g>
   );
 }
@@ -257,27 +313,8 @@ export function House({ shot, shotKey, selStone, houseMode, showTrack, readOnly,
     <svg id="house" viewBox={viewBox} aria-label="House diagram" ref={svgRef}
          onPointerDown={onPointerDown} onPointerMove={onPointerMove}
          onPointerUp={onPointerUp}>
-      <defs>
-        <clipPath id="sheetClip">
-          <rect x={-R.halfWidth} y={R.back} width={2 * R.halfWidth} height={R.hog - R.back} />
-        </clipPath>
-        <pattern id="hatch" width={0.36} height={0.36}
-                 patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <rect width={0.18} height={0.36} fill={PAINT.warn} opacity={0.22} />
-        </pattern>
-      </defs>
-      <rect id="ice" x={-R.halfWidth} y={R.back} width={2 * R.halfWidth}
-            height={R.hog - R.back} fill={PAINT.ice} stroke={PAINT.iceLine}
-            strokeWidth={0.02} />
-      {[[R.twelve, PAINT.twelve], [R.eight, PAINT.ice],
-        [R.four, PAINT.four], [R.button, PAINT.ice]].map(([r, fill]) => (
-        <circle key={r} cx={0} cy={0} r={r} fill={fill} />
-      ))}
-      {[0, R.hog].map(y => (
-        <line key={y} x1={-R.halfWidth} y1={y} x2={R.halfWidth} y2={y}
-              stroke={PAINT.rail} strokeWidth={y ? 0.05 : 0.02} />
-      ))}
-      <line x1={0} y1={R.back} x2={0} y2={R.hog} stroke={PAINT.rail} strokeWidth={0.015} />
+      <Defs clip="sheetClip" hatch="hatch" />
+      <Sheet id="ice" />
       {showTrack && <Track shot={shot} />}
       {showTrack && <Ghosts shot={shot} />}
       {showTrack && <Broom shot={shot} />}
