@@ -3633,6 +3633,46 @@ class TestRoleSwapParity:
         assert got == [["B", "right"], ["A", "left"], ["A", "left"], ["A", "left"], ["B", "right"]]
 
 
+def switched_doc():
+    """A doubles end red switched, as api.game_doc serves it from the game's
+    switched ends (timeline.apply_switched_ends)."""
+    from curling_score import timeline
+    return timeline.apply_switched_ends(doubles_doc(doubles_shots()), {"red": {"ends": [3]}})
+
+
+class TestSwitchedEndsParity:
+    """A switch held on the document reads the same in the viewer as in
+    apply_overrides, and a chart's own swap only adds to it."""
+
+    def test_as_served(self):
+        py, js = both(switched_doc(), {})
+        assert js == py and js[0][4] == "B"
+
+    def test_with_a_move(self):
+        from curling_score import timeline
+        shots = doubles_shots(n=6, end_number=4)
+        for s in shots[4:]:
+            s["color_inferred"] = s["missing"] = True
+            s["state_known"] = False
+        d = timeline.apply_switched_ends(doubles_doc(shots, end_number=4), {"red": {"ends": [4]}})
+        py, js = both(d, {"0.4.5": {"before": 1}, "0.4.6": {"before": 1}})
+        assert js == py and [r[4] for r in js] == ["B", "A", "A", "B", "A", "B"]
+
+    def test_a_malformed_document_switch_swaps_nothing(self):
+        d = doubles_doc(doubles_shots())
+        d["games"][0]["ends"][0]["roles_swapped"] = {"red": 1}
+        got = run_js(setup(d) + "out(buildGameView(state.doc, 0, state.overrides).ends[0].swapped);")
+        assert got == {}
+
+    def test_an_override_adds_to_a_document_switch(self):
+        got = run_js(setup(switched_doc(), {"0.3": {"roles_swapped": {"yellow": True}}}) +
+                     "out(buildGameView(state.doc, 0, state.overrides).ends[0].swapped);")
+        assert got == {"red": True, "yellow": True}
+
+    def test_the_players_slice_matches_the_view(self):
+        TestPlayerSliceParity()._check(switched_doc(), {}, "red", 2)
+
+
 def short_doc(colours=("red",), end_number=2, credited=True):
     """A fours end with the format block api.game_doc writes for a team of
     three -- its rocks credited 3/3/2 as game_doc credits them, or, with

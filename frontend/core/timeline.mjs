@@ -38,15 +38,21 @@ export function merge(g, e, s, overrides) {
 /* The key of an end-level correction: a doubles team swapping roles. */
 export const endKey = (g, e) => `${g.index}.${endIdentity(e)}`;
 
-/* Which teams swapped roles this end. Only a format whose two players can
- * trade roles honours it, and only true counts -- turning a swap off is the
- * same as never having set it. Mirrors timeline._swapped. */
+/* Which teams swapped roles this end: the document's own say (the end's
+ * roles_swapped -- the game's switched ends, as api.game_doc serves them) and
+ * an end-level override's, together. Only a format whose two players can
+ * trade roles honours either, and only true counts -- turning a swap off is
+ * the same as never having set it, and an override can add a swap but never
+ * take away one the game holds. Mirrors timeline._swapped. */
 export function swappedOf(g, e, overrides, fmt = FOURS) {
   if (!fmt.swappable) return {};
+  const held = e.roles_swapped;
   const want = overrides[endKey(g, e)]?.roles_swapped;
-  if (!want || typeof want !== "object") return {};
   const out = {};
-  for (const c of ["red", "yellow"]) if (want[c] === true) out[c] = true;
+  for (const w of [held, want]) {
+    if (!w || typeof w !== "object") continue;
+    for (const c of ["red", "yellow"]) if (w[c] === true) out[c] = true;
+  }
   return out;
 }
 
