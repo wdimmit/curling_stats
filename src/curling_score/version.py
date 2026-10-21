@@ -246,7 +246,17 @@ from pathlib import Path
 # where the rock comes into view must run 2 m down the sheet
 # (`linetime.PATH_MIN_RUN_M`): rock 9 (f_0k34) followed a broom head. Of 437
 # re-read paths, 56 change, 45 end nearer their rest, none further.
-PIPELINE_VERSION = "2026.10.20.2"
+# 2026.10.21.1: three more from the 2026.10.20.2 reprocesses. A track that
+# stops after one or two sightings in flight on a stone of its colour already
+# parked there is that stone seen again (`delivery.BORROWED_REST_FLIGHT`) --
+# KTDO 10/17 D1 S1 e4 r3 (f_1A7j), a hog. A long-camera path start where the
+# rock comes into view must come 0.5 m down the sheet in its first second
+# (`linetime._comes_on`) -- e4 r9 (f_0k34), a broom head carried across gaps.
+# With all of an end's releases seen, nothing unreleased before the first or
+# after the last was thrown (`fit.drop_clearing`) -- Monday Open 10/19 S1 e4
+# (the clearing taken for rock 16, hammer flipped) and Wednesday Womens 10/07
+# S5 e4 r16. A/B on 14 games: only those changes.
+PIPELINE_VERSION = "2026.10.21.1"
 
 
 def model_id(weights) -> str:
