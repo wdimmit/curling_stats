@@ -18,8 +18,10 @@ export const FRESH_MS = 15 * 60 * 1000;
 
 /* What the server accepts as a request id (service/signin.py REQUEST_ID):
  * 22 base64url characters, without "__" at either end, which Firestore
- * reserves for ids of its own. */
-const REQUEST_ID = /^(?!__)[A-Za-z0-9_-]{22}(?<!__)$/;
+ * reserves for ids of its own. The end is checked by looking ahead for 20
+ * characters and then "__", not by a lookbehind: Safari before 16.4 cannot
+ * parse one, and a file holding one fails to load at all. */
+const REQUEST_ID = /^(?!__)(?![A-Za-z0-9_-]{20}__$)[A-Za-z0-9_-]{22}$/;
 
 /* A fresh request id: 16 random bytes as unpadded base64url, 22 characters.
  * `fill` is the random source, so a test can pass a fixed one. About one draw

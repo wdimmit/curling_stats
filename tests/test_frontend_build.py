@@ -49,6 +49,23 @@ class TestTheBundleMatchesItsSources:
                 f"generated: change frontend/ and rebuild.")
 
 
+class TestTheBundlesParseOnOlderSafari:
+    """Safari before 16.4 (iOS and iPadOS up to 16.3) cannot parse a regex
+    lookbehind, and one in a file fails the whole file -- every site page, or
+    the chart viewer, would be blank. esbuild's es2022 target leaves them
+    alone, so the source must not use them."""
+
+    BUNDLES = ["src/curling_score/service/static/site.js",
+               "src/curling_score/viewer/app.js"]
+
+    @pytest.mark.parametrize("path", BUNDLES)
+    def test_no_bundle_holds_a_lookbehind(self, path):
+        text = (ROOT / path).read_text()
+        assert "(?<!" not in text and "(?<=" not in text, (
+            f"{path} has a regex lookbehind, which Safari before 16.4 "
+            f"refuses to parse. Rewrite the pattern without one.")
+
+
 class TestTheSourcesLint:
     """`npm run build` lints before it bundles, so a clean tree should stay
     clean. Skipped where node_modules is absent, like every other node test
