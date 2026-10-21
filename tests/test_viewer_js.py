@@ -5241,6 +5241,16 @@ class TestSwitchedEndsDialog:
                      "out([switchedEnds(v, 'red'), switchedEnds(v, 'yellow'), endChoices(v)]);")
         assert got == [[], [3], [{"id": 3, "number": 3}]]
 
+    def test_next_switched_adds_and_removes_this_end(self):
+        """What the End box sends: the team's switched ends with this one
+        ticked on or off."""
+        from curling_score import timeline
+        d = timeline.apply_switched_ends(doubles_doc(doubles_shots()), {"red": {"ends": [3]}})
+        got = run_js(setup(d) + "const v = buildGameView(state.doc, 0, state.overrides);"
+                     "out([nextSwitched(v, 0, 'red', false), nextSwitched(v, 0, 'yellow', true),"
+                     " nextSwitched(v, 0, 'red', true)]);")
+        assert got == [[], [3], [3]]
+
     def test_a_charts_own_swap_is_not_the_games(self):
         """The dialog speaks for the game, so a swap only the chart holds (an
         end-level override) is not one of its switched ends."""

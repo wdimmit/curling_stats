@@ -6,6 +6,7 @@ import {
   unreadNote,
   endLineText, houseDeltaText, sheetButtonText, swapText, thinkText, throwerText, typeOf,
 } from "../core/index.mjs";
+import { signInNow } from "../runtime/auth.mjs";
 import { ClockKey, ThinkingBars, ThinkingChart } from "./Charts.jsx";
 import { Sheet } from "./Sheet.jsx";
 
@@ -518,23 +519,44 @@ export function EndBox({ view, cursor, config, actions, compact }) {
   const s = endSummary(view, cursor.ei);
   const name = c => view.game.teams[c]?.name || c;
   const [open, setOpen] = useState(false);
-  const swaps = ["red", "yellow"].map(c => (
-    <label key={c} className="chk">
-      <input type="checkbox" checked={!!at?.swapped?.[c]}
-             onChange={e => actions.setSwapped(c, e.target.checked)} />
-      {` ${name(c)} swapped roles (player B threw first and last)`}
-    </label>
-  ));
+  // What the last tick came to, when it was not saved: nobody signed in
+  // ("signin"), or the server's words.
+  const [note, setNote] = useState(null);
+  const tick = async (c, on) => {
+    const res = await actions.setSwapped(c, on);
+    setNote(res?.signin ? "signin" : res?.error || null);
+  };
+  const signIn = async () => {
+    try { await signInNow(); setNote(null); } catch { /* closed: the line stays */ }
+  };
+  // The game's first end is never switched: who threw its 1st & 5th is what
+  // Player A means.
+  const first = cursor.ei === 0;
+  const swaps = first ? null : (
+    <>
+      {["red", "yellow"].map(c => (
+        <label key={c} className="chk">
+          <input type="checkbox" checked={!!at?.swapped?.[c]}
+                 onChange={e => tick(c, e.target.checked)} />
+          {` ${name(c)} switched this end: B threw 1st & 5th`}
+        </label>
+      ))}
+      {note === "signin" ? (
+        <p className="endnote">Sign in to mark switched ends{" "}
+          <button type="button" onClick={signIn}>Sign in</button></p>
+      ) : note ? <p className="endnote" role="alert">{note}</p> : null}
+    </>
+  );
   // The iPad's doubles: the end's facts in one line, the checkboxes in a sheet.
   if (compact) {
     return (
       <div id="endBox">
         <p className="endline">{endLineText(s, at?.end.number, name)}</p>
-        {!config.readOnly ? (
+        {!config.readOnly && !first ? (
           <>
-            <SheetButton id="swapBtn" label="Swapped roles" value={swapText(at?.swapped || {}, name)}
-                         setLabel="Swapped" onClick={() => setOpen(true)} />
-            <Sheet id="swapSheet" title="Swapped roles" open={open} onClose={() => setOpen(false)}>
+            <SheetButton id="swapBtn" label="Switched ends" value={swapText(at?.swapped || {}, name)}
+                         setLabel="Switched" onClick={() => setOpen(true)} />
+            <Sheet id="swapSheet" title="Switched this end" open={open} onClose={() => setOpen(false)}>
               {swaps}
             </Sheet>
           </>

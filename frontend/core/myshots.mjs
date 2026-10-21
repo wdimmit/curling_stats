@@ -58,6 +58,15 @@ export const switchedEnds = (view, color) => view.ends
   .filter(({ end }) => end.roles_swapped?.[color] === true)
   .map(({ end }) => endIdentity(end));
 
+/* What a chart's End box sends when a team's switch on end `ei` is ticked on
+ * or off: every end the game says that team switched, with this one added or
+ * taken away. */
+export function nextSwitched(view, ei, color, on) {
+  const here = endIdentity(view.ends[ei].end);
+  const rest = switchedEnds(view, color).filter(id => id !== here);
+  return (on ? [...rest, here] : rest).sort((a, b) => a - b);
+}
+
 /* "4–7", "2 & 4", "2, 3 & 5": end numbers as a person says them -- a run of
  * three or more as a range, every other end on its own. */
 export function endsText(ns) {

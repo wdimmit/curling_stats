@@ -18,7 +18,10 @@ import {
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
   shotClipName, shotClipsOffered, houseImageCaption, houseImageName, endChoices, switchedEnds,
+  nextSwitched,
 } from "../core/index.mjs";
+import { accountsOn, whoIsSignedIn } from "../runtime/auth.mjs";
+import { saveSwitchedEnds } from "../runtime/switched.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
 import * as wideStore from "../runtime/wide.mjs";
@@ -185,14 +188,31 @@ export function App({ doc, config, cursor, reload }) {
     store.apply(edit.patch(store.getOverrides(), shotKey, fields), shotKey);
   }, [config.readOnly, shotKey]);
 
-  const setSwapped = useCallback((color, on) => {
+  /* A doubles team's switch on this end. On the hosted site it is the game's
+   * (Source.switched_ends), saved through its own route for whoever may
+   * change the chart, signed in; answers {ok}, {signin} or {error} for the
+   * End box to say. Where there is no game to keep it on -- the local viewer,
+   * or accounts switched off -- it is the chart's own end-level override, as
+   * it always was. */
+  const setSwapped = useCallback(async (color, on) => {
     const at = view.ends[ui.ei];
-    if (config.readOnly || !at || !view.format.swappable) return;
+    if (config.readOnly || !at || !view.format.swappable) return null;
+    if (config.hosted && doc.chart?.source_id && await accountsOn()) {
+      const who = await whoIsSignedIn();
+      if (!who) return { signin: true };
+      const res = await saveSwitchedEnds(doc.chart.source_id, {
+        path: location.pathname, color, ends: nextSwitched(view, ui.ei, color, on),
+      }, who.token);
+      if (!res.ok) return { error: res.error || "Could not save. Try again." };
+      await reload();
+      return { ok: true };
+    }
     const key = endKey(view.game, at.end);
     const cur = store.getOverrides()[key]?.roles_swapped || {};
     store.apply(edit.patch(store.getOverrides(), key,
                            { roles_swapped: { ...cur, [color]: on } }), key);
-  }, [config.readOnly, view, ui.ei]);
+    return { ok: true };
+  }, [config.readOnly, config.hosted, doc.chart, view, ui.ei, reload]);
 
   const setPref = useCallback(patchObj => {
     dispatch({ type: "set", patch: patchObj });
