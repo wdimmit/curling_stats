@@ -59,10 +59,6 @@ gcloud firestore fields update --collection-group=charts --field-path=overrides_
 gcloud services enable identitytoolkit.googleapis.com
 # Then, in the Firebase console for this project:
 #   Authentication > Sign-in method  > enable Google
-#   Authentication > Sign-in method  > enable Email/Password, and inside it
-#     Email link (passwordless sign-in). Firebase requires both. The site
-#     never offers passwords, and the server treats an unverified password
-#     account as nobody, so the code that does so must be deployed first.
 #   Authentication > Settings > User account linking > keep "Link accounts
 #     that use the same email" (the default), i.e. one account per email
 #     address, rather than one per sign-in method.
@@ -80,6 +76,24 @@ gcloud services enable identitytoolkit.googleapis.com
 #     no web app, in which case there is no apiKey to configure yet.
 # Nothing new is needed in Secret Manager or IAM: verifying an ID token uses
 # only Google's public certificates and the project id.
+#
+# Signing in with an emailed link comes after Google, in this order:
+#   1. Deploy with EMAIL_LINK_SIGNIN "0" in cloudrun.yaml. The chooser
+#      offers Google alone, and the server already treats an unverified
+#      password account as nobody, which has to be live before step 3.
+#   2. The signin_relays TTL (its gcloud line is in the Firestore block
+#      above), so relays nobody claims are cleared.
+#   3. Authentication > Sign-in method > enable Email/Password, and inside it
+#      Email link (passwordless sign-in). Firebase requires both. The site
+#      never offers passwords.
+#   4. Set EMAIL_LINK_SIGNIN to "1" in cloudrun.yaml and deploy again: the
+#      chooser offers "Email me a link".
+# To take it away, set EMAIL_LINK_SIGNIN back to "0" and deploy. The chooser
+# is Google alone again, and /signin still finishes a link already sent.
+# Before rolling the API back past e4e8c79d ("an unverified password account
+# is nobody"), switch Email/Password off and set EMAIL_LINK_SIGNIN to "0":
+# an older API with the provider on lets anyone who makes a password account
+# under a member's address be that member.
 
 # Bucket: private, with a lifecycle rule that expires detection caches after a year
 gsutil mb -l $REGION gs://curling-chart-$PROJECT_ID

@@ -846,6 +846,10 @@ class TestCatalogueAndAdmin:
                 " asked can finish signing you in. They are deleted as soon as the code is used"
                 " or after 5 wrong tries; any that go unused are removed automatically, usually"
                 " within a day after the 10 minutes are up.") in privacy
+        # Opening the link asks the site for its address, which the request
+        # log records like any other (the Logs section: 30 days).
+        assert ("Opening the link is a visit to the site like any other, so its address is"
+                " also in the request log, kept for 30 days (see Logs).") in privacy
         assert "held for up to 10 minutes" not in privacy
         assert ("it also keeps the address you typed, a random request number and the page"
                 " you were on, until you next sign in; it offers them back for about 15"
