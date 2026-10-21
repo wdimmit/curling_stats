@@ -840,7 +840,17 @@ class TestCatalogueAndAdmin:
         assert "You need to sign in with a Google account to" not in terms
         assert "sign in, with a Google account or a link emailed to you," in terms
         assert "You sign in with Google, or with a link emailed to you" in privacy
-        assert "held for up to 10 minutes" in privacy
+        assert ("if you sign in with an emailed link, the name you give (1 to 60 characters,"
+                " set when you first sign in)") in privacy
+        assert ("the link and a 6-digit code can be used for 10 minutes, so the browser that"
+                " asked can finish signing you in. They are deleted as soon as the code is used"
+                " or after 5 wrong tries; any that go unused are removed automatically, usually"
+                " within a day after the 10 minutes are up.") in privacy
+        assert "held for up to 10 minutes" not in privacy
+        assert ("it also keeps the address you typed, a random request number and the page"
+                " you were on, until you next sign in; it offers them back for about 15"
+                " minutes.") in privacy
+        assert "until you are signed in" not in privacy
         assert "sends the sign-in email" in privacy
         assert "Google's sign-in keeps you signed in the same way" not in privacy
 

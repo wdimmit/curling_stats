@@ -81,8 +81,8 @@ The same address, either way in, is the same account (Firebase's one-account-per
 - **`static/privacy.html`:**
   - You sign in "with Google, or with a link emailed to you".
   - The account keeps your email address, plus your Google name and picture, or the name you give.
-  - A link opened in another browser is held for up to 10 minutes to finish signing you in where you started, and is deleted once used.
-  - The address you typed, and the page you were on, sit in your browser's storage until you're signed in.
+  - A link opened in another browser, with a 6-digit code, can be used for 10 minutes to finish signing you in where you started. It is deleted as soon as the code is used or after 5 wrong tries; any unused are removed automatically, usually within a day after the 10 minutes are up.
+  - The address you typed, and the page you were on, sit in your browser's storage until you next sign in.
   - Google (Firebase Authentication) sends the sign-in email.
 - **`static/terms.html`:** "sign in, with a Google account or a link emailed to you".
 - **`README.md`:** "sign in with Google" becomes "sign in"; the `signInNow` comment in `runtime/auth.mjs` changes to match.

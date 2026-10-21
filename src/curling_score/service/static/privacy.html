@@ -38,7 +38,7 @@
 <p>You sign in with Google, or with a link emailed to you, through Google's Firebase Authentication. The site keeps:</p>
 <ul>
   <li><strong>Your account:</strong> your email address; if you sign in with Google, your Google account's name and profile picture; if you sign in with an emailed link, the name you give (1 to 60 characters, set when you first sign in); when you first and last used the site, and whether your account is validated to name teams or is an admin's.</li>
-  <li><strong>A link opened in a different browser:</strong> if you open the emailed link in a different browser or app from the one where you asked for it, the link and a 6-digit code are held for up to 10 minutes, so the browser that asked can finish signing you in. They are deleted once the code is used or after 5 wrong tries, and any that go unclaimed are removed automatically.</li>
+  <li><strong>A link opened in a different browser:</strong> if you open the emailed link in a different browser or app from the one where you asked for it, the link and a 6-digit code can be used for 10 minutes, so the browser that asked can finish signing you in. They are deleted as soon as the code is used or after 5 wrong tries; any that go unused are removed automatically, usually within a day after the 10 minutes are up.</li>
   <li><strong>Changes you make, with your account:</strong> each team name you set or change on a game (the old name, the new name, and when), and each score you enter. Only the site's operator can see which account made a change.</li>
   <li><strong>Who can see the list of accounts:</strong> the site's operator, and the admins the operator appoints to validate accounts. They see each account's email address, name, and when it first and last used the site.</li>
   <li><strong>Your shots:</strong> which rocks you say you threw, and clips of them. You see these on My shots. Your teammates on the site see them too if you turn sharing on.</li>
@@ -65,13 +65,14 @@
 <p>Google's handling of all of these is covered by <a href="https://policies.google.com/privacy">Google's privacy policy</a>. Nothing is shared with anyone else unless the law requires it.</p>
 
 <h2>Your browser</h2>
-<p>The site keeps a few settings in your browser's own storage, such as the league you last picked and where you were in a game. While you sign in with an emailed link, it also keeps the address you typed, a random request number and the page you were on, until you are signed in; it offers them back for about 15 minutes. Staying signed in is kept the same way. There are no advertising cookies.</p>
+<p>The site keeps a few settings in your browser's own storage, such as the league you last picked and where you were in a game. While you sign in with an emailed link, it also keeps the address you typed, a random request number and the page you were on, until you next sign in; it offers them back for about 15 minutes. Staying signed in is kept the same way. There are no advertising cookies.</p>
 
 <h2>How long things are kept</h2>
 <ul>
   <li>Your account, and what is tied to it, is kept until you ask for it to be deleted.</li>
   <li>The record of team-name changes is kept as long as the game is on the site.</li>
   <li>Rate-limit counters are kept for two days.</li>
+  <li>A link and code held for a link opened in a different browser are deleted as soon as the code is used or after 5 wrong tries; any that go unused are removed automatically, usually within a day after their 10 minutes are up.</li>
   <li>Request logs are kept for 30 days.</li>
 </ul>
 
