@@ -718,13 +718,17 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
            else f"board silent, detected {built['detected_score']}")
     )
     if rec is not None:
-        # The boxes are in the panel's own pixels; the rect is the panel's
-        # place in the original frame, which a proxy read does not share.
-        rec.close_end(
-            game=game.index, end=end.number, house=end.house, video=path,
-            near_rect=(ctx.frame_setups or read_setups)[end.house].rect,
-            near_seq=seq,
-            cameras={tuple(v.rect): n for n, v in (sideviews or {}).items()})
+        try:
+            # The boxes are in the panel's own pixels; the rect is the panel's
+            # place in the original frame, which a proxy read does not share.
+            rec.close_end(
+                game=game.index, end=end.number, house=end.house, video=path,
+                near_rect=(ctx.frame_setups or read_setups)[end.house].rect,
+                near_seq=seq,
+                cameras={tuple(v.rect): n for n, v in (sideviews or {}).items()})
+        except Exception:
+            # Building its arguments is outside close_end's own guard.
+            log.exception("fpframes: closing the end failed")
     return built, closed_s
 
 
