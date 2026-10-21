@@ -15,7 +15,8 @@ import sys
 import time
 from pathlib import Path
 
-from curling_score import analyze as analyze_mod, timeline, version
+from curling_score import analyze as analyze_mod, fpframes, timeline, version
+from curling_score.fpframes import record, store
 from curling_score.ingest import cache, prune, source
 
 log = logging.getLogger("curling_score.worker")
@@ -224,12 +225,17 @@ def cached_info(job: dict, root: Path, probe=None) -> source.VideoInfo | None:
 def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
                 weights: str | None, out_dir: Path, skip_longview: bool = False,
                 analyze_fn=None, fetch_info=source.fetch_info,
-                clock=time.monotonic, should_yield=None, probe=None) -> dict:
+                clock=time.monotonic, should_yield=None, probe=None,
+                fp_harvest: fpframes.Settings | None = None) -> dict:
     """Run one job end to end. Raises on failure; the caller reports it.
 
     ``should_yield`` is asked at every progress report, and a yes raises
     Yield: a live stream has started and needs the GPU. The detection cache
     keeps every end already done, so coming back costs little.
+
+    With ``fp_harvest`` enabled the analysis runs under a recorder of the
+    pipeline's own false-positive checks, and the frames it flagged are saved
+    after the API has the results. Nothing from that may fail the job.
     """
     analyze_fn = analyze_fn or analyze_mod.analyze
     url = source.canonical_url(job["video_id"])
@@ -266,17 +272,27 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     det_dir = root / "detections"
     before = _snapshot(det_dir)
 
+    recorder = None
+    if fp_harvest is not None and fp_harvest.enabled:
+        try:
+            recorder = record.Recorder(
+                info.video_id, models=fpframes.model_ids(weights),
+                pipeline=version.PIPELINE_VERSION, job=job["id"], title=info.title)
+        except Exception:  # noqa: BLE001 - a harvest problem must not cost the job
+            log.exception("job %s: false-positive recorder not started", job["id"])
+
     # The API decides the format and checks it on complete. A claim without
     # one is an API from before formats, which holds every run as fours; the
     # title must not overrule that.
-    doc = analyze_fn(
-        url, root=root, weights=weights, info=info,
-        start_s=job.get("window_start_s"), end_s=job.get("window_end_s"),
-        sheet=job.get("sheet"), game_format=job.get("format") or "fours",
-        skip_scoreboard=False,
-        skip_longview=skip_longview, on_phase=on_phase,
-        download_attempts=1,
-    )
+    with record.recording(recorder):
+        doc = analyze_fn(
+            url, root=root, weights=weights, info=info,
+            start_s=job.get("window_start_s"), end_s=job.get("window_end_s"),
+            sheet=job.get("sheet"), game_format=job.get("format") or "fours",
+            skip_scoreboard=False,
+            skip_longview=skip_longview, on_phase=on_phase,
+            download_attempts=1,
+        )
     run_dir = out_dir / job["run_id"]
     analyze_mod.write(doc, run_dir)
     timeline_bytes = (run_dir / "timeline.json").read_bytes()
@@ -312,7 +328,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
         api.upload(up["url"], up["headers"], (det_dir / f"{up['digest']}.npz").read_bytes())
     on_phase("upload", 1.0, "uploaded")
 
-    return api.complete(job["id"], worker_id, {
+    result = api.complete(job["id"], worker_id, {
         "title": info.title,
         # Left out when unknown: complete keeps the run's for an absent key,
         # and a None sent would wipe it.
@@ -321,6 +337,13 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
         "games": games, "detcache_digests": [d["digest"] for d in detcache],
         "timings": timings, "format": fmt_name,
     })
+    if recorder is not None:
+        # After complete, so the job is already done whatever this costs.
+        try:
+            store.save_frames(recorder, root=root, cap_gb=fp_harvest.cap_gb)
+        except Exception:  # noqa: BLE001
+            log.exception("job %s: false-positive frames not saved", job["id"])
+    return result
 
 
 def resolve_weights():
@@ -514,11 +537,13 @@ def main(argv=None) -> int:
     cache_gb = float(os.environ.get("WORKER_CACHE_GB", "300"))
     min_free_gb = float(os.environ.get("WORKER_MIN_FREE_GB", "40"))
     recording_days = float(os.environ.get("WORKER_RECORDING_DAYS", "7"))
+    fp = fpframes.settings()
     run_forever(
         ApiClient(api_url, token), worker_id,
         root=root, weights=weights, out_dir=Path(os.environ.get("WORKER_OUT", root / "out")),
         cache_gb=cache_gb, min_free_gb=min_free_gb, recording_days=recording_days,
         skip_longview=resolve_skip_longview(),
+        fp_harvest=fp,
         once="--once" in (argv or sys.argv[1:]),
         live=build_live(api_url, token, worker_id, root=root, weights=weights,
                         skip_longview=resolve_skip_longview(),
