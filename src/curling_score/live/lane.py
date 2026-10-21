@@ -40,9 +40,11 @@ def _practice_summary(doc) -> dict:
 
 
 class LiveLane:
-    def __init__(self, manager, api, worker_id, *, make_session, clock=time.monotonic):
+    def __init__(self, manager, api, worker_id, *, make_session, clock=time.monotonic,
+                 fp_cap_gb: float = 20.0):
         self.manager, self.api, self.worker_id = manager, api, worker_id
         self.make_session, self.clock = make_session, clock
+        self.fp_cap_gb = fp_cap_gb      # disk the saved false-positive frames may use
         self._turn = 0
 
     def busy(self) -> bool:
@@ -252,8 +254,18 @@ class LiveLane:
         else:
             log.info("live job %s complete", job["id"])
         # A sheet nobody played has nothing to reprocess: its recording goes.
-        self.manager.finish(stream, keep=bool(doc["games"]))
+        # The frames the ends' checks flagged are cut from the kept recording
+        # on the manager's thread, before the recording is deleted.
+        rec = getattr(stream.session, "fp_recorder", None)
+        on_kept = None if rec is None else self._save_frames(rec)
+        self.manager.finish(stream, keep=bool(doc["games"]), on_kept=on_kept)
         return True
+
+    def _save_frames(self, rec):
+        from curling_score.fpframes import store
+
+        return lambda video: store.save_frames(
+            rec, root=self.manager.root, video=video, cap_gb=self.fp_cap_gb)
 
     def _complete_practice(self, stream) -> bool:
         """A practice watch that has ended: its job completed with a summary.
@@ -278,18 +290,40 @@ class LiveLane:
 
 
 def video_sessions(weights, *, imgsz: int = 448, device=None,
-                   skip_longview: bool = False, progress=log.info):
+                   skip_longview: bool = False, progress=log.info,
+                   fp_harvest=None):
     """A ``make_session`` for the lane that processes real video.
 
     The models are loaded once, on the first stream, and shared by every
     session after: five copies of the detectors would not fit on the GPU.
+
+    With ``fp_harvest`` enabled each league session records where the
+    pipeline's checks found the detectors wrong (``fpframes``); the lane saves
+    those frames when the stream ends. A practice watch never does.
     """
-    from curling_score import analyze
+    from curling_score import analyze, fpframes, version
+    from curling_score.fpframes import record
     from curling_score.game import format as format_mod
     from curling_score.ingest import source
     from curling_score.live import session as live
 
     loaded = []
+    ids = []        # the detectors' ids, hashed once for every stream
+
+    def recorder_for(job):
+        """The job's false-positive recorder, or None: nothing here may stop a
+        stream, and the ids can fail (a side-weights file that is gone)."""
+        if fp_harvest is None or not fp_harvest.enabled:
+            return None
+        try:
+            if not ids:
+                ids.append(fpframes.model_ids(weights))
+            return record.Recorder(job["video_id"], models=ids[0],
+                                   pipeline=version.PIPELINE_VERSION, job=job["id"],
+                                   title=job.get("title"))
+        except Exception:  # noqa: BLE001 - a harvest problem must not cost the stream
+            log.exception("live job %s: false-positive recorder not started", job["id"])
+            return None
 
     def make(stream, publish):
         if not loaded:
@@ -333,6 +367,7 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             pipeline=live.VideoPipeline(weights=weights, skip_longview=skip_longview,
                                         line=models.line_model is not None,
                                         progress=progress),
-            sheet=_sheet(job), models=models, publish=publish, progress=progress)
+            sheet=_sheet(job), models=models, publish=publish, progress=progress,
+            fp_recorder=recorder_for(job))
 
     return make

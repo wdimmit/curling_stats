@@ -16,6 +16,7 @@ import argparse
 import json
 import logging
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from curling_score import version
+from curling_score import fpframes
 from curling_score import weights as weights_mod
 from curling_score.live import lane as lane_mod, manager as manager_mod
 from curling_score.live import replay, session as live_session
@@ -51,6 +53,12 @@ def main(argv=None) -> int:
     p.add_argument("--any-window", action="store_true",
                    help="record a YouTube stream even if its window has moved on "
                         "(a mechanics check on a stream that is not a game)")
+    p.add_argument("--fp-harvest", action="store_true",
+                   help="save the whole frames the ends' checks flag, as a hosted worker "
+                        "does with WORKER_FP_HARVEST=1: the manager gets a root (OUT), so "
+                        "each recording is kept and its frames land in OUT/harvest/fp/ID/. "
+                        "A replayed recording is never whole, so it is kept as "
+                        "OUT/kept/ID.ts (a real whole stream would be OUT/videos/ID.mp4)")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     if args.calib_first is not None:
@@ -93,10 +101,15 @@ def main(argv=None) -> int:
         return ApiClient("http://testserver", "w", http=TestClient(app))
 
     mgr = manager_mod.LiveManager(client(), "e2e", model_id=settings.model_id, gpu=None,
-                                  root=None, max_streams=args.max_streams,
+                                  root=out if args.fp_harvest else None,
+                                  max_streams=args.max_streams,
                                   make_recorder=make_recorder).start(poll_s=5.0)
-    lane = lane_mod.LiveLane(mgr, client(), "e2e", make_session=lane_mod.video_sessions(
-        weights, skip_longview=args.no_longview, progress=lambda m: log.info("%s", m)))
+    harvest = fpframes.Settings(True) if args.fp_harvest else None
+    lane = lane_mod.LiveLane(
+        mgr, client(), "e2e", fp_cap_gb=harvest.cap_gb if harvest else 20.0,
+        make_session=lane_mod.video_sessions(
+            weights, skip_longview=args.no_longview, progress=lambda m: log.info("%s", m),
+            fp_harvest=harvest))
     viewer = TestClient(app)
 
     publishes, busy_s, heads = [], 0.0, {}
@@ -149,6 +162,15 @@ def main(argv=None) -> int:
                 time.sleep(2.0)
     finally:
         mgr.stop()
+        # The keeping (and, with --fp-harvest, the frame saving) runs on a
+        # daemon thread; a hosted worker outlives it, this script must not
+        # exit under it.
+        for t in threading.enumerate():
+            if t.name == "live-keep":
+                t.join(timeout=600)
+                if t.is_alive():
+                    log.warning("the live-keep thread is still running after 600 s; "
+                                "its frames may not be saved")
     wall = time.monotonic() - t0
     summary = {"wall_s": round(wall, 1), "lane_busy_s": round(busy_s, 1),
                "lane_busy_fraction": round(busy_s / wall, 3) if wall else None,

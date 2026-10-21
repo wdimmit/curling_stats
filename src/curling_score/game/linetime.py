@@ -24,11 +24,13 @@ asking for a broom (``without_broom`` is the game format's call).
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 import numpy as np
 
 from curling_score.detect import delivery as dlv
+from curling_score.fpframes import record as fp_record
 from curling_score.game.rules import other_color
 from curling_score.geometry import constants as C
 from curling_score.harvest import sidepool
@@ -307,11 +309,17 @@ PATH_SAME_SPOT_M = (0.1, 0.12)  # (along, across)
 def path_points(boxes, times, view):
     """Destination-camera boxes as (t, x, y, cx, row, conf) per frame. The rock
     moves away from this camera, so its centre is behind the box bottom."""
+    rec = fp_record.active()
     out = []
     for t, frame_boxes in zip(times, boxes):
         pts = []
         for cx, row, w, conf in frame_boxes:
-            if not PATH_WIDTH[0] < w / (0.291 * view.lateral_px_per_m(row)) < PATH_WIDTH[1]:
+            ratio = w / (0.291 * view.lateral_px_per_m(row))
+            if not PATH_WIDTH[0] < ratio < PATH_WIDTH[1]:
+                if rec is not None:
+                    rec.side_width(view, t, (cx - w / 2, row - w / 2, cx + w / 2, row),
+                                   conf, ratio, color=None, pass_="path",
+                                   top_estimated=True)
                 continue
             y = view.metres_at(row) - C.STONE_RADIUS_M
             pts.append((t, view.lateral_x(cx, view.row_for(y)), y, cx, row, conf))
@@ -391,12 +399,15 @@ def chain(times, per, fit: Fit, others=None):
     entering = lambda d: abs(d[2] - PATH_SEED_Y) < 2.5 and near(d) < 0.35
     anywhere = lambda d: 3.0 < d[2] < 24.0 and near(d) < 0.45
     first = None
+    rec = fp_record.active()
     for rule in (entering, anywhere):
         for i, dets in enumerate(per):
             if not any(rule(d) for d in dets):
                 continue
             got = _follow(times[i:], per[i:], rule, near, PATH_GAP_S, others[i:])
-            if len(got) >= 2 and got[1][0] - got[0][0] > PATH_START_GAP_S:
+            if len(got) == 1 or (len(got) >= 2 and got[1][0] - got[0][0] > PATH_START_GAP_S):
+                if rec is not None:
+                    rec.side_lone(got[0][0], got[0][3], got[0][4], got[0][5])
                 continue
             if len(got) < 5:
                 continue
@@ -419,9 +430,11 @@ def find_path(model, video, view, color, t_hog, t_rest, fit, *, decode, detect):
                  imgsz=800, conf=PATH_CONF)
     near_boxes = detect(model, frames, times, PATH_SPLIT_ROW - 20, view.rect[3], colors,
                         imgsz=416, conf=PATH_CONF)
-    per, other = (path_points([a + b for a, b in zip(f, n)], times, view)
-                  for f, n in zip(far, near_boxes))
-    return chain(times, per, fit, other)
+    rec = fp_record.active()
+    with (rec.side_view(view) if rec is not None else nullcontext()):
+        per, other = (path_points([a + b for a, b in zip(f, n)], times, view)
+                      for f, n in zip(far, near_boxes))
+        return chain(times, per, fit, other)
 
 
 EXTEND_WINDOW_S = (6.5, 9.0)        # after the release, past hogtime's window
