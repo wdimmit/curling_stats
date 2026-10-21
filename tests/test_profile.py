@@ -20,6 +20,9 @@ class Setup:
     def crop(self, frame):
         return frame[:, self.x0:self.x0 + 4]
 
+    def on_sheet(self, stones):
+        return stones
+
 
 class Detector:
     """Finds as many stones in a panel as its first pixel's value, and keeps

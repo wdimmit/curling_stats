@@ -123,10 +123,21 @@ def detect_span(path, setup, start_s: float, end_s: float, fps: float,
         return out
 
     if not use_cache:
-        return produce()
+        return _on_sheet(setup, produce())
     digest = cache.key(path, setup.rect, setup.calib, detector,
                        start_s, end_s, 1.0 / fps)
-    return cache.detections(digest, produce)
+    # The cache holds every stone the detector saw; the next sheet's are
+    # dropped on the way out, so finding a panel's sidelines re-detects nothing.
+    return _on_sheet(setup, cache.detections(digest, produce))
+
+
+def _on_sheet(setup, seq):
+    """``seq`` without the stones beyond ``setup``'s painted sidelines
+    (`profile.PanelSetup.on_sheet`)."""
+    on_sheet = getattr(setup, "on_sheet", None)
+    if on_sheet is None:
+        return seq
+    return [(t, on_sheet(stones)) for t, stones in seq]
 
 
 def detect_spans(path, specs, end_s: float, detector=None):
@@ -160,4 +171,4 @@ def detect_spans(path, specs, end_s: float, detector=None):
         for i in range(len(specs)):
             if batches[i]:
                 flush(i)
-    return out
+    return [_on_sheet(spec[0], seq) for spec, seq in zip(specs, out)]

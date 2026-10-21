@@ -1,0 +1,34 @@
+{
+ "plate-XbBwOnjkhpY-top.png": {
+  "center_px": [
+   148.788,
+   152.47
+  ],
+  "px_per_m": 77.1285,
+  "flipped": false
+ },
+ "plate-XbBwOnjkhpY-bottom.png": {
+  "center_px": [
+   147.303,
+   351.14
+  ],
+  "px_per_m": 75.9696,
+  "flipped": true
+ },
+ "plate-XnC-moPkja8-bottom.png": {
+  "center_px": [
+   149.465,
+   356.076
+  ],
+  "px_per_m": 77.497,
+  "flipped": true
+ },
+ "plate-yequ4JYjslE-top.png": {
+  "center_px": [
+   145.454,
+   135.65
+  ],
+  "px_per_m": 67.3758,
+  "flipped": false
+ }
+}

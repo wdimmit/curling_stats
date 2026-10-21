@@ -181,6 +181,6 @@ class TestTheCalibrationBlock:
         assert block["top"] == {
             "rect": [0, 0, 297, 514], "px_per_m": 76.0, "center_px": [150.0, 160.0],
             "residual_m": 0.001, "flipped": False, "hog_line": None,
-            "hog_line_error": None,
+            "hog_line_error": None, "sidelines": None,
         }
         assert block["bottom"]["flipped"] is True

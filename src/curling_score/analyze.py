@@ -133,6 +133,7 @@ def calibration_block(setups, sideviews) -> dict:
                 "flipped": s.calib.flipped,
                 "hog_line": None if s.hog_line is None else s.hog_line.to_json(),
                 "hog_line_error": s.hog_line_error,
+                "sidelines": None if s.sidelines is None else s.sidelines.to_json(),
             }
             for name, s in setups.items()
         },
@@ -149,8 +150,9 @@ def _proxy_setups(setups, strip):
     return {
         name: profile.PanelSetup(
             rect=proxy.translate(s.rect, strip), calib=s.calib,
-            # The line is in panel pixels, so moving the panel does not move it.
+            # The lines are in panel pixels, so moving the panel does not move them.
             hog_line=s.hog_line, hog_line_error=s.hog_line_error,
+            sidelines=s.sidelines,
         )
         for name, s in setups.items()
     }
@@ -322,6 +324,14 @@ def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info):
             f"{name} panel {setup.rect} {setup.calib.px_per_m:.1f} px/m "
             f"(residual {setup.calib.residual_m * 100:.2f} cm)"
         )
+        sides = setup.sidelines
+        if sides is None:
+            continue
+        progress(f"{name} panel sidelines: " + ", ".join(
+            f"{side} {line.support} rows ({line.scatter_px:.2f} px)" if line is not None
+            else f"{side} none"
+            for side, line in (("left", sides.left), ("right", sides.right)))
+            + "".join(f"; {why}" for why in sides.missing))
     # The two wide side views. They watch the far end's hog line, which the
     # overhead panel loses on about 40% of throws, and they are read straight
     # from the original -- like the scoreboard, and for the same reason.

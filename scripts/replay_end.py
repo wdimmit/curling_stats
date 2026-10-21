@@ -42,8 +42,11 @@ def _has_hog_lines(setups) -> bool:
     """False for a pickle written before panels carried their painted hog line:
     such a setup loads with neither a line nor a reason, and would silently
     time no far crossings at all."""
-    return all(getattr(s, "hog_line", None) is not None
-               or getattr(s, "hog_line_error", None) for s in setups.values())
+    return all((getattr(s, "hog_line", None) is not None
+                or getattr(s, "hog_line_error", None))
+               # Nor sidelines, which would track the next sheet's stones.
+               and getattr(s, "sidelines", None) is not None
+               for s in setups.values())
 
 
 def setups_for(video, vid, root):

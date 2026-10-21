@@ -8,7 +8,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import replay_end  # noqa: E402
 from curling_score.game import profile  # noqa: E402
+from curling_score.geometry.sidepaint import Sidelines  # noqa: E402
 from tests.synth_hogline import TOP, line_at  # noqa: E402
+
+NO_LINES = Sidelines(left=None, right=None, missing=("left: none", "right: none"))
 
 
 def _pickle(root, setups):
@@ -38,11 +41,25 @@ def test_main_s_setups_pickle_is_never_touched(tmp_path, monkeypatch):
 
 
 def test_a_pickle_with_a_line_or_a_reason_is_kept(tmp_path, monkeypatch):
-    kept = {"top": profile.PanelSetup(rect=(0, 0, 1, 1), calib=TOP, hog_line=line_at(4.44)),
+    kept = {"top": profile.PanelSetup(rect=(0, 0, 1, 1), calib=TOP, hog_line=line_at(4.44),
+                                      sidelines=NO_LINES),
             "bottom": profile.PanelSetup(rect=(0, 0, 1, 1), calib=TOP,
-                                         hog_line_error="bottom panel: no paint")}
+                                         hog_line_error="bottom panel: no paint",
+                                         sidelines=NO_LINES)}
     _pickle(tmp_path, kept)
     monkeypatch.setattr(replay_end, "_compute_setups",
                         lambda video: (_ for _ in ()).throw(AssertionError("recomputed")))
     setups, _ = replay_end.setups_for("v.mp4", "v", tmp_path)
     assert setups["bottom"].hog_line_error == "bottom panel: no paint"
+
+
+def test_a_pickle_without_sidelines_is_recomputed(tmp_path, monkeypatch):
+    """Written before panels carried their sidelines: replayed as it is, it
+    would track the next sheet's stones that production leaves out."""
+    _pickle(tmp_path, {"top": profile.PanelSetup(rect=(0, 0, 1, 1), calib=TOP,
+                                                 hog_line=line_at(4.44))})
+    fresh = {"top": profile.PanelSetup(rect=(0, 0, 1, 1), calib=TOP, hog_line=line_at(4.44),
+                                       sidelines=NO_LINES)}
+    monkeypatch.setattr(replay_end, "_compute_setups", lambda video: (fresh, "panels"))
+    setups, _ = replay_end.setups_for("v.mp4", "v", tmp_path)
+    assert setups["top"].sidelines is NO_LINES
