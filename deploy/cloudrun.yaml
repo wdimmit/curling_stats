@@ -80,7 +80,7 @@ spec:
             # and its Email link option are on in the Firebase console, or every
             # link fails to send (deploy/README.md, Accounts). Off is Google
             # alone; /signin still finishes a link already sent.
-            - { name: EMAIL_LINK_SIGNIN,    value: "0" }
+            - { name: EMAIL_LINK_SIGNIN,    value: "1" }
             - name: WORKER_TOKEN
               valueFrom: { secretKeyRef: { name: curling-worker-token, key: latest } }
             - name: ADMIN_TOKEN
