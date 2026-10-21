@@ -1,6 +1,6 @@
 # False-positive frames from the workers, for labelling
 
-**Status:** for the user's approval, 2026-10-21. Decided with the user:
+**Status:** approved by the user, 2026-10-21. Decided with the user:
 - Use the pipeline's own rejection checks to find frames where the model was wrong, on both the overhead and the long cameras.
 - Keep both kinds of frame. A box with nothing under it is a negative example. A real rock with a bad box or the wrong colour is a frame to relabel.
 - Frames pile up on the worker's own disk until a labelling round harvests them. Nothing is uploaded.
