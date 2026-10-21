@@ -18,7 +18,7 @@ import {
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
   shotClipName, shotClipsOffered, houseImageCaption, houseImageName, endChoices, switchedEnds,
-  nextSwitched,
+  chartSwapOff, endIdentity,
 } from "../core/index.mjs";
 import { accountsOn, whoIsSignedIn } from "../runtime/auth.mjs";
 import { saveSwitchedEnds } from "../runtime/switched.mjs";
@@ -200,10 +200,15 @@ export function App({ doc, config, cursor, reload }) {
     if (config.hosted && doc.chart?.source_id && await accountsOn()) {
       const who = await whoIsSignedIn();
       if (!who) return { signin: true };
+      // One end's tick, applied to what the game holds: quick ticks on two
+      // ends both land.
       const res = await saveSwitchedEnds(doc.chart.source_id, {
-        path: location.pathname, color, ends: nextSwitched(view, ui.ei, color, on),
+        path: location.pathname, color, end: endIdentity(at.end), on,
       }, who.token);
       if (!res.ok) return { error: res.error || "Could not save. Try again." };
+      // A swap the chart holds itself would keep the box ticked: off too.
+      const off = on ? null : chartSwapOff(store.getOverrides(), view.game, at.end, color);
+      if (off) store.apply(edit.patch(store.getOverrides(), off.key, off.fields), off.key);
       await reload();
       return { ok: true };
     }

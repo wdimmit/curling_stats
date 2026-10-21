@@ -5241,15 +5241,18 @@ class TestSwitchedEndsDialog:
                      "out([switchedEnds(v, 'red'), switchedEnds(v, 'yellow'), endChoices(v)]);")
         assert got == [[], [3], [{"id": 3, "number": 3}]]
 
-    def test_next_switched_adds_and_removes_this_end(self):
-        """What the End box sends: the team's switched ends with this one
-        ticked on or off."""
-        from curling_score import timeline
-        d = timeline.apply_switched_ends(doubles_doc(doubles_shots()), {"red": {"ends": [3]}})
-        got = run_js(setup(d) + "const v = buildGameView(state.doc, 0, state.overrides);"
-                     "out([nextSwitched(v, 0, 'red', false), nextSwitched(v, 0, 'yellow', true),"
-                     " nextSwitched(v, 0, 'red', true)]);")
-        assert got == [[], [3], [3]]
+    def test_unticking_clears_a_charts_own_swap_of_that_colour(self):
+        """A swap the chart holds itself (an end-level override, from before
+        switched ends lived on the game) would keep the box ticked once the
+        game's mark is gone: unticking turns it off too, and only its colour."""
+        got = run_js(setup(doubles_doc(doubles_shots()),
+                           {"0.3": {"roles_swapped": {"red": True, "yellow": True}}}) +
+                     "const v = buildGameView(state.doc, 0, state.overrides);"
+                     "out([chartSwapOff(state.overrides, v.game, v.ends[0].end, 'red'),"
+                     " chartSwapOff({}, v.game, v.ends[0].end, 'red'),"
+                     " chartSwapOff({'0.3': {roles_swapped: {red: false}}}, v.game, v.ends[0].end, 'red')]);")
+        assert got == [{"key": "0.3", "fields": {"roles_swapped": {"red": False, "yellow": True}}},
+                       None, None]
 
     def test_a_charts_own_swap_is_not_the_games(self):
         """The dialog speaks for the game, so a swap only the chart holds (an

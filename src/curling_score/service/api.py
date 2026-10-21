@@ -1216,7 +1216,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         out = {"moved": [], "conflicts": [], "other_runs": [], "normalised": []}
         plays = None
         for src in repo.list_sources(limit=EVERY_SOURCE):
-            if src.merged_into is not None or (src.format or "fours") != "doubles":
+            if (src.format or "fours") != "doubles":
                 continue
             charts = [c for r in repo.runs_for_video(src.video_id)
                       for c in repo.charts_for_run(r.id) if c.source_id == src.id]
@@ -1238,8 +1238,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 def item(c, ends):
                     return {"source_id": src.id, "chart": chart.share_slug, "color": c, "ends": ends}
                 run = repo.get_run(chart.run_id)
-                if (chart.run_id != src.current_run_id or run is None or run.status != "ready"
-                        or chart.game_index is None):
+                if (src.merged_into is not None or chart.run_id != src.current_run_id
+                        or run is None or run.status != "ready" or chart.game_index is None):
                     out["other_runs"].extend(item(c, sorted(ids)) for c, ids in keys.items())
                     continue
                 doc = chart_doc(chart, run, read_only=True)
@@ -1400,14 +1400,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.post("/api/games/{source_id}/switched-ends")
     def api_set_switched_ends(source_id: str, body: dict,
                               authorization: str | None = Header(default=None)):
-        """A chart's End box saying which ends a doubles team's pair threw
-        the other way round: ``{path, color, ends}``, ``ends`` every end the
-        colour switched (empty clears them), ``path`` the chart's own page.
+        """A chart's End box ticking one end of a doubles team on or off as
+        switched: ``{path, color, end, on}``, ``end`` by end identity, ``path``
+        the chart's own page. Answers every end the colour now has switched.
 
-        Kept on the game (Source.switched_ends), as "I played…" keeps them,
-        so the chart's charter changes them for every chart and link of the
-        game. Whoever may change the chart may say -- signed in, since the
-        change outlives the chart.
+        One end at a time, applied to what the game holds, so two ticks in
+        quick succession both land, and a mark this chart does not show (saved
+        against another reading of the game) stands. Kept on the game
+        (Source.switched_ends), as "I played…" keeps them, so the charter
+        changes them for every chart and link of the game. Whoever may change
+        the chart may say -- signed in, since the change outlives the chart.
         """
         me = require_user(authorization)
         kind, chart, shown, run = play_target(body.get("path"))
@@ -1415,14 +1417,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(422, "switched ends are marked on a chart")
         if kind == "s":
             raise HTTPException(403, "this is a view-only link")
+        if chart.source_id != shown.id:
+            raise HTTPException(409, MERGED_CHART)
         if shown.id != source_id:
             raise HTTPException(409, "that link is a different game")
         if not may_edit_chart(chart, me.id):
             raise HTTPException(403, "only the person or team who made this chart can change it")
-        color = body.get("color")
+        color, end, on = body.get("color"), body.get("end"), body.get("on")
         if not isinstance(color, str) or color not in ("red", "yellow"):
             raise HTTPException(422, "color must be red or yellow")
-        ends = checked_switched_ends(shown_doc(kind, chart, shown, run), body.get("ends"))
+        if not isinstance(end, int) or isinstance(end, bool):
+            raise HTTPException(422, "end must be one of the game's ends")
+        if not isinstance(on, bool):
+            raise HTTPException(422, "on must be true or false")
+        checked_switched_ends(shown_doc(kind, chart, shown, run), [end])
+        held = set(switched_of(shown, color))
+        ends = sorted(held | {end} if on else held - {end})
         if not repo.bump_rate_limit("switch:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
             raise HTTPException(429, "that is a lot of changes; try again later")
         src = repo.set_switched_ends(shown.id, color, switched_entry(ends, me)) or shown
@@ -2272,6 +2282,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return chart_doc(chart, run, read_only=True)
         return game_doc(run, src.game_index, src, src.play_start_s)
 
+    # A chart's ends are the game's as it was read when the chart was made.
+    # Once that game is part of another (Source.merged_into), its end numbers
+    # are not the new game's, so switched ends are not taken from it.
+    MERGED_CHART = ("this chart's game is now part of another: "
+                    "mark switched ends on that game's page")
+
     def switched_entry(ends: list[int], me: User) -> dict | None:
         return {"ends": ends, "by": me.id, "at": _iso(now())} if ends else None
 
@@ -2325,6 +2341,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if "switched_ends" in body:
             if path is None:
                 raise HTTPException(422, "open the game to mark switched ends")
+            if chart is not None and chart.source_id != src.id:
+                raise HTTPException(409, MERGED_CHART)
             # Loaded only when asked: most saves say nothing about them.
             switched = checked_switched_ends(shown_doc(kind, chart, src, run),
                                              body["switched_ends"])

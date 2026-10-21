@@ -16,7 +16,7 @@ import {
 } from "./line.mjs";
 import { groupOf, positionLabel } from "./report.mjs";
 import { notThrown, typeOf } from "./shots.mjs";
-import { buildGameView, endIdentity } from "./timeline.mjs";
+import { buildGameView, endIdentity, endKey } from "./timeline.mjs";
 
 // The report's groups as this page shows them: a guard is a draw that stops
 // short, so the two are one group here. The rocks table still names each.
@@ -58,13 +58,15 @@ export const switchedEnds = (view, color) => view.ends
   .filter(({ end }) => end.roles_swapped?.[color] === true)
   .map(({ end }) => endIdentity(end));
 
-/* What a chart's End box sends when a team's switch on end `ei` is ticked on
- * or off: every end the game says that team switched, with this one added or
- * taken away. */
-export function nextSwitched(view, ei, color, on) {
-  const here = endIdentity(view.ends[ei].end);
-  const rest = switchedEnds(view, color).filter(id => id !== here);
-  return (on ? [...rest, here] : rest).sort((a, b) => a - b);
+/* The chart's own swap of `color` on end `e`, turned off: an end-level
+ * override from before switched ends lived on the game, which would keep the
+ * End box ticked once the game's mark is gone. {key, fields} for the
+ * override store, or null when the chart holds no such swap. */
+export function chartSwapOff(overrides, g, e, color) {
+  const key = endKey(g, e);
+  const held = overrides?.[key]?.roles_swapped;
+  if (!held || typeof held !== "object" || held[color] !== true) return null;
+  return { key, fields: { roles_swapped: { ...held, [color]: false } } };
 }
 
 /* "4–7", "2 & 4", "2, 3 & 5": end numbers as a person says them -- a run of

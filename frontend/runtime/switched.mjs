@@ -7,8 +7,8 @@
  * any. */
 export const switchedUrl = sourceId => `/api/games/${encodeURIComponent(sourceId)}/switched-ends`;
 
-/* `body` is {path, color, ends}: `path` the chart's own page, `ends` every end
- * the colour switched (core nextSwitched), empty to clear them. */
+/* `body` is {path, color, end, on}: `path` the chart's own page, `end` the
+ * end ticked (by end identity), `on` whether it is now switched. */
 export async function saveSwitchedEnds(sourceId, body, token) {
   try {
     const r = await fetch(switchedUrl(sourceId), {

@@ -79,7 +79,9 @@ In a switched end, the team's slot-2 player threw the 1st and 5th rocks and slot
     - non-integers.
   - **No live gate.** A live game can be marked like any other; the accepted limitation covers a re-cut. *(My call, replacing the first draft's "once the game is over".)*
   - The play rate limit already covers it. Log the change with the user, as team names are.
-- **A route for the chart End box** (the name is the builder's call), for example `POST /api/games/{source_id}/switched-ends` with `{color, ends}`. It is allowed for a signed-in user who may edit a chart of this game, using the chart write rules ([2026-10-15-chart-write-protection-design.md](2026-10-15-chart-write-protection-design.md)). A charter need not be a player. *(My call.)*
+- **A route for the chart End box**, `POST /api/games/{source_id}/switched-ends`, taking one end's tick as `{path, color, end, on}`.
+  - The tick is applied to what the game holds. Two quick ticks therefore both land, and a mark this chart does not show stands. (Built first with the whole list; the final review changed it.)
+  - A chart whose game was merged into another gets 409, from this route and from the play route: "this chart's game is now part of another: mark switched ends on that game's page". It is allowed for a signed-in user who may edit a chart of this game, using the chart write rules ([2026-10-15-chart-write-protection-design.md](2026-10-15-chart-write-protection-design.md)). A charter need not be a player. *(My call.)*
 - **Clips.** Saving a play asks for clips of the saver's rocks. The partner's clips follow the next time their report opens: `ask_for_clips` asks for anything missing. The builder confirms that a clip of a rock that is no longer the partner's is not shown to them.
 
 ### Viewer: "I played…"
