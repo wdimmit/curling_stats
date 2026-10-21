@@ -10,6 +10,7 @@ Firestore version with a transaction, and the API cannot tell which it has.
 """
 
 import copy
+import hmac
 import json
 import threading
 from datetime import datetime, timedelta, timezone
@@ -17,7 +18,7 @@ from typing import Protocol
 
 from curling_score.service.records import (
     Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
-    Review, Run, Source, Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
+    Review, Run, SigninRelay, Source, Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
 )
 
 LEASE_S = 600.0
@@ -99,6 +100,12 @@ class Repo(Protocol):
     def get_invite(self, token: str) -> Invite | None: ...
     def update_invite(self, token: str, **fields) -> Invite | None: ...
     def invites_for_team(self, team_id: str) -> list[Invite]: ...
+
+    # sign-in relays: an emailed link held behind a code, transient
+    def put_signin_relay(self, relay: SigninRelay) -> None: ...
+    def get_signin_relay(self, relay_id: str) -> SigninRelay | None: ...
+    def claim_signin_relay(self, relay_id: str, code: str, now: datetime,
+                           max_misses: int) -> tuple[str, str | None]: ...
     # workers
     def heartbeat(self, worker: Worker) -> None: ...
     def workers(self) -> list[Worker]: ...
@@ -187,6 +194,7 @@ class MemoryRepo:
         self.users: dict[str, User] = {}
         self.teams: dict[str, Team] = {}
         self.invites: dict[str, Invite] = {}
+        self.relays: dict[str, SigninRelay] = {}
         self.claims: dict[tuple[str, str], str] = {}
         self.flags: dict[str, Flag] = {}
         self.plays: dict[str, Play] = {}
@@ -524,6 +532,31 @@ class MemoryRepo:
 
     def invites_for_team(self, team_id):
         return [i for i in self.invites.values() if i.team_id == team_id]
+
+    # ---- sign-in relays -----------------------------------------------
+    def put_signin_relay(self, relay):
+        with self._lock:
+            self.relays[relay.id] = relay
+
+    def get_signin_relay(self, relay_id):
+        return self.relays.get(relay_id)
+
+    def claim_signin_relay(self, relay_id, code, now, max_misses):
+        with self._lock:
+            got = self.relays.get(relay_id)
+            if got is None:
+                return "gone", None
+            if not got.live(now):
+                del self.relays[relay_id]
+                return "gone", None
+            if hmac.compare_digest(got.code.encode(), code.encode()):
+                del self.relays[relay_id]
+                return "ok", got.link
+            got.misses += 1
+            if got.misses >= max_misses:
+                del self.relays[relay_id]
+                return "gone", None
+            return "wrong", None
 
     # ---- workers ------------------------------------------------------
     def heartbeat(self, worker):

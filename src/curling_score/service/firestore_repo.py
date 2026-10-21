@@ -20,12 +20,13 @@ charts.overrides_meta are maps whose every subfield Firestore would otherwise
 index, thousands of entries per chart, for something no query ever touches.
 """
 
+import hmac
 import json
 from datetime import timedelta
 
 from curling_score.service.records import (
     Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
-    Review, Run, Source, Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
+    Review, Run, SigninRelay, Source, Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
 )
 from curling_score.service.repo import (
     LEASE_S, MAX_STORED_OVERRIDES_BYTES, _day_bucket, _hour_bucket,
@@ -36,6 +37,7 @@ SHARES, WORKERS, PLAYLISTS, RATES = "share_slugs", "workers", "watched_playlists
 USERS, TEAMS, INVITES, CLAIMS = "users", "teams", "invites", "chart_claims"
 FLAGS, PLAYLIST_INDEX, PLAYS = "flags", "yt_playlists", "plays"
 CLIP_JOBS = "clip_jobs"
+RELAYS = "signin_relays"
 REVIEWS = "reviews"
 TEAM_NAME_EDITS = "team_name_edits"
 WATCHES, SESSIONS = "practice_watches", "practice_sessions"
@@ -662,6 +664,36 @@ class FirestoreRepo:
             return _clip_from_store({**data, **update})
 
         return _take(self.db.transaction())
+
+    # ---- sign-in relays -----------------------------------------------
+    def put_signin_relay(self, relay):
+        self._col(RELAYS).document(relay.id).set(relay.to_dict())
+
+    def get_signin_relay(self, relay_id):
+        return self._get(RELAYS, relay_id, SigninRelay)
+
+    def claim_signin_relay(self, relay_id, code, now, max_misses):
+        ref = self._col(RELAYS).document(relay_id)
+
+        @self._fs.transactional
+        def _claim(tx):
+            snap = ref.get(transaction=tx)
+            if not snap.exists:
+                return "gone", None
+            got = SigninRelay.from_dict(snap.to_dict())
+            if not got.live(now):
+                tx.delete(ref)
+                return "gone", None
+            if hmac.compare_digest(got.code.encode(), code.encode()):
+                tx.delete(ref)
+                return "ok", got.link
+            if got.misses + 1 >= max_misses:
+                tx.delete(ref)
+                return "gone", None
+            tx.update(ref, {"misses": got.misses + 1})
+            return "wrong", None
+
+        return _claim(self.db.transaction())
 
     # ---- practice -----------------------------------------------------
     # One equality filter each, sorted here: no composite index to keep.

@@ -314,6 +314,30 @@ class Invite:
 
 
 @dataclass
+class SigninRelay:
+    """An emailed sign-in link held behind a short code.
+
+    The link opened in a browser other than the one that asked (a phone mail
+    app's own browser), so that page leaves the link here and the asking
+    browser trades the code for it. Ten minutes, once, and `misses` counts
+    the wrong codes so a six-digit code can't be guessed at.
+    """
+
+    id: str
+    code: str
+    link: str
+    created_at: datetime
+    expires_at: datetime
+    misses: int = 0
+
+    def live(self, now: datetime) -> bool:
+        return self.expires_at > now
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+@dataclass
 class Worker:
     id: str
     last_seen_at: datetime
