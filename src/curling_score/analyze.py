@@ -549,7 +549,8 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         # Stones moved while the house is cleared after the last shot
         # look like deliveries in every way but one: nothing released them.
         return cands, fit.fit_end(fit.drop_clearing(
-            cands, seq, fit.released_ids(thrown_by, unaccounted)),
+            cands, seq, fit.released_ids(thrown_by, unaccounted),
+            per_end=fmt.delivered_per_end),
             paired=fit.paired_ids(thrown_by, taken_back),
             per_end=fmt.delivered_per_end, per_team=fmt.delivered_per_team)
 

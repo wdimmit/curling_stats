@@ -201,7 +201,7 @@ CLEARING_HOUSE_MAX = 1
 CLEARING_ENTRY_MAX_Y_M = 4.2
 
 
-def drop_clearing(deliveries, frames, released) -> list:
+def drop_clearing(deliveries, frames, released, per_end: int | None = None) -> list:
     """Drop stones moved while the house is cleared after the end's last shot.
 
     ``released`` holds ``id(delivery)`` for every candidate paired with a
@@ -210,6 +210,15 @@ def drop_clearing(deliveries, frames, released) -> list:
     stone first seen at the far edge is exempt: it came in thrown. With no
     release evidence in the end at all nothing is dropped: an unreleased stone
     then says nothing about the house being cleared.
+
+    When the releases seen already make the end's ``per_end`` throws, nothing
+    unreleased before the first of them or after the last was thrown, whatever
+    it looks like: Monday Open 10/19 S1 end 4 saw all sixteen releases, the
+    first a yellow hog. A yellow "house-add" 34 s after the last release (the
+    players measuring) outweighed the hog and moved every rock of the end one
+    place down, with yellow holding the hammer that was red's; and a yellow
+    pushed off the side 10 s before the hog's release would have taken its
+    place as rock 1.
     """
     from curling_score.detect.rest import stones_in_window
     from curling_score.game.shots import SETTLE_WINDOW_S
@@ -219,8 +228,12 @@ def drop_clearing(deliveries, frames, released) -> list:
     if not released_at:
         return items
     frames = list(frames)
-    keep = items[: released_at[-1] + 1]
+    full = per_end is not None and len(released) >= per_end
+    keep = [d for i, d in enumerate(items[: released_at[-1] + 1])
+            if not (full and i < released_at[0] and id(d) not in released)]
     for d in items[released_at[-1] + 1:]:
+        if full and id(d) not in released:
+            continue
         if (getattr(d, "reason", "") in CLEARING_REASONS
                 and not getattr(d, "came_to_rest", False)
                 and getattr(d, "entry_y_m", 0.0) < CLEARING_ENTRY_MAX_Y_M

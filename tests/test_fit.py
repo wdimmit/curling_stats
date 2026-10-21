@@ -291,6 +291,40 @@ class TestClearingTheHouse:
         assert kept[0] is found[0] and tail not in kept and len(kept) == 16
 
 
+class TestAFullEndOfReleases:
+    """Monday Open 10/19 S1 end 4: all sixteen releases were seen, rock 1 a
+    yellow hog. A yellow "house-add" after the last release (the players
+    measuring) outweighed the hog, and with it every rock moved one place
+    down and yellow took red's hammer; a yellow pushed off the side 10 s
+    before the hog's release would have been rock 1 in its place."""
+
+    def end(self):
+        hog = dv("yellow", 92.3, reason="hogged")
+        rest = [dv("red" if i % 2 == 0 else "yellow", 140.0 + 50.0 * i) for i in range(15)]
+        before = Delivery(color="yellow", t_enter=82.7, t_rest=85.3, entry_y_m=5.41,
+                          rest_x_m=-2.03, rest_y_m=4.44, travel_m=0.97,
+                          came_to_rest=False, reason="left-view")
+        after = Delivery(color="yellow", t_enter=rest[-1].t_enter + 21.0,
+                         t_rest=rest[-1].t_enter + 27.0, entry_y_m=4.06, rest_x_m=0.35,
+                         rest_y_m=3.45, travel_m=0.48, came_to_rest=True, reason="house-add")
+        return hog, rest, before, after, {id(hog)} | {id(d) for d in rest}
+
+    def test_nothing_unreleased_outside_them_was_thrown(self):
+        hog, rest, before, after, released = self.end()
+        frames = TestClearingTheHouse.house(0.0, 1000.0, (("red", 0.0, 0.5),) * 3)
+        got = fit.drop_clearing([before, hog, *rest, after], frames, released, per_end=16)
+        assert got == [hog, *rest]
+        kept = fit.fit_end(got, paired={id(d) for d in rest})
+        assert kept[0] is hog and colors(kept)[-1] == "red"
+
+    def test_short_of_a_full_end_an_unreleased_stone_may_still_be_one(self):
+        hog, rest, before, after, released = self.end()
+        released.discard(id(rest[3]))
+        frames = TestClearingTheHouse.house(0.0, 1000.0, (("red", 0.0, 0.5),) * 3)
+        got = fit.drop_clearing([before, hog, *rest, after], frames, released, per_end=16)
+        assert before in got and after in got
+
+
 class TestAPairedArrivalOutranksAnUnpairedOne:
     """A release matched to an arrival is the strongest evidence a candidate
     was the thrown stone, and fit_end used to ignore it. Seen three times

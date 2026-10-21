@@ -27,7 +27,7 @@ from curling_score import analyze as analyze_mod, weights as weights_mod
 from curling_score.detect import delivery as D, release, sequence, yolo
 from curling_score.game import (endcheck, fartime, fit, profile, secondpass,
                                 segment, shots as shots_mod, split, thinking)
-from curling_score.geometry import layout
+from curling_score.geometry import constants as C, layout
 from curling_score.ingest import cache, frames as F, proxy
 
 
@@ -247,7 +247,8 @@ def main():
     # What the two derived timings make of this end. Both are best-effort by
     # construction, so the counts matter as much as the numbers.
     thrown_by = {id(d): r for r, d in matched.items()}
-    cleared = fit.drop_clearing(ds, frames, fit.released_ids(matched, settled))
+    cleared = fit.drop_clearing(ds, frames, fit.released_ids(matched, settled),
+                                per_end=C.STONES_PER_END)
     built = shots_mod.from_deliveries(fit.fit_end(cleared, paired=fit.paired_ids(matched)),
                                       frames, thrown_by=thrown_by)
     thinking.time_shots(built, far_seq, far.view_y_min_m)
