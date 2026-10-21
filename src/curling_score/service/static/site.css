@@ -388,6 +388,7 @@ body[data-page="shots"] main { max-width:980px; }
               padding:12px 0; border-bottom:1px solid var(--line); }
   #shots tr:last-child { border-bottom:0; }
   #shots td, #shots table.rocks td { display:block; border:0; padding:0; font-size:14px; }
+  #shots table.rocks td.nofig { display:none; }
   #shots td[data-label]::before {
     content:attr(data-label) " "; color:var(--muted); font-size:12px;
     text-transform:uppercase; letter-spacing:.04em; }

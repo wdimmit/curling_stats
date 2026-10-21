@@ -157,6 +157,7 @@ export const clipText = core.clipText;
 export const summarize = core.summarize;
 export const summaryText = core.summaryText;
 export const shotGroups = core.shotGroups;
+export const tableColumns = core.tableColumns;
 export const missScatter = core.missScatter;
 export const endSpan = core.endSpan;
 

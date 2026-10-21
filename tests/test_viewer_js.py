@@ -6088,6 +6088,39 @@ class TestRotationFigure:
         assert got == ["in-turn", "out-turn", "in-turn", None, None]
 
 
+class TestTheRocksTableColumns:
+    """My shots' table spans games from before spin was read (no Rotation
+    figure) and after: its columns are every figure any row has, so an older
+    row's Curl does not slide under Rotation."""
+    ROOT = Path(__file__).resolve().parents[1]
+    ROCK = TestRotationFigure().rock()
+
+    def columns(self, *versions):
+        rows = ", ".join(f"{{figures: lineFigures(s, {{schema_version: {v}}}).figures}}" for v in versions)
+        return run_js(f"const s = {json.dumps(self.ROCK)}; out(tableColumns([{rows}]).map(c => c.label));")
+
+    def test_newest_first_or_oldest_first_the_columns_are_the_same(self):
+        want = ["At the broom", "Hack", "At the hog line", "Weight", "Rotation", "Curl", "Came to rest"]
+        assert self.columns(9, 8) == want
+        assert self.columns(8, 9) == want
+
+    def test_only_older_games_have_no_rotation_column(self):
+        assert "Rotation" not in self.columns(8, 8)
+
+    def test_the_table_lays_each_row_out_by_column(self):
+        page = (self.ROOT / "frontend/site/Shots.jsx").read_text()
+        table = page[page.index("function RockTable"):page.index("function Group")]
+        assert "const cols = tableColumns(rows);" in table
+        assert "rows[0].figures" not in table
+        assert "colSpan={cols.length + 5}" in table
+        # The gap an older row leaves takes no room on a phone, which labels
+        # every cell itself.
+        css = (self.ROOT / "src/curling_score/service/static/site.css").read_text()
+        phone = css[css.index("@media (max-width: 640px) {\n  #shots table"):]
+        block = phone.index("#shots td, #shots table.rocks td { display:block;")
+        assert phone.index("#shots table.rocks td.nofig { display:none; }") > block
+
+
 class TestTheDeliveryDialog:
     SRC = Path(__file__).resolve().parents[1] / "frontend/viewer/DeliveryDialog.jsx"
 

@@ -154,6 +154,22 @@ export function playerRocks(play, doc, day = shortDay) {
   return { rows, missing };
 }
 
+/* The rocks table's columns: every figure any of `rows` has, in the figures'
+ * own order. A game charted before spin was read has no Rotation figure, so
+ * a group spanning it and a newer game is not laid out by its first row. */
+export function tableColumns(rows) {
+  const cols = [];
+  for (const r of rows) {
+    let at = 0;
+    for (const f of r.figures) {
+      const i = cols.findIndex(c => c.key === f.key);
+      if (i >= 0) at = i + 1;
+      else cols.splice(at++, 0, { key: f.key, label: f.label });
+    }
+  }
+  return cols;
+}
+
 /* A group's numbers. The broom counts are by side of the turn when there is
  * one -- `plus` narrow, `minus` wide -- and by the thrower's right and left
  * when there is not. `rows` are shotGroups' drawn rows: `mirrored` counts the

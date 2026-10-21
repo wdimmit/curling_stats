@@ -19,7 +19,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   clipText, pickedText, pickerRow, playText, playerRocks, positionChoices, rockClip, sharingText,
-  shotGroups, summaryText,
+  shotGroups, summaryText, tableColumns,
 } from "../core/myshots.mjs";
 import { playUrl, playsUrl, reportUrl } from "../runtime/plays.mjs";
 import { authedFetch, signIn } from "./auth.js";
@@ -194,15 +194,16 @@ function Summary({ group }) {
 }
 
 function RockTable({ rows, clips, open, setOpen, player }) {
-  const heads = rows[0].figures.map(f => f.label);
+  const cols = tableColumns(rows);
   return (
     <table className="rocks">
       <tbody>
         <tr><th>Game</th><th>End</th><th>Rock</th><th>Shot</th>
-            {heads.map(h => <th key={h}>{h}</th>)}<th /></tr>
+            {cols.map(c => <th key={c.key}>{c.label}</th>)}<th /></tr>
         {rows.map(r => {
           const clip = rockClip(r, clips?.[r.sourceId]);
           const shown = clip && open === r.key;
+          const figs = new Map(r.figures.map(f => [f.key, f]));
           return (
             <Fragment key={r.key}>
               <tr>
@@ -210,10 +211,15 @@ function RockTable({ rows, clips, open, setOpen, player }) {
                 <td data-label="End">{r.end}</td>
                 <td data-label="Rock">{r.number}</td>
                 <td data-label="Shot">{r.typeName}</td>
-                {r.figures.map(f => (
-                  <td key={f.key} data-label={f.label} title={f.note || undefined}
-                      className={f.dim ? "dim" : undefined}>{f.value}</td>
-                ))}
+                {cols.map(({ key }) => {
+                  const f = figs.get(key);
+                  // A figure this rock's game was charted too early to have.
+                  if (!f) return <td key={key} className="nofig" />;
+                  return (
+                    <td key={key} data-label={f.label} title={f.note || undefined}
+                        className={f.dim ? "dim" : undefined}>{f.value}</td>
+                  );
+                })}
                 <td className="actions">
                   {clip && (
                     <button className="primary" aria-expanded={shown}
@@ -224,7 +230,7 @@ function RockTable({ rows, clips, open, setOpen, player }) {
               </tr>
               {shown && (
                 <tr className="clip-row">
-                  <td colSpan={heads.length + 5}>
+                  <td colSpan={cols.length + 5}>
                     <ClipPlayer src={`${reportUrl(r.sourceId, player)}/clips/${encodeURIComponent(r.rock)}`}
                                 overlay={clip.overlay} burned={clip.burned} />
                   </td>
