@@ -28,7 +28,9 @@ const authed = token => ({ Authorization: `Bearer ${token}` });
 /* {ok, play}: this person's play on the game, or play null. */
 export const fetchPlay = (sourceId, token) => call(playUrl(sourceId), { headers: authed(token) });
 
-/* {ok, play}. `body` is {path, color, slot}; `path` is the page's own. */
+/* {ok, play}. `body` is {path, color, slot, switched_ends?}; `path` is the
+ * page's own. `switched_ends`, sent only when the person changed them, is the
+ * ends the doubles pair threw the other way round (core playBody). */
 export const savePlay = (sourceId, body, token) => call(playUrl(sourceId), {
   method: "PUT",
   headers: { "Content-Type": "application/json", ...authed(token) },

@@ -9,11 +9,12 @@
  * page loads, which would fetch the Firebase SDK for every viewer of every
  * game (runtime/auth.mjs). */
 import { useEffect, useRef, useState } from "react";
-import { positionChoices, shortOf } from "../core/index.mjs";
+import { playBody, positionChoices, roleText, shortOf, switchNote } from "../core/index.mjs";
 import { accountsOn, signInNow, whoIsSignedIn } from "../runtime/auth.mjs";
 import { clearPlay, fetchPlay, savePlay } from "../runtime/plays.mjs";
 
-export function PlayedDialog({ playing, onClose }) {
+/* `onSaved` reloads the game, which a change to its switched ends re-credits. */
+export function PlayedDialog({ playing, onClose, onSaved }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -25,14 +26,15 @@ export function PlayedDialog({ playing, onClose }) {
 
   return (
     <dialog id="playedDialog" ref={ref} onClose={onClose} aria-labelledby="playedTitle">
-      {playing && <PlayedForm key={playing.opened} playing={playing} onClose={onClose} />}
+      {playing && <PlayedForm key={playing.opened} playing={playing} onClose={onClose}
+                              onSaved={onSaved} />}
     </dialog>
   );
 }
 
 const FAILED = "Could not save. Try again.";
 
-function PlayedForm({ playing, onClose }) {
+function PlayedForm({ playing, onClose, onSaved }) {
   // "checking", then "off" (no accounts here), "slow" (sign-in did not
   // answer), "signin" (nobody), "ready", or "saved".
   const [phase, setPhase] = useState("checking");
@@ -42,6 +44,30 @@ function PlayedForm({ playing, onClose }) {
   const [slot, setSlot] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // A doubles pair that switched order: whether they did (`on`), the ends
+  // where this player threw the other rocks (`flips`, by end identity), and
+  // whether this opening changed either -- saved only then, so a partner
+  // saving their own rocks never unmarks the game's.
+  const ends = playing.ends || [];
+  const switchable = !!playing.format?.swappable && ends.length > 1;
+  const [on, setOn] = useState(false);
+  const [flips, setFlips] = useState(() => new Set());
+  const [touched, setTouched] = useState(false);
+  const fromGame = c => {
+    const held = playing.switched?.[c] || [];
+    setOn(held.length > 0);
+    setFlips(new Set(held));
+    setTouched(false);
+  };
+  const pickColor = c => { setColor(c); fromGame(c); };
+  const flip = id => {
+    setFlips(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    setTouched(true);
+  };
 
   useEffect(() => {
     let live = true;
@@ -56,11 +82,14 @@ function PlayedForm({ playing, onClose }) {
         setCurrent(res.play);
         setColor(res.play.color);
         setSlot(res.play.slot);
+        const held = playing.switched?.[res.play.color] || [];
+        setOn(held.length > 0);
+        setFlips(new Set(held));
       }
       setPhase("ready");
     })();
     return () => { live = false; };
-  }, [playing.sourceId, attempt]);
+  }, [playing.sourceId, playing.switched, attempt]);
 
   const signIn = async () => {
     setError(null);
@@ -81,6 +110,8 @@ function PlayedForm({ playing, onClose }) {
   const few = !!color && shortOf(playing.format).has(color);
   const choices = positionChoices(playing.format, few);
   const picked = choices.some(p => p.slot === slot) ? slot : null;
+  const switching = switchable && on;
+  const flippedNumbers = ends.filter((e, i) => i > 0 && flips.has(e.id)).map(e => e.number);
 
   const save = async ev => {
     ev.preventDefault();
@@ -88,10 +119,19 @@ function PlayedForm({ playing, onClose }) {
     setBusy(true);
     setError(null);
     const who = await whoIsSignedIn();
-    const res = who ? await savePlay(playing.sourceId, { path: location.pathname, color, slot: picked }, who.token)
+    // The first end is never switched: it is what Player A means.
+    const marked = new Set([...flips].filter(id => id !== ends[0]?.id));
+    const body = playBody({ path: location.pathname, color, slot: picked,
+                            touched: switchable && touched, on, flips: marked });
+    const res = who ? await savePlay(playing.sourceId, body, who.token)
       : { ok: false, error: "You are signed out. Close this and sign in again." };
     setBusy(false);
-    if (res.ok) { setCurrent(res.play); setPhase("saved"); }
+    if (res.ok) {
+      setCurrent(res.play);
+      // The game's rocks changed hands: show them as they now are.
+      if ("switched_ends" in body && onSaved) await onSaved();
+      setPhase("saved");
+    }
     else setError(res.error || FAILED);
   };
 
@@ -151,7 +191,7 @@ function PlayedForm({ playing, onClose }) {
       <div className="pl-teams" role="group" aria-label="Your team">
         {["red", "yellow"].map(c => (
           <button key={c} type="button" className={color === c ? "on" : undefined}
-                  aria-pressed={color === c} onClick={() => setColor(c)}>
+                  aria-pressed={color === c} onClick={() => pickColor(c)}>
             <span className={`dot ${c}`} aria-hidden="true" />{playing.teams[c]}
           </button>
         ))}
@@ -161,10 +201,38 @@ function PlayedForm({ playing, onClose }) {
         {choices.map(p => (
           <button key={p.slot} type="button" className={picked === p.slot ? "on" : undefined}
                   aria-pressed={picked === p.slot} onClick={() => setSlot(p.slot)}>
-            <b>{p.label}</b><span>{p.role}</span>
+            <b>{p.label}</b><span>{switching ? `End ${ends[0].number}: ${p.role}` : p.role}</span>
           </button>
         ))}
       </div>
+      {switchable && (
+        <>
+          <label className="pl-switch">
+            <input type="checkbox" checked={on}
+                   onChange={ev => { setOn(ev.target.checked); setTouched(true); }} />
+            <span>We switched during the game</span>
+          </label>
+          {on && (
+            <>
+              <p className="pl-hint">Tap each end where you threw the other rocks.</p>
+              <div className="pl-ends" role="group" aria-label="Ends you threw the other rocks">
+                {ends.map((e, i) => {
+                  const flipped = i > 0 && flips.has(e.id);
+                  const mine = picked ? (flipped ? 3 - picked : picked) : null;
+                  return (
+                    <button key={e.id} type="button" className={flipped ? "flip" : undefined}
+                            aria-pressed={flipped} disabled={i === 0} onClick={() => flip(e.id)}>
+                      <b>End {e.number}</b>
+                      <span>{mine ? roleText(playing.format, mine) : "—"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {color && picked && <p className="pl-hint">{switchNote(on ? flippedNumbers : [])}</p>}
+        </>
+      )}
       {playing.review && current?.graded &&
         <p className="pl-note">You saved this from a chart before. Saving it here reads the
           game as detected, without that chart's grading.</p>}

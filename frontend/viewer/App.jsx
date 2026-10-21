@@ -17,7 +17,7 @@ import {
   identity, isBlank, isGraded, liveGame, nextBlankAfter, chartedNext, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
-  shotClipName, shotClipsOffered, houseImageCaption, houseImageName,
+  shotClipName, shotClipsOffered, houseImageCaption, houseImageName, endChoices, switchedEnds,
 } from "../core/index.mjs";
 import * as store from "../runtime/overridesStore.mjs";
 import * as player from "../runtime/player.mjs";
@@ -673,7 +673,7 @@ export function App({ doc, config, cursor, reload }) {
       {/* Outside <main>: the phone's watch layout hides everything in it
           but #playCard, and a dialog inside a hidden parent never shows. */}
       <FlagDialog flagging={ui.flagging} onClose={closeFlag} />
-      <PlayedDialog playing={ui.playing} onClose={closePlayed} />
+      <PlayedDialog playing={ui.playing} onClose={closePlayed} onSaved={reload} />
       <TeamsDialog naming={ui.naming} onClose={closeNaming} onSaved={reload} />
       <ShotClipDialog clipping={ui.clipping} onClose={closeClipping} />
       {/* Both are opened only from the desk layouts, so the narrow and phone
@@ -827,7 +827,12 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
                 onClick={() => dispatch({ type: "set", patch: { playing: {
                   opened: Date.now(), sourceId: doc.chart.source_id,
                   teams: teamNames(view.game), format: view.format,
-                  review: !!doc.chart.review } } })}>
+                  review: !!doc.chart.review,
+                  // A doubles pair may have switched order: the game's ends,
+                  // and the ones each team is already marked as switching.
+                  ends: endChoices(view),
+                  switched: { red: switchedEnds(view, "red"),
+                              yellow: switchedEnds(view, "yellow") } } } })}>
           I played…
         </button>
         {/* Who played, typed in from here as from the game list: kept on

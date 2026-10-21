@@ -16,7 +16,7 @@ import {
 } from "./line.mjs";
 import { groupOf, positionLabel } from "./report.mjs";
 import { notThrown, typeOf } from "./shots.mjs";
-import { buildGameView } from "./timeline.mjs";
+import { buildGameView, endIdentity } from "./timeline.mjs";
 
 // The report's groups as this page shows them: a guard is a draw that stops
 // short, so the two are one group here. The rocks table still names each.
@@ -44,6 +44,50 @@ export function slotOf(shot, fmt) {
 export const positionChoices = (fmt, short = false) => fmt.positions
   .map((p, i) => ({ slot: i + 1, label: positionLabel(p, fmt), role: roleText(fmt, i + 1, short) }))
   .filter(c => c.role);
+
+/* The ends "I played…" can mark as switched (doubles): each end of the view
+ * by the number it was detected with -- what Source.switched_ends keys on --
+ * and the number it shows. */
+export const endChoices = view => view.ends.map(({ end }) => ({ id: endIdentity(end), number: end.number }));
+
+/* The ends `color`'s pair switched, as the game says: the document's own
+ * roles_swapped (api.game_doc serves Source.switched_ends there), by end
+ * identity. A swap only a chart holds (an end-level override) is the
+ * chart's, not the game's, so it is not one of these. */
+export const switchedEnds = (view, color) => view.ends
+  .filter(({ end }) => end.roles_swapped?.[color] === true)
+  .map(({ end }) => endIdentity(end));
+
+/* "4–7", "2 & 4", "2, 3 & 5": end numbers as a person says them -- a run of
+ * three or more as a range, every other end on its own. */
+export function endsText(ns) {
+  const parts = [];
+  for (let i = 0; i < ns.length;) {
+    let j = i;
+    while (j + 1 < ns.length && ns[j + 1] === ns[j] + 1) j++;
+    if (j - i >= 2) parts.push(`${ns[i]}–${ns[j]}`);
+    else for (let k = i; k <= j; k++) parts.push(String(ns[k]));
+    i = j + 1;
+  }
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} & ${parts[parts.length - 1]}` : parts[0] || "";
+}
+
+/* The line under the switched ends: what saving does, and -- once some are
+ * marked -- which ends they are, by the numbers the game shows. */
+export function switchNote(numbers) {
+  const tail = "Your partner gets the rocks you did not, in every end: saving marks the game for both of you.";
+  if (!numbers.length) return tail;
+  return `You threw the other rocks in end${numbers.length > 1 ? "s" : ""} ${endsText(numbers)}. ${tail}`;
+}
+
+/* What "I played…" saves. The switched ends go only when the person touched
+ * them, so a partner saving their own rocks never unmarks the game's; ticked
+ * off, they go as none, which clears them for both. */
+export function playBody({ path, color, slot, touched, on, flips }) {
+  const body = { path, color, slot };
+  if (touched) body.switched_ends = on ? [...flips].sort((a, b) => a - b) : [];
+  return body;
+}
 
 /* "Dimmit · Skip (7th & 8th)": a play as the report lists it. A slot its
  * team of three had nobody in -- saved before the team was marked -- says

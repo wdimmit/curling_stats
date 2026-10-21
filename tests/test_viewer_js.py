@@ -5211,6 +5211,45 @@ def play(**kw):
 DAY = "d => d.toISOString().slice(5, 10)"
 
 
+class TestSwitchedEndsDialog:
+    """What "I played…" needs to mark the ends a doubles pair switched."""
+
+    def test_ends_text(self):
+        got = run_js("out([[4,5,6,7],[2,4],[2,3],[2,4,5,6],[2,3,5],[3]].map(endsText));")
+        assert got == ["4–7", "2 & 4", "2 & 3", "2 & 4–6", "2, 3 & 5", "3"]
+
+    def test_switch_note(self):
+        got = run_js("out([switchNote([]), switchNote([3]), switchNote([4,5,6,7])]);")
+        tail = ("Your partner gets the rocks you did not, in every end: "
+                "saving marks the game for both of you.")
+        assert got == [tail, "You threw the other rocks in end 3. " + tail,
+                       "You threw the other rocks in ends 4–7. " + tail]
+
+    def test_play_body_sends_switched_ends_only_when_touched(self):
+        got = run_js("const b = {path: '/g/x/', color: 'red', slot: 1};"
+                     "out([playBody({...b, touched: false, on: true, flips: new Set([3])}),"
+                     " playBody({...b, touched: true, on: false, flips: new Set([3])}),"
+                     " playBody({...b, touched: true, on: true, flips: new Set([5, 3])})]);")
+        assert got == [{"path": "/g/x/", "color": "red", "slot": 1},
+                       {"path": "/g/x/", "color": "red", "slot": 1, "switched_ends": []},
+                       {"path": "/g/x/", "color": "red", "slot": 1, "switched_ends": [3, 5]}]
+
+    def test_the_view_says_which_ends_each_team_switched(self):
+        from curling_score import timeline
+        d = timeline.apply_switched_ends(doubles_doc(doubles_shots()), {"yellow": {"ends": [3]}})
+        got = run_js(setup(d) + "const v = buildGameView(state.doc, 0, state.overrides);"
+                     "out([switchedEnds(v, 'red'), switchedEnds(v, 'yellow'), endChoices(v)]);")
+        assert got == [[], [3], [{"id": 3, "number": 3}]]
+
+    def test_a_charts_own_swap_is_not_the_games(self):
+        """The dialog speaks for the game, so a swap only the chart holds (an
+        end-level override) is not one of its switched ends."""
+        got = run_js(setup(doubles_doc(doubles_shots()), {"0.3": {"roles_swapped": {"red": True}}}) +
+                     "const v = buildGameView(state.doc, 0, state.overrides);"
+                     "out(switchedEnds(v, 'red'));")
+        assert got == []
+
+
 class TestPositionChoices:
     def test_fours_by_throwing_order(self):
         got = run_js("out(positionChoices(formatOf({})));")
@@ -5501,7 +5540,7 @@ class TestThePlayedDialog:
         app = self.src("frontend/viewer/App.jsx")
         button = app[app.index('<button id="playedBtn"'):]
         assert "hidden={!config.hosted || !doc.chart?.source_id}" in button[:400]
-        assert "<PlayedDialog playing={ui.playing} onClose={closePlayed} />" in app
+        assert "<PlayedDialog playing={ui.playing} onClose={closePlayed} onSaved={reload} />" in app
 
     def test_sign_in_is_asked_only_once_the_dialog_is_open(self):
         """The dialog is always mounted; its form is not. Asking from the form
@@ -5517,7 +5556,7 @@ class TestThePlayedDialog:
         played = self.src("frontend/viewer/Played.jsx")
         save = played[played.index("const save = async"):played.index("const clear = async")]
         assert "await whoIsSignedIn()" in save
-        assert "{ path: location.pathname, color, slot: picked }" in save
+        assert "playBody({ path: location.pathname, color, slot: picked," in save
 
     def test_the_calls_go_to_the_play_routes(self):
         plays = self.src("frontend/runtime/plays.mjs")

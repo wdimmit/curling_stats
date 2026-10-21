@@ -636,6 +636,21 @@ body.reporting main { display:none; }
 #playedDialog .pl-foot { display: flex; justify-content: flex-end; gap: 8px; }
 #playedDialog .pl-foot button { min-height: 44px; padding: 0 16px; font: inherit; }
 #playedDialog .pl-clear { margin-right: auto; }
+/* A doubles pair that switched order: the checkbox, then the game's ends, each
+   saying which rocks were this player's; an end they threw the other way is
+   picked out in the warning colour, the first end (who is who) dashed. */
+#playedDialog .pl-switch { display: flex; align-items: center; gap: 10px; min-height: 44px;
+  margin-bottom: 6px; cursor: pointer; }
+#playedDialog .pl-switch input { width: 20px; height: 20px; margin: 0; }
+#playedDialog .pl-hint { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+#playedDialog .pl-ends { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px; margin-bottom: 10px; }
+#playedDialog .pl-ends button { min-height: 44px; padding: 6px 8px; font: inherit; text-align: left;
+  display: flex; flex-direction: column; align-items: flex-start; }
+#playedDialog .pl-ends button span { font-size: 13px; color: var(--muted); }
+#playedDialog .pl-ends button.flip { border-color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
+#playedDialog .pl-ends button.flip span { color: var(--warn); }
+#playedDialog .pl-ends button:disabled { border-style: dashed; opacity: 1; cursor: default; }
 
 /* --- "Clip…" dialog ------------------------------------------------------ */
 /* Teams…'s look. The clip is portrait (600x810), so it is held to a
