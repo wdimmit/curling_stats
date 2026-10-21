@@ -73,7 +73,7 @@ export function Users() {
           <Card>
             <p style={{ marginTop: 0 }}>Sign in as an admin to see the accounts.</p>
             {accounts && <button className="primary" onClick={() => signIn().catch(() => {})}>
-              Sign in with Google</button>}
+              Sign in</button>}
           </Card>
         ) : !ready || users.loading ? <p className="muted">Loading…</p>
           : users.error?.status === 403 ? <p className="warn">This page is for admins.</p>

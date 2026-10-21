@@ -205,7 +205,7 @@ export function Mine() {
               {accounts && (
                 <button id="signin" className="primary"
                         onClick={() => signIn().catch(e => setErr(e.code || e.message))}>
-                  Sign in with Google
+                  Sign in
                 </button>
               )}
               {(!accounts || err) && (

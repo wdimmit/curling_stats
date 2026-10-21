@@ -833,6 +833,17 @@ class TestCatalogueAndAdmin:
                 " team who made it can change it.") in privacy
         assert "Charts you make, edits made through a chart's link" not in privacy
 
+    def test_the_terms_and_privacy_say_how_to_sign_in(self, world):
+        c = world["client"]
+        terms = " ".join(c.get("/terms").text.split())
+        privacy = " ".join(c.get("/privacy").text.split())
+        assert "You need to sign in with a Google account to" not in terms
+        assert "sign in, with a Google account or a link emailed to you," in terms
+        assert "You sign in with Google, or with a link emailed to you" in privacy
+        assert "held for up to 10 minutes" in privacy
+        assert "sends the sign-in email" in privacy
+        assert "Google's sign-in keeps you signed in the same way" not in privacy
+
     def test_the_whole_site_is_closed_to_crawlers(self, world):
         r = world["client"].get("/robots.txt")
         assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")

@@ -226,7 +226,7 @@ export function Playlists() {
           <Card>
             <p style={{ marginTop: 0 }}>Sign in as an admin to see the playlists.</p>
             {accounts && <button className="primary" onClick={() => signIn().catch(() => {})}>
-              Sign in with Google</button>}
+              Sign in</button>}
           </Card>
         ) : !ready || (got.loading && !got.data) ? <p className="muted">Loading…</p>
           : got.error?.status === 403 ? <p className="warn">This page is for admins.</p>

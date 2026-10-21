@@ -38,6 +38,8 @@ gcloud firestore indexes composite create --collection-group=flags \
   --field-config=field-path=status,order=ascending --field-config=field-path=created_at,order=descending
 gcloud firestore fields ttls update expires_at --collection-group=rate_limits --enable-ttl
 gcloud firestore fields ttls update expires_at --collection-group=invites --enable-ttl
+# Emailed links opened in another browser are held for ten minutes; this clears the unclaimed ones.
+gcloud firestore fields ttls update expires_at --collection-group=signin_relays --enable-ttl
 # Two maps nothing ever queries. Left alone, Firestore indexes every subfield
 # of both -- thousands of entries per charted game, against a 40,000-per-
 # document ceiling -- purely to pay for writes nobody reads.
@@ -50,13 +52,26 @@ gcloud firestore fields update --collection-group=charts --field-path=overrides_
 # single-field indexes already cover.
 
 # Accounts (optional -- skip all of this and the site simply has none).
-# Identity Platform, the Google provider, and the domains a sign-in may come
+# Identity Platform, the Google and emailed-link providers, and the domains a sign-in may come
 # from. The web API key is a public identifier, not a secret: it belongs in
 # cloudrun.yaml next to GCP_PROJECT, and the Authorized domains list is what
 # actually limits it.
 gcloud services enable identitytoolkit.googleapis.com
 # Then, in the Firebase console for this project:
 #   Authentication > Sign-in method  > enable Google
+#   Authentication > Sign-in method  > enable Email/Password, and inside it
+#     Email link (passwordless sign-in). Firebase requires both. The site
+#     never offers passwords, and the server treats an unverified password
+#     account as nobody, so the code that does so must be deployed first.
+#   Authentication > Settings > User account linking > keep "Link accounts
+#     that use the same email" (the default), i.e. one account per email
+#     address, rather than one per sign-in method.
+#   Project settings > General > Public-facing name > set it: it is the
+#     subject line of the sign-in email.
+#   Optional: Authentication > Templates > Email address verification >
+#     customize the sender domain, if the mail lands in junk.
+#   With billing on (Cloud Run needs it) Firebase sends up to 25,000
+#     sign-in emails a day; the free plan allows 5.
 #   Authentication > Settings > Authorized domains > add chart.example.org,
 #     and localhost too if you want sign-in to work against a local run --
 #     an Identity Platform project does not necessarily have it already

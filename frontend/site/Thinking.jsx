@@ -115,7 +115,7 @@ export function Thinking() {
             <p style={{ marginTop: 0 }}>Thinking time is for signed-in members.</p>
             <button className="primary"
                     onClick={() => signIn().catch(e => setErr(e.code || e.message))}>
-              Sign in with Google</button>
+              Sign in</button>
             {err ? <p className="muted">{err}</p> : null}
           </Card>
         ) : !ready || report.loading ? <p className="muted">Loading…</p>

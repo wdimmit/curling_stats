@@ -291,7 +291,7 @@ function SignIn({ what }) {
     <Card>
       <p>{what}</p>
       {accounts && <button className="primary"
-        onClick={() => signIn().catch(e => setErr(e.code || e.message))}>Sign in with Google</button>}
+        onClick={() => signIn().catch(e => setErr(e.code || e.message))}>Sign in</button>}
       {(!accounts || err) && <p className="muted">{err || "Accounts are not switched on for this site."}</p>}
     </Card>
   );

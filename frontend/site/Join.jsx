@@ -49,7 +49,7 @@ export function Join() {
               <button id="signin" className="primary"
                       onClick={() => signIn().catch(err =>
                         setNote(<Warn>{err.code || err.message}</Warn>))}>
-                Sign in with Google to join
+                Sign in to join
               </button>
             )}
           </div>

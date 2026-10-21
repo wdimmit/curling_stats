@@ -44,17 +44,17 @@
     "frontend/runtime/teams.mjs": "9014e2f9b40520a21e2e3a5c8b3a2f6fab153a6818a1d485ce00a0cedb1b23df",
     "frontend/runtime/wide.mjs": "e48d3c8e7d2d74f9b04574501128588f932c0486fe022b3b3c7c39a82f37994e",
     "frontend/site/Games.jsx": "92cc33b50dad93e901ecc197dd9d439b220cf43aee947779f2eb29c47f40338a",
-    "frontend/site/Join.jsx": "5c8bfdc211a201ddd9296a1ba88f7a233b27ffb7d4200ce8eaa1ff041798b984",
-    "frontend/site/Mine.jsx": "df84f7fafff7759f8258be7b938c6f212c8fc91f1165822692af036d30100eb5",
-    "frontend/site/Playlists.jsx": "08149edc4fb9ae0ec24caf2185e74a25d8ee9c7ba993db509614230eef76f7b2",
-    "frontend/site/Practice.jsx": "f3c7523b1156f960f62b2371576c033bd8efdf6d198aa2ff78f911ec2d255567",
+    "frontend/site/Join.jsx": "c9851595ec967fd5f0462a14dd94d468ac83e98608bd8698893109dcc4e306d4",
+    "frontend/site/Mine.jsx": "fc72a340257044ce426a7111c203154bdf128005bb1b03edea40a328cee39697",
+    "frontend/site/Playlists.jsx": "77901a9d7ed9997b64fdac435a8c8cafb1083803c0fff332f9ec5830fe020aa9",
+    "frontend/site/Practice.jsx": "8082189ffe0675d35d8b91ecfb97e83f48c61a60b2b1e0db19b0e1249cb31a3a",
     "frontend/site/ShotCharts.jsx": "8d74e5b4bb19b7ef19a2668ad8944964465987a4b16f79b02470aeba15c5ab79",
-    "frontend/site/Shots.jsx": "7bd518d9fd9f133dac2a6cef78d124bfd5bad1048722755e362ac57f31ff1e3a",
+    "frontend/site/Shots.jsx": "742a6545af22ff744e2959887d54ebe21837738731073f7027f427a7afd6523b",
     "frontend/site/SignIn.jsx": "8bb867e41e074c16f9f27551a998be2f502f40cc9481ed866275ed20cfab4475",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
     "frontend/site/Submit.jsx": "f008d1f962b67659f42299174175650bb51b96df910d2dbf04c1f6803df18114",
-    "frontend/site/Thinking.jsx": "7940c5baa0aa8e51eeb432f88076cf1e4d97ecb49826e615976f2fbc679dc498",
-    "frontend/site/Users.jsx": "77da20ee4d08f05e8588ac3fff6f0839b4ece63ca9e63dfb8ff5f5818f5d7186",
+    "frontend/site/Thinking.jsx": "ec3476670ca009ded4be4ca31d328a671e90bb0405db310cf0656c4778fbf00a",
+    "frontend/site/Users.jsx": "b433c54cd4bd2353e6182d4fe2abba55a8955cf77e3098ee31204dd2cb82687b",
     "frontend/site/auth.js": "63015110d0953a09213fc8553961d61cdfe2a99c308e41d928f4c0a04e6753b6",
     "frontend/site/clip.jsx": "a1f67b0d0b7ce4b911ee273074eb72dc9c24cc240723665690b1662ea7dba03c",
     "frontend/site/fmt.js": "30fe2055592328491abedc9a2537ba47777d2a11f26d0165c9585192272f1559",
@@ -87,7 +87,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "5332eb1d554a1f5c7e3233f42d2698a746d821cd5ef9a064d6e0f0a3a0b6be1a",
+    "src/curling_score/service/static/site.js": "50be430d3fccc75ec0210142b6b78f1c42e9aa7aaa24aeb2ac0ff59b37d49f03",
     "src/curling_score/viewer/app.js": "452ca202dd03aba839e33c92b68ddb1fda72c91491552605ee235943296d05cc"
   }
 }

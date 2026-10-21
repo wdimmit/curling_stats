@@ -132,6 +132,11 @@ class TestTheDialogIsWiredRight:
                       "what your teammates see", "Send again", "Use a different address"):
             assert words in d, words
 
+    def test_no_card_says_google_only(self):
+        for name in ("Mine", "Shots", "Join", "Thinking", "Practice", "Users", "Playlists"):
+            assert "Sign in with Google" not in self.src(f"frontend/site/{name}.jsx"), name
+        assert "Sign in to join" in self.src("frontend/site/Join.jsx")
+
     def test_a_dismissal_is_not_an_error_in_the_header(self):
         ui = self.src("frontend/site/ui.jsx")
         chip = ui[ui.index("export function IdentityChip"):ui.index("const SIGNED_IN_ONLY")]
