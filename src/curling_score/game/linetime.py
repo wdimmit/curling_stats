@@ -275,14 +275,20 @@ PATH_SEED_Y = 21.5
 PATH_START_GAP_S = 1.0          # a start whose next sighting is over a second
                                  # later is a lone false detection (a sweeper's
                                  # broom, a glint), not the rock
-# A start where the rock comes into this camera's view has to be carried this
-# far down the sheet, or the next is tried: Knock the Dust Off 10/17 D1 S1 end
-# 4 rock 9 (f_0k34) started on a sweeper's broom head at 21.9 m, which drifted
-# 0.6 m across and 0.7 m down in 7 s while the rock, first seen a second
-# later, ran on to the house. Only there: further down the sheet the
-# thrower's head, rising from the slide, reads as a stone running on, so a
-# start anywhere keeps the first, as does a rock no start carries this far
-# (a heavy hog stopping soon after it is seen).
+# A start where the rock comes into this camera's view has to come on down the
+# sheet as the rock does -- PATH_START_RUN_M within its first PATH_START_S --
+# and be carried PATH_MIN_RUN_M, or the next is tried. Knock the Dust Off 10/17
+# D1 S1 end 4 rock 9 (f_0k34) started on a sweeper's broom head at 21.9 m,
+# which drifted 0.6 m across and 3 cm down in 3 s while the rock, first seen a
+# second later beside it, ran on to the house; across the gaps that followed,
+# the broom head's path was carried on to other false sightings 6 m down the
+# sheet, so the distance alone did not tell it from the rock (1.2 m in its
+# first second). Only there: further down the sheet the thrower's head, rising
+# from the slide, reads as a stone running on, so a start anywhere keeps the
+# first, as does a rock no start carries this far (a heavy hog stopping soon
+# after it is seen).
+PATH_START_S = 1.0
+PATH_START_RUN_M = 0.5
 PATH_MIN_RUN_M = 2.0
 # A stone of the rock's colour seen well down-sheet of it, in a frame the rock
 # was seen in, cannot be the rock; seen at one spot twice, 0.4 s apart, it is
@@ -365,13 +371,20 @@ def _follow(times, per, is_seed, near, max_gap_s, others):
     return path
 
 
+def _comes_on(path) -> bool:
+    """Does a path from where the rock enters view move as the rock does?"""
+    later = [d for d in path if d[0] - path[0][0] >= PATH_START_S - 1e-6]
+    return (bool(later) and path[0][2] - later[0][2] >= PATH_START_RUN_M
+            and path[0][2] - min(d[2] for d in path) >= PATH_MIN_RUN_M)
+
+
 def chain(times, per, fit: Fit, others=None):
     """The rock's path to rest as [(y, x)], started from the detection nearest
     the fitted line -- first where the rock enters this camera's view, then
     anywhere -- and moved on to the next candidate when a start leads nowhere
-    (a lone false detection) or, where the rock enters, goes nowhere down the
-    sheet (a sweeper's broom; `PATH_MIN_RUN_M`). ``others`` are the other
-    colour's points, frame for frame, where there are any."""
+    (a lone false detection) or, where the rock enters, does not run down the
+    sheet as the rock does (a sweeper's broom; `_comes_on`). ``others`` are
+    the other colour's points, frame for frame, where there are any."""
     if others is None:
         others = [[] for _ in per]
     near = lambda d: abs(d[1] - fit.x(d[2]))
@@ -387,7 +400,7 @@ def chain(times, per, fit: Fit, others=None):
                 continue
             if len(got) < 5:
                 continue
-            if rule is entering and got[0][2] - min(d[2] for d in got) >= PATH_MIN_RUN_M:
+            if rule is entering and _comes_on(got):
                 return [(d[2], d[1]) for d in got]
             first = first or got
     return [(d[2], d[1]) for d in first] if first else []

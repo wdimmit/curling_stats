@@ -324,6 +324,26 @@ class TestChain:
         path = L.chain(times, per, self.FIT)
         assert path[0][0] == pytest.approx(21.9) and path[-1][0] < 5.0
 
+    def test_nor_one_carried_down_the_sheet_only_across_gaps(self):
+        # The reprocess of the same rock: the broom head's path, lost after
+        # 3 s, was carried across the gaps to false sightings at 18.4 m and
+        # 15.6 m -- 6 m "down the sheet" -- having come 3 cm in its first second.
+        times = [i * 0.2 for i in range(80)]
+        per = []
+        broom_x = lambda t: self.FIT.x(21.8) - 0.15 * min(t, 3.0)
+        for t in times:
+            dets = [(t, broom_x(t), 21.8, 0, 0, 0.8)] if t <= 3.0 else []
+            if abs(t - 8.4) < 0.01:
+                dets.append((t, broom_x(3.0), 18.6, 0, 0, 0.8))
+            if 12.0 - 0.01 < t < 12.4:
+                dets.append((t, broom_x(3.0), 15.6, 0, 0, 0.6))
+            y = 21.9 - 2.0 * (t - 1.2) + 0.05 * (t - 1.2) ** 2
+            if t >= 1.2 and y > 1.0:
+                dets.append((t, self.FIT.x(y), y, 0, 0, 0.9))
+            per.append(dets)
+        path = L.chain(times, per, self.FIT)
+        assert path[0][0] == pytest.approx(21.9) and path[-1][0] < 5.0
+
     def test_only_where_the_rock_comes_into_view(self):
         """Further down the sheet the thrower's head, rising from the slide,
         reads as a stone running on (YHiOrlVjiaw e4 r14, 17.1 m to 14.9 m):
