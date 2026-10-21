@@ -139,3 +139,26 @@ class TestTheDialogIsWiredRight:
 
     def test_a_new_name_redraws_the_header(self):
         assert "profileVersion" in self.src("frontend/site/useAuth.js")
+
+
+class TestTheLandingPage:
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def page(self):
+        return " ".join((self.ROOT / "frontend/site/SignIn.jsx").read_text().split())
+
+    def test_this_browser_finishes_only_its_own_request(self):
+        p = self.page()
+        assert "requestIdOf(location.href)" in p and "recall(" in p
+        assert 'history.replaceState(null, "", "/signin")' in p
+        assert "safeNext(" in p
+
+    def test_another_browser_shows_a_code_and_never_uses_the_link_on_load(self):
+        p = self.page()
+        assert "relayLink(location.href)" in p
+        assert p.index("relayLink(location.href)") < p.index("Sign in on this screen instead")
+        for words in ("Almost there", "Type this code where you asked to sign in:",
+                      "Works for 10 minutes.", "Sign in on this screen instead",
+                      "This link has run out or has already been used.",
+                      "That isn't the address the link was sent to."):
+            assert words in p, words

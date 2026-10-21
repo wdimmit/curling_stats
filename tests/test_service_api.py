@@ -792,6 +792,15 @@ class TestCatalogueAndAdmin:
                       "Most lopsided", "Games you played"):
             assert words in bundle, f"{words!r} is in no page"
 
+    def test_the_signin_page_loads(self, world):
+        """Where an emailed link lands. On its own, not in the loop above,
+        whose bundle words stop at the first one missing."""
+        c = world["client"]
+        body = c.get("/signin?r=AbCdEfGhIjKlMnOpQrStUv&oobCode=x&mode=signIn").text
+        assert 'data-page="signin"' in body
+        assert 'src="/static/site.js"' in body
+        assert "Almost there" in c.get("/static/site.js").text
+
     def test_the_terms_and_privacy_pages_load_without_a_script(self, world):
         """Plain pages: what the site promises has to read whatever else broke.
         Each names who to write to and links the other."""
@@ -841,7 +850,7 @@ class TestCatalogueAndAdmin:
         import re
         c = world["client"]
         for path in ("/", "/games", "/mine", "/join/i_x", "/thinking", "/shots", "/users",
-                     "/playlists"):
+                     "/playlists", "/signin"):
             for src in re.findall(r'src="(/static/[^"]+)"', c.get(path).text):
                 assert c.get(src).status_code == 200, f"{path} asks for {src}"
 

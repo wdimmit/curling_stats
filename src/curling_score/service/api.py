@@ -995,6 +995,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # rendered into the HTML, so there is nothing here to escape.
         return page("join.html")
 
+    # Where an emailed sign-in link lands. Like the invite, everything the
+    # link carries is read by the page itself (site/SignIn.jsx), and served
+    # whether accounts are on or not: the page says which.
+    @app.get("/signin", response_class=HTMLResponse)
+    def signin_page():
+        return page("signin.html")
+
     @app.get("/static/{name}")
     def static_asset(name: str, request: Request):
         if name not in STATIC_ASSETS:

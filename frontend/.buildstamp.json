@@ -50,6 +50,7 @@
     "frontend/site/Practice.jsx": "f3c7523b1156f960f62b2371576c033bd8efdf6d198aa2ff78f911ec2d255567",
     "frontend/site/ShotCharts.jsx": "8d74e5b4bb19b7ef19a2668ad8944964465987a4b16f79b02470aeba15c5ab79",
     "frontend/site/Shots.jsx": "7bd518d9fd9f133dac2a6cef78d124bfd5bad1048722755e362ac57f31ff1e3a",
+    "frontend/site/SignIn.jsx": "8bb867e41e074c16f9f27551a998be2f502f40cc9481ed866275ed20cfab4475",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
     "frontend/site/Submit.jsx": "f008d1f962b67659f42299174175650bb51b96df910d2dbf04c1f6803df18114",
     "frontend/site/Thinking.jsx": "7940c5baa0aa8e51eeb432f88076cf1e4d97ecb49826e615976f2fbc679dc498",
@@ -57,7 +58,7 @@
     "frontend/site/auth.js": "63015110d0953a09213fc8553961d61cdfe2a99c308e41d928f4c0a04e6753b6",
     "frontend/site/clip.jsx": "a1f67b0d0b7ce4b911ee273074eb72dc9c24cc240723665690b1662ea7dba03c",
     "frontend/site/fmt.js": "30fe2055592328491abedc9a2537ba47777d2a11f26d0165c9585192272f1559",
-    "frontend/site/main.jsx": "098a2f13201bdbb76fe791fc5d385ead26bfdf18994916ac35d2bc91ca4c389c",
+    "frontend/site/main.jsx": "1e495e2ff1834d8c1948a0bb537b0acddc5c18e9411134b2e1469e9790426601",
     "frontend/site/signInDialog.js": "e96731f778fe752d6fc727bc4a863242a260f448284cc712ffa1d6119f1125d6",
     "frontend/site/signinState.mjs": "9c87f473819b960a2ef9dc340f27cc0ba311f188cce62c8497062028cad0b657",
     "frontend/site/ui.jsx": "c4d540c6839e8f6504070ae1fdb9058043fb79e9890da7094d6fa079af88da5e",
@@ -86,7 +87,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "5d7830196360f33a47a7cf2b7cf013ada74389071e5dd0295d58825fd09540b1",
+    "src/curling_score/service/static/site.js": "5332eb1d554a1f5c7e3233f42d2698a746d821cd5ef9a064d6e0f0a3a0b6be1a",
     "src/curling_score/viewer/app.js": "452ca202dd03aba839e33c92b68ddb1fda72c91491552605ee235943296d05cc"
   }
 }
