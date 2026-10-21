@@ -26,6 +26,7 @@ import functools
 import numpy as np
 
 from curling_score.detect import longview
+from curling_score.fpframes import record as fp_record
 from curling_score.harvest import sidepool
 
 # Class indices as `train.dataset.CLASSES` orders them.
@@ -73,6 +74,7 @@ def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
     x, _y, w, h = view.rect
     tracks: dict[int, list] = {}
 
+    rec = fp_record.active()
     crops = []
     for frame in frames:
         arr = np.asarray(frame)
@@ -102,12 +104,16 @@ def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
                             res.boxes.conf.cpu().numpy()):
             if int(c) != want:
                 continue
-            bx0, _by0, bx1, by1 = (float(v) for v in b)
+            bx0, by0, bx1, by1 = (float(v) for v in b)
             edge_row = by1 + lo                    # crop rows -> view rows
             body_px = bx1 - bx0
             expect = view.stone_width_at(edge_row,
                                          longview.STONE_WIDTH_AT_HOG_PX)
             if expect <= 1 or not (WIDTH_TOL[0] <= body_px / expect <= WIDTH_TOL[1]):
+                if rec is not None and expect > 1:
+                    rec.side_width(view, t, (bx0, by0 + lo, bx1, by1 + lo), float(cf),
+                                   body_px / expect, color=color, pass_="hog",
+                                   top_estimated=False)
                 continue
             cx = (bx0 + bx1) / 2
             key = int(cx // 120)      # a stone never moves 120 px sideways
