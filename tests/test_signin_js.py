@@ -94,3 +94,48 @@ class TestRemembering:
     def test_send_again_keeps_the_request(self):
         assert js(f"S.resend({self.P}, 5000)") == \
             {"email": "jo@x.org", "id": "AbCdEfGhIjKlMnOpQrStUv", "next": "/mine", "at": 5000}
+
+
+class TestTheDialogIsWiredRight:
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def src(self, rel):
+        return (self.ROOT / rel).read_text()
+
+    def test_firebase_still_lives_only_in_auth_js(self):
+        assert "gstatic" not in self.src("frontend/site/signInDialog.js")
+        assert "gstatic" not in self.src("frontend/site/signinState.mjs")
+
+    def test_the_dialog_is_loaded_only_when_someone_signs_in(self):
+        auth = self.src("frontend/site/auth.js")
+        assert 'import("./signInDialog.js")' in auth
+        assert 'from "./signInDialog.js"' not in auth
+        for rel in ("frontend/viewer", "frontend/runtime", "frontend/core", "frontend/site"):
+            for p in (self.ROOT / rel).rglob("*"):
+                if p.suffix in (".js", ".mjs", ".jsx") and p.name != "auth.js":
+                    assert 'signInDialog.js"' not in p.read_text(), p
+
+    def test_the_link_is_sent_to_come_back_to_signin_and_nothing_else(self):
+        auth = " ".join(self.src("frontend/site/auth.js").split())
+        assert "handleCodeInApp: true" in auth
+        assert "continueUrl(location.origin," in auth
+
+    def test_closing_the_dialog_looks_like_a_shut_popup(self):
+        assert '"auth/popup-closed-by-user"' in self.src("frontend/site/signInDialog.js")
+
+    def test_the_chooser_says_both_ways_in(self):
+        d = self.src("frontend/site/signInDialog.js")
+        for words in ("Continue with Google", "Email me a link", "Check your email",
+                      "If the link opens in another app, it shows a code. Type it here:",
+                      "That code isn't right.", "That code has run out — send a new link.",
+                      "This address signs in with an emailed link.", "Your name",
+                      "what your teammates see", "Send again", "Use a different address"):
+            assert words in d, words
+
+    def test_a_dismissal_is_not_an_error_in_the_header(self):
+        ui = self.src("frontend/site/ui.jsx")
+        chip = ui[ui.index("export function IdentityChip"):ui.index("const SIGNED_IN_ONLY")]
+        assert '"auth/popup-closed-by-user"' in chip
+
+    def test_a_new_name_redraws_the_header(self):
+        assert "profileVersion" in self.src("frontend/site/useAuth.js")

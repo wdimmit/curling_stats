@@ -22,7 +22,10 @@ export function IdentityChip() {
       ) : (
         <button disabled={busy} onClick={async () => {
           setBusy(true);
-          try { await signIn(); } catch (e) { setErr(` ${e.code || e.message}`); }
+          // Closing the chooser is changing your mind, not an error.
+          try { await signIn(); } catch (e) {
+            if (e.code !== "auth/popup-closed-by-user") setErr(` ${e.code || e.message}`);
+          }
           finally { setBusy(false); }
         }}>Sign in</button>
       )}
