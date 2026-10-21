@@ -10,17 +10,21 @@
  *
  * Only the browser that asked uses the link on load. Mail scanners open links
  * before anybody taps them; one that runs this page gets a code nobody will
- * type, and the link still works for the person it was sent to.
+ * type, and the link still works for the person it was sent to. Being
+ * signed in here changes none of that: a member signed in on the phone may
+ * have asked on a computer, which is waiting for the code (signinState
+ * landing).
  */
 import { useEffect, useRef, useState } from "react";
-import { askName, finishWithLink, isLink, needsName, relayLink, signIn } from "./auth.js";
-import { cleanEmail, formatCode, recall, requestIdOf, safeNext } from "./signinState.mjs";
+import { askName, emailLinkOn, finishWithLink, isLink, needsName, relayLink,
+         signIn } from "./auth.js";
+import { EMAIL_OFF, cleanEmail, emailFailed, failed, formatCode, landing, recall,
+         signInTrouble } from "./signinState.mjs";
 import { useAuthUser } from "./useAuth.js";
 import { Card, Header, Warn } from "./ui.jsx";
 
 const WRONG_ADDRESS = "That isn't the address the link was sent to.";
 const BUSY = "Too many tries. Try again later.";
-const failed = (what, e) => `${what}${e?.code ? ` (${e.code})` : ""}. Try again.`;
 
 // Firebase's words for a link that has been used, or has run out.
 const DEAD = new Set(["auth/invalid-action-code", "auth/expired-action-code"]);
@@ -48,7 +52,7 @@ async function finish(email, next, back, setView) {
   } catch (e) {
     setView(DEAD.has(e?.code) ? dead()
       : e?.code === "auth/invalid-email" ? { is: "here", say: WRONG_ADDRESS }
-      : { ...back, say: failed("Couldn't sign in", e) });
+      : { ...back, say: emailFailed("Couldn't sign in", e) });
     return;
   }
   // Spent. Off the address bar before anything else can fail, so neither a
@@ -61,21 +65,17 @@ async function finish(email, next, back, setView) {
 
 /* What this visit is, decided once the SDK has said who is here. */
 async function arrive(user, accounts, setView) {
-  if (!accounts) { setView({ is: "off" }); return; }
-  const link = await isLink(location.href);
   const pending = recall(store());
-  if (user) {
-    // Nobody to sign in. The link is left unused, as it came.
-    location.replace(link ? safeNext(pending?.next) : "/");
-    return;
-  }
-  if (!link) { setView({ is: "plain" }); return; }
+  const to = landing({ accounts, signedIn: !!user, isLink: await isLink(location.href),
+                       pending, href: location.href });
+  if (to.is === "off" || to.is === "plain") { setView({ is: to.is }); return; }
+  // Nobody to sign in: the link, if any, is left unused, as it came.
+  if (to.is === "go") { location.replace(to.next); return; }
 
   // This browser asked: finish with the address it stored when it did, and
   // no other. The link's own id is only what picks this path.
-  const id = requestIdOf(location.href);
-  if (id !== null && pending?.id === id) {
-    await finish(pending.email, safeNext(pending.next), { is: "failed" }, setView);
+  if (to.is === "finish") {
+    await finish(pending.email, to.next, { is: "failed" }, setView);
     return;
   }
 
@@ -107,10 +107,7 @@ export function SignIn() {
 
   function chooser() {
     setNote("");
-    signIn().then(() => location.replace("/"), e => {
-      // Closing the chooser is changing your mind, not an error.
-      if (e?.code !== "auth/popup-closed-by-user") setNote(e?.code || e?.message);
-    });
+    signIn().then(() => location.replace("/"), e => setNote(signInTrouble(e)));
   }
 
   // The address they type here, and only that: Firebase checks it is the one
@@ -129,7 +126,8 @@ export function SignIn() {
       {note && <Warn>{note}</Warn>}
     </>
   );
-  const instead = (
+  // Not for somebody signed in already: that would be switching accounts.
+  const instead = !user && (
     <p>
       <button type="button" className="linky" onClick={() => setView({ is: "here" })}>
         Sign in on this screen instead
@@ -151,7 +149,9 @@ export function SignIn() {
       body = (
         <>
           <h2>Sign in</h2>
-          <p className="muted">With Google, or with a link emailed to you.</p>
+          <p className="muted">
+            {emailLinkOn() ? "With Google, or with a link emailed to you." : "With Google."}
+          </p>
           {signInButton}
         </>
       );
@@ -169,7 +169,8 @@ export function SignIn() {
       body = <h2>Signing you in…</h2>;
       break;
     case "failed":
-      body = <><h2>Sign in</h2><Warn>{view.say}</Warn>{again}</>;
+      // Firebase refusing emailed links outright will not mend on a reload.
+      body = <><h2>Sign in</h2><Warn>{view.say}</Warn>{view.say !== EMAIL_OFF && again}</>;
       break;
     case "relaying":
       body = <><h2>Almost there</h2><p className="muted">Getting your code…</p></>;
@@ -181,6 +182,8 @@ export function SignIn() {
           <p>Type this code where you asked to sign in:</p>
           <p className="code" id="code">{formatCode(view.code)}</p>
           <p className="muted">Works for 10 minutes.</p>
+          {/* Somebody who typed a member's address may ask them for it. */}
+          <p>Didn't ask to sign in? Close this page, and never read this code to anyone.</p>
           {instead}
         </>
       );

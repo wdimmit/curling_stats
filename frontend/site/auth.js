@@ -43,6 +43,9 @@ const listeners = new Set();
 let pv = 0;
 // The last link this page sent, for a browser whose storage keeps nothing.
 let sent = null;
+// Whether the site offers an emailed link beside Google (api.py
+// Settings.email_link_signin): off until Firebase will send them.
+let emailLink = false;
 
 function announce() {
   for (const fn of listeners) { try { fn(user, ready); } catch (err) { console.error(err); } }
@@ -62,6 +65,7 @@ const started = (async () => {
                                            projectId: cfg.projectId }));
     if (cfg.emulator)
       sdk.connectAuthEmulator(auth, `http://${cfg.emulator}`, { disableWarnings: true });
+    emailLink = !!cfg.emailLink;
     // The first answer is the session restored from storage: only then is it
     // known that nobody is signed in, and worth offering the code box back.
     let first = true;
@@ -85,6 +89,9 @@ export function onUser(fn) { listeners.add(fn); fn(user, ready); return () => li
 export const enabled = () => auth !== null;
 export const currentUser = () => user;
 export const whenReady = () => started;
+/** Whether "Email me a link" is offered. Without it the chooser is Google
+ * alone; /signin still finishes a link that was sent while it was on. */
+export const emailLinkOn = () => auth !== null && emailLink;
 
 export const profileVersion = () => pv;
 
@@ -140,11 +147,13 @@ function store() {
 /** Email a sign-in link, and remember the request: {email, id, next, at}.
  *
  * Asking again for the same address while the request is fresh keeps its id,
- * so the link in the first email still works; `next` is this page either way. */
+ * so the link in the first email still works; `next` is this page either way,
+ * as safeNext has it. Asked for on /signin, that is "/": the address there
+ * can be a link, oobCode and all, which has no business in storage. */
 export async function sendLink(email) {
   if (!auth || !fb) throw new Error("accounts are not configured");
   const now = Date.now();
-  const next = location.pathname + location.search + location.hash;
+  const next = safeNext(location.pathname + location.search + location.hash);
   const prior = recall(store()) ?? sent;
   const pending = prior && prior.email === email && isFresh(prior, now)
     ? { ...resend(prior, now), next }
@@ -235,15 +244,18 @@ export async function askName() {
  * module, so it never sees Firebase and the import runs one way. */
 function api() {
   return { signInWithGoogle, sendLink, claimCode, finishWithLink, onUser, needsName,
-           setName, pending: () => recall(store()) };
+           setName, currentUser, emailLink: emailLinkOn(),
+           pending: () => recall(store()) };
 }
 
 /* A phone that drops the tab while its person is in the mail app reloads it
  * on the way back. If the request it was waiting on is still fresh and was
  * made on this page, the code box comes back. The page's own action (the
  * Chart or Join that asked for a sign-in) went with the reload, so once
- * signed in the page loads again, signed in. */
+ * signed in the page loads again, signed in. Not while emailed links are
+ * off: the chooser offers none to wait on. */
 function resumeWaiting() {
+  if (!emailLinkOn()) return;
   try {
     const pending = recall(store());
     if (!isFresh(pending, Date.now())) return;

@@ -12,17 +12,18 @@
  * auth.js hands it (auth.js api()), and the small decisions -- is this an
  * address, is that a code -- are signinState's.
  *
- * Three views. Choose: Google, or an address to email a link to. Waiting:
- * for that link, with a box for the code the link shows when it opens in
- * some other browser (a mail app's own, often, on a phone). Name: asked once,
- * after this tab finishes a link sign-in for an account that has none. */
-import { cleanEmail, isFresh, parseCode } from "./signinState.mjs";
+ * Three views. Choose: Google, or an address to email a link to -- the
+ * address only once the site has switched emailed links on (api.emailLink),
+ * and until then Google alone. Waiting: for that link, with a box for the
+ * code the link shows when it opens in some other browser (a mail app's own,
+ * often, on a phone). Name: asked once, after this tab finishes a link
+ * sign-in for an account that has none. */
+import { cleanEmail, emailFailed, failed, isFresh, parseCode } from "./signinState.mjs";
 
 const WRONG = "That code isn't right.";
 const GONE = "That code has run out — send a new link.";
 const LINKED = "This address signs in with an emailed link.";
 const BUSY = "Too many tries. Try again later.";
-const failed = (what, e) => `${what}${e?.code ? ` (${e.code})` : ""}. Try again.`;
 
 // A Google popup shut, or replaced by another: the dialog stays, so they can
 // switch to the email instead. Only closing the dialog itself is a no.
@@ -103,7 +104,8 @@ let showing = null;
 /** Resolve with the User once signed in, by Google or by link, and after the
  * name step when this tab finished the link. Reject, as a shut popup does,
  * when the dialog is closed. `resume` is a remembered request: start at the
- * code box (auth.js resumeWaiting). */
+ * code box (auth.js resumeWaiting). Opened without one, it starts there all
+ * the same for a request still worth waiting on, with nobody signed in. */
 export function openSignIn(api, { resume } = {}) {
   showing ??= run(api, resume ? "wait" : "choose", resume)
     .finally(() => { showing = null; });
@@ -130,6 +132,10 @@ function run(api, view, resumed = null) {
     // A code is being traded for its link: the dialog is held open meanwhile,
     // or a close would reject a sign-in that then goes on to happen.
     let finishing = false;
+    // Closed during the trade all the same: a second Escape, or Android's
+    // Back, closes a dialog that refused the first. The trade goes on, and
+    // its outcome is the answer once it is done.
+    let gone = false;
     // The User, once this tab has finished a link; for the name step alone
     // there is nothing to hand back, but they are signed in.
     let signedIn = view === "name" ? true : null;
@@ -145,7 +151,9 @@ function run(api, view, resumed = null) {
     };
     d.addEventListener("cancel", ev => { if (finishing) ev.preventDefault(); });
     d.addEventListener("close", () => {
-      if (signedIn) end(true, signedIn); else end(false, closed());
+      if (finishing) gone = true;
+      else if (signedIn) end(true, signedIn);
+      else end(false, closed());
       d.remove();
     });
     x.addEventListener("click", () => { if (!finishing) d.close(); });
@@ -176,13 +184,12 @@ function run(api, view, resumed = null) {
     function choose(email = "") {
       const google = h("button", { type: "button", class: "si-primary si-wide" },
                        "Continue with Google");
-      const input = h("input", { id: "signInDialogEmail", type: "email", autocomplete: "email",
-                                 required: "" });
-      input.value = email;
+      // Until the site switches emailed links on (auth.js emailLinkOn), the
+      // chooser is Google alone: offered before Firebase will send them,
+      // every "Email me a link" would fail.
+      const input = api.emailLink ? h("input", { id: "signInDialogEmail", type: "email",
+                                                 autocomplete: "email", required: "" }) : null;
       const say = sayLine();
-      const form = h("form", {},
-        h("label", { for: "signInDialogEmail" }, "Email"), input,
-        h("button", { type: "submit", class: "si-wide" }, "Email me a link"));
 
       // Only this button waits on the popup. Firebase takes some seconds to
       // notice a popup was shut, and the email is the way out meanwhile; if it
@@ -195,14 +202,20 @@ function run(api, view, resumed = null) {
         api.signInWithGoogle().then(u => end(true, u), e => {
           google.disabled = false;
           if (e?.code === "auth/account-exists-with-different-credential") {
-            input.value = e.customData?.email || input.value;
+            if (input) input.value = e.customData?.email || input.value;
             say.textContent = LINKED;
-            input.focus();
+            input?.focus();
           } else if (!SHUT.has(e?.code)) {
             say.textContent = failed("Couldn't sign in with Google", e);
           }
         });
       });
+      if (!input) { show(google, title("Sign in"), google, say); return; }
+
+      input.value = email;
+      const form = h("form", {},
+        h("label", { for: "signInDialogEmail" }, "Email"), input,
+        h("button", { type: "submit", class: "si-wide" }, "Email me a link"));
       form.addEventListener("submit", async ev => {
         ev.preventDefault();
         const to = cleanEmail(input.value);
@@ -214,7 +227,7 @@ function run(api, view, resumed = null) {
           wait();
         } catch (e) {
           busy(false);
-          say.textContent = failed("Couldn't send the link", e);
+          say.textContent = emailFailed("Couldn't send the link", e);
         }
       });
 
@@ -238,28 +251,45 @@ function run(api, view, resumed = null) {
           h("button", { type: "submit", class: "si-primary" }, "Sign in")));
       const again = h("button", { type: "button", class: "si-link" }, "Send again");
       const other = h("button", { type: "button", class: "si-link" }, "Use a different address");
+      // A link claimed whose finish failed for a reason a second try might
+      // mend (the network, mostly). Claiming took it off the server for good,
+      // so the next Sign in finishes this one rather than claim again.
+      let held = null;
 
       form.addEventListener("submit", async ev => {
         ev.preventDefault();
         const typed = parseCode(code.value);
-        if (!typed) { tell(WRONG); code.focus(); return; }
+        if (!typed && !held) { tell(WRONG); code.focus(); return; }
         tell("");
         busy(true);
         finishing = true;
         x.disabled = true;
         let said = "";
         try {
-          const got = await api.claimCode(pending.id, typed);
+          if (!held) {
+            const got = await api.claimCode(pending.id, typed);
+            if (got.link) held = got.link;
+            else said = { wrong: WRONG, gone: GONE, busy: BUSY }[got.error] ?? WRONG;
+          }
           // With the address this browser stored when it asked, never one the
           // link brings or anyone types after the claim: that is what makes
           // a stranger's code useless here.
-          if (got.link) signedIn = await api.finishWithLink(pending.email, got.link);
-          else said = { wrong: WRONG, gone: GONE, busy: BUSY }[got.error] ?? WRONG;
+          if (held) {
+            signedIn = await api.finishWithLink(pending.email, held);
+            held = null;
+          }
         } catch (e) {
-          said = DEAD.has(e?.code) ? GONE : failed("Couldn't sign in", e);
+          if (DEAD.has(e?.code)) held = null;
+          said = DEAD.has(e?.code) ? GONE : emailFailed("Couldn't sign in", e);
         }
         finishing = false;
         x.disabled = false;
+        // Closed while that went on: the dialog has gone, so whatever came of
+        // it is the answer now, and the name waits for the next link sign-in.
+        if (gone) {
+          if (signedIn) end(true, signedIn); else end(false, closed());
+          return;
+        }
         if (signedIn) {
           if (await api.needsName()) name(); else end(true, signedIn);
           return;
@@ -278,7 +308,7 @@ function run(api, view, resumed = null) {
           wait("Sent again.");
         } catch (e) {
           busy(false);
-          tell(failed("Couldn't send the link", e));
+          tell(emailFailed("Couldn't send the link", e));
         }
       });
       other.addEventListener("click", () => choose(pending.email));
@@ -318,8 +348,14 @@ function run(api, view, resumed = null) {
     if (view === "wait") wait();
     else if (view === "name") name();
     else {
-      const last = api.pending();
-      choose(isFresh(last, Date.now()) ? last.email : "");
+      // A request still worth waiting on, with nobody signed in, opens at its
+      // code box: most often a viewer chart or a review page, which load
+      // auth.js only when somebody signs in, reloaded while its person was in
+      // the mail app. "Use a different address" leads back to the chooser.
+      const last = api.emailLink ? api.pending() : null;
+      const live = isFresh(last, Date.now());
+      if (live && !api.currentUser()) { pending = last; wait(); }
+      else choose(live ? last.email : "");
     }
   });
 }

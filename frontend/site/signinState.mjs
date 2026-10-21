@@ -3,9 +3,9 @@
  * The sign-in dialog and the /signin page both have to decide the same small
  * things: is this text an address, is that text a code, where may we send
  * the person afterwards, is the request we remembered still worth waiting
- * for. Keeping those here, with storage and the clock handed in, means they
- * are tested in node rather than by driving a browser, and the two screens
- * cannot drift apart.
+ * for, what to say when a step fails. Keeping those here, with storage and
+ * the clock handed in, means they are tested in node rather than by driving
+ * a browser, and the two screens cannot drift apart.
  *
  * The emailed link carries only the request id. Everything else -- the
  * address, where to go next -- stays in this browser's localStorage, so a
@@ -16,16 +16,23 @@
 export const PENDING_KEY = "signin.pending";
 export const FRESH_MS = 15 * 60 * 1000;
 
-/* What the server accepts as a request id (service/signin.py REQUEST_ID). */
-const REQUEST_ID = /^[A-Za-z0-9_-]{22}$/;
+/* What the server accepts as a request id (service/signin.py REQUEST_ID):
+ * 22 base64url characters, without "__" at either end, which Firestore
+ * reserves for ids of its own. */
+const REQUEST_ID = /^(?!__)[A-Za-z0-9_-]{22}(?<!__)$/;
 
 /* A fresh request id: 16 random bytes as unpadded base64url, 22 characters.
- * `fill` is the random source, so a test can pass a fixed one. */
+ * `fill` is the random source, so a test can pass a fixed one. About one draw
+ * in 4096 starts "__", which the server would refuse, so that one is drawn
+ * again. (It can never end "__": the last character carries only two bits.) */
 export function newRequestId(fill = b => globalThis.crypto.getRandomValues(b)) {
   const bytes = new Uint8Array(16);
-  fill(bytes);
-  return globalThis.btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  for (;;) {
+    fill(bytes);
+    const id = globalThis.btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    if (REQUEST_ID.test(id)) return id;
+  }
 }
 
 /* The address Firebase will put in the email. Only the id travels. */
@@ -77,6 +84,50 @@ export function safeNext(next) {
   if (next.startsWith("//") || next.startsWith("/\\")) return "/";
   if (/^\/signin(?:[/?#]|$)/.test(next)) return "/";
   return next;
+}
+
+/* What a visit to /signin is for, once the SDK has said who is here:
+ *   {is: "off"}            accounts are off on this site.
+ *   {is: "plain"}          no link, and nobody signed in: a Sign in button.
+ *   {is: "go", next}       somebody is signed in and there is nothing to do:
+ *                          no link, or a link this browser asked for, which
+ *                          another tab finished or was not needed. It is left
+ *                          unused, as it came.
+ *   {is: "finish", next}   this browser asked for this link, and nobody is
+ *                          signed in: finish it with the address it stored.
+ *   {is: "relay"}          anything else: a link some other browser asked for
+ *                          -- whoever is signed in here, since that browser is
+ *                          waiting for the code -- or one whose `r` is missing
+ *                          or malformed, which is never this browser's own.
+ * `pending` is what this browser remembered (recall), `href` the address the
+ * link landed on. */
+export function landing({ accounts, signedIn, isLink, pending, href }) {
+  if (!accounts) return { is: "off" };
+  if (!isLink) return signedIn ? { is: "go", next: "/" } : { is: "plain" };
+  const id = requestIdOf(href);
+  if (id === null || pending?.id !== id) return { is: "relay" };
+  return { is: signedIn ? "go" : "finish", next: safeNext(pending.next) };
+}
+
+/* What a Sign in button says when signIn() fails: nothing when the chooser
+ * was only closed, which is changing your mind, not an error. */
+export function signInTrouble(e) {
+  return e?.code === "auth/popup-closed-by-user" ? "" : e?.code || e?.message || "";
+}
+
+/* A step of signing in that failed: what, and why -- Firebase's code, or the
+ * status of a request to this site -- for whoever is asked about it. */
+export function failed(what, e) {
+  const why = e?.code ?? e?.status;
+  return `${what}${why ? ` (${why})` : ""}. Try again.`;
+}
+
+/* The same for a step of the emailed link, except that Firebase refusing it
+ * outright -- the provider switched off in its console -- is said plainly,
+ * since trying again will not help. */
+export const EMAIL_OFF = "Signing in by email isn't available right now.";
+export function emailFailed(what, e) {
+  return e?.code === "auth/operation-not-allowed" ? EMAIL_OFF : failed(what, e);
 }
 
 /* The pending request, as {email, id, next, at}. Storage can be missing,

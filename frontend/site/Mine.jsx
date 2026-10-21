@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
+import { signInTrouble } from "./signinState.mjs";
 import { day } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Warn } from "./ui.jsx";
@@ -204,7 +205,7 @@ export function Mine() {
               in or not — an account only gives you a way back to them.</p>
               {accounts && (
                 <button id="signin" className="primary"
-                        onClick={() => signIn().catch(e => setErr(e.code || e.message))}>
+                        onClick={() => signIn().catch(e => setErr(signInTrouble(e)))}>
                   Sign in
                 </button>
               )}

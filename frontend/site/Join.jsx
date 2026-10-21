@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
+import { signInTrouble } from "./signinState.mjs";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Warn } from "./ui.jsx";
 
@@ -47,8 +48,10 @@ export function Join() {
             )}
             {usable && ready && !user && (
               <button id="signin" className="primary"
-                      onClick={() => signIn().catch(err =>
-                        setNote(<Warn>{err.code || err.message}</Warn>))}>
+                      onClick={() => signIn().catch(e => {
+                        const say = signInTrouble(e);
+                        setNote(say && <Warn>{say}</Warn>);
+                      })}>
                 Sign in to join
               </button>
             )}

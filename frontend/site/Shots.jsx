@@ -23,6 +23,7 @@ import {
 } from "../core/myshots.mjs";
 import { playUrl, playsUrl, reportUrl } from "../runtime/plays.mjs";
 import { authedFetch, signIn } from "./auth.js";
+import { signInTrouble } from "./signinState.mjs";
 import { day } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Warn } from "./ui.jsx";
@@ -430,7 +431,7 @@ export function Shots() {
             were yours. This page gathers every one of them, by shot and by turn.</p>
             {accounts && (
               <button id="signin" className="primary"
-                      onClick={() => signIn().catch(e => setErr(e.code || e.message))}>
+                      onClick={() => signIn().catch(e => setErr(signInTrouble(e)))}>
                 Sign in
               </button>
             )}

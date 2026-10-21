@@ -7,6 +7,7 @@
  * service/practice.py's. */
 import { useCallback, useEffect, useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
+import { signInTrouble } from "./signinState.mjs";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Pill, Warn } from "./ui.jsx";
 import { clipState, curlText, lengthText, lineText, restText, shown,
@@ -291,7 +292,7 @@ function SignIn({ what }) {
     <Card>
       <p>{what}</p>
       {accounts && <button className="primary"
-        onClick={() => signIn().catch(e => setErr(e.code || e.message))}>Sign in</button>}
+        onClick={() => signIn().catch(e => setErr(signInTrouble(e)))}>Sign in</button>}
       {(!accounts || err) && <p className="muted">{err || "Accounts are not switched on for this site."}</p>}
     </Card>
   );
