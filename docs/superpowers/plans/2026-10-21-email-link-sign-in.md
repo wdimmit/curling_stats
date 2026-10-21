@@ -845,10 +845,11 @@ No commit unless the check finds a bug, which then gets a test and a fix in the 
 
 - [ ] Run the review with the whole-branch reviewer chosen at handoff.
 - [ ] Deploy the API from a clean worktree (the `deploying-curling-chart` and `concurrent-session-commits` memory notes). `deploy-api.sh` reads `/api/auth/config` back afterwards. **Ask first.**
-- [ ] Run `gcloud firestore fields ttls update expires_at --collection-group=signin_relays --enable-ttl`. **Ask first.**
+- [ ] Run `gcloud firestore fields ttls update expires_at --collection-group=signin_relays --enable-ttl`. **Ask first.** This goes BEFORE the provider is switched on, so no relay is ever written without its expiry.
 - [ ] Switch on Email/Password and Email link (passwordless) in the Firebase console, and set the public-facing name. That's the user's click, or the Identity Toolkit admin API with their go-ahead. It goes after the deploy, so `claims_of` is already live.
 - [ ] Real-project checks from the spec's Testing section, using test accounts that are deleted afterwards:
-  - A phone mail app with its own browser, finished with the code.
+  - FIRST after switching on, the phone mail-app check, finished with the code. If Firebase's landing URL has a different shape from what `relay_id_of` expects, every relay answers 422, and this is where it shows.
+  - The accepted pre-made-account risk (spec, Builder check point 5): create a password account for a fresh test address in advance, then sign in by emailed link as the owner of that address, and record whether the pre-made password still works (the unverified case; Firebase's documentation says it should not). Use the same test account to rehearse the operator remedy in deploy/README.md (remove the password with `accounts:update` and `deleteProvider: ["password"]`, then revoke sessions), and check that the pre-made password stops working. Delete these test accounts afterwards too.
   - A non-Gmail Google account: Google, then a link, then Google.
   - A Gmail address: a link, then Google.
 - [ ] Save a memory note: what shipped, the commits, and anything the real-project check showed about Firebase account linking.

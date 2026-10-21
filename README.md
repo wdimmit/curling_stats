@@ -487,7 +487,7 @@ The two slugs are 22 random characters, and holding one _is_ the permission it
 carries. No account is needed for any of it.
 
 **Accounts.** Watching needs no account, and neither does looking at a chart
-someone sends you. Charting does: sign in with Google and the chart is yours,
+someone sends you. Charting does: sign in and the chart is yours,
 listed at `/mine`, and only you can change it. A **team** shares one chart per
 game, so everyone fills in the same sheet rather than four of them; only the
 team's current members can change it, and members see the same list. Anyone

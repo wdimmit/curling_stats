@@ -40,11 +40,11 @@ from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
 from curling_score.service import (dedupe, gameclips, playlist_index, playlists, practice,
-                                   slug, team_names, thinking_report)
+                                   signin, slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, ROLES, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team,
-    TeamNameEdit, User, Worker, play_id, review_id,
+    JOB_KINDS, ROLES, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, SigninRelay, Source,
+    Team, TeamNameEdit, User, Worker, play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import (clip_key, detcache_key, meta_key, practice_key,
@@ -208,6 +208,11 @@ class Settings:
     # a play is saved or its report read, cut by the clips worker. Off until a
     # worker running WORKER_ROLE=clips is up.
     game_clips_enabled: bool = False
+    # Whether the sign-in chooser offers an emailed link beside Google. Off
+    # until Email/Password and its Email link option are on in the Firebase
+    # console, or every "Email me a link" fails. /signin and its relay work
+    # either way, so a link already sent still finishes (deploy/README.md).
+    email_link_signin: bool = False
     # The club's own clock, which playlists' schedules are written in.
     club_tz: str = "America/Los_Angeles"
     model_id: str = "classical"
@@ -251,6 +256,7 @@ class Settings:
             live_enabled=env("LIVE_ENABLED", "0") in ("1", "true", "yes"),
             practice_enabled=env("PRACTICE_ENABLED", "0") in ("1", "true", "yes"),
             game_clips_enabled=env("GAME_CLIPS_ENABLED", "0") in ("1", "true", "yes"),
+            email_link_signin=env("EMAIL_LINK_SIGNIN", "0") in ("1", "true", "yes"),
             club_tz=env("CLUB_TZ", "America/Los_Angeles"),
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
@@ -387,9 +393,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             repo.put_user(got)
             return got
         # Throttled hard: without this every authenticated request is a write,
-        # and writes are the quota that runs out.
+        # and writes are the quota that runs out. A name the person never gave
+        # (they came by emailed link, which carries none) is filled from a
+        # later Google sign-in; it rides on the hourly write when that is due,
+        # and a name already here is never touched.
+        fields = {}
         if got.last_seen_at is None or (t - got.last_seen_at).total_seconds() > 3600:
-            got = repo.update_user(uid, last_seen_at=t) or got
+            fields["last_seen_at"] = t
+        if not got.name and claims.get("name"):
+            fields["name"] = claims["name"]
+        if fields:
+            got = repo.update_user(uid, **fields) or got
         return got
 
     def claims_of(authorization) -> dict | None:
@@ -397,7 +411,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if not auth.enabled or not authorization or not authorization.startswith("Bearer "):
             return None
         claims = auth.verify(authorization[len("Bearer "):].strip())
-        return claims if claims and claims.get("sub") else None
+        if not claims or not claims.get("sub"):
+            return None
+        # Emailed links need Firebase's Email/Password provider switched on, and
+        # with it on anybody can make a password account under an address that
+        # is not theirs. Firebase removes that unverified sign-in method itself
+        # once the real owner finishes an emailed-link sign-in, but until then
+        # such an account must never be a user here. A real emailed-link token
+        # has email_verified true, so only the squatter is turned away.
+        if ((claims.get("firebase") or {}).get("sign_in_provider") == "password"
+                and not claims.get("email_verified")):
+            return None
+        return claims
 
     def uid_of(authorization) -> str | None:
         """Who is asking, by id alone. Reads no record: a save asks this every
@@ -975,6 +1000,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # The token is read back off the URL by the page itself; nothing is
         # rendered into the HTML, so there is nothing here to escape.
         return page("join.html")
+
+    # Where an emailed sign-in link lands. Like the invite, everything the
+    # link carries is read by the page itself (site/SignIn.jsx), and served
+    # whether accounts are on or not: the page says which.
+    @app.get("/signin", response_class=HTMLResponse)
+    def signin_page():
+        return page("signin.html")
 
     @app.get("/static/{name}")
     def static_asset(name: str, request: Request):
@@ -1739,7 +1771,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         Served rather than templated into each page: there are four places that
         render HTML and one of them would eventually be forgotten. With no
         project configured this reports disabled and the whole feature simply
-        is not there.
+        is not there. `emailLink` is whether the chooser offers an emailed
+        link beside Google (Settings.email_link_signin).
         """
         if not (auth.enabled and settings.firebase_api_key):
             return JSONResponse({"enabled": False},
@@ -1748,8 +1781,77 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                              "apiKey": settings.firebase_api_key,
                              "authDomain": settings.firebase_auth_domain,
                              "projectId": settings.firebase_project,
-                             "emulator": settings.auth_emulator or None},
+                             "emulator": settings.auth_emulator or None,
+                             "emailLink": bool(settings.email_link_signin)},
                             headers={"Cache-Control": "public, max-age=300"})
+
+    @app.post("/api/signin/relay")
+    def signin_relay(request: Request, body: dict):
+        """Hold an emailed sign-in link that opened in the wrong browser.
+
+        The link opened in a phone mail app's own browser, not the one that
+        asked for it. That page leaves the link here and shows the member the
+        code; the asking browser trades the code for the link. Anyone can call
+        this, so it holds only this site's own sign-in links (`relay_id_of`)
+        and, even then, a link does nothing without the inbox it was sent to.
+        """
+        if not (auth.enabled and settings.firebase_api_key):
+            raise HTTPException(503, "sign-in by emailed link is not set up")
+        link = body.get("link")
+        rid = signin.relay_id_of(link, settings.public_base_url, settings.firebase_api_key)
+        if rid is None:
+            if not signin.base_url_ok(settings.public_base_url):
+                # Then every relay is refused. Say why where an operator will
+                # look, not only in each 422.
+                log.warning("sign-in relay refused: PUBLIC_BASE_URL %r has no scheme and host,"
+                            " so no link can be checked as this site's",
+                            settings.public_base_url)
+            raise HTTPException(422, "that is not a sign-in link for this site")
+        t = now()
+        if not repo.bump_rate_limit("relay:" + ip_hash(request), t,
+                                    signin.RELAY_HOUR_LIMIT, signin.RELAY_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of codes; try again later")
+        held = repo.get_signin_relay(rid)
+        if held is not None and held.live(t) and held.link == link:
+            relay = held       # opened twice: the same code, not a second one
+        else:
+            # A newer link for the same request replaces the old. Redraw a few
+            # times so it doesn't come back with the same digits -- cosmetic.
+            code = signin.new_code()
+            for _ in range(5):
+                if held is None or code != held.code:
+                    break
+                code = signin.new_code()
+            relay = SigninRelay(id=rid, code=code, link=link, created_at=t,
+                                expires_at=t + timedelta(seconds=signin.RELAY_TTL_S))
+            repo.put_signin_relay(relay)
+        return JSONResponse({"code": relay.code, "expires_at": _iso(relay.expires_at)},
+                            headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/signin/relay/{relay_id}/claim")
+    def signin_claim(relay_id: str, request: Request, body: dict):
+        """Trade a relay's code for its link, once.
+
+        Wrong codes count against the relay, not the caller: the fifth deletes
+        it, so six digits can't be guessed however many addresses try.
+        """
+        if not (auth.enabled and settings.firebase_api_key):
+            raise HTTPException(503, "sign-in by emailed link is not set up")
+        code = body.get("code")
+        if not signin.REQUEST_ID.fullmatch(relay_id):
+            raise HTTPException(422, "that is not a sign-in request")
+        if not (isinstance(code, str) and re.fullmatch(r"[0-9]{6}", code)):
+            raise HTTPException(422, "a code is six digits")
+        t = now()
+        if not repo.bump_rate_limit("claim:" + ip_hash(request), t,
+                                    signin.CLAIM_HOUR_LIMIT, signin.CLAIM_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of tries; try again later")
+        verdict, link = repo.claim_signin_relay(relay_id, code, t, signin.RELAY_MAX_MISSES)
+        if verdict == "wrong":
+            raise HTTPException(404, "that code isn't right")
+        if verdict != "ok":
+            raise HTTPException(410, "that code has run out — send a new link")
+        return JSONResponse({"link": link}, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/me")
     def api_me(authorization: str | None = Header(default=None)):
@@ -2443,6 +2545,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         me = repo.update_user(me.id, share_shots=on) or me
         log.info("shots sharing %s for %s", "on" if on else "off", me.id)
         return shots_sharing(me)
+
+    @app.put("/api/me/name")
+    def api_set_name(body: dict, authorization: str | None = Header(default=None)):
+        """Say what teammates see: someone who came by emailed link has no name."""
+        me = require_user(authorization)
+        name = signin.clean_name(body.get("name"))
+        if name is None:
+            raise HTTPException(422, f"a name is 1 to {signin.NAME_MAX} characters of plain text")
+        if not repo.bump_rate_limit("name:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of changes; try again later")
+        me = repo.update_user(me.id, name=name) or me
+        log.info("name set for %s", me.id)
+        return {"name": me.name}
 
     def plays_list(user_id: str) -> dict:
         """Every game this person said they played, newest first, with what the

@@ -38,6 +38,8 @@ gcloud firestore indexes composite create --collection-group=flags \
   --field-config=field-path=status,order=ascending --field-config=field-path=created_at,order=descending
 gcloud firestore fields ttls update expires_at --collection-group=rate_limits --enable-ttl
 gcloud firestore fields ttls update expires_at --collection-group=invites --enable-ttl
+# Emailed links opened in another browser are held for ten minutes; this clears the unclaimed ones.
+gcloud firestore fields ttls update expires_at --collection-group=signin_relays --enable-ttl
 # Two maps nothing ever queries. Left alone, Firestore indexes every subfield
 # of both -- thousands of entries per charted game, against a 40,000-per-
 # document ceiling -- purely to pay for writes nobody reads.
@@ -50,13 +52,22 @@ gcloud firestore fields update --collection-group=charts --field-path=overrides_
 # single-field indexes already cover.
 
 # Accounts (optional -- skip all of this and the site simply has none).
-# Identity Platform, the Google provider, and the domains a sign-in may come
+# Identity Platform, the Google and emailed-link providers, and the domains a sign-in may come
 # from. The web API key is a public identifier, not a secret: it belongs in
 # cloudrun.yaml next to GCP_PROJECT, and the Authorized domains list is what
 # actually limits it.
 gcloud services enable identitytoolkit.googleapis.com
 # Then, in the Firebase console for this project:
 #   Authentication > Sign-in method  > enable Google
+#   Authentication > Settings > User account linking > keep "Link accounts
+#     that use the same email" (the default), i.e. one account per email
+#     address, rather than one per sign-in method.
+#   Project settings > General > Public-facing name > set it: it is the
+#     subject line of the sign-in email.
+#   Optional: Authentication > Templates > Email address verification >
+#     customize the sender domain, if the mail lands in junk.
+#   With billing on (Cloud Run needs it) Firebase sends up to 25,000
+#     sign-in emails a day; the free plan allows 5.
 #   Authentication > Settings > Authorized domains > add chart.example.org,
 #     and localhost too if you want sign-in to work against a local run --
 #     an Identity Platform project does not necessarily have it already
@@ -65,6 +76,44 @@ gcloud services enable identitytoolkit.googleapis.com
 #     no web app, in which case there is no apiKey to configure yet.
 # Nothing new is needed in Secret Manager or IAM: verifying an ID token uses
 # only Google's public certificates and the project id.
+#
+# Signing in with an emailed link comes after Google, in this order:
+#   1. Deploy with EMAIL_LINK_SIGNIN "0" in cloudrun.yaml. The chooser
+#      offers Google alone, and the server already treats an unverified
+#      password account as nobody, which has to be live before step 3.
+#   2. The signin_relays TTL (its gcloud line is in the Firestore block
+#      above), so relays nobody claims are cleared.
+#   3. Authentication > Sign-in method > enable Email/Password, and inside it
+#      Email link (passwordless sign-in). Firebase requires both. The site
+#      never offers passwords.
+#   4. Set EMAIL_LINK_SIGNIN to "1" in cloudrun.yaml and deploy again: the
+#      chooser offers "Email me a link".
+# To take it away, set EMAIL_LINK_SIGNIN back to "0" and deploy. The chooser
+# is Google alone again, and /signin still finishes a link already sent.
+# Before rolling the API back past e4e8c79d ("an unverified password account
+# is nobody"), switch Email/Password off and set EMAIL_LINK_SIGNIN to "0":
+# an older API with the provider on lets anyone who makes a password account
+# under a member's address be that member.
+#
+# A risk accepted on 2026-10-21: with Email/Password on, anyone with the web
+# API key can make a password account under the address of a member who has
+# never signed in, and have Firebase mail that address a "verify your email"
+# message. If the member clicks it, that account is verified, the server stops
+# treating it as nobody, and a later sign-in by link (or by Google, on a Gmail
+# address) lands in it, with the other person's password still working. If it
+# is ever seen, the account is the member's own (same address, same uid), so
+# disabling it would lock the member out too. If the member has never used the
+# site, delete the account in the Firebase console (Authentication > Users);
+# their next link sign-in creates a fresh one. Once they have used it, do not
+# delete it: the site keys their charts, teams and plays by that uid. Instead
+# remove the password from the account, so whoever made it loses their way in:
+# Identity Toolkit accounts:update with deleteProvider ["password"], or the
+# Admin SDK equivalent. Then revoke the account's sessions. That stops new
+# tokens only; the site does not check revocation, so a token already issued
+# keeps working for up to an hour. Rehearse these steps on a test account
+# first. To close the risk for good: an Identity Platform beforeCreate blocking
+# function that refuses password sign-ups, or the server checking for a
+# password on first sight.
 
 # Bucket: private, with a lifecycle rule that expires detection caches after a year
 gsutil mb -l $REGION gs://curling-chart-$PROJECT_ID

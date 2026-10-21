@@ -28,7 +28,9 @@ ALEX = {"Authorization": "Bearer tok-alex"}
 MAKER = {"Authorization": "Bearer tok-maker"}
 
 
-def _world(auth):
+def _world(auth, **more):
+    """The service with `auth`; `more` sets further Settings, such as
+    email_link_signin=True."""
     clock = Clock()
     repo, store = MemoryRepo(), MemoryStore()
     yt = FakeYouTube()
@@ -37,7 +39,7 @@ def _world(auth):
                         admin_token="admin-secret", allowed_channels={CLUB},
                         model_id="m-abc", max_queued=3, rate_hour=5, rate_day=20,
                         firebase_project="proj", firebase_api_key="AIzaFake",
-                        firebase_auth_domain="proj.firebaseapp.com")
+                        firebase_auth_domain="proj.firebaseapp.com", **more)
     app = create_app(repo, store, yt, settings, now=clock, auth=auth)
     return {"client": TestClient(app), "repo": repo, "store": store, "yt": yt,
             "clock": clock, "settings": settings, "auth": auth}
@@ -130,6 +132,21 @@ class TestSigningIn:
         assert cfg["enabled"] and cfg["apiKey"] == "AIzaFake"
         assert cfg["projectId"] == "proj"
 
+    def test_the_chooser_offers_no_emailed_link_until_it_is_switched_on(self, w):
+        # Off until Email link is on in the Firebase console too: offered
+        # before then, every "Email me a link" fails (deploy/README.md).
+        assert w["client"].get("/api/auth/config").json()["emailLink"] is False
+
+    def test_switched_on_the_chooser_offers_an_emailed_link(self):
+        on = _world(FakeVerifier(), email_link_signin=True)
+        assert on["client"].get("/api/auth/config").json()["emailLink"] is True
+
+    def test_the_switch_is_read_from_the_environment(self, monkeypatch):
+        monkeypatch.delenv("EMAIL_LINK_SIGNIN", raising=False)
+        assert Settings.from_env().email_link_signin is False
+        monkeypatch.setenv("EMAIL_LINK_SIGNIN", "1")
+        assert Settings.from_env().email_link_signin is True
+
     def test_first_sight_of_a_token_creates_the_person(self, w):
         me = w["client"].get("/api/me", headers=SARAH).json()
         assert me["user"]["id"] == "uid-sarah" and me["user"]["name"] == "Sarah"
@@ -142,6 +159,31 @@ class TestSigningIn:
     def test_a_token_we_do_not_know_is_401(self, w):
         assert w["client"].get("/api/me", headers={"Authorization": "Bearer forged"}
                                ).status_code == 401
+
+
+class TestPasswordAccounts:
+    """Email links need Firebase's Email/Password provider on, so anyone can make
+    an unverified password account under someone else's address. That is nobody."""
+
+    def test_an_unverified_password_token_is_anonymous(self, w):
+        w["auth"].add("tok-squat", "uid-squat", "sarah@example.org", None,
+                      email_verified=False, provider="password")
+        squat = {"Authorization": "Bearer tok-squat"}
+        assert w["client"].get("/api/me", headers=squat).status_code == 401
+        assert w["repo"].get_user("uid-squat") is None
+
+    def test_someone_who_came_by_an_emailed_link_is_somebody(self, w):
+        w["auth"].add("tok-link", "uid-link", "jo@example.org", None, provider="password")
+        me = w["client"].get("/api/me", headers={"Authorization": "Bearer tok-link"}).json()
+        assert me["user"]["id"] == "uid-link" and me["user"]["name"] is None
+
+    def test_an_unverified_password_token_cannot_save_a_chart(self, w):
+        # uid_of is what a save asks; it must agree with /api/me.
+        w["auth"].add("tok-squat", "uid-squat", "x@example.org", None,
+                      email_verified=False, provider="password")
+        r = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"},
+                 {"Authorization": "Bearer tok-squat"})
+        assert r.status_code == 401
 
 
 class TestMyGames:
@@ -990,3 +1032,44 @@ class TestMovingAChartToATeam:
         assert post(w, f"/api/me/charts/{slug}/claim", {}, SARAH).status_code == 200
         chart = w["repo"].get_chart(slug)
         assert chart.owner_user_id == "uid-sarah" and chart.team_id is None
+
+
+LINK = {"Authorization": "Bearer tok-link"}
+
+
+def _came_by_link(w):
+    w["auth"].add("tok-link", "uid-link", "jo@example.org", None, provider="password")
+
+
+class TestNames:
+    def test_someone_who_came_by_link_can_give_a_name(self, w):
+        _came_by_link(w)
+        r = put(w, "/api/me/name", {"name": "  Jo \t  Smith "}, LINK)
+        assert r.status_code == 200 and r.json() == {"name": "Jo Smith"}
+        assert w["client"].get("/api/me", headers=LINK).json()["user"]["name"] == "Jo Smith"
+
+    def test_sixty_characters_is_fine(self, w):
+        _came_by_link(w)
+        assert put(w, "/api/me/name", {"name": "x" * 60}, LINK).status_code == 200
+
+    @pytest.mark.parametrize("bad", ["", "   ", "x" * 61, "Jo\u0000", "Jo​Smith", 5, None])
+    def test_a_name_is_one_to_sixty_characters_of_text(self, w, bad):
+        _came_by_link(w)
+        assert put(w, "/api/me/name", {"name": bad}, LINK).status_code == 422
+
+    def test_signed_out_names_nobody(self, w):
+        assert put(w, "/api/me/name", {"name": "Jo"}).status_code == 401
+
+    def test_a_later_google_sign_in_fills_in_a_missing_name(self, w):
+        _came_by_link(w)
+        w["client"].get("/api/me", headers=LINK)
+        w["auth"].add("tok-jo-g", "uid-link", "jo@example.org", "Joanne Smith")
+        w["client"].get("/api/me", headers={"Authorization": "Bearer tok-jo-g"})
+        assert w["repo"].get_user("uid-link").name == "Joanne Smith"
+
+    def test_a_name_they_gave_beats_googles(self, w):
+        _came_by_link(w)
+        put(w, "/api/me/name", {"name": "Jo"}, LINK)
+        w["auth"].add("tok-jo-g", "uid-link", "jo@example.org", "Joanne Smith")
+        w["client"].get("/api/me", headers={"Authorization": "Bearer tok-jo-g"})
+        assert w["repo"].get_user("uid-link").name == "Jo"

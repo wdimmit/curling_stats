@@ -17,7 +17,7 @@
 </header>
 <main class="legal">
 <h1>Privacy</h1>
-<p class="muted">Last updated October 15, 2026</p>
+<p class="muted">Last updated October 21, 2026</p>
 
 <p>Will Dimmit runs curling.dimmit.net and is responsible for what it keeps. For questions, or to see, correct or delete your information, write to <a href="mailto:will@ultimatetrip.net">will@ultimatetrip.net</a>.</p>
 <p>In short, the site keeps what it needs to chart games and to let you keep track of your own. It does not sell anything about anyone. It shows no ads and uses no analytics or tracking services.</p>
@@ -35,9 +35,10 @@
 <p>Search engines are asked not to index the site.</p>
 
 <h2>What is kept if you sign in</h2>
-<p>You sign in with Google, through Google's Firebase Authentication. The site keeps:</p>
+<p>You sign in with Google, or with a link emailed to you, through Google's Firebase Authentication. The site keeps:</p>
 <ul>
-  <li><strong>Your account:</strong> your Google account's email address, name and profile picture, when you first and last used the site, and whether your account is validated to name teams or is an admin's.</li>
+  <li><strong>Your account:</strong> your email address; if you sign in with Google, your Google account's name and profile picture; if you sign in with an emailed link, the name you give (1 to 60 characters, set when you first sign in); when you first and last used the site, and whether your account is validated to name teams or is an admin's.</li>
+  <li><strong>A link opened in a different browser:</strong> if you open the emailed link in a different browser or app from the one where you asked for it, the link and a 6-digit code can be used for 10 minutes, so the browser that asked can finish signing you in. They are deleted as soon as the code is used or after 5 wrong tries; any that go unused are removed automatically, usually within a day after the 10 minutes are up. Opening the link is a visit to the site like any other, so its address is also in the request log, kept for 30 days (see Logs).</li>
   <li><strong>Changes you make, with your account:</strong> each team name you set or change on a game (the old name, the new name, and when), and each score you enter. Only the site's operator can see which account made a change.</li>
   <li><strong>Who can see the list of accounts:</strong> the site's operator, and the admins the operator appoints to validate accounts. They see each account's email address, name, and when it first and last used the site.</li>
   <li><strong>Your shots:</strong> which rocks you say you threw, and clips of them. You see these on My shots. Your teammates on the site see them too if you turn sharing on.</li>
@@ -57,20 +58,21 @@
 
 <h2>Who else handles it</h2>
 <ul>
-  <li><strong>Google</strong> hosts the site and its data (Cloud Run, Firestore, Cloud Storage, Cloud Logging) and handles sign-in (Firebase Authentication).</li>
+  <li><strong>Google</strong> hosts the site and its data (Cloud Run, Firestore, Cloud Storage, Cloud Logging) and handles sign-in (Firebase Authentication), and sends the sign-in email.</li>
   <li><strong>YouTube</strong> plays the video on a game's page through its own embedded player. YouTube may set its own cookies.</li>
   <li><strong>Google Fonts</strong> serves the site's fonts. Your browser fetches them from Google, which sees your IP address.</li>
 </ul>
 <p>Google's handling of all of these is covered by <a href="https://policies.google.com/privacy">Google's privacy policy</a>. Nothing is shared with anyone else unless the law requires it.</p>
 
 <h2>Your browser</h2>
-<p>The site keeps a few settings in your browser's own storage, such as the league you last picked and where you were in a game. Google's sign-in keeps you signed in the same way. There are no advertising cookies.</p>
+<p>The site keeps a few settings in your browser's own storage, such as the league you last picked and where you were in a game. While you sign in with an emailed link, it also keeps the address you typed, a random request number and the page you were on, until you next sign in; it offers them back for about 15 minutes. Staying signed in is kept the same way. There are no advertising cookies.</p>
 
 <h2>How long things are kept</h2>
 <ul>
   <li>Your account, and what is tied to it, is kept until you ask for it to be deleted.</li>
   <li>The record of team-name changes is kept as long as the game is on the site.</li>
   <li>Rate-limit counters are kept for two days.</li>
+  <li>A link and code held for a link opened in a different browser are deleted as soon as the code is used or after 5 wrong tries; any that go unused are removed automatically, usually within a day after their 10 minutes are up.</li>
   <li>Request logs are kept for 30 days.</li>
 </ul>
 

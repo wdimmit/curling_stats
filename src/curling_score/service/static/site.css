@@ -532,3 +532,17 @@ body[data-page="shots"] main { max-width:980px; }
   #playlists .days { gap:8px 12px; }
   #playlists .days label.tick { min-height:32px; }
 }
+
+/* --- sign in (where an emailed link lands) ------------------------------- */
+/* Often a phone mail app's own browser, read on one screen while the code is
+   typed into another. So the code is the page; the boxes are 16px, which a
+   phone does not zoom in on, and the buttons a thumb's height. */
+body[data-page="signin"] main { max-width:520px; }
+#signin h2 { margin-top:0; }
+#signin .code { margin:6px 0 4px; font:700 44px/1.1 var(--display);
+                letter-spacing:.06em; font-variant-numeric:tabular-nums; }
+#signin input { font-size:16px; min-height:44px; }
+#signin button { min-height:44px; }
+#signin form .row { margin-top:10px; }
+#signin button.linky { padding:0; border:0; background:none; color:var(--ink);
+                       text-decoration:underline; text-underline-offset:3px; }

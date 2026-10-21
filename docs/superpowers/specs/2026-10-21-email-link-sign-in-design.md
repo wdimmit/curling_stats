@@ -81,8 +81,8 @@ The same address, either way in, is the same account (Firebase's one-account-per
 - **`static/privacy.html`:**
   - You sign in "with Google, or with a link emailed to you".
   - The account keeps your email address, plus your Google name and picture, or the name you give.
-  - A link opened in another browser is held for up to 10 minutes to finish signing you in where you started, and is deleted once used.
-  - The address you typed, and the page you were on, sit in your browser's storage until you're signed in.
+  - A link opened in another browser, with a 6-digit code, can be used for 10 minutes to finish signing you in where you started. It is deleted as soon as the code is used or after 5 wrong tries; any unused are removed automatically, usually within a day after the 10 minutes are up.
+  - The address you typed, and the page you were on, sit in your browser's storage until you next sign in.
   - Google (Firebase Authentication) sends the sign-in email.
 - **`static/terms.html`:** "sign in, with a Google account or a link emailed to you".
 - **`README.md`:** "sign in with Google" becomes "sign in"; the `signInNow` comment in `runtime/auth.mjs` changes to match.
@@ -100,10 +100,12 @@ The project has billing (Cloud Run), so Firebase allows 25,000 sign-in emails a 
 The `claims_of` change ships before the provider is switched on, because the unverified-password gap opens the moment it is on. Switching it on in the real project, and each deploy, waits for the user's go-ahead at the time.
 
 ## Builder check
-1. **Firebase won't enable email links without Email/Password, so password accounts become possible.** With the public API key, anyone could create an unverified password account under a member's address. Firebase's documentation says that finishing an email-link sign-in removes any earlier unverified sign-in method and invalidates its sessions, so an account set up in advance can't hold on once the real owner uses a link. Until then, the server treats unverified password tokens as anonymous, so such an account is never a user here. *(my call)*
+1. **Firebase won't enable email links without Email/Password, so password accounts become possible.** With the public API key, anyone could create an unverified password account under a member's address. Firebase's documentation says that finishing an email-link sign-in removes any earlier unverified sign-in method and invalidates its sessions, so an account set up in advance can't hold on once the real owner uses a link, unless it was verified first (point 5). Until then, the server treats unverified password tokens as anonymous, so such an account is never a user here. *(my call)*
 2. **Google and email link on one address.** Firebase trusts Google only for Gmail addresses. Google first, then a link, should leave both working: the Google method is verified, so the link sign-in doesn't remove it. A link first, then Google on a non-Gmail address, fails with `account-exists-with-different-credential`. That case gets step 7's message, not a linking flow. Both orders are checked on the real project with test accounts. *(my call)*
 3. **Guessing the code.** A per-IP limit alone isn't enough, because whoever typed the victim's address already knows it, and fresh IPs are cheap. So each relay is keyed by the request id the starting tab made, the claim names that id, and five misses delete it. *(my call)*
 4. **Secrets in the emailed link.** Putting `next` in the continue URL would mail out invite tokens and chart edit links. So `next` stays in localStorage. A sign-in finished in another browser lands on `/`, which is fine, because in that case the member carries on in the starting tab. *(my call)*
+
+5. **A password account made in advance can survive (accepted risk).** With Email/Password on, anyone holding the public API key can create a password account under the address of a member who has never signed in, and ask Firebase to send that address a "verify your email" message. If the member clicks it, the account becomes verified, so the server's unverified-password rule no longer turns it away. When the member later signs in by link (or by Google, on a Gmail address) they land in that same account, and a verified password isn't removed, so the other person keeps access. It needs a member who has never signed in, and who clicks a verification email they didn't ask for. The owner accepted this on 2026-10-21 and no code changes for it. Two mitigations are set aside for later: an Identity Platform `beforeCreate` blocking function that refuses password sign-ups, or the server checking on first sight of an account whether it has a password, through the Admin SDK. *(owner's call)*
 
 ## Calls I made
 - One chooser for everyone, so Google users get one extra click.

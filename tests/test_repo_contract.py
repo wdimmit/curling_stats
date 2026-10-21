@@ -17,8 +17,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from curling_score.service.records import (
-    Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, Source, Team,
-    TeamNameEdit, User, WatchedPlaylist, Worker, play_id, review_id,
+    Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, SigninRelay, Source,
+    Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id, review_id,
 )
 from curling_score.service.repo import MemoryRepo
 
@@ -41,7 +41,7 @@ def _firestore_repo():
                 "workers", "watched_playlists", "rate_limits",
                 "users", "teams", "invites", "chart_claims", "flags", "yt_playlists",
                 "plays", "reviews", "practice_watches", "practice_sessions",
-                "clip_jobs", "team_name_edits"):
+                "clip_jobs", "team_name_edits", "signin_relays"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -907,3 +907,44 @@ class TestTheClipQueue:
         fresh.import_all(repo.export_all())
         assert fresh.get_clip_job("cj_1").rocks == rocks
         assert fresh.get_clip_job("cj_1").spec == spec
+
+
+RID = "AbCdEfGhIjKlMnOpQrStUv"
+RLINK = f"https://chart.example/signin?r={RID}&mode=signIn&oobCode=o1&apiKey=k"
+
+
+def relay(**kw):
+    base = dict(id=RID, code="012345", link=RLINK, created_at=T0, expires_at=at(600))
+    base.update(kw)
+    return SigninRelay(**base)
+
+
+class TestSigninRelays:
+    def test_put_and_get(self, repo):
+        repo.put_signin_relay(relay())
+        assert repo.get_signin_relay(RID).code == "012345"
+        assert repo.get_signin_relay("nope") is None
+
+    def test_put_replaces(self, repo):
+        repo.put_signin_relay(relay(code="111111", misses=2))
+        repo.put_signin_relay(relay(code="222222"))
+        got = repo.get_signin_relay(RID)
+        assert (got.code, got.misses) == ("222222", 0)
+
+    def test_the_right_code_takes_the_link_once(self, repo):
+        repo.put_signin_relay(relay())
+        assert repo.claim_signin_relay(RID, "012345", at(60), 5) == ("ok", RLINK)
+        assert repo.claim_signin_relay(RID, "012345", at(61), 5) == ("gone", None)
+
+    def test_wrong_codes_count_and_the_fifth_ends_it(self, repo):
+        repo.put_signin_relay(relay())
+        for i in range(4):
+            assert repo.claim_signin_relay(RID, "999999", at(i), 5) == ("wrong", None)
+        assert repo.get_signin_relay(RID).misses == 4
+        assert repo.claim_signin_relay(RID, "999999", at(5), 5) == ("gone", None)
+        assert repo.get_signin_relay(RID) is None
+        assert repo.claim_signin_relay(RID, "012345", at(6), 5) == ("gone", None)
+
+    def test_an_expired_relay_is_gone_even_with_the_right_code(self, repo):
+        repo.put_signin_relay(relay())
+        assert repo.claim_signin_relay(RID, "012345", at(600), 5) == ("gone", None)

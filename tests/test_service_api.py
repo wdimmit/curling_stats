@@ -792,6 +792,15 @@ class TestCatalogueAndAdmin:
                       "Most lopsided", "Games you played"):
             assert words in bundle, f"{words!r} is in no page"
 
+    def test_the_signin_page_loads(self, world):
+        """Where an emailed link lands. On its own, not in the loop above,
+        whose bundle words stop at the first one missing."""
+        c = world["client"]
+        body = c.get("/signin?r=AbCdEfGhIjKlMnOpQrStUv&oobCode=x&mode=signIn").text
+        assert 'data-page="signin"' in body
+        assert 'src="/static/site.js"' in body
+        assert "Almost there" in c.get("/static/site.js").text
+
     def test_the_terms_and_privacy_pages_load_without_a_script(self, world):
         """Plain pages: what the site promises has to read whatever else broke.
         Each names who to write to and links the other."""
@@ -824,6 +833,31 @@ class TestCatalogueAndAdmin:
                 " team who made it can change it.") in privacy
         assert "Charts you make, edits made through a chart's link" not in privacy
 
+    def test_the_terms_and_privacy_say_how_to_sign_in(self, world):
+        c = world["client"]
+        terms = " ".join(c.get("/terms").text.split())
+        privacy = " ".join(c.get("/privacy").text.split())
+        assert "You need to sign in with a Google account to" not in terms
+        assert "sign in, with a Google account or a link emailed to you," in terms
+        assert "You sign in with Google, or with a link emailed to you" in privacy
+        assert ("if you sign in with an emailed link, the name you give (1 to 60 characters,"
+                " set when you first sign in)") in privacy
+        assert ("the link and a 6-digit code can be used for 10 minutes, so the browser that"
+                " asked can finish signing you in. They are deleted as soon as the code is used"
+                " or after 5 wrong tries; any that go unused are removed automatically, usually"
+                " within a day after the 10 minutes are up.") in privacy
+        # Opening the link asks the site for its address, which the request
+        # log records like any other (the Logs section: 30 days).
+        assert ("Opening the link is a visit to the site like any other, so its address is"
+                " also in the request log, kept for 30 days (see Logs).") in privacy
+        assert "held for up to 10 minutes" not in privacy
+        assert ("it also keeps the address you typed, a random request number and the page"
+                " you were on, until you next sign in; it offers them back for about 15"
+                " minutes.") in privacy
+        assert "until you are signed in" not in privacy
+        assert "sends the sign-in email" in privacy
+        assert "Google's sign-in keeps you signed in the same way" not in privacy
+
     def test_the_whole_site_is_closed_to_crawlers(self, world):
         r = world["client"].get("/robots.txt")
         assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
@@ -841,7 +875,7 @@ class TestCatalogueAndAdmin:
         import re
         c = world["client"]
         for path in ("/", "/games", "/mine", "/join/i_x", "/thinking", "/shots", "/users",
-                     "/playlists"):
+                     "/playlists", "/signin"):
             for src in re.findall(r'src="(/static/[^"]+)"', c.get(path).text):
                 assert c.get(src).status_code == 200, f"{path} asks for {src}"
 

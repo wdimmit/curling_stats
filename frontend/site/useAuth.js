@@ -5,7 +5,7 @@
  * not a component. useSyncExternalStore is the seam.
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { authedFetch, currentUser, enabled, onUser } from "./auth.js";
+import { authedFetch, currentUser, enabled, onUser, profileVersion } from "./auth.js";
 
 let ready = false;
 const readySubs = new Set();
@@ -28,6 +28,9 @@ const subscribe = fn => {
 export function useAuthUser() {
   const user = useSyncExternalStore(subscribe, currentUser, () => null);
   const isReady = useSyncExternalStore(subscribe, () => ready, () => false);
+  // A name given after an emailed-link sign-in changes the same User object,
+  // which the first store cannot see, so its version is read as well.
+  useSyncExternalStore(subscribe, profileVersion, () => 0);
   return { user, ready: isReady, accounts: enabled() };
 }
 

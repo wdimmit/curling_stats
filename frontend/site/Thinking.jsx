@@ -10,6 +10,7 @@
  * it ranks teams by name, slowest first. Anyone else is offered sign-in. */
 import { useEffect, useState } from "react";
 import { signIn } from "./auth.js";
+import { signInTrouble } from "./signinState.mjs";
 import { mmss } from "./fmt.js";
 import { Card, Header } from "./ui.jsx";
 import { useAuthUser, useResource } from "./useAuth.js";
@@ -115,8 +116,8 @@ export function Thinking() {
           <Card>
             <p style={{ marginTop: 0 }}>Thinking time is for signed-in members.</p>
             <button className="primary"
-                    onClick={() => signIn().catch(e => setErr(e.code || e.message))}>
-              Sign in with Google</button>
+                    onClick={() => signIn().catch(e => setErr(signInTrouble(e)))}>
+              Sign in</button>
             {err ? <p className="muted">{err}</p> : null}
           </Card>
         ) : !ready || report.loading ? <p className="muted">Loading…</p>

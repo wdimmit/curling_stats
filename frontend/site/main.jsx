@@ -15,6 +15,7 @@ import { Mine } from "./Mine.jsx";
 import { Playlists } from "./Playlists.jsx";
 import { Practice } from "./Practice.jsx";
 import { Shots } from "./Shots.jsx";
+import { SignIn } from "./SignIn.jsx";
 import { Status } from "./Status.jsx";
 import { Submit } from "./Submit.jsx";
 import { Thinking } from "./Thinking.jsx";
@@ -23,7 +24,7 @@ import { Users } from "./Users.jsx";
 
 const PAGES = { submit: Submit, games: Games, mine: Mine, join: Join, status: Status,
                 thinking: Thinking, shots: Shots, practice: Practice, users: Users,
-                playlists: Playlists };
+                playlists: Playlists, signin: SignIn };
 
 const which = document.body.dataset.page;
 const Page = PAGES[which];

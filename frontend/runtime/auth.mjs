@@ -53,7 +53,8 @@ export async function idToken({ force = false, ms = SIGN_IN_WAIT_MS } = {}) {
   return settleWithin(u.getIdToken(force), ms, undefined);
 }
 
-/* Google's sign-in popup. Resolves once signed in; throws if it was shut. */
+/* The sign-in chooser, Google or an emailed link (site/auth.js signIn).
+ * Resolves once signed in; throws if it was closed. */
 export async function signInNow() {
   const auth = await import("../site/auth.js");
   return auth.signIn();
