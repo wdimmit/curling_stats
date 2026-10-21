@@ -532,6 +532,27 @@ def _trim_borrowed_end(frames, track) -> int:
     return arrived
 
 
+# A track that stops after fewer sightings in flight than this, on a spot a
+# stone of its colour already held, is that stone seen again: Knock the Dust
+# Off 10/17 D1 S1 end 4 (f_1A7j). The guard at (+0.02, +4.35) was hidden for
+# six seconds, past TRACK_TIMEOUT_S; one faint sighting of a player's feet at
+# the far edge started a track, the guard's return 1.13 m away fell inside its
+# gate, and the track "came to rest" on it -- rock 3, which was hogged. The
+# trim at the end (`_trim_borrowed_end`) never saw it: the guard was knocked
+# out the back later in the end, so the track did not finish there. A freeze
+# adds a stone beside the one it froze to, and a hit-and-stick is watched in.
+BORROWED_REST_FLIGHT = 3
+
+
+def _rests_on_parked(frames, track, rest_i) -> bool:
+    """Is where the track stopped a stone of its colour that was already
+    sitting there, which the spot did not gain a second of?"""
+    x, y, t = track.xs[rest_i], track.ys[rest_i], track.ts[rest_i]
+    if _place_was_empty(frames, track.color, x, y, t, unknown_is_empty=True):
+        return False
+    return _stone_gained_near(frames, track.color, x, y, track.ts[0], t) is None
+
+
 def _rest_index(track):
     """First index from which the stone stays put for REST_HOLD_S.
 
@@ -1027,6 +1048,8 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
                 )
             continue
         at_rest = rest_i is not None
+        if at_rest and rest_i < BORROWED_REST_FLIGHT and _rests_on_parked(frames, track, rest_i):
+            continue
         # Where the shot ended as far as the tracker could follow it.
         end_i = rest_i if at_rest else len(track.ts) - 1
 

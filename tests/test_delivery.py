@@ -1415,3 +1415,28 @@ class TestTheLastRockPushedOffInTheClearing:
         # its way; its place is not where it paused.
         got = delivery.find_deliveries(self._frames(hold_s=0.6))
         assert got[0].rest_y_m != pytest.approx(0.75, abs=0.05)
+
+
+class TestAHiddenGuardSeenAgainIsNotAnArrival:
+    """Knock the Dust Off 10/17 D1 S1 end 4 rock 3 (f_1A7j). The yellow guard
+    at (+0.02, +4.35) was hidden for six seconds, past the track timeout; a
+    faint sighting of a player's feet at the far edge started a track, the
+    guard's return 1.13 m away fell inside its gate, and the track "came to
+    rest" on the guard. Later in the end the guard was knocked out the back,
+    so the track did not finish on the spot and the end trim never saw it."""
+
+    def _frames(self, guard_before=True):
+        guard = ((static("yellow", 0.02, 4.35, 0.0, 57.7, fps=10.0) if guard_before else [])
+                 + static("yellow", 0.02, 4.35, 64.1, 100.0, fps=10.0)
+                 + interp([(100.1, 0.1, 4.0), (104.0, 0.4, -2.0)], fps=10.0, color="yellow"))
+        feet = [(62.5, det("yellow", -0.08, 5.48, conf=0.32))]
+        frames = merge(guard, feet, *[static("red", 1.17, 1.08, 0.0, 110.0, fps=10.0)])
+        return frames + [(round(110.0 + 0.1 * k, 3), []) for k in range(1, 50)]
+
+    def test_the_guard_seen_again_is_not_a_delivery(self):
+        got = delivery.find_deliveries(self._frames())
+        assert not any(abs(d.t_enter - 62.5) < 1.0 for d in got)
+
+    def test_a_stone_on_a_spot_nothing_held_still_arrives(self):
+        got = delivery.find_deliveries(self._frames(guard_before=False))
+        assert [(round(d.t_enter, 1), d.color) for d in got if abs(d.t_enter - 62.5) < 1.0] == [(62.5, "yellow")]
