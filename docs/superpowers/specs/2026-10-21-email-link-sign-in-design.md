@@ -105,6 +105,8 @@ The `claims_of` change ships before the provider is switched on, because the unv
 3. **Guessing the code.** A per-IP limit alone isn't enough, because whoever typed the victim's address already knows it, and fresh IPs are cheap. So each relay is keyed by the request id the starting tab made, the claim names that id, and five misses delete it. *(my call)*
 4. **Secrets in the emailed link.** Putting `next` in the continue URL would mail out invite tokens and chart edit links. So `next` stays in localStorage. A sign-in finished in another browser lands on `/`, which is fine, because in that case the member carries on in the starting tab. *(my call)*
 
+5. **A password account made in advance can survive (accepted risk).** With Email/Password on, anyone holding the public API key can create a password account under the address of a member who has never signed in, and ask Firebase to send that address a "verify your email" message. If the member clicks it, the account becomes verified, so the server's unverified-password rule no longer turns it away. When the member later signs in by link (or by Google, on a Gmail address) they land in that same account, and a verified password isn't removed, so the other person keeps access. It needs a member who has never signed in, and who clicks a verification email they didn't ask for. The owner accepted this on 2026-10-21 and no code changes for it. Two mitigations are set aside for later: an Identity Platform `beforeCreate` blocking function that refuses password sign-ups, or the server checking on first sight of an account whether it has a password, through the Admin SDK. *(owner's call)*
+
 ## Calls I made
 - One chooser for everyone, so Google users get one extra click.
 - A dedicated `/signin` landing page.

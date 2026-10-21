@@ -94,6 +94,17 @@ gcloud services enable identitytoolkit.googleapis.com
 # is nobody"), switch Email/Password off and set EMAIL_LINK_SIGNIN to "0":
 # an older API with the provider on lets anyone who makes a password account
 # under a member's address be that member.
+#
+# A risk accepted on 2026-10-21: with Email/Password on, anyone with the web
+# API key can make a password account under the address of a member who has
+# never signed in, and have Firebase mail that address a "verify your email"
+# message. If the member clicks it, that account is verified, the server stops
+# treating it as nobody, and a later sign-in by link (or by Google, on a Gmail
+# address) lands in it, with the other person's password still working. If it
+# is ever seen, disable that account in the Firebase console (Authentication >
+# Users); the member signs in again by link and gets a fresh one. To close it
+# for good: an Identity Platform beforeCreate blocking function that refuses
+# password sign-ups, or the server checking for a password on first sight.
 
 # Bucket: private, with a lifecycle rule that expires detection caches after a year
 gsutil mb -l $REGION gs://curling-chart-$PROJECT_ID
