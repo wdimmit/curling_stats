@@ -1190,6 +1190,98 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return {"ok": True, "refreshed": refreshed, "skipped": skipped,
                 "remaining": len(stale) - refreshed - skipped}
 
+    @app.post("/api/admin/switched-ends/migrate")
+    def admin_migrate_switched_ends(apply: bool = Query(False),
+                                    authorization: str | None = Header(default=None)):
+        """Move chart-level doubles swaps -- end-level override keys, which
+        the End box wrote before switched ends lived on the game -- onto
+        their games (Source.switched_ends), so each end has one answer.
+
+        A dry run unless ``apply``. Every doubles game's charts are read; a
+        chart is named by its view-only link, since its id is its edit link.
+        - ``moved``: the swaps a colour holds on a chart of the game's current
+          run, copied to the game; with ``apply``, taken off the chart.
+        - ``normalised``: as moved, for a chart that swapped the first end.
+          The first end is what Player A means, so the game is given every
+          other end the chart did not swap; ``plays`` names the people who
+          saved their rocks from that chart for that colour, whose slot now
+          names the other player.
+        - ``conflicts``: the game already holds other ends for that colour;
+          nothing changes.
+        - ``other_runs``: a chart pinned to a run that is not the game's
+          current one (or not ready), whose end numbers may not be the
+          game's; left in place.
+        """
+        require_admin(authorization)
+        out = {"moved": [], "conflicts": [], "other_runs": [], "normalised": []}
+        plays = None
+        for src in repo.list_sources(limit=EVERY_SOURCE):
+            if src.merged_into is not None or (src.format or "fours") != "doubles":
+                continue
+            charts = [c for r in repo.runs_for_video(src.video_id)
+                      for c in repo.charts_for_run(r.id) if c.source_id == src.id]
+            for chart in charts:
+                # colour -> {end identity: override key}
+                keys: dict[str, dict[int, str]] = {}
+                for key, patch in (chart.overrides or {}).items():
+                    parts = key.split(".")
+                    if (len(parts) != 2 or not all(p.isdigit() for p in parts)
+                            or int(parts[0]) != chart.game_index or not isinstance(patch, dict)):
+                        continue
+                    wanted = patch.get("roles_swapped")
+                    for c in ("red", "yellow"):
+                        if isinstance(wanted, dict) and wanted.get(c) is True:
+                            keys.setdefault(c, {})[int(parts[1])] = key
+                if not keys:
+                    continue
+
+                def item(c, ends):
+                    return {"source_id": src.id, "chart": chart.share_slug, "color": c, "ends": ends}
+                run = repo.get_run(chart.run_id)
+                if (chart.run_id != src.current_run_id or run is None or run.status != "ready"
+                        or chart.game_index is None):
+                    out["other_runs"].extend(item(c, sorted(ids)) for c, ids in keys.items())
+                    continue
+                doc = chart_doc(chart, run, read_only=True)
+                served = ([timeline.end_identity(e) for e in doc["games"][0]["ends"]]
+                          if doc.get("games") else [])
+                if not served:
+                    continue
+                moved = set()
+                for c, by_end in keys.items():
+                    swapped = {i for i in by_end if i in served}
+                    first = served[0] in swapped
+                    target = sorted(i for i in served[1:] if (i in swapped) != first)
+                    entry = item(c, target)
+                    held = ((src.switched_ends or {}).get(c) or {}).get("ends")
+                    if held is not None and sorted(held) != target:
+                        out["conflicts"].append(item(c, sorted(swapped)))
+                        continue
+                    if first:
+                        plays = repo.all_plays() if plays is None else plays
+                        entry["plays"] = sorted(p.user_id for p in plays
+                                                if p.chart_id == chart.id and p.color == c)
+                    out["normalised" if first else "moved"].append(entry)
+                    moved.add(c)
+                    if apply:
+                        src = repo.set_switched_ends(src.id, c, {
+                            "ends": target, "by": "migration", "at": _iso(now())} if target else None) or src
+                if apply and moved:
+                    patch, remove = {}, []
+                    for key in {k for c in moved for k in keys[c].values()}:
+                        old = chart.overrides[key]
+                        left = {c: v for c, v in old["roles_swapped"].items() if c not in moved}
+                        rest = {f: v for f, v in old.items() if f != "roles_swapped"}
+                        kept = {**rest, "roles_swapped": left} if left else rest
+                        if kept:
+                            patch[key] = kept
+                        else:
+                            remove.append(key)
+                    repo.merge_overrides(chart.id, patch, remove, {}, now())
+        log.info("switched ends migration (%s): %s", "applied" if apply else "dry run",
+                 {k: len(v) for k, v in out.items()})
+        return {"ok": True, "applied": apply, **out}
+
     @app.post("/api/admin/playlist-index")
     def admin_playlist_index(max_scans: int = Query(playlist_index.MAX_SCANS, ge=0, le=200),
                              authorization: str | None = Header(default=None)):

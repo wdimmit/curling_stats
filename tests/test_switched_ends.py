@@ -8,6 +8,7 @@ import pytest
 
 from curling_score.game import format as F
 from tests.test_plays import a_played_game, get, played_doc, put
+from tests.test_service_api import T0
 from tests.test_service_auth import ALEX, MAKER, SARAH, post, w  # noqa: F401  (fixtures)
 
 PLAIN, SWITCHED = ["A", "B", "B", "B", "A"], ["B", "A", "A", "A", "B"]
@@ -217,3 +218,73 @@ class TestTheEndBoxRoute:
         endbox(w, src, f"/c/{slug}/", {"color": "red", "ends": [2]})
         assert endbox(w, src, f"/c/{slug}/", {"color": "red", "ends": []}).json()["ends"] == []
         assert "red" not in (w["repo"].get_source(src).switched_ends or {})
+
+
+ADMIN = {"Authorization": "Bearer admin-secret"}
+
+
+def migrate(w, apply=False):  # noqa: F811
+    return post(w, f"/api/admin/switched-ends/migrate?apply={'true' if apply else 'false'}",
+                {}, ADMIN)
+
+
+def swapped_chart(w, overrides):  # noqa: F811
+    """A doubles game whose one chart holds `overrides`: (chart id, share, source id)."""
+    slug, share, src = a_doubles_game(w)
+    w["repo"].save_overrides(slug, overrides, None, T0)
+    return slug, share, src
+
+
+class TestMigration:
+    """Chart-level doubles swaps (end-level override keys) moved onto their
+    games, so the game holds one answer per end. A chart is named by its
+    view-only link: its id is its edit link."""
+
+    def test_a_dry_run_changes_nothing(self, w):  # noqa: F811
+        slug, share, src = swapped_chart(w, {"0.2": {"roles_swapped": {"red": True}}})
+        r = migrate(w)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["applied"] is False
+        assert body["moved"] == [{"source_id": src, "chart": share, "color": "red", "ends": [2]}]
+        assert not w["repo"].get_source(src).switched_ends
+        assert "0.2" in w["repo"].get_chart(slug).overrides
+
+    def test_apply_moves_and_removes(self, w):  # noqa: F811
+        slug, _, src = swapped_chart(w, {"0.2": {"roles_swapped": {"red": True}},
+                                         "0.2.3": {"shot_type": "hit"}})
+        body = migrate(w, apply=True).json()
+        assert body["applied"] is True and len(body["moved"]) == 1
+        got = w["repo"].get_source(src).switched_ends["red"]
+        assert (got["ends"], got["by"]) == ([2], "migration")
+        ov = w["repo"].get_chart(slug).overrides
+        assert "0.2" not in ov and ov["0.2.3"] == {"shot_type": "hit"}
+        assert red_by_end(get(w, f"/c/{slug}/timeline.json").json())[1] == SWITCHED
+
+    def test_a_colour_left_behind_keeps_its_key(self, w):  # noqa: F811
+        slug, _, src = swapped_chart(w, {"0.2": {"roles_swapped": {"red": True, "yellow": True}}})
+        mark(w, src, "yellow", [3])                       # yellow disagrees: a conflict
+        body = migrate(w, apply=True).json()
+        assert [m["color"] for m in body["moved"]] == ["red"]
+        assert [c["color"] for c in body["conflicts"]] == ["yellow"]
+        assert w["repo"].get_chart(slug).overrides["0.2"] == {"roles_swapped": {"yellow": True}}
+
+    def test_a_disagreeing_game_is_a_conflict(self, w):  # noqa: F811
+        slug, share, src = swapped_chart(w, {"0.2": {"roles_swapped": {"red": True}}})
+        mark(w, src, "red", [3])
+        body = migrate(w, apply=True).json()
+        assert body["conflicts"] == [{"source_id": src, "chart": share, "color": "red", "ends": [2]}]
+        assert body["moved"] == []
+        assert marks(w, src) == [3] and "0.2" in w["repo"].get_chart(slug).overrides
+
+    def test_a_first_end_swap_is_normalised(self, w):  # noqa: F811
+        slug, share, src = swapped_chart(w, {"0.1": {"roles_swapped": {"red": True}}})
+        assert put(w, src, {"path": f"/c/{slug}/", "color": "red", "slot": 1}).status_code == 200
+        body = migrate(w, apply=True).json()
+        assert body["normalised"] == [{"source_id": src, "chart": share, "color": "red",
+                                       "ends": [2, 3], "plays": ["uid-sarah"]}]
+        assert marks(w, src) == [2, 3]
+        assert "0.1" not in w["repo"].get_chart(slug).overrides
+
+    def test_admin_only(self, w):  # noqa: F811
+        assert post(w, "/api/admin/switched-ends/migrate", {}, SARAH).status_code == 401
