@@ -1214,6 +1214,68 @@ class TestRoleSwap:
         assert end["shots"][0]["position"] == "A" and "roles_swapped" not in end
 
 
+def _doubles_game(numbers=(1, 2, 3)):
+    """One doubles game of several ends, each as the pipeline writes it."""
+    doc = _doubles_end()
+    doc["games"][0]["ends"] = [_doubles_end(end_number=n)["games"][0]["ends"][0]
+                               for n in numbers]
+    return doc
+
+
+RED_PLAIN = ["A", "B", "B", "B", "A"]       # red's rocks 1, 3, 5, 7, 9 as detected
+RED_SWITCHED = ["B", "A", "A", "A", "B"]
+
+
+def _red(end):
+    return [s["position"] for s in end["shots"] if s["color"] == "red"]
+
+
+class TestSwitchedEnds:
+    """A switch held on the document (Source.switched_ends, served by
+    api.game_doc) credits the end as a chart's role swap does."""
+
+    def test_a_marked_end_hands_first_and_last_to_b(self):
+        doc = timeline.apply_switched_ends(_doubles_game(),
+                                           {"red": {"ends": [2], "by": "u", "at": "t"}})
+        e1, e2, e3 = doc["games"][0]["ends"]
+        assert _red(e2) == RED_SWITCHED and e2["roles_swapped"] == {"red": True}
+        assert e2["shots"][0]["label"] == "2nd end, B's first rock"
+        assert _red(e1) == _red(e3) == RED_PLAIN
+        assert "roles_swapped" not in e1 and "roles_swapped" not in e3
+
+    def test_marks_follow_the_end_identity_not_the_number(self):
+        doc = _doubles_game()
+        doc["games"][0]["ends"][1]["id"] = 7            # shown as 2, detected as 7
+        timeline.apply_switched_ends(doc, {"red": {"ends": [7]}})
+        assert _red(doc["games"][0]["ends"][1]) == RED_SWITCHED
+
+    def test_a_fours_document_is_left_alone(self):
+        import copy
+        doc = _doubles_end(n=16, fmt=F.FOURS, with_block=False)
+        before = copy.deepcopy(doc)
+        assert timeline.apply_switched_ends(doc, {"red": {"ends": [3]}}) == before
+
+    @pytest.mark.parametrize("marks", [None, {}, {"red": [2]}, {"red": {"ends": "2"}},
+                                       {"red": {"ends": ["2", True]}}, {"blue": {"ends": [2]}},
+                                       {"red": {"ends": [99]}}])
+    def test_malformed_marks_switch_nothing(self, marks):
+        before = _doubles_game()
+        assert timeline.apply_switched_ends(_doubles_game(), marks) == before
+
+    def test_a_switch_on_the_document_survives_a_move(self):
+        doc = _doubles_end(n=6, end_number=4)
+        for s in doc["games"][0]["ends"][0]["shots"][4:]:
+            s["color_inferred"] = s["missing"] = True
+        timeline.apply_switched_ends(doc, {"red": {"ends": [4]}})
+        end = _end(doc, {"0.4.5": {"before": 1}, "0.4.6": {"before": 1}})
+        assert [s["position"] for s in end["shots"]] == ["B", "A", "A", "B", "A", "B"]
+
+    def test_an_override_adds_but_never_removes(self):
+        doc = timeline.apply_switched_ends(_doubles_end(), {"red": {"ends": [3]}})
+        end = _end(doc, {"0.3": {"roles_swapped": {"red": False, "yellow": True}}})
+        assert end["roles_swapped"] == {"red": True, "yellow": True}
+
+
 class TestEnteredScores:
     """Scores people typed in, for the ends the wall board never gave one.
     They fill gaps and nothing else: the board's figure always wins."""

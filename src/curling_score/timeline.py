@@ -587,20 +587,28 @@ def _reorder(shots: list) -> list:
     return out
 
 
-def _swapped(patch, fmt) -> dict:
-    """Which teams swapped roles this end, from an end-level override.
+def _true_colours(wanted) -> set:
+    return ({c for c in rules.COLORS if wanted.get(c) is True}
+            if isinstance(wanted, dict) else set())
 
-    Only a format whose two players can trade roles honours it; anything else
-    -- a four-player chart, a patch that is not the expected shape -- is no
-    swap at all. Only true values count, so turning a swap off is the same as
-    never having set it.
+
+def _swapped(end: dict, patch, fmt) -> dict:
+    """Which teams swapped roles this end: the document's own say
+    (``end["roles_swapped"]``, the game's switched ends as api.game_doc
+    serves them) and an end-level override's, together.
+
+    Only a format whose two players can trade roles honours either; anything
+    else -- a four-player chart, a value that is not the expected shape -- is
+    no swap at all. Only true values count, so turning a swap off is the same
+    as never having set it, and an override can add a swap to an end but never
+    take away one the game holds.
     """
-    if not fmt.swappable or not isinstance(patch, dict):
+    if not fmt.swappable:
         return {}
-    wanted = patch.get("roles_swapped")
-    if not isinstance(wanted, dict):
-        return {}
-    return {c: True for c in rules.COLORS if wanted.get(c) is True}
+    wanted = _true_colours(end.get("roles_swapped"))
+    if isinstance(patch, dict):
+        wanted |= _true_colours(patch.get("roles_swapped"))
+    return {c: True for c in rules.COLORS if c in wanted}
 
 
 def _assign_throwers(shots, end_number, fmt, swapped, short=frozenset()) -> None:
@@ -742,7 +750,7 @@ def apply_overrides(document: dict, overrides: dict) -> dict:
                 if patch is not None:
                     shot.update(patch)
                     shot["corrected"] = True
-            swapped = _swapped(end_patches.get(ident), fmt)
+            swapped = _swapped(end, end_patches.get(ident), fmt)
             ordered = _reorder(end["shots"])
             if ordered is not end["shots"]:
                 colour_set = {s for s, p in here.items() if "color" in p}
@@ -772,6 +780,45 @@ def assign_short_handed(document: dict) -> dict:
     for game in document.get("games", []):
         for end in game.get("ends", []):
             _assign_throwers(end.get("shots") or [], end["number"], fmt, {}, short)
+    return document
+
+
+def apply_switched_ends(document: dict, marks: dict | None) -> dict:
+    """Credit the ends a doubles pair threw the other way round.
+
+    ``marks`` is ``Source.switched_ends``: per colour, ``{"ends": [...]}``,
+    the ends by the number they were detected with (:func:`end_identity`), so
+    a practice trim that renumbers the game moves nothing. Each such end gets
+    ``roles_swapped`` -- the field a chart's role swap writes, which
+    apply_overrides and the viewer's layout both honour, so a later
+    renumbering keeps the switch -- and its rocks change hands. Edits and
+    returns the document it is given. A format whose players cannot trade
+    roles, a colour, entry or end that is not what is expected, and an end the
+    game does not have are all left alone.
+    """
+    fmt = format_mod.of_document(document)
+    if not fmt.swappable or not isinstance(marks, dict):
+        return document
+    wanted = {}
+    for colour in rules.COLORS:
+        entry = marks.get(colour)
+        ends = entry.get("ends") if isinstance(entry, dict) else None
+        if not isinstance(ends, list):
+            continue
+        for n in ends:
+            if isinstance(n, int) and not isinstance(n, bool):
+                wanted.setdefault(n, set()).add(colour)
+    if not wanted:
+        return document
+    for game in document.get("games", []):
+        for end in game.get("ends", []):
+            colours = wanted.get(end_identity(end))
+            if not colours:
+                continue
+            swapped = {c: True for c in rules.COLORS
+                       if c in colours or c in _true_colours(end.get("roles_swapped"))}
+            end["roles_swapped"] = swapped
+            _assign_throwers(end.get("shots") or [], end["number"], fmt, swapped)
     return document
 
 
