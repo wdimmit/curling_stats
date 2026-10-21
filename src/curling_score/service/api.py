@@ -208,6 +208,11 @@ class Settings:
     # a play is saved or its report read, cut by the clips worker. Off until a
     # worker running WORKER_ROLE=clips is up.
     game_clips_enabled: bool = False
+    # Whether the sign-in chooser offers an emailed link beside Google. Off
+    # until Email/Password and its Email link option are on in the Firebase
+    # console, or every "Email me a link" fails. /signin and its relay work
+    # either way, so a link already sent still finishes (deploy/README.md).
+    email_link_signin: bool = False
     # The club's own clock, which playlists' schedules are written in.
     club_tz: str = "America/Los_Angeles"
     model_id: str = "classical"
@@ -251,6 +256,7 @@ class Settings:
             live_enabled=env("LIVE_ENABLED", "0") in ("1", "true", "yes"),
             practice_enabled=env("PRACTICE_ENABLED", "0") in ("1", "true", "yes"),
             game_clips_enabled=env("GAME_CLIPS_ENABLED", "0") in ("1", "true", "yes"),
+            email_link_signin=env("EMAIL_LINK_SIGNIN", "0") in ("1", "true", "yes"),
             club_tz=env("CLUB_TZ", "America/Los_Angeles"),
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
@@ -1763,7 +1769,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         Served rather than templated into each page: there are four places that
         render HTML and one of them would eventually be forgotten. With no
         project configured this reports disabled and the whole feature simply
-        is not there.
+        is not there. `emailLink` is whether the chooser offers an emailed
+        link beside Google (Settings.email_link_signin).
         """
         if not (auth.enabled and settings.firebase_api_key):
             return JSONResponse({"enabled": False},
@@ -1772,7 +1779,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                              "apiKey": settings.firebase_api_key,
                              "authDomain": settings.firebase_auth_domain,
                              "projectId": settings.firebase_project,
-                             "emulator": settings.auth_emulator or None},
+                             "emulator": settings.auth_emulator or None,
+                             "emailLink": bool(settings.email_link_signin)},
                             headers={"Cache-Control": "public, max-age=300"})
 
     @app.post("/api/signin/relay")
@@ -1790,6 +1798,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         link = body.get("link")
         rid = signin.relay_id_of(link, settings.public_base_url, settings.firebase_api_key)
         if rid is None:
+            if not signin.base_url_ok(settings.public_base_url):
+                # Then every relay is refused. Say why where an operator will
+                # look, not only in each 422.
+                log.warning("sign-in relay refused: PUBLIC_BASE_URL %r has no scheme and host,"
+                            " so no link can be checked as this site's",
+                            settings.public_base_url)
             raise HTTPException(422, "that is not a sign-in link for this site")
         t = now()
         if not repo.bump_rate_limit("relay:" + ip_hash(request), t,

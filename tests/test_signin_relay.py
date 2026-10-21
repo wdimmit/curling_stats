@@ -4,6 +4,7 @@ Opening the link elsewhere gives a code. Typing that code where the sign-in
 started gives the link back once. Nothing here signs anyone in: the link is
 useless without the address it was sent to, and Firebase checks that.
 """
+import logging
 from urllib.parse import urlencode
 
 import pytest
@@ -51,6 +52,13 @@ class TestRelay:
         second = relay(w, link(oobCode="oob-2")).json()["code"]
         assert claim(w, second).json() == {"link": link(oobCode="oob-2")}
 
+    def test_a_newer_link_kills_the_old_code(self, w):
+        first = relay(w).json()["code"]
+        second = relay(w, link(oobCode="oob-2")).json()["code"]
+        assert first != second
+        assert claim(w, first).status_code in (404, 410)
+        assert claim(w, second).json() == {"link": link(oobCode="oob-2")}
+
     def test_the_code_gives_the_link_back_once(self, w):
         code = relay(w).json()["code"]
         r = claim(w, code)
@@ -79,8 +87,28 @@ class TestRelay:
     def test_only_our_own_sign_in_links_are_held(self, w, bad):
         assert relay(w, bad).status_code == 422
 
+    @pytest.mark.parametrize("base", [
+        "https://chart.example@evil.example/signin",     # the host is evil.example
+        "https://chart.example:8443/signin",             # another server on our host
+    ])
+    def test_a_host_that_only_looks_like_ours_is_refused(self, w, base):
+        assert relay(w, link(base=base)).status_code == 422
+
     def test_a_link_with_two_oob_codes_is_refused(self, w):
         assert relay(w, link() + "&oobCode=oob-x").status_code == 422
+
+    # Firestore reserves ids that start and end with two underscores, and
+    # raises on them: refused up front, at either end, or both routes 500.
+    @pytest.mark.parametrize("rid", ["__AAAAAAAAAAAAAAAAAA__", "__AAAAAAAAAAAAAAAAAAAA",
+                                     "AAAAAAAAAAAAAAAAAAAA__"])
+    def test_an_id_firestore_reserves_is_refused(self, w, rid):
+        assert signin.relay_id_of(link(rid=rid), "https://chart.example", "AIzaFake") is None
+        assert relay(w, link(rid=rid)).status_code == 422
+        assert claim(w, "123456", rid=rid).status_code == 422
+
+    def test_an_underscore_inside_an_id_is_fine(self, w):
+        rid = "A_" + "B" * 18 + "_C"
+        assert relay(w, link(rid=rid)).status_code == 200
 
     def test_a_lone_surrogate_is_refused_not_a_500(self, w):
         r = w["client"].post("/api/signin/relay", content=b'{"link": "\\ud800"}',
@@ -93,6 +121,19 @@ class TestRelay:
         assert signin.relay_id_of(relative, "", "AIzaFake") is None
         assert signin.relay_id_of(link(), "", "AIzaFake") is None
         assert signin.relay_id_of(link(), "chart.example", "AIzaFake") is None
+
+    def test_with_no_base_url_each_refusal_says_why_in_the_log(self, w, caplog):
+        w["settings"].public_base_url = ""
+        with caplog.at_level(logging.WARNING, logger="curling_score.service.api"):
+            assert relay(w).status_code == 422
+            assert relay(w).status_code == 422
+        said = [r for r in caplog.records if "PUBLIC_BASE_URL" in r.getMessage()]
+        assert len(said) == 2 and all(r.levelno == logging.WARNING for r in said)
+
+    def test_a_foreign_link_is_not_blamed_on_the_base_url(self, w, caplog):
+        with caplog.at_level(logging.WARNING, logger="curling_score.service.api"):
+            assert relay(w, link(base="https://evil.example/signin")).status_code == 422
+        assert not [r for r in caplog.records if "PUBLIC_BASE_URL" in r.getMessage()]
 
     def test_a_claim_for_a_malformed_request_id_is_refused(self, w):
         assert claim(w, "123456", rid="short").status_code == 422
@@ -108,6 +149,13 @@ class TestRelay:
     def test_trying_codes_is_limited_per_address(self, w):
         statuses = [claim(w, "000000", rid=f"{i:022d}").status_code for i in range(61)]
         assert statuses[60] == 429
+
+    def test_a_link_already_sent_still_finishes_with_the_chooser_offering_none(self, w):
+        # EMAIL_LINK_SIGNIN only decides what the chooser offers; /signin and
+        # its relay keep working, for links sent before it was switched off.
+        assert w["settings"].email_link_signin is False
+        code = relay(w).json()["code"]
+        assert claim(w, code).json() == {"link": link()}
 
     def test_with_accounts_off_there_is_no_relay(self):
         off = _world(NoAuth())

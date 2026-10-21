@@ -24,7 +24,11 @@ CLAIM_DAY_LIMIT = 300
 # A Firebase sign-in link is a few hundred bytes; anything much longer is
 # somebody using the relay to store something.
 MAX_LINK_BYTES = 2048
-REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{22}$")
+# 16 random bytes as base64url. Firestore reserves document ids that start and
+# end with "__" and raises on them, so an id with "__" at either end is
+# refused too: the browser never makes one (signinState.mjs newRequestId), and
+# its requestIdOf has the same rule.
+REQUEST_ID = re.compile(r"^(?!__)[A-Za-z0-9_-]{22}(?<!__)$")
 
 
 def clean_name(raw) -> str | None:
@@ -62,12 +66,12 @@ def relay_id_of(link, base_url: str, api_key: str) -> str | None:
     """
     if not isinstance(link, str) or not link.isascii() or len(link) > MAX_LINK_BYTES:
         return None
+    if not base_url_ok(base_url):
+        return None
     try:
         parts, base = urlsplit(link), urlsplit(base_url)
         query = parse_qs(parts.query, keep_blank_values=True)
     except ValueError:
-        return None
-    if not (base.scheme and base.netloc):
         return None
     if (parts.scheme, parts.netloc) != (base.scheme, base.netloc) or parts.path != "/signin":
         return None
@@ -82,6 +86,17 @@ def relay_id_of(link, base_url: str, api_key: str) -> str | None:
     if one("mode") != "signIn" or not one("oobCode") or one("apiKey") != api_key:
         return None
     return rid if rid is not None and REQUEST_ID.fullmatch(rid) else None
+
+
+def base_url_ok(base_url) -> bool:
+    """Whether `base_url` has the scheme and host a link is checked against.
+    PUBLIC_BASE_URL may be left unset on a first deploy, and until it is set
+    no link is this site's."""
+    try:
+        base = urlsplit(base_url)
+    except ValueError:
+        return False
+    return bool(base.scheme and base.netloc)
 
 
 def new_code() -> str:

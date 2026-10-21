@@ -28,7 +28,9 @@ ALEX = {"Authorization": "Bearer tok-alex"}
 MAKER = {"Authorization": "Bearer tok-maker"}
 
 
-def _world(auth):
+def _world(auth, **more):
+    """The service with `auth`; `more` sets further Settings, such as
+    email_link_signin=True."""
     clock = Clock()
     repo, store = MemoryRepo(), MemoryStore()
     yt = FakeYouTube()
@@ -37,7 +39,7 @@ def _world(auth):
                         admin_token="admin-secret", allowed_channels={CLUB},
                         model_id="m-abc", max_queued=3, rate_hour=5, rate_day=20,
                         firebase_project="proj", firebase_api_key="AIzaFake",
-                        firebase_auth_domain="proj.firebaseapp.com")
+                        firebase_auth_domain="proj.firebaseapp.com", **more)
     app = create_app(repo, store, yt, settings, now=clock, auth=auth)
     return {"client": TestClient(app), "repo": repo, "store": store, "yt": yt,
             "clock": clock, "settings": settings, "auth": auth}
@@ -129,6 +131,21 @@ class TestSigningIn:
         cfg = w["client"].get("/api/auth/config").json()
         assert cfg["enabled"] and cfg["apiKey"] == "AIzaFake"
         assert cfg["projectId"] == "proj"
+
+    def test_the_chooser_offers_no_emailed_link_until_it_is_switched_on(self, w):
+        # Off until Email link is on in the Firebase console too: offered
+        # before then, every "Email me a link" fails (deploy/README.md).
+        assert w["client"].get("/api/auth/config").json()["emailLink"] is False
+
+    def test_switched_on_the_chooser_offers_an_emailed_link(self):
+        on = _world(FakeVerifier(), email_link_signin=True)
+        assert on["client"].get("/api/auth/config").json()["emailLink"] is True
+
+    def test_the_switch_is_read_from_the_environment(self, monkeypatch):
+        monkeypatch.delenv("EMAIL_LINK_SIGNIN", raising=False)
+        assert Settings.from_env().email_link_signin is False
+        monkeypatch.setenv("EMAIL_LINK_SIGNIN", "1")
+        assert Settings.from_env().email_link_signin is True
 
     def test_first_sight_of_a_token_creates_the_person(self, w):
         me = w["client"].get("/api/me", headers=SARAH).json()
