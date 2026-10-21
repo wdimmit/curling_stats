@@ -128,6 +128,14 @@ class Source:
     # api.game_doc credits that team's rocks 3/3/2 (format.short_throw_table).
     # None is nobody.
     short_handed: list[str] | None = None
+    # The ends a doubles pair threw the other way round -- the one who
+    # throws 1st & 5th threw 2nd-4th -- per colour, if anybody has said:
+    # {"red": {"ends": [4, 5], "by": uid, "at": iso}}, the ends by the
+    # number they were detected with (timeline.end_identity). On the game
+    # for the same reason as the names, and served into every chart of it:
+    # api.game_doc re-credits both partners' rocks in those ends. A colour
+    # nobody switched has no key.
+    switched_ends: dict | None = None
     # Where the game actually starts, once somebody has told us -- and how
     # many ends are left once the warm-up in front of it is dropped.
     #

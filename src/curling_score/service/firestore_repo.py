@@ -247,6 +247,20 @@ class FirestoreRepo:
         snap = ref.get()
         return Source.from_dict(snap.to_dict()) if snap.exists else None
 
+    def set_switched_ends(self, source_id, color, entry):
+        """One colour's switched ends, set or cleared on its own: a field
+        path, as set_entered_score's, so both teams' players marking their
+        own ends at the same moment both land."""
+        from google.cloud.firestore_v1.field_path import FieldPath
+
+        ref = self._col(SOURCES).document(source_id)
+        if not ref.get().exists:
+            return None
+        path = FieldPath("switched_ends", color).to_api_repr()
+        ref.update({path: self._fs.DELETE_FIELD if entry is None else dict(entry)})
+        snap = ref.get()
+        return Source.from_dict(snap.to_dict()) if snap.exists else None
+
     def sources_for_video(self, video_id):
         q = self._where(SOURCES, "video_id", "==", video_id)
         return [Source.from_dict(d.to_dict()) for d in q.stream()]

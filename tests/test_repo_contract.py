@@ -537,6 +537,32 @@ class TestSources:
     def test_an_unknown_game_is_none(self, repo):
         assert repo.set_entered_score("s_nope", 1, {"red": 1, "yellow": 0}) is None
 
+    def test_switched_ends_round_trip(self, repo):
+        self._source(repo)
+        assert not repo.get_source("s_1").switched_ends
+        entry = {"ends": [4, 5, 6, 7], "by": "uid-sarah", "at": "2026-10-21T12:00:00+00:00"}
+        assert repo.set_switched_ends("s_1", "red", entry).switched_ends == {"red": entry}
+        assert repo.get_source("s_1").switched_ends == {"red": entry}
+
+    def test_two_colours_are_kept_apart(self, repo):
+        """Both teams' players marking their own ends at once must not
+        overwrite each other."""
+        self._source(repo)
+        repo.set_switched_ends("s_1", "red", {"ends": [2], "by": "a", "at": "t"})
+        repo.set_switched_ends("s_1", "yellow", {"ends": [3], "by": "b", "at": "t"})
+        assert set(repo.get_source("s_1").switched_ends) == {"red", "yellow"}
+
+    def test_clearing_one_colour_leaves_the_other(self, repo):
+        self._source(repo)
+        repo.set_switched_ends("s_1", "red", {"ends": [2], "by": "a", "at": "t"})
+        repo.set_switched_ends("s_1", "yellow", {"ends": [3], "by": "b", "at": "t"})
+        repo.set_switched_ends("s_1", "red", None)
+        assert repo.get_source("s_1").switched_ends == {
+            "yellow": {"ends": [3], "by": "b", "at": "t"}}
+
+    def test_switched_ends_on_an_unknown_game_is_none(self, repo):
+        assert repo.set_switched_ends("s_nope", "red", {"ends": [2], "by": "a", "at": "t"}) is None
+
 class TestWorkersAndPlaylists:
     def test_heartbeat_upserts(self, repo):
         repo.heartbeat(Worker(id="home", last_seen_at=T0, gpu="3070"))

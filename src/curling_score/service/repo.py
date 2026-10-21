@@ -57,6 +57,10 @@ class Repo(Protocol):
     def update_source(self, source_id: str, **fields) -> Source | None: ...
     def set_entered_score(self, source_id: str, end: int,
                           entry: dict | None) -> Source | None: ...
+    # One colour's switched ends (Source.switched_ends), set or cleared on
+    # its own; None back for a game we do not have.
+    def set_switched_ends(self, source_id: str, color: str,
+                          entry: dict | None) -> Source | None: ...
     def sources_for_video(self, video_id: str) -> list[Source]: ...
     def list_sources(self, league: str | None = None, limit: int = 500) -> list[Source]: ...
     def sources_played(self, since: datetime | None = None, before: datetime | None = None,
@@ -321,6 +325,19 @@ class MemoryRepo:
             else:
                 scores[str(end)] = dict(entry)
             src.entered_scores = scores
+            return src
+
+    def set_switched_ends(self, source_id, color, entry):
+        with self._lock:
+            src = self.sources.get(source_id)
+            if src is None:
+                return None
+            marks = dict(src.switched_ends or {})
+            if entry is None:
+                marks.pop(color, None)
+            else:
+                marks[color] = dict(entry)
+            src.switched_ends = marks
             return src
 
     def sources_for_video(self, video_id):
