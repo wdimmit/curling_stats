@@ -14,6 +14,7 @@ from curling_score import timeline, version
 from curling_score import weights as weights_mod
 from curling_score.detect import (broommodel, delivery, longview, release, sequence,
                                   sidemodel, spinmodel)
+from curling_score.fpframes import record as fp_record
 from curling_score.game import (
     boardsplit,
     broomtime,
@@ -293,6 +294,10 @@ class EndContext:
     # feed stopping rather than a concession (`finish_game`).
     recording_start_s: float = 0.0
     recording_end_s: float | None = None
+    # The panels in `path`'s own coordinates, for where a false-positive box
+    # sits in the original frame. None when `read_setups` already are, as for
+    # a live recording; a VOD reads a strip proxy, so `analyze` fills it.
+    frame_setups: dict | None = None
 
 
 @dataclass
@@ -449,6 +454,9 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     rock came to rest, which is where the next end's run-up begins. Nothing
     else carries from one end to the next.
     """
+    rec = fp_record.active()
+    if rec is not None:
+        rec.begin_end()
     fmt, progress = ctx.fmt, ctx.progress
     path, read_path, read_setups = ctx.path, ctx.read_path, ctx.read_setups
     sideviews = ctx.sideviews
@@ -579,6 +587,12 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     audit = endcheck.check(deliveries, per_end=fmt.delivered_per_end,
                            per_team=fmt.delivered_per_team)
     dropped = len(deliveries) - len(kept)
+    if rec is not None:
+        try:
+            _record_quiet(rec, seq, kept)
+        except Exception:
+            # Collecting frames for labelling must never cost the job its end.
+            log.exception("fpframes: quiet-span check failed")
     # The arrangement as it stood when rock 1 was on its way: a power
     # play set up in two steps shows its final shape here.
     if placed is not None and kept:
@@ -703,7 +717,38 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         + (f"board says {built['score']}" if built["score"] is not None
            else f"board silent, detected {built['detected_score']}")
     )
+    if rec is not None:
+        # The boxes are in the panel's own pixels; the rect is the panel's
+        # place in the original frame, which a proxy read does not share.
+        rec.close_end(
+            game=game.index, end=end.number, house=end.house, video=path,
+            near_rect=(ctx.frame_setups or read_setups)[end.house].rect,
+            near_seq=seq,
+            cameras={tuple(v.rect): n for n, v in (sideviews or {}).items()})
     return built, closed_s
+
+
+def _record_quiet(rec, seq, kept) -> None:
+    """Note the overhead boxes that sit between two kept rocks and are not stones.
+
+    With every stone at rest nothing on the sheet moves but people, so
+    `settled_only` keeps the stones and what it drops is a box that should
+    not have been drawn. Only a hook: nothing here changes what is built.
+    """
+    import curling_score.train.dataset as DS
+
+    for a, b in zip(kept, kept[1:]):
+        lo, hi = a.t_rest + DS.QUIET_MARGIN_S, b.t_enter - DS.QUIET_MARGIN_S
+        if hi - lo < DS.MIN_QUIET_S:
+            continue
+        settled = DS.settled_only(seq, lo, hi)
+        if not settled:
+            continue
+        keep = {id(d) for _t, dets in settled for d in dets}
+        strays = [(t, [d for d in dets if id(d) not in keep])
+                  for t, dets in seq if lo <= t <= hi]
+        for tr in delivery._build_tracks(strays):
+            rec.overhead_track("ovh.quiet", tr, quiet=[round(lo, 2), round(hi, 2)])
 
 
 # A game whose recording ran on this long past its last end finished there:
@@ -1014,6 +1059,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         line_model=line_model, fmt=fmt, shot_fps=shot_fps, progress=progress,
         recording_start_s=float(start_s or 0.0),
         recording_end_s=samples[-1].t if samples else None,
+        frame_setups=setups,
     )
     out_games = build_games(
         ctx, games, phase=phase,
