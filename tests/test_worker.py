@@ -494,6 +494,17 @@ class TestBuildingTheLiveLane:
                                 start=False)
         assert got.manager.kinds == ("live", "practice")
 
+    def test_the_harvest_settings_reach_the_lane(self, monkeypatch, tmp_path):
+        from curling_score import fpframes
+
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False)
+        assert got.fp_cap_gb == 20.0
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False, fp_harvest=fpframes.Settings(True, 5.0))
+        assert got.fp_cap_gb == 5.0
+
     def test_the_live_lane_prunes_with_the_recording_window(self, monkeypatch, tmp_path):
         monkeypatch.setenv("WORKER_LIVE", "1")
         calls = []

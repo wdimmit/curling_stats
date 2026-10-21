@@ -99,14 +99,20 @@ class LiveManager:
         with self._lock:
             return bool(self._streams)
 
-    def finish(self, stream, keep: bool = True):
+    def finish(self, stream, keep: bool = True, on_kept=None):
         """Let a stream go: stop recording it, and delete the recording --
         after filing it, unless ``keep`` is turned down: a whole recording as
         the video's cached copy, so reprocessing the game needs no download; a
         partial one under ``kept/``, for investigation. The pruner lets either
         go after a week (WORKER_RECORDING_DAYS), or sooner if the disk needs it.
         A practice recording is never kept, however its stream ends: it is a
-        window on a sheet's all-day stream, not a game."""
+        window on a sheet's all-day stream, not a game.
+
+        ``on_kept`` is called, on the keeping thread, with the file the
+        recording became -- or with the recording itself when filing it failed
+        -- before the recording is deleted: the last moment its frames can be
+        read. It is not called for a recording that is not kept, and what it
+        raises is logged and goes no further."""
         keep = keep and not is_practice(stream.job)
         stream.recorder.stop()
         with self._lock:
@@ -130,6 +136,7 @@ class LiveManager:
         file_it = cache.keep_recording if whole else cache.keep_partial
 
         def keep_it():
+            kept = None
             try:
                 kept = file_it(path, vid, self.root)
                 if kept is not None:
@@ -138,7 +145,13 @@ class LiveManager:
             except Exception:  # noqa: BLE001 - only a replay is lost
                 log.exception("could not keep the recording of %s", vid)
             finally:
-                shutil.rmtree(directory, ignore_errors=True)
+                try:
+                    if on_kept is not None:
+                        on_kept(kept if kept is not None else path)
+                except Exception:  # noqa: BLE001 - only the frames are lost
+                    log.exception("could not save the frames of %s", vid)
+                finally:
+                    shutil.rmtree(directory, ignore_errors=True)
             if self.prune is not None:
                 try:
                     self.prune()

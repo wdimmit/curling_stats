@@ -477,7 +477,8 @@ def _enable_stack_dumps():
 def build_live(api_url, token, worker_id, *, root: Path, weights,
                skip_longview: bool = False, start: bool = True,
                cache_gb: float | None = None, min_free_gb: float = 0.0,
-               recording_days: float | None = None):
+               recording_days: float | None = None,
+               fp_harvest: fpframes.Settings | None = None):
     """The live lane, when ``WORKER_LIVE=1`` asks for one; None otherwise.
 
     Its manager gets an API client of its own, since it talks to the API from
@@ -491,7 +492,8 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     too when ``WORKER_PRACTICE=1``. Practice only runs when no league is on,
     so it never shares the lane with league ends; but a practice stream in
     hand pauses this worker's VOD jobs as a live game does, for as long as
-    its sessions last.
+    its sessions last. With ``fp_harvest`` enabled each league session records
+    the frames its checks flag, and the lane saves them as the recording is kept.
     """
     if os.environ.get("WORKER_LIVE") != "1":
         return None
@@ -514,9 +516,11 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
         kinds=("live", "practice") if os.environ.get("WORKER_PRACTICE") == "1" else ("live",))
     if start:
         mgr.start()
-    return lane.LiveLane(mgr, ApiClient(api_url, token), worker_id,
-                         make_session=lane.video_sessions(weights,
-                                                          skip_longview=skip_longview))
+    return lane.LiveLane(
+        mgr, ApiClient(api_url, token), worker_id,
+        make_session=lane.video_sessions(weights, skip_longview=skip_longview,
+                                         fp_harvest=fp_harvest),
+        fp_cap_gb=fp_harvest.cap_gb if fp_harvest else 20.0)
 
 
 def main(argv=None) -> int:
@@ -548,7 +552,7 @@ def main(argv=None) -> int:
         live=build_live(api_url, token, worker_id, root=root, weights=weights,
                         skip_longview=resolve_skip_longview(),
                         cache_gb=cache_gb, min_free_gb=min_free_gb,
-                        recording_days=recording_days),
+                        recording_days=recording_days, fp_harvest=fp),
     )
     return 0
 
