@@ -397,7 +397,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if not auth.enabled or not authorization or not authorization.startswith("Bearer "):
             return None
         claims = auth.verify(authorization[len("Bearer "):].strip())
-        return claims if claims and claims.get("sub") else None
+        if not claims or not claims.get("sub"):
+            return None
+        # Emailed links need Firebase's Email/Password provider switched on, and
+        # with it on anybody can make a password account under an address that
+        # is not theirs. Firebase removes that unverified sign-in method itself
+        # once the real owner finishes an emailed-link sign-in, but until then
+        # such an account must never be a user here. A real emailed-link token
+        # has email_verified true, so only the squatter is turned away.
+        if ((claims.get("firebase") or {}).get("sign_in_provider") == "password"
+                and not claims.get("email_verified")):
+            return None
+        return claims
 
     def uid_of(authorization) -> str | None:
         """Who is asking, by id alone. Reads no record: a save asks this every

@@ -144,6 +144,31 @@ class TestSigningIn:
                                ).status_code == 401
 
 
+class TestPasswordAccounts:
+    """Email links need Firebase's Email/Password provider on, so anyone can make
+    an unverified password account under someone else's address. That is nobody."""
+
+    def test_an_unverified_password_token_is_anonymous(self, w):
+        w["auth"].add("tok-squat", "uid-squat", "sarah@example.org", None,
+                      email_verified=False, provider="password")
+        squat = {"Authorization": "Bearer tok-squat"}
+        assert w["client"].get("/api/me", headers=squat).status_code == 401
+        assert w["repo"].get_user("uid-squat") is None
+
+    def test_someone_who_came_by_an_emailed_link_is_somebody(self, w):
+        w["auth"].add("tok-link", "uid-link", "jo@example.org", None, provider="password")
+        me = w["client"].get("/api/me", headers={"Authorization": "Bearer tok-link"}).json()
+        assert me["user"]["id"] == "uid-link" and me["user"]["name"] is None
+
+    def test_an_unverified_password_token_cannot_save_a_chart(self, w):
+        # uid_of is what a save asks; it must agree with /api/me.
+        w["auth"].add("tok-squat", "uid-squat", "x@example.org", None,
+                      email_verified=False, provider="password")
+        r = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"},
+                 {"Authorization": "Bearer tok-squat"})
+        assert r.status_code == 401
+
+
 class TestMyGames:
     def test_a_submission_while_signed_in_is_mine(self, w):
         r = post(w, "/api/submissions", {"url": f"https://youtu.be/{VID}"}, SARAH)

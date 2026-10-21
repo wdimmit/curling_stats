@@ -59,9 +59,11 @@ class FakeVerifier:
         self._tokens = dict(tokens or {})
 
     def add(self, token: str, sub: str, email: str | None = None,
-            name: str | None = None, email_verified: bool = True) -> str:
+            name: str | None = None, email_verified: bool = True,
+            provider: str = "google.com") -> str:
         self._tokens[token] = {"sub": sub, "email": email, "name": name,
-                               "email_verified": email_verified}
+                               "email_verified": email_verified,
+                               "firebase": {"sign_in_provider": provider}}
         return token
 
     def verify(self, id_token):
