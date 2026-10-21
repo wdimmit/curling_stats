@@ -25,9 +25,9 @@ services:
       WORKER_MIN_FREE_GB: "100"
       # Live recordings are kept this many days -- three weeks of league nights,
       # for replaying what the nightly review flags and for the Clip… of a
-      # shot the game page offers (service/gameclips.py SHOT_CLIP_DAYS, 14)
-      # -- then go, or sooner if a cache is over budget. A week records
-      # ~105-120 GB (10/07-10/20), ~55-65 GB of it on each worker.
+      # shot the game page offers that long (service/gameclips.py
+      # SHOT_CLIP_DAYS) -- then go, or sooner if a cache is over budget. A
+      # week records ~105-120 GB (10/07-10/20), ~55-65 GB of it on each worker.
       WORKER_RECORDING_DAYS: "21"
       YTDLP_POT_PROVIDER: http://pot:4416
       # A worker claims live jobs greedily up to this, so 6 here would take all

@@ -50,7 +50,7 @@ _PANEL_KEYS = ("rect", "center_px", "px_per_m", "flipped")
 # run was analysed: past it, no clip of a shot is offered. A live game's
 # recording is kept as long (deploy/docker-compose.worker.yml
 # WORKER_RECORDING_DAYS); a download, until its cache needs the room.
-SHOT_CLIP_DAYS = 14
+SHOT_CLIP_DAYS = 21
 
 _ROCK_KEYS = ("t_release_s", "t_rest_s", "t_enter_s", "t_hog_s", "v_hog_m_s", "t_far_s",
               "target_broom")

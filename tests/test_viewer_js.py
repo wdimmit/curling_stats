@@ -3156,11 +3156,11 @@ class TestShotClip:
                       f"out(shotClipsOffered(d, Date.parse(d.source.analysed_at)"
                       f" + {days} * 86400000));")
 
-    def test_offered_for_fourteen_days_after_the_game_was_analysed(self):
+    def test_offered_for_three_weeks_after_the_game_was_analysed(self):
         d = doc([shot(1, "red", "lead")])
         d["source"]["analysed_at"] = "2026-10-12T21:07:24+00:00"
-        assert self.offered(d, 0) is True and self.offered(d, 13.9) is True
-        assert self.offered(d, 14.01) is False
+        assert self.offered(d, 0) is True and self.offered(d, 20.9) is True
+        assert self.offered(d, 21.01) is False
 
     def test_while_the_game_is_live_too_but_not_without_a_date(self):
         """Every rock a live page shows is in an end already published, and
