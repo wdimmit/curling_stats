@@ -532,13 +532,15 @@ export function EndBox({ view, cursor, config, actions, compact }) {
   // The game's first end is never switched: who threw its 1st & 5th is what
   // Player A means.
   const first = cursor.ei === 0;
+  // An unnamed team is its colour, and the label starts with it.
+  const initial = t => t.charAt(0).toUpperCase() + t.slice(1);
   const swaps = first ? null : (
     <>
       {["red", "yellow"].map(c => (
         <label key={c} className="chk">
           <input type="checkbox" checked={!!at?.swapped?.[c]}
                  onChange={e => tick(c, e.target.checked)} />
-          {` ${name(c)} switched this end: B threw 1st & 5th`}
+          {` ${initial(name(c))} switched this end: B threw 1st & 5th`}
         </label>
       ))}
       {note === "signin" ? (
