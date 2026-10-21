@@ -101,10 +101,19 @@ gcloud services enable identitytoolkit.googleapis.com
 # message. If the member clicks it, that account is verified, the server stops
 # treating it as nobody, and a later sign-in by link (or by Google, on a Gmail
 # address) lands in it, with the other person's password still working. If it
-# is ever seen, disable that account in the Firebase console (Authentication >
-# Users); the member signs in again by link and gets a fresh one. To close it
-# for good: an Identity Platform beforeCreate blocking function that refuses
-# password sign-ups, or the server checking for a password on first sight.
+# is ever seen, the account is the member's own (same address, same uid), so
+# disabling it would lock the member out too. If the member has never used the
+# site, delete the account in the Firebase console (Authentication > Users);
+# their next link sign-in creates a fresh one. Once they have used it, do not
+# delete it: the site keys their charts, teams and plays by that uid. Instead
+# remove the password from the account, so whoever made it loses their way in:
+# Identity Toolkit accounts:update with deleteProvider ["password"], or the
+# Admin SDK equivalent. Then revoke the account's sessions. That stops new
+# tokens only; the site does not check revocation, so a token already issued
+# keeps working for up to an hour. Rehearse these steps on a test account
+# first. To close the risk for good: an Identity Platform beforeCreate blocking
+# function that refuses password sign-ups, or the server checking for a
+# password on first sight.
 
 # Bucket: private, with a lifecycle rule that expires detection caches after a year
 gsutil mb -l $REGION gs://curling-chart-$PROJECT_ID
