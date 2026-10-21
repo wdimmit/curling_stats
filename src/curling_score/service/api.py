@@ -43,8 +43,8 @@ from curling_score.service import (dedupe, gameclips, playlist_index, playlists,
                                    signin, slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, ROLES, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, Source, Team,
-    TeamNameEdit, User, Worker, play_id, review_id,
+    JOB_KINDS, ROLES, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, SigninRelay, Source,
+    Team, TeamNameEdit, User, Worker, play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import (clip_key, detcache_key, meta_key, practice_key,
@@ -1767,6 +1767,68 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                              "projectId": settings.firebase_project,
                              "emulator": settings.auth_emulator or None},
                             headers={"Cache-Control": "public, max-age=300"})
+
+    @app.post("/api/signin/relay")
+    def signin_relay(request: Request, body: dict):
+        """Hold an emailed sign-in link that opened in the wrong browser.
+
+        The link opened in a phone mail app's own browser, not the one that
+        asked for it. That page leaves the link here and shows the member the
+        code; the asking browser trades the code for the link. Anyone can call
+        this, so it holds only this site's own sign-in links (`relay_id_of`)
+        and, even then, a link does nothing without the inbox it was sent to.
+        """
+        if not (auth.enabled and settings.firebase_api_key):
+            raise HTTPException(503, "sign-in by emailed link is not set up")
+        link = body.get("link")
+        rid = signin.relay_id_of(link, settings.public_base_url, settings.firebase_api_key)
+        if rid is None:
+            raise HTTPException(422, "that is not a sign-in link for this site")
+        t = now()
+        if not repo.bump_rate_limit("relay:" + ip_hash(request), t,
+                                    signin.RELAY_HOUR_LIMIT, signin.RELAY_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of codes; try again later")
+        held = repo.get_signin_relay(rid)
+        if held is not None and held.live(t) and held.link == link:
+            relay = held       # opened twice: the same code, not a second one
+        else:
+            # A newer link for the same request replaces the old. Redraw a few
+            # times so it doesn't come back with the same digits -- cosmetic.
+            code = signin.new_code()
+            for _ in range(5):
+                if held is None or code != held.code:
+                    break
+                code = signin.new_code()
+            relay = SigninRelay(id=rid, code=code, link=link, created_at=t,
+                                expires_at=t + timedelta(seconds=signin.RELAY_TTL_S))
+            repo.put_signin_relay(relay)
+        return JSONResponse({"code": relay.code, "expires_at": _iso(relay.expires_at)},
+                            headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/signin/relay/{relay_id}/claim")
+    def signin_claim(relay_id: str, request: Request, body: dict):
+        """Trade a relay's code for its link, once.
+
+        Wrong codes count against the relay, not the caller: the fifth deletes
+        it, so six digits can't be guessed however many addresses try.
+        """
+        if not (auth.enabled and settings.firebase_api_key):
+            raise HTTPException(503, "sign-in by emailed link is not set up")
+        code = body.get("code")
+        if not signin.REQUEST_ID.fullmatch(relay_id):
+            raise HTTPException(422, "that is not a sign-in request")
+        if not (isinstance(code, str) and re.fullmatch(r"[0-9]{6}", code)):
+            raise HTTPException(422, "a code is six digits")
+        t = now()
+        if not repo.bump_rate_limit("claim:" + ip_hash(request), t,
+                                    signin.CLAIM_HOUR_LIMIT, signin.CLAIM_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of tries; try again later")
+        verdict, link = repo.claim_signin_relay(relay_id, code, t, signin.RELAY_MAX_MISSES)
+        if verdict == "wrong":
+            raise HTTPException(404, "that code isn't right")
+        if verdict != "ok":
+            raise HTTPException(410, "that code has run out — send a new link")
+        return JSONResponse({"link": link}, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/me")
     def api_me(authorization: str | None = Header(default=None)):
