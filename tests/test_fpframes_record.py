@@ -145,3 +145,46 @@ def test_a_raising_hook_is_swallowed():
     rec = recorder()
     rec.overhead_track("ovh.wander", object())
     assert rec.pending() == []
+
+
+def test_a_hook_that_keeps_failing_logs_one_traceback(caplog):
+    from curling_score.fpframes import record
+    record._FAILURES.clear()
+    rec = recorder()
+    with caplog.at_level("ERROR", logger="curling_score.fpframes.record"):
+        for _ in range(50):
+            rec.overhead_track("ovh.wander", object())
+    assert [r for r in caplog.records if r.exc_info] == caplog.records
+    assert len(caplog.records) == 1
+
+
+def test_a_failing_hook_logs_a_count_every_so_often(caplog):
+    from curling_score.fpframes import record
+    record._FAILURES.clear()
+    rec = recorder()
+    with caplog.at_level("ERROR", logger="curling_score.fpframes.record"):
+        for _ in range(record.LOG_EVERY):
+            rec.overhead_track("ovh.wander", object())
+    assert len(caplog.records) == 2
+    assert str(record.LOG_EVERY) in caplog.records[-1].getMessage()
+    assert not caplog.records[-1].exc_info
+
+
+def test_side_box_notes_only_a_box_off_the_width_of_a_stone_at_its_row():
+    from curling_score.detect import longview
+    row = 500.0
+    expect = VIEW.stone_width_at(row, longview.STONE_WIDTH_AT_HOG_PX)
+    rec = recorder()
+    rec.side_box(VIEW, 3.0, 400.0, row, expect, 0.8, color="red", pass_="slide")
+    assert rec.pending() == []
+    rec.side_box(VIEW, 3.0, 400.0, row, expect * 3, 0.8, color="red", pass_="slide")
+    (f,) = rec.pending()
+    assert f.check == "side.width_far" and f.info["pass"] == "slide"
+    assert f.top_estimated and f.box == (
+        400.0 - expect * 1.5, row - expect * 1.5, 400.0 + expect * 1.5, row)
+
+
+def test_side_box_swallows_a_view_that_cannot_say_its_width():
+    rec = recorder()
+    rec.side_box(object(), 3.0, 400.0, 500.0, 30.0, 0.8, color=None, pass_="follow")
+    assert rec.pending() == []

@@ -75,6 +75,24 @@ def recording(recorder):
         _ACTIVE.reset(token)
 
 
+# How many times each guarded method has failed in this process. Side hooks
+# run per box per frame, so a failure that persists would otherwise write a
+# traceback for every one of them; the first gets its traceback and then
+# only every LOG_EVERY-th failure gets a line saying how many there were.
+LOG_EVERY = 1000
+_FAILURES: dict[str, int] = {}
+
+
+def _note_failure(name: str) -> None:
+    """Log a failure of ``name``: in full the first time, then sparingly."""
+    n = _FAILURES.get(name, 0) + 1
+    _FAILURES[name] = n
+    if n == 1:
+        log.exception("fpframes.%s", name)
+    elif n % LOG_EVERY == 0:
+        log.error("fpframes.%s has failed %d times", name, n)
+
+
 def _guarded(default=None):
     """Log and swallow whatever a hook raises, returning ``default`` instead."""
 
@@ -84,7 +102,7 @@ def _guarded(default=None):
             try:
                 return fn(*args, **kwargs)
             except Exception:
-                log.exception("fpframes.%s", fn.__name__)
+                _note_failure(fn.__name__)
                 return default() if callable(default) else default
 
         return inner
@@ -148,6 +166,26 @@ class Recorder:
             conf=float(conf), score=abs(math.log(ratio)),
             info={"ratio": ratio, "pass": pass_}, box=tuple(box),
             top_estimated=top_estimated, rect=tuple(view.rect)))
+
+    @_guarded()
+    def side_box(self, view, t, cx, row, w, conf, *, color, pass_) -> None:
+        """A long-camera box known by its centre, foot row and width.
+
+        Works out the width a stone has at ``row``, and notes the box when
+        it is outside the side model's tolerance, so the passes that have no
+        width gate of their own need only this one call. The top is a guess.
+        """
+        from ..detect import longview, sidemodel
+
+        expect = view.stone_width_at(row, longview.STONE_WIDTH_AT_HOG_PX)
+        if expect <= 1:
+            return
+        ratio = w / expect
+        if sidemodel.WIDTH_TOL[0] <= ratio <= sidemodel.WIDTH_TOL[1]:
+            return
+        self.side_width(view, t, (cx - w / 2, row - w / 2, cx + w / 2, row),
+                        conf, ratio, color=color, pass_=pass_,
+                        top_estimated=True)
 
     @contextmanager
     def side_view(self, view):

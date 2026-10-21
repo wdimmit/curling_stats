@@ -299,8 +299,6 @@ def follow(video, view, color, t_release, *, model=None, decode=None, detect=Non
     hi = min(int(view.rect[3]), int(view.hog_row) + ROWS_BELOW_HOG)
     boxes = detect(model, frames, times, lo, hi, color, imgsz=800, conf=CONF)
     rec = fp_record.active()
-    if rec is not None:
-        from curling_score.detect import longview, sidemodel
     samples = []
     for t, per in zip(times, boxes):
         dets = []
@@ -308,12 +306,7 @@ def follow(video, view, color, t_release, *, model=None, decode=None, detect=Non
             if row >= hi - EDGE_ROWS:
                 continue
             if rec is not None:
-                expect = view.stone_width_at(row, longview.STONE_WIDTH_AT_HOG_PX)
-                if expect > 1 and not (sidemodel.WIDTH_TOL[0] <= w / expect
-                                       <= sidemodel.WIDTH_TOL[1]):
-                    rec.side_width(view, t, (cx - w / 2, row - w / 2, cx + w / 2, row),
-                                   conf, w / expect, color=color, pass_="follow",
-                                   top_estimated=True)
+                rec.side_box(view, t, cx, row, w, conf, color=color, pass_="follow")
             x, y = view.to_house(cx, row)
             dets.append((x, y, conf))
         samples.append((t, dets))
