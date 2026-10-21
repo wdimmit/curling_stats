@@ -521,6 +521,14 @@ class TestTheLandingPage:
         assert p.count("finish(") - p.count("async function finish(") == 2
         assert 'finish(typed, "/", { is: "here" }, setView)' in p
 
+    def test_a_dead_link_of_its_own_forgets_the_request(self):
+        # Or the bad-link page's Sign in opens the chooser at the spent
+        # request's code box (the dialog resumes a request still fresh).
+        p = self.page()
+        dead_branch = p[p.index("if (DEAD.has(e?.code)) {"):p.index("setView(dead());")]
+        assert "if (recall(store())?.id === requestIdOf(location.href)) forget(store());" \
+            in dead_branch
+
     def test_signed_in_there_is_no_signing_in_on_this_screen_instead(self):
         assert 'const instead = !user && (' in self.page()
 

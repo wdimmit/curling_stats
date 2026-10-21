@@ -18,8 +18,8 @@
 import { useEffect, useRef, useState } from "react";
 import { askName, emailLinkOn, finishWithLink, isLink, needsName, relayLink,
          signIn } from "./auth.js";
-import { EMAIL_OFF, cleanEmail, emailFailed, failed, formatCode, landing, recall,
-         signInTrouble } from "./signinState.mjs";
+import { EMAIL_OFF, cleanEmail, emailFailed, failed, forget, formatCode, landing, recall,
+         requestIdOf, signInTrouble } from "./signinState.mjs";
 import { useAuthUser } from "./useAuth.js";
 import { Card, Header, Warn } from "./ui.jsx";
 
@@ -50,8 +50,14 @@ async function finish(email, next, back, setView) {
     // Which also forgets the request this browser remembered (auth.js).
     await finishWithLink(email, location.href);
   } catch (e) {
-    setView(DEAD.has(e?.code) ? dead()
-      : e?.code === "auth/invalid-email" ? { is: "here", say: WRONG_ADDRESS }
+    if (DEAD.has(e?.code)) {
+      // Spent. If this browser asked for it, the request it remembered has
+      // nothing left to wait on, and the next Sign in starts at the chooser.
+      if (recall(store())?.id === requestIdOf(location.href)) forget(store());
+      setView(dead());
+      return;
+    }
+    setView(e?.code === "auth/invalid-email" ? { is: "here", say: WRONG_ADDRESS }
       : { ...back, say: emailFailed("Couldn't sign in", e) });
     return;
   }
