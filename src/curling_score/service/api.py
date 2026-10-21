@@ -1305,6 +1305,39 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                                for c in ("red", "yellow")},
                 "short_handed": names.get("short_handed", src.short_handed) or []}
 
+    @app.post("/api/games/{source_id}/switched-ends")
+    def api_set_switched_ends(source_id: str, body: dict,
+                              authorization: str | None = Header(default=None)):
+        """A chart's End box saying which ends a doubles team's pair threw
+        the other way round: ``{path, color, ends}``, ``ends`` every end the
+        colour switched (empty clears them), ``path`` the chart's own page.
+
+        Kept on the game (Source.switched_ends), as "I played…" keeps them,
+        so the chart's charter changes them for every chart and link of the
+        game. Whoever may change the chart may say -- signed in, since the
+        change outlives the chart.
+        """
+        me = require_user(authorization)
+        kind, chart, shown, run = play_target(body.get("path"))
+        if kind == "g":
+            raise HTTPException(422, "switched ends are marked on a chart")
+        if kind == "s":
+            raise HTTPException(403, "this is a view-only link")
+        if shown.id != source_id:
+            raise HTTPException(409, "that link is a different game")
+        if not may_edit_chart(chart, me.id):
+            raise HTTPException(403, "only the person or team who made this chart can change it")
+        color = body.get("color")
+        if not isinstance(color, str) or color not in ("red", "yellow"):
+            raise HTTPException(422, "color must be red or yellow")
+        ends = checked_switched_ends(shown_doc(kind, chart, shown, run), body.get("ends"))
+        if not repo.bump_rate_limit("switch:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of changes; try again later")
+        src = repo.set_switched_ends(shown.id, color, switched_entry(ends, me)) or shown
+        log.info("switched ends of %s set to %s on %s by %s (chart %s)",
+                 color, ends, src.id, me.id, chart.id)
+        return {"ok": True, "color": color, "ends": switched_of(src, color)}
+
     @app.get("/api/games/{source_id}/team-names")
     def api_team_names(source_id: str, request: Request):
         """The names this game's league has already given its teams, to
@@ -2117,6 +2150,42 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(409, "that chart's game is not ready yet")
         return kind, chart, src, run
 
+    def checked_switched_ends(doc: dict, value) -> list[int]:
+        """The ends ``value`` says a doubles pair switched, checked against
+        ``doc`` -- the game as the person saying so sees it -- sorted.
+
+        By the number each end was detected with (timeline.end_identity), as
+        Source.switched_ends keeps them. The game's first end is refused: who
+        threw its 1st & 5th is what Player A means, so it is never switched.
+        """
+        if not format_mod.of_document(doc).swappable:
+            raise HTTPException(422, "only a doubles game has switched ends")
+        if (not isinstance(value, list)
+                or not all(isinstance(n, int) and not isinstance(n, bool) for n in value)
+                or len(set(value)) != len(value)):
+            raise HTTPException(422, "switched ends are a list of distinct end numbers")
+        ends = [timeline.end_identity(e) for e in doc["games"][0]["ends"]] if doc.get("games") else []
+        if ends and ends[0] in value:
+            raise HTTPException(422, "the first end sets who is who: it cannot be switched")
+        for n in value:
+            if n not in ends:
+                raise HTTPException(422, f"the game has no end {n}")
+        return sorted(value)
+
+    def shown_doc(kind: str, chart: Chart | None, src: Source, run: Run) -> dict:
+        """The game a page's own path shows (play_target's answer), as it
+        shows it: the chart's document for a chart, the review link's for a
+        game."""
+        if chart is not None:
+            return chart_doc(chart, run, read_only=True)
+        return game_doc(run, src.game_index, src, src.play_start_s)
+
+    def switched_entry(ends: list[int], me: User) -> dict | None:
+        return {"ends": ends, "by": me.id, "at": _iso(now())} if ends else None
+
+    def switched_of(src: Source, color: str) -> list[int]:
+        return list(((src.switched_ends or {}).get(color) or {}).get("ends") or [])
+
     @app.put("/api/me/plays/{source_id}")
     def api_save_play(source_id: str, body: dict,
                       authorization: str | None = Header(default=None)):
@@ -2126,12 +2195,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         the way a flag's is, so which chart's grading the report reads is the
         server's word. From the report page there is no path, and only the
         colour and slot of a play already saved change.
+
+        ``switched_ends``, when sent, is the ends the claimed colour's pair
+        threw the other way round (Source.switched_ends), checked against the
+        page's own game; an empty list clears them. Left out, they are left as
+        they were, so a partner saving their own rocks never unmarks them.
         """
         me = require_user(authorization)
         existing, src = find_play(me.id, source_id)
         if src is None:
             raise HTTPException(404, "no such game")
         path = body.get("path")
+        kind = chart = run = None
         if path is not None:
             kind, chart, shown, run = play_target(path)
             if shown.id != src.id:
@@ -2154,6 +2229,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if (fmt.short_throw_table and color in (src.short_handed or [])
                 and slot not in fmt.short_throw_table):
             raise HTTPException(422, "that team played with three: lead, second or skip")
+        switched = None
+        if "switched_ends" in body:
+            if path is None:
+                raise HTTPException(422, "open the game to mark switched ends")
+            # Loaded only when asked: most saves say nothing about them.
+            switched = checked_switched_ends(shown_doc(kind, chart, src, run),
+                                             body["switched_ends"])
         if not repo.bump_rate_limit("play:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
             raise HTTPException(429, "that is a lot of changes; try again later")
         t = now()
@@ -2163,6 +2245,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.put_play(play)
         if existing is not None and existing.source_id != src.id:
             repo.delete_play(me.id, existing.source_id)
+        if switched is not None:
+            src = repo.set_switched_ends(src.id, color, switched_entry(switched, me)) or src
+            log.info("switched ends of %s set to %s on %s by %s", color, switched, src.id, me.id)
         if settings.game_clips_enabled:
             # Asked for now, while the game's video is surely still cached;
             # the report asks again for anything this misses.
@@ -2174,7 +2259,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             except Exception:  # noqa: BLE001
                 log.exception("clips for play %s not asked for", play.id)
         log.info("play %s %d (%s) on %s by %s", color, slot, link, src.id, me.id)
-        return {"play": play_json(play)}
+        # A doubles play says which ends its pair switched; fours never do.
+        mine = {"switched_ends": switched_of(src, color)} if fmt.swappable else {}
+        return {"play": {**play_json(play), **mine}}
 
     @app.get("/api/me/plays/{source_id}")
     def api_my_play(source_id: str, authorization: str | None = Header(default=None)):
