@@ -575,6 +575,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                              "short_handed": [c for c in ("red", "yellow")
                                               if c in src.short_handed]}
             timeline.assign_short_handed(doc)
+        # The ends a doubles pair threw the other way round, if either of
+        # them (or a charter) has said: both partners' rocks change hands
+        # there. On the source for the same reason again, and written into
+        # each end as roles_swapped so a renumbering keeps it.
+        if src is not None:
+            doc = timeline.apply_switched_ends(doc, src.switched_ends)
         game = doc["games"][0] if doc["games"] else None
         doc["source"]["start_s"] = game["start_s"] if game else None
         # Who played, if anybody has said. The names live on the source rather
