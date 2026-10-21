@@ -1156,11 +1156,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
         Asked about on every load rather than kept for five minutes: a team
         named on a game's page has to be on this one when the person who
-        named it comes back to look."""
+        named it comes back to look.
+
+        Only leagues with a game in the last two weeks are listed."""
         if auth.enabled and uid_of(authorization) is None:
             raise HTTPException(401, "sign in to see thinking time")
         report = thinking_report.build(games_listed(repo.list_sources(limit=EVERY_SOURCE)),
-                                       top=top)
+                                       top=top, since=now() - thinking_report.RECENT)
         return json_revalidated(request, report, "private")
 
     @app.post("/api/admin/backfill-thinking")

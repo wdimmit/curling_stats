@@ -109,7 +109,8 @@ export function Thinking() {
       <main>
         <p className="muted" style={{ marginTop: 0 }}>How long a team took to decide its shots,
         divided by the ends it played, grouped by league. A team is listed once for each game it
-        played. The league is the YouTube playlist the stream was published in.</p>
+        played. The league is the YouTube playlist the stream was published in. Leagues with no
+        game in the last two weeks are left off.</p>
         {signedOut ? (
           <Card>
             <p style={{ marginTop: 0 }}>Thinking time is for signed-in members.</p>
@@ -120,7 +121,7 @@ export function Thinking() {
           </Card>
         ) : !ready || report.loading ? <p className="muted">Loading…</p>
          : report.error ? <p className="warn">The report could not be loaded. Try again in a minute.</p>
-         : !league ? <p className="muted">No games with timed rocks yet.</p>
+         : !league ? <p className="muted">No league has played a timed game in the last two weeks.</p>
          : (
           <>
             <div className="tabs" role="tablist">

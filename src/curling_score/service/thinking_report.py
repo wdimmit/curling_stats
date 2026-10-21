@@ -9,9 +9,14 @@ end is never timed, and a throw the camera did not see is timed from an
 estimate or not at all.
 """
 
+from datetime import timedelta
+
 from curling_score.ingest.source import league_from_title
 
 TOP = 20
+# A league is listed while it is being played: one with no game this long is
+# a past season, however slow its teams were.
+RECENT = timedelta(days=14)
 
 
 def summarize(game: dict, run_id: str, play_start_s: float | None) -> dict:
@@ -77,22 +82,25 @@ def _when(row):
     return row["played_at"] or ""
 
 
-def build(sources, top: int = TOP) -> dict:
+def build(sources, top: int = TOP, since=None) -> dict:
     """Group games by league and rank its teams, one row per team per game,
     by thinking per end.
 
     A league is also split by format: a doubles end is ten thrown rocks and
     a fours end sixteen, so their per-end times are not the same measure.
+
+    With `since`, only leagues with a game on or after it are listed, ranked
+    over all their games. A game with no date counts from when it was charted.
     """
     per_video = {}
     for s in sources:
         per_video[s.video_id] = per_video.get(s.video_id, 0) + 1
 
-    groups, pending = {}, 0
+    groups, pending = {}, []
     for s in sources:
         t = current(s)
         if t is None:
-            pending += 1
+            pending.append(((league_of(s)[0], s.format or "fours"), s.played_at or s.created_at))
             continue
         if t["measured_shots"] <= 0 or t["red"] + t["yellow"] <= 0:
             continue
@@ -100,10 +108,20 @@ def build(sources, top: int = TOP) -> dict:
         rows = list(_rows(s, t, per_video[s.video_id]))
         fmt = rows[0]["format"]
         g = groups.setdefault((name, fmt), {"league": name, "format": fmt,
-                                            "origins": set(), "games": 0, "rows": []})
+                                            "origins": set(), "games": 0, "rows": [],
+                                            "latest": None})
         g["origins"].add(origin)
         g["games"] += 1
         g["rows"].extend(rows)
+        when = s.played_at or s.created_at
+        if g["latest"] is None or when > g["latest"]:
+            g["latest"] = when
+
+    if since is not None:
+        groups = {k: g for k, g in groups.items() if g["latest"] >= since}
+        # Still to come: a game in a league on the page, or a recent one that
+        # may put its league there.
+        pending = [p for p in pending if p[0] in groups or p[1] >= since]
 
     leagues = []
     for g in groups.values():
@@ -122,4 +140,4 @@ def build(sources, top: int = TOP) -> dict:
             "teams": rows[:top],
         })
     leagues.sort(key=lambda lg: (lg["last_played_at"] or "", lg["league"]), reverse=True)
-    return {"leagues": leagues, "pending": pending, "top": top}
+    return {"leagues": leagues, "pending": len(pending), "top": top}

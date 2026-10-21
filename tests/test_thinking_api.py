@@ -2,6 +2,8 @@
 finishes, kept in step when its play start moves, backfilled for games from
 before, and grouped by the club's own playlist."""
 
+from datetime import timedelta
+
 import pytest
 
 from tests.test_service_api import (  # noqa: F401
@@ -96,6 +98,15 @@ class TestForSignedInPeople:
         (league,) = again.json()["leagues"]
         assert {(r["colour"], r["team"]) for r in league["teams"]} == {("red", "Dimmit"),
                                                                       ("yellow", "Grant")}
+
+    def test_a_league_drops_off_two_weeks_after_its_last_game(self, world):
+        submit(world)
+        work_through(world, doc=with_thinking(sample_doc(1)), games=1)
+        played = the_source(world).played_at
+        world["clock"].t = played + timedelta(days=13)
+        assert len(report(world)["leagues"]) == 1
+        world["clock"].t = played + timedelta(days=15)
+        assert report(world)["leagues"] == []
 
     def test_a_timeline_without_a_clock_is_left_out_rather_than_pending(self, world):
         submit(world)

@@ -145,3 +145,46 @@ class TestBuild:
         a = src("a", 1, 2, video="v", index=0)
         b = src("b", 2, 1, video="v", index=1)
         assert {r["games_in_video"] for r in only(tr.build([a, b]))["teams"]} == {2}
+
+
+class TestRecentLeagues:
+    """Only leagues with a game in the last two weeks are listed; a past
+    season drops off the page however slow its teams were."""
+
+    def test_a_league_with_no_recent_game_is_not_listed(self):
+        report = tr.build([src("old", 900, 900, days=0, playlist="Monday Open"),
+                           src("new", 100, 100, days=30, playlist="Tuesday Super")],
+                          since=T0 + timedelta(days=16))
+        assert [lg["league"] for lg in report["leagues"]] == ["Tuesday Super"]
+
+    def test_a_listed_league_is_ranked_over_all_its_games(self):
+        league = only(tr.build([src("early", 900, 100, days=0), src("late", 100, 100, days=30)],
+                               since=T0 + timedelta(days=16)))
+        assert league["games"] == 2 and ranked(league)[0] == ("early", "red")
+        assert league["first_played_at"] == T0.isoformat()
+
+    def test_a_game_on_the_cutoff_counts(self):
+        assert only(tr.build([src("a", 100, 100, days=14)], since=T0 + timedelta(days=14)))
+        assert tr.build([src("a", 100, 100, days=14)],
+                        since=T0 + timedelta(days=14, seconds=1))["leagues"] == []
+
+    def test_an_undated_game_counts_from_when_it_was_charted(self):
+        s = src("a", 100, 100)
+        s.played_at, s.created_at = None, T0 + timedelta(days=20)
+        assert only(tr.build([s], since=T0 + timedelta(days=16)))["games"] == 1
+
+    def test_pending_counts_a_listed_league_or_a_recent_game(self):
+        def stale(sid, days, playlist):
+            s = src(sid, 100, 100, days=days, playlist=playlist)
+            s.current_run_id = "r_2"
+            return s
+        report = tr.build([src("old", 100, 100, days=0, playlist="Monday Open"),
+                           src("new", 100, 100, days=30, playlist="Tuesday Super"),
+                           stale("past", 0, "Monday Open"),        # past season: not counted
+                           stale("early", 1, "Tuesday Super"),     # listed league
+                           stale("fresh", 29, "Thursday Mixed")],  # may list its league
+                          since=T0 + timedelta(days=16))
+        assert report["pending"] == 2
+
+    def test_the_window_is_two_weeks(self):
+        assert tr.RECENT == timedelta(days=14)
