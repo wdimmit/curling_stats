@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from curling_score import analyze, timeline
+from curling_score.fpframes import record
 from curling_score.game import boardsplit, segment
 from curling_score.game.segment import EndSegment, GameSegment
 from curling_score.geometry.calibrate import CalibrationError
@@ -137,12 +138,13 @@ def _worth(cal) -> int:
 class LiveSession:
     def __init__(self, video_id, url, recording, fmt, pipeline, *, sheet=None,
                  models=None, publish=None, progress=log.info,
-                 now=lambda: datetime.now(timezone.utc)):
+                 now=lambda: datetime.now(timezone.utc), fp_recorder=None):
         self.video_id, self.url, self.sheet, self.fmt = video_id, url, sheet, fmt
         self.recording, self.pipeline = recording, pipeline
         self.models = models or Models()
         self.publish = publish or (lambda doc: None)
         self.progress, self.now = progress, now
+        self.fp_recorder = fp_recorder      # collects the checks' false-positive firings
         self.min_end_s = fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S
 
         self.calibration = None     # the newest one that worked
@@ -371,7 +373,10 @@ class LiveSession:
             line_model=self.models.line_model, fmt=self.fmt, use_cache=False,
             one_pass=True, progress=self.progress)
         run_up = self.run_up[key] if again else self.prev_end_s
-        built, closed = self.pipeline.build_end(ctx, game, end, run_up)
+        # The recorder only notes what the checks reject; the frames are cut
+        # later, on the manager's keep thread, never inside an end's build.
+        with record.recording(self.fp_recorder):
+            built, closed = self.pipeline.build_end(ctx, game, end, run_up)
         if (not again and end.number == game.ends[0].number and timeline.nothing_thrown(built)
                 and analyze.leaves_off_head(game, end, run_up)):
             # Stones parked in a house ahead of this game's first end, which

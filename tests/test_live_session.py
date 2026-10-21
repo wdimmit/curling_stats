@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from curling_score import analyze, timeline
+from curling_score.fpframes import record
 from curling_score.game import format as format_mod, scoreboard as sb
 from curling_score.game.profile import PanelSetup
 from curling_score.game.segment import Sample
@@ -73,7 +74,7 @@ class Pipeline:
     def __init__(self, calibrations=None):
         self.calibrations = list(calibrations or [])
         self.calibrated_at, self.built, self.boards_read = [], [], []
-        self.windows_read = []
+        self.windows_read, self.recorders = [], []
         self.board = None
 
     def calibrate(self, path, until_s):
@@ -92,6 +93,7 @@ class Pipeline:
         return out
 
     def build_end(self, ctx, game, end, prev_end_s):
+        self.recorders.append(record.active())
         self.built.append({"game": game.index, "end": end.number,
                            "prev_end_s": prev_end_s, "setups": ctx.read_setups,
                            "sideviews": ctx.sideviews,
@@ -312,6 +314,21 @@ class TestAnEndBuiltBeforeTheCalibrationHadEverything:
 
 
 class TestEnds:
+    def test_an_end_is_built_under_the_sessions_recorder(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        s.fp_recorder = object()
+        run_until(s, rec, 3300.0)
+        assert pipe.recorders and all(r is s.fp_recorder for r in pipe.recorders)
+        assert record.active() is None
+
+    def test_without_a_recorder_an_end_is_built_under_none(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        assert s.fp_recorder is None
+        run_until(s, rec, 3300.0)
+        assert pipe.recorders and all(r is None for r in pipe.recorders)
+
     def test_each_settled_end_is_built_once_in_order_off_the_growing_file(self):
         pipe, rec, pub = Pipeline(), Recording(), []
         s = session(pipe, rec, pub)

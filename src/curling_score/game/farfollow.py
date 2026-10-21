@@ -35,6 +35,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from curling_score.fpframes import record as fp_record
 from curling_score.geometry import constants as C
 
 REST = "rest"
@@ -297,12 +298,15 @@ def follow(video, view, color, t_release, *, model=None, decode=None, detect=Non
     lo = int(view.tee_row) - ROWS_ABOVE_TEE
     hi = min(int(view.rect[3]), int(view.hog_row) + ROWS_BELOW_HOG)
     boxes = detect(model, frames, times, lo, hi, color, imgsz=800, conf=CONF)
+    rec = fp_record.active()
     samples = []
     for t, per in zip(times, boxes):
         dets = []
-        for cx, row, _w, conf in per:
+        for cx, row, w, conf in per:
             if row >= hi - EDGE_ROWS:
                 continue
+            if rec is not None:
+                rec.side_box(view, t, cx, row, w, conf, color=color, pass_="follow")
             x, y = view.to_house(cx, row)
             dets.append((x, y, conf))
         samples.append((t, dets))

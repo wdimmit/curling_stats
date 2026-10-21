@@ -176,7 +176,7 @@ class TestKeepingTheRecording:
     so reprocessing the game needs no download; anything else is deleted."""
 
     def _finish(self, tmp_path, monkeypatch, whole=True, keep=True, fails=False,
-                no_file=False, job=None):
+                no_file=False, job=None, on_kept=None):
         job = job or live_job(1)
         kept, partial, pruned = [], [], []
 
@@ -207,7 +207,10 @@ class TestKeepingTheRecording:
         # (The real recorder raises IndexError there; finish catches both.)
         if not no_file:
             s.recorder.path = directory / "rec.0.ts"
-        m.finish(s, keep=keep)
+        if on_kept is None:
+            m.finish(s, keep=keep)
+        else:
+            m.finish(s, keep=keep, on_kept=on_kept)
         assert s.recorder.stopped and m.streams() == []
         return s, kept, partial, pruned, directory
 
@@ -240,6 +243,50 @@ class TestKeepingTheRecording:
         _, kept, partial, pruned, directory = self._finish(tmp_path, monkeypatch,
                                                            no_file=True)
         assert kept == [] and partial == [] and pruned == [] and not directory.exists()
+
+    def test_frames_are_saved_from_the_kept_file_before_the_recording_goes(
+            self, tmp_path, monkeypatch):
+        seen = []
+
+        def on_kept(video):
+            seen.append((video, (tmp_path / "live" / "liveVid0001").exists()))
+
+        self._finish(tmp_path, monkeypatch, on_kept=on_kept)
+        assert seen == [(tmp_path / "videos" / "liveVid0001.mp4", True)]
+
+    def test_frames_are_cut_from_the_recording_when_keeping_it_failed(
+            self, tmp_path, monkeypatch):
+        seen = []
+
+        def on_kept(video):
+            seen.append((video, video.exists()))
+
+        _, _, _, pruned, directory = self._finish(tmp_path, monkeypatch, fails=True,
+                                                  on_kept=on_kept)
+        assert seen == [(directory / "rec.0.ts", True)]
+        assert not directory.exists() and pruned == [1]
+
+    def test_a_raising_frame_save_still_deletes_the_recording(self, tmp_path, monkeypatch):
+        def on_kept(video):
+            raise RuntimeError("disk full")
+
+        _, _, _, pruned, directory = self._finish(tmp_path, monkeypatch, on_kept=on_kept)
+        assert not directory.exists() and pruned == [1]
+
+    def test_a_sheet_nobody_played_saves_no_frames(self, tmp_path, monkeypatch):
+        seen = []
+        self._finish(tmp_path, monkeypatch, keep=False, on_kept=seen.append)
+        assert seen == []
+
+    def test_a_recorder_that_never_wrote_a_file_saves_no_frames(self, tmp_path, monkeypatch):
+        seen = []
+        self._finish(tmp_path, monkeypatch, no_file=True, on_kept=seen.append)
+        assert seen == []
+
+    def test_a_practice_recording_saves_no_frames(self, tmp_path, monkeypatch):
+        seen = []
+        self._finish(tmp_path, monkeypatch, job=practice_job(1), on_kept=seen.append)
+        assert seen == []
 
 
 class Session:
@@ -277,6 +324,7 @@ def lane(api, streams, sessions):
     class M:
         def __init__(self):
             self._streams, self.finished, self.kept = list(streams), [], []
+            self.on_kept = []
 
         def streams(self):
             return list(self._streams)
@@ -284,9 +332,10 @@ def lane(api, streams, sessions):
         def has_streams(self):
             return bool(self._streams)
 
-        def finish(self, s, keep=True):
+        def finish(self, s, keep=True, on_kept=None):
             self.finished.append(s.job["id"])
             self.kept.append(keep)
+            self.on_kept.append(on_kept)
             self._streams.remove(s)
 
     m = M()
@@ -333,6 +382,36 @@ class TestTheLane:
         assert job_id == "j_1" and payload["format"] == "fours"
         assert payload["games"][0]["ends"] == 1
         assert m.finished == ["j_1"] and m.kept == [True]
+
+    def test_a_stream_with_a_recorder_saves_its_frames_when_its_recording_is_kept(
+            self, tmp_path, monkeypatch):
+        from curling_score.fpframes import store
+
+        saved = []
+        monkeypatch.setattr(store, "save_frames",
+                            lambda rec, **kw: saved.append((rec, kw)) or 2)
+
+        class Recorded(Session):
+            fp_recorder = object()
+
+        api = Api()
+        ln, m, _ = lane(api, [stream(1)], {"j_1": lambda st, pub: Recorded(st, pub, ends=1)})
+        ln.manager.root = tmp_path
+        ln.fp_cap_gb = 7.5
+        while ln.busy():
+            ln.step()
+        (on_kept,) = m.on_kept
+        assert callable(on_kept)
+        on_kept(tmp_path / "videos" / "x.mp4")
+        assert saved == [(Recorded.fp_recorder, {
+            "root": tmp_path, "video": tmp_path / "videos" / "x.mp4", "cap_gb": 7.5})]
+
+    def test_a_stream_without_a_recorder_passes_no_callback(self):
+        api = Api()
+        ln, m, _ = lane(api, [stream(1)], {"j_1": lambda st, pub: Session(st, pub, ends=1)})
+        while ln.busy():
+            ln.step()
+        assert m.on_kept == [None]
 
     def test_a_sheet_nobody_played_does_not_keep_its_recording(self):
         class Empty(Session):
@@ -382,6 +461,53 @@ class TestTheLane:
 
 
 class TestVideoSessions:
+    def test_a_league_stream_gets_a_recorder_when_the_harvest_is_on(self, monkeypatch):
+        from curling_score import analyze, fpframes, version
+
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
+        ids = []
+        monkeypatch.setattr(fpframes, "model_ids",
+                            lambda w: ids.append(w) or {"overhead": "o", "side": None})
+        make = lane_mod.video_sessions("w.pt", progress=lambda m: None,
+                                       fp_harvest=fpframes.Settings(True))
+        a, b = make(stream(1), lambda d: None), make(stream(2), lambda d: None)
+        rec = a.fp_recorder
+        assert rec is not None and rec.video_id == "liveVid0001"
+        assert b.fp_recorder is not rec and b.fp_recorder.video_id == "liveVid0002"
+        assert rec.pipeline == version.PIPELINE_VERSION and rec.job == "j_1"
+        assert ids == ["w.pt"]
+
+    def test_the_switch_off_gives_no_recorder(self, monkeypatch):
+        from curling_score import analyze, fpframes
+
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
+        for fp in (None, fpframes.Settings(False)):
+            make = lane_mod.video_sessions("w.pt", progress=lambda m: None, fp_harvest=fp)
+            assert make(stream(1), lambda d: None).fp_recorder is None
+
+    def test_a_recorder_that_cannot_start_does_not_stop_the_stream(self, monkeypatch):
+        from curling_score import analyze, fpframes
+
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
+
+        def boom(weights):
+            raise FileNotFoundError("side weights")
+
+        monkeypatch.setattr(fpframes, "model_ids", boom)
+        make = lane_mod.video_sessions("w.pt", progress=lambda m: None,
+                                       fp_harvest=fpframes.Settings(True))
+        assert make(stream(1), lambda d: None).fp_recorder is None
+
+    def test_a_practice_session_gets_no_recorder(self, monkeypatch):
+        from curling_score import analyze, fpframes
+
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
+        monkeypatch.setattr(fpframes, "model_ids", lambda w: {"overhead": "o", "side": None})
+        make = lane_mod.video_sessions("w.pt", progress=lambda m: None,
+                                       fp_harvest=fpframes.Settings(True))
+        watch = make(pstream(1), lambda d: None)
+        assert getattr(watch, "fp_recorder", None) is None
+
     def test_each_stream_gets_a_session_and_the_models_load_once(self, monkeypatch):
         from curling_score import analyze
         from curling_score.live import session as live

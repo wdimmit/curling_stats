@@ -45,6 +45,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from curling_score.detect import release as R
+from curling_score.fpframes import record as fp_record
 from curling_score.game import hogtime, split, thinking
 from curling_score.geometry import constants as C
 
@@ -148,9 +149,12 @@ def stone_points(view, times, per_frame) -> list:
     side, one radius short of its centre, and the camera faces the thrower, so
     its image-left is the thrower's right.
     """
+    rec = fp_record.active()
     out = []
     for t, boxes in zip(times, per_frame):
-        for cx, row, _w, _c in boxes:
+        for cx, row, w, conf in boxes:
+            if rec is not None:
+                rec.side_box(view, t, cx, row, w, conf, color=None, pass_="slide")
             y = view.metres_at(row) - C.STONE_RADIUS_M
             x = -view.lateral_x(cx, view.row_for(y))
             if abs(x) <= X_MAX_M:

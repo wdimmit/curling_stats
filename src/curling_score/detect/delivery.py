@@ -18,6 +18,7 @@ appeal to the alternation rule.
 
 from dataclasses import dataclass, field
 
+from curling_score.fpframes import record as fp_record
 from curling_score.geometry import constants as C
 
 # Sheet metres. Only enough to rule out a stone that never really moved --
@@ -999,6 +1000,7 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
     frames = [(t, list(d)) for t, d in frames]
     if not frames:
         return []
+    rec = fp_record.active()
     x_limit = min(C.SIDELINE_ABS_X_M, view_x_limit_m or C.SIDELINE_ABS_X_M)
     y_min = C.THROUGH_BACK_Y_M if view_y_min_m is None else view_y_min_m
 
@@ -1080,8 +1082,14 @@ def find_deliveries(frames, min_travel_m: float = MIN_TRAVEL_M,
                 )
             continue
         if path <= 0 or travelled / path < MIN_NET_TRAVEL_FRACTION:
+            if rec is not None:
+                rec.overhead_track("ovh.wander", track, end_i,
+                                   net=round(travelled / path, 3) if path > 0 else None)
             continue
         if abs(track.xs[end_i] - track.xs[0]) > MAX_LATERAL_RATIO * travelled:
+            if rec is not None:
+                rec.overhead_track("ovh.lateral", track, end_i,
+                                   travelled=round(travelled, 3))
             continue
 
         # Every stone the players leave in play counts, however short the shot,

@@ -494,6 +494,17 @@ class TestBuildingTheLiveLane:
                                 start=False)
         assert got.manager.kinds == ("live", "practice")
 
+    def test_the_harvest_settings_reach_the_lane(self, monkeypatch, tmp_path):
+        from curling_score import fpframes
+
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False)
+        assert got.fp_cap_gb == 20.0
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False, fp_harvest=fpframes.Settings(True, 5.0))
+        assert got.fp_cap_gb == 5.0
+
     def test_the_live_lane_prunes_with_the_recording_window(self, monkeypatch, tmp_path):
         monkeypatch.setenv("WORKER_LIVE", "1")
         calls = []
@@ -536,3 +547,99 @@ class TestAFinishedRecordingIsNotThrownAway:
                            cache_gb=1.0, sleep=lambda s: None, once=True, live=live,
                            analyze_fn=analyze, fetch_info=fake_info)
         assert api.yielded == [] and len(api.completed) == 1
+
+
+class TestFalsePositiveFrames:
+    """With WORKER_FP_HARVEST on, a VOD job's analysis runs under a recorder
+    and the frames it flagged are saved once the API has the results."""
+
+    def _run(self, tmp_path, monkeypatch, fp_harvest, save=None):
+        from curling_score import fpframes
+        from curling_score.fpframes import record, store
+
+        monkeypatch.setattr(fpframes, "model_ids", lambda weights: {"overhead": "o", "side": None})
+        api = FakeApi([])
+        events = []
+        seen = {}
+
+        def analyze_fn(url, **kw):
+            seen["recorder"] = record.active()
+            events.append("analyze")
+            return fake_doc()
+
+        def save_frames(recorder, **kw):
+            events.append("save")
+            seen["save"] = (recorder, kw)
+            return 0
+
+        orig_complete = api.complete
+
+        def complete(*a, **kw):
+            events.append("complete")
+            return orig_complete(*a, **kw)
+
+        api.complete = complete
+        monkeypatch.setattr(store, "save_frames", save or save_frames)
+        result = worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
+                                    out_dir=tmp_path / "out", analyze_fn=analyze_fn,
+                                    fetch_info=fake_info, fp_harvest=fp_harvest)
+        return result, events, seen, api
+
+    def test_with_the_switch_on_the_analysis_runs_under_a_recorder_and_frames_are_saved_after_complete(
+            self, tmp_path, monkeypatch):
+        from curling_score import fpframes
+
+        result, events, seen, api = self._run(tmp_path, monkeypatch,
+                                              fpframes.Settings(enabled=True))
+        assert seen["recorder"] is not None
+        assert seen["recorder"].video_id == JOB["video_id"]
+        assert seen["recorder"].job == JOB["id"]
+        assert events == ["analyze", "complete", "save"]
+        recorder, kw = seen["save"]
+        assert recorder is seen["recorder"]
+        assert kw == {"root": tmp_path, "cap_gb": 20.0}
+        assert result == {"ok": True}
+
+    def test_with_the_switch_off_nothing_records(self, tmp_path, monkeypatch):
+        from curling_score import fpframes
+
+        for setting in (None, fpframes.Settings(False)):
+            result, events, seen, api = self._run(tmp_path, monkeypatch, setting)
+            assert seen["recorder"] is None
+            assert "save" not in events
+            assert result == {"ok": True}
+
+    def test_a_failure_saving_frames_does_not_fail_the_job(self, tmp_path, monkeypatch):
+        from curling_score import fpframes
+
+        def boom(recorder, **kw):
+            raise OSError("disk full")
+
+        result, events, seen, api = self._run(tmp_path, monkeypatch,
+                                              fpframes.Settings(enabled=True), save=boom)
+        assert result == {"ok": True}
+        assert len(api.completed) == 1
+
+    def test_a_failure_building_the_recorder_runs_the_job_as_if_off(self, tmp_path, monkeypatch):
+        from curling_score import fpframes
+        from curling_score.fpframes import record, store
+
+        def broken(weights):
+            raise FileNotFoundError("no such weights")
+
+        monkeypatch.setattr(fpframes, "model_ids", broken)
+        saved = []
+        monkeypatch.setattr(store, "save_frames", lambda *a, **kw: saved.append(1))
+        seen = {}
+
+        def analyze_fn(url, **kw):
+            seen["recorder"] = record.active()
+            return fake_doc()
+
+        api = FakeApi([])
+        result = worker.process_job(JOB, api, "home", root=tmp_path, weights=None,
+                                    out_dir=tmp_path / "out", analyze_fn=analyze_fn,
+                                    fetch_info=fake_info,
+                                    fp_harvest=fpframes.Settings(enabled=True))
+        assert result == {"ok": True}
+        assert seen["recorder"] is None and saved == []
