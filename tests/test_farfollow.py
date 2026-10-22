@@ -123,6 +123,15 @@ class TestReadOutcome:
         p = push(hold(slide(3.0, stop_at=T0 + 24), T0 + 27), -4.0, 6.0)
         assert FF.read_outcome(samples(p), T0) is None
 
+    def test_a_stop_split_between_two_stones_is_left_to_the_overhead(self, monkeypatch):
+        """Wednesday Womens 10/21 S3: still, then handed sideways to a
+        neighbour for as long again, so the stop's median sits by neither.
+        That failed the whole job rather than the one throw."""
+        path = ([(T0 + 24 + k / 4, 0.3, 3.0) for k in range(8)]
+                + [(T0 + 26 + k / 4, 0.7, 3.0) for k in range(8)])
+        monkeypatch.setattr(FF, "_follow", lambda _samples, _t: path)
+        assert FF.read_outcome(samples(until=T0 + 60), T0) is None
+
 
 def _track_frames(color, entry_t, ys, x=0.1, dt=0.1):
     return [(entry_t + k * dt, [Detection(color=color, x_m=x, y_m=y, x_px=0.0, y_px=0.0, area_px=100.0, confidence=0.9)])

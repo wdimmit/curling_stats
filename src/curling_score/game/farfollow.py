@@ -247,8 +247,12 @@ def read_outcome(samples, t_release) -> Outcome | None:
         settled = path[i:]
         x = float(np.median([p[1] for p in settled]))
         y = float(np.median([p[2] for p in settled]))
-        t_stop = next(p[0] for p in settled
-                      if abs(p[1] - x) <= STILL_X_M and abs(p[2] - y) <= STOPPED_Y_M)
+        t_stop = next((p[0] for p in settled
+                       if abs(p[1] - x) <= STILL_X_M and abs(p[2] - y) <= STOPPED_Y_M), None)
+        if t_stop is None:
+            # Nothing sat where it ended: the follower was handed between
+            # two stones, and which one is the throw it cannot say.
+            return None
         later = [(t, dets) for t, dets in samples
                  if t_stop + STAY_FROM_S <= t <= t_stop + STAY_TO_S]
         if len(later) < 4:
