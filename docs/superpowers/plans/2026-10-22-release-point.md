@@ -4,7 +4,7 @@
 
 **Goal:** Read where the thrower's hand left the handle for every rock, store it in the timeline, mark it "Release" on every delivery chart, and colour the rock's dots before/after it there and in burned-in clips.
 
-**Architecture:** While the hog-line and delivery reads decode the long camera facing the thrower, a `LaneKeeper` tapped into `longview.decode` keeps a small grey strip of the delivery lane from every other frame. After the line pass has built each rock's delivery path, `releasetime` cuts rock-centred hand crops from those strips, runs a ResNet-18 hand-on/hand-off classifier, and step-fits the release onto the path (`line.release = [t, y, x]`). The viewer draws a marker there and splits the dot colours at it.
+**Architecture:** While the hog-line and delivery reads decode the long camera facing the thrower, a `LaneKeeper` tapped into `longview.decode` keeps a small grey strip of the delivery lane from every frame (30 fps; the user's choice, 2026-10-22). After the line pass has built each rock's delivery path, `releasetime` cuts rock-centred hand crops from those strips, runs a ResNet-18 hand-on/hand-off classifier, and step-fits the release onto the path (`line.release = [t, y, x]`). The viewer draws a marker there and splits the dot colours at it.
 
 **Tech Stack:** Python 3.12, numpy, OpenCV, torch/torchvision (already in the worker image), pytest; React viewer with plain-ES core modules tested under node via `tests/test_viewer_js.py`.
 
@@ -24,8 +24,8 @@
 ## Review Focus
 
 - A rock whose release came from the long camera (`release_source == "side"`) or had none: hogtime's window was arrival-based, so the keeper must keep those windows too or the read silently loses its later frames -- Task 5 pins it.
-- Two decodes of the same frames (hogtime's window overlaps read_delivery's) must not double a strip or shift the 15 fps grid -- Task 1 pins dedup by source frame index.
-- A live worker holds up to three streams: strips held per end must stay bounded -- Task 1 pins a byte budget for a 16-rock end.
+- Two decodes of the same frames (hogtime's window overlaps read_delivery's) must not double a strip -- Task 1 pins dedup by source frame index.
+- A live worker holds up to three streams: strips held per end must stay bounded (about 340 MB for a 16-rock end at 30 fps, ~1 GB for three streams) -- Task 1 pins a 400 MB budget.
 - An old timeline (no `line.release`) must draw every dot teal with no marker and no "before/after" legend -- Task 8 pins it.
 - The large view's speed line and the delivery dots must split at the same moment -- Task 8 pins one shared colour function.
 
@@ -39,22 +39,21 @@
 - Test: `tests/test_lanekeep.py`
 
 **Interfaces:**
-- Produces: `lanekeep.LaneKeeper(view, windows, every=2)`; `.offer(rect, frames, times) -> None`; `.frames_between(t0, t1) -> tuple[np.ndarray, np.ndarray]` (strips `(N, h, w)` uint8, times `(N,)`, time-sorted); `.origin -> tuple[int, int]` (col0, row0 in view pixels); `.nbytes -> int`; `.clear()`. `lanekeep.strip_box(view) -> tuple[int, int, int, int]` (row0, row1, col0, col1, view pixels, clipped to the rect's size). `longview.keeping(keeper)` context manager.
-- Constants in `lanekeep`: `FROM_M = -0.5`, `TO_M = 8.4`, `UP_M = 0.6`, `DOWN_M = 0.15`, `ACROSS_M = 1.5`, `SOURCE_FPS = 30.0`, `KEEP_EVERY = 2`.
+- Produces: `lanekeep.LaneKeeper(view, windows, every=1)`; `.offer(rect, frames, times) -> None`; `.frames_between(t0, t1) -> tuple[np.ndarray, np.ndarray]` (strips `(N, h, w)` uint8, times `(N,)`, time-sorted); `.origin -> tuple[int, int]` (col0, row0 in view pixels); `.nbytes -> int`; `.clear()`. `lanekeep.strip_box(view) -> tuple[int, int, int, int]` (row0, row1, col0, col1, view pixels, clipped to the rect's size). `longview.keeping(keeper)` context manager.
+- Constants in `lanekeep`: `FROM_M = -0.5`, `TO_M = 8.4`, `UP_M = 0.6`, `DOWN_M = 0.15`, `ACROSS_M = 1.5`, `SOURCE_FPS = 30.0`, `KEEP_EVERY = 1` (every frame; `every` stays a parameter so a later change to every other frame is one constant).
 
 - [ ] **Step 1: Write the failing tests**
 
 Use the 10/20 S2 left view as the fixture view (`SideView(rect=(0, 0, 810, 1080), tee_row=360.8, hog_row=433.0, centre_col=399.21, lat_px_per_m_at_tee=117.425, centre_line=(394.038, 0.007471))`).
 
 ```python
-def test_keeps_even_source_frames_inside_a_window_once():
+def test_keeps_every_source_frame_inside_a_window_once():
     k = lanekeep.LaneKeeper(VIEW, windows=[(10.0, 11.0)])
     frames, times = synthetic(VIEW, t0=9.5, n=60)        # 30 fps, 9.5 .. 11.47
     k.offer(VIEW.rect, frames, times)
     k.offer(VIEW.rect, frames, times)                      # a second decode of the same frames
     strips, ts = k.frames_between(0, 99)
-    assert all(round(t * 30) % 2 == 0 for t in ts)
-    assert ts.min() >= 10.0 and ts.max() <= 11.0 and len(ts) == len(set(ts))
+    assert ts.min() >= 10.0 and ts.max() <= 11.0 and len(ts) == len(set(ts)) == 30
 
 def test_another_cameras_frames_are_not_kept():
     k = lanekeep.LaneKeeper(VIEW, windows=[(0, 99)])
@@ -70,7 +69,7 @@ def test_decode_offers_frames_only_while_keeping(monkeypatch):
 def test_a_sixteen_rock_end_stays_under_budget():
     r0, r1, c0, c1 = lanekeep.strip_box(VIEW)
     per_end = 16 * 8.0 * (lanekeep.SOURCE_FPS / lanekeep.KEEP_EVERY) * (r1 - r0) * (c1 - c0)
-    assert per_end < 250e6
+    assert per_end < 400e6
 ```
 
 - [ ] **Step 2: Run them to see them fail**
@@ -107,7 +106,7 @@ git commit -m "lanekeep: keep a grey strip of the delivery lane from the long ca
 - Produces (module `releasetime`):
   - `rock_at(delivery, o) -> tuple[float, float] | None` -- `(x, y)` interpolated on `[t, y, x]` samples, None outside them.
   - `hand_crops(strips, times, origin, view, delivery, t_release) -> tuple[np.ndarray, np.ndarray, np.ndarray]` -- crops `(N, 107, 160)` uint8, `o` `(N,)`, `yp` `(N,)`, one per strip whose rock lies between `FROM_M` and the path's last sample.
-  - `stacks(crops, o) -> np.ndarray` `(N, 3, 107, 160)` float32 in 0..1: per frame the crops nearest `o + s` for `s in STACK_S`, clamped to the sequence.
+  - `stacks(crops, o) -> np.ndarray` `(N, 3, 107, 160)` float32 in 0..1: per frame the crops nearest `o + s` for `s in STACK_S`, clamped to the sequence (by time, so it also works on a thinned sequence).
   - `step_fit(p) -> int`, `release_at(p, o, delivery) -> tuple[float, float, float] | None` (`(t, y, x)`).
   - Constants: `CROP_ACROSS_M = 0.5`, `CROP_UP_M = 0.55`, `CROP_DOWN_M = 0.12`, `CROP_PX = (160, 107)`, `STACK_S = (-4 / 30, -2 / 30, 0.0)`, `FROM_M = -0.5`, `FIRST_UNSEEN = 2`. `yp = linetime.TEE_Y - y`; image point `view.to_image(-x, yp)` (the camera faces the thrower).
 
@@ -125,7 +124,7 @@ def test_crops_span_half_a_metre_behind_the_tee_to_the_path_end():
     assert yp.min() >= -0.5 - 0.1 and yp.max() <= TEE_Y - DELIVERY[-1][1] + 1e-6
 
 def test_stacks_take_the_frames_two_and_four_back():
-    # o on a 15 fps grid: channel 0 is the crop two steps back, channel 1 one step back
+    # o on a 30 fps grid: channel 0 is the crop four frames back, channel 1 two back, channel 2 this one
 
 def test_step_fit_finds_the_switch():
     assert releasetime.step_fit(np.array([0, .1, 0, .9, 1, 1.])) == 3
@@ -325,7 +324,7 @@ def test_a_malformed_release_is_ignored():        # [1, null, 2], "x", [] -> nul
 
 - [ ] **Step 1: Plumbing** -- on the laptop, analyze `dmljQzQr1xo` (10/20 S2, `s_1TH0`) with the branch; compare each rock's `line.release` with `datasets/releasemarks/s_1TH0dJNrbHeKLARuj.json`. These rocks were trained on, so expect nearly all within 0.3 m; anything beyond means the production crops differ from `cut.py`'s.
 - [ ] **Step 2: A/B** on the Ryzen outside league windows (`run_ab.sh`, main vs branch, two games): only `line.release`, `processing_version` and the pipeline version differ.
-- [ ] **Step 3: Cost** -- `liveend_t.py` on the Ryzen: the release pass ≤ 3 s an end and `MB kept` ≤ 250, other passes unchanged.
+- [ ] **Step 3: Cost** -- `liveend_t.py` on the Ryzen: the release pass ≤ 3 s an end and `MB kept` ≤ 400, other passes unchanged; note the worker's peak memory with three live streams.
 - [ ] **Step 4: Ship gate** -- cut 20 rocks of `s_0hx8wuVKeMmy4evaI` (10/20 S5 Hamzeh v Yalowicki; two per player + four, seeded) with `scripts/mark_release.py` on the laptop, serve it, the user marks; score the branch's `line.release` against the marks. **≥ 15 of 20 within 0.5 m: go on. Fewer: stop and bring the numbers to the user.** Commit the marks to `datasets/releasemarks/`.
 
 ---
