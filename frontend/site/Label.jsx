@@ -250,8 +250,14 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
     onSubmit(answer, (Date.now() - t0.current) / 1000, sRef.current);
   }, [onSubmit]);
 
+  const pickColour = c => {
+    setColourPref(c);
+    if (sel >= 0) setS(cur => setColour(cur, sel, c));
+  };
+  const shownColour = sel >= 0 && s.boxes[sel] ? s.boxes[sel].color : colour;
+
   const act = useRef({});
-  act.current = { s, sel, colour, busy, paused, broken, canBack, onSkip, finish, item };
+  act.current = { s, sel, colour, busy, paused, broken, canBack, onSkip, finish, item, pickColour };
 
   useEffect(() => {
     const key = e => {
@@ -266,9 +272,7 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
       if (a.busy) return;
       setHint("");
       if (k === "r" || k === "y") {
-        const c = k === "r" ? "red" : "yellow";
-        setColourPref(c);
-        if (a.sel >= 0) setS(cur => setColour(cur, a.sel, c));
+        a.pickColour(k === "r" ? "red" : "yellow");
       } else if (k === "Delete" || k === "Backspace") {
         if (a.sel >= 0) { setS(cur => removeBox(cur, a.sel)); setSel(-1); }
       } else if (k === "k") {
@@ -395,6 +399,15 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
       )}
       <p className="label-msg" role="status" aria-live="polite">{hint}</p>
       <div className="row label-actions">
+        {/* The colour R and Y set: the selected box's while one is selected,
+            otherwise the next box drawn. */}
+        <div className="label-colour" role="group" aria-label="Box colour">
+          {["red", "yellow"].map(c => (
+            <button key={c} className={`label-swatch ${c}`} aria-pressed={shownColour === c}
+                    disabled={busy} onClick={() => pickColour(c)}>
+              {c === "red" ? "Red" : "Yellow"} <kbd>{c === "red" ? "R" : "Y"}</kbd></button>
+          ))}
+        </div>
         <button className="primary" disabled={busy || broken}
                 onClick={() => (canFinish(s) ? finish(boxAnswer(s))
                                              : setHint("Keep (K), fix or delete the dashed box first"))}>
@@ -541,11 +554,34 @@ function ReleaseFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, o
 const FLOWS = {
   boxes: { kind: "box", name: "Rock boxes", Flow: BoxFlow,
            howto: "Box every stone you can see, even part-hidden ones. People, brooms and shoes "
-                  + "get no box. The dashed box is what the computer wasn't sure about." },
+                  + "get no box. The dashed box is what the computer wasn't sure about, but "
+                  + "there may be other mistakes." },
   releases: { kind: "release", name: "Release marks", Flow: ReleaseFlow,
               howto: "Find the first frame where the hand is clearly off the handle. If the "
                      + "thrower lets go and grabs it again, mark the last let-go." },
 };
+
+/* The how-to, the first time a flow is opened. A modal <dialog> rather than a
+ * card on the page: the page's keys are off while it is up, and a card beside
+ * the picture left people pressing keys that did nothing. The modal blocks the
+ * page until "Got it", which has the focus, so Enter dismisses it; Escape does
+ * not, so nobody waves it away unread. */
+function HowtoDialog({ name, text, onDone }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+    return () => { if (d?.open) d.close(); };
+  }, []);
+  return (
+    <dialog ref={ref} className="label-howto" aria-labelledby="label-howto-title"
+            onCancel={e => e.preventDefault()}>
+      <h2 id="label-howto-title">{name}</h2>
+      <p>{text}</p>
+      <button className="primary" autoFocus onClick={onDone}>Got it</button>
+    </dialog>
+  );
+}
 
 function Stage({ flow }) {
   const { kind, Flow, howto } = FLOWS[flow];
@@ -562,12 +598,7 @@ function Stage({ flow }) {
         <a href={flow === "boxes" ? "#releases" : "#boxes"}>
           {flow === "boxes" ? FLOWS.releases.name : FLOWS.boxes.name}</a>
       </div>
-      {showHowto ? (
-        <div className="card label-howto">
-          <p style={{ marginTop: 0 }}>{howto}</p>
-          <button className="primary" autoFocus onClick={dismiss}>Got it</button>
-        </div>
-      ) : null}
+      {showHowto ? <HowtoDialog name={FLOWS[flow].name} text={howto} onDone={dismiss} /> : null}
       {q.notice ? <div className="warn" role="status">{q.notice}</div> : null}
       {q.phase === "loading" ? <p className="muted">Loading…</p>
        : q.phase === "error" ? (
