@@ -66,6 +66,22 @@ class TestPlayerRocks:
         shots = doc["games"][0]["ends"][0]["shots"]
         assert [s.get("rock") for s in shots] == ["1.2.13", None, "1.2.15", None]
 
+    def test_a_rocks_release_survives_to_the_clip_record(self):
+        # timeline -> rock_spec -> throw_from_rock: the hosted path the
+        # burn-in reads the release from.
+        from curling_score.game import clips
+        doc = a_doc([shot(13, "red", 4)])
+        doc["games"][0]["ends"][0]["shots"][0]["line"]["release"] = [1.23, 30.12, -0.142]
+        rock = gameclips.find_rock(doc, "1.2.13")
+        assert rock["line"]["release"] == [1.23, 30.12, -0.142]
+        assert clips.throw_from_rock(rock)["line"]["release"] == [1.23, 30.12, -0.142]
+
+    def test_a_rock_without_a_release_gives_none_in_the_clip_record(self):
+        from curling_score.game import clips
+        rock = gameclips.find_rock(a_doc([shot(13, "red", 4)]), "1.2.13")
+        assert "release" not in rock["line"]
+        assert clips.throw_from_rock(rock)["line"]["release"] is None
+
     def test_names_follow_the_detected_numbers(self):
         # Grading moved rock 15 ahead and a start trim renumbered the end:
         # the clip stays with the rock the run detected.

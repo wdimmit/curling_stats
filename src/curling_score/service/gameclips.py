@@ -55,8 +55,9 @@ SHOT_CLIP_DAYS = 21
 _ROCK_KEYS = ("t_release_s", "t_rest_s", "t_enter_s", "t_hog_s", "v_hog_m_s", "t_far_s",
               "target_broom")
 # What the cutter and its marks read of a line: the delivery is drawn, the
-# other paths are left behind.
-_LINE_KEYS = ("start", "at_hog", "at_broom", "at_tee", "delivery")
+# other paths are left behind. The release is three numbers: where the hand
+# let go, which the burn-in marks.
+_LINE_KEYS = ("start", "at_hog", "at_broom", "at_tee", "delivery", "release")
 
 
 def rock_name(game: dict, end: dict, shot: dict) -> str:
