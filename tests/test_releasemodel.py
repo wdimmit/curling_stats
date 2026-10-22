@@ -11,7 +11,8 @@ from curling_score.detect import releasemodel  # noqa: E402
 
 
 def _save(model, path):
-    torch.save({k: v.half() for k, v in model.state_dict().items()}, path)
+    torch.save({k: v.half() if v.is_floating_point() else v
+                for k, v in model.state_dict().items()}, path)
 
 
 @pytest.fixture

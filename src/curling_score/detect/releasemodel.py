@@ -48,8 +48,10 @@ def _load(path: str):
 
     cuda = torch.cuda.is_available()
     model = build()
-    state = torch.load(path, map_location="cpu")
-    model.load_state_dict({k: v.float() for k, v in state.items()})
+    # weights_only: a weights file must not be able to unpickle arbitrary code.
+    state = torch.load(path, map_location="cpu", weights_only=True)
+    model.load_state_dict({k: v.float() if v.is_floating_point() else v
+                           for k, v in state.items()})
     model = model.half().cuda() if cuda else model.float()
     return model.eval()
 
