@@ -61,6 +61,7 @@ ID_OK = re.compile(r"^[A-Za-z0-9_.-]{1,120}$")
 ORIGIN_KEYS = ("source_id", "video_id", "title", "end", "rock", "color", "position", "label")
 PROGRESS_EVERY = 25
 CHECKS_LIMIT = 20
+RETRIES = 3
 
 
 def _mark_release():
@@ -200,8 +201,15 @@ def _get_json(url: str, cache: Path):
     """The JSON at ``url``, from ``cache`` if it was fetched before."""
     if cache.exists():
         return json.loads(cache.read_text())
-    with urllib.request.urlopen(url, timeout=30) as r:
-        body = r.read()
+    for attempt in range(RETRIES):
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                body = r.read()
+            break
+        except urllib.error.HTTPError as err:       # the site answers 503 now and then
+            if err.code < 500 or attempt == RETRIES - 1:
+                raise
+            time.sleep(2 * (attempt + 1))
     data = json.loads(body)
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_bytes(body)

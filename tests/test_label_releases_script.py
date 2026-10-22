@@ -216,3 +216,27 @@ def test_a_real_run_sends_one_rock_at_a_time_and_survives_a_refused_one(tmp_path
     assert sent == [("tok", "r_vid_e03r02", b"\xff\xd8")]
     assert "r_vid_e03r01: skipped" in capsys.readouterr().err
     assert not list((tmp_path / "s" / "frames").iterdir())       # scratch is cleaned per rock
+
+
+def test_a_503_from_the_site_is_retried_and_the_reply_is_kept(tmp_path, monkeypatch):
+    import urllib.error
+    calls = []
+
+    class Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+    def urlopen(url, timeout):
+        calls.append(url)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
+        return Resp(b'{"games": []}')
+
+    monkeypatch.setattr(rel.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(rel.time, "sleep", lambda s: None)
+    assert rel.fetch_games("http://x", "vid", tmp_path) == []
+    assert rel.fetch_games("http://x", "vid", tmp_path) == []      # from the cache
+    assert len(calls) == 2
