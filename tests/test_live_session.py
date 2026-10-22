@@ -899,3 +899,30 @@ class TestPractice:
         s = session(pipe, rec, pub)
         finish(s, rec, 3400.0)
         assert pub[-1]["games"][0]["practice"] is False
+
+
+class TestTheReleaseInTheVersion:
+    """The real pipeline names the hand model only where it reads: on a
+    machine with no GPU the read is off (`releasemodel.runs_here`), and a
+    chart that says it read releases it never read would not be redone."""
+
+    def version(self, monkeypatch, tmp_path, runs_here):
+        from curling_score import weights as weights_mod
+        from curling_score.detect import releasemodel
+        files = {}
+        for name in ("det", "side", "broom", "spin", "release1"):
+            files[name] = tmp_path / f"{name}.pt"
+            files[name].write_bytes(name.encode())
+        for name, key in (("side_path", "side"), ("broom_path", "broom"),
+                          ("spin_path", "spin"), ("release_path", "release1")):
+            monkeypatch.setattr(weights_mod, name, lambda key=key: files[key])
+        monkeypatch.setattr(releasemodel, "runs_here", lambda: runs_here)
+        pipe = live.VideoPipeline(weights=files["det"], progress=lambda m: None)
+        return pipe.processing_version({"left": object()})
+
+    def test_a_machine_that_reads_releases_names_the_model(self, monkeypatch, tmp_path):
+        assert "+release-release1-" in self.version(monkeypatch, tmp_path, True)
+
+    def test_a_machine_without_a_gpu_does_not(self, monkeypatch, tmp_path):
+        got = self.version(monkeypatch, tmp_path, False)
+        assert "+spin-spin-" in got and "+release" not in got

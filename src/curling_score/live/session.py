@@ -549,11 +549,14 @@ class VideoPipeline:
     def processing_version(self, sideviews):
         from curling_score import version
         from curling_score import weights as weights_mod
+        from curling_score.detect import releasemodel
 
-        # The release model is loaded whenever the line model is and its
-        # weights are there (`analyze.load_release_model`), so its path says
-        # whether one read the releases, as the spin's does.
+        # The release model is loaded whenever the line model is, its weights
+        # are there and this machine runs it -- a GPU, or the CPU asked for
+        # (`analyze.load_release_model`, `releasemodel.runs_here`) -- so those
+        # say whether one read the releases.
         return version.processing_version(
             self.weights, weights_mod.side_path(), weights_mod.broom_path(),
             line=self.line and sideviews is not None, spin_weights=weights_mod.spin_path(),
-            release_weights=weights_mod.release_path())
+            release_weights=(weights_mod.release_path() if releasemodel.runs_here()
+                             else None))

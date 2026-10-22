@@ -77,9 +77,42 @@ def test_no_weights_means_no_model(monkeypatch):
 
 
 def test_default_model_loads_the_configured_weights(saved, monkeypatch):
+    # Asked for on the CPU too, so this runs on a box with no GPU.
+    monkeypatch.setenv(releasemodel.CPU_ENV_VAR, "1")
     monkeypatch.setattr(weights, "release_path", lambda: saved)
     model = releasemodel.default_model()
     assert model is not None and not model.training
+
+
+def test_without_a_gpu_the_read_is_off_and_says_so(saved, monkeypatch, caplog):
+    # ~1.85 s a rock on the CPU: a worker that lost its GPU would add half
+    # again to a live end's time.
+    monkeypatch.delenv(releasemodel.CPU_ENV_VAR, raising=False)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(weights, "release_path", lambda: saved)
+    with caplog.at_level("WARNING", logger=releasemodel.log.name):
+        assert releasemodel.default_model() is None
+    said = [r for r in caplog.records if r.name == releasemodel.log.name]
+    assert len(said) == 1 and said[0].levelname == "WARNING"
+    assert "GPU" in said[0].getMessage() and "CURLING_SCORE_RELEASE_CPU=1" in said[0].getMessage()
+
+
+def test_without_a_gpu_it_can_be_asked_for_on_the_cpu(saved, monkeypatch):
+    monkeypatch.setenv(releasemodel.CPU_ENV_VAR, "1")
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(weights, "release_path", lambda: saved)
+    model = releasemodel.default_model()
+    assert model is not None
+    assert next(model.parameters()).device.type == "cpu"
+
+
+def test_no_weights_says_nothing_about_the_gpu(monkeypatch, caplog):
+    monkeypatch.delenv(releasemodel.CPU_ENV_VAR, raising=False)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(weights, "release_path", lambda: None)
+    with caplog.at_level("WARNING", logger=releasemodel.log.name):
+        assert releasemodel.default_model() is None
+    assert not [r for r in caplog.records if r.name == releasemodel.log.name]
 
 
 def test_without_cuda_it_runs_in_float32_on_the_cpu(saved, monkeypatch):

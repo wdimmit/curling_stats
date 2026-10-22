@@ -8,13 +8,23 @@ like `spinmodel.default_model`, so importing this needs no torch, GPU or
 weights.
 
 The weights file is a float16 `state_dict` of :func:`build`'s model. On CUDA
-the model runs in half precision, on the CPU in float32.
+the model runs in half precision, on the CPU in float32 -- and on the CPU only
+when asked for (`CPU_ENV_VAR`).
 """
 from __future__ import annotations
 
 import functools
+import logging
+import os
 
 import numpy as np
+
+log = logging.getLogger(__name__)
+
+# Without CUDA a read costs ~1.85 s a rock, ~30 s an end: a worker that lost
+# its GPU would add about half again to a live end's time for the one field.
+# So the read is off on a machine with no GPU unless this is "1".
+CPU_ENV_VAR = "CURLING_SCORE_RELEASE_CPU"
 
 INPUT_SCALE = 2.0
 NORM = (0.45, 0.225)
@@ -56,11 +66,26 @@ def _load(path: str):
     return model.eval()
 
 
+def runs_here() -> bool:
+    """Whether the release read runs on this machine: on a GPU, or on the CPU
+    when `CPU_ENV_VAR` asks for it."""
+    import torch
+
+    return torch.cuda.is_available() or os.environ.get(CPU_ENV_VAR) == "1"
+
+
 def default_model():
-    """The release model, or None when none is configured."""
+    """The release model, or None when none is configured, or when there is
+    no GPU and the CPU was not asked for (`runs_here`)."""
     from curling_score import weights as weights_mod
     path = weights_mod.release_path()
-    return None if path is None else _load(str(path))
+    if path is None:
+        return None
+    if not runs_here():
+        log.warning("no GPU: the release read is off (~30 s an end on the CPU); "
+                    "set %s=1 to read releases on the CPU", CPU_ENV_VAR)
+        return None
+    return _load(str(path))
 
 
 def p_off(model, stacks: np.ndarray) -> np.ndarray:
