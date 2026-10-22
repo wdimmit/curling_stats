@@ -723,8 +723,32 @@ class Plan:
         return decode(video, rect, t0, t1, fps)
 
 
+_keeping = None     # the lane keeper offered every decode now, if any
+
+
+@contextmanager
+def keeping(keeper):
+    """While open, every window `decode` returns is offered to ``keeper``
+    (`lanekeep.LaneKeeper`), which keeps a strip of the lane from it. Opened
+    around an end's hog and delivery reads so the release pass finds the
+    thrower's hands without decoding the camera again."""
+    global _keeping
+    before, _keeping = _keeping, keeper
+    try:
+        yield keeper
+    finally:
+        _keeping = before
+
+
 def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
     """Frames of one window, cropped to the side view. About 0.25 s a call."""
+    got = _decode_window(video, rect, t0, t1, fps)
+    if _keeping is not None and len(got[0]):
+        _keeping.offer(rect, got[0], got[1], fps)
+    return got
+
+
+def _decode_window(video, rect, t0, t1, fps):
     if _reading is None:
         return _decode_now(video, rect, t0, t1, fps, _lead(video, t0))
     got = _reading.take(_key(video, rect, t0, t1, fps))
