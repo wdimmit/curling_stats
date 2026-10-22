@@ -20,9 +20,10 @@ DELIVERY = [[3.0 * i / 20, TEE_Y - (-1.0 + 9.0 * i / 20), 0.05 + 0.1 * i / 20]
             for i in range(21)]
 
 
-def lane(t0=T_REL - 0.2, t1=T_REL + 3.5):
+def lane(t0=T_REL - 0.2, t1=T_REL + 3.5, dx=0.0):
     """Strips of the lane at 30 fps with a bright 3x3 dot at the rock's image
-    point in each; the `LaneKeeper`'s origin, and the strips' times."""
+    point in each, or ``dx`` metres to the thrower's right of it; the
+    `LaneKeeper`'s origin, and the strips' times."""
     row0, row1, col0, col1 = lanekeep.strip_box(VIEW)
     times = np.arange(round(t0 * 30), round(t1 * 30)) / 30
     strips = np.zeros((len(times), row1 - row0, col1 - col0), np.uint8)
@@ -31,7 +32,7 @@ def lane(t0=T_REL - 0.2, t1=T_REL + 3.5):
         if at is None:
             continue
         y, x = at
-        col, row = VIEW.to_image(-x, TEE_Y - y)
+        col, row = VIEW.to_image(-(x + dx), TEE_Y - y)
         r, c = round(row) - row0, round(col) - col0
         strips[i, r - 1:r + 2, c - 1:c + 2] = 255
     return strips, times, (col0, row0)
@@ -54,6 +55,20 @@ def test_the_rock_sits_at_the_same_spot_in_every_crop():
     for c in crops:
         r, col = np.unravel_index(c.argmax(), c.shape)
         assert abs(col - 80) <= 2 and abs(r - 88) <= 2       # 0.5 m across, 0.55 m up at 160 px/m
+
+
+def test_the_crop_is_160_pixels_to_the_metre():
+    # 0.3 m to the thrower's right is 0.3 m to the left in the view, 48 px.
+    for dx, want in ((0.3, 80 - 48), (-0.3, 80 + 48)):
+        strips, times, origin = lane(dx=dx)
+        crops, _o, _yp = releasetime.hand_crops(strips, times, origin, VIEW, DELIVERY, T_REL)
+        for c in crops:
+            r, col = np.unravel_index(c.argmax(), c.shape)
+            assert abs(col - want) <= 2 and abs(r - 88) <= 2
+
+
+def test_the_crop_height_is_what_the_constants_say():
+    assert releasetime.CROP_PX == (160, round((releasetime.CROP_UP_M + releasetime.CROP_DOWN_M) * 160))
 
 
 def test_crops_span_half_a_metre_behind_the_tee_to_the_path_end():
