@@ -27,6 +27,7 @@ this frames and marks each picture and pipes it to a second ffmpeg to encode.
 
 import logging
 import math
+import numbers
 import subprocess
 import tempfile
 import threading
@@ -157,17 +158,24 @@ def dot_colour(t: float, release_t) -> tuple:
     return DOT_BEFORE if t < release_t else DOT_AFTER
 
 
+def _finite_number(v) -> bool:
+    """What the viewer's ``Number.isFinite`` passes: a finite number, and
+    not a string or a bool that would convert to one."""
+    return isinstance(v, numbers.Real) and not isinstance(v, bool) and math.isfinite(v)
+
+
 def _release_t(throw) -> float | None:
     """The release's time on the delivery's clock (``line.release``), or None
-    when the throw has none or its record is not ``[t, y, x]`` with a finite t."""
+    when the throw has none or its first three entries are not finite numbers.
+    Judged as the viewer judges it (`deliveryRelease`), so a clip and the chart
+    beside it split their dots alike; entries past the third are not looked
+    at, so the record can grow."""
     release = (throw.get("line") or {}).get("release")
-    if not isinstance(release, (list, tuple)) or not release:
+    if not isinstance(release, (list, tuple)) or len(release) < 3:
         return None
-    try:
-        t = float(release[0])
-    except (TypeError, ValueError):
+    if not all(_finite_number(v) for v in release[:3]):
         return None
-    return t if math.isfinite(t) else None
+    return float(release[0])
 
 
 def _delivery(throw) -> list:

@@ -39,11 +39,14 @@ export function deliveryReason(shot, doc) {
 
 /* Where the hand let go, as {t, yp, x} in deliveryPoints' frame, from
  * `line.release` ([t, y, x] as the delivery's samples). null when the release
- * was not read -- and when its record is not three finite numbers, which is
- * read the same way, so a bad record draws teal dots and not a wrong split. */
+ * was not read -- and when its first three entries are not finite numbers,
+ * which is read the same way, so a bad record draws teal dots and not a wrong
+ * split. Entries past the third are not looked at: the record may grow, and a
+ * viewer already deployed must not drop every release when it does. The clips
+ * judge a record the same way (`clipburn._release_t`). */
 export function deliveryRelease(shot) {
   const r = shot?.line?.release;
-  if (!Array.isArray(r) || r.length < 3 || !r.every(Number.isFinite)) return null;
+  if (!Array.isArray(r) || r.length < 3 || !r.slice(0, 3).every(Number.isFinite)) return null;
   const [t, y, x] = r;
   return { t, yp: TEE_Y - y, x };
 }

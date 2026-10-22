@@ -113,12 +113,23 @@ class TestMarks:
             dots = B.marks(throw(line=line), plan(), VIEWS)[0]["dots"]
             assert len(dots) == 5 and {d[3] for d in dots} == {B.DOT_UNKNOWN}
 
+    # As the viewer judges one (`deliveryRelease`): the first three entries
+    # must be finite numbers.
     @pytest.mark.parametrize("release", [[], "abc", [None, 1, 2], "1.5",
-                                         [float("nan"), 1, 2], 5])
+                                         [float("nan"), 1, 2], 5, [0.0, 37.0],
+                                         [1, float("nan"), 2], [0.0, 37.0, float("inf")],
+                                         ["0.0", 37.0, -0.16], [0.0, None, -0.16, 4],
+                                         [True, 37.0, -0.16]])
     def test_a_malformed_release_is_no_release(self, release):
         line = {**throw()["line"], "release": release}
         dots = B.marks(throw(line=line), plan(), VIEWS)[0]["dots"]
         assert len(dots) == 5 and {d[3] for d in dots} == {B.DOT_UNKNOWN}
+
+    def test_entries_past_the_third_are_not_looked_at(self):
+        # The record may grow (a model version, say); the clips still split.
+        line = {**throw()["line"], "release": [0.0, 37.0, -0.16, "release1-0123abcd"]}
+        dots = B.marks(throw(line=line), plan(), VIEWS)[0]["dots"]
+        assert [d[3] for d in dots] == [B.DOT_BEFORE] * 2 + [B.DOT_AFTER] * 3
 
     def test_a_camera_that_cannot_place_has_none(self):
         m = B.marks(throw(), plan(), VIEWS)

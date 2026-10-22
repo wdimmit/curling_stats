@@ -4604,7 +4604,8 @@ class TestTheRelease:
         assert g["rocks"][0]["release"] is None
 
     @pytest.mark.parametrize("bad", ["[1, null, 2]", '"x"', "[]", "[0.1, 36.8]", "[NaN, 36.8, 0]",
-                                     "[0.1, Infinity, 0]", '["0.1", 36.8, 0]', "{t: 0.1}", "null"])
+                                     "[1, NaN, 2]", "[0.1, Infinity, 0]", '["0.1", 36.8, 0]',
+                                     "[0.1, 36.8, null, 4]", "{t: 0.1}", "null"])
     def test_a_malformed_release_is_ignored(self, bad):
         got = run_js(f"const s = {json.dumps(delivery_shot())}; s.line.release = {bad};"
                      "const g = deliveryGeometry(s, DELIVERYBOX);"
@@ -4621,6 +4622,18 @@ class TestTheRelease:
         assert got["t"] == t and got["x"] == x and got["yp"] == pytest.approx(TEE_Y - y)
         assert run_js("out([deliveryRelease(null), deliveryRelease({}), deliveryRelease({line: {}})]);") == [
             None, None, None]
+
+    def test_entries_past_the_third_are_not_the_viewer_s_to_judge(self):
+        # The record may grow (a model version, say); a viewer already
+        # deployed must still draw the release from its first three.
+        three = released(0.5)
+        four = json.loads(json.dumps(three))
+        four["line"]["release"].append("release1-0123abcd")
+        assert run_js(f"out(deliveryRelease({json.dumps(four)}));") == \
+            run_js(f"out(deliveryRelease({json.dumps(three)}));")
+        g3, g4 = self.geom(three), self.geom(four)
+        assert g4["release"] is not None and g4["release"] == g3["release"]
+        assert g4["dots"] == g3["dots"]
 
 
 class TestThePaintUnderTheDelivery:
