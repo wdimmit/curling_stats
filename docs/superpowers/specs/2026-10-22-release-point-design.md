@@ -1,6 +1,6 @@
 # Release point on the delivery charts
 
-**Status:** draft for the user's approval, 2026-10-22. Decided with the user:
+**Status:** approved by the user, 2026-10-22. Decided with the user:
 - Mark where the thrower's hand came off the handle on **every delivery chart**, labelled **"Release"**, nothing more for now.
 - Read it with the hand-on/hand-off model trained on the user's own marks (below), not the pose model.
 - **Reuse the frames the worker already decodes.** No new decode of the long camera.
