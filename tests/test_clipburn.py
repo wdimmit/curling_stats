@@ -113,6 +113,13 @@ class TestMarks:
             dots = B.marks(throw(line=line), plan(), VIEWS)[0]["dots"]
             assert len(dots) == 5 and {d[3] for d in dots} == {B.DOT_UNKNOWN}
 
+    @pytest.mark.parametrize("release", [[], "abc", [None, 1, 2], "1.5",
+                                         [float("nan"), 1, 2], 5])
+    def test_a_malformed_release_is_no_release(self, release):
+        line = {**throw()["line"], "release": release}
+        dots = B.marks(throw(line=line), plan(), VIEWS)[0]["dots"]
+        assert len(dots) == 5 and {d[3] for d in dots} == {B.DOT_UNKNOWN}
+
     def test_a_camera_that_cannot_place_has_none(self):
         m = B.marks(throw(), plan(), VIEWS)
         assert m[1] == {"thrown": None, "aim": None, "broom": None, "dots": []}

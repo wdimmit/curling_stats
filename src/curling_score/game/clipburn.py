@@ -26,6 +26,7 @@ this frames and marks each picture and pipes it to a second ffmpeg to encode.
 """
 
 import logging
+import math
 import subprocess
 import tempfile
 import threading
@@ -148,12 +149,25 @@ class Framing:
 
 
 def dot_colour(t: float, release_t) -> tuple:
-    """A dot's colour, ``t`` and ``release_t`` seconds from the throw's
-    release on the delivery's clock: before the release, after it, or unknown
-    when ``release_t`` is None."""
+    """A dot's colour: before the release, after it, or unknown when
+    ``release_t`` is None. ``t`` and ``release_t`` are on the delivery's clock:
+    seconds from the throw's release."""
     if release_t is None:
         return DOT_UNKNOWN
     return DOT_BEFORE if t < release_t else DOT_AFTER
+
+
+def _release_t(throw) -> float | None:
+    """The release's time on the delivery's clock (``line.release``), or None
+    when the throw has none or its record is not ``[t, y, x]`` with a finite t."""
+    release = (throw.get("line") or {}).get("release")
+    if not isinstance(release, (list, tuple)) or not release:
+        return None
+    try:
+        t = float(release[0])
+    except (TypeError, ValueError):
+        return None
+    return t if math.isfinite(t) else None
 
 
 def _delivery(throw) -> list:
@@ -212,8 +226,7 @@ def marks(throw, plan, sideviews) -> list:
     lines = practice_overlay.overlay(throw, plan, sideviews) or [
         {"t0": 0.0, "t1": 0.0} for _ in plan.pieces]
     d, rel = _delivery(throw), throw.get("t_release_s")
-    release = (throw.get("line") or {}).get("release")
-    release_t = None if release is None else float(release[0])
+    release_t = _release_t(throw)
     facing_view = CAMERA_FOR[OTHER_HOUSE[throw["house"]]]
     out = []
     for p, item in zip(plan.pieces, lines):
