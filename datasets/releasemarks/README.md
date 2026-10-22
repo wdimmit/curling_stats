@@ -24,6 +24,12 @@ wrong) -- score the two apart; only `random` is a fair sample.
 Along the sheet one image row is 6-13 cm past the tee on these cameras, so a
 `yp` is good to a few tenths of a metre, not to the centimetre.
 
+Crops for training the release model are no longer cut from the marking
+frames: `scripts/release/cut.py` cuts each marked rock through the production
+crop code (`longview.decode` under a `LaneKeeper`, then
+`releasetime.hand_crops`) and labels its frames by the mark's `o`. See
+`scripts/release/README.md`.
+
 `s_1TH0dJNrbHeKLARuj.json` -- 10/20 Tuesday Super League sheet 2, game 2 of
 stream dmljQzQr1xo (Grause red, Dimmit yellow), 20 rocks, marked 2026-10-21.
 

@@ -100,3 +100,9 @@ frontend/node_modules/
 # spin1: the handle-point model (neck, grip end) the spin pass reads a rock's
 # rotation with -- datasets/spin, the spike's p5. See game/spintime.py.
 !weights/spin1.pt
+# release1: the hand-on/hand-off model (a ResNet-18 on stacks of three grey
+# crops round the handle, from the long camera facing the thrower) the release
+# pass reads the release point with -- datasets/releasemarks, cut and trained
+# by scripts/release. See game/releasetime.py. Rocks, folds and held-out scores:
+# TO FILL IN when trained.
+!weights/release1.pt
