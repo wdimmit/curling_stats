@@ -554,7 +554,8 @@ function ReleaseFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, o
 const FLOWS = {
   boxes: { kind: "box", name: "Rock boxes", Flow: BoxFlow,
            howto: "Box every stone you can see, even part-hidden ones. People, brooms and shoes "
-                  + "get no box. The dashed box is what the computer wasn't sure about." },
+                  + "get no box. The dashed box is what the computer wasn't sure about, but "
+                  + "there may be other mistakes." },
   releases: { kind: "release", name: "Release marks", Flow: ReleaseFlow,
               howto: "Find the first frame where the hand is clearly off the handle. If the "
                      + "thrower lets go and grabs it again, mark the last let-go." },
