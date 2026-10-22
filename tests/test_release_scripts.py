@@ -137,11 +137,11 @@ class TestCut:
         (tmp_path / "tl" / "s_0testgame1.json").write_text(json.dumps(timeline()))
         rocks = [
             {"id": "e01r01", "end": 1, "rock": 1, "color": "red", "position": "lead",
-             "t_release_s": T_REL + 20, "mark": "off", "o": 0.6, "yp": 1.0},
+             "t_release_s": T_REL + 20, "chosen": "random", "mark": "off", "o": 0.6, "yp": 1.0},
             {"id": "e01r02", "end": 1, "rock": 2, "color": "yellow", "position": "lead",
-             "t_release_s": T_REL + 40, "mark": "held"},
+             "t_release_s": T_REL + 40, "chosen": "hard", "mark": "held"},
             {"id": "e01r03", "end": 1, "rock": 3, "color": "red", "position": "lead",
-             "t_release_s": T_REL + 60, "mark": None},
+             "t_release_s": T_REL + 60, "chosen": "random", "mark": None},
         ]
         marks = tmp_path / "s_0testgame1.json"
         marks.write_text(json.dumps({"source_id": "s_0testgame1", "video_id": "vid",
@@ -166,6 +166,22 @@ class TestCut:
         assert off["mark_yp"] == 1.0 and off["t_release_s"] == T_REL + 20
         assert off["delivery"] == DELIVERY
         assert held["mark"] == "held" and held["mark_o"] is None and held["mark_yp"] is None
+        assert off["chosen"] == "random" and held["chosen"] == "hard"
+
+    def test_each_rock_says_where_it_came_from_and_the_geometry_it_was_cut_with(self, made):
+        for m in json.loads(str(made["meta"])):
+            assert (m["source_id"], m["video_id"], m["camera"]) == ("s_0testgame1", "vid", "left")
+            crop = m["crop"]
+            assert tuple(crop["CROP_PX"]) == releasetime.CROP_PX
+            assert (crop["CROP_ACROSS_M"], crop["CROP_UP_M"], crop["CROP_DOWN_M"]) == (
+                releasetime.CROP_ACROSS_M, releasetime.CROP_UP_M, releasetime.CROP_DOWN_M)
+            assert crop["FROM_M"] == releasetime.FROM_M
+            assert tuple(crop["STACK_S"]) == releasetime.STACK_S
+            assert crop["MARGIN_S"] == cut.MARGIN_S
+
+    def test_the_trainer_takes_a_fresh_cut(self, made):
+        assert cut.STAMPED == train.STAMPED
+        train.check_stamp("TG.npz", json.loads(str(made["meta"])))
 
     def test_one_crop_per_source_frame_whose_rock_is_on_the_read_span(self, made):
         offs = made["offs"]
@@ -188,13 +204,14 @@ class TestCut:
         assert (made["label"][offs[1]:offs[2]] == 0).all()
 
 
-def test_cut_skips_a_remarks_file(tmp_path):
+def test_cut_skips_a_remarks_file_and_does_not_count_it(tmp_path, capsys):
     # datasets/releasemarks/*.json takes in remarks-*.json, which is no game's marks.
     remarks = tmp_path / "remarks-2026-10-21.json"
     remarks.write_text(json.dumps({"marked": "2026-10-21", "rocks": [{"id": "S3k-e02r13"}]}))
     cut.main([str(remarks), "--timelines", str(tmp_path), "--videos", str(tmp_path),
               "--out", str(tmp_path / "out")])
     assert list((tmp_path / "out").iterdir()) == []
+    assert capsys.readouterr().out.splitlines()[-1] == "0 games, 0 rocks, 0 frames"
 
 
 def test_training_stacks_are_the_frames_releasetime_stacks():
@@ -209,8 +226,12 @@ def test_training_stacks_are_the_frames_releasetime_stacks():
     assert np.array_equal(gathered, releasetime.stacks(crops, o))
 
 
-def synthetic_game(path, game, rng, frames=16, step=8):
-    """Two short rocks of noise crops, the hand coming off at frame ``step``."""
+def synthetic_game(path, game, rng, frames=16, step=8, crop=None):
+    """Two short rocks of noise crops, the hand coming off at frame ``step``:
+    the first chosen at random, the second "hard". Stamped with today's
+    geometry unless ``crop`` says otherwise (the crops are smaller than it
+    says, to keep training fast)."""
+    crop = cut.crop_stamp() if crop is None else crop
     crops, os_, yps, labs, meta, offs = [], [], [], [], [], [0]
     delivery = [[0.0, TEE_Y + 0.5, 0.0], [frames / 30, TEE_Y - 3.0, 0.0]]
     for r in range(2):
@@ -221,8 +242,9 @@ def synthetic_game(path, game, rng, frames=16, step=8):
         yps.append(yp)
         labs.append(cut.labels(o, "off", o[step]))
         meta.append({"id": f"{game}-e01r{r + 1:02d}", "game": game, "color": ("red", "yellow")[r],
-                     "position": "lead", "mark": "off", "mark_o": float(o[step]),
-                     "mark_yp": float(yp[step]), "t_release_s": 100.0 + r, "delivery": delivery})
+                     "position": "lead", "chosen": ("random", "hard")[r], "mark": "off",
+                     "mark_o": float(o[step]), "mark_yp": float(yp[step]),
+                     "t_release_s": 100.0 + r, "delivery": delivery, "crop": crop})
         offs.append(offs[-1] + frames)
     np.savez_compressed(path, crops=np.concatenate(crops), o=np.concatenate(os_).astype(np.float32),
                         yp=np.concatenate(yps).astype(np.float32), label=np.concatenate(labs),
@@ -234,6 +256,9 @@ def test_train_scores_each_held_out_game_and_saves_a_loadable_model(tmp_path, mo
 
     from curling_score.detect import releasemodel
 
+    # Held-out rocks are scored through releasemodel._load, which takes CUDA
+    # when there is one; this test stays on the CPU.
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     rng = np.random.default_rng(0)
     for game in ("GA", "GB"):
         synthetic_game(tmp_path / f"{game}.npz", game, rng)
@@ -249,13 +274,60 @@ def test_train_scores_each_held_out_game_and_saves_a_loadable_model(tmp_path, mo
     for r in results:
         assert r["fold"] == r["game"]
         assert {"color", "mark", "mark_yp", "pred_yp", "err", "p"} <= set(r)
+        assert r["chosen"] == ("random" if r["id"].endswith("r01") else "hard")
         assert len(r["p"]) == 16
+    # Each fold's model was scored as the weights file the pipeline would load.
+    assert (out / "fold-GA.pt").exists() and (out / "fold-GB.pt").exists()
 
-    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     state = torch.load(saved, map_location="cpu", weights_only=True)
     assert all(v.dtype == torch.float16 for v in state.values() if v.is_floating_point())
     model = releasemodel._load(str(saved))
     assert releasemodel.p_off(model, np.zeros((2, 3, 16, 24), np.float32)).shape == (2,)
+
+
+def test_crops_cut_with_another_geometry_are_refused(tmp_path):
+    rng = np.random.default_rng(2)
+    synthetic_game(tmp_path / "GA.npz", "GA", rng)
+    synthetic_game(tmp_path / "GB.npz", "GB", rng,
+                   crop={**cut.crop_stamp(), "FROM_M": releasetime.FROM_M - 0.5})
+    with pytest.raises(SystemExit, match="FROM_M"):
+        train.main([str(tmp_path / "GA.npz"), str(tmp_path / "GB.npz"), "--out",
+                    str(tmp_path / "out"), "--init", str(tmp_path / "none.pth"), "--device", "cpu"])
+
+
+def test_crops_with_no_stamp_are_refused(tmp_path):
+    rng = np.random.default_rng(3)
+    synthetic_game(tmp_path / "GA.npz", "GA", rng, crop={})
+    with pytest.raises(SystemExit, match="no crop stamp"):
+        train.Data([tmp_path / "GA.npz"])
+
+
+def row(err, chosen="random", color="red", mark="off"):
+    """A results.json row: ``err`` None is a rock read as no release."""
+    return {"chosen": chosen, "color": color, "mark": mark, "err": err,
+            "pred_yp": None if err is None else 3.0 + err}
+
+
+class TestScores:
+    ROWS = [row(0.1), row(0.4, color="yellow"), row(None), row(2.0, chosen="hard")]
+
+    def test_within_is_of_the_rocks_read_and_off_within_05_of_every_rock_marked_off(self):
+        s = train.stats(self.ROWS)
+        assert (s["off"], s["read"]) == (4, 3)
+        assert s["within"][0.5] == pytest.approx(2 / 3)
+        assert s["off_within_05"] == pytest.approx(2 / 4)
+        assert s["over_1m"] == 1
+
+    def test_a_hard_rock_is_scored_apart_from_the_random_ones(self):
+        random_line, all_line = train.report("ALL", self.ROWS)
+        assert random_line.startswith("ALL random:") and all_line.startswith("ALL all:")
+        assert "2/3 read" in random_line and "over 1 m 0" in random_line
+        assert "3/4 read" in all_line and "over 1 m 1" in all_line
+        assert "within 0.5 m of all marked off 67%" in random_line
+        assert "within 0.5 m of all marked off 50%" in all_line
+
+    def test_no_random_rocks_says_so(self):
+        assert train.report("fold X", [row(0.2, chosen="hard")])[0] == "fold X random: none"
 
 
 def test_a_fold_naming_a_game_not_in_the_data_is_refused(tmp_path):

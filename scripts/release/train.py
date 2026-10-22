@@ -7,7 +7,10 @@ The spike's trainer (``~/curling-work/body-spike/scripts/hand_train.py
 as `releasetime.stacks` picks them, the network `releasemodel.build` makes,
 the one input transform `releasemodel.prepare`, and a held-out rock scored by
 `releasemodel.p_off` and `releasetime.release_at` -- what the pipeline will
-run -- so a fold's score is the pipeline's on that game.
+run -- so a fold's score is the pipeline's on that game. Each fold's model is
+written as the float16 weights file (``fold-<fold>.pt`` in ``--out``) and
+read back by `releasemodel._load` before it is scored, so on CUDA it is scored
+in half precision, as it will be served.
 
     # on the GPU box, inside the worker image, with the repo mounted:
     python scripts/release/train.py /data/wdd/scratch/release/crops/*.npz \\
@@ -17,8 +20,11 @@ run -- so a fold's score is the pipeline's on that game.
 ``--init`` is torchvision's ImageNet ResNet-18 (a ``state_dict``); every
 weight but the final layer starts from it. A fold is games joined by "+",
 held out together; the default is every game alone. ``results.json`` in
-``--out`` has every held-out rock with its fold. ``--save`` then trains once
-more on every rock and writes the float16 ``state_dict`` the pipeline loads.
+``--out`` has every held-out rock with its fold. The scores are printed for
+the rocks chosen at random alone (the fair sample) and for every rock.
+``--save`` then trains once more on every rock and writes the float16
+``state_dict`` the pipeline loads. Crops cut with a geometry releasetime no
+longer has are refused (`check_stamp`).
 """
 
 import argparse
@@ -60,6 +66,26 @@ def stack_rows(o) -> np.ndarray:
     return np.rint(releasetime.stacks(index, o)[:, :, 0, 0]).astype(int)
 
 
+# releasetime's constants a cut is stamped with, by name: cut.py's STAMPED
+# (tests/test_release_scripts.py keeps the two the same).
+STAMPED = ("CROP_PX", "CROP_ACROSS_M", "CROP_UP_M", "CROP_DOWN_M", "FROM_M", "STACK_S")
+
+
+def check_stamp(path, meta) -> None:
+    """Refuse crops cut with a geometry releasetime no longer has: a model
+    trained on them would read pictures the pipeline does not serve."""
+    for m in meta:
+        stamp = m.get("crop")
+        if not stamp:
+            raise SystemExit(f"{path}: rock {m['id']} has no crop stamp; cut it again with cut.py")
+        for k in STAMPED:
+            now = getattr(releasetime, k)
+            now = list(now) if isinstance(now, tuple) else now
+            if stamp.get(k) != now:
+                raise SystemExit(f"{path}: rock {m['id']} was cut with {k} = {stamp.get(k)}, "
+                                 f"releasetime now has {now}; cut it again with cut.py")
+
+
 class Data:
     """Every rock of the given npz files end to end; ``meta[r]["a"]:["b"]`` are
     rock ``r``'s frames, ``rows`` each frame's stack."""
@@ -70,6 +96,7 @@ class Data:
         for path in paths:
             with np.load(path, allow_pickle=False) as z:
                 meta, offs = json.loads(str(z["meta"])), z["offs"]
+                check_stamp(path, meta)
                 for i, m in enumerate(meta):
                     m["a"], m["b"] = base + int(offs[i]), base + int(offs[i + 1])
                 crops.append(z["crops"])
@@ -153,6 +180,14 @@ def fit(data, rocks, init, epochs, batch, device, seed):
     return model
 
 
+def served(model, path):
+    """``model`` as the pipeline will run it: written as the float16 weights
+    file and read back by `releasemodel._load` (uncached), so on CUDA it runs
+    in half precision."""
+    save(model, path)
+    return releasemodel._load.__wrapped__(str(path))
+
+
 def score(model, data, r, fold) -> dict:
     """One held-out rock read as the pipeline reads it."""
     m = data.meta[r]
@@ -165,32 +200,60 @@ def score(model, data, r, fold) -> dict:
     got = releasetime.release_at(p, np.clip(o, path[0][0], path[-1][0]), path)
     pred = None if got is None else round(TEE_Y - got[1], 3)
     truth = m["mark_yp"]
-    keep = ("id", "game", "end", "rock", "color", "position", "mark")
+    keep = ("id", "game", "end", "rock", "color", "position", "chosen", "mark")
     return {"fold": fold, **{k: m.get(k) for k in keep},
             "mark_yp": truth, "pred_o": None if got is None else round(got[0], 4), "pred_yp": pred,
             "err": None if pred is None or truth is None else round(pred - truth, 3),
             "p": [round(float(v), 3) for v in p]}
 
 
-def summary(rows) -> str:
-    """Median |err|, how many within 0.3/0.5/1.0 m and over 1 m, per colour;
-    the share is of the rocks read, as the spike counted it."""
+def stats(rows) -> dict:
+    """The scores of some held-out rocks. ``within`` is the share of the rocks
+    read, as the spike counted it; ``off_within_05`` is of every rock marked
+    off, a rock read as no release counting as a miss."""
     off = [r for r in rows if r["mark"] == "off"]
     read = [r for r in off if r["err"] is not None]
     held = [r for r in rows if r["mark"] == "held"]
-    out = f"{len(read)}/{len(off)} read"
+    a = np.abs([r["err"] for r in read])
+    out = {"off": len(off), "read": len(read), "held": len(held),
+           "held_read_as_held": sum(r["pred_yp"] is None for r in held),
+           "off_within_05": int((a <= 0.5).sum()) / len(off) if off else None}
     if read:
-        a = np.abs([r["err"] for r in read])
-        out += (f", |err| median {np.median(a):.2f} m, within 0.3 m {np.mean(a <= 0.3):.0%}, "
-                f"0.5 m {np.mean(a <= 0.5):.0%}, 1.0 m {np.mean(a <= 1.0):.0%}, "
-                f"over 1 m {int((a > 1.0).sum())}, bias {np.median([r['err'] for r in read]):+.2f}")
-        for colour in ("red", "yellow"):
-            c = [abs(r["err"]) for r in read if r["color"] == colour]
-            if c:
-                out += f", {colour} {np.median(c):.2f} ({len(c)})"
-    if held:
-        out += f"; held {sum(r['pred_yp'] is None for r in held)}/{len(held)} read as held"
+        colours = {}
+        for c in ("red", "yellow"):
+            mine = [abs(r["err"]) for r in read if r["color"] == c]
+            if mine:
+                colours[c] = (float(np.median(mine)), len(mine))
+        out.update(median=float(np.median(a)), bias=float(np.median([r["err"] for r in read])),
+                   within={d: float(np.mean(a <= d)) for d in (0.3, 0.5, 1.0)},
+                   over_1m=int((a > 1.0).sum()), colour=colours)
     return out
+
+
+def summary(rows) -> str:
+    """One line of `stats`."""
+    s = stats(rows)
+    out = f"{s['read']}/{s['off']} read"
+    if s["read"]:
+        w = s["within"]
+        out += (f", |err| median {s['median']:.2f} m, within 0.3 m {w[0.3]:.0%}, "
+                f"0.5 m {w[0.5]:.0%}, 1.0 m {w[1.0]:.0%}, over 1 m {s['over_1m']}, "
+                f"bias {s['bias']:+.2f}")
+        out += "".join(f", {c} {m:.2f} ({n})" for c, (m, n) in s["colour"].items())
+    if s["off"]:
+        out += f"; within 0.5 m of all marked off {s['off_within_05']:.0%}"
+    if s["held"]:
+        out += f"; held {s['held_read_as_held']}/{s['held']} read as held"
+    return out
+
+
+def report(name, rows) -> list[str]:
+    """Lines for some held-out rocks: the random ones alone -- the "hard" ones
+    were picked because a read looked wrong, so only the random are a fair
+    sample -- and every rock beside them."""
+    random = [r for r in rows if r.get("chosen") == "random"]
+    return [f"{name} random: {summary(random) if random else 'none'}",
+            f"{name} all:    {summary(rows)}"]
 
 
 def folds_of(spec, games) -> list[str]:
@@ -224,7 +287,9 @@ def main(argv=None):
                     help='folds, comma-separated; a fold is games held out together, "+"-joined')
     ap.add_argument("--epochs", type=int, default=EPOCHS)
     ap.add_argument("--batch", type=int, default=BATCH)
-    ap.add_argument("--device", default=None, help="default: cuda if there is one")
+    ap.add_argument("--device", default=None,
+                    help="for training; default cuda if there is one. Held-out rocks are "
+                         "scored as releasemodel._load runs them, on cuda if there is one")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save", help="train on every rock after the folds and write the weights here")
     args = ap.parse_args(argv)
@@ -247,16 +312,21 @@ def main(argv=None):
         test_rocks = [r for r, m in enumerate(data.meta) if m["game"] in held]
         print(f"  fold {fold}: train {len(train_rocks)} rocks, test {len(test_rocks)}", flush=True)
         model = fit(data, train_rocks, args.init, args.epochs, args.batch, device, args.seed)
+        model = served(model, out / f"fold-{fold}.pt")
         rows = [score(model, data, r, fold) for r in test_rocks]
         results += rows
         (out / "results.json").write_text(json.dumps(results))
-        print(f"  fold {fold}: {summary(rows)} ({time.time() - tic:.0f} s)", flush=True)
+        for line in report(f"  fold {fold}", rows):
+            print(line, flush=True)
+        print(f"  fold {fold}: {time.time() - tic:.0f} s", flush=True)
     # A rock held out in two folds (alone, and with its league) counts in both.
     alone = [r for r in results if "+" not in r["fold"]]
     if alone and len(alone) < len(results):
-        print(f"games one at a time: {summary(alone)}", flush=True)
+        for line in report("games one at a time", alone):
+            print(line, flush=True)
     if results:
-        print(f"ALL: {summary(results)}", flush=True)
+        for line in report("ALL", results):
+            print(line, flush=True)
     if args.save:
         print(f"  final: train {len(data.meta)} rocks", flush=True)
         save(fit(data, list(range(len(data.meta))), args.init, args.epochs, args.batch, device,

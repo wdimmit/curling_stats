@@ -22,9 +22,11 @@ Per marks file, one ``<tag>.npz`` in ``--out``:
 - ``label`` (N,) int8: 0 hand on, 1 off, -1 left out (see `labels`)
 - ``offs`` (rocks + 1,): rock ``i`` is ``offs[i]:offs[i + 1]``
 - ``meta``: a JSON list, per rock ``id``, ``game`` (the tag), ``end``,
-  ``rock``, ``color``, ``position``, ``mark``, ``mark_o``, ``mark_yp``,
-  ``t_release_s`` and ``delivery`` (the path, so training can score a read
-  through `releasetime.release_at` as the pipeline does)
+  ``rock``, ``color``, ``position``, ``chosen``, ``mark``, ``mark_o``,
+  ``mark_yp``, ``t_release_s``, ``delivery`` (the path, so training can score
+  a read through `releasetime.release_at` as the pipeline does), where it came
+  from (``source_id``, ``video_id``, ``camera``) and ``crop``, the geometry it
+  was cut with (`crop_stamp`)
 """
 
 import argparse
@@ -55,6 +57,19 @@ AFTER_S = 0.1
 
 # The 10/20 game was marked alone, before marks carried a tag.
 UNTAGGED = {"s_1TH0dJNrbHeKLARuj": "T1020"}
+
+# releasetime's constants a cut was made with, by name. train.py refuses crops
+# cut with values releasetime no longer has: the model would be trained on
+# pictures the pipeline does not serve.
+STAMPED = ("CROP_PX", "CROP_ACROSS_M", "CROP_UP_M", "CROP_DOWN_M", "FROM_M", "STACK_S")
+
+
+def crop_stamp() -> dict:
+    """The crop geometry this cut is made with, as JSON: releasetime's
+    STAMPED constants by name, and the label margin."""
+    def plain(v):
+        return list(v) if isinstance(v, tuple) else v
+    return {**{k: plain(getattr(releasetime, k)) for k in STAMPED}, "MARGIN_S": MARGIN_S}
 
 
 def tag_of(marks) -> str:
@@ -94,7 +109,8 @@ def window(delivery, t_release) -> tuple[float, float]:
 
 
 def cut_rock(video, tl, end_no, rock_no):
-    """``(crops, o, yp, shot)`` for one rock, as the release pass cuts them."""
+    """``(crops, o, yp, shot, camera)`` for one rock, as the release pass
+    cuts them."""
     end, shot = shot_of(tl, end_no, rock_no)
     camera = hogtime.CAMERA_FOR[OTHER_HOUSE[end["house"]]]
     view = clips.sideviews_from_calibration(tl["calibration"])[camera]
@@ -106,19 +122,20 @@ def cut_rock(video, tl, end_no, rock_no):
         longview.decode(video, view.rect, t0, t1, FPS)
     strips, times = keeper.frames_between(t0, t1)
     crops, o, yp = releasetime.hand_crops(strips, times, keeper.origin, view, delivery, t_rel)
-    return crops, o, yp, shot
+    return crops, o, yp, shot, camera
 
 
 def cut_game(marks, tl, video):
     """The arrays of one ``<tag>.npz``, printing a line per rock."""
     tag = tag_of(marks)
+    stamp = crop_stamp()
     crops, os_, yps, labs, meta, offs = [], [], [], [], [], [0]
     for rock in marks["rocks"]:
         mark = rock.get("mark")
         if mark is None:
             print(f"  {tag} {rock['id']}: can't tell, left out", flush=True)
             continue
-        c, o, yp, shot = cut_rock(video, tl, rock["end"], rock["rock"])
+        c, o, yp, shot, camera = cut_rock(video, tl, rock["end"], rock["rock"])
         if not len(c):
             print(f"  {tag} {rock['id']}: no frames on the path, left out", flush=True)
             continue
@@ -133,10 +150,15 @@ def cut_game(marks, tl, video):
         yps.append(yp)
         labs.append(lab)
         offs.append(offs[-1] + len(c))
+        # chosen: "random" or "hard" (picked because a read looked wrong);
+        # only the random rocks are a fair sample to score.
         meta.append({"id": rock["id"], "game": tag, "end": rock["end"], "rock": rock["rock"],
-                     "color": rock["color"], "position": rock.get("position"), "mark": mark,
-                     "mark_o": mark_o, "mark_yp": rock.get("yp") if mark == "off" else None,
-                     "t_release_s": shot["t_release_s"], "delivery": shot["line"]["delivery"]})
+                     "color": rock["color"], "position": rock.get("position"),
+                     "chosen": rock.get("chosen"), "mark": mark, "mark_o": mark_o,
+                     "mark_yp": rock.get("yp") if mark == "off" else None,
+                     "t_release_s": shot["t_release_s"], "delivery": shot["line"]["delivery"],
+                     "source_id": marks["source_id"], "video_id": marks["video_id"],
+                     "camera": camera, "crop": stamp})
         what = f"off at {mark_o:.3f} s, {rock.get('yp')} m" if mark == "off" else mark
         line = (f"  {tag} {rock['id']}: {what}; {len(c)} frames {yp[0]:+.2f}..{yp[-1]:+.2f} m, "
                 f"on {(lab == 0).sum()} off {(lab == 1).sum()} out {(lab == -1).sum()}")
@@ -162,7 +184,7 @@ def main(argv=None):
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    total_rocks = total_frames = 0
+    games = total_rocks = total_frames = 0
     for path in args.marks:
         marks = json.loads(Path(path).read_text())
         if "source_id" not in marks:
@@ -179,10 +201,11 @@ def main(argv=None):
             continue
         np.savez_compressed(out / f"{tag}.npz", **got)
         n_rocks, n_frames = len(got["offs"]) - 1, len(got["crops"])
+        games += 1
         total_rocks += n_rocks
         total_frames += n_frames
         print(f"{tag}: {n_rocks} rocks, {n_frames} frames -> {out / f'{tag}.npz'}", flush=True)
-    print(f"{len(args.marks)} games, {total_rocks} rocks, {total_frames} frames", flush=True)
+    print(f"{games} games, {total_rocks} rocks, {total_frames} frames", flush=True)
 
 
 if __name__ == "__main__":

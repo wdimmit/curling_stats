@@ -41,12 +41,27 @@ the final layer is taken from it. Each game is named by its marks file's `tag`
 (`T1020` for the 10/20 game, which has none). A fold is games joined by `+`,
 held out together; with no `--folds`, every game is held out alone.
 
-`train.py` prints each fold's median |error| along the path, the share within
-0.3 / 0.5 / 1.0 m, the count over 1 m and the red and yellow medians, then the
-same over every fold, and writes every held-out rock (fold, id, game, colour,
-mark, `mark_yp`, `pred_yp`, `err`, the per-frame `p`) to `results.json` in
-`--out`. The spike got 83% within 0.5 m on Super League games one at a time on
-its own crops; well short of that on these, stop and look before saving.
+Each fold's model is scored as it will be served: written as the float16
+weights file (`fold-<fold>.pt` in `--out`) and read back by
+`releasemodel._load`, so on CUDA in half precision.
+
+`train.py` prints each fold's median |error| along the path, the share of the
+rocks read within 0.3 / 0.5 / 1.0 m, the count over 1 m, the red and yellow
+medians, and the share of every rock marked off that is read within 0.5 m (a
+rock read as no release is a miss there). Each comes as two lines: the rocks
+`chosen` at random alone -- the fair sample; the "hard" ones were picked
+because a pose read looked wrong -- and every rock. Then the same for the
+single-game folds together and for every fold. It writes every held-out rock
+(fold, id, game, colour, `chosen`, mark, `mark_yp`, `pred_yp`, `err`, the
+per-frame `p`) to `results.json` in `--out`. The spike got 83% within 0.5 m
+on Super League games one at a time on its own crops; well short of that on
+these, stop and look before saving.
+
+Every rock in an npz carries where it came from (`source_id`, `video_id`,
+`camera`) and the crop geometry it was cut with (releasetime's `CROP_PX`,
+`CROP_ACROSS_M`, `CROP_UP_M`, `CROP_DOWN_M`, `FROM_M`, `STACK_S`, and the
+label margin). `train.py` refuses crops whose geometry releasetime no longer
+has: cut them again.
 
 `--save` trains once more on every rock and writes the float16 `state_dict`
 `releasemodel._load` reads; copy it to `weights/release1.pt`. Keep the crops
