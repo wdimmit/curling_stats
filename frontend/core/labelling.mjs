@@ -169,3 +169,13 @@ export function step(i, delta, n) {
 export function releaseAnswer(mark, frame) {
   return { mark, frame: mark === "off" ? frame : null };
 }
+
+/* ------------------------------------------------------- a refused answer
+ *
+ * The server says 409 with a reason: "held" (someone else has the item on a
+ * lease now) or "full" / "closed" (it is finished). Only the first is not
+ * "finished", and the member is told which. */
+export function conflictNotice(detail) {
+  return detail === "held" ? "Someone else has this one now."
+                           : "Someone else finished this one.";
+}

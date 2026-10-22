@@ -27,7 +27,7 @@ ITEM = {
 
 # Ten frames in a sprite four across: three rows, the last one short.
 RELEASE = {"id": "r1", "kind": "release", "image_url": "x", "cols": 4, "fw": 160, "fh": 120,
-           "n": 10, "fps": 10, "frames": [{"o": 0.5, "yp": 100 + i} for i in range(10)]}
+           "n": 10, "fps": 10}
 
 
 def js(expr: str):
@@ -169,3 +169,10 @@ def test_release_answer_drops_frame_unless_off():
     assert js('L.releaseAnswer("off", 0)') == {"mark": "off", "frame": 0}
     assert js('L.releaseAnswer("held", 7)') == {"mark": "held", "frame": None}
     assert js('L.releaseAnswer("cant_tell", 7)') == {"mark": "cant_tell", "frame": None}
+
+
+def test_a_409_names_who_has_the_item():
+    assert js('L.conflictNotice("held")') == "Someone else has this one now."
+    assert js('L.conflictNotice("full")') == "Someone else finished this one."
+    assert js('L.conflictNotice("closed")') == "Someone else finished this one."
+    assert js("L.conflictNotice(undefined)") == "Someone else finished this one."

@@ -18,11 +18,12 @@
  * stone to a few pixels is not a thumb's job.
  *
  * Signed in or not, the server is the judge: a 409 means somebody else
- * finished the item first, and a 401 sends the member back to sign-in. */
+ * finished the item first (or, if it says "held", has it now), and a 401 sends
+ * the member back to sign-in. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
-import { CANT_TELL, MIN_WIDTH_PX, addBox, boxAnswer, boxAt, canFinish, cornerAt,
-         drawScale, drawnBox, keepFlagged, moveBox, moveCorner, releaseAnswer, removeBox,
+import { CANT_TELL, MIN_WIDTH_PX, addBox, boxAnswer, boxAt, canFinish, conflictNotice,
+         cornerAt, drawScale, drawnBox, keepFlagged, moveBox, moveCorner, releaseAnswer, removeBox,
          setBox, setColour, spriteOffset, startBoxes, step } from "../core/labelling.mjs";
 import { signInTrouble } from "./signinState.mjs";
 import { Card, Header } from "./ui.jsx";
@@ -163,7 +164,11 @@ function useLabelQueue(kind, active) {
       return;
     }
     if (res.status === 409) {
-      advance({ notice: "Someone else finished this one." });
+      // "held" is a lease somebody else now has; anything else (full, closed)
+      // means the item is finished.
+      let why = "";
+      try { why = (await res.json()).detail; } catch { /* finished, then */ }
+      advance({ notice: conflictNotice(why) });
       return;
     }
     if (!res.ok) {
