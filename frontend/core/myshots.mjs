@@ -298,7 +298,8 @@ function framed(r, turn) {
     ...r, turn, mirrored: true,
     nums: { ...r.nums, miss_m: flip(r.nums.miss_m), turn },
     path: p && { ...p, pts: p.pts.map(q => ({ ...q, dx: -q.dx })),
-                 start: p.start && { ...p.start, dx: -p.start.dx } },
+                 start: p.start && { ...p.start, dx: -p.start.dx },
+                 release: p.release && { ...p.release, dx: -p.release.dx } },
   };
 }
 

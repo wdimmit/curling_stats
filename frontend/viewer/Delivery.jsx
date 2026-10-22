@@ -4,30 +4,66 @@
  * Everything it draws comes from core/delivery.mjs; this file only turns it
  * into markup. The ice is painted in literal PAINT colours and stays light in
  * dark mode, as the strip does. */
-import { DELIVERYBOX, deliveryGeometry, deliveryReason, rampColor } from "../core/index.mjs";
+import { DELIVERYBOX, deliveryGeometry, deliveryReason, quietCorner } from "../core/index.mjs";
 import { PAINT } from "../core/constants.mjs";
 
 const MUTED = "#6d6455";
 const HOUSE = { twelve: PAINT.twelve, eight: PAINT.ice, four: PAINT.four, button: PAINT.ice };
 const STRIPE = { fill: "#b9c9da", edge: "#8fa6bd" };
 const LINE = { hack: [PAINT.rail, 1], tee: [PAINT.iceLine, 1], hog: [PAINT.red, 1.2], centre: [PAINT.iceLine, 0.7] };
-const LEGEND_N = 8;
+const LEGEND_ROW = 11;
 
-/* The legend: a short run of the ramp's own dots, from the push-off to past
- * the hog line. No <defs>: the desktop card stays mounted on a phone, and two
- * charts in one page must not share an id. */
+/* The key to the dots' two colours, before the release and after it; none
+ * for a rock whose release was not read, its dots all one colour. At
+ * `legendAt` where the chart set one (the line chart's); upright else in the
+ * same quiet corner, off the path and the words; on its side bottom left,
+ * clear of the hack line and the footholds behind it, where the rock has
+ * barely moved and its release is far off. The rows stack up from y, in the
+ * room linechart.mjs quietCorner sizes. No <defs>: the desktop card stays
+ * mounted on a phone, and two charts in one page must not share an id. */
 function Legend({ g }) {
-  const x = g.legend ? g.legend.x : g.side ? g.plot.x + 6 : g.plot.x + 8;
-  const y = g.legend ? g.legend.y : g.side ? g.plot.y + g.plot.h - 8 : g.plot.y + 12;
+  if (!g.legend.length) return null;
+  const hack = g.side ? g.lines.find(l => l.kind === "hack") : null;
+  const at = g.legendAt ?? (g.side ? { x: (hack ? hack.x1 : g.plot.x) + 6, y: g.plot.y + g.plot.h - 8 }
+                                   : quietCorner(g));
+  const last = g.legend.length - 1;
   return (
     <g>
-      <text x={x} y={y - 6} fontSize={8.5} fill={MUTED}>push-off → hog +1.5 m</text>
-      {Array.from({ length: LEGEND_N }, (_, i) => (
-        <circle key={i} cx={x + 3 + i * 9} cy={y + 2} r={2.6} fill={rampColor(i / (LEGEND_N - 1))} />
-      ))}
+      {g.legend.map((e, i) => {
+        const cy = at.y + 2 - (last - i) * LEGEND_ROW;
+        return (
+          <g key={e.text}>
+            <circle cx={at.x + 3} cy={cy} r={2.6} fill={e.color} />
+            <text x={at.x + 9} y={cy + 3} fontSize={8.5} fill={MUTED} stroke={PAINT.ice} strokeWidth={2.5}
+                  paintOrder="stroke">{e.text}</text>
+          </g>
+        );
+      })}
     </g>
   );
 }
+
+/* Where the hand let go: a tick across the path and the word beside it, in
+ * the ink of the start ring -- a line where that is a ring, and neither of
+ * the dots' colours. Both are haloed in ice, so the tick parts the dots it
+ * crosses and the word reads over the aim line and the paint. */
+function Release({ r }) {
+  const { tick, label } = r;
+  return (
+    <g>
+      <line x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2} stroke={PAINT.ice} strokeWidth={3.6}
+            strokeLinecap="round" />
+      <line x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2} stroke={PAINT.accent} strokeWidth={1.6}
+            strokeLinecap="round" />
+      <text x={label.x} y={label.y} fontSize={9} fontWeight={700} textAnchor={label.anchor} fill={PAINT.accent}
+            stroke={PAINT.ice} strokeWidth={2.5} paintOrder="stroke">{label.text}</text>
+    </g>
+  );
+}
+
+/* What the dots' colours mean, for a caption or a label: nothing when they
+ * are all one colour. */
+export const dotColours = g => (g.legend.length ? ", navy before the release and gold after" : "");
 
 export function DeliveryChart({ g, label, fluid, className = "dlv", at }) {
   if (!g) return null;
@@ -81,6 +117,7 @@ export function DeliveryChart({ g, label, fluid, className = "dlv", at }) {
       ))}
       {g.dots.map((d, i) => <circle key={`d${i}`} cx={d.x} cy={d.y} r={g.dotR} fill={d.fill} />)}
       {g.start ? <circle cx={g.start.x} cy={g.start.y} r={4.2} fill="none" stroke={PAINT.accent} strokeWidth={1.3} /> : null}
+      {g.release ? <Release r={g.release} /> : null}
       <Legend g={g} />
     </svg>
   );
@@ -88,7 +125,7 @@ export function DeliveryChart({ g, label, fluid, className = "dlv", at }) {
 
 export const deliveryLabel = (shot, side, g) =>
   `The delivery from above, thrower at the ${side ? "left" : "bottom"}: the rock from the hack to 1.5 m past the hog line, ` +
-  `a dot every ${g.every.words}, darker earlier${shot?.target_broom ? ", with the line from the hack to the broom" : ""}`;
+  `a dot every ${g.every.words}${dotColours(g)}${shot?.target_broom ? ", with the line from the hack to the broom" : ""}`;
 
 /* The delivery's speed, along the same axis as the big chart above it
  * (core/speed.mjs speedGeometry). Ice-painted like the charts it sits with. */
@@ -111,13 +148,26 @@ export function SpeedChart({ sg, label }) {
                 fill={l.kind === "hog" ? PAINT.red : MUTED}>{l.kind}</text>
         </g>
       ))}
+      {/* At the same distance as the marker above, named over the plot: the
+          lines' own names are under it. */}
+      {sg.release ? (
+        <g>
+          <line x1={sg.release.x} y1={sg.release.y1} x2={sg.release.x} y2={sg.release.y2} stroke={PAINT.accent}
+                strokeWidth={1} strokeDasharray="4 3" />
+          <text x={sg.release.x} y={sg.release.y1 - 4} fontSize={9} fontWeight={700} textAnchor="middle"
+                fill={PAINT.accent}>Release</text>
+        </g>
+      ) : null}
       {sg.segs.map((s, i) => (
         <line key={`s${i}`} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={s.color} strokeWidth={2.2}
               strokeLinecap="round" />
       ))}
       <circle cx={sg.peak.x} cy={sg.peak.y} r={3.4} fill={PAINT.accent} />
+      {/* Haloed, as the hog speed is: the peak is often just past the release's line. */}
       <text x={sg.peak.x} y={sg.peak.y - 8} fontSize={10} fontWeight={700} textAnchor="middle"
-            fill={PAINT.accent}>{`${sg.peak.v.toFixed(1)} m/s peak`}</text>
+            fill={PAINT.accent} stroke={PAINT.ice} strokeWidth={3} paintOrder="stroke">
+        {`${sg.peak.v.toFixed(1)} m/s peak`}
+      </text>
       {sg.hog ? (
         <>
           <circle cx={sg.hog.x} cy={sg.hog.y} r={3.4} fill={PAINT.red} />
@@ -141,7 +191,7 @@ export function Delivery({ shot, doc }) {
   return (
     <>
       <DeliveryChart g={g} label={deliveryLabel(shot, false, g)} fluid />
-      <p className="dcap">From above, thrower at the bottom · across ×{g.stretch} · a dot every {g.every.short}, dark at rest to gold past the hog line</p>
+      <p className="dcap">From above, thrower at the bottom · across ×{g.stretch} · a dot every {g.every.short}{dotColours(g)}</p>
     </>
   );
 }

@@ -11,6 +11,7 @@ import { missScatter } from "../core/myshots.mjs";
 
 // useId's characters are not all allowed in a url(#…) reference.
 const useClipId = () => "clip" + useId().replace(/[^A-Za-z0-9_-]/g, "");
+const RELEASE_TICK = 4;            // px each side of a path
 
 function Plot({ plot }) {
   return <rect x={plot.x} y={plot.y} width={plot.w} height={plot.h}
@@ -75,10 +76,11 @@ export function MissScatter({ rows, turn }) {
 export function DeliveryOverlay({ rows, turn }) {
   const clip = useClipId();
   const paths = rows.filter(r => r.path).map(r => ({
-    key: r.key, pts: r.path.pts, start: r.path.start, dim: r.nums.tick === "disagrees" }));
+    key: r.key, pts: r.path.pts, start: r.path.start, release: r.path.release, dim: r.nums.tick === "disagrees" }));
   if (!paths.length) return <p className="muted shotchart-none">No rock here has a delivery path.</p>;
   const g = deliveryOverlay(paths, turn);
   const { plot } = g;
+  const released = g.rocks.some(r => r.release);
   return (
     <figure className="shotchart">
       <svg viewBox={`0 0 ${g.w} ${g.h}`} role="img"
@@ -97,6 +99,12 @@ export function DeliveryOverlay({ rows, turn }) {
               <polyline points={r.d} fill="none" stroke={PAINT.accent} strokeOpacity={0.28}
                         strokeWidth={1.3} strokeLinejoin="round" />
               {r.start && <circle cx={r.start.x} cy={r.start.y} r={2.2} fill={PAINT.accent} fillOpacity={0.5} />}
+              {/* Where the hand let go: a tick across the path, as the
+                  rock's own chart marks it, but unnamed -- the spread is
+                  what shows. Drawn about its point, as the start dot is. */}
+              {r.release && <line x1={-RELEASE_TICK} y1={0} x2={RELEASE_TICK} y2={0}
+                                  transform={`translate(${r.release.x} ${r.release.y})`}
+                                  stroke={PAINT.accent} strokeWidth={1.6} strokeLinecap="round" />}
             </g>
           ))}
           {g.median && <polyline points={g.median} fill="none" stroke={PAINT.four} strokeWidth={2.5}
@@ -116,6 +124,7 @@ export function DeliveryOverlay({ rows, turn }) {
         Every delivery, hack to past the hog line, in inches off its own line from the
         foothold to the broom: straight up the dashed line is dead on. Blue is the
         median. Across is stretched ×{g.stretch}.
+        {released ? " A tick across a path is where the hand let go." : ""}
       </figcaption>
     </figure>
   );

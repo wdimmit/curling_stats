@@ -92,7 +92,7 @@ function acrossWindow(xs, across) {
 
 const TICK_PX = 6;                     // the release's tick, each side of the path
 const WORD_GAP_PX = 3;                 // from the tick's end to its word
-const WORD_PX = { w: 32, h: 8 };       // "Release" at the charts' 8.5-9 px type, about
+const WORD_PX = { w: 36, h: 8 };       // "Release" in bold at the charts' 9 px type: 35 px in a wide sans
 
 /* The release's marker at `at` (page px, on the plot): a tick across the
  * path, and the word beside it. The word goes on the side `away` (+1 the
@@ -100,7 +100,8 @@ const WORD_PX = { w: 32, h: 8 };       // "Release" at the charts' 8.5-9 px type
  * close by) unless the plot's edge is nearer there than the word is long.
  * Upright the path runs up the page and the word sits to one side of the
  * tick; on its side the path runs across the page and the word sits above or
- * below. */
+ * below. `box` is the room the tick and the word take together, which a
+ * legend laid on the plot must keep off (linechart.mjs quietCorner). */
 function releaseMark(at, side, plot, away) {
   const reach = TICK_PX + WORD_GAP_PX;
   // Across the path is page x upright, page y on its side; both grow to the thrower's right.
@@ -108,16 +109,24 @@ function releaseMark(at, side, plot, away) {
                                  : [at.x, plot.x, plot.x + plot.w, WORD_PX.w];
   const room = s => (s > 0 ? hi - (c + reach) : c - reach - lo);
   const s = room(away) >= need || room(away) >= room(-away) ? away : -away;
+  let tick, label;
   if (side) {
     const anchor = at.x - WORD_PX.w / 2 < plot.x ? "start"
       : at.x + WORD_PX.w / 2 > plot.x + plot.w ? "end" : "middle";
-    return { ...at, tick: { x1: at.x, y1: r1(at.y - TICK_PX), x2: at.x, y2: r1(at.y + TICK_PX) },
-             label: { x: at.x, y: r1(s > 0 ? at.y + reach + WORD_PX.h : at.y - reach), anchor, text: "Release" } };
+    tick = { x1: at.x, y1: r1(at.y - TICK_PX), x2: at.x, y2: r1(at.y + TICK_PX) };
+    label = { x: at.x, y: r1(s > 0 ? at.y + reach + WORD_PX.h : at.y - reach), anchor, text: "Release" };
+  } else {
+    // Upright the word is level with the tick: its baseline 3 px below it.
+    const y = Math.min(Math.max(at.y + 3, plot.y + WORD_PX.h), plot.y + plot.h);
+    tick = { x1: r1(at.x - TICK_PX), y1: at.y, x2: r1(at.x + TICK_PX), y2: at.y };
+    label = { x: r1(at.x + s * reach), y: r1(y), anchor: s > 0 ? "start" : "end", text: "Release" };
   }
-  // Upright the word is level with the tick: its baseline 3 px below it.
-  const y = Math.min(Math.max(at.y + 3, plot.y + WORD_PX.h), plot.y + plot.h);
-  return { ...at, tick: { x1: r1(at.x - TICK_PX), y1: at.y, x2: r1(at.x + TICK_PX), y2: at.y },
-           label: { x: r1(at.x + s * reach), y: r1(y), anchor: s > 0 ? "start" : "end", text: "Release" } };
+  // The word runs from its anchor, and up from its baseline.
+  const wx = label.anchor === "start" ? label.x
+    : label.anchor === "end" ? label.x - WORD_PX.w : label.x - WORD_PX.w / 2;
+  const box = { x1: r1(Math.min(tick.x1, wx)), y1: r1(Math.min(tick.y1, label.y - WORD_PX.h)),
+                x2: r1(Math.max(tick.x2, wx + WORD_PX.w)), y2: r1(Math.max(tick.y2, label.y)) };
+  return { ...at, tick, label, box };
 }
 
 /* The chart in pixels. `box.side` false is upright, the thrower at the bottom

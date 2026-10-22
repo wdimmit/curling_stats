@@ -4172,8 +4172,52 @@ class TestTheDeliveryChart:
             assert needle in body, needle
 
     def test_the_caption_says_which_way_up_and_how_stretched(self):
-        assert ("From above, thrower at the bottom · across ×{g.stretch} · a dot every {g.every.short}, "
-                "dark at rest to gold past the hog line") in self.SRC.read_text()
+        assert ("From above, thrower at the bottom · across ×{g.stretch} · a dot every {g.every.short}"
+                "{dotColours(g)}</p>") in self.SRC.read_text()
+
+    def test_the_words_name_the_two_colours_only_when_there_are_two(self):
+        """With a release: navy before it and gold after. Without one the dots
+        are all teal, and nothing is said about colour."""
+        root = Path(__file__).resolve().parents[1]
+        src = self.SRC.read_text()
+        assert ('export const dotColours = g => (g.legend.length ? ", navy before the release and gold after" : "");'
+                in src)
+        assert "`a dot every ${g.every.words}${dotColours(g)}${shot?.target_broom ? " in src
+        # Every caption that names the dots' rate names their colours the same way.
+        for rel, needle in (
+                ("frontend/viewer/DeliveryDialog.jsx", "a dot every {g.every.short}{dotColours(g)} · ticks every 2 in"),
+                ("frontend/viewer/Side.jsx", "a dot every ${lc.every.short}${dotColours(lc.bottom.g)}`"),
+                ("frontend/viewer/Detail.jsx", "a dot every ${g.every.short}`\n             + dotColours(g)"),
+                ("frontend/site/Practice.jsx", "label={`Throw ${n}: the delivery from the hack${dotColours(g)}`}")):
+            assert needle in (root / rel).read_text(), rel
+        # The ramp's words are gone from the sources and the bundles built from them.
+        files = [f for d in ("core", "viewer", "site", "runtime") for f in (root / "frontend" / d).iterdir()
+                 if f.suffix in (".mjs", ".jsx", ".js")]
+        files += [root / "src/curling_score/viewer/app.js", root / "src/curling_score/service/static/site.js"]
+        assert len(files) > 50
+        for f in files:
+            text = f.read_text()
+            for gone in ("darker earlier", "dark at the push-off", "dark at rest", "push-off → hog",
+                         "rampColor", "DELIVERY_RAMP"):
+                assert gone not in text, (f.name, gone)
+
+    def test_the_marker_and_the_legend_are_drawn_from_core(self):
+        src = self.SRC.read_text()
+        chart = src[src.index("export function DeliveryChart("):src.index("export const deliveryLabel")]
+        # Over the dots and the start ring, under nothing but the legend.
+        assert chart.index("{g.dots.map(") < chart.index("{g.start ?") < chart.index(
+            "{g.release ? <Release r={g.release} /> : null}") < chart.index("<Legend g={g} />")
+        release = src[src.index("function Release("):src.index("export const dotColours")]
+        for needle in ("x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2} stroke={PAINT.accent}",
+                       "textAnchor={label.anchor} fill={PAINT.accent}", "{label.text}</text>"):
+            assert needle in release, needle
+        legend = src[src.index("function Legend("):src.index("function Release(")]
+        assert "if (!g.legend.length) return null;" in legend
+        assert "g.legendAt ??" in legend and ": quietCorner(g));" in legend
+        assert "fill={e.color}" in legend and "{e.text}</text>" in legend
+        speed = src[src.index("export function SpeedChart("):src.index("export function Delivery(")]
+        assert "{sg.release ? (" in speed and ">Release</text>" in speed
+        assert speed.index("{sg.release ? (") < speed.index("{sg.segs.map(")      # the line over it
 
     def test_it_is_an_image_with_a_label_and_no_ids(self):
         src = self.SRC.read_text()
@@ -4458,7 +4502,22 @@ class TestTheRelease:
         assert b["y"] < g["release"]["y"] < a["y"]
         assert min(a["x"], b["x"]) - 0.1 <= g["release"]["x"] <= max(a["x"], b["x"]) + 0.1
 
-    W_WORD = 32          # "Release" at the chart's 8.5-9 px type, about
+    W_WORD = 36          # "Release" in bold at the charts' 9 px type: 35 px in a wide sans
+
+    def test_the_marker_s_box_holds_its_tick_and_its_word(self):
+        # Each word placement the two tests above make: either side, flipped at either edge.
+        for box, xs in (("DELIVERYBOX", (-0.5, -0.75, 0.75)), ("DESKDELIVERYBOX", (0.4, -0.4, 0.2)),
+                        ("BIGDELIVERYBOX", (0.4, -0.4, 0.2))):
+            for x in xs:
+                r = self.geom(released(0.05, x=x), box)["release"]
+                b, tk, lab = r["box"], r["tick"], r["label"]
+                left = {"start": lab["x"], "end": lab["x"] - self.W_WORD,
+                        "middle": lab["x"] - self.W_WORD / 2}[lab["anchor"]]
+                for want in (b["x1"] <= min(tk["x1"], left) + 0.1, b["x2"] >= max(tk["x2"], left + self.W_WORD) - 0.1,
+                             b["y1"] <= min(tk["y1"], lab["y"] - 8) + 0.1, b["y2"] >= max(tk["y2"], lab["y"]) - 0.1):
+                    assert want, (box, x, r)
+                # And no more than that.
+                assert b["x2"] - b["x1"] <= self.W_WORD + 2 * 9 + 0.2, (box, x)
 
     def test_upright_the_label_is_beside_the_tick_and_never_off_the_plot(self):
         # The aim line runs right of x -0.5: the word goes left, away from it,
@@ -4626,8 +4685,49 @@ class TestTheLineChart:
         return run_js(f"out(lineChartGeometry({json.dumps(shot)}, {json.dumps(doc or self.D9)}, {box}));")
 
     @staticmethod
-    def crowd(g, x, y, w=104, h=26):
+    def crowd(g, x, y, w=70, h=21):
         return sum(1 for d in g["dots"] if x - 4 <= d["x"] <= x + w and y - h + 8 <= d["y"] <= y + 8)
+
+    @staticmethod
+    def over(at, b, w=70, h=21):
+        """Whether the legend drawn from `at` lies over the box `b`."""
+        return b["x1"] <= at["x"] + w and b["x2"] >= at["x"] - 4 and b["y1"] <= at["y"] + 8 and b["y2"] >= at["y"] - h + 8
+
+    def test_the_legend_s_size_is_its_two_rows(self):
+        # A dot and "before release" (57 px at 8.5 px in a wide sans) over a dot and "after release".
+        assert run_js("out(LINEBOX.legend);") == {"w": 70, "h": 21}
+
+    def test_the_legend_keeps_off_the_words_on_the_plot(self):
+        """The release's marker, which the legend explains, and "to the broom"
+        are never under it, whichever corner the dots leave free."""
+        plot = {"x": 34, "y": 10, "w": 272, "h": 344}
+        corners = {"tl": [42, 22], "tr": [236, 22], "bl": [42, 346], "br": [236, 346]}
+
+        def corner(release=None, aim=None, dots=()):
+            g = {"plot": plot, "dots": [{"x": x, "y": y} for x, y in dots],
+                 "release": release and {"box": release}, "aimLabel": aim}
+            at = run_js(f"out(quietCorner({json.dumps(g)}));")
+            return next(k for k, c in corners.items() if c == [at["x"], at["y"]])
+
+        assert corner() == "tl"
+        word = {"x1": 60, "y1": 14, "x2": 96, "y2": 24}
+        assert corner(word) == "tr"
+        aim = {"x": 250, "y": 20, "text": "to the broom", "anchor": "start"}
+        assert corner(word, aim) == "bl"
+        assert corner(word, aim, dots=[(60, 340)]) == "br"
+        # Anchored at its end, "to the broom" reaches back left, over the corner.
+        assert corner(aim={"x": 120, "y": 20, "text": "to the broom", "anchor": "end"}) == "tr"
+
+    def test_the_legend_never_covers_the_release_on_real_rocks(self):
+        for key, rock in ROCKS.items():
+            pts = rock["line"]["delivery"]
+            for i in (len(pts) // 4, len(pts) // 2, 3 * len(pts) // 4, len(pts) - 2):
+                shot = json.loads(json.dumps(rock))
+                shot["line"]["release"] = pts[i]
+                g = self.lc(shot)["bottom"]["g"]
+                assert g["legend"] and g["aimLabel"] is None, key
+                if g["release"]:
+                    assert not self.over(g["legendAt"], g["release"]["box"]), (key, i)
 
     def test_its_pads_are_the_delivery_s(self):
         assert run_js("out(LINEBOX.pad);") == run_js("out(DELIVERYBOX.pad);")
@@ -5587,15 +5687,19 @@ class TestShotGroups:
         rows = [_row("Draw", "right", miss=-0.3, split=14.0, played="2026-09-29"),
                 _row("Draw", "right", miss=-0.2, split=14.1, played="2026-09-29", number=15),
                 _row("Draw", "left", hack="right", miss=-0.3, split=14.0, played="2026-09-22")]
-        rows[2]["path"] = {"pts": [{"t": 0, "yp": 1.0, "dx": 0.04}], "start": {"yp": -3.45, "dx": -0.01}}
+        rows[2]["path"] = {"pts": [{"t": 0, "yp": 1.0, "dx": 0.04}], "start": {"yp": -3.45, "dx": -0.01},
+                           "release": {"yp": 4.2, "dx": 0.03}}
         got = run_js(f"const [g] = shotGroups({json.dumps(rows)}); const t = summaryText(g.summary, g.turn);"
                      "out([g.id, g.turn, t.broom, t.notes, g.drawn[2].nums.miss_m, g.drawn[2].path,"
-                     " g.rows[2].nums.miss_m, g.rows[2].turn]);")
+                     " g.rows[2].nums.miss_m, g.rows[2].turn, g.rows[2].path.release]);")
         assert got[:4] == ["Draw-in-turn", "right", "0 on · 2 wide · 1 narrow",
                            ["1 from the right hack, drawn mirrored"]]
         assert got[4] == 0.3
-        assert got[5] == {"pts": [{"t": 0, "yp": 1.0, "dx": -0.04}], "start": {"yp": -3.45, "dx": 0.01}}
-        assert got[6:] == [-0.3, "left"]                 # the table's rows as thrown
+        # Its release is mirrored with the rest of its path, so it lands on the wide side as the path does.
+        assert got[5] == {"pts": [{"t": 0, "yp": 1.0, "dx": -0.04}], "start": {"yp": -3.45, "dx": 0.01},
+                          "release": {"yp": 4.2, "dx": -0.03}}
+        assert got[6:8] == [-0.3, "left"]                # the table's rows as thrown
+        assert got[8] == {"yp": 4.2, "dx": 0.03}
 
     def test_a_tie_is_drawn_from_the_left_hack(self):
         rows = [_row("Hit", "right", miss=0.1, split=9.0), _row("Hit", "left", hack="right", miss=0.1, split=9.0),
@@ -6101,6 +6205,17 @@ class TestTheShotsPage:
             page = self.src(rel)
             assert "toFixed" not in page and "Math." not in page, rel
 
+    def test_the_overlay_marks_each_rock_s_release_unnamed(self):
+        page = self.src("frontend/site/ShotCharts.jsx")
+        overlay = page[page.index("export function DeliveryOverlay("):]
+        # The row's path (aimFrame's, mirrored with the rest) carries its release to core.
+        assert "release: r.path.release," in overlay
+        assert "{r.release && <line x1={-RELEASE_TICK} y1={0} x2={RELEASE_TICK} y2={0}" in overlay
+        assert "transform={`translate(${r.release.x} ${r.release.y})`}" in overlay
+        assert "Release" not in overlay.replace("RELEASE_TICK", "")      # no word on the plot
+        assert '{released ? " A tick across a path is where the hand let go." : ""}' in overlay
+        assert "const released = g.rocks.some(r => r.release);" in overlay
+
     def test_games_load_a_few_at_a_time_and_only_once_each(self):
         page = self.src("frontend/site/Shots.jsx")
         assert "const AT_ONCE = 3;" in page
@@ -6444,8 +6559,9 @@ class TestTheDeliveryDialog:
         src = self.SRC.read_text()
         for needle in (
             'hint = "Esc or click outside to close"', "box = BIGDELIVERYBOX", "speedBox = SPEEDBOX",
-            "From above, thrower at the left · across ×{g.stretch} · a dot every {g.every.short}, "
-            "dark at the push-off to gold past the hog line · ticks every 2 in",
+            "From above, thrower at the left · across ×{g.stretch} · a dot every {g.every.short}"
+            "{dotColours(g)} · ticks every 2 in",
+            '+ `${sg.release ? ", with a line at the release" : ""}`',
             "Speed along the same axis, smoothed over a second. Ripples smaller than about 0.2 m/s "
             "come from the camera, not the throw.",
             "The speed could not be read for this rock.",

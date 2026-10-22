@@ -14,7 +14,7 @@ import { clipState, curlText, lengthText, lineText, restText, shown,
          summary, turnText, weightText } from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
 import { ClipPlayer } from "./clip.jsx";
-import { DeliveryChart } from "../viewer/Delivery.jsx";
+import { DeliveryChart, dotColours } from "../viewer/Delivery.jsx";
 
 const POLL_MS = 3000;
 const HAND_KEY = "practice.hand";
@@ -75,11 +75,12 @@ function House({ rest, broom }) {
   );
 }
 
-/* The viewer's Delivery chart: the rock from the hack to past the hog line. */
+/* The viewer's Delivery chart: the rock from the hack to past the hog line,
+ * the release marked on it when it was read (line.release). */
 function Delivery({ t, n }) {
   if (!(t.line?.delivery?.length >= 2)) return null;
   const g = deliveryGeometry({ line: t.line, target_broom: t.broom }, DELIVERYBOX);
-  return g ? <DeliveryChart g={g} fluid label={`Throw ${n}: the delivery from the hack`} /> : null;
+  return g ? <DeliveryChart g={g} fluid label={`Throw ${n}: the delivery from the hack${dotColours(g)}`} /> : null;
 }
 
 function Latest({ t, n, sid, live, newest }) {

@@ -11,7 +11,7 @@ import {
   BIGDELIVERYBOX, SPEEDBOX, TYPES, deliveryGeometry, deliverySpeed, isBlank, speedGeometry, speedNumbers,
   typeOf,
 } from "../core/index.mjs";
-import { DeliveryChart, SpeedChart, deliveryLabel } from "./Delivery.jsx";
+import { DeliveryChart, SpeedChart, deliveryLabel, dotColours } from "./Delivery.jsx";
 
 export const typeName = shot => {
   const id = typeOf(shot);
@@ -59,7 +59,7 @@ function Large({ shot, box, speedBox, hint }) {
         <form method="dialog"><button className="dd-close" aria-label="Close">{CLOSE}</button></form>
       </div>
       <DeliveryChart g={g} label={deliveryLabel(shot, true, g)} fluid className="dd-dlv" />
-      <p className="dcap">From above, thrower at the left · across ×{g.stretch} · a dot every {g.every.short}, dark at the push-off to gold past the hog line · ticks every 2 in</p>
+      <p className="dcap">From above, thrower at the left · across ×{g.stretch} · a dot every {g.every.short}{dotColours(g)} · ticks every 2 in</p>
       {sg && n ? (
         <>
           <div className="dd-speed">
@@ -71,7 +71,8 @@ function Large({ shot, box, speedBox, hint }) {
             ) : null}
           </div>
           <SpeedChart sg={sg}
-                      label={`Speed along the delivery: ${n.peak} at its fastest${n.hog ? `, ${n.hog} at the hog line` : ""}`} />
+                      label={`Speed along the delivery: ${n.peak} at its fastest${n.hog ? `, ${n.hog} at the hog line` : ""}`
+                             + `${sg.release ? ", with a line at the release" : ""}`} />
           <p className="dcap">Speed along the same axis, smoothed over a second. Ripples smaller than about 0.2 m/s come from the camera, not the throw.</p>
         </>
       ) : <p className="dnone">The speed could not be read for this rock.</p>}

@@ -6,6 +6,7 @@
  * page twice. */
 import { useLayoutEffect, useRef, useState } from "react";
 import { LINEBOX, lineChartGeometry, lineFigures } from "../core/index.mjs";
+import { dotColours } from "./Delivery.jsx";
 import { Figures, isBroomless } from "./Detail.jsx";
 import { LineChart } from "./LineChart.jsx";
 
@@ -101,7 +102,7 @@ export function LineCard({ shot, doc, onExpand }) {
       {lc ? (
         <p className="dcap">{lc.bottom
           ? `From above, thrower at the bottom · far end across ×${lc.acrossTop} · `
-            + `the delivery across ×${lc.acrossBottom}, a dot every ${lc.every.short}`
+            + `the delivery across ×${lc.acrossBottom}, a dot every ${lc.every.short}${dotColours(lc.bottom.g)}`
           : `From above, thrower at the bottom · across ×${lc.acrossTop}`}</p>
       ) : null}
     </section>

@@ -4,7 +4,7 @@
 import { DESKBOX, DESKDELIVERYBOX, deliveryGeometry, deliveryReadable, deliveryReason, lineFigures,
          sideways, stripGeometry, stripShapes } from "../core/index.mjs";
 import { PAINT } from "../core/constants.mjs";
-import { DeliveryChart, deliveryLabel } from "./Delivery.jsx";
+import { DeliveryChart, deliveryLabel, dotColours } from "./Delivery.jsx";
 
 const RING = { twelve: PAINT.twelve, eight: PAINT.ice, four: PAINT.four, button: PAINT.ice };
 const GOLD = "#a07a00";      // the rock's path: #e8b400 is unreadable on the ice
@@ -124,7 +124,8 @@ export function DeskDetail({ shot, doc }) {
       {why ? <p className="dlvnone">{why}</p> : null}
       <Figures figures={f.figures} />
       <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±4 in{wideGloss}
-        {g ? ` · below it, the hack to 1.5 m past the hog line, across ×${g.stretch}, a dot every ${g.every.short}` : ""}</p>
+        {g ? ` · below it, the hack to 1.5 m past the hog line, across ×${g.stretch}, a dot every ${g.every.short}`
+             + dotColours(g) : ""}</p>
     </>
   );
 }
