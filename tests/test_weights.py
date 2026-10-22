@@ -75,6 +75,17 @@ class TestTheWorkerImageShipsBothDetectors:
         assert "COPY weights/${SPIN_MODEL}" in df
         assert "CURLING_SCORE_SPIN_WEIGHTS=/opt/curling/weights/${SPIN_MODEL}" in df
 
+    def test_it_ships_and_pins_the_release_model(self):
+        """`release_path` treats a missing file as "no release reads", and the
+        image's weights live only under /opt/curling/weights, so an image built
+        without the pin would publish every rock with no release. Pinned, a
+        missing file is a failure."""
+        from curling_score import weights
+        df = self._dockerfile()
+        assert f"ARG RELEASE_MODEL={weights.RELEASE_NAME}" in df
+        assert "COPY weights/${RELEASE_MODEL}" in df
+        assert "CURLING_SCORE_RELEASE_WEIGHTS=/opt/curling/weights/${RELEASE_MODEL}" in df
+
 
 class TestBroomPath:
     """No broom model means no brooms, never a broken run."""
