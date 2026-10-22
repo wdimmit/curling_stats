@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0AbjFBIHxyE4eOkCo",
+ "video_id": "W6PQcjZvJNM",
+ "title": "10/11 - Sheet 4 - Sunday Afternoon League 2026-2027",
+ "tag": "site-s_0Abj",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_b369ecf11261a283",
+   "label": "1st end, second's first rock",
+   "end": 1,
+   "rock": 6,
+   "t_release_s": 459.6,
+   "color": "yellow",
+   "title": "10/11 - Sheet 4 - Sunday Afternoon League 2026-2027",
+   "source_id": "s_0AbjFBIHxyE4eOkCo",
+   "video_id": "W6PQcjZvJNM",
+   "position": "second",
+   "chosen": "member",
+   "mark": null,
+   "frame": null,
+   "o": null,
+   "yp": null,
+   "yp_prev": null,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 4.55,
+     "mark": "cant_tell",
+     "frame": null
+    }
+   ]
+  }
+ ]
+}

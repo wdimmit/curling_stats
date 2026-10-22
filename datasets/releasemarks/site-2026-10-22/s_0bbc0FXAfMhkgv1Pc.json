@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0bbc0FXAfMhkgv1Pc",
+ "video_id": "EvW9jenUR5g",
+ "title": "10/20 - Sheet 5 - Tuesday Supper League 2026-2027",
+ "tag": "site-s_0bbc",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_4306a1a7f8fe4606",
+   "label": "4th end, skip's second rock",
+   "end": 4,
+   "rock": 15,
+   "t_release_s": 3828.3,
+   "color": "yellow",
+   "title": "10/20 - Sheet 5 - Tuesday Supper League 2026-2027",
+   "source_id": "s_0bbc0FXAfMhkgv1Pc",
+   "video_id": "EvW9jenUR5g",
+   "position": "skip",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 46,
+   "o": 2.6033,
+   "yp": 3.167,
+   "yp_prev": 3.107,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 8.901,
+     "mark": "off",
+     "frame": 46
+    }
+   ]
+  }
+ ]
+}

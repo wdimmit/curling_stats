@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0MgyRS7Mo0zmYtiWz",
+ "video_id": "wkDf88uSPec",
+ "title": "Draw 1 (10:00) - Sheet 3 - Kozai Cup 2026",
+ "tag": "site-s_0Mgy",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_77d977f8444dbce5",
+   "label": "3rd end, lead's first rock",
+   "end": 3,
+   "rock": 2,
+   "t_release_s": 1808.26,
+   "color": "red",
+   "title": "Draw 1 (10:00) - Sheet 3 - Kozai Cup 2026",
+   "source_id": "s_0MgyRS7Mo0zmYtiWz",
+   "video_id": "wkDf88uSPec",
+   "position": "lead",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 50,
+   "o": 2.6667,
+   "yp": 3.653,
+   "yp_prev": 3.597,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 116.692,
+     "mark": "off",
+     "frame": 50
+    }
+   ]
+  }
+ ]
+}

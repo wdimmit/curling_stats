@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0MZM5biOgc46X2jEa",
+ "video_id": "gB5yZQgHw7E",
+ "title": "10/09 - Sheet 4 - Friday Evening League 2026-2027",
+ "tag": "site-s_0MZM",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_7040d0a31ebd699d",
+   "label": "1st end, third's first rock",
+   "end": 1,
+   "rock": 10,
+   "t_release_s": 539.7,
+   "color": "red",
+   "title": "10/09 - Sheet 4 - Friday Evening League 2026-2027",
+   "source_id": "s_0MZM5biOgc46X2jEa",
+   "video_id": "gB5yZQgHw7E",
+   "position": "third",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 30,
+   "o": 2.1,
+   "yp": 2.317,
+   "yp_prev": 2.26,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 8.841,
+     "mark": "off",
+     "frame": 30
+    }
+   ]
+  }
+ ]
+}

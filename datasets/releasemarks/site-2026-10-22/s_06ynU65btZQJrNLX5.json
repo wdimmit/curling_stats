@@ -1,0 +1,37 @@
+{
+ "source_id": "s_06ynU65btZQJrNLX5",
+ "video_id": "XCw0Fp_ADcM",
+ "title": "10/20 - Sheet 4 - Tuesday Super League 2026-2027",
+ "tag": "SL4",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_d86b37b7726f7f7a",
+   "label": "2nd end, skip's first rock",
+   "end": 2,
+   "rock": 14,
+   "t_release_s": 9128.13,
+   "color": "yellow",
+   "title": "10/20 - Sheet 4 - Tuesday Super League 2026-2027",
+   "source_id": "s_06ynU65btZQJrNLX5",
+   "video_id": "XCw0Fp_ADcM",
+   "position": "skip",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 74,
+   "o": 3.3667,
+   "yp": 5.909,
+   "yp_prev": 5.825,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 7.314,
+     "mark": "off",
+     "frame": 74
+    }
+   ]
+  }
+ ]
+}

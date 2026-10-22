@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0aGXmjx9km5FLl8fB",
+ "video_id": "0jtK_iVgJXo",
+ "title": "10/11 - Sheet 5 - Sunday Skips Semi-CompetitiveLeague 2026-2027",
+ "tag": "site-s_0aGX",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_9d909bb9fce12c3c",
+   "label": "2nd end, second's first rock",
+   "end": 2,
+   "rock": 6,
+   "t_release_s": 1223.1,
+   "color": "red",
+   "title": "10/11 - Sheet 5 - Sunday Skips Semi-CompetitiveLeague 2026-2027",
+   "source_id": "s_0aGXmjx9km5FLl8fB",
+   "video_id": "0jtK_iVgJXo",
+   "position": "second",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 49,
+   "o": 2.4633,
+   "yp": 3.879,
+   "yp_prev": 3.787,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 6.778,
+     "mark": "off",
+     "frame": 49
+    }
+   ]
+  }
+ ]
+}

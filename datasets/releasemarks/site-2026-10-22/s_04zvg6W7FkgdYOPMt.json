@@ -1,0 +1,37 @@
+{
+ "source_id": "s_04zvg6W7FkgdYOPMt",
+ "video_id": "xhG8gQDr2qI",
+ "title": "10/16 - Sheet 5 - Friday Evening League 2026-2027",
+ "tag": "S5f",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_950597414e2a4623",
+   "label": "4th end, lead's first rock",
+   "end": 4,
+   "rock": 1,
+   "t_release_s": 2942.4,
+   "color": "red",
+   "title": "10/16 - Sheet 5 - Friday Evening League 2026-2027",
+   "source_id": "s_04zvg6W7FkgdYOPMt",
+   "video_id": "xhG8gQDr2qI",
+   "position": "lead",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 72,
+   "o": 3.3,
+   "yp": 5.077,
+   "yp_prev": 4.993,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 6.581,
+     "mark": "off",
+     "frame": 72
+    }
+   ]
+  }
+ ]
+}

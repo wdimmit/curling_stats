@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0Y10NVVxreWDMBZga",
+ "video_id": "2uu7zViTEqY",
+ "title": "10/15 - Sheet 2 - Thursday Mixed Doubles League 2026-2027",
+ "tag": "site-s_0Y10",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_aaf9cc00a4431894",
+   "label": "2nd end, B's first rock",
+   "end": 2,
+   "rock": 4,
+   "t_release_s": 1201.9,
+   "color": "red",
+   "title": "10/15 - Sheet 2 - Thursday Mixed Doubles League 2026-2027",
+   "source_id": "s_0Y10NVVxreWDMBZga",
+   "video_id": "2uu7zViTEqY",
+   "position": "B",
+   "chosen": "member",
+   "mark": null,
+   "frame": null,
+   "o": null,
+   "yp": null,
+   "yp_prev": null,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 15.09,
+     "mark": "cant_tell",
+     "frame": null
+    }
+   ]
+  }
+ ]
+}

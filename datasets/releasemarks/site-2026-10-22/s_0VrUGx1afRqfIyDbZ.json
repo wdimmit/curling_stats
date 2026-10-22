@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0VrUGx1afRqfIyDbZ",
+ "video_id": "XbBwOnjkhpY",
+ "title": "10/19 - Sheet 4 - Monday Open League 2026-2027",
+ "tag": "site-s_0VrU",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_34907d896d6ad48f",
+   "label": "7th end, second's second rock",
+   "end": 7,
+   "rock": 8,
+   "t_release_s": 6094.05,
+   "color": "yellow",
+   "title": "10/19 - Sheet 4 - Monday Open League 2026-2027",
+   "source_id": "s_0VrUGx1afRqfIyDbZ",
+   "video_id": "XbBwOnjkhpY",
+   "position": "second",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 35,
+   "o": 1.6967,
+   "yp": 3.193,
+   "yp_prev": 3.06,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 4.59,
+     "mark": "off",
+     "frame": 35
+    }
+   ]
+  }
+ ]
+}

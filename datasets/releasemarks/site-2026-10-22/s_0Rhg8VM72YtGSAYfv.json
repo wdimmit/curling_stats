@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0Rhg8VM72YtGSAYfv",
+ "video_id": "pZMJEU2fcCM",
+ "title": "Draw 1 (10:30) - Sheet 5 - Knock the Dust Off 2026",
+ "tag": "site-s_0Rhg",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_92e6e5e231f6ed92",
+   "label": "4th end, third's first rock",
+   "end": 4,
+   "rock": 10,
+   "t_release_s": 2830.0,
+   "color": "red",
+   "title": "Draw 1 (10:30) - Sheet 5 - Knock the Dust Off 2026",
+   "source_id": "s_0Rhg8VM72YtGSAYfv",
+   "video_id": "pZMJEU2fcCM",
+   "position": "third",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 48,
+   "o": 2.03,
+   "yp": 4.447,
+   "yp_prev": 4.317,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 5.912,
+     "mark": "off",
+     "frame": 48
+    }
+   ]
+  }
+ ]
+}

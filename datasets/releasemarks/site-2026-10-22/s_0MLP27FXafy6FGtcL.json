@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0MLP27FXafy6FGtcL",
+ "video_id": "_bUHGLIAViY",
+ "title": "10/04 - Sheet 4 - Sunday Open Doubles League 2026-2027",
+ "tag": "site-s_0MLP",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_ad44b7a10c456a46",
+   "label": "1st end, B's third rock",
+   "end": 1,
+   "rock": 7,
+   "t_release_s": 458.4,
+   "color": "red",
+   "title": "10/04 - Sheet 4 - Sunday Open Doubles League 2026-2027",
+   "source_id": "s_0MLP27FXafy6FGtcL",
+   "video_id": "_bUHGLIAViY",
+   "position": "B",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 64,
+   "o": 2.6333,
+   "yp": 5.164,
+   "yp_prev": 5.087,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 6.023,
+     "mark": "off",
+     "frame": 64
+    }
+   ]
+  }
+ ]
+}

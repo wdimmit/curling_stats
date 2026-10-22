@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0AI0gsHg9TlKJm8eh",
+ "video_id": "npkVHNuuWQc",
+ "title": "10/21 - Sheet 2 - Wednesday Womens League 2026-2027",
+ "tag": "site-s_0AI0",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_2fbde04636263149",
+   "label": "3rd end, third's second rock",
+   "end": 3,
+   "rock": 12,
+   "t_release_s": 2305.4,
+   "color": "yellow",
+   "title": "10/21 - Sheet 2 - Wednesday Womens League 2026-2027",
+   "source_id": "s_0AI0gsHg9TlKJm8eh",
+   "video_id": "npkVHNuuWQc",
+   "position": "third",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 31,
+   "o": 2.3633,
+   "yp": 2.427,
+   "yp_prev": 2.327,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 61.694,
+     "mark": "off",
+     "frame": 31
+    }
+   ]
+  }
+ ]
+}

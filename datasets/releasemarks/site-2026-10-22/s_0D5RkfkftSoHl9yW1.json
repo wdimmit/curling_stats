@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0D5RkfkftSoHl9yW1",
+ "video_id": "P0HWsupe0mg",
+ "title": "10/08 - Sheet 5 - Thursday Mens League 2026-2027",
+ "tag": "site-s_0D5R",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_aa6ce544196ce861",
+   "label": "4th end, second's second rock",
+   "end": 4,
+   "rock": 7,
+   "t_release_s": 3051.7,
+   "color": "yellow",
+   "title": "10/08 - Sheet 5 - Thursday Mens League 2026-2027",
+   "source_id": "s_0D5RkfkftSoHl9yW1",
+   "video_id": "P0HWsupe0mg",
+   "position": "second",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 49,
+   "o": 2.6333,
+   "yp": 3.32,
+   "yp_prev": 3.247,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 8.542,
+     "mark": "off",
+     "frame": 49
+    }
+   ]
+  }
+ ]
+}

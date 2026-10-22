@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0MSCkSg5tJChzWZ0t",
+ "video_id": "b0zOB9LIF48",
+ "title": "10/06 - Sheet 5 - Tuesday Super League 2026-2027",
+ "tag": "site-s_0MSC",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_97dfcedd6900002f",
+   "label": "1st end, second's first rock",
+   "end": 1,
+   "rock": 5,
+   "t_release_s": 7774.8,
+   "color": "red",
+   "title": "10/06 - Sheet 5 - Tuesday Super League 2026-2027",
+   "source_id": "s_0MSCkSg5tJChzWZ0t",
+   "video_id": "b0zOB9LIF48",
+   "position": "second",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 43,
+   "o": 2.4333,
+   "yp": 3.017,
+   "yp_prev": 2.957,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 8.783,
+     "mark": "off",
+     "frame": 43
+    }
+   ]
+  }
+ ]
+}

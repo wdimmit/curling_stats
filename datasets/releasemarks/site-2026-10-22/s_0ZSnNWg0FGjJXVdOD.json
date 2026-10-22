@@ -1,0 +1,37 @@
+{
+ "source_id": "s_0ZSnNWg0FGjJXVdOD",
+ "video_id": "hbV6tAa7-cM",
+ "title": "10/15 - Sheet 3 - Thursday Morning League 2026-2027",
+ "tag": "site-s_0ZSn",
+ "marked": "site",
+ "fps": 30,
+ "definition": "the first frame the throwing hand is clearly off the handle (last let-go after a re-grip)",
+ "rocks": [
+  {
+   "id": "r_306844b7bd4394d1",
+   "label": "2nd end, lead's first rock",
+   "end": 2,
+   "rock": 2,
+   "t_release_s": 686.1,
+   "color": "red",
+   "title": "10/15 - Sheet 3 - Thursday Morning League 2026-2027",
+   "source_id": "s_0ZSnNWg0FGjJXVdOD",
+   "video_id": "hbV6tAa7-cM",
+   "position": "lead",
+   "chosen": "member",
+   "mark": "off",
+   "frame": 66,
+   "o": 3.07,
+   "yp": 4.987,
+   "yp_prev": 4.929,
+   "members": [
+    {
+     "uid": "xz6dPbdXCTZsOK8NzDtzQ73knhz1",
+     "seconds": 7.673,
+     "mark": "off",
+     "frame": 66
+    }
+   ]
+  }
+ ]
+}
