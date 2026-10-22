@@ -17,8 +17,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from curling_score.service.records import (
-    Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
-    Review, Run, SigninRelay, Source, Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
+    Chart, ClipJob, Flag, Invite, Job, LabelAnswer, LabelItem, Play, PlaylistIndexEntry,
+    PracticeSession, PracticeWatch, Review, Run, SigninRelay, Source, Team, TeamNameEdit, User,
+    WatchedPlaylist, Worker, play_id,
 )
 
 LEASE_S = 600.0
@@ -157,6 +158,22 @@ class Repo(Protocol):
     def update_session(self, session_id: str, **fields) -> PracticeSession | None: ...
     def sessions_for_watch(self, watch_id: str) -> list[PracticeSession]: ...
     def sessions_for_user(self, user_id: str, limit: int = 50) -> list[PracticeSession]: ...
+    # member labelling -- items put to members, and their answers (service/labelling.py)
+    def put_label_item(self, item: LabelItem) -> None: ...
+    def get_label_item(self, item_id: str) -> LabelItem | None: ...
+    def update_label_item(self, item_id: str, **fields) -> LabelItem | None: ...
+    def open_label_items(self, kind: str, n_labels: int, limit: int,
+                         after: datetime | None = None) -> list[LabelItem]: ...
+    def list_label_items(self, kind: str, state: str, limit: int,
+                         after: datetime | None = None) -> list[LabelItem]: ...
+    def hold_label_item(self, item_id: str, uid: str, now: datetime,
+                        hold_s: float) -> LabelItem | None: ...
+    def submit_label(self, answer: LabelAnswer, now: datetime,
+                     max_labels: int) -> tuple[str, LabelItem | None]: ...
+    def skip_label_item(self, item_id: str, uid: str, now: datetime,
+                        retire_after: int) -> LabelItem | None: ...
+    def label_answers(self, item_id: str) -> list[LabelAnswer]: ...
+    def label_count(self, uid: str, kind: str) -> int: ...
     # rate limit
     def bump_rate_limit(self, ip_hash: str, now: datetime,
                         hour_limit: int, day_limit: int) -> bool: ...
@@ -204,6 +221,8 @@ class MemoryRepo:
         self.watches: dict[str, PracticeWatch] = {}
         self.sessions: dict[str, PracticeSession] = {}
         self.team_name_edits_: dict[str, TeamNameEdit] = {}
+        self.label_items: dict[str, LabelItem] = {}
+        self.label_answers_: dict[str, LabelAnswer] = {}
 
     # ---- runs ---------------------------------------------------------
     def put_run(self, run):
@@ -753,6 +772,95 @@ class MemoryRepo:
         out = [s for s in self.sessions.values() if s.user_id == user_id]
         return sorted(out, key=lambda s: s.started_at, reverse=True)[:limit]
 
+    # ---- member labelling ---------------------------------------------
+    def put_label_item(self, item):
+        with self._lock:
+            self.label_items[item.id] = item
+
+    def get_label_item(self, item_id):
+        return self.label_items.get(item_id)
+
+    def update_label_item(self, item_id, **fields):
+        with self._lock:
+            item = self.label_items.get(item_id)
+            if item is None:
+                return None
+            for k, v in fields.items():
+                setattr(item, k, v)
+            return item
+
+    def _label_items_where(self, limit, after, keep):
+        with self._lock:
+            out = [i for i in self.label_items.values()
+                   if keep(i) and (after is None or i.created_at > after)]
+        return sorted(out, key=lambda i: i.created_at)[:limit]
+
+    def open_label_items(self, kind, n_labels, limit, after=None):
+        return self._label_items_where(
+            limit, after, lambda i: i.kind == kind and i.state == "open"
+            and i.n_labels == n_labels)
+
+    def list_label_items(self, kind, state, limit, after=None):
+        return self._label_items_where(
+            limit, after, lambda i: i.kind == kind and i.state == state)
+
+    def hold_label_item(self, item_id, uid, now, hold_s):
+        with self._lock:
+            item = self.label_items.get(item_id)
+            if item is None or item.state != "open":
+                return None
+            if uid in item.labelled_by or uid in item.skipped_by:
+                return None
+            if item.hold_uid not in (None, uid) and item.hold_until > now:
+                return None
+            item.hold_uid, item.hold_until = uid, now + timedelta(seconds=hold_s)
+            return item
+
+    def submit_label(self, answer, now, max_labels):
+        with self._lock:
+            item = self.label_items.get(answer.item_id)
+            if item is None:
+                return "missing", None
+            if item.state in ("pending", "retired"):
+                return "closed", item
+            if answer.uid in item.labelled_by:
+                self.label_answers_[answer.id] = answer
+                return "replaced", item
+            if item.n_labels >= max_labels:
+                return "full", item
+            if item.hold_uid not in (None, answer.uid) and item.hold_until > now:
+                return "held", item
+            self.label_answers_[answer.id] = answer
+            item.n_labels += 1
+            item.labelled_by.append(answer.uid)
+            if item.hold_uid == answer.uid:
+                item.hold_uid = item.hold_until = None
+            if item.n_labels >= max_labels:
+                item.state, item.done_at = "done", now
+            return "added", item
+
+    def skip_label_item(self, item_id, uid, now, retire_after):
+        with self._lock:
+            item = self.label_items.get(item_id)
+            if item is None:
+                return None
+            if uid in item.skipped_by or item.state != "open":
+                return item
+            item.skipped_by.append(uid)
+            item.skips += 1
+            if item.hold_uid == uid:
+                item.hold_uid = item.hold_until = None
+            if item.skips >= retire_after:
+                item.state = "retired"
+            return item
+
+    def label_answers(self, item_id):
+        out = [a for a in self.label_answers_.values() if a.item_id == item_id]
+        return sorted(out, key=lambda a: a.at)
+
+    def label_count(self, uid, kind):
+        return sum(1 for a in self.label_answers_.values() if a.uid == uid and a.kind == kind)
+
     # ---- rate limit ---------------------------------------------------
     def bump_rate_limit(self, ip_hash, now, hour_limit, day_limit):
         with self._lock:
@@ -787,6 +895,8 @@ class MemoryRepo:
             "practice_watches": [w.to_dict() for w in self.watches.values()],
             "practice_sessions": [s.to_dict() for s in self.sessions.values()],
             "team_name_edits": [e.to_dict() for e in self.team_name_edits_.values()],
+            "label_items": [i.to_dict() for i in self.label_items.values()],
+            "label_answers": [a.to_dict() for a in self.label_answers_.values()],
         }
 
     def import_all(self, data):
@@ -823,6 +933,11 @@ class MemoryRepo:
                 self.put_session(PracticeSession.from_dict(d))
             for d in data.get("team_name_edits", []):
                 self.put_team_name_edit(TeamNameEdit.from_dict(d))
+            for d in data.get("label_items", []):
+                self.put_label_item(LabelItem.from_dict(d))
+            for d in data.get("label_answers", []):
+                a = LabelAnswer.from_dict(d)
+                self.label_answers_[a.id] = a
             # Claims are derivable, so they are not exported -- rebuilt here
             # instead, because a restore that lost them would start handing a
             # team a second chart for a game it already has.

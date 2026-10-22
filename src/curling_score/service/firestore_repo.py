@@ -10,6 +10,8 @@ Composite indexes this needs (``deploy/firestore.indexes.json``):
     jobs      (state ASC, lease_expires_at ASC)
     vod_runs  (video_id ASC, created_at DESC)
     flags     (status ASC, created_at DESC)
+    label_items  (kind ASC, state ASC, n_labels ASC, created_at ASC)
+    label_items  (kind ASC, state ASC, created_at ASC)
 
 Single-field ranges and orderings only, which Firestore indexes by itself:
 ``vod_runs.ready_at``, ``reviews.run_ready_at``, ``sources.played_at`` and
@@ -25,8 +27,9 @@ import json
 from datetime import timedelta
 
 from curling_score.service.records import (
-    Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, PracticeSession, PracticeWatch,
-    Review, Run, SigninRelay, Source, Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
+    Chart, ClipJob, Flag, Invite, Job, LabelAnswer, LabelItem, Play, PlaylistIndexEntry,
+    PracticeSession, PracticeWatch, Review, Run, SigninRelay, Source, Team, TeamNameEdit, User,
+    WatchedPlaylist, Worker, play_id,
 )
 from curling_score.service.repo import (
     LEASE_S, MAX_STORED_OVERRIDES_BYTES, _day_bucket, _hour_bucket,
@@ -41,6 +44,7 @@ RELAYS = "signin_relays"
 REVIEWS = "reviews"
 TEAM_NAME_EDITS = "team_name_edits"
 WATCHES, SESSIONS = "practice_watches", "practice_sessions"
+LABEL_ITEMS, LABEL_ANSWERS = "label_items", "label_answers"
 
 
 # Held as JSON text in Firestore, which has no array directly inside an array
@@ -735,6 +739,129 @@ class FirestoreRepo:
                 for d in self._where(SESSIONS, "user_id", "==", user_id).stream()]
         return sorted(docs, key=lambda s: s.started_at, reverse=True)[:limit]
 
+    # ---- member labelling ---------------------------------------------
+    # An answer is a map (``boxes`` is a list of dicts, never of lists), so
+    # both records go in as they are. The answer's id is derived, which is
+    # what lets a second submit by the same member land on the first.
+    def put_label_item(self, item):
+        self._col(LABEL_ITEMS).document(item.id).set(item.to_dict())
+
+    def get_label_item(self, item_id):
+        return self._get(LABEL_ITEMS, item_id, LabelItem)
+
+    def update_label_item(self, item_id, **fields):
+        ref = self._col(LABEL_ITEMS).document(item_id)
+        if not ref.get().exists:
+            return None
+        ref.update(fields)
+        return LabelItem.from_dict(ref.get().to_dict())
+
+    def _label_items_query(self, kind, state, after, n_labels=None):
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        q = self._where(LABEL_ITEMS, "kind", "==", kind)
+        q = q.where(filter=FieldFilter("state", "==", state))
+        if n_labels is not None:
+            q = q.where(filter=FieldFilter("n_labels", "==", n_labels))
+        if after is not None:
+            q = q.where(filter=FieldFilter("created_at", ">", after))
+        return q.order_by("created_at")
+
+    def open_label_items(self, kind, n_labels, limit, after=None):
+        q = self._label_items_query(kind, "open", after, n_labels).limit(limit)
+        return [LabelItem.from_dict(d.to_dict()) for d in q.stream()]
+
+    def list_label_items(self, kind, state, limit, after=None):
+        q = self._label_items_query(kind, state, after).limit(limit)
+        return [LabelItem.from_dict(d.to_dict()) for d in q.stream()]
+
+    def hold_label_item(self, item_id, uid, now, hold_s):
+        ref = self._col(LABEL_ITEMS).document(item_id)
+
+        @self._fs.transactional
+        def _hold(tx):
+            snap = ref.get(transaction=tx)
+            if not snap.exists:
+                return None
+            data = snap.to_dict()
+            if data.get("state") != "open":
+                return None
+            if uid in data.get("labelled_by", []) or uid in data.get("skipped_by", []):
+                return None
+            holder = data.get("hold_uid")
+            if holder not in (None, uid) and data["hold_until"] > now:
+                return None
+            update = {"hold_uid": uid, "hold_until": now + timedelta(seconds=hold_s)}
+            tx.update(ref, update)
+            return LabelItem.from_dict({**data, **update})
+
+        return _hold(self.db.transaction())
+
+    def submit_label(self, answer, now, max_labels):
+        ref = self._col(LABEL_ITEMS).document(answer.item_id)
+        answer_ref = self._col(LABEL_ANSWERS).document(answer.id)
+
+        @self._fs.transactional
+        def _submit(tx):
+            snap = ref.get(transaction=tx)
+            if not snap.exists:
+                return "missing", None
+            data = snap.to_dict()
+            item = LabelItem.from_dict(data)
+            if item.state in ("pending", "retired"):
+                return "closed", item
+            if answer.uid in item.labelled_by:
+                tx.set(answer_ref, answer.to_dict())
+                return "replaced", item
+            if item.n_labels >= max_labels:
+                return "full", item
+            if item.hold_uid not in (None, answer.uid) and item.hold_until > now:
+                return "held", item
+            update = {"n_labels": item.n_labels + 1,
+                      "labelled_by": [*item.labelled_by, answer.uid]}
+            if item.hold_uid == answer.uid:
+                update.update(hold_uid=None, hold_until=None)
+            if update["n_labels"] >= max_labels:
+                update.update(state="done", done_at=now)
+            tx.set(answer_ref, answer.to_dict())
+            tx.update(ref, update)
+            return "added", LabelItem.from_dict({**data, **update})
+
+        return _submit(self.db.transaction())
+
+    def skip_label_item(self, item_id, uid, now, retire_after):
+        ref = self._col(LABEL_ITEMS).document(item_id)
+
+        @self._fs.transactional
+        def _skip(tx):
+            snap = ref.get(transaction=tx)
+            if not snap.exists:
+                return None
+            item = LabelItem.from_dict(snap.to_dict())
+            if uid in item.skipped_by or item.state != "open":
+                return item
+            update = {"skipped_by": [*item.skipped_by, uid], "skips": item.skips + 1}
+            if item.hold_uid == uid:
+                update.update(hold_uid=None, hold_until=None)
+            if update["skips"] >= retire_after:
+                update["state"] = "retired"
+            tx.update(ref, update)
+            return LabelItem.from_dict({**snap.to_dict(), **update})
+
+        return _skip(self.db.transaction())
+
+    def label_answers(self, item_id):
+        docs = [LabelAnswer.from_dict(d.to_dict())
+                for d in self._where(LABEL_ANSWERS, "item_id", "==", item_id).stream()]
+        return sorted(docs, key=lambda a: a.at)
+
+    def label_count(self, uid, kind):
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        q = self._where(LABEL_ANSWERS, "uid", "==", uid).where(
+            filter=FieldFilter("kind", "==", kind))
+        return int(q.count().get()[0][0].value)
+
     # ---- rate limit ---------------------------------------------------
     def bump_rate_limit(self, ip_hash, now, hour_limit, day_limit):
         ref = self._col(RATES).document(ip_hash)
@@ -773,7 +900,8 @@ class FirestoreRepo:
                               for d in self._col(CLIP_JOBS).stream()],
                 "reviews": dump(REVIEWS),
                 "practice_watches": dump(WATCHES), "practice_sessions": dump(SESSIONS),
-                "team_name_edits": dump(TEAM_NAME_EDITS)}
+                "team_name_edits": dump(TEAM_NAME_EDITS),
+                "label_items": dump(LABEL_ITEMS), "label_answers": dump(LABEL_ANSWERS)}
 
     def import_all(self, data):
         for d in data.get("runs", []):
@@ -808,6 +936,11 @@ class FirestoreRepo:
             self.put_session(PracticeSession.from_dict(d))
         for d in data.get("team_name_edits", []):
             self.put_team_name_edit(TeamNameEdit.from_dict(d))
+        for d in data.get("label_items", []):
+            self.put_label_item(LabelItem.from_dict(d))
+        for d in data.get("label_answers", []):
+            a = LabelAnswer.from_dict(d)
+            self._col(LABEL_ANSWERS).document(a.id).set(a.to_dict())
         # Claims are derivable, so they are not exported -- rebuilt here
         # instead, because a restore that lost them would start handing a team
         # a second chart for a game it already has.

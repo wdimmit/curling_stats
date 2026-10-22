@@ -17,8 +17,9 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from curling_score.service.records import (
-    Chart, ClipJob, Flag, Invite, Job, Play, PlaylistIndexEntry, Review, Run, SigninRelay, Source,
-    Team, TeamNameEdit, User, WatchedPlaylist, Worker, play_id, review_id,
+    Chart, ClipJob, Flag, Invite, Job, LabelAnswer, LabelItem, Play, PlaylistIndexEntry, Review,
+    Run, SigninRelay, Source, Team, TeamNameEdit, User, WatchedPlaylist, Worker, label_answer_id,
+    play_id, review_id,
 )
 from curling_score.service.repo import MemoryRepo
 
@@ -41,7 +42,8 @@ def _firestore_repo():
                 "workers", "watched_playlists", "rate_limits",
                 "users", "teams", "invites", "chart_claims", "flags", "yt_playlists",
                 "plays", "reviews", "practice_watches", "practice_sessions",
-                "clip_jobs", "team_name_edits", "signin_relays"):
+                "clip_jobs", "team_name_edits", "signin_relays",
+                "label_items", "label_answers"):
         for doc in client.collection(col).stream():
             doc.reference.delete()
     return repo
@@ -948,3 +950,79 @@ class TestSigninRelays:
     def test_an_expired_relay_is_gone_even_with_the_right_code(self, repo):
         repo.put_signin_relay(relay())
         assert repo.claim_signin_relay(RID, "012345", at(600), 5) == ("gone", None)
+
+
+def item(i, **kw):
+    return LabelItem(id=f"b_{i}", kind="box", created_at=at(i), batch="t",
+                     payload=kw.pop("payload", {"w": 10}), state=kw.pop("state", "open"), **kw)
+
+
+def answer(item_id, uid, a=None):
+    return LabelAnswer(id=label_answer_id(item_id, uid), item_id=item_id, kind="box",
+                       uid=uid, at=at(100), seconds=4.0, answer=a or {"cant_tell": True})
+
+
+class TestLabelling:
+    def test_open_items_by_label_count_oldest_first(self, repo):
+        for i in (3, 1, 2):
+            repo.put_label_item(item(i))
+        repo.put_label_item(item(4, n_labels=1))
+        repo.put_label_item(item(5, state="pending"))
+        assert [x.id for x in repo.open_label_items("box", 0, 10)] == ["b_1", "b_2", "b_3"]
+        assert [x.id for x in repo.open_label_items("box", 0, 10, after=at(1))] == ["b_2", "b_3"]
+        assert [x.id for x in repo.open_label_items("box", 1, 10)] == ["b_4"]
+
+    def test_pending_items_are_never_handed_out(self, repo):
+        repo.put_label_item(item(1, state="pending"))
+        assert repo.hold_label_item("b_1", "u1", at(10), 600) is None
+        assert repo.submit_label(answer("b_1", "u1"), at(10), 2)[0] == "closed"
+
+    def test_a_hold_keeps_others_out_until_it_expires(self, repo):
+        repo.put_label_item(item(1))
+        assert repo.hold_label_item("b_1", "u1", at(10), 600).hold_uid == "u1"
+        assert repo.hold_label_item("b_1", "u2", at(20), 600) is None
+        assert repo.submit_label(answer("b_1", "u2"), at(20), 2)[0] == "held"
+        assert repo.hold_label_item("b_1", "u2", at(611), 600).hold_uid == "u2"
+
+    def test_two_members_finish_an_item(self, repo):
+        repo.put_label_item(item(1))
+        assert repo.submit_label(answer("b_1", "u1"), at(10), 2)[0] == "added"
+        res, got = repo.submit_label(answer("b_1", "u2"), at(11), 2)
+        assert (res, got.state, got.n_labels, got.done_at) == ("added", "done", 2, at(11))
+        assert repo.submit_label(answer("b_1", "u3"), at(12), 2)[0] == "full"
+        assert [a.uid for a in repo.label_answers("b_1")] == ["u1", "u2"]
+        assert repo.label_count("u1", "box") == 1 and repo.label_count("u3", "box") == 0
+
+    def test_a_second_submit_by_the_same_member_replaces_it(self, repo):
+        repo.put_label_item(item(1))
+        repo.submit_label(answer("b_1", "u1"), at(10), 2)
+        res, got = repo.submit_label(answer("b_1", "u1", {"cant_tell": False, "boxes": []}),
+                                     at(11), 2)
+        assert (res, got.n_labels, got.labelled_by) == ("replaced", 1, ["u1"])
+        assert repo.label_answers("b_1")[0].answer["cant_tell"] is False
+        assert repo.hold_label_item("b_1", "u1", at(12), 600) is None   # never their own again
+
+    def test_five_skips_retire_an_item(self, repo):
+        repo.put_label_item(item(1))
+        for n in range(5):
+            got = repo.skip_label_item("b_1", f"u{n}", at(10 + n), 5)
+        repo.skip_label_item("b_1", "u0", at(20), 5)          # a repeat counts once
+        assert (got.state, got.skips) == ("retired", 5)
+        assert repo.hold_label_item("b_1", "u9", at(30), 600) is None
+        assert repo.get_label_item("b_1").skips == 5
+
+    def test_a_skipper_is_not_offered_it_again(self, repo):
+        repo.put_label_item(item(1))
+        repo.skip_label_item("b_1", "u1", at(10), 5)
+        assert repo.hold_label_item("b_1", "u1", at(11), 600) is None
+        assert repo.hold_label_item("b_1", "u2", at(11), 600) is not None
+
+    def test_listing_by_state_and_round_trip(self, repo):
+        repo.put_label_item(item(1, reference={"mark": "off", "frame": 3},
+                                 payload={"starts": [{"x0": 1, "y0": 2, "x1": 3, "y1": 4,
+                                                      "color": "red", "flagged": True}]}))
+        repo.put_label_item(item(2, state="done"))
+        assert [x.id for x in repo.list_label_items("box", "done", 10)] == ["b_2"]
+        got = repo.get_label_item("b_1")
+        assert got.reference == {"mark": "off", "frame": 3}
+        assert got.payload["starts"][0]["flagged"] is True

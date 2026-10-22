@@ -282,3 +282,44 @@ class TestBroomPage:
     def test_an_unknown_kind_is_refused(self, tmp_path):
         with pytest.raises(ValueError):
             boxedit.render(_one_item(), tmp_path, scope="s", kind="sweeper")
+
+
+class TestGhosts:
+    """The other member's boxes on a disputed item: shown so the second look
+    is a comparison, never part of what the page hands back."""
+
+    def _ghosted(self):
+        return [{**_one_item()[0], "boxes": [[0, 0.5, 0.5, 0.05, 0.05]],
+                 "ghosts": [[1, 0.25, 0.4, 0.06, 0.06]]}]
+
+    def test_ghosts_are_drawn_but_not_exported(self, tmp_path):
+        page = boxedit.render(self._ghosted(), tmp_path, scope="s",
+                              proposals=True).read_text()
+        blob = page.split("const ITEMS = ", 1)[1].split(";\n", 1)[0]
+        assert json.loads(blob)[0]["ghosts"] == [[1, 0.25, 0.4, 0.06, 0.06]]
+        # drawn: dashed, and out of the way of every click
+        assert "item.ghosts" in page
+        assert ".gh {" in page and "pointer-events:none" in page.split(".gh {", 1)[1].split("}", 1)[0]
+        # not exported: the saved state and the payload never mention them
+        for fn in ("function st(", "function payload("):
+            body = page.split(fn, 1)[1].split("\nfunction ", 1)[0].split("\ndocument.", 1)[0]
+            assert "ghost" not in body
+
+    def test_ghosts_survive_proposals_being_off(self, tmp_path):
+        """`proposals=False` empties the boxes; the other member's are not proposals."""
+        page = boxedit.render(self._ghosted(), tmp_path, scope="s").read_text()
+        blob = page.split("const ITEMS = ", 1)[1].split(";\n", 1)[0]
+        got = json.loads(blob)[0]
+        assert got["boxes"] == [] and got["ghosts"]
+
+    def test_an_item_without_geometry_still_renders(self, tmp_path):
+        items = [{**_one_item()[0], "geom": None}]
+        page = boxedit.render(items, tmp_path, scope="s").read_text()
+        blob = page.split("const ITEMS = ", 1)[1].split(";\n", 1)[0]
+        assert json.loads(blob)[0]["geom"] is None
+        # click-to-add reads no geometry when there is none: a 40 px box
+        fn = page.split("function placeGeometric(", 1)[1].split("\n}\n", 1)[0]
+        assert "item.geom ?" in fn and ": 40" in fn and "HEIGHT_RATIO" in fn
+        # and the broom page's tweak of that line still applies
+        broom = boxedit.render(items, tmp_path, scope="s", kind="broom").read_text()
+        assert "0.70 * (item.geom ?" in broom

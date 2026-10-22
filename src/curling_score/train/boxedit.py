@@ -51,8 +51,8 @@ _BROOM_EDITS = (
     ('k === "r" || k === "y"', 'k === "b"'),
     ('setArm(k === "r" ? 0 : 1)', "setArm(0)"),
     # The fallback box when SAM is unreachable: a pad is ~0.7 of a stone's width.
-    ("let w = item.geom.k * (row - item.geom.yh);",
-     "let w = 0.70 * item.geom.k * (row - item.geom.yh);"),
+    ("let w = item.geom ? item.geom.k * (row - item.geom.yh) : 40;",
+     "let w = 0.70 * (item.geom ? item.geom.k * (row - item.geom.yh) : 40);"),
 )
 _BROOM_HELP = (
     '<p class="muted">Box <b>every broom head resting on the ice</b>, the '
@@ -106,7 +106,12 @@ def render(items, out_dir, *, scope: str, title: str = "Fix the boxes",
 
     ``items`` is one dict per frame: ``stem``, ``image`` (a path relative to
     the page), ``width``, ``height``, ``boxes`` as ``[cls, cx, cy, w, h]`` in
-    normalised coordinates, and ``geom`` from :func:`frame_geometry`.
+    normalised coordinates, and ``geom`` from :func:`frame_geometry`. ``geom``
+    may be None for an image no calibrated view frames (a member-labelled crop):
+    a click-to-add box is then a fixed 40 px wide. An item may also carry
+    ``ghosts``, boxes in the same form that are drawn dashed for comparison,
+    cannot be dragged, and are never exported -- the other member's answer on
+    a disputed item.
 
     ``kind="broom"`` renders the one-class broom-head page.
     """
@@ -147,6 +152,9 @@ _PAGE = r"""<!doctype html>
   .bx.c1 { border-color:var(--yel); }
   .bx.sel { box-shadow:0 0 0 2px #fff, 0 0 0 4px #333; }
   .bx.iffy { border-style:dashed; }
+  .gh { position:absolute; border:2px dashed var(--red); box-sizing:border-box;
+        pointer-events:none; opacity:.85; }
+  .gh.c1 { border-color:var(--yel); }
   .h { position:absolute; width:11px; height:11px; background:#fff;
        border:1px solid #333; border-radius:2px; }
   .h.nw{left:-6px;top:-6px;cursor:nwse-resize} .h.ne{right:-6px;top:-6px;cursor:nesw-resize}
@@ -212,6 +220,21 @@ function st(item) {
   return state[item.stem];
 }
 
+// The other member's boxes: part of the page, not of the work. They are laid
+// down once at build, outside `st()` and `payload()`, so nothing a person does
+// can move one and none of them reaches the export.
+function drawGhosts(stage, item) {
+  (item.ghosts || []).forEach(g => {
+    const d = document.createElement("div");
+    d.className = "gh c" + g[0];
+    d.style.left = (g[1] - g[3] / 2) * 100 + "%";
+    d.style.top = (g[2] - g[4] / 2) * 100 + "%";
+    d.style.width = g[3] * 100 + "%";
+    d.style.height = g[4] * 100 + "%";
+    stage.appendChild(d);
+  });
+}
+
 function drawBoxes(fig, item) {
   const stage = fig.querySelector(".stage");
   stage.querySelectorAll(".bx").forEach(e => e.remove());
@@ -250,6 +273,7 @@ function build() {
     };
     const stage = fig.querySelector(".stage");
     stage.addEventListener("pointerdown", ev => onDown(ev, fig, item, idx));
+    drawGhosts(stage, item);
     drawBoxes(fig, item);
   });
   save();
@@ -261,7 +285,8 @@ function build() {
 // size for that row even though it cannot know the stone's exact position.
 function placeGeometric(item, nx, ny, cls) {
   const row = ny * item.height;
-  let w = item.geom.k * (row - item.geom.yh);
+  // No geometry (a crop no calibrated view frames): a nominal 40 px stone.
+  let w = item.geom ? item.geom.k * (row - item.geom.yh) : 40;
   if (!(w > 2)) w = 52;                      // off the map: nominal hog width
   const h = w * HEIGHT_RATIO;
   st(item).boxes.push([cls, nx, ny, w / item.width, h / item.height]);
