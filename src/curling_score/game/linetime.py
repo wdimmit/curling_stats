@@ -82,6 +82,7 @@ class Line:
     fit_rms: float
     at_tee_x: float | None = None  # the line's x at the destination tee, only without a broom
     delivery: tuple = ()         # ((t, y, x), ...) from the rest to past the hog line; see read_delivery
+    release: tuple | None = None  # (t, y, x): the point on delivery the hand let go; see releasetime
 
 
 def fit_line(track) -> Fit | None:

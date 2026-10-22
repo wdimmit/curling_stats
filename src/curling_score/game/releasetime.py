@@ -8,13 +8,25 @@ on the handle? -- and the release is the frame where that answer flips from
 yes to no and stays there. This module is the part that needs no model: the
 crops, the stacks of frames the model reads, and the step fit that turns its
 per-frame answers into one time and one point on the path.
+
+The frames are the ones the hog and delivery reads already decode: a
+`lanekeep.LaneKeeper` made by `keeper_for` keeps a grey strip of the lane from
+each, and `time_releases` reads every rock from those once its delivery path
+is known. Attach-only, like the line and the spin: it adds ``line.release``
+to a shot and moves nothing else.
 """
 from __future__ import annotations
+
+import dataclasses
+import logging
 
 import cv2
 import numpy as np
 
-from curling_score.game import linetime
+from curling_score.detect import lanekeep
+from curling_score.game import hogtime, linetime
+
+log = logging.getLogger(__name__)
 
 # A crop is this far either side of the rock, above it (toward the thrower's
 # head) and below it, in metres at the rock, and is resampled to CROP_PX
@@ -37,6 +49,21 @@ FROM_M = -0.5
 # A step on one of the first frames is the model seeing a hand already off, or
 # nothing at all, not a release.
 FIRST_UNSEEN = 2
+
+# What the keeper keeps of a rock, in seconds from its release: from before it
+# reaches FROM_M to past the end of hogtime's read (`longview.WINDOW_S`), whose
+# frames carry the delivery path's far end.
+KEEP_S = (-1.0, 7.0)
+# A rock with no release yet keeps hogtime's own window, this much wider each
+# side: the long camera may give it a release from those frames
+# (`sidereleases`), and its read then has them.
+KEEP_WIDEN_S = 1.0
+
+# A rock's strips are asked for from this long before the path's first point
+# past FROM_M -- `rock_at` interpolates from the sample before it -- to just
+# past the path's last, since the keeper's spans leave out their end.
+READ_LEAD_S = 0.2
+READ_TAIL_S = 0.05
 
 
 def rock_at(delivery, o: float) -> tuple[float, float] | None:
@@ -117,3 +144,79 @@ def release_at(p, o, delivery) -> tuple[float, float, float] | None:
         return None
     at = rock_at(delivery, float(o[k]))
     return None if at is None else (float(o[k]), *at)
+
+
+def keep_windows(shots) -> list[tuple[float, float]]:
+    """The source time a lane keeper keeps for an end's release reads: around
+    each shot's release, ``KEEP_S``, else hogtime's own window for the shot
+    widened by ``KEEP_WIDEN_S``. A shot hogtime leaves be keeps nothing."""
+    out = []
+    for shot in shots:
+        release = getattr(shot, "release", None)
+        if release is not None:
+            out.append((release.t + KEEP_S[0], release.t + KEEP_S[1]))
+            continue
+        win = hogtime.window_for(shot)
+        if win is not None:
+            out.append((win[0] - KEEP_WIDEN_S, win[1] + KEEP_WIDEN_S))
+    return out
+
+
+def keeper_for(shots, view, model):
+    """The lane keeper for these shots' release reads on ``view``, the camera
+    facing the thrower; None when there will be no read -- no model, or a view
+    that cannot place the rock across the sheet -- so nothing is kept for one.
+    """
+    if model is None or view is None or not view.has_lateral:
+        return None
+    try:
+        return lanekeep.LaneKeeper(view, keep_windows(shots))
+    except Exception:  # noqa: BLE001 - no keeper costs the releases, not the end
+        log.exception("no lane keeper for the release reads; no releases this end")
+        return None
+
+
+def _read_one(keeper, view, delivery, t_release, model, infer):
+    """One rock's ``(t, y, x)`` release, or None, from the keeper's strips."""
+    o_from = next((t for t, y, _x in delivery if linetime.TEE_Y - y >= FROM_M), None)
+    if o_from is None:
+        return None
+    strips, times = keeper.frames_between(t_release + o_from - READ_LEAD_S,
+                                          t_release + delivery[-1][0] + READ_TAIL_S)
+    crops, o, _yp = hand_crops(strips, times, keeper.origin, view, delivery, t_release)
+    if len(crops) <= FIRST_UNSEEN:
+        return None
+    return release_at(infer(model, stacks(crops, o)), o, delivery)
+
+
+def time_releases(shots, keeper, view, *, model=None, infer=None) -> int:
+    """Give each shot's line its ``release``, in place; return how many it gave one.
+
+    Read from what ``keeper`` kept of ``view``, the camera facing the thrower,
+    along the line's delivery path. ``infer`` defaults to
+    `releasemodel.p_off`. A no-op without a model, a keeper, or a laterally
+    calibrated view; a rock with no delivery path or release time is passed
+    over. A failure on one rock is logged and costs that rock its release,
+    not the end its analysis.
+    """
+    if model is None or keeper is None or view is None or not view.has_lateral:
+        return 0
+    if infer is None:
+        from curling_score.detect import releasemodel
+        infer = releasemodel.p_off
+    n = 0
+    for shot in shots:
+        line = getattr(shot, "line", None)
+        release = getattr(shot, "release", None)
+        if line is None or release is None or not line.delivery:
+            continue
+        try:
+            got = _read_one(keeper, view, line.delivery, release.t, model, infer)
+        except Exception:  # noqa: BLE001 - attach-only: the rock keeps its line
+            log.exception("release read failed on shot %s; its line keeps none",
+                          getattr(shot, "number", "?"))
+            continue
+        if got is not None:
+            shot.line = dataclasses.replace(line, release=got)
+            n += 1
+    return n

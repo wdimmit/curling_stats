@@ -330,8 +330,9 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             detector, broom_model, line_model = analyze.load_models(
                 weights, imgsz, device, skip_longview=skip_longview, skip_line=False,
                 progress=progress)
-            loaded.append(live.Models(detector=detector, broom_model=broom_model,
-                                      line_model=line_model))
+            loaded.append(live.Models(
+                detector=detector, broom_model=broom_model, line_model=line_model,
+                release_model=analyze.load_release_model(line_model, progress)))
         models, job = loaded[0], stream.job
         if is_practice(job):
             import time as _time

@@ -117,6 +117,7 @@ class Models:
     detector: object = None
     broom_model: object = None
     line_model: object = None
+    release_model: object = None
 
 
 def _side_worth(cal) -> int:
@@ -371,7 +372,8 @@ class LiveSession:
             sideviews=self.calibration.sideviews,
             detector=self.models.detector, broom_model=self.models.broom_model,
             line_model=self.models.line_model, fmt=self.fmt, use_cache=False,
-            one_pass=True, progress=self.progress)
+            one_pass=True, progress=self.progress,
+            release_model=self.models.release_model)
         run_up = self.run_up[key] if again else self.prev_end_s
         # The recorder only notes what the checks reject; the frames are cut
         # later, on the manager's keep thread, never inside an end's build.
@@ -548,6 +550,10 @@ class VideoPipeline:
         from curling_score import version
         from curling_score import weights as weights_mod
 
+        # The release model is loaded whenever the line model is and its
+        # weights are there (`analyze.load_release_model`), so its path says
+        # whether one read the releases, as the spin's does.
         return version.processing_version(
             self.weights, weights_mod.side_path(), weights_mod.broom_path(),
-            line=self.line and sideviews is not None, spin_weights=weights_mod.spin_path())
+            line=self.line and sideviews is not None, spin_weights=weights_mod.spin_path(),
+            release_weights=weights_mod.release_path())

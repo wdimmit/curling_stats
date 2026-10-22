@@ -14,9 +14,9 @@ import logging
 import math
 from dataclasses import dataclass
 
-from curling_score.detect import rest
-from curling_score.game import (broomtime, fartime, hogtime, linetime, sidereleases,
-                                thinking)
+from curling_score.detect import longview, rest
+from curling_score.game import (broomtime, fartime, hogtime, linetime, releasetime,
+                                sidereleases, thinking)
 from curling_score.game import shots as shots_mod
 from curling_score.game.shots import Shot
 
@@ -38,12 +38,14 @@ class Stages:
     side_release: object
     broom: object
     line: object
+    release: object
 
 
 def real_stages() -> Stages:
     return Stages(hog=hogtime.time_hog_crossings,
                   side_release=sidereleases.time_side_releases,
-                  broom=broomtime.time_target_brooms, line=linetime.time_lines)
+                  broom=broomtime.time_target_brooms, line=linetime.time_lines,
+                  release=releasetime.time_releases)
 
 
 def _house(frames, t0, t1):
@@ -91,15 +93,30 @@ def enrich(video, setups, sideviews, models, *, house, arrival, release, house_f
     if sideviews is not None:
         hog_view = sideviews[hogtime.CAMERA_FOR[throwing]]
         dest_view = sideviews[hogtime.CAMERA_FOR[house]]
-        _run("hog", stages.hog, shots, video, hog_view)
-        _run("side release", stages.side_release, shots, video, hog_view)
-        _run("broom", stages.broom, shots, video, dest_view, model=models.broom_model)
-        if arrival is not None:
-            # The line follows the stone to where it stopped. Practice is often
-            # solo, so a rock nobody held a broom for is measured too: its line
-            # says where it was aimed at the far tee (as in doubles).
-            _run("line", stages.line, shots, video, hog_view, dest_view,
-                 model=models.line_model, without_broom=True)
+        # The release is read along the line's delivery path from a strip of
+        # the lane kept from the hog camera's decodes, as an end keeps it
+        # (`analyze.build_one_end`). A `Models` from before the hand model has
+        # no release_model, and reads none.
+        release_model = getattr(models, "release_model", None)
+        keeper = (None if arrival is None
+                  else releasetime.keeper_for(shots, hog_view, release_model))
+        try:
+            with longview.keeping(keeper):
+                _run("hog", stages.hog, shots, video, hog_view)
+                _run("side release", stages.side_release, shots, video, hog_view)
+                _run("broom", stages.broom, shots, video, dest_view, model=models.broom_model)
+                if arrival is not None:
+                    # The line follows the stone to where it stopped. Practice is often
+                    # solo, so a rock nobody held a broom for is measured too: its line
+                    # says where it was aimed at the far tee (as in doubles).
+                    _run("line", stages.line, shots, video, hog_view, dest_view,
+                         model=models.line_model, without_broom=True)
+            if arrival is not None:
+                _run("release", stages.release, shots, keeper, hog_view,
+                     model=release_model)
+        finally:
+            if keeper is not None:
+                keeper.clear()
     _run("far hog", fartime.time_far_crossings, shots,
          near_line=setups[throwing].hog_line, far_line=setups[house].hog_line)
     return shot

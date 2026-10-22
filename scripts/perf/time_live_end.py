@@ -116,7 +116,8 @@ def main(argv=None) -> int:
     ctx = analyze.EndContext(
         path=video, read_path=video, read_setups=setups, sideviews=sideviews,
         detector=detector, broom_model=broom_model, line_model=line_model,
-        fmt=format_mod.FOURS, use_cache=False, one_pass=True, progress=progress)
+        fmt=format_mod.FOURS, use_cache=False, one_pass=True, progress=progress,
+        release_model=analyze.load_release_model(line_model, print))
     ends = []
     for spec in args.end:
         house, number, start, stop = spec.split(":")

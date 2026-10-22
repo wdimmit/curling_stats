@@ -1,10 +1,15 @@
-"""The release read's model-free part: hand crops cut along the delivery
-path, the frame stacks the model reads, and the on-to-off step fit."""
+"""The release read: hand crops cut along the delivery path, the frame stacks
+the model reads, the on-to-off step fit, and the pass that runs them over an
+end's shots on the frames the lane keeper kept."""
+import dataclasses
+import logging
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
 from curling_score.detect import lanekeep
-from curling_score.game import linetime, releasetime
+from curling_score.game import hogtime, linetime, releasetime
 from curling_score.geometry.sideview import SideView
 
 # 10/20 Wed sheet 2's left view.
@@ -116,3 +121,148 @@ def test_release_is_the_rocks_point_on_the_path():
     t, y, x = releasetime.release_at(np.r_[np.zeros(20), np.ones(23)], o, DELIVERY)
     assert t == pytest.approx(o[20])
     assert (y, x) == pytest.approx(releasetime.rock_at(DELIVERY, o[20]))
+
+
+# The pass over an end's shots.
+
+class Keeper:
+    """A lane keeper's reading side, over the strips `lane` draws."""
+
+    def __init__(self, strips=None, times=None, origin=None):
+        if strips is None:
+            strips, times, origin = lane()
+        self.strips, self.times, self.origin = strips, times, origin
+        self.asked = []
+
+    def frames_between(self, t0, t1):
+        self.asked.append((t0, t1))
+        keep = (self.times >= t0 - 1e-6) & (self.times < t1 - 1e-6)
+        return self.strips[keep], self.times[keep]
+
+
+def line_with(delivery=tuple(tuple(s) for s in DELIVERY)):
+    return linetime.Line(
+        start=(0.05, TEE_Y + 1.0), at_hog_x=0.1, at_hog_offset=0.01, at_broom_x=0.2,
+        miss=0.02, curl="left", side="wide", confirmed=True, hog_path=((30.0, 0.1),),
+        path=((20.0, 0.2),), fit_n=12, fit_rms=0.01, delivery=delivery)
+
+
+def rock(number=1, line=None):
+    return SimpleNamespace(number=number, release=SimpleNamespace(t=T_REL),
+                           line=line_with() if line is None else line)
+
+
+STEP_AT = 20      # the crop the stub model sees the hand come off on
+
+
+def step_infer(model, stacks):
+    return (np.arange(len(stacks)) >= STEP_AT).astype(float)
+
+
+# A view with no lateral fit: it can time a crossing but place nothing across.
+FLAT = dataclasses.replace(VIEW, centre_col=None, lat_px_per_m_at_tee=None,
+                           centre_line=None)
+
+
+def test_a_rock_with_a_delivery_gets_its_release():
+    shot, keeper, seen = rock(), Keeper(), []
+    model = object()
+
+    def infer(m, stacks):
+        seen.append(m)
+        return step_infer(m, stacks)
+
+    n = releasetime.time_releases([shot], keeper, VIEW, model=model, infer=infer)
+    _crops, o, _yp = releasetime.hand_crops(*lane(), VIEW, DELIVERY, T_REL)
+    assert n == 1 and seen == [model]
+    assert shot.line.release == pytest.approx(
+        (o[STEP_AT], *releasetime.rock_at(DELIVERY, o[STEP_AT])))
+    # From a little before the path's first point past FROM_M (0.3 s, 0.1 m
+    # past the tee) to just past its last.
+    assert keeper.asked == [pytest.approx((T_REL + 0.1, T_REL + 3.05))]
+
+
+def test_nothing_else_on_the_line_changes():
+    shot = rock()
+    before = shot.line
+    releasetime.time_releases([shot], Keeper(), VIEW, model=object(), infer=step_infer)
+    assert shot.line.release is not None
+    assert dataclasses.replace(shot.line, release=None) == before
+
+
+def test_a_failing_read_leaves_no_release_and_the_rest(caplog):
+    calls = []
+
+    def flaky(model, stacks):
+        calls.append(len(stacks))
+        if len(calls) == 1:
+            raise RuntimeError("the GPU fell over")
+        return step_infer(model, stacks)
+
+    first, second = rock(1), rock(2)
+    with caplog.at_level(logging.ERROR):
+        n = releasetime.time_releases([first, second], Keeper(), VIEW, model=object(),
+                                      infer=flaky)
+    assert n == 1 and len(calls) == 2
+    assert first.line.release is None and second.line.release is not None
+    assert "GPU fell over" in caplog.text
+
+
+def test_rocks_without_a_path_or_release_are_skipped():
+    called = []
+
+    def infer(model, stacks):
+        called.append(1)
+        return step_infer(model, stacks)
+
+    shots = [SimpleNamespace(number=1, release=SimpleNamespace(t=T_REL), line=None),
+             rock(2, line=line_with(())),
+             SimpleNamespace(number=3, release=None, line=line_with()),
+             SimpleNamespace(number=4)]
+    assert releasetime.time_releases(shots, Keeper(), VIEW, model=object(), infer=infer) == 0
+    assert called == [] and shots[2].line.release is None
+
+
+def test_a_rock_with_no_frames_kept_is_not_read():
+    called = []
+    shot = rock()
+    keeper = Keeper(*lane(t0=T_REL + 10, t1=T_REL + 11))
+    n = releasetime.time_releases([shot], keeper, VIEW, model=object(),
+                                  infer=lambda m, s: called.append(1))
+    assert n == 0 and called == [] and shot.line.release is None
+
+
+def test_no_model_keeper_or_lateral_fit_is_a_no_op():
+    shot = rock()
+    for keeper, view, model in ((Keeper(), VIEW, None), (None, VIEW, object()),
+                                (Keeper(), FLAT, object()), (Keeper(), None, object())):
+        assert releasetime.time_releases([shot], keeper, view, model=model,
+                                         infer=step_infer) == 0
+    assert shot.line.release is None
+
+
+def test_the_keeper_keeps_from_a_second_before_each_release_to_seven_after():
+    shots = [SimpleNamespace(release=SimpleNamespace(t=100.0)),
+             SimpleNamespace(release=SimpleNamespace(t=130.5))]
+    assert releasetime.keep_windows(shots) == [(99.0, 107.0), (129.5, 137.5)]
+
+
+def test_a_side_or_missing_release_keeps_hogtimes_own_window():
+    # No release yet: the long camera may give it one (sidereleases) from
+    # hogtime's frames, so those are kept, a second wider either side.
+    shot = SimpleNamespace(release=None, delivery=SimpleNamespace(t_enter=200.0))
+    t0, t1 = hogtime.window_for(shot)
+    assert releasetime.keep_windows([shot]) == [pytest.approx((t0 - 1.0, t1 + 1.0))]
+    blank = SimpleNamespace(missing=True, release=None, delivery=None)
+    assert releasetime.keep_windows([blank]) == []
+
+
+def test_a_keeper_is_made_only_for_a_read():
+    shots = [SimpleNamespace(release=SimpleNamespace(t=100.0))]
+    keeper = releasetime.keeper_for(shots, VIEW, model=object())
+    assert isinstance(keeper, lanekeep.LaneKeeper)
+    assert keeper.view is VIEW and keeper.windows == [(99.0, 107.0)]
+    # No model, or nowhere to place the rock across the sheet: nothing is kept.
+    assert releasetime.keeper_for(shots, VIEW, model=None) is None
+    assert releasetime.keeper_for(shots, FLAT, model=object()) is None
+    assert releasetime.keeper_for(shots, None, model=object()) is None

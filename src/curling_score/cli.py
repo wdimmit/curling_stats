@@ -595,6 +595,7 @@ def _live_replay(args) -> int:
     detector, broom_model, line_model = analyze_mod.load_models(
         weights, args.imgsz, args.device, skip_longview=args.no_longview,
         skip_line=args.no_line, progress=print)
+    release_model = analyze_mod.load_release_model(line_model, print)
     rec = replay.ReplayRecording(args.video, out / "recording.ts",
                                  speed=args.speed).start()
     t0, count = time.monotonic(), [0]
@@ -620,7 +621,7 @@ def _live_replay(args) -> int:
                                     line=line_model is not None, progress=print),
         sheet=args.sheet,
         models=live.Models(detector=detector, broom_model=broom_model,
-                           line_model=line_model),
+                           line_model=line_model, release_model=release_model),
         publish=publish, progress=print)
     try:
         runner.run_session(session)
@@ -646,6 +647,7 @@ def _practice_replay(args) -> int:
     detector, broom_model, line_model = analyze_mod.load_models(
         weights, args.imgsz, args.device, skip_longview=args.no_longview,
         skip_line=args.no_line, progress=print)
+    release_model = analyze_mod.load_release_model(line_model, print)
     start = max(0.0, args.from_s - args.lookback)
     rec = replay.ReplayRecording(args.video, out / "recording.ts", speed=args.speed,
                                  start_s=start, end_s=args.to_s,
@@ -661,7 +663,7 @@ def _practice_replay(args) -> int:
         pipeline=PracticePipeline(weights=weights, skip_longview=args.no_longview,
                                   line=line_model is not None, progress=print),
         models=live.Models(detector=detector, broom_model=broom_model,
-                           line_model=line_model),
+                           line_model=line_model, release_model=release_model),
         since_s=args.from_s - rec.t0_s, t0_s=rec.t0_s, publish=sink.publish,
         clipper=clipper, progress=print)
     try:

@@ -81,3 +81,35 @@ class TestTheSpinModelIsPartOfTheIdentity:
         w, side, broom, _spin = self.files(tmp_path)
         assert version.processing_version(w, side, broom, line=True, spin_weights=None) == \
             version.processing_version(w, side, broom, line=True)
+
+
+class TestTheReleaseModelIsPartOfTheIdentity:
+    """The release model puts the hand's release on every rock's delivery
+    path: a new one moves those points, so it is named -- after the spin, and
+    only with the line, whose delivery path it reads along."""
+
+    def files(self, tmp_path):
+        out = [tmp_path / n for n in ("w.pt", "side.pt", "broom.pt", "spin1.pt", "release1.pt")]
+        for i, f in enumerate(out):
+            f.write_bytes(bytes([i]))
+        return out
+
+    def test_a_release_model_is_named_after_the_spin(self, tmp_path):
+        w, side, broom, spin, rel = self.files(tmp_path)
+        got = version.processing_version(w, side, broom, line=True, spin_weights=spin,
+                                         release_weights=rel)
+        assert got.endswith(f"+spin-{version.model_id(spin)}+release-{version.model_id(rel)}")
+        assert got.startswith(version.processing_version(w, side, broom, line=True,
+                                                         spin_weights=spin))
+
+    def test_without_the_line_it_is_not_named(self, tmp_path):
+        w, side, broom, spin, rel = self.files(tmp_path)
+        assert version.processing_version(w, side, broom, spin_weights=spin,
+                                          release_weights=rel) == \
+            version.processing_version(w, side, broom)
+
+    def test_no_release_model_keeps_the_identity(self, tmp_path):
+        w, side, broom, spin, _rel = self.files(tmp_path)
+        assert version.processing_version(w, side, broom, line=True, spin_weights=spin,
+                                          release_weights=None) == \
+            version.processing_version(w, side, broom, line=True, spin_weights=spin)

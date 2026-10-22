@@ -264,7 +264,13 @@ from pathlib import Path
 # 801 of 808 panel sides of 202 cached recordings, none reaching the ice. A/B
 # on 10 videos: no game or end count moves; rocks identical but for two
 # arrival times, and BiG6 10/14 g2 e6 loses a phantom 17th delivery.
-PIPELINE_VERSION = "2026.10.22.1"
+# 2026.10.22.2: a rock's line carries `release`, the point on its delivery path
+# where the thrower's hand let go of the handle, when the hand model
+# (weights/release1.pt, `game/releasetime.py`) sees it come off. Read from a
+# strip of the lane kept from the frames the hog and delivery reads already
+# decode, with no decode of its own. Nothing else moves: the pass is
+# attach-only.
+PIPELINE_VERSION = "2026.10.22.2"
 
 
 def model_id(weights) -> str:
@@ -284,7 +290,7 @@ def model_id(weights) -> str:
 
 
 def processing_version(weights, side_weights=None, broom_weights=None, line=False,
-                       spin_weights=None) -> str:
+                       spin_weights=None, release_weights=None) -> str:
     """The full identity of one analysis configuration.
 
     ``side_weights`` is folded in because the side-view detector changes the
@@ -308,6 +314,10 @@ def processing_version(weights, side_weights=None, broom_weights=None, line=Fals
     ``spin_weights``, the handle-point model, gives every shot its spin, so a
     new one changes every rock's rpm. It is named after the line, and only
     with it: the spin pass reads the rock's boxes with the line's model.
+
+    ``release_weights``, the hand model, puts the release on every rock's
+    delivery path, so a new one moves those points. It is named after the
+    spin, and only with the line, whose delivery path it reads along.
     """
     base = f"{PIPELINE_VERSION}+{model_id(weights)}"
     out = base if side_weights is None else f"{base}+side-{model_id(side_weights)}"
@@ -315,4 +325,5 @@ def processing_version(weights, side_weights=None, broom_weights=None, line=Fals
     if not (line and side_weights is not None):
         return out
     out = f"{out}+line"
-    return out if spin_weights is None else f"{out}+spin-{model_id(spin_weights)}"
+    out = out if spin_weights is None else f"{out}+spin-{model_id(spin_weights)}"
+    return out if release_weights is None else f"{out}+release-{model_id(release_weights)}"

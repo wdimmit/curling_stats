@@ -2,15 +2,18 @@
 
 from types import SimpleNamespace
 
+from curling_score.detect import longview
 from curling_score.detect.delivery import Delivery
 from curling_score.detect.release import Release
+from curling_score.game import releasetime
 from curling_score.practice import enrich as E
 from tests.test_delivery import det
 
-SIDEVIEWS = {"left": SimpleNamespace(name="left"), "right": SimpleNamespace(name="right")}
+# No lateral fit: the passes are stubs, and the release keeper is the tests' own.
+SIDEVIEWS = {n: SimpleNamespace(name=n, has_lateral=False) for n in ("left", "right")}
 SETUPS = {h: SimpleNamespace(view_y_min_m=-4.0, view_x_limit_m=2.2, hog_line=None)
           for h in ("top", "bottom")}
-MODELS = SimpleNamespace(broom_model="broom", line_model="line")
+MODELS = SimpleNamespace(broom_model="broom", line_model="line", release_model="release")
 
 
 def arrival(color="red", t_enter=40.0, x=0.1, y=-0.4):
@@ -19,23 +22,26 @@ def arrival(color="red", t_enter=40.0, x=0.1, y=-0.4):
                     track=((t_enter, x, 3.8), (t_enter + 9.4, x, y)))
 
 
-def recording(calls, fail=(), kwargs=None):
+def recording(calls, fail=(), kwargs=None, firsts=None):
     def stage(name):
         def run(shots, video, *views, model=None, **kw):
             calls.append((name, *[v.name for v in views], model))
             if kwargs is not None:
                 kwargs[name] = kw
+            if firsts is not None:
+                firsts[name] = (video, longview._keeping)
             if name in fail:
                 raise RuntimeError(f"{name} fell over")
         return run
     return E.Stages(hog=stage("hog"), side_release=stage("side"),
-                    broom=stage("broom"), line=stage("line"))
+                    broom=stage("broom"), line=stage("line"), release=stage("release"))
 
 
-def measure(calls, *, house="top", dv=None, rel=None, fail=(), sideviews=SIDEVIEWS):
-    return E.enrich("rec.ts", SETUPS, sideviews, MODELS, house=house, arrival=dv,
+def measure(calls, *, house="top", dv=None, rel=None, fail=(), sideviews=SIDEVIEWS,
+            models=MODELS, firsts=None):
+    return E.enrich("rec.ts", SETUPS, sideviews, models, house=house, arrival=dv,
                     release=rel, house_frames=[], throw_frames=[],
-                    stages=recording(calls, fail))
+                    stages=recording(calls, fail, firsts=firsts))
 
 
 def test_the_passes_run_in_order_on_the_cameras_an_end_uses():
@@ -44,7 +50,8 @@ def test_the_passes_run_in_order_on_the_cameras_an_end_uses():
     # Thrown to the top house: the camera facing the thrower is the bottom
     # end's ("right"), the one seeing the house thrown to is "left".
     assert calls == [("hog", "right", None), ("side", "right", None),
-                     ("broom", "left", "broom"), ("line", "right", "left", "line")]
+                     ("broom", "left", "broom"), ("line", "right", "left", "line"),
+                     ("release", "right", "release")]
 
 
 def test_a_throw_that_never_arrived_gets_no_line():
@@ -57,7 +64,7 @@ def test_a_throw_that_never_arrived_gets_no_line():
 def test_one_pass_failing_costs_only_its_own_figure():
     calls = []
     measure(calls, dv=arrival(), fail=("hog",))
-    assert [c[0] for c in calls] == ["hog", "side", "broom", "line"]
+    assert [c[0] for c in calls] == ["hog", "side", "broom", "line", "release"]
 
 
 def test_without_side_views_only_the_overhead_passes_run():
@@ -91,3 +98,52 @@ def test_a_throw_nobody_held_a_broom_for_still_gets_its_line():
              release=Release("red", 22.0, 1.0, 2.0), house_frames=[], throw_frames=[],
              stages=recording(calls, kwargs=kwargs))
     assert kwargs["line"] == {"without_broom": True}
+
+
+class FakeKeeper:
+    def __init__(self):
+        self.cleared = False
+
+    def clear(self):
+        self.cleared = True
+
+
+def test_the_release_is_read_after_the_line_on_the_frames_the_passes_kept(monkeypatch):
+    calls, firsts, made = [], {}, []
+    keeper = FakeKeeper()
+
+    def keeper_for(shots, view, model):
+        made.append((view.name, model))
+        return keeper
+
+    monkeypatch.setattr(releasetime, "keeper_for", keeper_for)
+    measure(calls, dv=arrival(), rel=Release("red", 22.0, 1.0, 2.0), firsts=firsts)
+    # The keeper is the hog camera's, and watches the passes that decode it.
+    assert made == [("right", "release")]
+    for name in ("hog", "side", "broom", "line"):
+        assert firsts[name][1] is keeper
+    # The release read takes what it kept, then lets it go.
+    assert firsts["release"][0] is keeper and keeper.cleared
+    assert longview._keeping is None
+
+
+def test_the_keeper_is_let_go_when_a_pass_fails(monkeypatch):
+    keeper = FakeKeeper()
+    monkeypatch.setattr(releasetime, "keeper_for", lambda shots, view, model: keeper)
+    measure([], dv=arrival(), fail=("line", "release"))
+    assert keeper.cleared and longview._keeping is None
+
+
+def test_a_throw_that_never_arrived_keeps_nothing(monkeypatch):
+    made = []
+    monkeypatch.setattr(releasetime, "keeper_for",
+                        lambda shots, view, model: made.append(1) or FakeKeeper())
+    calls = []
+    measure(calls, rel=Release("yellow", 30.0, 1.0, 2.0))
+    assert made == [] and "release" not in [c[0] for c in calls]
+
+
+def test_models_from_before_the_release_model_read_none():
+    calls = []
+    measure(calls, dv=arrival(), models=SimpleNamespace(broom_model="broom", line_model="line"))
+    assert calls[-1] == ("release", "right", None)
