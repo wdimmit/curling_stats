@@ -1,5 +1,6 @@
-/* Boxing stones on a still, for the members' labelling page: where a click
- * lands, what a dragged corner may do, and the answer the server will take
+/* The members' labelling page's arithmetic: boxing stones on a still (where a
+ * click lands, what a dragged corner may do) and marking the release on a
+ * strip of frames (below), and the answers the server will take
  * (service/labelling.py check_answer). No DOM, so node tests it.
  *
  * The state is the boxes on the picture and one status per start the
@@ -142,4 +143,29 @@ export function boxAnswer(state) {
                                    y1: tenth(b.y1), color: b.color, start: b.start })),
     starts: state.starts.slice(),
   };
+}
+
+/* ------------------------------------------------------- release marks
+ *
+ * A release item is one sprite JPEG of `n` frames laid out `cols` across, each
+ * fw x fh. The member steps through them and says which is the first frame
+ * with the hand clearly off the handle. Nothing the pipeline read (`o`, `yp`)
+ * is used here: the member must not be led. */
+
+export const RELEASE_MARKS = ["off", "held", "cant_tell"];
+
+/* Where frame i sits in the sprite, in pixels from its top left. The page
+ * draws it by sliding the sprite the other way (background-position). */
+export function spriteOffset(item, i) {
+  return { x: (i % item.cols) * item.fw, y: Math.floor(i / item.cols) * item.fh };
+}
+
+/* Frame i moved by delta, kept inside the n frames there are. */
+export function step(i, delta, n) {
+  return clamp(i + delta, 0, n - 1);
+}
+
+/* What to send: only "off" names a frame. */
+export function releaseAnswer(mark, frame) {
+  return { mark, frame: mark === "off" ? frame : null };
 }

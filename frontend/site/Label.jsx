@@ -1,7 +1,10 @@
-/* Members' labelling: box the stones on a still, one picture at a time.
+/* Members' labelling: box the stones on a still, or mark the frame a hand
+ * lets go of the handle, one item at a time.
  *
- * What the software gets wrong is shown with a box of the computer's own;
- * the member fixes, deletes or adds boxes, and the answer goes to
+ * For boxes, what the software gets wrong is shown with a box of the
+ * computer's own; the member fixes, deletes or adds boxes. For releases they
+ * step through a strip of frames and name the first with the hand clearly
+ * off, and the pipeline's own guess is never shown. The answer goes to
  * /api/label/{kind}/{id} (service/labelling.py check_answer says which
  * answers are kept). All of the arithmetic -- which box a click lands on,
  * what a corner may do, the answer's shape -- is core/labelling.mjs, tested in
@@ -19,8 +22,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
 import { CANT_TELL, MIN_WIDTH_PX, addBox, boxAnswer, boxAt, canFinish, cornerAt,
-         drawScale, drawnBox, keepFlagged, moveBox, moveCorner, removeBox, setBox,
-         setColour, startBoxes } from "../core/labelling.mjs";
+         drawScale, drawnBox, keepFlagged, moveBox, moveCorner, releaseAnswer, removeBox,
+         setBox, setColour, spriteOffset, startBoxes, step } from "../core/labelling.mjs";
 import { signInTrouble } from "./signinState.mjs";
 import { Card, Header } from "./ui.jsx";
 import { useAuthUser } from "./useAuth.js";
@@ -171,7 +174,9 @@ function useLabelQueue(kind, active) {
       publish({ busy: false, notice: why });
       return;
     }
-    const data = await res.json();
+    let data;
+    try { data = await res.json(); }
+    catch { publish({ busy: false, notice: "That didn't save. Try again." }); return; }
     s.prev = { item, restore };
     advance({ count: data.count, notice: "" });
   }, [kind, advance, publish]);
@@ -246,7 +251,8 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
   useEffect(() => {
     const key = e => {
       const a = act.current;
-      if (e.ctrlKey || e.metaKey || e.altKey || a.paused) return;
+      // A held key must not skip or submit item after item.
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || a.paused) return;
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
       if (e.key === "Enter" && e.target.tagName === "BUTTON") return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
@@ -404,13 +410,136 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
   );
 }
 
+/* -------------------------------------------------------- release marks */
+
+// Frames shown either side of the current one in the strip.
+const STRIP = 8;
+const ARROW_STEP = { ArrowLeft: -1, ArrowRight: 1 };
+
+/* One frame of the sprite as a box of the given size: the whole sprite as the
+ * background, slid so that frame i is what shows. */
+function frameStyle(item, i, scale) {
+  const o = spriteOffset(item, i), rows = Math.ceil(item.n / item.cols);
+  return { width: item.fw * scale, height: item.fh * scale,
+           backgroundImage: `url(${item.image_url})`,
+           backgroundSize: `${item.cols * item.fw * scale}px ${rows * item.fh * scale}px`,
+           backgroundPosition: `${-o.x * scale}px ${-o.y * scale}px` };
+}
+
+function ReleaseFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBack }) {
+  // Always opens on the first frame, whatever the pipeline thought; Back
+  // opens on the frame they marked, and keeps it in orange when they move off it.
+  const marked = restore && restore.mark === "off" ? restore.frame : null;
+  const [frame, setFrame] = useState(marked ?? 0);
+  const [broken, setBroken] = useState(false);
+  const win = useWindowSize();
+  const skipRef = useRef(null);
+  const t0 = useRef(Date.now());
+
+  // One frame as big as fits, never smaller than itself; the strip fits the row.
+  const scale = Math.min(3, Math.max(1, Math.min((win.w - 40) / item.fw, (win.h - 400) / item.fh)));
+  const shown = Math.min(STRIP, item.n);
+  const thumb = Math.min(1, (win.w - 40 - 12 * shown) / (shown * item.fw));
+  const first = Math.min(Math.max(frame - STRIP / 2, 0), item.n - shown);
+
+  // Timed from when they can first see it, and not while the how-to is up.
+  useEffect(() => { if (!paused) t0.current = Date.now(); }, [paused, item.id]);
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => { t0.current = Date.now(); };
+    img.onerror = () => setBroken(true);
+    img.src = item.image_url;
+  }, [item.image_url]);
+  useEffect(() => { if (broken) skipRef.current?.focus(); }, [broken]);
+
+  const finish = useCallback((mark, f) => {
+    onSubmit(releaseAnswer(mark, f), (Date.now() - t0.current) / 1000, { mark, frame: f });
+  }, [onSubmit]);
+
+  const act = useRef({});
+  act.current = { frame, busy, paused, broken, onSkip, finish, n: item.n };
+
+  useEffect(() => {
+    const key = e => {
+      const a = act.current;
+      if (e.ctrlKey || e.metaKey || e.altKey || a.paused) return;
+      // The slider's own arrow keys are ours (one frame, shift for five).
+      const t = e.target;
+      if (/^(TEXTAREA|SELECT)$/.test(t.tagName) || (t.tagName === "INPUT" && t.type !== "range")) return;
+      if (e.key === "Enter" && t.tagName === "BUTTON") return;
+      if (e.key in ARROW_STEP) {
+        // Holding an arrow to scrub is what it is for; it answers nothing.
+        e.preventDefault();
+        setFrame(f => step(f, ARROW_STEP[e.key] * (e.shiftKey ? 5 : 1), a.n));
+        return;
+      }
+      // A held key must not skip or submit item after item.
+      if (e.repeat) return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (!["h", "s", "n", "Enter"].includes(k)) return;
+      e.preventDefault();
+      if (a.busy) return;
+      if (k === "n") a.onSkip();
+      else if (a.broken) { /* nothing to answer about a picture that is not there */ }
+      else if (k === "Enter") a.finish("off", a.frame);
+      else a.finish(k === "h" ? "held" : "cant_tell", null);
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, []);
+
+  // A click on a strip frame must not take the keyboard: Enter on a focused
+  // button presses the button, and Enter here means "hand off".
+  return (
+    <div className="label-flow" data-item={item.id}>
+      {broken ? (
+        <div className="warn" role="alert">This image didn't load. Skip it (N) and try the next.</div>
+      ) : (
+        <>
+          <div className="rel-frame" style={frameStyle(item, frame, scale)} role="img"
+               aria-label={`Frame ${frame + 1} of ${item.n}`} />
+          <div className="rel-strip">
+            {Array.from({ length: shown }, (_, j) => first + j).map(i => (
+              <button key={i} type="button" title={`Frame ${i + 1}`} tabIndex={-1}
+                      className={`rel-thumb${i === frame ? " cur" : ""}${i === marked ? " marked" : ""}`}
+                      style={frameStyle(item, i, thumb)} onClick={() => setFrame(i)}
+                      onMouseDown={e => e.preventDefault()} />
+            ))}
+          </div>
+          <div className="rel-slider">
+            <input type="range" min={0} max={item.n - 1} value={frame}
+                   aria-label="Frame" onChange={e => setFrame(+e.target.value)} />
+            <span className="muted">Frame {frame + 1} of {item.n}</span>
+          </div>
+        </>
+      )}
+      <div className="row label-actions">
+        <button className="primary" disabled={busy || broken} onClick={() => finish("off", frame)}>
+          Hand is off here <kbd>Enter</kbd></button>
+        <button disabled={busy || broken} onClick={() => finish("held", null)}>
+          Still holding <kbd>H</kbd></button>
+        <button disabled={busy || broken} onClick={() => finish("cant_tell", null)}>
+          Can't tell <kbd>S</kbd></button>
+        <button ref={skipRef} disabled={busy} onClick={onSkip}>Skip <kbd>N</kbd></button>
+        <button disabled={busy || !canBack} onClick={onBack}>Back</button>
+      </div>
+      <p className="muted label-keys">
+        <kbd>←</kbd> <kbd>→</kbd> step one frame, with <kbd>Shift</kbd> five.
+        Orange is the frame you marked before.
+      </p>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------- the page */
 
 const FLOWS = {
   boxes: { kind: "box", name: "Rock boxes", Flow: BoxFlow,
            howto: "Box every stone you can see, even part-hidden ones. People, brooms and shoes "
                   + "get no box. The dashed box is what the computer wasn't sure about." },
-  releases: { kind: "release", name: "Release marks", Flow: null, howto: "" },
+  releases: { kind: "release", name: "Release marks", Flow: ReleaseFlow,
+              howto: "Find the first frame where the hand is clearly off the handle. If the "
+                     + "thrower lets go and grabs it again, mark the last let-go." },
 };
 
 function Stage({ flow }) {
@@ -478,14 +607,7 @@ export function Label() {
         ) : !ready ? <p className="muted">Loading…</p>
          : win.w < MIN_WIDTH_PX ? (
           <Card>Labelling needs a computer: a mouse and a keyboard.</Card>)
-         : FLOWS[flow].Flow ? <Stage key={flow} flow={flow} />
-         : (
-          <>
-            <div className="label-bar"><b>{FLOWS[flow].name}</b><span style={{ flex: 1 }} />
-              <a href="#boxes">{FLOWS.boxes.name}</a></div>
-            <p className="muted">Release marks are not ready yet.</p>
-          </>
-        )}
+         : <Stage key={flow} flow={flow} />}
       </main>
     </>
   );

@@ -25,10 +25,15 @@ ITEM = {
     ],
 }
 
+# Ten frames in a sprite four across: three rows, the last one short.
+RELEASE = {"id": "r1", "kind": "release", "image_url": "x", "cols": 4, "fw": 160, "fh": 120,
+           "n": 10, "fps": 10, "frames": [{"o": 0.5, "yp": 100 + i} for i in range(10)]}
+
 
 def js(expr: str):
     script = (f"const L = await import({MODULE.as_uri()!r});\n"
               f"const item = {json.dumps(ITEM)};\n"
+              f"const rel = {json.dumps(RELEASE)};\n"
               f"const s0 = L.startBoxes(item);\n"
               f"console.log(JSON.stringify({expr}));")
     proc = subprocess.run([node, "--input-type=module", "-e", script],
@@ -140,3 +145,27 @@ def test_box_answer_matches_the_server_shape():
     assert set(ans["boxes"][3]) == {"x0", "y0", "x1", "y1", "color", "start"}
     assert ans["boxes"][3]["x0"] == 400  # a tenth of a pixel is plenty
     assert js("L.CANT_TELL") == {"cant_tell": True}
+
+
+def test_sprite_offsets_walk_rows():
+    # Frame i is at column i % cols, row i // cols; the sprite slides the other way.
+    assert js("L.spriteOffset(rel, 0)") == {"x": 0, "y": 0}
+    assert js("L.spriteOffset(rel, 3)") == {"x": 3 * 160, "y": 0}
+    assert js("L.spriteOffset(rel, 4)") == {"x": 0, "y": 120}
+    assert js("L.spriteOffset(rel, 9)") == {"x": 160, "y": 2 * 120}
+
+
+def test_step_clamps():
+    assert js("L.step(0, -1, 10)") == 0
+    assert js("L.step(3, 1, 10)") == 4
+    assert js("L.step(3, 5, 10)") == 8
+    assert js("L.step(8, 5, 10)") == 9
+    assert js("L.step(2, -5, 10)") == 0
+    assert js("L.step(0, 1, 1)") == 0
+
+
+def test_release_answer_drops_frame_unless_off():
+    assert js('L.releaseAnswer("off", 7)') == {"mark": "off", "frame": 7}
+    assert js('L.releaseAnswer("off", 0)') == {"mark": "off", "frame": 0}
+    assert js('L.releaseAnswer("held", 7)') == {"mark": "held", "frame": None}
+    assert js('L.releaseAnswer("cant_tell", 7)') == {"mark": "cant_tell", "frame": None}

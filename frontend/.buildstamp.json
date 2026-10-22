@@ -11,7 +11,7 @@
     "frontend/core/house.mjs": "94d64eae255dc61ae56b90901710908c5016eee29601b86133d4aeb7717a0631",
     "frontend/core/houseimage.mjs": "66480b400329879398ba815ffcc54642eff3bbfd5f22ba7dec76ec374d9cf09e",
     "frontend/core/index.mjs": "75f9e2ae6002cd92b1749fda1be4242be76704e47793adabbcd21f1f74c5b3f2",
-    "frontend/core/labelling.mjs": "f2c75e8c42e0fc83ed7108365b17207fe89446c84a87245d5bccf7b0c1b5ff3a",
+    "frontend/core/labelling.mjs": "97b45162b2dea4c52a3b3f7c51eb21207a67c108bf5d0d7c3edccede5b75a9ea",
     "frontend/core/line.mjs": "6f6a9d78a952f9039dc1143d30078fe457adb1f24d0fd4a2cb9fda195b049059",
     "frontend/core/linechart.mjs": "19d36999630b4984607e5ffee95d8d748a409485d77f22d473d2ffaaf8595923",
     "frontend/core/myshots.mjs": "4353b2c0b481b9934f88468fc92b0ce7ed32466e927b7449028175448bb11f21",
@@ -46,7 +46,7 @@
     "frontend/runtime/wide.mjs": "e48d3c8e7d2d74f9b04574501128588f932c0486fe022b3b3c7c39a82f37994e",
     "frontend/site/Games.jsx": "92cc33b50dad93e901ecc197dd9d439b220cf43aee947779f2eb29c47f40338a",
     "frontend/site/Join.jsx": "4f915fd7c6d9de9aa5430ea63f61d30218b1ebbac63cc0076e09a9482eca4374",
-    "frontend/site/Label.jsx": "eb256351161201512bc3172ee0172adf282d574dd0053a62e702f0e01997d17b",
+    "frontend/site/Label.jsx": "a7c3095036e910e79b64e3a7c91b51f64456225c446c5ca9a33cad0d6ee4b060",
     "frontend/site/Mine.jsx": "206b1cfd33e05007043c52f784af0554642d6552d7830372105a29bee15de48e",
     "frontend/site/Playlists.jsx": "77901a9d7ed9997b64fdac435a8c8cafb1083803c0fff332f9ec5830fe020aa9",
     "frontend/site/Practice.jsx": "e545e16132a2a93ce93680bbe433e62bd8338c113974a7877999e3fc5bd10f2c",
@@ -90,7 +90,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "9327ba81d3bdb432dd720eeda280c6b9be50f0b0f60a949a4228ba912a8d9d7e",
+    "src/curling_score/service/static/site.js": "7a9b3cd7fba2dbeed41f12838f28bf741b8063ab8e605b2900173dd9441eca52",
     "src/curling_score/viewer/app.js": "484c57bb19f22d4bd094e6b8d3ea4a69b708990956100bc60edfda881ecfcefb"
   }
 }

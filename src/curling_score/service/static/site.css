@@ -577,3 +577,16 @@ body[data-page="signin"] main { max-width:520px; }
 .label-flow kbd, .label-actions kbd { font:600 11px/1 var(--display); padding:2px 5px;
   border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--muted); }
 .label-keys { font-size:13px; }
+
+/* A release item: one frame large, a strip of its neighbours under it, and a
+   slider. Every frame is the one sprite slid under a box of the frame's size.
+   The current frame has a blue border; the one marked earlier, orange. */
+.rel-frame { box-sizing:content-box; border:1px solid var(--line); background-repeat:no-repeat; image-rendering:auto; }
+.rel-strip { display:flex; gap:8px; margin:10px 0 6px; }
+.rel-thumb { padding:0; border:0; border-radius:0; cursor:pointer; background-color:var(--bg);
+             background-repeat:no-repeat; }
+.rel-thumb.cur { outline:3px solid #2f7bff; outline-offset:0; }
+.rel-thumb.marked { outline:3px solid #f08a1c; outline-offset:0; }
+.rel-thumb.cur.marked { outline-color:#2f7bff; box-shadow:0 0 0 6px #f08a1c; }
+.rel-slider { display:flex; gap:14px; align-items:center; max-width:640px; }
+.rel-slider input { flex:1; margin:0; }
