@@ -210,7 +210,8 @@ def test_dry_run_writes_a_crop_and_an_item_per_row_and_sends_nothing(tmp_path, m
     cache = tmp_path / "cache"
     _write_pile(cache, rows)
     monkeypatch.setattr(fp, "load_detectors", lambda: (lambda img, camera: [], {}))
-    monkeypatch.setattr(pub, "publish", lambda *a, **k: pytest.fail("published"))
+    monkeypatch.setattr(fp.label_publish, "publish",
+                        lambda *a, **k: pytest.fail("published in a dry run"))
     out = tmp_path / "out"
     assert fp.main(["publish", "--caches", str(cache), "--dry-run", "--out", str(out)]) == 0
     assert sorted(p.name for p in out.iterdir()) == [
@@ -243,3 +244,63 @@ def test_check_frames_carry_the_known_boxes_and_flag_the_most_confident_prebox(t
     item = next(i for i, _ in fp.check_items(tmp_path, "side", detect, "chk"))
     (s,) = item["payload"]["starts"]
     assert s["flagged"] and (s["x1"] - s["x0"], s["y1"] - s["y0"]) == (40, 17)
+
+
+def test_a_row_whose_detector_raises_is_skipped_and_the_rest_are_written(tmp_path, monkeypatch,
+                                                                         capsys):
+    rows = [dict(side_row((900, 500, 940, 520), rect=(0, 0, 1920, 1080)),
+                 stem=f"s{i}", video_id="vid1", title="T", t=1.0 + i, where="long",
+                 check="long.width", models={}, pipeline="p",
+                 saved_at="2026-10-22T00:00:00+00:00") for i in range(3)]
+    cache = tmp_path / "cache"
+    _write_pile(cache, rows)
+    calls = []
+
+    def detect(img, camera):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError("cuda said no")
+        return []
+    monkeypatch.setattr(fp, "load_detectors", lambda: (detect, {}))
+    out = tmp_path / "out"
+    assert fp.main(["publish", "--caches", str(cache), "--dry-run", "--out", str(out)]) == 0
+    assert len(list(out.glob("*.json"))) == 2
+    err = capsys.readouterr().err
+    assert "cuda said no" in err and "skipped" in err
+
+
+def test_a_row_whose_crop_is_outside_the_image_is_skipped(tmp_path, monkeypatch):
+    good = dict(side_row((900, 500, 940, 520), rect=(0, 0, 1920, 1080)), stem="g",
+                video_id="vid1", saved_at="2026-10-22T00:00:00+00:00")
+    off = dict(side_row((900, 500, 940, 520), rect=(5000, 5000, 800, 600)), stem="o",
+               video_id="vid1", saved_at="2026-10-22T00:00:00+00:00")
+    cache = tmp_path / "cache"
+    _write_pile(cache, [good, off])
+    monkeypatch.setattr(fp, "load_detectors", lambda: (lambda img, camera: [], {}))
+    out = tmp_path / "out"
+    assert fp.main(["publish", "--caches", str(cache), "--dry-run", "--out", str(out)]) == 0
+    assert [p.name for p in out.glob("*.json")] == ["b_g.json"]
+
+
+def test_a_check_box_without_a_colour_is_skipped_with_a_message(tmp_path, capsys):
+    import cv2
+    import numpy as np
+    for stem in ("ok", "nocolour"):
+        cv2.imwrite(str(tmp_path / f"{stem}.jpg"), np.zeros((200, 400, 3), np.uint8))
+    good = [{"x0": 1, "y0": 2, "x1": 31, "y1": 22, "color": "red"}]
+    (tmp_path / "boxes.json").write_text(json.dumps(
+        {"ok": good, "nocolour": [{"x0": 1, "y0": 2, "x1": 31, "y1": 22}], "noimage": good}))
+    skips = []
+    got = list(fp.check_items(tmp_path, "side", lambda img, camera: [], "chk", None, skips))
+    assert [i["id"] for i, _ in got] == ["bc_ok"]
+    assert sorted(skips) == ["nocolour", "noimage"]
+    err = capsys.readouterr().err
+    assert "check nocolour: skipped" in err and "colour" in err
+
+
+def test_unreadable_boxes_json_stops_the_run_with_a_message(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(fp, "load_detectors", lambda: (lambda img, camera: [], {}))
+    (tmp_path / "boxes.json").write_text("{not json")
+    assert fp.main(["publish", "--checks", str(tmp_path), "--dry-run",
+                    "--out", str(tmp_path / "o")]) == 1
+    assert "cannot read the check frames" in capsys.readouterr().err

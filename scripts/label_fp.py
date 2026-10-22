@@ -221,33 +221,65 @@ def harvest_item(row: dict, detect, batch: str, names=None):
     return item, _jpeg(img[y:y + h, x:x + w])
 
 
-def check_items(folder: Path, camera: str, detect, batch: str, names=None):
-    """``(item, jpeg bytes)`` for each frame of a check folder."""
+def _clean_reference(boxes) -> list[dict]:
+    """The known boxes of one check frame, or ValueError saying what is wrong."""
+    if not isinstance(boxes, list) or not boxes:
+        raise ValueError("no reference boxes")
+    out = []
+    for b in boxes:
+        if not isinstance(b, dict):
+            raise ValueError("a reference box is not an object")
+        if b.get("color") not in ("red", "yellow"):
+            raise ValueError("a reference box needs a colour, red or yellow")
+        coords = [b.get(k) for k in ("x0", "y0", "x1", "y1")]
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in coords):
+            raise ValueError("a reference box needs numeric x0 y0 x1 y1")
+        out.append({"x0": coords[0], "y0": coords[1], "x1": coords[2], "y1": coords[3],
+                    "color": b["color"]})
+    return out
+
+
+def _check_item(folder: Path, stem: str, boxes, camera, detect, batch, names):
     import cv2
+    ref = {"boxes": _clean_reference(boxes)}
+    img = cv2.imread(str(folder / f"{stem}.jpg"))
+    if img is None:
+        raise ValueError(f"no readable {stem}.jpg")
+    h, w = img.shape[:2]
+    crop = (0, 0, w, h)
+    dets = detect(img, camera)
+    if dets:
+        top = max(dets, key=lambda d: d["conf"])
+        flagged = dict(top, color=None)
+    else:
+        fw, fh = FALLBACK_BOX
+        flagged = {"x0": (w - fw) / 2, "y0": (h - fh) / 2, "x1": (w + fw) / 2,
+                   "y1": (h + fh) / 2, "color": None, "conf": None}
+    item = item_for({"stem": stem, "camera": camera}, crop, starts_for(dets, flagged, crop),
+                    batch, prefix="bc_", reference=ref)
+    if names:
+        item["payload"]["origin"]["prebox"] = names
+    return item, _jpeg(img)
+
+
+def check_items(folder: Path, camera: str, detect, batch: str, names=None, skips=None):
+    """``(item, jpeg bytes)`` for each frame of a check folder.
+
+    A frame that cannot be made into an item (no image, a reference box
+    without a colour, a detector error) is reported and its stem appended to
+    ``skips``; the rest still come out. A boxes.json that is missing or not an
+    object of stems raises OSError or ValueError, since nothing can be checked.
+    """
     boxes = json.loads((folder / "boxes.json").read_text())
+    if not isinstance(boxes, dict):
+        raise ValueError("boxes.json is not an object of stems")
     for stem in sorted(boxes):
-        img = cv2.imread(str(folder / f"{stem}.jpg"))
-        if img is None:
-            print(f"check {stem}: no readable {stem}.jpg, skipped", file=sys.stderr)
-            continue
-        h, w = img.shape[:2]
-        crop = (0, 0, w, h)
-        dets = detect(img, camera)
-        if dets:
-            top = max(dets, key=lambda d: d["conf"])
-            flagged = dict(top, color=None)
-        else:
-            fw, fh = FALLBACK_BOX
-            flagged = {"x0": (w - fw) / 2, "y0": (h - fh) / 2, "x1": (w + fw) / 2,
-                       "y1": (h + fh) / 2, "color": None, "conf": None}
-        row = {"stem": stem, "camera": camera}
-        ref = {"boxes": [{k: b[k] for k in ("x0", "y0", "x1", "y1", "color")}
-                         for b in boxes[stem]]}
-        item = item_for(row, crop, starts_for(dets, flagged, crop), batch,
-                        prefix="bc_", reference=ref)
-        if names:
-            item["payload"]["origin"]["prebox"] = names
-        yield item, _jpeg(img)
+        try:
+            yield _check_item(folder, stem, boxes[stem], camera, detect, batch, names)
+        except Exception as err:
+            print(f"check {stem}: skipped, {err}", file=sys.stderr)
+            if skips is not None:
+                skips.append(stem)
 
 
 def main(argv=None) -> int:
@@ -286,14 +318,25 @@ def main(argv=None) -> int:
         if args.since:
             kept = fp_harvest._since(kept, args.since)
         for row in kept:
-            got = harvest_item(row, detect, batch, names)
+            try:
+                got = harvest_item(row, detect, batch, names)
+                why = "frame or box missing"
+            except Exception as err:       # one bad frame must not stop the rest
+                got, why = None, f"{type(err).__name__}: {err}"
             if got is None:
                 skipped += 1
-                print(f"{row.get('stem')}: frame or box missing, skipped", file=sys.stderr)
+                print(f"{row.get('stem')}: {why}, skipped", file=sys.stderr)
             else:
                 made.append(got)
     if args.checks:
-        made.extend(check_items(args.checks, args.checks_camera, detect, batch, names))
+        bad = []
+        try:
+            made.extend(check_items(args.checks, args.checks_camera, detect, batch,
+                                    names, bad))
+        except (OSError, ValueError) as err:
+            print(f"cannot read the check frames in {args.checks}: {err}", file=sys.stderr)
+            return 1
+        skipped += len(bad)
 
     ids = [i["id"] for i, _ in made]
     if len(set(ids)) != len(ids):
