@@ -612,3 +612,65 @@ class PracticeSession:
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
+
+
+# Members' labelling: small questions put to many members, each answered by
+# the same few people the way an item's `max_labels` says (service/repo.py).
+# "box" is a rock the detector found, to be boxed or called not-a-rock;
+# "release" is a delivery, to be marked where the hand lets go.
+LABEL_KINDS = ("box", "release")
+# "pending" is made but not yet handed out; "open" is being labelled; "done"
+# has its labels; "retired" was skipped by too many to be worth asking.
+LABEL_STATES = ("pending", "open", "done", "retired")
+
+
+def label_answer_id(item_id: str, uid: str) -> str:
+    """One answer per member per item, so a second submit has one place to land."""
+    return f"{item_id}__{uid}"
+
+
+@dataclass
+class LabelItem:
+    """One thing for members to label, and where it stands.
+
+    ``payload`` is what the page shows and ``reference`` is the answer already
+    known, for a check item -- it stays on the server and never reaches a
+    member. The hold is a lease: whoever was handed the item has until
+    ``hold_until`` to answer before another member may be given it.
+    ``labelled_by`` and ``skipped_by`` keep a member from being offered the
+    same item twice.
+    """
+
+    id: str
+    kind: str
+    created_at: datetime
+    batch: str
+    payload: dict
+    state: str = "pending"
+    n_labels: int = 0
+    labelled_by: list = field(default_factory=list)
+    skipped_by: list = field(default_factory=list)
+    skips: int = 0
+    hold_uid: str | None = None
+    hold_until: datetime | None = None
+    reference: dict | None = None
+    done_at: datetime | None = None
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class LabelAnswer:
+    """One member's answer to one item, kept after the item is done."""
+
+    id: str
+    item_id: str
+    kind: str
+    uid: str
+    at: datetime
+    seconds: float
+    answer: dict
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)

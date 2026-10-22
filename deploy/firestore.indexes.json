@@ -23,7 +23,16 @@
       { "fieldPath": "created_at", "order": "DESCENDING" } ] },
     { "collectionGroup": "flags", "queryScope": "COLLECTION", "fields": [
       { "fieldPath": "status", "order": "ASCENDING" },
-      { "fieldPath": "created_at", "order": "DESCENDING" } ] }
+      { "fieldPath": "created_at", "order": "DESCENDING" } ] },
+    { "collectionGroup": "label_items", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "kind", "order": "ASCENDING" },
+      { "fieldPath": "state", "order": "ASCENDING" },
+      { "fieldPath": "n_labels", "order": "ASCENDING" },
+      { "fieldPath": "created_at", "order": "ASCENDING" } ] },
+    { "collectionGroup": "label_items", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "kind", "order": "ASCENDING" },
+      { "fieldPath": "state", "order": "ASCENDING" },
+      { "fieldPath": "created_at", "order": "ASCENDING" } ] }
   ],
   "fieldOverrides": [
     { "collectionGroup": "rate_limits", "fieldPath": "expires_at",
