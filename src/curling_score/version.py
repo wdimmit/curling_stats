@@ -269,7 +269,13 @@ from pathlib import Path
 # (weights/release1.pt, `game/releasetime.py`) sees it come off. Read from a
 # strip of the lane kept from the frames the hog and delivery reads already
 # decode, with no decode of its own. Nothing else moves: the pass is
-# attach-only.
+# attach-only. A/B on 10/20 Tuesday S2's recording (dmljQzQr1xo, both games,
+# 256 rocks), 7b7219fc against this, on the laptop's 3070: 251 rocks gain a
+# release, and the rest is the known `_smooth` tie-break, upstream of the
+# long-camera passes -- one end start moved 2.5 s, re-timing that end's third
+# rock by 0.02 s, and one end boundary moved 2.5 s. The pass took 1.1-1.3 s an
+# end and kept 309-317 MB of strips. On 20 rocks of 10/20 S5 the model never
+# saw, marked by hand, 17 releases fall within 0.5 m of the mark.
 PIPELINE_VERSION = "2026.10.22.2"
 
 
