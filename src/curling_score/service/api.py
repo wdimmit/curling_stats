@@ -39,12 +39,13 @@ from starlette.middleware.gzip import GZipMiddleware
 from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
-from curling_score.service import (dedupe, gameclips, playlist_index, playlists, practice,
-                                   signin, slug, team_names, thinking_report)
+from curling_score.service import (dedupe, gameclips, labelling, playlist_index, playlists,
+                                   practice, signin, slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, ROLES, ClipJob, Chart, Flag, Invite, Job, Play, Review, Run, SigninRelay, Source,
-    Team, TeamNameEdit, User, Worker, play_id, review_id,
+    JOB_KINDS, LABEL_KINDS, ROLES, ClipJob, Chart, Flag, Invite, Job, LabelAnswer, LabelItem, Play,
+    Review, Run, SigninRelay, Source, Team, TeamNameEdit, User, Worker, label_answer_id, play_id,
+    review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import (clip_key, detcache_key, meta_key, practice_key,
@@ -121,6 +122,12 @@ MAX_MERGE_BYTES = 100_000
 # can make us store, and the budget is a flag's own, like the chart's, so
 # flagging a game never costs anyone a submission.
 MAX_FLAG_BYTES = 8_000
+# A labelling answer is at most MAX_BOXES boxes; this is generous for that.
+MAX_LABEL_BYTES = 64_000
+# Items one admin call may create, and the longest an item id may be.
+MAX_LABEL_ITEMS_PER_CALL = 500
+LABEL_ID = re.compile(r"^[A-Za-z0-9_.-]{1,120}$")
+LABEL_STATES = ("done", "retired", "open", "pending")
 MAX_FLAG_NOTE = 2_000
 FLAG_HOUR_LIMIT = 20
 FLAG_DAY_LIMIT = 100
@@ -952,6 +959,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.get("/thinking", response_class=HTMLResponse)
     def thinking_page():
         return page("thinking.html")
+
+    # The shell for members' labelling; what it shows comes from /api/label.
+    @app.get("/label", response_class=HTMLResponse)
+    def label_page():
+        return page("label.html")
 
     @app.get("/shots", response_class=HTMLResponse)
     def shots_page():
@@ -2307,6 +2319,80 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.put_flag(flag)
         return {"id": flag.id}
 
+    # ----------------------------------------------------------- labelling
+    # Members help train the software by marking stones on a still or the
+    # moment of release in a clip. A member is only ever handed what
+    # labelling.for_member lets through, and an answer is kept only in the
+    # form labelling.check_answer returns.
+    def label_kind(kind: str) -> str:
+        if kind not in LABEL_KINDS:
+            raise HTTPException(404, "no such kind of item")
+        return kind
+
+    def label_image_url(item: LabelItem) -> str:
+        return store.presign_get(item.payload["image"], 3600)
+
+    @app.get("/api/label/me")
+    def label_me(authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        return {k: repo.label_count(me.id, k) for k in LABEL_KINDS}
+
+    @app.get("/api/label/{kind}/next")
+    def label_next(kind: str, n: int = Query(1, ge=1, le=2),
+                   authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        label_kind(kind)
+        items = labelling.next_items(repo, kind, me.id, now(), n)
+        return {"items": [labelling.for_member(i, label_image_url(i)) for i in items],
+                "count": repo.label_count(me.id, kind)}
+
+    @app.post("/api/label/{kind}/{item_id}")
+    async def label_submit(kind: str, item_id: str, request: Request,
+                           authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        label_kind(kind)
+        raw = await request.body()
+        if len(raw) > MAX_LABEL_BYTES:
+            raise HTTPException(413, "that answer is too long")
+        try:
+            body = json.loads(raw, parse_constant=_no_constants)
+        except ValueError:
+            raise HTTPException(400, "send JSON") from None
+        if not isinstance(body, dict):
+            raise HTTPException(400, "send a JSON object")
+        item = repo.get_label_item(item_id)
+        if item is None or item.kind != kind:
+            raise HTTPException(404, "no such item")
+        try:
+            checked = labelling.check_answer(item, body.get("answer"))
+        except ValueError as err:
+            raise HTTPException(422, str(err)) from None
+        seconds = body.get("seconds")
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+            raise HTTPException(422, "seconds is not a number")
+        # Clamped as the number it came in as: float() of a huge integer overflows.
+        seconds = float(min(max(seconds, 0), 3600))
+        t = now()
+        result, _ = repo.submit_label(
+            LabelAnswer(id=label_answer_id(item_id, me.id), item_id=item_id, kind=kind,
+                        uid=me.id, at=t, seconds=seconds, answer=checked),
+            t, labelling.MAX_LABELS)
+        if result == "missing":
+            raise HTTPException(404, "no such item")
+        if result in ("full", "held", "closed"):
+            raise HTTPException(409, result)
+        return {"result": result, "count": repo.label_count(me.id, kind)}
+
+    @app.post("/api/label/{kind}/{item_id}/skip")
+    def label_skip(kind: str, item_id: str, authorization: str | None = Header(default=None)):
+        me = require_user(authorization)
+        label_kind(kind)
+        got = repo.get_label_item(item_id)
+        if got is None or got.kind != kind:
+            raise HTTPException(404, "no such item")
+        repo.skip_label_item(item_id, me.id, now(), labelling.RETIRE_AFTER_SKIPS)
+        return {"ok": True}
+
     # ------------------------------------------------------------- plays
     # Which rocks of a game a person threw -- their team's colour and their
     # slot in the throwing order -- said on the game's page and read back by
@@ -3511,6 +3597,85 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if got is None:
             raise HTTPException(404, "no such flag")
         return _flag_json(got)
+
+    @app.post("/api/admin/label-items")
+    async def admin_label_items_create(request: Request,
+                                       authorization: str | None = Header(default=None)):
+        """Make items, a new one `pending` until its image is in the bucket.
+        The reply says where to put each image; an item that already exists is
+        left as it is, so the owner's script can run again after a failure."""
+        require_admin(authorization)
+        body = await request.json()
+        given = body.get("items") if isinstance(body, dict) else None
+        if not isinstance(given, list) or len(given) > MAX_LABEL_ITEMS_PER_CALL:
+            raise HTTPException(422, f"items is a list of at most {MAX_LABEL_ITEMS_PER_CALL}")
+        for g in given:
+            if (not isinstance(g, dict) or not LABEL_ID.match(str(g.get("id")))
+                    or g.get("kind") not in LABEL_KINDS
+                    or not isinstance(g.get("batch"), str) or not g["batch"]
+                    or not isinstance(g.get("payload"), dict)
+                    or not isinstance(g.get("reference"), (dict, type(None)))):
+                raise HTTPException(422, "each item needs an id, kind, batch and payload")
+        out = []
+        for g in given:
+            key = labelling.image_key(g["id"], g["kind"])
+            have = repo.get_label_item(g["id"])
+            if have is None:
+                have = LabelItem(id=g["id"], kind=g["kind"], created_at=now(), batch=g["batch"],
+                                 payload={**g["payload"], "image": key},
+                                 reference=g.get("reference"))
+                repo.put_label_item(have)
+            # Only a pending item still wants its image; anything further
+            # along has one and must not be pointed at a fresh upload.
+            out.append({"id": have.id, "state": have.state,
+                        "upload": (store.presign_put(key, "image/jpeg")
+                                   if have.state == "pending" else None)})
+        return {"items": out}
+
+    @app.post("/api/admin/label-items/ready")
+    async def admin_label_items_ready(request: Request,
+                                      authorization: str | None = Header(default=None)):
+        """Open the pending items whose image has arrived."""
+        require_admin(authorization)
+        body = await request.json()
+        ids = body.get("ids") if isinstance(body, dict) else None
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            raise HTTPException(422, "ids is a list of item ids")
+        opened, missing = [], []
+        for item_id in ids:
+            got = repo.get_label_item(item_id)
+            if got is None or got.state != "pending":
+                continue
+            if store.exists(got.payload["image"]):
+                repo.update_label_item(item_id, state="open")
+                opened.append(item_id)
+            else:
+                missing.append(item_id)
+        return {"opened": opened, "missing_image": missing}
+
+    @app.get("/api/admin/label-items")
+    def admin_label_items(kind: str, state: str, after: str | None = None,
+                          limit: int = Query(100, ge=1, le=500),
+                          authorization: str | None = Header(default=None)):
+        """Items in a state, oldest first, each with its answers. Page on with
+        `after`, the `after` of the last page."""
+        require_admin(authorization)
+        if kind not in LABEL_KINDS or state not in LABEL_STATES:
+            raise HTTPException(422, "kind is box or release; state is "
+                                + ", ".join(LABEL_STATES))
+        since = None
+        if after:
+            try:
+                since = datetime.fromisoformat(after)
+            except ValueError:
+                raise HTTPException(422, "after is an ISO time") from None
+            if since.tzinfo is None:
+                since = since.replace(tzinfo=timezone.utc)
+        items = repo.list_label_items(kind, state, limit, since)
+        return {"items": [{**i.to_dict(), "image_url": label_image_url(i),
+                           "answers": [a.to_dict() for a in repo.label_answers(i.id)]}
+                          for i in items],
+                "after": items[-1].created_at.isoformat() if items else None}
 
     @app.get("/api/admin/team-name-edits")
     def admin_team_name_edits(source_id: str | None = None,
