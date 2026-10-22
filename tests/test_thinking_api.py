@@ -57,6 +57,7 @@ class TestSummarisedOnCompletion:
         assert league["league"] == "Spring League" and league["from"] == "title"
         assert rows["red"]["thinking_s"] == 90.0 and rows["yellow"]["thinking_s"] == 60.0
         assert rows["red"]["ends"] == 1 and league["teams"][0]["colour"] == "red"
+        assert league["fastest"][0]["colour"] == "yellow"
         assert report(world)["pending"] == 0
 
     def test_with_accounts_off_it_is_open_kept_privately_but_asked_about(self, world):

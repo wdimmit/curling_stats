@@ -34,6 +34,10 @@ def ranked(league):
     return [(r["source_id"], r["colour"]) for r in league["teams"]]
 
 
+def ranked_fastest(league):
+    return [(r["source_id"], r["colour"]) for r in league["fastest"]]
+
+
 class TestSummarize:
     def test_it_reads_the_trimmed_game_and_keys_it(self):
         game = {"ends": [{}, {}, {}],
@@ -140,6 +144,20 @@ class TestBuild:
         league = only(tr.build([src(f"g{i}", 100 + i, 100) for i in range(12)], top=20))
         assert league["games"] == 12 and len(league["teams"]) == 20
         assert tr.TOP == 20
+
+    def test_fastest_ranks_the_same_rows_the_other_way(self):
+        league = only(tr.build([src("a", 600, 300, ends=2), src("b", 300, 500, ends=2)]))
+        assert ranked_fastest(league) == [("a", "yellow"), ("b", "red"),
+                                          ("b", "yellow"), ("a", "red")]
+
+    def test_fastest_is_cut_to_top_too(self):
+        league = only(tr.build([src(f"g{i}", 100 + i, 100) for i in range(12)], top=20))
+        assert len(league["fastest"]) == 20
+
+    def test_a_tie_for_fastest_goes_to_the_earlier_game(self):
+        league = only(tr.build([src("old", 300, 0.0, ends=2, days=0),
+                                src("new", 300, 0.0, ends=2, days=7)]))
+        assert ranked_fastest(league)[-2:] == [("old", "red"), ("new", "red")]
 
     def test_a_row_knows_how_many_games_its_video_holds(self):
         a = src("a", 1, 2, video="v", index=0)

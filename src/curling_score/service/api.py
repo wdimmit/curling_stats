@@ -1189,9 +1189,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def api_thinking_report(request: Request,
                             top: int = Query(thinking_report.TOP, ge=1, le=100),
                             authorization: str | None = Header(default=None)):
-        """Per league, the teams with the most thinking per end, one row per
-        team per game, read from the summaries on the sources alone -- never
-        a timeline.
+        """Per league, the teams with the most and the least thinking per
+        end, one row per team per game, read from the summaries on the
+        sources alone -- never a timeline.
 
         With accounts on it is for people signed in: it ranks teams by name,
         slowest first, which a game's own page never does. Any account will

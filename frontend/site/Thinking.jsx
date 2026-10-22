@@ -56,7 +56,7 @@ function TeamCell({ row }) {
 }
 
 function PaceTable({ rows }) {
-  const top = rows[0].per_end_s;
+  const top = Math.max(...rows.map(r => r.per_end_s));
   return (
     <table className="rank">
       <tbody>
@@ -148,6 +148,12 @@ export function Thinking() {
               <PaceTable rows={league.teams} />
               {league.games * 2 > league.teams.length ? (
                 <p className="muted note">The slowest {league.teams.length} of {league.games * 2}:
+                each of the league's {league.games} games has two teams.</p>
+              ) : null}
+              <h2>Fastest teams per end <small>the same measure, quickest first</small></h2>
+              <PaceTable rows={league.fastest} />
+              {league.games * 2 > league.fastest.length ? (
+                <p className="muted note">The fastest {league.fastest.length} of {league.games * 2}:
                 each of the league's {league.games} games has two teams.</p>
               ) : null}
               <p className="muted note">Thinking time runs from when the previous rock comes to rest

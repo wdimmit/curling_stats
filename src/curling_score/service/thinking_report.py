@@ -1,5 +1,5 @@
-"""The thinking-time report: in each league, the teams that took longest to
-decide their shots, per end played.
+"""The thinking-time report: in each league, the teams that took longest --
+and the quickest -- to decide their shots, per end played.
 
 It works from the summary each Source carries, never from a timeline, so the
 page costs one list of sources however many games there are. The summary is
@@ -84,7 +84,8 @@ def _when(row):
 
 def build(sources, top: int = TOP, since=None) -> dict:
     """Group games by league and rank its teams, one row per team per game,
-    by thinking per end.
+    by thinking per end -- the slowest `top` rows as `teams`, and the
+    quickest `top` as `fastest`, both ranked over every game in the league.
 
     A league is also split by format: a doubles end is ten thrown rocks and
     a fours end sixteen, so their per-end times are not the same measure.
@@ -125,8 +126,9 @@ def build(sources, top: int = TOP, since=None) -> dict:
 
     leagues = []
     for g in groups.values():
-        rows = sorted(g["rows"], key=lambda r: (r["per_end_s"], _when(r)), reverse=True)
-        dates = [r["played_at"] for r in rows if r["played_at"]]
+        slowest = sorted(g["rows"], key=lambda r: (r["per_end_s"], _when(r)), reverse=True)
+        fastest = sorted(g["rows"], key=lambda r: (r["per_end_s"], _when(r)))
+        dates = [r["played_at"] for r in slowest if r["played_at"]]
         leagues.append({
             "league": g["league"], "format": g["format"],
             # A playlist title and a stream-title league that read the same
@@ -136,8 +138,9 @@ def build(sources, top: int = TOP, since=None) -> dict:
             "first_played_at": min(dates) if dates else None,
             "last_played_at": max(dates) if dates else None,
             # One team's thinking per end it played, so it reads against the rows.
-            "avg_per_end_s": sum(r["thinking_s"] for r in rows) / sum(max(r["ends"], 1) for r in rows),
-            "teams": rows[:top],
+            "avg_per_end_s": sum(r["thinking_s"] for r in slowest) / sum(max(r["ends"], 1) for r in slowest),
+            "teams": slowest[:top],
+            "fastest": fastest[:top],
         })
     leagues.sort(key=lambda lg: (lg["last_played_at"] or "", lg["league"]), reverse=True)
     return {"leagues": leagues, "pending": len(pending), "top": top}
