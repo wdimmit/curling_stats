@@ -250,8 +250,14 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
     onSubmit(answer, (Date.now() - t0.current) / 1000, sRef.current);
   }, [onSubmit]);
 
+  const pickColour = c => {
+    setColourPref(c);
+    if (sel >= 0) setS(cur => setColour(cur, sel, c));
+  };
+  const shownColour = sel >= 0 && s.boxes[sel] ? s.boxes[sel].color : colour;
+
   const act = useRef({});
-  act.current = { s, sel, colour, busy, paused, broken, canBack, onSkip, finish, item };
+  act.current = { s, sel, colour, busy, paused, broken, canBack, onSkip, finish, item, pickColour };
 
   useEffect(() => {
     const key = e => {
@@ -266,9 +272,7 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
       if (a.busy) return;
       setHint("");
       if (k === "r" || k === "y") {
-        const c = k === "r" ? "red" : "yellow";
-        setColourPref(c);
-        if (a.sel >= 0) setS(cur => setColour(cur, a.sel, c));
+        a.pickColour(k === "r" ? "red" : "yellow");
       } else if (k === "Delete" || k === "Backspace") {
         if (a.sel >= 0) { setS(cur => removeBox(cur, a.sel)); setSel(-1); }
       } else if (k === "k") {
@@ -395,6 +399,15 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
       )}
       <p className="label-msg" role="status" aria-live="polite">{hint}</p>
       <div className="row label-actions">
+        {/* The colour R and Y set: the selected box's while one is selected,
+            otherwise the next box drawn. */}
+        <div className="label-colour" role="group" aria-label="Box colour">
+          {["red", "yellow"].map(c => (
+            <button key={c} className={`label-swatch ${c}`} aria-pressed={shownColour === c}
+                    disabled={busy} onClick={() => pickColour(c)}>
+              {c === "red" ? "Red" : "Yellow"} <kbd>{c === "red" ? "R" : "Y"}</kbd></button>
+          ))}
+        </div>
         <button className="primary" disabled={busy || broken}
                 onClick={() => (canFinish(s) ? finish(boxAnswer(s))
                                              : setHint("Keep (K), fix or delete the dashed box first"))}>

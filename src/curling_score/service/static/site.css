@@ -572,6 +572,12 @@ body[data-page="signin"] main { max-width:520px; }
 .label-tag.red { background:var(--red); }
 .label-tag.yellow { background:var(--yellow); color:#16130c; }
 .label-tag.sel { outline:2px solid #fff; }
+.label-colour { display:inline-flex; gap:0; margin-right:12px; }
+.label-colour .label-swatch { border-radius:0; }
+.label-colour .label-swatch:first-child { border-radius:6px 0 0 6px; }
+.label-colour .label-swatch:last-child { border-radius:0 6px 6px 0; margin-left:-1px; }
+.label-swatch.red[aria-pressed="true"] { background:var(--red); border-color:var(--red); color:#fff; }
+.label-swatch.yellow[aria-pressed="true"] { background:var(--yellow); border-color:var(--yellow); color:#16130c; }
 .label-msg { min-height:1.5em; margin:8px 0 4px; color:var(--warn); font-weight:600; }
 .label-actions button kbd { margin-left:6px; }
 .label-flow kbd, .label-actions kbd { font:600 11px/1 var(--display); padding:2px 5px;
