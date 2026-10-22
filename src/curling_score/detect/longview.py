@@ -744,7 +744,11 @@ def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
     """Frames of one window, cropped to the side view. About 0.25 s a call."""
     got = _decode_window(video, rect, t0, t1, fps)
     if _keeping is not None and len(got[0]):
-        _keeping.offer(rect, got[0], got[1], fps)
+        # The keeper only watches: whatever it does, the read gets its frames.
+        try:
+            _keeping.offer(rect, got[0], got[1], fps)
+        except Exception:
+            log.exception("lane keeper failed on a decode; frames returned unchanged")
     return got
 
 

@@ -147,6 +147,35 @@ def test_decode_offers_frames_only_while_keeping(monkeypatch):
     assert len(seen) == 2
 
 
+def test_decode_still_returns_its_frames_when_the_keeper_raises(monkeypatch, caplog):
+    class Broken:
+        def offer(self, *a):
+            raise RuntimeError("keeper broke")
+
+    got = synthetic(VIEW, t0=1.0, n=3)
+    monkeypatch.setattr(longview, "_decode_now", lambda *a: got)
+    monkeypatch.setattr(longview, "_lead", lambda video, t0: 0.0)
+    with longview.keeping(Broken()):
+        assert longview.decode("v.mp4", VIEW.rect, 1.0, 1.1) is got
+    assert "keeper broke" in caplog.text
+
+
+def test_decode_feeds_the_keeper_from_the_read_ahead_too(monkeypatch):
+    seen = []
+    k = lanekeep.LaneKeeper(VIEW, windows=[(0, 99)])
+    monkeypatch.setattr(k, "offer", lambda *a: seen.append(a))
+    got = synthetic(VIEW, t0=1.0, n=3)
+
+    class Ahead:
+        def take(self, key):
+            return got
+
+    monkeypatch.setattr(longview, "_reading", Ahead())
+    with longview.keeping(k):
+        assert longview.decode("v.mp4", VIEW.rect, 1.0, 1.1) is got
+    assert len(seen) == 1 and seen[0][1] is got[0]
+
+
 def test_decode_offers_nothing_for_an_empty_window(monkeypatch):
     k = lanekeep.LaneKeeper(VIEW, windows=[(0, 99)])
     seen = []
