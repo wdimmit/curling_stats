@@ -263,7 +263,10 @@ def export_releases(items: list[dict], out: Path, opener) -> tuple[int, int, lis
     (rel / "agreed.json").write_text(json.dumps(
         {"batch": batch, "fps": FPS, "definition": DEFINITION, "rocks": rocks}, indent=1))
     (session / "index.json").write_text(json.dumps(index, indent=1))
-    (session / "marks.json").write_text("{}")
+    # The session is worked in place by mark_release.py, which saves each mark
+    # here; a re-export must add to the session, never empty it.
+    if not (session / "marks.json").exists():
+        (session / "marks.json").write_text("{}")
     (session / "disputed.json").write_text(json.dumps(disputed, indent=1))
     return len(rocks), len(disputed), skipped
 

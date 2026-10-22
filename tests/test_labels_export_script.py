@@ -352,3 +352,23 @@ def test_an_unreadable_image_skips_that_item_and_says_so(tmp_path, monkeypatch, 
     assert code == 1
     assert "b_bad" in capsys.readouterr().err
     assert [r["id"] for r in jsonl(tmp_path / "o" / "boxes" / "agreed" / "agreed.jsonl")] == ["b_ok"]
+
+
+def test_a_second_export_keeps_the_marks_and_edits_saved_in_the_dispute_folders(
+        tmp_path, monkeypatch):
+    """mark_release.py and the box editor save their work beside what the export
+    wrote; running the export again must not empty marks.json or touch edits/."""
+    api = FakeApi([])
+    release_item(api, "r_far", [("u1", rel_ans("off", 2)), ("u2", rel_ans("off", 9))])
+    box_item(api, "b_two", [("u1", box_ans(box(10, 10, 30, 40, "red"))),
+                            ("u2", box_ans(box(10, 10, 30, 40, "yellow")))])
+    code, out = run(api, tmp_path, monkeypatch)
+    marks = out / "releases" / "disputed" / "marks.json"
+    marks.write_text(json.dumps({"r_far": {"mark": "off", "frame": 5}}))
+    edits = out / "boxes" / "disputed" / "edits"
+    edits.mkdir()
+    (edits / "member-labels-20261105-101500.json").write_text('{"boxes": {}}')
+    code, out2 = run(api, tmp_path, monkeypatch)
+    assert out2 == out and code == 0
+    assert json.loads(marks.read_text()) == {"r_far": {"mark": "off", "frame": 5}}
+    assert (edits / "member-labels-20261105-101500.json").read_text() == '{"boxes": {}}'
