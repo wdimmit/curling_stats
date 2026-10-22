@@ -116,6 +116,25 @@ def test_a_switch_on_the_first_frames_or_never_is_no_release():
     assert releasetime.release_at(np.zeros(43), o, DELIVERY) is None
 
 
+def test_a_read_with_a_non_finite_chance_is_no_release():
+    # An fp16 overflow gives NaN, and argmin would pick a step from it.
+    o = np.linspace(0.2, 3.0, 43)
+    for bad in (np.nan, np.inf):
+        p = np.r_[np.zeros(20), np.ones(23)]
+        p[30] = bad
+        assert releasetime.release_at(p, o, DELIVERY) is None
+
+
+def test_the_non_finite_rule_is_its_own(monkeypatch):
+    # A NaN makes every step's cost NaN, argmin falls on frame 0, and the
+    # first-frames rule happens to refuse that. It is not what refuses it.
+    monkeypatch.setattr(releasetime, "FIRST_UNSEEN", 0)
+    o = np.linspace(0.2, 3.0, 43)
+    p = np.r_[np.zeros(20), np.ones(23)]
+    p[30] = np.nan
+    assert releasetime.release_at(p, o, DELIVERY) is None
+
+
 def test_release_is_the_rocks_point_on_the_path():
     o = np.linspace(0.2, 3.0, 43)
     t, y, x = releasetime.release_at(np.r_[np.zeros(20), np.ones(23)], o, DELIVERY)
@@ -206,6 +225,25 @@ def test_a_failing_read_leaves_no_release_and_the_rest(caplog):
     assert n == 1 and len(calls) == 2
     assert first.line.release is None and second.line.release is not None
     assert "GPU fell over" in caplog.text
+
+
+def test_a_failure_on_every_rock_gives_one_traceback(caplog):
+    # A GPU lost mid-run fails every rock the same way: one traceback says
+    # why, and the rest say which rocks it cost, one line each.
+    def lost(model, stacks):
+        raise RuntimeError("CUDA error: device lost")
+
+    shots = [rock(n) for n in (1, 2, 3)]
+    with caplog.at_level(logging.WARNING, logger=releasetime.log.name):
+        n = releasetime.time_releases(shots, Keeper(), VIEW, model=object(), infer=lost)
+    assert n == 0
+    records = [r for r in caplog.records if r.name == releasetime.log.name]
+    assert [r.levelno for r in records] == [logging.ERROR, logging.WARNING, logging.WARNING]
+    assert records[0].exc_info is not None
+    assert all(r.exc_info is None for r in records[1:])
+    assert [r.getMessage() for r in records[1:]] == [
+        "release read failed on shot 2 too: CUDA error: device lost",
+        "release read failed on shot 3 too: CUDA error: device lost"]
 
 
 def test_rocks_without_a_path_or_release_are_skipped():

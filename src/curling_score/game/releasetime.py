@@ -138,7 +138,10 @@ def step_fit(p) -> int:
 def release_at(p, o, delivery) -> tuple[float, float, float] | None:
     """``(t, y, x)`` of the release: the rock's point on the path at the
     frame ``step_fit`` picks. None when the step is on one of the first
-    ``FIRST_UNSEEN`` frames or never comes."""
+    ``FIRST_UNSEEN`` frames or never comes, and when any chance is not finite:
+    a half-precision overflow gives NaN, and argmin would pick a step from it."""
+    if not np.isfinite(p).all():
+        return None
     k = step_fit(p)
     if k < FIRST_UNSEEN or k >= len(p):
         return None
@@ -215,7 +218,9 @@ def time_releases(shots, keeper, view, *, model=None, infer=None) -> int:
     `releasemodel.p_off`. A no-op without a model, a keeper, or a laterally
     calibrated view; a rock with no delivery path or release time is passed
     over. A failure on one rock is logged and costs that rock its release,
-    not the end its analysis.
+    not the end its analysis. Only the first failure is logged with its
+    traceback: a GPU lost mid-run fails every rock the same way, and sixteen
+    tracebacks an end would bury the one that says why.
     """
     if model is None or keeper is None or view is None or not view.has_lateral:
         return 0
@@ -223,6 +228,7 @@ def time_releases(shots, keeper, view, *, model=None, infer=None) -> int:
         from curling_score.detect import releasemodel
         infer = releasemodel.p_off
     n = 0
+    failed = False
     for shot in shots:
         line = getattr(shot, "line", None)
         release = getattr(shot, "release", None)
@@ -230,9 +236,14 @@ def time_releases(shots, keeper, view, *, model=None, infer=None) -> int:
             continue
         try:
             got = _read_one(keeper, view, line.delivery, release.t, model, infer)
-        except Exception:  # noqa: BLE001 - attach-only: the rock keeps its line
-            log.exception("release read failed on shot %s; its line keeps none",
-                          getattr(shot, "number", "?"))
+        except Exception as exc:  # noqa: BLE001 - attach-only: the rock keeps its line
+            number = getattr(shot, "number", "?")
+            if failed:
+                log.warning("release read failed on shot %s too: %s", number, exc)
+            else:
+                log.exception("release read failed on shot %s; its line keeps none",
+                              number)
+            failed = True
             continue
         if got is not None:
             shot.line = dataclasses.replace(line, release=got)
