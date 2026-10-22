@@ -19,15 +19,24 @@ the person's alone.
 Marks are written as they are made (``marks.json``, keyed by rock id), so it
 can be closed and reopened. A mark is the frame's time from the release
 (``t_release_s``), or "held" when the hand is still on at the last frame, or
-null for can't tell.
+null for can't tell. Each save keeps the file it replaces as
+``marks.json.bak``, and only the page's own JSON, from its own origin, is
+taken -- see `make_server`.
 """
 
 import argparse
 import json
+import math
+import os
+import shutil
+import tempfile
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 FPS = 30.0
+# marks.json for a few hundred rocks is a few kB; a megabyte is no save.
+MAX_SAVE_BYTES = 1 << 20
 TEE_Y = 34.747
 # hogtime.CAMERA_FOR[OTHER_HOUSE[house]]: the long camera at the far end, facing the thrower.
 CAMERA = {"top": "right", "bottom": "left"}
@@ -175,7 +184,9 @@ function step(n){fi=Math.max(0,Math.min(D[di].frames.length-1,fi+n));show();}
 function go(n){di=Math.max(0,Math.min(D.length-1,di+n));open_();}
 async function save(v){
   marks[D[di].id]=v;
-  await fetch('save',{method:'POST',body:JSON.stringify(marks)});
+  const r=await fetch('save',{method:'POST',headers:{'Content-Type':'application/json'},
+                              body:JSON.stringify(marks)});
+  if(!r.ok){alert('Not saved: '+r.status+' '+r.statusText);return;}
   if(di<D.length-1) go(1); else show();
 }
 const mark=()=>save(D[di].frames[fi].o);
@@ -190,7 +201,36 @@ load();
 </script>"""
 
 
-def serve(root: Path, host: str, port: int):
+def _is_mark(v) -> bool:
+    """A frame's time from the release, "held", or null for can't tell."""
+    if v is None or v == "held":
+        return True
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _write_marks(root: Path, marks: dict) -> None:
+    """``marks.json`` replaced whole, never left half written, with the file
+    it replaces kept as ``marks.json.bak``: the page posts every mark it holds,
+    so a tab opened before the last save would otherwise undo it unrecoverably."""
+    path = root / "marks.json"
+    fd, tmp = tempfile.mkstemp(dir=root, prefix=".marks.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(marks, fh, indent=1)
+            fh.flush()
+            os.fsync(fh.fileno())
+        if path.exists():
+            shutil.copyfile(path, root / "marks.json.bak")
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def make_server(root: Path, host: str, port: int) -> ThreadingHTTPServer:
+    """The marking page's server, not yet serving; ``port`` 0 picks a free one."""
+    saving = threading.Lock()   # a backup is of the file its own save replaces
+
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -214,15 +254,51 @@ def serve(root: Path, host: str, port: int):
             self.wfile.write(body)
 
         def do_POST(self):
-            n = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(n)
-            json.loads(body)
-            (root / "marks.json").write_bytes(body)
+            # Served on a port anyone on the network can reach, to a browser
+            # with other sites open: a page elsewhere can POST text/plain here
+            # without the browser asking first, so only this page's own JSON,
+            # from this page's own origin, is taken.
+            if self.path != "/save":
+                self.send_error(404)
+                return
+            origin = self.headers.get("Origin")
+            if origin is not None and origin != f"http://{self.headers.get('Host')}":
+                self.send_error(403, "not from this page")
+                return
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                self.send_error(415, "a save is application/json")
+                return
+            try:
+                n = int(self.headers.get("Content-Length", ""))
+            except ValueError:
+                self.send_error(411)
+                return
+            if n > MAX_SAVE_BYTES:
+                self.send_error(413, f"a save is at most {MAX_SAVE_BYTES} bytes")
+                return
+            try:
+                marks = json.loads(self.rfile.read(max(n, 0)))
+                ids = {d["id"] for d in json.loads((root / "index.json").read_text())}
+            except (ValueError, OSError, KeyError, TypeError):
+                self.send_error(400, "not marks")
+                return
+            if not (isinstance(marks, dict) and set(marks) <= ids
+                    and all(_is_mark(v) for v in marks.values())):
+                self.send_error(400, "not marks: rock ids to a time, \"held\" or null")
+                return
+            with saving:
+                _write_marks(root, marks)
             self.send_response(204)
             self.end_headers()
 
-    print(f"\n  open  http://{host}:{port}/   ({root})\n", flush=True)
-    ThreadingHTTPServer((host, port), H).serve_forever()
+    return ThreadingHTTPServer((host, port), H)
+
+
+def serve(root: Path, host: str, port: int):
+    srv = make_server(root, host, port)
+    print(f"\n  open  http://{host}:{srv.server_address[1]}/   ({root})\n", flush=True)
+    srv.serve_forever()
 
 
 def main():
