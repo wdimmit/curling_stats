@@ -15,7 +15,8 @@ Under --out:
 
   boxes/agreed/         images/<id>.jpg, labels/<id>.txt (YOLO, 0 red 1 yellow,
                         normalised to the crop) and agreed.jsonl: id, origin,
-                        boxes in crop pixels, boxes_frame in whole-frame pixels.
+                        boxes in crop pixels, boxes_frame in whole-frame pixels,
+                        members.
   boxes/disputed/       index.html, the box editor (train/boxedit) with the first
                         member's boxes to fix and the second's drawn dashed;
                         disputed.jsonl says why. Items nobody could answer
@@ -25,6 +26,10 @@ Under --out:
   releases/disputed/    a `mark_release.py --prepared` session: the sprites cut
                         back into frames, index.json, marks.json "{}", and
                         disputed.json with why and both members' marks.
+  Every agreed and disputed row, of both kinds, carries `members`: who
+  labelled it, as [{"uid", "seconds"}] (a release row's also has the member's
+  mark and frame), earliest first, so a bad habit can be traced to a person.
+
   members.json          per account: email, how many of each kind, median seconds
                         per answer, and checks {n, agree} against the items whose
                         answer we already knew.
@@ -122,6 +127,11 @@ def _yolo(boxes: list[dict], w: float, h: float) -> str:
                    for c, *rest in _norm(boxes, w, h))
 
 
+def _members(answers: list[dict]) -> list[dict]:
+    """Who labelled an item and how long each took."""
+    return [{"uid": a["uid"], "seconds": a["seconds"]} for a in answers]
+
+
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
 
@@ -164,13 +174,15 @@ def export_boxes(items: list[dict], out: Path, opener) -> tuple[int, int, list[s
             (agreed_dir / "labels" / f"{item['id']}.txt").write_text(
                 _yolo(verdict["boxes"], w, h))
             cx, cy = (origin.get("crop") or [0, 0])[:2]
-            agreed.append({"id": item["id"], "origin": origin, "boxes": verdict["boxes"],
+            agreed.append({"id": item["id"], "origin": origin, "members": _members(answers),
+                           "boxes": verdict["boxes"],
                            "boxes_frame": [{**b, "x0": b["x0"] + cx, "x1": b["x1"] + cx,
                                             "y0": b["y0"] + cy, "y1": b["y1"] + cy}
                                            for b in verdict["boxes"]]})
             continue
         (disputed_dir / "images" / f"{item['id']}.jpg").write_bytes(image)
         disputed.append({"id": item["id"], "why": why, "origin": origin,
+                         "members": _members(answers),
                          "answers": [{"uid": a["uid"], "answer": a["answer"]} for a in answers]})
         mine, theirs = (answers + [None, None])[:2] if why != "skipped" else (None, None)
         editor.append({"stem": item["id"], "image": f"images/{item['id']}.jpg",
@@ -185,15 +197,16 @@ def export_boxes(items: list[dict], out: Path, opener) -> tuple[int, int, list[s
 
 
 def _member_marks(answers: list[dict]) -> list[dict]:
-    return [{"uid": a["uid"], "mark": a["answer"]["mark"], "frame": a["answer"]["frame"]}
-            for a in answers]
+    return [{"uid": a["uid"], "seconds": a["seconds"], "mark": a["answer"]["mark"],
+             "frame": a["answer"]["frame"]} for a in answers]
 
 
 def _rock_row(item: dict, verdict: dict, answers: list[dict]) -> dict:
-    payload = item["payload"]
-    frames = payload["frames"]
+    origin = item["payload"].get("origin") or {}
+    frames = origin["frames"]
     f = verdict["frame"]
-    return {"id": item["id"], **(payload.get("origin") or {}), "chosen": "member",
+    return {"id": item["id"], **{k: v for k, v in origin.items() if k != "frames"},
+            "chosen": "member",
             "mark": verdict["mark"], "frame": f,
             "o": frames[f]["o"] if f is not None else None,
             "yp": frames[f]["yp"] if f is not None else None,
@@ -203,7 +216,8 @@ def _rock_row(item: dict, verdict: dict, answers: list[dict]) -> dict:
 
 def _cut_frames(sprite: bytes, payload: dict, stem: str, dest: Path) -> list[dict]:
     """The sprite's frames written as <stem>_<i:03d>.jpg, row-major as
-    label_releases.make_sprite laid them out, as {"file","o","yp"}."""
+    label_releases.make_sprite laid them out, as {"file","o","yp"}. The
+    readings come from the item's origin, where the publisher keeps them."""
     import cv2
     import numpy as np
     img = cv2.imdecode(np.frombuffer(sprite, np.uint8), cv2.IMREAD_COLOR)
@@ -211,7 +225,7 @@ def _cut_frames(sprite: bytes, payload: dict, stem: str, dest: Path) -> list[dic
         raise ValueError("the sprite could not be read")
     cols, fw, fh = payload["cols"], payload["fw"], payload["fh"]
     out = []
-    for i, f in enumerate(payload["frames"][:payload["n"]]):
+    for i, f in enumerate(payload["origin"]["frames"][:payload["n"]]):
         r, c = divmod(i, cols)
         tile = img[r * fh:(r + 1) * fh, c * fw:(c + 1) * fw]
         if tile.shape[:2] != (fh, fw):

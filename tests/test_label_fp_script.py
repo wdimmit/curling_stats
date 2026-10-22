@@ -101,22 +101,29 @@ def test_item_for_carries_origin_and_the_crop():
                    check="long.width", models={"rocks": "ds13e"}, pipeline="2026.10.22.1")
     crop = fp.crop_for(row)
     item = fp.item_for(row, crop, [], "fp-2026-10-22")
-    assert item["id"] == "b_vid1_long_000010_00_x" and item["kind"] == "box"
+    assert item["id"] == fp.item_id(row["stem"]) and item["kind"] == "box"
     assert item["batch"] == "fp-2026-10-22"
     p = item["payload"]
     assert (p["w"], p["h"]) == (720, 360) and p["starts"] == []
     assert p["origin"]["crop"] == list(crop)
     assert p["origin"]["video_id"] == "vid1" and p["origin"]["models"] == {"rocks": "ds13e"}
+    assert p["origin"]["stem"] == row["stem"] and p["origin"]["check"] == "long.width"
     assert "reference" not in item
 
 
-def test_an_id_the_server_would_refuse_is_mapped_the_same_way_each_time():
+def test_ids_are_opaque_stable_and_never_say_what_an_item_is():
     import re
-    ok = re.compile(r"^[A-Za-z0-9_.-]{1,120}$")
-    assert fp.item_id("abc_1-2.3") == "b_abc_1-2.3"
+    stem = "vid1_long_000010_00_x"
+    got = fp.item_id(stem)
+    assert re.fullmatch(r"b_[0-9a-f]{16}", got) and got == fp.item_id(stem)
+    assert got != fp.item_id(stem + "y")
+    # a check frame has the same shape: its id doesn't say it is one
+    chk = fp.item_id(stem, check=True)
+    assert re.fullmatch(r"b_[0-9a-f]{16}", chk) and chk != got
+    # whatever the stem holds (spaces, slashes, length) the id is fine for the server
     odd = fp.item_id("a b/é" + "x" * 200)
-    assert ok.match(odd) and odd == fp.item_id("a b/é" + "x" * 200)
-    assert odd != fp.item_id("a b/é" + "x" * 201)
+    assert re.fullmatch(r"b_[0-9a-f]{16}", odd)
+    assert "vid1" not in got and "long" not in got
 
 
 # --- the client -------------------------------------------------------------
@@ -214,9 +221,9 @@ def test_dry_run_writes_a_crop_and_an_item_per_row_and_sends_nothing(tmp_path, m
                         lambda *a, **k: pytest.fail("published in a dry run"))
     out = tmp_path / "out"
     assert fp.main(["publish", "--caches", str(cache), "--dry-run", "--out", str(out)]) == 0
-    assert sorted(p.name for p in out.iterdir()) == [
-        "b_s0.jpg", "b_s0.json", "b_s1.jpg", "b_s1.json"]
-    item = json.loads((out / "b_s0.json").read_text())
+    assert sorted(p.name for p in out.iterdir()) == sorted(
+        f"{fp.item_id(f's{i}')}.{ext}" for i in range(2) for ext in ("jpg", "json"))
+    item = json.loads((out / f"{fp.item_id('s0')}.json").read_text())
     assert item["payload"]["w"] == 720 and item["payload"]["starts"][0]["flagged"] is True
     assert item["payload"]["origin"]["crop"] == [560, 330, 720, 360]
 
@@ -234,7 +241,7 @@ def test_check_frames_carry_the_known_boxes_and_flag_the_most_confident_prebox(t
             if camera == "side" and detect.first else []
     detect.first = True
     (item, jpg), = [x for x in fp.check_items(tmp_path, "side", detect, "chk") if
-                    x[0]["id"] == "bc_k1"]
+                    x[0]["id"] == fp.item_id("k1", check=True)]
     assert item["reference"] == {"boxes": known}
     flagged = [s for s in item["payload"]["starts"] if s["flagged"]]
     assert len(item["payload"]["starts"]) == 2 and flagged[0]["color"] == "yellow"
@@ -279,7 +286,7 @@ def test_a_row_whose_crop_is_outside_the_image_is_skipped(tmp_path, monkeypatch)
     monkeypatch.setattr(fp, "load_detectors", lambda: (lambda img, camera: [], {}))
     out = tmp_path / "out"
     assert fp.main(["publish", "--caches", str(cache), "--dry-run", "--out", str(out)]) == 0
-    assert [p.name for p in out.glob("*.json")] == ["b_g.json"]
+    assert [p.name for p in out.glob("*.json")] == [f"{fp.item_id('g')}.json"]
 
 
 def test_a_check_box_without_a_colour_is_skipped_with_a_message(tmp_path, capsys):
@@ -292,7 +299,7 @@ def test_a_check_box_without_a_colour_is_skipped_with_a_message(tmp_path, capsys
         {"ok": good, "nocolour": [{"x0": 1, "y0": 2, "x1": 31, "y1": 22}], "noimage": good}))
     skips = []
     got = list(fp.check_items(tmp_path, "side", lambda img, camera: [], "chk", None, skips))
-    assert [i["id"] for i, _ in got] == ["bc_ok"]
+    assert [i["id"] for i, _ in got] == [fp.item_id("ok", check=True)]
     assert sorted(skips) == ["nocolour", "noimage"]
     err = capsys.readouterr().err
     assert "check nocolour: skipped" in err and "colour" in err
@@ -304,3 +311,91 @@ def test_unreadable_boxes_json_stops_the_run_with_a_message(tmp_path, monkeypatc
     assert fp.main(["publish", "--checks", str(tmp_path), "--dry-run",
                     "--out", str(tmp_path / "o")]) == 1
     assert "cannot read the check frames" in capsys.readouterr().err
+
+
+# --- before any work is done -------------------------------------------------
+
+BOTH = {"overhead": "ds13e", "side": "ds13e-long"}
+
+
+def _one_pile(tmp_path):
+    cache = tmp_path / "cache"
+    _write_pile(cache, [dict(side_row((900, 500, 940, 520), rect=(0, 0, 1920, 1080)),
+                             stem="s0", video_id="vid1", saved_at="2026-10-22T00:00:00+00:00")])
+    return cache
+
+
+def test_a_refused_admin_token_ends_the_run_before_the_detectors_load(tmp_path, monkeypatch,
+                                                                      capsys):
+    cache = _one_pile(tmp_path)
+    monkeypatch.setenv("ADMIN_TOKEN", "tok")
+    monkeypatch.setattr(fp.label_publish, "preflight",
+                        lambda base, token: "the admin token was refused (401 nope)")
+    monkeypatch.setattr(fp, "load_detectors", lambda: pytest.fail("loaded the detectors"))
+    assert fp.main(["publish", "--caches", str(cache)]) == 1
+    assert "admin token was refused" in capsys.readouterr().err
+
+
+def test_preflight_reads_one_admin_item_and_says_why_it_failed():
+    import urllib.error
+    seen = []
+
+    class Ok(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+    def opener(req, timeout):
+        seen.append((req.get_method(), req.full_url, req.get_header("Authorization")))
+        return Ok(b'{"items": []}')
+    assert pub.preflight("https://site/", "tok", opener) is None
+    assert seen == [("GET", "https://site/api/admin/label-items?kind=box&state=open&limit=1",
+                     "Bearer tok")]
+
+    def refused(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, io.BytesIO(b"{}"))
+    assert "refused" in pub.preflight("https://site", "bad", refused)
+
+    def down(req, timeout):
+        raise urllib.error.URLError("no route")
+    assert "cannot reach https://site" in pub.preflight("https://site", "tok", down)
+
+
+def test_a_camera_without_weights_refuses_a_real_run_unless_no_prebox(tmp_path, monkeypatch,
+                                                                      capsys):
+    cache = _one_pile(tmp_path)
+    monkeypatch.setenv("ADMIN_TOKEN", "tok")
+    monkeypatch.setattr(fp.label_publish, "preflight", lambda base, token: None)
+    monkeypatch.setattr(fp, "load_detectors", lambda: (lambda img, camera: [], {"overhead": "ds13e"}))
+    sent = []
+    monkeypatch.setattr(fp.label_publish, "publish",
+                        lambda base, token, items, images, **k: sent.append(items) or
+                        {"opened": [], "skipped": [], "missing_image": []})
+    assert fp.main(["publish", "--caches", str(cache)]) == 1
+    err = capsys.readouterr().err
+    assert "WARNING: no weights for the side camera" in err and "refusing to publish" in err
+    assert not sent
+    assert fp.main(["publish", "--caches", str(cache), "--no-prebox"]) == 0
+    assert "WARNING: no weights for the side camera" in capsys.readouterr().err
+    assert len(sent) == 1
+
+
+def test_a_camera_without_weights_only_warns_on_a_dry_run(tmp_path, monkeypatch, capsys):
+    cache = _one_pile(tmp_path)
+    monkeypatch.setattr(fp, "load_detectors", lambda: (lambda img, camera: [], {}))
+    assert fp.main(["publish", "--caches", str(cache), "--dry-run",
+                    "--out", str(tmp_path / "o")]) == 0
+    assert "WARNING: no weights for the overhead and side camera" in capsys.readouterr().err
+
+
+def test_with_both_weights_there_is_no_warning(tmp_path, monkeypatch, capsys):
+    cache = _one_pile(tmp_path)
+    monkeypatch.setenv("ADMIN_TOKEN", "tok")
+    monkeypatch.setattr(fp.label_publish, "preflight", lambda base, token: None)
+    monkeypatch.setattr(fp, "load_detectors", lambda: (lambda img, camera: [], BOTH))
+    monkeypatch.setattr(fp.label_publish, "publish",
+                        lambda *a, **k: {"opened": [], "skipped": [], "missing_image": []})
+    assert fp.main(["publish", "--caches", str(cache)]) == 0
+    assert "WARNING" not in capsys.readouterr().err

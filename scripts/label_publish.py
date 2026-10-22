@@ -13,14 +13,28 @@ has arrived.
 
 The signed URL is the bucket's, not ours: the admin token goes to the API and
 nowhere else.
+
+Item ids are opaque: ``opaque_id`` hashes what an item is made from, so
+nothing a member can see (the id shows in the page's requests) says which
+video, game or check it came from. The same key is the same id on every run.
 """
 
+import hashlib
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # Items per create call; the API refuses more than this.
 PAGE = 500
+# Mixed into every id's hash. A constant, so a rerun gives the ids it gave
+# before; changing it would republish everything under new ids.
+ID_SALT = "curling-member-labelling-1"
+
+
+def opaque_id(prefix: str, key: str) -> str:
+    """``prefix`` and 16 hex digits of the salted hash of ``key``."""
+    return prefix + hashlib.sha1((ID_SALT + key).encode()).hexdigest()[:16]
 
 
 def why(err: Exception) -> str:
@@ -32,6 +46,28 @@ def why(err: Exception) -> str:
             detail = None
         return f"{err.code} {detail or err.reason}"
     return str(getattr(err, "reason", err))
+
+
+def preflight(base: str, token: str, opener=urllib.request.urlopen) -> str | None:
+    """None when the admin token works, else a line saying why not.
+
+    One cheap admin read, made before any frame is cut or model loaded, so a
+    wrong token or an unreachable site ends the run at once rather than after
+    hours of work.
+    """
+    q = urllib.parse.urlencode({"kind": "box", "state": "open", "limit": 1})
+    req = urllib.request.Request(base.rstrip("/") + "/api/admin/label-items?" + q,
+                                 headers={"Authorization": f"Bearer {token}"})
+    try:
+        with opener(req, timeout=30) as r:
+            r.read()
+    except urllib.error.HTTPError as err:
+        if err.code in (401, 403):
+            return f"the admin token was refused ({why(err)}); check ADMIN_TOKEN"
+        return f"the site's admin API answered {why(err)}"
+    except OSError as err:
+        return f"cannot reach {base}: {why(err)}"
+    return None
 
 
 def _post(base, token, path, body, opener):

@@ -100,25 +100,49 @@ META = {"cols": 10, "fw": 560, "fh": 350, "n": 3}
 
 
 def test_item_is_a_release_payload_with_its_origin():
-    item = rel.item_for(PICK, extracted([0.0, 0.0333, 0.0667]), META, "releases-1")
-    assert item["id"] == "r_vid_e03r07" and item["kind"] == "release"
+    pick = dict(PICK)
+    rel.assign_ids([pick])
+    item = rel.item_for(pick, extracted([0.0, 0.0333, 0.0667]), META, "releases-1")
+    assert item["id"] == pick["id"] and item["kind"] == "release"
     assert item["batch"] == "releases-1" and "reference" not in item
     p = item["payload"]
-    assert (p["cols"], p["fw"], p["fh"], p["n"], p["fps"]) == (10, 560, 350, 3, 30.0)
-    assert p["frames"] == [{"o": 0.0, "yp": 1.0}, {"o": 0.0333, "yp": 2.0}, {"o": 0.0667, "yp": 3.0}]
-    assert p["origin"] == {"source_id": "s_a", "video_id": "vid", "title": "T", "end": 3,
-                           "rock": 7, "color": "red", "position": "lead", "label": "lbl",
-                           "t_release_s": 12.5}
-    assert rel.ID_OK.match(item["id"])
+    assert {k: v for k, v in p.items() if k != "origin"} == {
+        "cols": 10, "fw": 560, "fh": 350, "n": 3, "fps": 30.0}
+    # the model's own readings are the origin's, which members are never sent
+    assert p["origin"] == {
+        "source_id": "s_a", "video_id": "vid", "title": "T", "end": 3, "rock": 7,
+        "color": "red", "position": "lead", "label": "lbl", "t_release_s": 12.5,
+        "frames": [{"o": 0.0, "yp": 1.0}, {"o": 0.0333, "yp": 2.0}, {"o": 0.0667, "yp": 3.0}]}
+
+
+def test_ids_are_opaque_and_stable():
+    import re
+    a, a2 = dict(PICK), dict(PICK)
+    rel.assign_ids([a])
+    rel.assign_ids([a2])
+    assert re.fullmatch(r"r_[0-9a-f]{16}", a["id"]) and a["id"] == a2["id"]
+    for secret in ("vid", "e03", "r07", "s_a"):
+        assert secret not in a["id"][2:]
+    other = dict(PICK, rock=8)
+    rel.assign_ids([other])
+    assert other["id"] != a["id"]
+    # a check of the same rock is a different item, with the same kind of id
+    c = dict(PICK)
+    rel.assign_ids([c], check=True)
+    assert re.fullmatch(r"r_[0-9a-f]{16}", c["id"]) and c["id"] != a["id"]
 
 
 def test_two_sources_of_one_video_get_different_ids():
     a = dict(PICK, source_id="s_a")
     b = dict(PICK, source_id="s_b")
-    rel.assign_ids([a, b, dict(PICK, rock=8, source_id="s_a")])
-    assert a["id"] == "r_vid_e03r07-gs_a" and b["id"] == "r_vid_e03r07-gs_b"
+    lone = dict(PICK, rock=8, source_id="s_a")
+    rel.assign_ids([a, b, lone])
+    assert a["id"] != b["id"] != lone["id"] != a["id"]
+    solo = dict(PICK, source_id="s_a")
+    rel.assign_ids([solo])
+    assert solo["id"] not in (a["id"], b["id"])        # the source is part of the key only when needed
     item = rel.item_for(a, extracted([0.0]), dict(META, n=1), "b")
-    assert item["id"] == "r_vid_e03r07-gs_a"
+    assert item["id"] == a["id"]
 
 
 def test_check_reference_frame_is_the_nearest_o():
@@ -130,10 +154,25 @@ def test_check_reference_frame_is_the_nearest_o():
     assert item["reference"] == {"mark": "held", "frame": None}
 
 
+def test_the_reference_follows_the_marked_moment_when_the_release_time_moved():
+    # marked at release 60.0 + 0.2 s = 60.2 s; the reprocessed timeline releases at 60.1,
+    # so the same moment is 0.1 s into this extraction
+    ex = dict(extracted([-0.1, 0.0, 0.1, 0.2, 0.3]), t_release_s=60.1)
+    got = rel.reference_for({"mark": "off", "o": 0.2, "t_release_s": 60.0}, ex)
+    assert got == {"mark": "off", "frame": 2}
+    # an unchanged release time reads the same frame as the mark's own o
+    same = dict(ex, t_release_s=60.0)
+    assert rel.reference_for({"mark": "off", "o": 0.2, "t_release_s": 60.0}, same) == \
+        {"mark": "off", "frame": 3}
+    # a mark file without the time is taken as it stands
+    assert rel.reference_for({"mark": "off", "o": 0.2}, ex) == {"mark": "off", "frame": 3}
+
+
 def test_checks_are_random_marked_rocks_with_a_cached_video(tmp_path):
     d = tmp_path / "marks"
     d.mkdir()
-    rocks = [{"id": "a-e01r01", "end": 1, "rock": 1, "chosen": "random", "mark": "off", "o": 1.0},
+    rocks = [{"id": "a-e01r01", "end": 1, "rock": 1, "chosen": "random", "mark": "off", "o": 1.0,
+              "t_release_s": 63.8},
              {"id": "a-e01r02", "end": 1, "rock": 2, "chosen": "hard", "mark": "off", "o": 1.0},
              {"id": "a-e01r03", "end": 1, "rock": 3, "chosen": "random", "mark": None, "o": None},
              {"id": "a-e01r04", "end": 1, "rock": 4, "chosen": "random", "mark": "held", "o": None}]
@@ -143,7 +182,8 @@ def test_checks_are_random_marked_rocks_with_a_cached_video(tmp_path):
         {"source_id": "s_b", "video_id": "gone", "title": "T", "rocks": rocks}))
     got = rel.check_rocks(d, {"vid"}, limit=20)
     assert [(c["video_id"], c["rock"]) for c in got] == [("vid", 1), ("vid", 4)]
-    assert got[0]["mark"] == {"mark": "off", "o": 1.0}
+    assert got[0]["mark"] == {"mark": "off", "o": 1.0, "t_release_s": 63.8}
+    assert got[1]["mark"]["t_release_s"] is None
     assert len(rel.check_rocks(d, {"vid"}, limit=1)) == 1
 
 
@@ -173,15 +213,20 @@ def test_a_rock_that_fails_is_skipped_with_its_id_and_the_rest_go(tmp_path, monk
     monkeypatch.setattr(rel.label_publish, "publish",
                         lambda *a, **k: pytest.fail("published in a dry run"))
     out = tmp_path / "out"
+    # a rock was skipped, so the run says so in its exit status
     assert rel.main(["publish", "--picks", str(tmp_path / "picks.json"), "--caches", str(cache),
                      "--dry-run", "--out", str(out), "--scratch", str(tmp_path / "s"),
-                     "--checks", str(tmp_path / "none")]) == 0
+                     "--checks", str(tmp_path / "none")]) == 1
+    want = [dict(PICK, rock=r) for r in (1, 2, 3)]
+    rel.assign_ids(want)
     names = sorted(p.name for p in out.iterdir() if p.is_file())
-    assert names == ["r_vid_e03r01.jpg", "r_vid_e03r01.json", "r_vid_e03r03.jpg",
-                     "r_vid_e03r03.json"]
-    assert "r_vid_e03r02" in capsys.readouterr().err
-    item = json.loads((out / "r_vid_e03r01.json").read_text())
+    assert names == sorted(f"{w['id']}.{ext}" for w in (want[0], want[2])
+                           for ext in ("jpg", "json"))
+    err = capsys.readouterr().err
+    assert want[1]["id"] in err and "video vid e3 r2" in err and "no frames" in err
+    item = json.loads((out / f"{want[0]['id']}.json").read_text())
     assert item["payload"]["n"] == 3 and item["payload"]["fw"] == 8
+    assert "frames" not in item["payload"] and len(item["payload"]["origin"]["frames"]) == 3
 
 
 def test_a_real_run_sends_one_rock_at_a_time_and_survives_a_refused_one(tmp_path, monkeypatch,
@@ -199,10 +244,13 @@ def test_a_real_run_sends_one_rock_at_a_time_and_survives_a_refused_one(tmp_path
             return {"frames": [{"file": "0.jpg", "o": 0.0, "yp": 0.0}], "t_release_s": 1.0}
 
     sent = []
+    want = [dict(PICK, rock=r) for r in (1, 2)]
+    rel.assign_ids(want)
+    refused_id = want[0]["id"]
 
     def publish(base, token, items, images, **kw):
         (item,) = items
-        if item["id"].endswith("r01"):
+        if item["id"] == refused_id:
             raise OSError("refused")
         sent.append((token, item["id"], images[item["id"]][:2]))
         return {"opened": [item["id"]], "skipped": [], "missing_image": []}
@@ -211,10 +259,11 @@ def test_a_real_run_sends_one_rock_at_a_time_and_survives_a_refused_one(tmp_path
     monkeypatch.setattr(rel, "_mark_release", lambda: Fake())
     monkeypatch.setattr(rel, "fetch_timeline", lambda *a, **k: {})
     monkeypatch.setattr(rel.label_publish, "publish", publish)
+    monkeypatch.setattr(rel.label_publish, "preflight", lambda *a, **k: None)
     assert rel.main(["publish", "--picks", str(tmp_path / "picks.json"), "--caches", str(cache),
-                     "--scratch", str(tmp_path / "s")]) == 0
-    assert sent == [("tok", "r_vid_e03r02", b"\xff\xd8")]
-    assert "r_vid_e03r01: skipped" in capsys.readouterr().err
+                     "--scratch", str(tmp_path / "s")]) == 1       # one skipped: non-zero
+    assert sent == [("tok", want[1]["id"], b"\xff\xd8")]
+    assert f"{refused_id} (video vid e3 r1): skipped" in capsys.readouterr().err
     assert not list((tmp_path / "s" / "frames").iterdir())       # scratch is cleaned per rock
 
 
@@ -240,3 +289,67 @@ def test_a_503_from_the_site_is_retried_and_the_reply_is_kept(tmp_path, monkeypa
     assert rel.fetch_games("http://x", "vid", tmp_path) == []
     assert rel.fetch_games("http://x", "vid", tmp_path) == []      # from the cache
     assert len(calls) == 2
+
+
+def _real_run(tmp_path, monkeypatch, n, publish, preflight=lambda *a, **k: None):
+    picks = [dict(PICK, rock=r) for r in range(1, n + 1)]
+    (tmp_path / "picks.json").write_text(json.dumps({"picks": picks}))
+    cache = tmp_path / "c"
+    (cache / "videos").mkdir(parents=True)
+    (cache / "videos" / "vid.mp4").write_bytes(b"")
+
+    class Fake:
+        def extract(self, video, tl, end, rock, dest, tag):
+            from PIL import Image
+            Image.new("RGB", (8, 4)).save(dest / "0.jpg", "JPEG")
+            return {"frames": [{"file": "0.jpg", "o": 0.0, "yp": 0.0}], "t_release_s": 1.0}
+
+    monkeypatch.setenv("ADMIN_TOKEN", "tok")
+    monkeypatch.setattr(rel, "_mark_release", lambda: Fake())
+    monkeypatch.setattr(rel, "fetch_timeline", lambda *a, **k: {})
+    monkeypatch.setattr(rel.label_publish, "publish", publish)
+    monkeypatch.setattr(rel.label_publish, "preflight", preflight)
+    return rel.main(["publish", "--picks", str(tmp_path / "picks.json"), "--caches", str(cache),
+                     "--scratch", str(tmp_path / "s")])
+
+
+def test_a_clean_run_exits_zero(tmp_path, monkeypatch):
+    ok = lambda b, t, items, images, **k: {"opened": [items[0]["id"]], "skipped": [],
+                                           "missing_image": []}
+    assert _real_run(tmp_path, monkeypatch, 3, ok) == 0
+
+
+def test_five_publishes_failing_in_a_row_end_the_run(tmp_path, monkeypatch, capsys):
+    calls = []
+
+    def publish(base, token, items, images, **kw):
+        calls.append(items[0]["id"])
+        raise OSError("site down")
+    assert _real_run(tmp_path, monkeypatch, 9, publish) == 1
+    assert len(calls) == rel.MAX_PUBLISH_FAILURES == 5
+    err = capsys.readouterr().err
+    assert "5 publishes failed in a row" in err and "4 rocks not tried" in err
+
+
+def test_a_success_resets_the_run_of_failures(tmp_path, monkeypatch):
+    calls = []
+
+    def publish(base, token, items, images, **kw):
+        calls.append(1)
+        if len(calls) % 5:            # four failures, then one success, again and again
+            raise OSError("flaky")
+        return {"opened": [items[0]["id"]], "skipped": [], "missing_image": []}
+    assert _real_run(tmp_path, monkeypatch, 10, publish) == 1      # skipped some: non-zero
+    assert len(calls) == 10                                        # but never gave up
+
+
+def test_nothing_published_is_a_failure(tmp_path, monkeypatch):
+    assert _real_run(tmp_path, monkeypatch, 0, lambda *a, **k: pytest.fail("sent")) == 1
+
+
+def test_a_refused_admin_token_ends_the_run_before_any_rock_is_cut(tmp_path, monkeypatch, capsys):
+    got = _real_run(tmp_path, monkeypatch, 2, lambda *a, **k: pytest.fail("sent"),
+                    preflight=lambda *a, **k: "the admin token was refused (401 nope)")
+    assert got == 1
+    assert "admin token was refused" in capsys.readouterr().err
+    assert not (tmp_path / "s").exists()                 # no rock was cut

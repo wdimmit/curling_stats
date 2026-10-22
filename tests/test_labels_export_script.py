@@ -142,10 +142,9 @@ def release_item(api, item_id, answers, state="done", reference=None, n=12, batc
     item = {"id": item_id, "kind": "release", "created_at": _stamp(), "batch": batch,
             "state": state,
             "payload": {"image": f"labelling/release/{item_id}.jpg", **meta, "fps": 30.0,
-                        "frames": frames,
                         "origin": {"source_id": "s_a", "video_id": "vid", "title": "T", "end": 3,
                                    "rock": 7, "color": "red", "position": "lead",
-                                   "label": "lbl", "t_release_s": 12.5}},
+                                   "label": "lbl", "t_release_s": 12.5, "frames": frames}},
             "reference": reference, "image_url": url,
             "answers": [answer(item_id, u, "release", a) for u, a in answers]}
     api.items.append(item)
@@ -179,6 +178,7 @@ def test_agreeing_box_items_become_a_yolo_tree(tmp_path, monkeypatch):
         (20.5 / 100, 25 / 60, 19 / 100, 30 / 60), abs=1e-6)
     (row,) = jsonl(agreed / "agreed.jsonl")
     assert row["id"] == "b_one" and row["origin"]["video_id"] == "vid"
+    assert row["members"] == [{"uid": "u1", "seconds": 5.0}, {"uid": "u2", "seconds": 5.0}]
     assert row["boxes"][0] == {"x0": 11.0, "y0": 10.0, "x1": 30.0, "y1": 40.0, "color": "red"}
     # whole-frame pixels: the crop's corner (10, 20) added
     assert row["boxes_frame"][0] == {"x0": 21.0, "y0": 30.0, "x1": 40.0, "y1": 60.0,
@@ -197,6 +197,7 @@ def test_disputed_boxes_render_with_ghosts(tmp_path, monkeypatch):
     (row,) = jsonl(dis / "disputed.jsonl")
     assert row["id"] == "b_two" and row["why"] == "colour"
     assert [a["uid"] for a in row["answers"]] == ["u1", "u2"]
+    assert row["members"] == [{"uid": "u1", "seconds": 5.0}, {"uid": "u2", "seconds": 5.0}]
     assert row["answers"][1]["answer"]["boxes"][0]["color"] == "yellow"
     page = (dis / "index.html").read_text()
     blob = page.split("const ITEMS = ", 1)[1].split(";\n", 1)[0]
@@ -216,6 +217,7 @@ def test_retired_items_export_as_disputed(tmp_path, monkeypatch):
     code, out = run(api, tmp_path, monkeypatch)
     (row,) = jsonl(out / "boxes" / "disputed" / "disputed.jsonl")
     assert row["id"] == "b_skip" and row["why"] == "skipped" and row["answers"] == []
+    assert row["members"] == []
     blob = (out / "boxes" / "disputed" / "index.html").read_text() \
         .split("const ITEMS = ", 1)[1].split(";\n", 1)[0]
     assert json.loads(blob)[0]["boxes"] == []
@@ -239,8 +241,9 @@ def test_agreeing_releases_land_in_releasemarks_shape(tmp_path, monkeypatch):
     assert a["yp_prev"] == pytest.approx(1.5)
     assert (a["video_id"], a["end"], a["rock"], a["color"], a["t_release_s"]) == \
         ("vid", 3, 7, "red", 12.5)
-    assert a["members"] == [{"uid": "u1", "mark": "off", "frame": 5},
-                            {"uid": "u2", "mark": "off", "frame": 6}]
+    assert a["members"] == [{"uid": "u1", "seconds": 5.0, "mark": "off", "frame": 5},
+                            {"uid": "u2", "seconds": 5.0, "mark": "off", "frame": 6}]
+    assert "frames" not in a                              # the model's readings aren't a row's
     assert (held["mark"], held["frame"], held["o"], held["yp"], held["yp_prev"]) == \
         ("held", None, None, None, None)
     assert not json.loads((out / "releases" / "disputed" / "index.json").read_text())
@@ -269,8 +272,9 @@ def test_disputed_releases_become_a_prepared_mark_session(tmp_path, monkeypatch)
     assert im.getpixel((10, 5))[2] == pytest.approx(110, abs=12)
     d = {x["id"]: x for x in json.loads((sess / "disputed.json").read_text())}
     assert d["r_far"]["why"] == "apart" and d["r_mix"]["why"] == "mixed"
-    assert d["r_far"]["members"] == [{"uid": "u1", "mark": "off", "frame": 2},
-                                     {"uid": "u2", "mark": "off", "frame": 9}]
+    assert d["r_far"]["members"] == [
+        {"uid": "u1", "seconds": 5.0, "mark": "off", "frame": 2},
+        {"uid": "u2", "seconds": 5.0, "mark": "off", "frame": 9}]
 
 
 def test_member_check_scores(tmp_path, monkeypatch):

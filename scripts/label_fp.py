@@ -1,46 +1,51 @@
 #!/usr/bin/env python
 """Publish the harvested false-positive frames as box items for members to label.
 
-    docker run --rm -v /data/wdd/curling-cache:/c1:ro -v /data/wdd/curling-cache-2:/c2:ro \\
-        -e ADMIN_TOKEN -e BASE_URL --entrypoint python curling-worker:local \\
-        scripts/label_fp.py publish --caches /c1 /c2 [--since 2026-10-20] [--batch NAME]
-    ... scripts/label_fp.py publish --caches /c1 /c2 --dry-run --out /out
-    ... scripts/label_fp.py publish --checks DIR [--checks-camera overhead|side]
+    docker run --rm --cpus=2 --cpu-shares=128 \\
+        -v /data/wdd/curling-cache:/c1:ro -v /data/wdd/curling-cache-2:/c2:ro \\
+        -v /data/wdd/scratch/label-fp:/w -e ADMIN_TOKEN -e BASE_URL -e PYTHONPATH=/w/src \\
+        --entrypoint python curling-worker:local /w/scripts/label_fp.py \\
+        publish --caches /c1 /c2 [--since 2026-10-20] [--batch NAME]
+    ... label_fp.py publish --caches /c1 /c2 --dry-run --out /w/out
+    ... label_fp.py publish --checks DIR [--checks-camera overhead|side]
 
-(from /data/wdd/curling_score/ on the worker box, or with the repo mounted and
-PYTHONPATH=src; the image has the weights and ultralytics.) BASE_URL defaults
-to https://curling.dimmit.net and ADMIN_TOKEN is the `curling-admin-token`
-secret, as for scripts/users.py. Nothing needs a GPU: the pre-boxing runs on
-the CPU.
+On the worker box, with this repo's scripts/ and src/ copied to
+/data/wdd/scratch/label-fp (the image has the weights and ultralytics but not
+these scripts). --cpus=2 and a low --cpu-shares keep the run from competing
+with game processing. BASE_URL defaults to https://curling.dimmit.net and
+ADMIN_TOKEN is the `curling-admin-token` secret, as for scripts/users.py; it
+is tried first with one cheap admin read, and a refused token or an
+unreachable site ends the run before any frame is cut. Nothing needs a GPU:
+the pre-boxing runs on the CPU.
 
 Each row `fp_harvest.py list` counts (one pile per video and models) becomes an
-item `b_<stem>`: the frame cropped to what a member needs to see, with the
-current detectors' boxes drawn in as `starts` and the box the pipeline's check
-doubted marked `flagged`. An overhead row's crop is its panel. A side row's is
-a 720x360 window on the flagged box, kept inside the panel; ds13's own band
-crop needs a calibrated view that frames.jsonl does not carry.
+item: the frame cropped to what a member needs to see, with the current
+detectors' boxes drawn in as `starts` and the box the pipeline's check doubted
+marked `flagged`. An overhead row's crop is its panel. A side row's is a
+720x360 window on the flagged box, kept inside the panel; ds13's own band crop
+needs a calibrated view that frames.jsonl does not carry. The boxes come from
+the weights of both cameras; with either missing the run says so and refuses
+to publish unless --no-prebox is given (a --dry-run only warns).
 
 --checks takes a folder of `<stem>.jpg` and a `boxes.json` of
 `{stem: [{"x0","y0","x1","y1","color"}]}`: frames already labelled by hand,
-published whole as `bc_<stem>` with those boxes as the item's `reference`, so
-a member's answer can be held against a known one. Boxes are in the image's
-own pixels, and all the images are of one camera (--checks-camera, side by
-default). The most confident pre-box is the flagged one; with none, a centred
-40x17 box is.
+published whole, with those boxes as the item's `reference`, so a member's
+answer can be held against a known one. Boxes are in the image's own pixels,
+and all the images are of one camera (--checks-camera, side by default). The
+most confident pre-box is the flagged one; with none, a centred 40x17 box is.
 
-An id the server would refuse (outside A-Za-z0-9_.- or past 120 characters) is
-mapped by `item_id`: odd characters become `_`, and a long or changed stem
-gets a hash of the original on the end, so the same stem is the same id on
-every run. Rerunning on the same piles changes nothing already open and gives
-a pending item a fresh upload (the server decides). --dry-run sends nothing
-and needs no token: it writes each crop and item JSON to --out.
+An item's id is `b_` and a hash of its stem (`item_id`; label_publish.opaque_id),
+so it says nothing about the video or whether it is a check, and the same stem
+is the same id on every run; the stem, the check and the video stay in the
+item's origin, which members are never sent. Rerunning on the same piles
+changes nothing already open and gives a pending item a fresh upload (the
+server decides). --dry-run sends nothing and needs no token: it writes each
+crop and item JSON to --out.
 """
 
 import argparse
-import hashlib
 import json
 import os
-import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -63,7 +68,7 @@ JPEG_QUALITY = 90
 OVERHEAD_IMGSZ, SIDE_IMGSZ = 448, 800
 FRAME_W, FRAME_H = 1920, 1080
 FALLBACK_BOX = (40, 17)            # a check frame the models find nothing in
-ID_OK = re.compile(r"^[A-Za-z0-9_.-]{1,120}$")
+CAMERAS = ("overhead", "side")
 ORIGIN_KEYS = ("video_id", "title", "t", "camera", "where", "check", "models", "pipeline", "stem")
 
 
@@ -136,21 +141,19 @@ def _start(box, crop, color, conf, flagged) -> dict:
             "conf": None if conf is None else round(float(conf), 3), "flagged": flagged}
 
 
-def item_id(stem: str, prefix: str = "b_") -> str:
-    """``b_<stem>``, mapped when the server's pattern would refuse it."""
-    plain = prefix + stem
-    if ID_OK.match(plain):
-        return plain
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", plain)[:100]
-    return safe + "-" + hashlib.sha1(stem.encode()).hexdigest()[:10]
+def item_id(stem: str, check: bool = False) -> str:
+    """``b_`` and a hash of the stem: no video, frame or check status shows in
+    it. A check frame's stem is hashed apart from a harvested frame's, so the
+    two can never meet."""
+    return label_publish.opaque_id("b_", ("check:" if check else "") + stem)
 
 
 def item_for(row: dict, crop: tuple, starts: list[dict], batch: str, *,
-             prefix: str = "b_", reference: dict | None = None) -> dict:
+             check: bool = False, reference: dict | None = None) -> dict:
     """The create call's item for one frame; the server sets payload["image"]."""
     origin = {k: row.get(k) for k in ORIGIN_KEYS}
     origin["crop"] = [int(v) for v in crop]
-    item = {"id": item_id(row["stem"], prefix), "kind": "box", "batch": batch,
+    item = {"id": item_id(row["stem"], check), "kind": "box", "batch": batch,
             "payload": {"w": int(crop[2]), "h": int(crop[3]), "starts": starts,
                         "origin": origin}}
     if reference is not None:
@@ -160,12 +163,17 @@ def item_for(row: dict, crop: tuple, starts: list[dict], batch: str, *,
 
 def load_detectors():
     """``(detect, names)``: ``detect(img, camera)`` is the current weights' boxes on
-    a BGR image, in that image's pixels, and ``names`` says which weights."""
+    a BGR image, in that image's pixels, and ``names`` says which weights (a
+    camera with none is missing from it)."""
     from ultralytics import YOLO
 
     from curling_score import weights
 
-    paths = {"overhead": weights.default_path(), "side": weights.side_path()}
+    try:
+        overhead = weights.default_path()
+    except FileNotFoundError:           # no weights anywhere: main says so and refuses
+        overhead = None
+    paths = {"overhead": overhead, "side": weights.side_path()}
     models = {k: YOLO(str(p)) for k, p in paths.items() if p is not None}
 
     def detect(img, camera):
@@ -256,7 +264,7 @@ def _check_item(folder: Path, stem: str, boxes, camera, detect, batch, names):
         flagged = {"x0": (w - fw) / 2, "y0": (h - fh) / 2, "x1": (w + fw) / 2,
                    "y1": (h + fh) / 2, "color": None, "conf": None}
     item = item_for({"stem": stem, "camera": camera}, crop, starts_for(dets, flagged, crop),
-                    batch, prefix="bc_", reference=ref)
+                    batch, check=True, reference=ref)
     if names:
         item["payload"]["origin"]["prebox"] = names
     return item, _jpeg(img)
@@ -293,6 +301,9 @@ def main(argv=None) -> int:
     p.add_argument("--checks", type=Path, metavar="DIR",
                    help="a folder of hand-labelled <stem>.jpg and boxes.json")
     p.add_argument("--checks-camera", choices=("side", "overhead"), default="side")
+    p.add_argument("--no-prebox", action="store_true",
+                   help="publish even though a camera has no weights, so its frames "
+                        "come without pre-drawn boxes")
     p.add_argument("--dry-run", action="store_true",
                    help="send nothing; write each crop and item JSON to --out")
     p.add_argument("--out", type=Path, metavar="DIR")
@@ -311,7 +322,21 @@ def main(argv=None) -> int:
     base = os.environ.get("BASE_URL", "https://curling.dimmit.net").rstrip("/")
     batch = args.batch or f"fp-{date.today().isoformat()}"
 
+    if not args.dry_run:
+        refused = label_publish.preflight(base, token)
+        if refused:
+            print(refused, file=sys.stderr)
+            return 1
+
     detect, names = load_detectors()
+    lacking = [c for c in CAMERAS if c not in names]
+    if lacking:
+        print(f"WARNING: no weights for the {' and '.join(lacking)} camera: its frames "
+              "would have no pre-drawn boxes", file=sys.stderr)
+        if not args.dry_run and not args.no_prebox:
+            print("refusing to publish; find the weights or pass --no-prebox",
+                  file=sys.stderr)
+            return 1
     made, skipped = [], 0
     if args.caches:
         kept, _dupes = fp_harvest.dedupe(fp_harvest.load(args.caches))

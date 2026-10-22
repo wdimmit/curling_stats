@@ -1,12 +1,17 @@
 #!/usr/bin/env python
 """Pick 1,000 cached rocks and publish each as a release item for members to mark.
 
-    docker run --rm -v /data/wdd/curling-cache:/c1:ro -v /data/wdd/curling-cache-2:/c2:ro \\
-        -v /data/wdd/scratch/label-rel:/w -e PYTHONPATH=/w/src --entrypoint python \\
-        curling-worker:local /w/scripts/label_releases.py pick --caches /c1 /c2 \\
-        --n 1000 --seed 20261023 --out /w/picks.json
+    docker run --rm --cpus=2 --cpu-shares=128 \\
+        -v /data/wdd/curling-cache:/c1:ro -v /data/wdd/curling-cache-2:/c2:ro \\
+        -v /data/wdd/scratch/label-rel:/w -e ADMIN_TOKEN -e BASE_URL -e PYTHONPATH=/w/src \\
+        --entrypoint python curling-worker:local /w/scripts/label_releases.py \\
+        pick --caches /c1 /c2 --n 1000 --seed 20261023 --out /w/picks.json
     ... label_releases.py publish --picks /w/picks.json --caches /c1 /c2 \\
         [--batch releases-1] [--checks datasets/releasemarks] [--limit N] [--dry-run --out DIR]
+
+On the worker box, with this repo's scripts/ and src/ copied to
+/data/wdd/scratch/label-rel. --cpus=2 and a low --cpu-shares keep the run from
+competing with game processing.
 
 `pick` lists the videos in the caches (`<cache>/videos/<video_id>.mp4`), asks the
 public site which games each one holds and reads each game's timeline.json for
@@ -19,15 +24,27 @@ is kept under --scratch so a rerun asks for nothing it has.
 
 `publish` cuts each pick with scripts/mark_release.py's `extract` (the crop that
 follows the rock, ~100+ frames at 30 fps), tiles the frames into one JPEG
-sprite and sends it as item `r_<video>_e<end>r<rock>`. One rock at a time:
+sprite and sends it as an item whose id is `r_` and a hash of the video, end
+and rock (label_publish.opaque_id), so it says nothing about the game or
+whether it is a check; those, and the per-frame readings (`o`, `yp`, the
+model's own), stay in the item's origin, which members are never sent. One
+rock at a time:
 the frames go in a scratch folder that is deleted once the rock is uploaded,
 and a rock that cannot be cut or sent is skipped with its id and why while the
 rest carry on. Rerunning leaves open items alone, as for scripts/label_fp.py.
 --checks adds up to --checks-limit (20) of the hand-marked `random` rocks whose
-video is cached as `rc_` items carrying the known mark as their `reference`.
-ADMIN_TOKEN and BASE_URL are as for label_fp.py; --dry-run needs neither, sends
-nothing, and writes each sprite and item JSON to --out. --limit publishes only
-the first N picks (to look at a few before the lot).
+video is cached as items carrying the known mark as their `reference`; the
+mark's frame is found by its time, which is the mark file's `t_release_s` plus
+`o`, so a timeline reprocessed since the marking (a moved release time) still
+lands on the same moment. ADMIN_TOKEN and BASE_URL are as for label_fp.py; the
+token is tried first with one cheap admin read, and a refused token or an
+unreachable site ends the run before any rock is cut. --dry-run needs neither,
+sends nothing, and writes each sprite and item JSON to --out. --limit
+publishes only the first N picks (to look at a few before the lot).
+
+The run exits non-zero if any rock was skipped or none was published, and stops
+after MAX_PUBLISH_FAILURES publishes in a row fail (the site is down, not the
+rock).
 """
 
 import argparse
@@ -62,6 +79,8 @@ ORIGIN_KEYS = ("source_id", "video_id", "title", "end", "rock", "color", "positi
 PROGRESS_EVERY = 25
 CHECKS_LIMIT = 20
 RETRIES = 3
+# Publishes that fail one after another before the run gives up.
+MAX_PUBLISH_FAILURES = 5
 
 
 def _mark_release():
@@ -121,7 +140,7 @@ def marked(folder: Path) -> set[tuple[str, int, int]]:
 def check_rocks(folder: Path, cached: set[str], limit: int = CHECKS_LIMIT) -> list[dict]:
     """Up to ``limit`` hand-marked rocks to check members against: the `random`
     ones marked off or held, whose video is cached. Each is a pick plus the
-    known ``mark`` as {"mark", "o"}."""
+    known ``mark`` as {"mark", "o", "t_release_s"}."""
     out = []
     for f in sorted(Path(folder).glob("s_*.json")):
         d = json.loads(f.read_text())
@@ -135,7 +154,9 @@ def check_rocks(folder: Path, cached: set[str], limit: int = CHECKS_LIMIT) -> li
             out.append({"source_id": d["source_id"], "video_id": d["video_id"],
                         "title": d.get("title"), "end": r["end"], "rock": r["rock"],
                         "color": r.get("color"), "position": r.get("position"),
-                        "label": r.get("label"), "mark": {"mark": r["mark"], "o": r.get("o")}})
+                        "label": r.get("label"),
+                        "mark": {"mark": r["mark"], "o": r.get("o"),
+                                 "t_release_s": r.get("t_release_s")}})
     return out
 
 
@@ -161,37 +182,55 @@ def make_sprite(frame_paths: list[Path], cols: int = SPRITE_COLS) -> tuple[bytes
     return buf.tobytes(), {"cols": cols, "fw": fw, "fh": fh, "n": len(imgs)}
 
 
-def _plain_id(p: dict, prefix: str = "r_") -> str:
-    return f"{prefix}{p['video_id']}_e{p['end']:02d}r{p['rock']:02d}"
+def _key(p: dict, check: bool = False) -> str:
+    return f"{'check:' if check else ''}{p['video_id']}/e{p['end']:02d}/r{p['rock']:02d}"
 
 
-def assign_ids(picks: list[dict], prefix: str = "r_") -> None:
-    """Set each pick's ``id``. Two sources of one video that both hold the same
-    end and rock number get ``-g<source>`` on the end so they stay apart."""
-    seen = Counter(_plain_id(p, prefix) for p in picks)
+def assign_ids(picks: list[dict], check: bool = False) -> None:
+    """Set each pick's ``id``: ``r_`` and a hash of the video, end and rock.
+    Two sources of one video that both hold the same end and rock number have
+    their source folded into the hashed key so they stay apart. A check's key
+    is marked, so a check and a pick of one rock are different items."""
+    seen = Counter(_key(p, check) for p in picks)
     for p in picks:
-        plain = _plain_id(p, prefix)
-        p["id"] = plain if seen[plain] == 1 else f"{plain}-g{p['source_id']}"
+        key = _key(p, check)
+        if seen[key] > 1:
+            key += f"/{p['source_id']}"
+        p["id"] = label_publish.opaque_id("r_", key)
 
 
 def reference_for(mark: dict, extracted: dict):
     """The release reference for a known mark: `held`, or `off` at the frame
-    whose ``o`` is nearest the marked one."""
+    nearest the marked moment.
+
+    ``o`` is seconds from the rock's release time, and the release time of a
+    reprocessed timeline is not the one the mark was made against (the mark
+    file stores its own per rock as ``t_release_s``), so the marked moment is
+    carried over as an absolute time: o_ref = marked t_release + o - this
+    extraction's t_release. A mark without its time is taken as it is.
+    """
     if mark["mark"] == "held":
         return {"mark": "held", "frame": None}
+    o = mark["o"]
+    if mark.get("t_release_s") is not None and extracted.get("t_release_s") is not None:
+        o = mark["t_release_s"] + o - extracted["t_release_s"]
     frames = extracted["frames"]
-    best = min(range(len(frames)), key=lambda i: abs(frames[i]["o"] - mark["o"]))
+    best = min(range(len(frames)), key=lambda i: abs(frames[i]["o"] - o))
     return {"mark": "off", "frame": best}
 
 
 def item_for(pick: dict, extracted: dict, sprite_meta: dict, batch: str, reference=None) -> dict:
-    """The create call's item for one rock; the server sets payload["image"]."""
+    """The create call's item for one rock; the server sets payload["image"].
+
+    The frames' readings (``o`` is where the model put the release) go in the
+    origin with the rest of what members must not see; the export reads them
+    from there."""
     origin = {k: pick.get(k) for k in ORIGIN_KEYS}
     origin["t_release_s"] = extracted.get("t_release_s")
-    item = {"id": pick.get("id") or _plain_id(pick), "kind": "release", "batch": batch,
-            "payload": {**sprite_meta, "fps": FPS,
-                        "frames": [{"o": f["o"], "yp": f["yp"]} for f in extracted["frames"]],
-                        "origin": origin}}
+    origin["frames"] = [{"o": f["o"], "yp": f["yp"]} for f in extracted["frames"]]
+    item = {"id": pick.get("id") or label_publish.opaque_id("r_", _key(pick)),
+            "kind": "release", "batch": batch,
+            "payload": {**sprite_meta, "fps": FPS, "origin": origin}}
     if reference is not None:
         item["reference"] = reference
     return item
@@ -300,6 +339,11 @@ def _publish_cmd(args, base) -> int:
     if not args.dry_run and not token:
         print("set ADMIN_TOKEN (see scripts/users.py)", file=sys.stderr)
         return 2
+    if not args.dry_run:
+        refused = label_publish.preflight(base, token)
+        if refused:
+            print(refused, file=sys.stderr)
+            return 1
     videos = cached_videos(args.caches)
     batch = args.batch or f"releases-{date.today().isoformat()}"
     picks = json.loads(args.picks.read_text())["picks"]
@@ -307,12 +351,13 @@ def _publish_cmd(args, base) -> int:
         picks = picks[:args.limit]
     assign_ids(picks)
     checks = check_rocks(args.checks, set(videos), args.checks_limit) if args.checks else []
-    assign_ids(checks, "rc_")
+    assign_ids(checks, check=True)
     work = [(p, None) for p in picks] + [(c, c["mark"]) for c in checks]
     mr = _mark_release()
     if args.dry_run:
         args.out.mkdir(parents=True, exist_ok=True)
-    done = skipped = missing = 0
+    done = skipped = missing = failing = 0
+    aborted = False
     for n, (p, ref) in enumerate(work, 1):
         try:
             video = videos.get(p["video_id"])
@@ -324,21 +369,33 @@ def _publish_cmd(args, base) -> int:
                 (args.out / f"{item['id']}.jpg").write_bytes(sprite)
                 (args.out / f"{item['id']}.json").write_text(json.dumps(item, indent=1))
             else:
-                got = label_publish.publish(base, token, [item], {item["id"]: sprite})
+                try:
+                    got = label_publish.publish(base, token, [item], {item["id"]: sprite})
+                except OSError:
+                    failing += 1
+                    raise
+                failing = 0
                 missing += len(got["missing_image"])
             done += 1
         except Exception as err:      # one bad rock must not stop the rest
             skipped += 1
             why = label_publish.why(err) if isinstance(err, OSError) else \
                 f"{type(err).__name__}: {err}"
-            print(f"{p['id']}: skipped, {why}", file=sys.stderr)
+            print(f"{p['id']} (video {p['video_id']} e{p['end']} r{p['rock']}): "
+                  f"skipped, {why}", file=sys.stderr)
+        if failing >= MAX_PUBLISH_FAILURES:
+            print(f"{failing} publishes failed in a row; stopping, {len(work) - n} rocks "
+                  "not tried", file=sys.stderr)
+            aborted = True
+            break
         if n % PROGRESS_EVERY == 0:
             print(f"  {n}/{len(work)} rocks, {skipped} skipped", flush=True)
     print(f"{done} items in batch {batch}" + (f", {skipped} skipped" if skipped else "")
           + (f", image missing {missing}" if missing else ""))
     if args.dry_run:
         print(f"dry run: wrote {done} sprites and item files to {args.out}; sent nothing")
-    return 0
+    # Anything skipped, or nothing made, is for the owner to look at.
+    return 1 if skipped or not done or aborted else 0
 
 
 def main(argv=None) -> int:
