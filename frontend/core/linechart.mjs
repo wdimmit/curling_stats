@@ -57,7 +57,7 @@ export function lineChartGeometry(shot, doc, box = LINEBOX) {
     w, h, why: null,
     top: { x: pad.l, y: 0, w: Wt, h: Ht, shapes: stripShapes(stripGeometry(shot, top)) },
     // The aim line carries on into the sheet above, so "to the broom" is not said twice.
-    bottom: { x: 0, y: Ht + G, w, h: Hb, g: { ...g0, aimLabel: null, legend: quietCorner(g0) } },
+    bottom: { x: 0, y: Ht + G, w, h: Hb, g: { ...g0, aimLabel: null, legendAt: quietCorner(g0) } },
     funnel: { xl: r1(xl), xr: r1(xl + g0.win.span * kx), yt: Ht,
               bl: g0.plot.x, br: r1(g0.plot.x + g0.plot.w), yb: Ht + G + g0.plot.y },
     labels: farLabels(top, pad.l),

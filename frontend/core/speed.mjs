@@ -13,7 +13,7 @@
  *
  * Pure -- core/** may not touch the DOM. */
 import { SPEEDBOX, SPEED_GRID_M_S } from "./constants.mjs";
-import { HACK_PAST, HOG_PAST, deliveryPoints, rampColor, rampSpan } from "./delivery.mjs";
+import { HACK_PAST, HOG_PAST, deliveryPoints, deliveryRelease, dotColor } from "./delivery.mjs";
 
 export const SPEED_HALF_S = 0.5;
 const SPEED_MIN_N = 5;          // samples a window needs before it has a slope
@@ -85,7 +85,8 @@ const r1 = v => +(+v).toFixed(1);
 
 /* The speed chart in pixels, along the same axis as the big delivery: grid
  * every SPEED_GRID_M_S, figured every 1 m/s; the hack, tee and hog lines;
- * the line coloured as the delivery's dots; the peak and the hog speed. */
+ * the line coloured as the delivery's dots, and a line where the hand let go;
+ * the peak and the hog speed. */
 export function speedGeometry(speed, box = SPEEDBOX, shot = null) {
   if (!speed) return null;
   const { w, h, from, to, pad } = box;
@@ -95,14 +96,20 @@ export function speedGeometry(speed, box = SPEEDBOX, shot = null) {
   const top = Math.max(3, Math.ceil((Math.max(...shown.map(q => q.v)) + 0.25) * 2) / 2);
   const X = yp => r1(pad.l + (yp - from) * plotW / (to - from));
   const Y = v => r1(pad.t + plotH * (1 - Math.max(0, v) / top));
-  const path = deliveryPoints(shot).filter(p => p.yp >= from && p.yp <= to);
-  const { t0, t1 } = path.length ? rampSpan(path) : { t0: shown[0].t, t1: shown[shown.length - 1].t };
+  const rel = deliveryRelease(shot);
+  // Each piece in the colour of the dot it starts from.
+  const seg = (a, b) => ({ x1: X(a.yp), y1: Y(a.v), x2: X(b.yp), y2: Y(b.v), color: dotColor(a.t, rel) });
   const segs = [];
   for (let i = 1; i < shown.length; i++) {
     const a = shown[i - 1], b = shown[i];
     if (b.t - a.t > SPEED_GAP_S) continue;
-    segs.push({ x1: X(a.yp), y1: Y(a.v), x2: X(b.yp), y2: Y(b.v),
-                color: rampColor((b.t - t0) / Math.max(1e-6, t1 - t0)) });
+    if (rel && a.t < rel.t && rel.t < b.t) {
+      // The step the hand let go in, split there: the line turns at the
+      // release's own line, not a sample either side of it.
+      const f = (rel.t - a.t) / (b.t - a.t);
+      const m = { t: rel.t, yp: a.yp + (b.yp - a.yp) * f, v: a.v + (b.v - a.v) * f };
+      segs.push(seg(a, m), seg(m, b));
+    } else segs.push(seg(a, b));
   }
   const grid = [];
   for (let k = 0; k * SPEED_GRID_M_S <= top + 1e-9; k++) {
@@ -115,6 +122,8 @@ export function speedGeometry(speed, box = SPEEDBOX, shot = null) {
   return {
     w, h, plot: { x: pad.l, y: pad.t, w: plotW, h: plotH }, top, axisX: r1(pad.l + plotW + 6),
     grid, lines, segs,
+    // At the same x as the big delivery's marker above it.
+    release: rel && rel.yp >= from && rel.yp <= to ? { x: X(rel.yp), y1: pad.t, y2: r1(pad.t + plotH) } : null,
     peak: { x: X(speed.peak.yp), y: Y(speed.peak.v), v: speed.peak.v },
     hog: speed.hog ? { x: X(HOG_PAST), y: Y(speed.hog.v), v: speed.hog.v } : null,
   };

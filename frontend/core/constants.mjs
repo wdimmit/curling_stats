@@ -111,11 +111,14 @@ export const LINEBOX = { w: 314, h: 760, funnel: 13, bottomShare: 0.5, pad: { l:
 export const OVERLAYBOX = { w: 358, h: 395, from: -4.0, to: 8.05, across: 0.6, maxAcross: 1.6,
                             pad: { l: 34, r: 8, t: 22, b: 26 } };
 export const SCATTERBOX = { w: 358, h: 260, maxFeet: 6, pad: { l: 40, r: 10, t: 22, b: 34 } };
-/* Time along the delivery: indigo while the rock sits, teal through the slide,
- * and the strip's own path gold past the hog line. Every stop reads on the
- * ice (PAINT.ice), and lightness rises monotonically, so order survives
- * colour blindness. */
-export const DELIVERY_RAMP = ["#2d1e6b", "#1f7a8c", "#a07a00"];
+/* The delivery's dots (and the speed line under the large one): indigo while
+ * the hand is on the handle, the strip's own path gold from the release on
+ * (line.release), so the change of colour marks it; teal for every dot of a
+ * rock whose release was not read, so no chart implies one it does not have.
+ * Each reads on the ice (PAINT.ice), and before and after differ in
+ * lightness, so the split survives colour blindness. game/clipburn.py burns
+ * the same three into clips. */
+export const DELIVERY_COLORS = { before: "#2d1e6b", after: "#a07a00", unknown: "#1f7a8c" };
 /* The whole-game clock above Timing's list: short, so the list keeps the room. */
 export const TIMINGBOX = { w: 640, h: 200, padL: 60, padR: 12, padT: 10, padB: 30 };
 

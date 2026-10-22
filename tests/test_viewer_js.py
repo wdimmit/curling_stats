@@ -4100,15 +4100,14 @@ class TestDeliveryGeometry:
         g = self.geom(delivery_shot(target_broom=None))
         assert g["aim"] is None and g["aimLabel"] is None
 
-    def test_the_dots_run_from_the_ramp_s_first_stop_to_its_last(self):
+    def test_every_sample_is_a_dot(self):
         g = self.geom(delivery_shot())
-        ramp = run_js("out(DELIVERY_RAMP);")
-        assert g["dots"][0]["fill"] == ramp[0] and g["dots"][-1]["fill"] == ramp[-1]
-        assert g["points"] == len(g["dots"])
+        assert g["points"] == len(g["dots"]) == len(delivery_points())
 
-    def test_the_ramp_ends_in_the_strip_s_gold(self):
+    def test_after_the_release_is_the_strip_s_gold(self):
         detail = (Path(__file__).resolve().parents[1] / "frontend/viewer/Detail.jsx").read_text()
-        assert run_js("out(DELIVERY_RAMP.at(-1));") == "#a07a00"
+        assert run_js("out(DELIVERY_COLORS);") == {
+            "before": "#2d1e6b", "after": "#a07a00", "unknown": "#1f7a8c"}
         assert 'const GOLD = "#a07a00";' in detail
 
     def test_a_long_gap_breaks_the_line_through_the_dots(self):
@@ -4365,11 +4364,6 @@ class TestTheBigDeliveryAndItsSpeed:
         assert [q["label"] for q in sg["grid"][:3]] == ["0", "", "1 m/s"]
         assert sg["hog"]["x"] == pytest.approx(next(l["x"] for l in sg["lines"] if l["kind"] == "hog"))
 
-    def test_the_line_takes_the_delivery_s_colours(self):
-        sg = self.speed_geom(ROCKS["e2r4"])
-        ramp = run_js("out(DELIVERY_RAMP);")
-        assert sg["segs"][-1]["color"] == ramp[-1]
-
     def test_a_gap_in_the_path_breaks_the_speed_line(self):
         whole = self.speed_geom(delivery_shot(delivery_points(fps=30)))
         gapped = self.speed_geom(delivery_shot(delivery_points(fps=30, gap=(0.5, 1.6))))
@@ -4380,6 +4374,194 @@ class TestTheBigDeliveryAndItsSpeed:
 
     def test_nothing_to_draw(self):
         assert run_js("out(speedGeometry(null, SPEEDBOX, null));") is None
+
+
+NAVY, GOLD_DOT, TEAL = "#2d1e6b", "#a07a00", "#1f7a8c"
+
+
+def on_path(t):
+    """Where delivery_points' rock is `t` seconds from the release: (yp, x)."""
+    moving = max(0.0, t + 0.5)
+    return -3.2 + 2.0 * moving, -0.15 + 0.04 * moving
+
+
+def released(t, shot=None, *, yp=None, x=None):
+    """`shot` (delivery_shot() by default) with line.release [t, y, x], rounded
+    as the timeline writes it: by default the rock's own point on
+    delivery_points' path at `t`."""
+    s = json.loads(json.dumps(shot or delivery_shot()))
+    p_yp, p_x = on_path(t)
+    s["line"]["release"] = [t, round(TEE_Y - (p_yp if yp is None else yp), 2),
+                            round(p_x if x is None else x, 3)]
+    return s
+
+
+class TestTheRelease:
+    """Where the hand let go (line.release): a marker on the path, the dots one
+    colour before it and another after, and the speed line split with them."""
+
+    def geom(self, shot, box="DELIVERYBOX"):
+        return run_js(f"out(deliveryGeometry({json.dumps(shot)}, {box}));")
+
+    def speed_geom(self, shot, box="SPEEDBOX"):
+        s = json.dumps(shot)
+        return run_js(f"const s = {s}; out(speedGeometry(deliverySpeed(s), {box}, s));")
+
+    @staticmethod
+    def inside(g, x, y):
+        p = g["plot"]
+        return p["x"] <= x <= p["x"] + p["w"] and p["y"] <= y <= p["y"] + p["h"]
+
+    def test_dots_split_at_the_release(self):
+        ts = [p[0] for p in delivery_points()]
+        for t_rel in (0.05, 0.5):           # between two samples, and on one
+            g = self.geom(released(t_rel))
+            assert [d["fill"] for d in g["dots"]] == [NAVY if t < t_rel else GOLD_DOT for t in ts], t_rel
+        assert g["legend"] == [{"color": NAVY, "text": "before release"},
+                               {"color": GOLD_DOT, "text": "after release"}]
+
+    def test_the_colour_rule_is_one_function(self):
+        got = run_js("const r = {t: 0.2, yp: 0, x: 0};"
+                     "out([dotColor(0.1, r), dotColor(0.2, r), dotColor(0.3, r), dotColor(0.1, null)]);")
+        assert got == [NAVY, GOLD_DOT, GOLD_DOT, TEAL]
+
+    def test_a_timeline_without_a_release_draws_every_dot_teal_with_no_marker_or_legend(self):
+        for box in ("DELIVERYBOX", "BIGDELIVERYBOX"):
+            g = self.geom(delivery_shot(), box)
+            assert g["release"] is None and g["legend"] == []
+            assert {d["fill"] for d in g["dots"]} == {TEAL}
+        sg = self.speed_geom(ROCKS["e2r4"])
+        assert sg["release"] is None and {s["color"] for s in sg["segs"]} == {TEAL}
+
+    def test_the_marker_sits_on_the_path_at_the_release_in_both_orientations(self):
+        i = [p[0] for p in delivery_points()].index(0.5)
+        for box, side in (("DELIVERYBOX", False), ("DESKDELIVERYBOX", True),
+                          ("BIGDELIVERYBOX", True), ("TABLETDELIVERYBOX", True)):
+            g = self.geom(released(0.5), box)
+            r, dot = g["release"], g["dots"][i]
+            assert (r["x"], r["y"]) == (dot["x"], dot["y"]), box
+            tk = r["tick"]
+            if side:      # the path runs left to right: the tick is upright
+                assert tk["x1"] == tk["x2"] == r["x"] and tk["y1"] < r["y"] < tk["y2"], box
+                half = (tk["y2"] - tk["y1"]) / 2
+                assert r["y"] - tk["y1"] == pytest.approx(tk["y2"] - r["y"], abs=0.11)
+            else:         # the path runs up the page: the tick lies flat
+                assert tk["y1"] == tk["y2"] == r["y"] and tk["x1"] < r["x"] < tk["x2"], box
+                half = (tk["x2"] - tk["x1"]) / 2
+                assert r["x"] - tk["x1"] == pytest.approx(tk["x2"] - r["x"], abs=0.11)
+            assert 3 <= half <= 8, box
+            assert r["label"]["text"] == "Release"
+            assert self.inside(g, r["label"]["x"], r["label"]["y"]), box
+        # Between two samples it is between their dots.
+        g = self.geom(released(0.05))
+        a, b = g["dots"][i - 5], g["dots"][i - 4]           # t 0.0 and 0.1
+        assert b["y"] < g["release"]["y"] < a["y"]
+        assert min(a["x"], b["x"]) - 0.1 <= g["release"]["x"] <= max(a["x"], b["x"]) + 0.1
+
+    W_WORD = 32          # "Release" at the chart's 8.5-9 px type, about
+
+    def test_upright_the_label_is_beside_the_tick_and_never_off_the_plot(self):
+        # The aim line runs right of x -0.5: the word goes left, away from it,
+        # unless the plot's edge is too near; at x 0.75 the right edge is.
+        for x, anchor in ((-0.5, "end"), (-0.75, "start"), (0.75, "end")):
+            g = self.geom(released(0.05, x=x))
+            r, lab = g["release"], g["release"]["label"]
+            p = g["plot"]
+            assert lab["anchor"] == anchor, x
+            assert abs(lab["y"] - r["y"]) <= 4, x
+            if anchor == "end":
+                assert lab["x"] < r["tick"]["x1"] and lab["x"] - self.W_WORD >= p["x"], x
+            else:
+                assert lab["x"] > r["tick"]["x2"] and lab["x"] + self.W_WORD <= p["x"] + p["w"], x
+
+    def test_on_its_side_the_label_is_above_or_below_the_tick_and_never_off_the_plot(self):
+        # The thrower's right is down the page. At x 0.4 the aim line is above,
+        # but the bottom edge is too near to go below; at -0.4 the top is.
+        for x, above in ((0.4, True), (-0.4, False), (0.2, False)):
+            g = self.geom(released(0.05, x=x), "DESKDELIVERYBOX")
+            r, lab = g["release"], g["release"]["label"]
+            p = g["plot"]
+            assert lab["anchor"] == "middle", x
+            assert abs(lab["x"] - r["x"]) < 0.1, x
+            if above:
+                assert lab["y"] < r["tick"]["y1"] and lab["y"] - 8 >= p["y"], x
+            else:
+                assert lab["y"] > r["tick"]["y2"] and lab["y"] <= p["y"] + p["h"], x
+
+    def test_a_release_outside_the_box_draws_no_marker(self):
+        for shot in (released(0.05, yp=8.5), released(0.05, x=1.2), released(0.05, x=-0.9)):
+            g = self.geom(shot)
+            assert g["release"] is None
+            assert g["legend"] and {d["fill"] for d in g["dots"]} <= {NAVY, GOLD_DOT}
+        assert self.speed_geom(released(0.05, yp=8.5))["release"] is None
+
+    def test_speed_segments_and_dots_change_colour_at_the_same_moment(self):
+        for fps in (10, 30):
+            shot = released(0.05, delivery_shot(delivery_points(fps=fps)))
+            sg = self.speed_geom(shot)
+            g = self.geom(shot, "BIGDELIVERYBOX")
+            at = sg["release"]["x"]
+            assert at == pytest.approx(g["release"]["x"], abs=0.1)
+            navy = [s for s in sg["segs"] if s["color"] == NAVY]
+            gold = [s for s in sg["segs"] if s["color"] == GOLD_DOT]
+            assert navy and gold and len(navy) + len(gold) == len(sg["segs"])
+            # The line turns at the release, as the dots do.
+            assert max(s["x2"] for s in navy) == pytest.approx(at, abs=0.2) == min(s["x1"] for s in gold)
+            assert all(d["x"] < at for d in g["dots"] if d["fill"] == NAVY)
+            assert all(d["x"] > at for d in g["dots"] if d["fill"] == GOLD_DOT)
+
+    def test_the_speed_chart_has_a_release_line_at_the_dots_distance(self):
+        shot = released(0.5)
+        for dbox, sbox in (("BIGDELIVERYBOX", "SPEEDBOX"), ("TABLETDELIVERYBOX", "TABLETSPEEDBOX")):
+            g, sg = self.geom(shot, dbox), self.speed_geom(shot, sbox)
+            rl = sg["release"]
+            assert rl["x"] == pytest.approx(g["release"]["x"], abs=0.1), dbox
+            assert (rl["y1"], rl["y2"]) == (sg["plot"]["y"], sg["plot"]["y"] + sg["plot"]["h"])
+
+    def test_aim_frame_and_overlay_carry_the_release(self):
+        d8 = {"schema_version": 8}
+        rocks = []
+        for off in (0.04, -0.02, 0.01):
+            s = aimed(13, "red", 4, off=off)
+            t, y, x = s["line"]["delivery"][3]                   # yp 0, at the throwing tee
+            s["line"]["release"] = [t, y, x]
+            rocks.append(s)
+        rocks.append(aimed(13, "red", 4, off=0.0))             # no release read
+        frames = run_js(f"out({json.dumps(rocks)}.map(s => aimFrame(s, {json.dumps(d8)}).release));")
+        assert [f and (round(f["yp"], 3), round(f["dx"], 3)) for f in frames] == [
+            (0.0, 0.04), (0.0, -0.02), (0.0, 0.01), None]
+        g = run_js(f"const d = {json.dumps(d8)};"
+                   f"const paths = {json.dumps(rocks)}.map((s, i) => ({{key: 'k' + i, ...aimFrame(s, d)}}));"
+                   "out(deliveryOverlay(paths, 'right'));")
+        for rock in g["rocks"][:3]:
+            fourth = [float(v) for v in rock["d"].split(" ")[3].split(",")]
+            assert [rock["release"]["x"], rock["release"]["y"]] == fourth
+        assert g["rocks"][3]["release"] is None
+        # A release past the window is not drawn.
+        far = json.loads(json.dumps(rocks[0]))
+        far["line"]["release"][1] = round(TEE_Y - 9.0, 4)
+        g = run_js(f"const d = {json.dumps(d8)};"
+                   f"out(deliveryOverlay([{{key: 'k', ...aimFrame({json.dumps(far)}, d)}}], 'right'));")
+        assert g["rocks"][0]["release"] is None
+
+    @pytest.mark.parametrize("bad", ["[1, null, 2]", '"x"', "[]", "[0.1, 36.8]", "[NaN, 36.8, 0]",
+                                     "[0.1, Infinity, 0]", '["0.1", 36.8, 0]', "{t: 0.1}", "null"])
+    def test_a_malformed_release_is_ignored(self, bad):
+        got = run_js(f"const s = {json.dumps(delivery_shot())}; s.line.release = {bad};"
+                     "const g = deliveryGeometry(s, DELIVERYBOX);"
+                     "const sg = speedGeometry(deliverySpeed(s), SPEEDBOX, s);"
+                     "out([deliveryRelease(s), g.release, g.legend, [...new Set(g.dots.map(d => d.fill))],"
+                     " sg.release, [...new Set(sg.segs.map(q => q.color))],"
+                     " aimFrame(s, {schema_version: 8}).release]);")
+        assert got == [None, None, [], [TEAL], None, [TEAL], None]
+
+    def test_the_release_is_read_in_the_delivery_s_frame(self):
+        s = released(0.05)
+        t, y, x = s["line"]["release"]
+        got = run_js(f"out(deliveryRelease({json.dumps(s)}));")
+        assert got["t"] == t and got["x"] == x and got["yp"] == pytest.approx(TEE_Y - y)
+        assert run_js("out([deliveryRelease(null), deliveryRelease({}), deliveryRelease({line: {}})]);") == [
+            None, None, None]
 
 
 class TestThePaintUnderTheDelivery:
@@ -4471,9 +4653,11 @@ class TestTheLineChart:
         assert (f["yt"], f["yb"]) == (top["h"], lc["bottom"]["y"] + g["plot"]["y"])
 
     def test_the_legend_goes_where_the_dots_are_not(self):
+        """Its place is `legendAt`: `legend` is the delivery's own entries."""
         for key, rock in ROCKS.items():
             g = self.lc(rock)["bottom"]["g"]
-            assert self.crowd(g, g["legend"]["x"], g["legend"]["y"]) == 0, key
+            assert self.crowd(g, g["legendAt"]["x"], g["legendAt"]["y"]) == 0, key
+            assert g["legend"] == [], key           # these rocks have no release read
 
     def test_the_aim_label_is_left_to_the_sheet_above(self):
         assert self.lc(ROCKS["e2r4"])["bottom"]["g"]["aimLabel"] is None

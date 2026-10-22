@@ -7,7 +7,7 @@
  * sideways before it lets go.
  *
  * Pure -- core/** may not touch the DOM. */
-import { DELIVERY_RAMP, OVERLAYBOX, R, STRIPE_HALF_M } from "./constants.mjs";
+import { DELIVERY_COLORS, OVERLAYBOX, R, STRIPE_HALF_M } from "./constants.mjs";
 import { HACK_X_M, HACK_Y, TEE_Y, hackAimX, hackOf, lineReason, median, sideNames } from "./line.mjs";
 
 export const DELIVERY_SCHEMA = 8;
@@ -37,16 +37,23 @@ export function deliveryReason(shot, doc) {
   return null;
 }
 
-const hex = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
-const toHex = rgb => "#" + rgb.map(v => Math.round(v).toString(16).padStart(2, "0")).join("");
+/* Where the hand let go, as {t, yp, x} in deliveryPoints' frame, from
+ * `line.release` ([t, y, x] as the delivery's samples). null when the release
+ * was not read -- and when its record is not three finite numbers, which is
+ * read the same way, so a bad record draws teal dots and not a wrong split. */
+export function deliveryRelease(shot) {
+  const r = shot?.line?.release;
+  if (!Array.isArray(r) || r.length < 3 || !r.every(Number.isFinite)) return null;
+  const [t, y, x] = r;
+  return { t, yp: TEE_Y - y, x };
+}
 
-/* A colour along the ramp, f in 0..1: dark while the rock sits, gold past
- * the hog line -- the gold the strip draws the rock's path in. */
-export function rampColor(f) {
-  const stops = DELIVERY_RAMP.map(hex);
-  const u = Math.min(1, Math.max(0, Number.isFinite(f) ? f : 0)) * (stops.length - 1);
-  const i = Math.min(stops.length - 2, Math.floor(u)), k = u - i;
-  return toHex(stops[i].map((v, j) => v + (stops[i + 1][j] - v) * k));
+/* A dot's colour, `t` seconds on the delivery's clock: before the release
+ * `rel` (deliveryRelease's), from it on, or unknown without one. The speed
+ * line takes its colours from here too, so the two split at one moment. */
+export function dotColor(t, rel) {
+  if (!rel) return DELIVERY_COLORS.unknown;
+  return t < rel.t ? DELIVERY_COLORS.before : DELIVERY_COLORS.after;
 }
 
 const r1 = v => +(+v).toFixed(1);
@@ -83,14 +90,34 @@ function acrossWindow(xs, across) {
   return { c, span: across };
 }
 
-/* Where a path's colour ramp runs: from the push-off (the first sample
- * clearly moving) to its last sample. The speed chart takes the same span, so
- * a colour means the same moment in both. */
-export function rampSpan(pts) {
-  const moving = pts.findIndex(p => p.yp > pts[0].yp + 0.15);
-  const t0 = moving >= 0 ? pts[moving].t : pts.length ? pts[0].t : 0;
-  const t1 = pts.length ? pts[pts.length - 1].t : 1;
-  return { moving, t0, t1 };
+const TICK_PX = 6;                     // the release's tick, each side of the path
+const WORD_GAP_PX = 3;                 // from the tick's end to its word
+const WORD_PX = { w: 32, h: 8 };       // "Release" at the charts' 8.5-9 px type, about
+
+/* The release's marker at `at` (page px, on the plot): a tick across the
+ * path, and the word beside it. The word goes on the side `away` (+1 the
+ * thrower's right, -1 the thrower's left: away from the aim line, which runs
+ * close by) unless the plot's edge is nearer there than the word is long.
+ * Upright the path runs up the page and the word sits to one side of the
+ * tick; on its side the path runs across the page and the word sits above or
+ * below. */
+function releaseMark(at, side, plot, away) {
+  const reach = TICK_PX + WORD_GAP_PX;
+  // Across the path is page x upright, page y on its side; both grow to the thrower's right.
+  const [c, lo, hi, need] = side ? [at.y, plot.y, plot.y + plot.h, WORD_PX.h]
+                                 : [at.x, plot.x, plot.x + plot.w, WORD_PX.w];
+  const room = s => (s > 0 ? hi - (c + reach) : c - reach - lo);
+  const s = room(away) >= need || room(away) >= room(-away) ? away : -away;
+  if (side) {
+    const anchor = at.x - WORD_PX.w / 2 < plot.x ? "start"
+      : at.x + WORD_PX.w / 2 > plot.x + plot.w ? "end" : "middle";
+    return { ...at, tick: { x1: at.x, y1: r1(at.y - TICK_PX), x2: at.x, y2: r1(at.y + TICK_PX) },
+             label: { x: at.x, y: r1(s > 0 ? at.y + reach + WORD_PX.h : at.y - reach), anchor, text: "Release" } };
+  }
+  // Upright the word is level with the tick: its baseline 3 px below it.
+  const y = Math.min(Math.max(at.y + 3, plot.y + WORD_PX.h), plot.y + plot.h);
+  return { ...at, tick: { x1: r1(at.x - TICK_PX), y1: at.y, x2: r1(at.x + TICK_PX), y2: at.y },
+           label: { x: r1(at.x + s * reach), y: r1(y), anchor: s > 0 ? "start" : "end", text: "Release" } };
 }
 
 /* The chart in pixels. `box.side` false is upright, the thrower at the bottom
@@ -180,10 +207,9 @@ export function deliveryGeometry(shot, box) {
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: r1(Math.abs(b.x - a.x)), h: r1(Math.abs(b.y - a.y)), side: hx < 0 ? "left" : "right", used: hx < 0 ? hand === "left" : hand === "right" };
   });
   // The path: dots every sample, a faint line through them broken where the
-  // camera lost the rock for a while. Colour runs from the push-off (the
-  // first sample clearly moving) to the last; the rock at rest is the first stop.
-  const { moving, t0, t1 } = rampSpan(pts);
-  const dots = pts.map((p, i) => ({ ...pt(p.x, p.yp), fill: rampColor(moving < 0 || i < moving ? 0 : (p.t - t0) / Math.max(1e-6, t1 - t0)) }));
+  // camera lost the rock for a while. The dots change colour at the release.
+  const rel = deliveryRelease(shot);
+  const dots = pts.map(p => ({ ...pt(p.x, p.yp), fill: dotColor(p.t, rel) }));
   const steps = pts.slice(1).map((p, i) => p.t - pts[i].t).sort((a, b) => a - b);
   const stepS = steps.length ? steps[steps.length >> 1] : 0.1;
   // How often the path has a dot: a tenth of a second until pipeline
@@ -207,6 +233,12 @@ export function deliveryGeometry(shot, box) {
   const aimEnd = aim.length === 2 ? pt(aim[1][0], aim[1][1]) : null;
   // Upright, the label goes on whichever side of the line's end has the room.
   const roomLeft = aimEnd && aimEnd.x > pad.l + plotW / 2;
+  // The release's marker, on the plot only, as the path is.
+  const relAim = rel && aimAt(rel.yp);
+  const release = rel && rel.yp >= from && rel.yp <= to && rel.x >= x0 && rel.x <= x0 + win.span
+    ? releaseMark(pt(rel.x, rel.yp), !!side, { x: pad.l, y: pad.t, w: plotW, h: plotH },
+                  relAim != null && relAim > rel.x ? -1 : 1)
+    : null;
   return {
     w, h, side: !!side,
     stretch: Math.round(kAcross / kAlong),
@@ -218,6 +250,10 @@ export function deliveryGeometry(shot, box) {
                                : { x: r1(aimEnd.x + (roomLeft ? -4 : 4)), y: r1(aimEnd.y + 10), text: "to the broom",
                                    anchor: roomLeft ? "end" : "start" }) : null,
     runs, dots, dotR,
+    release,
+    // What the dots' two colours mean; one colour needs no key.
+    legend: rel ? [{ color: DELIVERY_COLORS.before, text: "before release" },
+                   { color: DELIVERY_COLORS.after, text: "after release" }] : [],
     every: dotEvery(perSecond),
     start: start && start.yp >= from && start.yp <= to ? pt(start.x, start.yp) : null,
     points: pts.length,
@@ -246,7 +282,8 @@ export function dotEvery(perSecond) {
  * from its foothold to its broom (+ to the thrower's right). Raw x cannot be
  * overlaid -- the brooms sit metres apart and the footholds 30 cm -- but off
  * its own aim line a perfect delivery is dx 0 all the way, whatever it was
- * aimed at. null when there is no delivery, or no broom or hack to aim from. */
+ * aimed at. The release, when one was read, is in the same frame. null when
+ * there is no delivery, or no broom or hack to aim from. */
 export function aimFrame(shot, doc) {
   if (deliveryReason(shot, doc)) return null;
   const off = (x, yp) => {
@@ -258,7 +295,10 @@ export function aimFrame(shot, doc) {
   const st = shot.line?.start;
   const start = st && Number.isFinite(st.x) && Number.isFinite(st.y)
     ? { yp: TEE_Y - st.y, dx: off(st.x, TEE_Y - st.y) } : null;
-  return { pts, start: start && start.dx != null ? start : null };
+  const rel = deliveryRelease(shot);
+  const relDx = rel && off(rel.x, rel.yp);
+  return { pts, start: start && start.dx != null ? start : null,
+           release: relDx != null ? { yp: rel.yp, dx: relDx } : null };
 }
 
 const OVERLAY_BIN_M = 0.25;
@@ -266,9 +306,10 @@ const OVERLAY_BIN_MIN = 3;               // rocks a bin needs before it has a me
 
 /* Every rock of a group drawn in aimFrame's frame, upright, the thrower at
  * the bottom: one line per rock, the dot it sat at before the push, and the
- * median of them all where at least three rocks pass. `paths` are
- * [{key, pts, start, dim}] from aimFrame; `turn` names the sides, wide and
- * narrow, as the scatter beside it does. */
+ * median of them all where at least three rocks pass, and the point each
+ * rock's hand let go -- unlabelled: their spread is what shows. `paths` are
+ * [{key, pts, start, release, dim}] from aimFrame; `turn` names the sides,
+ * wide and narrow, as the scatter beside it does. */
 export function deliveryOverlay(paths, turn = null, box = OVERLAYBOX) {
   const { w, h, from, to, across, maxAcross, pad } = box;
   const rocks = (paths || []).map(p => ({ ...p, pts: (p.pts || []).filter(q => q.yp >= from && q.yp <= to) }))
@@ -296,8 +337,10 @@ export function deliveryOverlay(paths, turn = null, box = OVERLAYBOX) {
              label, lx: q.x, ly: r1(pad.t + plotH + 14) };
   });
   const sides = sideNames(turn);
+  const onPlot = q => q.yp >= from && q.yp <= to && q.dx >= x0 && q.dx <= x0 + win.span;
   const drawn = rocks.map(p => ({ key: p.key, d: poly(p.pts.map(q => [q.dx, q.yp])), dim: !!p.dim,
-    start: p.start && p.start.yp >= from && p.start.yp <= to ? pt(p.start.dx, p.start.yp) : null }));
+    start: p.start && p.start.yp >= from && p.start.yp <= to ? pt(p.start.dx, p.start.yp) : null,
+    release: p.release && onPlot(p.release) ? pt(p.release.dx, p.release.yp) : null }));
   // The median: each rock's mean dx in each bin, then the median across rocks.
   const mid = [];
   for (let lo = from; lo < to; lo += OVERLAY_BIN_M) {
