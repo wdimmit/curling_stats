@@ -70,7 +70,7 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
     t_hog = hogtime.crossing(shot)
     sp = split.long_split(dv, t_hog=t_hog, v_hog=hogtime.speed_at_hog(shot), far=far)
     t_thrown = rel.t if rel is not None else dv.t_enter
-    return {
+    out = {
         "id": f"t_{t0_s + t_thrown:.1f}",
         "t_release_s": None if rel is None else _r(t0_s + rel.t, 2),
         "t_rest_s": None if dv is None else _r(t0_s + dv.t_rest, 2),
@@ -107,3 +107,9 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
         "rest": _rest(shot),
         "track": [] if dv is None else _thin(dv.track, t0_s),
     }
+    # Where the hand let go, [t, y, x] like a delivery sample: absent when it
+    # was not read, as the timeline leaves it (timeline._line).
+    hand = getattr(line, "release", None)
+    if hand is not None:
+        out["line"]["release"] = [_r(hand[0], 2), _r(hand[1], 2), _r(hand[2], 3)]
+    return out

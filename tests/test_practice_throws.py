@@ -119,6 +119,18 @@ class TestThrowRecord:
         assert got["start"] == {"x": 0.0, "y": -3.6}
         assert got["delivery"] == [[0.0, -3.62, 0.15], [0.5, -2.9, 0.141], [1.0, -1.8, 0.131]]
 
+    def test_the_line_carries_the_release_when_there_is_one(self):
+        dv = arrival()
+        shot = Shot(number=1, color="red", stones=[], t_rest_s=dv.t_rest, delivery=dv)
+        shot.line = line(release=(1.2345, 30.1234, -0.14199))
+        assert throws.throw_record(shot, house="top")["line"]["release"] == [1.23, 30.12, -0.142]
+
+    def test_a_line_without_a_release_has_no_release_key(self):
+        dv = arrival()
+        shot = Shot(number=1, color="red", stones=[], t_rest_s=dv.t_rest, delivery=dv)
+        shot.line = line()
+        assert "release" not in throws.throw_record(shot, house="top")["line"]
+
     def test_a_line_with_no_broom_says_where_it_was_aimed(self):
         dv = arrival()
         shot = Shot(number=1, color="red", stones=[], t_rest_s=dv.t_rest, delivery=dv)

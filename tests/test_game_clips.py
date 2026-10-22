@@ -42,7 +42,8 @@ class TestThrowFromRock:
                      "t_enter_s": 1013.0,
                      "broom": {"x": 0.4, "y": 0.0},
                      "line": {"at_hog_x": 0.12, "miss_m": 0.05, "aim_x": None,
-                              "start": {"x": -0.1, "y": 38.2}, "delivery": None}}
+                              "start": {"x": -0.1, "y": 38.2}, "delivery": None,
+                              "release": None}}
 
     def test_without_the_far_hog_time_the_arrival_stands_in(self):
         assert gc.throw_from_rock(rock())["t_far_s"] == 1013.0
@@ -53,12 +54,20 @@ class TestThrowFromRock:
                                           "at_tee": {"x": -0.2}}))
         assert t["broom"] is None
         assert t["line"] == {"at_hog_x": 0.1, "miss_m": None, "aim_x": -0.2, "start": None,
-                             "delivery": None}
+                             "delivery": None, "release": None}
 
     def test_the_delivery_comes_along_for_its_dots(self):
         d = [[-3.0, 38.0, 0.1], [0.5, 30.0, 0.15]]
         line = {**rock()["line"], "delivery": d}
         assert gc.throw_from_rock(rock(line=line))["line"]["delivery"] == d
+
+    def test_the_release_comes_along_for_the_burn_in(self):
+        r = [1.23, 30.12, -0.142]
+        line = {**rock()["line"], "release": r}
+        assert gc.throw_from_rock(rock(line=line))["line"]["release"] == r
+
+    def test_a_line_without_a_release_carries_none(self):
+        assert gc.throw_from_rock(rock())["line"]["release"] is None
 
     def test_no_line_and_never_arrived(self):
         t = gc.throw_from_rock(rock(line=None, t_enter_s=None))

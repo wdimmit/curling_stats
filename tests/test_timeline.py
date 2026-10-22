@@ -955,6 +955,21 @@ class TestLine:
         got = self._end(line)["shots"][0]["line"]["delivery"]
         assert got == [[-3.0, 37.95, -0.151], [0.1, 36.5, -0.144]]
 
+    def test_the_release_is_published_like_a_delivery_sample(self):
+        from curling_score.game.linetime import Line
+        line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
+                    at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
+                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01,
+                    release=(1.2345, 30.1234, -0.14199))
+        assert self._end(line)["shots"][0]["line"]["release"] == [1.23, 30.12, -0.142]
+
+    def test_a_line_with_no_release_has_no_release_key(self):
+        from curling_score.game.linetime import Line
+        line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
+                    at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
+                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01)
+        assert "release" not in self._end(line)["shots"][0]["line"]
+
     def test_a_broom_line_has_no_tee_key(self):
         from curling_score.game.linetime import Line
         line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,

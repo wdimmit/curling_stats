@@ -54,7 +54,9 @@ def throw_from_rock(rock: dict) -> dict:
         out_line = {"at_hog_x": (line.get("at_hog") or {}).get("x"),
                     "miss_m": (line.get("at_broom") or {}).get("miss_m"),
                     "aim_x": (line.get("at_tee") or {}).get("x"),
-                    "start": line.get("start"), "delivery": line.get("delivery")}
+                    "start": line.get("start"), "delivery": line.get("delivery"),
+                    # [t, y, x]: where the hand let go; null when it was not read.
+                    "release": line.get("release")}
     return {
         "id": rock["name"], "house": rock["house"],
         "t_release_s": rock.get("t_release_s"), "t_rest_s": rock.get("t_rest_s"),

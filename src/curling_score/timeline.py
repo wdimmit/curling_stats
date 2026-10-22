@@ -57,6 +57,11 @@ def _line(l):
     tee = getattr(l, "at_tee_x", None)
     if tee is not None:
         out["at_tee"] = {"x": r(tee)}
+    # [t, y, x] like a delivery sample: where the hand let go. Absent when the
+    # release was not read, so a line from before it existed reads the same.
+    rel = getattr(l, "release", None)
+    if rel is not None:
+        out["release"] = [r(rel[0], 2), r(rel[1], 2), r(rel[2], 3)]
     return out
 
 
