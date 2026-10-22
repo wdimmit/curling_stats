@@ -64,7 +64,7 @@ def rock_at(dl, o):
     return b[2] + vx * (o - b[0]), TEE_Y - b[1] + vy * (o - b[0])
 
 
-def extract(video, tl, end_no, rock_no, dest):
+def extract(video, tl, end_no, rock_no, dest, tag=""):
     import cv2
     import numpy as np
     from curling_score.detect import longview
@@ -78,7 +78,7 @@ def extract(video, tl, end_no, rock_no, dest):
     o0 = next((p[0] for p in dl if TEE_Y - p[1] >= FROM_YP), dl[0][0])
     o1 = dl[-1][0] + AFTER_PATH_S
     frames, times = longview.decode(video, view.rect, t_rel + o0, t_rel + o1, FPS)
-    stem = f"e{end_no:02d}r{rock_no:02d}"
+    stem = f"{tag}-e{end_no:02d}r{rock_no:02d}" if tag else f"e{end_no:02d}r{rock_no:02d}"
     out = []
     for i, (f, t) in enumerate(zip(frames, times)):
         o = float(t - t_rel)
@@ -93,7 +93,8 @@ def extract(video, tl, end_no, rock_no, dest):
         name = f"{stem}_{i:03d}.jpg"
         cv2.imwrite(str(dest / name), img, [cv2.IMWRITE_JPEG_QUALITY, 88])
         out.append({"file": name, "o": round(o, 4), "yp": round(yp, 3)})
-    return {"id": stem, "end": end_no, "rock": rock_no, "color": shot["color"],
+    return {"id": stem, "tag": tag, "video_id": tl.get("source", {}).get("video_id"),
+            "end": end_no, "rock": rock_no, "color": shot["color"],
             "position": shot.get("position"), "label": shot.get("label"),
             "t_release_s": t_rel, "frames": out}
 
@@ -159,7 +160,7 @@ function show(){
   if(fi>=d.frames.length) fi=d.frames.length-1;
   document.getElementById('img').src=d.frames[fi].file;
   const bar=document.getElementById('bar'); bar.max=d.frames.length-1; bar.value=fi;
-  document.getElementById('who').textContent=
+  document.getElementById('who').textContent=(d.tag?d.tag+' · ':'')+
     'end '+d.end+', rock '+d.rock+' · '+d.color+' '+(d.position||'');
   document.getElementById('pos').textContent=
     'rock '+(di+1)+' of '+D.length+'  ·  frame '+(fi+1)+'/'+d.frames.length;
@@ -235,6 +236,11 @@ def main():
     ap.add_argument("--prepared", action="store_true", help="skip extraction")
     ap.add_argument("--extract-only", action="store_true",
                     help="write the frames and exit without serving")
+    ap.add_argument("--tag", default="",
+                    help="a short name for this game, prefixed to every rock id, so several games "
+                         "can share one session (with --append)")
+    ap.add_argument("--append", action="store_true",
+                    help="add these rocks to the session's index rather than replacing it")
     args = ap.parse_args()
 
     root = Path(args.out)
@@ -242,10 +248,12 @@ def main():
     if not args.prepared:
         tl = json.loads(Path(args.timeline).read_text())
         rocks = [tuple(int(v) for v in p.split(":")) for p in args.rocks.split(",") if p]
-        index = []
+        index = json.loads((root / "index.json").read_text()) \
+            if args.append and (root / "index.json").exists() else []
         for n, (e, r) in enumerate(rocks):
             print(f"  extracting {n + 1}/{len(rocks)}: end {e} rock {r}", flush=True)
-            index.append(extract(args.video, tl, e, r, root))
+            got = extract(args.video, tl, e, r, root, args.tag)
+            index = [d for d in index if d["id"] != got["id"]] + [got]
         (root / "index.json").write_text(json.dumps(index, indent=1))
         if not (root / "marks.json").exists():
             (root / "marks.json").write_text("{}")

@@ -26,3 +26,19 @@ Along the sheet one image row is 6-13 cm past the tee on these cameras, so a
 
 `s_1TH0dJNrbHeKLARuj.json` -- 10/20 Tuesday Super League sheet 2, game 2 of
 stream dmljQzQr1xo (Grause red, Dimmit yellow), 20 rocks, marked 2026-10-21.
+
+Five more games, 20 rocks each (two per colour and position, then four more,
+all `random`, seed 20261022), marked 2026-10-21 in one session (`tag` names
+the game there), for training and scoring a hand-on/hand-off model one game
+held out at a time:
+
+| file | tag | game |
+|---|---|---|
+| `s_0ezqH3CRyUL9sxYwf.json` | S1w | 10/14 Wednesday Womens, sheet 1 |
+| `s_0cYtR4gDsEm5hr1jh.json` | S2w | 10/14 Wednesday Womens, sheet 2 |
+| `s_1Obm7nDkFUQOhsbsy.json` | S3k | Knock the Dust Off draw 12 (midday), sheet 3 |
+| `s_0kjMTVPJbVUFPmwt7.json` | S4m | 10/15 Thursday Mens, sheet 4 |
+| `s_04zvg6W7FkgdYOPMt.json` | S5f | 10/16 Friday Evening, sheet 5 |
+
+On S1w the crop drifts up to 0.3 m off the rock late in the delivery; the hand
+stays in frame.
