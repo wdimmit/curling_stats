@@ -32,6 +32,8 @@ RELEASE_MARKS = ("off", "held", "cant_tell")
 # A box edge may overshoot the image by this much (a drag past the border).
 EDGE_SLOP_PX = 1.0
 MIN_BOX_PX = 3.0
+# No image is anywhere near this wide; past it a coordinate is nonsense.
+MAX_COORD = 1e9
 
 
 def image_key(item_id: str, kind: str) -> str:
@@ -85,6 +87,9 @@ def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[Lab
 def _num(v, what: str) -> float:
     if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v:
         raise ValueError(f"{what} is not a number")
+    # JSON allows integers too big for a float, and float() of one overflows.
+    if abs(v) > MAX_COORD:
+        raise ValueError(f"{what} is out of range")
     return float(v)
 
 

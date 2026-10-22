@@ -92,6 +92,12 @@ def test_boxes_outside_the_image_or_tiny_are_refused():
         check_answer(box_item(), two_boxes(a={"y0": 20, "y1": 15}))
 
 
+def test_absurd_coordinates_are_a_value_error_not_an_overflow():
+    for big in (10**400, -10**400, float("inf"), float("nan"), 1e300):
+        with pytest.raises(ValueError):
+            check_answer(box_item(), two_boxes(a={"x1": big}))
+
+
 def test_a_pixel_over_the_edge_is_clamped():
     got = check_answer(box_item(), two_boxes(a={"x0": -1, "x1": 101}))
     assert got["boxes"][0]["x0"] == 0 and got["boxes"][0]["x1"] == 100
