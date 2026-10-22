@@ -103,6 +103,9 @@ frontend/node_modules/
 # release1: the hand-on/hand-off model (a ResNet-18 on stacks of three grey
 # crops round the handle, from the long camera facing the thrower) the release
 # pass reads the release point with -- datasets/releasemarks, cut and trained
-# by scripts/release. See game/releasetime.py. Rocks, folds and held-out scores:
-# TO FILL IN when trained.
+# by scripts/release. See game/releasetime.py. Trained 2026-10-22 on 217 marked
+# rocks of 11 games. Each Super League game held out in turn (random rocks): 77%
+# within 0.5 m of the hand mark, 93% within 1 m, median miss 0.20 m; the 10/20
+# game held out, 15 of 16. Crops and results kept on the training box at
+# /data/curling/release.
 !weights/release1.pt
