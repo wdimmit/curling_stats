@@ -6,8 +6,9 @@ clip someone saves keeps them. On top of practice's three marks -- the thrown
 line, the aim line from the hack to the broom, and the broom
 (practice/overlay.py) -- it draws the delivery: the rock from the hack to
 1.5 m past the hog line as the hog-line camera followed it (the timeline's
-``line.delivery``), a dot at a time as the rock reaches it, in the Delivery
-chart's colours (frontend/core/constants.mjs DELIVERY_RAMP).
+``line.delivery``), a dot at a time as the rock reaches it, in one colour
+before the hand let go, another after, and a third when there is no release
+read (``line.release``): the Delivery chart's before, after and unknown colours.
 
 The camera facing the thrower sees the throwing end small, near the middle of
 its picture, so its piece starts zoomed on the hack and the hog line, and pulls
@@ -68,8 +69,10 @@ UNDER = (0, 0, 0)
 STROKE, UNDER_STROKE = 3, 6
 DASH, GAP = 9, 7
 BROOM_R = 13
-# The Delivery chart's ramp, dark at the hack to gold past the hog line.
-RAMP = ((0x6b, 0x1e, 0x2d), (0x8c, 0x7a, 0x1f), (0x00, 0x7a, 0xa0))
+# The Delivery chart's dots: before the release, after it, and no release read.
+DOT_BEFORE = (0x6b, 0x1e, 0x2d)
+DOT_AFTER = (0x00, 0x7a, 0xa0)
+DOT_UNKNOWN = (0x8c, 0x7a, 0x1f)
 DOT_R = 3                        # in the zoomed picture; smaller as it pulls back
 DOT_R_MIN = 2
 DOT_GAP = 6                      # dots closer than this in the zoomed picture are one
@@ -144,11 +147,13 @@ class Framing:
     t_out: float
 
 
-def ramp(f: float) -> tuple:
-    u = min(1.0, max(0.0, f)) * (len(RAMP) - 1)
-    i = min(len(RAMP) - 2, int(u))
-    k = u - i
-    return tuple(int(round(a + (b - a) * k)) for a, b in zip(RAMP[i], RAMP[i + 1]))
+def dot_colour(t: float, release_t) -> tuple:
+    """A dot's colour, ``t`` and ``release_t`` seconds from the throw's
+    release on the delivery's clock: before the release, after it, or unknown
+    when ``release_t`` is None."""
+    if release_t is None:
+        return DOT_UNKNOWN
+    return DOT_BEFORE if t < release_t else DOT_AFTER
 
 
 def _delivery(throw) -> list:
@@ -201,11 +206,14 @@ def framing(throw, plan, sideviews) -> Framing | None:
 def marks(throw, plan, sideviews) -> list:
     """For each piece of ``plan``, its marks: ``thrown``, ``aim`` and
     ``broom`` as `practice_overlay.overlay` places them, and ``dots``, the
-    delivery as ``(t, u, v, bgr)`` with ``t`` on the stream's clock. A piece
-    whose camera cannot place things across the sheet has none."""
+    delivery as ``(t, u, v, bgr)`` with ``t`` on the stream's clock, the colour
+    split at the release. A piece whose camera cannot place things across the
+    sheet has none."""
     lines = practice_overlay.overlay(throw, plan, sideviews) or [
         {"t0": 0.0, "t1": 0.0} for _ in plan.pieces]
     d, rel = _delivery(throw), throw.get("t_release_s")
+    release = (throw.get("line") or {}).get("release")
+    release_t = None if release is None else float(release[0])
     facing_view = CAMERA_FOR[OTHER_HOUSE[throw["house"]]]
     out = []
     for p, item in zip(plan.pieces, lines):
@@ -213,10 +221,11 @@ def marks(throw, plan, sideviews) -> list:
         dots = []
         if d and rel is not None and getattr(view, "has_lateral", False):
             facing = p.view == facing_view
-            for i, (t, y, x) in enumerate(q[:3] for q in d):
+            for t, y, x in (q[:3] for q in d):
                 uv = practice_overlay.to_view(view, facing, x, y)
                 if uv is not None:
-                    dots.append((rel + float(t), uv[0], uv[1], ramp(i / max(1, len(d) - 1))))
+                    dots.append((rel + float(t), uv[0], uv[1],
+                                 dot_colour(float(t), release_t)))
         out.append({"thrown": item.get("thrown"), "aim": item.get("aim"),
                     "broom": item.get("broom"), "dots": dots})
     return out

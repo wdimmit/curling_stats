@@ -40,11 +40,14 @@ def plan():
                                     practice_clips.Piece("right", 113.0, 126.5)))
 
 
-class TestRamp:
-    def test_the_delivery_charts_colours_end_to_end(self):
-        assert B.ramp(0.0) == B.RAMP[0] and B.ramp(1.0) == B.RAMP[-1]
-        assert B.ramp(0.5) == B.RAMP[1]
-        assert B.ramp(-1) == B.RAMP[0] and B.ramp(9) == B.RAMP[-1]
+class TestDotColour:
+    def test_before_the_release_after_it_and_unknown(self):
+        assert B.dot_colour(0.5, 1.0) == B.DOT_BEFORE == (0x6b, 0x1e, 0x2d)
+        assert B.dot_colour(1.0, 1.0) == B.DOT_AFTER == (0x00, 0x7a, 0xa0)
+        assert B.dot_colour(0.5, None) == B.DOT_UNKNOWN == (0x8c, 0x7a, 0x1f)
+
+    def test_no_ramp_remains(self):
+        assert not hasattr(B, "RAMP") and not hasattr(B, "ramp")
 
 
 class TestDeliveryDone:
@@ -96,13 +99,19 @@ class TestFraming:
 
 
 class TestMarks:
-    def test_the_dots_on_the_streams_clock_in_the_charts_colours(self):
-        m = B.marks(throw(), plan(), VIEWS)
+    def test_the_dots_on_the_streams_clock_split_in_the_charts_colours_at_the_release(self):
+        line = {**throw()["line"], "release": [0.0, 37.0, -0.16]}
+        m = B.marks(throw(line=line), plan(), VIEWS)
         dots = m[0]["dots"]
         assert [d[0] for d in dots] == [97.0, 99.0, 100.0, 101.5, 103.6]
-        assert dots[0][3] == B.RAMP[0] and dots[-1][3] == B.RAMP[-1]
+        assert [d[3] for d in dots] == [B.DOT_BEFORE] * 2 + [B.DOT_AFTER] * 3
         assert dots[0][1:3] == tuple(practice_overlay.to_view(LEFT, True, -0.15, 38.2))
         assert m[0]["thrown"] and m[0]["aim"]
+
+    def test_without_a_release_every_dot_is_unknown(self):
+        for line in (throw()["line"], {**throw()["line"], "release": None}):
+            dots = B.marks(throw(line=line), plan(), VIEWS)[0]["dots"]
+            assert len(dots) == 5 and {d[3] for d in dots} == {B.DOT_UNKNOWN}
 
     def test_a_camera_that_cannot_place_has_none(self):
         m = B.marks(throw(), plan(), VIEWS)
