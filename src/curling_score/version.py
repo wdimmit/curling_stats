@@ -256,7 +256,15 @@ from pathlib import Path
 # after the last was thrown (`fit.drop_clearing`) -- Monday Open 10/19 S1 e4
 # (the clearing taken for rock 16, hammer flipped) and Wednesday Womens 10/07
 # S5 e4 r16. A/B on 14 games: only those changes.
-PIPELINE_VERSION = "2026.10.21.1"
+# 2026.10.22.1: a stone beyond a panel's painted sideline is on the next sheet,
+# and is neither counted in the activity profile nor tracked
+# (`geometry/sidepaint.py`). 10/19 Monday S4 live: a rock at rest on sheet 3
+# helped hold the changeover under GAME_GAP_S, and two games were charted as
+# one of 14 ends; a live replay with this splits them 7 + 6. Lines found on
+# 801 of 808 panel sides of 202 cached recordings, none reaching the ice. A/B
+# on 10 videos: no game or end count moves; rocks identical but for two
+# arrival times, and BiG6 10/14 g2 e6 loses a phantom 17th delivery.
+PIPELINE_VERSION = "2026.10.22.1"
 
 
 def model_id(weights) -> str:
