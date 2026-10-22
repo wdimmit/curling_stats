@@ -67,7 +67,8 @@ def test_create_hands_back_an_upload_and_stores_the_item_pending(w):
 
 def test_create_refuses_a_bad_id_or_kind(w):
     for bad in [{**item(0), "id": "../x"}, {**item(0), "id": ""}, {**item(0), "kind": "nope"},
-                {**item(0), "payload": "text"}]:
+                {**item(0), "payload": "text"}, {**item(0), "id": 123},
+                {**item(0), "id": ["b_0"]}, {**item(0), "id": None}]:
         r = w["client"].post("/api/admin/label-items", json={"items": [bad]}, headers=ADMIN)
         assert r.status_code == 422, bad
 

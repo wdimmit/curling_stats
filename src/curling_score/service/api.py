@@ -3610,7 +3610,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if not isinstance(given, list) or len(given) > MAX_LABEL_ITEMS_PER_CALL:
             raise HTTPException(422, f"items is a list of at most {MAX_LABEL_ITEMS_PER_CALL}")
         for g in given:
-            if (not isinstance(g, dict) or not LABEL_ID.match(str(g.get("id")))
+            if (not isinstance(g, dict) or not isinstance(g.get("id"), str)
+                    or not LABEL_ID.match(g["id"])
                     or g.get("kind") not in LABEL_KINDS
                     or not isinstance(g.get("batch"), str) or not g["batch"]
                     or not isinstance(g.get("payload"), dict)

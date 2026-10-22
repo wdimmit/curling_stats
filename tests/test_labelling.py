@@ -92,6 +92,15 @@ def test_boxes_outside_the_image_or_tiny_are_refused():
         check_answer(box_item(), two_boxes(a={"y0": 20, "y1": 15}))
 
 
+def test_a_box_rounded_a_tenth_under_the_minimum_is_kept():
+    check_answer(box_item(), two_boxes(a={"x1": 12.9}))        # 2.9 px wide: a 3.0 px box, rounded
+    check_answer(box_item(), two_boxes(a={"y1": 12.9}))
+    with pytest.raises(ValueError):
+        check_answer(box_item(), two_boxes(a={"x1": 12.8}))
+    with pytest.raises(ValueError):
+        check_answer(box_item(), two_boxes(a={"y1": 12.8}))
+
+
 def test_absurd_coordinates_are_a_value_error_not_an_overflow():
     for big in (10**400, -10**400, float("inf"), float("nan"), 1e300):
         with pytest.raises(ValueError):
@@ -134,6 +143,13 @@ def test_for_member_hides_reference_origin_and_uids():
     assert "origin" not in got and "labelled_by" not in got and len(got["starts"]) == 2
     assert "image" not in got and got["id"] == "b_1" and got["kind"] == "box"
     assert set(got) == {"id", "kind", "image_url", "w", "h", "starts"}
+
+
+def test_for_member_trusted_fields_beat_the_payload():
+    item = box_item()
+    item.payload.update({"id": "evil", "kind": "release", "image_url": "https://evil"})
+    got = for_member(item, "https://img")
+    assert (got["id"], got["kind"], got["image_url"]) == ("b_1", "box", "https://img")
 
 
 @pytest.fixture
@@ -200,3 +216,22 @@ def test_next_items_ignores_other_kinds_and_closed_items(repo):
     put(repo, 2, state="done")
     assert next_items(repo, "box", "u1", T0) == []
     assert next_items(repo, "release", "u1", T0) == []
+
+
+def test_a_half_done_item_past_the_first_page_is_still_offered(repo):
+    # u1 has labelled the oldest PAGE+5 half-done items; u2's later one still needs a second label
+    from curling_score.service import labelling
+    for n in range(1, labelling.PAGE + 6):
+        put(repo, n, n_labels=1, by=["u1"])
+    put(repo, 100, n_labels=1, by=["u2"])
+    assert ids(next_items(repo, "box", "u1", T0)) == ["b_100"]
+
+
+def test_half_done_paging_is_capped(repo, monkeypatch):
+    from curling_score.service import labelling
+    monkeypatch.setattr(labelling, "PAGE", 2)
+    monkeypatch.setattr(labelling, "HALF_PAGES", 2)
+    for n in range(1, 7):
+        put(repo, n, n_labels=1, by=["u1"])
+    put(repo, 100, n_labels=1, by=["u2"])
+    assert next_items(repo, "box", "u1", T0) == []             # beyond the 2 pages looked at

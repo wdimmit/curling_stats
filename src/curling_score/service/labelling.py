@@ -23,6 +23,10 @@ MAX_LABELS = 2
 RETIRE_AFTER_SKIPS = 5
 # Items read from the repo per query.
 PAGE = 50
+# Pages of half-done items looked through for one this member can still take.
+# A member who has labelled the oldest of them would otherwise be told there
+# is nothing left while later ones wait; the cap keeps a long queue cheap.
+HALF_PAGES = 5
 # More boxes than this on one image is a mistake, not a careful answer.
 MAX_BOXES = 60
 
@@ -32,6 +36,9 @@ RELEASE_MARKS = ("off", "held", "cant_tell")
 # A box edge may overshoot the image by this much (a drag past the border).
 EDGE_SLOP_PX = 1.0
 MIN_BOX_PX = 3.0
+# The page rounds what it sends to a tenth of a pixel, so a box drawn exactly
+# MIN_BOX_PX wide can arrive 0.1 short; that is not a box too small.
+MIN_BOX_TOLERANCE_PX = 0.1
 # No image is anywhere near this wide; past it a coordinate is nonsense.
 MAX_COORD = 1e9
 
@@ -55,7 +62,8 @@ def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[Lab
     Order: the member's own live hold (a reload resumes), then items with one
     label already, then untouched ones, oldest first. The first page of each
     is read up front, which is where a member's own hold is found without a
-    query of its own; untouched items are paged on only if that isn't enough.
+    query of its own; either list is paged on only if that isn't enough
+    (half-done ones for at most HALF_PAGES pages).
     A hold that comes back None was lost to someone else, so we move on.
     """
     half = repo.open_label_items(kind, 1, PAGE)
@@ -76,6 +84,11 @@ def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[Lab
 
     take(own)
     take([i for i in half if i.id not in own_ids])
+    page, pages = half, 1
+    while len(got) < n and len(page) >= PAGE and pages < HALF_PAGES:
+        page = repo.open_label_items(kind, 1, PAGE, after=page[-1].created_at)
+        pages += 1
+        take([i for i in page if i.id not in own_ids])
     take([i for i in fresh if i.id not in own_ids])
     page = fresh
     while len(got) < n and len(page) >= PAGE:
@@ -120,7 +133,8 @@ def _check_box_answer(item: LabelItem, answer: dict) -> dict:
                 or x1 > w + EDGE_SLOP_PX or y1 > h + EDGE_SLOP_PX):
             raise ValueError("a box is outside the image")
         x0, y0, x1, y1 = max(x0, 0.0), max(y0, 0.0), min(x1, float(w)), min(y1, float(h))
-        if x1 - x0 < MIN_BOX_PX or y1 - y0 < MIN_BOX_PX:
+        floor = MIN_BOX_PX - MIN_BOX_TOLERANCE_PX
+        if x1 - x0 < floor or y1 - y0 < floor:
             raise ValueError("a box is too small")
         if b.get("color") not in BOX_COLORS:
             raise ValueError("a box needs a colour, red or yellow")
@@ -170,6 +184,6 @@ def check_answer(item: LabelItem, answer: dict) -> dict:
 def for_member(item: LabelItem, image_url: str) -> dict:
     """What a member is shown: the payload and the image, and nothing else.
     Not the reference answer, the item's origin, who has labelled it or how
-    many have."""
+    many have. The trusted fields go last, so a payload can't overwrite them."""
     shown = {k: v for k, v in item.payload.items() if k not in ("image", "origin")}
-    return {"id": item.id, "kind": item.kind, "image_url": image_url, **shown}
+    return {**shown, "id": item.id, "kind": item.kind, "image_url": image_url}
