@@ -34,11 +34,11 @@ export function IdentityChip() {
   );
 }
 
-/* Pages only somebody signed in can use (api.py api_thinking_report), so
+/* Pages only somebody signed in can use (api.py api_thinking_report, /api/label), so
  * their links are left out for anyone else -- and while sign-in is still
  * deciding, rather than shown and then taken away. With no accounts at all
  * they are open, and shown. */
-const SIGNED_IN_ONLY = new Set(["/thinking"]);
+const SIGNED_IN_ONLY = new Set(["/thinking", "/label"]);
 
 /* `links` are [href, text] pairs; a third element marks the page you are on. */
 export function Header({ links = [], children }) {

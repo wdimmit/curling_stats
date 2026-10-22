@@ -546,3 +546,34 @@ body[data-page="signin"] main { max-width:520px; }
 #signin form .row { margin-top:10px; }
 #signin button.linky { padding:0; border:0; background:none; color:var(--ink);
                        text-decoration:underline; text-underline-offset:3px; }
+
+/* --- members' labelling -------------------------------------------------- */
+/* A picture drawn up to twice its size, so the page is as wide as the window
+   allows rather than the report column. The SVG sits exactly over the image
+   and takes the mouse; the colour tags are plain text over it that does not. */
+.label-main { max-width:none; }
+.label-bar { display:flex; gap:18px; align-items:baseline; margin-bottom:12px; }
+.label-bar b { font-family:var(--display); font-size:17px; }
+.label-bar a { color:var(--accent); text-underline-offset:3px; }
+.label-howto { margin-bottom:12px; max-width:640px; }
+.label-stage { position:relative; line-height:0; user-select:none; -webkit-user-select:none;
+               border:1px solid var(--line); }
+.label-stage img { display:block; }
+.label-stage svg { position:absolute; inset:0; touch-action:none; }
+.label-box { fill:none; stroke-width:2px; vector-effect:non-scaling-stroke; }
+.label-box.red { stroke:var(--red); }
+.label-box.yellow { stroke:var(--yellow); }
+.label-box.dashed { stroke-dasharray:6 4; }
+.label-halo { fill:none; stroke:#fff; stroke-width:5px; stroke-opacity:.85;
+              vector-effect:non-scaling-stroke; }
+.label-tag { position:absolute; padding:0 5px; font:600 11px/16px var(--display);
+             letter-spacing:.04em; text-transform:uppercase; pointer-events:none;
+             color:#fff; }
+.label-tag.red { background:var(--red); }
+.label-tag.yellow { background:var(--yellow); color:#16130c; }
+.label-tag.sel { outline:2px solid #fff; }
+.label-msg { min-height:1.5em; margin:8px 0 4px; color:var(--warn); font-weight:600; }
+.label-actions button kbd { margin-left:6px; }
+.label-flow kbd, .label-actions kbd { font:600 11px/1 var(--display); padding:2px 5px;
+  border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--muted); }
+.label-keys { font-size:13px; }
