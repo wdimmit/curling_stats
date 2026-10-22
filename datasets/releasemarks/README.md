@@ -42,3 +42,20 @@ held out at a time:
 
 On S1w the crop drifts up to 0.3 m off the rock late in the delivery; the hand
 stays in frame.
+
+Five Tuesday Super League games, 20 rocks each (seed 20261025), marked
+2026-10-22 -- the league the release read will mostly be used on:
+
+| file | tag | game |
+|---|---|---|
+| `s_0hT4wgp2neSrsEmdi.json` | SL1 | 10/13 sheet 1, Bond v MacDaniels |
+| `s_1B1MNsgl0dfzAGI66.json` | SL2 | 10/13 sheet 2, Kauffman v Markham |
+| `s_07ySGzlxYKqPe5OyR.json` | SL3 | 10/20 sheet 3, DeGagne v Blackburn |
+| `s_06ynU65btZQJrNLX5.json` | SL4 | 10/20 sheet 4, Galey v Sherry |
+| `s_0f0fbaEZrmthGK4jW.json` | SL5 | 10/13 sheet 5, Bonin v Dimmit |
+
+`remarks-2026-10-21.json` -- 20 of the rocks above marked a second time, blind
+and in shuffled order: the 12 a hand-on/off model missed worst, and 8 at
+random. The two marks differ by a median 0.06 m and never by more than 0.38 m,
+so a mark is repeatable to about a tenth of a metre; the model's big misses
+were the model's.
