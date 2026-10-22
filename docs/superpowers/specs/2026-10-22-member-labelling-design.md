@@ -1,6 +1,6 @@
 # Member labelling: rock boxes and release marks
 
-**Status:** draft for the user's approval, 2026-10-22; reviewer questions answered. The user's mockups were OK'd that day (`.superpowers/brainstorm/.../flows.html`).
+**Status:** approved by the user, 2026-10-22. The user's mockups were OK'd that day (`.superpowers/brainstorm/.../flows.html`).
 
 ## Why
 
