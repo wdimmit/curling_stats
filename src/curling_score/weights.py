@@ -108,6 +108,14 @@ BROOM_ENV_VAR = "CURLING_SCORE_BROOM_WEIGHTS"
 SPIN_NAME = "spin1.pt"
 SPIN_ENV_VAR = "CURLING_SCORE_SPIN_WEIGHTS"
 
+# The release model: a ResNet-18 that reads a stack of three grey crops of the
+# delivery lane from the long camera facing the thrower as the hand on, or off,
+# the handle. Like SPIN_NAME it is optional: a missing file means no release
+# reads, not a broken run. A float16 `state_dict` of `releasemodel.build()`'s
+# model. See `detect/releasemodel.py`.
+RELEASE_NAME = "release1.pt"
+RELEASE_ENV_VAR = "CURLING_SCORE_RELEASE_WEIGHTS"
+
 
 def _candidates(name=DEFAULT_NAME):
     here = Path(__file__).resolve()
@@ -206,6 +214,28 @@ def spin_path():
                 f"file, or to 'none' for no spin.")
         return path
     for path in _candidates(SPIN_NAME):
+        if path.is_file():
+            return path
+    return None
+
+
+def release_path():
+    """The release model, or None: no model means no release reads, not an error.
+
+    Resolved like :func:`spin_path`: ``none`` or unset-and-absent gives None,
+    and a path that is set but missing raises.
+    """
+    chosen = os.environ.get(RELEASE_ENV_VAR)
+    if chosen:
+        if chosen.strip().lower() in ("none", ""):
+            return None
+        path = Path(chosen)
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"{RELEASE_ENV_VAR}={chosen} does not exist. Set it to a weights "
+                f"file, or to 'none' for no release reads.")
+        return path
+    for path in _candidates(RELEASE_NAME):
         if path.is_file():
             return path
     return None

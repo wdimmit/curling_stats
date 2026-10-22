@@ -123,3 +123,33 @@ class TestSpinPath:
 
     def test_the_repository_ships_the_default(self):
         assert (Path(__file__).resolve().parents[1] / "weights" / weights.SPIN_NAME).is_file()
+
+
+class TestReleasePath:
+    """No release model means no release reads, never a broken run."""
+
+    def test_absent_is_no_release_model_not_an_error(self, monkeypatch):
+        monkeypatch.delenv(weights.RELEASE_ENV_VAR, raising=False)
+        monkeypatch.setattr(weights, "_candidates", lambda name=None: iter(()))
+        assert weights.release_path() is None
+
+    def test_none_switches_it_off(self, monkeypatch):
+        monkeypatch.setenv(weights.RELEASE_ENV_VAR, "none")
+        assert weights.release_path() is None
+
+    def test_a_set_but_missing_path_raises(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(weights.RELEASE_ENV_VAR, str(tmp_path / "nope.pt"))
+        with pytest.raises(FileNotFoundError):
+            weights.release_path()
+
+    def test_a_set_path_is_used(self, monkeypatch, tmp_path):
+        p = tmp_path / "r.pt"; p.write_bytes(b"x")
+        monkeypatch.setenv(weights.RELEASE_ENV_VAR, str(p))
+        assert weights.release_path() == p
+
+    def test_it_looks_for_the_release_weights_by_name(self, monkeypatch):
+        monkeypatch.delenv(weights.RELEASE_ENV_VAR, raising=False)
+        names = []
+        monkeypatch.setattr(weights, "_candidates", lambda name=None: names.append(name) or iter(()))
+        weights.release_path()
+        assert names == [weights.RELEASE_NAME] == ["release1.pt"]
