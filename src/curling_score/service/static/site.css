@@ -555,7 +555,13 @@ body[data-page="signin"] main { max-width:520px; }
 .label-bar { display:flex; gap:18px; align-items:baseline; margin-bottom:12px; }
 .label-bar b { font-family:var(--display); font-size:17px; }
 .label-bar a { color:var(--accent); text-underline-offset:3px; }
-.label-howto { margin-bottom:12px; max-width:640px; }
+.label-howto { box-sizing:border-box; max-width:min(520px, calc(100vw - 32px));
+               margin:min(18vh, 140px) auto auto; padding:20px 20px 18px;
+               border:1px solid var(--line); border-radius:10px;
+               background:var(--panel); color:var(--ink); }
+.label-howto::backdrop { background:rgb(0 0 0 / .45); }
+.label-howto h2 { margin:0 0 8px; font:700 19px/1.25 var(--display, inherit); }
+.label-howto p { margin:0 0 16px; }
 .label-stage { position:relative; line-height:0; user-select:none; -webkit-user-select:none;
                border:1px solid var(--line); }
 .label-stage img { display:block; }

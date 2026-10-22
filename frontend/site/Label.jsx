@@ -560,6 +560,28 @@ const FLOWS = {
                      + "thrower lets go and grabs it again, mark the last let-go." },
 };
 
+/* The how-to, the first time a flow is opened. A modal <dialog> rather than a
+ * card on the page: the page's keys are off while it is up, and a card beside
+ * the picture left people pressing keys that did nothing. The modal blocks the
+ * page until "Got it", which has the focus, so Enter dismisses it; Escape does
+ * not, so nobody waves it away unread. */
+function HowtoDialog({ name, text, onDone }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+    return () => { if (d?.open) d.close(); };
+  }, []);
+  return (
+    <dialog ref={ref} className="label-howto" aria-labelledby="label-howto-title"
+            onCancel={e => e.preventDefault()}>
+      <h2 id="label-howto-title">{name}</h2>
+      <p>{text}</p>
+      <button className="primary" autoFocus onClick={onDone}>Got it</button>
+    </dialog>
+  );
+}
+
 function Stage({ flow }) {
   const { kind, Flow, howto } = FLOWS[flow];
   const q = useLabelQueue(kind, true);
@@ -575,12 +597,7 @@ function Stage({ flow }) {
         <a href={flow === "boxes" ? "#releases" : "#boxes"}>
           {flow === "boxes" ? FLOWS.releases.name : FLOWS.boxes.name}</a>
       </div>
-      {showHowto ? (
-        <div className="card label-howto">
-          <p style={{ marginTop: 0 }}>{howto}</p>
-          <button className="primary" autoFocus onClick={dismiss}>Got it</button>
-        </div>
-      ) : null}
+      {showHowto ? <HowtoDialog name={FLOWS[flow].name} text={howto} onDone={dismiss} /> : null}
       {q.notice ? <div className="warn" role="status">{q.notice}</div> : null}
       {q.phase === "loading" ? <p className="muted">Loading…</p>
        : q.phase === "error" ? (
