@@ -60,6 +60,11 @@ Five Tuesday Super League games, 20 rocks each (seed 20261025), marked
 | `s_06ynU65btZQJrNLX5.json` | SL4 | 10/20 sheet 4, Galey v Sherry |
 | `s_0f0fbaEZrmthGK4jW.json` | SL5 | 10/13 sheet 5, Bonin v Dimmit |
 
+`s_0hx8wuVKeMmy4evaI.json` (tag GATE) -- 10/20 sheet 5, Hamzeh v Yalowicki, 20
+rocks (seed 20261026), marked 2026-10-22: the ship gate for `weights/release1.pt`,
+a Super League game it was not trained on. 17 of 20 read within 0.5 m (the bar
+was 15), 16 within 0.3 m, median 0.08 m; two misses of 1.7-1.9 m.
+
 `remarks-2026-10-21.json` -- 20 of the rocks above marked a second time, blind
 and in shuffled order: the 12 a hand-on/off model missed worst, and 8 at
 random. The two marks differ by a median 0.06 m and never by more than 0.38 m,
