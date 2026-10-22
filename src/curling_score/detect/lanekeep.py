@@ -81,6 +81,14 @@ class LaneKeeper:
     def clear(self) -> None:
         self._strips.clear()
 
+    def rewindow(self, windows) -> None:
+        """Keep for ``windows`` from now on, and let go of every strip kept
+        outside them: a rock given its release after the keeper was made wants
+        that release's seconds, not the ones kept for it before."""
+        self.windows = [(float(t0), float(t1)) for t0, t1 in windows]
+        for idx in [i for i in self._strips if not self._wanted(i / SOURCE_FPS)]:
+            del self._strips[idx]
+
     def _wanted(self, t: float) -> bool:
         return any(t0 - _EPS <= t < t1 - _EPS for t0, t1 in self.windows)
 

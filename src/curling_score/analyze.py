@@ -653,8 +653,8 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
             # The release read decodes nothing of its own: a strip of the lane
             # is kept from every 30 fps decode of hogtime's camera until the
             # lines are done. Made before hogtime, from the shots the rules
-            # settled, so a rock whose release the long camera fills in below
-            # still keeps what hogtime's read of it decodes.
+            # settled, and pointed again at the releases once the long camera
+            # has filled in the ones the overhead lost.
             keeper = releasetime.keeper_for(shots, hog_view, ctx.release_model)
             try:
                 with longview.keeping(keeper):
@@ -669,6 +669,9 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
                     stages.mark("side")
                     if n_side:
                         progress(f"    end {end.number}: {n_side} release(s) from the long camera")
+                    # Such a rock was kept for hogtime's window, which hangs off
+                    # its arrival; its delivery read decodes past it.
+                    releasetime.follow_releases(keeper, shots)
                     # The skip's target broom, from the camera that sees the
                     # destination house -- the OTHER camera from hogtime's.
                     broomtime.time_target_brooms(
@@ -690,14 +693,19 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
                     stages.mark("lines")
                 # Where the thrower's hand let go, along each line's delivery
                 # path, from the strips kept above. Timed with what it held, for
-                # the live lane's budget and a worker's memory.
+                # the live lane's budget and a worker's memory. Attach-only:
+                # whatever fails here costs the end its releases, nothing more.
                 if keeper is not None:
-                    t_release = time.monotonic()
-                    n_release = releasetime.time_releases(shots, keeper, hog_view,
-                                                          model=ctx.release_model)
-                    progress(f"    end {end.number}: release {n_release}/{len(shots)} "
-                             f"in {time.monotonic() - t_release:.1f} s "
-                             f"({keeper.nbytes / 1e6:.0f} MB kept)")
+                    try:
+                        t_release = time.monotonic()
+                        n_release = releasetime.time_releases(shots, keeper, hog_view,
+                                                              model=ctx.release_model)
+                        progress(f"    end {end.number}: release {n_release}/{len(shots)} "
+                                 f"in {time.monotonic() - t_release:.1f} s "
+                                 f"({keeper.nbytes / 1e6:.0f} MB kept)")
+                    except Exception:  # noqa: BLE001
+                        log.exception("end %s: the release read failed; no releases",
+                                      end.number)
                     stages.mark("release")
             finally:
                 # ~20 MB a rock: let it go before the next end, whatever happened.

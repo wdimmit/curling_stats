@@ -266,3 +266,27 @@ def test_a_keeper_is_made_only_for_a_read():
     assert releasetime.keeper_for(shots, VIEW, model=None) is None
     assert releasetime.keeper_for(shots, FLAT, model=object()) is None
     assert releasetime.keeper_for(shots, None, model=object()) is None
+
+
+def test_a_release_found_after_the_keeper_was_made_keeps_its_seconds():
+    # No release when the end's keeper is made: it keeps hogtime's window for
+    # the rock, which hangs off its arrival and ends 7 s before it. The long
+    # camera then finds a release 10 s before the arrival (`sidereleases`),
+    # and the delivery read decodes on past where that window ended.
+    shot = SimpleNamespace(release=None, delivery=SimpleNamespace(t_enter=220.0))
+    keeper = releasetime.keeper_for([shot], VIEW, model=object())
+    t0, t1 = hogtime.window_for(shot)
+    early = np.zeros((4, 1080, 810, 3), np.uint8)
+    keeper.offer(VIEW.rect, early, [t0 + i / 30 for i in range(4)], 30.0)
+    assert keeper.nbytes > 0
+    shot.release = SimpleNamespace(t=210.0)
+    releasetime.follow_releases(keeper, [shot])
+    # Kept for the release now, and what was kept only for the arrival is gone.
+    assert keeper.windows == [(209.0, 217.0)] and keeper.nbytes == 0
+    tail = [t1 + 1.0 + i / 30 for i in range(6)]              # past the old window
+    keeper.offer(VIEW.rect, np.zeros((6, 1080, 810, 3), np.uint8), tail, 30.0)
+    assert len(keeper.frames_between(209.0, 217.0)[1]) == 6
+
+
+def test_following_releases_without_a_keeper_is_a_no_op():
+    releasetime.follow_releases(None, [SimpleNamespace(release=SimpleNamespace(t=1.0))])

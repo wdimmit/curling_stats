@@ -9,6 +9,15 @@ from curling_score.live.session import LiveError
 from curling_score.service.worker import Lost
 
 
+@pytest.fixture(autouse=True)
+def no_hand_model(monkeypatch):
+    """The tests here stub `analyze.load_models` with a line model, and the
+    lane loads the hand model with it: kept from loading the real network
+    once its weights are in the repo."""
+    from curling_score.detect import releasemodel
+    monkeypatch.setattr(releasemodel, "default_model", lambda: None)
+
+
 def live_job(n):
     return {"id": f"j_{n}", "run_id": f"r_{n}", "video_id": f"liveVid000{n}",
             "kind": "live", "format": "fours", "sheet": n, "title": f"Sheet {n}"}

@@ -201,3 +201,19 @@ def test_a_sixteen_rock_end_stays_under_budget():
     r0, r1, c0, c1 = lanekeep.strip_box(VIEW)
     per_end = 16 * 8.0 * (lanekeep.SOURCE_FPS / lanekeep.KEEP_EVERY) * (r1 - r0) * (c1 - c0)
     assert per_end < 400e6
+
+
+def test_rewindow_keeps_for_the_new_windows_and_lets_go_of_the_rest():
+    # A rock the long camera gave a release after the keeper was made: its
+    # seconds move, and what was kept for the old ones goes.
+    k = lanekeep.LaneKeeper(VIEW, windows=[(10.0, 11.0), (20.0, 21.0)])
+    k.offer(VIEW.rect, *synthetic(VIEW, t0=10.0, n=30), FPS)
+    k.offer(VIEW.rect, *synthetic(VIEW, t0=20.0, n=30), FPS)
+    k.rewindow([(10.5, 12.0), (20.0, 21.0)])
+    assert k.windows == [(10.5, 12.0), (20.0, 21.0)]
+    _strips, ts = k.frames_between(0, 99)
+    assert len(ts) == 15 + 30 and ts.min() >= 10.5 - 1e-9
+    # The new window's seconds are kept from the next decode on.
+    k.offer(VIEW.rect, *synthetic(VIEW, t0=11.0, n=30), FPS)
+    _strips, ts = k.frames_between(11.0, 12.0)
+    assert len(ts) == 30

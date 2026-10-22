@@ -104,6 +104,8 @@ def enrich(video, setups, sideviews, models, *, house, arrival, release, house_f
             with longview.keeping(keeper):
                 _run("hog", stages.hog, shots, video, hog_view)
                 _run("side release", stages.side_release, shots, video, hog_view)
+                # A release the long camera found is kept for from here on.
+                releasetime.follow_releases(keeper, shots)
                 _run("broom", stages.broom, shots, video, dest_view, model=models.broom_model)
                 if arrival is not None:
                     # The line follows the stone to where it stopped. Practice is often

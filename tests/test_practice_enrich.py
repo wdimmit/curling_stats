@@ -101,8 +101,12 @@ def test_a_throw_nobody_held_a_broom_for_still_gets_its_line():
 
 
 class FakeKeeper:
-    def __init__(self):
-        self.cleared = False
+    def __init__(self, calls=None):
+        self.cleared, self.calls = False, calls
+
+    def rewindow(self, windows):
+        if self.calls is not None:
+            self.calls.append(("rewindow", windows))
 
     def clear(self):
         self.cleared = True
@@ -132,6 +136,27 @@ def test_the_keeper_is_let_go_when_a_pass_fails(monkeypatch):
     monkeypatch.setattr(releasetime, "keeper_for", lambda shots, view, model: keeper)
     measure([], dv=arrival(), fail=("line", "release"))
     assert keeper.cleared and longview._keeping is None
+
+
+def test_a_release_the_long_camera_found_is_kept_for(monkeypatch):
+    # The overhead missed the release; the side release pass finds it, and the
+    # keeper is pointed at its seconds before the line's read decodes them.
+    calls = []
+    keeper = FakeKeeper(calls)
+    monkeypatch.setattr(releasetime, "keeper_for", lambda shots, view, model: keeper)
+    stages = recording(calls)
+    found = Release("red", 31.0, 1.0, 2.0)
+
+    def side(shots, video, view, model=None):
+        calls.append(("side", view.name, model))
+        shots[0].release = found
+
+    stages.side_release = side
+    E.enrich("rec.ts", SETUPS, SIDEVIEWS, MODELS, house="top", arrival=arrival(),
+             release=None, house_frames=[], throw_frames=[], stages=stages)
+    names = [c[0] for c in calls]
+    assert names.index("side") < names.index("rewindow") < names.index("broom")
+    assert calls[names.index("rewindow")][1] == [(30.0, 38.0)]
 
 
 def test_a_throw_that_never_arrived_keeps_nothing(monkeypatch):

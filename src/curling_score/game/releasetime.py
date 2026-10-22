@@ -56,7 +56,7 @@ FIRST_UNSEEN = 2
 KEEP_S = (-1.0, 7.0)
 # A rock with no release yet keeps hogtime's own window, this much wider each
 # side: the long camera may give it a release from those frames
-# (`sidereleases`), and its read then has them.
+# (`sidereleases`), and `follow_releases` then keeps that release's seconds.
 KEEP_WIDEN_S = 1.0
 
 # A rock's strips are asked for from this long before the path's first point
@@ -174,6 +174,19 @@ def keeper_for(shots, view, model):
     except Exception:  # noqa: BLE001 - no keeper costs the releases, not the end
         log.exception("no lane keeper for the release reads; no releases this end")
         return None
+
+
+def follow_releases(keeper, shots) -> None:
+    """Point ``keeper`` at the shots' releases as they stand now. Run after
+    the long camera fills in the releases the overhead lost
+    (`sidereleases`): such a rock was kept for hogtime's window, which hangs
+    off its arrival, and its delivery read decodes past it."""
+    if keeper is None:
+        return
+    try:
+        keeper.rewindow(keep_windows(shots))
+    except Exception:  # noqa: BLE001 - the windows it had still serve most rocks
+        log.exception("the lane keeper kept its old windows")
 
 
 def _read_one(keeper, view, delivery, t_release, model, infer):
