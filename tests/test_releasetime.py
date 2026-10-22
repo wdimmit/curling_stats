@@ -288,5 +288,22 @@ def test_a_release_found_after_the_keeper_was_made_keeps_its_seconds():
     assert len(keeper.frames_between(209.0, 217.0)[1]) == 6
 
 
+def test_a_rock_still_without_a_release_lets_go_of_its_frames():
+    # The long camera found none for it either, so nothing will read it: the
+    # ~14 s kept off its arrival goes, and the rock with a release keeps its own.
+    held = SimpleNamespace(release=SimpleNamespace(t=100.0))
+    lost = SimpleNamespace(release=None, delivery=SimpleNamespace(t_enter=220.0))
+    keeper = releasetime.keeper_for([held, lost], VIEW, model=object())
+    t0, t1 = hogtime.window_for(lost)
+    assert keeper.windows == [(99.0, 107.0), pytest.approx((t0 - 1.0, t1 + 1.0))]
+    frames = np.zeros((4, 1080, 810, 3), np.uint8)
+    keeper.offer(VIEW.rect, frames, [100.0 + i / 30 for i in range(4)], 30.0)
+    keeper.offer(VIEW.rect, frames, [t0 + i / 30 for i in range(4)], 30.0)
+    releasetime.follow_releases(keeper, [held, lost])
+    assert keeper.windows == [(99.0, 107.0)]
+    assert len(keeper.frames_between(99.0, 107.0)[1]) == 4
+    assert keeper.nbytes == 4 * keeper.frames_between(99.0, 107.0)[0][0].nbytes
+
+
 def test_following_releases_without_a_keeper_is_a_no_op():
     releasetime.follow_releases(None, [SimpleNamespace(release=SimpleNamespace(t=1.0))])

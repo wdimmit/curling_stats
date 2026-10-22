@@ -146,15 +146,18 @@ def release_at(p, o, delivery) -> tuple[float, float, float] | None:
     return None if at is None else (float(o[k]), *at)
 
 
-def keep_windows(shots) -> list[tuple[float, float]]:
+def keep_windows(shots, *, unreleased: bool = True) -> list[tuple[float, float]]:
     """The source time a lane keeper keeps for an end's release reads: around
     each shot's release, ``KEEP_S``, else hogtime's own window for the shot
-    widened by ``KEEP_WIDEN_S``. A shot hogtime leaves be keeps nothing."""
+    widened by ``KEEP_WIDEN_S``. A shot hogtime leaves be keeps nothing, and
+    so does one with no release when ``unreleased`` is false."""
     out = []
     for shot in shots:
         release = getattr(shot, "release", None)
         if release is not None:
             out.append((release.t + KEEP_S[0], release.t + KEEP_S[1]))
+            continue
+        if not unreleased:
             continue
         win = hogtime.window_for(shot)
         if win is not None:
@@ -180,11 +183,13 @@ def follow_releases(keeper, shots) -> None:
     """Point ``keeper`` at the shots' releases as they stand now. Run after
     the long camera fills in the releases the overhead lost
     (`sidereleases`): such a rock was kept for hogtime's window, which hangs
-    off its arrival, and its delivery read decodes past it."""
+    off its arrival, and its delivery read decodes past it. A rock still
+    without a release lets go of that window: nothing reads it now, and it
+    held ~14 s of strips, ~37 MB."""
     if keeper is None:
         return
     try:
-        keeper.rewindow(keep_windows(shots))
+        keeper.rewindow(keep_windows(shots, unreleased=False))
     except Exception:  # noqa: BLE001 - the windows it had still serve most rocks
         log.exception("the lane keeper kept its old windows")
 
