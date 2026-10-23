@@ -276,7 +276,17 @@ from pathlib import Path
 # rock by 0.02 s, and one end boundary moved 2.5 s. The pass took 1.1-1.3 s an
 # end and kept 309-317 MB of strips. On 20 rocks of 10/20 S5 the model never
 # saw, marked by hand, 17 releases fall within 0.5 m of the mark.
-PIPELINE_VERSION = "2026.10.22.2"
+# 2026.10.23.1: the board's card-digit reader (`game/digit_weights.npz`) is
+# retrained with this season's cards beside 2025-26's: 13,196 card rows from
+# 251 games on the worker's cached recordings
+# (`datasets/board-cards-2627`, the shipped reader's labels where it read at
+# 0.9999, a person's elsewhere). Held out by league night, at the unchanged
+# MIN_CONFIDENCE it reads 96.3-97.2% of frames where the old weights read
+# 91.1%, with 1-2 wrong against 3; replaying each game's board walk-back, ends
+# read rise 1,118 -> ~1,170 of 250 games, and no wrong end is the digits'.
+# The 10/21 Womens S3 game 2 "3" that kept ends 5-6 off the board is the kind
+# it now reads. Board scores only: nothing upstream of the board moves.
+PIPELINE_VERSION = "2026.10.23.1"
 
 
 def model_id(weights) -> str:

@@ -175,7 +175,9 @@ def fit(x, y, seed, epochs=40, copies=8, lr=1e-3, batch=128, weight_decay=1e-4,
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--glyphs", default="datasets/board-glyphs/glyphs.npz")
-    ap.add_argument("--cards", default="datasets/board-cards-train/cards.npz")
+    ap.add_argument("--cards", nargs="+", default=["datasets/board-cards-train/cards.npz"],
+                    help="one or more card sets; the 2026-27 shipping model takes "
+                         "board-cards-train and board-cards-2627 together")
     ap.add_argument("--ref-cards", default="datasets/board-cards",
                      help="the 11 different-season reference cards; folded "
                           "into training for the shipping model (Task 6F) "
@@ -194,7 +196,7 @@ def main():
     from curling_score.game import scoreboard as SB
 
     xp, yp = G.load_printed(args.glyphs)
-    rows, _ph = G.load_cards(args.cards)
+    rows = [r for path in args.cards for r in G.load_cards(path)[0]]
     x = np.concatenate([xp, np.stack([r[0] for r in rows])])
     y = np.concatenate([yp, np.array([int(r[1]) for r in rows], int)])
     n_ref = 0
