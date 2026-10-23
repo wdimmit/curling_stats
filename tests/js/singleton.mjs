@@ -74,6 +74,8 @@ export const rockSpan = core.rockSpan;
 export const rockAt = core.rockAt;
 export const endAt = t => core.endAt(view(), t, state.leadIn);
 export const END_LEAD_S = core.END_LEAD_S;
+export const restPassed = (from, to) => core.restPassed(view(), from, to);
+export const PAUSE_AFTER_REST_S = core.PAUSE_AFTER_REST_S;
 export const endSummary = (v, ei) => core.endSummary(v ?? view(), ei ?? state.ei);
 
 export const houseViewBox = core.houseViewBox;

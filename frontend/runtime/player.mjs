@@ -93,6 +93,11 @@ export function isPlaying() {
   return player.getPlayerState() === 1;
 }
 
+export function pause() {
+  if (!player || player === "none" || !ready) return;
+  player.pauseVideo();
+}
+
 export function togglePlay() {
   if (!player || player === "none" || !ready) return;
   player.getPlayerState() === 1 ? player.pauseVideo() : player.playVideo();

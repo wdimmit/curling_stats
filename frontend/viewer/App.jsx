@@ -18,7 +18,7 @@ import {
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
   shotClipName, shotClipsOffered, houseImageCaption, houseImageName, endChoices, switchedEnds,
-  chartSwapOff, endIdentity,
+  chartSwapOff, endIdentity, restPassed,
 } from "../core/index.mjs";
 import { accountsOn, whoIsSignedIn } from "../runtime/auth.mjs";
 import { saveSwitchedEnds } from "../runtime/switched.mjs";
@@ -183,6 +183,21 @@ export function App({ doc, config, cursor, reload }) {
     // Holding an arrow key should not fire a seek per shot skipped over.
     seekTimer.current = setTimeout(() => seek(shotVideoTime(s, ui.leadIn)), 200);
   }, [seek, ui.leadIn]);
+
+  /* Pause after each rock, in every layout: the charter wants the house
+     still to place it, and a viewer to read it before the next one. Watched
+     closely (a quarter second) so the pause lands near the rest it is for;
+     Watch's following holds the rock for as long as the video sits here. */
+  useEffect(() => {
+    if (!ui.pauseAfterShot) return undefined;
+    let last = null;
+    const id = setInterval(() => {
+      const t = player.isPlaying() ? player.currentTime() : null;
+      if (restPassed(view, last, t)) player.pause();
+      last = t;
+    }, 250);
+    return () => clearInterval(id);
+  }, [view, ui.pauseAfterShot]);
 
   const goTo = useCallback((ei, si, notice) => {
     dispatch({ type: "goTo", ei, si, notice });
@@ -530,6 +545,10 @@ export function App({ doc, config, cursor, reload }) {
         <input type="checkbox" id="autoplay" checked={ui.autoplay}
                onChange={e => setPref({ autoplay: e.target.checked })} /> play on jump
       </label>
+      <label className="chk" title="Pause the video once each rock has stopped">
+        <input type="checkbox" id="pauseAfter" checked={ui.pauseAfterShot}
+               onChange={e => setPref({ pauseAfterShot: e.target.checked })} /> pause after each rock
+      </label>
       <label className="chk" title="How long before the release each shot starts">lead-in
         <input type="number" id="leadin" min="0" max="60" step="1"
                style={{ width: 58 }} defaultValue={ui.leadIn}
@@ -580,7 +599,7 @@ export function App({ doc, config, cursor, reload }) {
                   {replayBtn}{markBtn}
                   <div className="tp-end">
                     {ytLink}
-                    <button id="playGear" type="button" title="Playback: play on jump, lead-in"
+                    <button id="playGear" type="button" title="Playback: play on jump, pause after each rock, lead-in"
                             aria-label="Playback settings" aria-controls="playPrefs"
                             aria-expanded={String(!!ui.prefs)}
                             onClick={() => dispatch({ type: "set", patch: { prefs: !ui.prefs } })}>{GEAR}</button>

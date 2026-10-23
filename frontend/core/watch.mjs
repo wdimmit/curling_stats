@@ -116,6 +116,27 @@ export function endAt(view, t, leadIn = 0) {
   return at;
 }
 
+/* Pause after each rock: whether playback from `from` to `to` passed a point
+ * PAUSE_AFTER_REST_S after some rock in this game came to rest. The wait is
+ * for whatever it hit to stop too.
+ *
+ * Only ordinary playback counts -- a step forward of at most a few seconds.
+ * A seek across a rest is somebody going somewhere, not a rock finishing,
+ * and pausing them there would be a surprise.
+ */
+export const PAUSE_AFTER_REST_S = 2;
+const PLAYED_STEP_S = 3;
+
+export function restPassed(view, from, to) {
+  if (typeof from !== "number" || typeof to !== "number") return false;
+  if (to <= from || to - from > PLAYED_STEP_S) return false;
+  return (view?.ends ?? []).some(({ shots }) => shots.some(s => {
+    if (typeof s.t_rest_s !== "number") return false;
+    const at = s.t_rest_s + PAUSE_AFTER_REST_S;
+    return from < at && at <= to;
+  }));
+}
+
 /* The end switcher's line: whose end it is so far, and who throws last. The
  * running score is the board's -- the one the end closed on, which is what a
  * viewer reading down the game wants -- and an end the board never reached

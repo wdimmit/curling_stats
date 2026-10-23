@@ -1809,6 +1809,45 @@ class TestFollowingCrossesEnds:
         assert run_js(setup(end_four_then_five()) + "out(endAt(null));") is None
 
 
+class TestPauseAfterEachRock:
+    """Where playing on stops, with the option on."""
+
+    def test_playing_past_a_rest_and_its_wait_pauses(self):
+        got = run_js(setup(end_four_then_five()) +
+                     "const at = rockRows()[2].tRest + PAUSE_AFTER_REST_S;"
+                     "out([restPassed(at - 0.25, at), restPassed(at - 0.5, at - 0.25),"
+                     " restPassed(at, at + 0.25)]);")
+        assert got == [True, False, False]
+
+    def test_it_waits_for_what_the_rock_hit_to_stop(self):
+        got = run_js(setup(end_four_then_five()) +
+                     "const r = rockRows()[2].tRest; out(restPassed(r - 0.25, r));")
+        assert got is False
+
+    def test_a_seek_across_a_rest_is_not_a_rock_finishing(self):
+        got = run_js(setup(end_four_then_five()) +
+                     "const at = rockRows()[2].tRest + PAUSE_AFTER_REST_S;"
+                     "out([restPassed(at - 30, at + 1), restPassed(at + 1, at - 30)]);")
+        assert got == [False, False]
+
+    def test_the_next_end_s_rocks_pause_too(self):
+        got = run_js(setup(end_four_then_five()) +
+                     "state.ei = 1; const at = rockRows()[0].tRest + PAUSE_AFTER_REST_S;"
+                     "out(restPassed(at - 0.25, at));")
+        assert got is True
+
+    def test_nothing_known_is_no_pause(self):
+        assert run_js(setup(end_four_then_five()) + "out(restPassed(null, 5));") is False
+
+    def test_the_viewer_pauses_and_holds_the_rock_while_it_is_on(self):
+        root = Path(__file__).resolve().parents[1] / "frontend"
+        app = (root / "viewer/App.jsx").read_text()
+        watch = (root / "viewer/Watch.jsx").read_text()
+        assert "restPassed(view, last, t)) player.pause()" in app
+        assert "ui.pauseAfterShot ? PAUSE_AFTER_REST_S + 1 : 0" in watch
+        assert "pauseAfterShot: false" in (root / "runtime/prefs.mjs").read_text()
+
+
 class TestARowCarriesItsSplit:
     """The long split beside the shot type, now that most rocks have one."""
 

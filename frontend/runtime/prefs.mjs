@@ -1,4 +1,4 @@
-/* The five settings that belong to the person, not to the chart.
+/* The settings that belong to the person, not to the chart.
  *
  * Kept under one key and type-checked on the way in: a browser that has never
  * seen this page, or one with storage blocked, must get the defaults rather
@@ -9,7 +9,7 @@ import { VIDEO_LEAD_IN_S } from "../core/constants.mjs";
 const KEY = "curlchart";
 
 export const DEFAULTS = {
-  showTrack: true, autoplay: true, leadIn: VIDEO_LEAD_IN_S,
+  showTrack: true, autoplay: true, leadIn: VIDEO_LEAD_IN_S, pauseAfterShot: false,
   clockOpen: false, clockBars: false,
   tab: "detail", // the phone viewer's bottom tab: "house" | "detail" | "delivery" | "timing"
 };

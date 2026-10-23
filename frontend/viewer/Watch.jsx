@@ -15,7 +15,9 @@
  * second <House> would put a second id="house" in the document.
  */
 import { useEffect, useMemo } from "react";
-import { WATCH_TABS, endAt, rockAt, rockSpan, rockRows, stepRock } from "../core/index.mjs";
+import {
+  PAUSE_AFTER_REST_S, WATCH_TABS, endAt, rockAt, rockSpan, rockRows, stepRock,
+} from "../core/index.mjs";
 import * as player from "../runtime/player.mjs";
 import { Delivery } from "./Delivery.jsx";
 import { Detail } from "./Detail.jsx";
@@ -30,13 +32,20 @@ import { Timing } from "./Timing.jsx";
  *
  * The end is followed too: once the playhead reaches the next end, the
  * cursor goes to the rock it is in there, not on holding the last one.
+ *
+ * Pausing after each rock (App) stops the video PAUSE_AFTER_REST_S past a
+ * rest, so following runs `lag` behind the video: the rock just finished
+ * stays up while the video sits paused on it, and the next one comes up once
+ * it plays on. The extra second covers a tick landing between the pause
+ * point and the pause.
  */
-function useFollow(view, leadIn, rows, following, ei, si, actions) {
+function useFollow(view, leadIn, rows, following, ei, si, lag, actions) {
   useEffect(() => {
     if (!following || !rows.length) return undefined;
     const tick = () => {
       if (!player.isPlaying()) return;
-      const t = player.currentTime();
+      const now = player.currentTime();
+      const t = typeof now === "number" ? now - lag : now;
       const e = endAt(view, t, leadIn);
       if (e != null && e !== ei) {
         const at = rockAt(rockRows(view, e, leadIn), t);
@@ -48,12 +57,13 @@ function useFollow(view, leadIn, rows, following, ei, si, actions) {
     };
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [view, leadIn, rows, following, ei, si, actions]);
+  }, [view, leadIn, rows, following, ei, si, lag, actions]);
 }
 
 export function Watch({ view, ui, config, series, think, here, actions }) {
   const rows = useMemo(() => rockRows(view, ui.ei, ui.leadIn), [view, ui.ei, ui.leadIn]);
-  useFollow(view, ui.leadIn, rows, ui.following !== false, ui.ei, ui.si, actions);
+  useFollow(view, ui.leadIn, rows, ui.following !== false, ui.ei, ui.si,
+            ui.pauseAfterShot ? PAUSE_AFTER_REST_S + 1 : 0, actions);
   const swipe = useSwipe(d => actions.step(d));
   const row = rows[ui.si] || null;
   const shot = view.ends[ui.ei]?.shots[ui.si] ?? null;
