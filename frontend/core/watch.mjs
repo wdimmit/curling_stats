@@ -88,6 +88,34 @@ export function rockAt(rows, t) {
   return span && span[1];
 }
 
+/* Which end the playhead is in, for following across ends.
+ *
+ * An end starts a little before its first rock seen is thrown -- the gap
+ * after an end's last rest is cleanup and walking, and the house the end
+ * finished on is what a viewer wants up through it. The slack is so a seek
+ * to that first rock, which can land a frame or two short, still counts as
+ * in the end it was sent to; it never reaches back past the previous end's
+ * last rest. An end with no times at all bounds nothing and is skipped.
+ */
+export const END_LEAD_S = 5;
+
+export function endAt(view, t, leadIn = 0) {
+  if (typeof t !== "number") return null;
+  let at = 0, lastRest = null;
+  (view?.ends ?? []).forEach((_, ei) => {
+    const rows = rockRows(view, ei, leadIn);
+    const first = rows.find(r => typeof r.tVideo === "number")?.tVideo
+      ?? rows.find(r => r.tRest != null)?.tRest;
+    if (first == null) return;
+    const start = lastRest == null ? first - END_LEAD_S
+      : Math.max(lastRest, first - END_LEAD_S);
+    if (ei > 0 && t >= start) at = ei;
+    const rests = rows.map(r => r.tRest).filter(v => v != null);
+    if (rests.length) lastRest = Math.max(...rests);
+  });
+  return at;
+}
+
 /* The end switcher's line: whose end it is so far, and who throws last. The
  * running score is the board's -- the one the end closed on, which is what a
  * viewer reading down the game wants -- and an end the board never reached

@@ -285,7 +285,7 @@ export function App({ doc, config, cursor, reload }) {
     /* Watch mode. followTo moves the cursor *without* seeking: the video is
        already there -- it is what said so -- and seeking to where you already
        are would stutter the playback once a second. */
-    followTo: si => dispatch({ type: "goTo", ei: ui.ei, si }),
+    followTo: (ei, si) => dispatch({ type: "goTo", ei, si }),
     setFollowing,
     // A step seeks the video to the new rock (goTo, via seekSoon), so
     // following should resume, the same as a tap on a Timing row: House and

@@ -15,7 +15,7 @@
  * second <House> would put a second id="house" in the document.
  */
 import { useEffect, useMemo } from "react";
-import { WATCH_TABS, rockSpan, rockRows, stepRock } from "../core/index.mjs";
+import { WATCH_TABS, endAt, rockAt, rockSpan, rockRows, stepRock } from "../core/index.mjs";
 import * as player from "../runtime/player.mjs";
 import { Delivery } from "./Delivery.jsx";
 import { Detail } from "./Detail.jsx";
@@ -27,23 +27,33 @@ import { Timing } from "./Timing.jsx";
  * Polled rather than driven by events: the YouTube iframe reports its time
  * over postMessage and has no "rock changed" to listen for. One second is
  * fine -- the interval between rocks is measured in tens of seconds.
+ *
+ * The end is followed too: once the playhead reaches the next end, the
+ * cursor goes to the rock it is in there, not on holding the last one.
  */
-function useFollow(rows, following, si, actions) {
+function useFollow(view, leadIn, rows, following, ei, si, actions) {
   useEffect(() => {
     if (!following || !rows.length) return undefined;
     const tick = () => {
       if (!player.isPlaying()) return;
-      const span = rockSpan(rows, player.currentTime());
-      if (span && (si < span[0] || si > span[1])) actions.followTo(span[1]);
+      const t = player.currentTime();
+      const e = endAt(view, t, leadIn);
+      if (e != null && e !== ei) {
+        const at = rockAt(rockRows(view, e, leadIn), t);
+        if (at != null) actions.followTo(e, at);
+        return;
+      }
+      const span = rockSpan(rows, t);
+      if (span && (si < span[0] || si > span[1])) actions.followTo(ei, span[1]);
     };
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [rows, following, si, actions]);
+  }, [view, leadIn, rows, following, ei, si, actions]);
 }
 
 export function Watch({ view, ui, config, series, think, here, actions }) {
   const rows = useMemo(() => rockRows(view, ui.ei, ui.leadIn), [view, ui.ei, ui.leadIn]);
-  useFollow(rows, ui.following !== false, ui.si, actions);
+  useFollow(view, ui.leadIn, rows, ui.following !== false, ui.ei, ui.si, actions);
   const swipe = useSwipe(d => actions.step(d));
   const row = rows[ui.si] || null;
   const shot = view.ends[ui.ei]?.shots[ui.si] ?? null;

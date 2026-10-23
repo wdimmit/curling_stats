@@ -72,6 +72,8 @@ export const shotVideoTime = s => core.shotVideoTime(s, state.leadIn);
 export const rockRows = () => core.rockRows(view(), state.ei, state.leadIn);
 export const rockSpan = core.rockSpan;
 export const rockAt = core.rockAt;
+export const endAt = t => core.endAt(view(), t, state.leadIn);
+export const END_LEAD_S = core.END_LEAD_S;
 export const endSummary = (v, ei) => core.endSummary(v ?? view(), ei ?? state.ei);
 
 export const houseViewBox = core.houseViewBox;

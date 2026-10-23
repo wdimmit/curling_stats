@@ -1750,7 +1750,63 @@ class TestTheListFollowsTheVideo:
 
     def test_following_leaves_the_rock_alone_while_the_playhead_is_in_its_span(self):
         src = (Path(__file__).resolve().parents[1] / "frontend/viewer/Watch.jsx").read_text()
-        assert "rockSpan(rows, player.currentTime())" in src and "si < span[0] || si > span[1]" in src
+        assert "rockSpan(rows, t)" in src and "si < span[0] || si > span[1]" in src
+
+    def test_following_crosses_into_the_end_the_playhead_is_in(self):
+        """Holding the last rock of an end forever was the bug: the cursor
+        has to move on when the video does."""
+        src = (Path(__file__).resolve().parents[1] / "frontend/viewer/Watch.jsx").read_text()
+        assert "endAt(view, t, leadIn)" in src and "actions.followTo(e, at)" in src
+
+
+def end_four_then_five(gap=120.0):
+    """End four, and end five starting `gap` seconds after its last rest."""
+    d = end_four()
+    last = 3300.0 + 16 * 60
+    shots = [shot(n, "red" if n % 2 else "yellow", "lead",
+                  t_rest_s=last + gap + n * 60, t_enter_s=last + gap - 10 + n * 60)
+             for n in range(1, 17)]
+    d["games"][0]["ends"].append({"number": 5, "score": {"red": 0, "yellow": 0},
+                                  "shots": shots})
+    return d
+
+
+class TestFollowingCrossesEnds:
+    """Which end the playhead is in."""
+
+    def test_the_finished_house_holds_through_the_gap_between_ends(self):
+        got = run_js(setup(end_four_then_five()) +
+                     "const r = rockRows(); out(endAt(r[15].tRest + 30));")
+        assert got == 0
+
+    def test_the_next_end_starts_just_before_its_first_rock(self):
+        got = run_js(setup(end_four_then_five()) +
+                     "state.ei = 1; const r = rockRows();"
+                     "out([endAt(r[0].tVideo - END_LEAD_S - 1), endAt(r[0].tVideo - 1),"
+                     " endAt(r[0].tVideo), rockAt(r, r[0].tVideo)]);")
+        assert got == [0, 1, 1, 0]
+
+    def test_scrubbing_back_returns_to_the_earlier_end(self):
+        got = run_js(setup(end_four_then_five()) +
+                     "const r = rockRows(); out(endAt(r[3].tRest));")
+        assert got == 0
+
+    def test_the_lead_never_reaches_back_past_the_last_rest(self):
+        """A next end whose first rock is sent for barely after the last rest
+        (here 2 s) does not take the last rock away before it stops."""
+        got = run_js(setup(end_four_then_five(gap=-28.0)) +
+                     "const r = rockRows(); out([endAt(r[15].tRest - 1), endAt(r[15].tRest)]);")
+        assert got == [0, 1]
+
+    def test_an_end_with_no_times_bounds_nothing(self):
+        got = run_js(setup(end_four_then_five()) +
+                     "for (const s of state.doc.games[0].ends[1].shots)"
+                     "  { delete s.t_rest_s; delete s.t_enter_s; }"
+                     "out(endAt(1e9));")
+        assert got == 0
+
+    def test_no_time_is_no_answer(self):
+        assert run_js(setup(end_four_then_five()) + "out(endAt(null));") is None
 
 
 class TestARowCarriesItsSplit:
