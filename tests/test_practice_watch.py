@@ -38,10 +38,15 @@ class Rec:
 
 
 class Pipeline:
-    def __init__(self, top=(), bottom=(), cals=None):
+    def __init__(self, top=(), bottom=(), cals=None, saved_ok=None):
         self.frames = {"top": list(top), "bottom": list(bottom)}
         self.cals = list(cals) if cals else [cal()]
-        self.calibrated, self.spans = [], []
+        self.calibrated, self.spans, self.checked = [], [], []
+        self.saved_ok = saved_ok
+
+    def check_saved(self, path, until_s, saved):
+        self.checked.append((path, until_s, saved))
+        return self.saved_ok
 
     def calibrate(self, path, until_s):
         self.calibrated.append(until_s)
@@ -71,11 +76,11 @@ def hack(color, t):
     return [(t, det(color, 0.0, -3.6))]
 
 
-def watched(pipeline, since_s=20.0, until_s=100.0, t0_s=0.0, clock=None):
+def watched(pipeline, since_s=20.0, until_s=100.0, t0_s=0.0, clock=None, **kw):
     rec, docs = Rec(), []
     w = W.PracticeWatch(recording=rec, pipeline=pipeline, models=SimpleNamespace(detector=None),
                         since_s=since_s, t0_s=t0_s, publish=docs.append,
-                        clock=clock or (lambda: 0.0))
+                        clock=clock or (lambda: 0.0), **kw)
     while rec.head < until_s:
         rec.head = min(until_s, rec.head + 1.0)
         while w.step():
@@ -229,6 +234,111 @@ def test_a_long_catch_up_is_read_in_pieces_from_the_look_back():
     assert all(b - a <= W.STEP_MAX_S for a, b in p.spans)
     assert all(p.spans[i][1] == p.spans[i + 1][0] for i in range(len(p.spans) - 1))
     assert p.spans[-1][1] == 498.0                 # just behind the head
+
+
+# --- a saved calibration ---------------------------------------------------------
+
+
+def saving(pipeline, *, saved=None, head=W.CHECK_MIN_S, now=None, save=None, **kw):
+    """A watch from Start (``since_s`` 0, as on a direct feed, which has no
+    lookback) holding ``saved``; ``saves`` collects what it asks to be kept."""
+    saves, rec = [], Rec(head=head)
+    now = now if now is not None else [0.0]
+    w = W.PracticeWatch(recording=rec, pipeline=pipeline, models=None, since_s=0.0,
+                        clock=lambda: now[0], saved_calibration=saved,
+                        save_calibration=save or saves.append, **kw)
+    return w, rec, saves, now
+
+
+def test_saved_calibration_that_agrees_skips_calibrating():
+    saved, p = cal(), Pipeline(saved_ok=True)
+    w, _, saves, _ = saving(p, saved=saved)
+    assert w.step() is True
+    assert p.calibrated == [] and w.status == "watching" and w.cal is saved
+    assert p.checked == [("rec.ts", W.CHECK_MIN_S, saved)]
+    assert saves == []                             # nothing new to keep
+
+
+def test_saved_calibration_that_disagrees_falls_back_and_is_replaced():
+    now = [0.0]
+    p = Pipeline(saved_ok=False, cals=[cal(complete=False), cal()])
+    w, _, saves, now = saving(p, saved=cal(), now=now)
+    assert w.step() is True and w.status == "calibrating" and p.calibrated == []
+    assert w.step() is True                        # today's loop: incomplete, tried again
+    assert w.status == "calibrating" and saves == []
+    assert w.step() is False                       # not yet a minute
+    now[0] = W.CALIB_RETRY_S
+    assert w.step() is True
+    assert w.status == "watching" and w.cal.complete
+    assert saves == [w.cal]                        # once, and the complete one
+    assert len(p.checked) == 1                     # the check is made once
+
+
+def test_a_calibration_that_never_completes_is_not_saved():
+    now = [0.0]
+    p = Pipeline(saved_ok=False, cals=[cal(complete=False)])
+    w, _, saves, now = saving(p, saved=cal(), now=now)
+    while not w.done and w.status != "watching":
+        w.step()
+        now[0] += W.CALIB_RETRY_S
+    assert w.status == "watching" and not w.cal.complete
+    assert saves == []                             # the saved one stays until a better one is made
+
+
+def test_the_check_waits_for_the_first_keyframes():
+    p = Pipeline(saved_ok=True)
+    w, rec, _, _ = saving(p, saved=cal(), head=W.CHECK_MIN_S - 0.1)
+    assert w.step() is False and p.checked == []
+    rec.head = W.CHECK_MIN_S
+    assert w.step() is True and len(p.checked) == 1
+
+
+def test_a_recording_that_ended_before_the_check_is_checked_anyway():
+    p = Pipeline(saved_ok=False, cals=[CalibrationError("no panels")])
+    w, rec, _, _ = saving(p, saved=cal(), head=1.0)
+    rec.over = True
+    while w.step():
+        pass
+    assert len(p.checked) == 1 and w.done and w.status == "failed"
+
+
+def test_a_saved_calibration_that_is_incomplete_is_not_adopted():
+    # Complete is judged afresh on load: a file kept when it meant less must
+    # not put a panel with no hog line on the ice.
+    p = Pipeline(saved_ok=True)
+    w, _, saves, _ = saving(p, saved=cal(complete=False))
+    assert w.step() is True
+    assert p.checked == [] and w.status == "calibrating" and w.cal is None
+    assert w.step() is True and len(p.calibrated) == 1
+    assert w.status == "watching" and saves == [w.cal]
+
+
+def test_a_failed_save_costs_the_save_not_the_watch(caplog):
+    def broken(_cal):
+        raise OSError("disk full")
+
+    p = Pipeline(saved_ok=False)
+    w, _, _, _ = saving(p, saved=cal(), save=broken)
+    with caplog.at_level("WARNING", logger=W.log.name):
+        while w.status != "watching":
+            w.step()
+    assert "disk full" in caplog.text
+
+
+def test_without_a_saved_calibration_nothing_is_checked_or_saved():
+    p = Pipeline()
+    w, _, saves, _ = saving(p)
+    while w.status != "watching":
+        w.step()
+    assert p.checked == [] and p.calibrated == [W.CHECK_MIN_S] and saves == []
+
+
+def test_a_throw_is_published_from_a_saved_calibration():
+    pipe = Pipeline(top=sheet(thrown("red", t0=40.0), until_s=100.0),
+                    bottom=sheet(hack("red", 22.0), until_s=100.0), saved_ok=True)
+    w, docs = watched(pipe, saved_calibration=cal())
+    assert pipe.calibrated == [] and len(w.throws) == 1
+    assert w.throws[0]["release_source"] == "overhead" and docs[-1]["status"] == "ended"
 
 
 from curling_score.practice import clips as CL  # noqa: E402

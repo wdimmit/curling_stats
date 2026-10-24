@@ -675,6 +675,91 @@ def _practice_replay(args) -> int:
     return 0
 
 
+# While a sheet's calibration is recorded, the recorder is checked this often
+# (every few seconds, as the manager does) and given this much longer than the
+# seconds asked for -- its start (up to 15 s for the cameras' first keyframes,
+# ~9 s to its first progress) -- before it is given up on.
+CAL_POLL_S = 2.0
+CAL_MARGIN_S = 60.0
+
+
+def _record_for(rec, seconds: float) -> float:
+    """Keep ``rec`` going until its head reaches ``seconds``; its head then.
+    Raises LiveError when it fails or does not get there."""
+    import time
+
+    from curling_score.live.session import LiveError
+
+    give_up = time.monotonic() + seconds + CAL_MARGIN_S
+    while rec.head_s() < seconds:
+        rec.check()
+        if rec.ended():
+            raise LiveError(f"the recording ended at {rec.head_s():.0f} s")
+        if time.monotonic() >= give_up:
+            raise LiveError(f"the recording reached {rec.head_s():.0f} s of the "
+                            f"{seconds:.0f} s asked for in {seconds + CAL_MARGIN_S:.0f} s")
+        time.sleep(CAL_POLL_S)
+    return rec.head_s()
+
+
+def _print_calibration(cal) -> None:
+    """What a calibration measured, to be written down."""
+    for name, setup in cal.setups.items():
+        print(f"{name} panel {setup.rect}: {setup.calib.px_per_m:.1f} px/m "
+              f"(residual {setup.calib.residual_m * 100:.2f} cm), "
+              + ("hog line found" if setup.hog_line is not None
+                 else f"no hog line ({setup.hog_line_error})"))
+    if cal.sideviews is None:
+        print("side views: not read")
+    for name, view in (cal.sideviews or {}).items():
+        print(f"{name} side view: tee row {view.tee_row:.1f}, hog row {view.hog_row:.1f}, "
+              + ("calibrated across" if view.has_lateral else "not calibrated across"))
+
+
+def _cameras_calibrate(args) -> int:
+    """A sheet's saved calibration, made from its cameras while it is empty.
+
+    A maintenance read: it records the sheet for ``--seconds``, calibrates
+    from the recording and keeps the calibration only if it is complete. The
+    recording is deleted whatever happens -- it is pictures of whoever is on
+    the sheet, and nothing but the numbers is kept."""
+    import shutil
+    import tempfile
+
+    from curling_score.cameras import calstore
+    from curling_score.cameras import recorder as cam_recorder
+    from curling_score.geometry.calibrate import CalibrationError
+    from curling_score.live import session as live
+
+    root = Path(args.root)
+    scratch = root / "cameras" / "recording"
+    scratch.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix=f"calibrate-sheet{args.sheet}-", dir=scratch))
+    try:
+        rec = cam_recorder.CameraRecorder(args.sheet, work)
+        try:
+            rec.start()
+            head = _record_for(rec, args.seconds)
+        finally:
+            rec.stop()
+        print(f"sheet {args.sheet}: calibrating from {head:.0f} s of its cameras")
+        cal = live.VideoPipeline(progress=print).calibrate(rec.path, head)
+    except (live.LiveError, CalibrationError) as exc:
+        print(f"cameras-calibrate: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    _print_calibration(cal)
+    if not cal.complete:
+        print("not saved: it lacks a hog line or a side view calibrated across; "
+              "the sheet may not have been empty")
+        return 1
+    store = calstore.CalStore(root)
+    store.save(args.sheet, cal)
+    print(f"saved to {store.path(args.sheet)}")
+    return 0
+
+
 def main(argv=None) -> int:
     from curling_score.diagnostics import enable_stack_dumps
 
@@ -759,6 +844,19 @@ def main(argv=None) -> int:
     p.add_argument("--clips", action="store_true",
                    help="cut each throw's clip into <out>/clips, as a worker would upload it")
     p.set_defaults(func=_practice_replay)
+
+    p = sub.add_parser("cameras-calibrate",
+                       help="calibrate a sheet from its cameras and save the calibration "
+                            "for practice watches to check at Start")
+    p.add_argument("--sheet", type=int, required=True, choices=range(1, 6),
+                   metavar="N", help="the sheet, 1 to 5; it should be empty")
+    p.add_argument("--seconds", type=float, default=60.0,
+                   help="how much of the cameras to record and calibrate from "
+                        "(default: 60)")
+    p.add_argument("--root", default=str(cache.default_root()),
+                   help="where calibrations are kept, under cameras/cal "
+                        "(default: $CURLING_SCORE_CACHE or ~/.cache/curling_score)")
+    p.set_defaults(func=_cameras_calibrate)
 
     _add_harvest(sub)
     _add_sideframes(sub)

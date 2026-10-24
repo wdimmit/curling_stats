@@ -8,7 +8,11 @@ thing there is to do, and says whether it did anything:
   is the lookback: footage from before Start, there only to calibrate from
   (`live.session.VideoPipeline.calibrate`, medians of a mostly empty sheet).
   A calibration missing a hog line or a side view is tried again every
-  CALIB_RETRY_S, keeping the best, until CALIB_TRIES.
+  CALIB_RETRY_S, keeping the best, until CALIB_TRIES. A watch given a saved
+  calibration (``cameras/calstore.py``; a direct feed has no lookback) first
+  checks it against the house rings in the first frames: if they fit, it is
+  adopted and there is nothing to calibrate; if not, that loop runs and its
+  first complete calibration replaces the saved one.
 * **Watch:** detect both panels from where the last step stopped to just
   behind the head, at most STEP_MAX_S at a time. Find the arrivals each panel
   confirmed and the releases each saw, pair them, measure each new throw
@@ -49,6 +53,9 @@ STEP_MIN_S = 2.0
 STEP_MAX_S = 30.0
 CALIB_RETRY_S = 60.0
 CALIB_TRIES = 5
+# A saved calibration is checked once the recording holds this much: the
+# composite has a keyframe a second, and the check reads up to 8 of them.
+CHECK_MIN_S = 4.0
 # A throw nothing saw released is dated this long before its arrival, as the
 # recorded pipeline does (timeline.RELEASE_TO_ARRIVAL_S).
 RELEASE_TO_ARRIVAL_S = 15.0
@@ -61,11 +68,14 @@ def _thrown_at(arrival, rel) -> float:
 class PracticeWatch:
     def __init__(self, *, recording, pipeline, models, since_s: float, t0_s: float = 0.0,
                  wall_t0=None, publish=None, clipper=None, clock=time.monotonic,
-                 progress=log.info):
+                 progress=log.info, saved_calibration=None, save_calibration=None):
         """``since_s`` is Start on the recording's clock; ``t0_s`` is where the
         recording begins on the stream's, which every published time is on.
         ``wall_t0`` is when the recording begins by the wall clock (epoch
-        seconds), for a live stream whose own clock is not known."""
+        seconds), for a live stream whose own clock is not known.
+        ``saved_calibration`` is the sheet's calibration from before, to be
+        checked at Start; when it does not fit, ``save_calibration`` is called
+        with the first complete calibration made in its place."""
         self.rec, self.pipeline, self.models = recording, pipeline, models
         self.since_s, self.t0_s, self.wall_t0 = float(since_s), float(t0_s), wall_t0
         self._stop, self._stop_at = False, None
@@ -75,6 +85,9 @@ class PracticeWatch:
         self.publish = publish or (lambda doc: None)
         self.clock, self.progress = clock, progress
         self.cal = None
+        self.saved, self.save_calibration = saved_calibration, save_calibration
+        self._saved_checked = False
+        self._replace_saved = False
         self.calib_tries = 0
         self.calib_next = float("-inf")
         self.status = "calibrating"
@@ -131,6 +144,10 @@ class PracticeWatch:
     def _calibrate(self, head, ended) -> bool:
         if (head < self.since_s and not ended) or self.clock() < self.calib_next:
             return False
+        if self.saved is not None and not self._saved_checked:
+            if head < CHECK_MIN_S and not ended:
+                return False
+            return self._check_saved(head)
         self.calib_tries += 1
         began = self.clock()
         try:
@@ -145,14 +162,56 @@ class PracticeWatch:
         self.calib_next = self.clock() + CALIB_RETRY_S
         last_try = self.calib_tries >= CALIB_TRIES or ended
         if self.cal is not None and (self.cal.complete or last_try):
-            setups = self.cal.setups
-            self.finders = {h: ArrivalFinder(setups[h]) for h in HOUSES}
-            self.books = {h: ReleaseBook(setups[h]) for h in HOUSES}
-            self.status = "watching"
+            if self.cal.complete:
+                self._replace_saved_with(self.cal)
+            self._adopt(self.cal)
         elif self.cal is None and last_try:
             self.status, self.done = "failed", True
         self._publish()
         return True
+
+    def _check_saved(self, head) -> bool:
+        """The saved calibration against the first frames: adopted if the
+        house rings fit it, else left for the retry loop to replace. One that
+        is no longer complete (what that means can change) is never put on the
+        ice, and is not worth reading frames to check."""
+        self._saved_checked = True
+        if not self.saved.complete:
+            self.progress("practice: the saved calibration is incomplete; calibrating "
+                          "from this recording")
+            self._replace_saved = True
+            return True
+        began = self.clock()
+        try:
+            fits = self.pipeline.check_saved(self.rec.path, head, self.saved)
+        finally:
+            self.busy_s += self.clock() - began
+        if fits:
+            self.progress("practice: the saved calibration fits; using it")
+            self._adopt(self.saved)
+            self._publish()
+        else:
+            self.progress("practice: the saved calibration does not fit; calibrating "
+                          "from this recording")
+            self._replace_saved = True
+        return True
+
+    def _adopt(self, cal) -> None:
+        self.cal = cal
+        self.finders = {h: ArrivalFinder(cal.setups[h]) for h in HOUSES}
+        self.books = {h: ReleaseBook(cal.setups[h]) for h in HOUSES}
+        self.status = "watching"
+
+    def _replace_saved_with(self, cal) -> None:
+        """Hand over the first complete calibration made after the saved one
+        failed its check. A failed save costs the save, not the watch."""
+        if not self._replace_saved or self.save_calibration is None:
+            return
+        self._replace_saved = False
+        try:
+            self.save_calibration(cal)
+        except Exception as exc:  # noqa: BLE001 - the next Start tries again
+            log.warning("practice: the calibration could not be saved: %r", exc)
 
     # --- watching ----------------------------------------------------------------
 
