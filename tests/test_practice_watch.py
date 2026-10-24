@@ -139,6 +139,44 @@ def test_it_calibrates_only_once_the_lookback_is_there():
     assert p.calibrated == [20.0] and w.status == "watching"
 
 
+def test_a_recording_from_start_is_not_read_before_it_holds_anything():
+    # The cameras' recording starts at Start (since_s 0): at first the composer
+    # has written nothing, then too little to calibrate from. Nothing to do yet,
+    # and no try spent.
+    p, rec = Pipeline(), Rec(head=0.0)
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=0.0,
+                        clock=lambda: 0.0)
+    assert w.step() is False
+    rec.head = W.READ_MIN_S - 0.1
+    assert w.step() is False
+    assert p.calibrated == [] and w.calib_tries == 0 and w.status == "calibrating"
+    rec.head = W.READ_MIN_S
+    assert w.step() is True
+    assert p.calibrated == [W.READ_MIN_S] and w.status == "watching"
+
+
+def test_a_recording_with_no_file_yet_is_nothing_to_do():
+    # PyAV raised FileNotFoundError before rec.0.ts existed: that is not a
+    # failure for the lane to count, nor a calibration try.
+    p, rec = Pipeline(cals=[FileNotFoundError("rec.ts"), cal()]), Rec(head=W.READ_MIN_S)
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=0.0,
+                        clock=lambda: 0.0)
+    assert w.step() is False
+    assert w.calib_tries == 0 and w.status == "calibrating"
+    assert w.step() is True                        # no minute's wait: nothing was tried
+    assert w.status == "watching" and w.calib_tries == 1
+
+
+def test_a_saved_calibration_is_not_checked_against_a_file_not_there_yet():
+    saved = sided()
+    p, rec = Pipeline(saved_ok=[FileNotFoundError("rec.ts"), True]), Rec(head=W.CHECK_MIN_S)
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=0.0,
+                        clock=lambda: 0.0, saved_calibration=saved)
+    assert w.step() is False and w.status == "calibrating"
+    assert w.step() is True                        # the check was still owed
+    assert w.cal is saved and p.calibrated == []
+
+
 def test_an_incomplete_calibration_is_tried_again_a_minute_later():
     now = [0.0]
     p, rec = Pipeline(cals=[cal(complete=False), cal()]), Rec(head=20.0)

@@ -4,9 +4,11 @@ A `PracticeWatch` owns a growing recording of one sheet's stream and turns it
 into a list of throws. Each call to :meth:`step` does the one most useful
 thing there is to do, and says whether it did anything:
 
-* **Calibrate** once the recording reaches ``since_s``. Everything before it
-  is the lookback: footage from before Start, there only to calibrate from
-  (`live.session.VideoPipeline.calibrate`, medians of a mostly empty sheet).
+* **Calibrate** once the recording reaches ``since_s``, and holds something
+  to read (READ_MIN_S: a recording that begins at Start has no file at first).
+  Everything before ``since_s`` is the lookback: footage from before Start,
+  there only to calibrate from (`live.session.VideoPipeline.calibrate`,
+  medians of a mostly empty sheet).
   A calibration missing a hog line or a side view is tried again every
   CALIB_RETRY_S, keeping the best, until CALIB_TRIES. A watch given a saved
   calibration (``cameras/calstore.py``; a direct feed has no lookback) first
@@ -53,6 +55,12 @@ HEAD_MARGIN_S = 2.0
 # single step holds the lane for long.
 STEP_MIN_S = 2.0
 STEP_MAX_S = 30.0
+# A recording that begins at Start (the cameras') holds nothing to read at
+# first: no file until the composer has written one, then less than the two
+# keyframes a calibration needs. Until its head is this far in there is
+# nothing to do yet -- two of the composite's keyframes (one a second, from 0)
+# behind the HEAD_MARGIN_S that may not decode yet.
+READ_MIN_S = 3.0
 CALIB_RETRY_S = 60.0
 CALIB_TRIES = 5
 # A saved calibration is checked once the recording holds this much. The
@@ -158,19 +166,23 @@ class PracticeWatch:
     def _calibrate(self, head, ended) -> bool:
         if (head < self.since_s and not ended) or self.clock() < self.calib_next:
             return False
+        if head < READ_MIN_S and not ended:
+            return False
         if self.saved is not None and not self._saved_checked:
             if head < CHECK_MIN_S and not ended:
                 return False
             return self._check_saved(head)
-        self.calib_tries += 1
         began = self.clock()
         try:
             cal = self.pipeline.calibrate(self.rec.path, head)
+        except FileNotFoundError:
+            return False                       # no file yet: nothing to read, no try spent
         except CalibrationError as exc:
-            self.progress(f"practice: calibration {self.calib_tries} failed: {exc}")
+            self.progress(f"practice: calibration {self.calib_tries + 1} failed: {exc}")
             cal = None
         finally:
             self.busy_s += self.clock() - began
+        self.calib_tries += 1
         if cal is not None and (self.cal is None or _worth(cal) > _worth(self.cal)):
             self.cal = cal
         self.calib_next = self.clock() + CALIB_RETRY_S
@@ -199,6 +211,8 @@ class PracticeWatch:
         began = self.clock()
         try:
             fits = self.pipeline.check_saved(self.rec.path, head, self.saved)
+        except FileNotFoundError:
+            return False                       # no file yet: the check is still owed
         finally:
             self.busy_s += self.clock() - began
         self._saved_checked = True
