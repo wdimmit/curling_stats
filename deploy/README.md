@@ -273,6 +273,98 @@ each end ~25% slower (2026-10-02); on the Ryzen 9 5950X, which replaced it on
 - `up -d` recreates all three, and all drop their live jobs (see above).
   `docker compose ... logs -f worker worker2 worker3` follows them.
 
+## Practice on the club's cameras
+
+With `PRACTICE_SOURCE=cameras` a practice session reads the sheet's own cameras
+(the club's 20 NDI sources) instead of its YouTube practice stream, so Start
+works whenever no league is on, streamed or not. Only a worker on the club's
+network can read them: the Ryzen's `worker` and `worker2`. The design is
+`docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md`.
+
+**On the API**, in `deploy/cloudrun.yaml` like every other setting of a live
+feature (a value set only in a shell is gone at the next declarative deploy):
+
+- `PRACTICE_SOURCE`: `youtube` (the default) or `cameras`. Anything else stops
+  the API at start.
+- `PRACTICE_CLUB_IPS`: comma-separated addresses. On the cameras, Start needs a
+  signed-in account, and either that account's role is `validated` or `admin`
+  or the request comes from an address in this list. The match is exact, as
+  text: no ranges, no normalising. The club's address in the logs is
+  `71.212.197.184`. Whether the club also has an IPv6 address that phones
+  prefer is not verified, and a player on one would be refused unless that
+  exact address is listed too.
+- `PROXY_HOPS` (default 1, which is right for Cloud Run, a domain mapping
+  included): the club-address check relies on it. `client_ip` takes the entry
+  `PROXY_HOPS` from the end of `X-Forwarded-For`, the ones our own proxies
+  appended. Behind a second proxy (an external HTTPS load balancer makes 2) a
+  value too low sees the proxy's address and refuses the club; one too high
+  trusts an address the caller wrote.
+
+**On the workers**, in `deploy/docker-compose.worker.yml`:
+
+- `WORKER_CAMERAS=1` says the worker can see the cameras, and the API holds
+  camera jobs for workers that say so. `worker` sets it and `worker2` inherits
+  it; `clips` turns it off. Never set it on a box that cannot see the cameras:
+  a stand-in on another machine has its own compose file and must not set it.
+  It needs `WORKER_PRACTICE=1` (set in the compose file) and `WORKER_LIVE=1`
+  (in `worker.env`), as practice always has.
+- `LIVE_MAX_STREAMS` is 3 on each, 6 slots in all: room for five sessions at
+  once, one a sheet, split 3/2 between the workers. Keep it at 3 or more.
+- The workers stay on the default bridge network. They find and read the
+  cameras with the NDI config the capture writes for itself, so no
+  `network_mode: host` is needed.
+- `worker` holds both GPUs, with `CUDA_VISIBLE_DEVICES=0` to keep its models and
+  NVENC on card 0. NVENC on card 0 fails in a container that does not also have
+  card 1 ("unsupported device"); card 1 alone encodes, so `worker2` keeps only
+  its own. The pin hides card 1 from CUDA only: `nvidia-smi` in `worker` lists
+  both cards.
+
+**Calibrating a sheet.** A watch on a stream calibrates from footage from before
+Start, a mostly empty sheet. A watch on the cameras has none, and at Start there
+are players on the ice, so each sheet keeps a calibration made while it was
+empty. With the sheet empty and no session on it:
+
+```bash
+docker compose -f deploy/docker-compose.worker.yml exec worker  curling-score cameras-calibrate --sheet 2
+docker compose -f deploy/docker-compose.worker.yml exec worker2 curling-score cameras-calibrate --sheet 2
+```
+
+This records the sheet's cameras for `--seconds` (default 60), calibrates from
+the recording, and saves the calibration only if it is complete (a hog line and
+a side view calibrated across). The recording is deleted whatever happens: it
+is pictures of whoever was on the sheet. The calibration goes under the worker's
+cache root, `<cache>/cameras/cal/sheet2.pkl`, which is `/data/wdd/curling-cache`
+for `worker` and `/data/wdd/curling-cache-2` for `worker2`. Each worker has its
+own, so run it in both, for each of the five sheets. At Start the watch checks
+the saved calibration against the first frames, keeps it when the house rings
+are where it says, and replaces it when they are not (a camera has moved). Run
+it again after a camera is moved or re-aimed.
+
+**Re-fitting a sheet's layout.** A sheet's layout is the crop, turn and scale
+that put each of its four cameras where YouTube's picture has it, kept in
+`src/curling_score/cameras/layouts/sheet{N}.json`. Re-fit it when a long camera
+is re-aimed, or a PTZ camera has moved since the layout was fitted. That takes at
+least eight YouTube frames from across one recording of the sheet, and one frame
+from each of its four cameras with the sheet empty, named `<camera>.png`
+(`2A-HOUSE.png`):
+
+```bash
+python scripts/cameras/fit_layout.py --sheet 2 \
+    --youtube 'layout-ref/yt/sheet2/f*.png' --cameras layout-ref/cam \
+    --note "which recording, and when the cameras were read"
+```
+
+It writes the layout file and a check image under `out/cameras/layout-check/`
+(YouTube, the picture rebuilt from the cameras, their blend and their
+difference): look at it before committing the layout, then deploy as for any
+code change. The layout is part of the worker image, and the saved calibration
+was made from the old picture, so run `cameras-calibrate` for that sheet again.
+
+**Rolling back.** Set `PRACTICE_SOURCE` to `youtube` in `cloudrun.yaml` and run
+`./deploy/deploy-api.sh`: new sessions use the sheet's stream again, and the
+workers need no change. A camera job already queued may then fail once; the
+player starts again.
+
 ## Watching a league
 
 Signed in as an admin, `/playlists` adds a playlist from its link, sets its

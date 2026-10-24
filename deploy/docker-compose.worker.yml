@@ -3,6 +3,9 @@
 # 4070s on 2026-10-14, and it has run two workers, one card each, since. Copy
 # deploy/worker.env.example to deploy/worker.env, fill it in, then:
 #   docker compose -f deploy/docker-compose.worker.yml up -d --build
+# This file is the Ryzen's: it reserves cards 0 and 1, and its workers say they
+# can see the club's cameras (WORKER_CAMERAS). A stand-in on another box has a
+# compose file of its own, and must never set WORKER_CAMERAS.
 services:
   worker:
     build: { context: .., dockerfile: Dockerfile.worker }
@@ -36,11 +39,29 @@ services:
       # (10 streams) the later league's wait for the earlier games to end,
       # which must come inside that stream's first hour (the live first-hour
       # rule) or it is charted from the recording instead.
+      #
+      # Practice takes its slots from the same pool. Five sessions, one a
+      # sheet, split 3/2 across the two workers, and the 6 slots hold them;
+      # camera practice needs at least 5 between the two, so keep this at 3 or
+      # more. Practice never overlaps a league, so the two never compete.
       LIVE_MAX_STREAMS: "3"
       # Practice sessions' streams too (from LIVE_MAX_STREAMS' slots). The
       # club only runs practice ice when no league is on, so practice never
       # shares a lane with a league night; a session does pause VOD jobs.
+      # worker2 inherits it.
       WORKER_PRACTICE: "1"
+      # This box can see the club's cameras (20 NDI sources, found and read
+      # from the default bridge network with the NDI config the capture writes
+      # for itself, so no network_mode: host), and the API holds camera
+      # practice jobs for workers that say so (PRACTICE_SOURCE=cameras).
+      # worker2 inherits it; the clips service turns it off.
+      WORKER_CAMERAS: "1"
+      # CUDA work (the models, and ffmpeg's NVENC) stays on card 0, numbered as
+      # nvidia-smi numbers them. This does not hide card 1 from NVML: in this
+      # container nvidia-smi still lists both cards. worker2 and clips reset
+      # both, since they inherit worker's environment.
+      CUDA_DEVICE_ORDER: "PCI_BUS_ID"
+      CUDA_VISIBLE_DEVICES: "0"
       # Each VOD job (and each live end) saves a few whole frames where the
       # pipeline's own checks found the detectors wrong, for a labelling
       # round: <cache>/harvest/fp/<video>/ (scripts/fp_harvest.py list).
@@ -53,12 +74,19 @@ services:
       # /data is a 1.5 TB volume of its own (1.4 TB free on 2026-10-06). The
       # /data/wdd paths are the laptop's, kept so its scripts still apply.
       - /data/wdd/curling-cache:/data/cache
-    # One card each: this one card 0, worker2 card 1 (the models are loaded
-    # per worker, and one card took all three workers' before).
+    # One card each for the models: this one card 0, worker2 card 1 (they are
+    # loaded per worker, and one card took all three workers' before). But this
+    # container holds both cards. Camera practice encodes its composite with
+    # NVENC, and on this driver (610.57, open kernel module) NVENC on card 0
+    # fails in a container that does not also have card 1 ("unsupported device
+    # (2)", whatever NVIDIA_DRIVER_CAPABILITIES says). Card 1 alone encodes, so
+    # worker2 keeps just its own. CUDA_VISIBLE_DEVICES above keeps this
+    # worker's CUDA work on card 0 (results of 2026-10-24 in
+    # docs/superpowers/plans/2026-10-24-practice-direct-feeds.results.md, Step 3).
     deploy:
       resources:
         reservations:
-          devices: [{ driver: nvidia, device_ids: ["0"], capabilities: [gpu] }]
+          devices: [{ driver: nvidia, device_ids: ["0", "1"], capabilities: [gpu] }]
   # A second worker, on the other card. Two building at once is the box's best:
   # 65 ends an hour on 2026-10-14's benchmark (s1.ts ends 7-8, the live lane's
   # own harness), against 62 with three and 58 alone -- a third oversubscribed
@@ -78,6 +106,10 @@ services:
     environment:
       WORKER_ID: ryzen-3080-2
       WORKER_CACHE_GB: "450"
+      # Card 1 alone, which is this container's card 0 to CUDA: worker's pin to
+      # card 0 by PCI order does not apply here.
+      CUDA_DEVICE_ORDER: !reset null
+      CUDA_VISIBLE_DEVICES: !reset null
     volumes:
       - /data/wdd/curling-cache-2:/data/cache
     deploy: !override
@@ -108,6 +140,11 @@ services:
       WORKER_ROLE: clips
       WORKER_LIVE: "0"
       WORKER_PRACTICE: "0"
+      # It claims clip jobs only, never practice, so never a camera job.
+      WORKER_CAMERAS: "0"
+      # It has no card, so no CUDA pin either.
+      CUDA_DEVICE_ORDER: !reset null
+      CUDA_VISIBLE_DEVICES: !reset null
       # It runs no pipeline, so it has no frames to save.
       WORKER_FP_HARVEST: "0"
       WORKER_CLIP_SOURCES: /data/src1:/data/src2
