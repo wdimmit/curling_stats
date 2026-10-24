@@ -804,6 +804,45 @@ class TestPracticeInTheLane:
         assert ln.step()
         assert [p[0] for p in api.published] == ["j_1"]
 
+    def test_watches_with_work_take_turns(self):
+        # Found on the box: a watch catching up after a late calibration had
+        # work at every call, and the watch after it waited minutes.
+        class Busy(Watch):
+            def step(self):
+                self.steps += 1
+                return True
+
+        api, made = Api(), {}
+
+        def busy(st, pub):
+            made[st.job["id"]] = Busy(st, pub)
+            return made[st.job["id"]]
+
+        ln, _, _ = lane(api, [pstream(1), pstream(2)], {"p_1": busy, "p_2": busy})
+        for _ in range(4):
+            assert ln.step()
+        assert (made["p_1"].steps, made["p_2"].steps) == (2, 2)
+
+    def test_a_watch_with_nothing_to_do_passes_its_turn_on(self):
+        class Busy(Watch):
+            def step(self):
+                self.steps += 1
+                return True
+
+        class Idle(Watch):
+            def step(self):
+                self.steps += 1
+                return False
+
+        api = Api()
+        ln, _, _ = lane(api, [pstream(1), pstream(2), pstream(3)], {
+            "p_1": lambda st, pub: Busy(st, pub), "p_2": lambda st, pub: Idle(st, pub),
+            "p_3": lambda st, pub: Busy(st, pub)})
+        streams = {s.job["id"]: s for s in ln.manager.streams()}
+        for _ in range(4):
+            assert ln.step()
+        assert [streams[f"p_{n}"].session.steps for n in (1, 2, 3)] == [2, 2, 2]
+
     def test_a_practice_publish_is_its_document_and_a_summary(self):
         api = Api()
         ln, _, _ = lane(api, [pstream(1)], {"p_1": lambda st, pub: Watch(st, pub)})

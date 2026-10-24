@@ -46,6 +46,7 @@ class LiveLane:
         self.make_session, self.clock = make_session, clock
         self.fp_cap_gb = fp_cap_gb      # disk the saved false-positive frames may use
         self._turn = 0
+        self._last_practice = None      # the job of the practice watch that last did work
 
     def busy(self) -> bool:
         return self.manager.has_streams()
@@ -81,9 +82,15 @@ class LiveLane:
         # Practice first: a card is due seconds after a stone stops, an end
         # minutes after it closes. A watch with nothing to read says so, and
         # one step reads at most STEP_MAX_S, so league ends are never starved.
-        for stream in ready:
-            if not is_practice(stream.job):
-                continue
+        # The watches take turns: each call starts with the one after the
+        # watch that last did work, so one that always has some (catching up,
+        # say) cannot starve the others.
+        practice = [s for s in streams if is_practice(s.job)]
+        ids = [s.job["id"] for s in practice]
+        if self._last_practice in ids:
+            k = ids.index(self._last_practice) + 1
+            practice = practice[k:] + practice[:k]
+        for stream in [s for s in practice if s.retry_at <= now]:
             try:
                 if stream.stop_requested:
                     stream.session.request_stop()
@@ -94,6 +101,7 @@ class LiveLane:
             if stream.session.done:
                 return self._complete(stream)
             if did:
+                self._last_practice = stream.job["id"]
                 return True
         ready = [s for s in ready if not is_practice(s.job)]
         first, due, idle = [], [], []
