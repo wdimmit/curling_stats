@@ -20,8 +20,9 @@ log = logging.getLogger(__name__)
 
 # How many keyframes a saved calibration is checked against. They are spread
 # over what the recording holds at the check, which is CHECK_MIN_S seconds or
-# more at a keyframe a second, so with about ten there it is the first eight;
-# the median over them drops whoever is walking across the house.
+# more at a keyframe a second (CHECK_RETRY_S for a check made again), so with
+# about ten there it is the first eight; the median over them drops whoever is
+# walking across the house.
 CHECK_FRAMES = 8
 
 
@@ -30,13 +31,14 @@ class PracticePipeline(VideoPipeline):
         super().__init__(**kw)
         self.fps = fps
 
-    def check_saved(self, path, until_s: float, cal) -> bool:
-        """Whether ``cal`` still fits the first ``until_s`` seconds of ``path``
-        (`calstore.house_agrees`)."""
+    def check_saved(self, path, from_s: float, until_s: float, cal) -> calstore.HouseCheck:
+        """Whether ``cal`` still fits ``path`` between ``from_s`` and
+        ``until_s`` (`calstore.check_house`): a check made again reads only
+        the frames recorded since the one before."""
         from curling_score.ingest import frames as F
 
-        return calstore.house_agrees(cal, F.spread_keyframes(path, until_s,
-                                                              count=CHECK_FRAMES))
+        frames = F.spread_keyframes(path, until_s, count=CHECK_FRAMES, start_s=from_s or None)
+        return calstore.check_house(cal, frames)
 
     def detect(self, path, setups, from_s, until_s, detector) -> dict:
         got = sequence.detect_spans(path, [(setups[h], from_s, self.fps) for h in HOUSES],

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from curling_score.cameras.calstore import HouseCheck
 from curling_score.detect.release import Release
 from curling_score.geometry.calibrate import CalibrationError
 from curling_score.live.session import Calibration
@@ -13,6 +14,9 @@ from curling_score.practice import releases as R
 from curling_score.practice import watch as W
 from tests.test_delivery import det, thrown
 from tests.test_practice_finder import sheet
+
+
+AGREES, DISAGREES, UNREADABLE = HouseCheck.AGREES, HouseCheck.DISAGREES, HouseCheck.UNREADABLE
 
 
 def cal(complete=True):
@@ -44,10 +48,10 @@ class Pipeline:
         self.calibrated, self.spans, self.checked = [], [], []
         self.saved_ok = saved_ok
 
-    def check_saved(self, path, until_s, saved):
-        """``saved_ok``: the answer, or a list of answers, one for each check,
-        any of which may be an exception to raise instead."""
-        self.checked.append((path, until_s, saved))
+    def check_saved(self, path, from_s, until_s, saved):
+        """``saved_ok``: the answer (a HouseCheck), or a list of answers, one
+        for each check, any of which may be an exception to raise instead."""
+        self.checked.append((path, from_s, until_s, saved))
         got = self.saved_ok.pop(0) if isinstance(self.saved_ok, list) else self.saved_ok
         if isinstance(got, Exception):
             raise got
@@ -169,7 +173,7 @@ def test_a_recording_with_no_file_yet_is_nothing_to_do():
 
 def test_a_saved_calibration_is_not_checked_against_a_file_not_there_yet():
     saved = sided()
-    p, rec = Pipeline(saved_ok=[FileNotFoundError("rec.ts"), True]), Rec(head=W.CHECK_MIN_S)
+    p, rec = Pipeline(saved_ok=[FileNotFoundError("rec.ts"), AGREES]), Rec(head=W.CHECK_MIN_S)
     w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=0.0,
                         clock=lambda: 0.0, saved_calibration=saved)
     assert w.step() is False and w.status == "calibrating"
@@ -356,42 +360,85 @@ def saving(pipeline, *, saved=None, head=W.CHECK_MIN_S, now=None, save=None, **k
 
 
 def test_saved_calibration_that_agrees_skips_calibrating():
-    saved, p = sided(), Pipeline(saved_ok=True)
+    saved, p = sided(), Pipeline(saved_ok=AGREES)
     w, _, saves, _ = saving(p, saved=saved)
     assert w.step() is True
     assert p.calibrated == [] and w.status == "watching" and w.cal is saved
-    assert p.checked == [("rec.ts", W.CHECK_MIN_S, saved)]
+    assert p.checked == [("rec.ts", 0.0, W.CHECK_MIN_S, saved)]
     assert saves == []                             # nothing new to keep
 
 
-def test_saved_calibration_that_disagrees_falls_back_and_is_replaced():
+def test_a_house_unreadable_then_agreeing_uses_the_saved_calibration():
+    # Players standing in the house hide its rings: that is not a camera that
+    # moved. The check is made again on the frames recorded since.
+    saved, p = sided(), Pipeline(saved_ok=[UNREADABLE, AGREES])
+    w, rec, saves, _ = saving(p, saved=saved)
+    assert w.step() is True and w.status == "calibrating"
+    assert w.step() is False                       # no new frames yet
+    rec.head = W.CHECK_MIN_S + W.CHECK_RETRY_S
+    assert w.step() is True
+    assert w.status == "watching" and w.cal is saved
+    assert [c[1:3] for c in p.checked] == [(0.0, W.CHECK_MIN_S),
+                                           (W.CHECK_MIN_S, W.CHECK_MIN_S + W.CHECK_RETRY_S)]
+    assert p.calibrated == [] and saves == []
+
+
+def test_a_house_unreadable_on_every_try_uses_the_saved_calibration(caplog):
+    saved, p = sided(), Pipeline(saved_ok=UNREADABLE)
+    w, rec, saves, _ = saving(p, saved=saved)
+    with caplog.at_level("WARNING", logger=W.log.name):
+        while w.status != "watching":
+            w.step()
+            rec.head += W.CHECK_RETRY_S
+    assert len(p.checked) == W.CHECK_TRIES
+    assert p.checked[-1][2] <= 60.0                # within the first minute of recording
+    assert w.cal is saved and p.calibrated == [] and saves == []
+    warned = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warned) == 1 and "using it" in warned[0].getMessage()
+
+
+def test_a_recording_that_ended_with_the_house_unreadable_uses_the_saved_calibration():
+    # No later frames are coming to check against.
+    saved, p = sided(), Pipeline(saved_ok=UNREADABLE)
+    w, rec, _, _ = saving(p, saved=saved)
+    rec.over = True
+    assert w.step() is True
+    assert len(p.checked) == 1 and w.cal is saved and w.status == "watching"
+
+
+def test_a_saved_calibration_that_disagrees_falls_back_and_is_kept(caplog):
+    # A ring found off is a camera that moved: the session calibrates from
+    # its own frames, and the saved calibration stays for cameras-calibrate,
+    # on an empty sheet, to replace -- never one made on a busy sheet.
     now = [0.0]
-    p = Pipeline(saved_ok=False, cals=[sided(complete=False), sided()])
-    w, _, saves, now = saving(p, saved=sided(), now=now)
-    assert w.step() is True and w.status == "calibrating" and p.calibrated == []
+    p = Pipeline(saved_ok=DISAGREES, cals=[sided(complete=False), sided()])
+    with caplog.at_level("WARNING", logger=W.log.name):
+        w, _, saves, now = saving(p, saved=sided(), now=now)
+        assert w.step() is True and w.status == "calibrating" and p.calibrated == []
+    assert "cameras-calibrate" in caplog.text
     assert w.step() is True                        # today's loop: incomplete, tried again
-    assert w.status == "calibrating" and saves == []
+    assert w.status == "calibrating"
     assert w.step() is False                       # not yet a minute
     now[0] = W.CALIB_RETRY_S
     assert w.step() is True
     assert w.status == "watching" and w.cal.complete
-    assert saves == [w.cal]                        # once, and the complete one
+    assert saves == []                             # the saved one is left as it was
     assert len(p.checked) == 1                     # the check is made once
 
 
 def test_a_calibration_that_never_completes_is_not_saved():
     now = [0.0]
-    p = Pipeline(saved_ok=False, cals=[sided(complete=False)])
-    w, _, saves, now = saving(p, saved=sided(), now=now)
+    p = Pipeline(cals=[sided(complete=False)])
+    w, _, saves, now = saving(p, now=now)
     while not w.done and w.status != "watching":
         w.step()
         now[0] += W.CALIB_RETRY_S
     assert w.status == "watching" and not w.cal.complete
-    assert saves == []                             # the saved one stays until a better one is made
+    assert saves == []                             # only a complete one seeds a sheet
 
 
 def test_the_check_waits_for_the_first_keyframes():
-    p = Pipeline(saved_ok=True)
+    p = Pipeline(saved_ok=AGREES)
     w, rec, _, _ = saving(p, saved=sided(), head=W.CHECK_MIN_S - 0.1)
     assert w.step() is False and p.checked == []
     rec.head = W.CHECK_MIN_S
@@ -399,7 +446,7 @@ def test_the_check_waits_for_the_first_keyframes():
 
 
 def test_a_recording_that_ended_before_the_check_is_checked_anyway():
-    p = Pipeline(saved_ok=False, cals=[CalibrationError("no panels")])
+    p = Pipeline(saved_ok=DISAGREES, cals=[CalibrationError("no panels")])
     w, rec, _, _ = saving(p, saved=sided(), head=1.0)
     rec.over = True
     while w.step():
@@ -407,22 +454,23 @@ def test_a_recording_that_ended_before_the_check_is_checked_anyway():
     assert len(p.checked) == 1 and w.done and w.status == "failed"
 
 
-def test_a_saved_calibration_that_is_incomplete_is_not_adopted():
+def test_a_saved_calibration_that_is_incomplete_is_not_adopted_nor_replaced():
     # Complete is judged afresh on load: a file kept when it meant less must
-    # not put a panel with no hog line on the ice.
-    p = Pipeline(saved_ok=True, cals=[sided()])
+    # not put a panel with no hog line on the ice. Nor does the watch replace
+    # it: that is cameras-calibrate's to do.
+    p = Pipeline(saved_ok=AGREES, cals=[sided()])
     w, _, saves, _ = saving(p, saved=sided(complete=False))
     assert w.step() is True
     assert p.checked == [] and w.status == "calibrating" and w.cal is None
     assert w.step() is True and len(p.calibrated) == 1
-    assert w.status == "watching" and saves == [w.cal]
+    assert w.status == "watching" and saves == []
 
 
 def test_a_check_that_could_not_read_is_made_again_not_skipped():
     # A step that raises is tried again by the lane. The check must still be
     # owed then, or the session would calibrate from people on the ice and
-    # never use, or replace, the saved calibration.
-    saved, p = sided(), Pipeline(saved_ok=[OSError("a bad packet"), True])
+    # never use the saved calibration.
+    saved, p = sided(), Pipeline(saved_ok=[OSError("a bad packet"), AGREES])
     w, _, saves, _ = saving(p, saved=saved)
     with pytest.raises(OSError):
         w.step()
@@ -445,8 +493,8 @@ def test_a_failed_save_costs_the_save_not_the_watch(caplog):
     def broken(_cal):
         raise OSError("disk full")
 
-    p = Pipeline(saved_ok=False, cals=[sided()])
-    w, _, _, _ = saving(p, saved=sided(), save=broken)
+    p = Pipeline(cals=[sided()])
+    w, _, _, _ = saving(p, save=broken)
     with caplog.at_level("WARNING", logger=W.log.name):
         while w.status != "watching":
             w.step()
@@ -469,7 +517,7 @@ def test_without_a_saved_calibration_nothing_is_checked_and_the_first_complete_o
 
 
 def test_a_calibration_that_agrees_with_nothing_saved_is_not_saved_again():
-    p = Pipeline(saved_ok=True)
+    p = Pipeline(saved_ok=AGREES)
     w, _, saves, _ = saving(p, saved=sided())
     while w.status != "watching":
         w.step()
@@ -477,10 +525,10 @@ def test_a_calibration_that_agrees_with_nothing_saved_is_not_saved_again():
 
 
 @pytest.mark.parametrize("saved", [None, sided])
-def test_a_watch_without_the_side_views_never_seeds_or_replaces(saved):
+def test_a_watch_without_the_side_views_never_seeds(saved):
     # Left out on purpose (skip_longview): what it makes lacks the views every
     # later watch would want, so it must not stand in for one made with them.
-    p = Pipeline(saved_ok=False, cals=[cal()])
+    p = Pipeline(saved_ok=DISAGREES, cals=[cal()])
     w, _, saves, _ = saving(p, saved=saved() if saved else None)
     while w.status != "watching":
         w.step()
@@ -497,7 +545,7 @@ def test_without_anywhere_to_keep_it_a_calibration_is_just_used():
 
 def test_a_throw_is_published_from_a_saved_calibration():
     pipe = Pipeline(top=sheet(thrown("red", t0=40.0), until_s=100.0),
-                    bottom=sheet(hack("red", 22.0), until_s=100.0), saved_ok=True)
+                    bottom=sheet(hack("red", 22.0), until_s=100.0), saved_ok=AGREES)
     w, docs = watched(pipe, saved_calibration=sided())
     assert pipe.calibrated == [] and len(w.throws) == 1
     assert w.throws[0]["release_source"] == "overhead" and docs[-1]["status"] == "ended"

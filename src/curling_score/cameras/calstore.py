@@ -4,14 +4,21 @@ A practice watch on a stream calibrates from up to twenty minutes of footage
 from before Start: a mostly empty sheet. A direct feed has none, and at Start
 there are players on the ice. So each sheet keeps a calibration made while it
 was empty (``curling-score cameras-calibrate``), and a watch checks it at Start
-against the first frames, keeping it when the house rings are where it says
-and replacing it when they are not (a camera moved, say). The spec is section
-4 of docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md.
+against the first frames: it is used when the house rings are where it says,
+and the watch calibrates from its own frames when a ring is found elsewhere
+(a camera moved, say). The spec is section 4 of
+docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md.
 
 The check is new. ``Calibration.agrees_with`` compares only the side views' tee
 and hog rows, and only between complete calibrations; what moves a panel's
 geometry is the overhead camera, so this fits the rings again on the panels and
-compares them with the ones the calibration holds.
+compares them with the ones the calibration holds. A house it cannot read --
+players standing in it, say -- is not a disagreement: it says nothing about
+where the camera points (``HouseCheck``).
+
+Only ``cameras-calibrate``, on an empty sheet, replaces a saved calibration. A
+watch keeps one only for a sheet that has none: one made from a busy sheet must
+not stand in for one made from an empty one.
 
 The store is a pickle per sheet: ``PanelSetup`` and the side views are plain
 dataclasses, and the file is one this worker wrote for itself on the machine
@@ -22,6 +29,7 @@ good calibration.
 
 from __future__ import annotations
 
+import enum
 import logging
 import math
 import os
@@ -86,24 +94,38 @@ class CalStore:
             part.unlink(missing_ok=True)
 
 
-def house_agrees(cal: Calibration, frames: list) -> bool:
-    """Whether the house rings in ``frames`` are where ``cal`` has them.
+class HouseCheck(enum.Enum):
+    """What the house rings in a few frames say of a saved calibration."""
+
+    AGREES = "agrees"            # both rings are where it has them
+    DISAGREES = "disagrees"      # a ring found off, or the wrong size
+    UNREADABLE = "unreadable"    # no frames, no well-lit frame, or no ring found
+
+
+def check_house(cal: Calibration, frames: list) -> HouseCheck:
+    """Whether the house rings in ``frames`` are where ``cal`` has them, if
+    they can be read at all.
 
     On each panel's median over the frames, as the calibration itself reads
     them (`profile.panel_median`, which drops frames too dark to fit), the 12-ft
-    ring is fitted again. Both panels must agree: the ring's centre within
-    RING_AGREE_PX of the calibration's, its radius within RING_AGREE_RADIUS of
-    the calibrated one. Anything that cannot be read -- no frames, a panel with
-    no well-lit frame, no ring found -- is no agreement, never an error.
+    ring is fitted again. A panel agrees when the ring's centre is within
+    RING_AGREE_PX of the calibration's and its radius within RING_AGREE_RADIUS
+    of the calibrated one. A ring found anywhere else on either panel
+    DISAGREES, whatever the other shows. Otherwise a panel that cannot be read
+    -- no frames, no well-lit frame, no ring found -- leaves it UNREADABLE,
+    never an error, and both panels agreeing AGREES.
     """
     if not frames:
-        return False
+        log.info("saved calibration: no frames to check it against")
+        return HouseCheck.UNREADABLE
+    unreadable = False
     for name, setup in cal.setups.items():
         try:
             rings = calibrate.find_rings(profile.panel_median(frames, setup.rect, name))
         except calibrate.CalibrationError as exc:
             log.info("saved calibration: the %s house cannot be read: %s", name, exc)
-            return False
+            unreadable = True
+            continue
         calib = setup.calib
         want_r = calib.px_per_m * C.R_12FT_M - calib.edge_erosion_px
         ring = rings.twelve_ft
@@ -111,5 +133,5 @@ def house_agrees(cal: Calibration, frames: list) -> bool:
         if off_px > RING_AGREE_PX or abs(ring.radius_px - want_r) > RING_AGREE_RADIUS * want_r:
             log.info("saved calibration: the %s house is %.1f px off, radius %.1f px "
                      "against %.1f", name, off_px, ring.radius_px, want_r)
-            return False
-    return True
+            return HouseCheck.DISAGREES
+    return HouseCheck.UNREADABLE if unreadable else HouseCheck.AGREES

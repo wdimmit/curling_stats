@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from curling_score.cameras import calstore
+from curling_score.cameras.calstore import HouseCheck
 from curling_score.game.profile import PANEL_SIDES, PanelSetup
 from curling_score.geometry import calibrate
 from curling_score.live.session import Calibration
@@ -81,42 +82,57 @@ def test_an_unreadable_file_is_none_with_a_warning(tmp_path, caplog, content):
 # --- the check -----------------------------------------------------------------
 
 
-def test_house_agrees_true_on_the_panels_it_was_made_from():
+def test_the_house_agrees_on_the_panels_it_was_made_from():
     frames = [frame()]
-    assert calstore.house_agrees(calibration(frames), frames)
+    assert calstore.check_house(calibration(frames), frames) is HouseCheck.AGREES
 
 
-def test_house_agrees_reads_the_median_not_one_frame():
+def test_the_check_reads_the_median_not_one_frame():
     # A stone on the house in each frame, in a different place: the median
     # has none, so the rings are read whole.
     frames = [frame(stone=at) for at in ((100, 100), (180, 200), (150, 60))]
-    assert calstore.house_agrees(calibration(), frames)
+    assert calstore.check_house(calibration(), frames) is HouseCheck.AGREES
 
 
-def test_house_agrees_within_the_ring_tolerance():
+def test_the_house_agrees_within_the_ring_tolerance():
     moved = [frame(top={"cx": 148.0 + 3.0})]
-    assert calstore.house_agrees(calibration(), moved)
+    assert calstore.check_house(calibration(), moved) is HouseCheck.AGREES
 
 
-def test_house_agrees_false_when_rings_moved_8px():
+def test_rings_moved_8px_disagree():
     moved = [frame(top={"cx": 148.0 + 8.0})]
-    assert not calstore.house_agrees(calibration(), moved)
+    assert calstore.check_house(calibration(), moved) is HouseCheck.DISAGREES
 
 
 def test_both_panels_must_agree():
     moved = [frame(bottom={"cx": 148.0, "cy": 360.0 + 8.0})]
-    assert not calstore.house_agrees(calibration(), moved)
+    assert calstore.check_house(calibration(), moved) is HouseCheck.DISAGREES
 
 
-def test_house_agrees_false_when_the_scale_changed():
+def test_a_changed_scale_disagrees():
     zoomed = [frame(top={"px_per_m": 75.0 * 1.06})]
-    assert not calstore.house_agrees(calibration(), zoomed)
+    assert calstore.check_house(calibration(), zoomed) is HouseCheck.DISAGREES
 
 
-def test_house_agrees_false_without_frames():
-    assert not calstore.house_agrees(calibration(), [])
+def test_no_frames_cannot_be_read():
+    assert calstore.check_house(calibration(), []) is HouseCheck.UNREADABLE
 
 
-def test_house_agrees_false_when_no_house_is_in_view():
+def test_no_house_in_view_cannot_be_read():
+    # Unreadable is not a disagreement: players standing in the house hide its
+    # rings, and say nothing about where the camera points.
     blank = np.full((FRAME_H, FRAME_W, 3), 235, np.uint8)
-    assert not calstore.house_agrees(calibration(), [blank, blank])
+    assert calstore.check_house(calibration(), [blank, blank]) is HouseCheck.UNREADABLE
+
+
+def test_one_house_hidden_and_the_other_fitting_cannot_be_read():
+    hidden = frame()
+    hidden[TOP_RECT[1]:TOP_RECT[1] + TOP_RECT[3], TOP_RECT[0]:TOP_RECT[0] + TOP_RECT[2]] = 235
+    assert calstore.check_house(calibration(), [hidden]) is HouseCheck.UNREADABLE
+
+
+def test_one_house_hidden_and_the_other_moved_disagrees():
+    # A ring found off is a camera that moved, whatever the other panel shows.
+    moved = frame(bottom={"cx": 148.0, "cy": 360.0 + 8.0})
+    moved[TOP_RECT[1]:TOP_RECT[1] + TOP_RECT[3], TOP_RECT[0]:TOP_RECT[0] + TOP_RECT[2]] = 235
+    assert calstore.check_house(calibration(), [moved]) is HouseCheck.DISAGREES

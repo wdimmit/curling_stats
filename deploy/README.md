@@ -336,9 +336,14 @@ is pictures of whoever was on the sheet. The calibration goes under the worker's
 cache root, `<cache>/cameras/cal/sheet2.pkl`, which is `/data/wdd/curling-cache`
 for `worker` and `/data/wdd/curling-cache-2` for `worker2`. Each worker has its
 own, so run it in both, for each of the five sheets. At Start the watch checks
-the saved calibration against the first frames, keeps it when the house rings
-are where it says, and replaces it when they are not (a camera has moved). Run
-it again after a camera is moved or re-aimed.
+the saved calibration against the first frames and uses it when the house rings
+are where it says. When players hide a ring, it checks again on later frames
+for up to a minute, then uses the saved calibration anyway. Only a ring found
+somewhere else or another size (a camera has moved) makes the session calibrate
+from its own frames, with a warning in the worker's log. A watch never replaces
+a saved calibration: it saves one only for a sheet that has none. So run
+`cameras-calibrate` again, on an empty sheet, after a camera is moved or
+re-aimed, or when that warning appears.
 
 **Re-fitting a sheet's layout.** A sheet's layout is the crop, turn and scale
 that put each of its four cameras where YouTube's picture has it, kept in

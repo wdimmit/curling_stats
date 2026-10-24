@@ -346,19 +346,20 @@ def sample_keyframes(path, count: int = 24, stride: int = 90, with_times: bool =
 
 
 def spread_keyframes(path, until_s: float, count: int = 24,
-                     with_times: bool = False):
+                     with_times: bool = False, start_s: float | None = None):
     """``count`` keyframes spread evenly over ``[0, until_s]``, or all of them
-    when there are fewer.
+    when there are fewer; over ``[start_s, until_s]`` given a ``start_s``
+    (from the last keyframe at or before it, as ``keyframe_sweep`` starts).
 
     A live stream is calibrated from what has been recorded so far, not from a
     whole video, so the spacing comes from how many keyframes that span holds.
     Two sweeps, the first of them without decoding, so only the chosen frames
     are ever held.
     """
-    n = sum(1 for _ in keyframe_sweep(path, decode=False, end_s=until_s))
+    n = sum(1 for _ in keyframe_sweep(path, decode=False, start_s=start_s, end_s=until_s))
     stride = max(1, n // count)
     out = []
-    for i, (t, img) in enumerate(keyframe_sweep(path, end_s=until_s)):
+    for i, (t, img) in enumerate(keyframe_sweep(path, start_s=start_s, end_s=until_s)):
         if i % stride:
             continue
         out.append((t, img) if with_times else img)

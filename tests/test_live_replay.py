@@ -41,6 +41,10 @@ class TestSpreadKeyframes:
         got = F.spread_keyframes(clip, until_s=2.5, count=24)
         assert len(got) == 3             # keyframes at 0, 1 and 2 s
 
+    def test_it_spreads_over_a_later_span_when_asked(self, clip):
+        got = F.spread_keyframes(clip, until_s=15.0, count=24, with_times=True, start_s=10.0)
+        assert [round(t) for t, _ in got] == [10, 11, 12, 13, 14, 15]
+
 
 class TestReplayRecording:
     def test_it_grows_readable_in_real_time_scaled_and_then_ends(self, tmp_path, clip):

@@ -13,10 +13,13 @@ thing there is to do, and says whether it did anything:
   CALIB_RETRY_S, keeping the best, until CALIB_TRIES. A watch given a saved
   calibration (``cameras/calstore.py``; a direct feed has no lookback) first
   checks it against the house rings in the first frames: if they fit, it is
-  adopted and there is nothing to calibrate; if not, that loop runs. Where the
-  watch is given somewhere to keep it, the loop's first complete calibration is
-  saved -- replacing a saved one that did not fit, or the first for a sheet --
-  unless the side views were left out on purpose.
+  adopted and there is nothing to calibrate. A house it cannot read (players
+  standing in it) is checked again on later frames, and if it never can be,
+  the saved calibration is used all the same. Only a ring found elsewhere (a
+  camera moved) runs that loop instead. A watch keeps a calibration only for a
+  sheet that has none: where it is given somewhere to keep it, the loop's first
+  complete calibration seeds the sheet, unless the side views were left out on
+  purpose. It never replaces one; ``cameras-calibrate`` on an empty sheet does.
 * **Watch:** detect both panels from where the last step stopped to just
   behind the head, at most STEP_MAX_S at a time. Find the arrivals each panel
   confirmed and the releases each saw, pair them, measure each new throw
@@ -32,6 +35,7 @@ watch's own decisions are testable without any.
 import logging
 import time
 
+from curling_score.cameras.calstore import HouseCheck
 from curling_score.detect import delivery
 from curling_score.geometry.calibrate import CalibrationError
 from curling_score.live.session import _worth
@@ -66,9 +70,14 @@ CALIB_TRIES = 5
 # A saved calibration is checked once the recording holds this much. The
 # composite has a keyframe a second (a 60-frame GOP at 60 fps), so this is about
 # ten keyframes for the check's median: the more there are, the less likely
-# that someone standing in the house outvotes the empty ice and fails a good
-# calibration, which the retry loop would then replace.
+# that someone standing in the house outvotes the empty ice.
 CHECK_MIN_S = 10.0
+# A check that cannot read a house -- busy sheets hid a ring at 3 of 3 Starts
+# on the Ryzen -- says nothing about the camera. It is made again on the frames
+# recorded since, every CHECK_RETRY_S of recording, CHECK_TRIES times in all
+# (the last at 55 s), and if none can read it the saved calibration is used.
+CHECK_RETRY_S = 15.0
+CHECK_TRIES = 4
 # A throw nothing saw released is dated this long before its arrival, as the
 # recorded pipeline does (timeline.RELEASE_TO_ARRIVAL_S).
 RELEASE_TO_ARRIVAL_S = 15.0
@@ -89,8 +98,8 @@ class PracticeWatch:
         seconds), for a live stream whose own clock is not known.
         ``saved_calibration`` is the sheet's calibration from before, to be
         checked at Start. ``save_calibration`` is called with the first
-        complete calibration this watch makes, when there is no saved one or it
-        does not fit -- never for one made without the side views.
+        complete calibration this watch makes when there is no saved one --
+        never for one made without the side views, and never to replace one.
         ``prior_throws`` are those an earlier watch of the same session
         published before its worker restarted, on the same clock: they lead
         this watch's document, and none of them is clipped here, since their
@@ -107,6 +116,8 @@ class PracticeWatch:
         self.cal = None
         self.saved, self.save_calibration = saved_calibration, save_calibration
         self._saved_checked = False
+        self._check_tries = 0
+        self._check_from, self._check_at = 0.0, CHECK_MIN_S   # the next check's frames
         self.calib_tries = 0
         self.calib_next = float("-inf")
         self.status = "calibrating"
@@ -169,9 +180,9 @@ class PracticeWatch:
         if head < READ_MIN_S and not ended:
             return False
         if self.saved is not None and not self._saved_checked:
-            if head < CHECK_MIN_S and not ended:
+            if head < self._check_at and not ended:
                 return False
-            return self._check_saved(head)
+            return self._check_saved(head, ended)
         began = self.clock()
         try:
             cal = self.pipeline.calibrate(self.rec.path, head)
@@ -196,33 +207,50 @@ class PracticeWatch:
         self._publish()
         return True
 
-    def _check_saved(self, head) -> bool:
-        """The saved calibration against the first frames: adopted if the
-        house rings fit it, else left for the retry loop to replace. One that
-        is no longer complete (what that means can change) is never put on the
-        ice, and is not worth reading frames to check. The check counts as made
-        only once it has answered: a read that fails is made again by the step
-        that follows it."""
+    def _check_saved(self, head, ended) -> bool:
+        """The saved calibration against the first frames. Adopted if the
+        house rings fit it. A house that cannot be read is checked again on the
+        frames recorded since, and if none of CHECK_TRIES can read it, it is
+        adopted all the same. Only a ring found off or the wrong size leaves it
+        for the retry loop, which calibrates from this recording and never
+        replaces it. One that is no longer complete (what that means can
+        change) is never put on the ice, and is not worth reading frames to
+        check. A read that fails is made again by the step that follows it:
+        only an answer counts as a try."""
         if not self.saved.complete:
             self.progress("practice: the saved calibration is incomplete; calibrating "
-                          "from this recording")
+                          "from this recording (cameras-calibrate on an empty sheet "
+                          "replaces it)")
             self._saved_checked = True
             return True
         began = self.clock()
         try:
-            fits = self.pipeline.check_saved(self.rec.path, head, self.saved)
+            got = self.pipeline.check_saved(self.rec.path, self._check_from, head, self.saved)
         except FileNotFoundError:
             return False                       # no file yet: the check is still owed
         finally:
             self.busy_s += self.clock() - began
+        self._check_tries += 1
+        if got is HouseCheck.UNREADABLE and self._check_tries < CHECK_TRIES and not ended:
+            self.progress(f"practice: the saved calibration could not be checked "
+                          f"(try {self._check_tries} of {CHECK_TRIES}, to {head:.0f} s); "
+                          f"trying again on later frames")
+            self._check_from, self._check_at = head, head + CHECK_RETRY_S
+            return True
         self._saved_checked = True
-        if fits:
-            self.progress("practice: the saved calibration fits; using it")
-            self._adopt(self.saved)
-            self._publish()
+        if got is HouseCheck.DISAGREES:
+            log.warning("practice: the saved calibration does not fit the house rings (a "
+                        "camera moved?); calibrating from this recording. The saved one is "
+                        "kept: refresh it with cameras-calibrate on an empty sheet")
+            return True
+        if got is HouseCheck.UNREADABLE:
+            log.warning("practice: the saved calibration could not be checked in %d tries "
+                        "over the first %.0f s (the houses cannot be read); using it",
+                        self._check_tries, head)
         else:
-            self.progress("practice: the saved calibration does not fit; calibrating "
-                          "from this recording")
+            self.progress("practice: the saved calibration fits; using it")
+        self._adopt(self.saved)
+        self._publish()
         return True
 
     def _adopt(self, cal) -> None:
@@ -232,11 +260,13 @@ class PracticeWatch:
         self.status = "watching"
 
     def _save(self, cal) -> None:
-        """Hand over the first complete calibration the retry loop makes: the
-        loop ends with it, so this is once. Not one made without the side
-        views (skip_longview), which would stand in for one that has them. A
-        failed save costs the save, not the watch."""
-        if self.save_calibration is None or not cal.side_expected:
+        """Seed a sheet that has no saved calibration with the first complete
+        one the retry loop makes: the loop ends with it, so this is once. Never
+        over a saved one, which only cameras-calibrate on an empty sheet
+        replaces, and not one made without the side views (skip_longview),
+        which would stand in for one that has them. A failed save costs the
+        save, not the watch."""
+        if self.save_calibration is None or self.saved is not None or not cal.side_expected:
             return
         try:
             self.save_calibration(cal)

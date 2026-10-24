@@ -38,18 +38,22 @@ def test_a_saved_calibration_is_checked_against_eight_spread_keyframes(monkeypat
     from curling_score.cameras import calstore
     from curling_score.ingest import frames as F
 
-    asked = {}
+    asked = []
 
-    def spread(path, until_s, count=24, with_times=False):
-        asked.update(path=path, until_s=until_s, count=count)
+    def spread(path, until_s, count=24, with_times=False, start_s=None):
+        asked.append({"path": path, "start_s": start_s, "until_s": until_s, "count": count})
         return ["frame"] * count
 
-    def agrees(cal, frames):
-        asked.update(cal=cal, frames=frames)
-        return "yes"
+    def check(cal, frames):
+        asked.append({"cal": cal, "frames": frames})
+        return calstore.HouseCheck.UNREADABLE
 
     monkeypatch.setattr(F, "spread_keyframes", spread)
-    monkeypatch.setattr(calstore, "house_agrees", agrees)
-    assert PracticePipeline().check_saved("rec.ts", 6.0, "CAL") == "yes"
-    assert asked == {"path": "rec.ts", "until_s": 6.0, "count": 8, "cal": "CAL",
-                     "frames": ["frame"] * 8}
+    monkeypatch.setattr(calstore, "check_house", check)
+    got = PracticePipeline().check_saved("rec.ts", 0.0, 10.0, "CAL")
+    assert got is calstore.HouseCheck.UNREADABLE
+    assert asked == [{"path": "rec.ts", "start_s": None, "until_s": 10.0, "count": 8},
+                     {"cal": "CAL", "frames": ["frame"] * 8}]
+    # A check made again reads the frames recorded since the last.
+    PracticePipeline().check_saved("rec.ts", 10.0, 25.0, "CAL")
+    assert asked[2] == {"path": "rec.ts", "start_s": 10.0, "until_s": 25.0, "count": 8}
