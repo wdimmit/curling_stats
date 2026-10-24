@@ -357,7 +357,9 @@ def _parser() -> argparse.ArgumentParser:
 
 def _exec_with_tap(args: argparse.Namespace, argv: list[str]) -> None:
     if not (tap.TAP_DIR / _TAP_LIB).exists():
-        sys.exit(f"{tap.TAP_DIR / _TAP_LIB} is missing: capture runs only in the worker image")
+        # Said on stderr as it exits; the recorder makes it its error.
+        sys.exit(f"the packet tap is not loaded ({tap.TAP_DIR / _TAP_LIB} is missing: "
+                 "capture runs only in the worker image)")
     ndi_dir = (args.ndi_dir or args.fifo.parent / "ndi").absolute()
     inventory.ndi_config(ndi_dir)
     read, write = os.pipe()

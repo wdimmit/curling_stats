@@ -5,6 +5,8 @@ import json
 import logging
 import threading
 
+import pytest
+
 from curling_score.cameras import capture, inventory
 
 SPS_PPS_IDR = b"\x00\x00\x00\x01\x67sps\x00\x00\x00\x01\x68pps\x00\x00\x00\x01\x65idr"
@@ -173,3 +175,15 @@ def test_reconnects_back_off_and_start_over_once_packets_flow():
     assert r.due() is False
     clock.t += 0.5
     assert r.due() is True
+
+
+def test_without_the_tap_a_capture_exits_naming_it(monkeypatch, tmp_path):
+    """A capture outside the worker image cannot hear any camera: it says why,
+    so the recorder's error can say it too."""
+    monkeypatch.setattr(capture.tap, "TAP_DIR", tmp_path / "ndi")
+    args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
+                                         "--first", str(tmp_path / "first")])
+    with pytest.raises(SystemExit) as exited:
+        capture._exec_with_tap(args, [])
+    assert str(exited.value.code).startswith("the packet tap is not loaded (")
+    assert str(tmp_path / "ndi" / "libavcodec-ndi.so.61") in str(exited.value.code)

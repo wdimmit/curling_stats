@@ -59,10 +59,13 @@ class World:
     """Fake popen and probe. A capture writes its first keyframe at once unless
     its camera is in ``silent``; the probe answers ``sizes`` per camera."""
 
-    def __init__(self, tmp_path, *, silent=(), sizes=None, composer_out=b"", composer_code=None):
+    def __init__(self, tmp_path, *, silent=(), sizes=None, composer_out=b"", composer_code=None,
+                 dying=None):
         self.dir = tmp_path / "rec"
         self.events, self.procs = [], []
         self.silent, self.sizes = set(silent), dict(sizes or {})
+        # camera -> what its capture prints before it exits 1, with no keyframe
+        self.dying = dict(dying or {})
         self.composer_out, self.composer_code = composer_out, composer_code
         self.t = 100.0
 
@@ -74,6 +77,10 @@ class World:
         else:
             camera = _camera(cmd)
             self.events.append(("capture", camera))
+            if camera in self.dying:
+                proc = Proc(cmd, self.events, self.dying[camera].encode(), code=1)
+                self.procs.append(proc)
+                return proc
             if camera not in self.silent:
                 Path(_arg(cmd, "--first")).write_bytes(b"\x00\x00\x00\x01\x65idr")
             proc = Proc(cmd, self.events, f"2026-10-24 15:09:01,123 INFO capture {camera}: "
@@ -111,7 +118,7 @@ def progress(*times):
 
 def settle(rec):
     """Let the fakes' output be read to its end."""
-    for thread in [rec._composer.reader, *rec._relays]:
+    for thread in [rec._composer.reader, *rec._relays.values()]:
         thread.join(timeout=5)
 
 
@@ -174,6 +181,30 @@ def test_start_refuses_a_camera_that_sends_nothing(tmp_path):
         rec.start()
     assert ("composer",) not in world.events
     assert all(p.terminated for p in world.captures)
+
+
+def test_a_capture_that_dies_at_start_gives_its_reason(tmp_path):
+    # Without the tap a capture exits at once, saying why, and that is the
+    # error: not "sent no H.264", which sends whoever reads it to the camera.
+    world = World(tmp_path, dying={"1A-HOUSE": "the packet tap is not loaded "
+                                                "(/opt/ndi/libavcodec-ndi.so.61 is missing: "
+                                                "capture runs only in the worker image)\n"})
+    world.clock = time.monotonic
+    with pytest.raises(LiveError, match=r"^camera 1A-HOUSE's capture exited \(1\): the packet "
+                                        r"tap is not loaded \(/opt/ndi/"):
+        world.recorder().start()
+    assert ("composer",) not in world.events
+
+
+def test_a_capture_that_dies_at_start_names_its_error_not_its_chatter(tmp_path):
+    world = World(tmp_path, dying={"1A-HOUSE": (
+        "2026-10-24 15:09:01,100 INFO capture 1A-HOUSE: looking for 1A-HOUSE\n"
+        "2026-10-24 15:09:16,100 ERROR capture 1A-HOUSE: stopping: not in the finder "
+        "within 15 s\n")})
+    world.clock = time.monotonic
+    with pytest.raises(LiveError, match=r"^camera 1A-HOUSE's capture exited \(1\): stopping: "
+                                        r"not in the finder within 15 s$"):
+        world.recorder().start()
 
 
 def test_start_does_not_take_a_stale_first_keyframe(tmp_path):

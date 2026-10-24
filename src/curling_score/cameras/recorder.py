@@ -15,7 +15,8 @@ waiting for all four before the composer exists cannot deadlock. A camera that
 sends nothing, or anything but H.264 1920x1080 (the size the layouts' crops are
 in), fails the start before anything is encoded. ffprobe reads the keyframes,
 in a subprocess: PyAV in a second thread has deadlocked before
-(``ingest/frames.py``).
+(``ingest/frames.py``). A capture that exits before its first keyframe has
+said why (no tap, no such camera), and its last error is the start's.
 
 **The clock.** Each input is stamped with the wall clock as it arrives, and the
 filtergraph shifts every camera back by ``wall_started``, taken as the composer
@@ -79,6 +80,8 @@ STALL_S = 30.0
 # (sheet 1, 2026-10-24).
 DECODE_THREADS = 2
 FILTER_THREADS = 2
+# How long a capture that has exited gets for the rest of its output to be read.
+RELAY_JOIN_S = 2.0
 # How long a process has to exit after SIGTERM before it is killed.
 CAPTURE_EXIT_S = 5.0
 COMPOSER_EXIT_S = 10.0
@@ -149,7 +152,8 @@ class CameraRecorder:
         self.first_timeout_s, self.max_s = first_timeout_s, max_s
         self._cameras = inventory.sheet_cameras(sheet)       # role -> camera name
         self._captures: dict[str, subprocess.Popen] = {}     # role -> process
-        self._relays: list[threading.Thread] = []
+        self._relays: dict[str, threading.Thread] = {}       # role -> its log's reader
+        self._said: dict[str, str] = {}                      # role -> its last error
         self._gone: set[str] = set()
         self._composer: _Part | None = None
         self._tail: _Tail | None = None
@@ -203,22 +207,27 @@ class CameraRecorder:
              "--first", str(first)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self._captures[role] = proc
-        relay = threading.Thread(target=self._relay, args=(name, proc.stdout),
+        relay = threading.Thread(target=self._relay, args=(role, name, proc.stdout),
                                  name=f"capture-log-{name}", daemon=True)
         relay.start()
-        self._relays.append(relay)
+        self._relays[role] = relay
 
-    @staticmethod
-    def _relay(name: str, stream) -> None:
-        """Pass a capture's log lines on, at their own level."""
+    def _relay(self, role: str, name: str, stream) -> None:
+        """Pass a capture's log lines on, at their own level, keeping the last
+        error it said: a line at ERROR, or one said outside its log (a
+        traceback, or exiting before logging)."""
         level = logging.INFO
+        prefix = f"capture {name}: "
         for raw in iter(stream.readline, b""):
             line = raw.decode("utf-8", "replace").rstrip()
             m = _LOG_LINE.match(line)
             if m:
                 level, line = logging.getLevelName(m.group(1)), m.group(2)
+                if level >= logging.ERROR:
+                    self._said[role] = line.removeprefix(prefix)
             elif line:
-                line = f"capture {name}: {line}"   # a traceback, or exiting before logging
+                self._said[role] = line
+                line = prefix + line
             if line:
                 log.log(level, "%s", line)
 
@@ -243,7 +252,13 @@ class CameraRecorder:
             self._first(role).unlink()
 
     def _refuse(self, role: str) -> NoReturn:
-        raise LiveError(f"camera {self._cameras[role]} sent no H.264 {CAMERA_W}x{CAMERA_H} "
+        name, code = self._cameras[role], self._captures[role].poll()
+        if code is not None:
+            self._relays[role].join(timeout=RELAY_JOIN_S)
+            said = self._said.get(role)
+            raise LiveError(f"camera {name}'s capture exited ({code})"
+                            + (f": {said}" if said else ""))
+        raise LiveError(f"camera {name} sent no H.264 {CAMERA_W}x{CAMERA_H} "
                         f"within {self.first_timeout_s:g} s")
 
     def _spawn_composer(self, sheet_layout: layout.SheetLayout) -> None:
