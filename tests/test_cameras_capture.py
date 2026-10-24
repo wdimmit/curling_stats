@@ -28,7 +28,7 @@ class Clock:
 
 def holder():
     clock, out = Clock(), []
-    return capture.Holder(out.append, clock=clock), clock, out
+    return capture.Holder(lambda data, at, key: out.append(data), clock=clock), clock, out
 
 
 def test_sheet_cameras_long_views_by_sheet():
@@ -125,9 +125,12 @@ def test_hold_waits_for_a_keyframe_before_resuming():
 
 
 def queued(fifo):
+    """What the FIFO's writer would write next, in order, without waiting."""
     out = []
-    while not fifo._queue.empty():
-        out.append(fifo._queue.get_nowait())
+    while fifo._queue:
+        data = fifo._take()
+        if data is not None:
+            out.append(data)
     return out
 
 
@@ -135,7 +138,8 @@ def test_a_keyframe_from_before_the_fifo_opens_is_held_once_it_does(tmp_path):
     """A camera that sent its first keyframe and then nothing: the composer,
     which opens its FIFOs one at a time and probes each, must still get a
     picture from it, or it never starts."""
-    clock, fifo = Clock(), capture._Fifo(tmp_path / "cam.h264")
+    clock = Clock()
+    fifo = capture._Fifo(tmp_path / "cam.h264", clock=clock)
     h = capture.Holder(fifo.write, clock=clock)
     h.packet(1, SPS_PPS_IDR)
     h.packet(0, P1)
@@ -150,7 +154,8 @@ def test_a_keyframe_from_before_the_fifo_opens_is_held_once_it_does(tmp_path):
 
 
 def test_a_live_camera_starts_at_its_newest_keyframe_once_the_fifo_opens(tmp_path):
-    clock, fifo = Clock(), capture._Fifo(tmp_path / "cam.h264")
+    clock = Clock()
+    fifo = capture._Fifo(tmp_path / "cam.h264", clock=clock)
     h = capture.Holder(fifo.write, clock=clock)
     h.packet(1, SPS_PPS_IDR)
     h.packet(1, SPS_PPS_IDR + b"2")
@@ -177,22 +182,84 @@ def test_the_tap_reader_gives_the_holder_packets_before_the_fifo_opens(tmp_path)
     cap = capture._Capture(args)
     cap._read()                            # to the end of the pipe
     assert (tmp_path / "first").read_bytes() == SPS_PPS_IDR
-    assert not cap.fifo.opened.is_set() and cap.fifo._queue.empty()
+    assert not cap.fifo.opened.is_set() and not cap.fifo._queue
     cap.fifo.opened.set()
-    cap.holder.clock = lambda: time.monotonic() + 1.0
     assert cap.holder.tick() is True
-    assert cap.fifo._queue.get_nowait() == SPS_PPS_IDR
+    assert queued(cap.fifo) == [SPS_PPS_IDR]
+
+
+def opened_fifo(tmp_path, clock):
+    fifo = capture._Fifo(tmp_path / "cam.h264", clock=clock)
+    fifo.opened.set()
+    return fifo
+
+
+def test_a_packet_that_waited_too_long_is_dropped_with_all_queued(tmp_path, caplog):
+    """The composer stamps a packet with the wall clock when it reads it, so a
+    packet's wait here is delay nothing downstream can see. None older than
+    MAX_AGE_S is ever fed to it: what is queued goes, the stream starts again
+    at a keyframe, and the picture is held meanwhile."""
+    clock = Clock()
+    fifo = opened_fifo(tmp_path, clock)
+    h = capture.Holder(fifo.write, clock=clock)
+    t = clock.t
+    h.packet(1, SPS_PPS_IDR, t)
+    h.packet(0, P1, t + PERIOD)
+    h.packet(0, P2, t + 2 * PERIOD)
+    clock.t = t + capture.MAX_AGE_S - 0.1
+    assert fifo._take() == SPS_PPS_IDR
+    clock.t = t + 0.7                      # the composer stopped reading for a while
+    with caplog.at_level(logging.INFO, logger=capture.__name__):
+        assert fifo._take() is None
+        assert not fifo._queue
+        h.packet(0, P1 + b"later", clock.t)   # refers to pictures that went
+        assert queued(fifo) == []
+        clock.t += PERIOD
+        assert h.tick() is True            # held at once, not after hold_after_s
+        h.packet(1, SPS_PPS_IDR + b"2", clock.t)
+        h.packet(0, P2 + b"2", clock.t)
+        assert queued(fifo) == [SPS_PPS_IDR, SPS_PPS_IDR + b"2", P2 + b"2"]
+    warned = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warned == ["the composer is 0.7 s behind; dropping 2 packets and starting again "
+                      "at a keyframe"]
+    assert "the composer has caught up" in caplog.text
+
+
+def test_a_keyframe_after_a_drop_starts_the_stream_again_at_once(tmp_path):
+    clock = Clock()
+    fifo = opened_fifo(tmp_path, clock)
+    h = capture.Holder(fifo.write, clock=clock)
+    h.packet(1, SPS_PPS_IDR, clock.t)
+    h.packet(0, P1, clock.t)
+    clock.t += 0.6
+    assert fifo._take() is None
+    h.packet(1, SPS_PPS_IDR + b"2", clock.t)
+    h.packet(0, P2, clock.t)
+    assert queued(fifo) == [SPS_PPS_IDR + b"2", P2]
+
+
+def test_one_warning_for_a_composer_that_stays_behind(tmp_path, caplog):
+    clock = Clock()
+    fifo = opened_fifo(tmp_path, clock)
+    h = capture.Holder(fifo.write, clock=clock)
+    with caplog.at_level(logging.WARNING, logger=capture.__name__):
+        for _ in range(3):
+            h.packet(1, SPS_PPS_IDR, clock.t)
+            h.packet(0, P1, clock.t)
+            clock.t += 0.6
+            assert fifo._take() is None
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
 
 
 def test_full_queue_never_blocks_the_reader_and_resumes_at_a_keyframe(monkeypatch, tmp_path,
                                                                       caplog):
     """A composer that stops reading must not back up into the tap, and so
-    into libndi: what does not fit is dropped, and the stream picks up again
-    at a keyframe."""
+    into libndi: past BACKLOG packets (a guard on memory, since none older
+    than MAX_AGE_S is written anyway) what does not fit is dropped, and the
+    stream picks up again at a keyframe."""
     monkeypatch.setattr(capture, "BACKLOG", 3)
-    fifo = capture._Fifo(tmp_path / "cam.h264")
-    fifo.opened.set()
     clock = Clock()
+    fifo = opened_fifo(tmp_path, clock)
     h = capture.Holder(fifo.write, clock=clock)
 
     def overflow():
@@ -201,7 +268,6 @@ def test_full_queue_never_blocks_the_reader_and_resumes_at_a_keyframe(monkeypatc
         h.packet(0, P2)
         h.packet(0, b"\x00\x00\x00\x01\x41dropped")
         h.packet(1, SPS_PPS_IDR + b"dropped")
-        clock.t += 0.6
         h.tick()
 
     with caplog.at_level(logging.WARNING):
@@ -211,13 +277,12 @@ def test_full_queue_never_blocks_the_reader_and_resumes_at_a_keyframe(monkeypatc
     assert not reader.is_alive(), "Holder.packet blocked on a full queue"
     assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
 
-    queued = [fifo._queue.get_nowait() for _ in range(3)]
-    assert queued == [SPS_PPS_IDR, P1, P2]
+    assert queued(fifo) == [SPS_PPS_IDR, P1, P2]
     h.packet(0, b"\x00\x00\x00\x01\x41after")
-    assert fifo._queue.empty()
+    assert not fifo._queue
     h.packet(1, SPS_PPS_IDR + b"2")
     h.packet(0, P1)
-    assert [fifo._queue.get_nowait() for _ in range(2)] == [SPS_PPS_IDR + b"2", P1]
+    assert queued(fifo) == [SPS_PPS_IDR + b"2", P1]
 
 
 def test_reconnects_back_off_and_start_over_once_packets_flow():

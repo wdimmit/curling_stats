@@ -228,17 +228,45 @@ def test_composer_args_carry_filtergraph_and_nvenc_at_20M(tmp_path):
     fifos = [world.dir / f"cam-{r}.h264" for r in ROLES]
     for fifo in fifos:
         at = cmd.index(str(fifo))
-        assert cmd[at - 7:at + 1] == ["-thread_queue_size", "1024", "-use_wallclock_as_timestamps",
-                                      "1", "-f", "h264", "-i", str(fifo)]
+        assert cmd[at - 11:at + 1] == ["-thread_queue_size", "1024", "-use_wallclock_as_timestamps",
+                                       "1", *camrec.PROBE, "-f", "h264", "-i", str(fifo)]
     inputs = {r: i for i, r in enumerate(ROLES)}
-    assert _arg(cmd, "-filter_complex") == layout.filtergraph(layout.load(1), inputs=inputs,
-                                                              t0=WALL)
+    graphs = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-filter_complex"]
+    assert graphs == layout.filtergraphs(layout.load(1), inputs=inputs, t0=WALL)
     assert _arg(cmd, "-map") == "[out]"
     tail = cmd[cmd.index("-c:v"):]
     assert tail == ["-c:v", "h264_nvenc", "-b:v", "20M", "-maxrate", "25M", "-g", "60",
                     "-bf", "0", "-f", "mpegts", str(world.dir / "rec.0.ts")]
     # The progress the head is read from, even with the log turned down.
     assert "-stats" in cmd and "-nostdin" in cmd and "-y" in cmd
+
+
+def test_each_input_is_opened_without_a_long_probe(tmp_path):
+    """ffmpeg opens its inputs one after another, probing each, and the
+    cameras it has opened queue up meanwhile: probed at length, a sheet's four
+    were 7.1 / 5.0 / 3.1 / 1.4 s behind at +10 s (Task 11). Each FIFO starts at
+    a keyframe with SPS and PPS (capture.Holder), which is all the probe needs."""
+    world = World(tmp_path)
+    world.recorder().start()
+    cmd = world.composer.cmd
+    for role in ROLES:
+        at = cmd.index(str(world.dir / f"cam-{role}.h264"))
+        assert cmd[at - 7:at + 1] == ["-probesize", "32", "-analyzeduration", "1",
+                                      "-f", "h264", "-i", str(world.dir / f"cam-{role}.h264")]
+
+
+def test_each_camera_is_cut_and_turned_on_a_thread_of_its_own(tmp_path):
+    """All in one graph, the filtergraph's one thread could only just keep up
+    with 60 fps, so any other load put the composer behind for good (Task 11,
+    D2): a graph per camera, and one that lays them out."""
+    world = World(tmp_path)
+    world.recorder().start()
+    cmd = world.composer.cmd
+    graphs = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-filter_complex"]
+    assert len(graphs) == 5
+    assert [g.rsplit("[", 1)[1] for g in graphs[:4]] == [
+        "long_a]", "house_h]", "house_a]", "long_h]"]          # sheet 1's placements
+    assert "overlay" in graphs[4] and graphs[4].endswith("[out]")
 
 
 def test_composer_threads_are_capped(tmp_path):
@@ -251,7 +279,7 @@ def test_composer_threads_are_capped(tmp_path):
     assert _arg(cmd, "-filter_complex_threads") == str(camrec.FILTER_THREADS)
     for role in ROLES:
         at = cmd.index(str(world.dir / f"cam-{role}.h264"))
-        assert cmd[at - 9:at - 7] == ["-threads", str(camrec.DECODE_THREADS)]
+        assert cmd[at - 13:at - 11] == ["-threads", str(camrec.DECODE_THREADS)]
     assert camrec.FILTER_THREADS == camrec.DECODE_THREADS == 2
 
 

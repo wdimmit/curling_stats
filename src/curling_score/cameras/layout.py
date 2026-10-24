@@ -9,8 +9,8 @@ once per sheet from a YouTube frame (``scripts/cameras/fit_layout.py``) and
 kept in ``layouts/sheet{N}.json``; panel sizes differ by sheet, and sheets 2-4's
 long cameras were re-aimed for 2026-27.
 
-``filtergraph`` turns a layout into the FFmpeg ``-filter_complex`` the composer
-runs.
+``filtergraphs`` turns a layout into the FFmpeg ``-filter_complex`` graphs the
+composer runs.
 """
 
 from __future__ import annotations
@@ -86,15 +86,23 @@ def load(sheet: int, *, root: Path = LAYOUTS) -> SheetLayout:
     )
 
 
-def filtergraph(sheet_layout: SheetLayout, *, inputs: dict[str, int], t0: float) -> str:
-    """The composer's ``-filter_complex``: each camera ``inputs[role]`` shifted
-    to start at ``t0``, cut, turned and scaled into place over a plain
-    background, holding its last frame if it stops. The result is ``[out]``.
+def filtergraphs(sheet_layout: SheetLayout, *, inputs: dict[str, int],
+                 t0: float) -> list[str]:
+    """The composer's ``-filter_complex`` graphs, in order: one per camera
+    ``inputs[role]``, shifting it to start at ``t0``, cutting, turning and
+    scaling it; then one laying them out over a plain background, each holding
+    its last frame if it stops. The result is ``[out]``.
 
     With ``-copyts`` and wall-clock input timestamps, ``t0`` is the wall time
     at the recording's zero.
+
+    FFmpeg runs each graph on a thread of its own (7.0 on). All in one graph,
+    that one thread could only just keep up with a sheet's 60 fps: on test
+    patterns on the Ryzen it ran at 58-61 fps flat out and 50 paced to real
+    time, so any other load put the composer behind for good. Split, it ran at
+    98 fps flat out, and at 70 beside 24 busy threads.
     """
-    chains = []
+    graphs = []
     for p in sheet_layout.placements:
         cx, cy, cw, ch = p.crop
         _, _, ow, oh = p.out
@@ -104,8 +112,8 @@ def filtergraph(sheet_layout: SheetLayout, *, inputs: dict[str, int], t0: float)
         if p.rotate:
             steps.append(f"transpose={_TRANSPOSE[p.rotate]}")
         steps.append(f"scale={ow}:{oh}")
-        chains.append(f"[{inputs[p.role]}:v]{','.join(steps)}[{p.role}]")
-    chains.append(f"color=c={sheet_layout.background}:s={WIDTH}x{HEIGHT}:r={FPS}[base]")
+        graphs.append(f"[{inputs[p.role]}:v]{','.join(steps)}[{p.role}]")
+    chains = [f"color=c={sheet_layout.background}:s={WIDTH}x{HEIGHT}:r={FPS}[base]"]
     below = "base"
     for i, p in enumerate(sheet_layout.placements, 1):
         ox, oy, _, _ = p.out
@@ -113,4 +121,4 @@ def filtergraph(sheet_layout: SheetLayout, *, inputs: dict[str, int], t0: float)
         chains.append(
             f"[{below}][{p.role}]overlay=x={ox}:y={oy}:eof_action=repeat:repeatlast=1[{above}]")
         below = above
-    return ";".join(chains)
+    return [*graphs, ";".join(chains)]

@@ -27,9 +27,12 @@ on the PID it got, and needs no special environment of its own.
 - A reader drains the tap's pipe. It must not stall, because a full pipe
   blocks libndi's own thread.
 - A ticker keeps the picture still while packets stop (``Holder``).
-- A writer feeds the FIFO from a queue. The composer opens and probes its
-  inputs one at a time, and a FIFO it is not reading yet must not back up into
-  libndi.
+- A writer feeds the FIFO from a queue, so a composer that is not reading
+  never backs up into libndi. The composer stamps each packet with the wall
+  clock as it reads it, so a packet's wait in the queue is delay nothing
+  downstream can see: one that has waited more than ``MAX_AGE_S`` is never
+  written. What is queued then goes, and the stream starts again at a
+  keyframe while the ``Holder`` holds the picture.
 
 **Stalls.** Liveness is judged from the tap's packets, never from
 ``receive()``. After ``RECONNECT_S`` without a packet the receiver reconnects.
@@ -58,11 +61,11 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import queue
 import signal
 import sys
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import NoReturn
@@ -89,9 +92,14 @@ FIND_POLL_S = 0.5
 # How often the pump asks libndi for frames and checks on the camera and the
 # parent.
 PUMP_S = 0.1
-# Packets queued for a FIFO whose composer is not reading yet: 10 s at 60 fps,
-# about 12 MB at a long view's ~10 Mbit/s. That covers the composer opening
-# and probing a sheet's four inputs one at a time. Past it, packets are
+# A packet that has waited this long for the composer is never fed to it. The
+# composer times each camera by when it reads the packet, so a backlog here is
+# delay head_s cannot see, and different for each camera: with 10 s of queue
+# allowed, sheet 2's cameras sat ~9.5 s behind for whole runs (Task 11).
+MAX_AGE_S = 0.5
+# Packets queued, at most: 10 s at 60 fps, about 12 MB at a long view's ~10
+# Mbit/s. Only a guard on memory, for a composer that has stopped reading
+# altogether (MAX_AGE_S is judged as a packet is written). Past it, packets are
 # dropped until the next keyframe: blocking would stall libndi.
 BACKLOG = 600
 _MODULE = "curling_score.cameras.capture"
@@ -113,13 +121,17 @@ class Holder:
     goes after ``write`` returns False, which says it dropped what it was given
     -- as it does until the composer opens the FIFO. The newest keyframe is
     kept all the same, so the picture starts from it, held, once ``write``
-    takes it.
+    takes it; and after a drop the picture is held at once, until a keyframe
+    comes.
 
-    ``packet`` and ``tick`` may be called from different threads.
+    ``write`` is given each packet with when it arrived (``clock``'s time)
+    and whether it is a keyframe. ``packet`` and ``tick`` may be called from
+    different threads.
     """
 
-    def __init__(self, write: Callable[[bytes], bool | None], *, hold_after_s: float = 0.5,
-                 period_s: float = 1 / 60, clock: Callable[[], float] = time.monotonic):
+    def __init__(self, write: Callable[[bytes, float, bool], bool | None], *,
+                 hold_after_s: float = 0.5, period_s: float = 1 / 60,
+                 clock: Callable[[], float] = time.monotonic):
         self._write = write
         self.hold_after_s, self.period_s, self.clock = hold_after_s, period_s, clock
         self._lock = threading.Lock()
@@ -127,15 +139,17 @@ class Holder:
         self._hold_at = 0.0          # when tick() next writes the held keyframe
         self._need_key = True
 
-    def packet(self, flags: int, payload: bytes) -> None:
+    def packet(self, flags: int, payload: bytes, at: float | None = None) -> None:
+        """A packet from the camera, which arrived at ``at`` (now if None)."""
         with self._lock:
             key = bool(flags & tap.KEYFRAME)
             if self._need_key and not key:
                 return
             if key:
                 self._key = payload
-            if self._write(payload) is False:
+            if self._write(payload, self.clock() if at is None else at, key) is False:
                 self._need_key = True
+                self._hold_at = self.clock()
                 return
             self._need_key = False
             self._hold_at = self.clock() + self.hold_after_s
@@ -148,7 +162,7 @@ class Holder:
                 return False
             self._need_key = True
             self._hold_at = now + self.period_s
-            return self._write(self._key) is not False
+            return self._write(self._key, now, True) is not False
 
 
 class Reconnects:
@@ -190,32 +204,77 @@ class _Fifo:
 
     ``write`` never blocks: a full queue drops the data and says so, because a
     blocked tap reader would block libndi's own thread through the tap's pipe.
+    The writer never writes a packet that arrived more than MAX_AGE_S ago: it
+    drops it with everything queued behind it, and the next ``write`` that is
+    not a keyframe is refused, so the stream starts again at one.
     """
 
-    def __init__(self, path: Path):
-        self.path = path
+    def __init__(self, path: Path, *, clock: Callable[[], float] = time.monotonic):
+        self.path, self.clock = path, clock
         self.opened = threading.Event()
-        self._queue: queue.Queue[bytes] = queue.Queue(maxsize=BACKLOG)
+        self._queue: deque[tuple[float, bytes]] = deque()   # (arrived, packet)
+        self._ready = threading.Condition()
+        self._restart = False         # dropped as late: start again at a keyframe
         self._full = False
+        self._late: tuple[int, float] | None = None   # packets dropped, at worst how late
 
-    def write(self, data: bytes) -> bool:
-        """Queue ``data``. False if it was dropped: nothing has opened the FIFO
-        yet, or the queue was full. Called by one thread at a time (under the
-        Holder's lock)."""
-        if not self.opened.is_set():
-            return False
-        try:
-            self._queue.put_nowait(data)
-        except queue.Full:
-            if not self._full:
-                log.warning("the composer is %d packets behind; dropping to the next keyframe",
-                            self._queue.maxsize)
-                self._full = True
-            return False
-        if self._full:
-            log.info("the composer is reading again")
-            self._full = False
-        return True
+    def write(self, data: bytes, at: float, key: bool) -> bool:
+        """Queue ``data``, which arrived at ``at``. False if it was dropped:
+        nothing has opened the FIFO yet, the queue was full, or late packets
+        were dropped and this is not the keyframe to start again at. Called by
+        one thread at a time (under the Holder's lock)."""
+        with self._ready:
+            if not self.opened.is_set():
+                return False
+            if self._restart:
+                self._restart = False
+                if not key:
+                    return False
+            if len(self._queue) >= BACKLOG:
+                if not self._full:
+                    log.warning("the composer is %d packets behind; dropping to the next keyframe",
+                                BACKLOG)
+                    self._full = True
+                return False
+            if self._full:
+                log.info("the composer is reading again")
+                self._full = False
+            self._queue.append((at, data))
+            self._ready.notify()
+            return True
+
+    def _take(self) -> bytes | None:
+        """The next packet to write, or None if there was none fit to: one
+        that waited more than MAX_AGE_S goes, with all queued behind it."""
+        with self._ready:
+            if not self._queue:
+                return None
+            at, data = self._queue.popleft()
+            late = self.clock() - at
+            if late <= MAX_AGE_S:
+                if self._late is not None:
+                    log.info("the composer has caught up after dropping %d packets "
+                             "(at worst %.1f s behind)", *self._late)
+                    self._late = None
+                return data
+            dropped = 1 + len(self._queue)
+            self._queue.clear()
+            self._restart = True
+            if self._late is None:
+                log.warning("the composer is %.1f s behind; dropping %d packets and starting "
+                            "again at a keyframe", late, dropped)
+                self._late = (0, 0.0)
+            self._late = (self._late[0] + dropped, max(self._late[1], late))
+            return None
+
+    def _next(self) -> bytes:
+        """The next packet to write, waiting for one."""
+        with self._ready:
+            while True:
+                self._ready.wait_for(lambda: self._queue)
+                data = self._take()
+                if data is not None:
+                    return data
 
     def run(self) -> None:
         """Open the FIFO, which waits for its reader. Then write what is
@@ -223,7 +282,7 @@ class _Fifo:
         fd = os.open(self.path, os.O_WRONLY)
         self.opened.set()
         while True:
-            view = memoryview(self._queue.get())
+            view = memoryview(self._next())
             while view:
                 view = view[os.write(fd, view):]
 
@@ -316,12 +375,13 @@ class _Capture:
     def _read(self) -> None:
         with open(self.tap_fd, "rb") as f:
             for flags, payload in tap.read_records(f):
+                at = time.monotonic()
                 self.reconnects.heard()
                 if flags & tap.KEYFRAME and self.first_at is None:
                     self._save_first(payload)
                 # Before the FIFO is open too: the Holder keeps the newest
                 # keyframe, which is where the FIFO's stream starts.
-                self.holder.packet(flags, payload)
+                self.holder.packet(flags, payload, at)
         self.stop(1, "the tap's pipe closed")
 
     def _save_first(self, payload: bytes) -> None:

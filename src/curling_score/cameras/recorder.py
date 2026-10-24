@@ -72,14 +72,24 @@ FIRST_POLL_S = 0.1
 PROBE_TIMEOUT_S = 10.0
 # A composer whose head has not moved for this long has stopped. Opening and
 # probing its four inputs one at a time, each from a camera keyframe (every
-# 2 s), took 9 s to its first progress on sheet 1.
+# 2 s), took 9 s to its first progress on sheet 1; with PROBE, 1.3-1.4 s.
 STALL_S = 30.0
-# Threads for each camera's decoder and for the filtergraph. FFmpeg's default
-# is a thread per CPU, and at a live 60 fps all of them waking for every frame
-# cost 9.1 cores a sheet on the Ryzen; two each cost 2.6, keeping up the same
-# (sheet 1, 2026-10-24).
+# Threads for each camera's decoder and for each filtergraph's slices. FFmpeg's
+# default is a thread per CPU, and at a live 60 fps all of them waking for
+# every frame cost 9.1 cores a sheet on the Ryzen; two each cost 2.6, keeping
+# up the same (sheet 1, 2026-10-24). Neither 1 nor 4 did better with a graph
+# per camera (layout.filtergraphs; test patterns, 2026-10-24).
 DECODE_THREADS = 2
 FILTER_THREADS = 2
+# How much ffmpeg reads of each input to learn what it is before it opens the
+# next: as little as it can. Each FIFO starts at a keyframe carrying SPS and
+# PPS (capture.Holder), which says H.264 1920x1080, and the timestamps are the
+# wall clock's, so there is no frame rate to learn. ffmpeg's own probe took
+# ~0.3 s an input, and the cameras opened first were 0.6-1.2 s behind once the
+# composer read them; this takes 0.05 s, and leaves them 0.14-0.30 s behind
+# (sheet 2, 2026-10-24). When a FIFO started at the first keyframe after it
+# was opened, they were 7.1 / 5.0 / 3.1 / 1.4 s behind at +10 s.
+PROBE = ["-probesize", "32", "-analyzeduration", "1"]
 # How long a capture that has exited gets for the rest of its output to be read.
 RELAY_JOIN_S = 2.0
 # How long a process has to exit after SIGTERM before it is killed.
@@ -270,10 +280,11 @@ class CameraRecorder:
         for role in self._cameras:
             cmd += ["-threads", str(DECODE_THREADS),
                     "-thread_queue_size", "1024", "-use_wallclock_as_timestamps", "1",
-                    "-f", "h264", "-i", str(self._fifo(role))]
-        cmd += ["-filter_complex",
-                layout.filtergraph(sheet_layout, inputs=inputs, t0=self.wall_started),
-                "-map", "[out]",
+                    *PROBE, "-f", "h264", "-i", str(self._fifo(role))]
+        # A graph per camera, each on a thread of its own (layout.filtergraphs).
+        for graph in layout.filtergraphs(sheet_layout, inputs=inputs, t0=self.wall_started):
+            cmd += ["-filter_complex", graph]
+        cmd += ["-map", "[out]",
                 "-c:v", "h264_nvenc", "-b:v", "20M", "-maxrate", "25M", "-g", "60", "-bf", "0",
                 "-f", "mpegts", str(self.path)]
         # Unbuffered: _Part reads 4 KiB at a time, and a buffered pipe waits for
