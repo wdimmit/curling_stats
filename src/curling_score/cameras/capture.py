@@ -41,8 +41,11 @@ packets flow again, so a stuck receiver cannot hammer a camera the club's own
 production also reads. Meanwhile the ``Holder`` repeats the last keyframe, so
 the composer's picture holds still rather than stopping.
 
-**Exits.** SIGTERM exits 0. These exit 1, so a camera connection never
-outlives the session that wanted it:
+**Exits.** SIGTERM ends it at once, by the signal's default action. A Python
+handler would run only once the main thread got back to Python, and a capture
+whose camera has gone quiet can sit in libndi, which cyndilib calls holding
+the GIL, for longer than the recorder waits (over 5 s, 2026-10-24). These exit
+1, so a camera connection never outlives the session that wanted it:
 - the camera is not in the finder within ``FIND_S``;
 - no keyframe arrives within ``FIRST_S`` of connecting;
 - the FIFO's reader goes away;
@@ -299,14 +302,15 @@ class _Capture:
         self._stalled = False
 
     def stop(self, code: int, why: str) -> None:
-        """End the process with ``code``. Called from any thread, and from the
-        SIGTERM handler, so it takes no lock."""
+        """End the process with ``code``. Called from any thread, so it takes
+        no lock."""
         if self.exit_code is None:
             self.exit_code = code
-            log.log(logging.INFO if code == 0 else logging.ERROR, "stopping: %s", why)
+            log.error("stopping: %s", why)
 
     def run(self) -> int:
-        signal.signal(signal.SIGTERM, lambda *_: self.stop(0, "SIGTERM"))
+        # The default action, whatever the parent left (see Exits).
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
         from cyndilib.finder import Finder
         from cyndilib.receiver import Receiver, ReceiveFrameType
         from cyndilib.video_frame import VideoRecvFrame

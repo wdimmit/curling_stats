@@ -4,9 +4,13 @@ its packets stop."""
 import json
 import logging
 import os
+import signal
 import struct
+import subprocess
+import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -316,3 +320,62 @@ def test_without_the_tap_a_capture_exits_naming_it(monkeypatch, tmp_path):
         capture._exec_with_tap(args, [])
     assert str(exited.value.code).startswith("the packet tap is not loaded (")
     assert str(tmp_path / "ndi" / "libavcodec-ndi.so.61") in str(exited.value.code)
+
+
+# A capture whose camera is not there, run with libndi faked: the finder is
+# stuck in a call that holds the GIL, as cyndilib's calls do, and the FIFO's
+# writer is blocked opening a FIFO nobody reads.
+_STUCK = """
+import ctypes, os, sys, types
+
+libc = ctypes.PyDLL(None)                 # a call through it keeps the GIL
+held = ctypes.create_string_buffer(64)    # zeroed: a default pthread mutex on glibc
+libc.pthread_mutex_lock(held)
+
+class Finder:
+    def wait_for_sources(self, timeout):
+        print("stuck", flush=True)
+        # Never returns, signal or not: libndi waiting on a camera that is not
+        # there, with the GIL held.
+        libc.pthread_mutex_lock(held)
+
+    def update_sources(self):
+        return []
+
+for name in ("cyndilib", "cyndilib.finder", "cyndilib.receiver", "cyndilib.video_frame",
+             "cyndilib.wrapper", "cyndilib.wrapper.ndi_recv"):
+    sys.modules[name] = types.ModuleType(name)
+sys.modules["cyndilib.finder"].Finder = Finder
+sys.modules["cyndilib.receiver"].Receiver = sys.modules["cyndilib.receiver"].ReceiveFrameType = None
+sys.modules["cyndilib.video_frame"].VideoRecvFrame = None
+ndi_recv = sys.modules["cyndilib.wrapper.ndi_recv"]
+ndi_recv.RecvBandwidth = ndi_recv.RecvColorFormat = None
+
+from curling_score.cameras import capture
+
+fifo, first = sys.argv[1:3]
+args = capture._parser().parse_args(["--camera", "5H-POV", "--fifo", fifo, "--first", first])
+args.tap_fd, _ = os.pipe()
+args.parent = os.getppid()
+sys.exit(capture._Capture(args).run())
+"""
+
+
+def test_sigterm_ends_a_capture_stuck_in_libndi_at_once(tmp_path):
+    """A capture whose camera had gone silent ignored SIGTERM for over 5 s and
+    was killed (Task 11, D8): a Python handler runs only once the call it is
+    stuck in returns. The recorder gives a capture CAPTURE_EXIT_S."""
+    fifo = tmp_path / "cam.h264"
+    os.mkfifo(fifo)
+    src = Path(capture.__file__).resolve().parents[2]
+    proc = subprocess.Popen([sys.executable, "-c", _STUCK, str(fifo), str(tmp_path / "first")],
+                            stdout=subprocess.PIPE, env={**os.environ, "PYTHONPATH": str(src)})
+    try:
+        assert proc.stdout.readline() == b"stuck\n"
+        proc.send_signal(signal.SIGTERM)
+        began = time.monotonic()
+        proc.wait(timeout=3)
+        assert time.monotonic() - began < 1.0
+    finally:
+        proc.kill()
+        proc.wait()
