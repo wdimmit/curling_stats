@@ -143,6 +143,26 @@ def test_start_refuses_a_camera_that_is_not_1080p_h264(tmp_path):
     assert ("composer",) not in world.events
     assert all(p.terminated for p in world.captures)
     assert rec.ended()
+    # The other cameras' keyframes are frames of people: none is left behind.
+    assert sorted(world.dir.glob("first-*")) == []
+    assert sorted(world.dir.glob("cam-*")) == []
+
+
+def test_first_keyframes_are_deleted_once_probed(tmp_path):
+    """They are only for the probe; the composer reads the FIFOs."""
+    world = World(tmp_path)
+    probed = []
+
+    def probe(path):
+        probed.append(path.exists())
+        return GOOD
+
+    world.probe = probe
+    world.recorder().start()
+
+    assert probed == [True] * 4
+    assert sorted(world.dir.glob("first-*")) == []
+    assert all(stat.S_ISFIFO((world.dir / f"cam-{r}.h264").stat().st_mode) for r in ROLES)
 
 
 def test_start_refuses_a_camera_that_sends_nothing(tmp_path):

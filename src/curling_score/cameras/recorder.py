@@ -174,9 +174,14 @@ class CameraRecorder:
             self._await_first()
             self._spawn_composer(sheet_layout)
         except BaseException:
-            # No camera connection may outlive the recording that wanted it.
+            # No camera connection may outlive the recording that wanted it,
+            # and no camera's picture either.
             self.stop()
             self._ended = True
+            for role in self._cameras:
+                first = self._first(role)
+                for path in (first, first.with_name(first.name + ".part"), self._fifo(role)):
+                    path.unlink(missing_ok=True)
             raise
         self._started_at = self._progress_at = self.clock()
         return self
@@ -232,6 +237,10 @@ class CameraRecorder:
         for role in self._cameras:
             if self._probe(self._first(role)) != (CODEC, CAMERA_W, CAMERA_H):
                 self._refuse(role)
+        # They were only for this check, and are frames of whoever is on the
+        # sheet: the composer reads the FIFOs.
+        for role in self._cameras:
+            self._first(role).unlink()
 
     def _refuse(self, role: str) -> NoReturn:
         raise LiveError(f"camera {self._cameras[role]} sent no H.264 {CAMERA_W}x{CAMERA_H} "
