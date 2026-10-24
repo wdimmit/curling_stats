@@ -18,9 +18,10 @@ from curling_score.practice.watch import DETECT_FPS, HOUSES
 
 log = logging.getLogger(__name__)
 
-# The keyframes a saved calibration is checked against, spread over what the
-# recording holds at Start (CHECK_MIN_S seconds of it, a keyframe a second):
-# several, so that the median drops whoever is walking across the house.
+# How many keyframes a saved calibration is checked against. They are spread
+# over what the recording holds at the check, which is CHECK_MIN_S seconds or
+# more at a keyframe a second, so with about ten there it is the first eight;
+# the median over them drops whoever is walking across the house.
 CHECK_FRAMES = 8
 
 
