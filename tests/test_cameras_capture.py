@@ -2,6 +2,8 @@
 its packets stop."""
 
 import json
+import logging
+import threading
 
 from curling_score.cameras import capture, inventory
 
@@ -115,6 +117,41 @@ def test_hold_waits_for_a_keyframe_before_resuming():
     clock.t += PERIOD
     assert h.tick() is False
     assert out[-2:] == [SPS_PPS_IDR + b"2", P2]
+
+
+def test_full_queue_never_blocks_the_reader_and_resumes_at_a_keyframe(monkeypatch, tmp_path,
+                                                                      caplog):
+    """A composer that stops reading must not back up into the tap, and so
+    into libndi: what does not fit is dropped, and the stream picks up again
+    at a keyframe."""
+    monkeypatch.setattr(capture, "BACKLOG", 3)
+    fifo = capture._Fifo(tmp_path / "cam.h264")
+    clock = Clock()
+    h = capture.Holder(fifo.write, clock=clock)
+
+    def overflow():
+        h.packet(1, SPS_PPS_IDR)
+        h.packet(0, P1)
+        h.packet(0, P2)
+        h.packet(0, b"\x00\x00\x00\x01\x41dropped")
+        h.packet(1, SPS_PPS_IDR + b"dropped")
+        clock.t += 0.6
+        h.tick()
+
+    with caplog.at_level(logging.WARNING):
+        reader = threading.Thread(target=overflow, daemon=True)
+        reader.start()
+        reader.join(timeout=2.0)
+    assert not reader.is_alive(), "Holder.packet blocked on a full queue"
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+
+    queued = [fifo._queue.get_nowait() for _ in range(3)]
+    assert queued == [SPS_PPS_IDR, P1, P2]
+    h.packet(0, b"\x00\x00\x00\x01\x41after")
+    assert fifo._queue.empty()
+    h.packet(1, SPS_PPS_IDR + b"2")
+    h.packet(0, P1)
+    assert [fifo._queue.get_nowait() for _ in range(2)] == [SPS_PPS_IDR + b"2", P1]
 
 
 def test_reconnects_back_off_and_start_over_once_packets_flow():

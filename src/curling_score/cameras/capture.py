@@ -90,7 +90,8 @@ FIND_POLL_S = 0.5
 PUMP_S = 0.1
 # Packets queued for a FIFO whose composer is not reading yet: 10 s at 60 fps,
 # about 12 MB at a long view's ~10 Mbit/s. That covers the composer opening
-# and probing a sheet's four inputs one at a time. Past it, writes block.
+# and probing a sheet's four inputs one at a time. Past it, packets are
+# dropped until the next keyframe: blocking would stall libndi.
 BACKLOG = 600
 _MODULE = "curling_score.cameras.capture"
 _TAP_LIB = "libavcodec-ndi.so.61"
@@ -107,12 +108,13 @@ class Holder:
 
     What is written always starts at a keyframe: nothing before the first one.
     After a hold, nothing is written until the next keyframe, because the
-    P-frames in between refer to pictures that were never passed on.
+    P-frames in between refer to pictures that were never passed on. The same
+    goes after ``write`` returns False, which says it dropped what it was given.
 
     ``packet`` and ``tick`` may be called from different threads.
     """
 
-    def __init__(self, write: Callable[[bytes], None], *, hold_after_s: float = 0.5,
+    def __init__(self, write: Callable[[bytes], bool | None], *, hold_after_s: float = 0.5,
                  period_s: float = 1 / 60, clock: Callable[[], float] = time.monotonic):
         self._write = write
         self.hold_after_s, self.period_s, self.clock = hold_after_s, period_s, clock
@@ -126,11 +128,13 @@ class Holder:
             key = bool(flags & tap.KEYFRAME)
             if self._need_key and not key:
                 return
-            self._need_key = False
             if key:
                 self._key = payload
+            if self._write(payload) is False:
+                self._need_key = True
+                return
+            self._need_key = False
             self._hold_at = self.clock() + self.hold_after_s
-            self._write(payload)
 
     def tick(self) -> bool:
         """Write the held keyframe if it is due. True if it was written."""
@@ -140,8 +144,7 @@ class Holder:
                 return False
             self._need_key = True
             self._hold_at = now + self.period_s
-            self._write(self._key)
-            return True
+            return self._write(self._key) is not False
 
 
 class Reconnects:
@@ -179,15 +182,33 @@ class Reconnects:
 
 
 class _Fifo:
-    """The FIFO's writing end, fed from a queue by a thread of its own."""
+    """The FIFO's writing end, fed from a queue by a thread of its own.
+
+    ``write`` never blocks: a full queue drops the data and says so, because a
+    blocked tap reader would block libndi's own thread through the tap's pipe.
+    """
 
     def __init__(self, path: Path):
         self.path = path
         self.opened = threading.Event()
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=BACKLOG)
+        self._full = False
 
-    def write(self, data: bytes) -> None:
-        self._queue.put(data)
+    def write(self, data: bytes) -> bool:
+        """Queue ``data``. False if the queue was full and it was dropped.
+        Called by one thread at a time (under the Holder's lock)."""
+        try:
+            self._queue.put_nowait(data)
+        except queue.Full:
+            if not self._full:
+                log.warning("the composer is %d packets behind; dropping to the next keyframe",
+                            self._queue.maxsize)
+                self._full = True
+            return False
+        if self._full:
+            log.info("the composer is reading again")
+            self._full = False
+        return True
 
     def run(self) -> None:
         """Open the FIFO, which waits for its reader. Then write what is
