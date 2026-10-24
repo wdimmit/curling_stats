@@ -44,6 +44,8 @@ where = ["src"]
 "curling_score.game" = ["*.npz"]
 "curling_score.viewer" = ["*.html", "*.js", "*.css", "*.woff2", "*.txt"]
 "curling_score.service" = ["static/*.html", "static/*.js", "static/*.css"]
+# Each sheet's fitted camera layout, read by the composer in the worker image.
+"curling_score.cameras" = ["layouts/*.json"]
 
 [tool.pytest.ini_options]
 # Test the checkout you are standing in. The package is installed editable

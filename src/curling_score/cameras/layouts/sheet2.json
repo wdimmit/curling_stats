@@ -1,0 +1,120 @@
+{
+  "sheet": 2,
+  "background": "0xd0d0d0",
+  "placements": [
+    {
+      "role": "long_a",
+      "crop": [556, 0, 800, 1080],
+      "rotate": 0,
+      "out": [0, 0, 800, 1080]
+    },
+    {
+      "role": "house_h",
+      "crop": [521, 200, 1160, 672],
+      "rotate": 90,
+      "out": [810, 10, 297, 514]
+    },
+    {
+      "role": "house_a",
+      "crop": [125, 200, 1269, 730],
+      "rotate": 90,
+      "out": [810, 552, 297, 517]
+    },
+    {
+      "role": "long_h",
+      "crop": [569, 0, 800, 1080],
+      "rotate": 0,
+      "out": [1120, 0, 800, 1080]
+    }
+  ],
+  "fit": {
+    "note": "YouTube awslsC-NuII (10/22 Thursday Morning League, sheet 2), 12 frames spread over the recording; cameras: empty-sheet clips 2026-10-24 15:09 UTC (/data/wdd/scratch/ndi/clips-20261024-1509)",
+    "youtube_frames": [
+      "f00-299.8.png",
+      "f01-899.4.png",
+      "f02-1499.0.png",
+      "f03-2098.5.png",
+      "f04-2698.1.png",
+      "f05-3297.7.png",
+      "f06-3897.3.png",
+      "f07-4496.9.png",
+      "f08-5096.5.png",
+      "f09-5696.0.png",
+      "f10-6295.6.png",
+      "f11-6895.2.png"
+    ],
+    "cameras": {
+      "house_a": "2A-HOUSE",
+      "house_h": "2H-HOUSE",
+      "long_a": "2A-PTZ",
+      "long_h": "2H-PTZ"
+    },
+    "max_anisotropy": 0.01,
+    "regions": {
+      "left": {
+        "role": "long_a",
+        "camera": "2A-PTZ",
+        "inliers": 331,
+        "others": {
+          "long_h": 8
+        },
+        "angle_deg": 0.014,
+        "rotate": 0,
+        "scale": [0.99981, 1.00013],
+        "rms_px": 1.184,
+        "crop": [556, 0, 800, 1080],
+        "out": [0, 0, 800, 1080],
+        "seen": [0, 0, 800, 1080],
+        "nudged_px": 0
+      },
+      "top": {
+        "role": "house_h",
+        "camera": "2H-HOUSE",
+        "inliers": 673,
+        "others": {
+          "house_a": 53
+        },
+        "angle_deg": 89.995,
+        "rotate": 90,
+        "scale": [0.44302, 0.44164],
+        "rms_px": 0.916,
+        "crop": [521, 200, 1160, 672],
+        "out": [810, 10, 297, 514],
+        "seen": [810, 10, 297, 514],
+        "nudged_px": 0
+      },
+      "bottom": {
+        "role": "house_a",
+        "camera": "2A-HOUSE",
+        "inliers": 404,
+        "others": {
+          "house_h": 34
+        },
+        "angle_deg": 90.042,
+        "rotate": 90,
+        "scale": [0.40746, 0.40664],
+        "rms_px": 0.971,
+        "crop": [125, 200, 1269, 730],
+        "out": [810, 552, 297, 517],
+        "seen": [810, 553, 297, 517],
+        "nudged_px": 0
+      },
+      "right": {
+        "role": "long_h",
+        "camera": "2H-PTZ",
+        "inliers": 1058,
+        "others": {
+          "long_a": 29
+        },
+        "angle_deg": -0.007,
+        "rotate": 0,
+        "scale": [0.99982, 1.00131],
+        "rms_px": 1.098,
+        "crop": [569, 0, 800, 1080],
+        "out": [1120, 0, 800, 1080],
+        "seen": [1120, 0, 800, 1080],
+        "nudged_px": 1
+      }
+    }
+  }
+}
