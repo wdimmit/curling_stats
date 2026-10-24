@@ -1,3 +1,19 @@
+# The packet tap: libavcodec-ndi.so.61, which libndi loads as its decoder
+# (src/curling_score/cameras/ndi_tap.c). Built in a stage of its own so the
+# worker carries no compiler, and on the worker's base so it compiles against
+# the libavcodec the worker's ffmpeg brings: FFmpeg 7's, whose AVPacket libndi
+# hands it at run time.
+FROM python:3.12-slim AS ndi-tap
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc libc6-dev libavcodec-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY src/curling_score/cameras/ndi_tap.c /src/
+# --no-as-needed: the tap calls libavcodec only through dlsym, so without it
+# the linker drops NEEDED libavcodec.so.61, and every symbol libndi looks up
+# that the tap does not define would go missing.
+RUN mkdir /out && gcc -O2 -Wall -shared -fPIC -o /out/libavcodec-ndi.so.61 /src/ndi_tap.c \
+        -Wl,--no-as-needed -lavcodec -Wl,-soname,libavcodec-ndi.so.61
+
 # The processing worker: the pipeline, a GPU, ffmpeg and yt-dlp.
 #
 # Not built on a CUDA base image. PyTorch's wheels already carry the CUDA
@@ -48,11 +64,18 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # this plugin is installed -- without it the sidecar in
 # docker-compose.worker.yml runs, answers nothing, and YouTube goes on saying
 # "Sign in to confirm you're not a bot". Pinned to match the sidecar image.
+#
+# cyndilib receives the club's NDI cameras for practice. Pinned because its
+# wheel bundles libndi (6.3.2 in 0.1.3), and the packet tap depends on that
+# libndi: on the name it loads its decoder by, libavcodec-ndi.so.61, and on the
+# avcodec calls it makes. A new libndi could change either and leave the tap
+# silently unused.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install \
         "ultralytics==8.4.143" "numpy==2.5.3" \
         "opencv-python-headless==5.0.0.93" "av==18.1.0" \
-        "httpx>=0.27" "bgutil-ytdlp-pot-provider==2.0.0"
+        "httpx>=0.27" "bgutil-ytdlp-pot-provider==2.0.0" \
+        "cyndilib==0.1.3"
 
 # The production detector, pinned through the documented environment variable
 # so `weights.default_path()` resolves it the same way everywhere.
@@ -101,6 +124,12 @@ ENV CURLING_SCORE_WEIGHTS=/opt/curling/weights/${MODEL} \
     CURLING_SCORE_SPIN_WEIGHTS=/opt/curling/weights/${SPIN_MODEL} \
     CURLING_SCORE_RELEASE_WEIGHTS=/opt/curling/weights/${RELEASE_MODEL} \
     CURLING_SCORE_CACHE=/data/cache PYTHONUNBUFFERED=1
+
+# Off the default library path on purpose. There, every libndi in the image
+# would load the tap, whose decode is off by default, and a reader that wants
+# pictures would get none. A capture process gets /opt/ndi through
+# LD_LIBRARY_PATH instead (cameras/tap.py's tap_env).
+COPY --from=ndi-tap /out/libavcodec-ndi.so.61 /opt/ndi/
 
 COPY pyproject.toml README.md ./
 COPY src ./src
