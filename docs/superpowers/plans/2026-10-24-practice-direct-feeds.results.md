@@ -183,3 +183,519 @@ can't serve 2) did not happen.
 - No video was written. Every file in `t1/` is numbers or code.
 - The per-packet stats files in `t1/stats/` were deleted after these tables were made.
 - `t1/results.jsonl` (one summary line per receiver per run) and `t1/step4.log` remain.
+
+# Task 11: validation on the box
+
+Plan Task 11, Steps 1-6 and 8. Step 7 (the deploy) was not part of this run. Run 2026-10-24,
+20:31-22:45 UTC (13:31-15:45 PT, a Saturday), on the Ryzen (`curling@100.85.240.114`).
+
+## Summary
+
+| Step | Result | Pass? |
+|---|---|---|
+| 1. Calibrate each sheet when it is empty | No sheet was empty: sheets 1, 2, 3 and 5 had games on them (wheelchair and stick curling) all afternoon. `cameras-calibrate` was run anyway, saving to a scratch root: sheets 1, 2, 3 and 5 calibrated complete. Sheet 4 cannot be read: its four cameras send HEVC | **Not as specified** (sheets in use); CLI works; sheet 4 blocked |
+| 2. Picture fidelity | Sheets 1, 2, 3, 5: panel rectangles within 1 px, px/m within 0.21%, tee and hog rows within 2.0 px of YouTube's | **Pass** (4 of 5 sheets; sheet 4 not measurable) |
+| 3. Inter-camera lag | Long view minus house panel at the hog line, 17 throws: median **+0.40 s**. Sheet 1: +0.19 to +1.00 s (n 6). Sheet 2: -3.1 to +4.3 s (n 11), on a recording whose camera queues were at their cap (defect D2) | Measured; no better than YouTube's ±0.5 s |
+| 4. Accuracy | No YouTube practice stream to compare with. A partial check of one session (sheet 2, 40 min, 30 throws) against the long cameras: 1 throw missed and 1 false throw found in 8 cases examined; the rest could not be settled | **Not passed**: inconclusive; the YouTube path must stay |
+| 5. Load | Five sessions could not run: the Ryzen's network link is at **100 Mbit/s** (it should be 1 Gbit/s) and five sheets need ~170 Mbit/s. With 3-4 sheets the link saturated and three sheets failed to start. Two sessions on one worker: CPU 10.2 cores, NVENC 2 sessions at 23%, cameras 60.0 packets/s, **throw latency p90 23.8 s** (A) and 28.6 s (Q), with up to 10 s more hidden in the composer's queues (D2) | **Fail**: gate missed at two sessions; five not runnable |
+| 6. Failures | Capture killed: the picture holds, a warning in 2.2 s, recording goes on. All four cameras cut for 30 s: held, back 0.1-0.4 s after the network returned. Tap removed: camera-named `LiveError` in 0.11 s. League: covered by the API test | **Pass** |
+
+**Defects found** (details in "Defects" below):
+- **D1:** a camera that goes quiet just after its first keyframe stops the composer from ever starting. The recording fails at `STALL_S` ("composer stalled at 0 s"). This happened 2-3 times.
+- **D2:** the composer's input queues fill up and stay full. That delays cameras by up to 10 s, which `head_s` cannot see, and thousands of drop-to-keyframe events followed under two sessions.
+- **D3:** the two-session latency is above the gate. The lane runs one watch step at a time: a watch catching up starved the other for minutes, and calibration steps of 14-22 s block every watch on that worker.
+- **D4-D9:** smaller ones.
+
+**Environment** (not code), to fix before deploying:
+- **E1:** the Ryzen's NIC `enp4s0` is linked at 100 Mbit/s. The kernel says "downshifted": both ends advertise 1000baseT/Full, so it is most likely the cable or the port.
+- **E2:** sheet 4's cameras send HEVC.
+
+## Setup
+
+- **Image:** `curling-worker:practice-cams` rebuilt from the branch at `fab1e4da`, image `d94013c86a3d`.
+  - The worktree was rsynced to `/data/wdd/scratch/practice-cams-src/` and built with `docker build -f Dockerfile.worker`.
+  - The installed `cameras/*.py`, `practice/watch.py` and `live/lane.py` match the branch byte for byte (md5).
+- **Containers:** throwaway, with `--network deploy_default --shm-size 2g --user 1000:1000`.
+  - A worker-like container had `--gpus '"device=0,1"' -e CUDA_DEVICE_ORDER=PCI_BUS_ID -e CUDA_VISIBLE_DEVICES=0`,
+    the new `worker` config. The other had `--gpus '"device=1"'`, like `worker2`.
+  - Nothing was run in `/data/wdd/curling_score/deploy`, and `curling-worker:local` was not retagged.
+  - The production containers were never restarted: "Up 19 hours" at the start, "Up 21 hours" at the end.
+- **Production was idle throughout:**
+  - every claim from both workers got a 204;
+  - `GET /api/games` listed 184 games, all `ready`, nothing live;
+  - a monitor polled the workers' logs every 30 s through every run, and no job was claimed.
+- **Scripts and numbers** are in `/data/wdd/scratch/practice-cams-work/t11/`. No video is kept there.
+  - `harness.py` runs a sheet's `CameraRecorder` and `PracticeWatch` the way a worker does:
+    - recorders start one after another;
+    - the models load once (`analyze.load_models`, imgsz 448);
+    - each watch is built as `lane.video_sessions().make` builds a camera watch: `since_s` 0, `t0_s` 0,
+      `wall_t0` = `wall_started`, a `CalStore` under a scratch root, and a `Clipper` whose upload only
+      records the clip's size;
+    - the main thread is the lane: one watch step per turn, first sheet first, a 5 s sleep when idle, and a
+      60 s back-off after a failed step (`live/lane.py`'s rules);
+    - a thread is the manager: `check()` every 20 s;
+    - every 5 s it samples CPU per process (`/proc` and the container's cgroup), RSS, each head against the
+      wall clock, and the composer's output size and progress line;
+    - it publishes to `pub/sheetN/throws.jsonl`. Each throw's latency is publish time minus when its rest
+      (or, for a stone that did not arrive, its release + 15 s) was written, by the wall clock.
+  - `site/sitecustomize.py` is on `PYTHONPATH` only in these containers. It wraps `tap.read_records` in each
+    capture and logs a `TAPCOUNT` line every 10 s: packets, keyframes, Mbit/s and the longest gap. The
+    `site-q/` version also logs the capture's FIFO queue depth. Nothing in the packet path changes.
+  - The rest: `peek.py`, `longcap.py`, `compare.py`, `events.py`, `sidelag.py`, `crossings.py`,
+    `summarize.py` and `netcut.sh`. Logs and numbers are under `runs/`.
+- **Who was on the ice:** a look at each sheet's composite at 20:35 (one frame per sheet, viewed once and
+  deleted) found games on sheets 1, 2, 3 and 5. They were wheelchair and stick curling, with stones in play.
+  Sheet 4 sent nothing (E2). The throws measured below are those games' deliveries, not a practice session.
+
+## Environment findings
+
+**E1: the Ryzen's network link runs at 100 Mbit/s.**
+- `ethtool enp4s0` (RTL8125 2.5GbE) gives `Speed: 100Mb/s`. Both the NIC and its link partner advertise
+  `1000baseT/Full`.
+- The kernel logged `Link is Up - 10Mbps/Full (downshifted)` at the 01:25 UTC boot, then
+  `100Mbps/Full (downshifted)` at 01:27. A gigabit link that downshifts usually means a cable or port with
+  a bad pair.
+- The second port, an Intel I211 (`enp5s0`), is unplugged.
+- **Measured per camera** (`TAPCOUNT`, median): HOUSE 5.5-8.3 Mbit/s, PTZ 8.4-8.5, POV 12.3-12.4.
+  - A sheet needs 31-38 Mbit/s, so five sheets need about **170 Mbit/s**.
+  - Two sheets put 75 Mbit/s on the link (`rx_bytes`).
+  - Three to four sheets put **96 Mbit/s** on it, with 14,605 dropped packets on the interface since boot.
+- **What a saturated link does to the cameras.** With 3-4 sheets connected, at 20:44-20:48, the cameras
+  were in keyframe storms: 12-37 keyframes per 10 s instead of 5, and 1.4-37 packets/s instead of 60.
+  - Silences of 5-15 s followed every new connection.
+  - Three sheets failed to start: D1, plus "camera 3H-PTZ sent no H.264 1920x1080 within 15 s".
+  - Once two sheets were stopped, every camera was back to 60.0/s with 5 keyframes per 10 s within 10 s.
+  - A camera that re-keys degrades all of its receivers, so this can also reach the club's own production
+    (Task 1).
+- **Before any deploy, fix the link,** for example with a new cable or the I211 port, and check
+  `cat /sys/class/net/enp4s0/speed` reads 1000. Even at 1 Gbit/s, a share of 170 Mbit/s is worth
+  watching.
+
+**E2: sheet 4's cameras send HEVC.**
+- A decode-on receiver with Task 1's stand-in (`t1/rx.py`) on 4A-HOUSE, 4A-PTZ, 4H-HOUSE and 4H-PTZ found
+  libndi opening `avcodec_find_decoder id=173` (HEVC) for all four. No H.264 packet reached the tap.
+- `CameraRecorder(4)` and `cameras-calibrate --sheet 4` fail as designed, in 15 s, with
+  `camera 4A-HOUSE sent no H.264 1920x1080 within 15 s`. Their captures reconnect at 5 s first, since the tap
+  ignores HEVC.
+- Sheet 4 needs the club to set those cameras to H.264, or a tap that handles HEVC.
+- Task 4 fitted sheet 4's layout from decoded clips, which work whatever the codec, so it never showed
+  this.
+
+## Step 1: calibrate each sheet
+
+- **Not as specified:** no sheet was empty at any point in the run. The sheets were in play from 20:35 until
+  at least 21:20 UTC.
+- To check that the CLI works on the box, it was run on every sheet anyway, one sheet at a time. It saved
+  only to a scratch root, never the workers' cache. Numbers only were kept, and the CLI deleted its own
+  recording.
+
+```
+docker run --rm --network deploy_default --gpus '"device=1"' --shm-size 2g --user 1000:1000 \
+  -v /data/wdd/scratch/practice-cams-work:/w -w /w --entrypoint curling-score curling-worker:practice-cams \
+  cameras-calibrate --sheet N --root /w/t11/calroot-cli
+```
+
+| Sheet | Took | Top panel | Bottom panel | Left view tee / hog | Right view tee / hog | Saved |
+|---|---|---|---|---|---|---|
+| 1 | 74 s | (812,10,298,510) 67.4 px/m, 0.53 cm | (812,552,298,517) 75.4 px/m, 1.10 cm | 494.9 / 586.0 | 463.1 / 546.0 | yes |
+| 2 | 73 s | (810,10,297,514) 76.4 px/m, 0.94 cm | (810,552,297,517) 77.6 px/m, 0.90 cm | 361.7 / 433.0 | 364.7 / 433.0 | yes |
+| 3 | 74 s | (808,10,303,522) 79.0 px/m, 1.11 cm | (808,540,303,531) 77.2 px/m, 1.13 cm | 363.6 / 434.0 | 362.7 / 431.0 | yes |
+| 4 | 16 s | - | - | - | - | no: `camera 4A-HOUSE sent no H.264 1920x1080 within 15 s` (E2) |
+| 5 | 72 s | (806,10,300,534) 79.5 px/m, 1.05 cm | (806,554,300,516) 75.6 px/m, 0.70 cm | 471.5 / 558.0 | 481.6 / 568.0 | yes |
+
+- The residual is the panel calibration's ring residual.
+- Every hog line was found, and every side view was calibrated across.
+- The watches also seeded calibrations from these busy sheets (Ruling 12): sheet 2 in run A, sheet 5 in run
+  L2B. They agree with the CLI's to 0.1 px/m and 0-1 px.
+- **For the user:** run `cameras-calibrate` for real at an empty-sheet time, in both workers, once E1 is
+  fixed.
+
+## Step 2: picture fidelity
+
+`compare.py` runs `analyze.calibrate_from` on each sheet's 12 YouTube frames from this season
+(`layout-ref/yt/sheetN/`, Task 4) and compares the result with the camera calibration from Step 1.
+
+| Sheet | Panel rect Δ (x,y,w,h), worst | px/m Δ top / bottom | Side rows Δ, worst (tee, hog) | Pass |
+|---|---|---|---|---|
+| 1 | 1 px (y) | +0.10% / -0.07% | 1.5, 2.0 (left) | yes |
+| 2 | 1 px (y, bottom) | +0.16% / +0.21% | 1.3, 1.0 | yes |
+| 3 | 1 px (x) | +0.03% / +0.17% | 0.9, 1.0 | yes |
+| 5 | 1 px (x) | -0.07% / +0.03% | 1.4, 1.0 | yes |
+| 4 | not measurable (E2) | | | - |
+
+- **Pass on all four readable sheets:** rectangles within 4 px, px/m within 3%, and rows within
+  `SIDE_AGREE_PX` (3.0).
+- Ring centres agree to 0.6 px across and 0-2.2 px along the sheet.
+- The camera residuals are 0.53-1.13 cm, against YouTube's 0.41-1.09 cm.
+- The watch-seeded calibrations (sheet 2, sheet 5) also pass, with the same margins
+  (`runs/compare-watch.jsonl`).
+
+## Step 3: inter-camera lag
+
+- **What was measured:** each throw's stone crossing the arriving house's hog line, in two cameras. That
+  house's panel gives the pipeline's own tripwire time, `t_far_s` (`game/fartime.py`). The long camera
+  behind the thrower looks at the same line (`hogtime.CAMERA_FOR`).
+  - That long view was decoded at 30 fps over `t_far_s` ± 12 s.
+  - The production side model (`sidemodel.detect_band`, ds13e) found stones of the throw's colour around the
+    view's hog row.
+  - The crossing is when the stone's bottom edge passes the hog row, interpolated (`sidelag.py`).
+- **Data:** run A's recordings of sheets 1 and 2, 40 minutes each, deleted after measuring. Only arrived
+  throws with a `t_far_s` count: 10 on sheet 1 and 16 on sheet 2. The side model found the crossing in 6 and
+  11 of them.
+
+| | n | Median | IQR | Range |
+|---|---|---|---|---|
+| Sheet 1 (top pair: top panel vs left camera) | 6 | **+0.35 s** | +0.23..+0.75 | +0.19..+1.00 |
+| Sheet 2 (both pairs) | 11 | **+0.58 s** | -0.20..+1.18 | -3.15..+4.30 |
+| Both | 17 | **+0.40 s** | | |
+
+- **Positive means the long view sees the crossing later than the panel.**
+- **Checked by eye** on one throw (sheet 2, t_1412.2, red, to the bottom house). Composite frames at 1412.50,
+  1412.85, 1413.50 and 1415.04 s, viewed once and deleted:
+  - the panel shows the stone on the hog line at ~1412.85;
+  - the right camera shows the same stone reaching that line ~1-2 s later;
+  - the script measured +2.19 s.
+- **Reading:**
+  - On sheet 1 the long camera trails the panel by 0.2-1.0 s.
+  - Sheet 2's spread of ±3-4 s comes from a composite whose four input queues sat at their 600-packet cap
+    for the whole run (D2). Each camera was then up to 10 s behind, and by varying amounts.
+  - Either way, the direct feeds are not in better sync than YouTube's picture (±0.5 s with jumps,
+    `camera-sync-2026-27`). The spec expected arrival-time stamping to remove most of that.
+- **Caveats:**
+  - These were wheelchair and stick deliveries, with slow stones and people walking in front of the long
+    cameras.
+  - The two measures take different points of the stone: the panel tripwire uses the leading edge, the side
+    model the box's bottom. That is about 0.1 s at these speeds.
+  - The near-hog pair (`panel_delta`, instrumented in the harness) was never available. The throwing panel
+    did not time a single departure.
+
+## Step 4: accuracy
+
+- **No both-ways comparison was possible.** No YouTube practice stream was being processed, and YouTube was
+  not queried (`youtube-gentle`, `no-more-vod-downloads`). **The YouTube path must stay**, as the plan says.
+- **A partial check of one camera session by hand.** The session was sheet 2 in run A: 40 min, 30 throws,
+  28 of them arrived.
+  - The independent second opinion was `crossings.py`. It runs the production side model at 10 fps over both
+    long views for the whole recording, and books every red or yellow stone that crosses a hog line moving
+    away from the camera.
+  - It found 22 crossings. 10 of them matched an arrived throw of the same house and colour, resting 0-25 s
+    later.
+  - That leaves 18 throws with no crossing and 12 crossings with no throw. Eight of those were examined by
+    eye, in two contact sheets of composite frames, viewed once and deleted:
+    - **Throws with no crossing** (4 examined):
+      - t_232.9, t_590.6 and t_1607.4 are **real throws**. Each stone stopped short, at or just past the far
+        hog line, so the side model never saw a full crossing. The watch's "short" was right for all three.
+      - t_2125.6 ("out") is **probably false**: at its time, players were clearing stones from the bottom
+        house at the end of an end, and no delivery is visible.
+    - **Crossings with no throw** (4 examined):
+      - 522.75 (top, red) is **a missed throw**. A red stone crept past the top house's hog line at ~523 s
+        and stopped short at ~532 s, and the watch reported nothing between t_464.8 and t_549.2.
+      - 846.05, 1651.05 and 1829.25 **could not be settled from the frames**: people in both views, or
+        stones near the line already.
+- **Other figures for this session** (sheet 2; sheet 1 in brackets):
+  - rest rings: "short" 12 (31), "out" 7 (5), 8-ft 4 (1), 12-ft 5 (4), long 0 (2);
+  - release found for 13 of 30 (4 of 45);
+  - splits for 7 (1);
+  - lines for 4 (2);
+  - clips: 13 (4) cut and "uploaded", 0.10-0.39 MB each, 1.7-3.3 s to cut. Every other throw had `clip`
+    None, meaning no clip possible.
+- **Reading:**
+  - This is not an acceptance. One miss and one likely false throw in 8 hard cases says the pipeline has
+    trouble with these deliveries and stones that stop short. It says nothing about practice slides, which
+    this activity did not include.
+  - A real practice session (slides from the hack) has to be checked the same way, ideally both ways
+    against a YouTube practice stream.
+  - The procedure for the user:
+    1. When someone practises on a sheet and its YouTube practice stream is live, start a camera session on
+       the box with the harness. That is `harness.py --sheets N --watch --keep-rec`, while the API's
+       YouTube session runs on the same sheet.
+    2. Compare the two throw lists. Check each disagreement on the long view
+       (`validating-release-changes`).
+    3. Delete the recording.
+
+## Step 5: load
+
+**Five sessions could not run.**
+- Five sheets need ~170 Mbit/s on a 100 Mbit/s link (E1), and sheet 4 cannot start (E2).
+- What did run:
+  - **L1, 20:43:55-20:48:20:**
+    - container A had sheets 1, 2 and 3 (the `worker` GPU config, GPU 0); container B had sheets 4 and 5
+      (GPU 1); a watch on every sheet that started;
+    - sheet 3 failed to start (3H-PTZ silent), sheet 4 failed (HEVC), and sheet 5's composer stalled at 0 s
+      (D1);
+    - B was restarted with sheets 3 and 5 (L2B), and sheet 3 stalled at 0 s;
+    - the link was at 96 Mbit/s and saturated, so B was stopped to protect the cameras.
+  - **A, 20:43:57-21:24:23:** sheets 1 and 2 with their two watches in one worker-like container, 40 min.
+    From 21:00:11 to 21:24:18 the link was clean at 75 Mbit/s. That window is the steady state below.
+
+**Two sessions, steady state (24 min, 290 samples):**
+
+| | Mean | p90 |
+|---|---|---|
+| Container CPU, total (cores) | 10.17 | 11.66 |
+| Captures, all 8 | 0.23 (0.024-0.033 each) | 0.26 |
+| Composer, sheet 1 / sheet 2 | 2.95 / 3.76 | 3.07 / 4.73 |
+| Watch process (lane, 2 watches, PyAV decode) | 2.52 | 3.97 |
+| Rest (clip cuts, ffprobe and other children) | 0.71 | |
+| Host, all 32 threads (vmstat) | 33.4% busy = 10.7 threads | |
+| GPU 0: utilisation / NVENC | 12.6% / 22.6% (max 69% / 37%) | |
+| NVENC sessions | 2 on GPU 0 (2 and 2 per GPU in L1's four-sheet window) | |
+| GPU 0 memory | 7.3 GB (production's 3.7 GB + the harness models) | |
+| RSS: watch process / composer / capture | 2.8 GB (peak 3.8) / 0.61-0.62 GB / 70-89 MB | |
+
+| Camera | Packets/s, median (min) | 10-s windows under 59/s | Keyframes per 10 s, median (max) | Mbit/s | Longest gap |
+|---|---|---|---|---|---|
+| 1A-HOUSE | 60.00 (59.81) | 0 | 5 (6) | 6.67 | 0.15 s |
+| 1A-POV | 60.00 (59.79) | 0 | 5 (6) | 12.30 | 0.07 s |
+| 1H-HOUSE | 60.00 (59.67) | 0 | 5 (6) | 5.71 | 0.16 s |
+| 1H-POV | 60.00 (55.70) | 5 of 145 | 5 (8) | 12.37 | 0.71 s |
+| 2A-HOUSE | 60.00 (59.74) | 0 | 5 (6) | 6.23 | 0.09 s |
+| 2A-PTZ | 60.00 (59.90) | 0 | 5 (5) | 8.41 | 0.09 s |
+| 2H-HOUSE | 60.00 (59.57) | 0 | 5 (6) | 8.30 | 0.13 s |
+| 2H-PTZ | 59.99 (44.20) | 50 of 145 | 5 (15) | 8.53 | 1.14 s |
+
+**Composer head and dropped frames:**
+- **Head lag:** sheet 1 median 2.09 s (p90 2.36), sheet 2 median 1.03 s (p90 1.25). Both measure
+  `wall - wall_started - head_s`.
+- **ffmpeg itself** reported `dup=0 drop=0` throughout.
+- **The captures dropped packets heavily,** because the composer was not reading (D2). There were 5,796
+  "the composer is 600 packets behind; dropping to the next keyframe" events in the run:
+  - sheet 2: 1,292 / 1,520 / 1,420 / 1,058 on 2A-HOUSE / 2A-PTZ / 2H-HOUSE / 2H-PTZ, of which 3,525 fell in
+    the clean window;
+  - sheet 1: 95-148 per camera.
+- **Output:** 20.3 Mbit/s (sheet 1) and 11.1 Mbit/s (sheet 2) mean. Recordings were 5.8 GB and 3.3 GB for
+  40 min.
+
+**Throw latency** (publish time minus when the rest was written, by the wall clock):
+
+| | n | p50 | p90 | max |
+|---|---|---|---|---|
+| Sheet 1, all | 45 | 18.2 s | 265 s | 310 s |
+| Sheet 2, all | 30 | 15.3 s | 81 s | 158 s |
+| Both, rests after the first 600 s | 55 | **17.0 s** | **23.8 s** | 35.8 s |
+| Sheet 1 / sheet 2, after 600 s | 33 / 22 | 17.9 / 13.9 s | 22.2 / 28.5 s | |
+
+- **The gate (p90 ≤ 20 s with five sessions) could not be applied as written.** Five sessions could not run.
+  - **Two sessions in one worker already miss it, at p90 23.8 s.**
+  - Sheet 2's figures also leave out up to 10 s of queueing before its cameras reached the composer (D2).
+- **The first 600 s** are the late calibration and the starvation in D3 and D5:
+  - sheet 1 began watching only at its 5th calibration try, ~6 min after Start, and published its backlog
+    with latencies of 100-310 s;
+  - meanwhile sheet 2's latency rose to 78-158 s, because the lane gave every step to sheet 1 while it
+    caught up.
+- **Run Q** (two sessions again, the watches starting from the CLI's saved calibrations, which both failed
+  the check, D6):
+  - 11 throws on sheet 2 and none on sheet 1;
+  - after calibration, p50 16.3 s and **p90 28.6 s** (n 10);
+  - sheet 2's cameras were also ~9.5 s behind in the composite for all of those throws (D2).
+  - Container CPU 9.46 cores; composers 2.81 / 3.47.
+- The latency of 13.8 s for today's YouTube path was one session on the laptop, measured the same way from
+  the recording's head.
+
+**Extrapolation to five sessions** (an estimate, not a measurement):
+- About 3.3 cores per composer, 0.03 per capture, and ~1.6 per watch: **about 25 cores** of the 5950X's 32
+  threads, before production's own work.
+- NVENC needs about 11% of an encoder per session.
+- At three watches per worker the lane serialises three sessions, so D3's latency grows.
+- The gate needs D2 and D3 fixed first. The plan's optimisation order does not reach them: libndi's decode is
+  already off and the watches are already spread over the workers. These are the composer's input queues
+  and the lane's scheduling.
+
+**Carried checks:**
+- **(a) One capture held for ≥ 1 h:** `longcap.py`, 5H-HOUSE alone into a FIFO read and discarded,
+  21:27:12-22:30:12 (63 min, run alongside K, the CLI and Q).
+  - **Stability:** 377 windows of 10 s, every one at 59.49 packets/s or more, at most 6 keyframes per window,
+    longest gap 0.106 s. 0.021 cores. Exit 0 on SIGTERM.
+  - **RSS grew steadily and did not level off:** 61.7 MB at 30 s, 63.0 at 5 min, 66.1 at 20 min, 70.2 at
+    40 min, **74.9 MB at 62.5 min**. That is ~0.2 MB a minute, ~12.6 MB an hour (D9).
+  - An earlier 9-minute run (20:50-20:59) had RSS 62.9 → 63.8 MB. It was stopped because its 8 Mbit/s pushed
+    the link to 86 Mbit/s and 2H-PTZ started to storm.
+  - Over A's 40 min, the 8 captures' RSS grew 66-80 → 71-89 MB.
+- **(b) Our receiver and a foreign reader on one camera at once:** run K, 21:25:40-21:26:45.
+  - The foreign reader was Task 1's `t1/rx.py`, decode on, libavcodec counting packets through the stand-in.
+    It ran on 2H-HOUSE for 60 s while our capture read it.
+  - **Ours:** 59.97-60.03 packets/s, 5-6 keyframes per 10 s, queue 0-31.
+  - **The foreign reader:** 3,838 packets in 63.9 s = **60.08/s**, 32 keyframes (1 per 2 s), 0.28 cores. It
+    got 29.5 fps through Python, cyndilib's known limit (Task 1).
+  - **Both at full rate.**
+- **(c) The cost of a hold** (run K, sheet 2 alone with its watch):
+  - **Capture killed** (EOF; the overlay repeats the last frame), from 480 s on:
+    - composer 2.65 → **2.28 cores**;
+    - output 18.8 → **12.7 Mbit/s** (one panel still);
+    - head lag unchanged at 2.0 s.
+  - **Camera silent, capture alive** (`Holder` repeating the last keyframe at 60/s): all four cameras were
+    cut off for 30 s with `docker network disconnect`:
+    - composer 2.65 → **5.64 cores**;
+    - each capture 0.02 → **0.99 cores** (3.66 for four);
+    - output 18.8 → 4.9 Mbit/s;
+    - head lag unchanged.
+    - So a hold costs about **1.7 cores per held camera**.
+  - **Earlier, in L2B,** 5H-POV was silent under congestion. Sheet 5's composer took 4.0 cores against 2.7
+    after, and its capture hit the 600-packet cap 27 times in ~70 s.
+
+## Step 6: failures
+
+**(i) A capture killed mid-recording: pass** (run K, sheet 2).
+- `SIGKILL` reached 2H-PTZ's capture at 480 s.
+- The manager's next `check()`, 2.2 s later, logged `camera 2H-PTZ's capture exited (-9); its picture holds its
+  last frame`.
+- The recording went on to 606.7 s, with the head at 1.01x and lag 2.0 s, and the watch kept stepping.
+- At stop, the other captures exited 0 and the composer 255 (SIGTERM, as Task 5 said).
+- **A camera unplugged mid-session: pass.** All four cameras were cut off at 21:29:33.1 and back at
+  21:30:03.3.
+  - Each capture logged `no packets for 5.0 s; reconnecting`, then again at 15.1 s.
+  - All four logged `packets again` 0.13-0.44 s after the network returned.
+  - The composite held still and kept going: no stall, head lag 2.2-2.4 s.
+  - The cost was large while it lasted (see (c)).
+  - Afterwards the captures' queues held 190-506 packets (up to 8.4 s behind) and took ~70 s to drain, with no
+    drops (D2).
+
+**(ii) Start without the tap: pass.** `/opt/ndi` was replaced by an empty tmpfs (`--mount type=tmpfs,destination=/opt/ndi`).
+- `tap_env` puts `/opt/ndi` first on `LD_LIBRARY_PATH` whatever the caller sets, so that is the way to take
+  the tap away.
+- `CameraRecorder(2).start()` raised `LiveError: camera 2A-HOUSE sent no H.264 1920x1080 within 15 s` after
+  **0.11 s**, and nothing was left on disk.
+- Each capture logged `/opt/ndi/libavcodec-ndi.so.61 is missing: capture runs only in the worker image`, at
+  INFO (D7).
+
+**(iii) A league run ends every session: covered by the API test.**
+- `tests/test_practice_api.py::TestALeagueEndsPractice::test_league_live_ends_every_session`.
+- Run here together with the other league tests (`-k "league_live_ends_every_session or league_closes_practice
+  or start_refused_while_a_league or poll_that_finds_no_league or league_stream_already_followed or
+  league_closes_youtube"`): **6 passed**.
+- It is API-side, so there is no on-box run.
+
+## Defects
+
+None was fixed in this task.
+
+**D1: the composer never starts when a camera goes quiet right after its first keyframe.**
+- How it happens:
+  - `capture._read` passes packets to the `Holder` only once the FIFO is open (`if self.fifo.opened.is_set()`).
+  - The composer opens its four FIFOs one at a time, in order house_a, house_h, long_a, long_h, probing each
+    in turn.
+  - A camera that sends its first keyframe (copied to `first-<role>.h264`, so the start check passes) and
+    then goes quiet leaves its FIFO empty when the composer opens it. The `Holder` has no keyframe to repeat,
+    so ffmpeg blocks probing that input.
+  - The head stays at 0 until `STALL_S`, and the recording fails: `sheet 5's composer stalled at 0 s`.
+- Seen three times:
+  - L1B sheet 5: 5H-POV gave its first keyframe at 20:44:13.4, then 40 s of silence; failed at 20:44:56.
+  - L2B sheet 3: 3H-PTZ; failed at 20:47:26.
+  - Very likely the first look at 20:35 (sheet 2's head stayed at 0.0 for 60 s), whose log was not kept.
+- Meanwhile the inputs already opened overflow their 600-packet queues. In production, Start then fails ~30 s
+  after the player pressed it.
+- The trigger here was the congested link (E1), but any camera that hiccups as it connects does this.
+  2H-PTZ also stayed silent for 15 s after connecting at 20:43:57, as the link was filling. That time the
+  composer survived, because the camera came back within `STALL_S`.
+- Two fixes are possible:
+  - prime the `Holder` with the first keyframe, so a quiet camera's FIFO still gets a held picture;
+  - or let the composer start without the quiet input.
+
+**D2: the composer's input queues fill, and stay full under load.**
+- How it happens:
+  - Each input is stamped with the wall clock when ffmpeg *reads* it.
+  - Packets waiting in a capture's queue (`BACKLOG` 600, 10 s) are therefore delay that `head_s` and the
+    composite's timestamps cannot see.
+  - A backlog drains only as fast as the composer can decode faster than real time.
+- **Measured in K** (`site-q`, the queue depth every 10 s):
+  - **At start**, from the one-at-a-time probing: 424 / 302 / 185 / 83 packets at +10 s on
+    house_a / house_h / long_a / long_h. That is 7.1 / 5.0 / 3.1 / 1.4 s, so the four cameras are up to 6 s
+    apart in the composite. They drained by +30-40 s.
+  - **After the 30 s cut:** 190-506 packets, drained in ~70 s.
+- **In run A** (two composers and two watches in one container) the queues never drained.
+  - There were 5,796 queue-full events: 5,290 on sheet 2, on every camera, all 40 minutes; 506 on sheet 1.
+  - Each one means that camera was ≥ 10 s behind in the composite at that moment, and then dropped up to 2 s
+    of frames to the next keyframe.
+  - Sheet 2's head lag still read 1.0 s.
+  - So the latency figures in Step 5 and the composite itself understate the real delay by up to 10 s on
+    that sheet. Step 3's ±4 s on sheet 2 is the same thing, seen between cameras.
+- **Reproduced in run Q** (22:30-22:40: A again, sheets 1 and 2 with two watches in one container,
+  `site-q`):
+  - Both sheets' startup staircases (403-424 packets on house_a at +10 s) drained by +30-40 s.
+  - Sheet 1 then stayed at 0.
+  - Sheet 2's four queues climbed together from 0 to ~570 packets between 22:31:50 and 22:32:50. That was
+    while its watch began calibrating and watching, so the composer read ~50 packets/s a camera instead of 60
+    for a minute.
+  - They then stayed at the cap for the rest of the run: median 569-579 packets (~9.5 s), with 820
+    queue-full events in 8 minutes. Packet rates were 60/s throughout, except 2H-PTZ (26 of 60 windows under
+    59/s).
+  - Sheet 2's head lag read 1.7-2.1 s the whole time.
+  - So a backlog that forms after startup is not drained: at its cap, the composer reads exactly at real time
+    and sheds the excess only by dropping.
+- Possible fixes:
+  - stamp packets by arrival in the capture (the spec's rule: time every frame by its arrival) instead of at
+    ffmpeg's read;
+  - bound the queue by age, not count;
+  - open the inputs in parallel or with a short probe.
+
+**D3: two sessions on one worker miss the latency gate,** at p90 23.8 s (Step 5).
+- The lane takes one watch step at a time, and a step that did work returns at once, so the first sheet with
+  work always goes first.
+- Steps of 14-22 s were logged: calibrations, and 30 s reads with enrichment. Each blocks every other watch
+  on that worker.
+- After sheet 1's late calibration (D5), sheet 1 caught up on 6 minutes of backlog and sheet 2's throws waited
+  78-158 s.
+- With three sessions per worker it gets worse.
+
+**D4: the lane counts a failed first step as a stream failure.**
+- A camera watch with no saved calibration has `since_s` 0. Its first `step()` therefore calibrates at
+  head ≈ 0, before the composer has created `rec.0.ts`.
+- PyAV raised `av.error.FileNotFoundError` (L1B, L2B), which the lane counts as one of its 3 failures and backs
+  off 60 s. When the file exists but holds less than two keyframes, it costs one of `CALIB_TRIES` and
+  `CALIB_RETRY_S` (60 s) instead.
+- Either way the first watch starts ≥ 60 s after Start.
+
+**D5: an incomplete calibration is adopted only at the last try.**
+- Sheet 1's calibrations from its own busy recording were never complete. The watch adopted the incomplete one
+  only at try 5, ~6 minutes after Start, and published that backlog late.
+- (The CLI calibrated sheet 1 complete at 21:41, with the sheet quieter.)
+
+**D6: a saved calibration was rejected on a busy sheet, and replaced by a busy-sheet one.**
+- At K's Start, sheet 2's saved calibration (seeded by run A's watch 40 minutes earlier) failed the ring check:
+  `the top house cannot be read: could not find the four_ft ring`, with players in the house.
+- The watch then calibrated from its own recording: 72 s to a complete one, 92 s to watching.
+- It replaced the saved file (Ruling 12). This is the risk Ruling 13 names.
+- In run Q the same happened to both of the CLI's fresh calibrations (sheets 1 and 2, made 45-50 minutes
+  earlier), with the same message for the top house.
+- So that is 3 rejections in 3 Starts on sheets in use. Each cost about 90 s to watching, and overwrote the
+  saved calibration.
+
+**D7 (minor): a missing tap reports the wrong cause.**
+- It surfaces as `sent no H.264 1920x1080 within 15 s` after 0.11 s.
+- The real cause (`/opt/ndi/libavcodec-ndi.so.61 is missing`) is logged only at INFO, by the relay.
+
+**D9 (minor): a capture's RSS grows ~12.6 MB an hour.**
+- Measured in (a): 61.7 → 74.9 MB in 63 min, linear. The 8 captures in A grew 5-11 MB in 40 min.
+- Over a 3 h session (`MAX_S`) that is ~38 MB a capture, ~0.8 GB for 20. Not urgent, but it is growth, not a
+  plateau.
+- The `TAPCOUNT` wrapper keeps only counters, so it is not the cause.
+
+**D8 (minor): a capture whose camera is silent did not exit within 5 s of SIGTERM.**
+- In L1B, 5H-POV was killed (exit -9) by `CameraRecorder.stop()`.
+- It was probably inside libndi's `connect_to` or `disconnect`.
+
+## Cleanup
+
+- **Every recording was deleted after measuring:**
+  - run A's two, 5.8 GB and 3.3 GB;
+  - L1B's, L2B's, K's and Q's;
+  - each `peek` and contact-sheet image, after one look;
+  - the CLI's own.
+- **Nothing remains:** `find t11 -name '*.ts' -o -name '*.h264*' -o -name '*.mp4' -o -name '*.jpg' -o -name '*.png'`
+  finds nothing.
+- **What remains in `t11/`** is numbers and code:
+  - logs, `samples.jsonl`, the published throw documents and clip sizes;
+  - `rx/*.stats` (per-packet numbers);
+  - `runs/ev/*.npy` (per-frame band motion, numbers);
+  - calibration pickles under `calroot-*` (scratch roots, not the workers' caches).
+- No `t11-*` container, capture or ffmpeg process is left, and the production containers are untouched.
+- **Camera connections made by this task, for the record:**
+  - 20 cameras for ~1 min (the looks);
+  - sheets 1-5 for 1-5 min in L1/L2B;
+  - sheets 1 and 2 for 40 min (A);
+  - sheet 2 for 10 min (K);
+  - sheets 1 and 2 for 10 min (Q);
+  - each sheet for ~75 s (CLI);
+  - 5H-HOUSE for 9 min and then 63 min;
+  - a second reader on 2H-HOUSE for 64 s;
+  - four 4-8 s reads of sheet 4's cameras.
