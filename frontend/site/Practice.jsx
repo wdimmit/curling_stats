@@ -19,8 +19,8 @@ import { DeliveryChart, dotColours } from "../viewer/Delivery.jsx";
 const POLL_MS = 3000;
 const HAND_KEY = "practice.hand";
 const ENDED = {
-  stop: "you ended it", idle: "20 minutes without a throw", max: "the 3-hour limit",
-  stream_ended: "the stream ended", failed: "the stream could not be watched",
+  stop: "you ended it", idle: "15 minutes without a throw", max: "the 3-hour limit",
+  league: "a league game started", stream_ended: "the stream ended", failed: "the stream could not be watched",
 };
 
 // The club's sheets, for starting a session from the list of them.
@@ -233,7 +233,7 @@ function Start({ sheet, onStarted }) {
       <p><button className="primary" disabled={busy} onClick={go}>
         {busy ? "Starting…" : "Start session"}</button></p>
       <p className="muted">Every throw on sheet {sheet} counts until you end it. It ends by
-        itself after 20 minutes with no throws. If someone else throws, tap "Not mine".</p>
+        itself after 15 minutes with no throws. If someone else throws, tap "Not mine".</p>
       {err && <Warn>{err}</Warn>}
     </Card>
   );
