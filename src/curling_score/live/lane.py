@@ -14,7 +14,7 @@ from pathlib import Path
 
 from curling_score import timeline
 from curling_score.ingest import source
-from curling_score.live.manager import is_practice
+from curling_score.live.manager import is_practice, on_cameras
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -291,7 +291,7 @@ class LiveLane:
 
 def video_sessions(weights, *, imgsz: int = 448, device=None,
                    skip_longview: bool = False, progress=log.info,
-                   fp_harvest=None):
+                   fp_harvest=None, cal_root: Path | None = None):
     """A ``make_session`` for the lane that processes real video.
 
     The models are loaded once, on the first stream, and shared by every
@@ -300,6 +300,11 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
     With ``fp_harvest`` enabled each league session records where the
     pipeline's checks found the detectors wrong (``fpframes``); the lane saves
     those frames when the stream ends. A practice watch never does.
+
+    A practice watch on the club's cameras checks, and keeps, its sheet's
+    calibration under ``cal_root`` (``cameras/calstore.py``): the root that
+    ``curling-score cameras-calibrate`` saves under, the worker's cache. Without
+    one it calibrates from its own recording every time.
     """
     from curling_score import analyze, fpframes, version
     from curling_score.fpframes import record
@@ -343,10 +348,30 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             # Until the API passes the session's Start (phase 3), Start is when
             # the recorder began: as far behind the live edge as it actually
             # got (a young stream gives what it has), by the recorder's own
-            # wall clock -- the lane may build this session minutes later.
+            # wall clock -- the lane may build this session minutes later. The
+            # cameras record from Start: their 0.0 is Start at zero.
             got = getattr(stream.recorder, "lookback_got_s", None)
-            lookback = float(got or job.get("lookback_s") or LOOKBACK_S)
+            if got is None:
+                got = job.get("lookback_s")
+            lookback = float(LOOKBACK_S if got is None else got)
             began = getattr(stream.recorder, "wall_started", None) or _time.time()
+            t0_s, prior, saved, save = 0.0, (), None, None
+            if on_cameras(job):
+                resume = job.get("resume")
+                if resume:
+                    # The worker that had this session restarted: carry on its
+                    # clock, which began at resume["wall_t0"], from its throws.
+                    # wall_t0 stays when this recording began, as the API dates
+                    # a throw: wall_t0 + (t - t0_s).
+                    t0_s = began - float(resume["wall_t0"])
+                    prior = resume.get("throws") or ()
+                if cal_root is not None:
+                    from functools import partial
+
+                    from curling_score.cameras.calstore import CalStore
+
+                    store, sheet = CalStore(cal_root), _sheet(job)
+                    saved, save = store.load(sheet), partial(store.save, sheet)
             clipper = None
             if getattr(stream, "send_clip", None) is not None:
                 import tempfile
@@ -360,8 +385,9 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
                 pipeline=PracticePipeline(weights=weights, skip_longview=skip_longview,
                                           line=models.line_model is not None,
                                           progress=progress),
-                models=models, since_s=lookback, wall_t0=began - lookback,
-                publish=publish, progress=progress, clipper=clipper)
+                models=models, since_s=lookback, t0_s=t0_s, wall_t0=began - lookback,
+                publish=publish, progress=progress, clipper=clipper,
+                saved_calibration=saved, save_calibration=save, prior_throws=prior)
         return live.LiveSession(
             video_id=job["video_id"], url=source.canonical_url(job["video_id"]),
             recording=stream.recorder, fmt=format_mod.by_name(job.get("format") or "fours"),

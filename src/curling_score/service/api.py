@@ -3076,6 +3076,26 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             practice.end_all(repo, watch, t, "failed" if failed else "stream_ended")
         return {"ok": True}
 
+    def practice_resume(job):
+        """What a camera watch handed out again needs to carry on: the worker
+        that had it is gone, and its recording with it (nothing from the
+        cameras is kept), so the next one records from its claim -- on the
+        session's clock, after the throws already published. None for a first
+        claim, or before anything was published."""
+        if job.attempts <= 1:
+            return None
+        try:
+            doc = practice_doc(repo.watch_for_job(job.id))
+        except ValueError as e:                    # not JSON: start afresh
+            log.warning("practice job %s: its practice.json cannot be read: %s", job.id, e)
+            return None
+        if doc is None or doc.get("wall_t0") is None:
+            return None
+        # The session's clock began t0_s before this document's recording did:
+        # 0 unless that watch was itself resumed.
+        return {"wall_t0": doc["wall_t0"] - (doc.get("t0_s") or 0.0),
+                "throws": doc.get("throws") or []}
+
     # ------------------------------------------------------------- worker
     @app.post("/api/worker/claim")
     async def claim(request: Request, authorization: str | None = Header(default=None)):
@@ -3112,13 +3132,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                               version=body.get("version"), model_id=body.get("model_id"),
                               gpu=body.get("gpu"), current_job_id=job.id))
         # A practice watch says how far back to record to calibrate from; the
-        # club's cameras have no past to look back in.
+        # club's cameras have no past to look back in. A camera watch handed
+        # out again resumes its session (practice_resume).
         practice_fields = {}
         if job.kind == "practice":
             practice_fields = {"lookback_s": practice.LOOKBACK_S}
             if run.source == practice.CAMERAS:
                 practice_fields = {"lookback_s": practice.CAMERA_LOOKBACK_S,
                                    "source": practice.CAMERAS}
+                resume = practice_resume(job)
+                if resume is not None:
+                    practice_fields["resume"] = resume
         return {"job": {
             "id": job.id, "run_id": run.id, "video_id": run.video_id,
             "window_start_s": run.window_start_s, "window_end_s": run.window_end_s,

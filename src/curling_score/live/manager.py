@@ -30,6 +30,12 @@ def is_practice(job) -> bool:
     return job.get("kind") == "practice"
 
 
+def on_cameras(job) -> bool:
+    """A practice watch on the sheet's own cameras, not its YouTube stream
+    (``service.practice.CAMERAS``)."""
+    return job.get("source") == "cameras"
+
+
 @dataclass
 class Stream:
     """One live job in hand: its recorder, and the lane's session for it."""
@@ -81,6 +87,11 @@ class LiveManager:
     def _recorder(self, job):
         import os
 
+        if on_cameras(job):
+            from curling_score.cameras.recorder import CameraRecorder
+
+            # In the directory finish() clears: a practice recording is never kept.
+            return CameraRecorder(int(job["sheet"]), self.root / "live" / job["video_id"])
         from curling_score.live.recorder import YtDlpRecorder
 
         lookback = None

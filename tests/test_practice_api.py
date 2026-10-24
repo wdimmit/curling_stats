@@ -288,6 +288,70 @@ class TestOnTheClubsCameras:
         assert r.status_code == 204
 
 
+def requeued(w, job, cameras=True):
+    """The worker holding ``job`` is gone: its lease runs out, and the next
+    claim requeues the job and hands it out again."""
+    w["clock"].advance(job["lease_s"] + 1)
+    again = claim(w, **({"cameras": True} if cameras else {}))
+    assert again["id"] == job["id"] and again["attempt"] == job["attempt"] + 1
+    return again
+
+
+class TestResumingAfterARestart:
+    """A camera recording dies with its worker. The job comes back, and the
+    watch that picks it up carries on from what was published."""
+
+    def test_claim_resume_after_requeue(self, cams):
+        validate(cams, "uid-sarah")
+        start(cams)
+        job = claim(cams, cameras=True)
+        assert "resume" not in job                     # a first claim starts afresh
+        publish(cams, job, doc([throw(60.0)], T0.timestamp()))
+        again = requeued(cams, job)
+        assert again["resume"]["wall_t0"] == T0.timestamp()
+        assert len(again["resume"]["throws"]) == 1
+        assert again["resume"]["throws"][0]["id"] == "t_60.0"
+
+    def test_a_watch_resumed_twice_stays_on_the_sessions_clock(self, cams):
+        # The last document is a resumed watch's: its recording began 600 s
+        # into the session, so the session's clock began 600 s before its wall_t0.
+        validate(cams, "uid-sarah")
+        start(cams)
+        job = requeued(cams, claim(cams, cameras=True))
+        publish(cams, job, {**doc([throw(60.0), throw(612.0)], T0.timestamp() + 600.0),
+                            "t0_s": 600.0})
+        again = requeued(cams, job)
+        assert again["resume"]["wall_t0"] == T0.timestamp()
+        assert [th["id"] for th in again["resume"]["throws"]] == ["t_60.0", "t_612.0"]
+
+    def test_the_resumed_document_keeps_each_throw_in_the_session(self, cams):
+        # What a resumed watch publishes: this recording began at Start+600 s
+        # (wall_t0), 600 s into the session's clock (t0_s). The earlier throw
+        # keeps its moment and the new one is dated on the same clock.
+        validate(cams, "uid-sarah")
+        sid = start(cams).json()["id"]
+        job = requeued(cams, claim(cams, cameras=True))
+        publish(cams, job, {**doc([throw(60.0), throw(612.0)], T0.timestamp() + 600.0),
+                            "t0_s": 600.0})
+        cams["clock"].advance(60)                      # read once both are thrown
+        v = view(cams, sid).json()
+        assert [t["id"] for t in v["throws"]] == ["t_60.0", "t_612.0"]
+        assert v["throws"][0]["released_at"].startswith("2026-09-11T12:01:00")
+        assert v["throws"][1]["released_at"].startswith("2026-09-11T12:10:12")
+
+    def test_a_requeued_job_with_nothing_published_starts_afresh(self, cams):
+        validate(cams, "uid-sarah")
+        start(cams)
+        assert "resume" not in requeued(cams, claim(cams, cameras=True))
+
+    def test_a_requeued_youtube_watch_records_its_lookback_as_before(self, w):
+        start(w)
+        job = claim(w)
+        publish(w, job, doc([throw(1260.0)], T0.timestamp() - 1200.0))
+        again = requeued(w, job, cameras=False)
+        assert "resume" not in again and again["lookback_s"] == 1200.0
+
+
 LEAGUE_LIVE = "10/24 - Sheet 2 - Thursday League"
 
 

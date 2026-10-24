@@ -527,7 +527,7 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     return lane.LiveLane(
         mgr, ApiClient(api_url, token), worker_id,
         make_session=lane.video_sessions(weights, skip_longview=skip_longview,
-                                         fp_harvest=fp_harvest),
+                                         fp_harvest=fp_harvest, cal_root=root),
         fp_cap_gb=fp_harvest.cap_gb if fp_harvest else 20.0)
 
 

@@ -2,6 +2,9 @@
 them and keeps their leases, and the GPU lane that steps their sessions --
 the end that has waited longest first -- and publishes what they build."""
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 from curling_score.live import lane as lane_mod, manager as manager_mod
@@ -96,6 +99,13 @@ def practice_job(n):
             "kind": "practice", "sheet": n, "title": f"Sheet {n} practice"}
 
 
+def camera_job(n, **extra):
+    """A practice watch on sheet ``n``'s own cameras, as the API hands it out."""
+    return {"id": f"c_{n}", "run_id": f"cr_{n}", "video_id": f"cams{n}-20261024-153000",
+            "kind": "practice", "source": "cameras", "lookback_s": 0.0, "sheet": n,
+            "title": None, "attempt": 1, **extra}
+
+
 class TestPracticeInTheManager:
     def test_it_claims_the_kinds_it_was_given(self):
         api = Api([practice_job(1)])
@@ -132,6 +142,36 @@ class TestPracticeInTheManager:
         assert made["vid"] == "pracVid0001" and made["lookback_s"] == 1200.0
         m._recorder(live_job(1))
         assert made["lookback_s"] is None
+
+    def test_camera_job_gets_camera_recorder(self, monkeypatch, tmp_path):
+        # The sheet's own cameras, never YouTube, recorded where finish() clears:
+        # a practice recording is never kept.
+        from curling_score.cameras import recorder as cameras
+        from curling_score.live import recorder
+
+        made = []
+
+        class Spy(Recorder):
+            def __init__(self, sheet, directory, **kw):
+                super().__init__(None)
+                made.append((sheet, directory, kw))
+                Path(directory).mkdir(parents=True)
+                (Path(directory) / "rec.0.ts").write_bytes(b"ts")
+
+        def youtube(*a, **k):
+            raise AssertionError("YouTube was asked")
+
+        monkeypatch.setattr(cameras, "CameraRecorder", Spy)
+        monkeypatch.setattr(recorder, "YtDlpRecorder", youtube)
+        api = Api([camera_job(3)])
+        m = manager_mod.LiveManager(api, "ryzen", model_id="m", gpu=None, root=tmp_path,
+                                    kinds=("live", "practice"), cameras=True)
+        m.poll_once()
+        (s,) = m.streams()
+        directory = tmp_path / "live" / "cams3-20261024-153000"
+        assert made == [(3, directory, {})] and s.recorder.started
+        m.finish(s)
+        assert s.recorder.stopped and not directory.exists()
 
 
 class TestTheManager:
@@ -812,6 +852,82 @@ class TestPracticeInTheLane:
         ps.recorder.lookback_got_s, ps.recorder.wall_started = 300.0, 1.7e9
         practice = lane_mod.video_sessions("w.pt", progress=lambda m: None)(ps, lambda d: None)
         assert practice.since_s == 300.0 and practice.wall_t0 == 1.7e9 - 300.0
+
+
+def cstream(n, **extra):
+    """A camera job in hand, its recorder started at 1.7e9 by the wall clock."""
+    job = camera_job(n, **extra)
+    rec = Recorder(job)
+    rec.lookback_got_s, rec.wall_started = 0.0, 1.7e9
+    return manager_mod.Stream(job=job, recorder=rec)
+
+
+def calibration(hog="paint"):
+    from curling_score.live.session import Calibration
+
+    return Calibration(panels=None, until_s=10.0, sideviews=None, side_expected=False,
+                       setups={h: SimpleNamespace(hog_line=hog) for h in ("top", "bottom")})
+
+
+class TestCameraWatchesInTheLane:
+    @pytest.fixture(autouse=True)
+    def models(self, monkeypatch):
+        from curling_score import analyze
+
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
+
+    def test_camera_watch_since_zero(self):
+        # The cameras' recording begins at Start: a lookback of 0.0 is Start at
+        # zero, not "got none" -- which would wait twenty minutes for footage
+        # from before Start that a direct feed never has.
+        cs = cstream(3)
+        watch = lane_mod.video_sessions("w.pt", progress=lambda m: None)(cs, lambda d: None)
+        assert watch.rec is cs.recorder
+        assert (watch.since_s, watch.t0_s, watch.wall_t0) == (0.0, 0.0, 1.7e9)
+        assert watch.throws == []
+
+    def test_without_somewhere_to_keep_them_there_is_no_saved_calibration(self):
+        watch = lane_mod.video_sessions("w.pt", progress=lambda m: None)(cstream(3),
+                                                                         lambda d: None)
+        assert watch.saved is None and watch.save_calibration is None
+
+    def test_a_camera_watch_checks_and_keeps_its_own_sheets_calibration(self, tmp_path):
+        from curling_score.cameras.calstore import CalStore
+
+        store = CalStore(tmp_path)
+        store.save(3, calibration())
+        store.save(4, calibration(hog="sheet 4"))
+        make = lane_mod.video_sessions("w.pt", progress=lambda m: None, cal_root=tmp_path)
+        watch = make(cstream(3), lambda d: None)
+        assert watch.saved == calibration()
+        watch.save_calibration(calibration(hog="moved"))
+        assert store.load(3) == calibration(hog="moved")
+        assert store.load(4) == calibration(hog="sheet 4")
+
+    def test_a_youtube_watch_never_reads_a_saved_calibration(self, tmp_path):
+        # It has twenty minutes of the stream to calibrate from, as before.
+        from curling_score.cameras.calstore import CalStore
+
+        CalStore(tmp_path).save(1, calibration())
+        make = lane_mod.video_sessions("w.pt", progress=lambda m: None, cal_root=tmp_path)
+        watch = make(pstream(1), lambda d: None)
+        assert watch.saved is None and watch.save_calibration is None
+
+    def test_a_resumed_camera_watch_carries_on_the_sessions_clock(self):
+        # The worker restarted 600 s into the session. The new recording begins
+        # at 1.7e9; the session's clock began at 1.7e9 - 600.
+        from curling_score.service import practice
+
+        earlier = {"id": "t_30.0", "t_release_s": 30.0, "t_rest_s": 55.0, "clip": True}
+        cs = cstream(3, attempt=2, resume={"wall_t0": 1.7e9 - 600.0, "throws": [earlier]})
+        watch = lane_mod.video_sessions("w.pt", progress=lambda m: None)(cs, lambda d: None)
+        assert (watch.since_s, watch.t0_s) == (0.0, 600.0)
+        assert watch.throws == [earlier]
+        # The API dates a throw at wall_t0 + (t - t0_s): the earlier throw keeps
+        # its moment, and one 12 s into this recording is dated 12 s after it began.
+        doc = watch.document()
+        assert practice.thrown_at(doc, earlier).timestamp() == 1.7e9 - 600.0 + 30.0
+        assert practice.thrown_at(doc, {"t_release_s": 612.0}).timestamp() == 1.7e9 + 12.0
 
 
 class TestPracticeClipsInTheLane:

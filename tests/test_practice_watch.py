@@ -228,6 +228,50 @@ def test_the_document_says_how_much_lane_the_watch_has_used():
     assert w.document()["busy_s"] == 1.5
 
 
+def earlier(t, clip=True):
+    """A throw a watch published before its worker restarted."""
+    return {"id": f"t_{t:.1f}", "t_release_s": t, "t_rest_s": t + 25.0, "house": "top",
+            "color": "yellow", "arrived": True, "release_source": "overhead", "clip": clip}
+
+
+def resumed(clipper=None, prior=None):
+    """A camera watch resumed 600 s into its session (since_s 0: a direct
+    feed records from Start), with a throw released at t=12 of its recording."""
+    rec, docs = Rec(), []
+    w = W.PracticeWatch(recording=rec, pipeline=Pipeline(
+                            top=sheet(thrown("red", t0=30.0), until_s=100.0),
+                            bottom=sheet(hack("red", 12.0), until_s=100.0)),
+                        models=SimpleNamespace(detector=None), since_s=0.0, t0_s=600.0,
+                        publish=lambda d: docs.append(copy.deepcopy(d)), clock=lambda: 0.0,
+                        clipper=clipper, prior_throws=prior or [earlier(30.0)])
+    while rec.head < 100.0:
+        rec.head += 1.0
+        while w.step():
+            pass
+    rec.over = True
+    while w.step():
+        pass
+    return w, docs
+
+
+def test_resumed_watch_keeps_earlier_throws():
+    w, docs = resumed()
+    assert [th["id"] for th in docs[0]["throws"]] == ["t_30.0"]
+    assert [th["id"] for th in w.throws] == ["t_30.0", "t_612.0"]
+    assert w.throws[1]["t_release_s"] == 612.0
+    assert docs[-1]["throws"][0] == earlier(30.0)       # as it was published
+
+
+def test_a_resumed_watch_leaves_the_earlier_clips_as_they_are():
+    # Their footage was in the recording that went with the old worker. This
+    # one begins after it, so a clip cut from it would show the wrong seconds.
+    clips = Clips()
+    prior = [earlier(30.0, clip=True), earlier(60.0, clip=None), earlier(90.0, clip=False)]
+    w, docs = resumed(clipper=clips, prior=prior)
+    assert [th["clip"] for th in docs[-1]["throws"]] == [True, None, False, True]
+    assert [made[0] for made in clips.made] == ["t_612.0"]
+
+
 def test_a_long_catch_up_is_read_in_pieces_from_the_look_back():
     p = Pipeline()
     rec = Rec(head=500.0)

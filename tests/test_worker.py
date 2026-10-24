@@ -533,6 +533,18 @@ class TestBuildingTheLiveLane:
                                 start=False)
         assert got.manager.cameras is True
 
+    def test_saved_calibrations_are_kept_under_the_cache_root(self, monkeypatch, tmp_path):
+        # Where `curling-score cameras-calibrate` saves them by default
+        # (cache.default_root(), which main() points at the same root).
+        from curling_score.live import lane
+
+        got = {}
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setattr(lane, "video_sessions",
+                            lambda weights, **kw: got.update(kw) or (lambda s, p: None))
+        worker.build_live("http://api", "t", "home", root=tmp_path, weights=None, start=False)
+        assert got["cal_root"] == tmp_path
+
     def test_the_harvest_settings_reach_the_lane(self, monkeypatch, tmp_path):
         from curling_score import fpframes
 

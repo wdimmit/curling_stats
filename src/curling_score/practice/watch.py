@@ -73,7 +73,8 @@ def _thrown_at(arrival, rel) -> float:
 class PracticeWatch:
     def __init__(self, *, recording, pipeline, models, since_s: float, t0_s: float = 0.0,
                  wall_t0=None, publish=None, clipper=None, clock=time.monotonic,
-                 progress=log.info, saved_calibration=None, save_calibration=None):
+                 progress=log.info, saved_calibration=None, save_calibration=None,
+                 prior_throws=()):
         """``since_s`` is Start on the recording's clock; ``t0_s`` is where the
         recording begins on the stream's, which every published time is on.
         ``wall_t0`` is when the recording begins by the wall clock (epoch
@@ -81,7 +82,11 @@ class PracticeWatch:
         ``saved_calibration`` is the sheet's calibration from before, to be
         checked at Start. ``save_calibration`` is called with the first
         complete calibration this watch makes, when there is no saved one or it
-        does not fit -- never for one made without the side views."""
+        does not fit -- never for one made without the side views.
+        ``prior_throws`` are those an earlier watch of the same session
+        published before its worker restarted, on the same clock: they lead
+        this watch's document, and their clips are left as they are, since
+        their footage is not in this recording."""
         self.rec, self.pipeline, self.models = recording, pipeline, models
         self.since_s, self.t0_s, self.wall_t0 = float(since_s), float(t0_s), wall_t0
         self._stop, self._stop_at = False, None
@@ -99,11 +104,11 @@ class PracticeWatch:
         self.done_s = max(0.0, self.since_s - delivery.REQUIRED_LOOKBACK_S)
         self.buffers = {h: Buffer() for h in HOUSES}
         self.finders = self.books = None
-        self.throws: list = []
+        self.throws: list = [dict(th) for th in prior_throws]
         self.done = False
         # Cuts each throw's clip once its footage is recorded (practice/clips.py).
         self.clipper = clipper
-        self._clip_tried: set = set()
+        self._clip_tried: set = {th["id"] for th in self.throws}
 
     def request_stop(self) -> None:
         """No session is watching any more: read what is recorded, then end."""
