@@ -85,8 +85,9 @@ class PracticeWatch:
         does not fit -- never for one made without the side views.
         ``prior_throws`` are those an earlier watch of the same session
         published before its worker restarted, on the same clock: they lead
-        this watch's document, and their clips are left as they are, since
-        their footage is not in this recording."""
+        this watch's document, and none of them is clipped here, since their
+        footage is not in this recording. A clip still to be cut (False) is
+        none coming (None) now; one that is up stays up."""
         self.rec, self.pipeline, self.models = recording, pipeline, models
         self.since_s, self.t0_s, self.wall_t0 = float(since_s), float(t0_s), wall_t0
         self._stop, self._stop_at = False, None
@@ -104,7 +105,10 @@ class PracticeWatch:
         self.done_s = max(0.0, self.since_s - delivery.REQUIRED_LOOKBACK_S)
         self.buffers = {h: Buffer() for h in HOUSES}
         self.finders = self.books = None
-        self.throws: list = [dict(th) for th in prior_throws]
+        # A clip the old recording went without will never come: say so, or
+        # the page waits for it for ever.
+        self.throws: list = [{**th, "clip": None} if th.get("clip") is False else dict(th)
+                             for th in prior_throws]
         self.done = False
         # Cuts each throw's clip once its footage is recorded (practice/clips.py).
         self.clipper = clipper

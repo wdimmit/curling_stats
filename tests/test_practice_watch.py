@@ -262,14 +262,23 @@ def test_resumed_watch_keeps_earlier_throws():
     assert docs[-1]["throws"][0] == earlier(30.0)       # as it was published
 
 
-def test_a_resumed_watch_leaves_the_earlier_clips_as_they_are():
+def test_a_resumed_watch_cuts_no_clip_of_an_earlier_throw():
     # Their footage was in the recording that went with the old worker. This
     # one begins after it, so a clip cut from it would show the wrong seconds.
     clips = Clips()
     prior = [earlier(30.0, clip=True), earlier(60.0, clip=None), earlier(90.0, clip=False)]
     w, docs = resumed(clipper=clips, prior=prior)
-    assert [th["clip"] for th in docs[-1]["throws"]] == [True, None, False, True]
+    assert [th["clip"] for th in docs[-1]["throws"]] == [True, None, None, True]
     assert [made[0] for made in clips.made] == ["t_612.0"]
+
+
+def test_a_resumed_watchs_lost_clip_says_none_is_coming():
+    # Still to be cut when the worker went (False): its footage went too, so
+    # the page must stop saying it is on its way. One that is up stays up.
+    prior = [earlier(30.0, clip=True), earlier(60.0, clip=False)]
+    w, docs = resumed(prior=prior)
+    assert [th["clip"] for th in docs[0]["throws"]] == [True, None]
+    assert prior[1]["clip"] is False                    # the job's copy is untouched
 
 
 def test_a_long_catch_up_is_read_in_pieces_from_the_look_back():
