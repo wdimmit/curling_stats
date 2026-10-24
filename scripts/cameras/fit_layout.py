@@ -17,7 +17,8 @@ either side of the strip (``geometry.sideview.locate``, less the bar). Each
 region is matched to the camera it shows by ORB features and a RANSAC
 similarity, against both cameras that could fill it, so which camera goes where
 is measured rather than assumed. A turn more than ``MAX_RESIDUAL_DEG`` off a
-right angle, x and y scales more than ``MAX_ANISOTROPY`` apart, or a crop that
+right angle, x and y scales more than ``MAX_ANISOTROPY`` apart (sheet 1's
+stretched top panel is the one exception, ``STRETCH_ALLOWED``), or a crop that
 runs off the camera's frame (a PTZ moved since the broadcast) refuses the fit.
 """
 
@@ -61,8 +62,12 @@ MIN_INLIERS = 40
 MIN_MARGIN = 2.0
 MAX_RESIDUAL_DEG = 2.0
 # The true fits measured 0.0-0.4% apart; 1% is 5 px across a 510 px panel.
-# Sheet 1's top panel is 5.5% apart, on every recording since 10/15.
 MAX_ANISOTROPY = 0.01
+# The one exception, by (sheet, region). YouTube shows sheet 1's top panel
+# (1H-HOUSE) 5.5% taller than its width would make it, on every recording
+# checked since 10/15. The tracker has been tuned on that picture, so the
+# rebuilt one keeps it; crop and scale reproduce a stretch exactly.
+STRETCH_ALLOWED = {(1, "top"): 0.07}
 # YouTube shows the long views 1:1, and their fits came out 0.9988-1.0013.
 NATIVE_SNAP = 0.005
 # A crop may graze its frame's edge by fit noise (sheet 2's H long view sits
@@ -103,6 +108,7 @@ class Match:
     out: Rect
     seen: Rect  # the region on YouTube; out is it moved to even x and y
     nudged_px: int
+    max_anisotropy: float  # the limit this region was held to
 
 
 def regions(frames) -> dict[str, Rect]:
@@ -278,10 +284,11 @@ def _place(region, role, camera, rect, fit, others, raw_shape, max_anisotropy) -
     return Match(region=region, role=role, camera=camera, inliers=int(inliers.sum()),
                  others=others, angle_deg=round(angle, 3), rotate=rotate,
                  scale=(round(float(scale[0]), 5), round(float(scale[1]), 5)), rms_px=round(rms, 3),
-                 crop=(x0, y0, x1 - x0, y1 - y0), out=out, seen=tuple(rect), nudged_px=over)
+                 crop=(x0, y0, x1 - x0, y1 - y0), out=out, seen=tuple(rect), nudged_px=over,
+                 max_anisotropy=max_anisotropy)
 
 
-def fit_matches(composite, raw, sheet, *, frames, max_anisotropy=MAX_ANISOTROPY):
+def fit_matches(composite, raw, sheet, *, frames, max_anisotropy=None):
     """``fit``, with the record of each region's match."""
     if sorted(raw) != sorted(ROLES):
         raise ValueError(f"need a frame from each of {ROLES}, got {sorted(raw)}")
@@ -326,8 +333,10 @@ def fit_matches(composite, raw, sheet, *, frames, max_anisotropy=MAX_ANISOTROPY)
     for region in ("left", "top", "bottom", "right"):
         role = chosen[region]
         others = {r: count(region, r) for r in ROLES if r != role and (region, r) in fits}
+        limit = (max_anisotropy if max_anisotropy is not None
+                 else STRETCH_ALLOWED.get((sheet, region), MAX_ANISOTROPY))
         match = _place(region, role, cameras[role], rects[region], fits[region, role], others,
-                       np.asarray(raw[role]).shape, max_anisotropy)
+                       np.asarray(raw[role]).shape, limit)
         log.info("sheet %d %s: %s (%s), %d inliers against %s; turned %.2f° -> %d, "
                  "scale %.4f x %.4f, rms %.2f px, crop %s -> out %s", sheet, region, role,
                  match.camera, match.inliers, others, match.angle_deg, match.rotate,
@@ -340,13 +349,14 @@ def fit_matches(composite, raw, sheet, *, frames, max_anisotropy=MAX_ANISOTROPY)
     return sheet_layout, matches
 
 
-def fit(composite, raw, sheet, *, frames, max_anisotropy=MAX_ANISOTROPY) -> layout.SheetLayout:
+def fit(composite, raw, sheet, *, frames, max_anisotropy=None) -> layout.SheetLayout:
     """The layout that rebuilds ``composite`` (a YouTube picture of ``sheet``)
     from ``raw`` (role -> that camera's frame).
 
     ``frames`` are YouTube frames from across the same recording: the house
     panels are found by what never moves, so it takes several (``composite``
-    may be one of them, or their median).
+    may be one of them, or their median). ``max_anisotropy``, if given,
+    replaces every region's limit (``MAX_ANISOTROPY``, or ``STRETCH_ALLOWED``).
     """
     return fit_matches(composite, raw, sheet, frames=frames, max_anisotropy=max_anisotropy)[0]
 
@@ -392,7 +402,9 @@ def main(argv=None) -> int:
     ap.add_argument("--note", default="", help="where the frames came from, kept in the file")
     ap.add_argument("--out", type=Path, help="default: the package's layouts/sheet{N}.json")
     ap.add_argument("--check", type=Path, help="default: out/cameras/layout-check/sheet{N}.jpg")
-    ap.add_argument("--max-anisotropy", type=float, default=MAX_ANISOTROPY)
+    ap.add_argument("--max-anisotropy", type=float,
+                    help=f"one limit for every region, in place of {MAX_ANISOTROPY} "
+                         f"(and STRETCH_ALLOWED's exceptions)")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -417,7 +429,6 @@ def main(argv=None) -> int:
         "note": args.note,
         "youtube_frames": [Path(p).name for p in paths],
         "cameras": cameras,
-        "max_anisotropy": args.max_anisotropy,
         "regions": {m.region: {k: v for k, v in asdict(m).items() if k != "region"}
                     for m in matches},
     }

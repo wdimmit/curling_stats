@@ -179,10 +179,10 @@ SWAPPED = (
 )
 
 
-def _fit(cameras, truth, **kwargs):
+def _fit(cameras, truth, *, sheet=2, **kwargs):
     distort = kwargs.pop("distort", {})
     frames = [_compose(cams, truth, **distort) for cams in cameras]
-    return fit_layout.fit(frames[0], cameras[0], 2, frames=frames, **kwargs)
+    return fit_layout.fit(frames[0], cameras[0], sheet, frames=frames, **kwargs)
 
 
 @pytest.mark.parametrize("truth", [YOUTUBE_LIKE, SWAPPED], ids=["youtube-like", "swapped"])
@@ -226,6 +226,20 @@ def test_fit_refuses_a_stretched_panel_unless_allowed(cameras):
     # The stretch is along the panel's height, which is the raw frame's width.
     cx, cy, cw, ch = p.crop
     assert abs(cw - 1293 / 1.06) <= 3 and abs(ch - 745) <= 2
+
+
+def test_sheet_1_top_panel_alone_keeps_youtubes_stretch(cameras):
+    # YouTube has shown sheet 1's top panel 5.5% stretched since 10/15 at least.
+    stretched_top = {"house_h": {"stretch": 1.055}}
+    got = _fit(cameras, YOUTUBE_LIKE, sheet=1, distort=stretched_top)
+    p = {p.role: p for p in got.placements}["house_h"]
+    cx, cy, cw, ch = p.crop
+    assert abs(cw - 1153 / 1.055) <= 3 and abs(ch - 673) <= 2
+    # Only there: the same stretch elsewhere on sheet 1, or on another sheet, is refused.
+    with pytest.raises(fit_layout.LayoutFitError, match="house_a.*x and y"):
+        _fit(cameras, YOUTUBE_LIKE, sheet=1, distort={"house_a": {"stretch": 1.055}})
+    with pytest.raises(fit_layout.LayoutFitError, match="house_h.*x and y"):
+        _fit(cameras, YOUTUBE_LIKE, sheet=2, distort=stretched_top)
 
 
 def test_fit_reports_a_crop_outside_the_raw_frame(cameras):

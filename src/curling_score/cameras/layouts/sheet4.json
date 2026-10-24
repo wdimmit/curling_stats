@@ -49,7 +49,6 @@
       "long_a": "4A-PTZ",
       "long_h": "4H-PTZ"
     },
-    "max_anisotropy": 0.01,
     "regions": {
       "left": {
         "role": "long_a",
@@ -65,7 +64,8 @@
         "crop": [556, 0, 800, 1080],
         "out": [0, 0, 800, 1080],
         "seen": [0, 0, 800, 1080],
-        "nudged_px": 0
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
       },
       "top": {
         "role": "house_h",
@@ -81,7 +81,8 @@
         "crop": [650, 230, 1191, 667],
         "out": [812, 10, 295, 527],
         "seen": [812, 10, 295, 527],
-        "nudged_px": 0
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
       },
       "bottom": {
         "role": "house_a",
@@ -97,7 +98,8 @@
         "crop": [124, 240, 1293, 737],
         "out": [812, 552, 295, 517],
         "seen": [812, 553, 295, 517],
-        "nudged_px": 0
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
       },
       "right": {
         "role": "long_h",
@@ -113,7 +115,8 @@
         "crop": [567, 0, 800, 1080],
         "out": [1120, 0, 800, 1080],
         "seen": [1120, 0, 800, 1080],
-        "nudged_px": 0
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
       }
     }
   }

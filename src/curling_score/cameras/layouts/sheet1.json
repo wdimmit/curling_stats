@@ -1,0 +1,123 @@
+{
+  "sheet": 1,
+  "background": "0xd0d0d0",
+  "placements": [
+    {
+      "role": "long_a",
+      "crop": [510, 0, 800, 1080],
+      "rotate": 0,
+      "out": [0, 0, 800, 1080]
+    },
+    {
+      "role": "house_h",
+      "crop": [518, 255, 1319, 814],
+      "rotate": 90,
+      "out": [812, 10, 298, 510]
+    },
+    {
+      "role": "house_a",
+      "crop": [125, 232, 1293, 746],
+      "rotate": 90,
+      "out": [812, 552, 298, 517]
+    },
+    {
+      "role": "long_h",
+      "crop": [503, 0, 800, 1080],
+      "rotate": 0,
+      "out": [1120, 0, 800, 1080]
+    }
+  ],
+  "fit": {
+    "note": "YouTube ldsHKFJYT9A (10/23 Friday Evening League, sheet 1), 12 frames spread over the recording; cameras: empty-sheet clips 2026-10-24 15:09 UTC (/data/wdd/scratch/ndi/clips-20261024-1509)",
+    "youtube_frames": [
+      "f00-675.2.png",
+      "f01-2025.6.png",
+      "f02-3376.0.png",
+      "f03-4726.5.png",
+      "f04-6076.9.png",
+      "f05-7427.3.png",
+      "f06-8777.7.png",
+      "f07-10128.1.png",
+      "f08-11478.5.png",
+      "f09-12829.0.png",
+      "f10-14179.4.png",
+      "f11-15529.8.png"
+    ],
+    "cameras": {
+      "house_a": "1A-HOUSE",
+      "house_h": "1H-HOUSE",
+      "long_a": "1A-POV",
+      "long_h": "1H-POV"
+    },
+    "regions": {
+      "left": {
+        "role": "long_a",
+        "camera": "1A-POV",
+        "inliers": 885,
+        "others": {
+          "long_h": 6
+        },
+        "angle_deg": 0.015,
+        "rotate": 0,
+        "scale": [1.00051, 0.99976],
+        "rms_px": 1.314,
+        "crop": [510, 0, 800, 1080],
+        "out": [0, 0, 800, 1080],
+        "seen": [0, 0, 800, 1080],
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
+      },
+      "top": {
+        "role": "house_h",
+        "camera": "1H-HOUSE",
+        "inliers": 705,
+        "others": {
+          "house_a": 57
+        },
+        "angle_deg": 89.124,
+        "rotate": 90,
+        "scale": [0.3864, 0.36628],
+        "rms_px": 0.841,
+        "crop": [518, 255, 1319, 814],
+        "out": [812, 10, 298, 510],
+        "seen": [812, 11, 298, 510],
+        "nudged_px": 0,
+        "max_anisotropy": 0.07
+      },
+      "bottom": {
+        "role": "house_a",
+        "camera": "1A-HOUSE",
+        "inliers": 448,
+        "others": {
+          "house_h": 63
+        },
+        "angle_deg": 89.986,
+        "rotate": 90,
+        "scale": [0.39992, 0.39997],
+        "rms_px": 1.077,
+        "crop": [125, 232, 1293, 746],
+        "out": [812, 552, 298, 517],
+        "seen": [812, 553, 298, 517],
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
+      },
+      "right": {
+        "role": "long_h",
+        "camera": "1H-POV",
+        "inliers": 1246,
+        "others": {
+          "long_a": 24
+        },
+        "angle_deg": -0.001,
+        "rotate": 0,
+        "scale": [1.00051, 1.0],
+        "rms_px": 1.246,
+        "crop": [503, 0, 800, 1080],
+        "out": [1120, 0, 800, 1080],
+        "seen": [1120, 0, 800, 1080],
+        "nudged_px": 1,
+        "max_anisotropy": 0.01
+      }
+    }
+  }
+}

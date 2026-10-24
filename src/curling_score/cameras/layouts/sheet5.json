@@ -49,7 +49,6 @@
       "long_a": "5A-POV",
       "long_h": "5H-POV"
     },
-    "max_anisotropy": 0.01,
     "regions": {
       "left": {
         "role": "long_a",
@@ -65,7 +64,8 @@
         "crop": [564, 0, 800, 1080],
         "out": [0, 0, 800, 1080],
         "seen": [0, 0, 800, 1080],
-        "nudged_px": 0
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
       },
       "top": {
         "role": "house_h",
@@ -81,7 +81,8 @@
         "crop": [539, 177, 1207, 679],
         "out": [806, 10, 300, 534],
         "seen": [807, 10, 300, 534],
-        "nudged_px": 0
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
       },
       "bottom": {
         "role": "house_a",
@@ -97,7 +98,8 @@
         "crop": [130, 152, 1290, 750],
         "out": [806, 554, 300, 516],
         "seen": [807, 554, 300, 516],
-        "nudged_px": 0
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
       },
       "right": {
         "role": "long_h",
@@ -113,7 +115,8 @@
         "crop": [553, 0, 800, 1080],
         "out": [1120, 0, 800, 1080],
         "seen": [1120, 0, 800, 1080],
-        "nudged_px": 0
+        "nudged_px": 0,
+        "max_anisotropy": 0.01
       }
     }
   }
