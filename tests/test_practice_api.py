@@ -13,7 +13,7 @@ from curling_score.service.records import Job, Run, WatchedPlaylist
 from curling_score.service.repo import MemoryRepo
 from curling_score.service.store import MemoryStore, clip_key, practice_key
 from curling_score.service.youtube import FakeYouTube, VideoMeta
-from tests.test_service_api import CLUB, T0, WORKER, Clock
+from tests.test_service_api import ADMIN, CLUB, T0, WORKER, Clock
 
 SARAH = {"Authorization": "Bearer tok-sarah"}
 ALEX = {"Authorization": "Bearer tok-alex"}
@@ -21,7 +21,7 @@ S3, S4, UP = "qJhDHMMtHsE", "dXYqdopieoU", "IqiFhMEOL4s"
 CLUB_IP = "203.0.113.9"
 
 
-def _world(practice=True, cameras=False):
+def _world(practice=True, cameras=False, live=False):
     clock = Clock()
     repo, store = MemoryRepo(), MemoryStore()
     yt = FakeYouTube(playlists={"PLErN0WbLUyFI": [S3, S4, UP], "PLleague": [S4]})
@@ -40,7 +40,7 @@ def _world(practice=True, cameras=False):
                         admin_token="admin-secret", allowed_channels={CLUB}, model_id="m-abc",
                         firebase_project="proj", firebase_api_key="AIzaFake",
                         firebase_auth_domain="proj.firebaseapp.com",
-                        practice_enabled=practice,
+                        practice_enabled=practice, live_enabled=live,
                         **({"practice_source": "cameras", "club_ips": frozenset({CLUB_IP})}
                            if cameras else {}))
     app = create_app(repo, store, yt, settings, now=clock, auth=auth)
@@ -288,6 +288,101 @@ class TestOnTheClubsCameras:
         assert r.status_code == 204
 
 
+LEAGUE_LIVE = "10/24 - Sheet 2 - Thursday League"
+
+
+def poll(w):
+    """The scheduler's call: poll the watched playlists."""
+    r = w["client"].post("/api/admin/poll-playlists", headers=ADMIN)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def league_goes_live_on_sheet_2(w):
+    w["yt"].add(VideoMeta("lg2sheet2001", LEAGUE_LIVE, CLUB, None, "live", T0))
+    w["yt"]._playlists["PLthu"] = ["lg2sheet2001"]
+    w["repo"].put_playlist(WatchedPlaylist(id="p_league", playlist_id="PLthu",
+                                           label="Thursday League", created_at=T0))
+
+
+class TestALeagueEndsPractice:
+    """Leagues always use all five sheets: one going live on any sheet ends
+    every practice session, within the standard playlist poll."""
+
+    def sessions_on(self, w, sheets):
+        validate(w, "uid-sarah")
+        sids, jobs = [], []
+        for sheet in sheets:
+            sids.append(start(w, sheet=sheet).json()["id"])
+            jobs.append(claim(w, cameras=True))
+        return sids, jobs
+
+    def test_league_live_ends_every_session(self):
+        w = _world(cameras=True, live=True)
+        sids, jobs = self.sessions_on(w, (1, 3, 5))
+        assert all(heartbeat(w, job).get("stop") is not True for job in jobs)
+        league_goes_live_on_sheet_2(w)
+        w["clock"].advance(120)
+        assert len(poll(w)["live"]) == 1
+        for sid in sids:
+            s = w["repo"].get_session(sid)
+            assert not s.active and s.end_reason == "league"
+            assert s.ended_at == w["clock"].t
+        # Each practice job's next heartbeat is told to stop.
+        assert [heartbeat(w, job)["stop"] for job in jobs] == [True, True, True]
+
+    def test_the_sessions_end_even_when_the_hourly_index_is_not_due(self):
+        # The hourly index rides on a call in an hour's first three minutes;
+        # at 12:10 the poll returns early, and the sessions still end.
+        w = _world(cameras=True, live=True)
+        sids, _ = self.sessions_on(w, (4,))
+        league_goes_live_on_sheet_2(w)
+        w["clock"].advance(60 * 10)
+        assert poll(w)["index"] == "not due"
+        assert w["repo"].get_session(sids[0]).end_reason == "league"
+
+    def test_a_poll_that_finds_no_league_ends_nothing(self):
+        w = _world(cameras=True, live=True)
+        sids, jobs = self.sessions_on(w, (1, 3))
+        w["repo"].put_playlist(WatchedPlaylist(id="p_league", playlist_id="PLthu",
+                                               label="Thursday League", created_at=T0))
+        w["yt"]._playlists["PLthu"] = []
+        assert poll(w)["live"] == []
+        assert all(w["repo"].get_session(sid).active for sid in sids)
+        assert all(heartbeat(w, job).get("stop") is not True for job in jobs)
+
+    def test_a_league_stream_already_followed_does_not_end_a_later_session(self):
+        # The live run is made once per stream: the next poll finds nothing new,
+        # so a session started afterwards (the league run is over) is left be.
+        w = _world(cameras=True, live=True)
+        league_goes_live_on_sheet_2(w)
+        assert len(poll(w)["live"]) == 1
+        run, = w["repo"].runs_for_video("lg2sheet2001")
+        w["repo"].update_run(run.id, status="ready")
+        sids, _ = self.sessions_on(w, (3,))
+        w["clock"].advance(3600)                        # the playlist is due again
+        assert poll(w)["live"] == []
+        assert w["repo"].get_session(sids[0]).active
+
+    def test_it_ends_youtube_practice_too(self):
+        w = _world(live=True)
+        sid = start(w).json()["id"]
+        job = claim(w)
+        league_goes_live_on_sheet_2(w)
+        assert len(poll(w)["live"]) == 1
+        assert w["repo"].get_session(sid).end_reason == "league"
+        assert heartbeat(w, job)["stop"] is True
+
+
+class TestThePrivacyPage:
+    def test_privacy_page_names_the_cameras(self, w):
+        text = " ".join(w["client"].get("/privacy").text.split())
+        assert "reads the club's cameras directly" in text
+        assert "only from when a player starts a session" in text
+        assert "kept as for games" in text
+        assert "only measurements are kept" in text
+
+
 class TestSettings:
     def test_practice_reads_youtube_unless_told_otherwise(self, monkeypatch):
         monkeypatch.delenv("PRACTICE_SOURCE", raising=False)
@@ -387,13 +482,13 @@ class TestTheWorkersSide:
         v = view(w, sid).json()
         assert v["session"]["status"] == "ended" and v["session"]["end_reason"] == "stop"
 
-    def test_twenty_minutes_without_a_throw_ends_a_session(self, w):
+    def test_fifteen_minutes_without_a_throw_ends_a_session(self, w):
         sid = start(w).json()["id"]
         job = claim(w)
         publish(w, job, doc([throw(1260.0)], T0.timestamp() - 1200.0))
-        w["clock"].t = T0 + timedelta(seconds=60 + 1199)       # the throw was at Start+60
+        w["clock"].t = T0 + timedelta(seconds=60 + 899)        # the throw was at Start+60
         assert heartbeat(w, job).get("stop") is not True
-        w["clock"].t = T0 + timedelta(seconds=60 + 1201)
+        w["clock"].t = T0 + timedelta(seconds=60 + 901)
         assert heartbeat(w, job)["stop"] is True
         assert w["repo"].get_session(sid).end_reason == "idle"
 

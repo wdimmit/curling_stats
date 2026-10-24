@@ -164,3 +164,81 @@ class TestCameraWatches:
         self.live_run(fresh, age_s=practice.LEAGUE_FRESH_S - 1)
         self.live_run(stale, age_s=practice.LEAGUE_FRESH_S + 1)
         assert practice.league_on(fresh, self.NOW) and not practice.league_on(stale, self.NOW)
+
+
+class TestEndingSessions:
+    """A session ends 15 minutes after its last throw, or when a league feed
+    goes live anywhere (leagues use all five sheets)."""
+
+    NOW = datetime(2026, 10, 24, 9, 5, 7, tzinfo=timezone.utc)
+    USER = User(id="uid-sarah", created_at=NOW)
+
+    def session_on(self, repo, sheet):
+        return practice.start(repo, FakeYouTube(), self.USER, sheet, "right", self.NOW,
+                              "v1+m", source="cameras")
+
+    def doc_with_a_throw(self, at):
+        return {"wall_t0": at.timestamp(), "t0_s": 0.0,
+                "throws": [{"id": "t_1", "t_release_s": 0.0}]}
+
+    def test_idle_after_fifteen_minutes(self):
+        repo = MemoryRepo()
+        s = self.session_on(repo, 2)
+        watch = repo.get_watch(s.watch_id)
+        thrown = self.NOW + timedelta(seconds=60)
+        doc = self.doc_with_a_throw(thrown)
+        assert practice.IDLE_S == 900.0
+        assert practice.sweep(repo, watch, doc, thrown + timedelta(seconds=899)) == 1
+        assert repo.get_session(s.id).active
+        assert practice.sweep(repo, watch, doc, thrown + timedelta(seconds=900)) == 0
+        got = repo.get_session(s.id)
+        assert not got.active and got.end_reason == "idle"
+
+    def test_idle_counts_from_start_when_nothing_thrown(self):
+        repo = MemoryRepo()
+        s = self.session_on(repo, 2)
+        watch = repo.get_watch(s.watch_id)
+        assert practice.sweep(repo, watch, None, self.NOW + timedelta(seconds=899)) == 1
+        assert practice.sweep(repo, watch, None, self.NOW + timedelta(seconds=900)) == 0
+        assert repo.get_session(s.id).end_reason == "idle"
+
+    def test_a_throw_before_start_does_not_postpone_the_idle_end(self):
+        repo = MemoryRepo()
+        s = self.session_on(repo, 2)
+        watch = repo.get_watch(s.watch_id)
+        doc = self.doc_with_a_throw(self.NOW - timedelta(seconds=300))
+        assert practice.sweep(repo, watch, doc, self.NOW + timedelta(seconds=900)) == 0
+
+    def test_a_league_ends_every_session_on_every_sheet(self):
+        repo = MemoryRepo()
+        a, b, c = (self.session_on(repo, sheet) for sheet in (1, 3, 5))
+        joined = self.session_on(repo, 3)               # joins sheet 3's watch
+        later = self.NOW + timedelta(minutes=5)
+        assert practice.end_for_league(repo, later) == 4
+        for s in (a, b, c, joined):
+            got = repo.get_session(s.id)
+            assert not got.active and got.end_reason == "league" and got.ended_at == later
+        # Nothing is left to end, and each watch now reads as unwatched.
+        assert practice.end_for_league(repo, later) == 0
+        for s in (a, b, c):
+            assert practice.sweep(repo, repo.get_watch(s.watch_id), None, later) == 0
+
+    def test_a_league_leaves_a_session_already_over_with_its_own_reason(self):
+        repo = MemoryRepo()
+        done, live = self.session_on(repo, 2), self.session_on(repo, 2)
+        practice.stop(repo, repo.get_session(done.id), self.NOW, "stop")
+        assert practice.end_for_league(repo, self.NOW + timedelta(minutes=1)) == 1
+        assert repo.get_session(done.id).end_reason == "stop"
+        assert repo.get_session(live.id).end_reason == "league"
+
+    def test_a_league_leaves_a_dead_watch_to_say_it_failed(self):
+        repo = MemoryRepo()
+        s = self.session_on(repo, 4)
+        repo.update_job(repo.get_watch(s.watch_id).job_id, state="failed")
+        assert practice.end_for_league(repo, self.NOW) == 0
+        assert repo.get_session(s.id).active           # settle() ends it, as "failed"
+        practice.settle(repo, repo.get_session(s.id), self.NOW)
+        assert repo.get_session(s.id).end_reason == "failed"
+
+    def test_with_no_session_a_league_ends_nothing(self):
+        assert practice.end_for_league(MemoryRepo(), self.NOW) == 0

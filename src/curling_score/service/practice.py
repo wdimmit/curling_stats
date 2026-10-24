@@ -13,9 +13,10 @@ see them. A camera watch has no YouTube video behind it, so it is named by
 camera_video_id and its Run says ``source="cameras"``. Either way practice
 only runs while no league game is: league_on.
 
-A session ends when its owner stops it, after IDLE_S with no throw, after
-MAX_S, or when its watch ends. The API keeps those clocks, on each practice
-heartbeat and publish: the worker knows nothing of sessions.
+A session ends when its owner stops it, after IDLE_S with no throw (counted
+from Start when nothing has been thrown), after MAX_S, when a league feed goes
+live (end_for_league), or when its watch ends. The API keeps those clocks, on
+each practice heartbeat and publish: the worker knows nothing of sessions.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -24,7 +25,7 @@ from curling_score.ingest import source
 from curling_score.service import slug
 from curling_score.service.records import Job, PracticeSession, PracticeWatch, Run
 
-IDLE_S = 1200.0
+IDLE_S = 900.0
 MAX_S = 10800.0
 # The footage before Start a worker records to calibrate from (practice.watch).
 LOOKBACK_S = 1200.0
@@ -249,3 +250,21 @@ def sweep(repo, watch, doc, now) -> int:
 def end_all(repo, watch, now, reason):
     for s in repo.sessions_for_watch(watch.id):
         stop(repo, s, now, reason)
+
+
+def end_for_league(repo, now) -> int:
+    """A league feed has gone live: end every active session on every running
+    watch, on every sheet -- leagues use all five -- with reason "league", and
+    say how many ended. Each watch's next heartbeat then finds nobody watching
+    and is told to stop (api.practice_should_stop). A watch already gone is
+    left for settle() to end as failed or stream_ended."""
+    ended = 0
+    for sheet in CAMERA_SHEETS:
+        for watch in repo.watches_for_sheet(sheet):
+            if not watch_alive(repo, watch):
+                continue
+            for s in repo.sessions_for_watch(watch.id):
+                if s.active:
+                    stop(repo, s, now, "league")
+                    ended += 1
+    return ended
