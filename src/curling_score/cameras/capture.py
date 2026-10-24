@@ -5,10 +5,11 @@
 
 This holds one NDI connection to one camera for as long as it runs, and writes
 the camera's packets, untouched, to ``--fifo`` for a composer to read. What the
-composer reads starts at the first keyframe after it opens the FIFO (they come
-every 2 s). The first keyframe is also copied to ``--first``, so whoever
-started the capture can check what the camera sends before anything reads the
-FIFO.
+composer reads starts at the camera's newest keyframe when it opens the FIFO,
+held until the next one comes (they come every 2 s), so a camera that has gone
+quiet since still gives it a picture. The first keyframe is also copied to
+``--first``, so whoever started the capture can check what the camera sends
+before anything reads the FIFO.
 
 **One process per camera, re-executed.** The tap (``tap.py``) keeps one H.264
 context per process, so each camera needs a process of its own. libndi finds
@@ -109,7 +110,10 @@ class Holder:
     What is written always starts at a keyframe: nothing before the first one.
     After a hold, nothing is written until the next keyframe, because the
     P-frames in between refer to pictures that were never passed on. The same
-    goes after ``write`` returns False, which says it dropped what it was given.
+    goes after ``write`` returns False, which says it dropped what it was given
+    -- as it does until the composer opens the FIFO. The newest keyframe is
+    kept all the same, so the picture starts from it, held, once ``write``
+    takes it.
 
     ``packet`` and ``tick`` may be called from different threads.
     """
@@ -195,8 +199,11 @@ class _Fifo:
         self._full = False
 
     def write(self, data: bytes) -> bool:
-        """Queue ``data``. False if the queue was full and it was dropped.
-        Called by one thread at a time (under the Holder's lock)."""
+        """Queue ``data``. False if it was dropped: nothing has opened the FIFO
+        yet, or the queue was full. Called by one thread at a time (under the
+        Holder's lock)."""
+        if not self.opened.is_set():
+            return False
         try:
             self._queue.put_nowait(data)
         except queue.Full:
@@ -312,9 +319,9 @@ class _Capture:
                 self.reconnects.heard()
                 if flags & tap.KEYFRAME and self.first_at is None:
                     self._save_first(payload)
-                # The FIFO's stream starts once it is read, at a keyframe.
-                if self.fifo.opened.is_set():
-                    self.holder.packet(flags, payload)
+                # Before the FIFO is open too: the Holder keeps the newest
+                # keyframe, which is where the FIFO's stream starts.
+                self.holder.packet(flags, payload)
         self.stop(1, "the tap's pipe closed")
 
     def _save_first(self, payload: bytes) -> None:

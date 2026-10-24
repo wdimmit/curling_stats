@@ -3,7 +3,10 @@ its packets stop."""
 
 import json
 import logging
+import os
+import struct
 import threading
+import time
 
 import pytest
 
@@ -121,6 +124,66 @@ def test_hold_waits_for_a_keyframe_before_resuming():
     assert out[-2:] == [SPS_PPS_IDR + b"2", P2]
 
 
+def queued(fifo):
+    out = []
+    while not fifo._queue.empty():
+        out.append(fifo._queue.get_nowait())
+    return out
+
+
+def test_a_keyframe_from_before_the_fifo_opens_is_held_once_it_does(tmp_path):
+    """A camera that sent its first keyframe and then nothing: the composer,
+    which opens its FIFOs one at a time and probes each, must still get a
+    picture from it, or it never starts."""
+    clock, fifo = Clock(), capture._Fifo(tmp_path / "cam.h264")
+    h = capture.Holder(fifo.write, clock=clock)
+    h.packet(1, SPS_PPS_IDR)
+    h.packet(0, P1)
+    clock.t += 5.0
+    h.tick()
+    assert queued(fifo) == []              # nothing reads the FIFO yet
+    fifo.opened.set()                      # the composer opens it; the camera is quiet
+    for _ in range(3):
+        clock.t += PERIOD
+        assert h.tick() is True
+    assert queued(fifo) == [SPS_PPS_IDR] * 3
+
+
+def test_a_live_camera_starts_at_its_newest_keyframe_once_the_fifo_opens(tmp_path):
+    clock, fifo = Clock(), capture._Fifo(tmp_path / "cam.h264")
+    h = capture.Holder(fifo.write, clock=clock)
+    h.packet(1, SPS_PPS_IDR)
+    h.packet(1, SPS_PPS_IDR + b"2")
+    h.packet(0, P1)
+    fifo.opened.set()
+    clock.t += PERIOD
+    h.tick()
+    h.packet(0, P2)                        # refers to pictures never passed on
+    h.packet(1, SPS_PPS_IDR + b"3")
+    h.packet(0, P1)
+    assert queued(fifo) == [SPS_PPS_IDR + b"2", SPS_PPS_IDR + b"3", P1]
+
+
+def test_the_tap_reader_gives_the_holder_packets_before_the_fifo_opens(tmp_path):
+    """The reader once passed packets on only after the composer opened the
+    FIFO, so a camera quiet after its first keyframe left nothing to hold."""
+    read, write = os.pipe()
+    with os.fdopen(write, "wb") as w:
+        w.write(struct.pack("<IB", len(SPS_PPS_IDR), 1) + SPS_PPS_IDR)
+        w.write(struct.pack("<IB", len(P1), 0) + P1)
+    args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
+                                         "--first", str(tmp_path / "first")])
+    args.tap_fd, args.parent = read, os.getppid()
+    cap = capture._Capture(args)
+    cap._read()                            # to the end of the pipe
+    assert (tmp_path / "first").read_bytes() == SPS_PPS_IDR
+    assert not cap.fifo.opened.is_set() and cap.fifo._queue.empty()
+    cap.fifo.opened.set()
+    cap.holder.clock = lambda: time.monotonic() + 1.0
+    assert cap.holder.tick() is True
+    assert cap.fifo._queue.get_nowait() == SPS_PPS_IDR
+
+
 def test_full_queue_never_blocks_the_reader_and_resumes_at_a_keyframe(monkeypatch, tmp_path,
                                                                       caplog):
     """A composer that stops reading must not back up into the tap, and so
@@ -128,6 +191,7 @@ def test_full_queue_never_blocks_the_reader_and_resumes_at_a_keyframe(monkeypatc
     at a keyframe."""
     monkeypatch.setattr(capture, "BACKLOG", 3)
     fifo = capture._Fifo(tmp_path / "cam.h264")
+    fifo.opened.set()
     clock = Clock()
     h = capture.Holder(fifo.write, clock=clock)
 
