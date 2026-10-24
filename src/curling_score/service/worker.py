@@ -70,11 +70,16 @@ class ApiClient:
         r.raise_for_status()
         return r.json() if r.content else None
 
-    def claim(self, worker_id, model_id, gpu, kinds=None):
+    def claim(self, worker_id, model_id, gpu, kinds=None, cameras=False):
+        """``cameras``: this worker can see the club's cameras, so it may be
+        handed a camera practice job (WORKER_CAMERAS=1); it is said only when
+        true, so an older API reads the same body it always did."""
         body = {"worker_id": worker_id, "version": version.PIPELINE_VERSION,
                 "model_id": model_id, "gpu": gpu}
         if kinds is not None:
             body["kinds"] = list(kinds)
+        if cameras:
+            body["cameras"] = True
         r = self._http.post(f"{self.base}/api/worker/claim", headers=self._headers,
                             json=body)
         if r.status_code == 204:
@@ -489,7 +494,9 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     A recording is kept once its stream ends -- whole as the cached video,
     partial under ``kept/`` -- and the cache is then pruned as after any job,
     recordings older than ``recording_days`` first. Practice jobs are claimed
-    too when ``WORKER_PRACTICE=1``. Practice only runs when no league is on,
+    too when ``WORKER_PRACTICE=1``, and ``WORKER_CAMERAS=1`` -- set on the one
+    box that can see the club's cameras -- says so, which is what the API holds
+    camera practice jobs for. Practice only runs when no league is on,
     so it never shares the lane with league ends; but a practice stream in
     hand pauses this worker's VOD jobs as a live game does, for as long as
     its sessions last. With ``fp_harvest`` enabled each league session records
@@ -513,7 +520,8 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
         gpu=gpu_name() if start else None, root=root,
         max_streams=int(os.environ.get("LIVE_MAX_STREAMS", manager.MAX_STREAMS)),
         prune=prune_cache if cache_gb is not None else None,
-        kinds=("live", "practice") if os.environ.get("WORKER_PRACTICE") == "1" else ("live",))
+        kinds=("live", "practice") if os.environ.get("WORKER_PRACTICE") == "1" else ("live",),
+        cameras=os.environ.get("WORKER_CAMERAS") == "1")
     if start:
         mgr.start()
     return lane.LiveLane(

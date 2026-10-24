@@ -52,6 +52,10 @@ class Run:
     # end while its stream plays; `revised_at` changes with every publish,
     # the way `ready_at` does at completion, so each is served fresh.
     kind: str = "vod"
+    # "cameras" for a practice watch read from the club's own cameras, whose
+    # `video_id` is a name we made up (practice.camera_video_id), not a
+    # YouTube id; None for everything read from YouTube.
+    source: str | None = None
     revised_at: datetime | None = None
     timeline_key: str | None = None
     meta_key: str | None = None

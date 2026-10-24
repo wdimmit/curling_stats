@@ -27,12 +27,14 @@ class Api:
     def __init__(self, jobs=()):
         self.jobs = list(jobs)
         self.claims, self.progress_calls, self.failed = [], [], []
+        self.camera_claims = []
         self.uploads, self.published, self.completed = [], [], []
         self.artifact_files = []
         self.lose, self.stop = set(), set()
 
-    def claim(self, worker_id, model_id, gpu, kinds=None):
+    def claim(self, worker_id, model_id, gpu, kinds=None, cameras=False):
         self.claims.append(kinds)
+        self.camera_claims.append(cameras)
         return self.jobs.pop(0) if self.jobs else None
 
     def progress(self, job_id, worker_id, phase, fraction, message):
@@ -80,12 +82,12 @@ class Recorder:
         self.stopped = True
 
 
-def manager(api, max_streams=6, fail=(), clock=None, kinds=("live",)):
+def manager(api, max_streams=6, fail=(), clock=None, kinds=("live",), **kw):
     t = [0.0]
     m = manager_mod.LiveManager(
         api, "home", model_id="m-abc", gpu=None, max_streams=max_streams,
         make_recorder=lambda job: Recorder(job, fail=job["id"] in fail),
-        heartbeat_s=60.0, clock=clock or (lambda: t[0]), kinds=kinds)
+        heartbeat_s=60.0, clock=clock or (lambda: t[0]), kinds=kinds, **kw)
     return m, t
 
 
@@ -101,6 +103,13 @@ class TestPracticeInTheManager:
         m.poll_once()
         assert api.claims[0] == ["live", "practice"]
         assert m.streams()[0].job["kind"] == "practice"
+
+    def test_it_says_it_can_see_the_cameras_only_when_it_can(self):
+        for cameras in (False, True):
+            api = Api()
+            m, _ = manager(api, kinds=("live", "practice"), cameras=cameras)
+            m.poll_once()
+            assert api.camera_claims == [cameras]
 
     def test_a_stop_in_a_heartbeat_is_passed_on_to_the_stream(self):
         api = Api([practice_job(1)])

@@ -260,6 +260,33 @@ class TestACachedVideoIsNotAskedOfYouTube:
         assert "channel_id" not in api.completed[0]
 
 
+class TestTheClaimBody:
+    """What a claim tells the API about this worker."""
+
+    class Http:
+        def __init__(self):
+            self.bodies = []
+
+        def post(self, url, headers=None, json=None, timeout=None):
+            self.bodies.append(json)
+
+            class Response:
+                status_code = 204
+            return Response()
+
+    def body(self, **kw):
+        http = self.Http()
+        assert worker.ApiClient("http://api", "t", http=http).claim("w", "m", None,
+                                                                    kinds=["live"], **kw) is None
+        return http.bodies[0]
+
+    def test_a_worker_that_can_see_the_cameras_says_so(self):
+        assert self.body(cameras=True)["cameras"] is True
+
+    def test_one_that_cannot_says_nothing(self):
+        assert "cameras" not in self.body()
+
+
 class TestClassifyingFailures:
     def test_blocked(self):
         assert worker.classify_error(cache.BlockedError("not a bot")) == "blocked"
@@ -493,6 +520,18 @@ class TestBuildingTheLiveLane:
         got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
                                 start=False)
         assert got.manager.kinds == ("live", "practice")
+
+    def test_the_cameras_are_claimed_for_only_when_this_worker_can_see_them(self, monkeypatch,
+                                                                            tmp_path):
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.delenv("WORKER_CAMERAS", raising=False)
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False)
+        assert got.manager.cameras is False
+        monkeypatch.setenv("WORKER_CAMERAS", "1")
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False)
+        assert got.manager.cameras is True
 
     def test_the_harvest_settings_reach_the_lane(self, monkeypatch, tmp_path):
         from curling_score import fpframes

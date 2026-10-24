@@ -138,6 +138,11 @@ PLAY_DAY_LIMIT = 300
 # Starting practice sessions: a few an hour is a busy morning on the ice.
 PRACTICE_HOUR_LIMIT = 20
 PRACTICE_DAY_LIMIT = 60
+# What Start says when it is refused, on the club's cameras (the page shows it).
+CAMERAS_NOT_ALLOWED = ("Practice on the club's cameras needs a validated account, "
+                       "or the club's Wi-Fi.")
+LEAGUE_ON = "A league game is on; practice opens when it ends."
+PRACTICE_SOURCES = ("youtube", practice.CAMERAS)
 # A practice throw's id, as the worker writes it (practice/throws.py).
 PRACTICE_THROW_ID = re.compile(r"^t_[0-9]{1,8}(\.[0-9])?$")
 # A practice throw's clip, as the worker names the artifact.
@@ -211,6 +216,13 @@ class Settings:
     # Practice sessions: /practice/sheet/N and its API. Off until a worker
     # that can watch a practice stream (WORKER_PRACTICE=1) is running.
     practice_enabled: bool = False
+    # Where practice reads the ice: "youtube", the sheet's practice stream, or
+    # "cameras", the club's own cameras through a worker that can see them
+    # (WORKER_CAMERAS=1). On the cameras Start needs no stream but does need a
+    # validated account or a request from `club_ips` (the club's public
+    # address, as client_ip sees it).
+    practice_source: str = "youtube"
+    club_ips: frozenset = frozenset()
     # Clips of the rocks a person says they threw, on My shots: asked for when
     # a play is saved or its report read, cut by the clips worker. Off until a
     # worker running WORKER_ROLE=clips is up.
@@ -253,6 +265,10 @@ class Settings:
     def from_env(cls):
         env = os.environ.get
         chans = {c.strip() for c in env("ALLOWED_CHANNEL_IDS", "").split(",") if c.strip()}
+        practice_source = env("PRACTICE_SOURCE", "youtube")
+        if practice_source not in PRACTICE_SOURCES:
+            raise ValueError(f"PRACTICE_SOURCE must be one of {PRACTICE_SOURCES}, "
+                             f"not {practice_source!r}")
         return cls(
             public_base_url=env("PUBLIC_BASE_URL", "").rstrip("/"),
             worker_token=env("WORKER_TOKEN", ""),
@@ -262,6 +278,9 @@ class Settings:
             doubles_enabled=env("DOUBLES_ENABLED", "0") in ("1", "true", "yes"),
             live_enabled=env("LIVE_ENABLED", "0") in ("1", "true", "yes"),
             practice_enabled=env("PRACTICE_ENABLED", "0") in ("1", "true", "yes"),
+            practice_source=practice_source,
+            club_ips=frozenset(ip.strip() for ip in env("PRACTICE_CLUB_IPS", "").split(",")
+                               if ip.strip()),
             game_clips_enabled=env("GAME_CLIPS_ENABLED", "0") in ("1", "true", "yes"),
             email_link_signin=env("EMAIL_LINK_SIGNIN", "0") in ("1", "true", "yes"),
             club_tz=env("CLUB_TZ", "America/Los_Angeles"),
@@ -2923,19 +2942,30 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                              authorization: str | None = Header(default=None)):
         practice_on()
         me = require_user(authorization)
+        cameras = settings.practice_source == practice.CAMERAS
+        # The club's cameras are not for just anyone who signed in. The address
+        # is client_ip's, which a forged X-Forwarded-For cannot move.
+        if cameras and me.role not in ROLES and client_ip(request) not in settings.club_ips:
+            raise HTTPException(403, CAMERAS_NOT_ALLOWED)
         body = await request.json()
         try:
             sheet = int(body.get("sheet"))
         except (TypeError, ValueError):
             raise HTTPException(422, "say which sheet") from None
+        # Asked before the rate limit, so a refusal costs no one a session's worth.
+        if practice.league_on(repo, now()):
+            raise HTTPException(409, LEAGUE_ON)
         if not repo.bump_rate_limit("practice:" + me.id, now(), PRACTICE_HOUR_LIMIT,
                                     PRACTICE_DAY_LIMIT):
             raise HTTPException(429, "that is a lot of sessions; try again later")
         try:
             s = practice.start(repo, youtube, me, sheet, body.get("hand", "right"), now(),
-                               settings.processing_version)
+                               settings.processing_version,
+                               source=practice.CAMERAS if cameras else "youtube")
         except practice.NoStream:
             raise HTTPException(404, f"no live stream on sheet {sheet}") from None
+        except practice.LeagueOn:    # one began between the check and the start
+            raise HTTPException(409, LEAGUE_ON) from None
         return {"id": s.id, "watch_id": s.watch_id}
 
     @app.get("/api/practice/sessions/{session_id}")
@@ -3063,6 +3093,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # gets recordings only: handed a live stream it would try to download
         # it whole.
         kinds = tuple(k for k in (body.get("kinds") or ("vod",)) if k in JOB_KINDS)
+        if settings.practice_source == practice.CAMERAS and not body.get("cameras"):
+            # Practice reads the club's cameras, which only a worker that can
+            # see them (WORKER_CAMERAS=1) may claim: the stand-in must not.
+            kinds = tuple(k for k in kinds if k != "practice")
         job = repo.claim_job(str(body.get("worker_id", "worker")), t, settings.lease_s,
                              kinds=kinds)
         if job is None:
@@ -3077,6 +3111,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.heartbeat(Worker(id=str(body.get("worker_id", "worker")), last_seen_at=t,
                               version=body.get("version"), model_id=body.get("model_id"),
                               gpu=body.get("gpu"), current_job_id=job.id))
+        # A practice watch says how far back to record to calibrate from; the
+        # club's cameras have no past to look back in.
+        practice_fields = {}
+        if job.kind == "practice":
+            practice_fields = {"lookback_s": practice.LOOKBACK_S}
+            if run.source == practice.CAMERAS:
+                practice_fields = {"lookback_s": practice.CAMERA_LOOKBACK_S,
+                                   "source": practice.CAMERAS}
         return {"job": {
             "id": job.id, "run_id": run.id, "video_id": run.video_id,
             "window_start_s": run.window_start_s, "window_end_s": run.window_end_s,
@@ -3086,7 +3128,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # YouTube (`worker.cached_info`).
             "title": run.title, "duration_s": run.duration_s, "channel_id": run.channel_id,
             "attempt": job.attempts, "lease_s": settings.lease_s,
-            **({"lookback_s": practice.LOOKBACK_S} if job.kind == "practice" else {}),
+            **practice_fields,
         }}
 
     def owned_job(job_id: str, worker_id: str | None) -> Job:

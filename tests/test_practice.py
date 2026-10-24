@@ -9,8 +9,15 @@ no board card all session and kept well under an end's rocks; no real game of
 """
 
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from curling_score import analyze, timeline
+from curling_score.service import practice
+from curling_score.service.records import Run, User, WatchedPlaylist
+from curling_score.service.repo import MemoryRepo
+from curling_score.service.youtube import FakeYouTube, VideoMeta
 from tests.test_unplayed_ends import built, context, segment
 
 
@@ -77,3 +84,83 @@ class TestARecordingsGames:
         real, practice = segment(4), replace(segment(2, start_s=9000.0), index=1)
         got = analyze.build_games(context(), [real, practice])
         assert [g["practice"] for g in got] == [False, True]
+
+
+class TestCameraWatches:
+    """Practice on the club's cameras: a watch with no YouTube stream behind
+    it, and the league that closes practice (service/practice.py)."""
+
+    NOW = datetime(2026, 10, 24, 9, 5, 7, tzinfo=timezone.utc)
+    USER = User(id="uid-sarah", created_at=NOW)
+
+    def live_run(self, repo, status="live", age_s=60.0, kind="live", run_id="r_1"):
+        repo.put_run(Run(id=run_id, video_id="v", processing_version="p", status=status,
+                         kind=kind, created_at=self.NOW - timedelta(seconds=age_s)))
+
+    def youtube_with_a_live_practice_stream(self, repo, sheet=2):
+        yt = FakeYouTube(playlists={"PL": ["abc"]})
+        yt.add(VideoMeta("abc", f"10/24 - Sheet {sheet} - Practice", "UC", None, "live",
+                         self.NOW))
+        repo.put_playlist(WatchedPlaylist(id="p", playlist_id="PL", label="Practice",
+                                          created_at=self.NOW, practice=True))
+        return yt
+
+    def test_a_camera_watch_is_named_for_its_sheet_and_start(self):
+        assert practice.camera_video_id(3, self.NOW) == "cams3-20261024-090507"
+
+    def test_a_camera_start_makes_a_camera_run_and_never_asks_youtube(self):
+        repo = MemoryRepo()
+        yt = self.youtube_with_a_live_practice_stream(repo)
+        s = practice.start(repo, yt, self.USER, 2, "right", self.NOW, "v1+m", source="cameras")
+        watch = repo.get_watch(s.watch_id)
+        run, job = repo.get_run(watch.run_id), repo.get_job(watch.job_id)
+        assert (run.video_id, run.source, run.kind, run.status, run.sheet) == (
+            "cams2-20261024-090507", "cameras", "practice", "queued", 2)
+        assert watch.video_id == run.video_id and run.processing_version == "v1+m"
+        assert (job.kind, job.state) == ("practice", "queued")
+        assert yt.calls == 0
+
+    def test_the_youtube_run_has_no_source(self):
+        repo = MemoryRepo()
+        yt = self.youtube_with_a_live_practice_stream(repo, sheet=3)
+        s = practice.start(repo, yt, self.USER, 3, "left", self.NOW, "v1+m")
+        run = repo.get_run(repo.get_watch(s.watch_id).run_id)
+        assert run.video_id == "abc" and run.source is None
+
+    def test_a_camera_start_joins_the_sheets_running_watch(self):
+        repo = MemoryRepo()
+        a, b = (practice.start(repo, FakeYouTube(), self.USER, 2, hand, self.NOW, "v",
+                               source="cameras") for hand in ("right", "left"))
+        assert a.watch_id == b.watch_id and len(repo.jobs) == 1
+
+    def test_a_league_on_refuses_a_start(self):
+        repo = MemoryRepo()
+        self.live_run(repo)
+        with pytest.raises(practice.LeagueOn):
+            practice.start(repo, FakeYouTube(), self.USER, 2, "right", self.NOW, "v",
+                           source="cameras")
+        assert not repo.jobs
+
+    @pytest.mark.parametrize("status", ["queued", "processing", "live"])
+    def test_a_league_run_not_yet_over_is_a_league_on(self, status):
+        repo = MemoryRepo()
+        self.live_run(repo, status=status)
+        assert practice.league_on(repo, self.NOW)
+
+    @pytest.mark.parametrize("status", ["ready", "failed", "pending_approval"])
+    def test_a_league_run_that_is_over_is_not(self, status):
+        repo = MemoryRepo()
+        self.live_run(repo, status=status)
+        assert not practice.league_on(repo, self.NOW)
+
+    def test_a_recording_or_a_practice_watch_is_not_a_league(self):
+        repo = MemoryRepo()
+        self.live_run(repo, status="queued", kind="vod")
+        self.live_run(repo, status="live", kind="practice", run_id="r_2")
+        assert not practice.league_on(repo, self.NOW)
+
+    def test_a_league_run_left_behind_for_six_hours_is_forgotten(self):
+        fresh, stale = MemoryRepo(), MemoryRepo()
+        self.live_run(fresh, age_s=practice.LEAGUE_FRESH_S - 1)
+        self.live_run(stale, age_s=practice.LEAGUE_FRESH_S + 1)
+        assert practice.league_on(fresh, self.NOW) and not practice.league_on(stale, self.NOW)

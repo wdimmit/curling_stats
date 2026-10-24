@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from curling_score.service.api import Settings, create_app
 from curling_score.service.auth import FakeVerifier
-from curling_score.service.records import WatchedPlaylist
+from curling_score.service.records import Job, Run, WatchedPlaylist
 from curling_score.service.repo import MemoryRepo
 from curling_score.service.store import MemoryStore, clip_key, practice_key
 from curling_score.service.youtube import FakeYouTube, VideoMeta
@@ -18,9 +18,10 @@ from tests.test_service_api import CLUB, T0, WORKER, Clock
 SARAH = {"Authorization": "Bearer tok-sarah"}
 ALEX = {"Authorization": "Bearer tok-alex"}
 S3, S4, UP = "qJhDHMMtHsE", "dXYqdopieoU", "IqiFhMEOL4s"
+CLUB_IP = "203.0.113.9"
 
 
-def _world(practice=True):
+def _world(practice=True, cameras=False):
     clock = Clock()
     repo, store = MemoryRepo(), MemoryStore()
     yt = FakeYouTube(playlists={"PLErN0WbLUyFI": [S3, S4, UP], "PLleague": [S4]})
@@ -39,7 +40,9 @@ def _world(practice=True):
                         admin_token="admin-secret", allowed_channels={CLUB}, model_id="m-abc",
                         firebase_project="proj", firebase_api_key="AIzaFake",
                         firebase_auth_domain="proj.firebaseapp.com",
-                        practice_enabled=practice)
+                        practice_enabled=practice,
+                        **({"practice_source": "cameras", "club_ips": frozenset({CLUB_IP})}
+                           if cameras else {}))
     app = create_app(repo, store, yt, settings, now=clock, auth=auth)
     return {"client": TestClient(app), "repo": repo, "store": store, "yt": yt,
             "clock": clock}
@@ -50,17 +53,36 @@ def w():
     return _world()
 
 
-def start(w, sheet=3, who=SARAH, hand="right"):
+@pytest.fixture
+def cams():
+    """The club's cameras are the practice source: no YouTube stream is needed,
+    and Start is for validated accounts or the club's own address."""
+    return _world(cameras=True)
+
+
+def start(w, sheet=3, who=SARAH, hand="right", fwd=None):
+    """``fwd`` is the X-Forwarded-For the request arrives with."""
     return w["client"].post("/api/practice/sessions", json={"sheet": sheet, "hand": hand},
-                            headers=who)
+                            headers={**who, **({"X-Forwarded-For": fwd} if fwd else {})})
 
 
-def claim(w):
-    r = w["client"].post("/api/worker/claim", headers=WORKER, json={
-        "worker_id": "ryzen", "model_id": "m-abc", "version": "2026.10.10", "gpu": "3080",
-        "kinds": ["live", "practice"]})
+def claim_body(**extra):
+    return {"worker_id": "ryzen", "model_id": "m-abc", "version": "2026.10.10", "gpu": "3080",
+            "kinds": ["live", "practice"], **extra}
+
+
+def claim(w, **extra):
+    r = w["client"].post("/api/worker/claim", headers=WORKER, json=claim_body(**extra))
     assert r.status_code == 200, r.text
     return r.json()["job"]
+
+
+def validate(w, uid, role="validated"):
+    """Make ``uid`` a validated account. An account exists once it has been
+    seen, so it is seen first."""
+    who = {"uid-sarah": SARAH, "uid-alex": ALEX}[uid]
+    w["client"].get("/api/me", headers=who)
+    w["repo"].update_user(uid, role=role)
 
 
 def doc(throws, wall_t0, status="watching"):
@@ -134,6 +156,171 @@ class TestStarting:
         w = _world(practice=False)
         assert start(w).status_code == 404
         assert w["client"].get("/api/features").json()["practice"] is False
+
+
+NOT_ALLOWED = "Practice on the club's cameras needs a validated account, or the club's Wi-Fi."
+LEAGUE_ON = "A league game is on; practice opens when it ends."
+
+
+def league_run(w, status="live", sheet=2, age_s=60.0, kind="live"):
+    w["repo"].put_run(Run(id=f"r_league_{sheet}_{status}", video_id=f"league{sheet}",
+                          processing_version="v", status=status, kind=kind, sheet=sheet,
+                          created_at=w["clock"].t - timedelta(seconds=age_s)))
+
+
+class TestOnTheClubsCameras:
+    def test_camera_start_needs_validated_or_club_ip(self, cams):
+        r = start(cams)
+        assert r.status_code == 403 and r.json()["detail"] == NOT_ALLOWED
+        validate(cams, "uid-sarah")
+        assert start(cams).status_code == 201
+        # Alex is not validated: the club's own address stands in for that.
+        assert start(cams, who=ALEX, sheet=4).status_code == 403
+        assert start(cams, who=ALEX, sheet=4, fwd=CLUB_IP).status_code == 201
+
+    def test_an_admin_may_start(self, cams):
+        validate(cams, "uid-sarah", role="admin")
+        assert start(cams).status_code == 201
+
+    def test_the_club_ip_still_needs_a_signed_in_user(self, cams):
+        assert start(cams, who={}, fwd=CLUB_IP).status_code == 401
+
+    def test_forged_forwarded_for_is_not_the_club(self, cams):
+        # Our one proxy appended 198.51.100.7; the club's address in front of
+        # it is the caller's own invention.
+        r = start(cams, fwd=f"{CLUB_IP}, 198.51.100.7")
+        assert r.status_code == 403 and r.json()["detail"] == NOT_ALLOWED
+
+    def test_camera_start_needs_no_youtube_stream(self, cams):
+        # Sheet 1 is "upcoming" on YouTube and sheet 5 has no stream at all.
+        validate(cams, "uid-sarah")
+        for sheet in (1, 5):
+            r = start(cams, sheet=sheet)
+            assert r.status_code == 201, r.text
+            watch = cams["repo"].get_watch(cams["repo"].get_session(r.json()["id"]).watch_id)
+            run = cams["repo"].get_run(watch.run_id)
+            assert run.source == "cameras" and run.kind == "practice"
+            assert run.video_id.startswith(f"cams{sheet}-") and watch.video_id == run.video_id
+            assert cams["repo"].get_job(watch.job_id).kind == "practice"
+
+    def test_a_sheet_the_club_has_no_cameras_on_is_a_404(self, cams):
+        validate(cams, "uid-sarah")
+        r = start(cams, sheet=6)
+        assert r.status_code == 404 and "sheet 6" in r.json()["detail"]
+        assert not cams["repo"].jobs
+
+    def test_a_camera_start_never_asks_youtube(self, cams, monkeypatch):
+        def boom(*a, **k):
+            raise AssertionError("YouTube was asked")
+        for name in ("playlist_video_ids", "videos"):
+            monkeypatch.setattr(cams["yt"], name, boom)
+        validate(cams, "uid-sarah")
+        assert start(cams).status_code == 201
+
+    def test_start_refused_while_a_league_is_live(self, cams):
+        validate(cams, "uid-sarah")
+        league_run(cams, status="live", sheet=2)
+        r = start(cams, sheet=4)
+        assert r.status_code == 409 and r.json()["detail"] == LEAGUE_ON
+        assert not cams["repo"].jobs and not cams["repo"].sessions_for_user("uid-sarah")
+
+    def test_a_refusal_does_not_spend_the_rate_limit(self, cams):
+        validate(cams, "uid-sarah")
+        league_run(cams)
+        for _ in range(30):
+            assert start(cams).status_code == 409
+        cams["repo"].update_run("r_league_2_live", status="ready")
+        assert start(cams).status_code == 201
+
+    def test_the_league_closes_practice_to_the_club_ip_too(self, cams):
+        league_run(cams)
+        assert start(cams, fwd=CLUB_IP).status_code == 409
+
+    def test_who_may_start_is_checked_before_the_league(self, cams):
+        league_run(cams)
+        assert start(cams).status_code == 403
+
+    def test_second_player_joins_same_camera_watch_under_same_rule(self, cams):
+        validate(cams, "uid-sarah")
+        a = start(cams).json()
+        assert start(cams, who=ALEX).status_code == 403     # joining is a Start
+        r = start(cams, who=ALEX, fwd=CLUB_IP)
+        assert r.status_code == 201 and r.json()["watch_id"] == a["watch_id"]
+        assert len(cams["repo"].jobs) == 1
+
+    def test_camera_practice_job_only_to_a_worker_with_cameras(self, cams):
+        validate(cams, "uid-sarah")
+        start(cams)
+        r = cams["client"].post("/api/worker/claim", headers=WORKER, json=claim_body())
+        assert r.status_code == 204
+        job = claim(cams, cameras=True)
+        assert (job["kind"], job["source"], job["lookback_s"], job["sheet"]) == (
+            "practice", "cameras", 0, 3)
+        assert job["video_id"].startswith("cams3-")
+
+    def test_a_camera_watch_publishes_and_is_read_like_any_other(self, cams):
+        validate(cams, "uid-sarah")
+        sid = start(cams).json()["id"]
+        job = claim(cams, cameras=True)
+        # The recording starts at Start: its t=0 is when Start was tapped.
+        got = publish(cams, job, doc([throw(60.0), throw(120.0)], T0.timestamp()))
+        assert got["stop"] is False
+        cams["clock"].advance(300)
+        v = view(cams, sid).json()
+        assert [t["id"] for t in v["throws"]] == ["t_60.0", "t_120.0"]
+        run = cams["repo"].get_run(job["run_id"])
+        assert cams["store"].exists(practice_key(run.video_id, run.id))
+
+    def test_a_worker_without_cameras_still_takes_league_games(self, cams):
+        league_run(cams, status="queued")
+        cams["repo"].put_job(Job(id="j_league", run_id="r_league_2_queued", state="queued",
+                                 created_at=T0, run_after=T0, kind="live"))
+        assert claim(cams)["id"] == "j_league"
+
+    def test_a_practice_job_from_before_the_switch_waits_for_a_camera_worker_too(self, cams):
+        """Camera mode holds all practice back from a worker that cannot see
+        the cameras, a job left over from the YouTube days included."""
+        cams["repo"].put_run(Run(id="r_old", video_id=S3, processing_version="v",
+                                 status="queued", kind="practice", sheet=3, created_at=T0))
+        cams["repo"].put_job(Job(id="j_old", run_id="r_old", state="queued", created_at=T0,
+                                 run_after=T0, kind="practice"))
+        r = cams["client"].post("/api/worker/claim", headers=WORKER, json=claim_body())
+        assert r.status_code == 204
+
+
+class TestSettings:
+    def test_practice_reads_youtube_unless_told_otherwise(self, monkeypatch):
+        monkeypatch.delenv("PRACTICE_SOURCE", raising=False)
+        monkeypatch.delenv("PRACTICE_CLUB_IPS", raising=False)
+        got = Settings.from_env()
+        assert got.practice_source == "youtube" and got.club_ips == frozenset()
+
+    def test_the_cameras_and_the_clubs_addresses_come_from_the_environment(self, monkeypatch):
+        monkeypatch.setenv("PRACTICE_SOURCE", "cameras")
+        monkeypatch.setenv("PRACTICE_CLUB_IPS", "203.0.113.9, 198.51.100.7,")
+        got = Settings.from_env()
+        assert got.practice_source == "cameras"
+        assert got.club_ips == frozenset({"203.0.113.9", "198.51.100.7"})
+
+    def test_a_misspelt_source_stops_the_service_rather_than_being_ignored(self, monkeypatch):
+        monkeypatch.setenv("PRACTICE_SOURCE", "camera")
+        with pytest.raises(ValueError, match="PRACTICE_SOURCE"):
+            Settings.from_env()
+
+
+class TestTheLeagueGateInYouTubeMode:
+    def test_a_league_closes_youtube_practice_too(self, w):
+        league_run(w)
+        r = start(w)
+        assert r.status_code == 409 and r.json()["detail"] == LEAGUE_ON
+
+    def test_youtube_practice_needs_no_validated_account(self, w):
+        assert start(w).status_code == 201
+
+    def test_a_youtube_job_has_no_source_and_keeps_its_lookback(self, w):
+        start(w)
+        job = claim(w)
+        assert job["lookback_s"] == 1200.0 and "source" not in job
 
 
 class TestTheWorkersSide:

@@ -59,13 +59,16 @@ class LiveManager:
     def __init__(self, api, worker_id, *, model_id, gpu, root=None,
                  max_streams: int = MAX_STREAMS, make_recorder=None,
                  heartbeat_s: float = HEARTBEAT_S, clock=time.monotonic,
-                 prune=None, background=_in_background, kinds=("live",)):
+                 prune=None, background=_in_background, kinds=("live",), cameras=False):
         """``prune`` is called once a recording has been kept, to hold the
         cache to its budget; ``background`` runs the keeping, which copies
         gigabytes, somewhere other than the lane's thread. ``kinds`` are the
-        jobs it claims: league games, and practice where the worker allows."""
+        jobs it claims: league games, and practice where the worker allows.
+        ``cameras``: it can see the club's cameras, and says so when it
+        claims, which is what a camera practice job waits for."""
         self.api, self.worker_id, self.model_id, self.gpu = api, worker_id, model_id, gpu
         self.kinds = tuple(kinds)
+        self.cameras = cameras
         self.root = Path(root) if root is not None else None
         self.max_streams, self.heartbeat_s, self.clock = max_streams, heartbeat_s, clock
         self.make_recorder = make_recorder or self._recorder
@@ -166,7 +169,8 @@ class LiveManager:
         while len(self.streams()) < self.max_streams:
             try:
                 job = self.api.claim(self.worker_id, self.model_id, self.gpu,
-                                     kinds=list(self.kinds))
+                                     kinds=list(self.kinds),
+                                     **({"cameras": True} if self.cameras else {}))
             except Exception as exc:  # noqa: BLE001 - the API may be down; next poll
                 log.warning("live claim failed: %s", exc)
                 break
