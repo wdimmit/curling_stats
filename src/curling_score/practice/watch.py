@@ -62,9 +62,11 @@ STEP_MAX_S = 30.0
 # A recording that begins at Start (the cameras') holds nothing to read at
 # first: no file until the composer has written one, then less than the two
 # keyframes a calibration needs. Until its head is this far in there is
-# nothing to do yet -- two of the composite's keyframes (one a second, from 0)
-# behind the HEAD_MARGIN_S that may not decode yet.
-READ_MIN_S = 3.0
+# nothing to do yet -- the composite's keyframes come one a second from 0, the
+# cameras' first pictures reach it 0.8-1.2 s in (timed from the session's zero,
+# taken before the captures start), so two keyframes with all four cameras by
+# 2 s, behind the HEAD_MARGIN_S that may not decode yet.
+READ_MIN_S = 4.0
 CALIB_RETRY_S = 60.0
 CALIB_TRIES = 5
 # A saved calibration is checked once the recording holds this much. The

@@ -243,6 +243,12 @@ class CameraClock:
     packets has been set, and is anchored again from the packet after the
     jump, as if new. A packet without a pts is timed by its arrival.
 
+    A smaller step is not seen as one. A clock set forward is followed at once
+    (the minimum drops); one set back by up to ``step_s`` times the camera that
+    much early until the old minimum leaves the window, then jumps by it. A
+    stall longer than ``step_s`` followed by a burst reads as a step, and the
+    burst is timed by its arrival.
+
     Times are seconds since ``t0``, on the arrivals' clock. None is below 0,
     and each is at least a microsecond after the one before.
     """
