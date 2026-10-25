@@ -112,3 +112,12 @@ export function overlayAt(overlay, t) {
   const last = overlay[overlay.length - 1];
   return Math.abs(t - last.t1) < 1e-6 ? last : null;
 }
+
+/* How many of a piece's slide dots ([t, u, v, kind], in time order on the
+ * clip's clock) the rock has reached at clip time ``t``. */
+export function dotsShown(piece, t) {
+  const dots = piece?.dots ?? [];
+  let n = 0;
+  while (n < dots.length && dots[n][0] <= t) n++;
+  return n;
+}

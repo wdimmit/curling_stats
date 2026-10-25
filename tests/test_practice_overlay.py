@@ -80,3 +80,48 @@ class TestOverlay:
     def test_no_line_and_no_broom_is_no_overlay(self):
         t = {"id": "t_1.0", "house": "top", "line": None, "broom": None}
         assert O.overlay(t, PLAN, {"left": VIEW, "right": VIEW}) is None
+
+
+def slid(release=(0.0, 33.0, 0.05), t_release_s=100.0):
+    """A throw released at 100.0 on the stream's clock, its delivery sampled
+    1 s before the release to 12 s after it (seconds from the release, y, x)."""
+    t = throw()
+    t["t_release_s"] = t_release_s
+    t["line"]["delivery"] = [[-1.0, 37.0, 0.0], [-0.5, 35.0, 0.02], [0.0, 33.0, 0.05],
+                             [0.4, 31.0, 0.08], [12.0, 20.0, 0.1]]
+    if release is not None:
+        t["line"]["release"] = list(release)
+    return t
+
+
+class TestSlideDots:
+    def test_each_dot_comes_on_the_clips_clock_as_the_rock_reaches_it(self):
+        first = O.overlay(slid(), PLAN, {"left": VIEW, "right": VIEW})[0]
+        # The first piece starts at 97.0 on the stream: 99.0 is 2.0 s in. The
+        # last sample, 112.0, is after the piece ends at 110.2.
+        assert [d[0] for d in first["dots"]] == [2.0, 2.5, 3.0, 3.4]
+        assert first["dots"][0][1:3] == pytest.approx(O.to_view(VIEW, True, 0.0, 37.0), abs=1e-4)
+
+    def test_a_dot_the_rock_passed_before_a_piece_shows_from_its_start(self):
+        """Behind the thrower the slide runs out of the bottom of the picture;
+        only the dot 20 m out is in it, and the rock passed it before 114.0."""
+        behind = O.overlay(slid(), PLAN, {"left": VIEW, "right": VIEW})[1]
+        assert [d[0] for d in behind["dots"]] == [13.2]
+        assert behind["dots"][0][1:3] == pytest.approx(O.to_view(VIEW, False, 0.1, 20.0), abs=1e-4)
+
+    def test_coloured_before_and_after_the_hand_let_go(self):
+        first = O.overlay(slid(), PLAN, {"left": VIEW, "right": VIEW})[0]
+        assert [d[3] for d in first["dots"]] == ["before", "before", "after", "after"]
+        unread = O.overlay(slid(release=None), PLAN, {"left": VIEW, "right": VIEW})[0]
+        assert {d[3] for d in unread["dots"]} == {"unknown"}
+
+    def test_dots_closer_than_five_pixels_of_the_clip_are_one(self):
+        t = slid()
+        # 51 samples 1 mm apart across, at the same depth: the first and the last.
+        t["line"]["delivery"] = [[0.01 * i, 33.0, 0.001 * i] for i in range(51)]
+        first = O.overlay(t, PLAN, {"left": VIEW, "right": VIEW})[0]
+        assert [d[0] for d in first["dots"]] == [3.0, 3.5]
+
+    def test_no_release_time_no_dots(self):
+        first = O.overlay(slid(t_release_s=None), PLAN, {"left": VIEW, "right": VIEW})[0]
+        assert first["dots"] == []

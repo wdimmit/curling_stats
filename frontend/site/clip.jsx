@@ -6,7 +6,8 @@
  * A link that has expired under an open page is asked for once more. */
 import { useEffect, useRef, useState } from "react";
 import { authedFetch } from "./auth.js";
-import { linkFresh, overlayAt } from "../core/practice.mjs";
+import { DELIVERY_COLORS } from "../core/constants.mjs";
+import { dotsShown, linkFresh, overlayAt } from "../core/practice.mjs";
 
 const LINES_KEY = "practice.lines";
 // A clip's picture, as the worker scales it (practice/clips.py CLIP_SIZE).
@@ -34,17 +35,23 @@ function saveLines(on) {
   try { localStorage.setItem(LINES_KEY, on ? "on" : "off"); } catch { /* private window */ }
 }
 
-/* The broom and lines over the playing clip, for the piece on screen
- * (practice/overlay.py): points are fractions of the picture, which the box
- * holds at the clip's own shape. Read every frame while it plays; React
- * skips the render while the piece is the same. */
+/* The broom, the lines and the slide's dots over the playing clip, for the
+ * piece on screen (practice/overlay.py): points are fractions of the picture,
+ * which the box holds at the clip's own shape; a dot shows once the clip
+ * reaches it. Read every frame while it plays; React skips the render while
+ * the piece and the dots shown are the same. */
 function ClipLines({ overlay, video }) {
   const [piece, setPiece] = useState(() => overlayAt(overlay, 0));
+  const [shown, setShown] = useState(0);
   useEffect(() => {
     const v = video.current;
     if (!v) return undefined;
     let frame = 0;
-    const update = () => setPiece(overlayAt(overlay, v.currentTime));
+    const update = () => {
+      const p = overlayAt(overlay, v.currentTime);
+      setPiece(p);
+      setShown(dotsShown(p, v.currentTime));
+    };
     const loop = () => { update(); frame = requestAnimationFrame(loop); };
     const play = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(loop); };
     const stop = () => { cancelAnimationFrame(frame); update(); };
@@ -71,6 +78,10 @@ function ClipLines({ overlay, video }) {
         <circle cx={piece.broom[0] * CLIP_W} cy={piece.broom[1] * CLIP_H} r="13" className="under" />
         <circle cx={piece.broom[0] * CLIP_W} cy={piece.broom[1] * CLIP_H} r="13" className="broom" />
       </>}
+      {(piece.dots ?? []).slice(0, shown).map(([, u, v, kind], i) => (
+        <circle key={`dot-${i}`} cx={u * CLIP_W} cy={v * CLIP_H} r="4" className="dot"
+                style={{ fill: DELIVERY_COLORS[kind] ?? DELIVERY_COLORS.unknown }} />
+      ))}
     </svg>
   );
 }
@@ -94,6 +105,7 @@ export function ClipPlayer({ src, overlay, burned = false, autoPlay = false }) {
     clipLink(src, true).then(setLink);
   };
   const toggle = () => { setLines(!lines); saveLines(!lines); };
+  const dots = overlay?.some(p => p.dots?.length);
   return (
     <>
       <div className="clip-box" key={link.url}>
@@ -110,7 +122,8 @@ export function ClipPlayer({ src, overlay, burned = false, autoPlay = false }) {
       ) : overlay && (
         <p className="clip-tools muted">
           <button onClick={toggle}>{lines ? "Hide lines" : "Show lines"}</button>
-          {lines && <> Solid: the line it was thrown on · dashed: hack to broom · ring: the broom</>}
+          {lines && <> Solid: the line it was thrown on · dashed: hack to broom · ring: the broom
+            {dots && " · dots: the rock from the hack to past the hog line"}</>}
         </p>
       )}
     </>

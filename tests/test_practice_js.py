@@ -115,3 +115,12 @@ def test_the_overlay_for_the_piece_playing():
     assert js(f'P.overlayAt({ov}, 26.7)')["t0"] == 13.2       # the last frame
     assert js(f'P.overlayAt({ov}, 40)') is None
     assert js('P.overlayAt(null, 1)') is None and js('P.overlayAt(undefined, 1)') is None
+
+
+def test_the_slide_dots_the_clip_has_reached():
+    piece = '{t0: 0, t1: 13.2, dots: [[2.0, 0.5, 0.3, "before"], [2.5, 0.5, 0.32, "after"], [3.4, 0.49, 0.36, "after"]]}'
+    assert js(f'P.dotsShown({piece}, 1.9)') == 0
+    assert js(f'P.dotsShown({piece}, 2.0)') == 1
+    assert js(f'P.dotsShown({piece}, 3.0)') == 2
+    assert js(f'P.dotsShown({piece}, 13.0)') == 3
+    assert js('P.dotsShown({t0: 0, t1: 1}, 5)') == 0 and js('P.dotsShown(null, 5)') == 0

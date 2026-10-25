@@ -26,8 +26,6 @@ this frames and marks each picture and pipes it to a second ffmpeg to encode.
 """
 
 import logging
-import math
-import numbers
 import subprocess
 import tempfile
 import threading
@@ -149,38 +147,17 @@ class Framing:
     t_out: float
 
 
+DOT_COLOURS = {"before": DOT_BEFORE, "after": DOT_AFTER, "unknown": DOT_UNKNOWN}
+
+
 def dot_colour(t: float, release_t) -> tuple:
     """A dot's colour: before the release, after it, or unknown when
     ``release_t`` is None. ``t`` and ``release_t`` are on the delivery's clock:
-    seconds from the throw's release."""
-    if release_t is None:
-        return DOT_UNKNOWN
-    return DOT_BEFORE if t < release_t else DOT_AFTER
+    seconds from the throw's release (`practice_overlay.dot_kind`)."""
+    return DOT_COLOURS[practice_overlay.dot_kind(t, release_t)]
 
 
-def _finite_number(v) -> bool:
-    """What the viewer's ``Number.isFinite`` passes: a finite number, and
-    not a string or a bool that would convert to one."""
-    return isinstance(v, numbers.Real) and not isinstance(v, bool) and math.isfinite(v)
-
-
-def _release_t(throw) -> float | None:
-    """The release's time on the delivery's clock (``line.release``), or None
-    when the throw has none or its first three entries are not finite numbers.
-    Judged as the viewer judges it (`deliveryRelease`), so a clip and the chart
-    beside it split their dots alike; entries past the third are not looked
-    at, so the record can grow."""
-    release = (throw.get("line") or {}).get("release")
-    if not isinstance(release, (list, tuple)) or len(release) < 3:
-        return None
-    if not all(_finite_number(v) for v in release[:3]):
-        return None
-    return float(release[0])
-
-
-def _delivery(throw) -> list:
-    d = (throw.get("line") or {}).get("delivery")
-    return [p for p in d if isinstance(p, (list, tuple)) and len(p) >= 3] if d else []
+_delivery = practice_overlay.delivery
 
 
 def delivery_done(throw) -> float | None:
@@ -233,20 +210,12 @@ def marks(throw, plan, sideviews) -> list:
     sheet has none."""
     lines = practice_overlay.overlay(throw, plan, sideviews) or [
         {"t0": 0.0, "t1": 0.0} for _ in plan.pieces]
-    d, rel = _delivery(throw), throw.get("t_release_s")
-    release_t = _release_t(throw)
     facing_view = CAMERA_FOR[OTHER_HOUSE[throw["house"]]]
     out = []
     for p, item in zip(plan.pieces, lines):
         view = (sideviews or {}).get(p.view)
-        dots = []
-        if d and rel is not None and getattr(view, "has_lateral", False):
-            facing = p.view == facing_view
-            for t, y, x in (q[:3] for q in d):
-                uv = practice_overlay.to_view(view, facing, x, y)
-                if uv is not None:
-                    dots.append((rel + float(t), uv[0], uv[1],
-                                 dot_colour(float(t), release_t)))
+        dots = [(t, u, v, DOT_COLOURS[kind]) for t, u, v, kind
+                in practice_overlay.slide_dots(throw, view, p.view == facing_view)]
         out.append({"thrown": item.get("thrown"), "aim": item.get("aim"),
                     "broom": item.get("broom"), "dots": dots})
     return out
@@ -255,12 +224,7 @@ def marks(throw, plan, sideviews) -> list:
 def thin(dots, sx: float, sy: float, gap: float = DOT_GAP) -> list:
     """``dots`` less those within ``gap`` px of the last one kept, at ``sx``
     by ``sy`` px per unit of the panel; the last is always kept."""
-    out = []
-    for i, dot in enumerate(dots):
-        if (not out or i == len(dots) - 1
-                or np.hypot((dot[1] - out[-1][1]) * sx, (dot[2] - out[-1][2]) * sy) >= gap):
-            out.append(dot)
-    return out
+    return practice_overlay.thin(dots, sx, sy, gap)
 
 
 WHOLE = (0.0, 0.0, 1.0, 1.0)
