@@ -1,5 +1,8 @@
 # Training experiments
 
+> A historical log, frozen on 2026-09-13. The models in use now, and why each
+> replaced the last, are in `src/curling_score/weights.py`.
+
 Four models trained overnight on 2026-09-08/09, all judged against
 `ground_truth.json` — the observations made by eye — rather than validation
 mAP. That distinction is the single most important thing on this page.

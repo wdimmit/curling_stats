@@ -1,5 +1,7 @@
 # Practice sessions: every delivery on a sheet, within seconds
 
+> **Superseded (2026-10-25)** by `specs/2026-10-24-practice-direct-feeds-design.md` for where the video comes from: practice reads the sheet's own cameras, and the YouTube practice stream is gone. It went live on 2026-10-10 (a93ab936) on the YouTube stream.
+
 **Status:** design approved section by section on 2026-10-09. The user's picks:
 - Video comes from a practice playlist: one long-running YouTube stream per sheet, ahead of the direct camera feeds.
 - Each throw reaches the page within ~15 s of the stone stopping (a new per-throw path, not the per-end build).

@@ -36,6 +36,14 @@ gcloud firestore indexes composite create --collection-group=vod_runs \
 # that lists them, or the admin list fails until the index has built.
 gcloud firestore indexes composite create --collection-group=flags \
   --field-config=field-path=status,order=ascending --field-config=field-path=created_at,order=descending
+# Member labelling (/label): a kind's open items with so many labels, and a
+# kind's items in one state, both oldest first.
+gcloud firestore indexes composite create --collection-group=label_items \
+  --field-config=field-path=kind,order=ascending --field-config=field-path=state,order=ascending \
+  --field-config=field-path=n_labels,order=ascending --field-config=field-path=created_at,order=ascending
+gcloud firestore indexes composite create --collection-group=label_items \
+  --field-config=field-path=kind,order=ascending --field-config=field-path=state,order=ascending \
+  --field-config=field-path=created_at,order=ascending
 gcloud firestore fields ttls update expires_at --collection-group=rate_limits --enable-ttl
 gcloud firestore fields ttls update expires_at --collection-group=invites --enable-ttl
 # Emailed links opened in another browser are held for ten minutes; this clears the unclaimed ones.
@@ -198,8 +206,8 @@ every job its `WORKER_ID` still holds (`/api/worker/release`), so a restart
 requeues them at once; a worker that never comes back leaves them to its lease,
 which expires after 10 minutes. Worker ids must be stable and each worker's
 own: a stand-in started with a Ryzen worker's id would take that worker's jobs
-away from it. The caches under `/data/wdd/curling-cache` make the retry a
-~2 minute warm run. `WORKER_CACHE_GB` prunes old media (never detections): kept
+away from it. The caches under `/data/wdd/curling-cache` make the retry a warm
+run, which skips the download and the detection already done. `WORKER_CACHE_GB` prunes old media (never detections): kept
 live recordings first, oldest kept first, then other media least recently read
 first. `WORKER_MIN_FREE_GB` (default 40) also lets kept live recordings go while
 the disk has less than that free -- never a download, so the harness videos are
@@ -207,13 +215,16 @@ safe from it. A live stream's recording, once the stream
 has ended, is kept in the same cache as if it were a download, so reprocessing
 the game needs no new one.
 
-Live recordings are kept for `WORKER_RECORDING_DAYS` (default 7) once their stream
+Live recordings are kept for `WORKER_RECORDING_DAYS` (default 7; the compose
+file sets 21 for both workers, as long as a shot's Clip… is offered) once their stream
 ends: a whole one as `videos/<id>.mp4`, one cut short (cap, stall, failed exit) as
 `kept/<id>.ts`, never as the video. Each has a marker, `kept/<id>.json`. A whole
 recording replays like a download. To replay a partial one, remux it into a
 scratch cache (`ffmpeg -i kept/<id>.ts -map 0:v:0 -c copy <scratch>/videos/<id>.mp4`)
-and give `scripts/replay_end.py` that `--cache-root`. `worker2`'s 40 GB budget holds
-only a few nights; raise it on a box with the room.
+and give `scripts/replay_end.py` that `--cache-root`. Three weeks of recordings
+take room: the compose file gives `worker` a 500 GB cache budget and `worker2`
+450 GB (the 2026-10-20 estimate was ~190 GB of recordings beside ~150 GB of
+downloads per worker). Lower `WORKER_RECORDING_DAYS` on a box without the room.
 
 The compose file brings up a `pot` sidecar alongside the worker, and the image
 carries the matching `bgutil-ytdlp-pot-provider` plugin. Together they mint the
@@ -221,7 +232,9 @@ proof-of-origin tokens YouTube asks for before it will serve a video; without
 them a download fails with "Sign in to confirm you're not a bot" and
 `ensure_cached` waits out 5, 10 and 20 minutes before giving up. Both are pinned
 to 2.0.0 and must move together -- they refuse each other across a major bump.
-To check the sidecar is being used rather than merely running:
+The compose file points the workers at it with `YTDLP_POT_PROVIDER`; outside
+compose, set that to any bgutil provider's URL, or set `YTDLP_COOKIES` to a
+cookies file exported from a private window (`worker.env.example`). To check the sidecar is being used rather than merely running:
 
 ```bash
 docker compose -f deploy/docker-compose.worker.yml logs pot | tail   # a line per token minted
@@ -257,7 +270,9 @@ its detection cache afterwards.
   two agree; an end is published about four minutes after the next end's
   first stone, plus the time it takes to build.
 
-Note that only the download path in `ingest/cache.py` is wired to it. Metadata
+Note that only the download path in `ingest/cache.py` and the live recorder
+(`live/manager.py` hands `YTDLP_POT_PROVIDER` and `YTDLP_COOKIES` to
+`live/recorder.py`) are wired to the token provider and cookies. Metadata
 (`ingest/source.py`), clip resolution (`harvest/clips.py`) and playlist
 enumeration (`harvest/playlist.py`) each build their own yt-dlp options with no
 token provider and no cookies, so a block that lands on one of those is not
@@ -500,6 +515,7 @@ docker compose -f deploy/docker-compose.local.yml up --build     # Firestore emu
 MEMORY_BACKENDS=1 WORKER_TOKEN=w ADMIN_TOKEN=a \
   MODEL_ID=$(python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))') \
   uvicorn curling_score.service.asgi:app --port 8080
+API_URL=http://127.0.0.1:8080 WORKER_TOKEN=w python -m curling_score.service.worker   # ...and a worker
 ```
 
 ## What the terms say

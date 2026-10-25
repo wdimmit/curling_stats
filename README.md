@@ -2,7 +2,7 @@
 
 This started as a project to make it easier for me to chart games with a 5U team I'm coaching, but has evolved into a tool that's also useful for evaluating all facets of club curing matches.
 
-The code keep up with our 5 sheets of video on an old gaming laptop and uses free-tier Google Cloud resources for backend data storage.
+The code keep up with our 5 sheets of video on a home desktop (a Ryzen 9 with two RTX 4070s) and uses free-tier Google Cloud resources for backend data storage.
 
 I expect that this software can be adapted pretty easily for any club that runs overhead house cameras and down the sheet cameras like Granite Curling Club of Seattle does. And I expect some pretty straightforward work can be done to parameterize the club-specific aspects to the majority of the code can be common.
 
@@ -27,14 +27,16 @@ The viewer lets you pick a game, an end and a rock — "3rd end, second's first
 rock" — and shows the house as it stood after that shot, the rock's line
 against the broom, and a link straight to that moment in the video.
 
-The `gpu` extra is torch and ultralytics. Every default model in `weights/` is
-a YOLO model, so to run without the extra, set `CURLING_SCORE_WEIGHTS`,
-`CURLING_SCORE_SIDE_WEIGHTS` and `CURLING_SCORE_BROOM_WEIGHTS` to `none`. You
-get the colour detector, colour-scan hog crossings and no brooms. The models
-run on a CPU, but a GPU is what makes it practical: an end takes about two
-minutes on the hosted worker's RTX 3080. If YouTube answers "Sign in to confirm
-you're not a bot", point `YTDLP_POT_PROVIDER` at a bgutil token provider, or
-`YTDLP_COOKIES` at a cookies file (see [`deploy/README.md`](deploy/README.md#the-home-worker)).
+The `gpu` extra is torch and ultralytics, which every default model in
+`weights/` needs. To run without the extra, set `CURLING_SCORE_WEIGHTS`,
+`CURLING_SCORE_SIDE_WEIGHTS`, `CURLING_SCORE_BROOM_WEIGHTS`,
+`CURLING_SCORE_SPIN_WEIGHTS` and `CURLING_SCORE_RELEASE_WEIGHTS` to `none`. You
+get the colour detector, colour-scan hog crossings, and no brooms, spin or
+release reads. The models run on a CPU, but a GPU is what makes it practical: a
+live end took 60-70 s to build on the hosted worker after the 2026-10-12
+performance pass, and the build is bound by the CPU more than the GPU. If
+YouTube refuses a download, see
+[`deploy/README.md`](deploy/README.md#the-home-worker).
 
 ## How it works
 
@@ -119,9 +121,9 @@ holds sixteen rocks, eight a team, thrown strictly in turn (`game/fit.py`).
 the hog line on about 40% of deliveries, because it looks straight down at a
 stone with the thrower and sweepers standing over it. The camera at the far end
 is level with the ice, so the sweepers stand beside the stone rather than over
-it. A detector trained for that view (`ds13c`) times the throwing hog crossing.
-Its predecessor, against the colour scan on one whole game, took published
-splits from 21.2% to 77.9%. On 27 hand-marked crossings it timed 25 against 9,
+it. A detector trained for that view (`weights.SIDE_NAME`) times the throwing
+hog crossing. An earlier version (ds13b), against the colour scan on one whole
+game, took published splits from 21.2% to 77.9%. On 27 hand-marked crossings it timed 25 against 9,
 with a median error of 0.018 s. The same camera sees the skip's broom and the
 rock's line past the hog line.
 
@@ -144,8 +146,11 @@ slots from ten videos). It replaced two brightness thresholds, which a narrow
 "1" could slip past, losing that board's end-1 score. Held out a video at a
 time, it misses 11 cards and calls 12 blanks cards, against the thresholds' 55
 and 20. The digit is decoded by another small classifier, which refuses any
-call below a 0.9999 class probability. At that bar it made zero wrong reads
-and accepted none of 19 blank-slot frames. A refused digit invalidates the
+call below a 0.9999 class probability. Retrained on 2026-10-23 with this
+season's cards, and held out a league night at a time, it reads 96.3-97.2% of
+card frames at that bar, with one or two frames read wrong. A digit class
+cannot refuse something that is not a digit, so it also gives a digit to 11-16
+of 152 frames of things that are not cards. A refused digit invalidates the
 whole read rather than being guessed, and the sampler steps back to an earlier
 moment and tries again.
 
@@ -185,16 +190,18 @@ radius 0.142).
 
 ## Models
 
-| Job                                                       | Default                                           | Override                      | Set to `none` for   |
-| --------------------------------------------------------- | ------------------------------------------------- | ----------------------------- | ------------------- |
-| Stones in the overhead panels                             | `weights/ds17b.pt`                                | `CURLING_SCORE_WEIGHTS`       | the colour detector |
-| Stones crossing the throwing hog line, in the long camera | `weights/ds13c.pt`                                | `CURLING_SCORE_SIDE_WEIGHTS`  | the colour scan     |
-| The skip's broom head, in the long camera                 | `weights/broom2.pt`                               | `CURLING_SCORE_BROOM_WEIGHTS` | no brooms           |
-| A stone's handle, for its spin, in the long camera        | `weights/spin1.pt`                                | `CURLING_SCORE_SPIN_WEIGHTS`  | no spin             |
-| Card in a scoreboard slot, and its digit                  | `game/slot_weights.npz`, `game/digit_weights.npz` | —                             | —                   |
+| Job                                                         | Default                                           | Override                        | Set to `none` for   |
+| ----------------------------------------------------------- | ------------------------------------------------- | ------------------------------- | ------------------- |
+| Stones in the overhead panels                               | `weights/ds17b.pt`                                | `CURLING_SCORE_WEIGHTS`         | the colour detector |
+| Stones crossing the throwing hog line, in the long camera   | `weights/ds13e.pt`                                | `CURLING_SCORE_SIDE_WEIGHTS`    | the colour scan     |
+| The skip's broom head, in the long camera                   | `weights/broom4.pt`                               | `CURLING_SCORE_BROOM_WEIGHTS`   | no brooms           |
+| A stone's handle, for its spin, in the long camera          | `weights/spin1.pt`                                | `CURLING_SCORE_SPIN_WEIGHTS`    | no spin             |
+| The thrower's hand on or off the handle, in the long camera | `weights/release1.pt`                             | `CURLING_SCORE_RELEASE_WEIGHTS` | no release reads    |
+| Card in a scoreboard slot, and its digit                    | `game/slot_weights.npz`, `game/digit_weights.npz` | —                               | —                   |
 
-The two board models run in numpy, so reading the board needs no `gpu` extra.
-Each YOLO model's name and content hash go into the timeline's
+The defaults are named in `src/curling_score/weights.py`. The two board models
+run in numpy, so reading the board needs no `gpu` extra.
+Each `weights/` model's name and content hash go into the timeline's
 `processing_version`. Changing a model therefore invalidates cached timelines
 rather than quietly mixing them. A path that is set but missing is an error.
 Why each model replaced the last, with its numbers, is in `weights.py` and the
@@ -283,7 +290,7 @@ loads Firebase sign-in when it is opened, if accounts are on.
 ## Tests
 
 ```bash
-./.venv/bin/pytest                 # everything, ~3,000 tests
+./.venv/bin/pytest                 # everything, ~5,000 tests
 ./.venv/bin/pytest -m "not slow"   # skips tests that read the full cached VOD
 ```
 
@@ -328,8 +335,9 @@ doubles. Hand observations go in `validation/ground_truth.json` (see
 
 - **The score is only as complete as the board.** The club posts late, and the
   last end's card often goes up after the stream has ended, so a game's final
-  is often withheld. The digit model has seen real cards only for 1–7, and a
-  7 on just one card. It knows 8 and 9 only from the board's printed strip. An
+  is often withheld. Cards for the late ends are rare: of the 1,157 cards
+  this season added to the digit model's training (2026-10-23), 113 frames
+  show a 7 and 3 an 8. It knows 9 only from the board's printed strip. An
   extra end's "10" is two glyphs in one card. The reader refuses it, so every
   end from 10 on comes back unread. Detection's own
   score is still computed for every end (`detected_score`, and `detected` at
@@ -378,9 +386,9 @@ doubles. Hand observations go in `validation/ground_truth.json` (see
   rock can be taken for it.
 - **A night with one overhead camera fails.** The layout expects two panels. The
   club streams one on roughly 5% of the season.
-- **A live stream has to be caught in its first hour.** After that, a dropped
-  recorder or a worker restart fails the live job, and the game waits for the
-  archived video.
+- **A live stream has to be caught in its first hour.** A stream noticed
+  later, or a recording lost after that hour, waits for the archived video (see
+  [`deploy/README.md`](deploy/README.md#following-live-games)).
 
 Corrections go in `out/overrides.json`, keyed `"<game>.<end>.<shot>"`, or
 `"<game>.<end>"` for an end-level override such as a doubles role swap. They are
@@ -508,13 +516,23 @@ row per team per game.
 Leave `FIREBASE_PROJECT` unset and there are no accounts: no sign-in button,
 and the service behaves exactly as it did before any of it was added: anyone
 charts, and a chart's link is all it takes to change it.
-`DOUBLES_ENABLED` and `LIVE_ENABLED` switch on doubles submissions and live
-jobs. Both default to off.
+The switches below default to off and are set in `deploy/cloudrun.yaml`:
 
-```bash
-# try it locally. The API must expect the worker's model, or every claim is refused
-MEMORY_BACKENDS=1 WORKER_TOKEN=w ADMIN_TOKEN=a \
-  MODEL_ID=$(python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))') \
-  uvicorn curling_score.service.asgi:app
-API_URL=http://127.0.0.1:8000 WORKER_TOKEN=w python -m curling_score.service.worker      # …and a worker
-```
+- `DOUBLES_ENABLED` and `LIVE_ENABLED` switch on doubles submissions and live
+  jobs.
+- `REQUIRE_APPROVAL` holds a pasted link or a playlist's new game as
+  `pending_approval` until an admin approves it, instead of queueing it.
+- `PRACTICE_ENABLED` opens practice sessions at `/practice/sheet/N`, read from
+  the sheet's own cameras by a worker on the club's network
+  ([deploy](deploy/README.md#practice-on-the-clubs-cameras)).
+- `GAME_CLIPS_ENABLED` cuts clips of the rocks a person says they threw, shown
+  on My shots at `/shots`, by the worker box's `clips` service
+  ([deploy](deploy/README.md#two-workers-and-the-clips-worker-on-one-box)).
+- `EMAIL_LINK_SIGNIN` offers "Email me a link" beside Google sign-in; turning
+  it on has an order to it ([deploy](deploy/README.md#first-time-setup-once)).
+
+Members also label rock boxes and release marks for training at `/label`
+(`docs/superpowers/specs/2026-10-22-member-labelling-design.md`).
+
+To try it locally, in memory, see "Local, no cloud" in
+[`deploy/README.md`](deploy/README.md#local-no-cloud).

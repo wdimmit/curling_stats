@@ -1,7 +1,19 @@
 # ds13 — side-view frames, for a detector that can time a hog-line crossing
 
-Work in progress. This directory currently holds the **calibration census**
-only; the frames themselves are not extracted yet.
+The frames were extracted and labelled in waves, and five side-view detectors
+have shipped from them (`weights/ds13a.pt` to `ds13e.pt`):
+
+| model | date | what it added |
+|---|---|---|
+| ds13a | 2026-09-15 | wave 1: 229 frames from nine VODs |
+| ds13b | 2026-09-16 | wave 2: 485 frames in all, from 24 videos |
+| ds13c | 2026-09-29 | the hack wave, between the hack and the tee (`manifest-hack1.json`) |
+| ds13d | 2026-10-12 | the broom wave, a broom, shoe or hand touching the rock (`manifest-broom1.json`) |
+| ds13e | 2026-10-13 | the kink wave, where delivery paths kinked (`manifest-kink1.json`) |
+
+The labels are in `edits/`. Which one is in use, and why each replaced the
+last, is in `src/curling_score/weights.py` (`SIDE_NAME`). The rest of this
+page is the **calibration census** that came first.
 
 ## What the calibration found
 

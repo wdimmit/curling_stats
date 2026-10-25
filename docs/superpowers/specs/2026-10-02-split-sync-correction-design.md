@@ -1,5 +1,7 @@
 # Correcting splits for the composite's camera offsets
 
+> **Parked.** Not built; splits are still uncorrected for camera offsets (README, Known limitations).
+
 **Status:** design approved in chat on 2026-10-02, in six sections. Nothing is
 built. The measurement it rests on was a one-off study of the 2026-10-01
 Thursday Mens games. Its scripts and per-end tables are in

@@ -3,11 +3,13 @@
 `ground_truth.json` holds observations made by eye against the video, plus the
 wall scoreboard as read from the stream.
 
-It is small, and it is the most valuable data in the project. Every automated
-measure of recall so far has been circular: the YOLO model was trained on
-labels written by the classical detector, so a benchmark against those labels
-measures agreement rather than accuracy. Breaking that loop needs observations
-made by a person, and each one here has already paid for itself:
+It is small, and it is the most valuable data in the project. The early
+automated measures of recall were circular: the first YOLO models were trained
+on labels written by the classical detector, so a benchmark against those
+labels measured agreement rather than accuracy. Since ds11a the detectors train
+on frames a person reviewed (`datasets/ds11/README.md`), but observations made
+by eye against the video are still the check nothing in the training loop
+wrote, and each one here has already paid for itself:
 
 - The red at 179 s exposed the collision hand-off — the tracker follows the
   struck stone, because a stone stopping dead looks like a track dying.

@@ -11,6 +11,17 @@ alternation alone identified end 1's phantom as the candidate sitting 2.2 s
 before a red, which no two deliveries ever are. It took impossible ends from
 5/8 and 5/6 to none in either game.
 
+Also resolved and removed (2026-10-25):
+
+- **Blank ends.** `rules.score_end` returns 0-0 when no stone is in the house,
+  and the game's score is the wall board's, not the detected one.
+- **The long camera for throw reinforcement.** The side-view detector
+  (`weights.SIDE_NAME`) times the throwing hog crossing, `game/sidereleases.py`
+  recovers releases and rocks the overhead view lost, and `release1` reads the
+  hand coming off the handle.
+- **Cross-sheet validation of the trained model.** Every overhead model since
+  ds11a trains on reviewed frames from all five sheets (`datasets/ds11/` on).
+
 ## Bisect the video instead of scanning it
 
 Deliveries are *events with distinct before/after states* — the house has one
@@ -44,21 +55,6 @@ Things that will complicate it, all observed in this footage:
 
 Worth doing once delivery recall is good enough that the events being searched
 for are actually found.
-
-## Long camera for throw reinforcement
-
-Both wide cameras see the thrower and the stone before it reaches the overhead
-panel. Every miss diagnosed so far has been a stone the overhead panel *did*
-see, so this is not the bottleneck yet — but it is the only signal independent
-of the overhead view, and it would settle the cases where a delivery's entry is
-never tracked at all (the red at t=183 in game 1 end 1 was first picked up at
-y = 2.62, well inside the panel, so its entry was missed even though the shot
-itself was recovered another way).
-
-Needs its own calibration: the long views are oblique, not near-nadir, so the
-homography work in `geometry/calibrate.py` does not transfer. The cheap version
-needs no metres at all — just "a stone-coloured blob crossed the throwing end's
-hog line at time t", which is a tripwire in pixel space.
 
 ## The painted line near the top of a panel *is* the hog line
 
@@ -144,8 +140,9 @@ when each stone was actually visible, rather than from one window at the worst
 possible moment. The delivery records already carry rest positions and
 `Delivery.reason` says how well each was seen.
 
-This also subsumes the blank-end problem below: a house state can be empty,
-whereas a window read during clearing is indistinguishable from one.
+A house state can also be empty, whereas a window read during clearing is
+indistinguishable from one. (The score itself now comes from the wall board,
+so this matters for `detected_score` and the houses drawn, not for the score.)
 
 ## Label filters can delete the very thing they are meant to help find
 
@@ -161,31 +158,6 @@ blind spots and then writes them into the training data**, so the next model
 inherits them too. Any such filter needs a guard that asks whether the region
 it is about to clean is one the pipeline understands — for quiet spans that is
 "is this gap short enough to be a single gap between stones".
-
-## Blank ends — now the largest single error source
-
-Validated against the wall board as a *multiset* of end scores, which sidesteps
-the board's lag entirely (it is posted several ends late, so which end a card
-belongs to is unreliable, but what was scored is not):
-
-| | game 1 | game 2 |
-|---|---|---|
-| end scores matching the board | 6/8 | 4/6 |
-| unexplained on the board | `(0,0)`, `(0,0)` | `(0,0)`, `(0,1)` |
-| final computed vs board | 5-4 vs **3-3** | 8-3 vs **4-4** |
-
-Both of game 1's misses are blank ends: every scored end it reports is a score
-the club also recorded, and its whole error is inventing a score for two ends
-that scored nothing. Nothing in the pipeline can currently return "blank" —
-`rules.score_end` returns whatever is nearest the tee, and the wall board hangs
-no card for a blank end so it cannot be read from there either.
-
-An end is blank when no stone finishes within `IN_HOUSE_MAX_D_M` of the tee, so
-the rule itself is easy. What makes it hard is being sure the house was read at
-the right moment: a blank end looks exactly like an end read after the players
-have cleared, which is the failure mode that produced four empty-house scorings
-before `timeline.build_end` learned to walk back to the last shot that left
-stones.
 
 ## Missing deliveries come in pairs
 
@@ -301,48 +273,33 @@ gate needs to drop.
 
 ## More training data for the card-digit reader
 
-The shipped card-digit reader is a small conv net trained on 2052 self-labelled
-glyphs from the board's printed 1-14 strip plus **54 hand-labelled real cards**
-from 10 videos across all five sheets. It clears its gate — out-of-sample,
-leave-one-video-out, per frame, it reads 88-97% of cards at the threshold where
-it never reads one wrong — but 54 distinct cards is a thin foundation and three
-specific gaps follow from it.
+The shipped card-digit reader is a small conv net. Until 2026-10-23 it was
+trained on 2052 self-labelled glyphs from the board's printed 1-14 strip plus
+**54 hand-labelled real cards** from 10 videos. The retrain of 2026-10-23
+(b592f7a3) added `board-cards-2627`: 1,157 of this season's cards from the
+worker cache, 13,196 digit rows. Held out a league night at a time
+(`scripts/cards2627/gate2627.py`, 5 folds x 2 seeds) it reads 96.3-97.2% of
+frames at `MIN_CONFIDENCE`, against 91.1% for the old weights, with 1-2 frames read wrong.
+Two gaps remain.
 
-**Digits 8 and 9 have never been seen, and digit 7 exists exactly once.** This is
-structural, not a sampling failure: only one team scores per end, so a video
-yields *at most one* card per digit, and "cards of digit d" is precisely "videos
-whose game ran d scoring ends". Collecting more ordinary league VODs does not
-raise the ceiling; only longer games do. Measured across the ten collected
-videos: digits 1-4 gave 10 distinct cards each, digit 5 gave 9, digit 6 gave 4,
-digit 7 gave 1.
+**Digits 8 and 9 are still all but unseen.** This is structural, not a sampling
+failure: only one team scores per end, so a video yields *at most one* card per
+digit, and "cards of digit d" is precisely "videos whose game ran d scoring
+ends". Collecting more ordinary league VODs barely raises the ceiling; only
+longer games do. The 2026-27 set has 113 rows of a 7 and 3 of an 8; 9 is known
+only from the printed strip.
 
 **A purpose-shot video would break that ceiling outright.** A single clip panning
 a board with every card hung in a range of slots — and ideally in both the yellow
 and red rows, at a few different lighting levels — would supply every digit many
-times over in minutes, including the 7s, 8s and 9s that league play almost never
+times over in minutes, including the 8s and 9s that league play almost never
 produces. That is worth far more per minute of footage than any number of game
 recordings, and the user has offered to shoot one. It is the single highest-value
 input this model could receive.
 
-**The validation set is thinner than the training set.** The independent check is
-11 cards from one video of a different season, about two per digit. It is a smoke
-test, not a gate, and it has already been mistaken for one once — an earlier
-"4 of 11" result drove a whole data-collection round before the noise floor was
-measured and found to span most of the metric's range.
-
-**Each sheet contributes only two videos**, so a held-out video always has its
-sheet-mate in training. A leave-one-*sheet*-out evaluation would be a harder and
-more honest test, and the true accuracy on a board the model has never seen is
-probably below the leave-one-video-out figure.
-
-**There is now no held-out labelled data at all.** Promoting the conv reader
-trained it on everything available, including the 11 reference cards that had
-been the independent cross-season check. That is the right recipe for a shipped
-artefact — the folds existed to measure, and the model that ships should see the
-lot — but it means the test asserting those 11 cards read correctly is now a
-smoke test that the artefact loads and works, not evidence about accuracy. The
-honest generalisation figure remains the leave-one-video-out measurement: 93.9-97.0%
-coverage at the threshold where no digit is read wrong.
+**The shipped weights have no held-out data.** They are trained on everything,
+which is the right recipe for a shipped artefact; the generalisation figure is
+the by-night fold measurement above, not the tests that read known cards.
 
 So the focused clip should be **split before it is used**, not after: hold back a
 portion — ideally a different lighting level or a different board — as a genuine
@@ -424,6 +381,3 @@ implementation and its tests remain in git history for whoever picks this up.
   computed (`hammer_expected` per end, `hammer_consistent` per game, in
   `timeline.build_game`), but only checked against the read, never used in
   place of it.
-- **Cross-sheet validation of the trained model.** It has only been trained and
-  evaluated on sheet 2. The other four sheets have harvested frames but no
-  labels.
