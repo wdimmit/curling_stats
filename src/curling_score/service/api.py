@@ -3183,11 +3183,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                               version=body.get("version"), model_id=body.get("model_id"),
                               gpu=body.get("gpu"), current_job_id=job.id))
         # A practice watch is recorded from the sheet's cameras, from its claim
-        # on; one handed out again resumes its session (practice_resume). A
-        # job left from when practice read YouTube says no source, and the
-        # worker refuses it.
+        # on; one handed out again resumes its session (practice_resume).
         practice_fields = {}
-        if job.kind == "practice" and run.source == practice.CAMERAS:
+        if job.kind == "practice":
             practice_fields = {"source": practice.CAMERAS}
             resume = practice_resume(job)
             if resume is not None:
@@ -4051,8 +4049,6 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                         raise ValueError(f"{key} is at least 60 seconds")
             if "live_poll_s" in fields and fields["live_poll_s"] is None:
                 raise ValueError("live_poll_s cannot be empty")
-            if "practice" in fields and not isinstance(fields["practice"], bool):
-                raise ValueError("practice is true or false")
         except (ValueError, TypeError) as e:
             raise HTTPException(422, str(e)) from e
         return fields
@@ -4065,8 +4061,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if any(p.playlist_id == pid for p in repo.list_playlists()):
             raise HTTPException(409, f"playlist {pid} is already watched")
         body["label"] = str(body.get("label") or "").strip() or pid
-        fields = playlist_fields(body, {"label", "schedule", "live_poll_s", "idle_poll_s",
-                                        "practice"})
+        fields = playlist_fields(body, {"label", "schedule", "live_poll_s", "idle_poll_s"})
         pl = playlists.new_watched_playlist(pid, fields.pop("label"), now())
         for key, value in fields.items():
             setattr(pl, key, value)
@@ -4082,8 +4077,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if repo.get_playlist(pid) is None:
             raise HTTPException(404, "no such playlist")
         fields = playlist_fields(await request.json(),
-                                 {"label", "enabled", "schedule", "live_poll_s", "idle_poll_s",
-                                  "practice"})
+                                 {"label", "enabled", "schedule", "live_poll_s",
+                                  "idle_poll_s"})
         if fields.get("enabled") is True:
             fields.update(failures=0, last_error=None)
         pl = repo.update_playlist(pid, **fields)

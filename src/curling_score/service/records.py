@@ -373,9 +373,6 @@ class WatchedPlaylist:
     schedule: list = field(default_factory=list)
     live_poll_s: float = 180.0
     idle_poll_s: float | None = 3600.0
-    # A sheet's practice streams, not league games: never polled for games.
-    # (Practice sessions read the club's cameras, not these.)
-    practice: bool = False
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

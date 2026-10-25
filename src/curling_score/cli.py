@@ -632,9 +632,9 @@ def _live_replay(args) -> int:
 
 
 def _practice_replay(args) -> int:
-    """A cached video watched as a practice session: the stream picked up a
-    lookback before Start, each throw reported as it comes to rest, and how
-    long after that each one was published."""
+    """A cached video watched as a practice session from ``--from`` (Start):
+    each throw reported as it comes to rest, and how long after that each one
+    was published."""
     from curling_score.live import replay, session as live
     from curling_score.practice import harness
     from curling_score.practice.pipeline import PracticePipeline
@@ -648,10 +648,8 @@ def _practice_replay(args) -> int:
         weights, args.imgsz, args.device, skip_longview=args.no_longview,
         skip_line=args.no_line, progress=print)
     release_model = analyze_mod.load_release_model(line_model, print)
-    start = max(0.0, args.from_s - args.lookback)
     rec = replay.ReplayRecording(args.video, out / "recording.ts", speed=args.speed,
-                                 start_s=start, end_s=args.to_s,
-                                 burst_s=args.from_s - start).start()
+                                 start_s=args.from_s, end_s=args.to_s).start()
     heads = harness.HeadClock().start(rec)
     sink = harness.Sink(out, heads)
     clipper = None
@@ -664,7 +662,7 @@ def _practice_replay(args) -> int:
                                   line=line_model is not None, progress=print),
         models=live.Models(detector=detector, broom_model=broom_model,
                            line_model=line_model, release_model=release_model),
-        since_s=args.from_s - rec.t0_s, t0_s=rec.t0_s, publish=sink.publish,
+        t0_s=rec.t0_s, publish=sink.publish,
         clipper=clipper, progress=print)
     try:
         harness.run(watch, recording=rec)
@@ -828,10 +826,8 @@ def main(argv=None) -> int:
                    help="where the session starts (Start), in seconds into the video")
     p.add_argument("--to", dest="to_s", type=float, required=True,
                    help="where the replay stops, in seconds into the video")
-    p.add_argument("--lookback", type=float, default=1200.0,
-                   help="footage before Start to calibrate from, written at once (default: 1200)")
     p.add_argument("--speed", type=float, default=1.0,
-                   help="playback speed against real time after the lookback (default: 1)")
+                   help="playback speed against real time (default: 1)")
     p.add_argument("--out", default="out/practice/run", help="output directory")
     p.add_argument("--weights", default=_default_weights(),
                    help="a trained YOLO model to detect with, or 'none'")

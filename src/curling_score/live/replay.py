@@ -3,9 +3,7 @@
 It writes the same growing MPEG-TS a live recorder does, at ``speed`` times
 real time, so everything downstream -- the session, the worker's lane, the
 five-stream rehearsal -- can be run against footage whose right answer is
-already known, without touching YouTube. A replay can also begin mid-video,
-with its first ``burst_s`` written at once: a stream that has been running for
-hours, picked up some minutes back in its DVR window, as a practice watch is.
+already known, without touching YouTube. A replay can also begin mid-video.
 """
 
 import subprocess
@@ -49,11 +47,11 @@ class ReplayRecording:
     """
 
     def __init__(self, source, path, speed: float = 1.0, *, start_s: float = 0.0,
-                 end_s: float | None = None, burst_s: float = 0.0):
+                 end_s: float | None = None):
         self.source = Path(source)
         self.path = Path(path)
         self.speed = float(speed)
-        self.start_s, self.end_s, self.burst_s = float(start_s), end_s, float(burst_s)
+        self.start_s, self.end_s = float(start_s), end_s
         # Where the recording begins on the source's clock, and where ffmpeg
         # was asked to seek to; set by start().
         self.t0_s = 0.0
@@ -68,8 +66,6 @@ class ReplayRecording:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
                "-readrate", str(self.speed)]
-        if self.burst_s > 0:
-            cmd += ["-readrate_initial_burst", str(self.burst_s)]
         if self.start_s > 0:
             # A stream copy can only begin at a keyframe: the one at or before.
             # Aimed exactly at a keyframe whose frames are reordered, ffmpeg
@@ -114,9 +110,9 @@ class ReplayRecording:
         return self._finished and self._proc.returncode == 0
 
     def failed(self) -> bool:
-        """ffmpeg gave up: a source it could not read, an option it lacks
-        (-readrate_initial_burst needs ffmpeg 6). Without this a replay that
-        never began looks exactly like one still waiting for its first bytes."""
+        """ffmpeg gave up: a source it could not read, an option it lacks.
+        Without this a replay that never began looks exactly like one still
+        waiting for its first bytes."""
         return (not self._stopped and self._proc is not None
                 and self._proc.poll() is not None and self._proc.returncode != 0)
 

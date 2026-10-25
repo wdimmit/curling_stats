@@ -20,24 +20,15 @@ from tests.test_service_api import ADMIN, CLUB, T0, WORKER, Clock
 
 SARAH = {"Authorization": "Bearer tok-sarah"}
 ALEX = {"Authorization": "Bearer tok-alex"}
-# A sheet's YouTube practice streams: never read for practice now, and never
-# charted as games (the poller skips a practice playlist).
-S3, S4, UP = "qJhDHMMtHsE", "dXYqdopieoU", "IqiFhMEOL4s"
+# A sheet's YouTube practice stream, from when practice read them.
+S3 = "qJhDHMMtHsE"
 CLUB_IP = "203.0.113.9"
 
 
 def _world(practice=True, max_camera_watches=None):
     clock = Clock()
     repo, store = MemoryRepo(), MemoryStore()
-    yt = FakeYouTube(playlists={"PLErN0WbLUyFI": [S3, S4, UP], "PLleague": [S4]})
-    yt.add(VideoMeta(S3, "10/10 - Sheet 3 - Competitive Practice Ice 2026-2027", CLUB, None,
-                     "live", T0))
-    yt.add(VideoMeta(S4, "10/10 - Sheet 4 - Competitive Practice Ice 2026-2027", CLUB, None,
-                     "live", T0))
-    yt.add(VideoMeta(UP, "10/10 - Sheet 1 - Competitive Practice Ice 2026-2027", CLUB, None,
-                     "upcoming", T0))
-    repo.put_playlist(WatchedPlaylist(id="p_prac", playlist_id="PLErN0WbLUyFI",
-                                      label="Practice", created_at=T0, practice=True))
+    yt = FakeYouTube()
     auth = FakeVerifier()
     auth.add("tok-sarah", "uid-sarah", "sarah@example.org", "Sarah")
     auth.add("tok-alex", "uid-alex", "alex@example.org", "Alex")
@@ -93,7 +84,7 @@ def doc(throws, wall_t0, status="watching"):
     """A camera watch's document: its recording's t=0 is ``wall_t0``, the
     Start that made the watch."""
     return {"practice": 1, "status": status, "t0_s": 0.0, "wall_t0": wall_t0, "busy_s": 3.0,
-            "since_s": 0.0, "recorded_s": 1500.0, "throws": throws}
+            "recorded_s": 1500.0, "throws": throws}
 
 
 def throw(t, id=None, rest=True):
@@ -144,8 +135,6 @@ def league_run(w, status="live", sheet=2, age_s=60.0, kind="live"):
 
 class TestStarting:
     def test_start_queues_a_watch_on_the_sheets_cameras(self, w):
-        # Sheet 1's YouTube practice stream is "upcoming" and sheet 5 has none:
-        # neither matters.
         for sheet in (1, 5):
             r = start(w, sheet=sheet)
             assert r.status_code == 201, r.text
@@ -267,25 +256,6 @@ class TestClaiming:
         w["repo"].put_job(Job(id="j_league", run_id="r_league_2_queued", state="queued",
                               created_at=T0, run_after=T0, kind="live"))
         assert claim(w, cameras=False)["id"] == "j_league"
-
-    def test_a_youtube_practice_job_left_over_goes_only_to_a_camera_worker(self, w):
-        # Queued before practice moved to the cameras, with a session still on
-        # it. A camera worker gets it with no source, and refuses it
-        # (live/manager.py); nothing else may claim it at all.
-        w["repo"].put_run(Run(id="r_old", video_id=S3, processing_version="v",
-                              status="queued", kind="practice", sheet=3, created_at=T0))
-        w["repo"].put_job(Job(id="j_old", run_id="r_old", state="queued", created_at=T0,
-                              run_after=T0, kind="practice"))
-        w["repo"].put_watch(PracticeWatch(id="pw_old", sheet=3, video_id=S3, run_id="r_old",
-                                          job_id="j_old", created_at=T0))
-        w["repo"].put_session(PracticeSession(id="ps_old", user_id="uid-sarah", sheet=3,
-                                              watch_id="pw_old", started_at=T0))
-        r = w["client"].post("/api/worker/claim", headers=WORKER,
-                             json=claim_body(cameras=False))
-        assert r.status_code == 204
-        job = claim(w)
-        assert job["id"] == "j_old" and "source" not in job
-
 
 class TestTheCap:
     def test_the_cameras_take_two_sheets_at_once_by_default(self, w):
@@ -643,13 +613,6 @@ class TestThePrivacyPage:
 
 
 class TestSettings:
-    def test_practice_source_is_no_longer_read(self, monkeypatch):
-        # Practice reads the cameras, whatever an old deploy still sets.
-        for value in ("youtube", "camera"):
-            monkeypatch.setenv("PRACTICE_SOURCE", value)
-            got = Settings.from_env()
-            assert not hasattr(got, "practice_source")
-
     def test_the_clubs_addresses_come_from_the_environment(self, monkeypatch):
         monkeypatch.delenv("PRACTICE_CLUB_IPS", raising=False)
         assert Settings.from_env().club_ips == frozenset()
@@ -869,14 +832,6 @@ class TestKeptApart:
         games = w["client"].get("/api/games").json()
         assert all(g.get("video_id") != job["video_id"] for g in games.get("games", []))
 
-    def test_the_league_poller_leaves_a_practice_playlist_alone(self, w):
-        # A sheet's practice streams are never charted as league games.
-        from curling_score.service import playlists
-
-        got = playlists.poll(w["repo"], w["yt"], processing_version="v", now=T0,
-                             force=True)
-        assert got["live"] == [] and got["created"] == []
-
     def test_the_pages(self, w):
         c = w["client"]
         for path in ("/practice/sheet/3", "/practice", "/practice/session/ps_abc"):
@@ -886,13 +841,6 @@ class TestKeptApart:
         c = _world(practice=False)["client"]
         for path in ("/practice/sheet/3", "/practice", "/practice/session/ps_abc"):
             assert c.get(path).status_code == 404, path
-
-    def test_an_admin_can_mark_a_playlist_as_practice(self, w):
-        r = w["client"].post("/api/admin/playlists", headers={"Authorization": "Bearer admin-secret"},
-                             json={"playlist_id": "PLnew", "label": "More practice", "practice": True})
-        assert r.status_code == 201, r.text
-        assert next(p for p in w["repo"].list_playlists() if p.playlist_id == "PLnew").practice
-
 
 def test_the_practice_document_has_a_key_of_its_own():
     assert practice_key("vid", "r_1") == "runs/vid/r_1/practice.json"

@@ -104,8 +104,7 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
     n_queued = 0
 
     for pl in repo.list_playlists():
-        # A practice playlist holds a sheet's practice streams, not games: never charted.
-        if not pl.enabled or pl.practice or not (force or due(pl, now, tz)):
+        if not pl.enabled or not (force or due(pl, now, tz)):
             continue
         try:
             ids = youtube.playlist_video_ids(pl.playlist_id)

@@ -101,12 +101,6 @@ def practice_job(n, **extra):
             "attempt": 1, **extra}
 
 
-def youtube_practice_job(n):
-    """A practice job from when practice read a sheet's YouTube stream: no source."""
-    return {"id": f"y_{n}", "run_id": f"yr_{n}", "video_id": f"pracVid000{n}",
-            "kind": "practice", "sheet": n, "title": f"Sheet {n} practice"}
-
-
 class TestPracticeInTheManager:
     def test_it_claims_the_kinds_it_was_given(self):
         api = Api([practice_job(1)])
@@ -132,24 +126,6 @@ class TestPracticeInTheManager:
         m.poll_once()
         assert m.streams()[0].stop_requested
 
-    def test_a_practice_job_not_on_the_cameras_fails_and_youtube_is_not_asked(
-            self, monkeypatch, tmp_path):
-        # Practice reads the club's cameras; a job from when it read a sheet's
-        # YouTube stream is refused, for good, and nothing is recorded.
-        from curling_score.live import recorder
-
-        made = []
-        monkeypatch.setattr(recorder, "YtDlpRecorder",
-                            lambda vid, d, **kw: made.append(vid) or Recorder(None))
-        api = Api([youtube_practice_job(1)])
-        m = manager_mod.LiveManager(api, "ryzen", model_id="m", gpu=None, root=tmp_path,
-                                    kinds=("live", "practice"), cameras=True)
-        m.poll_once()
-        assert m.streams() == [] and made == []
-        ((job_id, kind, error),) = api.failed
-        assert (job_id, kind) == ("y_1", "permanent")
-        assert "practice reads the club's cameras" in error
-
     def test_a_league_game_is_still_recorded_from_youtube(self, monkeypatch, tmp_path):
         from curling_score.live import recorder
 
@@ -158,7 +134,7 @@ class TestPracticeInTheManager:
                             lambda vid, d, **kw: made.update(vid=vid, **kw) or "rec")
         m = manager_mod.LiveManager(Api(), "home", model_id="m", gpu=None, root=tmp_path)
         assert m._recorder(live_job(1)) == "rec"
-        assert made["vid"] == "liveVid0001" and "lookback_s" not in made
+        assert made["vid"] == "liveVid0001"
 
     def test_camera_job_gets_camera_recorder(self, monkeypatch, tmp_path):
         # The sheet's own cameras, never YouTube, recorded where finish() clears:
@@ -895,7 +871,7 @@ class TestPracticeInTheLane:
         live, practice = make(stream(1), lambda d: None), make(ps, lambda d: None)
         assert isinstance(practice, PracticeWatch)
         assert practice.rec is ps.recorder
-        assert practice.since_s == 0.0 and practice.models is live.models
+        assert practice.models is live.models
         assert practice.wall_t0 is not None
 
 
@@ -927,7 +903,7 @@ class TestCameraWatchesInTheLane:
         cs = cstream(3)
         watch = lane_mod.video_sessions("w.pt", progress=lambda m: None)(cs, lambda d: None)
         assert watch.rec is cs.recorder
-        assert (watch.since_s, watch.t0_s, watch.wall_t0) == (0.0, 0.0, 1.7e9)
+        assert (watch.t0_s, watch.wall_t0) == (0.0, 1.7e9)
         assert watch.throws == []
 
     def test_without_somewhere_to_keep_them_there_is_no_saved_calibration(self):
@@ -956,7 +932,7 @@ class TestCameraWatchesInTheLane:
         earlier = {"id": "t_30.0", "t_release_s": 30.0, "t_rest_s": 55.0, "clip": True}
         cs = cstream(3, attempt=2, resume={"wall_t0": 1.7e9 - 600.0, "throws": [earlier]})
         watch = lane_mod.video_sessions("w.pt", progress=lambda m: None)(cs, lambda d: None)
-        assert (watch.since_s, watch.t0_s) == (0.0, 600.0)
+        assert watch.t0_s == 600.0
         assert watch.throws == [earlier]
         # The API dates a throw at wall_t0 + (t - t0_s): the earlier throw keeps
         # its moment, and one 12 s into this recording is dated 12 s after it began.
