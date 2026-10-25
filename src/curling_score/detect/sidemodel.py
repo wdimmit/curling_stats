@@ -156,7 +156,7 @@ def find_in_frames(model, frames, view, color: str, times,
 def find_crossing(model, video, view, color: str, t0: float, t1: float,
                   fps: float = 30.0) -> longview.Crossing:
     """Seek, decode and time one crossing. Mirrors ``longview.find_crossing``."""
-    frames, times = longview.decode(video, view.rect, t0, t1, fps)
+    frames, times = longview.decode(video, view.cut, t0, t1, fps)
     if not len(frames):
         return longview.Crossing(None, "no frames decoded", longview.KEY_NO_FRAMES)
     return find_in_frames(model, frames, view, color, times)

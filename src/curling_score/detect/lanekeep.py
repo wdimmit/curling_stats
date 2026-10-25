@@ -10,10 +10,13 @@ lane: every source frame, once, however many decodes covered it.
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 
 import cv2
 import numpy as np
+
+from curling_score.feeds import Cut
 
 # The lane, in metres from the far tee toward the camera: from just past the
 # tee to the hack end of the throw. Up and down are how far past those two
@@ -48,7 +51,7 @@ def strip_box(view) -> tuple[int, int, int, int]:
         centre = view.centre_col_at(row)
         reach = ACROSS_M * view.lateral_px_per_m(row)
         cols += [centre - reach, centre + reach]
-    _x, _y, w, h = view.rect
+    w, h = view.cut.out_size
     return (max(0, math.floor(row0)), min(h, math.ceil(row1)),
             max(0, math.floor(min(cols))), min(w, math.ceil(max(cols))))
 
@@ -92,11 +95,12 @@ class LaneKeeper:
     def _wanted(self, t: float) -> bool:
         return any(t0 - _EPS <= t < t1 - _EPS for t0, t1 in self.windows)
 
-    def offer(self, rect, frames, times, fps) -> None:
-        """Keep what is wanted of one decode: ``frames`` RGB, cropped to
-        ``rect``, labelled ``times`` as `longview.decode` does.
+    def offer(self, cut, frames, times, fps) -> None:
+        """Keep what is wanted of one decode: ``frames`` RGB, cut to
+        ``cut`` (a `Cut`, or a bare rect), labelled ``times`` as
+        `longview.decode` does.
 
-        Ignored unless it is this view's own rect decoded at the source frame
+        Ignored unless it is this view's own cut decoded at the source frame
         rate. A 10 fps decode of this camera labels its frames from ``t0`` in
         tenths, and ffmpeg's frame for a label can lag it by up to a source
         frame, so those labels name no frame exactly.
@@ -107,7 +111,11 @@ class LaneKeeper:
         """
         if fps != SOURCE_FPS or len(frames) == 0:
             return
-        if tuple(rect) != tuple(self.view.rect):
+        cut = Cut.of(cut)
+        if not cut.name:
+            # A bare rect (a script's) is this view's if it is its crop.
+            cut = dataclasses.replace(cut, name=self.view.name)
+        if cut != self.view.cut:
             return
         first = math.ceil(times[0] * SOURCE_FPS - _EPS)
         for i, frame in enumerate(frames):

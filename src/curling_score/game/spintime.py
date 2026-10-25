@@ -165,7 +165,7 @@ class Track:
 def _read_window(model, pose, video, view, color, t0, t1, seed, *, decode, detect, points):
     """The rock from ``seed`` through ``[t0, t1]``: a Track, or None where it
     was not followed at all."""
-    frames, times = decode(video, view.rect, t0, t1, SPIN_FPS)
+    frames, times = decode(video, view.cut, t0, t1, SPIN_FPS)
     if not len(frames):
         return None
     frame_h = frames.shape[1]
@@ -296,7 +296,7 @@ def time_spins(shots, video, hog_view, *, model, pose=None, decode=None, detect=
     if decode is None:
         from curling_score.detect import longview
         decode = longview.Plan(video, [
-            (hog_view.rect, st[0] + WINDOW_S[0], st[0] + WINDOW_S[1], SPIN_FPS)
+            (hog_view.cut, st[0] + WINDOW_S[0], st[0] + WINDOW_S[1], SPIN_FPS)
             for st in starts if isinstance(st, tuple)]).decode
     if detect is None:
         from curling_score.detect import sidemodel

@@ -24,6 +24,8 @@ from pathlib import Path
 
 import numpy as np
 
+from curling_score.feeds import Cut, as_feed
+
 log = logging.getLogger(__name__)
 
 # Measured by hand on 27 deliveries (``datasets/hogmarks``): a stone crosses
@@ -504,19 +506,27 @@ def _seek(video, t0: float, lead: float | None = None) -> list:
     return ["-ss", f"{start}", "-i", str(video), "-ss", f"{t0 - start}"]
 
 
-def _command(video, rect, t0, t1, fps, lead=None) -> list:
-    x, y, w, h = rect
+def _file(video, cut):
+    """The file ``cut``'s view lives in: ``video`` itself for a path, or the
+    one a `Feed` names for the view."""
+    return as_feed(video).path_for(cut.name)
+
+
+def _command(video, cut, t0, t1, fps, lead=None) -> list:
+    cut = Cut.of(cut)
+    # A crop cut's filter is the old one, character for character:
     # crop's dimensions are otherwise rounded down to the input's chroma
     # subsampling (yuv420p halves both axes), silently handing back an even
     # width or height one px short of what was asked for. Every side view's
     # rect comes from wherever the overhead strip's edge lands, which is odd
     # as often as even, so this bites about half of them: real footage did,
     # at rect width 813, and the reshape below failed on the size mismatch.
-    # exact=1 crops to the exact pixel count regardless of chroma alignment.
+    # exact=1 (in `Cut.steps`) crops to the exact pixel count regardless of
+    # chroma alignment.
     return ["ffmpeg", "-hide_banner", "-loglevel", "error", "-threads", str(FFMPEG_THREADS),
-            *_seek(video, t0, lead),
+            *_seek(_file(video, cut), t0, lead),
             "-t", f"{t1 - t0 + 0.05}",
-            "-vf", f"crop={w}:{h}:{x}:{y}:exact=1,fps={fps}",
+            "-vf", f"{cut.steps()},fps={fps}",
             "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
 
 
@@ -531,7 +541,7 @@ def _popen(command):
         return subprocess.Popen(command, **kw)
 
 
-def _run(command, rect, t0, fps, t1=None):
+def _run(command, cut, t0, fps, t1=None):
     """Run a decode command and frame its output. Only ever a subprocess, so it
     may run on any thread: PyAV is never touched here.
 
@@ -539,7 +549,7 @@ def _run(command, rect, t0, fps, t1=None):
     a 1 MB pipe. ``subprocess.run`` read them 32 KB at a time in a Python loop
     and joined the pieces -- up to ~430 MB a 30 fps window, holding the GIL
     the main thread wants -- 713 ms against 504 for a 5.5 s window here."""
-    _x, _y, w, h = rect
+    w, h = Cut.of(cut).out_size
     frame = w * h * 3
     span = 0.0 if t1 is None else max(0.0, t1 - t0)
     room = (math.ceil((span + 0.05) * fps) + 2) * frame
@@ -572,20 +582,21 @@ def _short(frames, t0, t1, fps) -> bool:
     return len(frames) < math.floor((t1 - t0) * fps) - 1
 
 
-def _decode_now(video, rect, t0, t1, fps, lead):
+def _decode_now(video, cut, t0, t1, fps, lead):
     """One window decoded here and now; a recording entered on its listed
     keyframe that comes back short is read again from the flat lead, so a
     listing that is wrong costs time, never frames."""
     from curling_score.ingest.frames import seek_lead
 
+    cut = Cut.of(cut)
     if t1 < t0:
         # Nothing to read: ffmpeg refuses a negative duration and writes no frames.
-        _x, _y, w, h = rect
+        w, h = cut.out_size
         return np.empty((0, h, w, 3), dtype=np.uint8), []
-    frames, times = _run(_command(video, rect, t0, t1, fps, lead), rect, t0, fps, t1)
-    flat = seek_lead(video)
+    frames, times = _run(_command(video, cut, t0, t1, fps, lead), cut, t0, fps, t1)
+    flat = seek_lead(_file(video, cut))
     if lead and lead < flat and _short(frames, t0, t1, fps):
-        frames, times = _run(_command(video, rect, t0, t1, fps, flat), rect, t0, fps, t1)
+        frames, times = _run(_command(video, cut, t0, t1, fps, flat), cut, t0, fps, t1)
     return frames, times
 
 
@@ -622,9 +633,9 @@ class _ReadAhead:
     def soon(self, key):
         if key in self.waiting:
             return
-        video, rect, t0, t1, fps = key
+        video, cut, t0, t1, fps = key
         lead = _lead(video, t0)
-        self.waiting[key] = self.pool.submit(_decode_now, video, rect, t0, t1, fps, lead)
+        self.waiting[key] = self.pool.submit(_decode_now, video, cut, t0, t1, fps, lead)
         while len(self.waiting) > self.MAX_WAITING:
             _key, dropped = self.waiting.popitem(last=False)
             dropped.cancel()
@@ -684,16 +695,19 @@ def to_bgr(rgb):
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
 
-def _key(video, rect, t0, t1, fps):
-    return (str(video), tuple(rect), float(t0), float(t1), float(fps))
+def _key(video, cut, t0, t1, fps):
+    """A window by the file it is read from (a feed's, resolved for the view)
+    and the cut: both are what the decode is made of."""
+    cut = Cut.of(cut)
+    return (str(_file(video, cut)), cut, float(t0), float(t1), float(fps))
 
 
 def soon(video, view, t0: float, t1: float, fps: float = 30.0) -> None:
-    """Say this window of ``view`` (a side view, or its rect) will be decoded
+    """Say this window of ``view`` (a side view, or its cut or rect) will be decoded
     soon. Exactly the arguments `decode` will be given, or it is simply
     decoded then; a no-op with no read-ahead open."""
     if _reading is not None:
-        _reading.soon(_key(video, getattr(view, "rect", view), t0, t1, fps))
+        _reading.soon(_key(video, getattr(view, "cut", view), t0, t1, fps))
 
 
 class Plan:
@@ -707,12 +721,12 @@ class Plan:
 
     def __init__(self, video, windows):
         self.video = video
-        self.keys = [_key(video, rect, t0, t1, fps) for rect, t0, t1, fps in windows]
+        self.keys = [_key(video, cut, t0, t1, fps) for cut, t0, t1, fps in windows]
         self.next = 0
         self.started = set()
 
-    def decode(self, video, rect, t0, t1, fps=30.0):
-        key = _key(video, rect, t0, t1, fps)
+    def decode(self, video, cut, t0, t1, fps=30.0):
+        key = _key(video, cut, t0, t1, fps)
         if key in self.keys[self.next:]:
             self.next = self.keys.index(key, self.next) + 1
         for i in range(self.next, min(self.next + AHEAD, len(self.keys))):
@@ -720,7 +734,7 @@ class Plan:
                 self.started.add(i)
                 if _reading is not None:
                     _reading.soon(self.keys[i])
-        return decode(video, rect, t0, t1, fps)
+        return decode(video, cut, t0, t1, fps)
 
 
 _keeping = None     # the lane keeper offered every decode now, if any
@@ -740,26 +754,28 @@ def keeping(keeper):
         _keeping = before
 
 
-def decode(video, rect, t0: float, t1: float, fps: float = 30.0):
-    """Frames of one window, cropped to the side view. About 0.25 s a call."""
-    got = _decode_window(video, rect, t0, t1, fps)
+def decode(video, cut, t0: float, t1: float, fps: float = 30.0):
+    """Frames of one window, cut to the side view. About 0.25 s a call."""
+    cut = Cut.of(cut)
+    got = _decode_window(video, cut, t0, t1, fps)
     if _keeping is not None and len(got[0]):
         # The keeper only watches: whatever it does, the read gets its frames.
         try:
-            _keeping.offer(rect, got[0], got[1], fps)
+            _keeping.offer(cut, got[0], got[1], fps)
         except Exception:
             log.exception("lane keeper failed on a decode; frames returned unchanged")
     return got
 
 
-def _decode_window(video, rect, t0, t1, fps):
+def _decode_window(video, cut, t0, t1, fps):
+    path = _file(video, cut)
     if _reading is None:
-        return _decode_now(video, rect, t0, t1, fps, _lead(video, t0))
-    got = _reading.take(_key(video, rect, t0, t1, fps))
+        return _decode_now(video, cut, t0, t1, fps, _lead(path, t0))
+    got = _reading.take(_key(video, cut, t0, t1, fps))
     if got is not None:
         return got
     tic = time.monotonic()
-    got = _decode_now(video, rect, t0, t1, fps, _lead(video, t0))
+    got = _decode_now(video, cut, t0, t1, fps, _lead(path, t0))
     _reading.decoded_then(time.monotonic() - tic)
     return got
 
@@ -767,8 +783,9 @@ def _decode_window(video, rect, t0, t1, fps):
 def find_crossing(video, view, color: str, t0: float, t1: float,
                   fps: float = 30.0) -> Crossing:
     """Seek, decode and time one crossing."""
-    frames, times = decode(video, view.rect, t0, t1, fps)
+    frames, times = decode(video, view.cut, t0, t1, fps)
     if not len(frames):
         return Crossing(None, "no frames decoded", KEY_NO_FRAMES)
-    shifted = dataclasses.replace(view, rect=(0, 0, view.rect[2], view.rect[3]))
+    w, h = view.cut.out_size
+    shifted = dataclasses.replace(view, rect=(0, 0, w, h))
     return find_in_frames(frames, shifted, color, times)

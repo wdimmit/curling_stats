@@ -418,13 +418,13 @@ def find_path(model, video, view, color, t_hog, t_rest, fit, *, decode, detect):
     ``sidemodel.detect_bands``: the other colour's boxes come from the same pass."""
     if view is None or not view.has_lateral or t_hog is None:
         return []
-    frames, times = decode(video, view.rect, *path_window(t_hog, t_rest), PATH_FPS)
+    frames, times = decode(video, view.cut, *path_window(t_hog, t_rest), PATH_FPS)
     if not len(frames):
         return []
     colors = (color, other_color(color))
     far = detect(model, frames, times, int(view.tee_row) - 80, PATH_SPLIT_ROW + 20, colors,
                  imgsz=800, conf=PATH_CONF)
-    near_boxes = detect(model, frames, times, PATH_SPLIT_ROW - 20, view.rect[3], colors,
+    near_boxes = detect(model, frames, times, PATH_SPLIT_ROW - 20, view.cut.out_size[1], colors,
                         imgsz=416, conf=PATH_CONF)
     rec = fp_record.active()
     with (rec.side_view(view) if rec is not None else nullcontext()):
@@ -497,7 +497,7 @@ def _measured(shot, without_broom):
 
 
 def planned_windows(shots, hog_view, dest_view, without_broom):
-    """The windows `time_lines` will decode, in order, as ``(rect, t0, t1,
+    """The windows `time_lines` will decode, in order, as ``(cut, t0, t1,
     fps)``: what each rock's hogtime track says it will ask for. A rock whose
     track cannot be read is left out, and is decoded when it is asked for."""
     out = []
@@ -520,11 +520,11 @@ def _rock_windows(shot, hog_view, dest_view):
     t_release = shot.release.t
     got = []
     if max(p[3] for p in track) < EXTEND_IF_SHORT_OF_M:
-        got.append((hog_view.rect, *extend_window(t_release), EXTEND_FPS))
-    got.append((hog_view.rect, *delivery_window(t_release, track[0][0]), DELIVERY_FPS))
+        got.append((hog_view.cut, *extend_window(t_release), EXTEND_FPS))
+    got.append((hog_view.cut, *delivery_window(t_release, track[0][0]), DELIVERY_FPS))
     t_hog = getattr(shot, "t_hog_s", None)
     if dest_view is not None and dest_view.has_lateral and t_hog is not None:
-        got.append((dest_view.rect, *path_window(t_hog, path_until(shot)), PATH_FPS))
+        got.append((dest_view.cut, *path_window(t_hog, path_until(shot)), PATH_FPS))
     return got
 
 
@@ -595,7 +595,7 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
 def _extend_for(shot, view, video, t_release, model, decode, detect):
     """Detections in the seconds past hogtime's window, as proposer samples."""
     from curling_score.detect import longview, sidemodel
-    frames, times = decode(video, view.rect, *extend_window(t_release), EXTEND_FPS)
+    frames, times = decode(video, view.cut, *extend_window(t_release), EXTEND_FPS)
     if not len(frames):
         return []
     lo, hi = sidepool.band_crop(view)
@@ -679,7 +679,7 @@ def read_delivery(model, video, view, color, t_release, t_band, *, decode, detec
     band's first sample: the stone at rest, which is the line's start, and the
     rock's way from there to the band."""
     t0, t1 = delivery_window(t_release, t_band)
-    frames, times = decode(video, view.rect, t0, t1, fps)
+    frames, times = decode(video, view.cut, t0, t1, fps)
     if not len(frames):
         return DeliveryFrames((), (), None)
     top = int(view.row_for(-(C.TEE_TO_HACKLINE_M + 1.0))) - 30
@@ -690,7 +690,7 @@ def read_delivery(model, video, view, color, t_release, t_band, *, decode, detec
     start = pick_start([b for i, (t, per) in enumerate(zip(times, boxes))
                         if i % step == 0 and t <= t_last for b in per], view)
     # A box cut by the crop's bottom edge puts the stone short of where it is.
-    edge = min(bot, view.rect[3]) - CROP_EDGE_ROWS
+    edge = min(bot, view.cut.out_size[1]) - CROP_EDGE_ROWS
     dets = []
     for per in boxes:
         here = []
