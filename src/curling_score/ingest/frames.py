@@ -12,12 +12,15 @@ Both yield ``(t_seconds, bgr_ndarray)`` with timestamps taken from the stream's
 own PTS, so they line up with YouTube's ``?t=`` deep links.
 """
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import av
 import numpy as np
 from av.video.reformatter import VideoReformatter
+
+from curling_score.feeds import Cut, as_feed
 
 
 
@@ -101,6 +104,7 @@ class VideoProbe:
 
 
 def probe(path) -> VideoProbe:
+    path = os.fspath(path)
     _quiet_ffmpeg()
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
@@ -132,6 +136,7 @@ def stream_start_s(path) -> float:
     full video, so this says where in the VOD it came from -- which is what
     lets a harvested frame name a moment. See :mod:`curling_score.harvest.clips`.
     """
+    path = os.fspath(path)
     _quiet_ffmpeg()
     with av.open(str(path)) as container:
         return _stream_start(container.streams.video[0])
@@ -147,7 +152,7 @@ TS_SEEK_LEAD_S = 10.0
 
 def seek_lead(path) -> float:
     """Seconds to enter ``path`` before a seek target: none for an indexed MP4."""
-    return TS_SEEK_LEAD_S if Path(path).suffix.lower() == ".ts" else 0.0
+    return TS_SEEK_LEAD_S if Path(os.fspath(path)).suffix.lower() == ".ts" else 0.0
 
 
 def keyframe_times(path, start_s: float, end_s: float):
@@ -161,6 +166,7 @@ def keyframe_times(path, start_s: float, end_s: float):
     ``seek_lead`` early, since an unindexed file's seek can land past
     ``start_s``; ``read_to_s`` stops short of ``end_s`` where the file does.
     """
+    path = os.fspath(path)
     _quiet_ffmpeg()
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
@@ -191,6 +197,7 @@ def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
     video -- reaching the one-hour mark by scanning costs about ten seconds, and
     it grows from there.
     """
+    path = os.fspath(path)
     lead = seek_lead(path) if start_s is not None else 0.0
     _quiet_ffmpeg()
     with av.open(str(path)) as container:
@@ -243,15 +250,41 @@ def _converter():
     return lambda frame: reformatter.reformat(frame, format="bgr24").to_ndarray()
 
 
+def _source(path, crop):
+    """``(file, apply)`` for one view of ``path``: the file to open and what to
+    do to each decoded frame (``None`` to keep it whole).
+
+    A ``Cut`` names its view, so the feed says which file it lives in; a bare
+    rect or ``None`` is read from ``path`` itself, which must then be one file.
+    A rect keeps the numpy slice it always had, byte for byte.
+    """
+    if isinstance(crop, Cut):
+        if not crop.is_crop:
+            raise NotImplementedError("phase 2")
+        return str(as_feed(path).path_for(crop.name)), crop.apply
+    file = os.fspath(path)
+    if crop is None:
+        return file, None
+
+    def apply(img):
+        x, y, w, h = crop
+        return np.ascontiguousarray(img[y : y + h, x : x + w])
+
+    return file, apply
+
+
 def window(path, start_s: float, end_s: float, fps: float, crop=None):
     """Yield ``(t, frame)`` sampled at ``fps`` across ``[start_s, end_s]``.
 
-    ``crop`` is ``(x, y, w, h)`` applied before the array is handed back, which
-    saves copying the ~85% of each frame we never look at.
+    ``path`` is a file or a ``Feed``. ``crop`` is ``(x, y, w, h)`` applied
+    before the array is handed back, which saves copying the ~85% of each
+    frame we never look at; or a ``Cut``, which is read from the file its feed
+    gives that view and cut the same way.
     """
     if end_s < start_s:
         raise ValueError("end_s must not precede start_s")
     step = 1.0 / fps
+    path, apply = _source(path, crop)
 
     _quiet_ffmpeg()
     with av.open(str(path)) as container:
@@ -274,9 +307,8 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
             if t > end_s + 1e-9:
                 break
             img = to_bgr(frame)
-            if crop is not None:
-                x, y, w, h = crop
-                img = np.ascontiguousarray(img[y : y + h, x : x + w])
+            if apply is not None:
+                img = apply(img)
             yield t, img
             # Advance past the frame we just emitted so a slow source cannot
             # emit two frames for the same slot.
@@ -292,7 +324,16 @@ def windows(path, specs, end_s: float):
     crop)`` would. A live end reads the full-resolution recording for two
     panels over nearly the same span, and decoding it once instead of twice
     is most of the difference between a live end's cost and a recorded one's.
+
+    ``path`` is a file or a ``Feed``, and every spec's view must be in the one
+    file: a ``Cut`` of another file is a second decode, which phase 2's
+    cameras need and this does not do.
     """
+    sources = [_source(path, crop) for _, _, crop in specs]
+    files = {file for file, _ in sources}
+    if len(files) > 1:
+        raise NotImplementedError("phase 2: specs span files")
+    path = files.pop() if files else os.fspath(path)
     wanted = [float(start) for start, _, _ in specs]
     steps = [1.0 / fps for _, fps, _ in specs]
     lead = seek_lead(path)
@@ -316,12 +357,8 @@ def windows(path, specs, end_s: float):
                 break
             img = to_bgr(frame)
             for i in due:
-                crop = specs[i][2]
-                if crop is None:
-                    out = img
-                else:
-                    x, y, w, h = crop
-                    out = np.ascontiguousarray(img[y : y + h, x : x + w])
+                apply = sources[i][1]
+                out = img if apply is None else apply(img)
                 yield i, t, out
                 while wanted[i] <= t + 1e-9:
                     wanted[i] += steps[i]
@@ -370,6 +407,7 @@ def spread_keyframes(path, until_s: float, count: int = 24,
 
 def chunked(path, start_s, end_s, fps, size=64, crop=None):
     """Yield frames in batches, so a long span never sits in memory at once.
+    ``crop`` is a rect or a ``Cut``, as for :func:`window`.
 
     A 16-minute end at 10 fps is about 4.4 GB of decoded panels. Collecting
     those into a list before detecting on them is enough to push a 31 GB machine
