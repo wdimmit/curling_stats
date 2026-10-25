@@ -17,7 +17,8 @@ from curling_score.geometry import constants as C
 from curling_score.harvest import sidepool
 from tests import test_farfollow as FFT
 from tests import test_sidereleases
-from tests.test_linetime import DEST_VIEW, TestChain
+from tests import test_linetime as LT
+from tests.test_linetime import DEST_VIEW
 from tests.test_sidemodel import VIEW, FakeModel, _moving_stone
 
 
@@ -80,21 +81,21 @@ def test_a_box_of_the_right_width_on_the_path_records_nothing():
 
 
 def test_a_lone_start_is_a_lone_firing():
-    times, per = TestChain().frames(stray_first=True)
-    plain = L.chain(times, per, TestChain.FIT)
+    times, per = LT.TestChain().frames(stray_first=True)
+    plain = L.chain(times, per, LT.TestChain.FIT)
     rec = recorder()
     with recording(rec), rec.side_view(DEST_VIEW):
-        got = L.chain(times, per, TestChain.FIT)
+        got = L.chain(times, per, LT.TestChain.FIT)
     assert got == plain and got[0][0] > 22.0
     (f,) = only(rec, "side.lone")
     assert f.t == 0.0 and f.box is not None and len(rec.pending()) == 1
 
 
 def test_a_lone_start_outside_a_view_records_nothing():
-    times, per = TestChain().frames(stray_first=True)
+    times, per = LT.TestChain().frames(stray_first=True)
     rec = recorder()
     with recording(rec):
-        L.chain(times, per, TestChain.FIT)
+        L.chain(times, per, LT.TestChain.FIT)
     assert rec.pending() == []
 
 
@@ -116,7 +117,7 @@ def test_find_path_hands_the_chain_its_view(monkeypatch):
     rec = recorder()
     with recording(rec):
         L.find_path(object(), "v.mp4", DEST_VIEW, "yellow", 100.0, 120.0,
-                    TestChain.FIT, decode=decode, detect=detect)
+                    LT.TestChain.FIT, decode=decode, detect=detect)
     assert seen == [DEST_VIEW] and rec._view is None
 
 

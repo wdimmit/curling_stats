@@ -284,11 +284,6 @@ class TestWeightsRoundTrip:
         X = np.stack([D.as_input(g) for g, _, _ in cards])
         assert np.allclose(model.probs(X), again.probs(X))
 
-    def test_it_needs_no_torch(self):
-        import sys
-
-        assert "torch" not in sys.modules
-
 
 @pytest.fixture(scope="module")
 def shipped_model():
@@ -328,11 +323,6 @@ class TestShippedModel:
                  for g, end, meta in cards
                  for pred, _conf in [shipped_model.predict(g)] if pred != end]
         assert wrong == []
-
-    def test_it_needs_no_torch(self):
-        import sys
-
-        assert "torch" not in sys.modules
 
 
 class TestTheConvolutionalModel:

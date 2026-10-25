@@ -789,7 +789,7 @@ class TestCatalogueAndAdmin:
         assert c.get("/static/site.css").status_code == 200
         bundle = c.get("/static/site.js").text
         for words in ("Get my link", "My games", "Join a team", "All leagues",
-                      "Most lopsided", "Games you played"):
+                      "Slowest teams per end", "Your shots, across games"):
             assert words in bundle, f"{words!r} is in no page"
 
     def test_the_signin_page_loads(self, world):

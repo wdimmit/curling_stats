@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from curling_score.service import dedupe, playlists, slug
-from curling_score.service.records import Chart, Job, Run, Source, WatchedPlaylist, Worker
+from curling_score.service.records import Chart, Run, WatchedPlaylist, Worker
 from curling_score.service.repo import MemoryRepo, worker_online
 from curling_score.service.store import MemoryStore, detcache_key, timeline_key
 from curling_score.service.youtube import (
@@ -56,99 +56,6 @@ class TestSlugs:
         assert not slug.is_slug("short")
         assert not slug.is_slug("x" * 22 + "!")
         assert not slug.is_slug(None)
-
-
-class TestQueue:
-    def test_claim_hands_out_the_oldest_ready_job_once(self):
-        repo = MemoryRepo()
-        r1, r2 = run(id="r_a", status="queued"), run(id="r_b", status="queued")
-        repo.put_run(r1); repo.put_run(r2)
-        repo.put_job(Job(id="j_b", run_id="r_b", state="queued", created_at=at(5), run_after=at(5)))
-        repo.put_job(Job(id="j_a", run_id="r_a", state="queued", created_at=at(0), run_after=at(0)))
-        got = repo.claim_job("w1", now=at(10))
-        assert got.id == "j_a" and got.state == "running" and got.worker_id == "w1"
-        assert got.attempts == 1
-        assert repo.get_run("r_a").status == "processing"
-        assert repo.claim_job("w2", now=at(10)).id == "j_b"
-        assert repo.claim_job("w3", now=at(10)) is None
-
-    def test_a_job_not_yet_due_is_not_claimed(self):
-        repo = MemoryRepo()
-        repo.put_job(Job(id="j", run_id="r", state="queued", created_at=at(0), run_after=at(600)))
-        assert repo.claim_job("w", now=at(10)) is None
-        assert repo.claim_job("w", now=at(601)) is not None
-
-    def test_an_expired_lease_goes_back_to_the_queue(self):
-        repo = MemoryRepo()
-        repo.put_run(run(id="r", status="queued"))
-        repo.put_job(Job(id="j", run_id="r", state="queued", created_at=at(0), run_after=at(0)))
-        repo.claim_job("w", now=at(0), lease_s=600)
-        assert repo.requeue_expired(now=at(599)) == 0
-        assert repo.requeue_expired(now=at(601)) == 1
-        job = repo.get_job("j")
-        assert job.state == "queued" and job.worker_id is None
-        assert repo.get_run("r").status == "queued"
-        # It can be claimed again, and that counts as a second attempt.
-        assert repo.claim_job("w2", now=at(602)).attempts == 2
-
-    def test_queue_position_counts_only_those_ahead(self):
-        repo = MemoryRepo()
-        for i in range(3):
-            repo.put_job(Job(id=f"j{i}", run_id=f"r{i}", state="queued",
-                             created_at=at(i), run_after=at(i)))
-        assert repo.queue_position("j0") == 0
-        assert repo.queue_position("j2") == 2
-        assert repo.count_queued() == 3
-        repo.claim_job("w", now=at(10))
-        assert repo.queue_position("j2") == 1
-
-
-class TestOverridesVersioning:
-    def test_a_save_with_the_current_version_wins_and_bumps(self):
-        repo = MemoryRepo()
-        c = chart(run()); repo.put_chart(c)
-        ok, version, _ = repo.save_overrides(c.id, {"0.1.1": {"user_score": 3}}, 0, at(1))
-        assert ok and version == 1
-        assert repo.get_chart(c.id).overrides == {"0.1.1": {"user_score": 3}}
-
-    def test_a_stale_save_is_refused_and_returns_the_truth(self):
-        repo = MemoryRepo()
-        c = chart(run()); repo.put_chart(c)
-        repo.save_overrides(c.id, {"a": {"x": 1}}, 0, at(1))
-        ok, version, current = repo.save_overrides(c.id, {"b": {"y": 2}}, 0, at(2))
-        assert not ok and version == 1 and current == {"a": {"x": 1}}
-
-    def test_an_unconditional_save_always_lands(self):
-        # sendBeacon cannot carry a version; the page's last gasp must not 409.
-        repo = MemoryRepo()
-        c = chart(run()); repo.put_chart(c)
-        repo.save_overrides(c.id, {"a": {}}, 0, at(1))
-        ok, version, _ = repo.save_overrides(c.id, {"b": {}}, None, at(2))
-        assert ok and version == 2
-
-    def test_share_slug_finds_the_chart(self):
-        repo = MemoryRepo()
-        c = chart(run()); repo.put_chart(c)
-        assert repo.chart_by_share(c.share_slug).id == c.id
-        assert repo.chart_by_share("nope") is None
-
-
-class TestRateLimit:
-    def test_limits_per_hour_and_per_day(self):
-        repo = MemoryRepo()
-        allowed = [repo.bump_rate_limit("ip", at(i), hour_limit=3, day_limit=5) for i in range(4)]
-        assert allowed == [True, True, True, False]
-        # A new hour resets the hourly count, but the day keeps counting.
-        later = at(3700)
-        assert repo.bump_rate_limit("ip", later, 3, 5)
-        assert repo.bump_rate_limit("ip", later, 3, 5)
-        assert not repo.bump_rate_limit("ip", later, 3, 5)   # day limit of 5 hit
-
-    def test_addresses_are_independent(self):
-        repo = MemoryRepo()
-        assert repo.bump_rate_limit("a", T0, 1, 1)
-        assert repo.bump_rate_limit("b", T0, 1, 1)
-        assert not repo.bump_rate_limit("a", T0, 1, 1)
 
 
 class TestWorkerPresence:

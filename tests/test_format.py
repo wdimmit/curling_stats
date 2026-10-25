@@ -6,7 +6,7 @@ from curling_score.game import rules
 
 class TestFours:
     @pytest.mark.parametrize("n", range(1, 17))
-    def test_matches_the_arithmetic_it_replaces(self, n):
+    def test_the_throw_order(self, n):
         k = (n + 1) // 2
         t = F.FOURS.throw_info(n)
         assert (t.has_hammer, t.team_stone_number, t.position_slot, t.rock_of_player) \

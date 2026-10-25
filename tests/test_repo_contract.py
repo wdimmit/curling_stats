@@ -226,6 +226,8 @@ class TestJobsAndClaiming:
         assert repo.queue_position("j_0") == 0
         assert repo.queue_position("j_2") == 2
         assert repo.queue_position("nope") is None
+        repo.claim_job("w", at(10))
+        assert repo.queue_position("j_2") == 1
 
 
 class TestCharts:

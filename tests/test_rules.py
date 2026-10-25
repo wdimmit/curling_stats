@@ -4,18 +4,6 @@ from curling_score.game import rules
 
 
 class TestThrowOrder:
-    def test_first_stone_of_end_is_thrown_by_the_lead_without_hammer(self):
-        t = rules.throw_info(1)
-        assert t.has_hammer is False
-        assert t.position_slot == 1
-        assert t.rock_of_player == 1
-
-    def test_last_stone_of_end_is_the_hammer_skips_second_rock(self):
-        t = rules.throw_info(16)
-        assert t.has_hammer is True
-        assert t.position_slot == 4
-        assert t.rock_of_player == 2
-
     @pytest.mark.parametrize(
         "shot, hammer, slot, rock",
         [
