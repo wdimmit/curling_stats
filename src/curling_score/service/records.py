@@ -10,6 +10,7 @@ Plain dataclasses with plain values -- strings, numbers, datetimes, lists,
 dicts -- so any document store can hold them without a mapping layer.
 """
 
+import hashlib
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 
@@ -616,6 +617,56 @@ class PracticeSession:
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class ApiKey:
+    """A key a person made on the site for an app of theirs to push with:
+    today, a sensor app's timings into their practice sessions, and nothing
+    else -- it is never a sign-in. Only the secret's hash is kept; the secret
+    itself is shown once, when it is made."""
+
+    id: str
+    user_id: str
+    name: str
+    sha256: str
+    created_at: datetime
+    last_used_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+@dataclass
+class SensorTiming:
+    """One throw as a person's own sensors timed it: ``short_s`` from the back
+    line to the throwing hog line, ``long_s`` hog line to hog line, and
+    ``hog_at``, when it crossed the throwing hog line by the app's clock. It
+    belongs to the session whose window held ``hog_at`` and is paired with a
+    camera throw when the session is read (service/practice.match_timings).
+    ``at``/``at_is`` are what the app said: one crossing's time, and which."""
+
+    id: str
+    user_id: str
+    session_id: str
+    client_id: str
+    hog_at: datetime
+    at: datetime
+    at_is: str                        # back | hog | far
+    received_at: datetime
+    short_s: float | None = None
+    long_s: float | None = None
+    key_id: str | None = None
+
+    to_dict = asdict
+    from_dict = classmethod(_from_dict)
+
+
+def sensor_timing_id(user_id: str, client_id: str) -> str:
+    """The app names each timing, so a push sent twice lands once; the
+    person's id is in it so two people's apps can never collide."""
+    return "st_" + hashlib.sha256(f"{user_id}\n{client_id}".encode()).hexdigest()[:24]
 
 
 # Members' labelling: small questions put to many members, each answered by

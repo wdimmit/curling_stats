@@ -18,8 +18,8 @@ from typing import Protocol
 
 from curling_score.service.records import (
     Chart, ClipJob, Flag, Invite, Job, LabelAnswer, LabelItem, Play, PlaylistIndexEntry,
-    PracticeSession, PracticeWatch, Review, Run, SigninRelay, Source, Team, TeamNameEdit, User,
-    WatchedPlaylist, Worker, play_id,
+    ApiKey, PracticeSession, PracticeWatch, Review, Run, SensorTiming, SigninRelay, Source, Team,
+    TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
 )
 
 LEASE_S = 600.0
@@ -161,6 +161,15 @@ class Repo(Protocol):
     def update_session(self, session_id: str, **fields) -> PracticeSession | None: ...
     def sessions_for_watch(self, watch_id: str) -> list[PracticeSession]: ...
     def sessions_for_user(self, user_id: str, limit: int = 50) -> list[PracticeSession]: ...
+    # a sensor app's timings, and the keys it pushes them with
+    def put_timing(self, timing: SensorTiming) -> None: ...
+    def get_timing(self, timing_id: str) -> SensorTiming | None: ...
+    def timings_for_session(self, session_id: str) -> list[SensorTiming]: ...
+    def put_api_key(self, key: ApiKey) -> None: ...
+    def get_api_key(self, key_id: str) -> ApiKey | None: ...
+    def api_key_by_hash(self, sha256: str) -> ApiKey | None: ...
+    def api_keys_for_user(self, user_id: str) -> list[ApiKey]: ...
+    def update_api_key(self, key_id: str, **fields) -> ApiKey | None: ...
     # member labelling -- items put to members, and their answers (service/labelling.py)
     def put_label_item(self, item: LabelItem) -> None: ...
     def get_label_item(self, item_id: str) -> LabelItem | None: ...
@@ -223,6 +232,8 @@ class MemoryRepo:
         self.playlist_index: dict[str, PlaylistIndexEntry] = {}
         self.watches: dict[str, PracticeWatch] = {}
         self.sessions: dict[str, PracticeSession] = {}
+        self.timings: dict[str, SensorTiming] = {}
+        self.api_keys: dict[str, ApiKey] = {}
         self.team_name_edits_: dict[str, TeamNameEdit] = {}
         self.label_items: dict[str, LabelItem] = {}
         self.label_answers_: dict[str, LabelAnswer] = {}
@@ -790,6 +801,41 @@ class MemoryRepo:
         out = [s for s in self.sessions.values() if s.user_id == user_id]
         return sorted(out, key=lambda s: s.started_at, reverse=True)[:limit]
 
+    # ---- sensor timings and API keys ----------------------------------
+    def put_timing(self, timing):
+        with self._lock:
+            self.timings[timing.id] = timing
+
+    def get_timing(self, timing_id):
+        return self.timings.get(timing_id)
+
+    def timings_for_session(self, session_id):
+        out = [t for t in self.timings.values() if t.session_id == session_id]
+        return sorted(out, key=lambda t: t.hog_at)
+
+    def put_api_key(self, key):
+        with self._lock:
+            self.api_keys[key.id] = key
+
+    def get_api_key(self, key_id):
+        return self.api_keys.get(key_id)
+
+    def api_key_by_hash(self, sha256):
+        return next((k for k in self.api_keys.values() if k.sha256 == sha256), None)
+
+    def api_keys_for_user(self, user_id):
+        out = [k for k in self.api_keys.values() if k.user_id == user_id]
+        return sorted(out, key=lambda k: k.created_at)
+
+    def update_api_key(self, key_id, **fields):
+        with self._lock:
+            k = self.api_keys.get(key_id)
+            if k is None:
+                return None
+            for name, v in fields.items():
+                setattr(k, name, v)
+            return k
+
     # ---- member labelling ---------------------------------------------
     def put_label_item(self, item):
         with self._lock:
@@ -912,6 +958,8 @@ class MemoryRepo:
             "reviews": [r.to_dict() for r in self.reviews.values()],
             "practice_watches": [w.to_dict() for w in self.watches.values()],
             "practice_sessions": [s.to_dict() for s in self.sessions.values()],
+            "practice_timings": [t.to_dict() for t in self.timings.values()],
+            "api_keys": [k.to_dict() for k in self.api_keys.values()],
             "team_name_edits": [e.to_dict() for e in self.team_name_edits_.values()],
             "label_items": [i.to_dict() for i in self.label_items.values()],
             "label_answers": [a.to_dict() for a in self.label_answers_.values()],
@@ -949,6 +997,10 @@ class MemoryRepo:
                 self.put_watch(PracticeWatch.from_dict(d))
             for d in data.get("practice_sessions", []):
                 self.put_session(PracticeSession.from_dict(d))
+            for d in data.get("practice_timings", []):
+                self.put_timing(SensorTiming.from_dict(d))
+            for d in data.get("api_keys", []):
+                self.put_api_key(ApiKey.from_dict(d))
             for d in data.get("team_name_edits", []):
                 self.put_team_name_edit(TeamNameEdit.from_dict(d))
             for d in data.get("label_items", []):

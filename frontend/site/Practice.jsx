@@ -10,8 +10,8 @@ import { authedFetch, signIn } from "./auth.js";
 import { signInTrouble } from "./signinState.mjs";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Pill, Warn } from "./ui.jsx";
-import { clipState, curlText, lengthText, lineText, restText, shown,
-         summary, turnText, weightText } from "../core/practice.mjs";
+import { clipState, curlText, lengthText, lineText, mergeTimings, restText, sensorText,
+         shown, summary, turnText, weightText } from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
 import { ClipPlayer } from "./clip.jsx";
 import { DeliveryChart, dotColours } from "../viewer/Delivery.jsx";
@@ -85,7 +85,19 @@ function Delivery({ t, n }) {
   return g ? <DeliveryChart g={g} fluid label={`Throw ${n}: the delivery from the hack${dotColours(g)}`} /> : null;
 }
 
-function Latest({ t, n, sid, live, newest }) {
+/* What the person's own sensors timed this throw at, on a session an app
+ * pushes to (has_sensors); nothing at all on one it does not. */
+function SensorLine({ t, sensors }) {
+  if (!sensors) return null;
+  return (
+    <>
+      <dt className="muted">Sensor</dt>
+      <dd>{sensorText(t.sensor) ?? "no timing for this throw"}</dd>
+    </>
+  );
+}
+
+function Latest({ t, n, sid, live, newest, sensors }) {
   const clip = clipState(t, { live, newest });
   return (
     <Card>
@@ -105,6 +117,7 @@ function Latest({ t, n, sid, live, newest }) {
           <dl style={{ margin: 0 }}>
             <dt className="muted">Line</dt>
             <dd>{lineText(t.line) ?? "not measured"}</dd>
+            <SensorLine t={t} sensors={sensors} />
           </dl>
         </>
       ) : (
@@ -116,6 +129,7 @@ function Latest({ t, n, sid, live, newest }) {
             <dd>{weightText(t.split_s) ? `${weightText(t.split_s)} hog to hog` : "not timed"}</dd>
             <dt className="muted">Came to rest</dt>
             <dd>{restText(t.rest) ?? "not seen"}</dd>
+            <SensorLine t={t} sensors={sensors} />
           </dl>
           <House rest={t.rest} broom={t.broom} />
         </div>
@@ -168,6 +182,9 @@ function Live({ id, onDone, heading }) {
     await authedFetch(`/api/practice/sessions/${id}/stop`, { method: "POST" });
     load();
   };
+  // Sensor times show only on a session a sensor app has pushed to.
+  const sensors = !!view.has_sensors;
+  const rows = mergeTimings(throws, sensors ? view.timings : []);
   const calibrating = !watch.status || ["starting", "calibrating"].includes(watch.status);
   return (
     <>
@@ -181,7 +198,8 @@ function Live({ id, onDone, heading }) {
         {!live && !onDone && <> <a className="btn primary" href={`/practice/sheet/${session.sheet}`}>Practise on sheet {session.sheet} again</a></>}
       </p>
       {err && <Warn>{err}</Warn>}
-      {card && <Latest t={card} n={cardN} sid={id} live={live} newest={picked == null} />}
+      {card && <Latest t={card} n={cardN} sid={id} live={live} newest={picked == null}
+                       sensors={sensors} />}
       {picked != null && <p><button onClick={() => setPicked(null)}>Show the latest throw</button></p>}
       {sum.count > 0 && (
         <p>
@@ -190,21 +208,32 @@ function Live({ id, onDone, heading }) {
           {sum.withBroom > 0 && <> · {sum.onBroom} of {sum.withBroom} within 6 in of the broom</>}
         </p>
       )}
-      {throws.length > 0 && (
+      {rows.length > 0 && (
         <table className="practice-throws">
-          <thead><tr><th>#</th><th>Turn</th><th>Weight</th><th>Line</th><th>Rest</th><th /></tr></thead>
+          <thead><tr><th>#</th><th>Turn</th><th>Weight</th><th>Line</th><th>Rest</th>
+            {sensors && <th>Sensor</th>}<th /></tr></thead>
           <tbody>
-            {throws.map((t, i) => [t, i]).reverse().map(([t, i]) => (
+            {rows.slice().reverse().map(({ throw: t, n, timing }) => t ? (
               <tr key={t.id} className={t.hidden ? "muted" : undefined}
                   onClick={() => setPicked(t.id)} style={{ cursor: "pointer",
                     background: t.id === card?.id ? "rgba(242,194,0,0.18)" : undefined }}>
-                <td>{i + 1}</td>
+                <td>{n}</td>
                 <td>{turnText(t.curl, session.hand) ?? "–"}</td>
                 <td>{weightText(t.split_s) ?? "–"}</td>
                 <td>{lineText(t.line, { short: true }) ?? "–"}</td>
                 <td>{t.arrived ? restText(t.rest) ?? "–" : "didn't arrive"}</td>
+                {sensors && <td>{weightText(t.sensor?.long_s) ?? "–"}</td>}
                 <td><button onClick={e => { e.stopPropagation(); hide(t, !t.hidden); }}>
                   {t.hidden ? "Mine after all" : "Not mine"}</button></td>
+              </tr>
+            ) : (
+              <tr key={timing.id} className="muted">
+                <td>–</td>
+                <td colSpan={4}>{timing.pending ? "Sensor: the cameras are still measuring…"
+                                                 : "Sensor only: the cameras saw no throw"}
+                  {timing.short_s != null && <> · short {timing.short_s.toFixed(2)} s</>}</td>
+                <td>{weightText(timing.long_s) ?? "–"}</td>
+                <td />
               </tr>
             ))}
           </tbody>
@@ -246,6 +275,70 @@ function Start({ sheet, onStarted }) {
         itself after 15 minutes with no throws. If someone else throws, tap "Not mine".</p>
       {err && <Warn>{err}</Warn>}
     </Card>
+  );
+}
+
+/* Keys for a sensor app of mine to push its timings with
+ * (POST /api/practice/sensors). A new key's secret is shown here once: only
+ * its hash is kept. */
+function SensorKeys() {
+  const keys = useResource("/api/me/keys");
+  const [name, setName] = useState("");
+  const [made, setMade] = useState(null);
+  const [err, setErr] = useState("");
+  const make = async () => {
+    setErr("");
+    const res = await authedFetch("/api/me/keys", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }) });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) { setMade(body); setName(""); keys.reload(); }
+    else setErr(body.detail || `Could not make a key (${res.status}).`);
+  };
+  const revoke = async k => {
+    if (!window.confirm(`Revoke "${k.name}"? An app using it can no longer send timings.`)) return;
+    await authedFetch(`/api/me/keys/${encodeURIComponent(k.id)}`, { method: "DELETE" });
+    if (made?.id === k.id) setMade(null);
+    keys.reload();
+  };
+  const list = keys.data?.keys ?? [];
+  return (
+    <details style={{ marginTop: 16 }}>
+      <summary>Sensor app keys</summary>
+      <Card>
+        <p className="muted" style={{ marginTop: 0 }}>A sensor app that times your throws can
+          send its times into your sessions with one of these. They show beside the
+          cameras&apos; throws.</p>
+        {made && (
+          <p>
+            Key for <strong>{made.name}</strong>. Copy it now: it is not shown again.<br />
+            <input readOnly value={made.key} style={{ width: "100%", fontFamily: "monospace" }}
+                   onFocus={e => e.target.select()} />
+            <button onClick={() => navigator.clipboard?.writeText(made.key)}>Copy</button>
+          </p>
+        )}
+        {list.length > 0 && (
+          <table className="practice-sessions">
+            <tbody>
+              {list.map(k => (
+                <tr key={k.id}>
+                  <td>{k.name}</td>
+                  <td className="muted">{k.last_used_at ? `used ${ago(k.last_used_at)}`
+                                                        : `made ${dayText(k.created_at)}`}</td>
+                  <td><button onClick={() => revoke(k)}>Revoke</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p>
+          <input type="text" placeholder="Name it, e.g. Rock timer" value={name} maxLength={60}
+                 onChange={e => setName(e.target.value)} />{" "}
+          <button className="primary" onClick={make}>Make a key</button>
+        </p>
+        {err && <Warn>{err}</Warn>}
+      </Card>
+    </details>
   );
 }
 
@@ -292,6 +385,7 @@ function Sessions() {
           </table>
         )}
       </Card>
+      <SensorKeys />
     </>
   );
 }

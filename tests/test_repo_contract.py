@@ -42,6 +42,7 @@ def _firestore_repo():
                 "workers", "watched_playlists", "rate_limits",
                 "users", "teams", "invites", "chart_claims", "flags", "yt_playlists",
                 "plays", "reviews", "practice_watches", "practice_sessions",
+                "practice_timings", "api_keys",
                 "clip_jobs", "team_name_edits", "signin_relays",
                 "label_items", "label_answers"):
         for doc in client.collection(col).stream():
@@ -881,6 +882,30 @@ class TestPractice:
         assert [s.id for s in repo.sessions_for_user("u1")] == ["ps_2", "ps_0"]
         got = repo.update_session("ps_0", ended_at=at(9), end_reason="stop", hidden=["t_1"])
         assert (got.active, got.hidden) == (False, ["t_1"])
+
+    def test_sensor_timings_by_session_in_hog_order(self, repo):
+        from curling_score.service.records import SensorTiming
+
+        for i, (sid, s) in enumerate((("ps_a", 30), ("ps_b", 5), ("ps_a", 10))):
+            repo.put_timing(SensorTiming(id=f"st_{i}", user_id="u1", session_id=sid,
+                                         client_id=str(i), hog_at=at(s), at=at(s), at_is="hog",
+                                         received_at=at(40), short_s=3.1, long_s=None))
+        assert [t.id for t in repo.timings_for_session("ps_a")] == ["st_2", "st_0"]
+        got = repo.get_timing("st_1")
+        assert (got.hog_at, got.short_s, got.long_s) == (at(5), 3.1, None)
+        assert repo.get_timing("st_none") is None
+
+    def test_api_keys_by_hash_and_by_owner(self, repo):
+        from curling_score.service.records import ApiKey
+
+        for i, user in enumerate(("u1", "u2", "u1")):
+            repo.put_api_key(ApiKey(id=f"ak_{i}", user_id=user, name=f"k{i}", sha256=f"h{i}",
+                                    created_at=at(i)))
+        assert [k.id for k in repo.api_keys_for_user("u1")] == ["ak_0", "ak_2"]
+        assert repo.api_key_by_hash("h1").id == "ak_1"
+        assert repo.api_key_by_hash("nope") is None
+        assert repo.update_api_key("ak_0", revoked_at=at(9)).revoked_at == at(9)
+        assert repo.get_api_key("ak_0").revoked_at == at(9)
 
 
 def clip_job(id="cj_1", play="p1", state="queued", seconds=0, **kw):

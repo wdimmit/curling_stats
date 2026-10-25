@@ -20,10 +20,13 @@ live (end_for_league), or when its watch ends. The API keeps those clocks, on
 each practice heartbeat and publish: the worker knows nothing of sessions.
 """
 
+import math
+import re
 from datetime import datetime, timedelta, timezone
 
 from curling_score.service import slug
-from curling_score.service.records import Job, PracticeSession, PracticeWatch, Run
+from curling_score.service.records import (Job, PracticeSession, PracticeWatch, Run,
+                                           SensorTiming, sensor_timing_id)
 
 IDLE_S = 900.0
 MAX_S = 10800.0
@@ -42,6 +45,37 @@ LEAGUE_FRESH_S = 6 * 3600
 # A run a worker is on: claimed, or published. Few at any time, unlike the
 # queue of recordings waiting.
 WORKED_ON = ("processing", "live")
+
+
+# A person's own sensors, pushed by their app (records.SensorTiming). A timing
+# is paired with the camera throw that crossed the throwing hog line nearest
+# it, within MATCH_S: one person's throws are 20 s and more apart, so the
+# phone's clock may be a few seconds out and still pair.
+MATCH_S = 4.0
+# A timing pushed this long after its session ended still belongs to it: an
+# app that was out of signal catches up.
+TIMING_GRACE_S = 120.0
+# ...and one this far before Start, to a phone whose clock runs behind ours.
+CLOCK_SLACK_S = 5.0
+# A timing more than this far ahead of our clock is a clock gone wrong.
+FUTURE_S = 60.0
+# An unpaired timing this young, in a running session, is a throw the cameras
+# have not published yet (about 15-20 s after it stops), not one they missed.
+PENDING_S = 60.0
+SHORT_S = (1.5, 8.0)
+LONG_S = (6.0, 30.0)
+# Which crossing the app's one time is: the back line, the throwing hog line
+# or the far hog line.
+AT_IS = ("back", "hog", "far")
+CLIENT_ID = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+
+
+class BadTiming(ValueError):
+    """A timing the app sent that cannot be read; the message says why."""
+
+
+class NoSession(Exception):
+    """No session of the person's held the timing's time."""
 
 
 class NoCameras(Exception):
@@ -173,8 +207,18 @@ def session_view(repo, doc, session, now) -> dict:
         job = repo.get_job(watch.job_id)
         status = "failed" if (watch.status == "failed"
                               or (job is not None and job.state == "failed")) else "ended"
-    throws = [{**th, "released_at": _iso(at), "hidden": th["id"] in session.hidden}
-              for th, at in in_window(doc, session, now)]
+    timings = repo.timings_for_session(session.id)
+    matched, unpaired = match_timings(doc, session, timings, now)
+    throws = []
+    for th, at in in_window(doc, session, now):
+        th = {**th, "released_at": _iso(at), "hidden": th["id"] in session.hidden}
+        if th["id"] in matched:
+            timing, gap = matched[th["id"]]
+            th["sensor"] = {**timing_view(timing), "gap_s": gap}
+        throws.append(th)
+    # A timing nothing paired yet, while the session runs, is most likely a
+    # throw the cameras are still measuring.
+    pending = status == "active" and session.active
     return {
         "session": {"id": session.id, "sheet": session.sheet, "hand": session.hand,
                     "started_at": _iso(session.started_at), "ended_at": _iso(session.ended_at),
@@ -183,6 +227,12 @@ def session_view(repo, doc, session, now) -> dict:
                   "recorded_s": None if watch is None else watch.recorded_s,
                   "busy_s": None if watch is None else watch.busy_s},
         "throws": throws,
+        # Whether the page shows anything of sensors at all: only for a
+        # session an app has pushed to.
+        "has_sensors": bool(timings),
+        "timings": [{**timing_view(t),
+                     "pending": pending and (now - t.hog_at).total_seconds() < PENDING_S}
+                    for t in unpaired],
     }
 
 
@@ -257,3 +307,121 @@ def end_for_league(repo, now) -> int:
                     stop(repo, s, now, "league")
                     ended += 1
     return ended
+
+
+# ------------------------------------------------------------ sensor timings
+def _seconds(item, name, bounds):
+    v = item.get(name)
+    if v is None:
+        return None
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        raise BadTiming(f"{name} is not a number")
+    if not bounds[0] <= v <= bounds[1]:
+        raise BadTiming(f"{name} must be {bounds[0]:g}-{bounds[1]:g} s")
+    return float(v)
+
+
+def read_timing(item) -> dict:
+    """One timing as the app sent it, checked: its client_id, the crossing
+    ``at`` (epoch ms) marks, both durations, and from those ``hog_at``, when
+    the rock crossed the throwing hog line. BadTiming says what is wrong."""
+    if not isinstance(item, dict):
+        raise BadTiming("a timing is an object")
+    cid = item.get("client_id")
+    if not isinstance(cid, str) or not CLIENT_ID.match(cid):
+        raise BadTiming("client_id must be 1-64 letters, digits or ._:-")
+    at_ms = item.get("at")
+    if isinstance(at_ms, bool) or not isinstance(at_ms, (int, float)) or not math.isfinite(at_ms):
+        raise BadTiming("at must be epoch milliseconds")
+    at_is = item.get("at_is")
+    if at_is not in AT_IS:
+        raise BadTiming("at_is must be back, hog or far")
+    short_s, long_s = _seconds(item, "short_s", SHORT_S), _seconds(item, "long_s", LONG_S)
+    if short_s is None and long_s is None:
+        raise BadTiming("send short_s, long_s or both")
+    try:
+        at = datetime.fromtimestamp(at_ms / 1000.0, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        raise BadTiming("at must be epoch milliseconds") from None
+    if at_is == "back" and short_s is None:
+        raise BadTiming("at_is back needs short_s")
+    if at_is == "far" and long_s is None:
+        raise BadTiming("at_is far needs long_s")
+    hog_at = (at + timedelta(seconds=short_s) if at_is == "back"
+              else at - timedelta(seconds=long_s) if at_is == "far" else at)
+    return {"client_id": cid, "at": at, "at_is": at_is, "short_s": short_s,
+            "long_s": long_s, "hog_at": hog_at}
+
+
+def session_for(repo, user_id: str, at: datetime, now: datetime):
+    """The person's session whose window holds ``at``: Start (less the
+    clock slack) to Stop (plus the grace), or to now while it runs."""
+    for s in repo.sessions_for_user(user_id):
+        settle(repo, s, now)
+        lo = s.started_at - timedelta(seconds=CLOCK_SLACK_S)
+        hi = (now if s.active else s.ended_at) + timedelta(seconds=TIMING_GRACE_S)
+        if lo <= at <= hi:
+            return s
+    return None
+
+
+def add_timing(repo, user_id: str, item, now: datetime, key_id: str | None = None):
+    """Keep one timing the app pushed, on the person's session that held it.
+    A timing already kept under its client_id is handed back as it was, so
+    the app may send again whatever it is unsure arrived. BadTiming for one
+    that cannot be read; NoSession when no session of theirs held it."""
+    got = read_timing(item)
+    tid = sensor_timing_id(user_id, got["client_id"])
+    kept = repo.get_timing(tid)
+    if kept is not None:
+        return kept
+    if (got["hog_at"] - now).total_seconds() > FUTURE_S:
+        raise BadTiming("at is in the future: is the app's clock right?")
+    session = session_for(repo, user_id, got["hog_at"], now)
+    if session is None:
+        raise NoSession()
+    timing = SensorTiming(id=tid, user_id=user_id, session_id=session.id, received_at=now,
+                          key_id=key_id, **got)
+    repo.put_timing(timing)
+    return timing
+
+
+def _wall(doc, t):
+    if t is None or doc.get("wall_t0") is None:
+        return None
+    return doc["wall_t0"] + (t - (doc.get("t0_s") or 0.0))
+
+
+def match_timings(doc, session, timings, now):
+    """Pair the session's timings with its throws by when each crossed the
+    throwing hog line: the camera's ``t_hog_s``, or else its far crossing
+    less the timing's long time. The closest pairs within MATCH_S go first,
+    one throw to one timing. Hidden throws pair too, so a timing never turns
+    up as unmatched because its throw was said to be someone else's.
+
+    Gives ({throw id: (timing, gap_s)}, [unpaired timings]), where gap_s is
+    the app's hog time less the camera's: the phone's clock against ours."""
+    doc = doc or {}
+    throws = [th for th, _ in in_window(doc, session, now) if not placed(th)]
+    pairs = []
+    for timing in timings:
+        app = timing.hog_at.timestamp()
+        for th in throws:
+            cam = _wall(doc, th.get("t_hog_s"))
+            if cam is None and timing.long_s is not None:
+                far = _wall(doc, th.get("t_far_s"))
+                cam = None if far is None else far - timing.long_s
+            if cam is not None and abs(app - cam) <= MATCH_S:
+                pairs.append((abs(app - cam), app - cam, timing.id, th["id"]))
+    matched, used = {}, set()
+    for _, gap, tid, thid in sorted(pairs):
+        if tid in used or thid in matched:
+            continue
+        used.add(tid)
+        matched[thid] = (next(t for t in timings if t.id == tid), round(gap, 2))
+    return matched, [t for t in timings if t.id not in used]
+
+
+def timing_view(timing) -> dict:
+    return {"id": timing.id, "hog_at": _iso(timing.hog_at), "short_s": timing.short_s,
+            "long_s": timing.long_s}

@@ -43,9 +43,9 @@ from curling_score.service import (dedupe, gameclips, labelling, playlist_index,
                                    practice, signin, slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, LABEL_KINDS, ROLES, ClipJob, Chart, Flag, Invite, Job, LabelAnswer, LabelItem, Play,
-    Review, Run, SigninRelay, Source, Team, TeamNameEdit, User, Worker, label_answer_id, play_id,
-    review_id,
+    JOB_KINDS, LABEL_KINDS, ROLES, ApiKey, ClipJob, Chart, Flag, Invite, Job, LabelAnswer,
+    LabelItem, Play, Review, Run, SigninRelay, Source, Team, TeamNameEdit, User, Worker,
+    label_answer_id, play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
 from curling_score.service.store import (clip_key, detcache_key, meta_key, practice_key,
@@ -138,6 +138,16 @@ PLAY_DAY_LIMIT = 300
 # Starting practice sessions: a few an hour is a busy morning on the ice.
 PRACTICE_HOUR_LIMIT = 20
 PRACTICE_DAY_LIMIT = 60
+# A sensor app's pushes of timings: one per throw is a few dozen an hour, and an
+# app catching up after a dead spot sends many in one push.
+TIMINGS_HOUR_LIMIT = 300
+TIMINGS_DAY_LIMIT = 1500
+TIMINGS_PER_PUSH = 50
+# The keys a person may have live at once (records.ApiKey), and how a key's
+# secret starts, so one pasted somewhere is recognisable for what it is.
+MAX_API_KEYS = 10
+API_KEY_PREFIX = "csk_"
+MAX_API_KEY_NAME = 60
 # What Start says when it is refused, on the club's cameras (the page shows it).
 CAMERAS_NOT_ALLOWED = ("Practice on the club's cameras needs a validated account, "
                        "or the club's Wi-Fi.")
@@ -480,6 +490,26 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if got is None:
             raise HTTPException(401, "sign in to do that")
         return got
+
+    def key_hash(secret: str) -> str:
+        return hashlib.sha256(secret.encode()).hexdigest()
+
+    def require_key(authorization) -> tuple[User, ApiKey]:
+        """The person an app's API key (records.ApiKey) pushes for, and the
+        key. Only the routes an app pushes to take one: it is never a sign-in."""
+        if not authorization or not authorization.startswith("Bearer " + API_KEY_PREFIX):
+            raise HTTPException(401, "send an API key made on the practice page")
+        key = repo.api_key_by_hash(key_hash(authorization[len("Bearer "):].strip()))
+        if key is None or key.revoked_at is not None:
+            raise HTTPException(401, "that API key is not known, or was revoked")
+        user = repo.get_user(key.user_id)
+        if user is None:
+            raise HTTPException(401, "that API key is not known, or was revoked")
+        t = now()
+        # Hourly at most, as last_seen_at is: a push per throw needs no write each.
+        if key.last_used_at is None or (t - key.last_used_at).total_seconds() > 3600:
+            key = repo.update_api_key(key.id, last_used_at=t) or key
+        return user, key
 
     def require_any_admin(authorization) -> User | None:
         """The owner's admin token (None back: a script, so no account) or a
@@ -3039,6 +3069,121 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                         "ended_at": _iso(s.ended_at), "end_reason": s.end_reason,
                         "active": s.active,
                         "throws": practice.throw_count(docs[s.watch_id], s, t)})
+        return {"sessions": out}
+
+    # A person's own sensors, pushed by their app with a key they made here.
+    def key_view(k: ApiKey) -> dict:
+        return {"id": k.id, "name": k.name, "created_at": _iso(k.created_at),
+                "last_used_at": _iso(k.last_used_at)}
+
+    @app.get("/api/me/keys")
+    def my_keys(authorization: str | None = Header(default=None)):
+        practice_on()
+        me = require_user(authorization)
+        return {"keys": [key_view(k) for k in repo.api_keys_for_user(me.id)
+                         if k.revoked_at is None]}
+
+    @app.post("/api/me/keys", status_code=201)
+    async def make_key(request: Request, authorization: str | None = Header(default=None)):
+        """A new key for an app of mine. Its secret is in this answer and
+        nowhere else, ever: only its hash is kept."""
+        practice_on()
+        me = require_user(authorization)
+        body = await request.json()
+        name = " ".join(str(body.get("name") or "").split())[:MAX_API_KEY_NAME] or "Sensor app"
+        if sum(1 for k in repo.api_keys_for_user(me.id) if k.revoked_at is None) >= MAX_API_KEYS:
+            raise HTTPException(409, f"You have {MAX_API_KEYS} keys already; revoke one first.")
+        secret = slug.new_slug(32, API_KEY_PREFIX)
+        key = ApiKey(id=slug.new_slug(slug.SHORT_BYTES, "ak_"), user_id=me.id, name=name,
+                     sha256=key_hash(secret), created_at=now())
+        repo.put_api_key(key)
+        return {**key_view(key), "key": secret}
+
+    @app.delete("/api/me/keys/{key_id}")
+    def revoke_key(key_id: str, authorization: str | None = Header(default=None)):
+        practice_on()
+        me = require_user(authorization)
+        key = repo.get_api_key(key_id)
+        if key is None or key.user_id != me.id:
+            raise HTTPException(404, "no such key")
+        if key.revoked_at is None:
+            repo.update_api_key(key.id, revoked_at=now())
+        return {"ok": True}
+
+    @app.post("/api/practice/sensors")
+    async def push_timings(request: Request, authorization: str | None = Header(default=None)):
+        """A sensor app's timings, each kept on the key's owner's session that
+        was running when it was thrown, and paired with a camera throw when
+        that session is read (practice.match_timings). Each timing is answered
+        on its own; the push is a 409 only when none had a session to go to."""
+        practice_on()
+        me, key = require_key(authorization)
+        try:
+            body = await request.json()
+        except ValueError:
+            raise HTTPException(422, "send JSON") from None
+        items = body.get("timings") if isinstance(body, dict) else None
+        if not isinstance(items, list) or not items:
+            raise HTTPException(422, "send {\"timings\": [...]}")
+        if len(items) > TIMINGS_PER_PUSH:
+            raise HTTPException(422, f"at most {TIMINGS_PER_PUSH} timings a push")
+        if not repo.bump_rate_limit("timings:" + me.id, now(), TIMINGS_HOUR_LIMIT,
+                                    TIMINGS_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of timings; try again later")
+        out, kept, homeless = [], 0, 0
+        for item in items:
+            cid = item.get("client_id") if isinstance(item, dict) else None
+            try:
+                got = practice.add_timing(repo, me.id, item, now(), key_id=key.id)
+            except practice.BadTiming as e:
+                out.append({"client_id": cid, "error": str(e)})
+                continue
+            except practice.NoSession:
+                homeless += 1
+                out.append({"client_id": cid, "error": "no practice session of yours was "
+                                                       "running then"})
+                continue
+            kept += 1
+            out.append({"client_id": cid, "id": got.id, "session_id": got.session_id})
+        if homeless == len(items):
+            return JSONResponse({"timings": out}, status_code=409)
+        return {"timings": out}
+
+    @app.get("/api/admin/practice/timings")
+    def admin_timings(session: str | None = None, user: str | None = None,
+                      authorization: str | None = Header(default=None)):
+        """Sensor timings beside the cameras' throws they paired with, by
+        session or by everyone's sessions of one person: what checks the
+        camera's split against the sensors (scripts/practice/sensor_pairs.py)."""
+        require_admin(authorization)
+        if session:
+            got = repo.get_session(session)
+            sessions = [got] if got is not None else []
+        elif user:
+            sessions = repo.sessions_for_user(user, limit=500)
+        else:
+            raise HTTPException(422, "say which session or user")
+        out = []
+        for s in sessions:
+            timings = repo.timings_for_session(s.id)
+            if not timings:
+                continue
+            doc = practice_doc(repo.get_watch(s.watch_id))
+            matched, unpaired = practice.match_timings(doc, s, timings, now())
+            throws = {th["id"]: th for th, _ in practice.in_window(doc, s, now())}
+            pairs = [{"throw": {k: throws[thid].get(k) for k in
+                                ("id", "t_release_s", "t_hog_s", "t_far_s", "split_s",
+                                 "release_speed", "v_hog_m_s", "release_source")},
+                      "timing": practice.timing_view(t), "gap_s": gap}
+                     for thid, (t, gap) in sorted(matched.items(),
+                                                  key=lambda kv: kv[1][0].hog_at)]
+            out.append({"session": {"id": s.id, "user_id": s.user_id, "sheet": s.sheet,
+                                    "started_at": _iso(s.started_at),
+                                    "ended_at": _iso(s.ended_at)},
+                        "wall_t0": (doc or {}).get("wall_t0"),
+                        "t0_s": (doc or {}).get("t0_s"),
+                        "pairs": pairs,
+                        "unpaired": [practice.timing_view(t) for t in unpaired]})
         return {"sessions": out}
 
     def practice_watch_of(job):

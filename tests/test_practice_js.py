@@ -137,3 +137,21 @@ def test_the_page_speaks_of_the_cameras_never_a_stream():
     literals = [a or b for a, b in re.findall(r'"([^"]*)"|`([^`]*)`', text)]
     assert [w for w in literals if "stream" in w.lower()] == []
     assert "stream_ended:" in text and "failed:" in text
+
+
+def test_a_sensors_times_in_words():
+    assert js("P.sensorText({short_s: 3.214, long_s: 13.9})") == "short 3.21 s · long 13.90 s"
+    assert js("P.sensorText({short_s: null, long_s: 13.9})") == "long 13.90 s"
+    assert js("P.sensorText({short_s: null, long_s: null})") is None
+    assert js("P.sensorText(undefined)") is None
+
+
+def test_unpaired_timings_go_among_the_throws_by_time():
+    rows = js("""P.mergeTimings(
+        [{id: "a", released_at: "2026-10-25T10:00:00Z"},
+         {id: "b", released_at: "2026-10-25T10:01:00Z"}],
+        [{id: "s1", hog_at: "2026-10-25T10:00:30Z"},
+         {id: "s2", hog_at: "2026-10-25T10:01:00Z"}])
+        .map(r => r.throw ? `${r.throw.id}${r.n}` : r.timing.id)""")
+    assert rows == ["a1", "s1", "b2", "s2"]
+    assert js("P.mergeTimings([], undefined)") == []

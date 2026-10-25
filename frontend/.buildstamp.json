@@ -17,7 +17,7 @@
     "frontend/core/myshots.mjs": "0f64f1ace3bab3879e422da977b2b5c127e973de249eead7c45f3d9cd63acbf1",
     "frontend/core/overrides.mjs": "d625d831d618dcf8f1c30fde4b6f4153127ffdc0fe87916e78f5177cd5def804",
     "frontend/core/playlists.mjs": "7b578c6b5d0579f9032f3d0c287f5f41008e610a0a1e6923d1c468ca800fd768",
-    "frontend/core/practice.mjs": "6c9feb2c7c69614d9c007c15e44ffc85f4f680445e0d4565143dc28e1e25c303",
+    "frontend/core/practice.mjs": "e40853f590054431c1d18c923324f7258bcf5296ec3c31379ddf3cb71304c38e",
     "frontend/core/report.mjs": "7bb9374198cdccf4ca7380a72ee620ced50868bdf0f0de19bbc87a4dd4480aaa",
     "frontend/core/shotclip.mjs": "cb4b6ee605e41308770edf681b824f5db06cfd206bffd3f81a4f47cebaf63ef5",
     "frontend/core/shots.mjs": "069aec2c81a69a467885c2585228c23516ab646e5de0df7632fffeec28172102",
@@ -49,7 +49,7 @@
     "frontend/site/Label.jsx": "bf3bac6073466eb8c59e431919f1b3cbae7353b420f16ce470e58791cdc9a1a6",
     "frontend/site/Mine.jsx": "206b1cfd33e05007043c52f784af0554642d6552d7830372105a29bee15de48e",
     "frontend/site/Playlists.jsx": "2f927ff13f7f3b5db866f7593604dfe9f3b72cfcbb5e47530b4d50660a6417d4",
-    "frontend/site/Practice.jsx": "daca8636c616a9a9ded99dd065bb773674fa7797fc365cb44ad9615451e1c7c5",
+    "frontend/site/Practice.jsx": "9416c2c6a9d062878c1093ae7100b5219faac9ddaeb0a611b3673544527821bf",
     "frontend/site/ShotCharts.jsx": "f77f480eae042abc0158ec7780ab8cee8f56dfa6ab80b133a0d325b6d3a1d3e7",
     "frontend/site/Shots.jsx": "31221f40bcec2e9d49ff2f9dfe7317348ad3279a55d5153df6763edf44cfd4ed",
     "frontend/site/SignIn.jsx": "214d8ea19ab8a7cc702529150d6919be2bbc5aa9e64ee36fd142cb5718ad801f",
@@ -90,7 +90,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "6220b6cc7217625d387b9adb54ee1f45cb374760adcdd99802cb1f62c4d8d9f9",
+    "src/curling_score/service/static/site.js": "3fd26b31cb0ec51baa5425d7c2ae7e45482127919a74da9adaf64e8592355325",
     "src/curling_score/viewer/app.js": "1dee5b933bc01027eb62833a336931aa4f842bc0b758bfe7aa4e408b284abeb2"
   }
 }

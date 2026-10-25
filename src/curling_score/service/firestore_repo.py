@@ -28,8 +28,8 @@ from datetime import timedelta
 
 from curling_score.service.records import (
     Chart, ClipJob, Flag, Invite, Job, LabelAnswer, LabelItem, Play, PlaylistIndexEntry,
-    PracticeSession, PracticeWatch, Review, Run, SigninRelay, Source, Team, TeamNameEdit, User,
-    WatchedPlaylist, Worker, play_id,
+    ApiKey, PracticeSession, PracticeWatch, Review, Run, SensorTiming, SigninRelay, Source, Team,
+    TeamNameEdit, User, WatchedPlaylist, Worker, play_id,
 )
 from curling_score.service.repo import (
     LEASE_S, MAX_STORED_OVERRIDES_BYTES, _day_bucket, _hour_bucket,
@@ -44,6 +44,7 @@ RELAYS = "signin_relays"
 REVIEWS = "reviews"
 TEAM_NAME_EDITS = "team_name_edits"
 WATCHES, SESSIONS = "practice_watches", "practice_sessions"
+TIMINGS, API_KEYS = "practice_timings", "api_keys"
 LABEL_ITEMS, LABEL_ANSWERS = "label_items", "label_answers"
 
 
@@ -753,6 +754,38 @@ class FirestoreRepo:
                 for d in self._where(SESSIONS, "user_id", "==", user_id).stream()]
         return sorted(docs, key=lambda s: s.started_at, reverse=True)[:limit]
 
+    # ---- sensor timings and API keys ----------------------------------
+    # One equality filter each again. A key is looked up by its hash on every
+    # push; a person has a handful, so listing theirs is sorted here.
+    def put_timing(self, timing):
+        self._col(TIMINGS).document(timing.id).set(timing.to_dict())
+
+    def get_timing(self, timing_id):
+        return self._get(TIMINGS, timing_id, SensorTiming)
+
+    def timings_for_session(self, session_id):
+        docs = [SensorTiming.from_dict(d.to_dict())
+                for d in self._where(TIMINGS, "session_id", "==", session_id).stream()]
+        return sorted(docs, key=lambda t: t.hog_at)
+
+    def put_api_key(self, key):
+        self._col(API_KEYS).document(key.id).set(key.to_dict())
+
+    def get_api_key(self, key_id):
+        return self._get(API_KEYS, key_id, ApiKey)
+
+    def api_key_by_hash(self, sha256):
+        docs = list(self._where(API_KEYS, "sha256", "==", sha256).limit(1).stream())
+        return ApiKey.from_dict(docs[0].to_dict()) if docs else None
+
+    def api_keys_for_user(self, user_id):
+        docs = [ApiKey.from_dict(d.to_dict())
+                for d in self._where(API_KEYS, "user_id", "==", user_id).stream()]
+        return sorted(docs, key=lambda k: k.created_at)
+
+    def update_api_key(self, key_id, **fields):
+        return self._update(API_KEYS, key_id, ApiKey, fields)
+
     # ---- member labelling ---------------------------------------------
     # An answer is a map (``boxes`` is a list of dicts, never of lists), so
     # both records go in as they are. The answer's id is derived, which is
@@ -914,6 +947,7 @@ class FirestoreRepo:
                               for d in self._col(CLIP_JOBS).stream()],
                 "reviews": dump(REVIEWS),
                 "practice_watches": dump(WATCHES), "practice_sessions": dump(SESSIONS),
+                "practice_timings": dump(TIMINGS), "api_keys": dump(API_KEYS),
                 "team_name_edits": dump(TEAM_NAME_EDITS),
                 "label_items": dump(LABEL_ITEMS), "label_answers": dump(LABEL_ANSWERS)}
 
@@ -948,6 +982,10 @@ class FirestoreRepo:
             self.put_watch(PracticeWatch.from_dict(d))
         for d in data.get("practice_sessions", []):
             self.put_session(PracticeSession.from_dict(d))
+        for d in data.get("practice_timings", []):
+            self.put_timing(SensorTiming.from_dict(d))
+        for d in data.get("api_keys", []):
+            self.put_api_key(ApiKey.from_dict(d))
         for d in data.get("team_name_edits", []):
             self.put_team_name_edit(TeamNameEdit.from_dict(d))
         for d in data.get("label_items", []):

@@ -121,3 +121,27 @@ export function dotsShown(piece, t) {
   while (n < dots.length && dots[n][0] <= t) n++;
   return n;
 }
+
+/* A person's own sensors' times for a throw (service/practice.py's
+ * timing_view): "short 3.21 s · long 13.94 s", either left out when the app
+ * did not send it. */
+export function sensorText(s) {
+  if (!s) return null;
+  const parts = [];
+  if (s.short_s != null) parts.push(`short ${s.short_s.toFixed(2)} s`);
+  if (s.long_s != null) parts.push(`long ${s.long_s.toFixed(2)} s`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+/* The throws table's rows in time order: each throw ({ throw, n }, n its
+ * number on the page) and each sensor timing no throw paired with
+ * ({ timing }), by when the throw was released or the timing crossed the hog
+ * line. A timing goes after a throw at the same moment. */
+export function mergeTimings(throws, timings) {
+  const rows = (throws ?? []).map((t, i) => ({ throw: t, n: i + 1, at: Date.parse(t.released_at) }));
+  for (const timing of timings ?? []) rows.push({ timing, at: Date.parse(timing.hog_at) });
+  return rows
+    .map((r, i) => ({ ...r, i }))
+    .sort((a, b) => a.at - b.at || a.i - b.i)
+    .map(({ at: _at, i: _i, ...r }) => r);
+}
