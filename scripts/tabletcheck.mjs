@@ -284,7 +284,7 @@ await check("menu", async () => {
   await tap("#menuBtn");
   await sleep(300);
   if ((await data("menu")) !== "open") fail("menu: #menuBtn did not set body[data-menu=open]");
-  for (const sel of ["#game", "#copyLink", "#flagBtn", "#link"])
+  for (const sel of ["#copyLink", "#flagBtn", "#link"])
     if (!(await vis(sel))) fail(`menu: ${sel} is not visible in the open menu`);
   const hd = await box("header");
   for (const sel of ["#end", "#thinkBtn", "#reportBtn"]) {

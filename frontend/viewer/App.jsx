@@ -75,7 +75,6 @@ function reducer(s, a) {
     case "goTo":
       return { ...s, ei: a.ei, si: a.si, selStone: null,
                notice: a.notice !== undefined ? a.notice : s.notice };
-    case "game":   return { ...s, gi: a.gi, ei: 0, si: 0, selStone: null };
     case "stone":  return { ...s, selStone: a.i };
     case "set":    return { ...s, ...a.patch };
     default:       return s;
@@ -915,12 +914,6 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
       ) : null}
       <div id="menu" onClick={() => dispatch({ type: "set", patch: { menu: "" } })}
            onChange={() => dispatch({ type: "set", patch: { menu: "" } })}>
-        <select id="game" aria-label="Game" value={ui.gi}
-                onChange={e => dispatch({ type: "game", gi: +e.target.value })}>
-          {doc.games.map((g, i) => (
-            <option key={i} value={i}>{`Game ${i + 1} (${g.ends.length} ends)`}</option>
-          ))}
-        </select>
         {tablet ? null : endSel}
         <CopyButton id="copyLink" title="Copy a link to this rock" label="Copy link"
                     text={() => location.href} />

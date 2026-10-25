@@ -43,6 +43,10 @@ body { margin:0; background:var(--bg); color:var(--ink);
 header { padding:10px 16px; border-bottom:1px solid var(--line);
          background:var(--panel); display:flex; gap:12px; align-items:center;
          flex-wrap:wrap; position:sticky; top:0; z-index:5; }
+/* The header is a stacking context, so #menu's own z-index only counts inside
+   it: while ⋯ is open the header itself must clear the phone's House-tab house
+   and the edit-mode house (8/9), or they cover the menu from I played… down. */
+body[data-menu="open"] header { z-index:10; }
 /* The condensed face carries the headings and every number; body copy stays on
    the system sans, which is what a dense charting form wants at 13px. The stack
    falls back to system-ui by design: the face comes from a CDN, so an offline
@@ -574,12 +578,11 @@ body.reporting main { display:none; }
    so nothing competes with it; the .grow spacer is matched as `header > .grow`
    because .grow is also used inside .transport and .tools, where every sibling
    is still at the initial `order: 0` and reordering one would move it last.
-   #game .. #reportBtn cannot take the child combinator: display:contents does
+   #end .. #reportBtn cannot take the child combinator: display:contents does
    not flatten the DOM, so #menu is still their parent. */
 @media (min-width: 641px) {
   header > h1        { order: 1; }
   header > #src      { order: 2; }
-  header #game       { order: 3; }
   header #end        { order: 4; }
   header > .grow     { order: 5; }
   header > #blanks   { order: 6; }
