@@ -699,3 +699,169 @@ None was fixed in this task.
   - 5H-HOUSE for 9 min and then 63 min;
   - a second reader on 2H-HOUSE for 64 s;
   - four 4-8 s reads of sheet 4's cameras.
+
+# Task 11 fixes: re-measure
+
+The fixes for D1-D4 and D6-D8 (commits `eebd07cc`..`7a9ad9a4`), measured on the Ryzen on 2026-10-24/25,
+22:56-00:57 UTC, under Task 11's rules. D5 and D9 are parked (Ruling 24).
+
+## Setup
+
+- **Image:** `curling-worker:practice-cams`, built from `/data/wdd/scratch/practice-cams-src` after rsyncing
+  the worktree. The installed `cameras/*.py`, `practice/watch.py`, `practice/pipeline.py`, `live/lane.py` and
+  `ingest/frames.py` matched the branch by md5. The baseline run D0 used the Task 11 image (`fab1e4da`).
+- **Containers:** throwaway `t11fix-*`, worker-like (`--gpus "device=0,1"`, `CUDA_DEVICE_ORDER=PCI_BUS_ID`,
+  `CUDA_VISIBLE_DEVICES=0`), on `deploy_default`. Production and `curling-worker:local` were not touched.
+- **Production was idle throughout:** a monitor read the three production containers' logs every 30 s during
+  each run, and every claim got a 204.
+- **Tools** are in `/data/wdd/scratch/practice-cams-work/t11fix/`:
+  - Task 11's `harness.py`, with per-thread CPU sampling and `--lane turns` (live/lane.py's new rule);
+  - `site/sitecustomize.py`, Task 11's TAPCOUNT wrapper, which also logs the queue's largest depth and the age
+    of its oldest packet in each 10-s window;
+  - `site-quiet/`, the same wrapper that, for the camera named in `T11_QUIET`, throws away every packet after
+    the first keyframe;
+  - `bench.py` (the composer offline, on synthetic test patterns), `startup.py`, `d8.py`, `threads.py`,
+    `qstats.py`, `inputs.py`.
+- **Who was on the ice:** D0 had a game on sheet 2. Q1 caught a quiet hour (one throw). A look at sheets
+  1, 2, 3 and 5 at 00:20 (one frame each, viewed once and deleted) found groups on all four, so Q2 and Q3 used
+  sheets 2 and 5.
+
+## D2 part 3: why a sheet's composer fell behind
+
+**Before (D0, Task 11's code, sheets 1 and 2 with their watches, 15 min):**
+- Sheet 2's four queues were at their 600-packet cap from the start and never drained: queue p50 572-581 on all
+  four cameras, 6 to 264 drop-to-keyframe events in each 2-minute window.
+- Sheet 1's queues stayed near 0.
+- Per thread (`/proc/<pid>/task`):
+  - sheet 2's filtergraph thread `fc0` and its slice workers took **1.59-1.62 cores in every window**, flat;
+  - sheet 1's took 1.35;
+  - `top -H` showed sheet 2's main `fc0` thread at **86%** of a core, with its decoders at 30-40% each.
+- GPU 0 was not the limit: SM mean 10.5% (max 57%), NVENC mean 21.3% (max 76%).
+- So the composer was CPU-bound on one thread, the single filtergraph that crops, turns, scales and overlays all
+  four cameras at 60 fps.
+
+**Offline** (`bench.py`: sheet 2's layout, four synthetic 1080p60 H.264 streams read as fast as they come, so
+the output rate is the composer's capacity; real time is 60):
+
+| Composer | Flat out (fps) | Paced to real time | Beside 24 busy threads |
+|---|---|---|---|
+| As it was: one filtergraph, 2 filter and 2 decode threads | 57.6, 60.7, 58.5 | **49.8 fps** (0.83x), 2.68 cores | **44.7, 46.0** |
+| `-filter_complex_threads` 4 | 73.8 | | |
+| Scale before transpose | 70.7 | | |
+| **A filtergraph per camera, plus one that lays them out** | **98.1, 118.3** | **60.3** (keeps up), **2.43 cores** | **69.6, 70.1** |
+| The same, with 1 / 4 decode threads | 92.4 (1 filter thread) | 60.3 (1 decode), 2.62 cores | 72.4 / 67.4 |
+| The same, filter threads 4 | 114.7 | 60.3 | 70.3 |
+| The same, `format=yuv420p` in each camera's graph | 94.3 | 60.3, 2.74 cores | 68.6 |
+
+- **Cause:** with every camera in one graph, FFmpeg runs it on one thread, which could only just keep 60 fps
+  even alone. Any other load (the watch's decode and detector, the other sheet's composer) put it below real
+  time. Since the composer reads only what its output needs, a backlog that formed never drained.
+- **Fix:** each camera's crop, turn and scale is a graph of its own (FFmpeg 7's filtergraph chaining), so it runs
+  on its own thread, and the thread caps are unchanged. The picture is the same: the same filters in the same
+  order.
+
+## Run Q again
+
+Q1 used sheets 1 and 2 (25 min, 23:46-00:11). Q2 used sheets 2 and 5 (25 min, 00:20-00:46).
+
+| | Task 11 Q (sheets 1+2) | D0 (old code, sheets 1+2) | Q1 (sheets 1+2) | Q2 (sheets 2+5) |
+|---|---|---|---|---|
+| Queue depth, p50 / max | sheet 2: 569-579 / 600 | sheet 2: 572-581 / 600 | 0 / 34 | 0 / 34 |
+| Packet age in queue, worst per 10 s: p99 / max | not measured (≈9.5 s at the cap) | ≈10 s at the cap | ≤ 0.45 / 0.68 s | ≤ 0.70 / 0.77 s |
+| Drop episodes (events) | 820 events in 8 min | 1,198 events in 15 min | 1 (4) | 14 (93) |
+| Composer CPU, mean (cores) | 2.81 / 3.47 | 2.78 / 3.53 | 2.89 / 2.70 | 2.86 / 2.78 |
+| Composer speed | 1.01x | 1.01x | 1.00x | 1.00x |
+| Head lag p50 (s) | 1.32 / 1.90 | 2.21 / 1.52 | 0.85 / 0.70 | 0.95 / 0.71 |
+| Container CPU, mean (max) | 9.46 | 9.48 (12.8) | 8.60 (10.6) | 9.41 (16.3) |
+| GPU 0 SM / NVENC, mean (max) | | 10.5 (57) / 21.3 (76) % | 11.7 (50) / 25.2 (45) % | 12.6 (68) / 23.4 (34) % |
+| Throws | 11 | 17 | 1 | **32** |
+| Latency p50 / p90, from the head | 16.3 / **28.6** s (after calibration) | 14.7 / 30.2 s | 14.3 s (one throw) | **12.5 / 17.0 s** |
+| Latency p50 / p90, by the wall clock | | 16.1 / 31.6 s | 15.0 s | **13.2 / 17.6 s** |
+
+- Task 11's run A, the other two-session run, had p90 23.8 s.
+- **Latency:** "from the head" is Task 11's measure, publish time minus when the recording's head reached the
+  stone's rest. "By the wall clock" also counts the composer's head lag. Before the fix, neither counted the
+  queues (up to 10 s on sheet 2); now a packet waits at most 0.5 s.
+- In Q2 the two watches stepped 353 and 353 times (D3's turns). Both saved calibrations agreed at Start, so no
+  watch saved or replaced one.
+- **Drop episodes:** each was 0.5-0.8 s behind and caught up at once (the next packet was fresh). 13 of Q2's 14
+  episodes, and all 11 of Q3's, fell within a practice clip cut: 4 s before its delivery to 1 s after.
+  - A cut is FFmpeg decoding the composite and encoding with libx264 at its default threads, a few seconds over
+    every core.
+  - **Running the cut at `nice -n 10` did not help.** Q3 ran that, on sheets 2 and 5, and was **stopped early**
+    at 8 min when the wave was closed: 11 episodes, 87 events, all 11 on a cut of 13.
+  - So it is not CPU time the composers lose to a cut, or not only that. Candidates are memory bandwidth (the
+    cut decodes 1080p60 flat out) and the watch's own step. **Not fixed**; the niceness change was dropped.
+- Capture RSS: 62 MB → 67-72 MB over 25 min, the same growth as D9 (parked).
+- Composer RSS: 635-653 MB → 671-709 MB, against 583-602 MB with one graph.
+
+## Startup (D2 part 2)
+
+`startup.py` starts sheet 2's recorder with ffmpeg's log at info, and times each "Input #k" line from the
+composer's spawn.
+
+| Input options | Inputs opened at (s) | First output (s) | Cameras behind once read |
+|---|---|---|---|
+| FFmpeg's own probe (`-f h264` only, D1's keyframe-first FIFO) | 0.43, 0.80, 1.05, 1.35 | 2.4 | 1.2 / 0.9 / 0.8 / 0.6 s: 74 / 59 / 53 / 41 packets dropped |
+| `-probesize 500000 -analyzeduration 100000` | 0.12, 0.20, 0.27, 0.33 | 1.4 | 0.45 s at worst |
+| **`-probesize 32 -analyzeduration 1` (kept)** | **0.08, 0.12, 0.17, 0.22** | **1.3** | **0.30 s at worst, nothing dropped** |
+| `-fpsprobesize 0` | 0.09, 0.14, 0.18, 0.23 | 1.3 | 0.30 s |
+
+- Every input still read as `h264 (Main) ... 1920x1080`.
+- **At +10 s in Q1** the queue was **0 on all eight cameras**, against Task 11's 424 / 302 / 185 / 83 and 403-424
+  on house_a. In the first 10 s the largest was 12-26 packets, and the oldest packet 0.19-0.39 s.
+
+## D1: a camera quiet after its first keyframe
+
+`site-quiet` on one camera of sheet 2, 45 s each.
+
+| Image | Quiet camera | Result |
+|---|---|---|
+| Task 11's | 2H-PTZ (long_h, opened last) | `sheet 2's composer stalled at 0 s` at +30 s. The other inputs reached 600 packets |
+| Fixed | 2H-PTZ | First output at 1.3 s. The recording ran all 45 s, through reconnects at 5, 15 and 35 s, with no drop |
+| Fixed | 2A-HOUSE (house_a, opened first) | First output at 1.3 s. At +15 s **the recording froze**: see "A new defect" below |
+
+## D8: SIGTERM
+
+| Case | Seconds to exit after SIGTERM (exit code) |
+|---|---|
+| Sheet 2, all four cameras cut off (`netcut.sh`) for 40 s, recorder stopped 18 s into the cut | 0.007-0.016 (-15) on all four |
+| Sheet 2, 2A-HOUSE's capture frozen inside libndi (below) | 0.015 (-15); the other three 0.007 |
+| Q1 and Q2 stops | sheet stopped in 0.17-0.18 s, all captures -15 (0.36-0.64 s in D0) |
+
+## A new defect: a capture can freeze for good during a reconnect
+
+- **Seen** in the D1 run with 2A-HOUSE quiet, twice. That camera kept sending, and the wrapper hid its packets,
+  so the capture reconnected at 5 s and again at 15 s.
+- **At the second reconnect the capture froze** (`/proc/<pid>/task/*/wchan`):
+  - libndi's `ndir:video` thread was blocked in `pipe_write`, the tap's pipe full;
+  - the main thread was in a futex wait inside `receiver.disconnect()`/`connect_to()`, which cyndilib calls
+    holding the GIL;
+  - so the Python reader that drains the pipe could not run, and neither could the `Holder`'s ticker.
+- **What it does to the recording:** the composer starved on that input and stopped. The other three cameras' queues
+  grew to the 600-packet count cap, and the recording would have failed at `STALL_S`.
+- **When it happens for real:** packets have to be in flight while a reconnect runs, for example a camera that
+  comes back just as the capture gives up on it. Task 11's L1B, a capture SIGKILLed after more than 5 s, fits
+  that.
+- SIGTERM now ends such a capture at once (D8), but nothing unfreezes it.
+- **Possible fixes** (not made, out of this wave's scope):
+  - a tap pipe large enough for libndi's in-flight packets (`F_SETPIPE_SZ`, 1 MB);
+  - or a tap that never blocks on its pipe and marks a gap, so the Holder restarts at a keyframe.
+
+## Cleanup
+
+- **Every recording, clip and frame was deleted:**
+  - D0, Q1, Q2 and Q3's `rec*` directories and clip folders;
+  - the startup, D1 and D8 recordings;
+  - the four looks, after one view;
+  - `bench.py`'s synthetic test-pattern inputs.
+- A `find` under `t11fix/` for `*.ts`, `*.h264*`, `*.mp4`, `*.jpg`, `*.png` and FIFOs finds nothing.
+- What remains is numbers and code: logs, `samples.jsonl`, throw documents, `gpu.log`, and the calibration
+  pickles under the scratch roots `calroot-*`.
+- No `t11fix-*` container, capture, ffmpeg or monitor process is left. The extra image tag
+  `curling-worker:practice-cams-fab1e4da`, made for the D0/D1 baseline, was removed.
+- **Camera connections, for the record:**
+  - sheets 1 and 2 for 15 min (D0) and 25 min (Q1);
+  - sheets 2 and 5 for 25 min (Q2) and 8 min (Q3);
+  - each of sheets 1, 2, 3 and 5 for about 10 s (the looks, inputs.py);
+  - sheet 2 for about 20-45 s, ten times (startup, D1, D8).
