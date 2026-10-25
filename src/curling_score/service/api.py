@@ -2988,7 +2988,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                                settings.processing_version,
                                source=practice.CAMERAS if cameras else "youtube")
         except practice.NoStream:
-            raise HTTPException(404, f"no live stream on sheet {sheet}") from None
+            raise HTTPException(404, f"no cameras on sheet {sheet}" if cameras
+                                else f"no live stream on sheet {sheet}") from None
         except practice.LeagueOn:    # one began between the check and the start
             raise HTTPException(409, LEAGUE_ON) from None
         return {"id": s.id, "watch_id": s.watch_id}

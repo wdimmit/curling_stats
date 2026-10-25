@@ -20,7 +20,7 @@ const POLL_MS = 3000;
 const HAND_KEY = "practice.hand";
 const ENDED = {
   stop: "you ended it", idle: "15 minutes without a throw", max: "the 3-hour limit",
-  league: "a league game started", stream_ended: "the stream ended", failed: "the stream could not be watched",
+  league: "a league game started", stream_ended: "the stream ended", failed: "the cameras could not be read",
 };
 
 // The club's sheets, for starting a session from the list of them.
@@ -224,7 +224,7 @@ function Start({ sheet, onStarted }) {
         body: JSON.stringify({ sheet, hand }) });
       const body = await res.json().catch(() => ({}));
       if (res.ok) onStarted(body.id);
-      else setErr(res.status === 404 ? `There's no live stream on sheet ${sheet} right now.`
+      else setErr(res.status === 404 ? `Sheet ${sheet} can't be watched right now.`
                                        : body.detail || `Could not start (${res.status}).`);
     } finally { setBusy(false); }
   };

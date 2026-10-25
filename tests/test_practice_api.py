@@ -210,7 +210,7 @@ class TestOnTheClubsCameras:
     def test_a_sheet_the_club_has_no_cameras_on_is_a_404(self, cams):
         validate(cams, "uid-sarah")
         r = start(cams, sheet=6)
-        assert r.status_code == 404 and "sheet 6" in r.json()["detail"]
+        assert r.status_code == 404 and r.json()["detail"] == "no cameras on sheet 6"
         assert not cams["repo"].jobs
 
     def test_a_camera_start_never_asks_youtube(self, cams, monkeypatch):
