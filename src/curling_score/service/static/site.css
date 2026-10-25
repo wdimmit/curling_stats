@@ -248,6 +248,9 @@ td.pace .val { width:4.6em; text-align:right; font-weight:600; }
 #ice td .val { font-weight:600; }
 #ice td small { display:block; color:var(--muted); font-size:12px; }
 #ice td.unclear .val { color:var(--muted); font-weight:500; }
+#ice td small.adj { margin-top:3px; color:var(--ink); }
+#ice td small.adj.unclear { color:var(--muted); }
+#ice td small.adj b { font-weight:600; }
 /* The two draws' series: blue and orange, validated against both panels
    (dataviz validate_palette.js, light #fffdf7 and dark #211c14). */
 #ice { --series-a:#2a78d6; --series-b:#eb6834; }

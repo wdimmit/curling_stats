@@ -128,9 +128,9 @@ class TestTurns:
         assert r["turns"] is None and r["turnBin"] == "unread"
 
     def test_the_bands(self):
-        assert run_js("out([3.9, 4, 5.5, 6, 9].map(turnBin));") == ["t0", "t1", "t2", "t3", "t3"]
+        assert run_js("out([3.9, 4, 5.5, 9].map(turnBin));") == ["t0", "t1", "t1", "t1"]
         assert [b["name"] for b in run_js("out(TURN_BINS);")] == [
-            "Under 4 turns", "4–5 turns", "5–6 turns", "6+ turns", "Rotation not read"]
+            "Under 4 turns", "4+ turns", "Rotation not read"]
 
 
 class TestLastTenMetres:
@@ -195,7 +195,8 @@ class TestTables:
         all_ = got["sides"][-1]
         assert all_["a"]["rocks"] == 20 and all_["a"]["games"] == 5 and all_["curl"]["diff"] < 0
         assert got["sides"][2]["curl"] is None
-        assert [r["a"]["rocks"] for r in got["turns"]] == [0, 20, 0, 0, 0]
+        assert [r["a"]["rocks"] for r in got["turns"]] == [0, 20, 0]
+        assert all(r["curlAdj"] is None for r in got["turns"])
 
     def test_one_draw_on_its_own(self):
         got = run_js(ROWS + "out(iceTables(mk('a', 3, [1,2,3], 1.6), null));")
@@ -287,3 +288,43 @@ out(speedReport(rows, null));""")
     def test_too_few_games_read_no_speed(self):
         got = run_js(SPEED_ROWS + "out(speedReport(mkSpeed('a', 2, [13.5, 13.7]), null));")
         assert got["a"]["split"] is None and got["a"]["games"] == 2
+
+
+# Two draws on the same ice: curl = 1.6 m - 0.05 m per turn. B threw less
+# rotation, so it reads as curling more until the mix is taken out.
+MIX_ROWS = """
+const mix = (prefix, games, turns, ice = 0) => {
+  const rows = [];
+  for (let g = 0; g < games; g++)
+    turns.forEach((t, i) => rows.push({game: `${prefix}${g}`, sheet: g + 1, side: "toward", turnBin: "t1",
+      turns: t, curl_m: 1.6 + ice - 0.05 * t + 0.01 * (((g + i) % 3) - 1), tail_m: null}));
+  return rows;
+};
+"""
+
+
+class TestSameRotation:
+    def test_a_draw_that_threw_less_rotation_reads_the_same_ice(self):
+        got = run_js(MIX_ROWS + "out(adjustedDifference(mix('a', 5, [5, 5, 6, 6]), mix('b', 5, [3, 3, 4, 4]), 'curl_m'));")
+        assert got["perTurn"] == pytest.approx(-0.05, abs=0.005)
+        assert got["shift"] == pytest.approx(0.1, abs=0.01)
+        assert got["diff"] == pytest.approx(0.0, abs=0.02) and got["lo"] <= got["diff"] <= got["hi"]
+
+    def test_a_real_change_survives_it(self):
+        got = run_js(MIX_ROWS + "out(adjustedDifference(mix('a', 5, [5, 5, 6, 6]), mix('b', 5, [3, 3, 4, 4], -0.2), 'curl_m'));")
+        assert got["diff"] == pytest.approx(-0.2, abs=0.02) and got["hi"] < 0
+
+    def test_rocks_with_no_rotation_read_are_left_out(self):
+        got = run_js(MIX_ROWS + """
+const a = mix('a', 5, [5, 5, 6, 6]).concat([{game: 'a0', sheet: 1, turns: null, curl_m: 9}]);
+out(adjustedDifference(a, mix('b', 5, [3, 3, 4, 4]), 'curl_m'));""")
+        assert got["diff"] == pytest.approx(0.0, abs=0.02)
+
+    def test_too_few_says_nothing(self):
+        assert run_js(MIX_ROWS + "out(adjustedDifference(mix('a', 2, [5, 6]), mix('b', 5, [3, 4]), 'curl_m'));") is None
+
+    def test_the_side_table_carries_it_and_the_turns_table_does_not(self):
+        got = run_js(MIX_ROWS + "out(iceTables(mix('a', 5, [5, 5, 6, 6]), mix('b', 5, [3, 3, 4, 4])));")
+        assert got["sides"][1]["curlAdj"]["diff"] == pytest.approx(0.0, abs=0.02)
+        assert got["sides"][1]["curl"]["diff"] > 0.05
+        assert got["turns"][1]["curlAdj"] is None

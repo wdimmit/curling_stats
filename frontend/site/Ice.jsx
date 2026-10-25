@@ -141,10 +141,11 @@ function Cell({ s, field }) {
   );
 }
 
-function Change({ d }) {
+function Change({ d, adj }) {
   if (d === undefined) return null;
   if (!d) return <td className="num muted">too few</td>;
   const clear = d.lo > 0 || d.hi < 0;
+  const adjClear = adj && (adj.lo > 0 || adj.hi < 0);
   return (
     <td className={`num${clear ? "" : " unclear"}`}>
       <span className="val">{inches(d.diff)}</span>
@@ -152,6 +153,10 @@ function Change({ d }) {
       {d.sheets.of && d.diff !== 0 ? (
         <small>{d.diff < 0 ? `less on ${d.sheets.less}` : `more on ${d.sheets.more}`} of {d.sheets.of}{" "}
         {d.sheets.of === 1 ? "sheet" : "sheets"}</small>
+      ) : null}
+      {adj ? (
+        <small className={`adj${adjClear ? "" : " unclear"}`}>
+          same rotation: <b>{inches(adj.diff)}</b> ({inches(adj.lo)} to {inches(adj.hi)})</small>
       ) : null}
     </td>
   );
@@ -171,7 +176,7 @@ function BinTable({ title, rows, reading, both }) {
             <tr key={r.name}>
               <th scope="row">{r.name}</th>
               <Cell s={r.a} field={reading.field} />
-              {both ? <><Cell s={r.b} field={reading.field} /><Change d={r[reading.key]} /></> : null}
+              {both ? <><Cell s={r.b} field={reading.field} /><Change d={r[reading.key]} adj={r[`${reading.key}Adj`]} /></> : null}
             </tr>
           ))}
         </tbody>
@@ -448,7 +453,9 @@ export function Ice() {
                 draws were played again, found by drawing each draw's games again at random. A range
                 that crosses zero means no clear difference: one draw is only a handful of games, enough
                 to show a change of about 10% or more. Different teams threw these rocks, and sweeping
-                isn't seen by the cameras.</p>
+                isn't seen by the cameras. “Same rotation” takes out the part of B − A that comes from
+                one draw throwing more or less rotation than the other: more rotation curls less, so a
+                draw with less of it reads as curling more on the same ice.</p>
                 <Speed report={speed} />
               </>
             )}

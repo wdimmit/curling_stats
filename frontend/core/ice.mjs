@@ -32,8 +32,9 @@ export const MIDDLE_M = 0.15;
 // Rotations from the hog line to rest, from the rate as thrown: the club's
 // rule of thumb, which takes in both the run time and the spin slowing.
 export const RPM_PER_TURN = 2.5;
-// Set from 10/13 Super League: quartiles 3.9, 4.8 and 5.7 turns.
-export const TURN_BANDS = [4, 5, 6];
+// Above and below 4 turns. On 10/13 Super League, three in four house rocks
+// had 4 or more; finer bands left each too few rocks to compare.
+export const TURN_BANDS = [4];
 
 export const SIDES = [
   { key: "away", name: "Away from centre" },
@@ -214,20 +215,59 @@ export function difference(rowsA, rowsB, key, { reps = 2000, seed = 1 } = {}) {
   return { diff: med(b) - med(a), lo: quantile(diffs, 0.025), hi: quantile(diffs, 0.975), sheets };
 }
 
+/* B - A as if both draws had thrown the same rotation: the medians' gap,
+ * less what the draws' different mix of turns accounts for. More rotation
+ * curls less (10/13 Super: about 2 in on the Curl figure per turn), so a draw
+ * that threw less of it reads as curling more on the same ice. How much curl
+ * a turn is worth is fitted on these rocks, within each draw; the range draws
+ * each draw's games again, that fit included. Only rocks with a rotation
+ * read. null when either side is too thin to say. */
+export function adjustedDifference(rowsA, rowsB, key, { reps = 1000, seed = 2 } = {}) {
+  const ok = r => Number.isFinite(r[key]) && Number.isFinite(r.turns);
+  const a = rowsA.filter(ok), b = rowsB.filter(ok);
+  const ga = byGame(a), gb = byGame(b);
+  if (ga.length < MIN_GAMES || gb.length < MIN_GAMES || a.length < MIN_ROCKS || b.length < MIN_ROCKS) return null;
+  const mean = rs => rs.reduce((s, r) => s + r.turns, 0) / rs.length;
+  const med = rs => median(rs.map(r => r[key]));
+  const one = (ra, rb) => {
+    const fit = lstsq([...ra.map(r => [1, 0, r.turns]), ...rb.map(r => [1, 1, r.turns])],
+                      [...ra, ...rb].map(r => r[key]));
+    if (!fit) return null;
+    const shift = fit[2] * (mean(rb) - mean(ra));
+    return { diff: med(rb) - med(ra) - shift, perTurn: fit[2], shift };
+  };
+  const got = one(a, b);
+  if (!got) return null;
+  const rand = rng(seed);
+  const draw = games => games.flatMap(() => games[Math.floor(rand() * games.length)]);
+  const diffs = [];
+  for (let i = 0; i < reps; i++) {
+    const r = one(draw(ga), draw(gb));
+    if (r) diffs.push(r.diff);
+  }
+  diffs.sort((x, y) => x - y);
+  return { ...got, lo: quantile(diffs, 0.025), hi: quantile(diffs, 0.975),
+           turnsA: mean(a), turnsB: mean(b) };
+}
+
 /* The page's two tables, each row a bin with both draws' numbers and, for
- * each reading, B - A. `b` may be null: one draw on its own. */
+ * each reading, B - A. The side table's rows also carry B - A adjusted for
+ * rotation; the turns table's rows are already split by it. `b` may be null:
+ * one draw on its own. */
 export function iceTables(a, b) {
-  const row = (name, pick) => {
+  const row = (name, pick, adjust) => {
     const ra = a.filter(pick), rb = b ? b.filter(pick) : null;
     return {
       name, a: binSummary(ra), b: rb ? binSummary(rb) : null,
       curl: rb ? difference(ra, rb, "curl_m") : null,
       tail: rb ? difference(ra, rb, "tail_m") : null,
+      curlAdj: rb && adjust ? adjustedDifference(ra, rb, "curl_m") : null,
+      tailAdj: rb && adjust ? adjustedDifference(ra, rb, "tail_m") : null,
     };
   };
   return {
-    sides: [...SIDES.map(s => row(s.name, r => r.side === s.key)), row("All", () => true)],
-    turns: TURN_BINS.map(t => row(t.name, r => r.turnBin === t.key)),
+    sides: [...SIDES.map(s => row(s.name, r => r.side === s.key, true)), row("All", () => true, true)],
+    turns: TURN_BINS.map(t => row(t.name, r => r.turnBin === t.key, false)),
   };
 }
 
