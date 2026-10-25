@@ -1,8 +1,11 @@
+import os
+
 import numpy as np
 import pytest
 
 from curling_score.detect import cache
 from curling_score.detect.rocks import Detection
+from curling_score.feeds import Cut, as_feed
 from curling_score.geometry.calibrate import PanelCalib
 
 
@@ -35,7 +38,7 @@ def video(tmp_path, body=b"x" * 64):
 
 
 def args(tmp_path, **over):
-    base = dict(video_path=video(tmp_path), rect=(0, 0, 297, 514),
+    base = dict(video_path=video(tmp_path), cut=(0, 0, 297, 514),
                 calib=calib(), detector=None, start_s=0.0, end_s=10.0,
                 step_s=0.2)
     base.update(over)
@@ -83,7 +86,7 @@ class TestKeyCoversWhatChangesDetections:
 
     def test_a_different_panel_is_a_different_key(self, tmp_path):
         assert cache.key(**args(tmp_path)) != cache.key(
-            **args(tmp_path, rect=(0, 554, 297, 516)))
+            **args(tmp_path, cut=(0, 554, 297, 516)))
 
     def test_a_recalibrated_panel_is_a_different_key(self, tmp_path):
         assert cache.key(**args(tmp_path)) != cache.key(
@@ -107,6 +110,44 @@ class TestKeyCoversWhatChangesDetections:
 
     def test_the_same_inputs_give_the_same_key(self, tmp_path):
         assert cache.key(**args(tmp_path)) == cache.key(**args(tmp_path))
+
+
+# The key as the code before cuts built it, for a fixed file and source: warm
+# caches on the workers keep hitting only while this does not move.
+TODAYS_KEY = "f6b9e31e6c365cdba2c041c4d3167050"
+
+
+class TestKeyThroughTheCut:
+    def pinned(self, tmp_path, monkeypatch, **over):
+        p = video(tmp_path)
+        os.utime(p, ns=(10**18, 10**18))
+        monkeypatch.setattr(cache, "_source_digest", lambda: "src")
+        return cache.key(**args(tmp_path, **over))
+
+    def test_cache_key_crop_cut_equals_rect_key(self, tmp_path, monkeypatch):
+        rect = (0, 0, 297, 514)
+        assert self.pinned(tmp_path, monkeypatch, cut=rect) == TODAYS_KEY
+        assert self.pinned(tmp_path, monkeypatch,
+                           cut=Cut("top", rect)) == TODAYS_KEY
+
+    def test_a_single_file_feed_keys_as_its_path(self, tmp_path, monkeypatch):
+        feed = as_feed(video(tmp_path))
+        assert self.pinned(tmp_path, monkeypatch, video_path=feed,
+                           cut=Cut("top", (0, 0, 297, 514))) == TODAYS_KEY
+
+    def test_a_turned_cut_is_a_different_key(self, tmp_path):
+        rect = (0, 0, 297, 514)
+        assert cache.key(**args(tmp_path, cut=Cut("top", rect))) != cache.key(
+            **args(tmp_path, cut=Cut("top", rect, rotate=90)))
+
+    def test_a_view_keys_on_its_own_file(self, tmp_path):
+        other = tmp_path / "left.mp4"
+        other.write_bytes(b"z" * 32)
+        feed = as_feed(video(tmp_path)).on(["left"], other)
+        rect = (0, 0, 297, 514)
+        top = cache.key(**args(tmp_path, video_path=feed, cut=Cut("top", rect)))
+        left = cache.key(**args(tmp_path, video_path=feed, cut=Cut("left", rect)))
+        assert top != left
 
 
 class TestDetectorIdentity:
