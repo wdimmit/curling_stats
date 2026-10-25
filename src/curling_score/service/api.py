@@ -2975,7 +2975,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # Asked before the rate limit, so a refusal costs no one a session's worth.
         if practice.league_on(repo, now()):
             raise HTTPException(409, LEAGUE_ON)
-        if cameras and watch is None:
+        if cameras and watch is None and sheet in practice.CAMERA_SHEETS:
             # A new watch takes a sheet's four cameras over the Ryzen's link.
             watching = practice.camera_watches(repo)
             if watching >= settings.practice_max_camera_watches:

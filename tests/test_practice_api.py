@@ -290,6 +290,8 @@ class TestOnTheClubsCameras:
         r = start(cams, sheet=3)
         assert r.status_code == 409 and r.json()["detail"] == CAMERAS_FULL
         assert len(cams["repo"].jobs) == 2
+        # A sheet with no cameras is still a 404, full or not.
+        assert start(cams, sheet=6).status_code == 404
 
     def test_joining_a_sheet_already_practising_is_never_capped(self, cams):
         validate(cams, "uid-sarah")
