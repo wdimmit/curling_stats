@@ -2,17 +2,23 @@
 with the processes faked."""
 
 import io
+import itertools
 import logging
+import os
 import shutil
 import stat
 import subprocess
 import sys
+import threading
 import time
+from fractions import Fraction
 from pathlib import Path
 
+import av
+import numpy as np
 import pytest
 
-from curling_score.cameras import inventory, layout
+from curling_score.cameras import capture, inventory, layout
 from curling_score.cameras import recorder as camrec
 from curling_score.live.session import LiveError
 
@@ -134,9 +140,10 @@ def test_start_spawns_four_captures_then_composer(tmp_path):
     assert sorted(e[1] for e in world.events if e[0] == "probe") == sorted(cameras.values())
     for role, proc in zip(ROLES, world.captures):
         assert proc.cmd[1:4] == ["-m", "curling_score.cameras.capture", "--camera"]
-        fifo = world.dir / f"cam-{role}.h264"
+        fifo = world.dir / f"cam-{role}.nut"
         assert _arg(proc.cmd, "--fifo") == str(fifo)
         assert _arg(proc.cmd, "--first") == str(world.dir / f"first-{role}.h264")
+        assert _arg(proc.cmd, "--t0") == "100.0"     # the recorder's start, by its clock
         assert stat.S_ISFIFO(fifo.stat().st_mode)
     assert rec.path == world.dir / "rec.0.ts"
 
@@ -169,7 +176,7 @@ def test_first_keyframes_are_deleted_once_probed(tmp_path):
 
     assert probed == [True] * 4
     assert sorted(world.dir.glob("first-*")) == []
-    assert all(stat.S_ISFIFO((world.dir / f"cam-{r}.h264").stat().st_mode) for r in ROLES)
+    assert all(stat.S_ISFIFO((world.dir / f"cam-{r}.nut").stat().st_mode) for r in ROLES)
 
 
 def test_start_refuses_a_camera_that_sends_nothing(tmp_path):
@@ -224,15 +231,17 @@ def test_composer_args_carry_filtergraph_and_nvenc_at_20M(tmp_path):
     world.recorder().start()
     cmd = world.composer.cmd
 
+    # The captures' own times, kept: read off NUT, never the wall clock.
     assert "-copyts" in cmd
-    fifos = [world.dir / f"cam-{r}.h264" for r in ROLES]
+    assert "-use_wallclock_as_timestamps" not in cmd
+    fifos = [world.dir / f"cam-{r}.nut" for r in ROLES]
     for fifo in fifos:
         at = cmd.index(str(fifo))
-        assert cmd[at - 11:at + 1] == ["-thread_queue_size", "1024", "-use_wallclock_as_timestamps",
-                                       "1", *camrec.PROBE, "-f", "h264", "-i", str(fifo)]
+        assert cmd[at - 9:at + 1] == ["-thread_queue_size", "1024", *camrec.PROBE,
+                                      "-f", "nut", "-i", str(fifo)]
     inputs = {r: i for i, r in enumerate(ROLES)}
     graphs = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-filter_complex"]
-    assert graphs == layout.filtergraphs(layout.load(1), inputs=inputs, t0=WALL)
+    assert graphs == layout.filtergraphs(layout.load(1), inputs=inputs)
     assert _arg(cmd, "-map") == "[out]"
     tail = cmd[cmd.index("-c:v"):]
     assert tail == ["-c:v", "h264_nvenc", "-b:v", "20M", "-maxrate", "25M", "-g", "60",
@@ -250,9 +259,9 @@ def test_each_input_is_opened_without_a_long_probe(tmp_path):
     world.recorder().start()
     cmd = world.composer.cmd
     for role in ROLES:
-        at = cmd.index(str(world.dir / f"cam-{role}.h264"))
+        at = cmd.index(str(world.dir / f"cam-{role}.nut"))
         assert cmd[at - 7:at + 1] == ["-probesize", "32", "-analyzeduration", "1",
-                                      "-f", "h264", "-i", str(world.dir / f"cam-{role}.h264")]
+                                      "-f", "nut", "-i", str(world.dir / f"cam-{role}.nut")]
 
 
 def test_each_camera_is_cut_and_turned_on_a_thread_of_its_own(tmp_path):
@@ -278,8 +287,8 @@ def test_composer_threads_are_capped(tmp_path):
 
     assert _arg(cmd, "-filter_complex_threads") == str(camrec.FILTER_THREADS)
     for role in ROLES:
-        at = cmd.index(str(world.dir / f"cam-{role}.h264"))
-        assert cmd[at - 13:at - 11] == ["-threads", str(camrec.DECODE_THREADS)]
+        at = cmd.index(str(world.dir / f"cam-{role}.nut"))
+        assert cmd[at - 11:at - 9] == ["-threads", str(camrec.DECODE_THREADS)]
     assert camrec.FILTER_THREADS == camrec.DECODE_THREADS == 2
 
 
@@ -291,8 +300,34 @@ def test_lookback_is_zero_and_wall_started_set(tmp_path):
     rec.start()
     assert rec.lookback_got_s == 0.0
     assert rec.wall_started == WALL
-    assert f"setpts=PTS-{WALL:.6f}/TB" in _arg(world.composer.cmd, "-filter_complex")
     assert rec.whole() is False
+
+
+def test_the_sessions_zero_and_wall_started_are_read_together_before_any_capture(tmp_path):
+    """A frame at t in the recording was taken at wall_started + t, as the
+    lane dates a throw: the captures time their packets from the recorder's
+    zero on its monotonic clock, and wall_started is that same moment by the
+    wall clock."""
+    world = World(tmp_path)
+    ticks = itertools.count(100.0, 0.25)
+
+    def clock():
+        world.events.append(("clock", t := next(ticks)))
+        return t
+
+    def wall():
+        world.events.append(("wall",))
+        return WALL
+
+    rec = camrec.CameraRecorder(1, world.dir, popen=world.popen, clock=clock, wall=wall,
+                                probe=world.probe).start()
+
+    at = world.events.index(("wall",))
+    assert world.events[at - 1][0] == "clock"
+    assert at < world.events.index(("capture", inventory.sheet_cameras(1)["house_a"]))
+    t0 = world.events[at - 1][1]
+    assert [_arg(p.cmd, "--t0") for p in world.captures] == [str(t0)] * 4
+    assert rec.wall_started == WALL and world.events.count(("wall",)) == 1
 
 
 def test_head_is_the_composers_time(tmp_path):
@@ -419,6 +454,76 @@ def test_capture_logs_are_passed_on(tmp_path, caplog):
     with caplog.at_level(logging.INFO, logger=camrec.__name__):
         settle(world.recorder().start())
     assert "capture 1A-HOUSE: connected" in caplog.text
+
+
+def _h264(levels, fps, w, h):
+    """H.264 as a camera sends it, a flat picture of each luma level in
+    turn: [(packet, keyframe)]."""
+    codec = av.CodecContext.create("libx264", "w")
+    codec.width, codec.height, codec.pix_fmt = w, h, "yuv420p"
+    codec.time_base = Fraction(1, fps)
+    codec.thread_count = 1
+    codec.options = {"preset": "ultrafast",
+                     "x264-params": "repeat-headers=1:keyint=5:min-keyint=5:scenecut=0:bframes=0"}
+    out = []
+    for i, level in enumerate(levels):
+        frame = av.VideoFrame.from_ndarray(np.full((h, w, 3), level, np.uint8), format="rgb24")
+        frame.pts = i
+        out += [(bytes(p), p.is_keyframe) for p in codec.encode(frame)]
+    return out + [(bytes(p), p.is_keyframe) for p in codec.encode(None)]
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_a_camera_delivered_late_is_composed_at_its_own_times(tmp_path):
+    """Two cameras' frames of the same moments, one camera's delivered a
+    second after the other's, opened as the composer opens its FIFOs: the
+    picture at each moment holds both cameras' frames of that moment. Timed
+    as the composer read them, the late camera's would sit a second behind."""
+    fps, count, start, w, h = 10, 10, 0.5, 64, 48
+    packets = _h264([20 + 10 * i for i in range(count)], fps, w, h)
+    fifos = [tmp_path / "a.nut", tmp_path / "b.nut"]
+    for fifo in fifos:
+        os.mkfifo(fifo)
+    out = tmp_path / "out.nut"
+    graph = (f"color=c=black:s={2 * w}x{h}:r={fps}[base];"
+             "[base][0:v]overlay=x=0:y=0:eof_action=repeat:repeatlast=1[v1];"
+             f"[v1][1:v]overlay=x={w}:y=0:eof_action=repeat:repeatlast=1[out]")
+    began = time.monotonic()
+    composer = subprocess.Popen(
+        ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-copyts",
+         *camrec._input(fifos[0]), *camrec._input(fifos[1]), "-filter_complex", graph,
+         "-map", "[out]", "-frames:v", str(round((start + count / fps) * fps)),
+         "-c:v", "rawvideo", "-pix_fmt", "gray", "-f", "nut", str(out)])
+
+    def feed(fifo, late):
+        with open(fifo, "wb", buffering=0) as f:
+            nut = capture._Nut(packets[0][0])
+            for i, (data, key) in enumerate(packets):
+                t = start + i / fps
+                time.sleep(max(0.0, began + late + t - time.monotonic()))
+                f.write(nut.packet(data, t, key))
+
+    feeders = [threading.Thread(target=feed, args=(fifo, late), daemon=True)
+               for fifo, late in zip(fifos, (0.0, 1.0))]
+    try:
+        for feeder in feeders:
+            feeder.start()
+        assert composer.wait(timeout=20) == 0
+    finally:
+        composer.kill()
+        composer.wait()
+
+    def shown(picture, x):
+        """Which frame a panel shows, None for the black base."""
+        level = picture[:, x:x + w].mean()
+        return None if level < 10 else round((level - 20) / 10)
+
+    with av.open(str(out)) as c:
+        got = [(float(f.pts * f.time_base), f.to_ndarray()) for f in c.decode(video=0)]
+    assert len(got) == 15
+    for t, picture in got:
+        want = round((t - start) * fps) if t >= start - 1e-6 else None
+        assert (shown(picture, 0), shown(picture, w)) == (want, want), t
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")

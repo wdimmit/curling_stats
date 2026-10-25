@@ -35,12 +35,13 @@ FIXTURE = layout.SheetLayout(
 
 def test_filtergraphs_sheet_fixture():
     got = layout.filtergraphs(
-        FIXTURE, inputs={"house_a": 0, "house_h": 1, "long_a": 2, "long_h": 3}, t0=1761312345.25)
+        FIXTURE, inputs={"house_a": 0, "house_h": 1, "long_a": 2, "long_h": 3})
+    # No shift: the captures time their packets from the recording's zero.
     assert got == [
-        "[2:v]setpts=PTS-1761312345.250000/TB,crop=800:1080:512:0:exact=1,scale=800:1080[long_a]",
-        "[1:v]setpts=PTS-1761312345.250000/TB,crop=1153:673:301:137:exact=1,transpose=1,scale=298:510[house_h]",
-        "[0:v]setpts=PTS-1761312345.250000/TB,crop=1293:745:240:160:exact=1,transpose=2,scale=298:517[house_a]",
-        "[3:v]setpts=PTS-1761312345.250000/TB,crop=800:1080:603:0:exact=1,scale=800:1080[long_h]",
+        "[2:v]crop=800:1080:512:0:exact=1,scale=800:1080[long_a]",
+        "[1:v]crop=1153:673:301:137:exact=1,transpose=1,scale=298:510[house_h]",
+        "[0:v]crop=1293:745:240:160:exact=1,transpose=2,scale=298:517[house_a]",
+        "[3:v]crop=800:1080:603:0:exact=1,scale=800:1080[long_h]",
         "color=c=0x6e6e6e:s=1920x1080:r=60[base];"
         "[base][long_a]overlay=x=0:y=0:eof_action=repeat:repeatlast=1[v1];"
         "[v1][house_h]overlay=x=812:y=10:eof_action=repeat:repeatlast=1[v2];"

@@ -86,15 +86,15 @@ def load(sheet: int, *, root: Path = LAYOUTS) -> SheetLayout:
     )
 
 
-def filtergraphs(sheet_layout: SheetLayout, *, inputs: dict[str, int],
-                 t0: float) -> list[str]:
+def filtergraphs(sheet_layout: SheetLayout, *, inputs: dict[str, int]) -> list[str]:
     """The composer's ``-filter_complex`` graphs, in order: one per camera
-    ``inputs[role]``, shifting it to start at ``t0``, cutting, turning and
-    scaling it; then one laying them out over a plain background, each holding
-    its last frame if it stops. The result is ``[out]``.
+    ``inputs[role]``, cutting, turning and scaling it; then one laying them
+    out over a plain background, each holding its last frame if it stops. The
+    result is ``[out]``.
 
-    With ``-copyts`` and wall-clock input timestamps, ``t0`` is the wall time
-    at the recording's zero.
+    Nothing is shifted: with ``-copyts`` each camera's frames keep the times
+    their capture gave them, seconds since the recording's zero, where the
+    background starts.
 
     FFmpeg runs each graph on a thread of its own (7.0 on). All in one graph,
     that one thread could only just keep up with a sheet's 60 fps: on test
@@ -108,7 +108,7 @@ def filtergraphs(sheet_layout: SheetLayout, *, inputs: dict[str, int],
         _, _, ow, oh = p.out
         # exact: on the cameras' yuv420p, crop otherwise rounds an odd x, y, w
         # or h down to even, moving a 1:1 long view by a pixel.
-        steps = [f"setpts=PTS-{t0:.6f}/TB", f"crop={cw}:{ch}:{cx}:{cy}:exact=1"]
+        steps = [f"crop={cw}:{ch}:{cx}:{cy}:exact=1"]
         if p.rotate:
             steps.append(f"transpose={_TRANSPOSE[p.rotate]}")
         steps.append(f"scale={ow}:{oh}")

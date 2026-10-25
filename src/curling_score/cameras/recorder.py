@@ -18,12 +18,17 @@ in a subprocess: PyAV in a second thread has deadlocked before
 (``ingest/frames.py``). A capture that exits before its first keyframe has
 said why (no tap, no such camera), and its last error is the start's.
 
-**The clock.** Each input is stamped with the wall clock as it arrives, and the
-filtergraph shifts every camera back by ``wall_started``, taken as the composer
-starts. With ``-copyts`` the composite's zero is ``wall_started`` and the
-composer's ``time=`` is seconds since then, so that is ``head_s()``; it runs
-about 1.8 s behind the wall clock (sheet 1, measured). Nothing is recorded from
-before Start, so ``lookback_got_s`` is 0.
+**The clock.** The recording's zero is read on ``clock`` (``time.monotonic``)
+as it starts, before any capture, with ``wall_started`` beside it. Each capture
+times its camera's packets in seconds since that zero (``--t0``), by the
+camera's own clock anchored to their arrival (``capture.CameraClock``), and
+writes them to its FIFO as NUT with their times. The composer keeps the times
+(``-copyts``, nothing shifted), so a frame at t in the composite was taken at
+``wall_started + t``, and the composer's ``time=``, seconds since the zero, is
+``head_s()``. A composer that falls behind delays the recording, and
+``head_s`` with it, but moves nothing in it. Until the cameras' first frames
+come the composite is the grey base alone. Nothing is recorded from before
+Start, so ``lookback_got_s`` is 0.
 
 **A camera that stops.** A capture holds its camera's last keyframe while
 packets stop and reconnects by itself. One that exits all the same is logged,
@@ -82,13 +87,14 @@ STALL_S = 30.0
 DECODE_THREADS = 2
 FILTER_THREADS = 2
 # How much ffmpeg reads of each input to learn what it is before it opens the
-# next: as little as it can. Each FIFO starts at a keyframe carrying SPS and
-# PPS (capture.Holder), which says H.264 1920x1080, and the timestamps are the
-# wall clock's, so there is no frame rate to learn. ffmpeg's own probe took
-# ~0.3 s an input, and the cameras opened first were 0.6-1.2 s behind once the
-# composer read them; this takes 0.05 s, and leaves them 0.14-0.30 s behind
-# (sheet 2, 2026-10-24). When a FIFO started at the first keyframe after it
-# was opened, they were 7.1 / 5.0 / 3.1 / 1.4 s behind at +10 s.
+# next: as little as it can. Each FIFO's NUT header says H.264 1920x1080, its
+# stream starts at a keyframe carrying SPS and PPS (capture.Holder), and each
+# packet carries its time, so there is no frame rate to learn. ffmpeg's own
+# probe took ~0.3 s an input, and the cameras opened first were 0.6-1.2 s
+# behind once the composer read them; this takes 0.05 s, and leaves them
+# 0.14-0.30 s behind (sheet 2, 2026-10-24). When a FIFO started at the first
+# keyframe after it was opened, they were 7.1 / 5.0 / 3.1 / 1.4 s behind at
+# +10 s.
 PROBE = ["-probesize", "32", "-analyzeduration", "1"]
 # How long a capture that has exited gets for the rest of its output to be read.
 RELAY_JOIN_S = 2.0
@@ -119,6 +125,12 @@ def probe(path: Path) -> tuple[str, int, int] | None:
         return fields["codec_name"], int(fields["width"]), int(fields["height"])
     except (KeyError, ValueError):
         return None
+
+
+def _input(fifo: Path) -> list[str]:
+    """How the composer opens a capture's FIFO: NUT, whose times it keeps."""
+    return ["-threads", str(DECODE_THREADS), "-thread_queue_size", "1024",
+            *PROBE, "-f", "nut", "-i", str(fifo)]
 
 
 class _Tail:
@@ -157,7 +169,8 @@ class CameraRecorder:
         self.sheet, self.dir = sheet, Path(directory)
         self.path = self.dir / "rec.0.ts"
         self.lookback_got_s = 0.0
-        self.wall_started: float | None = None
+        self.t0: float | None = None             # the recording's zero, on clock
+        self.wall_started: float | None = None   # the same moment by wall
         self._popen, self.clock, self.wall, self._probe = popen, clock, wall, probe
         self.first_timeout_s, self.max_s = first_timeout_s, max_s
         self._cameras = inventory.sheet_cameras(sheet)       # role -> camera name
@@ -182,6 +195,8 @@ class CameraRecorder:
         except LookupError as exc:
             raise LiveError(str(exc)) from exc
         self.dir.mkdir(parents=True, exist_ok=True)
+        # Together: a frame at t in the composite was taken at wall_started + t.
+        self.t0, self.wall_started = self.clock(), self.wall()
         try:
             for role, name in self._cameras.items():
                 self._spawn_capture(role, name)
@@ -201,7 +216,7 @@ class CameraRecorder:
         return self
 
     def _fifo(self, role: str) -> Path:
-        return self.dir / f"cam-{role}.h264"
+        return self.dir / f"cam-{role}.nut"
 
     def _first(self, role: str) -> Path:
         return self.dir / f"first-{role}.h264"
@@ -214,7 +229,7 @@ class CameraRecorder:
         os.mkfifo(fifo)
         proc = self._popen(
             [sys.executable, "-m", _CAPTURE, "--camera", name, "--fifo", str(fifo),
-             "--first", str(first)],
+             "--first", str(first), "--t0", str(self.t0)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self._captures[role] = proc
         relay = threading.Thread(target=self._relay, args=(role, name, proc.stdout),
@@ -272,17 +287,14 @@ class CameraRecorder:
                         f"within {self.first_timeout_s:g} s")
 
     def _spawn_composer(self, sheet_layout: layout.SheetLayout) -> None:
-        self.wall_started = self.wall()
         inputs = {role: i for i, role in enumerate(self._cameras)}
         # -stats: the progress _Part reads, which -loglevel warning would hide.
         cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "warning", "-stats", "-y",
                "-filter_complex_threads", str(FILTER_THREADS), "-copyts"]
         for role in self._cameras:
-            cmd += ["-threads", str(DECODE_THREADS),
-                    "-thread_queue_size", "1024", "-use_wallclock_as_timestamps", "1",
-                    *PROBE, "-f", "h264", "-i", str(self._fifo(role))]
+            cmd += _input(self._fifo(role))
         # A graph per camera, each on a thread of its own (layout.filtergraphs).
-        for graph in layout.filtergraphs(sheet_layout, inputs=inputs, t0=self.wall_started):
+        for graph in layout.filtergraphs(sheet_layout, inputs=inputs):
             cmd += ["-filter_complex", graph]
         cmd += ["-map", "[out]",
                 "-c:v", "h264_nvenc", "-b:v", "20M", "-maxrate", "25M", "-g", "60", "-bf", "0",
