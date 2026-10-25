@@ -102,8 +102,9 @@ int avcodec_receive_frame(AVCodecContext *ctx, AVFrame *frame) { return AVERROR(
 """
 
 # argv[1] is the packets to send, K for a keyframe and P for the rest, each
-# 1000 bytes with the pts PTS0 + its number, N for a P without a pts, and "."
-# for a pause that lets the tap's writer catch up. The pipe holds one 4 KiB
+# 1000 bytes with the pts PTS0 + its number, N for a P without a pts, F for a P
+# the tap finds no memory to copy (its malloc fails), and "." for a pause that
+# lets the tap's writer catch up. The pipe holds one 4 KiB
 # page. It prints "S pts before after" for each send, with CLOCK_MONOTONIC in
 # ns either side of it, then "sent". When all are sent it reads the pipe until
 # nothing comes for half a second, and prints "R flag pts arrived" for each
@@ -120,6 +121,17 @@ _DRIVER = r"""
 #include <time.h>
 #include <unistd.h>
 #include <libavcodec/avcodec.h>
+
+/* The tap's malloc, through the executable's: it fails once when asked. */
+extern void *__libc_malloc(size_t);
+static volatile int fail_alloc;
+void *malloc(size_t n) {
+    if (fail_alloc && n > 1000) {
+        fail_alloc = 0;
+        return NULL;
+    }
+    return __libc_malloc(n);
+}
 
 static int64_t now_ns(void) {
     struct timespec t;
@@ -157,6 +169,7 @@ int main(int argc, char **argv) {
         pkt.flags = *c == 'K' ? AV_PKT_FLAG_KEY : 0;
         pkt.pts = *c == 'N' ? AV_NOPTS_VALUE : PTS0 + number;
         number++;
+        fail_alloc = *c == 'F';
         int64_t before = now_ns();
         avcodec_send_packet(ctx, &pkt);
         printf("S %" PRId64 " %" PRId64 " %" PRId64 "\n", pkt.pts, before, now_ns());
@@ -197,7 +210,10 @@ def tap_driver(tmp_path_factory):
                         "-Wl,-soname,libavcodec.so.61"], check=True, capture_output=True)
         # A queue of three 1021-byte records, so a pipe nobody reads fills it
         # at once.
-        subprocess.run([*gcc, "-shared", "-fPIC", "-DTAP_QUEUE_BYTES=3063", "-o",
+        # This machine's FFmpeg may not be the 7 the tap is built for in the
+        # image: its packet handling is the same, so the test lets it build.
+        subprocess.run([*gcc, "-shared", "-fPIC", "-DTAP_QUEUE_BYTES=3063",
+                        "-DNDI_TAP_ANY_LIBAVCODEC", "-o",
                         d / "libavcodec-ndi.so.61", _TAP_C, "-Wl,--no-as-needed",
                         d / "libavcodec.so.61", "-Wl,-rpath,$ORIGIN", "-lpthread",
                         "-Wl,-soname,libavcodec-ndi.so.61"], check=True, capture_output=True)
@@ -248,3 +264,35 @@ def test_a_record_carries_the_packets_pts_and_when_libndi_sent_it(tap_driver):
         assert before <= arrived <= after
     # The pause comes between the third packet's arrival and the fourth's.
     assert records[3][2] - records[2][2] >= 200_000_000
+
+
+def test_a_packet_the_tap_has_no_memory_for_drops_to_the_next_keyframe(tap_driver):
+    """Lost before it was queued, a packet would leave the P-frames after it
+    without their reference: they are dropped too, up to the next keyframe."""
+    _, records, stderr = drive(tap_driver, "KPFPP.KP")
+    assert "".join(flag for flag, _, _ in records) == "KPKP"
+    assert [pts - PTS0 for _, pts, _ in records] == [0, 1, 5, 6]
+    assert "queueing again at a keyframe, 3 packets dropped" in stderr
+
+
+def _libavcodec_major():
+    for include in ("/usr/include", "/usr/include/x86_64-linux-gnu",
+                    "/usr/include/aarch64-linux-gnu"):
+        header = Path(include) / "libavcodec" / "version_major.h"
+        if header.exists():
+            got = re.search(r"#define LIBAVCODEC_VERSION_MAJOR\s+(\d+)", header.read_text())
+            return int(got.group(1)) if got else None
+    return None
+
+
+def test_the_tap_refuses_to_build_against_another_libavcodec(tmp_path):
+    """Built against another FFmpeg's headers, its AVPacket would not be the
+    one libndi hands it: the production build stops instead."""
+    if shutil.which("gcc") is None:
+        pytest.skip("no gcc")
+    major = _libavcodec_major()
+    if major is None or major == 61:
+        pytest.skip("needs libavcodec headers other than FFmpeg 7's")
+    out = subprocess.run(["gcc", "-fsyntax-only", _TAP_C], capture_output=True, text=True)
+    assert out.returncode != 0
+    assert "the tap is built for libavcodec 61 (FFmpeg 7)" in out.stderr

@@ -52,6 +52,12 @@
 
 #include <libavcodec/avcodec.h>
 
+/* The AVPacket layout read here must be the one libndi's FFmpeg 7 hands us.
+ * The tests build it against whatever FFmpeg the machine has, and say so. */
+#if LIBAVCODEC_VERSION_MAJOR != 61 && !defined(NDI_TAP_ANY_LIBAVCODEC)
+#error "the tap is built for libavcodec 61 (FFmpeg 7)"
+#endif
+
 /* About 3 s of the busiest camera (~12 Mbit/s): the reader normally keeps the
  * queue near empty, and a hold-up longer than this is not worth catching up. */
 #ifndef TAP_QUEUE_BYTES
@@ -202,8 +208,16 @@ static void tap(const AVPacket *pkt) {
     pthread_mutex_unlock(&lock);
 
     struct record *r = malloc(sizeof *r + size);
-    if (!r)
+    if (!r) {
+        /* Lost like a dropped one: what follows needs it, up to a keyframe. */
+        pthread_mutex_lock(&lock);
+        if (!need_key)
+            fprintf(stderr, "ndi_tap: no memory for a packet; dropping to the next keyframe\n");
+        need_key = 1;
+        dropped++;
+        pthread_mutex_unlock(&lock);
         return;
+    }
     r->next = NULL;
     r->size = size;
     uint8_t *p = r->bytes;

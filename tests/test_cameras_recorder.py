@@ -254,10 +254,23 @@ def test_composer_args_carry_filtergraph_and_nvenc_at_20M(tmp_path):
     assert graphs == layout.filtergraphs(layout.load(1), inputs=inputs)
     assert _arg(cmd, "-map") == "[out]"
     tail = cmd[cmd.index("-c:v"):]
+    limit = str(camrec.MAX_RECORD_S + camrec.WALL_MARGIN_S)
     assert tail == ["-c:v", "h264_nvenc", "-b:v", "20M", "-maxrate", "25M", "-g", "60",
-                    "-bf", "0", "-f", "mpegts", str(world.dir / "rec.0.ts")]
+                    "-bf", "0", "-t", limit, "-f", "mpegts", str(world.dir / "rec.0.ts")]
     # The progress the head is read from, even with the log turned down.
     assert "-stats" in cmd and "-nostdin" in cmd and "-y" in cmd
+
+
+def test_a_composer_left_behind_stops_by_itself(tmp_path):
+    """A composer whose recorder died with it (the worker killed) has nobody
+    to stop it, and with every input gone it runs unpaced: it ends at the
+    recording's own cap, plus the margin the recorder's wall clock allows."""
+    world = World(tmp_path)
+    world.recorder(max_s=600.0).start()
+    cmd = world.composer.cmd
+    assert _arg(cmd, "-t") == str(600.0 + camrec.WALL_MARGIN_S)
+    # An output option: after the last input, before the file it limits.
+    assert cmd.index("-t") > max(i for i, a in enumerate(cmd) if a == "-i")
 
 
 def test_each_input_is_opened_without_a_long_probe(tmp_path):

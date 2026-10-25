@@ -307,8 +307,13 @@ class CameraRecorder:
         # A graph per camera, each on a thread of its own (layout.filtergraphs).
         for graph in layout.filtergraphs(sheet_layout, inputs=inputs):
             cmd += ["-filter_complex", graph]
+        # -t: a composer left behind by a recorder that died (the worker
+        # killed) has nobody to stop it, and once its captures are gone too it
+        # runs unpaced. It stops after the recording's cap, and the margin
+        # check() allows the wall clock, however fast it runs.
         cmd += ["-map", "[out]",
                 "-c:v", "h264_nvenc", "-b:v", "20M", "-maxrate", "25M", "-g", "60", "-bf", "0",
+                "-t", str(self.max_s + WALL_MARGIN_S),
                 "-f", "mpegts", str(self.path)]
         # Unbuffered: _Part reads 4 KiB at a time, and a buffered pipe waits for
         # all of it, ~20 s of progress lines, before the head can move.

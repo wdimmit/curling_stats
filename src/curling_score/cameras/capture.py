@@ -533,6 +533,11 @@ class _Capture:
                 # Before the FIFO is open too: the Holder keeps the newest
                 # keyframe, which is where the FIFO's stream starts.
                 self.holder.packet(flags, payload, at)
+        # Not expected: the tap writes from inside this process, through the
+        # pipe's write end (NDI_TAP_FD), which therefore stays open as long as
+        # the capture runs -- and it is the tap's to write on, not ours to
+        # close. So this read never reaches the end of the pipe; a tap that
+        # stops writing shows as silence, which the reconnect clock handles.
         self.stop(1, "the tap's pipe closed")
 
     def _save_first(self, payload: bytes) -> None:
