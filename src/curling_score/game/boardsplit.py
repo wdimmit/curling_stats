@@ -163,7 +163,9 @@ def board_states(video, t0: float, t1: float, *, step_s: float = STEP_S,
                  half_s: float = HALF_S) -> list:
     """The wall scoreboard every ``step_s`` over ``t0..t1``: (t, "cards",
     "blank" or None when it cannot be read), each from the median of the
-    keyframes within ``half_s``."""
+    keyframes within ``half_s``. ``video`` is a path or a ``Feed``, read whole
+    from the file its ``board`` view is in."""
+    from curling_score.feeds import as_feed
     from curling_score.game import scoreboard as SB
     from curling_score.ingest import frames as F
 
@@ -178,7 +180,8 @@ def board_states(video, t0: float, t1: float, *, step_s: float = STEP_S,
         return (t, "blank" if SB.read_slots(image, geom).is_blank() else "cards")
 
     out, buf, t = [], deque(), t0
-    for ft, img in F.keyframe_sweep(video, start_s=max(0.0, t0 - half_s), end_s=t1 + half_s):
+    for ft, img in F.keyframe_sweep(as_feed(video).path_for("board"),
+                                    start_s=max(0.0, t0 - half_s), end_s=t1 + half_s):
         buf.append((ft, img))
         while t <= t1 and ft > t + half_s:
             out.append(read(t, buf))

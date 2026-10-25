@@ -159,3 +159,76 @@ class TestTheLongCameraPasses:
         assert [c[0] for c in calls][-2:] == ["release", "spin"]
         assert keeper.cleared and longview._keeping is None
         assert "release fell over" in caplog.text
+
+
+class TestTheContextCarriesFeeds:
+    """`analyze` hands the pipeline a `Feed`: the original for ``path``, and for
+    ``read_path`` the same, or with the overhead panels on the strip proxy."""
+
+    class Stop(Exception):
+        pass
+
+    def run(self, monkeypatch, tmp_path, use_proxy):
+        from pathlib import Path
+
+        from curling_score import weights as weights_mod  # noqa: F401
+        from curling_score.game import boardsplit, profile, segment
+        from curling_score.ingest import cache, frames as F, proxy
+
+        seen = {}
+        original = tmp_path / "VXU9xwmugRg.mp4"
+        strip_file = tmp_path / "proxies" / "VXU9xwmugRg.strip.mp4"
+        panels = SimpleNamespace(top=(0, 0, 297, 514), bottom=(0, 514, 297, 514))
+        setups = {n: split_context().read_setups[n] for n in ("top", "bottom")}
+        setups = {n: replace(s, name=n) for n, s in setups.items()}
+        monkeypatch.setattr(cache, "ensure_cached", lambda *a, **k: original)
+        monkeypatch.setattr(F, "sample_keyframes", lambda *a, **k: ["frame"])
+        monkeypatch.setattr(analyze, "calibrate_from",
+                            lambda *a, **k: (panels, setups, None))
+        monkeypatch.setattr(proxy, "ensure_proxy", lambda *a, **k: strip_file)
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
+        monkeypatch.setattr(analyze, "load_release_model", lambda *a, **k: None)
+        monkeypatch.setattr(F, "keyframe_sweep",
+                            lambda path, **k: seen.setdefault("sweep", []).append(path) or [])
+        monkeypatch.setattr(profile, "build_profile",
+                            lambda video, setups, sweep=None, detector=None:
+                            seen.update(profiled=video) or [])
+        monkeypatch.setattr(segment, "segment_games", lambda *a, **k: [])
+        monkeypatch.setattr(boardsplit, "join_games", lambda games, states: games)
+        monkeypatch.setattr(boardsplit, "split_games", lambda games, states: games)
+
+        def build_games(ctx, games, **k):
+            seen.update(ctx=ctx, board_reader=k["read_board"])
+            raise self.Stop
+
+        monkeypatch.setattr(analyze, "build_games", build_games)
+        info = SimpleNamespace(title="t", duration_s=1.0, sheet=2, video_id="VXU9xwmugRg")
+        try:
+            analyze.analyze("VXU9xwmugRg", info=info, use_proxy=use_proxy,
+                            start_s=0.0, end_s=60.0)
+        except self.Stop:
+            pass
+        return seen, original, strip_file
+
+    def test_endcontext_paths_are_feeds(self, monkeypatch, tmp_path):
+        from curling_score.feeds import Feed
+
+        seen, original, proxy_file = self.run(monkeypatch, tmp_path, use_proxy=True)
+        ctx = seen["ctx"]
+        assert isinstance(ctx.path, Feed) and isinstance(ctx.read_path, Feed)
+        assert ctx.path.single() == original
+        # The strip proxy holds the houses; the side views and the board stay on the original.
+        assert ctx.read_path.path_for("top") == proxy_file
+        assert ctx.read_path.path_for("bottom") == proxy_file
+        for view in ("left", "right", "board"):
+            assert ctx.read_path.path_for(view) == original
+        # The profile and its sweep read the proxy too.
+        assert seen["profiled"] == ctx.read_path
+        assert seen["sweep"] == [proxy_file]
+
+    def test_without_a_proxy_the_read_path_is_the_path(self, monkeypatch, tmp_path):
+        seen, original, _ = self.run(monkeypatch, tmp_path, use_proxy=False)
+        ctx = seen["ctx"]
+        assert ctx.read_path == ctx.path
+        assert ctx.path.single() == original
+        assert seen["sweep"] == [original]

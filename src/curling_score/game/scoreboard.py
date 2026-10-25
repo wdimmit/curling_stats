@@ -17,6 +17,7 @@ and the next begins; see ``game/boardsplit.py``.)
 
 from dataclasses import dataclass
 
+from curling_score.feeds import as_feed
 from curling_score.geometry import constants as C
 
 SLOTS = 14
@@ -815,8 +816,11 @@ class GameBoard:
     board: CardBoard
 
 
-def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
+def read_cards_at(video, t_seconds, window_s=90.0, max_frames=40):
     """The cards around a moment in the video, de-occluded by median.
+
+    ``video`` is a path or a ``Feed``; the whole frame is read from the file
+    the feed gives the ``board`` view.
 
     Samples keyframes rather than a fixed frame rate. A fixed rate still makes
     the decoder reconstruct every frame in the window -- roughly 180 s of
@@ -838,7 +842,7 @@ def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
 
     lo, hi = max(0.0, t_seconds - window_s), t_seconds + window_s
     imgs = []
-    for t, img in F.keyframe_sweep(video_path, start_s=lo, end_s=hi):
+    for t, img in F.keyframe_sweep(as_feed(video).path_for("board"), start_s=lo, end_s=hi):
         if t < lo:
             continue
         if len(imgs) >= max_frames:
@@ -855,7 +859,7 @@ def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
     return read_cards(image, geom)
 
 
-def read_game_board(video_path, start_s, end_s, n_ends, *, read_at=None,
+def read_game_board(video, start_s, end_s, n_ends, *, read_at=None,
                     back_to_s=None):
     """The latest usable board state for one game, or None.
 
@@ -886,7 +890,7 @@ def read_game_board(video_path, start_s, end_s, n_ends, *, read_at=None,
     CardBoard | None`` replacing `read_cards_at`, so the sampler is testable
     without decoding any video.
     """
-    read_at = read_at or (lambda t: read_cards_at(video_path, t))
+    read_at = read_at or (lambda t: read_cards_at(video, t))
     t = end_s - BOARD_LEAD_S
     reads = 0
     while True:

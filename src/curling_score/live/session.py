@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from curling_score import analyze, timeline
+from curling_score.feeds import as_feed
 from curling_score.fpframes import record
 from curling_score.game import boardsplit, segment
 from curling_score.game.segment import EndSegment, GameSegment
@@ -538,6 +539,9 @@ class VideoPipeline:
     def build_end(self, ctx, game, end, prev_end_s):
         # Built without a board score: the board is read again after every
         # end, and the session puts its newest scores on every end it publishes.
+        # The recording is one file, so one feed carries every view of it.
+        feed = as_feed(ctx.path)
+        ctx = dataclasses.replace(ctx, path=feed, read_path=as_feed(ctx.read_path))
         return analyze.build_one_end(ctx, game, end, prev_end_s, board_score=None)
 
     def read_board(self, path, game):

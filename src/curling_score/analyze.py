@@ -14,6 +14,7 @@ from curling_score import timeline, version
 from curling_score import weights as weights_mod
 from curling_score.detect import (broommodel, delivery, longview, release, releasemodel,
                                   sequence, sidemodel, spinmodel)
+from curling_score.feeds import as_feed
 from curling_score.fpframes import record as fp_record
 from curling_score.game import (
     boardsplit,
@@ -275,7 +276,10 @@ class EndContext:
     ``path`` is the full-resolution original, which the side views are decoded
     from. ``read_path`` is what the overhead detection reads -- the strip proxy
     for a recording, the recording itself for a live stream -- and
-    ``read_setups`` are the panels in its coordinates. ``use_cache`` is off for
+    ``read_setups`` are the panels in its coordinates. Both are a ``Feed``
+    (``feeds.as_feed``; a bare path still works wherever it is read), so a
+    recording's ``read_path`` has its top and bottom views on the proxy and
+    the rest on the original. ``use_cache`` is off for
     a file still being written: the detection cache keys on the file's size, so
     a growing file would never hit it and would store truncated spans.
     """
@@ -426,7 +430,8 @@ def board_block(got) -> BoardRead:
 
 def board_for_game(path, game, progress=log.info, *,
                    back_to_s=None) -> BoardRead | None:
-    """One game's wall board from the original, or None. Never raises."""
+    """One game's wall board from the original, or None. Never raises.
+    ``path`` is a path or a ``Feed``; the frames are the ``board`` view's."""
     progress(f"  game {game.index + 1}: reading the wall scoreboard...")
     got = read_board(path, game, progress=progress, back_to_s=back_to_s)
     if got is None:
@@ -784,7 +789,9 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
             # The boxes are in the panel's own pixels; the rect is the panel's
             # place in the original frame, which a proxy read does not share.
             rec.close_end(
-                game=game.index, end=end.number, house=end.house, video=path,
+                # Whole frames: the file the board view is in (the composite).
+                game=game.index, end=end.number, house=end.house,
+                video=as_feed(path).path_for("board"),
                 near_rect=(ctx.frame_setups or read_setups)[end.house].rect,
                 near_seq=seq,
                 cameras={tuple(v.rect): n for n, v in (sideviews or {}).items()})
@@ -1071,13 +1078,17 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     # Every later pass decodes only the overhead strip, which is about a
     # sixteenth of the frame. Analysis is decode-bound, so this is 3-4x cheaper
     # per pass; the one-off transcode pays for itself after the first run.
-    read_path, read_setups = path, setups
+    feed = as_feed(path)
+    read_feed, read_setups = feed, setups
     if use_proxy:
         strip = proxy.strip_rect(panels.top, panels.bottom)
         phase("proxy", 0.0, "building strip proxy")
-        read_path = proxy.ensure_proxy(
+        proxy_path = proxy.ensure_proxy(
             path, info.video_id, strip, root=root, progress=progress
         )
+        # The proxy holds only the houses: the side views and the board are
+        # still read from the original.
+        read_feed = feed.on(("top", "bottom"), proxy_path)
         phase("proxy", 1.0, "proxy ready")
         read_setups = _proxy_setups(setups, strip)
         progress(f"reading from strip proxy {strip[2]}x{strip[3]}")
@@ -1093,8 +1104,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     progress("building activity profile...")
     sweep = None
     if start_s is not None or end_s is not None:
-        sweep = F.keyframe_sweep(read_path, start_s=start_s, end_s=end_s)
-    samples = profile.build_profile(read_path, read_setups, sweep=sweep, detector=detector)
+        sweep = F.keyframe_sweep(profile.panels_file(read_feed), start_s=start_s, end_s=end_s)
+    samples = profile.build_profile(read_feed, read_setups, sweep=sweep, detector=detector)
     games = segment.segment_games(
         samples, min_end_s=fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S)
     if not skip_scoreboard:
@@ -1105,7 +1116,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         # and the board, cleared after it, splits it. Read from the original:
         # the proxy holds only the houses.
         def states(t0, t1):
-            return boardsplit.board_states(path, t0, t1)
+            return boardsplit.board_states(feed, t0, t1)
 
         n_before = len(games)
         games = boardsplit.join_games(games, states)
@@ -1121,7 +1132,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     phase("profile", 1.0, f"{len(games)} game(s)")
 
     ctx = EndContext(
-        path=path, read_path=read_path, read_setups=read_setups,
+        path=feed, read_path=read_feed, read_setups=read_setups,
         sideviews=sideviews, detector=detector, broom_model=broom_model,
         line_model=line_model, fmt=fmt, shot_fps=shot_fps, progress=progress,
         recording_start_s=float(start_s or 0.0),
@@ -1131,7 +1142,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     out_games = build_games(
         ctx, games, phase=phase,
         read_board=(None if skip_scoreboard
-                    else recording_board_reader(path, progress)))
+                    else recording_board_reader(feed, progress)))
     phase("detect", 1.0, "all ends detected")
     phase("scoreboard", 1.0, "skipped" if skip_scoreboard else "scoreboard read")
     phase("rules", 1.0, "timeline built")

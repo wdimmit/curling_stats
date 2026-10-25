@@ -19,7 +19,7 @@ that changeover, ds17b counted 2, and of the 63 in the far house over that end,
 from dataclasses import dataclass
 
 from curling_score.detect import rocks
-from curling_score.feeds import Cut
+from curling_score.feeds import Cut, as_feed
 from curling_score.game.segment import Sample
 from curling_score.geometry import calibrate, hogpaint, layout, lighting, sidepaint
 
@@ -173,12 +173,27 @@ def count_frame(frame, setups, detector=None) -> tuple[int, int, bool, bool]:
     return counts["top"], counts["bottom"], playable["top"], playable["bottom"]
 
 
-def build_profile(video_path, setups, sweep=None, detector=None) -> list[Sample]:
+def panels_file(video):
+    """The one file both panels are read from: ``video`` is a path or a ``Feed``.
+
+    The profile sweeps the keyframes of that file and counts the stones in
+    both panels of each, so two files are two sweeps, which phase 2's cameras
+    need and this does not do.
+    """
+    feed = as_feed(video)
+    top, bottom = feed.path_for("top"), feed.path_for("bottom")
+    if top != bottom:
+        raise NotImplementedError("phase 2: the panels are in two files")
+    return top
+
+
+def build_profile(video, setups, sweep=None, detector=None) -> list[Sample]:
     """Sweep the whole video and record activity at every keyframe, the stones
-    counted by ``detector`` when there is one (:func:`count_frame`)."""
+    counted by ``detector`` when there is one (:func:`count_frame`).
+    ``video`` is a path or a ``Feed``; a ``sweep`` already made is used as is."""
     from curling_score.ingest import frames as F
 
-    source = sweep if sweep is not None else F.keyframe_sweep(video_path)
+    source = sweep if sweep is not None else F.keyframe_sweep(panels_file(video))
     out = []
     for t, frame in source:
         top, bottom, tp, bp = count_frame(frame, setups, detector)

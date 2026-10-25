@@ -109,3 +109,41 @@ def test_feed_is_hashable_and_compares_by_files():
     a, b = as_feed("/v/x.mp4"), as_feed(Path("/v/x.mp4"))
     assert a == b and hash(a) == hash(b)
     assert a != a.on(("top",), "/p/y.mp4")
+
+
+class TestWholeFrameReads:
+    """The wall board is read whole from the file its view is in, and the
+    profile's panels from the file they share."""
+
+    def feed(self):
+        return as_feed("/v/x.mp4").on(("top", "bottom"), "/p/x.strip.mp4")
+
+    def test_the_board_is_read_from_the_boards_file(self, monkeypatch):
+        from curling_score.game import boardsplit, scoreboard
+        from curling_score.ingest import frames as F
+
+        asked = []
+        monkeypatch.setattr(F, "keyframe_sweep",
+                            lambda path, **kw: asked.append(path) or iter(()))
+        boardsplit.board_states(self.feed(), 0.0, 10.0)
+        assert scoreboard.read_cards_at(self.feed(), 100.0) is None
+        assert asked == [Path("/v/x.mp4")] * 2
+
+    def test_a_bare_path_is_read_as_it_was(self, monkeypatch):
+        from curling_score.game import scoreboard
+        from curling_score.ingest import frames as F
+
+        asked = []
+        monkeypatch.setattr(F, "keyframe_sweep",
+                            lambda path, **kw: asked.append(path) or iter(()))
+        scoreboard.read_cards_at("/v/x.mp4", 100.0)
+        assert asked == [Path("/v/x.mp4")]
+
+    def test_the_profile_reads_the_file_both_panels_share(self):
+        from curling_score.game import profile
+
+        assert profile.panels_file(self.feed()) == Path("/p/x.strip.mp4")
+        assert profile.panels_file("/v/x.mp4") == Path("/v/x.mp4")
+        split = as_feed("/v/x.mp4").on(("bottom",), "/v/y.mp4")
+        with pytest.raises(NotImplementedError, match="phase 2"):
+            profile.panels_file(split)
