@@ -745,7 +745,12 @@ class TestThePrivacyPage:
     def test_privacy_page_names_the_cameras(self, w):
         text = " ".join(w["client"].get("/privacy").text.split())
         assert "reads the club's cameras directly" in text
-        assert "only from when a player starts a session" in text
+        # Records, not reads: outside sessions the cameras are read briefly.
+        assert "It records them only from when a player starts a session" in text
+        for end in ("when the player stops it", "after 15 minutes without a throw",
+                    "after three hours", "when a league game goes live",
+                    "if the session fails"):
+            assert end in text, end
         assert "kept as for games" in text
         assert "only measurements are kept" in text
 
