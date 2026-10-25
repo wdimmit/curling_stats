@@ -39,8 +39,8 @@ from starlette.middleware.gzip import GZipMiddleware
 from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
-from curling_score.service import (dedupe, gameclips, labelling, playlist_index, playlists,
-                                   practice, signin, slug, team_names, thinking_report)
+from curling_score.service import (dedupe, gameclips, ice_report, labelling, playlist_index,
+                                   playlists, practice, signin, slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
     JOB_KINDS, LABEL_KINDS, ROLES, ApiKey, ClipJob, Chart, Flag, Invite, Job, LabelAnswer,
@@ -1015,6 +1015,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def thinking_page():
         return page("thinking.html")
 
+    @app.get("/ice", response_class=HTMLResponse)
+    def ice_page():
+        return page("ice.html")
+
     # The shell for members' labelling; what it shows comes from /api/label.
     @app.get("/label", response_class=HTMLResponse)
     def label_page():
@@ -1262,6 +1266,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(401, "sign in to see thinking time")
         report = thinking_report.build(games_listed(repo.list_sources(limit=EVERY_SOURCE)),
                                        top=top, since=now() - thinking_report.RECENT)
+        return json_revalidated(request, report, "private")
+
+    @app.get("/api/reports/ice")
+    def api_ice_report(request: Request,
+                       authorization: str | None = Header(default=None)):
+        """Every league's draws, newest first, for the ice maker's report.
+        Only the list: the page reads each game's curl from its review
+        timeline. For people signed in, like the thinking report."""
+        if auth.enabled and uid_of(authorization) is None:
+            raise HTTPException(401, "sign in to see the ice report")
+        report = ice_report.draws(games_listed(repo.list_sources(limit=EVERY_SOURCE)))
         return json_revalidated(request, report, "private")
 
     @app.post("/api/admin/backfill-thinking")

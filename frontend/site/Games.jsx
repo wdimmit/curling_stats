@@ -394,7 +394,7 @@ export function Games() {
 
   return (
     <>
-      <Header links={[["/thinking", "Thinking time"], ["/submit", "Submit a link"]]}>
+      <Header links={[["/thinking", "Thinking time"], ["/ice", "Ice report"], ["/submit", "Submit a link"]]}>
         <select id="league" value={active} onChange={e => pick(e.target.value)}>
           <option value="">All leagues</option>
           {leagues.map(l => <option key={l} value={l}>{l}</option>)}

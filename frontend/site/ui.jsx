@@ -38,7 +38,7 @@ export function IdentityChip() {
  * their links are left out for anyone else -- and while sign-in is still
  * deciding, rather than shown and then taken away. With no accounts at all
  * they are open, and shown. */
-const SIGNED_IN_ONLY = new Set(["/thinking", "/label"]);
+const SIGNED_IN_ONLY = new Set(["/thinking", "/ice", "/label"]);
 
 /* `links` are [href, text] pairs; a third element marks the page you are on. */
 export function Header({ links = [], children }) {

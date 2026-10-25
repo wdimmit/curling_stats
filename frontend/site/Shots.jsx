@@ -421,7 +421,7 @@ export function Shots() {
 
   return (
     <>
-      <Header links={[["/", "All games"], ["/mine", "My games"], ["/thinking", "Thinking time"],
+      <Header links={[["/", "All games"], ["/mine", "My games"], ["/thinking", "Thinking time"], ["/ice", "Ice report"],
                        ["/shots", "My shots", true]]} />
       <main id="shots">
         {ready && !user && (

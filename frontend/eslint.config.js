@@ -17,7 +17,7 @@ const BROWSER = [
   "removeEventListener", "dispatchEvent", "localStorage", "sessionStorage",
   "setTimeout", "clearTimeout", "setInterval", "clearInterval",
   "requestAnimationFrame", "cancelAnimationFrame",
-  "Blob", "URL", "Headers", "DOMPoint", "MouseEvent", "Image", "FormData", "atob",
+  "Blob", "URL", "URLSearchParams", "Headers", "DOMPoint", "MouseEvent", "Image", "FormData", "atob",
   "File", "XMLSerializer",
   "IntersectionObserver", "MutationObserver", "ResizeObserver",
 ];

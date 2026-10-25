@@ -163,13 +163,14 @@ code { background:var(--line); padding:1px 5px; border-radius:4px; }
 /* One league at a time, a row per team per game. The link for the page you
    are on reads as a place, not a destination. */
 header a.here { text-decoration:none; font-weight:650; }
-body[data-page="thinking"] main { max-width:920px; }
+body:is([data-page="thinking"], [data-page="ice"]) main { max-width:920px; }
 /* Source Sans 3, as on the game list, the logo keeping the display face. The
    table, its headings and the tabs each name the display face for
    themselves, so they are told to inherit. It sets smaller than the
    condensed face at a size, so the rows take the game list's 15px. */
-body[data-page="thinking"] { font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif; }
-body[data-page="thinking"] :is(table, th, h2, .pill, .tabs button.tab, .lhead h1) { font-family:inherit; }
+body:is([data-page="thinking"], [data-page="ice"]) { font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif; }
+body:is([data-page="thinking"], [data-page="ice"]) :is(table, th, h2, .pill, .tabs button.tab, .lhead h1,
+    select, legend) { font-family:inherit; }
 #thinking td { font-size:15px; }
 .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 16px; }
 .tabs button.tab { font-family:var(--display); font-size:13px; padding:4px 10px;
@@ -229,6 +230,24 @@ td.pace .val { width:4.6em; text-align:right; font-weight:600; }
 .mag { flex:1; height:8px; }
 .mag span { display:block; height:100%; background:var(--muted); border-radius:0 4px 4px 0; }
 .note { font-size:13px; margin-top:18px; }
+
+/* --- ice report ---------------------------------------------------------- */
+/* Two draws side by side: a bin per row, each cell its median with the rocks
+   and games behind it underneath, and B - A with its range. */
+#ice .picks { display:flex; flex-wrap:wrap; gap:12px; }
+#ice fieldset.drawpick { flex:1 1 280px; border:1px solid var(--line); border-radius:7px;
+  padding:8px 10px 10px; margin:0; display:flex; flex-direction:column; gap:6px; }
+#ice fieldset.drawpick legend { padding:0 4px; font-size:12px; color:var(--muted); }
+#ice select { width:100%; padding:6px 8px; font-size:15px; }
+#ice h2 { margin-top:18px; }
+#ice td { font-size:15px; vertical-align:top; }
+#ice table { table-layout:fixed; width:100%; }
+#ice th[scope="row"] { text-align:left; font-weight:600; font-size:15px; text-transform:none;
+  letter-spacing:0; color:var(--ink); width:28%; }
+#ice th.num, #ice td.num { text-align:right; }
+#ice td .val { font-weight:600; }
+#ice td small { display:block; color:var(--muted); font-size:12px; }
+#ice td.unclear .val { color:var(--muted); font-weight:500; }
 
 @media (max-width: 640px) {
   /* Seven columns do not fit a phone either: each row becomes a card, as the

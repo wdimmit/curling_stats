@@ -20,11 +20,12 @@ import { SignIn } from "./SignIn.jsx";
 import { Status } from "./Status.jsx";
 import { Submit } from "./Submit.jsx";
 import { Thinking } from "./Thinking.jsx";
+import { Ice } from "./Ice.jsx";
 import { LegalLinks } from "./ui.jsx";
 import { Users } from "./Users.jsx";
 
 const PAGES = { submit: Submit, games: Games, mine: Mine, join: Join, status: Status,
-                thinking: Thinking, shots: Shots, practice: Practice, users: Users,
+                thinking: Thinking, ice: Ice, shots: Shots, practice: Practice, users: Users,
                 playlists: Playlists, signin: SignIn, label: Label };
 
 const which = document.body.dataset.page;

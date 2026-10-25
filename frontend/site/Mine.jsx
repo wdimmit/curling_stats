@@ -189,7 +189,7 @@ export function Mine() {
 
   return (
     <>
-      <Header links={[["/", "All games"], ["/shots", "My shots"], ["/thinking", "Thinking time"],
+      <Header links={[["/", "All games"], ["/shots", "My shots"], ["/thinking", "Thinking time"], ["/ice", "Ice report"],
                        ["/submit", "Submit a link"],
                        // The accounts, for an admin to validate, and the
                        // playlists the site watches.

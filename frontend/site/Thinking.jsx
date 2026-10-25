@@ -105,7 +105,7 @@ export function Thinking() {
 
   return (
     <>
-      <Header links={[["/", "All games"], ["/thinking", "Thinking time", true],
+      <Header links={[["/", "All games"], ["/thinking", "Thinking time", true], ["/ice", "Ice report"],
                       ["/submit", "Submit a link"]]} />
       <main>
         <p className="muted" style={{ marginTop: 0 }}>How long a team took to decide its shots,

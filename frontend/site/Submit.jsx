@@ -66,7 +66,7 @@ export function Submit() {
 
   return (
     <>
-      <Header links={[["/", "All games"], ["/thinking", "Thinking time"]]} />
+      <Header links={[["/", "All games"], ["/thinking", "Thinking time"], ["/ice", "Ice report"]]} />
       <main>
         <Card>
           <p>Paste the YouTube link to a club stream. We find the game, work out every
