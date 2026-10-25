@@ -19,6 +19,7 @@ that changeover, ds17b counted 2, and of the 63 in the far house over that end,
 from dataclasses import dataclass
 
 from curling_score.detect import rocks
+from curling_score.feeds import Cut
 from curling_score.game.segment import Sample
 from curling_score.geometry import calibrate, hogpaint, layout, lighting, sidepaint
 
@@ -41,6 +42,18 @@ class PanelSetup:
     # beyond one is on the next sheet, and is not counted or tracked here.
     # None -- a setup pickled before this existed -- excludes nothing.
     sidelines: sidepaint.Sidelines | None = None
+    # The view's name (``top``/``bottom``) and, for a camera that needs more
+    # than a crop, how it is taken from its file. Defaulted so a setup pickled
+    # before these existed still loads: it is nameless, and ``cut`` is a crop
+    # of ``rect`` as it always was.
+    name: str = ""
+    transform: Cut | None = None
+
+    @property
+    def cut(self) -> Cut:
+        """How this panel is taken from its file: ``transform``, else a crop
+        of ``rect``."""
+        return self.transform or Cut(self.name, tuple(self.rect))
 
     def crop(self, frame):
         x, y, w, h = self.rect
@@ -125,7 +138,7 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> Pa
         line, err = None, f"{name} panel: {exc}"
     # And the sidelines' paint, where the panel reaches them.
     return PanelSetup(rect=rect, calib=calib, hog_line=line, hog_line_error=err,
-                      sidelines=sidepaint.find_sidelines(median, calib))
+                      sidelines=sidepaint.find_sidelines(median, calib), name=name)
 
 
 def calibrate_panels(frames, panels: layout.PanelLayout):

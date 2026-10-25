@@ -154,6 +154,9 @@ def _proxy_setups(setups, strip):
             # The lines are in panel pixels, so moving the panel does not move them.
             hog_line=s.hog_line, hog_line_error=s.hog_line_error,
             sidelines=s.sidelines,
+            # The view's name stays; ``transform`` is left None so ``cut``
+            # follows the translated rect.
+            name=s.name,
         )
         for name, s in setups.items()
     }

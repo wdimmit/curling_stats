@@ -2,13 +2,18 @@
 one, since the colour thresholds also count people (game/profile.py)."""
 
 import json
+import pickle
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from curling_score import analyze
+from curling_score.feeds import Cut
 from curling_score.game import boardsplit, profile, segment
 from curling_score.game.segment import EndSegment, GameSegment
+from curling_score.geometry import layout
+from tests.synth_hogline import TOP, plate_with_line
 
 
 class Setup:
@@ -144,3 +149,47 @@ class TestThursdayMensSheet1:
         assert [e.house for e in by_counter] == ["top", "top"]
         assert [e.end_s for e in by_counter] == [pytest.approx(8695.0, abs=5),
                                                  pytest.approx(8320.0, abs=5)]
+
+
+class TestSetupCut:
+    def test_setup_cut_defaults_to_rect(self):
+        s = profile.PanelSetup(rect=(10, 20, 300, 534), calib=TOP)
+        assert s.cut == Cut("", (10, 20, 300, 534))
+        assert s.transform is None and s.name == ""
+
+    def test_a_transform_wins_over_the_rect(self):
+        turned = Cut("top", (0, 0, 534, 300), rotate=90, size=(300, 534))
+        s = profile.PanelSetup(rect=(0, 0, 534, 300), calib=TOP, name="top",
+                               transform=turned)
+        assert s.cut is turned
+
+    def test_calibrate_panels_names_setups(self, monkeypatch):
+        monkeypatch.setattr(profile.lighting, "is_calibratable", lambda p: True)
+        monkeypatch.setattr(profile.calibrate, "solve", lambda median, side: TOP)
+        plate = plate_with_line()
+        h, w = plate.shape[:2]
+        both = np.concatenate([plate, plate], axis=1)
+        setups = profile.calibrate_panels(
+            [both.copy() for _ in range(3)],
+            layout.PanelLayout(top=(0, 0, w, h), bottom=(w, 0, w, h)))
+        assert {n: s.name for n, s in setups.items()} == {"top": "top", "bottom": "bottom"}
+        assert setups["bottom"].cut == Cut("bottom", (w, 0, w, h))
+
+    def test_old_pickle_has_a_cut(self):
+        """A setup pickled before name/transform existed has neither in its
+        __dict__; the class defaults stand in."""
+        s = profile.PanelSetup(rect=(1, 2, 3, 4), calib=TOP, name="top")
+        state = dict(s.__dict__)
+        del state["name"], state["transform"]
+        old = profile.PanelSetup.__new__(profile.PanelSetup)
+        object.__setattr__(old, "__dict__", state)
+        loaded = pickle.loads(pickle.dumps(old))
+        assert "name" not in loaded.__dict__
+        assert loaded.cut == Cut("", (1, 2, 3, 4))
+
+    def test_proxy_setups_keep_the_name_and_follow_the_moved_rect(self):
+        s = profile.PanelSetup(rect=(100, 0, 300, 534), calib=TOP, name="top")
+        moved = analyze._proxy_setups({"top": s}, (100, 0, 300, 1060))["top"]
+        assert moved.name == "top" and moved.transform is None
+        assert moved.cut == Cut("top", tuple(moved.rect))
+        assert moved.rect != s.rect

@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from curling_score.feeds import Cut
 from curling_score.geometry import constants as C
 
 Rect = tuple[int, int, int, int]
@@ -109,6 +110,18 @@ class SideView:
     # line itself leans up to 13 px over the rows below the house. None falls
     # back to `centre_col` everywhere.
     centre_line: tuple[float, float] | None = None
+    # The view's name (``left``/``right``) and, for a camera that needs more
+    # than a crop, how it is taken from its file. Defaulted so a view pickled
+    # before these existed still loads: it is nameless, and ``cut`` is a crop
+    # of ``rect`` as it always was.
+    name: str = ""
+    transform: Cut | None = None
+
+    @property
+    def cut(self) -> Cut:
+        """How this view is taken from its file: ``transform``, else a crop
+        of ``rect``."""
+        return self.transform or Cut(self.name, tuple(self.rect))
 
     @property
     def has_lateral(self) -> bool:
@@ -419,11 +432,11 @@ def _solve_within(green, lum, rect, name, search):
     hog = _hog_row(lum, int(edges[-1]) + 12, name)
 
     def error(tee):
-        v = SideView(rect=rect, tee_row=tee, hog_row=hog)
+        v = SideView(rect=rect, tee_row=tee, hog_row=hog, name=name)
         return float(((np.array([v.row_for(x) for x in want]) - seen) ** 2).sum())
 
     tee = min(np.arange(hog - _HOG_SEARCH_PX, hog - 30, 0.05), key=error)
-    view = SideView(rect=rect, tee_row=float(tee), hog_row=float(hog))
+    view = SideView(rect=rect, tee_row=float(tee), hog_row=float(hog), name=name)
     if not PLAUSIBLE_ROWS[0] <= view.rows_tee_to_hog <= PLAUSIBLE_ROWS[1]:
         raise SideViewError(
             f"{name}: tee to hog measured {view.rows_tee_to_hog:.1f} px, "

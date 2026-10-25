@@ -8,11 +8,13 @@ crossing is seen by the camera at the target end.
 
 import dataclasses
 import json
+import pickle
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from curling_score.feeds import Cut
 from curling_score.geometry import constants as C
 from curling_score.geometry import layout, sideview
 from curling_score.geometry.sideview import SideView
@@ -582,3 +584,34 @@ class TestStripOnTheClubsSheets:
     def test_a_good_ring_fit_agrees_with_the_strip(self):
         img, ring = club_plate("qJhDHMMtHsE-left")
         assert sideview.strip_disagreement_m(ring, sideview.solve_strip(img, depth_only(ring))) < 0.02
+
+
+class TestCut:
+    def test_sideview_solve_keeps_name(self):
+        plate = synth.side_view(tee_row=430.0, hog_row=520.0)
+        got = sideview.solve(plate, (0, 0, 810, 1080), name="left")
+        assert got.name == "left"
+        assert got.cut == Cut("left", (0, 0, 810, 1080))
+
+    def test_the_lateral_fits_keep_name_and_transform(self):
+        turned = Cut("left", (0, 0, 810, 1080), size=(405, 540))
+        v = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
+                     name="left", transform=turned)
+        for got in (dataclasses.replace(v, centre_col=400.0, lat_px_per_m_at_tee=90.0),
+                    dataclasses.replace(v, centre_line=(400.0, 0.0))):
+            assert got.name == "left" and got.cut is turned
+
+    def test_solve_lateral_keeps_name(self):
+        view = dataclasses.replace(_depth_only(), name="right")
+        got = sideview.solve_lateral(synth.side_view_house(), view, name="right")
+        assert got.has_lateral and got.name == "right"
+
+    def test_old_pickle_has_a_cut(self):
+        v = SideView(rect=(1, 2, 3, 4), tee_row=430.0, hog_row=520.0, name="left")
+        state = dict(v.__dict__)
+        del state["name"], state["transform"]
+        old = SideView.__new__(SideView)
+        object.__setattr__(old, "__dict__", state)
+        loaded = pickle.loads(pickle.dumps(old))
+        assert "name" not in loaded.__dict__
+        assert loaded.cut == Cut("", (1, 2, 3, 4))

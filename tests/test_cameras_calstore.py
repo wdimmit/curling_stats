@@ -7,6 +7,7 @@ import pytest
 
 from curling_score.cameras import calstore
 from curling_score.cameras.calstore import HouseCheck
+from curling_score.feeds import Cut
 from curling_score.game.profile import PANEL_SIDES, PanelSetup
 from curling_score.geometry import calibrate
 from curling_score.live.session import Calibration
@@ -38,7 +39,7 @@ def calibration(frames=None) -> Calibration:
     for name, side in PANEL_SIDES:
         x, y, w, h = rects[name]
         calib = calibrate.solve(frames[0][y:y + h, x:x + w], side)
-        setups[name] = PanelSetup(rect=rects[name], calib=calib)
+        setups[name] = PanelSetup(rect=rects[name], calib=calib, name=name)
     return Calibration(panels=None, setups=setups, sideviews=None, until_s=60.0,
                        side_expected=False)
 
@@ -52,6 +53,14 @@ def test_calstore_roundtrip(tmp_path):
     assert (tmp_path / "cameras" / "cal" / "sheet3.pkl").is_file()
     assert store.load(3) == cal
     assert store.load(2) is None                   # each sheet has its own
+
+
+def test_calstore_roundtrip_keeps_cut(tmp_path):
+    store = calstore.CalStore(tmp_path)
+    store.save(3, calibration())
+    loaded = store.load(3)
+    assert loaded.setups["top"].cut == Cut("top", TOP_RECT)
+    assert loaded.setups["bottom"].cut == Cut("bottom", BOTTOM_RECT)
 
 
 def test_calstore_missing_is_none(tmp_path):

@@ -11,6 +11,7 @@ constants measured on ten views from five sheets -- ``PLAUSIBLE_ROWS``,
 ``geometry/sideview.py``. How many of 240 views calibrate is the finding.
 """
 
+import dataclasses
 from dataclasses import dataclass
 
 import numpy as np
@@ -71,6 +72,9 @@ def derive(video_id: str, frames) -> VideoViews:
     for name, rect in rects.items():
         try:
             v, err = sideview.solve(p, rect, name=f"{video_id}-{name}"), None
+            # `solve` was told the video for its error messages; the view is
+            # named for the camera, as a calibration's is.
+            v = dataclasses.replace(v, name=name)
         except Exception as exc:  # noqa: BLE001 -- a bad view must not stop 119 others
             v, err = None, f"{type(exc).__name__}: {exc}"
         found[name] = ViewInfo(name=name, rect=tuple(rect), view=v, error=err)
@@ -95,14 +99,15 @@ def _view_to_json(v: sideview.SideView | None):
             "centre_line": list(v.centre_line) if v.centre_line is not None else None}
 
 
-def _view_from_json(d, rect: tuple):
+def _view_from_json(d, rect: tuple, name: str = ""):
     if d is None:
         return None
     return sideview.SideView(
         rect=rect, tee_row=d["tee_row"], hog_row=d["hog_row"], d_m=d["d_m"],
         centre_col=d.get("centre_col"),
         lat_px_per_m_at_tee=d.get("lat_px_per_m_at_tee"),
-        centre_line=tuple(d["centre_line"]) if d.get("centre_line") else None)
+        centre_line=tuple(d["centre_line"]) if d.get("centre_line") else None,
+        name=name)
 
 
 def to_json(v: VideoViews) -> dict:
@@ -124,7 +129,7 @@ def from_json(d: dict) -> VideoViews:
         rect = tuple(info["rect"])
         views[name] = ViewInfo(
             name=info["name"], rect=rect,
-            view=_view_from_json(info["view"], rect),
+            view=_view_from_json(info["view"], rect, info["name"]),
             error=info.get("error"))
     return VideoViews(
         video_id=d["video_id"],
