@@ -11,12 +11,14 @@ import { signInTrouble } from "./signinState.mjs";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Pill, Warn } from "./ui.jsx";
 import { clipState, curlText, lengthText, lineText, mergeTimings, restText, sensorText,
-         shown, summary, turnText, weightText } from "../core/practice.mjs";
+         rotationText, shown, summary, weightText } from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
 import { ClipPlayer } from "./clip.jsx";
 import { DeliveryChart, dotColours } from "../viewer/Delivery.jsx";
 
 const POLL_MS = 3000;
+// How long "Throw N hidden · Undo" stays up.
+const UNDO_MS = 8000;
 const HAND_KEY = "practice.hand";
 // Why a session ended, by its stored reason. stream_ended is a watch that
 // finished: the name is from when practice read YouTube, kept for those too.
@@ -97,7 +99,7 @@ function SensorLine({ t, sensors }) {
   );
 }
 
-function Latest({ t, n, sid, live, newest, sensors }) {
+function Latest({ t, n, sid, live, newest, sensors, onHide }) {
   const clip = clipState(t, { live, newest });
   return (
     <Card>
@@ -134,6 +136,11 @@ function Latest({ t, n, sid, live, newest, sensors }) {
           <House rest={t.rest} broom={t.broom} />
         </div>
       )}
+      {/* Here, not in the table: a tap meant to pick a throw never hides one. */}
+      <p className="not-mine">
+        <button className="quiet" onClick={() => onHide(t, !t.hidden)}>
+          {t.hidden ? "Mine after all" : "Not my throw"}</button>
+      </p>
     </Card>
   );
 }
@@ -146,6 +153,8 @@ function Live({ id, onDone, heading }) {
   const [err, setErr] = useState("");
   // The throw the card shows: the latest unless one was picked from the table.
   const [picked, setPicked] = useState(null);
+  // The throw just hidden, offered back for a few seconds.
+  const [undo, setUndo] = useState(null);
   const load = useCallback(async () => {
     const res = await authedFetch(`/api/practice/sessions/${encodeURIComponent(id)}`,
                                   { cache: "no-cache" });
@@ -157,6 +166,11 @@ function Live({ id, onDone, heading }) {
   const loaded = view != null;
   const running = view?.session.status === "active";
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!undo) return undefined;
+    const t = setTimeout(() => setUndo(null), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [undo]);
   useEffect(() => {
     if (loaded && !running) return undefined;
     const t = setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
@@ -177,6 +191,10 @@ function Live({ id, onDone, heading }) {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hidden }) });
     load();
+  };
+  const hideFromCard = (t, hidden) => {
+    hide(t, hidden);
+    setUndo(hidden ? { t, n: cardN } : null);
   };
   const stop = async () => {
     await authedFetch(`/api/practice/sessions/${id}/stop`, { method: "POST" });
@@ -199,7 +217,7 @@ function Live({ id, onDone, heading }) {
       </p>
       {err && <Warn>{err}</Warn>}
       {card && <Latest t={card} n={cardN} sid={id} live={live} newest={picked == null}
-                       sensors={sensors} />}
+                       sensors={sensors} onHide={hideFromCard} />}
       {picked != null && <p><button onClick={() => setPicked(null)}>Show the latest throw</button></p>}
       {sum.count > 0 && (
         <p>
@@ -211,20 +229,18 @@ function Live({ id, onDone, heading }) {
       {rows.length > 0 && (
         <table className="practice-throws">
           <thead><tr><th>#</th><th>Turn</th><th>Weight</th><th>Line</th><th>Rest</th>
-            {sensors && <th>Sensor</th>}<th /></tr></thead>
+            {sensors && <th>Sensor</th>}</tr></thead>
           <tbody>
             {rows.slice().reverse().map(({ throw: t, n, timing }) => t ? (
               <tr key={t.id} className={t.hidden ? "muted" : undefined}
                   onClick={() => setPicked(t.id)} style={{ cursor: "pointer",
                     background: t.id === card?.id ? "rgba(242,194,0,0.18)" : undefined }}>
                 <td>{n}</td>
-                <td>{turnText(t.curl, session.hand) ?? "–"}</td>
+                <td>{rotationText(t, session.hand) ?? "–"}</td>
                 <td>{weightText(t.split_s) ?? "–"}</td>
                 <td>{lineText(t.line, { short: true }) ?? "–"}</td>
                 <td>{t.arrived ? restText(t.rest) ?? "–" : "didn't arrive"}</td>
                 {sensors && <td>{weightText(t.sensor?.long_s) ?? "–"}</td>}
-                <td><button onClick={e => { e.stopPropagation(); hide(t, !t.hidden); }}>
-                  {t.hidden ? "Mine after all" : "Not mine"}</button></td>
               </tr>
             ) : (
               <tr key={timing.id} className="muted">
@@ -233,11 +249,16 @@ function Live({ id, onDone, heading }) {
                                                  : "Sensor only: the cameras saw no throw"}
                   {timing.short_s != null && <> · short {timing.short_s.toFixed(2)} s</>}</td>
                 <td>{weightText(timing.long_s) ?? "–"}</td>
-                <td />
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {undo && (
+        <div className="undo-bar" role="status">
+          Throw {undo.n} hidden
+          <button onClick={() => { hide(undo.t, false); setUndo(null); }}>Undo</button>
+        </div>
       )}
     </>
   );
@@ -272,7 +293,7 @@ function Start({ sheet, onStarted }) {
       <p><button className="primary" disabled={busy} onClick={go}>
         {busy ? "Starting…" : "Start session"}</button></p>
       <p className="muted">Every throw on sheet {sheet} counts until you end it. It ends by
-        itself after 15 minutes with no throws. If someone else throws, tap "Not mine".</p>
+        itself after 15 minutes with no throws. If someone else throws, tap it, then "Not my throw".</p>
       {err && <Warn>{err}</Warn>}
     </Card>
   );

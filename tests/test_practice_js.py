@@ -64,6 +64,16 @@ def test_in_or_out_turn_from_the_curl_and_the_hand():
     assert js('[P.turnText(null, "right"), P.turnText("right", undefined)]') == [None, "In"]
 
 
+def test_the_turn_column_reads_which_turn_and_how_fast():
+    assert js('P.rotationText({curl: "right", spin: {rpm: 9.4, rpm_range: null}}, "right")') == "In · 9 rpm"
+    assert js('P.rotationText({curl: "left", spin: {rpm: 7, rpm_range: [5.5, 8.4]}}, "right")') \
+        == "Out · 6–8 rpm"
+    # Either alone when the other was not read; nothing when neither was.
+    assert js('[P.rotationText({curl: null, spin: {rpm: 10.2}}, "right"),'
+              ' P.rotationText({curl: "left", spin: null}, "left"),'
+              ' P.rotationText({curl: null}, "right")]') == ["10 rpm", "In", None]
+
+
 def test_a_stone_nothing_released_is_not_shown_as_a_throw():
     # Real practice (Qzh8): every arrival with no release from either camera
     # was a stone placed by hand for a drill.

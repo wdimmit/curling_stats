@@ -55,6 +55,22 @@ export function turnText(curl, hand) {
   return curl === (hand === "left" ? "left" : "right") ? "In" : "Out";
 }
 
+/* How fast it was set turning, in whole rpm: a range for a rock that showed
+ * under half a turn in view (game/spintime.py), which is timed only that
+ * closely. */
+export function rpmText(spin) {
+  if (typeof spin?.rpm !== "number") return null;
+  const [lo, hi] = (spin.rpm_range ?? [spin.rpm, spin.rpm]).map(Math.round);
+  return lo === hi ? `${lo} rpm` : `${lo}–${hi} rpm`;
+}
+
+/* The throws table's Turn: which turn and how fast, "In · 9 rpm", either
+ * alone when the other was not read. */
+export function rotationText(t, hand) {
+  const parts = [turnText(t.curl, hand), rpmText(t.spin)].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /* The throws to show: a stone that arrived with nothing seen releasing it
  * was not thrown -- on real practice footage, every one was a stone placed by
  * hand for a drill. A release that never arrived stays: that is a hog. */

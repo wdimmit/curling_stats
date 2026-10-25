@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from curling_score.detect import longview, rest
 from curling_score.game import (broomtime, fartime, hogtime, linetime, releasetime,
-                                sidereleases, thinking)
+                                sidereleases, spintime, thinking)
 from curling_score.game import shots as shots_mod
 from curling_score.game.shots import Shot
 
@@ -39,13 +39,14 @@ class Stages:
     broom: object
     line: object
     release: object
+    spin: object
 
 
 def real_stages() -> Stages:
     return Stages(hog=hogtime.time_hog_crossings,
                   side_release=sidereleases.time_side_releases,
                   broom=broomtime.time_target_brooms, line=linetime.time_lines,
-                  release=releasetime.time_releases)
+                  release=releasetime.time_releases, spin=spintime.time_spins)
 
 
 def _house(frames, t0, t1):
@@ -120,6 +121,9 @@ def enrich(video, setups, sideviews, models, *, house, arrival, release, house_f
         finally:
             if keeper is not None:
                 keeper.clear()
+        # How fast it was set turning: the hog camera again, its own read from
+        # just past the hog line, after the keeper is let go as an end does.
+        _run("spin", stages.spin, shots, video, hog_view, model=models.line_model)
     _run("far hog", fartime.time_far_crossings, shots,
          near_line=setups[throwing].hog_line, far_line=setups[house].hog_line)
     return shot

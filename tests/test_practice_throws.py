@@ -9,6 +9,7 @@ from curling_score.game import split
 from curling_score.game.broomtime import TargetBroom
 from curling_score.game.linetime import Line
 from curling_score.game.shots import Shot
+from curling_score.game.spinfit import Spin
 from curling_score.practice import throws
 
 
@@ -98,10 +99,21 @@ class TestThrowRecord:
         assert got["id"] == "t_40.0"              # dated by its arrival
         assert got["t_release_s"] is None and got["release_source"] is None
         assert got["broom"] is None and got["line"] is None and got["curl"] is None
+        assert got["spin"] is None
         # No house read: the rest comes from the delivery itself.
         assert got["rest"]["x"] == 0.1 and got["rest"]["ring"] == "4"
         assert got["t_hog_s"] is None and got["v_hog_m_s"] is None
         assert got["t_far_s"] is None and got["clip"] is False
+
+    def test_the_spin_and_its_range(self):
+        dv = arrival()
+        shot = Shot(number=1, color="red", stones=[], t_rest_s=dv.t_rest, delivery=dv)
+        shot.spin = Spin(rpm=9.04, rpm_avg=8.6, turns_in_view=2.1, samples=40)
+        assert throws.throw_record(shot, house="top")["spin"] == {"rpm": 9.0, "rpm_range": None}
+        shot.spin = Spin(rpm=7.0, rpm_avg=7.0, turns_in_view=0.4, samples=20,
+                         rpm_range=(5.52, 8.48))
+        assert throws.throw_record(shot, house="top")["spin"] == {
+            "rpm": 7.0, "rpm_range": [5.5, 8.5]}
 
     def test_a_stone_that_ran_out_of_play_is_out(self):
         dv = arrival(came_to_rest=False, y=-2.3)

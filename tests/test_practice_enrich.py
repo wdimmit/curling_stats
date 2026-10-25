@@ -34,7 +34,8 @@ def recording(calls, fail=(), kwargs=None, firsts=None):
                 raise RuntimeError(f"{name} fell over")
         return run
     return E.Stages(hog=stage("hog"), side_release=stage("side"),
-                    broom=stage("broom"), line=stage("line"), release=stage("release"))
+                    broom=stage("broom"), line=stage("line"), release=stage("release"),
+                    spin=stage("spin"))
 
 
 def measure(calls, *, house="top", dv=None, rel=None, fail=(), sideviews=SIDEVIEWS,
@@ -51,7 +52,7 @@ def test_the_passes_run_in_order_on_the_cameras_an_end_uses():
     # end's ("right"), the one seeing the house thrown to is "left".
     assert calls == [("hog", "right", None), ("side", "right", None),
                      ("broom", "left", "broom"), ("line", "right", "left", "line"),
-                     ("release", "right", "release")]
+                     ("release", "right", "release"), ("spin", "right", "line")]
 
 
 def test_a_throw_that_never_arrived_still_gets_its_line():
@@ -59,14 +60,14 @@ def test_a_throw_that_never_arrived_still_gets_its_line():
     the near hog line on, and its far-camera path ends where it stopped."""
     calls = []
     shot = measure(calls, rel=Release("yellow", 30.0, 1.0, 2.0))
-    assert [c[0] for c in calls] == ["hog", "side", "broom", "line"]
+    assert [c[0] for c in calls] == ["hog", "side", "broom", "line", "spin"]
     assert shot.delivery is None and shot.color == "yellow"
 
 
 def test_one_pass_failing_costs_only_its_own_figure():
     calls = []
     measure(calls, dv=arrival(), fail=("hog",))
-    assert [c[0] for c in calls] == ["hog", "side", "broom", "line", "release"]
+    assert [c[0] for c in calls] == ["hog", "side", "broom", "line", "release", "spin"]
 
 
 def test_without_side_views_only_the_overhead_passes_run():
@@ -173,4 +174,4 @@ def test_a_throw_that_never_arrived_keeps_nothing(monkeypatch):
 def test_models_from_before_the_release_model_read_none():
     calls = []
     measure(calls, dv=arrival(), models=SimpleNamespace(broom_model="broom", line_model="line"))
-    assert calls[-1] == ("release", "right", None)
+    assert calls[-2] == ("release", "right", None)

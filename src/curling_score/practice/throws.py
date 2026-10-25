@@ -61,6 +61,13 @@ def _rest(shot):
     return {"x": _r(x), "y": _r(y), "to_tee_m": _r(math.hypot(x, y)), "ring": ring_of(x, y)}
 
 
+def _spin(spin):
+    if spin is None:
+        return None
+    rng = getattr(spin, "rpm_range", None)
+    return {"rpm": _r(spin.rpm, 1), "rpm_range": None if rng is None else [_r(rng[0], 1), _r(rng[1], 1)]}
+
+
 def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
     """``shot`` as the page reads it. ``house`` is the end it was thrown to;
     ``t0_s`` is where the recording begins on the stream's clock."""
@@ -104,6 +111,9 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
                                                       "y": _r(line.start[1], 3)},
             "delivery": [[_r(t, 2), _r(y, 2), _r(x, 3)]
                          for t, y, x in getattr(line, "delivery", ())]},
+        # The rock's rotation as thrown (game/spintime.py): a range when it
+        # showed under half a turn in view.
+        "spin": _spin(getattr(shot, "spin", None)),
         "rest": _rest(shot),
         "track": [] if dv is None else _thin(dv.track, t0_s),
     }
