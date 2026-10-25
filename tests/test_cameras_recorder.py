@@ -117,9 +117,19 @@ class World:
         return proc
 
 
-def progress(*times):
-    return "".join(f"frame=  1 fps= 60 q=20.0 size= 1KiB time={t} bitrate=20000.0kbits/s\r"
-                   for t in times).encode()
+def progress(*times, behind_s=0.0):
+    """The composer's progress lines at each composite length "HH:MM:SS.ss".
+    With -copyts ffmpeg's own time= counts from its first report, ``behind_s``
+    after the recording's zero."""
+    lines = []
+    for t in times:
+        h, m, sec = t.split(":")
+        length = int(h) * 3600 + int(m) * 60 + float(sec)
+        shown = max(0.0, length - behind_s)
+        lines.append(f"frame={round(length * 60):5d} fps= 60 q=20.0 size= 1KiB "
+                     f"time={int(shown // 3600):02d}:{int(shown % 3600 // 60):02d}:"
+                     f"{shown % 60:05.2f} bitrate=20000.0kbits/s\r")
+    return "".join(lines).encode()
 
 
 def settle(rec):
@@ -330,7 +340,7 @@ def test_the_sessions_zero_and_wall_started_are_read_together_before_any_capture
     assert rec.wall_started == WALL and world.events.count(("wall",)) == 1
 
 
-def test_head_is_the_composers_time(tmp_path):
+def test_head_is_the_composites_length(tmp_path):
     world = World(tmp_path, composer_out=progress("00:00:01.50", "00:01:02.25"))
     rec = world.recorder()
     assert rec.head_s() == 0.0
@@ -340,6 +350,18 @@ def test_head_is_the_composers_time(tmp_path):
     assert rec.head_s() == pytest.approx(62.25)
     rec.check()
     assert not rec.ended()
+
+
+def test_head_counts_the_composites_frames_not_ffmpegs_time(tmp_path):
+    """With -copyts ffmpeg counts its time= from the first time it reports,
+    not from the recording's zero: as far behind as the composite had got by
+    then (FFmpeg 7.1, 2026-10-25). The composite is 60 frames a second from
+    the zero, so its frames say how far it reaches."""
+    world = World(tmp_path, composer_out=progress("00:00:03.00", "00:01:02.25", behind_s=2.4))
+    rec = world.recorder().start()
+    settle(rec)
+
+    assert rec.head_s() == pytest.approx(62.25)
 
 
 def test_head_moves_with_each_progress_line(tmp_path):

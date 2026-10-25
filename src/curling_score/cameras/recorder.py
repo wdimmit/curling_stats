@@ -24,11 +24,11 @@ times its camera's packets in seconds since that zero (``--t0``), by the
 camera's own clock anchored to their arrival (``capture.CameraClock``), and
 writes them to its FIFO as NUT with their times. The composer keeps the times
 (``-copyts``, nothing shifted), so a frame at t in the composite was taken at
-``wall_started + t``, and the composer's ``time=``, seconds since the zero, is
-``head_s()``. A composer that falls behind delays the recording, and
-``head_s`` with it, but moves nothing in it. Until the cameras' first frames
-come the composite is the grey base alone. Nothing is recorded from before
-Start, so ``lookback_got_s`` is 0.
+``wall_started + t``. ``head_s()`` is how far the composite reaches, by its
+frames (``composite_s``). A composer that falls behind delays the recording,
+and ``head_s`` with it, but moves nothing in it. Until the cameras' first
+frames come the composite is the grey base alone. Nothing is recorded from
+before Start, so ``lookback_got_s`` is 0.
 
 **A camera that stops.** A capture holds its camera's last keyframe while
 packets stop and reconnects by itself. One that exits all the same is logged,
@@ -107,6 +107,8 @@ TAIL_LINES = 5
 _CAPTURE = "curling_score.cameras.capture"
 # A capture's log line: "<date> <time> <LEVEL> capture <camera>: <message>".
 _LOG_LINE = re.compile(r"^\S+ \S+ (DEBUG|INFO|WARNING|ERROR|CRITICAL) (.*)$")
+# The frames so far in one of ffmpeg's progress lines: "frame= 3735 fps= 60 ...".
+_FRAME_RE = re.compile(r"\bframe=\s*(\d+)")
 
 
 def probe(path: Path) -> tuple[str, int, int] | None:
@@ -131,6 +133,15 @@ def _input(fifo: Path) -> list[str]:
     """How the composer opens a capture's FIFO: NUT, whose times it keeps."""
     return ["-threads", str(DECODE_THREADS), "-thread_queue_size", "1024",
             *PROBE, "-f", "nut", "-i", str(fifo)]
+
+
+def composite_s(line: str) -> float | None:
+    """How far the composite reaches by one of the composer's progress lines:
+    its frames so far, ``layout.FPS`` a second from the recording's zero. Not
+    its ``time=``: with ``-copyts`` ffmpeg counts that from the first time it
+    reports, as far after the zero as the composite had got by then."""
+    m = _FRAME_RE.search(line)
+    return int(m.group(1)) / layout.FPS if m else None
 
 
 class _Tail:
@@ -304,7 +315,7 @@ class CameraRecorder:
         proc = self._popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, bufsize=0)
         self._tail = proc.stdout = _Tail(proc.stdout)
-        self._composer = _Part(self.path, proc)
+        self._composer = _Part(self.path, proc, progress=composite_s)
         log.info("recording sheet %d's cameras into %s", self.sheet, self.path)
 
     def check(self):

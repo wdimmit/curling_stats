@@ -71,8 +71,11 @@ def segment_durations(playlist: str) -> list:
 
 
 class _Part:
-    def __init__(self, path, proc):
+    def __init__(self, path, proc, progress=progress_time):
+        """``progress`` reads how far the file reaches off one of ffmpeg's
+        progress lines."""
         self.path, self.proc, self.head = path, proc, 0.0
+        self._progress = progress
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
 
@@ -83,10 +86,10 @@ class _Part:
             pending += chunk.decode("utf-8", "replace")
             *lines, pending = re.split(r"[\r\n]", pending)
             for line in lines:
-                t = progress_time(line)
+                t = self._progress(line)
                 if t is not None:
                     self.head = max(self.head, t)
-        t = progress_time(pending)
+        t = self._progress(pending)
         if t is not None:
             self.head = max(self.head, t)
 
