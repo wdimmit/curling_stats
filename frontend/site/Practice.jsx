@@ -18,9 +18,11 @@ import { DeliveryChart, dotColours } from "../viewer/Delivery.jsx";
 
 const POLL_MS = 3000;
 const HAND_KEY = "practice.hand";
+// Why a session ended, by its stored reason. stream_ended is a watch that
+// finished: the name is from when practice read YouTube, kept for those too.
 const ENDED = {
   stop: "you ended it", idle: "15 minutes without a throw", max: "the 3-hour limit",
-  league: "a league game started", stream_ended: "the stream ended", failed: "the cameras could not be read",
+  league: "a league game started", stream_ended: "the recording ended", failed: "the cameras could not be read",
 };
 
 // The club's sheets, for starting a session from the list of them.
@@ -171,7 +173,7 @@ function Live({ id, onDone, heading }) {
     <>
       {heading && <h2>Sheet {session.sheet} · {dayText(session.started_at)}, {timeText(session.started_at)}</h2>}
       <p className="muted">
-        {live ? (calibrating ? "Getting ready: learning the sheet from the stream (a minute or two)…"
+        {live ? (calibrating ? "Getting ready: finding the sheet on its cameras (a minute or two)…"
                              : `Watching for throw ${sum.count + 1}`)
               : `Session ended: ${ENDED[session.end_reason] ?? ENDED[session.status] ?? "ended"}.`}
         {live && <> <button onClick={stop}>End session</button></>}
@@ -224,7 +226,7 @@ function Start({ sheet, onStarted }) {
         body: JSON.stringify({ sheet, hand }) });
       const body = await res.json().catch(() => ({}));
       if (res.ok) onStarted(body.id);
-      else setErr(res.status === 404 ? `Sheet ${sheet} can't be watched right now.`
+      else setErr(res.status === 404 ? `Sheet ${sheet} has no cameras.`
                                        : body.detail || `Could not start (${res.status}).`);
     } finally { setBusy(false); }
   };

@@ -1,6 +1,7 @@
 """The practice page's words for a throw (frontend/core/practice.mjs), in node."""
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -124,3 +125,15 @@ def test_the_slide_dots_the_clip_has_reached():
     assert js(f'P.dotsShown({piece}, 3.0)') == 2
     assert js(f'P.dotsShown({piece}, 13.0)') == 3
     assert js('P.dotsShown({t0: 0, t1: 1}, 5)') == 0 and js('P.dotsShown(null, 5)') == 0
+
+
+PAGE = MODULE.parents[1] / "site/Practice.jsx"
+
+
+def test_the_page_speaks_of_the_cameras_never_a_stream():
+    """Practice reads the club's cameras. A session that ended in the YouTube
+    days keeps its words: its stored end reason (stream_ended) still has some."""
+    text = PAGE.read_text()
+    literals = [a or b for a, b in re.findall(r'"([^"]*)"|`([^`]*)`', text)]
+    assert [w for w in literals if "stream" in w.lower()] == []
+    assert "stream_ended:" in text and "failed:" in text
