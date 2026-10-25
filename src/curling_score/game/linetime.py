@@ -258,17 +258,6 @@ def pick_start(boxes, view):
     return float(np.median(xs)), float(np.median(ys))
 
 
-def find_start(model, video, view, color, t_release, *, decode, detect):
-    """Read the stone at rest before the push, behind the throwing tee."""
-    frames, times = decode(video, view.rect, t_release + START_WINDOW_S[0],
-                           t_release + START_WINDOW_S[1], START_FPS)
-    if not len(frames):
-        return None
-    top = int(view.row_for(-(C.TEE_TO_HACKLINE_M + 1.0))) - 30
-    bot = int(view.tee_row) + 10
-    return pick_start([b for per in detect(model, frames, times, top, bot, color) for b in per], view)
-
-
 PATH_FPS = 5.0
 PATH_SPLIT_ROW = 640            # the far part at imgsz 800, the near part at 416
 PATH_CONF = 0.3

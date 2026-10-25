@@ -1,7 +1,7 @@
 """A/B two side models where production uses them: timing the throwing hog line
 and the line pass. Both models see the same decoded frames, through the same
 production functions (sidemodel.find_in_frames, linetime.hog_track, fit_line,
-find_start); only the model differs.
+read_delivery); only the model differs.
 
     # hand-marked crossings (datasets/hogmarks)
     ab_side.py marks --marks datasets/hogmarks/VXU9xwmugRg.json --video V.mp4 \\
@@ -130,12 +130,13 @@ def line(args) -> int:
                                              model, dec, sidemodel.detect_band)
                 track = linetime.hog_track(got, hv, extra)
             fit = linetime.fit_line(track)
-            st = linetime.find_start(model, video, hv, s["color"], t_rel, decode=dec,
-                                     detect=sidemodel.detect_band)
-            delivery = ()
+            # The start comes from the delivery read, as in production: no
+            # line, no start.
+            st, delivery = None, ()
             if track and fit is not None:
                 frames_d = linetime.read_delivery(model, video, hv, s["color"], t_rel, track[0][0],
                                                   decode=dec, detect=sidemodel.detect_band)
+                st = frames_d.start
                 delivery = linetime.delivery_path(track, frames_d, t_rel)
             row[mname] = {"t": got.t, "key": got.key, "n": len(track),
                           "at_hog": None if fit is None else fit.x(linetime.HOG_Y),
