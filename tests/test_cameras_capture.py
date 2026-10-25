@@ -1,6 +1,7 @@
-"""Capture: which camera is which, and holding a camera's picture still while
-its packets stop."""
+"""Capture: which camera is which, timing its packets, and holding its picture
+still while they stop."""
 
+import io
 import json
 import logging
 import os
@@ -10,16 +11,23 @@ import subprocess
 import sys
 import threading
 import time
+from fractions import Fraction
 from pathlib import Path
 
+import av
+import numpy as np
 import pytest
 
-from curling_score.cameras import capture, inventory
+from curling_score.cameras import capture, inventory, tap
 
 SPS_PPS_IDR = b"\x00\x00\x00\x01\x67sps\x00\x00\x00\x01\x68pps\x00\x00\x00\x01\x65idr"
 P1 = b"\x00\x00\x00\x01\x41p1"
 P2 = b"\x00\x00\x00\x01\x41p2"
 PERIOD = 1 / 60
+# The session's zero on the monotonic clock, and a HOUSE camera's clock (years
+# behind) in seconds.
+T0 = 1000.0
+CAM = 1_640_000_000.0
 
 
 class Clock:
@@ -33,6 +41,160 @@ class Clock:
 def holder():
     clock, out = Clock(), []
     return capture.Holder(lambda data, at, key: out.append(data), clock=clock), clock, out
+
+
+def h264(count=12, gop=6):
+    """Real H.264 as the cameras send it, Annex-B with SPS and PPS before every
+    keyframe: [(packet, keyframe)]."""
+    codec = av.CodecContext.create("libx264", "w")
+    codec.width, codec.height, codec.pix_fmt = 64, 48, "yuv420p"
+    codec.time_base = Fraction(1, 60)
+    codec.thread_count = 1
+    codec.options = {"preset": "ultrafast", "x264-params":
+                     f"repeat-headers=1:keyint={gop}:min-keyint={gop}:scenecut=0:bframes=0"}
+    out = []
+    for i in range(count):
+        frame = av.VideoFrame.from_ndarray(np.full((48, 64, 3), 8 * i, np.uint8), format="rgb24")
+        frame.pts = i
+        out += [(bytes(p), p.is_keyframe) for p in codec.encode(frame)]
+    return out + [(bytes(p), p.is_keyframe) for p in codec.encode(None)]
+
+
+def demux_nut(data):
+    """[(time, keyframe, packet)] read back from NUT by PyAV."""
+    with av.open(io.BytesIO(data), format="nut") as c:
+        return [(float(p.pts * p.time_base), p.is_keyframe, bytes(p))
+                for p in c.demux() if p.size]
+
+
+# --- the camera's clock, anchored to arrival ------------------------------------
+
+
+def test_spacing_follows_the_camera_clock_not_arrival_jitter():
+    c = capture.CameraClock(T0)
+    jitter = [0.0, 0.002, 0.009, 0.001, 0.004, 0.0, 0.011, 0.003]
+    times = [c.time(CAM + i / 60, T0 + 1 + i / 60 + j) for i, j in enumerate(jitter)]
+
+    assert times == pytest.approx([1 + i / 60 for i in range(8)], abs=1e-6)
+
+
+def test_the_offset_is_the_least_delay_over_the_window():
+    """The packet that came quickest in the last ANCHOR_WINDOW_S anchors the
+    clock; once it is older than that, the quickest since does."""
+    c = capture.CameraClock(T0)
+    offsets = []
+    for i in range(41):                    # a packet every 0.5 s for 20 s
+        delay = 0.005 if i == 4 else 0.030
+        c.time(CAM + i * 0.5, T0 + i * 0.5 + delay)
+        offsets.append(c.offset - (T0 - CAM))
+
+    assert capture.ANCHOR_WINDOW_S == 10.0
+    assert offsets[:4] == pytest.approx([0.030] * 4, abs=1e-6)
+    # The quick one arrived at 2.005 s; it leaves the window once a packet
+    # arrives more than 10 s after it, at 12.03 s.
+    assert offsets[4:24] == pytest.approx([0.005] * 20, abs=1e-6)
+    assert offsets[24:] == pytest.approx([0.030] * 17, abs=1e-6)
+
+
+def test_a_burst_of_late_arrivals_keeps_its_true_spacing():
+    """Packets held up on the way for up to 100 ms, then delivered at once,
+    are timed when the camera took them."""
+    c = capture.CameraClock(T0)
+    arrivals = [T0 + 1 + i / 60 + 0.016 for i in range(120)]
+    arrivals[60:66] = [arrivals[60] + 0.100] * 6
+    times = [c.time(CAM + i / 60, a) for i, a in enumerate(arrivals)]
+
+    assert np.diff(times) == pytest.approx([1 / 60] * 119, abs=1e-6)
+    assert times[60] == pytest.approx(1 + 60 / 60 + 0.016, abs=1e-6)
+
+
+@pytest.mark.parametrize("drift", [0.015, -0.015])
+def test_drift_of_15_ms_an_hour_is_followed(drift):
+    """The cameras' clocks drift against the Ryzen's by about 15 ms an hour
+    (2026-10-25). Anchored to a fixed offset, an hour's packets would end 15 ms
+    off their arrival; anchored to the window, they stay on it."""
+    c = capture.CameraClock(T0)
+    rate = 1 + drift / 3600
+    worst = 0.0
+    for i in range(36_000):                # 10 a second for an hour
+        true = i / 10
+        t = c.time(CAM + true * rate, T0 + true + 0.016)
+        worst = max(worst, abs(t - (true + 0.016)))
+
+    assert worst < 0.001
+
+
+@pytest.mark.parametrize("step", [-86_400.0, -2.0, 2.0, 3600.0])
+def test_a_clock_step_anchors_again_at_once(step, caplog):
+    """A camera's clock that jumps (a reboot, NTP) is anchored again on the
+    first packet after the jump, not after the window has passed."""
+    c = capture.CameraClock(T0)
+    for i in range(60):
+        c.time(CAM + i / 60, T0 + 1 + i / 60 + 0.016)
+    with caplog.at_level(logging.WARNING, logger=capture.__name__):
+        after = [c.time(CAM + step + i / 60, T0 + 1 + i / 60 + 0.016) for i in range(60, 63)]
+
+    # Unanchored, a clock set back would be timed early for a whole window.
+    assert after == pytest.approx([2.016, 2.016 + 1 / 60, 2.016 + 2 / 60], abs=1e-6)
+    (warned,) = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warned.startswith(f"the camera's clock jumped {step:+.3f} s")
+
+
+def test_times_only_ever_increase():
+    """A pts repeated, or set back by less than CLOCK_STEP_S, still gives a
+    time after the last one: a microsecond after."""
+    c = capture.CameraClock(T0)
+    a = c.time(CAM, T0 + 1.0)
+    b = c.time(CAM, T0 + 1.0 + PERIOD)
+    d = c.time(CAM - 0.5, T0 + 1.0 + 2 * PERIOD)
+
+    assert (a, b, d) == pytest.approx((1.0, 1.000001, 1.000002), abs=1e-9)
+
+
+def test_a_packet_without_a_pts_is_timed_by_its_arrival():
+    c = capture.CameraClock(T0)
+    c.time(CAM, T0 + 1.010)
+
+    assert c.time(None, T0 + 1.040) == pytest.approx(1.040, abs=1e-6)
+    assert c.time(CAM + 2 / 60, T0 + 1.050) == pytest.approx(1.010 + 2 / 60, abs=1e-6)
+
+
+def test_a_time_before_the_sessions_zero_is_zero():
+    c = capture.CameraClock(T0)
+
+    assert c.time(CAM, T0 - 0.5) == 0.0
+    assert c.time(None, T0 - 0.3) == pytest.approx(1e-6, abs=1e-9)
+    assert c.time(CAM + 1.0, T0 + 0.5) == pytest.approx(0.5, abs=1e-6)
+
+
+# --- the FIFO's container ---------------------------------------------------------
+
+
+def test_nut_gives_back_each_packets_time_to_the_microsecond():
+    """What the capture writes, read back by PyAV: every packet, untouched, at
+    the time it was given, whatever the spacing. NUT counts in microseconds."""
+    packets = h264()
+    times = [1.0 + i / 60 + (0.0213 if i >= 6 else 0.0) + i * 3.7e-7
+             for i in range(len(packets))]
+    nut = capture._Nut(packets[0][0])
+    chunks = [nut.packet(p, t, k) for (p, k), t in zip(packets, times)]
+
+    # Each packet's bytes come out as it goes in: nothing waits in a buffer.
+    assert all(len(c) > len(p) for c, (p, _) in zip(chunks, packets))
+    got = demux_nut(b"".join(chunks))
+    assert [(p, k) for _, k, p in got] == packets
+    assert np.abs(np.array([t for t, _, _ in got]) - times).max() <= 1e-6
+
+
+def test_nut_times_always_increase():
+    """A held keyframe is timed by the session clock and a camera's packet by
+    the camera's: the first packet after a hold can be timed before the last
+    held picture. NUT needs times that increase, so it goes a microsecond on."""
+    (key, _), (p, _) = h264(count=2)
+    nut = capture._Nut(key)
+    got = demux_nut(nut.packet(key, 2.0, True) + nut.packet(p, 1.9995, False))
+
+    assert [t for t, _, _ in got] == pytest.approx([2.0, 2.000001], abs=1e-9)
 
 
 def test_sheet_cameras_long_views_by_sheet():
@@ -128,14 +290,20 @@ def test_hold_waits_for_a_keyframe_before_resuming():
     assert out[-2:] == [SPS_PPS_IDR + b"2", P2]
 
 
-def queued(fifo):
-    """What the FIFO's writer would write next, in order, without waiting."""
+def taken(fifo):
+    """``(time, packet, keyframe)`` for each packet the FIFO's writer would
+    write next, in order, without waiting."""
     out = []
     while fifo._queue:
-        data = fifo._take()
-        if data is not None:
-            out.append(data)
+        item = fifo._take()
+        if item is not None:
+            out.append(item)
     return out
+
+
+def queued(fifo):
+    """The packets the FIFO's writer would write next."""
+    return [data for _, data, _ in taken(fifo)]
 
 
 def test_a_keyframe_from_before_the_fifo_opens_is_held_once_it_does(tmp_path):
@@ -143,7 +311,7 @@ def test_a_keyframe_from_before_the_fifo_opens_is_held_once_it_does(tmp_path):
     which opens its FIFOs one at a time and probes each, must still get a
     picture from it, or it never starts."""
     clock = Clock()
-    fifo = capture._Fifo(tmp_path / "cam.h264", clock=clock)
+    fifo = capture._Fifo(tmp_path / "cam.nut", clock=clock)
     h = capture.Holder(fifo.write, clock=clock)
     h.packet(1, SPS_PPS_IDR)
     h.packet(0, P1)
@@ -159,7 +327,7 @@ def test_a_keyframe_from_before_the_fifo_opens_is_held_once_it_does(tmp_path):
 
 def test_a_live_camera_starts_at_its_newest_keyframe_once_the_fifo_opens(tmp_path):
     clock = Clock()
-    fifo = capture._Fifo(tmp_path / "cam.h264", clock=clock)
+    fifo = capture._Fifo(tmp_path / "cam.nut", clock=clock)
     h = capture.Holder(fifo.write, clock=clock)
     h.packet(1, SPS_PPS_IDR)
     h.packet(1, SPS_PPS_IDR + b"2")
@@ -181,10 +349,7 @@ def test_the_tap_reader_gives_the_holder_packets_before_the_fifo_opens(tmp_path)
         now = time.monotonic_ns()
         w.write(struct.pack("<IBqq", len(SPS_PPS_IDR), 1, 0, now) + SPS_PPS_IDR)
         w.write(struct.pack("<IBqq", len(P1), 0, 166_667, now) + P1)
-    args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
-                                         "--first", str(tmp_path / "first")])
-    args.tap_fd, args.parent = read, os.getppid()
-    cap = capture._Capture(args)
+    cap = capture_reading(tmp_path, read, time.monotonic())
     cap._read()                            # to the end of the pipe
     assert (tmp_path / "first").read_bytes() == SPS_PPS_IDR
     assert not cap.fifo.opened.is_set() and not cap.fifo._queue
@@ -193,17 +358,60 @@ def test_the_tap_reader_gives_the_holder_packets_before_the_fifo_opens(tmp_path)
     assert queued(cap.fifo) == [SPS_PPS_IDR]
 
 
+def capture_reading(tmp_path, fd, t0):
+    args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
+                                         "--first", str(tmp_path / "first"), "--t0", str(t0)])
+    args.tap_fd, args.parent = fd, os.getppid()
+    return capture._Capture(args)
+
+
+def test_the_tap_reader_times_packets_by_the_cameras_clock_from_the_sessions_zero(tmp_path):
+    """Three packets a frame apart that reached the Ryzen bunched up: each is
+    timed as the camera spaced them, anchored to the quickest, in seconds
+    since the recorder's start (--t0)."""
+    t0 = time.monotonic() - 6.0
+    pts0 = 16_419_840_000_000_000          # 100 ns units, as libndi gives them
+    read, write = os.pipe()
+    with os.fdopen(write, "wb") as w:
+        for i, (data, late) in enumerate([(SPS_PPS_IDR, 0.0), (P1, 0.013), (P2, 0.001)]):
+            arrived = round((t0 + 5.0 + i / 60 + late) * 1e9)
+            w.write(struct.pack("<IBqq", len(data), i == 0, pts0 + i * tap.PTS_HZ // 60, arrived)
+                    + data)
+    cap = capture_reading(tmp_path, read, t0)
+    cap.fifo.opened.set()
+    cap._read()
+
+    assert [t for t, _, _ in cap.fifo._queue] == pytest.approx([5.0, 5.0 + 1 / 60, 5.0 + 2 / 60],
+                                                               abs=1e-6)
+
+
 def opened_fifo(tmp_path, clock):
-    fifo = capture._Fifo(tmp_path / "cam.h264", clock=clock)
+    fifo = capture._Fifo(tmp_path / "cam.nut", clock=clock)
     fifo.opened.set()
     return fifo
 
 
+def test_a_composer_seconds_behind_only_delays_the_packets(tmp_path):
+    """Each packet carries its own time to the composer, so one that has
+    waited still goes where it belongs: a composer that stops reading for a
+    few seconds loses nothing, and its recording is only later."""
+    clock = Clock()
+    fifo = opened_fifo(tmp_path, clock)
+    h = capture.Holder(fifo.write, clock=clock)
+    t = clock.t
+    sent = [(t + i * PERIOD, data, i == 0) for i, data in enumerate([SPS_PPS_IDR, P1, P2, P1])]
+    for at, data, key in sent:
+        h.packet(int(key), data, at)
+    clock.t = t + 4.0
+
+    assert taken(fifo) == sent
+
+
 def test_a_packet_that_waited_too_long_is_dropped_with_all_queued(tmp_path, caplog):
-    """The composer stamps a packet with the wall clock when it reads it, so a
-    packet's wait here is delay nothing downstream can see. None older than
-    MAX_AGE_S is ever fed to it: what is queued goes, the stream starts again
-    at a keyframe, and the picture is held meanwhile."""
+    """A packet's wait here only delays the recording, but the delay, and the
+    memory the queue takes, have a bound: none older than MAX_AGE_S is ever
+    fed to the composer. What is queued goes, the stream starts again at a
+    keyframe, and the picture is held meanwhile."""
     clock = Clock()
     fifo = opened_fifo(tmp_path, clock)
     h = capture.Holder(fifo.write, clock=clock)
@@ -212,8 +420,8 @@ def test_a_packet_that_waited_too_long_is_dropped_with_all_queued(tmp_path, capl
     h.packet(0, P1, t + PERIOD)
     h.packet(0, P2, t + 2 * PERIOD)
     clock.t = t + capture.MAX_AGE_S - 0.1
-    assert fifo._take() == SPS_PPS_IDR
-    clock.t = t + 1.7                      # the composer stopped reading for a while
+    assert fifo._take()[1] == SPS_PPS_IDR
+    clock.t = t + capture.MAX_AGE_S + 0.2  # the composer stopped reading for a while
     with caplog.at_level(logging.INFO, logger=capture.__name__):
         assert fifo._take() is None
         assert not fifo._queue
@@ -225,7 +433,7 @@ def test_a_packet_that_waited_too_long_is_dropped_with_all_queued(tmp_path, capl
         h.packet(0, P2 + b"2", clock.t)
         assert queued(fifo) == [SPS_PPS_IDR, SPS_PPS_IDR + b"2", P2 + b"2"]
     warned = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert warned == ["the composer is 1.7 s behind; dropping 2 packets and starting again "
+    assert warned == ["the composer is 5.2 s behind; dropping 2 packets and starting again "
                       "at a keyframe"]
     assert "the composer has caught up" in caplog.text
 
@@ -241,8 +449,37 @@ def test_a_clip_cuts_hiccup_is_waited_out_not_dropped(tmp_path):
     h.packet(1, SPS_PPS_IDR, t)
     h.packet(0, P1, t + PERIOD)
     clock.t = t + 0.8
-    assert fifo._take() == SPS_PPS_IDR
-    assert fifo._take() == P1
+    assert queued(fifo) == [SPS_PPS_IDR, P1]
+
+
+def test_the_fifo_carries_live_and_held_pictures_at_their_times(tmp_path):
+    """From the Holder to the bytes on the FIFO: a camera's packets at the
+    times they were given, then its last keyframe held at the session clock's
+    now, and the camera's next keyframe after the last held picture even when
+    its own time is a little before it."""
+    packets = h264(count=7)                # a keyframe, five P-frames, a keyframe
+    clock = Clock()
+    fifo = opened_fifo(tmp_path, clock)
+    h = capture.Holder(fifo.write, clock=clock)
+    t = clock.t
+    for i, (data, key) in enumerate(packets[:6]):
+        h.packet(int(key), data, t + i * PERIOD)
+    clock.t = t + 5 * PERIOD + 0.6         # the camera goes quiet: its keyframe is held
+    assert h.tick() is True
+    h.packet(1, packets[6][0], clock.t - 0.002)
+    out = tmp_path / "out.nut"
+    fd = os.open(out, os.O_WRONLY | os.O_CREAT)
+    try:
+        for item in taken(fifo):
+            fifo._send(fd, *item)
+    finally:
+        os.close(fd)
+
+    got = demux_nut(out.read_bytes())
+    assert [p for _, _, p in got] == [p for p, _ in packets[:6]] + [packets[0][0], packets[6][0]]
+    assert [k for _, k, _ in got] == [True, *[False] * 5, True, True]
+    assert [x for x, _, _ in got] == pytest.approx(
+        [t + i * PERIOD for i in range(6)] + [clock.t, clock.t + 1e-6], abs=1e-6)
 
 
 def test_a_keyframe_after_a_drop_starts_the_stream_again_at_once(tmp_path):
@@ -331,7 +568,7 @@ def test_without_the_tap_a_capture_exits_naming_it(monkeypatch, tmp_path):
     so the recorder's error can say it too."""
     monkeypatch.setattr(capture.tap, "TAP_DIR", tmp_path / "ndi")
     args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
-                                         "--first", str(tmp_path / "first")])
+                                         "--first", str(tmp_path / "first"), "--t0", "0"])
     with pytest.raises(SystemExit) as exited:
         capture._exec_with_tap(args, [])
     assert str(exited.value.code).startswith("the packet tap is not loaded (")
@@ -370,7 +607,8 @@ ndi_recv.RecvBandwidth = ndi_recv.RecvColorFormat = None
 from curling_score.cameras import capture
 
 fifo, first = sys.argv[1:3]
-args = capture._parser().parse_args(["--camera", "5H-POV", "--fifo", fifo, "--first", first])
+args = capture._parser().parse_args(["--camera", "5H-POV", "--fifo", fifo, "--first", first,
+                                     "--t0", "0"])
 args.tap_fd, _ = os.pipe()
 args.parent = os.getppid()
 sys.exit(capture._Capture(args).run())
@@ -381,7 +619,7 @@ def test_sigterm_ends_a_capture_stuck_in_libndi_at_once(tmp_path):
     """A capture whose camera had gone silent ignored SIGTERM for over 5 s and
     was killed (Task 11, D8): a Python handler runs only once the call it is
     stuck in returns. The recorder gives a capture CAPTURE_EXIT_S."""
-    fifo = tmp_path / "cam.h264"
+    fifo = tmp_path / "cam.nut"
     os.mkfifo(fifo)
     src = Path(capture.__file__).resolve().parents[2]
     proc = subprocess.Popen([sys.executable, "-c", _STUCK, str(fifo), str(tmp_path / "first")],

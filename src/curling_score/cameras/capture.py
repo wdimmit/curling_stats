@@ -1,15 +1,25 @@
 """One camera's H.264, from libndi through the tap into a FIFO.
 
     python -m curling_score.cameras.capture --camera 1A-POV \\
-        --fifo cam-long_a.h264 --first first-long_a.h264
+        --fifo cam-long_a.nut --first first-long_a.h264 --t0 81234.567
 
 This holds one NDI connection to one camera for as long as it runs, and writes
-the camera's packets, untouched, to ``--fifo`` for a composer to read. What the
-composer reads starts at the camera's newest keyframe when it opens the FIFO,
-held until the next one comes (they come every 2 s), so a camera that has gone
-quiet since still gives it a picture. The first keyframe is also copied to
-``--first``, so whoever started the capture can check what the camera sends
-before anything reads the FIFO.
+the camera's packets, untouched and each with its time, to ``--fifo`` for a
+composer to read. What the composer reads starts at the camera's newest
+keyframe when it opens the FIFO, held until the next one comes (they come
+every 2 s), so a camera that has gone quiet since still gives it a picture.
+The first keyframe is also copied to ``--first``, so whoever started the
+capture can check what the camera sends before anything reads the FIFO.
+
+**Time.** Every packet is timed here, in seconds since ``--t0``, the
+recorder's start on ``time.monotonic``'s clock, and its time goes with it into
+the FIFO, as NUT (``_Nut``), for the composer to keep. A composer that falls
+behind then only delays the recording; it never moves a frame in it. The time
+is the camera's own clock (the packet's pts), anchored to when the packets
+reached the Ryzen (``CameraClock``); the tap takes both in libndi's own call.
+The camera's clock spaces the frames as it took them, where arrivals bunch
+up; it is trusted for nothing more, since the HOUSE cameras' clocks are years
+off and every camera's drifts. A held keyframe is timed when it is written.
 
 **One process per camera, re-executed.** The tap (``tap.py``) keeps one H.264
 context per process, so each camera needs a process of its own. libndi finds
@@ -30,9 +40,8 @@ on the PID it got, and needs no special environment of its own.
   connect_to holds the GIL and waits on libndi's thread.
 - A ticker keeps the picture still while packets stop (``Holder``).
 - A writer feeds the FIFO from a queue, so a composer that is not reading
-  never backs up into libndi. The composer stamps each packet with the wall
-  clock as it reads it, so a packet's wait in the queue is delay nothing
-  downstream can see: one that has waited more than ``MAX_AGE_S`` is never
+  never backs up into libndi. A packet's wait in the queue only delays the
+  recording, but one that has waited more than ``MAX_AGE_S`` is never
   written. What is queued then goes, and the stream starts again at a
   keyframe while the ``Holder`` holds the picture.
 
@@ -64,6 +73,7 @@ either way.
 from __future__ import annotations
 
 import argparse
+import io
 import logging
 import os
 import signal
@@ -72,8 +82,13 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
+from fractions import Fraction
 from pathlib import Path
 from typing import NoReturn
+
+# Before cyndilib loads libndi, which loads the tap: PyAV's own FFmpeg is bound
+# to itself as it loads, so none of its calls can reach the tap's avcodec_*.
+import av
 
 from curling_score.cameras import inventory, tap
 
@@ -97,14 +112,21 @@ FIND_POLL_S = 0.5
 # How often the pump asks libndi for frames and checks on the camera and the
 # parent.
 PUMP_S = 0.1
-# A packet that has waited this long for the composer is never fed to it. The
-# composer times each camera by when it reads the packet, so a backlog here is
-# delay head_s cannot see, and different for each camera: with 10 s of queue
-# allowed, sheet 2's cameras sat ~9.5 s behind for whole runs (Task 11). Not
-# shorter: a practice clip cut puts the composers 0.5-0.8 s behind for a
-# moment, all of a sheet's cameras alike, and waiting that out keeps them in
-# step where dropping froze each on an old keyframe for up to 2 s (2026-10-25).
-MAX_AGE_S = 1.5
+# A camera's clock is anchored to the quickest of its packets over this long.
+# Arrivals jitter over the quickest by 1-3 ms at the median and up to ~100 ms
+# in bursts, and the clocks drift ~15 ms an hour against the Ryzen's: 0.04 ms
+# over a window (1A-HOUSE and 1A-POV, 2026-10-25).
+ANCHOR_WINDOW_S = 10.0
+# A camera's clock that moves this much more or less than the arrivals between
+# two packets has been set (a reboot, NTP), and is anchored again at once.
+CLOCK_STEP_S = 1.0
+# A packet that has waited this long for the composer is never fed to it. Its
+# time goes with it, so waiting only delays the recording, which head_s shows;
+# this bounds the delay and what the queue holds. A practice clip cut puts the
+# composers 0.5-0.8 s behind for a moment (2026-10-25), and a hold-up of a few
+# seconds is waited out too: dropping froze each camera on an old keyframe for
+# up to 2 s.
+MAX_AGE_S = 5.0
 # Packets queued, at most: 10 s at 60 fps, about 12 MB at a long view's ~10
 # Mbit/s. Only a guard on memory, for a composer that has stopped reading
 # altogether (MAX_AGE_S is judged as a packet is written). Past it, packets are
@@ -112,6 +134,8 @@ MAX_AGE_S = 1.5
 BACKLOG = 600
 _MODULE = "curling_score.cameras.capture"
 _TAP_LIB = "libavcodec-ndi.so.61"
+# What the FIFO's times count in.
+_TIME_BASE = Fraction(1, 1_000_000)
 
 
 class Holder:
@@ -132,9 +156,9 @@ class Holder:
     takes it; and after a drop the picture is held at once, until a keyframe
     comes.
 
-    ``write`` is given each packet with when it arrived (``clock``'s time)
-    and whether it is a keyframe. ``packet`` and ``tick`` may be called from
-    different threads.
+    ``write`` is given each packet with its time and whether it is a
+    keyframe; a held keyframe's time is ``clock``'s now. ``packet`` and
+    ``tick`` may be called from different threads.
     """
 
     def __init__(self, write: Callable[[bytes, float, bool], bool | None], *,
@@ -148,7 +172,7 @@ class Holder:
         self._need_key = True
 
     def packet(self, flags: int, payload: bytes, at: float | None = None) -> None:
-        """A packet from the camera, which arrived at ``at`` (now if None)."""
+        """A packet from the camera, timed ``at`` on ``clock`` (now if None)."""
         with self._lock:
             key = bool(flags & tap.KEYFRAME)
             if self._need_key and not key:
@@ -207,30 +231,129 @@ class Reconnects:
         return True
 
 
+class CameraClock:
+    """A camera's packets on the session clock: spaced by the camera's own
+    clock, anchored to when they reached the Ryzen.
+
+    A packet's time is its pts plus ``offset``, the least ``arrived_s -
+    pts_s`` over the last ``window_s`` of arrivals: the packet that came
+    quickest sets it, so the network's delays and bursts are taken out of the
+    rest, and the window follows the camera clock's drift. A camera's clock
+    that moves more than ``step_s`` more or less than the arrivals between two
+    packets has been set, and is anchored again from the packet after the
+    jump, as if new. A packet without a pts is timed by its arrival.
+
+    Times are seconds since ``t0``, on the arrivals' clock. None is below 0,
+    and each is at least a microsecond after the one before.
+    """
+
+    def __init__(self, t0: float, *, window_s: float = ANCHOR_WINDOW_S,
+                 step_s: float = CLOCK_STEP_S):
+        self.t0, self.window_s, self.step_s = t0, window_s, step_s
+        # (arrived_s, arrived_s - pts_s) for each packet in the window that may
+        # yet set the offset: each is less than every one after it.
+        self._window: deque[tuple[float, float]] = deque()
+        self._last: tuple[float, float] | None = None   # the last pts_s, arrived_s
+        self._time: float | None = None                 # the last time given
+
+    @property
+    def offset(self) -> float | None:
+        """What takes a pts onto the arrivals' clock; None before a pts."""
+        return self._window[0][1] if self._window else None
+
+    def time(self, pts_s: float | None, arrived_s: float) -> float:
+        """The time of a packet whose pts is ``pts_s`` seconds (None if it
+        has none) and which arrived at ``arrived_s``."""
+        if pts_s is None:
+            t = arrived_s
+        else:
+            if self._last is not None:
+                jump = (pts_s - self._last[0]) - (arrived_s - self._last[1])
+                if abs(jump) > self.step_s:
+                    log.warning("the camera's clock jumped %+.3f s; anchoring it again", jump)
+                    self._window.clear()
+            self._last = pts_s, arrived_s
+            offset = arrived_s - pts_s
+            while self._window and self._window[-1][1] >= offset:
+                self._window.pop()
+            self._window.append((arrived_s, offset))
+            while self._window[0][0] < arrived_s - self.window_s:
+                self._window.popleft()
+            t = pts_s + self._window[0][1]
+        t = max(t - self.t0, 0.0)
+        if self._time is not None:
+            t = max(t, self._time + 1e-6)
+        self._time = t
+        return t
+
+
+class _Nut:
+    """A camera's packets as NUT, each with its time: what the composer reads.
+
+    NUT keeps each time exactly, here in microseconds, with no wrap and no
+    offset of its own. Nothing is encoded: the stream is copied from
+    ``template``, a keyframe opened as raw H.264, whose SPS gives the codec and
+    size the composer needs before its first frame. ``packet`` gives back
+    each packet's bytes at once.
+    """
+
+    def __init__(self, template: bytes):
+        self._parts: list[bytes] = []
+        self._last = -1                     # the last time written, in microseconds
+        with av.open(io.BytesIO(template), format="h264") as raw:
+            self._out = av.open(self, "w", format="nut", options={"flush_packets": "1"})
+            self._stream = self._out.add_stream_from_template(raw.streams.video[0])
+        self._stream.time_base = _TIME_BASE
+
+    def write(self, data: bytes) -> int:
+        """Where PyAV writes the NUT."""
+        self._parts.append(data)
+        return len(data)
+
+    def packet(self, data: bytes, at: float, key: bool) -> bytes:
+        """The NUT for ``data``, a keyframe or not, at ``at`` seconds. Times
+        must increase: one at or before the last goes a microsecond after it
+        (a camera's first packet after a hold can be timed before the last
+        held picture, which was timed when it was written)."""
+        us = max(round(at * 1_000_000), self._last + 1)
+        self._last = us
+        packet = av.Packet(data)
+        packet.stream, packet.time_base = self._stream, _TIME_BASE
+        packet.pts = packet.dts = us
+        packet.is_keyframe = key
+        self._out.mux(packet)
+        out = b"".join(self._parts)
+        self._parts.clear()
+        return out
+
+
 class _Fifo:
-    """The FIFO's writing end, fed from a queue by a thread of its own.
+    """The FIFO's writing end, fed from a queue by a thread of its own, as
+    NUT.
 
     ``write`` never blocks: a full queue drops the data and says so, because a
     blocked tap reader would hold up the camera's packets in the tap.
-    The writer never writes a packet that arrived more than MAX_AGE_S ago: it
-    drops it with everything queued behind it, and the next ``write`` that is
-    not a keyframe is refused, so the stream starts again at one.
+    The writer never writes a packet more than MAX_AGE_S old (by ``clock``,
+    the clock its times are on): it drops it with everything queued behind it,
+    and the next ``write`` that is not a keyframe is refused, so the stream
+    starts again at one.
     """
 
     def __init__(self, path: Path, *, clock: Callable[[], float] = time.monotonic):
         self.path, self.clock = path, clock
         self.opened = threading.Event()
-        self._queue: deque[tuple[float, bytes]] = deque()   # (arrived, packet)
+        self._queue: deque[tuple[float, bytes, bool]] = deque()   # (time, packet, keyframe)
         self._ready = threading.Condition()
         self._restart = False         # dropped as late: start again at a keyframe
         self._full = False
         self._late: tuple[int, float] | None = None   # packets dropped, at worst how late
+        self._nut: _Nut | None = None
 
     def write(self, data: bytes, at: float, key: bool) -> bool:
-        """Queue ``data``, which arrived at ``at``. False if it was dropped:
-        nothing has opened the FIFO yet, the queue was full, or late packets
-        were dropped and this is not the keyframe to start again at. Called by
-        one thread at a time (under the Holder's lock)."""
+        """Queue ``data``, timed ``at``. False if it was dropped: nothing has
+        opened the FIFO yet, the queue was full, or late packets were dropped
+        and this is not the keyframe to start again at. Called by one thread
+        at a time (under the Holder's lock)."""
         with self._ready:
             if not self.opened.is_set():
                 return False
@@ -247,24 +370,25 @@ class _Fifo:
             if self._full:
                 log.info("the composer is reading again")
                 self._full = False
-            self._queue.append((at, data))
+            self._queue.append((at, data, key))
             self._ready.notify()
             return True
 
-    def _take(self) -> bytes | None:
-        """The next packet to write, or None if there was none fit to: one
-        that waited more than MAX_AGE_S goes, with all queued behind it."""
+    def _take(self) -> tuple[float, bytes, bool] | None:
+        """The next ``(time, packet, keyframe)`` to write, or None if there
+        was none fit to: one more than MAX_AGE_S old goes, with all queued
+        behind it."""
         with self._ready:
             if not self._queue:
                 return None
-            at, data = self._queue.popleft()
-            late = self.clock() - at
+            item = self._queue.popleft()
+            late = self.clock() - item[0]
             if late <= MAX_AGE_S:
                 if self._late is not None:
                     log.info("the composer has caught up after dropping %d packets "
                              "(at worst %.1f s behind)", *self._late)
                     self._late = None
-                return data
+                return item
             dropped = 1 + len(self._queue)
             self._queue.clear()
             self._restart = True
@@ -275,14 +399,14 @@ class _Fifo:
             self._late = (self._late[0] + dropped, max(self._late[1], late))
             return None
 
-    def _next(self) -> bytes:
-        """The next packet to write, waiting for one."""
+    def _next(self) -> tuple[float, bytes, bool]:
+        """The next ``(time, packet, keyframe)`` to write, waiting for one."""
         with self._ready:
             while True:
                 self._ready.wait_for(lambda: self._queue)
-                data = self._take()
-                if data is not None:
-                    return data
+                item = self._take()
+                if item is not None:
+                    return item
 
     def run(self) -> None:
         """Open the FIFO, which waits for its reader. Then write what is
@@ -290,17 +414,29 @@ class _Fifo:
         fd = os.open(self.path, os.O_WRONLY)
         self.opened.set()
         while True:
-            view = memoryview(self._next())
-            while view:
-                view = view[os.write(fd, view):]
+            self._send(fd, *self._next())
+
+    def _send(self, fd: int, at: float, data: bytes, key: bool) -> None:
+        if self._nut is None:
+            # The stream starts at a keyframe (Holder), which says what it is.
+            self._nut = _Nut(data)
+        view = memoryview(self._nut.packet(data, at, key))
+        while view:
+            view = view[os.write(fd, view):]
 
 
 class _Capture:
     def __init__(self, args: argparse.Namespace):
         self.camera, self.first, self.parent = args.camera, args.first, args.parent
         self.tap_fd = args.tap_fd
-        self.fifo = _Fifo(args.fifo)
-        self.holder = Holder(self.fifo.write)
+        t0 = args.t0
+
+        def session() -> float:
+            return time.monotonic() - t0
+
+        self.times = CameraClock(t0)
+        self.fifo = _Fifo(args.fifo, clock=session)
+        self.holder = Holder(self.fifo.write, clock=session)
         self.reconnects = Reconnects()
         self.first_at: float | None = None
         self.exit_code: int | None = None
@@ -383,10 +519,11 @@ class _Capture:
 
     def _read(self) -> None:
         with open(self.tap_fd, "rb") as f:
-            for flags, _pts, at, payload in tap.read_records(f):
+            for flags, pts, arrived_s, payload in tap.read_records(f):
                 self.reconnects.heard()
                 if flags & tap.KEYFRAME and self.first_at is None:
                     self._save_first(payload)
+                at = self.times.time(None if pts is None else pts / tap.PTS_HZ, arrived_s)
                 # Before the FIFO is open too: the Holder keeps the newest
                 # keyframe, which is where the FIFO's stream starts.
                 self.holder.packet(flags, payload, at)
@@ -422,6 +559,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--camera", required=True, choices=sorted(inventory.CAMERAS))
     p.add_argument("--fifo", required=True, type=Path, help="the FIFO the packets go to")
     p.add_argument("--first", required=True, type=Path, help="where the first keyframe is copied")
+    p.add_argument("--t0", required=True, type=float,
+                   help="the session's zero on time.monotonic's clock: packets are timed from it")
     p.add_argument("--ndi-dir", type=Path,
                    help="where ndi-config.v1.json is written (default: ndi/ beside --fifo)")
     # Set by main() when it re-executes itself.
