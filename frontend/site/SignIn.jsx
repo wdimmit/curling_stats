@@ -16,7 +16,7 @@
  * landing).
  */
 import { useEffect, useRef, useState } from "react";
-import { askName, emailLinkOn, finishWithLink, isLink, needsName, relayLink,
+import { askName, finishWithLink, isLink, needsName, relayLink,
          signIn } from "./auth.js";
 import { EMAIL_OFF, cleanEmail, emailFailed, failed, forget, formatCode, landing, recall,
          requestIdOf, signInTrouble } from "./signinState.mjs";
@@ -156,7 +156,7 @@ export function SignIn() {
         <>
           <h2>Sign in</h2>
           <p className="muted">
-            {emailLinkOn() ? "With Google, or with a link emailed to you." : "With Google."}
+            With Google, or with a link emailed to you.
           </p>
           {signInButton}
         </>

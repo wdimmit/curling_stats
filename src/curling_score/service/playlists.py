@@ -91,22 +91,17 @@ def due(pl, now: datetime, tz: str) -> bool:
 def poll(repo, youtube, *, processing_version: str, now: datetime,
          allowed_channels: set[str] | None = None, max_hours: float = 5.0,
          max_new: int = MAX_AUTO_PER_POLL, initial_status: str = "queued",
-         doubles_enabled: bool = False, tz: str = "America/Los_Angeles",
-         force: bool = False, live: bool = False) -> dict:
+         tz: str = "America/Los_Angeles", force: bool = False) -> dict:
     """Look at every enabled playlist that is due. Returns what happened.
 
-    A run's format comes from its title, and a doubles title is read as fours
-    unless ``doubles_enabled`` says the service makes doubles runs yet.
-    ``force`` polls every playlist whatever its schedule. ``live`` queues a
-    stream that has gone live as a live job, which skips approval -- the admin
-    chose the playlist -- and the recording cap, and leaves the video unseen
-    until its recording is archived.
+    A run's format comes from its title. ``force`` polls every playlist
+    whatever its schedule. A stream that has gone live is queued as a live
+    job, which skips approval -- the admin chose the playlist -- and the
+    recording cap, and leaves the video unseen until its recording is
+    archived.
     """
     created, live_created, skipped, errors = [], [], [], []
     n_queued = 0
-
-    def fmt_of(title):
-        return source.format_from_title(title) if doubles_enabled else "fours"
 
     for pl in repo.list_playlists():
         # A practice playlist holds a sheet's practice streams, not games: never charted.
@@ -126,7 +121,7 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
         new_ids = [v for v in ids if v not in seen]
         accepted_now = []
         for meta in youtube.videos(new_ids) if new_ids else []:
-            if live and meta.live_status == "live":
+            if meta.live_status == "live":
                 if allowed_channels and meta.channel_id not in allowed_channels:
                     accepted_now.append(meta.video_id)
                     skipped.append((meta.video_id, "channel_not_allowed"))
@@ -139,8 +134,8 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                         processing_version=processing_version, status="queued",
                         created_at=now, title=meta.title, channel_id=meta.channel_id,
                         published_at=meta.published_at, playlist_id=pl.playlist_id,
-                        league=pl.label, format=fmt_of(meta.title), kind="live",
-                        sheet=source.sheet_from_title(meta.title),
+                        league=pl.label, format=source.format_from_title(meta.title),
+                        kind="live", sheet=source.sheet_from_title(meta.title),
                     )
                     repo.put_run(run)
                     repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued",
@@ -187,7 +182,7 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                 created_at=now, title=meta.title, channel_id=meta.channel_id,
                 duration_s=meta.duration_s, published_at=meta.published_at,
                 playlist_id=pl.playlist_id, league=pl.label,
-                format=fmt_of(meta.title),
+                format=source.format_from_title(meta.title),
             )
             repo.put_run(run)
             if initial_status == "queued":

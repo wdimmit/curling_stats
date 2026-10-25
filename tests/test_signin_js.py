@@ -229,7 +229,7 @@ const calls = [];
 const later = () => { let settle; const p = new Promise((ok, no) => { settle = { ok, no }; }); return [p, settle]; };
 const claims = [], finishes = [];
 const api = {
-  emailLink: true, currentUser: () => null, pending: () => REQ,
+  currentUser: () => null, pending: () => REQ,
   signInWithGoogle: () => new Promise(() => {}),
   sendLink: async email => { calls.push(["send", email]); return { ...REQ, email }; },
   claimCode: (id, code) => { calls.push(["claim", id, code]); const [p, s] = later(); claims.push(s); return p; },
@@ -256,12 +256,7 @@ def dialog(body):
 
 
 class TestTheChooser:
-    def test_with_email_links_off_it_is_google_alone(self):
-        got = dialog("api.emailLink = false; D.openSignIn(api); await tick(); out(view());")
-        assert got["title"] == "Sign in" and got["buttons"] == ["Continue with Google"]
-        assert got["email"] is None and got["code"] is False
-
-    def test_with_email_links_on_it_offers_both(self):
+    def test_it_offers_google_or_an_emailed_link(self):
         got = dialog("api.pending = () => null; D.openSignIn(api); await tick(); out(view());")
         assert got["buttons"] == ["Continue with Google", "Email me a link"]
         assert got["email"] == ""
@@ -278,7 +273,6 @@ class TestTheChooser:
         assert got[1]["email"] == "jo@x.org"
 
     @pytest.mark.parametrize("why", [
-        "api.emailLink = false;",
         "api.currentUser = () => JO;",
         "api.pending = () => ({ ...REQ, at: Date.now() - 15 * 60 * 1000 });",
     ])
@@ -459,16 +453,6 @@ class TestTheDialogIsWiredRight:
         # source for that address -- the link, the claim, a box -- breaks it.
         d = self.src("frontend/site/signInDialog.js")
         assert d.count("finishWithLink(") == d.count("api.finishWithLink(pending.email, held)") == 1
-
-    def test_the_emailed_link_is_offered_only_once_it_is_switched_on(self):
-        d = " ".join(self.src("frontend/site/signInDialog.js").split())
-        assert "const input = api.emailLink ? h(\"input\"" in d
-        assert "if (!input) { show(google, title(\"Sign in\"), google, say); return; }" in d
-        auth = " ".join(self.src("frontend/site/auth.js").split())
-        assert "emailLink = !!cfg.emailLink;" in auth
-        assert "emailLink: emailLinkOn()," in auth
-        resume = auth[auth.index("function resumeWaiting()"):]
-        assert resume.index("if (!emailLinkOn()) return;") < resume.index("import(")
 
     def test_the_page_to_go_back_to_is_never_a_signin_address(self):
         # From /signin it would be the link itself, oobCode and all.

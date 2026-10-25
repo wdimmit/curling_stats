@@ -26,7 +26,7 @@ S3, S4, UP = "qJhDHMMtHsE", "dXYqdopieoU", "IqiFhMEOL4s"
 CLUB_IP = "203.0.113.9"
 
 
-def _world(practice=True, live=False, max_camera_watches=None):
+def _world(practice=True, max_camera_watches=None):
     clock = Clock()
     repo, store = MemoryRepo(), MemoryStore()
     yt = FakeYouTube(playlists={"PLErN0WbLUyFI": [S3, S4, UP], "PLleague": [S4]})
@@ -45,7 +45,7 @@ def _world(practice=True, live=False, max_camera_watches=None):
                         admin_token="admin-secret", allowed_channels={CLUB}, model_id="m-abc",
                         firebase_project="proj", firebase_api_key="AIzaFake",
                         firebase_auth_domain="proj.firebaseapp.com",
-                        practice_enabled=practice, live_enabled=live,
+                        practice_enabled=practice,
                         club_ips=frozenset({CLUB_IP}),
                         **({"practice_max_camera_watches": max_camera_watches}
                            if max_camera_watches is not None else {}))
@@ -181,7 +181,6 @@ class TestStarting:
     def test_off_unless_switched_on(self):
         w = _world(practice=False)
         assert start(w).status_code == 404
-        assert w["client"].get("/api/features").json()["practice"] is False
 
 
 class TestWhoMayStart:
@@ -514,7 +513,7 @@ class TestALeagueEndsPractice:
 
     def test_league_live_ends_every_session(self):
         # Three sheets at once: the cameras' link as it will be at gigabit.
-        w = _world(live=True, max_camera_watches=5)
+        w = _world(max_camera_watches=5)
         sids, jobs = self.sessions_on(w, (1, 3, 5))
         assert all(heartbeat(w, job).get("stop") is not True for job in jobs)
         league_goes_live_on_sheet_2(w)
@@ -530,7 +529,7 @@ class TestALeagueEndsPractice:
     def test_the_sessions_end_even_when_the_hourly_index_is_not_due(self):
         # The hourly index rides on a call in an hour's first three minutes;
         # at 12:10 the poll returns early, and the sessions still end.
-        w = _world(live=True)
+        w = _world()
         sids, _ = self.sessions_on(w, (4,))
         league_goes_live_on_sheet_2(w)
         w["clock"].advance(60 * 10)
@@ -538,7 +537,7 @@ class TestALeagueEndsPractice:
         assert w["repo"].get_session(sids[0]).end_reason == "league"
 
     def test_a_poll_that_finds_no_league_ends_nothing(self):
-        w = _world(live=True)
+        w = _world()
         sids, jobs = self.sessions_on(w, (1, 3))
         w["repo"].put_playlist(WatchedPlaylist(id="p_league", playlist_id="PLthu",
                                                label="Thursday League", created_at=T0))
@@ -550,7 +549,7 @@ class TestALeagueEndsPractice:
     def test_a_league_stream_already_followed_does_not_end_a_later_session(self):
         # The live run is made once per stream: the next poll finds nothing new,
         # so a session started afterwards (the league run is over) is left be.
-        w = _world(live=True)
+        w = _world()
         league_goes_live_on_sheet_2(w)
         assert len(poll(w)["live"]) == 1
         run, = w["repo"].runs_for_video("lg2sheet2001")
@@ -575,7 +574,7 @@ class TestALeagueEndsPractice:
         return calls
 
     def test_a_failed_ending_is_tried_again_on_the_next_poll(self, monkeypatch, caplog):
-        w = _world(live=True)
+        w = _world()
         sids, jobs = self.sessions_on(w, (1, 3))
         calls = self.flaky_ending(monkeypatch)
         league_goes_live_on_sheet_2(w)
@@ -591,7 +590,7 @@ class TestALeagueEndsPractice:
         assert [heartbeat(w, job)["stop"] for job in jobs] == [True, True]
 
     def test_an_ending_that_keeps_failing_never_stops_the_poll(self, monkeypatch, caplog):
-        w = _world(live=True)
+        w = _world()
         self.sessions_on(w, (1,))
         calls = self.flaky_ending(monkeypatch, fails=99)
         league_goes_live_on_sheet_2(w)
@@ -604,7 +603,7 @@ class TestALeagueEndsPractice:
         assert caplog.text.count("ending practice for a league failed") == 4
 
     def test_the_retry_asks_nothing_while_no_practice_is_running(self, monkeypatch):
-        w = _world(live=True)
+        w = _world()
         calls = self.flaky_ending(monkeypatch, fails=0)
         league_goes_live_on_sheet_2(w)
         poll(w)
@@ -614,7 +613,7 @@ class TestALeagueEndsPractice:
         assert len(calls) == 1                           # only when the league went live
 
     def test_the_retry_asks_nothing_while_no_league_is_on(self, monkeypatch):
-        w = _world(live=True)
+        w = _world()
         sids, _ = self.sessions_on(w, (1,))
         calls = self.flaky_ending(monkeypatch, fails=0)
         poll(w)
@@ -622,7 +621,7 @@ class TestALeagueEndsPractice:
 
     def test_a_league_left_unclosed_for_hours_ends_nothing(self, monkeypatch):
         # A live run never closed out is not a league on (LEAGUE_FRESH_S).
-        w = _world(live=True)
+        w = _world()
         league_run(w, status="live", age_s=7 * 3600)
         sids, _ = self.sessions_on(w, (1,))
         poll(w)
@@ -874,15 +873,14 @@ class TestKeptApart:
         # A sheet's practice streams are never charted as league games.
         from curling_score.service import playlists
 
-        got = playlists.poll(w["repo"], w["yt"], processing_version="v", now=T0, live=True,
+        got = playlists.poll(w["repo"], w["yt"], processing_version="v", now=T0,
                              force=True)
         assert got["live"] == [] and got["created"] == []
 
-    def test_the_page_and_the_flag(self, w):
+    def test_the_pages(self, w):
         c = w["client"]
         for path in ("/practice/sheet/3", "/practice", "/practice/session/ps_abc"):
             assert 'data-page="practice"' in c.get(path).text, path
-        assert c.get("/api/features").json()["practice"] is True
 
     def test_the_pages_are_not_there_when_switched_off(self):
         c = _world(practice=False)["client"]

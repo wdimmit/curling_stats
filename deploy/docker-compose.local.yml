@@ -30,9 +30,6 @@ services:
       # refuses every claim the worker makes.
       MODEL_ID: ${MODEL_ID:-ds16a-8af87632}
       ALLOWED_CHANNEL_IDS: ""          # open, for local testing
-      # "1" lets submissions and the playlist poller make mixed doubles runs;
-      # unset, a doubles title is read as fours, as on the hosted service.
-      DOUBLES_ENABLED: ${DOUBLES_ENABLED:-}
       YT_API_KEY: ${YT_API_KEY:-}      # unset: submissions cannot be validated
   worker:
     build: { context: .., dockerfile: Dockerfile.worker }

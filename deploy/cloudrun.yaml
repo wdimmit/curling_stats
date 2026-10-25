@@ -27,19 +27,6 @@ spec:
             - { name: PUBLIC_BASE_URL,    value: https://chart.example.org }
             - { name: ALLOWED_CHANNEL_IDS, value: UC81pcWoRJbdnK77B3WS0zjg }
             - { name: REQUIRE_APPROVAL,   value: "0" }
-            # DOUBLES_ENABLED ("1", "true" or "yes") lets submissions, the
-            # playlist poller and admin reprocess make mixed doubles runs.
-            # Unset is off -- asking for doubles is a 400 and a doubles title
-            # is read as fours. On since 2026-09-26, when the viewer came to
-            # chart a doubles game. The worker is not gated by it.
-            - { name: DOUBLES_ENABLED,    value: "1" }
-            # LIVE_ENABLED ("1", "true" or "yes") lets the playlist poller queue
-            # a stream that has gone live as a live job. Only with a worker
-            # running with WORKER_LIVE=1: a live run no worker claims stands in
-            # for the recording. On since 2026-09-27, when the worker was
-            # deployed with it. One box keeps up with five sheets (~83% of its
-            # time); a sixth falls behind.
-            - { name: LIVE_ENABLED,       value: "1" }
             # PRACTICE_ENABLED ("1", "true" or "yes") opens /practice/sheet/N and
             # its API: a player starts a session on a sheet, which reads that
             # sheet's own NDI cameras, and sees each throw. Only with workers
@@ -52,11 +39,6 @@ spec:
             - { name: PRACTICE_CLUB_IPS,  value: "71.212.197.184" }
             # The Ryzen's link carries about two sheets' cameras until it runs at gigabit, then 5.
             - { name: PRACTICE_MAX_CAMERA_WATCHES, value: "2" }
-            # GAME_CLIPS_ENABLED ("1", "true" or "yes") asks for clips of the
-            # rocks a person says they threw, and shows them on My shots. Only
-            # with the worker box running the `clips` service (WORKER_ROLE=clips):
-            # clip jobs no worker claims just wait. On since 2026-10-10.
-            - { name: GAME_CLIPS_ENABLED, value: "1" }
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'
@@ -82,12 +64,6 @@ spec:
             - { name: FIREBASE_PROJECT,     value: "PROJECT_ID" }
             - { name: FIREBASE_API_KEY,     value: "FB_API_KEY" }
             - { name: FIREBASE_AUTH_DOMAIN, value: "PROJECT_ID.firebaseapp.com" }
-            # EMAIL_LINK_SIGNIN ("1", "true" or "yes") offers "Email me a link"
-            # in the sign-in chooser beside Google. Only once Email/Password
-            # and its Email link option are on in the Firebase console, or every
-            # link fails to send (deploy/README.md, Accounts). Off is Google
-            # alone; /signin still finishes a link already sent.
-            - { name: EMAIL_LINK_SIGNIN,    value: "1" }
             - name: WORKER_TOKEN
               valueFrom: { secretKeyRef: { name: curling-worker-token, key: latest } }
             - name: ADMIN_TOKEN

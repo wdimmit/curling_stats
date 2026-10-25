@@ -90,23 +90,17 @@ gcloud services enable identitytoolkit.googleapis.com
 # Nothing new is needed in Secret Manager or IAM: verifying an ID token uses
 # only Google's public certificates and the project id.
 #
-# Signing in with an emailed link comes after Google, in this order:
-#   1. Deploy with EMAIL_LINK_SIGNIN "0" in cloudrun.yaml. The chooser
-#      offers Google alone, and the server already treats an unverified
-#      password account as nobody, which has to be live before step 3.
-#   2. The signin_relays TTL (its gcloud line is in the Firestore block
-#      above), so relays nobody claims are cleared.
-#   3. Authentication > Sign-in method > enable Email/Password, and inside it
-#      Email link (passwordless sign-in). Firebase requires both. The site
-#      never offers passwords.
-#   4. Set EMAIL_LINK_SIGNIN to "1" in cloudrun.yaml and deploy again: the
-#      chooser offers "Email me a link".
-# To take it away, set EMAIL_LINK_SIGNIN back to "0" and deploy. The chooser
-# is Google alone again, and /signin still finishes a link already sent.
+# The chooser always offers "Email me a link" beside Google, so a new
+# project needs, before its first deploy:
+#   - the signin_relays TTL (its gcloud line is in the Firestore block
+#     above), so relays nobody claims are cleared;
+#   - Authentication > Sign-in method > Email/Password, and inside it Email
+#     link (passwordless sign-in). Firebase requires both. The site never
+#     offers passwords. Without them every emailed link fails to send.
 # Before rolling the API back past e4e8c79d ("an unverified password account
-# is nobody"), switch Email/Password off and set EMAIL_LINK_SIGNIN to "0":
-# an older API with the provider on lets anyone who makes a password account
-# under a member's address be that member.
+# is nobody"), switch Email/Password off: an older API with the provider on
+# lets anyone who makes a password account under a member's address be that
+# member.
 #
 # A risk accepted on 2026-10-21: with Email/Password on, anyone with the web
 # API key can make a password account under the address of a member who has
@@ -248,7 +242,7 @@ docker compose -f deploy/docker-compose.worker.yml logs pot | tail   # a line pe
 ### Following live games
 
 With `WORKER_LIVE=1` in `worker.env` the worker also follows live streams (the
-API queues them when `LIVE_ENABLED=1` there -- see "Watching a league"). A
+API queues them from watched playlists -- see "Watching a league"). A
 thread claims live jobs, up to `LIVE_MAX_STREAMS` at once (default 6), and
 records each with yt-dlp from the stream's first segment into
 `/data/cache/live/<video>/rec.N.ts`; the main loop builds every end as it
@@ -446,12 +440,11 @@ seen within minutes of going live. Outside, every `idle_poll_s` (default 3600,
 or `null` for never). The channel index for the thinking report still runs
 once an hour, on the first poll of the hour.
 
-With `LIVE_ENABLED=1` on the API, a stream that has gone live in a watched
-playlist is queued as a **live job**: it skips approval, and a worker follows
-the game as it is played, publishing each end as it finishes. Leave it off
-until a worker that can follow a stream is running -- a live run nobody claims
-stands in for the recording, which the poller then never queues the ordinary
-way. (One still queued when its recording is archived gives way to it.) The
+A stream that has gone live in a watched playlist is queued as a **live
+job**: it skips approval, and a worker with `WORKER_LIVE=1` follows the game
+as it is played, publishing each end as it finishes. A live run nobody claims
+stands in for the recording until the recording is archived, which it then
+gives way to. The
 doubles playlist stays out of the poller entirely.
 
 ## The nightly review

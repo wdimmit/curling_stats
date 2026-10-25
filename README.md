@@ -516,20 +516,19 @@ row per team per game.
 Leave `FIREBASE_PROJECT` unset and there are no accounts: no sign-in button,
 and the service behaves exactly as it did before any of it was added: anyone
 charts, and a chart's link is all it takes to change it.
-The switches below default to off and are set in `deploy/cloudrun.yaml`:
+Two switches default to off and are set in `deploy/cloudrun.yaml`:
 
-- `DOUBLES_ENABLED` and `LIVE_ENABLED` switch on doubles submissions and live
-  jobs.
 - `REQUIRE_APPROVAL` holds a pasted link or a playlist's new game as
   `pending_approval` until an admin approves it, instead of queueing it.
 - `PRACTICE_ENABLED` opens practice sessions at `/practice/sheet/N`, read from
   the sheet's own cameras by a worker on the club's network
   ([deploy](deploy/README.md#practice-on-the-clubs-cameras)).
-- `GAME_CLIPS_ENABLED` cuts clips of the rocks a person says they threw, shown
-  on My shots at `/shots`, by the worker box's `clips` service
-  ([deploy](deploy/README.md#two-workers-and-the-clips-worker-on-one-box)).
-- `EMAIL_LINK_SIGNIN` offers "Email me a link" beside Google sign-in; turning
-  it on has an order to it ([deploy](deploy/README.md#first-time-setup-once)).
+
+Clips of the rocks a person says they threw are shown on My shots at `/shots`,
+cut by the worker box's `clips` service
+([deploy](deploy/README.md#two-workers-and-the-clips-worker-on-one-box)).
+Sign-in offers Google or an emailed link, which needs Firebase set up for it
+first ([deploy](deploy/README.md#first-time-setup-once)).
 
 Members also label rock boxes and release marks for training at `/label`
 (`docs/superpowers/specs/2026-10-22-member-labelling-design.md`).

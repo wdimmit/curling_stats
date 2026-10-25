@@ -138,7 +138,6 @@ G = "/g/{}/"
 
 def claimed(w, slot=4, color="red"):  # noqa: F811
     _, _, src = a_played_game(w)
-    w["settings"].game_clips_enabled = True
     r = put(w, src, {"path": G.format(src), "color": color, "slot": slot})
     assert r.status_code == 200, r.text
     return src
@@ -156,21 +155,8 @@ def worker_finishes(w, results):  # noqa: F811
 
 
 class TestAskingForClips:
-    def test_off_nothing_is_asked_and_nothing_shown(self, w):  # noqa: F811
-        _, _, src = a_played_game(w)
-        put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
-        assert jobs(w, src) == []
-        body = get(w, f"/api/me/plays/{src}/doc").json()
-        assert "clips" not in body
-        # The rocks are named all the same, for stars; no clip is offered for one.
-        assert [s["number"] for s in body["doc"]["games"][0]["ends"][0]["shots"]
-                if "rock" in s] == [13, 15]
-        assert get(w, f"/api/me/plays/{src}/clips").status_code == 404
-        assert get(w, f"/api/me/plays/{src}/clips/0.1.13").status_code == 404
-
     def test_a_save_stands_when_the_document_cannot_be_read(self, w):  # noqa: F811
         _, _, src = a_played_game(w)
-        w["settings"].game_clips_enabled = True
         run_id = w["repo"].get_source(src).current_run_id
         # Another key, so the cached document is not the one asked for.
         w["repo"].update_run(run_id, timeline_key=timeline_key(VID, "missing"))
@@ -217,7 +203,6 @@ class TestAskingForClips:
     def test_a_play_from_before_clips_is_asked_for_when_the_report_is_read(self, w):  # noqa: F811
         _, _, src = a_played_game(w)
         put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
-        w["settings"].game_clips_enabled = True
         assert get(w, f"/api/me/plays/{src}/doc").json()["clips"]["pending"] is True
         assert len(jobs(w, src)) == 1
 
@@ -257,7 +242,6 @@ class TestReadingClips:
 
     def test_a_run_being_analysed_again_is_not_answered_for(self, w):  # noqa: F811
         slug, _, src = a_played_game(w)
-        w["settings"].game_clips_enabled = True
         r = put(w, src, {"path": f"/c/{slug}/", "color": "red", "slot": 4})
         assert r.status_code == 200, r.text
         run_id = w["repo"].get_chart(w["repo"].get_play("uid-sarah", src).chart_id).run_id
@@ -272,16 +256,14 @@ class TestBackfill:
     def backfill(self, w, headers=ADMIN, **params):  # noqa: F811
         return w["client"].post("/api/admin/clips/backfill", headers=headers, params=params)
 
-    def test_for_the_admin_alone_and_only_with_clips_on(self, w):  # noqa: F811
+    def test_for_the_admin_alone(self, w):  # noqa: F811
         assert self.backfill(w, headers={}).status_code == 401
         assert self.backfill(w, headers=SARAH).status_code == 401
-        assert self.backfill(w).status_code == 404
 
     def test_every_persons_plays_are_asked_for_once(self, w):  # noqa: F811
         _, _, src = a_played_game(w)
         put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
         put(w, src, {"path": G.format(src), "color": "yellow", "slot": 1}, headers=ALEX)
-        w["settings"].game_clips_enabled = True
         r = self.backfill(w)
         assert r.status_code == 200, r.text
         assert r.json()["plays"] == 2 and r.json()["skipped"] == []
@@ -294,7 +276,6 @@ class TestBackfill:
     def test_recut_asks_again_for_clips_without_their_marks_burned_in(self, w):  # noqa: F811
         _, _, src = a_played_game(w)
         put(w, src, {"path": G.format(src), "color": "red", "slot": 4})
-        w["settings"].game_clips_enabled = True
         self.backfill(w)
         worker_finishes(w, {"0.1.13": {"clip": True, "overlay": [{"t0": 0.0, "t1": 2.0}]},
                             "0.1.15": {"clip": None, "reason": "video_gone"}})
@@ -313,12 +294,12 @@ class TestBackfill:
     def test_a_game_that_cannot_be_read_is_skipped_and_said(self, w):  # noqa: F811
         slug, _, src = a_played_game(w)
         put(w, src, {"path": f"/c/{slug}/", "color": "red", "slot": 4})
-        w["settings"].game_clips_enabled = True
+        before = len(jobs(w, src))
         w["repo"].update_run(w["repo"].get_chart(slug).run_id, status="processing")
         got = self.backfill(w).json()
         assert got["plays"] == 1 and len(got["skipped"]) == 1
         assert got["skipped"][0]["source_id"] == src
-        assert jobs(w, src) == []
+        assert len(jobs(w, src)) == before
 
 
 # ------------------------------------------------------------------ shot clips
@@ -330,7 +311,6 @@ def released_game(w):  # noqa: F811
     doc = played_doc()
     for s in doc["games"][0]["ends"][0]["shots"]:
         s["t_release_s"] = s["t_rest_s"] - 20.0
-    w["settings"].game_clips_enabled = True
     slug, _, src = a_played_game(w, doc)
     return slug, src
 
@@ -346,12 +326,6 @@ def ask(w, path, rock="0.1.13", headers=SARAH):  # noqa: F811
 
 class TestShotClips:
     """A clip of any shot, asked for from its page."""
-
-    def test_off_there_are_none(self, w):  # noqa: F811
-        _, src = released_game(w)
-        w["settings"].game_clips_enabled = False
-        assert shot(w, G.format(src)).status_code == 404
-        assert ask(w, G.format(src)).status_code == 404
 
     def test_anyone_may_look_only_someone_signed_in_may_ask(self, w):  # noqa: F811
         _, src = released_game(w)
@@ -418,7 +392,6 @@ class TestShotClips:
         assert ask(w, G.format(src), rock="0.1.15").json()["state"] == "queued"
 
     def test_a_rock_never_released_has_nothing_to_cut(self, w):  # noqa: F811
-        w["settings"].game_clips_enabled = True
         _, _, src = a_played_game(w)
         assert ask(w, G.format(src)).json() == {"state": "failed", "reason": "no_release"}
         assert w["repo"].clip_jobs_in_state("queued") == []

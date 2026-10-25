@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { authedFetch, ensureSignedIn } from "./auth.js";
 import { describe, parseClock } from "./fmt.js";
 import { Card, Header, TeamPicker, Warn } from "./ui.jsx";
@@ -11,16 +11,11 @@ export function Submit() {
   const [sheet, setSheet] = useState("");
   const [team, setTeam] = useState("");
   const [format, setFormat] = useState("");
-  const [doubles, setDoubles] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const { user, accounts } = useAuthUser();
   // With accounts on, the link is to a chart, and a chart needs an owner.
   const needsSignIn = accounts && !user;
-
-  useEffect(() => {
-    fetch("/api/features").then(r => r.json()).then(f => setDoubles(!!f.doubles)).catch(() => {});
-  }, []);
 
   const lengthSecs = parseClock(length);
   const lengthEcho = !length.trim() ? ""
@@ -98,16 +93,14 @@ export function Submit() {
                        placeholder="from title" value={sheet}
                        onChange={e => setSheet(e.target.value)} />
               </div>
-              {doubles ? (
-                <div style={{ width: 150 }}>
-                  <label htmlFor="format">Game</label>
-                  <select id="format" value={format} onChange={e => setFormat(e.target.value)}>
-                    <option value="">from title</option>
-                    <option value="fours">4-player</option>
-                    <option value="doubles">Doubles</option>
-                  </select>
-                </div>
-              ) : null}
+              <div style={{ width: 150 }}>
+                <label htmlFor="format">Game</label>
+                <select id="format" value={format} onChange={e => setFormat(e.target.value)}>
+                  <option value="">from title</option>
+                  <option value="fours">4-player</option>
+                  <option value="doubles">Doubles</option>
+                </select>
+              </div>
             </div>
             <TeamPicker value={team} onChange={setTeam} />
             <div className="row" style={{ marginTop: 16 }}>

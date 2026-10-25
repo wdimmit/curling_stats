@@ -54,16 +54,16 @@
     "frontend/site/Practice.jsx": "5d5d0b1e2c213b4d3214d01672fdecfc68c777cfeabcba1a044525d8568f1f22",
     "frontend/site/ShotCharts.jsx": "f77f480eae042abc0158ec7780ab8cee8f56dfa6ab80b133a0d325b6d3a1d3e7",
     "frontend/site/Shots.jsx": "f8af8e9f1d2e795cfb2477021190f305ac04d0d9f162a80f55ce0ce3a627c912",
-    "frontend/site/SignIn.jsx": "214d8ea19ab8a7cc702529150d6919be2bbc5aa9e64ee36fd142cb5718ad801f",
+    "frontend/site/SignIn.jsx": "304bf91dd8b3795772260bb8ff73361110bbb6f01ba96021538f59f30ebb78de",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
-    "frontend/site/Submit.jsx": "b8397958a374d109e606f51be147589864f2c2f0bb3f7de82e1198d1496e173c",
+    "frontend/site/Submit.jsx": "77175b9798ac258db5dbf798d10212e581dbb60ef6878f9c6941605f249ac3a2",
     "frontend/site/Thinking.jsx": "cb1b92bf22b885133be25a481918a2b8d9f741714e6ee9649749844db23a6627",
     "frontend/site/Users.jsx": "b433c54cd4bd2353e6182d4fe2abba55a8955cf77e3098ee31204dd2cb82687b",
-    "frontend/site/auth.js": "c36b54a2ac47c50715d68c8dce913532bc8dde7e02a36cfe2f5a63fce3786885",
+    "frontend/site/auth.js": "bcb98ee6bb36b92b14414b8fbdec5eeac73dcd32b0b054adfa3cb492ddae5cb1",
     "frontend/site/clip.jsx": "4e3126676665d42a44b73bbebdb5967bb245fb4b96c379d69ab0b56ffa11e280",
     "frontend/site/fmt.js": "66f571f6910f4c27ab7758831a0b3e71af5df6def64729d6697bb73d4161eada",
     "frontend/site/main.jsx": "c08441a19bef7091b5ef528041945b70717d85326dd9af6ebaf25b16d19acb4d",
-    "frontend/site/signInDialog.js": "bf1998a3024f33431613920e387b62335c0508d73cbd09c5ad09a016a3418822",
+    "frontend/site/signInDialog.js": "aac0f303058d3d0cc564066eb827505fcb053291678e1fb5f05b6d4a280831ee",
     "frontend/site/signinState.mjs": "341882fcb8e3c1e3412ca51c5e582597f078818a3b860f8beb82a3df7522a46e",
     "frontend/site/ui.jsx": "4101cef2a8467a22afcf58aa4c043736317bdadc08beca17d5223674774affef",
     "frontend/site/useAuth.js": "637bd013b9d2171273d9b04d4d12482866a9ef008b3db63329ca0dc848952118",
@@ -92,7 +92,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "49be4bd66a95eea2b9954d2b2e2e4cc4757cd22d95d9fac0d5891061d494afec",
-    "src/curling_score/viewer/app.js": "316ec775929cf43f94998541c18d5c23ad84f85b789d9f12a0394d0a7dcbcfda"
+    "src/curling_score/service/static/site.js": "caa5810141ef91ad9960cc3a2de553e80db885803f4b9648f37c873a0137bedb",
+    "src/curling_score/viewer/app.js": "eb6ffecc84b3609163712103a8720bbf82d6d3aa1946e8e54ae84f5ca19e1cbc"
   }
 }
