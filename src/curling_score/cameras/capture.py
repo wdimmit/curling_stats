@@ -24,8 +24,10 @@ on the PID it got, and needs no special environment of its own.
   ``receive()`` never returns a video frame, but the pump keeps asking, as
   every receiver measured on 2026-10-24 did. cyndilib holds the GIL while
   ``receive()`` waits, so the pump asks without waiting and sleeps in between.
-- A reader drains the tap's pipe. It must not stall, because a full pipe
-  blocks libndi's own thread.
+- A reader drains the tap's pipe. The tap never makes libndi's own thread
+  wait for it: it queues up to ~3 s of packets, then drops to the next
+  keyframe (``ndi_tap.c``). That matters while cyndilib's disconnect or
+  connect_to holds the GIL and waits on libndi's thread.
 - A ticker keeps the picture still while packets stop (``Holder``).
 - A writer feeds the FIFO from a queue, so a composer that is not reading
   never backs up into libndi. The composer stamps each packet with the wall
@@ -54,8 +56,8 @@ the GIL, for longer than the recorder waits (over 5 s, 2026-10-24). These exit
 The parent is watched with ``getppid()``, not ``PR_SET_PDEATHSIG``: that
 signal fires when the *thread* that started this process exits, not its
 process. The process ends with ``os._exit``. Tearing libndi down in Python's
-finalizers can wait on libndi's threads, one of which may be blocked on the
-tap's pipe once the reader has stopped. The kernel closes the camera's sockets
+finalizers can wait on libndi's threads, and the tap's writer may be blocked
+on its pipe once the reader has stopped. The kernel closes the camera's sockets
 either way.
 """
 
@@ -206,7 +208,7 @@ class _Fifo:
     """The FIFO's writing end, fed from a queue by a thread of its own.
 
     ``write`` never blocks: a full queue drops the data and says so, because a
-    blocked tap reader would block libndi's own thread through the tap's pipe.
+    blocked tap reader would hold up the camera's packets in the tap.
     The writer never writes a packet that arrived more than MAX_AGE_S ago: it
     drops it with everything queued behind it, and the next ``write`` that is
     not a keyframe is refused, so the stream starts again at one.

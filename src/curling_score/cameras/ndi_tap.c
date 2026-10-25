@@ -10,17 +10,24 @@
  * - avcodec_alloc_context3 remembers the context made for AV_CODEC_ID_H264.
  *   That tells the video from the AAC context libndi also makes on the PTZ
  *   cameras. It keeps only the latest, so run one receiver per process.
- * - avcodec_send_packet on that context writes the packet to NDI_TAP_FD as one
- *   record: the payload length (4 bytes, little-endian), a flags byte (bit 0 =
- *   AV_PKT_FLAG_KEY) and the payload, the Annex-B bytes the camera sent. Every
- *   packet is written as it comes, P-slices before the first SPS/IDR too; the
- *   reader (tap.py) decides what to keep. Give it a blocking fd: a reader that
- *   falls behind then holds up libndi's decode thread rather than losing parts
- *   of records.
+ * - avcodec_send_packet on that context passes the packet on to NDI_TAP_FD as
+ *   one record: the payload length (4 bytes, little-endian), a flags byte
+ *   (bit 0 = AV_PKT_FLAG_KEY) and the payload, the Annex-B bytes the camera
+ *   sent. Every packet is passed on as it comes, P-slices before the first
+ *   SPS/IDR too; the reader (tap.py) decides what to keep.
  * - Unless NDI_TAP_DECODE is "1", libndi's own decode of that context is off:
  *   send_packet takes the packet without decoding it and avcodec_receive_frame
  *   answers EAGAIN. libndi still passes all 60 packets/s, and a camera costs
  *   ~0.02 of a core instead of ~0.5 (measured 2026-10-24).
+ *
+ * libndi's thread never waits on the reader. It queues each record for a
+ * writer thread of the tap's own, which writes whole records to the fd and
+ * may block there. A capture's Python reader can be held off the GIL while
+ * cyndilib's disconnect/connect_to wait on libndi's thread; when that thread
+ * itself wrote to the pipe, a full pipe froze the capture for good
+ * (2026-10-25). A record that would take the queue past TAP_QUEUE_BYTES is
+ * dropped, and so is every packet after it up to the next keyframe, so what
+ * the reader gets still decodes.
  *
  * Built in Dockerfile.worker against the image's own libavcodec-dev, so
  * AVPacket and AVCodec are the layouts of the libavcodec libndi then loads.
@@ -38,6 +45,12 @@
 
 #include <libavcodec/avcodec.h>
 
+/* About 3 s of the busiest camera (~12 Mbit/s): the reader normally keeps the
+ * queue near empty, and a hold-up longer than this is not worth catching up. */
+#ifndef TAP_QUEUE_BYTES
+#define TAP_QUEUE_BYTES (4 << 20)
+#endif
+
 static AVCodecContext *(*real_alloc_context3)(const AVCodec *);
 static int (*real_send_packet)(AVCodecContext *, const AVPacket *);
 static int (*real_receive_frame)(AVCodecContext *, AVFrame *);
@@ -47,6 +60,20 @@ static AVCodecContext *h264;
 static int tap_fd = -1;
 static int decode;
 
+/* Records waiting for the writer, oldest first, and what decides whether the
+ * next one may join them. All under `lock`. */
+struct record {
+    struct record *next;
+    size_t size;
+    uint8_t bytes[];
+};
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t queued = PTHREAD_COND_INITIALIZER;
+static struct record *first, *last;
+static size_t queued_bytes;
+static int need_key;        /* a packet was dropped: queue nothing before a keyframe */
+static long dropped;        /* packets dropped since the last one queued */
+
 static void *real(void *lib, const char *name) {
     void *f = lib ? dlsym(lib, name) : NULL;
     if (!f) {
@@ -54,6 +81,55 @@ static void *real(void *lib, const char *name) {
         abort();
     }
     return f;
+}
+
+static int write_all(int fd, const void *buf, size_t n) {
+    const uint8_t *p = buf;
+    while (n > 0) {
+        ssize_t w = write(fd, p, n);
+        if (w < 0) {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        p += w;
+        n -= (size_t)w;
+    }
+    return 0;
+}
+
+static void *writer(void *arg) {
+    int fd = (int)(intptr_t)arg;
+    for (;;) {
+        pthread_mutex_lock(&lock);
+        while (!first)
+            pthread_cond_wait(&queued, &lock);
+        struct record *r = first;
+        first = r->next;
+        if (!first)
+            last = NULL;
+        queued_bytes -= r->size;
+        pthread_mutex_unlock(&lock);
+
+        int failed = write_all(fd, r->bytes, r->size) < 0;
+        free(r);
+        if (failed) {
+            /* The reader is gone. Stop tapping; libndi carries on. */
+            fprintf(stderr, "ndi_tap: write to NDI_TAP_FD failed: %s; not tapping\n",
+                    strerror(errno));
+            __atomic_store_n(&tap_fd, -1, __ATOMIC_RELAXED);
+            pthread_mutex_lock(&lock);
+            while (first) {
+                r = first;
+                first = r->next;
+                free(r);
+            }
+            last = NULL;
+            queued_bytes = 0;
+            pthread_mutex_unlock(&lock);
+            return NULL;
+        }
+    }
 }
 
 static void init(void) {
@@ -73,6 +149,13 @@ static void init(void) {
         else
             fprintf(stderr, "ndi_tap: NDI_TAP_FD=%s is not a file descriptor; not tapping\n", fd);
     }
+    pthread_t t;
+    if (tap_fd >= 0 && pthread_create(&t, NULL, writer, (void *)(intptr_t)tap_fd) == 0)
+        pthread_detach(t);
+    else if (tap_fd >= 0) {
+        fprintf(stderr, "ndi_tap: no writer thread; not tapping\n");
+        tap_fd = -1;
+    }
     const char *d = getenv("NDI_TAP_DECODE");
     decode = d && strcmp(d, "1") == 0;
 }
@@ -81,33 +164,51 @@ static int is_h264(const AVCodecContext *ctx) {
     return ctx && ctx == __atomic_load_n(&h264, __ATOMIC_ACQUIRE);
 }
 
-static int write_all(int fd, const void *buf, size_t n) {
-    const uint8_t *p = buf;
-    while (n > 0) {
-        ssize_t w = write(fd, p, n);
-        if (w < 0) {
-            if (errno == EINTR)
-                continue;
-            return -1;
-        }
-        p += w;
-        n -= (size_t)w;
-    }
-    return 0;
-}
-
 static void tap(const AVPacket *pkt) {
-    int fd = __atomic_load_n(&tap_fd, __ATOMIC_RELAXED);
-    if (fd < 0 || !pkt || !pkt->data || pkt->size <= 0)
+    if (__atomic_load_n(&tap_fd, __ATOMIC_RELAXED) < 0 || !pkt || !pkt->data || pkt->size <= 0)
         return;
     uint32_t n = (uint32_t)pkt->size;
-    uint8_t head[5] = {n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, n >> 24,
-                       (pkt->flags & AV_PKT_FLAG_KEY) ? 1 : 0};
-    if (write_all(fd, head, sizeof head) < 0 || write_all(fd, pkt->data, n) < 0) {
-        /* The reader is gone. Stop writing; libndi carries on. */
-        fprintf(stderr, "ndi_tap: write to NDI_TAP_FD failed: %s; not tapping\n", strerror(errno));
-        __atomic_store_n(&tap_fd, -1, __ATOMIC_RELAXED);
+    int key = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+    size_t size = 5 + (size_t)n;
+
+    pthread_mutex_lock(&lock);
+    if ((need_key && !key) || queued_bytes + size > TAP_QUEUE_BYTES) {
+        if (!need_key)
+            fprintf(stderr, "ndi_tap: the reader is %zu bytes behind; dropping to the next "
+                    "keyframe\n", queued_bytes);
+        need_key = 1;
+        dropped++;
+        pthread_mutex_unlock(&lock);
+        return;
     }
+    pthread_mutex_unlock(&lock);
+
+    struct record *r = malloc(sizeof *r + size);
+    if (!r)
+        return;
+    r->next = NULL;
+    r->size = size;
+    uint8_t *p = r->bytes;
+    p[0] = n & 0xff;
+    p[1] = (n >> 8) & 0xff;
+    p[2] = (n >> 16) & 0xff;
+    p[3] = n >> 24;
+    p[4] = key;
+    memcpy(p + 5, pkt->data, n);
+
+    pthread_mutex_lock(&lock);
+    if (need_key)
+        fprintf(stderr, "ndi_tap: queueing again at a keyframe, %ld packets dropped\n", dropped);
+    need_key = 0;
+    dropped = 0;
+    if (last)
+        last->next = r;
+    else
+        first = r;
+    last = r;
+    queued_bytes += size;
+    pthread_cond_signal(&queued);
+    pthread_mutex_unlock(&lock);
 }
 
 AVCodecContext *avcodec_alloc_context3(const AVCodec *codec) {
