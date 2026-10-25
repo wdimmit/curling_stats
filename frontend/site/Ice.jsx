@@ -358,9 +358,9 @@ function Speed({ report }) {
         </tbody>
       </table>
       <p className="muted note">Read from every rock, on all the draw's sheets, that came to rest
-      without touching a stone between the far hog line and the back of the house. A rock's split is
-      about half a second longer for each metre shorter it stopped; a curve through each end's rocks,
-      read at the tee line, gives that end's figure. A longer time means keener ice. Sweeping isn't
+      in the house without touching a stone. A rock's split is about half a second longer for each
+      metre shorter it stopped; a straight line through each end's rocks, read at the tee line, gives
+      that end's figure. A longer time means keener ice. Sweeping isn't
       seen, so this is the ice as it was played, sweepers included. An end needs {MIN_END_ROCKS} rocks.</p>
     </>
   );

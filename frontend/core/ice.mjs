@@ -234,13 +234,15 @@ export function iceTables(a, b) {
 /* --- ice speed --------------------------------------------------------------
  * The hog-to-hog time that would stop a rock on the tee line, end by end.
  *
- * Every rock that came to rest untouched between the far hog line and the
- * back of the house carries its own split and where it stopped. The split
- * runs about half a second longer per metre shorter it stopped, so a curve
- * fitted through all of an end's rocks -- every sheet's -- and read at the tee
- * line is that end's draw weight. The curve's shape is shared by the whole
- * draw; each end has its own level. A longer split means keener ice: the rock
- * needed less weight to get there.
+ * Every rock that came to rest untouched in the house carries its own split
+ * and where it stopped. The split runs about half a second longer per metre
+ * shorter it stopped, so a straight line fitted through all of an end's rocks
+ * -- every sheet's -- and read at the tee line is that end's draw weight. The
+ * house rocks lie either side of the tee line, so the reading is from rocks
+ * stopped near it; guards were left out because over their 8 m a line no
+ * longer fits, and a curve's shape moved the tee-line reading. The slope is
+ * shared by the whole draw; each end has its own level. A longer split means
+ * keener ice: the rock needed less weight to get there.
  *
  * Sweeping is not seen, and a swept rock went further than its split says, so
  * the figure is the ice as the players used it, sweepers included. */
@@ -251,8 +253,8 @@ export const SPLIT_MAX_S = 20;
 // An end is read only from at least this many rocks across the sheets.
 export const MIN_END_ROCKS = 6;
 
-/* One row per rock of `doc`'s games that came to rest untouched between the
- * far hog line and the back of the house, with a measured split. */
+/* One row per rock of `doc`'s games that came to rest untouched in the
+ * house, with a measured split. */
 export function speedRocks(doc, game = doc?.chart?.source_id ?? "") {
   const rows = [];
   for (let gi = 0; gi < (doc?.games?.length ?? 0); gi++) {
@@ -264,26 +266,27 @@ export function speedRocks(doc, game = doc?.chart?.source_id ?? "") {
         if (!Number.isFinite(split) || split <= SPLIT_MIN_S || split >= SPLIT_MAX_S) continue;
         if (isSplitEstimated(s)) continue;
         const rest = restOf(s);
-        if (!rest || rest.y < -R.inHouse || rest.y > R.hog) continue;
+        if (!rest || Math.hypot(rest.x, rest.y) > R.inHouse) continue;
         if (curlEnd(s)?.hit !== false) continue;
+        const rpm = rpmOf(s.spin);
         rows.push({ game: gi ? `${game}#${gi}` : game, sheet: doc?.source?.sheet ?? null,
-                    end: end.number, number: s.number, rest_y: rest.y, split });
+                    end: end.number, number: s.number, rest_y: rest.y, split,
+                    turns: rpm == null ? null : rpm / RPM_PER_TURN });
       }
     }
   }
   return rows;
 }
 
-/* The draw's tee-line split, and each end's: split ~ level + b y + c y^2,
- * with one level for the draw, then one per end. null when the rocks can't
- * carry the curve. */
+/* The draw's tee-line split, and each end's: split ~ level + b y, with one
+ * level for the draw, then one per end. null when the rocks can't carry the
+ * line. */
 export function fitSpeed(rows) {
   if (rows.length < MIN_ROCKS) return null;
-  const curve = r => [r.rest_y, r.rest_y ** 2];
-  const draw = lstsq(rows.map(r => [1, ...curve(r)]), rows.map(r => r.split));
+  const draw = lstsq(rows.map(r => [1, r.rest_y]), rows.map(r => r.split));
   if (!draw) return null;
   const ends = [...new Set(rows.map(r => r.end))].sort((a, b) => a - b);
-  const byEnd = lstsq(rows.map(r => [...ends.map(e => (e === r.end ? 1 : 0)), ...curve(r)]),
+  const byEnd = lstsq(rows.map(r => [...ends.map(e => (e === r.end ? 1 : 0)), r.rest_y]),
                       rows.map(r => r.split));
   const count = e => rows.filter(r => r.end === e).length;
   return {
