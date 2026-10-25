@@ -1,17 +1,18 @@
-"""Practice sessions: a person's window on a sheet's practice stream.
+"""Practice sessions: a person's window on a sheet's cameras.
 
 The work for a sheet is one *watch*: a practice run and job that a worker
-claims, records from the stream's DVR window, and publishes throw by throw
-into the run's practice.json. A *session* is one person's Start-to-Stop on
-that sheet. A second person starting on the same sheet joins the watch; each
-sees the throws inside their own window. When no session on a watch is
-active any more, the worker's next heartbeat is told to stop.
+claims, records from the sheet's cameras from its Start on, and publishes
+throw by throw into the run's practice.json. A *session* is one person's
+Start-to-Stop on that sheet. A second person starting on the same sheet joins
+the watch; each sees the throws inside their own window. When no session on a
+watch is active any more, the worker's next heartbeat is told to stop.
 
-The stream is the sheet's practice stream on YouTube, or -- with the API's
-PRACTICE_SOURCE=cameras -- the club's own cameras, read by a worker that can
-see them. A camera watch has no YouTube video behind it, so it is named by
-camera_video_id and its Run says ``source="cameras"``. Either way practice
-only runs while no league game is: league_on.
+The cameras are the club's own, read by a worker on its network that says it
+can see them. A watch has no YouTube video behind it, so it is named by
+camera_video_id and its Run says ``source="cameras"``. Practice only runs
+while no league game is: league_on. (Until 2026-10-25 practice could read a
+sheet's YouTube practice stream instead. Those sessions are still read, but
+none is started.)
 
 A session ends when its owner stops it, after IDLE_S with no throw (counted
 from Start when nothing has been thrown), after MAX_S, when a league feed goes
@@ -21,16 +22,11 @@ each practice heartbeat and publish: the worker knows nothing of sessions.
 
 from datetime import datetime, timedelta, timezone
 
-from curling_score.ingest import source
 from curling_score.service import slug
 from curling_score.service.records import Job, PracticeSession, PracticeWatch, Run
 
 IDLE_S = 900.0
 MAX_S = 10800.0
-# The footage before Start a worker records to calibrate from (practice.watch).
-LOOKBACK_S = 1200.0
-# A camera watch starts recording at Start: there is no DVR window to look back in.
-CAMERA_LOOKBACK_S = 0.0
 # A throw nothing saw released is dated this long before it came to rest.
 REST_TO_THROW_S = 20.0
 ENDED = ("ended", "failed")
@@ -48,8 +44,8 @@ LEAGUE_FRESH_S = 6 * 3600
 WORKED_ON = ("processing", "live")
 
 
-class NoStream(Exception):
-    """No live practice stream for that sheet (or, on the cameras, no such sheet)."""
+class NoCameras(Exception):
+    """The club has no cameras on that sheet."""
 
 
 class LeagueOn(Exception):
@@ -80,26 +76,6 @@ def league_over_practice(repo, now) -> bool:
             and any(run.kind == "practice" for run in runs))
 
 
-def live_stream_for_sheet(repo, youtube, sheet: int):
-    """The sheet's live stream in a practice playlist, or None. Several
-    playlists or several live streams of a sheet: the most recently published."""
-    best = None
-    for pl in repo.list_playlists():
-        if not (pl.enabled and pl.practice):
-            continue
-        try:
-            ids = youtube.playlist_video_ids(pl.playlist_id)
-        except Exception:  # noqa: BLE001 - a playlist gone is no stream
-            continue
-        for meta in youtube.videos(ids) if ids else []:
-            if meta.live_status != "live" or source.sheet_from_title(meta.title) != sheet:
-                continue
-            if best is None or (meta.published_at or datetime.min.replace(tzinfo=timezone.utc)) \
-                    > (best.published_at or datetime.min.replace(tzinfo=timezone.utc)):
-                best = meta
-    return best
-
-
 def watch_alive(repo, watch) -> bool:
     if watch.status in ENDED:
         return False
@@ -112,46 +88,27 @@ def alive_watch(repo, sheet: int):
     return next((w for w in repo.watches_for_sheet(sheet) if watch_alive(repo, w)), None)
 
 
-def on_cameras(repo, watch) -> bool:
-    """Whether ``watch`` reads the club's cameras rather than a YouTube stream."""
-    run = repo.get_run(watch.run_id)
-    return run is not None and run.source == CAMERAS
-
-
 def camera_watches(repo) -> int:
     """How many sheets are being read from the cameras now: what the Ryzen's
     link to them has to carry."""
     return sum(1 for sheet in CAMERA_SHEETS
-               for w in repo.watches_for_sheet(sheet)
-               if watch_alive(repo, w) and on_cameras(repo, w))
+               for w in repo.watches_for_sheet(sheet) if watch_alive(repo, w))
 
 
-def start(repo, youtube, user, sheet: int, hand: str, now, processing_version: str,
-          *, source: str = "youtube"):
+def start(repo, user, sheet: int, hand: str, now, processing_version: str):
     """A new session for ``user`` on ``sheet``: on the sheet's running watch,
-    or a new one -- on its live YouTube stream, or with ``source="cameras"``
-    on the club's cameras, which asks YouTube nothing. NoStream when there is
-    no stream (or no such sheet on the cameras); LeagueOn while a league game
-    is on, whichever the source."""
+    or a new one on its cameras. NoCameras for a sheet without any; LeagueOn
+    while a league game is on."""
     if league_on(repo, now):
         raise LeagueOn(sheet)
     watch = alive_watch(repo, sheet)
     if watch is None:
-        if source == CAMERAS:
-            if sheet not in CAMERA_SHEETS:
-                raise NoStream(sheet)
-            run = Run(id=slug.new_run_id(), video_id=camera_video_id(sheet, now),
-                      processing_version=processing_version, status="queued", created_at=now,
-                      title=f"Sheet {sheet} - Practice on the cameras", sheet=sheet,
-                      published_at=now, kind="practice", format="fours", source=CAMERAS)
-        else:
-            meta = live_stream_for_sheet(repo, youtube, sheet)
-            if meta is None:
-                raise NoStream(sheet)
-            run = Run(id=slug.new_run_id(), video_id=meta.video_id,
-                      processing_version=processing_version, status="queued", created_at=now,
-                      title=meta.title, channel_id=meta.channel_id, sheet=sheet,
-                      published_at=meta.published_at, kind="practice", format="fours")
+        if sheet not in CAMERA_SHEETS:
+            raise NoCameras(sheet)
+        run = Run(id=slug.new_run_id(), video_id=camera_video_id(sheet, now),
+                  processing_version=processing_version, status="queued", created_at=now,
+                  title=f"Sheet {sheet} - Practice on the cameras", sheet=sheet,
+                  published_at=now, kind="practice", format="fours", source=CAMERAS)
         job = Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=now,
                   run_after=now, kind="practice")
         watch = PracticeWatch(id=slug.new_slug(slug.SHORT_BYTES, "pw_"), sheet=sheet,

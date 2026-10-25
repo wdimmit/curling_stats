@@ -15,9 +15,8 @@ import pytest
 
 from curling_score import analyze, timeline
 from curling_score.service import practice
-from curling_score.service.records import Run, User, WatchedPlaylist
+from curling_score.service.records import Run, User
 from curling_score.service.repo import MemoryRepo
-from curling_score.service.youtube import FakeYouTube, VideoMeta
 from tests.test_unplayed_ends import built, context, segment
 
 
@@ -87,8 +86,8 @@ class TestARecordingsGames:
 
 
 class TestCameraWatches:
-    """Practice on the club's cameras: a watch with no YouTube stream behind
-    it, and the league that closes practice (service/practice.py)."""
+    """Practice on the club's cameras: a sheet's watch, and the league that
+    closes practice (service/practice.py)."""
 
     NOW = datetime(2026, 10, 24, 9, 5, 7, tzinfo=timezone.utc)
     USER = User(id="uid-sarah", created_at=NOW)
@@ -97,48 +96,36 @@ class TestCameraWatches:
         repo.put_run(Run(id=run_id, video_id="v", processing_version="p", status=status,
                          kind=kind, created_at=self.NOW - timedelta(seconds=age_s)))
 
-    def youtube_with_a_live_practice_stream(self, repo, sheet=2):
-        yt = FakeYouTube(playlists={"PL": ["abc"]})
-        yt.add(VideoMeta("abc", f"10/24 - Sheet {sheet} - Practice", "UC", None, "live",
-                         self.NOW))
-        repo.put_playlist(WatchedPlaylist(id="p", playlist_id="PL", label="Practice",
-                                          created_at=self.NOW, practice=True))
-        return yt
-
     def test_a_camera_watch_is_named_for_its_sheet_and_start(self):
         assert practice.camera_video_id(3, self.NOW) == "cams3-20261024-090507"
 
-    def test_a_camera_start_makes_a_camera_run_and_never_asks_youtube(self):
+    def test_a_start_makes_a_camera_run(self):
         repo = MemoryRepo()
-        yt = self.youtube_with_a_live_practice_stream(repo)
-        s = practice.start(repo, yt, self.USER, 2, "right", self.NOW, "v1+m", source="cameras")
+        s = practice.start(repo, self.USER, 2, "right", self.NOW, "v1+m")
         watch = repo.get_watch(s.watch_id)
         run, job = repo.get_run(watch.run_id), repo.get_job(watch.job_id)
         assert (run.video_id, run.source, run.kind, run.status, run.sheet) == (
             "cams2-20261024-090507", "cameras", "practice", "queued", 2)
         assert watch.video_id == run.video_id and run.processing_version == "v1+m"
         assert (job.kind, job.state) == ("practice", "queued")
-        assert yt.calls == 0
 
-    def test_the_youtube_run_has_no_source(self):
+    def test_a_sheet_the_club_has_no_cameras_on(self):
         repo = MemoryRepo()
-        yt = self.youtube_with_a_live_practice_stream(repo, sheet=3)
-        s = practice.start(repo, yt, self.USER, 3, "left", self.NOW, "v1+m")
-        run = repo.get_run(repo.get_watch(s.watch_id).run_id)
-        assert run.video_id == "abc" and run.source is None
+        with pytest.raises(practice.NoCameras):
+            practice.start(repo, self.USER, 6, "right", self.NOW, "v")
+        assert not repo.jobs
 
-    def test_a_camera_start_joins_the_sheets_running_watch(self):
+    def test_a_start_joins_the_sheets_running_watch(self):
         repo = MemoryRepo()
-        a, b = (practice.start(repo, FakeYouTube(), self.USER, 2, hand, self.NOW, "v",
-                               source="cameras") for hand in ("right", "left"))
+        a, b = (practice.start(repo, self.USER, 2, hand, self.NOW, "v")
+                for hand in ("right", "left"))
         assert a.watch_id == b.watch_id and len(repo.jobs) == 1
 
     def test_a_league_on_refuses_a_start(self):
         repo = MemoryRepo()
         self.live_run(repo)
         with pytest.raises(practice.LeagueOn):
-            practice.start(repo, FakeYouTube(), self.USER, 2, "right", self.NOW, "v",
-                           source="cameras")
+            practice.start(repo, self.USER, 2, "right", self.NOW, "v")
         assert not repo.jobs
 
     @pytest.mark.parametrize("status", ["queued", "processing", "live"])
@@ -174,8 +161,7 @@ class TestEndingSessions:
     USER = User(id="uid-sarah", created_at=NOW)
 
     def session_on(self, repo, sheet):
-        return practice.start(repo, FakeYouTube(), self.USER, sheet, "right", self.NOW,
-                              "v1+m", source="cameras")
+        return practice.start(repo, self.USER, sheet, "right", self.NOW, "v1+m")
 
     def doc_with_a_throw(self, at):
         return {"wall_t0": at.timestamp(), "t0_s": 0.0,

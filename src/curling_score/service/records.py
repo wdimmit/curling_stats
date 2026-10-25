@@ -18,7 +18,7 @@ RUN_STATUSES = ("pending_approval", "queued", "processing", "live", "ready",
                 "failed")
 # A job is a recording to analyse whole, or a stream to follow while it plays.
 # Live jobs are claimed first; a record from before kinds is a recording.
-# "practice" follows a sheet's practice stream while someone practises on it.
+# "practice" reads a sheet's cameras while someone practises on it.
 JOB_KINDS = ("vod", "live", "practice")
 JOB_STATES = ("queued", "running", "done", "failed")
 FAIL_KINDS = ("transient", "blocked", "permanent")
@@ -372,8 +372,8 @@ class WatchedPlaylist:
     schedule: list = field(default_factory=list)
     live_poll_s: float = 180.0
     idle_poll_s: float | None = 3600.0
-    # A sheet's practice streams, not league games: never polled for games;
-    # a practice session looks in it for the sheet's live stream.
+    # A sheet's practice streams, not league games: never polled for games.
+    # (Practice sessions read the club's cameras, not these.)
     practice: bool = False
 
     to_dict = asdict
@@ -572,7 +572,7 @@ class ClipJob:
 
 @dataclass
 class PracticeWatch:
-    """One sheet's practice stream being watched: the work a worker does for
+    """One sheet's cameras being watched: the work a worker does for
     it (a practice run and job), and what it last published -- its throws live
     in the run's practice.json. Every practice session on the sheet while it
     runs is a window on it."""
@@ -607,7 +607,7 @@ class PracticeSession:
     started_at: datetime
     hand: str = "right"
     ended_at: datetime | None = None
-    end_reason: str | None = None     # stop | idle | max | stream_ended | failed
+    end_reason: str | None = None     # stop | idle | max | league | stream_ended | failed
     hidden: list = field(default_factory=list)
 
     @property

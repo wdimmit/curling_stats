@@ -151,7 +151,6 @@ def cameras_full(n: int) -> str:
             "Try again when one ends.")
 
 
-PRACTICE_SOURCES = ("youtube", practice.CAMERAS)
 # A practice throw's id, as the worker writes it (practice/throws.py).
 PRACTICE_THROW_ID = re.compile(r"^t_[0-9]{1,8}(\.[0-9])?$")
 # A practice throw's clip, as the worker names the artifact.
@@ -222,15 +221,12 @@ class Settings:
     # worker claims would stand in for the recording and keep it from ever
     # being queued the ordinary way.
     live_enabled: bool = False
-    # Practice sessions: /practice/sheet/N and its API. Off until a worker
-    # that can watch a practice stream (WORKER_PRACTICE=1) is running.
+    # Practice sessions: /practice/sheet/N and its API, on the club's cameras.
+    # Off until a worker that can see them (WORKER_PRACTICE=1 and
+    # WORKER_CAMERAS=1) is running; turning it off is how practice is closed.
     practice_enabled: bool = False
-    # Where practice reads the ice: "youtube", the sheet's practice stream, or
-    # "cameras", the club's own cameras through a worker that can see them
-    # (WORKER_CAMERAS=1). On the cameras Start needs no stream but does need a
-    # validated account or a request from `club_ips` (the club's public
-    # address, as client_ip sees it).
-    practice_source: str = "youtube"
+    # Start needs a validated account, or a request from one of these: the
+    # club's public address, as client_ip sees it.
     club_ips: frozenset = frozenset()
     # How many sheets may be read from the cameras at once. The Ryzen's link
     # to them carries about two sheets until it runs at gigabit; past that the
@@ -279,10 +275,6 @@ class Settings:
     def from_env(cls):
         env = os.environ.get
         chans = {c.strip() for c in env("ALLOWED_CHANNEL_IDS", "").split(",") if c.strip()}
-        practice_source = env("PRACTICE_SOURCE", "youtube")
-        if practice_source not in PRACTICE_SOURCES:
-            raise ValueError(f"PRACTICE_SOURCE must be one of {PRACTICE_SOURCES}, "
-                             f"not {practice_source!r}")
         return cls(
             public_base_url=env("PUBLIC_BASE_URL", "").rstrip("/"),
             worker_token=env("WORKER_TOKEN", ""),
@@ -292,7 +284,6 @@ class Settings:
             doubles_enabled=env("DOUBLES_ENABLED", "0") in ("1", "true", "yes"),
             live_enabled=env("LIVE_ENABLED", "0") in ("1", "true", "yes"),
             practice_enabled=env("PRACTICE_ENABLED", "0") in ("1", "true", "yes"),
-            practice_source=practice_source,
             club_ips=frozenset(ip.strip() for ip in env("PRACTICE_CLUB_IPS", "").split(",")
                                if ip.strip()),
             practice_max_camera_watches=int(env("PRACTICE_MAX_CAMERA_WATCHES", "2")),
@@ -2957,25 +2948,20 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                              authorization: str | None = Header(default=None)):
         practice_on()
         me = require_user(authorization)
-        cameras = settings.practice_source == practice.CAMERAS
+        # The club's cameras are not for just anyone who signed in. The address
+        # is client_ip's, which a forged X-Forwarded-For cannot move. Joining a
+        # sheet's watch is a Start like any other.
+        if me.role not in ROLES and client_ip(request) not in settings.club_ips:
+            raise HTTPException(403, CAMERAS_NOT_ALLOWED)
         body = await request.json()
         try:
             sheet = int(body.get("sheet"))
         except (TypeError, ValueError):
             raise HTTPException(422, "say which sheet") from None
-        watch = practice.alive_watch(repo, sheet)
-        # The club's cameras are not for just anyone who signed in: not on the
-        # cameras, nor, after a rollback to YouTube, on joining a camera watch
-        # still running. The address is client_ip's, which a forged
-        # X-Forwarded-For cannot move.
-        reads_cameras = cameras or (watch is not None and practice.on_cameras(repo, watch))
-        if (reads_cameras and me.role not in ROLES
-                and client_ip(request) not in settings.club_ips):
-            raise HTTPException(403, CAMERAS_NOT_ALLOWED)
         # Asked before the rate limit, so a refusal costs no one a session's worth.
         if practice.league_on(repo, now()):
             raise HTTPException(409, LEAGUE_ON)
-        if cameras and watch is None and sheet in practice.CAMERA_SHEETS:
+        if sheet in practice.CAMERA_SHEETS and practice.alive_watch(repo, sheet) is None:
             # A new watch takes a sheet's four cameras over the Ryzen's link.
             watching = practice.camera_watches(repo)
             if watching >= settings.practice_max_camera_watches:
@@ -2984,12 +2970,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                                     PRACTICE_DAY_LIMIT):
             raise HTTPException(429, "that is a lot of sessions; try again later")
         try:
-            s = practice.start(repo, youtube, me, sheet, body.get("hand", "right"), now(),
-                               settings.processing_version,
-                               source=practice.CAMERAS if cameras else "youtube")
-        except practice.NoStream:
-            raise HTTPException(404, f"no cameras on sheet {sheet}" if cameras
-                                else f"no live stream on sheet {sheet}") from None
+            s = practice.start(repo, me, sheet, body.get("hand", "right"), now(),
+                               settings.processing_version)
+        except practice.NoCameras:
+            raise HTTPException(404, f"Sheet {sheet} has no cameras.") from None
         except practice.LeagueOn:    # one began between the check and the start
             raise HTTPException(409, LEAGUE_ON) from None
         return {"id": s.id, "watch_id": s.watch_id}
@@ -3139,7 +3123,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # gets recordings only: handed a live stream it would try to download
         # it whole.
         kinds = tuple(k for k in (body.get("kinds") or ("vod",)) if k in JOB_KINDS)
-        if settings.practice_source == practice.CAMERAS and not body.get("cameras"):
+        if not body.get("cameras"):
             # Practice reads the club's cameras, which only a worker that can
             # see them (WORKER_CAMERAS=1) may claim: the stand-in must not.
             kinds = tuple(k for k in kinds if k != "practice")
@@ -3166,18 +3150,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.heartbeat(Worker(id=str(body.get("worker_id", "worker")), last_seen_at=t,
                               version=body.get("version"), model_id=body.get("model_id"),
                               gpu=body.get("gpu"), current_job_id=job.id))
-        # A practice watch says how far back to record to calibrate from; the
-        # club's cameras have no past to look back in. A camera watch handed
-        # out again resumes its session (practice_resume).
+        # A practice watch is recorded from the sheet's cameras, from its claim
+        # on; one handed out again resumes its session (practice_resume). A
+        # job left from when practice read YouTube says no source, and the
+        # worker refuses it.
         practice_fields = {}
-        if job.kind == "practice":
-            practice_fields = {"lookback_s": practice.LOOKBACK_S}
-            if run.source == practice.CAMERAS:
-                practice_fields = {"lookback_s": practice.CAMERA_LOOKBACK_S,
-                                   "source": practice.CAMERAS}
-                resume = practice_resume(job)
-                if resume is not None:
-                    practice_fields["resume"] = resume
+        if job.kind == "practice" and run.source == practice.CAMERAS:
+            practice_fields = {"source": practice.CAMERAS}
+            resume = practice_resume(job)
+            if resume is not None:
+                practice_fields["resume"] = resume
         return {"job": {
             "id": job.id, "run_id": run.id, "video_id": run.video_id,
             "window_start_s": run.window_start_s, "window_end_s": run.window_end_s,
