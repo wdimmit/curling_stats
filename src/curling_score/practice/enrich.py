@@ -107,7 +107,10 @@ def enrich(video, setups, sideviews, models, *, house, arrival, release, house_f
                 _run("side release", stages.side_release, shots, video, hog_view)
                 # A release the long camera found is kept for from here on.
                 releasetime.follow_releases(keeper, shots)
-                _run("broom", stages.broom, shots, video, dest_view, model=models.broom_model)
+                # A player alone may set down two brooms; the line pass gives
+                # the rock the one it was thrown at.
+                _run("broom", stages.broom, shots, video, dest_view, model=models.broom_model,
+                     all_held=True)
                 # The line follows the stone to where it stopped, a hogged one
                 # too (asked for 2026-10-25): it was still thrown down a line.
                 # Practice is often solo, so a rock nobody held a broom for is

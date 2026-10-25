@@ -9,6 +9,8 @@ or lifts gives no marker, never an average of where it went -- still across
 the sheet, that is; along it the long camera cannot tell a move of under half
 a metre from its own wobble (CLUSTER_ALONG_M). Two held pads --
 the skip's and one resting by the sideline -- go to the one nearest the tee.
+Practice keeps every held pad (``all_held``): a player alone often sets down
+two targets, and `linetime` gives the rock the one its line was thrown at.
 
 Like `hogtime` and `fartime`, this only attaches data to shots that exist.
 """
@@ -63,6 +65,13 @@ def window_for(shot):
 
 def pick_target(samples, n_frames: int) -> TargetBroom | None:
     """The pad held still, from ``(frame_index, x_m, y_m, conf)`` samples."""
+    held = pick_targets(samples, n_frames)
+    return held[0] if held else None
+
+
+def pick_targets(samples, n_frames: int) -> list[TargetBroom]:
+    """Every pad held still, best first: seen in the most frames, then nearest
+    the tee."""
     keep = [p for p in samples
             if abs(p[1]) <= X_MAX_M
             and -C.R_12FT_M - BEHIND_M <= p[2] <= C.TEE_TO_HOGLINE_M]
@@ -76,7 +85,7 @@ def pick_target(samples, n_frames: int) -> TargetBroom | None:
                 break
         else:
             clusters.append([p])
-    best = None
+    ranked = []
     for c in clusters:
         frames_in = len({q[0] for q in c})
         seen = frames_in / max(n_frames, EXPECTED_FRAMES)
@@ -84,17 +93,18 @@ def pick_target(samples, n_frames: int) -> TargetBroom | None:
             continue
         x = float(np.median([q[1] for q in c]))
         y = float(np.median([q[2] for q in c]))
-        rank = (-frames_in, math.hypot(x, y))
-        if best is None or rank < best[0]:
-            best = (rank, TargetBroom(x, y, seen, float(np.median([q[3] for q in c]))))
-    return None if best is None else best[1]
+        ranked.append(((-frames_in, math.hypot(x, y)),
+                       TargetBroom(x, y, seen, float(np.median([q[3] for q in c])))))
+    return [b for _rank, b in sorted(ranked, key=lambda r: r[0])]
 
 
-def time_target_brooms(shots, video, view, *, model=None, decode=None) -> None:
+def time_target_brooms(shots, video, view, *, model=None, decode=None,
+                       all_held=False) -> None:
     """Give every shot its target broom, in place.
 
     A no-op without a model or a laterally calibrated view -- no brooms, not a
-    failure. A shot with no pad held still keeps None.
+    failure. A shot with no pad held still keeps None. ``all_held`` also keeps
+    every held pad, best first, as ``held_brooms`` (practice).
     """
     if model is None or view is None or not view.has_lateral:
         return
@@ -112,4 +122,7 @@ def time_target_brooms(shots, video, view, *, model=None, decode=None) -> None:
             for p in pads:
                 x, y = view.to_house(p.col, p.row)
                 samples.append((i, x, y, p.conf))
-        shot.target_broom = pick_target(samples, len(frames))
+        held = pick_targets(samples, len(frames))
+        shot.target_broom = held[0] if held else None
+        if all_held:
+            shot.held_brooms = tuple(held)

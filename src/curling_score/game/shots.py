@@ -63,6 +63,10 @@ class Shot:
     # crossed the throwing end's tee -- a `broomtime.TargetBroom` in house
     # metres -- or None when no pad was held still, or there is no model.
     target_broom: object = None
+    # Every pad held still in that second, best first, when practice asked for
+    # them all (``broomtime.time_target_brooms(all_held=True)``); `linetime`
+    # moves ``target_broom`` to the one the rock was thrown at.
+    held_brooms: tuple = ()
     # Where this rock's thrown line passed the skip's broom, where it sat
     # before the push and where it went -- a `linetime.Line` -- or None when
     # it could not be measured.

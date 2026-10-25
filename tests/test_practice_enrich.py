@@ -103,6 +103,14 @@ def test_a_throw_nobody_held_a_broom_for_still_gets_its_line():
     assert kwargs["line"] == {"without_broom": True}
 
 
+def test_every_held_broom_is_kept_for_the_line_to_choose_from():
+    calls, kwargs = [], {}
+    E.enrich("rec.ts", SETUPS, SIDEVIEWS, MODELS, house="top", arrival=arrival(),
+             release=Release("red", 22.0, 1.0, 2.0), house_frames=[], throw_frames=[],
+             stages=recording(calls, kwargs=kwargs))
+    assert kwargs["broom"] == {"all_held": True}
+
+
 class FakeKeeper:
     def __init__(self, calls=None):
         self.cleared, self.calls = False, calls

@@ -520,6 +520,20 @@ class TestTimeLines:
         assert s.line.at_broom_x is None and s.line.at_tee_x is not None
         assert self.n == 1
 
+    def test_of_two_held_brooms_the_rock_gets_the_one_it_was_thrown_at(self):
+        """Practice: a player alone sets down two targets. The nearer the tee
+        ranks first, but the line passes the other."""
+        c = crossing_for(self.stone_to(11.5))
+        plain = self.shot(c)
+        self.run([plain])
+        x = plain.line.at_broom_x
+        aimed = TargetBroom(x + 0.05, 0.0, 1.0, 0.9)
+        other = TargetBroom(x - 1.2, -0.1, 1.0, 0.9)
+        s = self.shot(c, target_broom=other, held_brooms=(other, aimed))
+        self.run([s])
+        assert s.target_broom == aimed
+        assert s.line.miss == pytest.approx(-0.05)
+
     def test_by_default_no_broom_is_still_no_line(self):
         s = self.shot(crossing_for(self.stone_to(11.5)), target_broom=None)
         self.run([s])

@@ -35,6 +35,13 @@ class TestPickTarget:
         got = broomtime.pick_target(sideline + skip, 10)
         assert got.x_m == pytest.approx(0.5)
 
+    def test_every_pad_held_still_is_kept_best_first(self):
+        left = [s(i, -0.9, 0.0) for i in range(10)]
+        right = [s(i, 0.6, 0.0) for i in range(10)]
+        brief = [s(i, 0.0, 1.5) for i in range(7)]
+        got = broomtime.pick_targets(left + right + brief, 10)
+        assert [b.x_m for b in got] == pytest.approx([0.6, -0.9, 0.0])
+
     def test_behind_the_back_line_is_the_other_skip(self):
         assert broomtime.pick_target([s(i, 0.2, -2.1) for i in range(10)], 10) is None
 
@@ -114,7 +121,7 @@ class TestTimeTargetBrooms:
         base.update(kw)
         return SimpleNamespace(**base)
 
-    def _run(self, shots, monkeypatch, view=VIEW, col=390.0 + 0.5 * 148.0, row=430.0):
+    def _run(self, shots, monkeypatch, view=VIEW, col=390.0 + 0.5 * 148.0, row=430.0, **kw):
         from curling_score.detect import broommodel as bm
         seen = []
 
@@ -124,7 +131,7 @@ class TestTimeTargetBrooms:
 
         monkeypatch.setattr(bm, "find", lambda model, frames, view, conf=bm.CONF_MIN: [
             [bm.Pad(col, row, 0.9, col - 15, row - 10, col + 15, row)] for _ in frames])
-        broomtime.time_target_brooms(shots, "v.mp4", view, model=object(), decode=decode)
+        broomtime.time_target_brooms(shots, "v.mp4", view, model=object(), decode=decode, **kw)
         return seen
 
     def test_it_attaches_the_broom_in_house_metres(self, monkeypatch):
@@ -133,6 +140,12 @@ class TestTimeTargetBrooms:
         assert seen == [(pytest.approx(99.0), pytest.approx(100.0), broomtime.FPS)]
         assert (shot.target_broom.x_m, shot.target_broom.y_m) == pytest.approx(
             (0.5, 0.0), abs=1e-6)
+
+    def test_all_held_keeps_every_pad(self, monkeypatch):
+        shot = self._shot()
+        self._run([shot], monkeypatch, all_held=True)
+        assert [(b.x_m, b.y_m) for b in shot.held_brooms] == [
+            pytest.approx((0.5, 0.0), abs=1e-6)]
 
     def test_a_placeholder_is_left_alone(self, monkeypatch):
         shot = self._shot(missing=True)

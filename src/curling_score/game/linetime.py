@@ -104,6 +104,12 @@ def aim_x(start, broom, y: float) -> float:
     return sx + (bx - sx) * (y - sy) / (by - sy)
 
 
+def thrown_at(fit: Fit, brooms):
+    """Of several held brooms, the one the thrown line passes nearest at its
+    own depth: the one the rock was aimed at."""
+    return min(brooms, key=lambda b: abs(fit.x(b.y_m) - b.x_m))
+
+
 def curl_of(fit: Fit, end) -> str | None:
     """Which way curl took the rock: from its thrown line to where it ended."""
     if end is None:
@@ -561,6 +567,9 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
             fit = fit_line(track)
             if fit is None:
                 continue
+            held = getattr(shot, "held_brooms", ())
+            if len(held) > 1:
+                broom = shot.target_broom = thrown_at(fit, held)
             # One read from before the push to the band gives the start and
             # the delivery both; only the delivery's assembly may fail alone.
             frames = read_delivery(model, video, hog_view, shot.color, rel.t, track[0][0],
