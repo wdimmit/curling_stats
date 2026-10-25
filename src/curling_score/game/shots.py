@@ -1,12 +1,10 @@
-"""Turn rest states into an ordered, attributed sequence of shots.
+"""Turn observed deliveries into an ordered, attributed sequence of shots.
 
-Each transition between settled configurations is one delivery. Usually the
-delivered stone is simply the one that appeared, which names the thrower
-outright. A takeout is harder: the count can stay level or fall, and no new
-stone is visible. There the colour comes from the rule that teams strictly
+Each delivery is one shot, and the stone it leaves in the house names its
+thrower. What the cameras missed is placed by the rule that teams strictly
 alternate.
 
-That same alternation is also an error-correcting code. If two consecutive
+That alternation is also an error-correcting code. If two consecutive
 deliveries read as the same colour, a delivery went unseen between them, and we
 insert it rather than let every later shot shift by one -- which would misname
 the thrower for the rest of the end.
@@ -16,7 +14,6 @@ import functools
 from dataclasses import dataclass
 
 from curling_score.game import rules
-from curling_score.geometry import constants as C
 
 
 @dataclass
@@ -121,130 +118,6 @@ def scoring_shot(shots):
     moment decided an end.
     """
     return next((s for s in reversed(list(shots)) if s.stones), None)
-
-
-# Clearing must shed at least this many stones and end this close to empty.
-CLEAR_MIN_DROP = 3
-CLEAR_MAX_REMAINING = 2
-
-
-def trim_clearing(rest_states):
-    """Drop the trailing states where the players lift the stones off.
-
-    At the end of an end the sheet is cleared, which is a long and perfectly
-    stable configuration -- and a near-empty one. Left in, it is scored as the
-    final house (turning real ends into blanks) and its removals are counted as
-    deliveries. Clearing is distinguished from a takeout by going nearly to zero
-    and never recovering.
-    """
-    states = list(rest_states)
-    if len(states) < 2:
-        return states
-
-    counts = [len(s.stones) for s in states]
-    # Longest non-increasing suffix.
-    i = len(counts) - 1
-    while i > 0 and counts[i - 1] >= counts[i]:
-        i -= 1
-
-    drop = counts[i] - counts[-1]
-    if drop >= CLEAR_MIN_DROP and counts[-1] <= CLEAR_MAX_REMAINING:
-        return states[: i + 1] or states[:1]
-    return states
-
-
-def _appeared(before, after) -> list:
-    """Stones present after a delivery that were not there before."""
-    from curling_score.detect.rest import configurations_match
-
-    leftover = list(before)
-    new = []
-    for stone in after:
-        for i, old in enumerate(leftover):
-            if old.color == stone.color and configurations_match([old], [stone]):
-                leftover.pop(i)
-                break
-        else:
-            new.append(stone)
-    return new
-
-
-def _observe(rest_states):
-    """Per transition: the colour delivered, if it can be seen directly."""
-    out = []
-    for before, after in zip(rest_states, rest_states[1:]):
-        new = _appeared(before.stones, after.stones)
-        colors = {s.color for s in new}
-        out.append(
-            {
-                "color": colors.pop() if len(colors) == 1 else None,
-                "state": after,
-                "confidence": (
-                    min((s.confidence for s in new), default=0.6) if new else 0.6
-                ),
-            }
-        )
-    return out
-
-
-def _repair_alternation(observations):
-    """Fill in unseen colours and insert deliveries that were never observed."""
-    anchors = [(i, o["color"]) for i, o in enumerate(observations) if o["color"]]
-    if not anchors:
-        return observations
-
-    repaired = []
-    prev_color = None
-    for obs in observations:
-        color = obs["color"]
-        if color is None:
-            # A takeout: whoever did not throw last must be throwing now.
-            color = rules.other_color(prev_color) if prev_color else None
-            obs = {**obs, "color": color, "inferred": True}
-        elif prev_color is not None and color == prev_color:
-            # The same team twice running is impossible: one delivery was
-            # missed. Insert it so later throwers stay correctly named.
-            repaired.append(
-                {
-                    "color": rules.other_color(prev_color),
-                    "state": None,
-                    "confidence": 0.0,
-                    "missing": True,
-                }
-            )
-            prev_color = rules.other_color(prev_color)
-        repaired.append(obs)
-        prev_color = color or prev_color
-    return repaired
-
-
-def infer_shots(rest_states) -> list[Shot]:
-    """Reduce settled configurations to the deliveries that produced them."""
-    rest_states = trim_clearing(rest_states)
-    if len(rest_states) < 2:
-        return []
-
-    observations = _repair_alternation(_observe(rest_states))
-
-    out: list[Shot] = []
-    for obs in observations:
-        if len(out) >= C.STONES_PER_END:
-            break
-        if not obs.get("color"):
-            continue
-        state = obs.get("state")
-        out.append(
-            Shot(
-                number=len(out) + 1,
-                color=obs["color"],
-                stones=list(state.stones) if state else [],
-                t_rest_s=state.t_mid if state else float("nan"),
-                color_inferred=bool(obs.get("inferred")),
-                missing=bool(obs.get("missing")),
-                confidence=float(obs.get("confidence", 0.0)),
-            )
-        )
-    return out
 
 
 def hammer_from_shots(shots) -> str | None:
@@ -535,7 +408,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
                     joined_late: bool = False):
     """Build the shot list from observed deliveries.
 
-    This replaces inferring shots from how the house changed. That approach
+    Not inferred from how the house changed between settled states, which
     could not tell a thrown stone from one the players pushed back up the sheet
     between ends, so an end's "final" house was read from the staging that
     follows it -- on the reference VOD, seven minutes and eight stones after the

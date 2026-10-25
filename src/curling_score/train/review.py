@@ -71,7 +71,6 @@ def split_window(start_s, end_s, frames_per_window: int,
 
 # Drawn over a detection so the blob underneath stays visible: an outline
 # rather than a filled marker, and the label off to the side.
-MARK_RING_PX = 9
 MARK_BGR = {"red": (60, 60, 235), "yellow": (40, 200, 235)}
 # Floor on the drawn box so a tiny detection is still visible at strip scale.
 MARK_MIN_SIDE_PX = 7
@@ -87,8 +86,8 @@ def annotate(frame, detections, calib):
 
     The box is drawn at the detection's own area, but do not read anything into
     its size. Training labels all take one box per frame from
-    ``box_px_for``, which returns ``2 * STONE_RADIUS_M * px_per_m`` and ignores
-    the detection entirely, so the model learned to emit a near-constant box:
+    ``dataset.box_px``, which returns ``2 * STONE_RADIUS_M * px_per_m`` and
+    ignores the detection entirely, so the model learned to emit a near-constant box:
     measured over one window, real stones and false positives alike came out
     21.2-22.3 px on a side. Position, motion and confidence separate them;
     size does not.

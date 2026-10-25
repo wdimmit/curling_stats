@@ -66,7 +66,6 @@ import numpy as np                                               # noqa: E402
 
 cv2.setNumThreads(1)  # same argument, for the augmentation's warps and blurs
 
-from curling_score.game import digits as D
 from curling_score.game import scoreboard as SB
 
 PRINTED = "datasets/board-glyphs/glyphs.npz"
@@ -119,14 +118,6 @@ def load_printed(path=PRINTED):
 
 # ----------------------------------------------------------- the architectures
 
-def _fit_mlp(x, y, seed, epochs, copies):
-    """The incumbent: the 256-128 ReLU MLP already in `digits.Model`."""
-    rng = np.random.default_rng(seed)
-    model = D.Model.initialise(hidden=(256, 128), rng=rng)
-    return model.fit(None, None, epochs=epochs, rng=rng,
-                     augment_from=(x, y), copies=copies)
-
-
 def _fit_cnn(x, y, seed, epochs, copies):
     """The escalation: a conv net trained on the GPU, read back through numpy.
 
@@ -135,8 +126,7 @@ def _fit_cnn(x, y, seed, epochs, copies):
     What comes back is a `digits.ConvModel`, so everything the gate measures
     goes through the numpy forward pass production will run, and
     `train_conv_torch.check_equivalence` asserts those two agree before the
-    model is handed over. Needs the `gpu` extra; `cnn_numpy` is the same
-    architecture family trained without it.
+    model is handed over. Needs the `gpu` extra.
     """
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import train_conv_torch
@@ -144,15 +134,7 @@ def _fit_cnn(x, y, seed, epochs, copies):
     return train_conv_torch.fit(x, y, seed, epochs=epochs, copies=copies)
 
 
-def _fit_cnn_numpy(x, y, seed, epochs, copies):
-    """`digits.ConvModel` trained by its own numpy backward pass, no torch."""
-    rng = np.random.default_rng(seed)
-    model = D.ConvModel.initialise(rng=rng)
-    return model.fit(None, None, epochs=epochs, rng=rng,
-                     augment_from=(x, y), copies=copies)
-
-
-ARCHITECTURES = {"mlp": _fit_mlp, "cnn": _fit_cnn, "cnn_numpy": _fit_cnn_numpy}
+ARCHITECTURES = {"cnn": _fit_cnn}
 
 
 # ------------------------------------------------------------------- the folds
@@ -283,7 +265,7 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--model", choices=sorted(ARCHITECTURES), default="mlp")
+    ap.add_argument("--model", choices=sorted(ARCHITECTURES), default="cnn")
     ap.add_argument("--seeds", type=int, default=3,
                     help="each seed retrains all ten folds; the spread is the "
                          "noise floor any claimed improvement must beat")

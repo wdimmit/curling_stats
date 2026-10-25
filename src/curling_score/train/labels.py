@@ -11,9 +11,9 @@ where it is. A label that appears in one frame and is gone from the next was
 never a stone, whatever wrote it. Ranking on that puts the bad labels first and
 leaves the rest to be spot-checked.
 
-Box size is no help here, for a reason worth writing down: `write_split` gives
-every box in a frame the same size, so they carry no information about what
-they enclose.
+Box size is no help here, for a reason worth writing down: the labels were
+written with every box in a frame the same size (`dataset.box_px`), so they
+carry no information about what they enclose.
 """
 
 from __future__ import annotations
@@ -305,10 +305,6 @@ miss.</p>
 
 def reject_key(frame_stem: str, box) -> str:
     return f"{frame_stem}|{box.cx:.3f},{box.cy:.3f}"
-
-
-def add_key(frame_stem: str, cls: int, cx: float, cy: float) -> str:
-    return f"{frame_stem}|{cx:.3f},{cy:.3f}|{cls}"
 
 
 @dataclass(frozen=True)

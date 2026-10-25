@@ -13,10 +13,10 @@ track real play can smooth them away.
 
 The distinction that does work is global rather than local: **an occluded stone
 comes back to the same place, a removed one never does**. So we first build a
-track per stone across the whole sequence, take its lifespan from first to last
-sighting, and treat gaps inside that lifespan as occlusion. The configuration
-at any instant is then the set of tracks alive at that instant, and rest states
-are the stretches over which that set does not change.
+track per stone across the whole sequence and treat gaps in it as occlusion.
+The house over a window is then the tracks seen through most of it
+(`stones_in_window`), and the window ends where a settled stone is first moved
+by hand (`until_disturbed`).
 """
 
 from dataclasses import dataclass, field
@@ -25,46 +25,6 @@ from dataclasses import dataclass, field
 MATCH_TOLERANCE_M = 0.12
 # A track must be seen this often to be a stone rather than a stray detection.
 MIN_TRACK_FRAMES = 3
-MIN_TRACK_DENSITY = 0.25  # share of frames within its own lifespan
-# A configuration must hold this long to be a rest state.
-MIN_HOLD_S = 4.0
-
-
-@dataclass
-class RestState:
-    """A settled configuration of stones, and the window over which it held."""
-
-    t_start: float
-    t_end: float
-    stones: list
-    frames: int = 0
-
-    @property
-    def duration_s(self) -> float:
-        return self.t_end - self.t_start
-
-    @property
-    def t_mid(self) -> float:
-        return (self.t_start + self.t_end) / 2.0
-
-
-def configurations_match(a, b, tolerance: float = MATCH_TOLERANCE_M) -> bool:
-    """Whether two detections describe the same stones in the same places."""
-    if len(a) != len(b):
-        return False
-    remaining = list(b)
-    for stone in a:
-        for i, other in enumerate(remaining):
-            if other.color != stone.color:
-                continue
-            dx = other.x_m - stone.x_m
-            dy = other.y_m - stone.y_m
-            if (dx * dx + dy * dy) ** 0.5 <= tolerance:
-                remaining.pop(i)
-                break
-        else:
-            return False
-    return not remaining
 
 
 @dataclass
@@ -84,16 +44,8 @@ class _Track:
         self.indices.append(i)
 
     @property
-    def first(self) -> int:
-        return self.indices[0]
-
-    @property
     def last(self) -> int:
         return self.indices[-1]
-
-    def density(self) -> float:
-        span = self.last - self.first + 1
-        return len(self.indices) / span
 
     def stone(self):
         from curling_score.detect.rocks import Detection
@@ -230,63 +182,6 @@ def until_disturbed(frames, hold_s: float = SETTLED_HOLD_S,
                 cut = min(cut, tr.indices[k])
                 break
     return frames[:cut]
-
-
-def find_rest_states(
-    frames,
-    tolerance: float = MATCH_TOLERANCE_M,
-    min_hold_s: float = MIN_HOLD_S,
-    min_track_frames: int = MIN_TRACK_FRAMES,
-) -> list[RestState]:
-    """Reduce a dense sequence of detections to the configurations that held."""
-    frames = list(frames)
-    if not frames:
-        return []
-
-    tracks = [
-        t
-        for t in build_tracks(frames, tolerance)
-        if len(t.indices) >= min_track_frames and t.density() >= MIN_TRACK_DENSITY
-    ]
-
-    # Walk the timeline, keeping the set of tracks alive at each frame.
-    states: list[RestState] = []
-    cur_key = None
-    cur_start = cur_last = frames[0][0]
-    cur_tracks: list[_Track] = []
-    count = 0
-
-    for i, (t, _) in enumerate(frames):
-        alive = [tr for tr in tracks if tr.first <= i <= tr.last]
-        key = tuple(sorted(id(tr) for tr in alive))
-        if key == cur_key:
-            cur_last = t
-            count += 1
-            continue
-        if cur_key is not None:
-            states.append(
-                RestState(cur_start, cur_last, [tr.stone() for tr in cur_tracks], count)
-            )
-        cur_key, cur_tracks = key, alive
-        cur_start = cur_last = t
-        count = 1
-    states.append(
-        RestState(cur_start, cur_last, [tr.stone() for tr in cur_tracks], count)
-    )
-
-    kept = [s for s in states if s.duration_s >= min_hold_s]
-    if not kept:
-        kept = [max(states, key=lambda s: s.duration_s)]
-
-    # Dropping a transient can leave identical neighbours; fuse them.
-    merged: list[RestState] = []
-    for s in kept:
-        if merged and configurations_match(s.stones, merged[-1].stones, tolerance):
-            merged[-1].t_end = s.t_end
-            merged[-1].frames += s.frames
-        else:
-            merged.append(s)
-    return merged
 
 
 def stones_in_window(frames, tolerance: float = MATCH_TOLERANCE_M,

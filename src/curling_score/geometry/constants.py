@@ -10,7 +10,6 @@ rulebook specifies radii, which is what we store.
 # circumference is 914 mm, i.e. a 290.9 mm diameter, but 142 mm is the constant
 # competitions actually measure with.
 STONE_RADIUS_M = 0.142
-STONE_HEIGHT_MIN_M = 0.114
 
 # --- House (R1(d)) ----------------------------------------------------------
 R_BUTTON_M = 0.152  # minimum; the painted button varies by club
@@ -40,7 +39,5 @@ SIDELINE_ABS_X_M = SHEET_WIDTH_M / 2 - STONE_RADIUS_M  # 2.233
 # --- Game structure (R3, R5, R6) --------------------------------------------
 STONES_PER_TEAM_PER_END = 8
 STONES_PER_END = 2 * STONES_PER_TEAM_PER_END
-PLAYERS_PER_TEAM = 4
-FGZ_PROTECTED_STONES = 5  # the five-rock rule applies before the sixth stone
 
 POSITION_NAMES = {1: "lead", 2: "second", 3: "third", 4: "skip"}

@@ -297,8 +297,7 @@ def templates(image, geom: BoardGeometry) -> dict:
     Not dead code: `read_digit` stopped consuming these in Task 6F -- it reads
     with a trained classifier now -- but this is also the self-labelling
     training-data extractor `scripts/harvest_glyphs.py` calls (the digit at
-    slot *k* is *k*), and `tests/test_digits.py` reads templates from the card
-    frames themselves as a printed-digit comparison. Kept for that.
+    slot *k* is *k*). Kept for that.
 
     Built per read rather than shipped: this tracks the board's own lighting,
     the sheet's own camera and any change to the board itself for free.
@@ -408,13 +407,12 @@ def glyph_in_window(window):
     return _glyph_ink(card)
 
 
-def read_digit(glyph, tmpl: dict | None = None) -> tuple:
+def read_digit(glyph) -> tuple:
     """Best-matching card digit for a glyph, and the model's confidence.
 
     Backed by the trained classifier in `digits` (`digits.ConvModel`, promoted
-    to production in Task 6F). ``tmpl`` is accepted only so callers built
-    against the old correlation matcher still type-check; it is unused --
-    the model needs no per-read printed-row templates, only the glyph itself.
+    to production in Task 6F). The model needs no per-read printed-row
+    templates, only the glyph itself.
 
     The second element is the winning class *probability*, not a correlation
     margin: an occluded or clipped glyph spreads its probability mass over
@@ -525,9 +523,9 @@ def read_cards(image, geom: BoardGeometry) -> CardBoard:
 
     Finds the occupied slots with `read_slots`, then reads each one's glyph
     straight off the image and hands it to `read_digit` alone. `read_digit`
-    is backed by a trained classifier (Task 6F) and ignores its old `tmpl`
-    argument, so there is no per-read exemplar table to build here -- that
-    was only needed by the correlation matcher `read_digit` replaced.
+    is backed by a trained classifier (Task 6F), so there is no per-read
+    exemplar table to build here -- that was only needed by the correlation
+    matcher `read_digit` replaced.
     """
     gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2GRAY)
     present = read_slots(image, geom)
