@@ -26,13 +26,13 @@ HEARTBEAT_S = 60.0     # well inside the API's ten-minute lease
 
 
 def is_practice(job) -> bool:
-    """A practice watch on a sheet's stream, not a league game."""
+    """A practice watch on a sheet's cameras, not a league game."""
     return job.get("kind") == "practice"
 
 
 def on_cameras(job) -> bool:
-    """A practice watch on the sheet's own cameras, not its YouTube stream
-    (``service.practice.CAMERAS``)."""
+    """A job on the sheet's own cameras (``service.practice.CAMERAS``): every
+    practice job. One without it is from when practice read YouTube."""
     return job.get("source") == "cameras"
 
 
@@ -44,9 +44,9 @@ class Stream:
     recorder: object
     session: object = None
     lost: bool = False
-    # The API said no session watches this practice stream any more.
+    # The API said no session watches this practice watch's sheet any more.
     stop_requested: bool = False
-    # A practice stream's way to send a throw's clip up: set by the lane.
+    # A practice watch's way to send a throw's clip up: set by the lane.
     send_clip: object = field(default=None, repr=False)
     last_beat: float = 0.0
     last_doc: dict | None = field(default=None, repr=False)
@@ -87,21 +87,21 @@ class LiveManager:
     def _recorder(self, job):
         import os
 
-        if on_cameras(job):
+        if is_practice(job):
+            if not on_cameras(job):
+                # Queued when practice read a sheet's YouTube stream, which it
+                # no longer does: failed for good, never recorded.
+                raise LiveError("practice reads the club's cameras, and this job is not on "
+                                f"them (source {job.get('source')!r})")
             from curling_score.cameras.recorder import CameraRecorder
 
             # In the directory finish() clears: a practice recording is never kept.
             return CameraRecorder(int(job["sheet"]), self.root / "live" / job["video_id"])
         from curling_score.live.recorder import YtDlpRecorder
 
-        lookback = None
-        if is_practice(job):
-            from curling_score.practice.watch import LOOKBACK_S
-
-            lookback = float(job.get("lookback_s") or LOOKBACK_S)
         return YtDlpRecorder(job["video_id"], self.root / "live" / job["video_id"],
                              pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
-                             cookies=os.environ.get("YTDLP_COOKIES"), lookback_s=lookback)
+                             cookies=os.environ.get("YTDLP_COOKIES"))
 
     # --- what the lane sees ---------------------------------------------------
 
@@ -193,8 +193,8 @@ class LiveManager:
 
     def _begin(self, job):
         log.info("live job %s: video %s", job["id"], job["video_id"])
-        recorder = self.make_recorder(job)
         try:
+            recorder = self.make_recorder(job)
             recorder.start()
         except LiveError as exc:
             log.warning("live job %s cannot be recorded: %s", job["id"], exc)
@@ -233,7 +233,7 @@ class LiveManager:
             got = self.api.progress(stream.job["id"], self.worker_id, "live", None,
                                     f"recorded {head / 60:.0f} min, {ends} end(s) published")
             stream.last_beat = self.clock()
-            # A practice stream nobody watches any more: the API says stop.
+            # A practice watch nobody is on any more: the API says stop.
             if isinstance(got, dict) and got.get("stop"):
                 stream.stop_requested = True
         except Exception as exc:  # noqa: BLE001

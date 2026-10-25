@@ -1,4 +1,4 @@
-"""Practice on the club's own NDI cameras rather than its YouTube stream.
+"""Practice on the club's own NDI cameras.
 
 libndi (in the cyndilib wheel) receives each camera's H.264, and a stand-in
 for the libavcodec it decodes with hands those packets on untouched (``tap``),

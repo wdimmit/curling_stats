@@ -1,17 +1,19 @@
 """One sheet's practice, watched: every delivery reported as it comes to rest.
 
-A `PracticeWatch` owns a growing recording of one sheet's stream and turns it
-into a list of throws. Each call to :meth:`step` does the one most useful
+A `PracticeWatch` owns a growing recording of one sheet -- its cameras from
+Start, or a recording replayed (`practice-replay`) -- and turns it into a list
+of throws. Each call to :meth:`step` does the one most useful
 thing there is to do, and says whether it did anything:
 
 * **Calibrate** once the recording reaches ``since_s``, and holds something
   to read (READ_MIN_S: a recording that begins at Start has no file at first).
   Everything before ``since_s`` is the lookback: footage from before Start,
   there only to calibrate from (`live.session.VideoPipeline.calibrate`,
-  medians of a mostly empty sheet).
+  medians of a mostly empty sheet). Only a replay has one: the cameras record
+  from Start, so a camera watch's ``since_s`` is 0.
   A calibration missing a hog line or a side view is tried again every
   CALIB_RETRY_S, keeping the best, until CALIB_TRIES. A watch given a saved
-  calibration (``cameras/calstore.py``; a direct feed has no lookback) first
+  calibration (``cameras/calstore.py``) first
   checks it against the house rings in the first frames: if they fit, it is
   adopted and there is nothing to calibrate. A house it cannot read (players
   standing in it) is checked again on later frames, and if it never can be,
@@ -47,9 +49,6 @@ from curling_score.practice.releases import ReleaseBook
 log = logging.getLogger(__name__)
 
 HOUSES = ("top", "bottom")
-# The footage before Start a watch is given to calibrate from: twenty minutes
-# of the stream's DVR window, which on a long stream holds about an hour.
-LOOKBACK_S = 1200.0
 # Both panels, twice the release finder's rate (it is thinned back for that).
 DETECT_FPS = 10.0
 # The last packets of a growing MPEG-TS may not decode yet.
@@ -110,8 +109,8 @@ class PracticeWatch:
         self.rec, self.pipeline, self.models = recording, pipeline, models
         self.since_s, self.t0_s, self.wall_t0 = float(since_s), float(t0_s), wall_t0
         self._stop, self._stop_at = False, None
-        # Lane seconds spent calibrating and reading: what a practice stream
-        # costs the lane a league night shares.
+        # Lane seconds spent calibrating and reading: what a practice watch
+        # costs the lane.
         self.busy_s = 0.0
         self.publish = publish or (lambda doc: None)
         self.clock, self.progress = clock, progress

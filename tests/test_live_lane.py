@@ -94,16 +94,17 @@ def manager(api, max_streams=6, fail=(), clock=None, kinds=("live",), **kw):
     return m, t
 
 
-def practice_job(n):
-    return {"id": f"p_{n}", "run_id": f"pr_{n}", "video_id": f"pracVid000{n}",
-            "kind": "practice", "sheet": n, "title": f"Sheet {n} practice"}
-
-
-def camera_job(n, **extra):
+def practice_job(n, **extra):
     """A practice watch on sheet ``n``'s own cameras, as the API hands it out."""
-    return {"id": f"c_{n}", "run_id": f"cr_{n}", "video_id": f"cams{n}-20261024-153000",
-            "kind": "practice", "source": "cameras", "lookback_s": 0.0, "sheet": n,
-            "title": None, "attempt": 1, **extra}
+    return {"id": f"p_{n}", "run_id": f"pr_{n}", "video_id": f"cams{n}-20261024-153000",
+            "kind": "practice", "source": "cameras", "sheet": n, "title": None,
+            "attempt": 1, **extra}
+
+
+def youtube_practice_job(n):
+    """A practice job from when practice read a sheet's YouTube stream: no source."""
+    return {"id": f"y_{n}", "run_id": f"yr_{n}", "video_id": f"pracVid000{n}",
+            "kind": "practice", "sheet": n, "title": f"Sheet {n} practice"}
 
 
 class TestPracticeInTheManager:
@@ -131,17 +132,33 @@ class TestPracticeInTheManager:
         m.poll_once()
         assert m.streams()[0].stop_requested
 
-    def test_a_practice_job_is_recorded_from_its_lookback(self, monkeypatch, tmp_path):
+    def test_a_practice_job_not_on_the_cameras_fails_and_youtube_is_not_asked(
+            self, monkeypatch, tmp_path):
+        # Practice reads the club's cameras; a job from when it read a sheet's
+        # YouTube stream is refused, for good, and nothing is recorded.
+        from curling_score.live import recorder
+
+        made = []
+        monkeypatch.setattr(recorder, "YtDlpRecorder",
+                            lambda vid, d, **kw: made.append(vid) or Recorder(None))
+        api = Api([youtube_practice_job(1)])
+        m = manager_mod.LiveManager(api, "ryzen", model_id="m", gpu=None, root=tmp_path,
+                                    kinds=("live", "practice"), cameras=True)
+        m.poll_once()
+        assert m.streams() == [] and made == []
+        ((job_id, kind, error),) = api.failed
+        assert (job_id, kind) == ("y_1", "permanent")
+        assert "practice reads the club's cameras" in error
+
+    def test_a_league_game_is_still_recorded_from_youtube(self, monkeypatch, tmp_path):
         from curling_score.live import recorder
 
         made = {}
         monkeypatch.setattr(recorder, "YtDlpRecorder",
                             lambda vid, d, **kw: made.update(vid=vid, **kw) or "rec")
         m = manager_mod.LiveManager(Api(), "home", model_id="m", gpu=None, root=tmp_path)
-        assert m._recorder(practice_job(1)) == "rec"
-        assert made["vid"] == "pracVid0001" and made["lookback_s"] == 1200.0
-        m._recorder(live_job(1))
-        assert made["lookback_s"] is None
+        assert m._recorder(live_job(1)) == "rec"
+        assert made["vid"] == "liveVid0001" and "lookback_s" not in made
 
     def test_camera_job_gets_camera_recorder(self, monkeypatch, tmp_path):
         # The sheet's own cameras, never YouTube, recorded where finish() clears:
@@ -163,7 +180,7 @@ class TestPracticeInTheManager:
 
         monkeypatch.setattr(cameras, "CameraRecorder", Spy)
         monkeypatch.setattr(recorder, "YtDlpRecorder", youtube)
-        api = Api([camera_job(3)])
+        api = Api([practice_job(3)])
         m = manager_mod.LiveManager(api, "ryzen", model_id="m", gpu=None, root=tmp_path,
                                     kinds=("live", "practice"), cameras=True)
         m.poll_once()
@@ -870,7 +887,7 @@ class TestPracticeInTheLane:
 
     def test_a_practice_job_gets_a_watch_sharing_the_models(self, monkeypatch):
         from curling_score import analyze
-        from curling_score.practice.watch import LOOKBACK_S, PracticeWatch
+        from curling_score.practice.watch import PracticeWatch
 
         monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
         make = lane_mod.video_sessions("w.pt", progress=lambda m: None)
@@ -878,26 +895,15 @@ class TestPracticeInTheLane:
         live, practice = make(stream(1), lambda d: None), make(ps, lambda d: None)
         assert isinstance(practice, PracticeWatch)
         assert practice.rec is ps.recorder
-        assert practice.since_s == LOOKBACK_S and practice.models is live.models
+        assert practice.since_s == 0.0 and practice.models is live.models
         assert practice.wall_t0 is not None
-
-    def test_start_and_the_wall_clock_come_from_what_the_recorder_got(self, monkeypatch):
-        # A young stream gave 300 s, not the 1200 asked for; and the lane may
-        # build the session minutes after the recorder began (mid-end).
-        from curling_score import analyze
-
-        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
-        ps = pstream(1)
-        ps.recorder.lookback_got_s, ps.recorder.wall_started = 300.0, 1.7e9
-        practice = lane_mod.video_sessions("w.pt", progress=lambda m: None)(ps, lambda d: None)
-        assert practice.since_s == 300.0 and practice.wall_t0 == 1.7e9 - 300.0
 
 
 def cstream(n, **extra):
     """A camera job in hand, its recorder started at 1.7e9 by the wall clock."""
-    job = camera_job(n, **extra)
+    job = practice_job(n, **extra)
     rec = Recorder(job)
-    rec.lookback_got_s, rec.wall_started = 0.0, 1.7e9
+    rec.wall_started = 1.7e9
     return manager_mod.Stream(job=job, recorder=rec)
 
 
@@ -916,9 +922,8 @@ class TestCameraWatchesInTheLane:
         monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
 
     def test_camera_watch_since_zero(self):
-        # The cameras' recording begins at Start: a lookback of 0.0 is Start at
-        # zero, not "got none" -- which would wait twenty minutes for footage
-        # from before Start that a direct feed never has.
+        # The cameras' recording begins at Start: there is no footage from
+        # before it to wait for.
         cs = cstream(3)
         watch = lane_mod.video_sessions("w.pt", progress=lambda m: None)(cs, lambda d: None)
         assert watch.rec is cs.recorder
@@ -942,15 +947,6 @@ class TestCameraWatchesInTheLane:
         watch.save_calibration(calibration(hog="moved"))
         assert store.load(3) == calibration(hog="moved")
         assert store.load(4) == calibration(hog="sheet 4")
-
-    def test_a_youtube_watch_never_reads_a_saved_calibration(self, tmp_path):
-        # It has twenty minutes of the stream to calibrate from, as before.
-        from curling_score.cameras.calstore import CalStore
-
-        CalStore(tmp_path).save(1, calibration())
-        make = lane_mod.video_sessions("w.pt", progress=lambda m: None, cal_root=tmp_path)
-        watch = make(pstream(1), lambda d: None)
-        assert watch.saved is None and watch.save_calibration is None
 
     def test_a_resumed_camera_watch_carries_on_the_sessions_clock(self):
         # The worker restarted 600 s into the session. The new recording begins

@@ -315,13 +315,12 @@ def test_composer_threads_are_capped(tmp_path):
     assert camrec.FILTER_THREADS == camrec.DECODE_THREADS == 2
 
 
-def test_lookback_is_zero_and_wall_started_set(tmp_path):
+def test_wall_started_is_set_at_start_and_it_is_never_whole(tmp_path):
     world = World(tmp_path)
     rec = world.recorder()
-    assert rec.lookback_got_s == 0.0 and rec.wall_started is None
+    assert rec.wall_started is None
 
     rec.start()
-    assert rec.lookback_got_s == 0.0
     assert rec.wall_started == WALL
     assert rec.whole() is False
 

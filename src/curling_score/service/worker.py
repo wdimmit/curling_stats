@@ -513,14 +513,15 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     its own thread, and follows up to ``LIVE_MAX_STREAMS`` streams at once.
     A worker starts with nothing in hand, so any recordings left under
     ``live/`` by a worker that died are cleared: a live job it held comes back
-    when its lease runs out, and is recorded again from the first segment.
+    as the worker starts (release_held), and is recorded again from the first
+    segment.
     A recording is kept once its stream ends -- whole as the cached video,
     partial under ``kept/`` -- and the cache is then pruned as after any job,
     recordings older than ``recording_days`` first. Practice jobs are claimed
     too when ``WORKER_PRACTICE=1``, and ``WORKER_CAMERAS=1`` -- set on the one
     box that can see the club's cameras -- says so, which is what the API holds
-    camera practice jobs for. Practice only runs when no league is on,
-    so it never shares the lane with league ends; but a practice stream in
+    practice jobs for. Practice only runs when no league is on,
+    so it never shares the lane with league ends; but a practice watch in
     hand pauses this worker's VOD jobs as a live game does, for as long as
     its sessions last. With ``fp_harvest`` enabled each league session records
     the frames its checks flag, and the lane saves them as the recording is kept.

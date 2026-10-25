@@ -14,7 +14,7 @@ from pathlib import Path
 
 from curling_score import timeline
 from curling_score.ingest import source
-from curling_score.live.manager import is_practice, on_cameras
+from curling_score.live.manager import is_practice
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -351,35 +351,28 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             import time as _time
 
             from curling_score.practice.pipeline import PracticePipeline
-            from curling_score.practice.watch import LOOKBACK_S, PracticeWatch
+            from curling_score.practice.watch import PracticeWatch
 
-            # Until the API passes the session's Start (phase 3), Start is when
-            # the recorder began: as far behind the live edge as it actually
-            # got (a young stream gives what it has), by the recorder's own
-            # wall clock -- the lane may build this session minutes later. The
-            # cameras record from Start: their 0.0 is Start at zero.
-            got = getattr(stream.recorder, "lookback_got_s", None)
-            if got is None:
-                got = job.get("lookback_s")
-            lookback = float(LOOKBACK_S if got is None else got)
+            # The cameras record from Start: the recording's 0.0 is Start, by
+            # the recorder's own wall clock -- the lane may build this session
+            # minutes later.
             began = getattr(stream.recorder, "wall_started", None) or _time.time()
             t0_s, prior, saved, save = 0.0, (), None, None
-            if on_cameras(job):
-                resume = job.get("resume")
-                if resume:
-                    # The worker that had this session restarted: carry on its
-                    # clock, which began at resume["wall_t0"], from its throws.
-                    # wall_t0 stays when this recording began, as the API dates
-                    # a throw: wall_t0 + (t - t0_s).
-                    t0_s = began - float(resume["wall_t0"])
-                    prior = resume.get("throws") or ()
-                if cal_root is not None:
-                    from functools import partial
+            resume = job.get("resume")
+            if resume:
+                # The worker that had this session restarted: carry on its
+                # clock, which began at resume["wall_t0"], from its throws.
+                # wall_t0 stays when this recording began, as the API dates a
+                # throw: wall_t0 + (t - t0_s).
+                t0_s = began - float(resume["wall_t0"])
+                prior = resume.get("throws") or ()
+            if cal_root is not None:
+                from functools import partial
 
-                    from curling_score.cameras.calstore import CalStore
+                from curling_score.cameras.calstore import CalStore
 
-                    store, sheet = CalStore(cal_root), _sheet(job)
-                    saved, save = store.load(sheet), partial(store.save, sheet)
+                store, sheet = CalStore(cal_root), _sheet(job)
+                saved, save = store.load(sheet), partial(store.save, sheet)
             clipper = None
             if getattr(stream, "send_clip", None) is not None:
                 import tempfile
@@ -393,7 +386,7 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
                 pipeline=PracticePipeline(weights=weights, skip_longview=skip_longview,
                                           line=models.line_model is not None,
                                           progress=progress),
-                models=models, since_s=lookback, t0_s=t0_s, wall_t0=began - lookback,
+                models=models, since_s=0.0, t0_s=t0_s, wall_t0=began,
                 publish=publish, progress=progress, clipper=clipper,
                 saved_calibration=saved, save_calibration=save, prior_throws=prior)
         return live.LiveSession(

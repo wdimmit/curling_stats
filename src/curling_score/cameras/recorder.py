@@ -28,7 +28,7 @@ writes them to its FIFO as NUT with their times. The composer keeps the times
 frames (``composite_s``). A composer that falls behind delays the recording,
 and ``head_s`` with it, but moves nothing in it. Until the cameras' first
 frames come the composite is the grey base alone. Nothing is recorded from
-before Start, so ``lookback_got_s`` is 0.
+before Start.
 
 **A camera that stops.** A capture holds its camera's last keyframe while
 packets stop and reconnects by itself. One that exits all the same is logged,
@@ -168,7 +168,7 @@ class CameraRecorder:
 
     The interface is ``YtDlpRecorder``'s, as the manager and the practice watch
     use it. The recording starts at Start, so it never holds anything from
-    before (``lookback_got_s`` is 0) and is never ``whole``.
+    before, and is never ``whole``.
     """
 
     def __init__(self, sheet: int, directory: Path, *, popen=subprocess.Popen,
@@ -179,7 +179,6 @@ class CameraRecorder:
                  max_s: float = MAX_RECORD_S):
         self.sheet, self.dir = sheet, Path(directory)
         self.path = self.dir / "rec.0.ts"
-        self.lookback_got_s = 0.0
         self.t0: float | None = None             # the recording's zero, on clock
         self.wall_started: float | None = None   # the same moment by wall
         self._popen, self.clock, self.wall, self._probe = popen, clock, wall, probe
