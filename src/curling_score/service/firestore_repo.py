@@ -470,9 +470,6 @@ class FirestoreRepo:
     def get_team(self, team_id):
         return self._get(TEAMS, team_id, Team)
 
-    def update_team(self, team_id, **fields):
-        return self._update(TEAMS, team_id, Team, fields)
-
     def teams_for_user(self, user_id):
         q = self._where(TEAMS, "member_ids", "array_contains", user_id)
         docs = [Team.from_dict(d.to_dict()) for d in q.stream()]
@@ -501,10 +498,6 @@ class FirestoreRepo:
 
     def update_invite(self, token, **fields):
         return self._update(INVITES, token, Invite, fields)
-
-    def invites_for_team(self, team_id):
-        q = self._where(INVITES, "team_id", "==", team_id)
-        return [Invite.from_dict(d.to_dict()) for d in q.stream()]
 
     # ---- workers ------------------------------------------------------
     def heartbeat(self, worker):

@@ -38,7 +38,6 @@ const announce = () => listeners.forEach(fn => fn());
 export const subscribe = fn => { listeners.add(fn); return () => listeners.delete(fn); };
 export const getOverrides = () => overrides;
 export const getStatus = () => status;
-export const getVersion = () => version;
 export const isDirty = () => dirty.size > 0;
 
 function setStatus(cls, text) {

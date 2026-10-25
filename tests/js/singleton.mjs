@@ -115,7 +115,6 @@ export const thinkText = core.thinkText;
 export const splitText = core.splitText;
 export const houseDeltaText = core.houseDeltaText;
 export const pct = core.pct;
-export const avg = core.avg;
 export const gatherStats = (v) => core.gatherStats(v ?? view());
 export const gatherThinking = () => core.gatherThinking(view());
 export const cumulativeThinking = () => core.cumulativeThinking(view());

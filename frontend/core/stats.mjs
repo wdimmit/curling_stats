@@ -144,4 +144,3 @@ export function gatherStats(view) {
 }
 
 export const pct = r => (r.graded ? `${(100 * r.sum / (4 * r.graded)).toFixed(0)}%` : "—");
-export const avg = r => (r.graded ? (r.sum / r.graded).toFixed(2) : "—");

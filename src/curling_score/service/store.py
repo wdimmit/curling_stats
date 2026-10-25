@@ -15,7 +15,6 @@ class Store(Protocol):
     def put_bytes(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> None: ...
     def get_bytes(self, key: str) -> bytes | None: ...
     def exists(self, key: str) -> bool: ...
-    def list_keys(self, prefix: str) -> list[str]: ...
     def presign_put(self, key: str, content_type: str, expires_s: int = 3600) -> dict: ...
     def presign_get(self, key: str, expires_s: int = 3600, download_as: str | None = None) -> str: ...
 
@@ -37,9 +36,6 @@ class MemoryStore:
 
     def exists(self, key):
         return key in self.blobs
-
-    def list_keys(self, prefix):
-        return sorted(k for k in self.blobs if k.startswith(prefix))
 
     def presign_put(self, key, content_type, expires_s=3600):
         return {"url": f"memory://{key}", "headers": {"Content-Type": content_type}}
@@ -78,9 +74,6 @@ class GcsStore:
 
     def exists(self, key):
         return self._blob(key).exists()
-
-    def list_keys(self, prefix):
-        return [b.name for b in self._client.list_blobs(self._bucket, prefix=prefix)]
 
     def _sign_kwargs(self):
         if not self._signer_email:

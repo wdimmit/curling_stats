@@ -93,21 +93,6 @@ export function TeamPicker({ value, onChange, me: given }) {
   );
 }
 
-/* A cell that is text until you click it, then an input until you leave it.
- *
- * The catalogue's rows are busy enough without a permanent input in every one,
- * and both of the things worth correcting -- the league, and who played -- are
- * usually already right. */
-export function EditableCell({ className, title, display, editing, onEdit, children }) {
-  if (!onEdit) return <td>{display}</td>;
-  return (
-    <td className={className}>
-      {editing ? children
-               : <button className="linky" title={title} onClick={onEdit}>{display}</button>}
-    </td>
-  );
-}
-
 /* Commit on Enter or on leaving the control entirely; abandon on Escape.
  * Moving between two boxes of the same editor is not leaving it. */
 export function useCommitOnExit(save, cancel) {

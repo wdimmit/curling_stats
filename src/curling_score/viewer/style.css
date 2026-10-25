@@ -203,7 +203,6 @@ label.chk { display:flex; gap:6px; align-items:center; cursor:pointer;
 #house { width:100%; height:auto; display:block; touch-action:none;
          cursor:crosshair; }
 #house .stone { cursor:grab; }
-#house .stone.dragging { cursor:grabbing; }
 .tools { display:flex; gap:6px; align-items:center; flex-wrap:wrap;
          margin-bottom:8px; }
 .swatchbtn { width:26px; height:26px; border-radius:50%; padding:0;

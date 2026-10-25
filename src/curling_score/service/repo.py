@@ -94,7 +94,6 @@ class Repo(Protocol):
     # teams -- member storage is deliberately behind these four
     def put_team(self, team: Team) -> None: ...
     def get_team(self, team_id: str) -> Team | None: ...
-    def update_team(self, team_id: str, **fields) -> Team | None: ...
     def teams_for_user(self, user_id: str) -> list[Team]: ...
     def team_members(self, team_id: str) -> list[str]: ...
     def add_member(self, team_id: str, user_id: str) -> Team | None: ...
@@ -103,7 +102,6 @@ class Repo(Protocol):
     def put_invite(self, invite: Invite) -> None: ...
     def get_invite(self, token: str) -> Invite | None: ...
     def update_invite(self, token: str, **fields) -> Invite | None: ...
-    def invites_for_team(self, team_id: str) -> list[Invite]: ...
 
     # sign-in relays: an emailed link held behind a code, transient
     def put_signin_relay(self, relay: SigninRelay) -> None: ...
@@ -526,15 +524,6 @@ class MemoryRepo:
     def get_team(self, team_id):
         return self.teams.get(team_id)
 
-    def update_team(self, team_id, **fields):
-        with self._lock:
-            got = self.teams.get(team_id)
-            if got is None:
-                return None
-            for k, v in fields.items():
-                setattr(got, k, v)
-            return got
-
     def teams_for_user(self, user_id):
         out = [t for t in self.teams.values() if user_id in t.member_ids]
         out.sort(key=lambda t: t.created_at)
@@ -577,9 +566,6 @@ class MemoryRepo:
             for k, v in fields.items():
                 setattr(got, k, v)
             return got
-
-    def invites_for_team(self, team_id):
-        return [i for i in self.invites.values() if i.team_id == team_id]
 
     # ---- sign-in relays -----------------------------------------------
     def put_signin_relay(self, relay):

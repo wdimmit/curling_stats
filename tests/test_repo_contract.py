@@ -395,12 +395,10 @@ class TestUsers:
 
 
 class TestTeams:
-    def test_put_get_and_update(self, repo):
+    def test_put_and_get(self, repo):
         repo.put_team(team())
         assert repo.get_team("t_1").name == "Thistles"
         assert repo.get_team("nope") is None
-        repo.update_team("t_1", name="Renamed")
-        assert repo.get_team("t_1").name == "Renamed"
 
     def test_members_come_and_go(self, repo):
         repo.put_team(team())
@@ -442,12 +440,6 @@ class TestInvites:
         assert repo.get_invite("nope") is None
         repo.update_invite("i_1", uses=1)
         assert repo.get_invite("i_1").uses == 1
-
-    def test_invites_for_team(self, repo):
-        repo.put_invite(self._invite())
-        repo.put_invite(self._invite(id="i_2"))
-        repo.put_invite(self._invite(id="i_3", team_id="t_9"))
-        assert sorted(i.id for i in repo.invites_for_team("t_1")) == ["i_1", "i_2"]
 
 
 class TestChartClaims:

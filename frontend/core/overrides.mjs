@@ -28,9 +28,6 @@ export function clearKey(overrides, key) {
  * merge -- so the first edit takes a copy of whatever is currently shown. */
 export const copyStones = shot => (shot?.stones || []).map(s => ({ ...s }));
 
-export const withStones = (overrides, key, stones) =>
-  patch(overrides, key, { stones, state_known: true });
-
 /* Removing a stone renumbers everything after it, so the pointer to the stone
  * that was thrown has to move with it -- otherwise deleting a rock silently
  * re-labels a different one as the shot. */

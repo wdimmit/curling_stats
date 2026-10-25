@@ -29,12 +29,9 @@ export function localDay(iso) {
 
 export const day = iso => localDay(iso) || "—";
 
-/* The time of day a moment in ms falls on where the reader is, as "6:30 PM". */
-export const clockTime = ms =>
-  new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-
-/* The same clock split into the figures and the "PM", so the figures can be
- * set large and the period small. A 24-hour locale has no period, and then
+/* The time of day a moment in ms falls on where the reader is, split into
+ * the figures and the "PM", so the figures can be set large and the period
+ * small. A 24-hour locale has no period, and then
  * it is "". */
 export function clockParts(ms) {
   const parts = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" })

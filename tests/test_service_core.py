@@ -89,7 +89,6 @@ class TestStore:
         s.put_bytes(timeline_key("v", "r_1"), b"{}", "application/json")
         assert s.exists("runs/v/r_1/timeline.json")
         assert s.get_bytes("runs/v/r_1/timeline.json") == b"{}"
-        assert s.list_keys("runs/v/") == ["runs/v/r_1/timeline.json"]
         assert s.get_bytes("missing") is None
         assert detcache_key("v", "abc") == "detcache/v/abc.npz"
         assert s.presign_put("k", "application/json")["headers"]["Content-Type"] == "application/json"

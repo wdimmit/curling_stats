@@ -152,8 +152,6 @@ export function boxAnswer(state) {
  * with the hand clearly off the handle. Nothing the pipeline read (`o`, `yp`)
  * is used here: the member must not be led. */
 
-export const RELEASE_MARKS = ["off", "held", "cant_tell"];
-
 /* Where frame i sits in the sprite, in pixels from its top left. The page
  * draws it by sliding the sprite the other way (background-position). */
 export function spriteOffset(item, i) {

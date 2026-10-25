@@ -599,29 +599,6 @@ class TestNamingALeague:
         a_ready_game(w)
         assert w["client"].get("/api/games").json()["leagues"] == ["Spring League"]
 
-    def test_relabelling_fills_the_blanks_left_by_older_games(self, w):
-        """Games processed before titles were read have nothing; one admin
-        call names them, from the same titles they were streamed under."""
-        src = a_ready_game(w)
-        vid = w["repo"].get_source(src).video_id
-        for s in w["repo"].sources_for_video(vid):
-            w["repo"].update_source(s.id, league=None)
-        for r in w["repo"].runs_for_video(vid):
-            w["repo"].update_run(r.id, league=None)
-        # Cleared behind the API's back, so the kept list of leagues has to
-        # lapse before it can know.
-        w["clock"].advance(LEAGUES_TTL_S)
-        assert w["client"].get("/api/games").json()["leagues"] == []
-        got = post(w, "/api/admin/relabel", {}, ADMIN).json()
-        assert got["runs"] == 1 and got["games"] == 2
-        assert w["client"].get("/api/games").json()["leagues"] == ["Spring League"]
-
-    def test_relabelling_never_overwrites_a_name_somebody_chose(self, w):
-        src = a_ready_game(w)
-        post(w, f"/api/games/{src}/league", {"league": "Tuesday"}, SARAH)
-        assert post(w, "/api/admin/relabel", {}, ADMIN).json()["games"] == 0
-        assert w["client"].get("/api/games").json()["leagues"] == ["Tuesday"]
-
     def test_a_signed_in_person_can_name_it(self, w):
         src = a_ready_game(w)
         r = post(w, f"/api/games/{src}/league", {"league": "Tuesday Super League"}, SARAH)
