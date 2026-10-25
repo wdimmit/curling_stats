@@ -54,10 +54,12 @@ def test_the_passes_run_in_order_on_the_cameras_an_end_uses():
                      ("release", "right", "release")]
 
 
-def test_a_throw_that_never_arrived_gets_no_line():
+def test_a_throw_that_never_arrived_still_gets_its_line():
+    """A hogged rock was still thrown down a line: the line pass reads it from
+    the near hog line on, and its far-camera path ends where it stopped."""
     calls = []
     shot = measure(calls, rel=Release("yellow", 30.0, 1.0, 2.0))
-    assert [c[0] for c in calls] == ["hog", "side", "broom"]
+    assert [c[0] for c in calls] == ["hog", "side", "broom", "line"]
     assert shot.delivery is None and shot.color == "yellow"
 
 

@@ -474,6 +474,13 @@ class TestTimeLines:
         s = self.shot(crossing_for(self.stone_to(11.5)))
         assert self.path_window(self.run([s])) == [(4.8, 21.0, L.PATH_FPS)]
 
+    def test_a_hogged_rock_is_followed_as_far_as_one_with_no_rest(self):
+        """A rock that never reached the far house has a NaN rest; that is a
+        rest not known, read 25 s on, not a window that ends nowhere."""
+        hogged = self.shot(crossing_for(self.stone_to(11.5)), t_rest_s=float("nan"))
+        assert self.path_window(self.run([hogged])) == [(4.8, 28.8, L.PATH_FPS)]
+        assert hogged.line is not None
+
     def test_a_rock_the_overhead_lost_still_running_is_followed_past_it(self):
         """s_0MZM5biOgc46X2jEa e4 r9: a sweeper hid it from above 2.8 m out,
         running 0.7 m/s, and its t_rest is that moment; it hit a stone at the

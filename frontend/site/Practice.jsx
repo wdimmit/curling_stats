@@ -97,7 +97,15 @@ function Latest({ t, n, sid, live, newest }) {
       )}
       {clip === "wait" && <p className="muted">Clip on its way…</p>}
       <Delivery t={t} n={n} />
-      {!t.arrived ? <p><strong>Released, didn't arrive</strong> (hogged?)</p> : (
+      {!t.arrived ? (
+        <>
+          <p><strong>Released, didn't arrive</strong> (hogged?)</p>
+          <dl style={{ margin: 0 }}>
+            <dt className="muted">Line</dt>
+            <dd>{lineText(t.line) ?? "not measured"}</dd>
+          </dl>
+        </>
+      ) : (
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
           <dl style={{ flex: 1, margin: 0 }}>
             <dt className="muted">Line</dt>
@@ -191,8 +199,8 @@ function Live({ id, onDone, heading }) {
                 <td>{i + 1}</td>
                 <td>{turnText(t.curl, session.hand) ?? "–"}</td>
                 <td>{weightText(t.split_s) ?? "–"}</td>
-                <td>{t.arrived ? lineText(t.line, { short: true }) ?? "–" : "didn't arrive"}</td>
-                <td>{t.arrived ? restText(t.rest) ?? "–" : "–"}</td>
+                <td>{lineText(t.line, { short: true }) ?? "–"}</td>
+                <td>{t.arrived ? restText(t.rest) ?? "–" : "didn't arrive"}</td>
                 <td><button onClick={e => { e.stopPropagation(); hide(t, !t.hidden); }}>
                   {t.hidden ? "Mine after all" : "Not mine"}</button></td>
               </tr>

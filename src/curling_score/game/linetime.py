@@ -472,8 +472,11 @@ def path_until(shot):
     1.7 m short of the stone. Lost is resting further than a stone's width from
     where the track ended; the window is then held open as long as the rock
     could still have been running, as the house diff's own is
-    (``delivery._runout_s``)."""
+    (``delivery._runout_s``). A rock that never reached the house (hogged)
+    has a NaN rest, which is a rest not known."""
     t = getattr(shot, "t_rest_s", None)
+    if t is not None and np.isnan(t):
+        return None
     track = getattr(getattr(shot, "delivery", None), "track", None) or ()
     rest = _rest(shot)
     if t is None or not track or rest is None:

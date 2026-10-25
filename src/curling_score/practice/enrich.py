@@ -107,12 +107,13 @@ def enrich(video, setups, sideviews, models, *, house, arrival, release, house_f
                 # A release the long camera found is kept for from here on.
                 releasetime.follow_releases(keeper, shots)
                 _run("broom", stages.broom, shots, video, dest_view, model=models.broom_model)
-                if arrival is not None:
-                    # The line follows the stone to where it stopped. Practice is often
-                    # solo, so a rock nobody held a broom for is measured too: its line
-                    # says where it was aimed at the far tee (as in doubles).
-                    _run("line", stages.line, shots, video, hog_view, dest_view,
-                         model=models.line_model, without_broom=True)
+                # The line follows the stone to where it stopped, a hogged one
+                # too (asked for 2026-10-25): it was still thrown down a line.
+                # Practice is often solo, so a rock nobody held a broom for is
+                # measured too: its line says where it was aimed at the far tee
+                # (as in doubles).
+                _run("line", stages.line, shots, video, hog_view, dest_view,
+                     model=models.line_model, without_broom=True)
             if arrival is not None:
                 _run("release", stages.release, shots, keeper, hog_view,
                      model=release_model)
