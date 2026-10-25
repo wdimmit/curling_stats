@@ -178,8 +178,9 @@ def test_the_tap_reader_gives_the_holder_packets_before_the_fifo_opens(tmp_path)
     FIFO, so a camera quiet after its first keyframe left nothing to hold."""
     read, write = os.pipe()
     with os.fdopen(write, "wb") as w:
-        w.write(struct.pack("<IB", len(SPS_PPS_IDR), 1) + SPS_PPS_IDR)
-        w.write(struct.pack("<IB", len(P1), 0) + P1)
+        now = time.monotonic_ns()
+        w.write(struct.pack("<IBqq", len(SPS_PPS_IDR), 1, 0, now) + SPS_PPS_IDR)
+        w.write(struct.pack("<IBqq", len(P1), 0, 166_667, now) + P1)
     args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
                                          "--first", str(tmp_path / "first")])
     args.tap_fd, args.parent = read, os.getppid()

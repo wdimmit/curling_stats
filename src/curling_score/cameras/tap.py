@@ -8,10 +8,15 @@ the file descriptor ``NDI_TAP_FD``. Python's own receive loop keeps only
 ~45-55 of a camera's 60 fps, so decoded frames could never carry 20 cameras;
 the packets themselves arrive at the full rate.
 
-Each record is a 4-byte little-endian payload length, one flags byte (bit 0 =
-keyframe) and the payload: the packet's Annex-B bytes as the camera sent them.
-The first packets of a connection can be P-slices from before the first
-keyframe, so whoever reads them waits for a keyframe.
+Each record is, little-endian, a 4-byte payload length, one flags byte (bit 0
+= keyframe), the packet's pts and when it arrived (8 bytes each), and the
+payload: the packet's Annex-B bytes as the camera sent them. The pts is the
+camera's own clock, in 1/``PTS_HZ`` s: it spaces the frames truly, but it is
+not the Ryzen's (a HOUSE camera's is years behind) and it drifts. The arrival
+is ``CLOCK_MONOTONIC``, ``time.monotonic``'s clock, in ns, taken in libndi's
+own call: the reader can be held off the GIL long after a packet came. The
+first packets of a connection can be P-slices from before the first keyframe,
+so whoever reads them waits for a keyframe.
 
 With decode off (the default) the stand-in also stops libndi decoding the
 video it never shows us. libndi keeps passing packets at the full 60/s, and
@@ -29,8 +34,12 @@ from typing import BinaryIO
 
 TAP_DIR = Path("/opt/ndi")
 KEYFRAME = 0x01
+# The units of the pts libndi gives the decoder: 100 ns, though the cameras'
+# clocks tick in whole milliseconds (measured 2026-10-25).
+PTS_HZ = 10_000_000
 
-_HEADER = struct.Struct("<IB")
+_HEADER = struct.Struct("<IBqq")
+_NO_PTS = -(1 << 63)  # AV_NOPTS_VALUE
 
 
 def tap_env(fd: int, *, decode: bool) -> dict[str, str]:
@@ -48,10 +57,12 @@ def tap_env(fd: int, *, decode: bool) -> dict[str, str]:
     }
 
 
-def read_records(f: BinaryIO) -> Iterator[tuple[int, bytes]]:
-    """``(flags, payload)`` for each record until ``f`` ends.
+def read_records(f: BinaryIO) -> Iterator[tuple[int, int | None, float, bytes]]:
+    """``(flags, pts, arrived_s, payload)`` for each record until ``f`` ends.
 
-    Ends quietly at EOF between records; a record cut short is a ``ValueError``.
+    ``pts`` is None for a packet that had none. ``arrived_s`` is on
+    ``time.monotonic``'s clock. Ends quietly at EOF between records; a record
+    cut short is a ``ValueError``.
     """
     while True:
         head = _read_exact(f, _HEADER.size)
@@ -59,11 +70,11 @@ def read_records(f: BinaryIO) -> Iterator[tuple[int, bytes]]:
             return
         if len(head) < _HEADER.size:
             raise ValueError(f"tap record header cut short: {len(head)} of {_HEADER.size} bytes")
-        size, flags = _HEADER.unpack(head)
+        size, flags, pts, arrived_ns = _HEADER.unpack(head)
         payload = _read_exact(f, size)
         if len(payload) < size:
             raise ValueError(f"tap record cut short: {len(payload)} of {size} bytes")
-        yield flags, payload
+        yield flags, None if pts == _NO_PTS else pts, arrived_ns / 1e9, payload
 
 
 def _read_exact(f: BinaryIO, n: int) -> bytes:

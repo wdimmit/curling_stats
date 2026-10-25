@@ -11,8 +11,14 @@
  *   That tells the video from the AAC context libndi also makes on the PTZ
  *   cameras. It keeps only the latest, so run one receiver per process.
  * - avcodec_send_packet on that context passes the packet on to NDI_TAP_FD as
- *   one record: the payload length (4 bytes, little-endian), a flags byte
- *   (bit 0 = AV_PKT_FLAG_KEY) and the payload, the Annex-B bytes the camera
+ *   one record, all little-endian:
+ *
+ *       len u32 | flags u8 | pts i64 | arrived_ns i64 | payload
+ *
+ *   flags bit 0 is AV_PKT_FLAG_KEY. pts is the packet's own: the camera's
+ *   clock (AV_NOPTS_VALUE if it has none). arrived_ns is CLOCK_MONOTONIC as
+ *   libndi makes the call, taken here because the reader may get to the
+ *   record much later (below). The payload is the Annex-B bytes the camera
  *   sent. Every packet is passed on as it comes, P-slices before the first
  *   SPS/IDR too; the reader (tap.py) decides what to keep.
  * - Unless NDI_TAP_DECODE is "1", libndi's own decode of that context is off:
@@ -41,6 +47,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libavcodec/avcodec.h>
@@ -59,6 +66,9 @@ static pthread_once_t once = PTHREAD_ONCE_INIT;
 static AVCodecContext *h264;
 static int tap_fd = -1;
 static int decode;
+
+/* A record's header: len u32, flags u8, pts i64, arrived_ns i64. */
+#define HEADER 21
 
 /* Records waiting for the writer, oldest first, and what decides whether the
  * next one may join them. All under `lock`. */
@@ -96,6 +106,11 @@ static int write_all(int fd, const void *buf, size_t n) {
         n -= (size_t)w;
     }
     return 0;
+}
+
+static void put_le(uint8_t *p, uint64_t v, int n) {
+    for (int i = 0; i < n; i++, v >>= 8)
+        p[i] = v & 0xff;
 }
 
 static void *writer(void *arg) {
@@ -167,9 +182,12 @@ static int is_h264(const AVCodecContext *ctx) {
 static void tap(const AVPacket *pkt) {
     if (__atomic_load_n(&tap_fd, __ATOMIC_RELAXED) < 0 || !pkt || !pkt->data || pkt->size <= 0)
         return;
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    int64_t arrived = (int64_t)now.tv_sec * 1000000000 + now.tv_nsec;
     uint32_t n = (uint32_t)pkt->size;
     int key = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-    size_t size = 5 + (size_t)n;
+    size_t size = HEADER + (size_t)n;
 
     pthread_mutex_lock(&lock);
     if ((need_key && !key) || queued_bytes + size > TAP_QUEUE_BYTES) {
@@ -189,12 +207,11 @@ static void tap(const AVPacket *pkt) {
     r->next = NULL;
     r->size = size;
     uint8_t *p = r->bytes;
-    p[0] = n & 0xff;
-    p[1] = (n >> 8) & 0xff;
-    p[2] = (n >> 16) & 0xff;
-    p[3] = n >> 24;
+    put_le(p, n, 4);
     p[4] = key;
-    memcpy(p + 5, pkt->data, n);
+    put_le(p + 5, (uint64_t)pkt->pts, 8);
+    put_le(p + 13, (uint64_t)arrived, 8);
+    memcpy(p + HEADER, pkt->data, n);
 
     pthread_mutex_lock(&lock);
     if (need_key)

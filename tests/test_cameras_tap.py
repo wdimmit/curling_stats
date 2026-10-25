@@ -12,29 +12,42 @@ import pytest
 from curling_score.cameras import tap
 
 
-def record(flags, payload):
-    return struct.pack("<IB", len(payload), flags) + payload
+NO_PTS = -(1 << 63)  # AV_NOPTS_VALUE
 
 
-def test_read_records_splits_frames_and_flags():
+def record(flags, payload, pts=0, arrived_ns=0):
+    return struct.pack("<IBqq", len(payload), flags, pts, arrived_ns) + payload
+
+
+def test_read_records_splits_frames_flags_pts_and_arrival():
     key = b"\x00\x00\x00\x01e" + bytes(range(40))
     inter = b"\x00\x00\x00\x01A" + b"\xff" * 7
-    f = io.BytesIO(record(1, key) + record(0, inter))
+    # A HOUSE camera's clock, years off, in libndi's 100 ns units.
+    f = io.BytesIO(record(1, key, 16_419_840_000_000_000, 812_345_678_901_234)
+                   + record(0, inter, 16_419_840_000_166_667, 812_345_695_567_901))
 
-    assert list(tap.read_records(f)) == [(1, key), (0, inter)]
+    assert list(tap.read_records(f)) == [
+        (1, 16_419_840_000_000_000, pytest.approx(812_345.678901234, abs=1e-9), key),
+        (0, 16_419_840_000_166_667, pytest.approx(812_345.695567901, abs=1e-9), inter)]
+
+
+def test_a_packet_without_a_pts_reads_as_none():
+    (got,) = tap.read_records(io.BytesIO(record(0, b"\x00\x00\x00\x01A", NO_PTS, 10**9)))
+
+    assert got == (0, None, 1.0, b"\x00\x00\x00\x01A")
 
 
 def test_read_records_stops_cleanly_at_eof():
     assert list(tap.read_records(io.BytesIO(b""))) == []
 
 
-@pytest.mark.parametrize("cut", [2, 4, 5, 9])
+@pytest.mark.parametrize("cut", [2, 5, 13, 20, 21, 25])
 def test_read_records_truncated_raises(cut):
-    whole = record(1, b"\x00\x00\x00\x01e" + b"\x00" * 4)
-    f = io.BytesIO(record(0, b"\x00\x00\x00\x01A") + whole[:cut])
+    whole = record(1, b"\x00\x00\x00\x01e" + b"\x00" * 4, 7, 8)
+    f = io.BytesIO(record(0, b"\x00\x00\x00\x01A", 5, 6) + whole[:cut])
 
     records = tap.read_records(f)
-    assert next(records) == (0, b"\x00\x00\x00\x01A")
+    assert next(records) == (0, 5, 6e-9, b"\x00\x00\x00\x01A")
     with pytest.raises(ValueError):
         next(records)
 
@@ -55,7 +68,7 @@ def test_read_records_reads_a_pipe_in_pieces():
             b[:n], self.left = self.left[:n], self.left[n:]
             return n
 
-    assert [flags for flags, _ in tap.read_records(Trickle())] == [1, 0]
+    assert [flags for flags, *_ in tap.read_records(Trickle())] == [1, 0]
 
 
 def test_tap_env_puts_tap_dir_first_and_sets_decode(monkeypatch):
@@ -89,19 +102,37 @@ int avcodec_receive_frame(AVCodecContext *ctx, AVFrame *frame) { return AVERROR(
 """
 
 # argv[1] is the packets to send, K for a keyframe and P for the rest, each
-# 1000 bytes, and "." for a pause that lets the tap's writer catch up. The pipe
-# holds one 4 KiB page. When all are sent it reads the pipe until nothing comes
-# for half a second, and prints each record's flag.
+# 1000 bytes with the pts PTS0 + its number, N for a P without a pts, and "."
+# for a pause that lets the tap's writer catch up. The pipe holds one 4 KiB
+# page. It prints "S pts before after" for each send, with CLOCK_MONOTONIC in
+# ns either side of it, then "sent". When all are sent it reads the pipe until
+# nothing comes for half a second, and prints "R flag pts arrived" for each
+# record.
 _DRIVER = r"""
 #define _GNU_SOURCE
 #include <fcntl.h>
+#include <inttypes.h>
 #include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <libavcodec/avcodec.h>
+
+static int64_t now_ns(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (int64_t)t.tv_sec * 1000000000 + t.tv_nsec;
+}
+
+static uint64_t le(const uint8_t *p, int n) {
+    uint64_t v = 0;
+    for (int i = n - 1; i >= 0; i--)
+        v = v << 8 | p[i];
+    return v;
+}
 
 int main(int argc, char **argv) {
     int p[2];
@@ -113,6 +144,7 @@ int main(int argc, char **argv) {
     AVCodec h264 = {.id = AV_CODEC_ID_H264};
     AVCodecContext *ctx = avcodec_alloc_context3(&h264);
     static uint8_t data[1000];
+    int64_t number = 0;
     for (const char *c = argv[1]; *c; c++) {
         if (*c == '.') {
             usleep(200000);
@@ -123,7 +155,11 @@ int main(int argc, char **argv) {
         pkt.data = data;
         pkt.size = sizeof data;
         pkt.flags = *c == 'K' ? AV_PKT_FLAG_KEY : 0;
+        pkt.pts = *c == 'N' ? AV_NOPTS_VALUE : PTS0 + number;
+        number++;
+        int64_t before = now_ns();
         avcodec_send_packet(ctx, &pkt);
+        printf("S %" PRId64 " %" PRId64 " %" PRId64 "\n", pkt.pts, before, now_ns());
     }
     puts("sent");
     fflush(stdout);
@@ -136,15 +172,16 @@ int main(int argc, char **argv) {
             break;
         n += (size_t)r;
     }
-    for (size_t i = 0; i + 5 <= n;) {
-        uint32_t size = got[i] | got[i + 1] << 8 | got[i + 2] << 16 | (uint32_t)got[i + 3] << 24;
-        putchar(got[i + 4] & 1 ? 'K' : 'P');
-        i += 5 + size;
+    for (size_t i = 0; i + 21 <= n;) {
+        printf("R %c %" PRId64 " %" PRId64 "\n", got[i + 4] & 1 ? 'K' : 'P',
+               (int64_t)le(got + i + 5, 8), (int64_t)le(got + i + 13, 8));
+        i += 21 + le(got + i, 4);
     }
-    putchar('\n');
     return 0;
 }
 """
+# A camera's clock in 100 ns units, far enough from 0 to need all 64 bits.
+PTS0 = 16_419_840_000_000_000
 
 
 @pytest.fixture(scope="module")
@@ -158,13 +195,15 @@ def tap_driver(tmp_path_factory):
     try:
         subprocess.run([*gcc, "-shared", "-fPIC", "-o", d / "libavcodec.so.61", d / "stub.c",
                         "-Wl,-soname,libavcodec.so.61"], check=True, capture_output=True)
-        # A queue of three records, so a pipe nobody reads fills it at once.
-        subprocess.run([*gcc, "-shared", "-fPIC", "-DTAP_QUEUE_BYTES=3015", "-o",
+        # A queue of three 1021-byte records, so a pipe nobody reads fills it
+        # at once.
+        subprocess.run([*gcc, "-shared", "-fPIC", "-DTAP_QUEUE_BYTES=3063", "-o",
                         d / "libavcodec-ndi.so.61", _TAP_C, "-Wl,--no-as-needed",
                         d / "libavcodec.so.61", "-Wl,-rpath,$ORIGIN", "-lpthread",
                         "-Wl,-soname,libavcodec-ndi.so.61"], check=True, capture_output=True)
-        subprocess.run([*gcc, "-o", d / "driver", d / "driver.c", d / "libavcodec-ndi.so.61",
-                        "-Wl,-rpath,$ORIGIN"], check=True, capture_output=True)
+        subprocess.run([*gcc, f"-DPTS0={PTS0}LL", "-o", d / "driver", d / "driver.c",
+                        d / "libavcodec-ndi.so.61", "-Wl,-rpath,$ORIGIN"],
+                       check=True, capture_output=True)
     except subprocess.CalledProcessError as exc:
         if b"avcodec.h" in exc.stderr:
             pytest.skip("no libavcodec headers")
@@ -172,16 +211,40 @@ def tap_driver(tmp_path_factory):
     return d / "driver"
 
 
+def drive(tap_driver, packets):
+    """What the driver sent, {pts: (before, after)}, and the records the
+    reader got, [(flag, pts, arrived)]."""
+    out = subprocess.run([tap_driver, packets], capture_output=True, text=True, timeout=10)
+    lines = out.stdout.splitlines()
+    sent = lines.index("sent")
+    sends = {int(pts): (int(a), int(b)) for _, pts, a, b in (s.split() for s in lines[:sent])}
+    records = [(flag, int(pts), int(at)) for _, flag, pts, at in
+               (r.split() for r in lines[sent + 1:])]
+    return sends, records, out.stderr
+
+
 def test_tap_never_blocks_libndi_and_drops_to_a_keyframe(tap_driver):
     """With nobody reading, every send returns at once. What the queue and the
     pipe cannot hold is dropped up to the next keyframe, so the reader gets a
     run that starts at a keyframe, then a gap, then a run from the next one."""
-    out = subprocess.run([tap_driver, "K" + "P" * 30 + ".KPP"], capture_output=True,
-                         text=True, timeout=10)
-    lines = out.stdout.split("\n")
-    assert lines[0] == "sent"
-    got = lines[1]
+    _, records, stderr = drive(tap_driver, "K" + "P" * 30 + ".KPP")
+    got = "".join(flag for flag, _, _ in records)
     assert re.fullmatch(r"KP+KPP", got), got
     assert got.count("P") < 32
-    assert "dropping to the next keyframe" in out.stderr
-    assert "queueing again at a keyframe" in out.stderr
+    assert "dropping to the next keyframe" in stderr
+    assert "queueing again at a keyframe" in stderr
+
+
+def test_a_record_carries_the_packets_pts_and_when_libndi_sent_it(tap_driver):
+    """The arrival is taken in libndi's own call, not when the writer gets to
+    the record: a Python reader can be held off the GIL. Records the pipe could
+    not take until the end were still stamped as they were sent."""
+    # The pipe holds four records, and the last two wait in the queue.
+    sends, records, _ = drive(tap_driver, "KPN.PPP")
+    assert [pts for _, pts, _ in records] == [PTS0, PTS0 + 1, NO_PTS, PTS0 + 3, PTS0 + 4,
+                                             PTS0 + 5]
+    for _, pts, arrived in records:
+        before, after = sends[pts]
+        assert before <= arrived <= after
+    # The pause comes between the third packet's arrival and the fourth's.
+    assert records[3][2] - records[2][2] >= 200_000_000

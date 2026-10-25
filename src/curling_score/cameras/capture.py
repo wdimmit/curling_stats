@@ -383,8 +383,7 @@ class _Capture:
 
     def _read(self) -> None:
         with open(self.tap_fd, "rb") as f:
-            for flags, payload in tap.read_records(f):
-                at = time.monotonic()
+            for flags, _pts, at, payload in tap.read_records(f):
                 self.reconnects.heard()
                 if flags & tap.KEYFRAME and self.first_at is None:
                     self._save_first(payload)
