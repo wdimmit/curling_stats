@@ -608,6 +608,29 @@ class TestCut:
             sideview.solve(np.full((1080, 810, 3), 128, np.uint8), (0, 0, 810, 1080),
                            name="left", label="vid1-left")
 
+    def test_the_hog_search_is_told_the_label_not_the_name(self, monkeypatch):
+        """`_hog_row`'s own error ("no ice below the house") cannot be reached
+        through `solve` -- the house window ends at half the view's height --
+        so check what it is handed, and what it says with it."""
+        seen = []
+        real = sideview._hog_row
+
+        def spy(lum, start, name):
+            seen.append(name)
+            return real(lum, start, name)
+
+        monkeypatch.setattr(sideview, "_hog_row", spy)
+        plate = synth.side_view()
+        sideview.solve(plate, (0, 0, 810, 1080), name="left", label="vid1-left")
+        sideview.solve(plate, (0, 0, 810, 1080), name="left")
+        sideview.solve(plate, (0, 0, 810, 1080))
+        assert seen == ["vid1-left", "left", "side"]
+
+    def test_the_hog_search_error_carries_the_label(self):
+        lum = np.zeros((100, 10))
+        with pytest.raises(sideview.SideViewError, match="^vid1-left: no ice below"):
+            sideview._hog_row(lum, 95, "vid1-left")
+
     def test_the_lateral_fits_keep_name_and_transform(self):
         turned = Cut("left", (0, 0, 810, 1080), size=(405, 540))
         v = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,

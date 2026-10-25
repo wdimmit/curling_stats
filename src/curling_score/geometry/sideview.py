@@ -433,7 +433,7 @@ def _solve_within(green, lum, rect, name, label, search):
     seen = [edges[0], edges[-1]]
     want = np.array([-C.R_12FT_M, C.R_12FT_M])
 
-    hog = _hog_row(lum, int(edges[-1]) + 12, name)
+    hog = _hog_row(lum, int(edges[-1]) + 12, label)
 
     def error(tee):
         v = SideView(rect=rect, tee_row=tee, hog_row=hog, name=name)
