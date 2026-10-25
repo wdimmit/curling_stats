@@ -522,7 +522,8 @@ class TestThinkingTimeNeedsSignIn:
         shown when signed in, or when there are no accounts at all."""
         ui = (self.ROOT / "frontend/site/ui.jsx").read_text()
         header = ui[ui.index("export function Header("):]
-        assert 'const SIGNED_IN_ONLY = new Set(["/thinking"]);' in ui
+        only = re.search(r"const SIGNED_IN_ONLY = new Set\(\[(.*?)\]\);", ui)
+        assert only and '"/thinking"' in only.group(1)
         assert ("links.filter(([href]) => !SIGNED_IN_ONLY.has(href)"
                 " || (ready && (!accounts || !!user)))") in " ".join(header.split())
 
