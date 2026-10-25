@@ -142,6 +142,11 @@ done
 
 # Artifact Registry for the image
 gcloud artifacts repositories create curling --repository-format=docker --location=$REGION
+# Every deploy pushes api:<sha> (~340 MB), so prune: delete anything older than
+# 14 days, but always keep the 10 newest (Keep wins over Delete). Run it with
+# --dry-run first: the registry then only logs what it would delete.
+gcloud artifacts repositories set-cleanup-policies curling --location=$REGION \
+  --policy=deploy/artifact-cleanup.json [--dry-run]
 ```
 
 Edit `deploy/cloudrun.yaml`: `PUBLIC_BASE_URL` (your domain), `MODEL_ID`
