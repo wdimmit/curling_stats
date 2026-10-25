@@ -248,6 +248,26 @@ td.pace .val { width:4.6em; text-align:right; font-weight:600; }
 #ice td .val { font-weight:600; }
 #ice td small { display:block; color:var(--muted); font-size:12px; }
 #ice td.unclear .val { color:var(--muted); font-weight:500; }
+/* The two draws' series: blue and orange, validated against both panels
+   (dataviz validate_palette.js, light #fffdf7 and dark #211c14). */
+#ice { --series-a:#2a78d6; --series-b:#eb6834; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #ice {
+  --series-a:#3987e5; --series-b:#d95926; } }
+#ice table.ends { max-width:420px; }
+#ice figure.endchart { margin:14px 0 6px; max-width:640px; }
+#ice figure.endchart figcaption { font-size:13px; color:var(--muted); min-height:1.4em; }
+#ice .legend { display:flex; gap:14px; }
+#ice .legend i { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px;
+  vertical-align:-1px; }
+#ice svg { width:100%; height:auto; display:block; font-size:12px; }
+#ice svg .tick line { stroke:var(--line); stroke-width:1; }
+#ice svg text { fill:var(--muted); font-family:inherit; }
+#ice svg text.direct { fill:var(--ink); font-weight:600; }
+#ice svg polyline { fill:none; stroke:currentColor; stroke-width:2; stroke-linejoin:round; }
+#ice svg line.whisker { stroke:currentColor; stroke-width:2; stroke-linecap:round; opacity:.45; }
+#ice svg circle { fill:currentColor; stroke:var(--panel); stroke-width:2; }
+#ice svg line.cross { stroke:var(--muted); stroke-width:1; stroke-dasharray:3 3; }
+#ice svg rect.hit { fill:transparent; cursor:crosshair; }
 
 @media (max-width: 640px) {
   /* Seven columns do not fit a phone either: each row becomes a card, as the

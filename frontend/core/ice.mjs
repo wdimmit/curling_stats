@@ -21,7 +21,8 @@
  * another only shows a change of about 10% or more. */
 
 import { buildGameView } from "./timeline.mjs";
-import { lineNumbers, median } from "./line.mjs";
+import { curlEnd, lineNumbers, median, restOf } from "./line.mjs";
+import { isSplitEstimated } from "./stats.mjs";
 import { R } from "./constants.mjs";
 
 export const TAIL_M = 10;
@@ -47,6 +48,31 @@ export const TURN_BINS = [
   { key: "unread", name: "Rotation not read" },
 ];
 
+/* Least squares: the b minimising |X b - y|, through the normal equations;
+ * null when they are singular. */
+export function lstsq(X, y) {
+  const k = X[0]?.length ?? 0;
+  const S = Array.from({ length: k }, () => new Array(k + 1).fill(0));
+  X.forEach((row, n) => {
+    for (let i = 0; i < k; i++) {
+      for (let j = 0; j < k; j++) S[i][j] += row[i] * row[j];
+      S[i][k] += row[i] * y[n];
+    }
+  });
+  for (let i = 0; i < k; i++) {
+    let p = i;
+    for (let r = i + 1; r < k; r++) if (Math.abs(S[r][i]) > Math.abs(S[p][i])) p = r;
+    [S[i], S[p]] = [S[p], S[i]];
+    if (Math.abs(S[i][i]) < 1e-12) return null;
+    for (let r = 0; r < k; r++) {
+      if (r === i) continue;
+      const f = S[r][i] / S[i][i];
+      for (let c = i; c <= k; c++) S[r][c] -= f * S[i][c];
+    }
+  }
+  return S.map((row, i) => row[k] / row[i]);
+}
+
 /* dx/dy of `path` ([[y, x], ...]) at y0, and its x there, from a quadratic
  * through the points within `half` m; null without enough of them. */
 export function tangentAt(path, y0, half = 2.0) {
@@ -54,27 +80,9 @@ export function tangentAt(path, y0, half = 2.0) {
   if (pts.length < 5) return null;
   const ys = pts.map(p => p[0]);
   if (Math.max(...ys) - Math.min(...ys) < 1.5 * half) return null;
-  // Least squares for x = a + b u + c u^2, u = y - y0.
-  const S = Array.from({ length: 3 }, () => [0, 0, 0, 0]);
-  for (const [y, x] of pts) {
-    const u = y - y0, row = [1, u, u * u];
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 3; j++) S[i][j] += row[i] * row[j];
-      S[i][3] += row[i] * x;
-    }
-  }
-  for (let i = 0; i < 3; i++) {
-    let p = i;
-    for (let r = i + 1; r < 3; r++) if (Math.abs(S[r][i]) > Math.abs(S[p][i])) p = r;
-    [S[i], S[p]] = [S[p], S[i]];
-    if (Math.abs(S[i][i]) < 1e-12) return null;
-    for (let r = 0; r < 3; r++) {
-      if (r === i) continue;
-      const f = S[r][i] / S[i][i];
-      for (let c = i; c < 4; c++) S[r][c] -= f * S[i][c];
-    }
-  }
-  return { slope: S[1][3] / S[1][1], x: S[0][3] / S[0][0] };
+  // x = a + b u + c u^2, u = y - y0.
+  const b = lstsq(pts.map(([y]) => [1, y - y0, (y - y0) ** 2]), pts.map(p => p[1]));
+  return b ? { slope: b[1], x: b[0] } : null;
 }
 
 /* How far the rock bent over its last `d` m: its x at rest against where the
@@ -221,4 +229,109 @@ export function iceTables(a, b) {
     sides: [...SIDES.map(s => row(s.name, r => r.side === s.key)), row("All", () => true)],
     turns: TURN_BINS.map(t => row(t.name, r => r.turnBin === t.key)),
   };
+}
+
+/* --- ice speed --------------------------------------------------------------
+ * The hog-to-hog time that would stop a rock on the tee line, end by end.
+ *
+ * Every rock that came to rest untouched between the far hog line and the
+ * back of the house carries its own split and where it stopped. The split
+ * runs about half a second longer per metre shorter it stopped, so a curve
+ * fitted through all of an end's rocks -- every sheet's -- and read at the tee
+ * line is that end's draw weight. The curve's shape is shared by the whole
+ * draw; each end has its own level. A longer split means keener ice: the rock
+ * needed less weight to get there.
+ *
+ * Sweeping is not seen, and a swept rock went further than its split says, so
+ * the figure is the ice as the players used it, sweepers included. */
+
+// A hog-to-hog time outside these is a misread, not a throw.
+export const SPLIT_MIN_S = 11;
+export const SPLIT_MAX_S = 20;
+// An end is read only from at least this many rocks across the sheets.
+export const MIN_END_ROCKS = 6;
+
+/* One row per rock of `doc`'s games that came to rest untouched between the
+ * far hog line and the back of the house, with a measured split. */
+export function speedRocks(doc, game = doc?.chart?.source_id ?? "") {
+  const rows = [];
+  for (let gi = 0; gi < (doc?.games?.length ?? 0); gi++) {
+    const view = buildGameView(doc, gi, {});
+    for (const { end, shots } of view.ends) {
+      for (const s of shots) {
+        if (s.missing) continue;
+        const split = s.long_split_s;
+        if (!Number.isFinite(split) || split <= SPLIT_MIN_S || split >= SPLIT_MAX_S) continue;
+        if (isSplitEstimated(s)) continue;
+        const rest = restOf(s);
+        if (!rest || rest.y < -R.inHouse || rest.y > R.hog) continue;
+        if (curlEnd(s)?.hit !== false) continue;
+        rows.push({ game: gi ? `${game}#${gi}` : game, sheet: doc?.source?.sheet ?? null,
+                    end: end.number, number: s.number, rest_y: rest.y, split });
+      }
+    }
+  }
+  return rows;
+}
+
+/* The draw's tee-line split, and each end's: split ~ level + b y + c y^2,
+ * with one level for the draw, then one per end. null when the rocks can't
+ * carry the curve. */
+export function fitSpeed(rows) {
+  if (rows.length < MIN_ROCKS) return null;
+  const curve = r => [r.rest_y, r.rest_y ** 2];
+  const draw = lstsq(rows.map(r => [1, ...curve(r)]), rows.map(r => r.split));
+  if (!draw) return null;
+  const ends = [...new Set(rows.map(r => r.end))].sort((a, b) => a - b);
+  const byEnd = lstsq(rows.map(r => [...ends.map(e => (e === r.end ? 1 : 0)), ...curve(r)]),
+                      rows.map(r => r.split));
+  const count = e => rows.filter(r => r.end === e).length;
+  return {
+    split: draw[0],
+    perMetre: draw[1],
+    ends: byEnd ? ends.map((end, i) => ({ end, split: byEnd[i], rocks: count(end) })) : [],
+  };
+}
+
+/* Both draws' speed, each with a 95% range from drawing its games again, and
+ * B - A on the whole draw. Ends with too few rocks have no figure. `b` may be
+ * null. */
+export function speedReport(a, b, { reps = 1000, seed = 1 } = {}) {
+  const rand = rng(seed);
+  const one = rows => {
+    const games = byGame(rows);
+    const fit = fitSpeed(rows);
+    if (!fit || games.length < MIN_GAMES) {
+      return { rocks: rows.length, games: games.length, split: null, ends: [], draws: [] };
+    }
+    const draws = [], perEnd = new Map();
+    for (let i = 0; i < reps; i++) {
+      const f = fitSpeed(games.flatMap(() => games[Math.floor(rand() * games.length)]));
+      if (!f) continue;
+      draws.push(f.split);
+      for (const e of f.ends) {
+        if (e.rocks < MIN_END_ROCKS / 2) continue;
+        perEnd.set(e.end, [...(perEnd.get(e.end) || []), e.split]);
+      }
+    }
+    const range = xs => {
+      const s = [...xs].sort((x, y) => x - y);
+      return s.length ? { lo: quantile(s, 0.025), hi: quantile(s, 0.975) } : { lo: null, hi: null };
+    };
+    return {
+      rocks: rows.length, games: games.length, split: fit.split, ...range(draws), draws,
+      ends: fit.ends.map(e => (e.rocks < MIN_END_ROCKS
+        ? { end: e.end, rocks: e.rocks, split: null }
+        : { ...e, ...range(perEnd.get(e.end) || []) })),
+    };
+  };
+  const ra = one(a), rb = b ? one(b) : null;
+  let diff = null;
+  if (rb && ra.split != null && rb.split != null) {
+    const n = Math.min(ra.draws.length, rb.draws.length);
+    const d = Array.from({ length: n }, (_, i) => rb.draws[i] - ra.draws[i]).sort((x, y) => x - y);
+    diff = { diff: rb.split - ra.split, lo: quantile(d, 0.025), hi: quantile(d, 0.975) };
+  }
+  const strip = r => r && (({ draws, ...rest }) => rest)(r);
+  return { a: strip(ra), b: strip(rb), diff };
 }

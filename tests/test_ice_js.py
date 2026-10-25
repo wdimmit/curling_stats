@@ -200,3 +200,87 @@ class TestTables:
     def test_one_draw_on_its_own(self):
         got = run_js(ROWS + "out(iceTables(mk('a', 3, [1,2,3], 1.6), null));")
         assert got["sides"][-1]["b"] is None and got["sides"][-1]["curl"] is None
+
+
+def timed(number, *, split=13.8, rest=(0.2, 0.0), hit=None, **kw):
+    """An untouched rock with a hog-to-hog split, stopped at `rest`."""
+    s = draw(number, rest=rest, hit=hit)
+    s.update(long_split_s=split, **kw)
+    return s
+
+
+def speed_rows(shots):
+    return run_js(f"out(speedRocks({json.dumps(doc(shots))}, 's_g'));")
+
+
+class TestWhichRocksTimeTheIce:
+    def test_an_untouched_rock_with_a_split_is_read(self):
+        (r,) = speed_rows([timed(1, split=14.2, rest=(0.3, 1.5))])
+        assert (r["game"], r["sheet"], r["end"], r["split"], r["rest_y"]) == ("s_g", 2, 1, 14.2, 1.5)
+
+    def test_a_guard_counts_too(self):
+        assert len(speed_rows([timed(1, rest=(0.0, 5.0))])) == 1
+
+    def test_past_the_hog_line_or_through_the_house_does_not(self):
+        assert speed_rows([timed(1, rest=(0.0, 7.0)), timed(2, rest=(0.0, -2.2))]) == []
+
+    def test_a_hit_does_not(self):
+        struck = {"added": [], "removed": [{"color": "yellow", "x": 0.2, "y": 0.2}], "moved": []}
+        assert speed_rows([timed(1, hit=struck)]) == []
+
+    def test_an_estimated_or_impossible_split_does_not(self):
+        assert speed_rows([timed(1, long_split_extrapolated_m=0.4), timed(2, split=9.0),
+                           timed(3, split=None)]) == []
+
+    def test_a_rock_without_a_line_still_counts(self):
+        assert len(speed_rows([dict(timed(1), line=None)])) == 1
+
+
+# Rows on a known curve: split = level + 0.45 y + 0.03 y^2, the level per end.
+SPEED_ROWS = """
+const mkSpeed = (prefix, games, levels, wobble = 0) => {
+  const rows = [];
+  for (let g = 0; g < games; g++)
+    levels.forEach((level, i) => {
+      for (const y of [-1.5, -0.5, 0, 0.8, 1.6, 3, 5])
+        for (const w of wobble ? [wobble * ((g + i) % 3 + 1) / 3, -wobble * ((g + i) % 3 + 1) / 3] : [0])
+          rows.push({game: `${prefix}${g}`, sheet: g + 1, end: i + 1, rest_y: y,
+                     split: level + 0.45 * y + 0.03 * y * y + w + wobble * (g - (games - 1) / 2) / games});
+    });
+  return rows;
+};
+"""
+
+
+class TestTeeLineSplit:
+    def test_each_ends_level_is_read_at_the_tee_line(self):
+        got = run_js(SPEED_ROWS + "out(fitSpeed(mkSpeed('a', 3, [13.4, 13.8, 14.1])));")
+        assert [e["split"] for e in got["ends"]] == pytest.approx([13.4, 13.8, 14.1])
+        assert got["split"] == pytest.approx((13.4 + 13.8 + 14.1) / 3)
+        assert got["perMetre"] == pytest.approx(0.45, abs=0.02)
+        assert [e["rocks"] for e in got["ends"]] == [21, 21, 21]
+
+    def test_too_few_rocks_read_nothing(self):
+        assert run_js("out(fitSpeed([{game: 'a', end: 1, rest_y: 0, split: 14}]));") is None
+
+    def test_the_report_ranges_and_difference(self):
+        body = SPEED_ROWS + ("out(speedReport(mkSpeed('a', 4, [13.5, 13.7], 0.3), "
+                             "mkSpeed('b', 4, [13.9, 14.1], 0.3)));")
+        got = run_js(body)
+        a, b = got["a"], got["b"]
+        assert a["split"] == pytest.approx(13.6, abs=0.05) and a["lo"] < a["split"] < a["hi"]
+        assert [e["end"] for e in a["ends"]] == [1, 2] and all(e["lo"] < e["split"] < e["hi"] for e in a["ends"])
+        assert got["diff"]["diff"] == pytest.approx(0.4, abs=0.05) and 0 < got["diff"]["lo"] < got["diff"]["hi"]
+        assert "draws" not in a and run_js(body) == got
+
+    def test_an_end_with_too_few_rocks_has_no_figure(self):
+        got = run_js(SPEED_ROWS + """
+const rows = mkSpeed('a', 3, [13.5, 13.7]).concat(
+  [0, 1].map(i => ({game: 'a0', sheet: 1, end: 3, rest_y: i, split: 14 + 0.45 * i})));
+out(speedReport(rows, null));""")
+        assert got["a"]["ends"][2] == {"end": 3, "rocks": 2, "split": None}
+        assert got["b"] is None and got["diff"] is None
+
+    def test_too_few_games_read_no_speed(self):
+        got = run_js(SPEED_ROWS + "out(speedReport(mkSpeed('a', 2, [13.5, 13.7]), null));")
+        assert got["a"]["split"] is None and got["a"]["games"] == 2

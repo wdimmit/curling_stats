@@ -10,7 +10,7 @@
     "frontend/core/format.mjs": "5b6852a008aa5b3ac6d6b426ccaea7e02b710bfe6e633eb1725c3aef7d6a2076",
     "frontend/core/house.mjs": "94d64eae255dc61ae56b90901710908c5016eee29601b86133d4aeb7717a0631",
     "frontend/core/houseimage.mjs": "66480b400329879398ba815ffcc54642eff3bbfd5f22ba7dec76ec374d9cf09e",
-    "frontend/core/ice.mjs": "91e0259504bdba7bdf9a1e65cc15df6aa0a006add110f38f9943c6b4f757148c",
+    "frontend/core/ice.mjs": "5ab27a103934be9901397ed938cc7b85653217d74f35aa46de01c267ddd94765",
     "frontend/core/index.mjs": "75f9e2ae6002cd92b1749fda1be4242be76704e47793adabbcd21f1f74c5b3f2",
     "frontend/core/labelling.mjs": "191150fe92f0ac476cf76bd704c556303d2fa34a9abb0a8fb55e7c829fb22419",
     "frontend/core/line.mjs": "6f6a9d78a952f9039dc1143d30078fe457adb1f24d0fd4a2cb9fda195b049059",
@@ -46,7 +46,7 @@
     "frontend/runtime/teams.mjs": "9014e2f9b40520a21e2e3a5c8b3a2f6fab153a6818a1d485ce00a0cedb1b23df",
     "frontend/runtime/wide.mjs": "e48d3c8e7d2d74f9b04574501128588f932c0486fe022b3b3c7c39a82f37994e",
     "frontend/site/Games.jsx": "f6bfed25d0cf2d3f991af74dda7fa0267658c8d8faf561d9a452f62215d57adb",
-    "frontend/site/Ice.jsx": "82bfadda01afc7056f5f4611de8873e132f1a5340b3ced2193cf7204fe873439",
+    "frontend/site/Ice.jsx": "560d28bf2480fcf2690c30aeae26de49ba8e1c52dce88c3a3eb7dbdbbe7d6743",
     "frontend/site/Join.jsx": "4f915fd7c6d9de9aa5430ea63f61d30218b1ebbac63cc0076e09a9482eca4374",
     "frontend/site/Label.jsx": "bf3bac6073466eb8c59e431919f1b3cbae7353b420f16ce470e58791cdc9a1a6",
     "frontend/site/Mine.jsx": "9046a65032365a6452a05141a7814e1164a341e90c44e973c9c730b987fc988f",
@@ -92,7 +92,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "41cfe0faad87fbc2b7ed019a16a16e9c8c1269d783f195f96c9fb2bc6bb0535d",
+    "src/curling_score/service/static/site.js": "8bf6cb1c494f42bda36eef4d7fa9a25fba74fe67fed6a529c73912b22213f224",
     "src/curling_score/viewer/app.js": "8b134a281bc492ff63816c8adc2ebca6f3eba7413fb79d769f11a2ef8e673cd7"
   }
 }
