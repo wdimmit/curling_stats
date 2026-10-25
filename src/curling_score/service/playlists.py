@@ -109,7 +109,7 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
         return source.format_from_title(title) if doubles_enabled else "fours"
 
     for pl in repo.list_playlists():
-        # A practice playlist holds no games: practice sessions look in it.
+        # A practice playlist holds a sheet's practice streams, not games: never charted.
         if not pl.enabled or pl.practice or not (force or due(pl, now, tz)):
             continue
         try:

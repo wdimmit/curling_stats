@@ -226,8 +226,8 @@ function Start({ sheet, onStarted }) {
         body: JSON.stringify({ sheet, hand }) });
       const body = await res.json().catch(() => ({}));
       if (res.ok) onStarted(body.id);
-      else setErr(res.status === 404 ? `Sheet ${sheet} has no cameras.`
-                                       : body.detail || `Could not start (${res.status}).`);
+      else setErr(body.detail || (res.status === 404 ? `Sheet ${sheet} has no cameras.`
+                                                     : `Could not start (${res.status}).`));
     } finally { setBusy(false); }
   };
   return (

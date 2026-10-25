@@ -49,7 +49,7 @@
     "frontend/site/Label.jsx": "bf3bac6073466eb8c59e431919f1b3cbae7353b420f16ce470e58791cdc9a1a6",
     "frontend/site/Mine.jsx": "206b1cfd33e05007043c52f784af0554642d6552d7830372105a29bee15de48e",
     "frontend/site/Playlists.jsx": "2f927ff13f7f3b5db866f7593604dfe9f3b72cfcbb5e47530b4d50660a6417d4",
-    "frontend/site/Practice.jsx": "0f62d10c7a9f75b685857e3c0e5822ed9bd669870d7af8bf8319718b93c07eb1",
+    "frontend/site/Practice.jsx": "daca8636c616a9a9ded99dd065bb773674fa7797fc365cb44ad9615451e1c7c5",
     "frontend/site/ShotCharts.jsx": "f77f480eae042abc0158ec7780ab8cee8f56dfa6ab80b133a0d325b6d3a1d3e7",
     "frontend/site/Shots.jsx": "31221f40bcec2e9d49ff2f9dfe7317348ad3279a55d5153df6763edf44cfd4ed",
     "frontend/site/SignIn.jsx": "214d8ea19ab8a7cc702529150d6919be2bbc5aa9e64ee36fd142cb5718ad801f",
@@ -90,7 +90,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "4bf8e799ea99870c494b4de169df77fa26487d511ff27a8d82c509de06a7196b",
+    "src/curling_score/service/static/site.js": "6220b6cc7217625d387b9adb54ee1f45cb374760adcdd99802cb1f62c4d8d9f9",
     "src/curling_score/viewer/app.js": "1dee5b933bc01027eb62833a336931aa4f842bc0b758bfe7aa4e408b284abeb2"
   }
 }

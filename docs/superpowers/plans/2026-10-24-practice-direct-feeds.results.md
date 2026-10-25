@@ -870,10 +870,10 @@ composer's spawn.
   - each of sheets 1, 2, 3 and 5 for about 10 s (the looks, inputs.py);
   - sheet 2 for about 20-45 s, ten times (startup, D1, D8).
 
-# Open before the YouTube path goes
+# Still open
 
-The final branch review (2026-10-24) found these gates still open. The spec keeps the YouTube practice path
-until they close. The user has since decided to remove that path anyway (2026-10-25: "we don't need to do an
+The final branch review (2026-10-24) found these gates still open. The spec kept the YouTube practice path
+until they closed. The user has since decided to remove that path anyway (2026-10-25: "we don't need to do an
 a/b comparison to it"); the others stay open as checks of the camera path.
 
 - **Task 11 Step 1: calibration on an empty sheet.** Every sheet was in play during the run, so no saved
