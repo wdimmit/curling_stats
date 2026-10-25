@@ -20,13 +20,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-Rect = tuple[int, int, int, int]  # x, y, w, h
+from curling_score.feeds.cut import ROTATIONS, Cut, Rect
 
 LAYOUTS = Path(__file__).with_name("layouts")
 WIDTH, HEIGHT, FPS = 1920, 1080, 60
-ROTATIONS = (0, 90, -90)
-# FFmpeg's transpose: 1 turns clockwise, 2 counter-clockwise, neither flips.
-_TRANSPOSE = {90: 1, -90: 2}
 
 
 @dataclass(frozen=True)
@@ -104,15 +101,8 @@ def filtergraphs(sheet_layout: SheetLayout, *, inputs: dict[str, int]) -> list[s
     """
     graphs = []
     for p in sheet_layout.placements:
-        cx, cy, cw, ch = p.crop
-        _, _, ow, oh = p.out
-        # exact: on the cameras' yuv420p, crop otherwise rounds an odd x, y, w
-        # or h down to even, moving a 1:1 long view by a pixel.
-        steps = [f"crop={cw}:{ch}:{cx}:{cy}:exact=1"]
-        if p.rotate:
-            steps.append(f"transpose={_TRANSPOSE[p.rotate]}")
-        steps.append(f"scale={ow}:{oh}")
-        graphs.append(f"[{inputs[p.role]}:v]{','.join(steps)}[{p.role}]")
+        steps = Cut.from_placement(p.role, p).steps()
+        graphs.append(f"[{inputs[p.role]}:v]{steps}[{p.role}]")
     chains = [f"color=c={sheet_layout.background}:s={WIDTH}x{HEIGHT}:r={FPS}[base]"]
     below = "base"
     for i, p in enumerate(sheet_layout.placements, 1):
