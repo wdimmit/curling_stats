@@ -112,8 +112,16 @@ and the venv.
     disagree with each other by up to 8 h.
   - POV/PTZ cameras are within ~50 ms of the Ryzen's NTP clock.
   - NDI's per-frame `timestamp` is within 40 ms of arrival on all 20.
-  - **Time everything by arrival at the Ryzen.** Whether the cameras' pictures
-    lag one another is not measured yet.
+  - **Time everything by arrival at the Ryzen, with the camera's own clock
+    allowed to set the spacing between frames, anchored to arrival.** Whether
+    the cameras' pictures lag one another is not measured yet.
+  - *Amended 2026-10-25 by the user.* This read "by arrival at the Ryzen,
+    never by the cameras' clocks", because the HOUSE cameras' clocks are years
+    off. They still are, and every camera's clock drifts ~15 ms an hour against
+    NDI's timestamp, so a camera's clock sets only the spacing: a frame's time
+    is its pts plus the least (arrival − pts) over the last 10 s. Timed by
+    arrival alone, a composer that fell behind bent the times (up to 0.8 s
+    during a clip cut); the packets carry no NDI timestamp without decoding.
 - **Python receive rate:** a cyndilib receive loop kept ~45-55 of 60 fps from
   one camera, whatever was done with the frames. Decoded frames through Python
   will not scale to 20 streams; hence the packet tap.
@@ -153,7 +161,7 @@ It connects with cyndilib and preloads the libavcodec stand-in (`avshim.c`).
 The stand-in is named `libavcodec-ndi.so.61` and placed on `LD_LIBRARY_PATH`.
 It forwards everything to the real libavcodec. On the way, it hands each H.264
 packet that libndi passes to `avcodec_send_packet` to the capture process,
-stamped with its arrival time.
+stamped with its arrival time and carrying its pts (the camera's clock).
 
 Requirements:
 - **Video only.** Tell the H.264 context from the AAC one; libndi asks for both
@@ -193,7 +201,8 @@ Ryzen's constraint, and the two cards have encoder sessions to spare.
   - The 2026-27 season re-aimed sheets 2-4's long cameras
     (`side-camera-framing-2026-27`). Fit from this season's frames.
 - **Frame timing:** at each 60 Hz output tick, use each camera's newest frame by
-  arrival, as a vision mixer would. If a camera stops sending, hold its last
+  its time (arrival, spaced by the camera's clock; see Clocks), as a vision
+  mixer would. If a camera stops sending, hold its last
   frame and log it. Do not end the recording, and do not lose the other three.
 
 ### 3. The recorder the watch reads

@@ -31,8 +31,11 @@ section, and in `/data/wdd/scratch/ndi/` on the Ryzen.
   image, never on the host.
 - Pins: `cyndilib==0.1.3` (libndi 6.3.2). The tap is compiled against the
   image's own `libavcodec-dev`.
-- Time every frame by its arrival at the Ryzen, never by the cameras' clocks.
-  The HOUSE cameras' clocks are years off.
+- Time every frame by its arrival at the Ryzen, with the camera's own clock
+  allowed to set the spacing between frames, anchored to arrival. *Amended
+  2026-10-25 by the user*: it read "never by the cameras' clocks", because the
+  HOUSE cameras' clocks are years off; they still are, so a camera's clock
+  sets only the spacing.
 - At most one NDI connection per camera, and only while a session on that sheet
   is active. Maintenance reads (calibration, layout fitting, tests) keep only
   numbers, plus the empty-sheet reference frames used for layout fitting.
