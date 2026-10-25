@@ -100,8 +100,11 @@ PUMP_S = 0.1
 # A packet that has waited this long for the composer is never fed to it. The
 # composer times each camera by when it reads the packet, so a backlog here is
 # delay head_s cannot see, and different for each camera: with 10 s of queue
-# allowed, sheet 2's cameras sat ~9.5 s behind for whole runs (Task 11).
-MAX_AGE_S = 0.5
+# allowed, sheet 2's cameras sat ~9.5 s behind for whole runs (Task 11). Not
+# shorter: a practice clip cut puts the composers 0.5-0.8 s behind for a
+# moment, all of a sheet's cameras alike, and waiting that out keeps them in
+# step where dropping froze each on an old keyframe for up to 2 s (2026-10-25).
+MAX_AGE_S = 1.5
 # Packets queued, at most: 10 s at 60 fps, about 12 MB at a long view's ~10
 # Mbit/s. Only a guard on memory, for a composer that has stopped reading
 # altogether (MAX_AGE_S is judged as a packet is written). Past it, packets are

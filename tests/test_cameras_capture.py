@@ -212,7 +212,7 @@ def test_a_packet_that_waited_too_long_is_dropped_with_all_queued(tmp_path, capl
     h.packet(0, P2, t + 2 * PERIOD)
     clock.t = t + capture.MAX_AGE_S - 0.1
     assert fifo._take() == SPS_PPS_IDR
-    clock.t = t + 0.7                      # the composer stopped reading for a while
+    clock.t = t + 1.7                      # the composer stopped reading for a while
     with caplog.at_level(logging.INFO, logger=capture.__name__):
         assert fifo._take() is None
         assert not fifo._queue
@@ -224,9 +224,24 @@ def test_a_packet_that_waited_too_long_is_dropped_with_all_queued(tmp_path, capl
         h.packet(0, P2 + b"2", clock.t)
         assert queued(fifo) == [SPS_PPS_IDR, SPS_PPS_IDR + b"2", P2 + b"2"]
     warned = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert warned == ["the composer is 0.7 s behind; dropping 2 packets and starting again "
+    assert warned == ["the composer is 1.7 s behind; dropping 2 packets and starting again "
                       "at a keyframe"]
     assert "the composer has caught up" in caplog.text
+
+
+def test_a_clip_cuts_hiccup_is_waited_out_not_dropped(tmp_path):
+    """A practice clip cut put the composers 0.5-0.8 s behind for a moment
+    (2026-10-25). All of a sheet's cameras wait alike, so they stay in step;
+    dropping instead jumped each back to its last keyframe for up to 2 s."""
+    clock = Clock()
+    fifo = opened_fifo(tmp_path, clock)
+    h = capture.Holder(fifo.write, clock=clock)
+    t = clock.t
+    h.packet(1, SPS_PPS_IDR, t)
+    h.packet(0, P1, t + PERIOD)
+    clock.t = t + 0.8
+    assert fifo._take() == SPS_PPS_IDR
+    assert fifo._take() == P1
 
 
 def test_a_keyframe_after_a_drop_starts_the_stream_again_at_once(tmp_path):
@@ -235,7 +250,7 @@ def test_a_keyframe_after_a_drop_starts_the_stream_again_at_once(tmp_path):
     h = capture.Holder(fifo.write, clock=clock)
     h.packet(1, SPS_PPS_IDR, clock.t)
     h.packet(0, P1, clock.t)
-    clock.t += 0.6
+    clock.t += capture.MAX_AGE_S + 0.1
     assert fifo._take() is None
     h.packet(1, SPS_PPS_IDR + b"2", clock.t)
     h.packet(0, P2, clock.t)
@@ -250,7 +265,7 @@ def test_one_warning_for_a_composer_that_stays_behind(tmp_path, caplog):
         for _ in range(3):
             h.packet(1, SPS_PPS_IDR, clock.t)
             h.packet(0, P1, clock.t)
-            clock.t += 0.6
+            clock.t += capture.MAX_AGE_S + 0.1
             assert fifo._take() is None
     assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
 
