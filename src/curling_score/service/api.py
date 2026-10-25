@@ -3137,10 +3137,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # Practice reads the club's cameras, which only a worker that can
             # see them (WORKER_CAMERAS=1) may claim: the stand-in must not.
             kinds = tuple(k for k in kinds if k != "practice")
-        job = repo.claim_job(str(body.get("worker_id", "worker")), t, settings.lease_s,
-                             kinds=kinds)
-        if job is None:
-            return Response(status_code=204)
+        while True:
+            job = repo.claim_job(str(body.get("worker_id", "worker")), t, settings.lease_s,
+                                 kinds=kinds)
+            if job is None:
+                return Response(status_code=204)
+            if job.kind != "practice" or not practice_should_stop(job):
+                break
+            # Every session on it ended while it waited (Stop, idle, a league,
+            # no worker free): handed out, it would read the sheet with
+            # nobody's session on until its first heartbeat said stop. Done as
+            # a stopped watch completes, and on to the next.
+            log.info("practice job %s: no session left on it; finished unclaimed", job.id)
+            practice_complete(job, {})
         # Whatever went wrong last time is history now; leaving it set means the
         # status page shows a stale failure through an entirely healthy run.
         repo.update_job(job.id, error=None, error_kind=None, phase=None,

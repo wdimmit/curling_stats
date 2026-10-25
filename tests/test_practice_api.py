@@ -357,6 +357,59 @@ class TestOnTheClubsCameras:
         assert r.status_code == 204
 
 
+class TestAJobWhoseSessionsHaveEnded:
+    """A practice job still queued when its last session ends -- Stop, idle,
+    a league, or no worker to claim it -- is never handed out: a worker would
+    read the cameras until its first heartbeat said stop, with nobody's
+    session on."""
+
+    def test_a_job_stopped_while_queued_is_not_claimed(self, cams):
+        validate(cams, "uid-sarah")
+        sid = start(cams).json()["id"]
+        cams["client"].post(f"/api/practice/sessions/{sid}/stop", headers=SARAH)
+        r = cams["client"].post("/api/worker/claim", headers=WORKER,
+                                json=claim_body(cameras=True))
+        assert r.status_code == 204
+        watch = cams["repo"].get_watch(cams["repo"].get_session(sid).watch_id)
+        # Finished as a stopped watch completes, so the sheet starts afresh.
+        assert cams["repo"].get_job(watch.job_id).state == "done"
+        assert watch.status == "ended"
+        assert cams["repo"].get_run(watch.run_id).status == "ready"
+        assert cams["repo"].get_session(sid).end_reason == "stop"
+        assert start(cams).json()["watch_id"] != watch.id
+
+    def test_a_job_whose_session_went_idle_while_queued_is_not_claimed(self, cams):
+        # No worker claimed it for 15 minutes: the session has run out.
+        validate(cams, "uid-sarah")
+        sid = start(cams).json()["id"]
+        cams["clock"].advance(901)
+        r = cams["client"].post("/api/worker/claim", headers=WORKER,
+                                json=claim_body(cameras=True))
+        assert r.status_code == 204
+        assert cams["repo"].get_session(sid).end_reason == "idle"
+
+    def test_the_next_queued_job_is_handed_out_instead(self, cams):
+        validate(cams, "uid-sarah")
+        gone = start(cams, sheet=1).json()["id"]
+        start(cams, sheet=2)
+        cams["client"].post(f"/api/practice/sessions/{gone}/stop", headers=SARAH)
+        job = claim(cams, cameras=True)
+        assert job["sheet"] == 2
+
+    def test_a_job_with_a_session_still_on_is_handed_out(self, cams):
+        validate(cams, "uid-sarah")
+        a = start(cams).json()["id"]
+        start(cams, who=ALEX, fwd=CLUB_IP)              # joins: two sessions on one watch
+        cams["client"].post(f"/api/practice/sessions/{a}/stop", headers=SARAH)
+        assert claim(cams, cameras=True)["sheet"] == 3
+
+    def test_youtube_practice_too(self, w):
+        sid = start(w).json()["id"]
+        w["client"].post(f"/api/practice/sessions/{sid}/stop", headers=SARAH)
+        r = w["client"].post("/api/worker/claim", headers=WORKER, json=claim_body())
+        assert r.status_code == 204
+
+
 def requeued(w, job, cameras=True):
     """The worker holding ``job`` is gone: its lease runs out, and the next
     claim requeues the job and hands it out again."""
