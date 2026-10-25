@@ -11,7 +11,6 @@ constants measured on ten views from five sheets -- ``PLAUSIBLE_ROWS``,
 ``geometry/sideview.py``. How many of 240 views calibrate is the finding.
 """
 
-import dataclasses
 from dataclasses import dataclass
 
 import numpy as np
@@ -71,10 +70,7 @@ def derive(video_id: str, frames) -> VideoViews:
     found = {}
     for name, rect in rects.items():
         try:
-            v, err = sideview.solve(p, rect, name=f"{video_id}-{name}"), None
-            # `solve` was told the video for its error messages; the view is
-            # named for the camera, as a calibration's is.
-            v = dataclasses.replace(v, name=name)
+            v, err = sideview.solve(p, rect, name=name, label=f"{video_id}-{name}"), None
         except Exception as exc:  # noqa: BLE001 -- a bad view must not stop 119 others
             v, err = None, f"{type(exc).__name__}: {exc}"
         found[name] = ViewInfo(name=name, rect=tuple(rect), view=v, error=err)

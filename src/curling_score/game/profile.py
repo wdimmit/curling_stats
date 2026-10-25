@@ -116,7 +116,7 @@ def panel_median(frames, rect, name: str = "panel"):
     return np.median(np.stack(lit), axis=0).astype("uint8")
 
 
-def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> PanelSetup:
+def calibrate_panel(frames, rect, delivery_side: str, name: str = "") -> PanelSetup:
     """Calibrate one panel from the best-lit, cleanest frames available.
 
     The idle house -- the one not being played to -- is clean and unoccluded for
@@ -126,8 +126,12 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> Pa
     One panel at a time so a caller can keep the panel that worked when the
     other one's lights are out. The club kills the lights on a sheet as it
     finishes while others play on, so that is a normal night, not a broken one.
+
+    ``name`` is the panel's (``top``/``bottom``) and is stored on its setup,
+    ``""`` when unknown; errors call it "panel" then.
     """
-    median = panel_median(frames, rect, name)
+    label = name or "panel"
+    median = panel_median(frames, rect, label)
     calib = calibrate.solve(median, delivery_side)
     # The same median the rings were read from shows the hog line's paint. A
     # panel whose paint cannot be trusted keeps its calibration and says why;
@@ -135,7 +139,7 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> Pa
     try:
         line, err = hogpaint.find_hog_line(median, calib), None
     except hogpaint.HogPaintError as exc:
-        line, err = None, f"{name} panel: {exc}"
+        line, err = None, f"{label} panel: {exc}"
     # And the sidelines' paint, where the panel reaches them.
     return PanelSetup(rect=rect, calib=calib, hog_line=line, hog_line_error=err,
                       sidelines=sidepaint.find_sidelines(median, calib), name=name)

@@ -593,6 +593,21 @@ class TestCut:
         assert got.name == "left"
         assert got.cut == Cut("left", (0, 0, 810, 1080))
 
+    def test_solve_without_a_name_stores_none_but_errors_say_side(self):
+        plate = synth.side_view(tee_row=430.0, hog_row=520.0)
+        got = sideview.solve(plate, (0, 0, 810, 1080))
+        assert got.name == "" and got.cut == Cut("", (0, 0, 810, 1080))
+        with pytest.raises(sideview.SideViewError, match="^side:"):
+            sideview.solve(np.full((1080, 810, 3), 128, np.uint8), (0, 0, 810, 1080))
+
+    def test_a_label_names_the_errors_not_the_view(self):
+        got = sideview.solve(synth.side_view(), (0, 0, 810, 1080),
+                             name="left", label="vid1-left")
+        assert got.name == "left"
+        with pytest.raises(sideview.SideViewError, match="^vid1-left:"):
+            sideview.solve(np.full((1080, 810, 3), 128, np.uint8), (0, 0, 810, 1080),
+                           name="left", label="vid1-left")
+
     def test_the_lateral_fits_keep_name_and_transform(self):
         turned = Cut("left", (0, 0, 810, 1080), size=(405, 540))
         v = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
