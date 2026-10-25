@@ -44,7 +44,7 @@ class Stream:
     recorder: object
     session: object = None
     lost: bool = False
-    # The API said no session watches this practice watch's sheet any more.
+    # The API said no session is on this practice watch any more.
     stop_requested: bool = False
     # A practice watch's way to send a throw's clip up: set by the lane.
     send_clip: object = field(default=None, repr=False)
