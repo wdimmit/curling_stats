@@ -196,22 +196,31 @@ class FirestoreRepo:
 
         return _claim(transaction)
 
-    def requeue_expired(self, now):
-        q = (self._where(JOBS, "state", "==", "running")
-             .where(filter=self._fs.FieldFilter("lease_expires_at", "<", now)))
+    def _requeue(self, q, now, why):
         n = 0
         batch = self.db.batch()
         for snap in q.stream():
             data = snap.to_dict()
             batch.update(snap.reference, {
                 "state": "queued", "worker_id": None, "lease_expires_at": None,
-                "run_after": now, "error_kind": "lease_expired",
+                "run_after": now, "error_kind": why,
             })
             batch.update(self._col(RUNS).document(data["run_id"]), {"status": "queued"})
             n += 1
         if n:
             batch.commit()
         return n
+
+    def requeue_expired(self, now):
+        q = (self._where(JOBS, "state", "==", "running")
+             .where(filter=self._fs.FieldFilter("lease_expires_at", "<", now)))
+        return self._requeue(q, now, "lease_expired")
+
+    def release_jobs(self, worker_id, now):
+        # Two equalities: the automatic single-field indexes serve it.
+        q = (self._where(JOBS, "state", "==", "running")
+             .where(filter=self._fs.FieldFilter("worker_id", "==", worker_id)))
+        return self._requeue(q, now, "worker_restarted")
 
     def queue_position(self, job_id):
         from datetime import datetime, timezone

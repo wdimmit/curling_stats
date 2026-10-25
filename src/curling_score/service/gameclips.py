@@ -249,13 +249,7 @@ def claim(repo, worker_id: str, now, lease_s: float):
     """
     for job in repo.clip_jobs_in_state("running"):
         if job.lease_expires_at is not None and job.lease_expires_at < now:
-            if job.attempts >= job.max_attempts:
-                repo.update_clip_job(job.id, state="failed", worker_id=None,
-                                     lease_expires_at=None, finished_at=now,
-                                     error="the clips worker stopped answering")
-            else:
-                repo.update_clip_job(job.id, state="queued", worker_id=None,
-                                     lease_expires_at=None, run_after=now)
+            _put_back(repo, job, now, "the clips worker stopped answering")
     ready = sorted((j for j in repo.clip_jobs_in_state("queued") if j.run_after <= now),
                    key=_claim_order)
     for job in ready:
@@ -280,6 +274,26 @@ def claim(repo, worker_id: str, now, lease_s: float):
         if got is not None:
             return got
     return None
+
+
+def _put_back(repo, job, now, error: str) -> None:
+    """A running job its worker will not finish: queued again, or failed at
+    its last attempt."""
+    if job.attempts >= job.max_attempts:
+        repo.update_clip_job(job.id, state="failed", worker_id=None,
+                             lease_expires_at=None, finished_at=now, error=error)
+    else:
+        repo.update_clip_job(job.id, state="queued", worker_id=None,
+                             lease_expires_at=None, run_after=now)
+
+
+def release(repo, worker_id: str, now) -> int:
+    """The clips worker ``worker_id`` has started again: the jobs it held go
+    back as if their leases had run out, without the wait. How many."""
+    held = [job for job in repo.clip_jobs_in_state("running") if job.worker_id == worker_id]
+    for job in held:
+        _put_back(repo, job, now, "the clips worker restarted")
+    return len(held)
 
 
 def clean_results(job, got) -> dict:

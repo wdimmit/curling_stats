@@ -18,7 +18,7 @@ from pathlib import Path
 
 from curling_score.game import clips as game_clips
 from curling_score.ingest import cache
-from curling_score.service.worker import ApiClient, Lost
+from curling_score.service.worker import ApiClient, Lost, release_held
 
 log = logging.getLogger("curling_score.clipworker")
 
@@ -152,9 +152,11 @@ def main(argv=None) -> int:
         log.error("no cache with a videos/ directory in WORKER_CLIP_SOURCES=%r; "
                   "refusing to start", os.environ.get("WORKER_CLIP_SOURCES"))
         return 2
-    run_forever(ApiClient(os.environ["API_URL"], os.environ["WORKER_TOKEN"]),
-                os.environ.get("WORKER_ID") or socket.gethostname(),
-                sources=sources, workdir=root / "clips", once="--once" in argv)
+    api = ApiClient(os.environ["API_URL"], os.environ["WORKER_TOKEN"])
+    worker_id = os.environ.get("WORKER_ID") or socket.gethostname()
+    release_held(api, worker_id)
+    run_forever(api, worker_id, sources=sources, workdir=root / "clips",
+                once="--once" in argv)
     return 0
 
 

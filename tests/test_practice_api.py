@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from curling_score.service.api import Settings, create_app
 from curling_score.service.auth import FakeVerifier
-from curling_score.service.records import Job, PracticeWatch, Run, WatchedPlaylist
+from curling_score.service.records import ClipJob, Job, PracticeWatch, Run, WatchedPlaylist
 from curling_score.service.repo import MemoryRepo
 from curling_score.service.store import MemoryStore, clip_key, practice_key
 from curling_score.service.youtube import FakeYouTube, VideoMeta
@@ -527,6 +527,63 @@ class TestResumingAfterARestart:
         publish(w, job, doc([throw(1260.0)], T0.timestamp() - 1200.0))
         again = requeued(w, job, cameras=False)
         assert "resume" not in again and again["lookback_s"] == 1200.0
+
+
+def release(w, worker="ryzen"):
+    """What a worker says as it starts: hand back whatever my id held."""
+    r = w["client"].post("/api/worker/release", headers=WORKER, json={"worker_id": worker})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+class TestARestartedWorkerHandsBackItsJobs:
+    """A worker that restarts says so before its first claim, and what it held
+    is queued again at once, as an expired lease would be: a camera watch
+    resumes in seconds rather than after the lease's ten minutes."""
+
+    def test_its_camera_watch_resumes_at_once(self, cams):
+        validate(cams, "uid-sarah")
+        start(cams)
+        job = claim(cams, cameras=True)
+        publish(cams, job, doc([throw(60.0)], T0.timestamp()))
+        cams["clock"].advance(30)                      # the lease has minutes to run
+        assert release(cams) == {"ok": True, "jobs": 1, "clip_jobs": 0}
+        again = claim(cams, cameras=True)
+        assert again["id"] == job["id"] and again["attempt"] == 2
+        assert again["resume"]["wall_t0"] == T0.timestamp()
+        assert [th["id"] for th in again["resume"]["throws"]] == ["t_60.0"]
+
+    def test_only_that_workers_jobs(self, cams):
+        validate(cams, "uid-sarah")
+        start(cams, sheet=1)
+        start(cams, sheet=2)
+        mine = claim(cams, cameras=True)
+        theirs = claim(cams, cameras=True, worker_id="ryzen-3080-2")
+        assert release(cams)["jobs"] == 1
+        assert cams["repo"].get_job(mine["id"]).state == "queued"
+        held = cams["repo"].get_job(theirs["id"])
+        assert (held.state, held.worker_id) == ("running", "ryzen-3080-2")
+
+    def test_a_worker_holding_nothing_hands_back_nothing(self, cams):
+        validate(cams, "uid-sarah")
+        start(cams)
+        claim(cams, cameras=True)
+        assert release(cams, "ryzen-3080-2") == {"ok": True, "jobs": 0, "clip_jobs": 0}
+
+    def test_the_clips_workers_clip_jobs_too(self, cams):
+        cams["repo"].put_run(Run(id="r_game", video_id="VID", processing_version="v",
+                                 status="ready", created_at=T0))
+        cams["repo"].put_clip_job(ClipJob(
+            id="cj_1", play_id="p1", user_id="u1", source_id="s1", run_id="r_game",
+            video_id="VID", state="running", created_at=T0, run_after=T0, attempts=1,
+            worker_id="ryzen-clips", lease_expires_at=T0 + timedelta(seconds=600)))
+        assert release(cams, "ryzen-clips") == {"ok": True, "jobs": 0, "clip_jobs": 1}
+        assert cams["repo"].get_clip_job("cj_1").state == "queued"
+
+    def test_only_a_worker_may_and_it_says_which(self, cams):
+        c = cams["client"]
+        assert c.post("/api/worker/release", json={"worker_id": "ryzen"}).status_code == 401
+        assert c.post("/api/worker/release", headers=WORKER, json={}).status_code == 422
 
 
 LEAGUE_LIVE = "10/24 - Sheet 2 - Thursday League"

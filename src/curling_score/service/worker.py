@@ -136,6 +136,12 @@ class ApiClient:
                           {"worker_id": worker_id, "error": error, "kind": kind,
                            "retry_after_s": retry_after_s})
 
+    def release(self, worker_id):
+        """Hand back whatever the API still holds for ``worker_id``; at
+        startup, before the first claim (release_held)."""
+        return self._post("/api/worker/release", {"worker_id": worker_id},
+                          timeout=PROGRESS_TIMEOUT_S)
+
     # The clips worker's queue (service/clipworker.py).
     def claim_clips(self, worker_id):
         r = self._http.post(f"{self.base}/api/worker/clips/claim", headers=self._headers,
@@ -160,6 +166,23 @@ class ApiClient:
     def clip_fail(self, job_id, worker_id, error):
         return self._post(f"/api/worker/clips/{job_id}/fail",
                           {"worker_id": worker_id, "error": error})
+
+
+def release_held(api, worker_id: str) -> None:
+    """At startup, before anything claims: hand back the jobs the API still
+    holds for this worker's id. The process that held them is gone, and its
+    work with it; left alone, each stays leased to it for up to LEASE_S (ten
+    minutes), and a camera watch loses every throw in that gap. Worker ids
+    are stable across restarts (WORKER_ID), so these are this worker's own.
+    A failure is logged and the worker carries on: the leases still run out."""
+    try:
+        got = api.release(worker_id) or {}
+    except Exception as exc:  # noqa: BLE001 - the API may be down; the leases are the backstop
+        log.warning("could not hand back what %s held before starting: %s", worker_id, exc)
+        return
+    if got.get("jobs") or got.get("clip_jobs"):
+        log.info("handed back %s job(s) and %s clip job(s) %s held before starting",
+                 got.get("jobs", 0), got.get("clip_jobs", 0), worker_id)
 
 
 def classify_error(exc: BaseException) -> str:
@@ -550,8 +573,11 @@ def main(argv=None) -> int:
     min_free_gb = float(os.environ.get("WORKER_MIN_FREE_GB", "40"))
     recording_days = float(os.environ.get("WORKER_RECORDING_DAYS", "7"))
     fp = fpframes.settings()
+    api = ApiClient(api_url, token)
+    # Before build_live: the live lane's thread claims as soon as it starts.
+    release_held(api, worker_id)
     run_forever(
-        ApiClient(api_url, token), worker_id,
+        api, worker_id,
         root=root, weights=weights, out_dir=Path(os.environ.get("WORKER_OUT", root / "out")),
         cache_gb=cache_gb, min_free_gb=min_free_gb, recording_days=recording_days,
         skip_longview=resolve_skip_longview(),

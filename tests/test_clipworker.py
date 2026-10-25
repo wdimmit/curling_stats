@@ -155,6 +155,22 @@ def test_worker_role_clips_runs_the_clips_main_and_nothing_else(tmp_path, monkey
 
 
 class TestMain:
+    @pytest.fixture(autouse=True)
+    def released(self, monkeypatch):
+        """What main hands back at startup, instead of asking an API."""
+        calls = []
+        monkeypatch.setattr(worker.ApiClient, "release",
+                            lambda api, worker_id: calls.append(worker_id) or {"ok": True})
+        return calls
+
+    def test_hands_back_what_it_held_before_it_claims(self, tmp_path, monkeypatch, released):
+        (tmp_path / "src1" / "videos").mkdir(parents=True)
+        _clip_env(monkeypatch, tmp_path / "cache", str(tmp_path / "src1"))
+        monkeypatch.setattr(clipworker, "run_forever",
+                            lambda *a, **kw: released.append("claims"))
+        assert clipworker.main([]) == 0
+        assert released == ["ryzen-clips", "claims"]
+
     def test_reads_the_environment(self, tmp_path, monkeypatch):
         got = {}
         src = tmp_path / "src1"

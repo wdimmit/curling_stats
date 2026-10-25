@@ -188,8 +188,12 @@ docker compose -f deploy/docker-compose.worker.yml logs -f
 ```
 
 The worker polls `/api/worker/claim` (10 s when busy, 30 s idle) and heartbeats
-once a minute. If the box reboots mid-job the lease expires after 10 minutes
-and the job is requeued; the caches under `/data/wdd/curling-cache` make the retry a
+once a minute. A worker that starts again hands back, before its first claim,
+every job its `WORKER_ID` still holds (`/api/worker/release`), so a restart
+requeues them at once; a worker that never comes back leaves them to its lease,
+which expires after 10 minutes. Worker ids must be stable and each worker's
+own: a stand-in started with a Ryzen worker's id would take that worker's jobs
+away from it. The caches under `/data/wdd/curling-cache` make the retry a
 ~2 minute warm run. `WORKER_CACHE_GB` prunes old media (never detections): kept
 live recordings first, oldest kept first, then other media least recently read
 first. `WORKER_MIN_FREE_GB` (default 40) also lets kept live recordings go while
@@ -238,7 +242,8 @@ its detection cache afterwards.
   the poller queues the recording the ordinary way once it is archived.
 - A worker restart is the same: nothing of a live stream is kept across one
   (the `live/` recordings are cleared at start). Within a stream's first hour
-  its job comes back when the lease runs out and is recorded and built again
+  its job comes back as the worker starts again (or, if it does not, when the
+  lease runs out) and is recorded and built again
   from the start; past it, the job fails and the recording's ordinary run
   takes the game. Pages keep showing what was already published.
 - Roll the API back only with no live job queued: an API from before live

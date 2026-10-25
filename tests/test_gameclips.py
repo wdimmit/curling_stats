@@ -252,6 +252,45 @@ class TestClaim:
         assert repo.get_clip_job("cj_x").state == "failed"
 
 
+class TestRelease:
+    """The clips worker restarted: what it held comes back as if its leases
+    had run out, without waiting for them to."""
+
+    def test_its_own_running_jobs_go_back(self):
+        repo, _, _ = world()
+        queued(repo, ["1.2.13"], id="cj_mine")
+        queued(repo, ["1.2.15"], id="cj_theirs", at=T + timedelta(seconds=1))
+        queued(repo, ["1.2.11"], id="cj_waiting", at=T + timedelta(seconds=2))
+        gameclips.claim(repo, "clips", T + timedelta(seconds=3), 600.0)
+        gameclips.claim(repo, "other", T + timedelta(seconds=3), 600.0)
+        assert gameclips.release(repo, "clips", T + timedelta(seconds=4)) == 1
+        mine = repo.get_clip_job("cj_mine")
+        assert (mine.state, mine.worker_id, mine.lease_expires_at) == ("queued", None, None)
+        assert mine.attempts == 1 and mine.run_after == T + timedelta(seconds=4)
+        assert repo.get_clip_job("cj_theirs").state == "running"
+        assert repo.get_clip_job("cj_waiting").state == "queued"
+        # Back in the queue behind the one that was waiting, as an expired
+        # lease's job would be (run_after is now).
+        later = T + timedelta(seconds=5)
+        assert gameclips.claim(repo, "clips", later, 600.0).id == "cj_waiting"
+        again = gameclips.claim(repo, "clips", later, 600.0)
+        assert (again.id, again.attempts) == ("cj_mine", 2)
+
+    def test_at_its_last_attempt_it_fails(self):
+        repo, _, _ = world()
+        queued(repo, ["1.2.13"])
+        gameclips.claim(repo, "clips", T, 600.0)
+        repo.update_clip_job("cj_x", attempts=3)
+        assert gameclips.release(repo, "clips", T) == 1
+        assert repo.get_clip_job("cj_x").state == "failed"
+
+    def test_nothing_held_is_nothing_released(self):
+        repo, _, _ = world()
+        queued(repo, ["1.2.13"])
+        assert gameclips.release(repo, "clips", T) == 0
+        assert repo.get_clip_job("cj_x").state == "queued"
+
+
 class TestResults:
     def test_kept_to_the_rocks_asked_and_the_shapes_the_page_reads(self):
         job = ClipJob(id="cj_x", play_id="p1", user_id="u1", source_id="s1", run_id="r1",

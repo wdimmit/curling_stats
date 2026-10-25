@@ -51,6 +51,9 @@ class Repo(Protocol):
     def claim_job(self, worker_id: str, now: datetime, lease_s: float = LEASE_S,
                   kinds: tuple = ("vod",)) -> Job | None: ...
     def requeue_expired(self, now: datetime) -> int: ...
+    # A worker starting again: its running jobs back in the queue at once, as
+    # requeue_expired puts a job whose lease has run out.
+    def release_jobs(self, worker_id: str, now: datetime) -> int: ...
     def queue_position(self, job_id: str) -> int | None: ...
     def count_queued(self) -> int: ...
     # sources
@@ -300,20 +303,32 @@ class MemoryRepo:
                 run.status = "processing"
             return job
 
+    def _requeue(self, job, now, why):
+        job.state = "queued"
+        job.worker_id = None
+        job.lease_expires_at = None
+        job.run_after = now
+        job.error_kind = why
+        run = self.runs.get(job.run_id)
+        if run is not None:
+            run.status = "queued"
+
     def requeue_expired(self, now):
         with self._lock:
             n = 0
             for job in self.jobs.values():
                 if (job.state == "running" and job.lease_expires_at is not None
                         and job.lease_expires_at < now):
-                    job.state = "queued"
-                    job.worker_id = None
-                    job.lease_expires_at = None
-                    job.run_after = now
-                    job.error_kind = "lease_expired"
-                    run = self.runs.get(job.run_id)
-                    if run is not None:
-                        run.status = "queued"
+                    self._requeue(job, now, "lease_expired")
+                    n += 1
+            return n
+
+    def release_jobs(self, worker_id, now):
+        with self._lock:
+            n = 0
+            for job in self.jobs.values():
+                if job.state == "running" and job.worker_id == worker_id:
+                    self._requeue(job, now, "worker_restarted")
                     n += 1
             return n
 

@@ -144,6 +144,33 @@ class TestJobsAndClaiming:
         assert repo.get_run("r_1").status == "queued"
         assert repo.claim_job("w2", at(602)).attempts == 2
 
+    def test_a_restarted_worker_hands_back_its_own_jobs(self, repo):
+        # As an expired lease would: queued again, the attempt not given back.
+        repo.put_run(run())
+        repo.put_run(run(id="r_2"))
+        repo.put_job(job())
+        repo.put_job(job(id="j_2", run_id="r_2", created_at=at(1), run_after=at(1)))
+        assert repo.claim_job("w1", at(10)).id == "j_1"
+        assert repo.claim_job("w2", at(10)).id == "j_2"
+        assert repo.release_jobs("w1", at(20)) == 1
+        back = repo.get_job("j_1")
+        assert (back.state, back.worker_id, back.lease_expires_at) == ("queued", None, None)
+        assert back.attempts == 1 and back.run_after == at(20)
+        assert repo.get_run("r_1").status == "queued"
+        theirs = repo.get_job("j_2")
+        assert (theirs.state, theirs.worker_id) == ("running", "w2")
+        assert repo.get_run("r_2").status == "processing"
+        assert repo.claim_job("w1", at(21)).attempts == 2
+
+    def test_a_worker_holding_nothing_releases_nothing(self, repo):
+        repo.put_run(run())
+        repo.put_job(job())
+        assert repo.release_jobs("w1", at(1)) == 0
+        assert repo.get_job("j_1").state == "queued"
+        repo.claim_job("w2", at(2))
+        assert repo.release_jobs("w1", at(3)) == 0
+        assert repo.get_job("j_1").worker_id == "w2"
+
     def test_a_live_job_is_claimed_before_older_recordings(self, repo):
         repo.put_run(run())
         repo.put_run(run(id="r_live"))

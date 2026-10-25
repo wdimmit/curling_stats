@@ -3189,6 +3189,29 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             **practice_fields,
         }}
 
+    @app.post("/api/worker/release")
+    async def release(request: Request, authorization: str | None = Header(default=None)):
+        """A worker starting up hands back what its id held: the process that
+        held it is gone, and its work with it. Each job goes back as an
+        expired lease would (repo.requeue_expired), only without waiting out
+        the lease -- so a camera watch resumes (practice_resume) in seconds,
+        not ten minutes, and fewer of its throws are lost. The clips
+        worker's clip jobs too."""
+        require_worker(authorization)
+        body = await request.json()
+        worker_id = body.get("worker_id")
+        if not worker_id:
+            raise HTTPException(422, "say which worker")
+        t = now()
+        jobs = repo.release_jobs(str(worker_id), t)
+        clip_jobs = gameclips.release(repo, str(worker_id), t)
+        if clip_jobs:
+            clip_queue_stirred()
+        if jobs or clip_jobs:
+            log.info("worker %s started again: %d job(s) and %d clip job(s) handed back",
+                     worker_id, jobs, clip_jobs)
+        return {"ok": True, "jobs": jobs, "clip_jobs": clip_jobs}
+
     def owned_job(job_id: str, worker_id: str | None) -> Job:
         job = repo.get_job(job_id)
         if job is None:

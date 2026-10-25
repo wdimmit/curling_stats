@@ -287,6 +287,72 @@ class TestTheClaimBody:
         assert "cameras" not in self.body()
 
 
+class TestARestartHandsBackWhatItHeld:
+    """A worker that starts again hands back what the API still holds for its
+    id, before anything of it claims: the old process and its work are gone."""
+
+    class Http:
+        def __init__(self):
+            self.posts = []
+
+        def post(self, url, headers=None, json=None, timeout=None):
+            self.posts.append((url, json))
+
+            class Response:
+                status_code = 200
+                content = b"{}"
+
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return {"ok": True, "jobs": 1, "clip_jobs": 0}
+            return Response()
+
+    def test_the_client_asks_the_api(self):
+        http = self.Http()
+        got = worker.ApiClient("http://api", "t", http=http).release("ryzen-3080")
+        assert http.posts == [("http://api/api/worker/release", {"worker_id": "ryzen-3080"})]
+        assert got["jobs"] == 1
+
+    def main(self, monkeypatch, tmp_path, release):
+        events = []
+
+        class Api:
+            def __init__(self, url, token, http=None):
+                pass
+
+            def release(self, worker_id):
+                events.append(("release", worker_id))
+                return release()
+
+        monkeypatch.setattr(worker, "ApiClient", Api)
+        monkeypatch.setattr(worker, "build_live",
+                            lambda *a, **kw: events.append(("live lane",)))
+        monkeypatch.setattr(worker, "run_forever", lambda *a, **kw: events.append(("claims",)))
+        for name, value in (("API_URL", "http://api"), ("WORKER_TOKEN", "t"),
+                            ("WORKER_ID", "ryzen-3080"), ("WEIGHTS", "none"),
+                            ("CURLING_SCORE_CACHE", str(tmp_path))):
+            monkeypatch.setenv(name, value)
+        monkeypatch.delenv("WORKER_ROLE", raising=False)
+        assert worker.main([]) == 0
+        return events
+
+    def test_main_hands_back_before_the_lane_or_the_loop_claims(self, monkeypatch, tmp_path):
+        # The live lane's thread starts claiming as soon as it is built.
+        events = self.main(monkeypatch, tmp_path, lambda: {"ok": True, "jobs": 2})
+        assert events == [("release", "ryzen-3080"), ("live lane",), ("claims",)]
+
+    def test_a_failure_is_logged_and_the_worker_carries_on(self, monkeypatch, tmp_path,
+                                                         caplog):
+        def down():
+            raise ConnectionError("API unreachable")
+
+        events = self.main(monkeypatch, tmp_path, down)
+        assert events == [("release", "ryzen-3080"), ("live lane",), ("claims",)]
+        assert "API unreachable" in caplog.text
+
+
 class TestClassifyingFailures:
     def test_blocked(self):
         assert worker.classify_error(cache.BlockedError("not a bot")) == "blocked"
