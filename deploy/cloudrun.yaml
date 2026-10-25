@@ -52,6 +52,8 @@ spec:
             # (comma-separated, exact). Cameras since 2026-10-25, live testing.
             - { name: PRACTICE_SOURCE,    value: "cameras" }
             - { name: PRACTICE_CLUB_IPS,  value: "71.212.197.184" }
+            # The Ryzen's link carries about two sheets' cameras until it runs at gigabit, then 5.
+            - { name: PRACTICE_MAX_CAMERA_WATCHES, value: "2" }
             # GAME_CLIPS_ENABLED ("1", "true" or "yes") asks for clips of the
             # rocks a person says they threw, and shows them on My shots. Only
             # with the worker box running the `clips` service (WORKER_ROLE=clips):

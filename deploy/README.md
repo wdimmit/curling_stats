@@ -293,6 +293,16 @@ feature (a value set only in a shell is gone at the next declarative deploy):
   `71.212.197.184`. Whether the club also has an IPv6 address that phones
   prefer is not verified, and a player on one would be refused unless that
   exact address is listed too.
+- `PRACTICE_MAX_CAMERA_WATCHES` (default 2, and 2 in `cloudrun.yaml`): how many
+  sheets may be read from the cameras at once. A Start that would open another
+  sheet's cameras past it is refused with "Practice on the cameras is full"; a
+  Start that joins a sheet already practising never is. The cap is for the
+  Ryzen's link to the cameras, which runs at 100 Mbit/s and carries about two
+  sheets (each needs 31-38 Mbit/s). Past that the cameras fall into keyframe
+  storms, and a camera that re-keys degrades every receiver it has, the club's
+  own broadcast included. Once the link is fixed and
+  `cat /sys/class/net/enp4s0/speed` on the Ryzen reads `1000`, raise it to 5 in
+  `cloudrun.yaml` and deploy.
 - `PROXY_HOPS` (default 1, which is right for Cloud Run, a domain mapping
   included): the club-address check relies on it. `client_ip` takes the entry
   `PROXY_HOPS` from the end of `X-Forwarded-For`, the ones our own proxies
@@ -308,8 +318,9 @@ feature (a value set only in a shell is gone at the next declarative deploy):
   a stand-in on another machine has its own compose file and must not set it.
   It needs `WORKER_PRACTICE=1` (set in the compose file) and `WORKER_LIVE=1`
   (in `worker.env`), as practice always has.
-- `LIVE_MAX_STREAMS` is 3 on each, 6 slots in all: room for five sessions at
-  once, one a sheet, split 3/2 between the workers. Keep it at 3 or more.
+- `LIVE_MAX_STREAMS` is 3 on each, 6 slots in all: enough for five sessions,
+  one a sheet, split 3/2 between the workers, once the link lets the API's cap
+  rise to five (`PRACTICE_MAX_CAMERA_WATCHES`, above). Keep it at 3 or more.
 - The workers stay on the default bridge network. They find and read the
   cameras with the NDI config the capture writes for itself, so no
   `network_mode: host` is needed.

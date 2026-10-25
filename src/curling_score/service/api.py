@@ -142,6 +142,15 @@ PRACTICE_DAY_LIMIT = 60
 CAMERAS_NOT_ALLOWED = ("Practice on the club's cameras needs a validated account, "
                        "or the club's Wi-Fi.")
 LEAGUE_ON = "A league game is on; practice opens when it ends."
+
+
+def cameras_full(n: int) -> str:
+    """What Start says when the cameras already carry as many sheets as they may."""
+    sheets = "1 sheet is" if n == 1 else f"{n} sheets are"
+    return (f"Practice on the cameras is full: {sheets} already practising. "
+            "Try again when one ends.")
+
+
 PRACTICE_SOURCES = ("youtube", practice.CAMERAS)
 # A practice throw's id, as the worker writes it (practice/throws.py).
 PRACTICE_THROW_ID = re.compile(r"^t_[0-9]{1,8}(\.[0-9])?$")
@@ -223,6 +232,11 @@ class Settings:
     # address, as client_ip sees it).
     practice_source: str = "youtube"
     club_ips: frozenset = frozenset()
+    # How many sheets may be read from the cameras at once. The Ryzen's link
+    # to them carries about two sheets until it runs at gigabit; past that the
+    # cameras fall into keyframe storms, which the club's own receivers see
+    # too. A Start that joins a sheet's running watch is never counted.
+    practice_max_camera_watches: int = 2
     # Clips of the rocks a person says they threw, on My shots: asked for when
     # a play is saved or its report read, cut by the clips worker. Off until a
     # worker running WORKER_ROLE=clips is up.
@@ -281,6 +295,7 @@ class Settings:
             practice_source=practice_source,
             club_ips=frozenset(ip.strip() for ip in env("PRACTICE_CLUB_IPS", "").split(",")
                                if ip.strip()),
+            practice_max_camera_watches=int(env("PRACTICE_MAX_CAMERA_WATCHES", "2")),
             game_clips_enabled=env("GAME_CLIPS_ENABLED", "0") in ("1", "true", "yes"),
             email_link_signin=env("EMAIL_LINK_SIGNIN", "0") in ("1", "true", "yes"),
             club_tz=env("CLUB_TZ", "America/Los_Angeles"),
@@ -2955,6 +2970,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # Asked before the rate limit, so a refusal costs no one a session's worth.
         if practice.league_on(repo, now()):
             raise HTTPException(409, LEAGUE_ON)
+        if cameras and practice.alive_watch(repo, sheet) is None:
+            # A new watch takes a sheet's four cameras over the Ryzen's link.
+            watching = practice.camera_watches(repo)
+            if watching >= settings.practice_max_camera_watches:
+                raise HTTPException(409, cameras_full(watching))
         if not repo.bump_rate_limit("practice:" + me.id, now(), PRACTICE_HOUR_LIMIT,
                                     PRACTICE_DAY_LIMIT):
             raise HTTPException(429, "that is a lot of sessions; try again later")

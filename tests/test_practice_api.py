@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from curling_score.service.api import Settings, create_app
 from curling_score.service.auth import FakeVerifier
-from curling_score.service.records import Job, Run, WatchedPlaylist
+from curling_score.service.records import Job, PracticeWatch, Run, WatchedPlaylist
 from curling_score.service.repo import MemoryRepo
 from curling_score.service.store import MemoryStore, clip_key, practice_key
 from curling_score.service.youtube import FakeYouTube, VideoMeta
@@ -21,7 +21,7 @@ S3, S4, UP = "qJhDHMMtHsE", "dXYqdopieoU", "IqiFhMEOL4s"
 CLUB_IP = "203.0.113.9"
 
 
-def _world(practice=True, cameras=False, live=False):
+def _world(practice=True, cameras=False, live=False, max_camera_watches=None):
     clock = Clock()
     repo, store = MemoryRepo(), MemoryStore()
     yt = FakeYouTube(playlists={"PLErN0WbLUyFI": [S3, S4, UP], "PLleague": [S4]})
@@ -42,7 +42,9 @@ def _world(practice=True, cameras=False, live=False):
                         firebase_auth_domain="proj.firebaseapp.com",
                         practice_enabled=practice, live_enabled=live,
                         **({"practice_source": "cameras", "club_ips": frozenset({CLUB_IP})}
-                           if cameras else {}))
+                           if cameras else {}),
+                        **({"practice_max_camera_watches": max_camera_watches}
+                           if max_camera_watches is not None else {}))
     app = create_app(repo, store, yt, settings, now=clock, auth=auth)
     return {"client": TestClient(app), "repo": repo, "store": store, "yt": yt,
             "clock": clock}
@@ -160,6 +162,8 @@ class TestStarting:
 
 NOT_ALLOWED = "Practice on the club's cameras needs a validated account, or the club's Wi-Fi."
 LEAGUE_ON = "A league game is on; practice opens when it ends."
+CAMERAS_FULL = ("Practice on the cameras is full: 2 sheets are already practising. "
+                "Try again when one ends.")
 
 
 def league_run(w, status="live", sheet=2, age_s=60.0, kind="live"):
@@ -277,6 +281,71 @@ class TestOnTheClubsCameras:
                                  created_at=T0, run_after=T0, kind="live"))
         assert claim(cams)["id"] == "j_league"
 
+    def test_the_cameras_take_two_sheets_at_once_by_default(self, cams):
+        # The Ryzen's link carries about two sheets: a third would put every
+        # camera into keyframe storms, the club's own receivers' too.
+        validate(cams, "uid-sarah")
+        for sheet in (1, 2):
+            assert start(cams, sheet=sheet).status_code == 201
+        r = start(cams, sheet=3)
+        assert r.status_code == 409 and r.json()["detail"] == CAMERAS_FULL
+        assert len(cams["repo"].jobs) == 2
+
+    def test_joining_a_sheet_already_practising_is_never_capped(self, cams):
+        validate(cams, "uid-sarah")
+        a = start(cams, sheet=1).json()
+        start(cams, sheet=2)
+        r = start(cams, who=ALEX, sheet=1, fwd=CLUB_IP)
+        assert r.status_code == 201 and r.json()["watch_id"] == a["watch_id"]
+
+    def test_a_sheet_frees_up_when_its_watch_ends(self, cams):
+        validate(cams, "uid-sarah")
+        sid = start(cams, sheet=1).json()["id"]
+        start(cams, sheet=2)
+        job = claim(cams, cameras=True)
+        assert job["sheet"] == 1
+        cams["client"].post(f"/api/practice/sessions/{sid}/stop", headers=SARAH)
+        # Stopped, the session still holds its cameras until the worker's
+        # next heartbeat is told so and the watch completes.
+        assert start(cams, sheet=3).status_code == 409
+        assert heartbeat(cams, job)["stop"] is True
+        cams["client"].post(f"/api/worker/jobs/{job['id']}/complete", headers=WORKER, json={
+            "worker_id": "ryzen", "practice": {"status": "ended"}})
+        assert start(cams, sheet=3).status_code == 201
+
+    def test_the_cap_counts_only_watches_on_the_cameras(self, cams):
+        # A YouTube watch left from before the switch reads no camera.
+        validate(cams, "uid-sarah")
+        cams["repo"].put_run(Run(id="r_yt", video_id=S4, processing_version="v",
+                                 status="processing", kind="practice", sheet=4, created_at=T0))
+        cams["repo"].put_job(Job(id="j_yt", run_id="r_yt", state="running", created_at=T0,
+                                 run_after=T0, kind="practice"))
+        cams["repo"].put_watch(PracticeWatch(id="pw_yt", sheet=4, video_id=S4, run_id="r_yt",
+                                             job_id="j_yt", created_at=T0))
+        assert start(cams, sheet=1).status_code == 201
+        assert start(cams, sheet=2).status_code == 201
+
+    def test_the_cap_is_a_setting(self):
+        w = _world(cameras=True, max_camera_watches=3)
+        validate(w, "uid-sarah")
+        for sheet in (1, 2, 3):
+            assert start(w, sheet=sheet).status_code == 201
+        r = start(w, sheet=4)
+        assert r.status_code == 409 and r.json()["detail"] == CAMERAS_FULL.replace("2", "3")
+
+    def test_a_full_refusal_does_not_spend_the_rate_limit(self, cams):
+        validate(cams, "uid-sarah")
+        start(cams, sheet=1)
+        start(cams, sheet=2)
+        for _ in range(30):
+            assert start(cams, sheet=3).status_code == 409
+        assert start(cams, sheet=1).status_code == 201       # joining, the limit untouched
+
+    def test_youtube_practice_has_no_camera_cap(self, w):
+        for sheet in (3, 4):
+            assert start(w, sheet=sheet).status_code == 201
+        assert start(w, sheet=3, who=ALEX).status_code == 201
+
     def test_a_practice_job_from_before_the_switch_waits_for_a_camera_worker_too(self, cams):
         """Camera mode holds all practice back from a worker that cannot see
         the cameras, a job left over from the YouTube days included."""
@@ -382,7 +451,8 @@ class TestALeagueEndsPractice:
         return sids, jobs
 
     def test_league_live_ends_every_session(self):
-        w = _world(cameras=True, live=True)
+        # Three sheets at once: the cameras' link as it will be at gigabit.
+        w = _world(cameras=True, live=True, max_camera_watches=5)
         sids, jobs = self.sessions_on(w, (1, 3, 5))
         assert all(heartbeat(w, job).get("stop") is not True for job in jobs)
         league_goes_live_on_sheet_2(w)
@@ -460,6 +530,12 @@ class TestSettings:
         got = Settings.from_env()
         assert got.practice_source == "cameras"
         assert got.club_ips == frozenset({"203.0.113.9", "198.51.100.7"})
+
+    def test_two_sheets_on_the_cameras_at_once_unless_told_otherwise(self, monkeypatch):
+        monkeypatch.delenv("PRACTICE_MAX_CAMERA_WATCHES", raising=False)
+        assert Settings.from_env().practice_max_camera_watches == 2
+        monkeypatch.setenv("PRACTICE_MAX_CAMERA_WATCHES", "5")
+        assert Settings.from_env().practice_max_camera_watches == 5
 
     def test_a_misspelt_source_stops_the_service_rather_than_being_ignored(self, monkeypatch):
         monkeypatch.setenv("PRACTICE_SOURCE", "camera")

@@ -94,6 +94,25 @@ def watch_alive(repo, watch) -> bool:
     return job is not None and job.state in ("queued", "running")
 
 
+def alive_watch(repo, sheet: int):
+    """The sheet's running watch, which a Start there joins; None for none."""
+    return next((w for w in repo.watches_for_sheet(sheet) if watch_alive(repo, w)), None)
+
+
+def on_cameras(repo, watch) -> bool:
+    """Whether ``watch`` reads the club's cameras rather than a YouTube stream."""
+    run = repo.get_run(watch.run_id)
+    return run is not None and run.source == CAMERAS
+
+
+def camera_watches(repo) -> int:
+    """How many sheets are being read from the cameras now: what the Ryzen's
+    link to them has to carry."""
+    return sum(1 for sheet in CAMERA_SHEETS
+               for w in repo.watches_for_sheet(sheet)
+               if watch_alive(repo, w) and on_cameras(repo, w))
+
+
 def start(repo, youtube, user, sheet: int, hand: str, now, processing_version: str,
           *, source: str = "youtube"):
     """A new session for ``user`` on ``sheet``: on the sheet's running watch,
@@ -103,7 +122,7 @@ def start(repo, youtube, user, sheet: int, hand: str, now, processing_version: s
     is on, whichever the source."""
     if league_on(repo, now):
         raise LeagueOn(sheet)
-    watch = next((w for w in repo.watches_for_sheet(sheet) if watch_alive(repo, w)), None)
+    watch = alive_watch(repo, sheet)
     if watch is None:
         if source == CAMERAS:
             if sheet not in CAMERA_SHEETS:
