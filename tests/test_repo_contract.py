@@ -162,6 +162,16 @@ class TestJobsAndClaiming:
         assert repo.get_run("r_2").status == "processing"
         assert repo.claim_job("w1", at(21)).attempts == 2
 
+    def test_a_job_at_its_last_attempt_waits_out_its_lease(self, repo):
+        # One that keeps killing its worker would otherwise come straight
+        # back at each restart: it waits out its lease, as before release.
+        repo.put_run(run())
+        repo.put_job(job(max_attempts=1))
+        assert repo.claim_job("w1", at(10)).attempts == 1
+        assert repo.release_jobs("w1", at(20)) == 0
+        assert (repo.get_job("j_1").state, repo.get_job("j_1").worker_id) == ("running", "w1")
+        assert repo.requeue_expired(at(611)) == 1
+
     def test_a_worker_holding_nothing_releases_nothing(self, repo):
         repo.put_run(run())
         repo.put_job(job())

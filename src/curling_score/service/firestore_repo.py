@@ -196,11 +196,13 @@ class FirestoreRepo:
 
         return _claim(transaction)
 
-    def _requeue(self, q, now, why):
+    def _requeue(self, q, now, why, keep=lambda data: True):
         n = 0
         batch = self.db.batch()
         for snap in q.stream():
             data = snap.to_dict()
+            if not keep(data):
+                continue
             batch.update(snap.reference, {
                 "state": "queued", "worker_id": None, "lease_expires_at": None,
                 "run_after": now, "error_kind": why,
@@ -220,7 +222,10 @@ class FirestoreRepo:
         # Two equalities: the automatic single-field indexes serve it.
         q = (self._where(JOBS, "state", "==", "running")
              .where(filter=self._fs.FieldFilter("worker_id", "==", worker_id)))
-        return self._requeue(q, now, "worker_restarted")
+        # A job at its last attempt waits out its lease, as before: one that
+        # keeps killing its worker must not come straight back at each restart.
+        return self._requeue(q, now, "worker_restarted",
+                             keep=lambda d: (job := Job.from_dict(d)).attempts < job.max_attempts)
 
     def queue_position(self, job_id):
         from datetime import datetime, timezone

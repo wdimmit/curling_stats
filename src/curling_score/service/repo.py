@@ -324,10 +324,13 @@ class MemoryRepo:
             return n
 
     def release_jobs(self, worker_id, now):
+        # A job at its last attempt waits out its lease, as before: one that
+        # keeps killing its worker must not come straight back at each restart.
         with self._lock:
             n = 0
             for job in self.jobs.values():
-                if job.state == "running" and job.worker_id == worker_id:
+                if (job.state == "running" and job.worker_id == worker_id
+                        and job.attempts < job.max_attempts):
                     self._requeue(job, now, "worker_restarted")
                     n += 1
             return n
