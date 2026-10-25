@@ -4082,14 +4082,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         )
         # A league stream going live closes practice on every sheet: leagues
         # use all five. Before the index's early return, so it never waits for
-        # the hour; and a failure here must not stop the poll.
-        if result["live"]:
-            try:
+        # the hour; and a failure here must not stop the poll. The live run is
+        # made once, so while one is being recorded with a practice watch
+        # still running, every poll ends practice again: one failed ending
+        # must not leave a session reading the cameras into the league.
+        try:
+            if result["live"] or (settings.practice_enabled
+                                  and practice.league_over_practice(repo, t)):
                 ended = practice.end_for_league(repo, t)
                 if ended:
                     log.info("a league went live: ended %d practice session(s)", ended)
-            except Exception as e:  # noqa: BLE001 - the poll has queued the league already
-                log.warning("ending practice for a league failed: %s", e)
+        except Exception as e:  # noqa: BLE001 - the poll has queued the league already
+            log.warning("ending practice for a league failed: %s", e)
         # The league index rides on the first call of each hour, so a stream
         # the club files in its playlist after the game gets its league within
         # the hour. Every call would spend the whole channel's quota twenty

@@ -606,6 +606,74 @@ class TestALeagueEndsPractice:
         assert poll(w)["live"] == []
         assert w["repo"].get_session(sids[0]).active
 
+    def flaky_ending(self, monkeypatch, fails=1):
+        """end_for_league failing its first ``fails`` calls; the calls made."""
+        from curling_score.service import practice as practice_mod
+
+        real, calls = practice_mod.end_for_league, []
+
+        def ending(repo, now):
+            calls.append(now)
+            if len(calls) <= fails:
+                raise RuntimeError("Firestore blinked")
+            return real(repo, now)
+        monkeypatch.setattr(practice_mod, "end_for_league", ending)
+        return calls
+
+    def test_a_failed_ending_is_tried_again_on_the_next_poll(self, monkeypatch, caplog):
+        w = _world(cameras=True, live=True)
+        sids, jobs = self.sessions_on(w, (1, 3))
+        calls = self.flaky_ending(monkeypatch)
+        league_goes_live_on_sheet_2(w)
+        assert len(poll(w)["live"]) == 1                 # the poll goes on regardless
+        assert "ending practice for a league failed: Firestore blinked" in caplog.text
+        assert all(w["repo"].get_session(sid).active for sid in sids)
+        assert claim(w)["kind"] == "live"               # a worker records the league
+        w["clock"].advance(180)
+        assert poll(w)["live"] == []                     # nothing new: the league is followed
+        assert len(calls) == 2
+        for sid in sids:
+            assert w["repo"].get_session(sid).end_reason == "league"
+        assert [heartbeat(w, job)["stop"] for job in jobs] == [True, True]
+
+    def test_an_ending_that_keeps_failing_never_stops_the_poll(self, monkeypatch, caplog):
+        w = _world(cameras=True, live=True)
+        self.sessions_on(w, (1,))
+        calls = self.flaky_ending(monkeypatch, fails=99)
+        league_goes_live_on_sheet_2(w)
+        poll(w)
+        claim(w)
+        for _ in range(3):
+            w["clock"].advance(180)
+            poll(w)
+        assert len(calls) == 4
+        assert caplog.text.count("ending practice for a league failed") == 4
+
+    def test_the_retry_asks_nothing_while_no_practice_is_running(self, monkeypatch):
+        w = _world(cameras=True, live=True)
+        calls = self.flaky_ending(monkeypatch, fails=0)
+        league_goes_live_on_sheet_2(w)
+        poll(w)
+        claim(w)                                         # the league is being recorded
+        w["clock"].advance(180)
+        poll(w)
+        assert len(calls) == 1                           # only when the league went live
+
+    def test_the_retry_asks_nothing_while_no_league_is_on(self, monkeypatch):
+        w = _world(cameras=True, live=True)
+        sids, _ = self.sessions_on(w, (1,))
+        calls = self.flaky_ending(monkeypatch, fails=0)
+        poll(w)
+        assert calls == [] and w["repo"].get_session(sids[0]).active
+
+    def test_a_league_left_unclosed_for_hours_ends_nothing(self, monkeypatch):
+        # A live run never closed out is not a league on (LEAGUE_FRESH_S).
+        w = _world(cameras=True, live=True)
+        league_run(w, status="live", age_s=7 * 3600)
+        sids, _ = self.sessions_on(w, (1,))
+        poll(w)
+        assert w["repo"].get_session(sids[0]).active
+
     def test_it_ends_youtube_practice_too(self):
         w = _world(live=True)
         sid = start(w).json()["id"]
