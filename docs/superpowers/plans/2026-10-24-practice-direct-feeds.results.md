@@ -132,6 +132,10 @@ docker run --rm --network deploy_default --shm-size 2g --gpus '"device=0"' --ent
 - `CUDA_DEVICE_ORDER: PCI_BUS_ID`;
 - `CUDA_VISIBLE_DEVICES: "0"` on `worker`, `"1"` on `worker2`.
 
+*Superseded in Task 10:* only `worker` holds both GPUs, pinned with `CUDA_VISIBLE_DEVICES: "0"`.
+`worker2` keeps card 1 alone, which encodes without card 0, and has no `CUDA_VISIBLE_DEVICES`: its one card
+is its CUDA device 0, so a pin of `"1"` there would hide it (`deploy/docker-compose.worker.yml`).
+
 What was checked:
 - With that pin, torch sees exactly one GPU, the right one by UUID: `ae8789f2…` (GPU 0) for `"0"`,
   `8c01673e…` (GPU 1) for `"1"`.
@@ -865,3 +869,27 @@ composer's spawn.
   - sheets 2 and 5 for 25 min (Q2) and 8 min (Q3);
   - each of sheets 1, 2, 3 and 5 for about 10 s (the looks, inputs.py);
   - sheet 2 for about 20-45 s, ten times (startup, D1, D8).
+
+# Open before the YouTube path goes
+
+The final branch review (2026-10-24) found these gates still open. The spec keeps the YouTube practice path
+until they close. The user has since decided to remove that path anyway; they stay open as checks of the
+camera path.
+
+- **Task 11 Step 1: calibration on an empty sheet.** Every sheet was in play during the run, so no saved
+  calibration was made from an empty sheet. Run `cameras-calibrate` at an empty-sheet time, in `worker` and then
+  `worker2` (one at a time), for each sheet. Sheet 4 waits on its cameras sending H.264 (E2).
+- **Task 11 Step 4: the both-ways accuracy comparison.** One real practice session, read from the cameras and
+  from its YouTube practice stream at once: throws found, false throws, rest positions, lines and clips, each
+  disagreement checked on the long view. Only a partial check of one camera session was made.
+- **Task 11 Step 5: latency.**
+  - Three watches on one worker, against the gate (p90 ≤ 20 s). Two met it after the Task 11 fixes (Q2, p90
+    17.6 s by the wall clock); three were never run.
+  - Five sessions, once the Ryzen's link is fixed (E1: `/sys/class/net/enp4s0/speed` reads 1000) and
+    `PRACTICE_MAX_CAMERA_WATCHES` is raised to 5.
+- **The throw timing checks step 2 left for a busy session.** Step 2 (`3887782a`..`4e600aef`, Clocks in the
+  spec) made every camera frame carry its real time. Its runs were on empty sheets, so these wait:
+  - hog-line times and splits on real throws;
+  - inter-camera lag on real throws, against Step 3's median of +0.40 s;
+  - drift over an hour or more;
+  - whether the composite's ~1 s grey lead-in upsets the saved-calibration check on a busy sheet.

@@ -258,25 +258,32 @@ enumeration (`harvest/playlist.py`) each build their own yt-dlp options with no
 token provider and no cookies, so a block that lands on one of those is not
 fixed by any of this.
 
-### Three workers on one box
+### Two workers and the clips worker on one box
 
-The pipeline spends most of an end on one CPU thread, with the GPU idle ~75% of
-the time, so the compose file runs three workers (`worker`, `worker2`,
-`worker3`) on the same GPU. On the 3070 laptop two built ~1.55x the ends an hour,
-each end ~25% slower (2026-10-02); on the Ryzen 9 5950X, which replaced it on
-2026-10-06, two lanes ran ends in 127 s against 116 s for one.
+The pipeline spends most of an end on one CPU thread, so the Ryzen runs two
+pipeline workers, one RTX 4070 each: `worker` on card 0 and `worker2` on card 1.
+Two building at once is the box's best: 65 ends an hour on 2026-10-14's
+benchmark, against 62 with three and 58 with one. A third worker (`worker3`)
+was retired that day, its cache folded into `worker2`'s. Beside them, `clips`
+cuts the clips of the rocks people say they threw: no GPU, four CPUs.
 
-- Each has its own cache, `/data/wdd/curling-cache{,-2,-3}`. Sharing one breaks:
-  a live worker empties `<cache>/live` when it starts, the pruner can delete
-  media another worker is reading, and a job uploads every new
-  `detections/*.npz` as its own. The cost is that a video one worker has is
-  downloaded again by another, unless it is hard-linked into that cache first
-  (same filesystem; the links cost no space).
-- Each has its own `WORKER_ID`; the API tells workers' jobs apart by it alone.
-- Each follows at most `LIVE_MAX_STREAMS: "3"` live streams. A worker claims
-  them greedily, so a larger limit would let one of them take a whole league.
-- `up -d` recreates all three, and all drop their live jobs (see above).
-  `docker compose ... logs -f worker worker2 worker3` follows them.
+- Each pipeline worker has its own cache: `/data/wdd/curling-cache` and
+  `/data/wdd/curling-cache-2`. Sharing one breaks: a live worker empties
+  `<cache>/live` when it starts, the pruner can delete media another worker is
+  reading, and a job uploads every new `detections/*.npz` as its own. The cost
+  is that a video one worker has is downloaded again by the other, unless it is
+  hard-linked into that cache first (same filesystem; the links cost no space).
+  `clips` reads both caches read-only and writes only to
+  `/data/wdd/curling-clips`.
+- Each has its own `WORKER_ID`, kept across restarts: `ryzen-3080` (from
+  `worker.env`), `ryzen-3080-2` and `ryzen-clips`. The API tells workers' jobs
+  apart by it alone, and a worker hands back its id's jobs as it starts.
+- Each pipeline worker follows at most `LIVE_MAX_STREAMS: "3"` live streams. A
+  worker claims them greedily, so a larger limit would let one of them take a
+  whole league.
+- `up -d` recreates all three. The workers' live recordings go with them, and
+  their jobs are handed back as they start (see above).
+  `docker compose ... logs -f worker worker2 clips` follows them.
 
 ## Practice on the club's cameras
 
@@ -326,9 +333,9 @@ feature (a value set only in a shell is gone at the next declarative deploy):
 - `LIVE_MAX_STREAMS` is 3 on each, 6 slots in all: enough for five sessions,
   one a sheet, split 3/2 between the workers, once the link lets the API's cap
   rise to five (`PRACTICE_MAX_CAMERA_WATCHES`, above). Keep it at 3 or more.
-- The workers stay on the default bridge network. They find and read the
-  cameras with the NDI config the capture writes for itself, so no
-  `network_mode: host` is needed.
+- The workers stay on the compose project's network (`deploy_default`). They
+  find and read the cameras with the NDI config the capture writes for itself,
+  so no `network_mode: host` is needed.
 - `worker` holds both GPUs, with `CUDA_VISIBLE_DEVICES=0` to keep its models and
   NVENC on card 0. NVENC on card 0 fails in a container that does not also have
   card 1 ("unsupported device"); card 1 alone encodes, so `worker2` keeps only
@@ -338,10 +345,13 @@ feature (a value set only in a shell is gone at the next declarative deploy):
 **Calibrating a sheet.** A watch on a stream calibrates from footage from before
 Start, a mostly empty sheet. A watch on the cameras has none, and at Start there
 are players on the ice, so each sheet keeps a calibration made while it was
-empty. With the sheet empty and no session on it:
+empty. With the sheet empty and no session on it, in each worker, one after
+the other, never both at once (one NDI connection per camera; let the first
+finish before starting the second):
 
 ```bash
 docker compose -f deploy/docker-compose.worker.yml exec worker  curling-score cameras-calibrate --sheet 2
+# when that has finished:
 docker compose -f deploy/docker-compose.worker.yml exec worker2 curling-score cameras-calibrate --sheet 2
 ```
 

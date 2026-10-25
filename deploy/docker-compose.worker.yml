@@ -51,9 +51,10 @@ services:
       # worker2 inherits it.
       WORKER_PRACTICE: "1"
       # This box can see the club's cameras (20 NDI sources, found and read
-      # from the default bridge network with the NDI config the capture writes
-      # for itself, so no network_mode: host), and the API holds camera
-      # practice jobs for workers that say so (PRACTICE_SOURCE=cameras).
+      # from the compose project's network, deploy_default, with the NDI
+      # config the capture writes for itself, so no network_mode: host), and
+      # the API holds camera practice jobs for workers that say so
+      # (PRACTICE_SOURCE=cameras).
       # worker2 inherits it; the clips service turns it off.
       WORKER_CAMERAS: "1"
       # CUDA work (the models, and ffmpeg's NVENC) stays on card 0, numbered as
