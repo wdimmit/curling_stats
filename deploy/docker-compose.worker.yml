@@ -45,7 +45,7 @@ services:
       # camera practice needs at least 5 between the two, so keep this at 3 or
       # more. Practice never overlaps a league, so the two never compete.
       LIVE_MAX_STREAMS: "3"
-      # Practice sessions' streams too (from LIVE_MAX_STREAMS' slots). The
+      # Practice sessions' watches too (from LIVE_MAX_STREAMS' slots). The
       # club only runs practice ice when no league is on, so practice never
       # shares a lane with a league night; a session does pause VOD jobs.
       # worker2 inherits it.
@@ -53,8 +53,7 @@ services:
       # This box can see the club's cameras (20 NDI sources, found and read
       # from the compose project's network, deploy_default, with the NDI
       # config the capture writes for itself, so no network_mode: host), and
-      # the API holds camera practice jobs for workers that say so
-      # (PRACTICE_SOURCE=cameras).
+      # the API holds practice jobs for workers that say so.
       # worker2 inherits it; the clips service turns it off.
       WORKER_CAMERAS: "1"
       # CUDA work (the models, and ffmpeg's NVENC) stays on card 0, numbered as

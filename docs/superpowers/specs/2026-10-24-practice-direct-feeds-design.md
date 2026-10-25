@@ -2,6 +2,12 @@
 
 Date: 2026-10-24. Status: design, reviewed; the user's answers folded in.
 
+*Amended 2026-10-25 by the user: YouTube practice removed; no rollback, no
+both-ways comparison.* "Remove the YouTube practice feature. It isn't viable
+for other reasons and we don't need to do an a/b comparison to it." Practice
+reads only the cameras, and `PRACTICE_SOURCE` is gone. The places below that
+keep YouTube for a rollback or compare against it say so where they stand.
+
 ## Why
 
 Practice sessions (`/practice`, spec `2026-10-09-practice-sessions-design.md`)
@@ -273,6 +279,8 @@ My call:
 - **The YouTube practice path:** direct feeds replace it. My call: keep it
   behind a setting for rollback until a week of real sessions has gone well,
   then remove it.
+  - *Amended 2026-10-25 by the user:* removed now, with no rollback. Closing
+    practice is `PRACTICE_ENABLED=0`.
 
 ### 6. Five sheets at once
 
@@ -341,6 +349,10 @@ Practice reads the club's cameras directly, with the club's agreement:
    validated (`validating-release-changes`), together with test 2's fidelity
    numbers. The YouTube path is not removed until one both-ways comparison has
    been made.
+
+   *Amended 2026-10-25 by the user:* the both-ways comparison is dropped, and
+   the YouTube path removed without it. Acceptance is the hand check against
+   the long camera, with test 2's numbers.
 4. **Load.** Run five sheets at once and record:
    - CPU, GPU and NVENC sessions;
    - dropped frames per camera;

@@ -287,19 +287,24 @@ cuts the clips of the rocks people say they threw: no GPU, four CPUs.
 
 ## Practice on the club's cameras
 
-With `PRACTICE_SOURCE=cameras` a practice session reads the sheet's own cameras
-(the club's 20 NDI sources) instead of its YouTube practice stream, so Start
-works whenever no league is on, streamed or not. Only a worker on the club's
-network can read them: the Ryzen's `worker` and `worker2`. The design is
-`docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md`.
+A practice session reads the sheet's own cameras (the club's 20 NDI sources),
+so Start works whenever no league is on, streamed or not. Only a worker on the
+club's network can read them: the Ryzen's `worker` and `worker2`. The design is
+`docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md`. Practice
+read a sheet's YouTube practice stream until 2026-10-25; that path is gone, and
+there is no switching back to it. Sessions from then still read as they did.
 
 **On the API**, in `deploy/cloudrun.yaml` like every other setting of a live
 feature (a value set only in a shell is gone at the next declarative deploy):
 
-- `PRACTICE_SOURCE`: `youtube` (the default) or `cameras`. Anything else stops
-  the API at start.
-- `PRACTICE_CLUB_IPS`: comma-separated addresses. On the cameras, Start needs a
-  signed-in account, and either that account's role is `validated` or `admin`
+- `PRACTICE_ENABLED`: `1` opens practice; `0` closes it, the pages and the API
+  alike. Closing it is the way to stop practice: set it to `0` in
+  `cloudrun.yaml` and run `./deploy/deploy-api.sh`. A watch already running
+  ends on its own, when its sessions do: 15 minutes without a throw, the
+  3-hour limit, or a league going live. Stop goes with the page, but the
+  worker's heartbeats are still answered.
+- `PRACTICE_CLUB_IPS`: comma-separated addresses. Start needs a signed-in
+  account, and either that account's role is `validated` or `admin`
   or the request comes from an address in this list. The match is exact, as
   text: no ranges, no normalising. The club's address in the logs is
   `71.212.197.184`. Whether the club also has an IPv6 address that phones
@@ -325,7 +330,7 @@ feature (a value set only in a shell is gone at the next declarative deploy):
 **On the workers**, in `deploy/docker-compose.worker.yml`:
 
 - `WORKER_CAMERAS=1` says the worker can see the cameras, and the API holds
-  camera jobs for workers that say so. `worker` sets it and `worker2` inherits
+  every practice job for workers that say so. `worker` sets it and `worker2` inherits
   it; `clips` turns it off. Never set it on a box that cannot see the cameras:
   a stand-in on another machine has its own compose file and must not set it.
   It needs `WORKER_PRACTICE=1` (set in the compose file) and `WORKER_LIVE=1`
@@ -342,10 +347,9 @@ feature (a value set only in a shell is gone at the next declarative deploy):
   its own. The pin hides card 1 from CUDA only: `nvidia-smi` in `worker` lists
   both cards.
 
-**Calibrating a sheet.** A watch on a stream calibrates from footage from before
-Start, a mostly empty sheet. A watch on the cameras has none, and at Start there
-are players on the ice, so each sheet keeps a calibration made while it was
-empty. With the sheet empty and no session on it, in each worker, one after
+**Calibrating a sheet.** A watch records from Start, so it has no footage of
+the sheet from before, and at Start there are players on the ice. So each sheet
+keeps a calibration made while it was empty. With the sheet empty and no session on it, in each worker, one after
 the other, never both at once (one NDI connection per camera; let the first
 finish before starting the second):
 
@@ -390,14 +394,6 @@ It writes the layout file and a check image under `out/cameras/layout-check/`
 difference): look at it before committing the layout, then deploy as for any
 code change. The layout is part of the worker image, and the saved calibration
 was made from the old picture, so run `cameras-calibrate` for that sheet again.
-
-**Rolling back.** Set `PRACTICE_SOURCE` to `youtube` in `cloudrun.yaml` and run
-`./deploy/deploy-api.sh`: new sessions use the sheet's stream again, and the
-workers need no change. A camera job already queued may then fail once; the
-player starts again. A camera watch still running stays on the cameras, and
-camera-gated: joining it still needs a validated account or the club's
-address. It ends on its own, when its sessions do: Stop, 15 minutes without a
-throw, or the 3-hour limit (`MAX_S`).
 
 ## Watching a league
 

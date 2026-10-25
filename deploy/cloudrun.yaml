@@ -41,16 +41,14 @@ spec:
             # time); a sixth falls behind.
             - { name: LIVE_ENABLED,       value: "1" }
             # PRACTICE_ENABLED ("1", "true" or "yes") opens /practice/sheet/N and
-            # its API: a signed-in player starts a session on a sheet's live
-            # practice stream (a playlist marked practice) and sees each throw.
-            # Only with workers running WORKER_PRACTICE=1. On since 2026-10-10.
+            # its API: a player starts a session on a sheet, which reads that
+            # sheet's own NDI cameras, and sees each throw. Only with workers
+            # that can see the cameras (WORKER_PRACTICE=1, WORKER_CAMERAS=1: the
+            # Ryzen's). "0" closes practice. On since 2026-10-10; on the
+            # cameras since 2026-10-25.
             - { name: PRACTICE_ENABLED,   value: "1" }
-            # PRACTICE_SOURCE "cameras" reads a sheet's own NDI cameras instead of
-            # its YouTube practice stream, on workers with WORKER_CAMERAS=1 (the
-            # Ryzen's). "youtube" is the rollback. Start on the cameras needs a
-            # validated/admin account or a request from PRACTICE_CLUB_IPS
-            # (comma-separated, exact). Cameras since 2026-10-25, live testing.
-            - { name: PRACTICE_SOURCE,    value: "cameras" }
+            # Start needs a validated/admin account or a request from one of
+            # these addresses (comma-separated, exact): the club's.
             - { name: PRACTICE_CLUB_IPS,  value: "71.212.197.184" }
             # The Ryzen's link carries about two sheets' cameras until it runs at gigabit, then 5.
             - { name: PRACTICE_MAX_CAMERA_WATCHES, value: "2" }

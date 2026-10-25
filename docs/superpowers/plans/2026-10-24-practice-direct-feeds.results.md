@@ -873,15 +873,16 @@ composer's spawn.
 # Open before the YouTube path goes
 
 The final branch review (2026-10-24) found these gates still open. The spec keeps the YouTube practice path
-until they close. The user has since decided to remove that path anyway; they stay open as checks of the
-camera path.
+until they close. The user has since decided to remove that path anyway (2026-10-25: "we don't need to do an
+a/b comparison to it"); the others stay open as checks of the camera path.
 
 - **Task 11 Step 1: calibration on an empty sheet.** Every sheet was in play during the run, so no saved
   calibration was made from an empty sheet. Run `cameras-calibrate` at an empty-sheet time, in `worker` and then
   `worker2` (one at a time), for each sheet. Sheet 4 waits on its cameras sending H.264 (E2).
-- **Task 11 Step 4: the both-ways accuracy comparison.** One real practice session, read from the cameras and
-  from its YouTube practice stream at once: throws found, false throws, rest positions, lines and clips, each
-  disagreement checked on the long view. Only a partial check of one camera session was made.
+- ~~**Task 11 Step 4: the both-ways accuracy comparison.**~~ **Dropped by the user, 2026-10-25,** with the
+  YouTube practice path. It was to read one real practice session from the cameras and from its YouTube practice
+  stream at once. Only a partial check of one camera session was made; accuracy now rests on hand checks
+  against the long camera.
 - **Task 11 Step 5: latency.**
   - Three watches on one worker, against the gate (p90 ≤ 20 s). Two met it after the Task 11 fixes (Q2, p90
     17.6 s by the wall clock); three were never run.
