@@ -379,7 +379,10 @@ was made from the old picture, so run `cameras-calibrate` for that sheet again.
 **Rolling back.** Set `PRACTICE_SOURCE` to `youtube` in `cloudrun.yaml` and run
 `./deploy/deploy-api.sh`: new sessions use the sheet's stream again, and the
 workers need no change. A camera job already queued may then fail once; the
-player starts again.
+player starts again. A camera watch still running stays on the cameras, and
+camera-gated: joining it still needs a validated account or the club's
+address. It ends on its own, when its sessions do: Stop, 15 minutes without a
+throw, or the 3-hour limit (`MAX_S`).
 
 ## Watching a league
 

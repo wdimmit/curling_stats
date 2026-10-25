@@ -357,6 +357,61 @@ class TestOnTheClubsCameras:
         assert r.status_code == 204
 
 
+def rolled_back(w):
+    """The same records, and an API switched back to PRACTICE_SOURCE=youtube
+    (the club's address still configured, as it stays in cloudrun.yaml)."""
+    auth = FakeVerifier()
+    auth.add("tok-sarah", "uid-sarah", "sarah@example.org", "Sarah")
+    auth.add("tok-alex", "uid-alex", "alex@example.org", "Alex")
+    settings = Settings(public_base_url="https://chart.example", worker_token="worker-secret",
+                        admin_token="admin-secret", allowed_channels={CLUB}, model_id="m-abc",
+                        firebase_project="proj", firebase_api_key="AIzaFake",
+                        firebase_auth_domain="proj.firebaseapp.com", practice_enabled=True,
+                        club_ips=frozenset({CLUB_IP}))
+    app = create_app(w["repo"], w["store"], w["yt"], settings, now=w["clock"], auth=auth)
+    return {**w, "client": TestClient(app)}
+
+
+class TestARollbackKeepsTheCameraRule:
+    """Switched back to YouTube, a camera watch still running is still read
+    from the cameras: joining it is a camera Start, and needs what one does."""
+
+    def on_the_cameras_then_rolled_back(self, sheet=3):
+        cams = _world(cameras=True)
+        validate(cams, "uid-sarah")
+        a = start(cams, sheet=sheet).json()
+        return rolled_back(cams), a
+
+    def test_joining_a_camera_watch_after_a_rollback_needs_the_camera_rule(self):
+        yt, _ = self.on_the_cameras_then_rolled_back()
+        r = start(yt, who=ALEX)
+        assert r.status_code == 403 and r.json()["detail"] == NOT_ALLOWED
+        assert len(yt["repo"].sessions) == 1
+
+    def test_the_clubs_address_or_a_validated_account_may_join_it(self):
+        yt, a = self.on_the_cameras_then_rolled_back()
+        r = start(yt, who=ALEX, fwd=CLUB_IP)
+        assert r.status_code == 201 and r.json()["watch_id"] == a["watch_id"]
+        assert start(yt).json()["watch_id"] == a["watch_id"]           # Sarah, validated
+
+    def test_a_sheet_on_youtube_or_with_no_watch_is_as_before(self):
+        yt, _ = self.on_the_cameras_then_rolled_back()
+        first = start(yt, who=ALEX, sheet=4)            # no watch: its YouTube stream
+        assert first.status_code == 201
+        joined = start(yt, who=ALEX, sheet=4)           # a YouTube watch: joined
+        assert joined.status_code == 201
+        assert joined.json()["watch_id"] == first.json()["watch_id"]
+        watch = yt["repo"].get_watch(first.json()["watch_id"])
+        assert yt["repo"].get_run(watch.run_id).source != "cameras"
+
+    def test_an_ended_camera_watch_no_longer_counts(self):
+        yt, a = self.on_the_cameras_then_rolled_back()
+        watch = yt["repo"].get_watch(a["watch_id"])
+        yt["repo"].update_job(watch.job_id, state="done")
+        r = start(yt, who=ALEX)                          # a new watch, on YouTube
+        assert r.status_code == 201 and r.json()["watch_id"] != a["watch_id"]
+
+
 class TestAJobWhoseSessionsHaveEnded:
     """A practice job still queued when its last session ends -- Stop, idle,
     a league, or no worker to claim it -- is never handed out: a worker would

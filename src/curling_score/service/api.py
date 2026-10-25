@@ -2958,19 +2958,24 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         practice_on()
         me = require_user(authorization)
         cameras = settings.practice_source == practice.CAMERAS
-        # The club's cameras are not for just anyone who signed in. The address
-        # is client_ip's, which a forged X-Forwarded-For cannot move.
-        if cameras and me.role not in ROLES and client_ip(request) not in settings.club_ips:
-            raise HTTPException(403, CAMERAS_NOT_ALLOWED)
         body = await request.json()
         try:
             sheet = int(body.get("sheet"))
         except (TypeError, ValueError):
             raise HTTPException(422, "say which sheet") from None
+        watch = practice.alive_watch(repo, sheet)
+        # The club's cameras are not for just anyone who signed in: not on the
+        # cameras, nor, after a rollback to YouTube, on joining a camera watch
+        # still running. The address is client_ip's, which a forged
+        # X-Forwarded-For cannot move.
+        reads_cameras = cameras or (watch is not None and practice.on_cameras(repo, watch))
+        if (reads_cameras and me.role not in ROLES
+                and client_ip(request) not in settings.club_ips):
+            raise HTTPException(403, CAMERAS_NOT_ALLOWED)
         # Asked before the rate limit, so a refusal costs no one a session's worth.
         if practice.league_on(repo, now()):
             raise HTTPException(409, LEAGUE_ON)
-        if cameras and practice.alive_watch(repo, sheet) is None:
+        if cameras and watch is None:
             # A new watch takes a sheet's four cameras over the Ryzen's link.
             watching = practice.camera_watches(repo)
             if watching >= settings.practice_max_camera_watches:
