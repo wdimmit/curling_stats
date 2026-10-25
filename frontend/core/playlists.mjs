@@ -42,8 +42,7 @@ export function every(seconds) {
 
 /* How often the poller looks at it, in a sentence. */
 export function pollText(pl) {
-  if (pl.practice) return "Practice streams: a sheet's Start looks here for its stream. "
-    + "Never polled for games.";
+  if (pl.practice) return "Practice streams: never polled for games.";
   const idle = pl.idle_poll_s == null ? null : `every ${every(pl.idle_poll_s)}`;
   if (!pl.schedule?.length) return idle ? `Looked at ${idle}.` : "Never looked at.";
   return `Looked at every ${every(pl.live_poll_s)} on those nights, `

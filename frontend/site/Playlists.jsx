@@ -101,8 +101,8 @@ function PlaylistForm({ initial, adding, clubTz, onDone, onCancel }) {
         league games
       </label>
       {form.practice ? (
-        <p className="muted hint">A sheet's Start looks here for that sheet's live stream. It is
-        never polled for games, so it has no league nights.</p>
+        <p className="muted hint">A sheet's practice streams are never polled for games, so
+        this has no league nights. Practice sessions read the club's cameras, not these.</p>
       ) : <>
         <h3>League nights</h3>
         <p className="muted hint">In the club's time ({clubTz}). On these it is looked at every

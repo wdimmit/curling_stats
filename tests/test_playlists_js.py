@@ -77,7 +77,9 @@ class TestHowOftenItIsLookedAt:
             "Never looked at."
 
     def test_a_practice_playlist_is_never_polled_for_games(self):
-        assert "Never polled for games" in js(f"P.pollText({json.dumps(pl(practice=True))})")
+        # Nor read for practice sessions, which read the club's cameras.
+        assert js(f"P.pollText({json.dumps(pl(practice=True))})") == \
+            "Practice streams: never polled for games."
 
     def test_intervals(self):
         assert js("[180, 90, 3600, 5400, 7200].map(P.every)") == [
