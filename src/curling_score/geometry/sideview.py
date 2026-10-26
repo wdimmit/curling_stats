@@ -117,6 +117,19 @@ class SideView:
     name: str = ""
     transform: Cut | None = None
 
+    def __post_init__(self):
+        # What the readers of ``rect`` slice is the transform's output, so the
+        # two must describe one view: ``rect`` is the whole of it.
+        t = self.transform
+        if t is not None:
+            if t.name != self.name:
+                raise ValueError(
+                    f"view {self.name!r}: transform is for {t.name!r}")
+            if tuple(self.rect) != (0, 0, *t.out_size):
+                raise ValueError(
+                    f"view {self.name!r}: rect {tuple(self.rect)} is not the "
+                    f"transform's output (0, 0, {t.out_size[0]}, {t.out_size[1]})")
+
     @property
     def cut(self) -> Cut:
         """How this view is taken from its file: ``transform``, else a crop

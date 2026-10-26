@@ -262,7 +262,9 @@ def _source(path, crop):
         if not crop.is_crop:
             raise NotImplementedError("phase 2")
         return str(as_feed(path).path_for(crop.name)), crop.apply
-    file = os.fspath(path)
+    # Normalised as a Cut's file is, so a call mixing the two on one path
+    # ("./v.mp4") sees one file.
+    file = str(Path(os.fspath(path)))
     if crop is None:
         return file, None
 
@@ -333,7 +335,7 @@ def windows(path, specs, end_s: float):
     files = {file for file, _ in sources}
     if len(files) > 1:
         raise NotImplementedError("phase 2: specs span files")
-    path = files.pop() if files else os.fspath(path)
+    path = files.pop() if files else str(Path(os.fspath(path)))
     wanted = [float(start) for start, _, _ in specs]
     steps = [1.0 / fps for _, fps, _ in specs]
     lead = seek_lead(path)

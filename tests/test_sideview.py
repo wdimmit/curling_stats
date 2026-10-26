@@ -633,11 +633,27 @@ class TestCut:
 
     def test_the_lateral_fits_keep_name_and_transform(self):
         turned = Cut("left", (0, 0, 810, 1080), size=(405, 540))
-        v = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0,
+        v = SideView(rect=(0, 0, 405, 540), tee_row=430.0, hog_row=520.0,
                      name="left", transform=turned)
         for got in (dataclasses.replace(v, centre_col=400.0, lat_px_per_m_at_tee=90.0),
                     dataclasses.replace(v, centre_line=(400.0, 0.0))):
             assert got.name == "left" and got.cut is turned
+
+    def test_a_transform_must_be_the_views_own(self):
+        turned = Cut("left", (0, 0, 810, 1080), size=(405, 540))
+        with pytest.raises(ValueError, match="transform is for 'left'"):
+            SideView(rect=(0, 0, 405, 540), tee_row=430.0, hog_row=520.0,
+                     name="right", transform=turned)
+        with pytest.raises(ValueError, match="transform is for 'left'"):
+            SideView(rect=(0, 0, 405, 540), tee_row=430.0, hog_row=520.0,
+                     transform=turned)
+
+    def test_rect_must_be_the_transforms_output(self):
+        turned = Cut("left", (0, 0, 810, 1080), size=(405, 540))
+        for rect in ((0, 0, 810, 1080), (5, 0, 405, 540), (0, 0, 540, 405)):
+            with pytest.raises(ValueError, match="not the transform's output"):
+                SideView(rect=rect, tee_row=430.0, hog_row=520.0,
+                         name="left", transform=turned)
 
     def test_solve_lateral_keeps_name(self):
         view = dataclasses.replace(_depth_only(), name="right")

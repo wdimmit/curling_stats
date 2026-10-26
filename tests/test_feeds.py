@@ -57,7 +57,39 @@ def test_apply_turned_raises():
 
 def test_key_of_crop_is_the_rect():
     assert Cut("", (1, 2, 3, 4)).key() == (1, 2, 3, 4)
-    assert Cut("", (1, 2, 3, 4), 90, (5, 6)).key() == ((1, 2, 3, 4), 90, (5, 6))
+
+
+def test_key_of_a_turned_or_scaled_cut_is_versioned():
+    from curling_score.feeds.cut import CUT_IMPL
+
+    assert Cut("", (1, 2, 3, 4), 90, (5, 6)).key() == ((1, 2, 3, 4), 90, (5, 6), CUT_IMPL)
+    assert Cut("", (1, 2, 3, 4), 0, (5, 6)).key() == ((1, 2, 3, 4), 0, (5, 6), CUT_IMPL)
+    assert Cut("", (1, 2, 3, 4), -90).key() == ((1, 2, 3, 4), -90, None, CUT_IMPL)
+
+
+def test_apply_equals_steps_at_even_offsets(tmp_path):
+    """``apply`` slices BGR; ``steps`` crops in yuv420p. The same pixels where
+    chroma pairs line up (even x, y); ``steps`` is the reference."""
+    import shutil
+    import subprocess
+
+    from curling_score.ingest import frames
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("needs ffmpeg")
+    path = tmp_path / "t.mp4"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+         "-i", "testsrc2=size=160x120:rate=10", "-t", "1", "-pix_fmt", "yuv420p",
+         "-c:v", "libx264", str(path)], check=True)
+    cut = Cut("left", (12, 8, 80, 60))
+    raw = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(path),
+         "-vf", cut.steps(), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
+        check=True, capture_output=True).stdout
+    want = np.frombuffer(raw, np.uint8).reshape(60, 80, 3)
+    _, got = next(iter(frames.window(as_feed(path), 0.0, 0.0, 10.0, crop=cut)))
+    assert np.array_equal(got, want)
 
 
 def test_of():
@@ -65,6 +97,13 @@ def test_of():
     c = Cut("left", (1, 2, 3, 4))
     assert Cut.of(c) is c
     assert Cut.of([1, 2, 3, 4]).crop == (1, 2, 3, 4)
+    assert Cut.of(c, "left") is c
+    assert Cut.of(c, "") is c
+
+
+def test_of_a_cut_under_another_name_raises():
+    with pytest.raises(ValueError, match="'left', not 'right'"):
+        Cut.of(Cut("left", (1, 2, 3, 4)), "right")
 
 
 def test_from_placement():

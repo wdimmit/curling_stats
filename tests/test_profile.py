@@ -159,9 +159,43 @@ class TestSetupCut:
 
     def test_a_transform_wins_over_the_rect(self):
         turned = Cut("top", (0, 0, 534, 300), rotate=90, size=(300, 534))
-        s = profile.PanelSetup(rect=(0, 0, 534, 300), calib=TOP, name="top",
+        s = profile.PanelSetup(rect=(0, 0, 300, 534), calib=TOP, name="top",
                                transform=turned)
         assert s.cut is turned
+
+    def test_a_transform_must_be_the_panels_own(self):
+        turned = Cut("top", (0, 0, 534, 300), rotate=90, size=(300, 534))
+        with pytest.raises(ValueError, match="transform is for 'top'"):
+            profile.PanelSetup(rect=(0, 0, 300, 534), calib=TOP, name="bottom",
+                               transform=turned)
+        with pytest.raises(ValueError, match="transform is for 'top'"):
+            profile.PanelSetup(rect=(0, 0, 300, 534), calib=TOP, transform=turned)
+
+    def test_rect_must_be_the_transforms_output(self):
+        turned = Cut("top", (0, 0, 534, 300), rotate=90, size=(300, 534))
+        for rect in ((0, 0, 534, 300), (3, 0, 300, 534), (0, 0, 534, 300)):
+            with pytest.raises(ValueError, match="not the transform's output"):
+                profile.PanelSetup(rect=rect, calib=TOP, name="top", transform=turned)
+
+    def test_crop_goes_through_the_cut_when_there_is_a_transform(self):
+        frame = np.zeros((600, 800, 3), np.uint8)
+        # a crop-only transform is the slice, from the cut's own crop
+        flat = Cut("top", (10, 20, 300, 534))
+        s = profile.PanelSetup(rect=(0, 0, 300, 534), calib=TOP, name="top",
+                               transform=flat)
+        assert s.crop(frame).shape == (534, 300, 3)
+        assert s.crop(frame).flags.c_contiguous
+        # a turned one is not made in numpy: no silent slice of the wrong pixels
+        turned = Cut("top", (0, 0, 534, 300), rotate=90, size=(300, 534))
+        t = profile.PanelSetup(rect=(0, 0, 300, 534), calib=TOP, name="top",
+                               transform=turned)
+        with pytest.raises(NotImplementedError, match="phase 2"):
+            t.crop(frame)
+
+    def test_crop_without_a_transform_is_the_slice(self):
+        frame = np.arange(600 * 800 * 3, dtype=np.uint8).reshape(600, 800, 3)
+        s = profile.PanelSetup(rect=(10, 20, 30, 40), calib=TOP)
+        assert np.array_equal(s.crop(frame), frame[20:60, 10:40])
 
     def test_calibrate_panels_names_setups(self, monkeypatch):
         monkeypatch.setattr(profile.lighting, "is_calibratable", lambda p: True)

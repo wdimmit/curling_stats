@@ -328,6 +328,18 @@ class TestFeeds:
         assert out[0][0].shape == (93, 101, 3)
         assert out[1][0].shape == (240, 320, 3)
 
+    def test_windows_mixed_specs_on_an_unnormalised_path(self, clip, monkeypatch):
+        from curling_score.feeds import Cut
+
+        monkeypatch.chdir(clip.parent)
+        path = f"./{clip.name}"
+        specs = [(1.0, 5.0, Cut("left", self.RECT)), (1.0, 5.0, self.OTHER)]
+        got = {0: [], 1: []}
+        for i, t, img in frames.windows(path, specs, 2.0):
+            got[i].append(img)
+        assert got[0][0].shape == (93, 101, 3)
+        assert got[1][0].shape == (80, 120, 3)
+
     def test_windows_two_files_raises(self, clip, tmp_path):
         from curling_score.feeds import Cut, as_feed
 

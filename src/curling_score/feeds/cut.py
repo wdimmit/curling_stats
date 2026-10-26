@@ -21,6 +21,11 @@ if TYPE_CHECKING:
 Rect = tuple[int, int, int, int]  # x, y, w, h
 
 ROTATIONS = (0, 90, -90)
+# Part of a turned or scaled cut's cache key, not a crop's (a crop's key is
+# its rect, so warm caches keep hitting). Bump it with any change in how such a
+# cut is produced: the scaler's flags, the PyAV graph against numpy, the order
+# colour is converted in.
+CUT_IMPL = 1
 # FFmpeg's transpose: 1 turns clockwise, 2 counter-clockwise, neither flips.
 TRANSPOSE = {90: 1, -90: 2}
 
@@ -68,7 +73,12 @@ class Cut:
 
     def apply(self, bgr: np.ndarray) -> np.ndarray:
         """Cut a decoded frame. Only a crop can be taken in numpy here; a
-        turned or scaled cut is made by FFmpeg."""
+        turned or scaled cut is made by FFmpeg.
+
+        This slices the frame after it is converted to BGR; ``steps()`` crops
+        in yuv420p, before. They give the same pixels only at even x and y
+        (chroma is sited on pairs); at an odd offset the edge's chroma differs.
+        ``steps()`` is the reference for pixel parity."""
         if not self.is_crop:
             raise NotImplementedError("phase 2")
         x, y, w, h = self.crop
@@ -77,12 +87,18 @@ class Cut:
     def key(self) -> tuple:
         """The cut's part of a detection-cache key. A crop is its rect, as the
         key was before cuts, so warm caches keep hitting."""
-        return self.crop if self.is_crop else (self.crop, self.rotate, self.size)
+        if self.is_crop:
+            return self.crop
+        return (self.crop, self.rotate, self.size, CUT_IMPL)
 
     @classmethod
     def of(cls, rect_or_cut, name: str = "") -> Cut:
-        """A ``Cut`` passes through; a 4-tuple becomes a crop."""
+        """A ``Cut`` passes through (a ``name`` that is not its own is an
+        error: it would read another view); a 4-tuple becomes a crop."""
         if isinstance(rect_or_cut, cls):
+            if name and name != rect_or_cut.name:
+                raise ValueError(
+                    f"cut is {rect_or_cut.name!r}, not {name!r}")
             return rect_or_cut
         x, y, w, h = rect_or_cut
         return cls(name, (int(x), int(y), int(w), int(h)))

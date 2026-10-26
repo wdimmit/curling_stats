@@ -166,3 +166,9 @@ both sides at once with `detections/` removed after; `LIVE_VIDEO`/`LIVE_SPEED`/`
 
 Scratch kept on the Ryzen: timelines, logs, `wall_s`, detection-entry lists and the live publishes under
 `/data/wdd/scratch/camera-direct/ab/w-*`. Linked videos and proxies, cache roots and the live recordings were removed.
+
+### practice-replay
+
+Not run: practice recordings are never kept, so none exists to replay. The practice path's reader (`windows` with
+`Cut` specs, `one_pass`) is pinned by `test_windows_cuts_one_decode`; phase 2's gate replays practice both ways from
+raw files.

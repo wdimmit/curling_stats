@@ -49,6 +49,19 @@ class PanelSetup:
     name: str = ""
     transform: Cut | None = None
 
+    def __post_init__(self):
+        # What the readers of ``rect`` slice is the transform's output, so the
+        # two must describe one panel: ``rect`` is the whole of it.
+        t = self.transform
+        if t is not None:
+            if t.name != self.name:
+                raise ValueError(
+                    f"panel {self.name!r}: transform is for {t.name!r}")
+            if tuple(self.rect) != (0, 0, *t.out_size):
+                raise ValueError(
+                    f"panel {self.name!r}: rect {tuple(self.rect)} is not the "
+                    f"transform's output (0, 0, {t.out_size[0]}, {t.out_size[1]})")
+
     @property
     def cut(self) -> Cut:
         """How this panel is taken from its file: ``transform``, else a crop
@@ -56,6 +69,8 @@ class PanelSetup:
         return self.transform or Cut(self.name, tuple(self.rect))
 
     def crop(self, frame):
+        if self.transform is not None:
+            return self.cut.apply(frame)
         x, y, w, h = self.rect
         return frame[y : y + h, x : x + w]
 
