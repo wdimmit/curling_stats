@@ -788,9 +788,14 @@ class TestPlays:
         repo.put_play(self.play(chart_id="c_1", link="s"))
         got = repo.get_play("u1", "src_1")
         assert (got.color, got.slot, got.chart_id, got.link) == ("red", 4, "c_1", "s")
-        assert got.format == "fours"
+        assert got.format == "fours" and got.starred == []
         assert repo.get_play("u1", "src_2") is None
         assert repo.get_play("u2", "src_1") is None
+
+    def test_starred_rocks_come_back_in_order(self, repo):
+        repo.put_play(self.play(starred=["0.3.7", "0.1.13"]))
+        assert repo.get_play("u1", "src_1").starred == ["0.3.7", "0.1.13"]
+        assert repo.plays_for_user("u1")[0].starred == ["0.3.7", "0.1.13"]
 
     def test_one_per_person_per_game_and_the_second_replaces_the_first(self, repo):
         repo.put_play(self.play(color="red", slot=4, chart_id="c_1", link="c"))

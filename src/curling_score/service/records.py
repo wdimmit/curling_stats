@@ -525,6 +525,10 @@ class Play:
     format: str = "fours"
     chart_id: str | None = None
     link: str = "g"
+    starred: list[str] = field(default_factory=list)
+    """The rocks they starred, by name (gameclips.rock_name), oldest first.
+    Kept when the colour or slot changes: a name only matches their own
+    rocks, so switching back finds them again."""
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

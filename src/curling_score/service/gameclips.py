@@ -101,18 +101,27 @@ def player_rocks(doc: dict, color: str, slot: int) -> list[dict]:
     player's rocks in ``doc`` is marked with its name as ``rock``, which
     for_player keeps, so the report can find its clip. A rock never seen has
     nothing to cut."""
+    return [rock_spec(game, end, s) for game, end, s in _marked(doc, color, slot)]
+
+
+def mark_rocks(doc: dict, color: str, slot: int) -> None:
+    """Mark one player's rocks in ``doc`` with their names, as player_rocks
+    does, when no clips are asked for: a star is kept by that name."""
+    for _ in _marked(doc, color, slot):
+        pass
+
+
+def _marked(doc: dict, color: str, slot: int):
+    """Each of one player's seen rocks in ``doc``, named as ``rock`` on the way."""
     fmt = format_mod.of_document(doc)
-    out = []
     for game in doc.get("games", []):
         for end in game.get("ends", []):
             for s in end.get("shots") or []:
                 if (s.get("color") != color or timeline.slot_of(s, fmt) != slot
                         or s.get("missing")):
                     continue
-                spec = rock_spec(game, end, s)
-                s["rock"] = spec["name"]
-                out.append(spec)
-    return out
+                s["rock"] = rock_name(game, end, s)
+                yield game, end, s
 
 
 def shot_job_id(run_id: str, name: str) -> str:

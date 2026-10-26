@@ -162,7 +162,9 @@ class TestAskingForClips:
         assert jobs(w, src) == []
         body = get(w, f"/api/me/plays/{src}/doc").json()
         assert "clips" not in body
-        assert all("rock" not in s for s in body["doc"]["games"][0]["ends"][0]["shots"])
+        # The rocks are named all the same, for stars; no clip is offered for one.
+        assert [s["number"] for s in body["doc"]["games"][0]["ends"][0]["shots"]
+                if "rock" in s] == [13, 15]
         assert get(w, f"/api/me/plays/{src}/clips").status_code == 404
         assert get(w, f"/api/me/plays/{src}/clips/0.1.13").status_code == 404
 

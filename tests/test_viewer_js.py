@@ -6427,6 +6427,35 @@ class TestTheGameFilterOnThePage:
         assert "Not in the report" in page
 
 
+class TestStarredShots:
+    """Starring rocks on My shots, and the filter down to just those."""
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def test_only_the_starred_rocks_of_each_game(self):
+        rows = [{"sourceId": "s0", "rock": "0.1.13"}, {"sourceId": "s0", "rock": "0.1.15"},
+                {"sourceId": "s1", "rock": "0.1.13"}, {"sourceId": "s1", "rock": None}]
+        got = run_js(f"const stars = new Map([['s0', new Set(['0.1.15'])], ['s1', new Set(['0.1.13'])]]);"
+                     f"out(starredRows({json.dumps(rows)}, stars));")
+        assert got == [rows[1], rows[2]]
+        assert run_js(f"out(starredRows({json.dumps(rows)}, new Map()));") == []
+
+    def test_the_words(self):
+        p = [play(source_id="s0")]
+        got = run_js(f"const p = {json.dumps(p)};"
+                     f"out([starredText(3), starredText(0, 'Sam'),"
+                     f" pickedText(p, new Set(), {DAY}, null, true).intro]);")
+        assert got[0] == {"label": "★ Starred · 3",
+                          "empty": "No starred rocks in these games. Press ☆ beside a rock to star it."}
+        assert got[1]["empty"] == "Sam has not starred any rocks in these games."
+        assert got[2].startswith("Every rock you starred in 1 game, by shot and by turn.")
+
+    def test_where_a_star_is_sent(self):
+        got = run_js(
+            f"const P = await import({(self.ROOT / 'frontend/runtime/plays.mjs').as_uri()!r});"
+            "out(P.starUrl('g 1'));")
+        assert got == "/api/me/plays/g%201/starred"
+
+
 class TestATeammatesShots:
     """A teammate sharing theirs is read at /shots?player=<id>: the same
     report from their plays, in their name, with nothing to change."""
@@ -6652,7 +6681,9 @@ class TestTheRocksTableColumns:
         table = page[page.index("function RockTable"):page.index("function Group")]
         assert "const cols = tableColumns(rows);" in table
         assert "rows[0].figures" not in table
-        assert "colSpan={cols.length + 5}" in table
+        assert "colSpan={cols.length + 6}" in table
+        # The star sits in a column of its own before the game.
+        assert '<td className="star"><Star' in table
         # The gap an older row leaves takes no room on a phone, which labels
         # every cell itself.
         css = (self.ROOT / "src/curling_score/service/static/site.css").read_text()

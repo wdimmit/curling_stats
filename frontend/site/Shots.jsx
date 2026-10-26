@@ -8,7 +8,9 @@
  * changing one game's play fetches that game again and nothing else.
  *
  * A filter at the top picks which games the report draws on. Every game is
- * still fetched, so putting one back is instant.
+ * still fetched, so putting one back is instant. Beside it, Starred narrows
+ * the report to the rocks starred in its table (Play.starred), which a
+ * teammate's report shows but cannot change.
  *
  * A teammate who shares theirs is read the same way at /shots?player=<id>,
  * from /api/players/<id>/plays, with nothing on it to change; the switch that
@@ -19,9 +21,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   clipText, pickedText, pickerRow, playText, playerRocks, positionChoices, rockClip, sharingText,
-  shotGroups, summaryText, tableColumns,
+  shotGroups, starredRows, starredText, summaryText, tableColumns,
 } from "../core/myshots.mjs";
-import { playUrl, playsUrl, reportUrl } from "../runtime/plays.mjs";
+import { playUrl, playsUrl, reportUrl, starUrl } from "../runtime/plays.mjs";
 import { authedFetch, signIn } from "./auth.js";
 import { signInTrouble } from "./signinState.mjs";
 import { day } from "./fmt.js";
@@ -58,10 +60,36 @@ function saveOff(key, off) {
   } catch { /* the filter just forgets */ }
 }
 
+/* Whether the report shows only starred rocks, kept the same way. */
+const STARRED = "curlchart:shots-starred";
+const starredKey = player => (player ? `${STARRED}:${player}` : STARRED);
+
+function loadStarred(key) {
+  try { return localStorage.getItem(key) === "1"; } catch { return false; }
+}
+
+function saveStarred(key, on) {
+  try {
+    if (on) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
+  } catch { /* the filter just forgets */ }
+}
+
+/* Each game's starred rocks: a Map of source id to the Set of their names. */
+const starsOf = plays => new Map((plays || []).map(p => [p.source_id, new Set(p.starred || [])]));
+
+function withStar(stars, sourceId, rock, on) {
+  const next = new Map(stars);
+  const set = new Set(next.get(sourceId));
+  if (on) set.add(rock); else set.delete(rock);
+  next.set(sourceId, set);
+  return next;
+}
+
 /* Which games the report draws on: a button saying how many, opening a list
  * to tick. A dropdown on a desktop, a list in the page on a phone, where Done
  * closes it (site.css). */
-function GamePicker({ plays, rocks, off, setOff, who }) {
+function GamePicker({ plays, rocks, off, setOff, who, children }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
   const t = pickedText(plays, off, undefined, who);
@@ -124,6 +152,7 @@ function GamePicker({ plays, rocks, off, setOff, who }) {
       </div>
       {t.names && <span className="muted picker-names">{t.names}</span>}
       {!t.all && <button type="button" className="linky" onClick={() => setOff(new Set())}>Show all</button>}
+      {children}
     </div>
   );
 }
@@ -194,12 +223,24 @@ function Summary({ group }) {
   );
 }
 
-function RockTable({ rows, clips, open, setOpen, player }) {
+/* A rock's star: a button on your own report, just the star on a teammate's. */
+function Star({ row, stars, onStar }) {
+  if (!row.rock) return null;
+  const on = Boolean(stars.get(row.sourceId)?.has(row.rock));
+  if (!onStar) return on ? <span className="star on" title="Starred">★</span> : null;
+  return (
+    <button type="button" className={`star${on ? " on" : ""}`} aria-pressed={on}
+            aria-label="Star this rock" title={on ? "Starred" : "Star this rock"}
+            onClick={() => onStar(row, !on)}>{on ? "★" : "☆"}</button>
+  );
+}
+
+function RockTable({ rows, clips, open, setOpen, player, stars, onStar }) {
   const cols = tableColumns(rows);
   return (
     <table className="rocks">
       <tbody>
-        <tr><th>Game</th><th>End</th><th>Rock</th><th>Shot</th>
+        <tr><th className="star" /><th>Game</th><th>End</th><th>Rock</th><th>Shot</th>
             {cols.map(c => <th key={c.key}>{c.label}</th>)}<th /></tr>
         {rows.map(r => {
           const clip = rockClip(r, clips?.[r.sourceId]);
@@ -208,6 +249,7 @@ function RockTable({ rows, clips, open, setOpen, player }) {
           return (
             <Fragment key={r.key}>
               <tr>
+                <td className="star"><Star row={r} stars={stars} onStar={onStar} /></td>
                 <td className="game">{r.game}</td>
                 <td data-label="End">{r.end}</td>
                 <td data-label="Rock">{r.number}</td>
@@ -231,7 +273,7 @@ function RockTable({ rows, clips, open, setOpen, player }) {
               </tr>
               {shown && (
                 <tr className="clip-row">
-                  <td colSpan={cols.length + 5}>
+                  <td colSpan={cols.length + 6}>
                     <ClipPlayer src={`${reportUrl(r.sourceId, player)}/clips/${encodeURIComponent(r.rock)}`}
                                 overlay={clip.overlay} burned={clip.burned} />
                   </td>
@@ -245,7 +287,7 @@ function RockTable({ rows, clips, open, setOpen, player }) {
   );
 }
 
-function Group({ group, clips, openClip, setOpenClip, player }) {
+function Group({ group, clips, openClip, setOpenClip, player, stars, onStar }) {
   // Open to begin with when short, then the reader's: a group that grows
   // past twelve as games arrive must not snap shut under them.
   const [open, setOpen] = useState(group.rows.length <= 12);
@@ -260,7 +302,7 @@ function Group({ group, clips, openClip, setOpenClip, player }) {
       <details open={open} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary>Every rock ({group.rows.length})</summary>
         <RockTable rows={group.rows} clips={clips} open={openClip} setOpen={setOpenClip}
-                   player={player} />
+                   player={player} stars={stars} onStar={onStar} />
       </details>
     </section>
   );
@@ -400,6 +442,28 @@ export function Shots() {
   const [openClip, setOpenClip] = useState(null);
   const [err, setErr] = useState("");
   const [off, setOffState] = useState(() => loadOff(offKey(asked)));
+  const [onlyStarred, setOnlyStarredState] = useState(() => loadStarred(starredKey(asked)));
+  const setOnlyStarred = on => { setOnlyStarredState(on); saveStarred(starredKey(theirs), on); };
+  // The server's word on each game's stars, until a star here changes it.
+  const [stars, setStars] = useState(new Map());
+  useEffect(() => { setStars(starsOf(plays)); }, [plays]);
+  const [starNote, setStarNote] = useState(null);
+
+  // Shown starred at once, and put back if the server says no.
+  async function star(row, on) {
+    setStars(m => withStar(m, row.sourceId, row.rock, on));
+    setStarNote(null);
+    let res = null;
+    try {
+      res = await authedFetch(starUrl(row.sourceId), {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rock: row.rock, starred: on }) });
+    } catch { /* offline: res stays null */ }
+    if (res?.ok) return;
+    setStars(m => withStar(m, row.sourceId, row.rock, !on));
+    setStarNote(res?.status === 429 ? "That is a lot of changes; try again later."
+                                    : "Could not star it. Try again.");
+  }
   // Only games still listed are kept: a cleared game's id would linger for ever.
   const setOff = next => {
     const listed = new Set((plays || []).map(p => p.source_id));
@@ -412,12 +476,15 @@ export function Shots() {
   // Each game's clip state, by game, for the rows the groups mix together.
   const clipsBy = Object.fromEntries(live.map(p => [p.source_id, rocks[playKey(p)]?.clips]));
   const loaded = live.filter(p => rocks[playKey(p)]).length;
-  const groups = useMemo(
-    () => shotGroups(live.filter(p => !off.has(p.source_id))
-      .flatMap(p => rocks[playKey(p)]?.rows ?? [])),
+  const pickedRows = useMemo(
+    () => live.filter(p => !off.has(p.source_id)).flatMap(p => rocks[playKey(p)]?.rows ?? []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [plays, rocks, off]);
-  const picked = pickedText(plays || [], off, undefined, owner);
+  const starredPicked = useMemo(() => starredRows(pickedRows, stars), [pickedRows, stars]);
+  const groups = useMemo(() => shotGroups(onlyStarred ? starredPicked : pickedRows),
+                         [onlyStarred, starredPicked, pickedRows]);
+  const picked = pickedText(plays || [], off, undefined, owner, onlyStarred);
+  const starWords = starredText(starredPicked.length, owner);
 
   return (
     <>
@@ -463,13 +530,23 @@ export function Shots() {
                 </Card>
               ) : (
                 <>
-                  <GamePicker plays={plays} rocks={rocks} off={off} setOff={setOff} who={owner} />
+                  <GamePicker plays={plays} rocks={rocks} off={off} setOff={setOff} who={owner}>
+                    {(onlyStarred || starredPicked.length > 0) && (
+                      <button type="button" className="starchip" aria-pressed={onlyStarred}
+                              onClick={() => setOnlyStarred(!onlyStarred)}>{starWords.label}</button>
+                    )}
+                  </GamePicker>
+                  {starNote && <Warn>{starNote}</Warn>}
                   <p className="muted intro">{picked.intro}
                   {loaded < live.length ? ` Loaded ${loaded} of ${live.length}…` : ""}</p>
-                  {groups.length ? groups.map(g => <Group key={g.id} group={g} clips={clipsBy} openClip={openClip}
-                                                      setOpenClip={setOpenClip} player={theirs} />)
+                  {/* Keyed by the filter too: a group shut at forty rocks opens again at three. */}
+                  {groups.length ? groups.map(g => (
+                    <Group key={`${g.id}${onlyStarred ? ".starred" : ""}`} group={g} clips={clipsBy}
+                           openClip={openClip} setOpenClip={setOpenClip} player={theirs}
+                           stars={stars} onStar={theirs ? null : star} />))
                    : picked.on && loaded === live.length
-                     ? <Card>None of {theirs ? `${owner}'s` : "your"} rocks in these games were seen.</Card>
+                     ? <Card>{onlyStarred ? starWords.empty
+                              : `None of ${theirs ? `${owner}'s` : "your"} rocks in these games were seen.`}</Card>
                    : null}
                   <h2>Games {theirs ? `${owner} played` : "you played"}</h2>
                   <div className="card" id="plays">

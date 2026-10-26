@@ -12,6 +12,9 @@ export const playsUrl = player => (player
 export const reportUrl = (sourceId, player) => (player
   ? `${playsUrl(player)}/${encodeURIComponent(sourceId)}` : playUrl(sourceId));
 
+/* Where a rock of your own play is starred or unstarred: PUT {rock, starred}. */
+export const starUrl = sourceId => `${playUrl(sourceId)}/starred`;
+
 async function call(url, init) {
   try {
     const r = await fetch(url, init);

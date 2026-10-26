@@ -25,7 +25,7 @@ import logging
 import os
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -135,6 +135,10 @@ FLAG_DAY_LIMIT = 100
 # season's worth of games tagged in one sitting is the expected use.
 PLAY_HOUR_LIMIT = 60
 PLAY_DAY_LIMIT = 300
+# A starred rock's name (gameclips.rock_name), and how many a game may have:
+# fours throws 2 a player an end, so 60 is every rock of thirty ends.
+ROCK_NAME = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}")
+STARRED_LIMIT = 60
 # Starting practice sessions: a few an hour is a busy morning on the ice.
 PRACTICE_HOUR_LIMIT = 20
 PRACTICE_DAY_LIMIT = 60
@@ -2356,6 +2360,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return {"source_id": play.source_id, "color": play.color, "slot": play.slot,
                 "format": format_mod.FORMATS.get(play.format, format_mod.FOURS).to_json(),
                 "graded": play.chart_id is not None,
+                "starred": list(play.starred),
                 "updated_at": _iso(play.updated_at)}
 
     def find_play(user_id: str, source_id: str) -> tuple[Play | None, Source | None]:
@@ -2491,7 +2496,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         t = now()
         play = Play(id=play_id(me.id, src.id), user_id=me.id, source_id=src.id,
                     color=color, slot=slot, created_at=existing.created_at if existing else t,
-                    updated_at=t, format=fmt.name, chart_id=chart_id, link=link)
+                    updated_at=t, format=fmt.name, chart_id=chart_id, link=link,
+                    starred=list(existing.starred) if existing else [])
         repo.put_play(play)
         if existing is not None and existing.source_id != src.id:
             repo.delete_play(me.id, existing.source_id)
@@ -2528,6 +2534,35 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if not repo.bump_rate_limit("play:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
             raise HTTPException(429, "that is a lot of changes; try again later")
         return {"ok": True, "removed": repo.delete_play(me.id, play.source_id)}
+
+    @app.put("/api/me/plays/{source_id}/starred")
+    def api_star_rock(source_id: str, body: dict,
+                      authorization: str | None = Header(default=None)):
+        """Star one of your rocks in this game, or unstar it: ``rock``, its
+        name as the report's document gives it, and ``starred``.
+
+        The name is not checked against the game: that would load it, and a
+        name that is not one of your rocks only stars nothing. The play's
+        ``updated_at`` is left alone, so the report keeps the game it has.
+        """
+        me = require_user(authorization)
+        rock, on = body.get("rock"), body.get("starred")
+        if not isinstance(rock, str) or not ROCK_NAME.fullmatch(rock):
+            raise HTTPException(422, "rock must be a rock's name, like 0.3.5")
+        if not isinstance(on, bool):
+            raise HTTPException(422, "starred must be true or false")
+        play, _ = find_play(me.id, source_id)
+        if play is None:
+            raise HTTPException(404, "you have not said which rocks you threw in that game")
+        if on == (rock in play.starred):
+            return {"starred": list(play.starred)}
+        if on and len(play.starred) >= STARRED_LIMIT:
+            raise HTTPException(422, f"at most {STARRED_LIMIT} starred rocks in a game")
+        if not repo.bump_rate_limit("star:" + me.id, now(), PLAY_HOUR_LIMIT, PLAY_DAY_LIMIT):
+            raise HTTPException(429, "that is a lot of changes; try again later")
+        starred = [*play.starred, rock] if on else [r for r in play.starred if r != rock]
+        repo.put_play(replace(play, starred=starred))
+        return {"starred": starred}
 
     def shares_shots_with(viewer: User, owner_id: str) -> bool:
         """Whether ``viewer`` may read ``owner_id``'s report: their own, or a
@@ -2711,6 +2746,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(404, "you have not said which rocks you threw in that game")
         doc, run, fallback = play_doc(play, src)
         clips = ask_for_clips(play, doc, run) if settings.game_clips_enabled else None
+        if clips is None:
+            # Named all the same: a star is kept by its rock's name.
+            gameclips.mark_rocks(doc, play.color, play.slot)
         doc = timeline.for_player(doc, play.color, play.slot)
         out = {"doc": doc, "fallback": fallback}
         if clips is not None:

@@ -429,6 +429,13 @@ body[data-page="shots"] main { max-width:980px; }
    in ink, so it still reads as a button against the card. */
 #shots table.rocks td.actions > * { padding:6px 12px; font-weight:600; border-width:2px; }
 #shots table.rocks td.actions a.btn.watch { border:2px solid var(--ink); }
+/* A rock's star, and the Starred filter beside the games. */
+#shots .star { width:1.6em; text-align:center; }
+#shots button.star { width:32px; height:32px; padding:0; border:0; background:none;
+                     font-size:20px; line-height:1; color:var(--muted); cursor:pointer; }
+#shots .star.on { color:var(--accent); }
+.starchip { min-height:40px; padding:0 14px; font-weight:600; }
+.starchip[aria-pressed="true"] { background:var(--accent); color:var(--onaccent); border-color:var(--accent); }
 #plays .game .muted { font-size:13px; }
 #plays td.actions select { max-width:15em; padding:6px 8px; }
 #plays td.actions button, #plays td.actions a.btn { padding:6px 10px; }
@@ -456,6 +463,11 @@ body[data-page="shots"] main { max-width:980px; }
      too, which stacked Watch under Clip. Side by side, half the row each. */
   #shots table.rocks td.actions { display:flex; flex-wrap:nowrap; }
   #shots table.rocks td.actions > * { flex:1 1 0; }
+  /* The star leads the game's line, as it leads the row on a desktop, a thumb wide. */
+  #shots table.rocks td.game { flex:1 1 calc(100% - 56px); }
+  #shots table.rocks td.star { order:1; flex:none; width:auto; }
+  #shots button.star { width:44px; height:44px; margin:-12px 0 -12px; font-size:24px; }
+  .starchip { flex:1 1 100%; min-height:48px; }
 }
 
 /* The game filter at the top of My shots: a menu button, then a dropdown list

@@ -167,3 +167,20 @@ class TestATeammatesClips:
         share(w)
         assert get(w, f"{SARAHS}/{src}/doc", ALEX).status_code == 200
         assert len(w["repo"].clip_jobs_for_play(play_id("uid-sarah", src))) == 1
+
+
+class TestStars:
+    def test_a_teammate_sees_the_stars_but_cannot_change_them(self, w):  # noqa: F811
+        _, src = tagged(w)
+        _joined_team(w)
+        share(w)
+        c = w["client"]
+        c.put(f"/api/me/plays/{src}/starred", json={"rock": "0.1.13", "starred": True}, headers=SARAH)
+        [item] = get(w, SARAHS, ALEX).json()["plays"]
+        assert item["starred"] == ["0.1.13"]
+        assert c.put(f"{SARAHS}/{src}/starred", json={"rock": "0.1.15", "starred": True},
+                     headers=ALEX).status_code in (404, 405)
+        # Alex has no play of his own on it to star.
+        assert c.put(f"/api/me/plays/{src}/starred", json={"rock": "0.1.15", "starred": True},
+                     headers=ALEX).status_code == 404
+        assert w["repo"].get_play("uid-sarah", src).starred == ["0.1.13"]

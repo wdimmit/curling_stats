@@ -81,7 +81,7 @@ class TestSavingAPlay:
         r = put(w, src, {"path": f"/g/{src}/", "color": "red", "slot": 4})
         assert r.status_code == 200, r.text
         assert r.json()["play"] == {"source_id": src, "color": "red", "slot": 4,
-                                    "format": F.FOURS.to_json(), "graded": False,
+                                    "format": F.FOURS.to_json(), "graded": False, "starred": [],
                                     "updated_at": r.json()["play"]["updated_at"]}
         got = w["repo"].get_play("uid-sarah", src)
         assert (got.color, got.slot, got.chart_id, got.link) == ("red", 4, None, "g")
@@ -313,3 +313,79 @@ class TestThePlayersGame:
     def test_no_play_is_404(self, w):  # noqa: F811
         _, _, src = a_played_game(w)
         assert get(w, f"/api/me/plays/{src}/doc").status_code == 404
+
+
+def star(w, sid, rock, on=True, headers=SARAH):  # noqa: F811
+    return w["client"].put(f"/api/me/plays/{sid}/starred", json={"rock": rock, "starred": on},
+                           headers=headers or {})
+
+
+class TestStarredRocks:
+    def played(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        put(w, src, {"path": f"/g/{src}/", "color": "red", "slot": 4})
+        return src
+
+    def test_the_report_names_each_of_the_players_rocks(self, w):  # noqa: F811
+        # Clips are off here: the names come all the same, for the stars.
+        src = self.played(w)
+        doc = get(w, f"/api/me/plays/{src}/doc").json()["doc"]
+        assert [s.get("rock") for s in mine(doc)] == ["0.1.13", "0.1.15"]
+        assert not [s for s in doc["games"][0]["ends"][0]["shots"]
+                    if "rock" in s and s not in mine(doc)]
+
+    def test_starring_and_unstarring(self, w):  # noqa: F811
+        src = self.played(w)
+        r = star(w, src, "0.1.15")
+        assert r.status_code == 200, r.text
+        assert r.json() == {"starred": ["0.1.15"]}
+        assert star(w, src, "0.1.13").json() == {"starred": ["0.1.15", "0.1.13"]}
+        # Again changes nothing, and keeps its place.
+        assert star(w, src, "0.1.15").json() == {"starred": ["0.1.15", "0.1.13"]}
+        [item] = get(w, "/api/me/plays").json()["plays"]
+        assert item["starred"] == ["0.1.15", "0.1.13"]
+        assert star(w, src, "0.1.15", False).json() == {"starred": ["0.1.13"]}
+        assert star(w, src, "0.1.15", False).json() == {"starred": ["0.1.13"]}
+        assert get(w, f"/api/me/plays/{src}").json()["play"]["starred"] == ["0.1.13"]
+
+    def test_the_play_is_not_touched_otherwise(self, w):  # noqa: F811
+        src = self.played(w)
+        before = w["repo"].get_play("uid-sarah", src)
+        star(w, src, "0.1.13")
+        after = w["repo"].get_play("uid-sarah", src)
+        assert after.updated_at == before.updated_at
+        assert dataclasses.replace(after, starred=[]) == before
+
+    def test_changing_the_rocks_keeps_the_stars_and_clearing_drops_them(self, w):  # noqa: F811
+        src = self.played(w)
+        star(w, src, "0.1.13")
+        put(w, src, {"color": "red", "slot": 3})
+        assert get(w, f"/api/me/plays/{src}").json()["play"]["starred"] == ["0.1.13"]
+        put(w, src, {"path": f"/g/{src}/", "color": "red", "slot": 4})
+        assert get(w, f"/api/me/plays/{src}").json()["play"]["starred"] == ["0.1.13"]
+        w["client"].delete(f"/api/me/plays/{src}", headers=SARAH)
+        put(w, src, {"path": f"/g/{src}/", "color": "red", "slot": 4})
+        assert get(w, f"/api/me/plays/{src}").json()["play"]["starred"] == []
+
+    @pytest.mark.parametrize("body", [
+        {"rock": "0.1", "starred": True}, {"rock": "a.b.c", "starred": True},
+        {"rock": 13, "starred": True}, {"rock": "0.1.13", "starred": "yes"},
+        {"rock": "0.1.13"}, {"rock": "0.1.13 ", "starred": True}, {"rock": "0.1.1234", "starred": True}])
+    def test_a_name_or_a_flag_that_is_not_one_is_refused(self, w, body):  # noqa: F811
+        src = self.played(w)
+        r = w["client"].put(f"/api/me/plays/{src}/starred", json=body, headers=SARAH)
+        assert r.status_code == 422
+
+    def test_only_your_own_games(self, w):  # noqa: F811
+        src = self.played(w)
+        assert star(w, src, "0.1.13", headers=ALEX).status_code == 404
+        assert star(w, src, "0.1.13", headers=None).status_code == 401
+        assert w["repo"].get_play("uid-sarah", src).starred == []
+
+    def test_there_are_limits(self, w):  # noqa: F811
+        src = self.played(w)
+        codes = [star(w, src, f"0.{1 + i // 20}.{i % 20}").status_code for i in range(61)]
+        assert codes[:60] == [200] * 60 and codes[60] == 422
+        # Unstarring is a change too, and counted.
+        codes = [star(w, src, f"0.1.{i % 2}", i % 4 < 2).status_code for i in range(300)]
+        assert 429 in codes

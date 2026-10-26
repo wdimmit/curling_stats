@@ -131,7 +131,7 @@ export function gameText(play, day = shortDay) {
 /* The game filter's words. `off` is the Set of games left out, by source id:
  * the button's label, the games named beside it -- three at most, past which
  * the count says it -- and the line over the report. */
-export function pickedText(plays, off, day = shortDay, who = null) {
+export function pickedText(plays, off, day = shortDay, who = null, starred = false) {
   const n = plays.length;
   const on = plays.filter(p => !off.has(p.source_id));
   const all = on.length === n;
@@ -143,7 +143,23 @@ export function pickedText(plays, off, day = shortDay, who = null) {
     label: !on.length ? "No games" : all ? (n === 1 ? "1 game" : `All ${n} games`) : `${on.length} of ${games(n)}`,
     names: !all && on.length && on.length <= 3 ? on.map(p => gameText(p, day)).join(", ") : "",
     intro: !on.length ? `Pick at least one game to see ${who ? `${who}'s` : "your"} rocks.`
-      : `Every rock ${who || "you"} threw in ${which}, by shot and by turn. The turn is read from the way the rock curled and the hack ${who ? "they" : "you"} threw from.`,
+      : `Every rock ${who || "you"} ${starred ? "starred" : "threw"} in ${which}, by shot and by turn. The turn is read from the way the rock curled and the hack ${who ? "they" : "you"} threw from.`,
+  };
+}
+
+/* The rocks of `rows` that are starred. `stars` is a Map of game (source id)
+ * to the Set of its starred rocks' names (Play.starred). */
+export function starredRows(rows, stars) {
+  return rows.filter(r => r.rock && stars.get(r.sourceId)?.has(r.rock));
+}
+
+/* The words for the Starred filter: its chip, over `count` starred rocks in
+ * the games picked, and the line when none of them is. */
+export function starredText(count, who = null) {
+  return {
+    label: `★ Starred · ${count}`,
+    empty: who ? `${who} has not starred any rocks in these games.`
+      : "No starred rocks in these games. Press ☆ beside a rock to star it.",
   };
 }
 
