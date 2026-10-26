@@ -172,3 +172,40 @@ Scratch kept on the Ryzen: timelines, logs, `wall_s`, detection-entry lists and 
 Not run: practice recordings are never kept, so none exists to replay. The practice path's reader (`windows` with
 `Cut` specs, `one_pass`) is pinned by `test_windows_cuts_one_decode`; phase 2's gate replays practice both ways from
 raw files.
+
+## Carried into phase 2
+
+These come from the phase 1 reviews. None of them affects YouTube input. Each one bites once a feed has several files,
+or a cut is turned or scaled.
+
+**Wrong camera, silently:**
+- `CameraRecorder.path` must be the `CameraFeed` itself, or raise. It must never be one camera's file: `as_feed(path)`
+  treats any single file as a whole composite.
+- Ruling 4 kept raw paths flowing into `live/session._build`, `VideoPipeline.samples` and `calibrate`, and
+  `PracticePipeline`, with `as_feed` wrapping them in `VideoPipeline.build_end`. Phase 2 turns these into feeds and
+  edits the three tests that pin raw paths.
+- `analyze.py` passes `path_for("board")` to fpframes, which in phase 2 is silently the wrong camera.
+  `Path(os.fspath(path))` would fail loudly instead.
+- `session.samples`/`calibrate` and `spread_keyframes` read whole frames.
+- Practice's `check_saved`.
+- Saved calstore calibrations have no names; on a multi-file feed they need them.
+- `scripts/*` build `SideView(...)` without names.
+
+**Wrong pixels or sizes:**
+- `practice/overlay.py:52` and `practice/clips.py:82` still read sizes from `view.rect`.
+- The readers that still slice by `rect` raise once a transform is set, but each must be moved to `cut`:
+  `count_frame`, `panel_median`, `longview.find_in_frames`, the width checks in `sidemodel` and `broommodel`, and
+  `sidepool._shifted`.
+- For a crop-only `Cut`, `apply` (PyAV) equals `steps()` (ffmpeg) only at even x, y. The reference for phase 2's
+  parity test is `steps()`. Pin the scaler flags in `steps()` when the composer's string may next change.
+- `Cut.from_placement` gives 1:1 long cameras a no-op scale, which makes them non-crop cuts. Readers need a variant
+  that drops it. Keep the composer's string as it is.
+- Bump `feeds.cut.CUT_IMPL` with any change in how a turned or scaled cut is produced.
+
+**Smaller:**
+- `Feed.__str__` raises on a multi-file feed, so f-strings in error paths would mask the real error.
+- `Feed.path_for` raises a bare KeyError for a typo, while `on()` raises ValueError.
+- `Feed.paths` should be a `MappingProxyType`.
+- `Cut(...)` does not coerce `crop` to a tuple.
+- The longview read-ahead key carries the cut's name, so `soon(rect)` followed by `decode(named cut)` would miss it.
+- There is no sequence test with a two-file feed, and none of the real `VideoPipeline.build_end` wrap.
