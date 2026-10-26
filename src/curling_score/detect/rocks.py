@@ -123,20 +123,29 @@ def _centroid(part: np.ndarray) -> tuple[float, float, float]:
     return m["m10"] / area, m["m01"] / area, area
 
 
+# Two same-colour detections nearer than this are one stone. A stone is
+# 0.284 m across, but touching stones read closer than that: the panel's scale
+# is not linear away from the house, and a box centre is not the handle. On
+# 10/22 S2 e3 s13 two touching yellows read 0.273 m apart, and a gap of one
+# diameter dropped the guard. The pieces of one thing this is for -- a
+# sweeper's jacket, a second box on one stone -- read a few cm apart.
+SAME_STONE_GAP_M = 0.20
+
+
 def enforce_separation(detections, min_gap_m: float | None = None):
     """Drop same-colour detections that are physically too close together.
 
-    A stone is 0.284 m across, so two same-colour detections nearer than that
-    are not two stones. In practice one is a piece of something else -- a
-    sweeper's yellow jacket reads as pairs of "yellow stones" 0.02 m apart as
-    they run alongside a delivery. Keeping the more confident of each group
-    costs nothing when the detections are genuinely one stone.
+    Two same-colour detections nearer than SAME_STONE_GAP_M are not two
+    stones. In practice one is a piece of something else -- a sweeper's yellow
+    jacket reads as pairs of "yellow stones" 0.02 m apart as they run
+    alongside a delivery. Keeping the more confident of each group costs
+    nothing when the detections are genuinely one stone.
 
     Opposite colours are left alone: stones of different teams touch all the
     time, and it is their handles we localise, which stay apart.
     """
     if min_gap_m is None:
-        min_gap_m = 2.0 * C.STONE_RADIUS_M
+        min_gap_m = SAME_STONE_GAP_M
     out: list[Detection] = []
     for d in sorted(detections, key=lambda d: -d.confidence):
         for kept in out:

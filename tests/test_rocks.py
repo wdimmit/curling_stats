@@ -158,8 +158,9 @@ class TestOnRealFootage:
 class TestMinimumSeparation:
     """Two stones cannot occupy the same place.
 
-    A stone is 0.284 m across, so two detections of the same colour closer than
-    that are not two stones -- one is spurious. Observed during a sweeper pass:
+    Two detections of the same colour closer than SAME_STONE_GAP_M are not two
+    stones -- one is spurious. (A stone is 0.284 m across, but touching stones
+    read closer than that on the panels.) Observed during a sweeper pass:
     pairs of yellow detections 0.02 m apart, which are patches of one player's
     yellow jacket.
     """
@@ -183,6 +184,34 @@ class TestMinimumSeparation:
         b = Detection(color="red", x_m=0.30, y_m=0.0, x_px=0, y_px=0,
                       area_px=140, confidence=0.9)
         assert len(rocks.enforce_separation([a, b])) == 2
+
+    def test_touching_stones_read_closer_than_a_diameter_are_both_kept(self):
+        from curling_score.detect.rocks import Detection
+
+        # Wednesday Womens 10/22 S2 e3 s13: a yellow rolled to rest against
+        # its own guard, and ds17b boxed both at 0.94 and 0.93. The panel's
+        # scale put them 0.273 m apart, under a stone's 0.284 m, and the guard
+        # dropped out of the house.
+        a = Detection(color="yellow", x_m=0.279, y_m=1.978, x_px=128, y_px=203,
+                      area_px=520, confidence=0.94)
+        b = Detection(color="yellow", x_m=0.381, y_m=2.231, x_px=120, y_px=184,
+                      area_px=520, confidence=0.93)
+        assert len(rocks.enforce_separation([a, b])) == 2
+
+    def test_a_weak_box_between_touching_stones_still_goes(self):
+        from curling_score.detect.rocks import Detection
+
+        # The same frame: a third, weak yellow box between the two stones.
+        stones = [
+            Detection(color="yellow", x_m=0.279, y_m=1.978, x_px=0, y_px=0,
+                      area_px=520, confidence=0.94),
+            Detection(color="yellow", x_m=0.381, y_m=2.231, x_px=0, y_px=0,
+                      area_px=520, confidence=0.93),
+            Detection(color="yellow", x_m=0.342, y_m=2.169, x_px=0, y_px=0,
+                      area_px=520, confidence=0.34),
+        ]
+        got = rocks.enforce_separation(stones)
+        assert sorted(d.confidence for d in got) == [0.93, 0.94]
 
     def test_different_colours_may_touch(self):
         from curling_score.detect.rocks import Detection
