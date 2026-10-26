@@ -173,7 +173,7 @@ class TestSetupCut:
 
     def test_rect_must_be_the_transforms_output(self):
         turned = Cut("top", (0, 0, 534, 300), rotate=90, size=(300, 534))
-        for rect in ((0, 0, 534, 300), (3, 0, 300, 534), (0, 0, 534, 300)):
+        for rect in ((0, 0, 534, 300), (3, 0, 300, 534), (0, 0, 300, 535)):
             with pytest.raises(ValueError, match="not the transform's output"):
                 profile.PanelSetup(rect=rect, calib=TOP, name="top", transform=turned)
 
