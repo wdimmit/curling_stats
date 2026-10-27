@@ -409,7 +409,7 @@ def _with_placeholders(deliveries):
 
 def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S,
                     thrown_by=None, fmt=None, before=(), base: int = 0,
-                    joined_late: bool = False):
+                    joined_late: bool = False, house_frames=None):
     """Build the shot list from observed deliveries.
 
     Not inferred from how the house changed between settled states, which
@@ -432,6 +432,11 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     came up after the first rocks were thrown -- so every rock it is short was
     thrown before the first one seen (`_lead_blanks`), not wherever the gaps
     and house counts would put them.
+
+    ``house_frames``, when given, are what the houses are read from; the rest
+    reads ``frames``. The delivery tracking keeps same-colour stones a stone's
+    width apart, and two touching stones at rest read closer than that
+    (`rocks.ONE_STONE_M`), so the house wants the detector's own frames.
     """
     from curling_score.detect.rest import stones_in_window, until_disturbed
     from curling_score.game.format import FOURS
@@ -440,6 +445,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     frames = list(frames)
     if not deliveries or not frames:
         return []
+    house = frames if house_frames is None else list(house_frames)
     per_end = (fmt or FOURS).delivered_per_end
 
     houses: dict[int, list] = {}
@@ -448,10 +454,10 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
         start = dv.t_rest
         limit = deliveries[i + 1].t_enter if i + 1 < len(deliveries) else float("inf")
         end = min(start + settle_window_s, limit)
-        window = [(t, d) for t, d in frames if start <= t <= end]
+        window = [(t, d) for t, d in house if start <= t <= end]
         if not window:
             window = [
-                (t, d) for t, d in frames if start <= t <= start + settle_window_s
+                (t, d) for t, d in house if start <= t <= start + settle_window_s
             ]
         # The last rock's window has nothing to end it but the clock, and runs
         # on into the players clearing the house (s_0kdoX2XVKN5e2lBUF end 4:

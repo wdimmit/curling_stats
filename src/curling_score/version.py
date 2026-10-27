@@ -286,7 +286,23 @@ from pathlib import Path
 # read rise 1,118 -> ~1,170 of 250 games, and no wrong end is the digits'.
 # The 10/21 Womens S3 game 2 "3" that kept ends 5-6 off the board is the kind
 # it now reads. Board scores only: nothing upstream of the board moves.
-PIPELINE_VERSION = "2026.10.23.1"
+# 2026.10.26.1: two touching stones of one colour stay two in the house. The
+# detector dropped the weaker of two same-colour stones nearer than a stone's
+# width (0.284 m), and touching stones read closer than that on the panels: on
+# 10/22 Womens S2 e3 s13 ds17b boxed both of two touching yellows (0.94, 0.93),
+# 0.273 m apart, and the house lost the guard. The detector now keeps them
+# 0.20 m apart (`rocks.SAME_STONE_GAP_M`); the delivery tracking still keeps a
+# stone's width (`rocks.ONE_STONE_M`), because moving, a stone pushing a stone
+# or a jacket boxed twice reads the same distance apart and pulled two rests
+# off course when the tracking took the closer gap too. Only the house read
+# (`shots.from_deliveries`' house_frames) sees both. A/B (`scripts/sep_ab.py`,
+# one rule-free detection pass, built both ways) on the 16 harness games: 21 of
+# 108 ends differ, all in their houses -- no shot, colour, rest, release or
+# missing rock moves -- and each end's first gained stone, 21 of 21 checked in
+# the frames, is a real stone touching one of its own colour. s13's game: only
+# e3 differs, and the guard stays in the house from s13 on. Detections re-infer:
+# `rocks.py` is in the detection cache's key.
+PIPELINE_VERSION = "2026.10.26.1"
 
 
 def model_id(weights) -> str:

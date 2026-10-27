@@ -130,6 +130,12 @@ def _centroid(part: np.ndarray) -> tuple[float, float, float]:
 # diameter dropped the guard. The pieces of one thing this is for -- a
 # sweeper's jacket, a second box on one stone -- read a few cm apart.
 SAME_STONE_GAP_M = 0.20
+# A stone's width: what the delivery tracking keeps between same-colour stones.
+# Moving, two stones in contact or one rock boxed twice read 0.2-0.28 m apart,
+# and so does a red jacket boxed in two pieces; kept apart, those pull a
+# delivery's path off course (PGlt e8 s4, AEqL g1 e6 s16). At rest a touching
+# pair is real, and the house read's presence vote drops what only flickers.
+ONE_STONE_M = 2.0 * C.STONE_RADIUS_M
 
 
 def enforce_separation(detections, min_gap_m: float | None = None):
@@ -157,6 +163,11 @@ def enforce_separation(detections, min_gap_m: float | None = None):
         else:
             out.append(d)
     return out
+
+
+def separated(seq, min_gap_m: float = ONE_STONE_M):
+    """A sequence of ``(t, detections)`` with `enforce_separation` at ``min_gap_m``."""
+    return [(t, enforce_separation(dets, min_gap_m)) for t, dets in seq]
 
 
 def find_stones(panel, calib, colors=("red", "yellow")) -> list[Detection]:

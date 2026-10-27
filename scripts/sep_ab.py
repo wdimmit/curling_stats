@@ -1,8 +1,9 @@
-"""Same-colour separation gap, old (one diameter) against new (SAME_STONE_GAP_M),
-every end of the given games, in one process.
+"""Same-colour separation, old (one diameter everywhere) against new (one
+diameter for the tracking, SAME_STONE_GAP_M for the house read), every end of
+the given games, in one process.
 
 Each end is detected once with `enforce_separation` switched off, then each
-arm applies its own gap to every frame and the same rules run on the result --
+arm applies its own gaps to the frames and the same rules run on the result --
 deliveries, the gap search, release pairing, the clearing drop, the built
 shots (as `tracker_ab.py`; farfollow, lost_rocks and the side views are not
 run). Prints a line per end that differs.
@@ -30,14 +31,16 @@ from curling_score.game import fit, secondpass, segment, shots as S       # noqa
 from curling_score.ingest import cache, proxy                            # noqa: E402
 from replay_end import setups_for                                        # noqa: E402
 
-GAPS = {"old": 2.0 * 0.142, "new": rocks.SAME_STONE_GAP_M}
+# (tracking gap, house-read gap)
+GAPS = {"old": (rocks.ONE_STONE_M, rocks.ONE_STONE_M),
+        "new": (rocks.ONE_STONE_M, rocks.SAME_STONE_GAP_M)}
 
 
 def separated(seq, gap):
     return [(t, rocks.enforce_separation(list(d), min_gap_m=gap)) for t, d in seq]
 
 
-def built_end(frames, far_seq, far, setup, from_s, end):
+def built_end(frames, far_seq, far, setup, from_s, end, house):
     every = D.find_deliveries(frames, view_x_limit_m=setup.view_x_limit_m,
                               view_y_min_m=setup.view_y_min_m)
     ds = [d for d in every if d.t_enter >= from_s]
@@ -51,7 +54,7 @@ def built_end(frames, far_seq, far, setup, from_s, end):
     thrown_by = {id(d): r for r, d in matched.items()}
     cleared = fit.drop_clearing(ds, frames, fit.released_ids(matched, settled))
     built = S.from_deliveries(fit.fit_end(cleared, paired=fit.paired_ids(matched)),
-                              frames, thrown_by=thrown_by)
+                              frames, thrown_by=thrown_by, house_frames=house)
     return {
         "releases": sorted(round(r.t, 1) for r in releases),
         "shots": [{"n": s.number, "color": s.color, "missing": s.missing,
@@ -91,8 +94,9 @@ def run_game(path, detector, root):
                 read_path, setup, end, A.SHOT_FPS, detector, from_s=from_s)]
             far_raw = [(t, list(d)) for t, d in sequence.detect_span(
                 read_path, far, from_s, end.end_s, release.RELEASE_FPS, detector)]
-            got = {name: built_end(separated(raw, gap), separated(far_raw, gap), far, setup, from_s, end)
-                   for name, gap in GAPS.items()}
+            got = {name: built_end(separated(raw, track), separated(far_raw, track), far, setup, from_s, end,
+                                   separated(raw, house))
+                   for name, (track, house) in GAPS.items()}
             same = got["old"] == got["new"]
             out.append({"source": Path(path).stem, "video": vid, "game": game["index"],
                         "end": e["number"], "same": same, **got})

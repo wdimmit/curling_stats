@@ -56,6 +56,18 @@ class TestShotsFromDeliveries:
         got = shots.from_deliveries(dvs, self._frames({0: [], 19: a}))
         assert len(got[0].stones) == 1
 
+    def test_the_house_is_read_from_the_house_frames_when_given(self):
+        # 10/22 S2 e3 s13: the tracking's frames hold one of two touching
+        # yellows; the detector's own frames hold both, and the house is
+        # read from those.
+        guard, shooter = det("yellow", 0.381, 2.231), det("yellow", 0.279, 1.978)
+        dvs = [self._dv("yellow", 10)]
+        tracked = self._frames({0: [guard], 19: [shooter]})
+        house = self._frames({0: [guard], 19: [guard, shooter]})
+        assert len(shots.from_deliveries(dvs, tracked)[0].stones) == 1
+        got = shots.from_deliveries(dvs, tracked, house_frames=house)
+        assert len(got[0].stones) == 2
+
     def test_the_last_rock_is_read_before_the_players_clear_the_house(self):
         # Nothing follows the last rock, so its whole twelve-second window is
         # read -- and six seconds in, the red is pushed off the back. That house
