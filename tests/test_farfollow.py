@@ -476,3 +476,19 @@ class TestFollowNeedsTheCamera:
     def test_no_view_or_no_lateral_calibration_says_nothing(self):
         assert FF.follow("v.mp4", None, "red", T0) is None
         assert FF.follow("v.mp4", SimpleNamespace(has_lateral=False), "red", T0) is None
+
+
+class TestEndCamera:
+    """An end camera's view ends just past the destination's hog line, so the
+    stone is first seen there, as is any stone parked there."""
+
+    def test_a_guard_first_seen_at_the_hog_line_is_followed_to_rest(self):
+        p = hold(slide(4.2, x=0.4, start_y=6.3, start_at=T0 + 12.0, stop_at=T0 + 16.0), T0 + 45)
+        assert FF.read_outcome(samples(p), T0) is None              # a long camera's seed: 7.5 m
+        got = FF.read_outcome(samples(p), T0, seed_min_y_m=5.5, skip_parked=True)
+        assert got.kind == FF.REST and got.y_m == pytest.approx(4.2, abs=0.1)
+
+    def test_a_stone_parked_by_the_line_is_not_the_throw(self):
+        p = hold(slide(3.5, x=-0.8, start_y=6.3, start_at=T0 + 14.0, stop_at=T0 + 18.0), T0 + 45)
+        got = FF.read_outcome(samples(p, static=[(0.5, 5.9)]), T0, seed_min_y_m=5.5, skip_parked=True)
+        assert got.kind == FF.REST and got.x_m == pytest.approx(-0.8, abs=0.05)

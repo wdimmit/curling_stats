@@ -58,6 +58,14 @@ EDGE_ROWS = 6
 
 # The stone on its way: first seen this far up-sheet of the tee, on the sheet.
 SEED_MIN_Y_M = 7.5
+# An end camera (`geometry/endcam.py`) sits above the destination's hog line
+# looking back at its house, and its view ends just past that line: a stone on
+# its way is first seen within this of the view's edge. So is a stone already
+# parked there, which is why such a view's seed must also be somewhere no stone
+# sat when the window opened (`PARKED_S`), a few seconds before any throw
+# reaches the far hog line.
+END_SEED_BAND_M = 1.0
+PARKED_S = 1.0
 SEED_BY_S = 26.0                # after the release
 ON_SHEET_X_M = 2.2
 # Its pace there, to aim the first gate: ~1 m/s at 10-15 m from the tee in the
@@ -177,13 +185,22 @@ def _restarted(path):
     return None
 
 
-def _follow(samples, t_release):
+def _parked(samples):
+    """Where stones sat as the window opened, (x, y) each."""
+    if not samples:
+        return []
+    t0 = samples[0][0]
+    return [d[:2] for t, dets in samples if t - t0 <= PARKED_S for d in dets]
+
+
+def _follow(samples, t_release, seed_min_y_m=SEED_MIN_Y_M, parked=()):
     """The delivered stone's sightings, as (t, x, y), from first to last."""
     seed = None
     for t, dets in samples:
         if t - t_release > SEED_BY_S:
             break
-        up = [d for d in dets if d[1] >= SEED_MIN_Y_M and abs(d[0]) <= ON_SHEET_X_M]
+        up = [d for d in dets if d[1] >= seed_min_y_m and abs(d[0]) <= ON_SHEET_X_M
+              and not any(abs(d[0] - px) <= STAY_X_M and abs(d[1] - py) <= STAY_Y_M for px, py in parked)]
         if up:
             x, y = max(up, key=lambda d: d[1])[:2]
             seed = (t, x, y)
@@ -219,14 +236,17 @@ def _in_time(path, t_release) -> bool:
     return crossed is not None and crossed - t_release <= THROUGH_MAX_LAG_S
 
 
-def read_outcome(samples, t_release) -> Outcome | None:
+def read_outcome(samples, t_release, *, seed_min_y_m=SEED_MIN_Y_M, skip_parked=False) -> Outcome | None:
     """What became of the throw, from the rock colour's sightings per frame.
 
     ``samples`` is ``[(t, [(x_m, y_m, conf), ...]), ...]`` in time order, in
     house metres from the far tee (+y toward the thrower). None when the
-    stone was never followed, or its ending is ambiguous.
+    stone was never followed, or its ending is ambiguous. ``seed_min_y_m`` and
+    ``skip_parked`` are for an end camera, whose view ends at the hog line.
     """
-    path = _follow(samples, t_release)
+    end = ({"seed_min_y_m": seed_min_y_m, "parked": _parked(samples)} if skip_parked
+           else {"seed_min_y_m": seed_min_y_m} if seed_min_y_m != SEED_MIN_Y_M else {})
+    path = _follow(samples, t_release, **end)
     if len(path) < 3:
         return None
     k = _restarted(path)
@@ -314,6 +334,9 @@ def follow(video, view, color, t_release, *, model=None, decode=None, detect=Non
             x, y = view.to_house(cx, row)
             dets.append((x, y, conf))
         samples.append((t, dets))
+    if getattr(view, "end_camera", False):
+        return read_outcome(samples, t_release, skip_parked=True,
+                            seed_min_y_m=view.metres_at(hi - EDGE_ROWS) - END_SEED_BAND_M)
     return read_outcome(samples, t_release)
 
 

@@ -149,7 +149,7 @@ class TestCalibratingFromFrames:
                                             bottom=(810, 554, 297, 516))
         monkeypatch.setattr(analyze.layout, "detect_panels", lambda frames: layout)
         monkeypatch.setattr(analyze.profile, "calibrate_panels",
-                            lambda frames, panels: {"top": panel(False),
+                            lambda frames, panels, club=None: {"top": panel(False),
                                                     "bottom": panel(True)})
         return [np.zeros((1080, 1920, 3), np.uint8) for _ in range(3)]
 

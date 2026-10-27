@@ -763,6 +763,14 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     # the THROWING panel -- far from the house being played to.
     fartime.time_far_crossings(shots, near_line=far.hog_line,
                                far_line=setup.hog_line)
+    # A house-only panel has no line: an end camera above the destination's
+    # hog line sees the stone come in over it instead.
+    if sideviews is not None:
+        n_far = fartime.time_far_crossings_from_end_camera(
+            shots, path, sideviews[hogtime.CAMERA_FOR[end.house]])
+        stages.mark("far")
+        if n_far:
+            progress(f"    end {end.number}: far hog line {n_far}/{len(shots)} from the end camera")
     built = timeline.build_end(
         end.number, end.house, end.start_s, end.end_s, shots,
         board_score=board_score,
