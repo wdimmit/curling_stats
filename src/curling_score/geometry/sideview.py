@@ -109,6 +109,9 @@ class SideView:
     # line itself leans up to 13 px over the rows below the house. None falls
     # back to `centre_col` everywhere.
     centre_line: tuple[float, float] | None = None
+    # A camera at this house's own end looking back at it (`endcam`), rather
+    # than a long camera at the far end. Its view stops just past the hog line.
+    end_camera: bool = False
 
     @property
     def has_lateral(self) -> bool:

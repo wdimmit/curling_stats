@@ -114,7 +114,7 @@ def hog_row(view, below_row: int) -> float:
 def _view(rect, hog, tee, d, a, b, lat):
     tee, hog, d, a, b, lat = (float(v) for v in (tee, hog, d, a, b, lat))
     return SideView(rect=tuple(int(v) for v in rect), tee_row=tee, hog_row=hog, d_m=d,
-                    centre_col=a + b * tee, lat_px_per_m_at_tee=lat, centre_line=(a, b))
+                    centre_col=a + b * tee, lat_px_per_m_at_tee=lat, centre_line=(a, b), end_camera=True)
 
 
 def _residuals(p, pts, radii, hog, rect, line=None):

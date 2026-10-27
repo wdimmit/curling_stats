@@ -59,3 +59,22 @@ class TestSolve:
     def test_needs_a_house(self):
         with pytest.raises(SideViewError):
             endcam.solve(np.full((720, 513, 3), 225, np.uint8), RECT, PAINT, "blue")
+
+
+class TestEndCameraCrossing:
+    def test_a_later_sighting_in_the_column_does_not_unmake_the_crossing(self):
+        # rKiMmtVod0I end 2 rock 2: the stone crosses at 2686.9 s and leaves the
+        # view; 1.4 s later a yellow broom in the same column ends short of the line.
+        from curling_score.detect import longview, sidemodel
+
+        v = TRUE.__class__(**{**TRUE.__dict__, "end_camera": True})
+        stone = [(2686.0 + i / 30, v.row_for(4.4 + 2.18 * i / 30), 52.0, 300.0) for i in range(30)]
+        stone = [p for p in stone if p[1] < 715]
+        broom = [(2688.3 + i / 30, 583.0 + 2.5 * i, 40.0, 303.0) for i in range(30)]
+        tracks = {2: stone + broom}
+        refused = longview.crossing_from_tracks(tracks, v, offset_s=0.0, max_gap_s=sidemodel.STRADDLE_GAP_MAX_S)
+        assert refused.t is None
+        got = longview.crossing_from_tracks(sidemodel.split_at_gaps(tracks, sidemodel.STRADDLE_GAP_MAX_S), v,
+                                            offset_s=0.0, max_gap_s=sidemodel.STRADDLE_GAP_MAX_S)
+        assert got.t == pytest.approx(2686.0 + (C.TEE_TO_HOGLINE_M - 4.4) / 2.18, abs=0.04)
+        assert got.track_key % 1000 == 2

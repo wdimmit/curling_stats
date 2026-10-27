@@ -81,7 +81,7 @@ def sideviews_from_calibration(cal: dict | None) -> dict:
         out[name] = SideView(
             rect=tuple(int(v) for v in d["rect"]), tee_row=float(d["tee_row"]),
             hog_row=float(d["hog_row"]), d_m=float(d.get("d_m", CAMERA_TO_FAR_TEE_M)),
-            centre_col=d.get("centre_col"),
+            centre_col=d.get("centre_col"), end_camera=bool(d.get("end_camera", False)),
             lat_px_per_m_at_tee=d.get("lat_px_per_m_at_tee"),
             centre_line=None if line is None else (float(line[0]), float(line[1])))
     return out

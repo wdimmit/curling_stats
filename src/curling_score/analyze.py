@@ -117,6 +117,8 @@ def _side_calibration(sideviews) -> dict:
         # left out so Granite's calibration blocks read as they always have.
         if v.d_m != sideview.CAMERA_TO_FAR_TEE_M:
             d["d_m"] = round(v.d_m, 4)
+        if v.end_camera:
+            d["end_camera"] = True
         if v.has_lateral:
             d["centre_col"] = round(v.centre_col, 2)
             d["lat_px_per_m_at_tee"] = round(v.lat_px_per_m_at_tee, 3)

@@ -121,6 +121,33 @@ def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
     return tracks
 
 
+# Later pieces of a split track take keys this far up, so no two pieces of
+# different columns become neighbours; `key % _SEGMENT` is the column key again.
+_SEGMENT = 1000
+
+
+def split_at_gaps(tracks, gap_s: float):
+    """Each column's samples cut wherever the detector lost them for over
+    ``gap_s``: a long gap is two sightings, possibly of two objects.
+
+    For an end camera, not a long one. An end camera's view stops a few rows
+    past the hog line, so the stone leaves it as it crosses, and whatever the
+    detector sees next in that column -- a sweeper's broom, the slide coming
+    through -- became the track's last sample, short of the line. On
+    Cincinnati's rKiMmtVod0I every throw of end 2 was refused "never reached"
+    that way, the stone itself tracked at a steady 2.2 m/s through the paint.
+    """
+    out: dict[int, list] = {}
+    for key, track in tracks.items():
+        seg, last = 0, None
+        for p in sorted(track):
+            if last is not None and p[0] - last > gap_s:
+                seg += 1
+            out.setdefault(key + _SEGMENT * seg, []).append(p)
+            last = p[0]
+    return out
+
+
 # What this proposer's edge is worth against a person's eye. `longview`'s
 # OFFSET_S (+0.073 s) corrects the COLOUR SCAN, whose trailing edge includes
 # the stone's contact shadow and so reads early. A trained detector draws the
@@ -137,10 +164,14 @@ def find_in_frames(model, frames, view, color: str, times,
     """Time the crossing of ``view.hog_row`` with the model as proposer, and
     keep every sample -- the column included -- for the line pass."""
     tracks = propose(model, frames, view, color, times)
+    if view.end_camera:
+        tracks = split_at_gaps(tracks, STRADDLE_GAP_MAX_S)
     got = longview.crossing_from_tracks(
         tracks, view, offset_s=OFFSET_S if offset_s is None else offset_s,
         max_gap_s=STRADDLE_GAP_MAX_S)
     samples = tuple(sorted((p[0], p[3], p[1], p[2]) for tr in tracks.values() for p in tr))
+    if got.track_key is not None:
+        got = dataclasses.replace(got, track_key=got.track_key % _SEGMENT)
     if got.track_key is None and samples:
         # A refusal still names the stone's key, so the line pass can find it,
         # e.g. a big-weight hit over the speed bound. Picked by ROW TRAVEL, not
@@ -149,7 +180,7 @@ def find_in_frames(model, frames, view, color: str, times,
         # barely moves. The one that travelled furthest is the delivery.
         rising = [(tr[-1][1] - tr[0][1], k) for k, tr in tracks.items() if tr[-1][1] > tr[0][1]]
         if rising:
-            got = dataclasses.replace(got, track_key=max(rising)[1])
+            got = dataclasses.replace(got, track_key=max(rising)[1] % _SEGMENT)
     return dataclasses.replace(got, samples=samples)
 
 
