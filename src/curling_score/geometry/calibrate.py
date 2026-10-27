@@ -18,6 +18,10 @@ from curling_score.geometry import constants as C
 # Hue bands in OpenCV's 0-179 scale. Validated unmodified across all five sheets.
 GREEN_HSV = ((35, 60, 40), (85, 255, 255))
 BLUE_HSV = ((100, 50, 30), (140, 255, 255))
+# Red wraps the hue circle, so it takes two bands.
+RED_HSV = (((0, 80, 50), (10, 255, 255)), ((165, 80, 50), (179, 255, 255)))
+# Black paint reads as a washed-out grey on video: V ~100-113 against ice at ~240.
+DARK_HSV = ((0, 0, 0), (179, 90, 150))
 
 _MIN_RING_AREA_PX = 400
 _ANGLE_BINS = 360
@@ -27,6 +31,24 @@ _OUTLIER_TOL = 0.15  # reject boundary points this far off the first fit
 
 class CalibrationError(RuntimeError):
     """The house could not be located well enough to calibrate."""
+
+
+@dataclass(frozen=True)
+class HousePaint:
+    """How a club paints one house, as unions of HSV bands.
+
+    ``twelve_ft`` is the band between the 12- and 8-foot circles, which the
+    scale is fitted on. ``four_ft`` is optional and only checks the fit: its
+    ``four_ft_edge`` edge is the 4-foot circle -- "outer" for a painted 4-foot
+    (Granite's blue), "inner" for a painted 8-to-4 band around a white 4-foot.
+    """
+
+    twelve_ft: tuple
+    four_ft: tuple | None = None
+    four_ft_edge: str = "outer"
+
+
+GRANITE_HOUSE = HousePaint(twelve_ft=(GREEN_HSV,), four_ft=(BLUE_HSV,))
 
 
 @dataclass(frozen=True)
@@ -51,7 +73,7 @@ class Ring:
 @dataclass(frozen=True)
 class Rings:
     twelve_ft: Ring
-    four_ft: Ring
+    four_ft: Ring | None
 
 
 def _largest_blob(mask: np.ndarray):
@@ -115,18 +137,33 @@ def _fit_outer_ellipse(blob: np.ndarray, name: str) -> Ring:
                 angle_deg=float(angle))
 
 
-def find_rings(panel) -> Rings:
-    """Locate the 12-foot and 4-foot rings in an overhead panel."""
+def _paint_blob(hsv, bands):
+    """The largest blob of any of ``bands``, closed over small gaps."""
+    mask = np.zeros(hsv.shape[:2], np.uint8)
+    for lo, hi in bands:
+        mask |= cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    return _largest_blob(mask)
+
+
+def find_rings(panel, paint: HousePaint = GRANITE_HOUSE) -> Rings:
+    """Locate the 12-foot and, where it is painted, the 4-foot ring in an overhead panel."""
     hsv = cv2.cvtColor(np.asarray(panel), cv2.COLOR_BGR2HSV)
-    found = {}
-    for name, (lo, hi) in (("twelve_ft", GREEN_HSV), ("four_ft", BLUE_HSV)):
-        mask = cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
-        blob = _largest_blob(mask)
-        if blob is None:
-            raise CalibrationError(f"could not find the {name} ring")
-        found[name] = _fit_outer_ellipse(blob, name)
-    return Rings(**found)
+    blob = _paint_blob(hsv, paint.twelve_ft)
+    if blob is None:
+        raise CalibrationError("could not find the twelve_ft ring")
+    twelve = _fit_outer_ellipse(blob, "twelve_ft")
+    if paint.four_ft is None:
+        return Rings(twelve_ft=twelve, four_ft=None)
+    blob = _paint_blob(hsv, paint.four_ft)
+    if blob is None:
+        raise CalibrationError("could not find the four_ft ring")
+    if paint.four_ft_edge == "outer":
+        four = _fit_outer_ellipse(blob, "four_ft")
+    else:
+        r = _inner_radius(blob, *twelve.center)
+        four = Ring(center=twelve.center, axes_px=(2 * r, 2 * r), angle_deg=0.0)
+    return Rings(twelve_ft=twelve, four_ft=four)
 
 
 def _inner_radius(blob: np.ndarray, cx: float, cy: float) -> float:
@@ -139,7 +176,7 @@ def _inner_radius(blob: np.ndarray, cx: float, cy: float) -> float:
     np.minimum.at(best, bins, rad)
     seen = best[np.isfinite(best)]
     if seen.size < _MIN_FILLED_BINS:
-        raise CalibrationError("green ring covers too few angles to find its inner edge")
+        raise CalibrationError("ring covers too few angles to find its inner edge")
     return float(np.median(seen))
 
 
@@ -156,7 +193,7 @@ class PanelCalib:
     center_px: tuple[float, float]
     px_per_m: float
     edge_erosion_px: float
-    residual_m: float
+    residual_m: float | None  # None where the club paints no 4-foot ring to check by
     flipped: bool  # True when the delivery end is at the top of the image
 
     def to_sheet(self, x_px: float, y_px: float) -> tuple[float, float]:
@@ -173,7 +210,8 @@ class PanelCalib:
         )
 
 
-def solve(panel, delivery_side: str = "bottom") -> PanelCalib:
+def solve(panel, delivery_side: str = "bottom",
+          paint: HousePaint = GRANITE_HOUSE) -> PanelCalib:
     """Fit the pixel-to-metres mapping for one overhead panel.
 
     ``delivery_side`` says where thrown stones enter the frame -- "bottom" for
@@ -201,15 +239,13 @@ def solve(panel, delivery_side: str = "bottom") -> PanelCalib:
             f"panel is {lighting.classify(panel).value}; too poorly lit to calibrate"
         )
 
-    rings = find_rings(panel)
+    rings = find_rings(panel, paint)
     cx, cy = rings.twelve_ft.center
 
     hsv = cv2.cvtColor(np.asarray(panel), cv2.COLOR_BGR2HSV)
-    green = cv2.inRange(hsv, np.array(GREEN_HSV[0], np.uint8), np.array(GREEN_HSV[1], np.uint8))
-    green = cv2.morphologyEx(green, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
-    blob = _largest_blob(green)
+    blob = _paint_blob(hsv, paint.twelve_ft)
     if blob is None:
-        raise CalibrationError("lost the green ring while measuring its inner edge")
+        raise CalibrationError("lost the 12-foot ring while measuring its inner edge")
 
     r12 = rings.twelve_ft.radius_px
     r8 = _inner_radius(blob, cx, cy)
@@ -218,12 +254,13 @@ def solve(panel, delivery_side: str = "bottom") -> PanelCalib:
         raise CalibrationError("degenerate scale")
 
     erosion = px_per_m * C.R_12FT_M - r12
-    residual_px = abs(px_per_m * C.R_4FT_M - rings.four_ft.radius_px)
+    residual_px = (None if rings.four_ft is None
+                   else abs(px_per_m * C.R_4FT_M - rings.four_ft.radius_px))
 
     return PanelCalib(
         center_px=(float(cx), float(cy)),
         px_per_m=float(px_per_m),
         edge_erosion_px=float(erosion),
-        residual_m=float(residual_px / px_per_m),
+        residual_m=None if residual_px is None else float(residual_px / px_per_m),
         flipped=(delivery_side == "top"),
     )

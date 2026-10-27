@@ -45,6 +45,49 @@ class TestFindRings:
         assert ratio == pytest.approx(C.R_12FT_M / C.R_4FT_M, rel=0.05)
 
 
+def cincinnati_panel(band, px_per_m=63.0, dark_four=False, cx=127, cy=127):
+    """A 254-px Cincinnati house: a ``band`` 12-to-8 ring broken by white
+    lettering, around a black 8-to-4 band when ``dark_four``."""
+    import cv2
+
+    img = np.full((254, 254, 3), synth.ICE, dtype=np.uint8)
+    r = lambda m: int(round(m * px_per_m))
+    cv2.circle(img, (cx, cy), r(C.R_12FT_M), band, -1, cv2.LINE_AA)
+    cv2.circle(img, (cx, cy), r(C.R_8FT_M), (40, 40, 40) if dark_four else synth.WHITE,
+               -1, cv2.LINE_AA)
+    cv2.circle(img, (cx, cy), r(C.R_4FT_M), synth.WHITE, -1, cv2.LINE_AA)
+    for a in range(0, 360, 30):  # the sponsor's letters, white across the band
+        t = np.radians(a)
+        mid = (C.R_12FT_M + C.R_8FT_M) / 2 * px_per_m
+        x, y = int(cx + mid * np.cos(t)), int(cy + mid * np.sin(t))
+        cv2.circle(img, (x, y), 6, synth.WHITE, -1)
+    return img
+
+
+class TestOtherClubsPaint:
+    def test_a_red_band_around_a_black_band_fits_and_checks_the_four_foot(self):
+        from curling_score import clubs
+
+        paint = dict(clubs.CINCINNATI.panels)["top"].paint
+        cal = calibrate.solve(cincinnati_panel((40, 40, 210), dark_four=True), "top", paint)
+        assert cal.px_per_m == pytest.approx(63.0, rel=0.03)
+        assert cal.center_px == pytest.approx((127, 127), abs=1.5)
+        assert cal.residual_m < 0.02
+        assert cal.flipped
+
+    def test_a_house_with_no_four_foot_still_fits_and_says_so(self):
+        from curling_score import clubs
+
+        paint = dict(clubs.CINCINNATI.panels)["bottom"].paint
+        cal = calibrate.solve(cincinnati_panel((210, 90, 40)), "top", paint)
+        assert cal.px_per_m == pytest.approx(63.0, rel=0.03)
+        assert cal.residual_m is None
+
+    def test_granite_paint_finds_no_house_in_cincinnatis(self):
+        with pytest.raises(calibrate.CalibrationError):
+            calibrate.solve(cincinnati_panel((40, 40, 210), dark_four=True), "top")
+
+
 class TestRingsOnEverySheet:
     """The cross-sheet gate: ring geometry must hold on all five sheets."""
 

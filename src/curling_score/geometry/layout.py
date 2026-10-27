@@ -103,6 +103,12 @@ def detect_panels(frames) -> PanelLayout:
         for a, b in zip(row_runs, row_runs[1:])
         if b[0] - a[1] >= _MIN_PANEL_PX
     ]
+    if len(panels) > 2:
+        # A tile that never changes is not a camera: Cincinnati boxes its club
+        # logo in between the two houses (99th percentile 6 there, >=40 in
+        # either house).
+        panels = [(y0, y1) for y0, y1 in panels
+                  if np.percentile(strip_temporal[y0:y1], 99) > _MAX_TEMPORAL_STD]
     if len(panels) != 2:
         raise LayoutError(f"expected exactly 2 overhead panels, found {len(panels)}")
 

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from curling_score import timeline, version
+from curling_score import clubs, timeline, version
 from curling_score import weights as weights_mod
 from curling_score.detect import (broommodel, delivery, longview, release, releasemodel,
                                   sequence, sidemodel, spinmodel)
@@ -130,7 +130,8 @@ def calibration_block(setups, sideviews) -> dict:
                 "rect": list(s.rect),
                 "px_per_m": round(s.calib.px_per_m, 3),
                 "center_px": [round(v, 2) for v in s.calib.center_px],
-                "residual_m": round(s.calib.residual_m, 5),
+                "residual_m": (None if s.calib.residual_m is None
+                               else round(s.calib.residual_m, 5)),
                 "flipped": s.calib.flipped,
                 "hog_line": None if s.hog_line is None else s.hog_line.to_json(),
                 "hog_line_error": s.hog_line_error,
@@ -315,18 +316,21 @@ class BoardRead:
     block: dict
 
 
-def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info):
+def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info,
+                   club: clubs.Club = clubs.GRANITE):
     """Panels, their calibrations and the side views, from a few keyframes.
 
     Returns ``(panels, setups, sideviews)``; ``sideviews`` is None when they
     were skipped or could not be read, which costs the splits and nothing else.
     """
     panels = layout.detect_panels(calib_frames)
-    setups = profile.calibrate_panels(calib_frames, panels)
+    setups = profile.calibrate_panels(calib_frames, panels, club)
     for name, setup in setups.items():
+        residual = setup.calib.residual_m
         progress(
             f"{name} panel {setup.rect} {setup.calib.px_per_m:.1f} px/m "
-            f"(residual {setup.calib.residual_m * 100:.2f} cm)"
+            + ("(no 4-foot ring to check by)" if residual is None
+               else f"(residual {residual * 100:.2f} cm)")
         )
         sides = setup.sidelines
         if sides is None:
@@ -1012,7 +1016,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             skip_scoreboard: bool = False, skip_longview: bool = False,
             skip_line: bool = False,
             on_phase=None, info=None,
-            download_attempts=None) -> dict:
+            download_attempts=None, club: clubs.Club = clubs.GRANITE) -> dict:
     """Analyse a club VOD and return the timeline document.
 
     ``start_s``/``end_s`` bound the part of the stream that is *analysed*: the
@@ -1062,7 +1066,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     calib_frames = F.sample_keyframes(path, count=CALIB_FRAMES, stride=CALIB_STRIDE)
     progress(f"{len(calib_frames)} calibration frames")
     panels, setups, sideviews = calibrate_from(
-        calib_frames, skip_longview=skip_longview, progress=progress)
+        calib_frames, skip_longview=skip_longview, progress=progress, club=club)
     phase("calibrate", 1.0, "calibrated")
 
     # Every later pass decodes only the overhead strip, which is about a

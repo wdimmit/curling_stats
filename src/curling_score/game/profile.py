@@ -18,6 +18,7 @@ that changeover, ds17b counted 2, and of the 63 in the far house over that end,
 
 from dataclasses import dataclass
 
+from curling_score import clubs
 from curling_score.detect import rocks
 from curling_score.game.segment import Sample
 from curling_score.geometry import calibrate, hogpaint, layout, lighting, sidepaint
@@ -81,9 +82,9 @@ class PanelSetup:
         return min(self.calib.to_sheet(px, py)[1] for px, py in corners)
 
 
-# Which way stones enter each panel: the two houses are played toward from
-# opposite directions.
-PANEL_SIDES = (("top", "bottom"), ("bottom", "top"))
+# Which way stones enter each of Granite's panels: the two houses are played
+# toward from opposite directions.
+PANEL_SIDES = tuple((name, p.delivery_side) for name, p in clubs.GRANITE.panels)
 
 
 def panel_median(frames, rect, name: str = "panel"):
@@ -103,7 +104,8 @@ def panel_median(frames, rect, name: str = "panel"):
     return np.median(np.stack(lit), axis=0).astype("uint8")
 
 
-def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> PanelSetup:
+def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel",
+                    paint=calibrate.GRANITE_HOUSE) -> PanelSetup:
     """Calibrate one panel from the best-lit, cleanest frames available.
 
     The idle house -- the one not being played to -- is clean and unoccluded for
@@ -115,7 +117,7 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> Pa
     finishes while others play on, so that is a normal night, not a broken one.
     """
     median = panel_median(frames, rect, name)
-    calib = calibrate.solve(median, delivery_side)
+    calib = calibrate.solve(median, delivery_side, paint)
     # The same median the rings were read from shows the hog line's paint. A
     # panel whose paint cannot be trusted keeps its calibration and says why;
     # it simply times no far crossings.
@@ -128,12 +130,12 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> Pa
                       sidelines=sidepaint.find_sidelines(median, calib))
 
 
-def calibrate_panels(frames, panels: layout.PanelLayout):
+def calibrate_panels(frames, panels: layout.PanelLayout, club: clubs.Club = clubs.GRANITE):
     """Calibrate both panels, or raise if either cannot be read."""
     rects = {"top": panels.top, "bottom": panels.bottom}
     return {
-        name: calibrate_panel(frames, rects[name], side, name)
-        for name, side in PANEL_SIDES
+        name: calibrate_panel(frames, rects[name], p.delivery_side, name, p.paint)
+        for name, p in club.panels
     }
 
 

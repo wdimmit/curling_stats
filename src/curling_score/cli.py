@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from curling_score import analyze as analyze_mod
+from curling_score import clubs
 from curling_score import weights as weights_mod
 from curling_score.game import format as format_mod
 from curling_score.ingest import cache, source
@@ -55,7 +56,8 @@ def _analyze(args) -> int:
                               game_format=args.format,
                               skip_scoreboard=args.no_scoreboard,
                               skip_longview=args.no_longview,
-                              skip_line=args.no_line)
+                              skip_line=args.no_line,
+                              club=clubs.CLUBS[args.club])
     out = analyze_mod.write(doc, args.out)
     print(f"\nwrote {out}")
     for game in doc["games"]:
@@ -706,7 +708,8 @@ def _print_calibration(cal) -> None:
     """What a calibration measured, to be written down."""
     for name, setup in cal.setups.items():
         print(f"{name} panel {setup.rect}: {setup.calib.px_per_m:.1f} px/m "
-              f"(residual {setup.calib.residual_m * 100:.2f} cm), "
+              + ("(no 4-foot ring), " if setup.calib.residual_m is None
+                 else f"(residual {setup.calib.residual_m * 100:.2f} cm), ")
               + ("hog line found" if setup.hog_line is not None
                  else f"no hog line ({setup.hog_line_error})"))
     if cal.sideviews is None:
@@ -798,6 +801,8 @@ def main(argv=None) -> int:
                         "crossing (also needs the full-resolution original)")
     p.add_argument("--no-line", action="store_true",
                    help="skip measuring where each rock's line passed the broom")
+    p.add_argument("--club", choices=sorted(clubs.CLUBS), default=clubs.GRANITE.name,
+                   help="whose stream this is: its house paint and panel layout")
     p.add_argument("--cache-root", default=None,
                    help="where videos, proxies and detections are kept "
                         "(default: $CURLING_SCORE_CACHE or ~/.cache/curling_score)")

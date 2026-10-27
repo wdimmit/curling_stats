@@ -46,6 +46,20 @@ class TestDetectPanels:
         assert got.top == (810, 10, 297, 514)
         assert got.bottom == (810, 554, 297, 515)
 
+    def test_skips_a_static_tile_between_the_houses(self):
+        # Cincinnati's centre column is red house, club logo, blue house. The
+        # logo is boxed in by bars like a panel, but it never changes.
+        logo = np.random.default_rng(7).integers(0, 255, (100, 297, 3), dtype=np.uint8)
+        frames = synth_frames()
+        for f in frames:
+            f[300:310, 810:1107] = BAR
+            f[310:410, 810:1107] = logo
+            f[410:420, 810:1107] = BAR
+            f[420:524, 810:1107] = BAR
+        got = layout.detect_panels(frames)
+        assert got.top == (810, 10, 297, 290)
+        assert got.bottom == (810, 554, 297, 515)
+
     def test_rejects_footage_with_no_overhead_strip(self):
         rng = np.random.default_rng(1)
         noise = [rng.integers(0, 255, (1080, 1920, 3), dtype=np.uint8) for _ in range(8)]
