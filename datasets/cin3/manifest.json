@@ -1,0 +1,2871 @@
+{
+ "what": "cin3: Cincinnati's end cameras, throws arriving (rKiMmtVod0I)",
+ "scope": "cin3:train",
+ "prelabel": {
+  "weights": "cin2a.pt",
+  "note": "cin2's prelabel: conf 0.1, stone-width gate"
+ },
+ "selection": {
+  "n": 100,
+  "missed": 40,
+  "house_share": 0.4,
+  "offset_s": {
+   "coming": 1.0,
+   "house": 4.5
+  },
+  "enter_before_s": 3.0,
+  "hog_after_s": 12.5,
+  "rows_above_tee": 80,
+  "anchors": {
+   "far": 78,
+   "enter": 23,
+   "hog": 16
+  }
+ },
+ "views": {
+  "left": {
+   "rect": [
+    767,
+    0,
+    513,
+    720
+   ],
+   "tee_row": 284.38,
+   "hog_row": 706.53,
+   "d_m": 14.4597,
+   "end_camera": true,
+   "centre_col": 259.46,
+   "lat_px_per_m_at_tee": 108.762,
+   "centre_line": [
+    240.424,
+    0.066936
+   ]
+  },
+  "right": {
+   "rect": [
+    0,
+    0,
+    513,
+    720
+   ],
+   "tee_row": 287.47,
+   "hog_row": 702.54,
+   "d_m": 13.8251,
+   "end_camera": true,
+   "centre_col": 250.63,
+   "lat_px_per_m_at_tee": 108.481,
+   "centre_line": [
+    271.316,
+    -0.071968
+   ]
+  }
+ },
+ "by_kind": {
+  "coming": 37,
+  "coming-missed": 20,
+  "house": 24,
+  "house-missed": 19
+ },
+ "frames": [
+  {
+   "end": 1,
+   "shot": 1,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 1819.63,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 1820.63,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_001820_63",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 1,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 5,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 2059.81,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 2060.81,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_002060_81",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 6,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 2105.4,
+   "anchor_from": "enter",
+   "view": "right",
+   "kind": "coming",
+   "missed": true,
+   "t": 2106.4,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_002106_40",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 7,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 2146.8,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 2151.3,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_002151_30",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 8,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 2203.69,
+   "anchor_from": "hog",
+   "view": "right",
+   "kind": "house",
+   "missed": true,
+   "t": 2208.19,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_002208_19",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 6,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 9,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 2247.41,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 2248.41,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_002248_41",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 11,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 2370.92,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 2371.92,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_002371_92",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 14,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 2455.9,
+   "anchor_from": "enter",
+   "view": "right",
+   "kind": "coming",
+   "missed": true,
+   "t": 2456.9,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_002456_90",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 8,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 15,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 2521.66,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 2526.16,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_002526_16",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 16,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 2594.69,
+   "anchor_from": "hog",
+   "view": "right",
+   "kind": "house",
+   "missed": true,
+   "t": 2599.19,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_002599_19",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 9,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "hogged",
+   "anchor": 2656.8,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 2657.8,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_002657_80",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 2704.6,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 2705.6,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_002705_60",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 2,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 3,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 2747.54,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 2752.04,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_002752_04",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 1,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 5,
+   "color": "red",
+   "shot_type": "hogged",
+   "anchor": 2821.87,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 2822.87,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_002822_87",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 2862.86,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 2863.86,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_002863_86",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 2,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 7,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 2911.33,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 2915.83,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_002915_83",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 2961.48,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 2965.98,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_002965_98",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 3000.3,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 3001.3,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_003001_30",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 11,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 3095.8,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 3100.3,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_003100_30",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 12,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "anchor": 3154.73,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 3155.73,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_003155_73",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 13,
+   "color": "red",
+   "shot_type": "guard",
+   "anchor": 3239.17,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 3243.67,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_003243_67",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 14,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 3340.7,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 3341.7,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_003341_70",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 15,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 3417.89,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 3422.39,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_003422_39",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 2,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 16,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 3496.99,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 3497.99,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_003497_99",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 6,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 1,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 3565.99,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 3566.99,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_003566_99",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 1,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 3,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 3659.6,
+   "anchor_from": "enter",
+   "view": "right",
+   "kind": "coming",
+   "missed": true,
+   "t": 3660.6,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_003660_60",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 4,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 3704.3,
+   "anchor_from": "enter",
+   "view": "right",
+   "kind": "house",
+   "missed": true,
+   "t": 3708.8,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_003708_80",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 5,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "anchor": 3739.85,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 3744.35,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_003744_35",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 6,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 3791.72,
+   "anchor_from": "hog",
+   "view": "right",
+   "kind": "coming",
+   "missed": true,
+   "t": 3792.72,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_003792_72",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 7,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 3845.03,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 3846.03,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_003846_03",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 8,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 3892.82,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 3897.32,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_003897_32",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 10,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 3994.09,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 3995.09,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_003995_09",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 6,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 11,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 4040.11,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 4041.11,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_004041_11",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 9,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 12,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 4086.92,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 4091.42,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_004091_42",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 13,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 4180.14,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 4181.14,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_004181_14",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 9,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 14,
+   "color": "red",
+   "shot_type": "hogged",
+   "anchor": 4284.73,
+   "anchor_from": "hog",
+   "view": "right",
+   "kind": "house",
+   "missed": true,
+   "t": 4289.23,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_004289_23",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 10,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 4521.49,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 4525.99,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_004525_99",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 2,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 4563.46,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 4564.46,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_004564_46",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 2,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 3,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 4625.58,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 4626.58,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_004626_58",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 4,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 4666.06,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 4670.56,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_004670_56",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 2,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 4764.34,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 4765.34,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_004765_34",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 6,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 7,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 4809.43,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 4810.43,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_004810_43",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 4862.17,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 4866.67,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_004866_67",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 4930.63,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 4931.63,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_004931_63",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 10,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 4981.93,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 4986.43,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_004986_43",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 11,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 5029.53,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 5030.53,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_005030_53",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 12,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 5078.73,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 5083.23,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_005083_23",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 13,
+   "color": "red",
+   "shot_type": "hogged",
+   "anchor": 5148.36,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 5149.36,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_005149_36",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 15,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 5321.61,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 5326.11,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_005326_11",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 6,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 1,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 5528.73,
+   "anchor_from": "enter",
+   "view": "right",
+   "kind": "coming",
+   "missed": true,
+   "t": 5529.73,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_005529_73",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 1,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 2,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 5575.33,
+   "anchor_from": "enter",
+   "view": "right",
+   "kind": "house",
+   "missed": true,
+   "t": 5579.83,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_005579_83",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 3,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 5615.3,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 5616.3,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_005616_30",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 4,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 5662.44,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 5666.94,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_005666_94",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 5,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 5715.52,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 5716.52,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_005716_52",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 6,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 5764.43,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 5765.43,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_005765_43",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 8,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 5843.72,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 5848.22,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_005848_22",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 6,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 9,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 5888.09,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 5889.09,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_005889_09",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 10,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 5941.73,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 5946.23,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_005946_23",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 12,
+   "color": "red",
+   "shot_type": "hogged",
+   "anchor": 6073.63,
+   "anchor_from": "hog",
+   "view": "right",
+   "kind": "coming",
+   "missed": true,
+   "t": 6074.63,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_006074_63",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 13,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 6176.21,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 6177.21,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_006177_21",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 6,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 14,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 6260.99,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 6261.99,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_006261_99",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 15,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "anchor": 6355.55,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 6360.05,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_006360_05",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 6429.17,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 6433.67,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006433_67",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 1,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 6471.06,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 6472.06,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006472_06",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 2,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 4,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 6563.37,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 6564.37,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006564_37",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 5,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 6621.57,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 6626.07,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006626_07",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 6657.86,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 6662.36,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006662_36",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 7,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 6722.32,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 6723.32,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006723_32",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 6,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "anchor": 6767.97,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 6768.97,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006768_97",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 10,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 6823.0,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 6824.0,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006824_00",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 10,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "anchor": 6859.68,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 6864.18,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006864_18",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 12,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 6938.3,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 6939.3,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_006939_30",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 13,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 7012.66,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 7017.16,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_007017_16",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 14,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 7082.4,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 7086.9,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_007086_90",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 15,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 7163.0,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 7164.0,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_007164_00",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 1,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 7297.19,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 7298.19,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007298_19",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 1,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 2,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 7343.32,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 7347.82,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007347_82",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 3,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 7380.25,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 7381.25,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007381_25",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 4,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 7425.17,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 7429.67,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007429_67",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 6,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 7523.9,
+   "anchor_from": "enter",
+   "view": "right",
+   "kind": "coming",
+   "missed": true,
+   "t": 7524.9,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007524_90",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 7,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 7563.41,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 7564.41,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007564_41",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 8,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 7606.46,
+   "anchor_from": "hog",
+   "view": "right",
+   "kind": "house",
+   "missed": true,
+   "t": 7610.96,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007610_96",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 9,
+   "color": "yellow",
+   "shot_type": "guard",
+   "anchor": 7650.31,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 7651.31,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007651_31",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 10,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 7701.0,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 7705.5,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007705_50",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 12,
+   "color": "red",
+   "shot_type": "draw_through",
+   "anchor": 7786.16,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 7787.16,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007787_16",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 13,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 7880.19,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "house",
+   "missed": false,
+   "t": 7884.69,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007884_69",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 14,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 7946.03,
+   "anchor_from": "enter",
+   "view": "right",
+   "kind": "coming",
+   "missed": true,
+   "t": 7947.03,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_007947_03",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 15,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "anchor": 8025.37,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 8026.37,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_008026_37",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 7,
+   "shot": 16,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 8088.73,
+   "anchor_from": "far",
+   "view": "right",
+   "kind": "coming",
+   "missed": false,
+   "t": 8089.73,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_r_008089_73",
+   "crop_top": 207,
+   "width": 513,
+   "height": 513,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04491,
+     0.03522
+    ],
+    [
+     0.10237,
+     0.08029
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 8166.6,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 8171.1,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008171_10",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 1,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 3,
+   "color": "red",
+   "shot_type": "draw",
+   "anchor": 8264.9,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 8265.9,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008265_90",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 4,
+   "color": "yellow",
+   "shot_type": "hit",
+   "anchor": 8303.0,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 8307.5,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008307_50",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 5,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 8353.54,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 8358.04,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008358_04",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 7,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "anchor": 8399.75,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "coming",
+   "missed": false,
+   "t": 8400.75,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008400_75",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 7,
+   "color": "red",
+   "shot_type": "flashed",
+   "anchor": 8454.56,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 8455.56,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008455_56",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 1,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 8498.1,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 8502.6,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008502_60",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 5,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 8540.9,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 8541.9,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008541_90",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 2,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 10,
+   "color": "yellow",
+   "shot_type": "draw",
+   "anchor": 8585.47,
+   "anchor_from": "far",
+   "view": "left",
+   "kind": "house",
+   "missed": false,
+   "t": 8589.97,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008589_97",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 11,
+   "color": "red",
+   "shot_type": "hogged",
+   "anchor": 8635.34,
+   "anchor_from": "hog",
+   "view": "left",
+   "kind": "house",
+   "missed": true,
+   "t": 8639.84,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008639_84",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 3,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  },
+  {
+   "end": 8,
+   "shot": 13,
+   "color": "red",
+   "shot_type": "hit",
+   "anchor": 8810.2,
+   "anchor_from": "enter",
+   "view": "left",
+   "kind": "coming",
+   "missed": true,
+   "t": 8811.2,
+   "video": "rKiMmtVod0I",
+   "stem": "rKiMmtVod0I_l_008811_20",
+   "crop_top": 204,
+   "width": 513,
+   "height": 516,
+   "prelabels": 4,
+   "add_box": [
+    [
+     0.04589,
+     0.03578
+    ],
+    [
+     0.09838,
+     0.07671
+    ]
+   ]
+  }
+ ]
+}
