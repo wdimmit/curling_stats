@@ -39,6 +39,9 @@ N_FRAMES, LOST_SHARE = 100, 0.7
 MINE_CONF, PRELABEL_CONF, IMGSZ = 0.05, 0.1, 800
 SHORT_PX = 10        # a track ending this far above the hog row did not reach it
 SEEN_BEFORE_HOG_M = 1.0
+# ds13e's boxes here, in metres of the lateral scale at their row: 0.255 wide
+# (p25-75 0.243-0.267 over 72 pre-labels, both cameras) and 0.20 tall.
+BOX_M = (0.255, 0.20)
 DELIVERING = {"top": "bottom", "bottom": "top"}   # the end thrown toward -> the end thrown from
 BOX_ALL = ("Box EVERY stone in the frame, including one under the thrower's hand, behind a broom or a "
            "sweeper's leg, or cut off by the bottom edge, and reject every box that is not a stone -- "
@@ -125,6 +128,15 @@ def prelabel(model, img, view, crop_top, path):
     return len(rows)
 
 
+def add_box(view, crop_top, w, h):
+    """An added stone's normalised (w, h) at the crop's top and bottom edges.
+    The lateral scale is linear in the row, so the review page and the apply
+    step interpolate between them by where the box is."""
+    c, yh = view._map()
+    per_m = [view.lat_px_per_m_at_tee * (row - yh) / (view.tee_row - yh) for row in (crop_top, crop_top + h)]
+    return [[round(BOX_M[0] * s / w, 5), round(BOX_M[1] * s / h, 5)] for s in per_m]
+
+
 def relabel(a, manifest):
     """Pre-label the set on disk again, as `build` would now."""
     import cv2
@@ -136,6 +148,7 @@ def relabel(a, manifest):
     for f in manifest["frames"]:
         img = cv2.imread(str(out / f"images/train/{f['stem']}.jpg"))
         f["prelabels"] = prelabel(model, img, views[f["view"]], f["crop_top"], out / f"labels/train/{f['stem']}.txt")
+        f["add_box"] = add_box(views[f["view"]], f["crop_top"], f["width"], f["height"])
     manifest["prelabel"].update(weights=Path(a.weights).name, conf=PRELABEL_CONF, width_tol=width_tol())
     a.manifest.write_text(json.dumps(manifest, indent=1))
     print(f"{sum(f['prelabels'] for f in manifest['frames'])} boxes on "
@@ -191,7 +204,8 @@ def build(a):
         h, w = img.shape[:2]
         n = prelabel(model, img, v, max(0, y0), lbl_dir / f"{stem}.txt")
         frames_out.append({**c, "video": vid, "stem": stem, "t": round(float(times[0]), 3),
-                           "crop_top": max(0, y0), "width": w, "height": h, "prelabels": n})
+                           "crop_top": max(0, y0), "width": w, "height": h, "prelabels": n,
+                           "add_box": add_box(v, max(0, y0), w, h)})
         print(f"{stem} {c['kind']}: {n} boxes", flush=True)
     manifest = {"what": a.title, "scope": a.scope,
                 "prelabel": {"weights": Path(a.weights).name, "conf": PRELABEL_CONF, "imgsz": IMGSZ,
@@ -223,7 +237,8 @@ def render(out, manifest):
     are not touched, so a review in progress keeps every edit."""
     from curling_score.train import labels
 
-    meta = {f["stem"]: labels.FrameMeta(note=note_for(f), url=f"https://youtu.be/{f['video']}?t={int(f['t'])}")
+    meta = {f["stem"]: labels.FrameMeta(box=tuple(map(tuple, f["add_box"])), note=note_for(f),
+                                        url=f"https://youtu.be/{f['video']}?t={int(f['t'])}")
             for f in manifest["frames"]}
     frames = [f for seq in labels.load_split(out / "set", "train").values() for f in seq]
     page, n = labels.render_clickable(frames, out / "review", title=manifest["what"],
