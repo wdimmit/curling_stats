@@ -643,6 +643,12 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         if lost:
             progress(f"    end {end.number}: {len(lost)} rock(s) the overhead saw at "
                      f"neither end, from the long camera")
+            # An end camera sees a guard the house-only overhead never could.
+            if getattr(dest_view, "end_camera", False):
+                lost, n_placed = farfollow.follow_lost(
+                    lost, lambda color, t: farfollow.follow(path, dest_view, color, t))
+                if n_placed:
+                    progress(f"    end {end.number}: {n_placed} of them placed from the end camera")
             unaccounted = unaccounted + lost
             deliveries, kept = by_the_rules(unaccounted)
     # Audit what detection actually offered, before the rules trim

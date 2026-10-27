@@ -560,3 +560,25 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     if dropped:
         arrivals = [a for a in arrivals if not any(a is x for x in dropped)]
     return arrivals, pairs, out, changed
+
+
+def follow_lost(lost, follow_fn):
+    """`place`'s say for a hog among the rocks the overhead saw at neither end
+    (`sidereleases.lost_rocks`), which are found after it has run. A house-only
+    overhead, like Cincinnati's, loses every guard short of the house this way.
+    Returns ``(lost, changed)``."""
+    from curling_score.detect import release as R
+
+    out, changed = [], 0
+    for d in lost:
+        r = getattr(d, "release", None)
+        o = follow_fn(r.color, r.t) if r is not None and d.reason == R.REASON else None
+        if o is not None and o.kind == REST:
+            out.append(R.came_to_rest_at(r, o.t, o.x_m, o.y_m))
+        elif o is not None and o.kind == THROUGH:
+            out.append(R.ran_through(r, o.t, o.x_m))
+        else:
+            out.append(d)
+            continue
+        changed += 1
+    return out, changed

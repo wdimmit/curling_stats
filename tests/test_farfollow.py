@@ -492,3 +492,16 @@ class TestEndCamera:
         p = hold(slide(3.5, x=-0.8, start_y=6.3, start_at=T0 + 14.0, stop_at=T0 + 18.0), T0 + 45)
         got = FF.read_outcome(samples(p, static=[(0.5, 5.9)]), T0, seed_min_y_m=5.5, skip_parked=True)
         assert got.kind == FF.REST and got.x_m == pytest.approx(-0.8, abs=0.05)
+
+
+class TestFollowLost:
+    def test_a_lost_hog_the_camera_saw_stop_in_play_rests_there(self):
+        r = R.Release("red", T0, 9.0, 2.0)
+        lost = [R.as_delivery(r)]
+        got, n = FF.follow_lost(lost, lambda color, t: FF.Outcome(FF.REST, T0 + 25, 0.3, 4.3, 90))
+        assert n == 1 and got[0].reason == R.REASON_REST
+
+    def test_one_the_camera_could_not_follow_stays_hogged(self):
+        r = R.Release("red", T0, 9.0, 2.0)
+        got, n = FF.follow_lost([R.as_delivery(r)], lambda color, t: None)
+        assert n == 0 and got[0].reason == R.REASON
