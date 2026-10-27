@@ -29,3 +29,24 @@ end-camera run (`out2`) timed the hog line on 14 of ~120 throws.
 The set is on the GPU laptop at `/data/wdd/scratch/cincinnati/cin2/set1`. The review is served from
 `http://100.80.66.81:8790/` (scope `cin2:train`), rendered with the ds19 branch's review page,
 which has the reject-all button.
+
+## Reviewed and trained (2026-10-27)
+
+- **Review** (`edits/`): all 100 frames; 35 rejects; 48 stones added (29 red, 19 yellow). Added boxes are sized by
+  their row from `add_box`: 0.255 x 0.20 m at the calibrated lateral scale.
+- **Training folder** (`scripts/cin2/make_tree.py`): 91 boxes; 12 frames kept empty; every fifth frame goes to val
+  (80 train, 20 val).
+- **cin2a:** ds13e's recipe and data (wave2, hack1, broom1, kink1) plus cin2, on the laptop. It stopped at epoch 124.
+  Weights: `/data/wdd/curling/runs/cin2a/weights/best.pt` (md5 dfda314e).
+
+| val, mAP50-95 | wave2 | hack1 | broom1 | kink1 | cin2 |
+|---|---|---|---|---|---|
+| ds13e | .752 | .650 | .792 | .797 | .435 (R .64) |
+| cin2a | .739 | .678 | .855 | .809 | .606 (R .94) |
+
+**The game rerun** (`out3`, cin1a overhead + cin2a side; `compare_runs.py`):
+- **Hog-line times:** 112 of 128 throws, up from 14.
+  - Release to hog line: 2.8-4.9 s.
+  - Speed at the hog line: 1.5-2.9 m/s.
+- **Caveat:** the frames were taken from this same game, and no other Cincinnati game has been tested.
+- **Unchanged:** scores (2/7 exact), far-hog times, splits and lines, all still 0.
