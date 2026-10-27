@@ -310,6 +310,23 @@ class TestPlace:
                                   follow_fn=lambda c, t: None)
         assert (n, out) == (0, [add])
 
+    def test_an_end_camera_s_stop_wins_over_the_house_for_the_last_throw(self):
+        """rKiMmtVod0I end 1 rock 16: the house-only overhead never saw it come
+        in, and 36 s on `settle` read the house the skips had cleared. The end
+        camera above the hog line saw where it stopped."""
+        r = _release()
+        removed = D.Delivery(color="red", t_enter=T0, t_rest=T0 + 36.0, entry_y_m=C.HOGGED_Y_M,
+                             rest_x_m=0.0, rest_y_m=C.THROUGH_BACK_Y_M,
+                             travel_m=C.HOGGED_Y_M - C.THROUGH_BACK_Y_M, came_to_rest=False,
+                             reason=R.REASON_REMOVE, release=r)
+        seen = FF.Outcome(FF.REST, T0 + 22.0, 0.2, 0.4, 80)
+        _a, _p, out, n = FF.place([removed], {}, [], [], follow_fn=lambda c, t: seen,
+                                  camera_sees_house=True)
+        assert (n, out[0].reason) == (1, R.REASON_REST)
+        assert (out[0].rest_x_m, out[0].rest_y_m) == (0.2, 0.4)
+        _a, _p, out, n = FF.place([removed], {}, [], [], follow_fn=lambda c, t: seen)
+        assert (n, out) == (0, [removed])
+
     def test_house_settled_names_settle_s_two_placements(self):
         assert set(FF.HOUSE_SETTLED) == {R.REASON_ADD, R.REASON_REMOVE}
 

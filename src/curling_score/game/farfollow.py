@@ -450,7 +450,7 @@ def taken_back(unaccounted, thrown_by) -> list:
 HOUSE_SETTLED = ("release-add", "release-remove")
 
 
-def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
+def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn, camera_sees_house=False):
     """Settle what the overhead could not, by what the long camera saw.
 
     ``unaccounted`` are `detect.release.unaccounted`'s deliveries, ``thrown_by``
@@ -473,6 +473,11 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
     * An arrival paired with nothing, of a hogged release's colour, that came
       in later than any throw could (up to `PUSH_MAX_LAG_S`) and changed
       nothing is that hog being pushed, and is dropped.
+
+    ``camera_sees_house``: an end camera above the destination's hog line
+    watches the house itself, so for the end's last throw a stop it saw wins
+    over the house's settling -- which, read after the skips have stood over
+    the house and cleared it, finds it empty (rKiMmtVod0I end 1 rock 16).
 
     Returns ``(arrivals, thrown_by, unaccounted, changed)``, ``changed``
     counting the releases this placed differently.
@@ -522,7 +527,15 @@ def place(unaccounted, thrown_by, arrivals, frames, *, follow_fn):
             changed += 1
             continue
         if d.reason != R.REASON:
-            out.append(d)       # the house saw its stone; more than a follow says
+            o = camera() if camera_sees_house else None
+            if o is not None and o.kind == REST:
+                out.append(R.came_to_rest_at(r, o.t, o.x_m, o.y_m))
+                changed += 1
+            elif o is not None and o.kind == THROUGH:
+                out.append(R.ran_through(r, o.t, o.x_m))
+                changed += 1
+            else:
+                out.append(d)   # the house saw its stone; more than a follow says
             continue
         o = camera()
         if o is not None and o.kind == REST:

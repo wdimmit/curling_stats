@@ -601,7 +601,8 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     matched = thrown_by
     arrivals, thrown_by, unaccounted, n_followed = farfollow.place(
         unaccounted, thrown_by, arrivals, seq,
-        follow_fn=lambda color, t: farfollow.follow(path, dest_view, color, t))
+        follow_fn=lambda color, t: farfollow.follow(path, dest_view, color, t),
+        camera_sees_house=getattr(dest_view, "end_camera", False))
     # A hog taken back from the arrival it was matched to keeps the match's
     # standing in the fit (`fit.paired_ids`).
     taken_back = farfollow.taken_back(unaccounted, matched)
