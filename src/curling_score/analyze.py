@@ -37,7 +37,7 @@ from curling_score.game import (
     thinking,
 )
 from curling_score.game import format as format_mod
-from curling_score.geometry import layout, sideview
+from curling_score.geometry import endcam, layout, sideview
 from curling_score.ingest import cache, frames as F, proxy, source
 
 log = logging.getLogger(__name__)
@@ -113,6 +113,10 @@ def _side_calibration(sideviews) -> dict:
     for name, v in (sideviews or {}).items():
         d = {"rect": list(v.rect), "tee_row": round(v.tee_row, 2),
              "hog_row": round(v.hog_row, 2)}
+        # An end camera's d is fitted; a long camera's is the constant, and
+        # left out so Granite's calibration blocks read as they always have.
+        if v.d_m != sideview.CAMERA_TO_FAR_TEE_M:
+            d["d_m"] = round(v.d_m, 4)
         if v.has_lateral:
             d["centre_col"] = round(v.centre_col, 2)
             d["lat_px_per_m_at_tee"] = round(v.lat_px_per_m_at_tee, 3)
@@ -316,6 +320,30 @@ class BoardRead:
     block: dict
 
 
+def _end_views(calib_frames, panels, club, progress):
+    """A club whose side cameras each look back at their own house: one
+    `SideView` per house, named for the role the long cameras' names carry --
+    ``hogtime.CAMERA_FOR[house]``, the camera that sees that house's tee and
+    hog line -- so every consumer reads it as it reads Granite's."""
+    from curling_score.game import hogtime
+
+    h, w = calib_frames[0].shape[:2]
+    plate = np.median(np.stack([f.astype("float32") for f in calib_frames]), axis=0).astype("uint8")
+    try:
+        rects = sideview.locate(panels, width=w, height=h)
+        views = {}
+        for house, (side, paint) in club.end_cameras.items():
+            fit = endcam.solve(plate, rects[side], paint, name=f"{side} ({house} house)")
+            progress(f"{side} end camera, {house} house: tee row {fit.view.tee_row:.1f}, hog row "
+                     f"{fit.view.hog_row:.1f}, d {fit.view.d_m:.2f} m, ring {fit.ring_residual_m * 100:.1f} cm, "
+                     f"centre line on {fit.centre_rows} rows")
+            views[hogtime.CAMERA_FOR[house]] = fit.view
+        return views
+    except sideview.SideViewError as exc:
+        progress(f"end cameras unusable, so this video has no splits: {exc}")
+        return None
+
+
 def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info,
                    club: clubs.Club = clubs.GRANITE):
     """Panels, their calibrations and the side views, from a few keyframes.
@@ -344,7 +372,9 @@ def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info,
     # overhead panel loses on about 40% of throws, and they are read straight
     # from the original -- like the scoreboard, and for the same reason.
     sideviews = None
-    if not skip_longview:
+    if not skip_longview and club.end_cameras:
+        sideviews = _end_views(calib_frames, panels, club, progress)
+    elif not skip_longview:
         h, w = calib_frames[0].shape[:2]
         plate = np.median(
             np.stack([f.astype("float32") for f in calib_frames]), axis=0)

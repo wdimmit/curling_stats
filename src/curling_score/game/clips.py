@@ -22,7 +22,7 @@ from pathlib import Path
 
 from curling_score.game import clipburn
 from curling_score.game.hogtime import CAMERA_FOR
-from curling_score.geometry.sideview import SideView
+from curling_score.geometry.sideview import CAMERA_TO_FAR_TEE_M, SideView
 from curling_score.practice import clips as practice_clips
 from curling_score.practice.enrich import OTHER_HOUSE
 
@@ -80,7 +80,8 @@ def sideviews_from_calibration(cal: dict | None) -> dict:
         line = d.get("centre_line")
         out[name] = SideView(
             rect=tuple(int(v) for v in d["rect"]), tee_row=float(d["tee_row"]),
-            hog_row=float(d["hog_row"]), centre_col=d.get("centre_col"),
+            hog_row=float(d["hog_row"]), d_m=float(d.get("d_m", CAMERA_TO_FAR_TEE_M)),
+            centre_col=d.get("centre_col"),
             lat_px_per_m_at_tee=d.get("lat_px_per_m_at_tee"),
             centre_line=None if line is None else (float(line[0]), float(line[1])))
     return out
