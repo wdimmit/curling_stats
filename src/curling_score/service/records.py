@@ -649,7 +649,10 @@ class SensorTiming:
     ``hog_at``, when it crossed the throwing hog line by the app's clock. It
     belongs to the session whose window held ``hog_at`` and is paired with a
     camera throw when the session is read (service/practice.match_timings).
-    ``at``/``at_is`` are what the app said: one crossing's time, and which."""
+    ``at``/``at_is`` are what the app said: one crossing's time, and which.
+    ``clock_offset_s`` is our clock less the phone's, from the push's
+    ``sent_at``; ``hog_at`` has it added. None when the app sent no sent_at,
+    and ``hog_at`` is then on the phone's clock."""
 
     id: str
     user_id: str
@@ -662,6 +665,7 @@ class SensorTiming:
     short_s: float | None = None
     long_s: float | None = None
     key_id: str | None = None
+    clock_offset_s: float | None = None
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

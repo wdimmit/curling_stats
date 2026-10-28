@@ -3047,8 +3047,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     async def push_timings(request: Request, authorization: str | None = Header(default=None)):
         """A sensor app's timings, each kept on the key's owner's session that
         was running when it was thrown, and paired with a camera throw when
-        that session is read (practice.match_timings). Each timing is answered
-        on its own; the push is a 409 only when none had a session to go to."""
+        that session is read (practice.match_timings). The push's ``sent_at``,
+        the phone's clock as it sent, puts the app's times on ours. Each timing
+        is answered on its own; the push is a 409 only when none had a session
+        to go to."""
         practice_on()
         me, key = require_key(authorization)
         try:
@@ -3060,14 +3062,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(422, "send {\"timings\": [...]}")
         if len(items) > TIMINGS_PER_PUSH:
             raise HTTPException(422, f"at most {TIMINGS_PER_PUSH} timings a push")
-        if not repo.bump_rate_limit("timings:" + me.id, now(), TIMINGS_HOUR_LIMIT,
+        t = now()
+        offset = None
+        if body.get("sent_at") is not None:
+            try:
+                offset = practice.clock_offset(body["sent_at"], t)
+            except practice.BadTiming as e:
+                raise HTTPException(422, str(e)) from None
+        if not repo.bump_rate_limit("timings:" + me.id, t, TIMINGS_HOUR_LIMIT,
                                     TIMINGS_DAY_LIMIT):
             raise HTTPException(429, "that is a lot of timings; try again later")
         out, kept, homeless = [], 0, 0
         for item in items:
             cid = item.get("client_id") if isinstance(item, dict) else None
             try:
-                got = practice.add_timing(repo, me.id, item, now(), key_id=key.id)
+                got = practice.add_timing(repo, me.id, item, t, key_id=key.id,
+                                          offset_s=offset)
             except practice.BadTiming as e:
                 out.append({"client_id": cid, "error": str(e)})
                 continue

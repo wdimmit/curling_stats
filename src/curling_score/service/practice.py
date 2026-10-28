@@ -59,6 +59,9 @@ TIMING_GRACE_S = 120.0
 CLOCK_SLACK_S = 5.0
 # A timing more than this far ahead of our clock is a clock gone wrong.
 FUTURE_S = 60.0
+# A push's sent_at further than this from our clock is not a phone clock that
+# drifted but a bug in the app -- seconds sent as milliseconds, say.
+SENT_AT_RANGE_S = 86400.0
 # An unpaired timing this young, in a running session, is a throw the cameras
 # have not published yet (about 15-20 s after it stops), not one they missed.
 PENDING_S = 60.0
@@ -321,10 +324,25 @@ def _seconds(item, name, bounds):
     return float(v)
 
 
-def read_timing(item) -> dict:
+def clock_offset(sent_at_ms, now: datetime) -> float:
+    """Our clock less the phone's, in seconds, from the push's ``sent_at``
+    (the phone's clock as it sent): what puts the app's times on ours. It
+    also counts the push's time in flight, a fraction of a second late."""
+    if (isinstance(sent_at_ms, bool) or not isinstance(sent_at_ms, (int, float))
+            or not math.isfinite(sent_at_ms)):
+        raise BadTiming("sent_at must be epoch milliseconds")
+    offset = now.timestamp() - sent_at_ms / 1000.0
+    if abs(offset) > SENT_AT_RANGE_S:
+        raise BadTiming("sent_at is more than a day from now: is it in milliseconds?")
+    return offset
+
+
+def read_timing(item, offset_s: float | None = None) -> dict:
     """One timing as the app sent it, checked: its client_id, the crossing
     ``at`` (epoch ms) marks, both durations, and from those ``hog_at``, when
-    the rock crossed the throwing hog line. BadTiming says what is wrong."""
+    the rock crossed the throwing hog line -- on our clock when the push said
+    how far the phone's is off (``offset_s``, clock_offset), else on the
+    phone's. BadTiming says what is wrong."""
     if not isinstance(item, dict):
         raise BadTiming("a timing is an object")
     cid = item.get("client_id")
@@ -349,8 +367,11 @@ def read_timing(item) -> dict:
         raise BadTiming("at_is far needs long_s")
     hog_at = (at + timedelta(seconds=short_s) if at_is == "back"
               else at - timedelta(seconds=long_s) if at_is == "far" else at)
+    if offset_s is not None:
+        hog_at += timedelta(seconds=offset_s)
+        offset_s = round(offset_s, 3)
     return {"client_id": cid, "at": at, "at_is": at_is, "short_s": short_s,
-            "long_s": long_s, "hog_at": hog_at}
+            "long_s": long_s, "hog_at": hog_at, "clock_offset_s": offset_s}
 
 
 def session_for(repo, user_id: str, at: datetime, now: datetime):
@@ -365,12 +386,14 @@ def session_for(repo, user_id: str, at: datetime, now: datetime):
     return None
 
 
-def add_timing(repo, user_id: str, item, now: datetime, key_id: str | None = None):
+def add_timing(repo, user_id: str, item, now: datetime, key_id: str | None = None,
+               offset_s: float | None = None):
     """Keep one timing the app pushed, on the person's session that held it.
     A timing already kept under its client_id is handed back as it was, so
     the app may send again whatever it is unsure arrived. BadTiming for one
-    that cannot be read; NoSession when no session of theirs held it."""
-    got = read_timing(item)
+    that cannot be read; NoSession when no session of theirs held it.
+    ``offset_s`` is the phone's clock against ours, from the push's sent_at."""
+    got = read_timing(item, offset_s)
     tid = sensor_timing_id(user_id, got["client_id"])
     kept = repo.get_timing(tid)
     if kept is not None:
