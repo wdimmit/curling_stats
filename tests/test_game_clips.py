@@ -237,6 +237,14 @@ class TestPlan:
         assert self.pieces(t, views={"right": RIGHT}) == \
             [("right", 997.0, 1012.5), (gc.OVERHEAD, 1012.5, 1021.5)]
 
+    def test_a_rock_timed_by_its_release_keeps_the_long_cameras(self):
+        # 10/20 Super S2 g2 e5 r11 (f_1EuZ): placed by the house, its t_enter
+        # is its release. Cut to the panel there and the clip watched an
+        # empty house for the whole delivery.
+        t = gc.throw_from_rock(rock(t_enter_s=1000.0))
+        assert self.pieces(t) == self.pieces(t, panel=None)
+        assert self.pieces(t)[0][0] == "right"
+
     def test_too_short_a_look_from_overhead_is_not_worth_the_cut(self):
         t = gc.throw_from_rock(rock(t_rest_s=1011.0, t_enter_s=1012.5))
         assert self.pieces(t) == self.pieces(t, panel=None)

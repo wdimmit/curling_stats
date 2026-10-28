@@ -418,6 +418,23 @@ class TestWhatBecameOfAnUnseenArrival:
         assert got.reason == "release-add" and got.came_to_rest is True
         assert (got.rest_x_m, got.rest_y_m) == pytest.approx((-0.4, 0.6), abs=0.05)
 
+    def test_it_rests_when_it_first_sits_there_not_when_the_house_is_read(self):
+        # f_1EuZ: hit a guard and stopped 24 s after release; read at 36 s.
+        frames = self._house([("yellow", 0.3, 1.0)], [("yellow", 0.3, 1.0), ("red", -0.4, 0.6)])
+        rolling = [(round(100.0 + 20.0 + k * 0.1, 2), [det("yellow", 0.3, 1.0),
+                                                      det("red", -0.4 + 0.05 * (40 - k), 0.6)])
+                   for k in range(40)]
+        stopped = [(round(124.0 + k * 0.1, 2), [det("yellow", 0.3, 1.0), det("red", -0.4, 0.6)])
+                   for k in range(120)]
+        got = release.settle(self._rel(), sorted(frames + rolling + stopped))
+        assert got.reason == "release-add"
+        assert got.t_rest == pytest.approx(123.7, abs=0.3)
+
+    def test_with_nothing_seen_settling_it_rests_when_the_house_is_read(self):
+        got = release.settle(self._rel(), self._house([("yellow", 0.3, 1.0)],
+                                                      [("yellow", 0.3, 1.0), ("red", -0.4, 0.6)]))
+        assert got.t_rest == pytest.approx(100.0 + release.SETTLE_S)
+
     def test_a_stone_vanishing_means_it_hit_and_ran_through(self):
         from curling_score.game import classify
 
