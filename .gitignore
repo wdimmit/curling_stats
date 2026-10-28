@@ -70,6 +70,9 @@ weights/*.pt
 # ds13e supersedes ds13d (2026-10-13): ds13d's set plus the kink wave, frames where
 # the delivery path kinked, the stone boxed alone. ds13d is kept as its baseline.
 !weights/ds13e.pt
+# long-1 supersedes ds13e (2026-10-28): ds13e's set plus the members' own /label boxes
+# from the long camera (datasets/long-1). ds13e is kept as its baseline.
+!weights/long-1.pt
 
 # Harvested board frames for the card-digit training set. What training
 # consumes is the ~24x22 px card window, and those are committed in

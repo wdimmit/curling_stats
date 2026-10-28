@@ -76,10 +76,20 @@ ENV_VAR = "CURLING_SCORE_WEIGHTS"
 # It scores lower against the hack wave's own labels (val mAP50-95 0.70 ->
 # 0.65), which take in a hand or shoe the kink wave's rule leaves out.
 #
+# long-1 replaced it on 2026-10-28, the first of the long-camera models named
+# for the camera rather than in the ds sequence: ds13e's set (with the hack wave
+# relabelled) plus 92 long-camera frames a member boxed on /label
+# (datasets/long-1). Through the production delivery code on 821 rocks of seven
+# games, the path's kinks went from 822 to 661 (across 96 -> 71, along 726 ->
+# 590), fewer in every game; crossings 821 against 815, the line 0.15 cm apart
+# at the hog line (median), the broom figure 0.54 in, the start 3.2 cm. On the
+# held-out members' frames it finds more stones (mAP50 0.89 -> 0.94) but fits
+# their boxes less tightly (mAP50-95 0.78 -> 0.75).
+#
 # `none` selects the colour scan, and so does a missing file -- the side view
 # is an improvement on a pipeline that worked without it, not a dependency of
 # it. Unlike DEFAULT_NAME, absence here is not an error.
-SIDE_NAME = "ds13e.pt"
+SIDE_NAME = "long-1.pt"
 SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 
 # The broom-head detector, which finds the skip's target broom in the camera
