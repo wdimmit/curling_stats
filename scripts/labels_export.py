@@ -30,6 +30,11 @@ Under --out:
   labelled it, as [{"uid", "seconds"}] (a release row's also has the member's
   mark and frame), earliest first, so a bad habit can be traced to a person.
 
+  boxes/member/<camera>/  with --member EMAIL instead: that member's own boxes
+                        on every item they answered, open ones too, as the
+                        label (images/, labels/, member.jsonl); check items and
+                        can't-tells left out. For training on your own labels.
+
   members.json          per account: email, how many of each kind, median seconds
                         per answer, and checks {n, agree} against the items whose
                         answer we already knew.
@@ -196,6 +201,45 @@ def export_boxes(items: list[dict], out: Path, opener) -> tuple[int, int, list[s
     return len(agreed), len(disputed), skipped
 
 
+def export_member_boxes(items: list[dict], uid: str, out: Path, opener) -> tuple[dict, list[str]]:
+    """One member's own boxes, taken as the label whatever the item's state:
+    boxes/member/<camera>/{images,labels} and member.jsonl. Check items and the
+    member's can't-tells are left out. Returns (counts by camera, ids skipped)."""
+    root = out / "boxes" / "member"
+    rows, counts, skipped = {}, {}, []
+    for item in items:
+        mine = [a for a in _sorted_answers(item) if a["uid"] == uid]
+        if not mine or item.get("reference") is not None or mine[-1]["answer"].get("cant_tell"):
+            continue
+        a = mine[-1]
+        payload = item["payload"]
+        origin = payload.get("origin") or {}
+        camera = origin.get("camera") or "overhead"
+        d = root / camera
+        try:
+            if not _sound(item):
+                raise ValueError("not a usable id")
+            image = fetch_image(item["image_url"], opener)
+        except (OSError, ValueError) as err:
+            skipped.append(f"{item.get('id')}: {_why(err)}")
+            continue
+        for sub in ("images", "labels"):
+            (d / sub).mkdir(parents=True, exist_ok=True)
+        boxes = [{k: b[k] for k in ("x0", "y0", "x1", "y1", "color")} for b in a["answer"]["boxes"]]
+        (d / "images" / f"{item['id']}.jpg").write_bytes(image)
+        (d / "labels" / f"{item['id']}.txt").write_text(_yolo(boxes, payload["w"], payload["h"]))
+        cx, cy = (origin.get("crop") or [0, 0])[:2]
+        rows.setdefault(camera, []).append(
+            {"id": item["id"], "state": item["state"], "origin": origin,
+             "members": _members(mine), "boxes": boxes,
+             "boxes_frame": [{**b, "x0": b["x0"] + cx, "x1": b["x1"] + cx,
+                              "y0": b["y0"] + cy, "y1": b["y1"] + cy} for b in boxes]})
+        counts[camera] = counts.get(camera, 0) + 1
+    for camera, got in rows.items():
+        _write_jsonl(root / camera / "member.jsonl", got)
+    return counts, skipped
+
+
 def _member_marks(answers: list[dict]) -> list[dict]:
     return [{"uid": a["uid"], "seconds": a["seconds"], "mark": a["answer"]["mark"],
              "frame": a["answer"]["frame"]} for a in answers]
@@ -311,6 +355,9 @@ def main(argv=None, opener=urllib.request.urlopen) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", required=True, help="e.g. datasets/member-labels/<YYYY-MM-DD>")
     ap.add_argument("--kind", choices=("box", "release"), help="only this kind (default both)")
+    ap.add_argument("--member", metavar="EMAIL",
+                    help="instead, that member's own boxes from every item they answered, "
+                         "open ones too, taken as the label (boxes/member/<camera>/)")
     args = ap.parse_args(argv)
     token = os.environ.get("ADMIN_TOKEN", "").strip()
     if not token:
@@ -318,6 +365,23 @@ def main(argv=None, opener=urllib.request.urlopen) -> int:
         return 2
     base = os.environ.get("BASE_URL", "https://curling.dimmit.net").rstrip("/")
     out = Path(args.out)
+    if args.member:
+        try:
+            users = _api(base, token, "/api/admin/users", {"limit": 1000}, opener)["users"]
+            uid = next((u["id"] for u in users if u.get("email") == args.member), None)
+            if uid is None:
+                print(f"no account {args.member}", file=sys.stderr)
+                return 1
+            items = [i for s in ("open",) + STATES for i in fetch_items(base, token, "box", s, opener)]
+        except OSError as err:
+            print(f"could not read the labels: {_why(err)}", file=sys.stderr)
+            return 1
+        counts, skipped = export_member_boxes(items, uid, out, opener)
+        for s in skipped:
+            print(f"skipped {s}", file=sys.stderr)
+        print(f"wrote {out / 'boxes' / 'member'}: "
+              + (", ".join(f"{n} {c}" for c, n in sorted(counts.items())) or "nothing"))
+        return 1 if skipped else 0
     kinds = [args.kind] if args.kind else ["box", "release"]
     try:
         users = _api(base, token, "/api/admin/users", {"limit": 1000}, opener)["users"]

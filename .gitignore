@@ -109,3 +109,6 @@ frontend/node_modules/
 # game held out, 15 of 16. Crops and results kept on the training box at
 # /data/curling/release.
 !weights/release1.pt
+
+# Member-label images: re-fetchable from the site; the labels and jsonl are the record.
+datasets/member-labels/**/images/

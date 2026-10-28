@@ -376,3 +376,26 @@ def test_a_second_export_keeps_the_marks_and_edits_saved_in_the_dispute_folders(
     assert out2 == out and code == 0
     assert json.loads(marks.read_text()) == {"r_far": {"mark": "off", "frame": 5}}
     assert (edits / "member-labels-20261105-101500.json").read_text() == '{"boxes": {}}'
+
+
+def test_member_mode_takes_one_members_boxes_from_open_items_too(tmp_path, monkeypatch):
+    api = FakeApi([], users=[{"id": "u1", "email": "me@x"}, {"id": "u2", "email": "o@x"}])
+    one = box_item(api, "b_open", [("u1", box_ans(box(10, 10, 30, 40)))], state="open")
+    one["payload"]["origin"]["camera"] = "side"
+    box_item(api, "b_done", [("u2", box_ans(box(1, 1, 5, 5))),
+                             ("u1", box_ans(box(50, 10, 70, 30, "yellow")))])
+    box_item(api, "b_cant", [("u1", box_ans(cant_tell=True))], state="open")
+    box_item(api, "b_check", [("u1", box_ans(box(10, 10, 30, 40)))], state="open",
+             reference={"boxes": []})
+    box_item(api, "b_theirs", [("u2", box_ans(box(10, 10, 30, 40)))], state="open")
+    code, out = run(api, tmp_path, monkeypatch, "--member", "me@x")
+    assert code == 0
+    member = out / "boxes" / "member"
+    assert sorted(p.name for p in member.iterdir()) == ["overhead", "side"]
+    (side,) = jsonl(member / "side" / "member.jsonl")
+    assert side["id"] == "b_open" and side["state"] == "open"
+    assert side["boxes_frame"][0] == {"x0": 20, "y0": 30, "x1": 40, "y1": 60, "color": "red"}
+    (ovh,) = jsonl(member / "overhead" / "member.jsonl")
+    assert ovh["id"] == "b_done" and ovh["boxes"][0]["color"] == "yellow"
+    assert (member / "overhead" / "labels" / "b_done.txt").read_text().split()[0] == "1"
+    assert not (out / "boxes" / "agreed").exists()
