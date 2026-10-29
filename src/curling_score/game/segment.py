@@ -198,8 +198,9 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
         ends: list[EndSegment] = []
         last_i1 = 0     # one past the last sample of ends[-1]
         for h, i0, i1 in merged:
-            if span(i0, i1) < min_end_s:
-                continue
+            # Joined before the floor is applied: an end's last rocks after a
+            # cleared house can run under it -- entTaSBFK3A end 2, 4 rocks in
+            # 150 s after a red jacket over the other button read as a stone.
             if (ends and ends[-1].house == h
                     and (ends[-1].end_s - ends[-1].start_s < whole_s
                          or _held(samples[last_i1:i0], h))):
@@ -209,6 +210,8 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
                 # house kept its stones throughout: 10/02 Friday sheet 5 end 6.
                 ends[-1].end_s = samples[i1 - 1].t
                 last_i1 = i1
+                continue
+            if span(i0, i1) < min_end_s:
                 continue
             ends.append(EndSegment(number=0, house=h, start_s=samples[i0].t,
                                    end_s=samples[i1 - 1].t))

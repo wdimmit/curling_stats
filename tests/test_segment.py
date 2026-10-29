@@ -82,6 +82,25 @@ class TestAHouseClearedMidEnd:
         two on 10/01 had run 250-465 s when their house was cleared."""
         assert segment.WHOLE_END_S == 540.0
 
+    def test_a_tail_too_short_to_be_an_end_is_still_joined(self):
+        """entTaSBFK3A end 2 under overhead-1: rock 12's takeout emptied the
+        top house 485 s in, a player's red jacket over the bottom button read
+        as a stone for one keyframe, and the end's last 4 rocks ran 150 s --
+        under the floor, so they were dropped before they could be joined
+        back on, and belonged to no end."""
+        samples = profile([(180, 0, 6), (97, 2, 0), (7, 0, 0), (1, 0, 1), (7, 0, 0),
+                           (30, 1, 0), (8, 0, 0), (180, 0, 7)])
+        ends = segment.segment_games(samples)[0].ends
+        assert [e.house for e in ends] == ["bottom", "top", "bottom"]
+        assert ends[1].end_s == pytest.approx(900.0 + 5 * (97 + 15 + 30), abs=15)
+
+    def test_a_short_tail_after_a_whole_end_is_still_not_joined(self):
+        whole = int(segment.WHOLE_END_S // 5) + 20
+        samples = profile([(180, 0, 6), (whole, 5, 0), (20, 0, 4), (30, 4, 0), (8, 0, 0),
+                           (180, 0, 7)])
+        top = segment.segment_games(samples)[0].ends[1]
+        assert top.end_s == pytest.approx(900.0 + 5 * (whole - 1), abs=15)
+
     def test_a_doubles_end_scales_it_with_the_floor(self):
         """Ten rocks, not sixteen: 2.25 x 150 s, under the shortest of 111
         complete doubles ends (470 s)."""
