@@ -887,3 +887,27 @@ class TestChangesTheShooterCouldNotMake:
 
 def _xy(stone):
     return (round(stone.x_m, 3), round(stone.y_m, 3))
+
+
+class TestAHitPassedOnByAStoneThatHardlyMoved:
+    def test_a_guard_nudged_into_the_stone_behind_it_moves_that_stone(self):
+        # -f3R g1 e3 r16: the shooter stops on a guard it tapped 0.2 m, not a
+        # move, and the guard drove the red behind it 0.4 m deeper.
+        t = TestChangesTheShooterCouldNotMake()
+        guard, red = det("yellow", 0.0, 2.6), det("red", 0.0, 2.0)
+        dv = t._dv("red", 10, 0.0, 2.85, 1.2, a=0.2)
+        after = [det("yellow", 0.0, 2.45), det("red", 0.0, 1.6), det("red", 0.0, 2.85)]
+        frames = t._frames({0: [guard, red], dv.t_rest + 0.5: after})
+        shot = shots.from_deliveries([dv], frames, before=[guard, red], base=2)[0]
+        assert [c["color"] for c in shot.house_delta["moved"]] == ["red"]
+
+    def test_only_an_ends_last_rock_is_judged(self):
+        # Between rocks the next read says whether a stone is gone.
+        t = TestChangesTheShooterCouldNotMake()
+        guard = det("yellow", 0.45, 2.9)
+        first = t._dv("red", 10, -0.15, 2.1, 0.76)
+        second = t._dv("yellow", 60, 1.5, 0.0, 1.7)
+        frames = t._frames({0: [guard], first.t_rest + 0.5: [det("red", -0.15, 2.1)],
+                            second.t_rest + 0.5: [det("red", -0.15, 2.1), det("yellow", 1.5, 0.0)]})
+        got = shots.from_deliveries([first, second], frames, before=[guard], base=1)
+        assert len(got[0].house_delta["removed"]) == 1

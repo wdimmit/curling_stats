@@ -252,27 +252,44 @@ CONTACT_M = 0.43
 REACH_SLACK = 1.5
 # The shooter's speed at a point is read over this long either side of it.
 REACH_SPEED_SPAN_S = 0.5
+# Near a stone the shooter must have been followed without a break longer than
+# this, or it may have passed or struck it unseen: players crowd over a hit,
+# and the tracked path has holes of 0.7-2 s there on the harness games.
+REACH_SEEN_WITHIN_M = 1.0
+REACH_MAX_HOLE_S = 0.3
 
 
-def _speed_along(track, k: int) -> float:
-    """How fast the tracked stone was moving at ``track[k]``."""
+def _speed_into(track, k: int) -> float:
+    """How fast the tracked stone was arriving at ``track[k]``: over the
+    REACH_SPEED_SPAN_S before it, never after, since a shooter that struck
+    something there stopped or turned on the spot."""
     t = track[k][0]
-    near = [p for p in track if abs(p[0] - t) <= REACH_SPEED_SPAN_S]
+    near = [p for p in track[:k + 1] if t - p[0] <= REACH_SPEED_SPAN_S]
     a, b = near[0], near[-1]
     if b[0] <= a[0]:
         return 0.0
     return ((b[1] - a[1]) ** 2 + (b[2] - a[2]) ** 2) ** 0.5 / (b[0] - a[0])
 
 
+def _followed_near(track, x: float, y: float) -> bool:
+    """Whether the shooter was followed without a hole wherever it was within
+    REACH_SEEN_WITHIN_M of (x, y)."""
+    d = [((p[1] - x) ** 2 + (p[2] - y) ** 2) ** 0.5 for p in track]
+    return all(b[0] - a[0] <= REACH_MAX_HOLE_S for i, (a, b) in enumerate(zip(track, track[1:]))
+               if min(d[i], d[i + 1]) <= REACH_SEEN_WITHIN_M)
+
+
 def _run_out(track, x: float, y: float):
     """How near the tracked shooter came to (x, y), and how much further it
-    could have sent a stone from there: the run-out its speed carries."""
+    could have sent a stone from there: the run-out its speed carries where it
+    first came within CONTACT_M, or at its nearest if it never did."""
     from curling_score.detect.delivery import STONE_DECEL_M_S2
 
-    k = min(range(len(track)), key=lambda i: (track[i][1] - x) ** 2 + (track[i][2] - y) ** 2)
-    gap = ((track[k][1] - x) ** 2 + (track[k][2] - y) ** 2) ** 0.5
-    v = _speed_along(track, k)
-    return gap, v * v / (2 * STONE_DECEL_M_S2)
+    gaps = [((p[1] - x) ** 2 + (p[2] - y) ** 2) ** 0.5 for p in track]
+    k = next((i for i, g in enumerate(gaps) if g <= CONTACT_M),
+             min(range(len(gaps)), key=gaps.__getitem__))
+    v = _speed_into(track, k)
+    return min(gaps), v * v / (2 * STONE_DECEL_M_S2)
 
 
 def _to_leave_play(x: float, y: float) -> float:
@@ -283,12 +300,12 @@ def _to_leave_play(x: float, y: float) -> float:
     return max(0.0, min(y - C.THROUGH_BACK_Y_M, C.SIDELINE_ABS_X_M - abs(x)))
 
 
-def _unreachable(delta: dict, dv) -> list:
+def _unreachable(delta: dict, dv, previous=()) -> list:
     """The changes in ``delta`` the delivery ``dv`` cannot have made.
 
     A stone is struck by the shooter, or by a stone the shooter struck, so a
     removal or a move needs a path that came within CONTACT_M of the stone --
-    directly, or through another stone this delta has disturbed -- and a
+    directly, or through a stone of ``previous`` the path came that near -- and a
     run-out from there long enough to send it as far as it went: out of play
     for a removal, its distance for a move. A change that fails either is the
     house read losing or misplacing a stone -- players standing over it, or
@@ -306,18 +323,28 @@ def _unreachable(delta: dict, dv) -> list:
                for c in delta["removed"]]
               + [("moved", c, c["from_x"], c["from_y"], c["distance_m"])
                  for c in delta["moved"]])
-    claims = [c for c in claims if c[3] < top - CONTACT_M]
+    claims = [c for c in claims
+              if c[3] < top - CONTACT_M and _followed_near(track, c[2], c[3])]
     reach = {id(c[1]): _run_out(track, c[2], c[3]) for c in claims}
-    touched = [c for c in claims if reach[id(c[1])][0] <= CONTACT_M]
-    # A stone struck by one the shooter struck: what that stone could carry
-    # bounds it, and that is no more than the shooter had at the first.
-    chain = max((reach[id(c[1])][1] for c in touched), default=0.0)
+    # Every stone the shooter came within reach of can pass the hit on --
+    # read as moved or not: one nudged less than MOVED_MIN_M is no move, and
+    # can still drive the stone behind it (-f3R g1 e3 r16, a guard tapped
+    # 0.2 m into a red that went 0.4 m deeper).
+    struck = []
+    for p in previous:
+        px, py = _xy(p)
+        gap, run = _run_out(track, px, py)
+        if gap <= CONTACT_M:
+            struck.append((px, py, run))
+    # What a stone struck by one the shooter struck could carry is no more
+    # than the shooter had at the first.
+    chain = max((run for _, _, run in struck), default=0.0)
     out = []
     for kind, c, x, y, need in claims:
         gap, run = reach[id(c)]
         if gap > CONTACT_M:
-            near = [t for t in touched if t[1] is not c and
-                    ((t[2] - x) ** 2 + (t[3] - y) ** 2) ** 0.5 <= CONTACT_M + chain]
+            near = [1 for px, py, _ in struck if (px, py) != (x, y) and
+                    ((px - x) ** 2 + (py - y) ** 2) ** 0.5 <= CONTACT_M + chain]
             run = chain if near else 0.0
         if need > run * REACH_SLACK:
             out.append((kind, c))
@@ -605,8 +632,11 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
         seen += 1
         thrown = _delivered_index(stones, dv, previous)
         # A stone this rock could not have reached is still where it was.
-        vetoed = _unreachable(house_delta(previous, stones, thrower=dv.color,
-                                          delivered=thrown), dv)
+        # Only the last rock: between rocks the next read settles it, and
+        # the tracking and the panel scale up-sheet are too rough to overrule
+        # a real hit there (harness 10/29: 45 of 51 such vetoes were wrong).
+        vetoed = [] if seen < len(deliveries) else _unreachable(
+            house_delta(previous, stones, thrower=dv.color, delivered=thrown), dv, previous)
         if vetoed:
             stones = _put_back(stones, previous, vetoed)
         out.append(
