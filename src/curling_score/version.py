@@ -313,7 +313,13 @@ from pathlib import Path
 # board agreement stays 40/54; four release-add rests move 16-24 s earlier and
 # three houses by cm, and 4RrN g1 e4 r10's earlier read sees a jacket at the
 # house edge (now harvested as a false positive).
-PIPELINE_VERSION = "2026.10.28.1"
+# 2026.10.29.1: a run of one house too short to be an end still finishes the
+# end before it when it would have joined it (`segment.segment_games`), but
+# never makes that end whole or counts toward `_held`. entTaSBFK3A e2: a red
+# jacket over the other button cut the last 4 rocks off; they are back. On the
+# 11 harness videos, both overhead models, 20 hash seeds: no end starts,
+# merges, splits or renumbers; AEqLTgM25Tc g0's last end runs 70 s longer.
+PIPELINE_VERSION = "2026.10.29.1"
 
 
 def model_id(weights) -> str:
