@@ -319,7 +319,14 @@ from pathlib import Path
 # jacket over the other button cut the last 4 rocks off; they are back. On the
 # 11 harness videos, both overhead models, 20 hash seeds: no end starts,
 # merges, splits or renumbers; AEqLTgM25Tc g0's last end runs 70 s longer.
-PIPELINE_VERSION = "2026.10.29.1"
+# 2026.10.29.2: the last rock cannot move a stone it never reached or was too
+# slow to reach (`shots._unreachable`, `_put_back`): its track must come
+# within 0.43 m of the stone, directly or through a stone it did reach, and
+# its approach speed must carry the stone out of play or as far as it moved.
+# Last rock only: the house read after it often lands in the clearing. On the
+# 16 harness games board agreement 40 -> 41/54; 10 last rocks change, 7 right
+# in the video, none worse.
+PIPELINE_VERSION = "2026.10.29.2"
 
 
 def model_id(weights) -> str:
