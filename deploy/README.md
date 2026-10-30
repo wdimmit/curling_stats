@@ -36,14 +36,19 @@ gcloud firestore indexes composite create --collection-group=vod_runs \
 # that lists them, or the admin list fails until the index has built.
 gcloud firestore indexes composite create --collection-group=flags \
   --field-config=field-path=status,order=ascending --field-config=field-path=created_at,order=descending
-# Member labelling (/label): a kind's open items with so many labels, and a
-# kind's items in one state, both oldest first.
+# Member labelling (/label): a kind's items in one state oldest first (the
+# admin list), and its open items newest first (what members are handed; the
+# n_labels index is from before 2026-10-30 and no longer queried). Create the
+# newest-first one before deploying the API that hands items out that way.
 gcloud firestore indexes composite create --collection-group=label_items \
   --field-config=field-path=kind,order=ascending --field-config=field-path=state,order=ascending \
   --field-config=field-path=n_labels,order=ascending --field-config=field-path=created_at,order=ascending
 gcloud firestore indexes composite create --collection-group=label_items \
   --field-config=field-path=kind,order=ascending --field-config=field-path=state,order=ascending \
   --field-config=field-path=created_at,order=ascending
+gcloud firestore indexes composite create --collection-group=label_items \
+  --field-config=field-path=kind,order=ascending --field-config=field-path=state,order=ascending \
+  --field-config=field-path=created_at,order=descending
 gcloud firestore fields ttls update expires_at --collection-group=rate_limits --enable-ttl
 gcloud firestore fields ttls update expires_at --collection-group=invites --enable-ttl
 # Emailed links opened in another browser are held for ten minutes; this clears the unclaimed ones.

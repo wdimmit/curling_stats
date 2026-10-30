@@ -1024,14 +1024,14 @@ def answer(item_id, uid, a=None):
 
 
 class TestLabelling:
-    def test_open_items_by_label_count_oldest_first(self, repo):
+    def test_open_items_newest_first(self, repo):
         for i in (3, 1, 2):
             repo.put_label_item(item(i))
         repo.put_label_item(item(4, n_labels=1))
         repo.put_label_item(item(5, state="pending"))
-        assert [x.id for x in repo.open_label_items("box", 0, 10)] == ["b_1", "b_2", "b_3"]
-        assert [x.id for x in repo.open_label_items("box", 0, 10, after=at(1))] == ["b_2", "b_3"]
-        assert [x.id for x in repo.open_label_items("box", 1, 10)] == ["b_4"]
+        assert [x.id for x in repo.open_label_items("box", 10)] == ["b_4", "b_3", "b_2", "b_1"]
+        assert [x.id for x in repo.open_label_items("box", 2)] == ["b_4", "b_3"]
+        assert [x.id for x in repo.open_label_items("box", 10, before=at(3))] == ["b_2", "b_1"]
 
     def test_pending_items_are_never_handed_out(self, repo):
         repo.put_label_item(item(1, state="pending"))

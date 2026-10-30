@@ -172,8 +172,8 @@ class Repo(Protocol):
     def put_label_item(self, item: LabelItem) -> None: ...
     def get_label_item(self, item_id: str) -> LabelItem | None: ...
     def update_label_item(self, item_id: str, **fields) -> LabelItem | None: ...
-    def open_label_items(self, kind: str, n_labels: int, limit: int,
-                         after: datetime | None = None) -> list[LabelItem]: ...
+    def open_label_items(self, kind: str, limit: int,
+                         before: datetime | None = None) -> list[LabelItem]: ...
     def list_label_items(self, kind: str, state: str, limit: int,
                          after: datetime | None = None) -> list[LabelItem]: ...
     def hold_label_item(self, item_id: str, uid: str, now: datetime,
@@ -845,10 +845,12 @@ class MemoryRepo:
                    if keep(i) and (after is None or i.created_at > after)]
         return sorted(out, key=lambda i: i.created_at)[:limit]
 
-    def open_label_items(self, kind, n_labels, limit, after=None):
-        return self._label_items_where(
-            limit, after, lambda i: i.kind == kind and i.state == "open"
-            and i.n_labels == n_labels)
+    def open_label_items(self, kind, limit, before=None):
+        with self._lock:
+            out = [i for i in self.label_items.values()
+                   if i.kind == kind and i.state == "open"
+                   and (before is None or i.created_at < before)]
+        return sorted(out, key=lambda i: i.created_at, reverse=True)[:limit]
 
     def list_label_items(self, kind, state, limit, after=None):
         return self._label_items_where(
