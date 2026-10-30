@@ -1,6 +1,18 @@
 """Which detector runs when nobody says.
 
-Standardised on **ds17b** as of 2026-10-09: ds16a's recipe and training set
+**overhead-3** as of 2026-10-30, the first overhead model named for the camera
+rather than in the ds sequence: ds17b's set plus 231 overhead frames a member
+boxed on /label (red clothing and red stones at the release among them,
+`datasets/overhead-2`) and 45 empty panels of a red logo in the ice that
+overhead-2 read as a red stone once play stopped (`datasets/overhead-3`). On
+the 11-video release harness against ds17b: releases 1698 against 1701, splits
+1649 against 1653, no colour changed, and the one end that lost rocks
+(entTaSBFK3A end 2, a one-keyframe flicker) keeps all 16 on the segmenter of
+2026.10.29.1. overhead-2's held-out fold, on a member's frames from videos it
+never saw: red stones at the release found better (mAP50-95 0.45 -> 0.65),
+fewer boxes on clothing, ds11 val mAP50-95 0.921 -> 0.919.
+
+ds17b (2026-10-09 to 2026-10-30) was ds16a's recipe and training set
 plus ds17, 311 reviewed throwing-panel frames (`datasets/ds17/`). ds16a read a
 sliding thrower's head, hat or hood, seen from straight above right behind the
 stone, as a stone at up to 0.98; at 10 fps a red toque outvoted three real
@@ -34,7 +46,7 @@ saying so would leave every downstream number quietly incomparable.
 import os
 from pathlib import Path
 
-DEFAULT_NAME = "ds17b.pt"
+DEFAULT_NAME = "overhead-3.pt"
 ENV_VAR = "CURLING_SCORE_WEIGHTS"
 
 # The SIDE-view detector, which times the throwing end's hog crossing. A

@@ -85,7 +85,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # processing_version and into the API's MODEL_ID check -- a name that says
 # nothing about which detector ran. Change MODEL here and set MODEL_ID on the
 # API to match, or the API refuses the worker's claim.
-ARG MODEL=ds17b.pt
+ARG MODEL=overhead-3.pt
 COPY weights/${MODEL} /opt/curling/weights/${MODEL}
 
 # The SIDE-view detector, which times the throwing end's hog crossing. It must

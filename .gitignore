@@ -55,6 +55,10 @@ weights/*.pt
 # ds17b supersedes ds16a (2026-10-09): ds16a's set plus ds17, sliding throwers' heads
 # and the arriving stones a sweeper stands over. ds16a is kept as its baseline.
 !weights/ds17b.pt
+# overhead-3 supersedes ds17b (2026-10-30): ds17b's set plus the members' own /label
+# boxes from the overhead panels and 45 empty panels of an ice logo
+# (datasets/overhead-3). ds17b is kept as its baseline.
+!weights/overhead-3.pt
 # ds13a does not supersede ds11a: they read different cameras. ds11a detects
 # stones in the overhead panels, looking straight down; ds13a detects them in
 # the wide side view, edge-on at thirty metres, to time the hog crossing.
