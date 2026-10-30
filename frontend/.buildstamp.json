@@ -57,7 +57,7 @@
     "frontend/site/SignIn.jsx": "214d8ea19ab8a7cc702529150d6919be2bbc5aa9e64ee36fd142cb5718ad801f",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
     "frontend/site/Submit.jsx": "b8397958a374d109e606f51be147589864f2c2f0bb3f7de82e1198d1496e173c",
-    "frontend/site/Thinking.jsx": "94d07d85c06482feb08fb0ed8229ee669a733942e40cd9947483de66d5dbb8a6",
+    "frontend/site/Thinking.jsx": "cb1b92bf22b885133be25a481918a2b8d9f741714e6ee9649749844db23a6627",
     "frontend/site/Users.jsx": "b433c54cd4bd2353e6182d4fe2abba55a8955cf77e3098ee31204dd2cb82687b",
     "frontend/site/auth.js": "c36b54a2ac47c50715d68c8dce913532bc8dde7e02a36cfe2f5a63fce3786885",
     "frontend/site/clip.jsx": "4e3126676665d42a44b73bbebdb5967bb245fb4b96c379d69ab0b56ffa11e280",
@@ -92,7 +92,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "3445cc69a4025bb4878d28b22c0bf95291981e93093c4a22e53e218a9ea0eb0f",
+    "src/curling_score/service/static/site.js": "49be4bd66a95eea2b9954d2b2e2e4cc4757cd22d95d9fac0d5891061d494afec",
     "src/curling_score/viewer/app.js": "316ec775929cf43f94998541c18d5c23ad84f85b789d9f12a0394d0a7dcbcfda"
   }
 }
