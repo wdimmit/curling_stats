@@ -8,7 +8,7 @@ from curling_score.game import linetime as L
 from curling_score.game.broomtime import TargetBroom
 from curling_score.geometry import constants as C
 from curling_score.geometry.sideview import SideView
-from curling_score.harvest import sidepool
+from curling_score.geometry.sideview import band_crop
 
 TEE = C.TEE_TO_TEE_M
 
@@ -170,7 +170,7 @@ class TestHogTrack:
         assert all(x < 0.5 for _t, x, _y, _yp in track)
 
     def test_samples_at_the_crop_s_bottom_edge_are_dropped(self):
-        bottom = sidepool.band_crop(HOG_VIEW)[1]
+        bottom = band_crop(HOG_VIEW)[1]
         edge = (99.0, 300.0, bottom - 2.0, 52.0)
         track = L.hog_track(crossing_for(self.stone() + [edge]), HOG_VIEW)
         assert all(t != 99.0 for t, *_ in track)
@@ -181,7 +181,7 @@ class TestHogTrack:
     def test_a_refused_crossing_with_only_crop_edge_samples_has_no_track(self):
         c = longview.Crossing(None, "speed 3.44 m/s is not a delivery", longview.KEY_BAD_SPEED,
                               track_key=2,
-                              samples=((9.0, 300.0, sidepool.band_crop(HOG_VIEW)[1] - 2.0, 52.0),))
+                              samples=((9.0, 300.0, band_crop(HOG_VIEW)[1] - 2.0, 52.0),))
         assert L.hog_track(c, HOG_VIEW) == []
 
 

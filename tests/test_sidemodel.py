@@ -4,7 +4,7 @@ import pytest
 
 from curling_score.detect import longview, sidemodel
 from curling_score.geometry.sideview import SideView
-from curling_score.harvest import sidepool
+from curling_score.geometry.sideview import band_crop
 
 VIEW = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0)
 
@@ -44,7 +44,7 @@ class FakeModel:
 
 
 def _moving_stone(n=12, cls=0):
-    lo = max(0, sidepool.band_crop(VIEW)[0])
+    lo = max(0, band_crop(VIEW)[0])
     frames = [np.zeros((1080, 810, 3), np.uint8)] * n
     times = [10.0 + i * 0.1 for i in range(n)]
     per = []
@@ -81,7 +81,7 @@ class TestRefusalNamesTheStoneThatMoved:
 
     def test_the_fallback_key_is_the_track_that_travelled_furthest(self):
         n = 40
-        lo = max(0, sidepool.band_crop(VIEW)[0])
+        lo = max(0, band_crop(VIEW)[0])
         times = [10.0 + i * 0.1 for i in range(n)]
         frames = [np.zeros((1080, 810, 3), np.uint8)] * n
         per = []
@@ -115,7 +115,7 @@ class TestAStrayBoxIsNotASecondCrosser:
     model's own STRADDLE_GAP_MAX_S keeps that key from counting as a crosser."""
 
     def test_the_stone_is_timed_and_the_stray_ignored(self):
-        lo = max(0, sidepool.band_crop(VIEW)[0])
+        lo = max(0, band_crop(VIEW)[0])
         times = [10.0 + i / 30 for i in range(100)]
         frames = [np.zeros((1080, 810, 3), np.uint8)] * len(times)
         per = []

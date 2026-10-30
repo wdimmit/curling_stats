@@ -4,9 +4,9 @@ from curling_score import version
 
 class TestTheSideModelIsPartOfTheIdentity:
     """The side detector times every throwing-end hog crossing, and so every
-    split. A timeline made with the colour scan must not be reused for one made
-    with a trained detector -- quiet mixing is exactly what this string exists
-    to prevent.
+    split. A timeline made with one side model, or none, must not be reused
+    for one made with another -- quiet mixing is exactly what this string
+    exists to prevent.
     """
 
     def test_a_side_model_changes_the_version(self, tmp_path):

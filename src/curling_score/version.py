@@ -352,8 +352,8 @@ def processing_version(weights, side_weights=None, broom_weights=None, line=Fals
     ``side_weights`` is folded in because the side-view detector changes the
     timeline as surely as the overhead one does -- it is what times every
     throwing-end hog crossing, and so every split. Leaving it out would let a
-    timeline made with the colour scan be reused for one made with a trained
-    detector, which is exactly the quiet mixing this string exists to prevent.
+    timeline made with one side model, or none, be reused for one made with
+    another, which is exactly the quiet mixing this string exists to prevent.
 
     Omitted entirely when there is no side model, so every timeline produced
     before there was one keeps the identity it was published with.

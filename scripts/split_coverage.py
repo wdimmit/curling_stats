@@ -162,9 +162,9 @@ def _shots_for_end(read_path, proxy_setups, end, from_s, detector):
     return shots, next_from
 
 
-# Set by main() when --side-weights is given: the trained side-view detector
-# stands in for the colour scan as the proposer. hogtime's `find` keyword is
-# the whole seam, so nothing in the pipeline changes to measure this.
+# Set by main() when --side-weights is given: that side-view detector times
+# the crossings instead of the default one. hogtime's `find` keyword is the
+# whole seam, so nothing in the pipeline changes to measure this.
 _SIDE_MODEL = None
 # Filled when --dump-refused is given; see the GATE_NO_FAR_HOG branch below.
 _REFUSED_OUT = None
@@ -178,11 +178,10 @@ _PAIRS_OUT = None
 
 
 def _find_crossing(video_, view_, color, t0, t1):
-    if _SIDE_MODEL is None:
-        return longview.find_crossing(video_, view_, color, t0, t1)
     from curling_score.detect import sidemodel
 
-    return sidemodel.find_crossing(_SIDE_MODEL, video_, view_, color, t0, t1)
+    model = _SIDE_MODEL if _SIDE_MODEL is not None else sidemodel.default_model()
+    return sidemodel.find_crossing(model, video_, view_, color, t0, t1)
 
 
 def _time_crossings(shots, video_path, view):
@@ -190,8 +189,8 @@ def _time_crossings(shots, video_path, view):
 
     ``time_hog_crossings`` only keeps the ones that succeed (it sets
     ``t_hog_s``); refusal reasons are the point of this report, so a recording
-    ``find`` is threaded through instead of reading ``longview.find_crossing``
-    a second time with different code.
+    ``find`` is threaded through instead of timing each crossing a second
+    time with different code.
     """
     invokable = [s for s in shots if not getattr(s, "missing", False)
                  and (getattr(s, "release", None) is not None
@@ -491,7 +490,7 @@ def measure_video(video_path, root, detector):
 
 
 def _hand_mark_agreement(video_path, views, marks_path):
-    """Same measurement as tests/test_longview.py, run directly for the report."""
+    """How the side model's crossings agree with the hand-marked ones."""
     doc = json.loads(marks_path.read_text())
     errors, refused = [], []
     for end in doc["ends"]:
@@ -503,7 +502,7 @@ def _hand_mark_agreement(video_path, views, marks_path):
         for m in end["marks"]:
             lo = m["release_t_s"] + longview.WINDOW_S[0]
             hi = m["release_t_s"] + longview.WINDOW_S[1]
-            got = longview.find_crossing(video_path, view, m["color"], lo, hi)
+            got = _find_crossing(video_path, view, m["color"], lo, hi)
             if not got:
                 refused.append((m["release_t_s"], got.reason))
                 continue
@@ -518,9 +517,8 @@ def main():
                     help="write per-shot diagnostics for no_far_hog_crossing "
                          "refusals to this JSON path")
     ap.add_argument("--side-weights", default=None,
-                    help="a trained side-view detector to use as the crossing "
-                         "proposer instead of the colour scan (e.g. "
-                         "weights/ds13b.pt)")
+                    help="a side-view detector to time crossings with instead "
+                         "of the default one (weights.SIDE_NAME)")
     ap.add_argument("--weights", default=None)
     ap.add_argument("--videos", nargs="+", default=None,
                     help="video ids to measure (default: every *.mp4 in the cache)")

@@ -33,7 +33,7 @@ from curling_score.detect import delivery as dlv
 from curling_score.fpframes import record as fp_record
 from curling_score.game.rules import other_color
 from curling_score.geometry import constants as C
-from curling_score.harvest import sidepool
+from curling_score.geometry.sideview import band_crop
 
 log = logging.getLogger(__name__)
 
@@ -231,7 +231,7 @@ def hog_track(crossing, view, extra=()):
     if crossing is None or getattr(crossing, "track_key", None) is None \
             or not getattr(crossing, "samples", ()):
         return []
-    edge = sidepool.band_crop(view)[1] - CROP_EDGE_ROWS
+    edge = band_crop(view)[1] - CROP_EDGE_ROWS
     samples = [s for s in list(crossing.samples) + list(extra) if s[2] < edge]
     if not samples:
         return []
@@ -598,7 +598,7 @@ def _extend_for(shot, view, video, t_release, model, decode, detect):
     frames, times = decode(video, view.rect, *extend_window(t_release), EXTEND_FPS)
     if not len(frames):
         return []
-    lo, hi = sidepool.band_crop(view)
+    lo, hi = band_crop(view)
     out = []
     for t, boxes in zip(times, detect(model, frames, times, lo, hi, shot.color)):
         for cx, row, w, _c in boxes:

@@ -31,7 +31,7 @@ The `gpu` extra is torch and ultralytics, which every default model in
 `weights/` needs. To run without the extra, set `CURLING_SCORE_WEIGHTS`,
 `CURLING_SCORE_SIDE_WEIGHTS`, `CURLING_SCORE_BROOM_WEIGHTS`,
 `CURLING_SCORE_SPIN_WEIGHTS` and `CURLING_SCORE_RELEASE_WEIGHTS` to `none`. You
-get the colour detector, colour-scan hog crossings, and no brooms, spin or
+get the colour detector, and no long-camera hog crossings, brooms, spin or
 release reads. The models run on a CPU, but a GPU is what makes it practical: a
 live end took 60-70 s to build on the hosted worker after the 2026-10-12
 performance pass, and the build is bound by the CPU more than the GPU. If
@@ -193,7 +193,7 @@ radius 0.142).
 | Job                                                         | Default                                           | Override                        | Set to `none` for   |
 | ----------------------------------------------------------- | ------------------------------------------------- | ------------------------------- | ------------------- |
 | Stones in the overhead panels                               | `weights/ds17b.pt`                                | `CURLING_SCORE_WEIGHTS`         | the colour detector |
-| Stones crossing the throwing hog line, in the long camera   | `weights/ds13e.pt`                                | `CURLING_SCORE_SIDE_WEIGHTS`    | the colour scan     |
+| Stones crossing the throwing hog line, in the long camera   | `weights/long-1.pt`                               | `CURLING_SCORE_SIDE_WEIGHTS`    | no hog times        |
 | The skip's broom head, in the long camera                   | `weights/broom4.pt`                               | `CURLING_SCORE_BROOM_WEIGHTS`   | no brooms           |
 | A stone's handle, for its spin, in the long camera          | `weights/spin1.pt`                                | `CURLING_SCORE_SPIN_WEIGHTS`    | no spin             |
 | The thrower's hand on or off the handle, in the long camera | `weights/release1.pt`                             | `CURLING_SCORE_RELEASE_WEIGHTS` | no release reads    |

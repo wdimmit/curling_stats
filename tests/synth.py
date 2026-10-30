@@ -69,11 +69,7 @@ SIDE_ICE = (238, 238, 236)
 #
 # Its luminance dip is real footage's too: about 25 levels below the ice
 # (238 -> ~212), not the ~93-level dip an earlier, darker version of this
-# constant gave. longview's granite-body threshold (_BODY_DARKER_THAN_ICE =
-# 45) is set deliberately above the real 25-level dip so the line is never
-# mistaken for a stone's own edge; a fixture line darker than that threshold
-# would trigger exactly the confusion the threshold exists to avoid, on a
-# defect that does not exist on real footage.
+# constant gave.
 SIDE_LINE = (208, 208, 220)
 GREEN_PAINT = (70, 150, 70)
 
@@ -171,22 +167,6 @@ def composite_strip(width, height, bar_px=4, bar_color=(90, 90, 90)):
     for lo, hi in ((bar_px, mid0), (mid1, height - bar_px)):
         img[lo:hi, bar_px:width - bar_px] = stripe[None, :, None]
     return img
-
-
-def side_view_stone(img, row, width_px=52, color="red", x=None):
-    """Paint a stone on a side view: a grey body with a coloured handle. RGB."""
-    out = img.copy()
-    h, w = out.shape[:2]
-    cx = w // 2 if x is None else int(x)
-    body_h = max(4, int(width_px * 0.42))
-    r = int(round(row))
-    x0, x1 = cx - width_px // 2, cx + width_px // 2
-    out[max(0, r - body_h):r, max(0, x0):x1] = (150, 150, 150)
-    hw = max(3, width_px // 4)
-    rgb = (210, 40, 40) if color == "red" else (230, 210, 40)
-    out[max(0, r - body_h - hw // 2):max(0, r - body_h) + 1,
-        cx - hw:cx + hw] = rgb
-    return out
 
 
 def side_view_strip(img, view, *, centre=40.0, edges=40.0, half_m=0.6096, smear_m=None,
