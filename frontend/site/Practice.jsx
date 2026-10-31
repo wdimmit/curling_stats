@@ -100,11 +100,11 @@ function SensorLine({ t, sensors }) {
   );
 }
 
-/* Where the slide was aimed and where the release sent the rock, large, right
- * under the clip. Under the release, smaller, how far the release moved the
- * line from the slide's; left out when it is too small to tell from the
- * measurement's error. */
-function SlideHero({ figures }) {
+/* Where the slide was aimed, where the release sent the rock and the weight,
+ * large, right under the clip. Under the release, smaller, how far the release
+ * moved the line from the slide's; left out when it is too small to tell from
+ * the measurement's error. */
+function SlideHero({ figures, split }) {
   const value = f => <div className="slide-value">{f.value}{f.side && <span> {f.side}</span>}</div>;
   const figure = (kind, label, f, extra = null) => (
     <div className={`slide-figure ${kind}`}>
@@ -114,10 +114,12 @@ function SlideHero({ figures }) {
     </div>
   );
   const change = figures.set && <div className="slide-change">{figures.set.value}</div>;
+  const weight = split != null ? { value: weightText(split), side: null } : null;
   return (
     <div className="slide-hero">
       {figure("slide", "Slide", figures.slide)}
       {figure("release", "Release", figures.release, change)}
+      {figure("weight", "Hog to hog", weight)}
     </div>
   );
 }
@@ -125,12 +127,19 @@ function SlideHero({ figures }) {
 function Latest({ t, n, sid, live, newest, sensors, onHide }) {
   const clip = clipState(t, { live, newest });
   const figures = slideFigures(t);
-  const hero = figures && <SlideHero figures={figures} />;
-  // The hero's Release figure says what "Line" would, so only one shows.
+  const hero = figures && <SlideHero figures={figures} split={t.split_s} />;
+  // The hero's Release and Hog to hog figures say what "Line" and "Weight"
+  // would, so only one of each shows.
   const lineRow = !figures && (
     <>
       <dt className="muted">Line</dt>
       <dd>{lineText(t.line) ?? "not measured"}</dd>
+    </>
+  );
+  const weightRow = !figures && (
+    <>
+      <dt className="muted">Weight</dt>
+      <dd>{weightText(t.split_s) ? `${weightText(t.split_s)} hog to hog` : "not timed"}</dd>
     </>
   );
   return (
@@ -158,8 +167,7 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
           <dl style={{ flex: 1, margin: 0 }}>
             {lineRow}
-            <dt className="muted">Weight</dt>
-            <dd>{weightText(t.split_s) ? `${weightText(t.split_s)} hog to hog` : "not timed"}</dd>
+            {weightRow}
             <dt className="muted">Came to rest</dt>
             <dd>{restText(t.rest) ?? "not seen"}</dd>
             <SensorLine t={t} sensors={sensors} />
