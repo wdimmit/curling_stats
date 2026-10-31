@@ -254,6 +254,13 @@ agreement, and a recommendation. Scripts live outside the repo
 (`~/curling-work/spin-9ft/`) unless the user asks to keep them. No
 production change.
 
+## Frame rate (user, 2026-10-31)
+
+Wherever a window comes up short of readings, raising its frame rate is an
+accepted fix. Examples: the fit minimums refusing rocks, the rotation study's
+short window, or the extend read (`EXTEND_FPS`). Measure the added cost per
+end on the worker and report it with the change.
+
 ## Left to the builder
 
 - Module layout (a new `game/aimlines.py` vs extending `linetime` /
