@@ -2878,6 +2878,15 @@ class TestAimFigures:
         g = run_js(f"out(stripGeometry({json.dumps(s)}));")
         assert (g["ext"], g["miss"]) == (None, None) and g["thrown"] is not None
 
+    def test_refused_final_curl_says_why(self):
+        # The curl's distance needs the final line; its direction (line.curl)
+        # still names the turn, but the figure says why there is no number.
+        s = self.measured(final_refused=True, at_broom={"x": None, "miss_m": None},
+                          at_hog={"x": None, "offset_m": None}, fit=None)
+        _, f = self.figs(s)
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("–", "too few sightings past the hog line")
+        assert f["rest"]["value"] == "12-foot"
+
     def test_schema_9_chart_keeps_its_figures(self):
         old = TestLineFigures().measured()                  # carries confirmed: True
         got, f = self.figs(old, {"schema_version": 9})

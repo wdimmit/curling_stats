@@ -454,8 +454,10 @@ export function lineFigures(shot, doc, n = lineNumbers(shot, doc), { slide = SLI
     : fig("hog", "At the hog line",
           Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, n.turn)}`,
           "of the hack-to-broom line");
+  // The curl's distance is measured from the final line: none, none to say.
+  const curl = n.final_refused ? fig("curl", "Curl", "–", FINAL_THIN) : curlFig(n.curl);
   return { predates, reason, figures: withRotation([...aimFigs, broom, hackFig(shot), hog, weight,
-                                                    curlFig(n.curl), restFig]) };
+                                                    curl, restFig]) };
 }
 
 const SWIPE_MIN_PX = 50;
