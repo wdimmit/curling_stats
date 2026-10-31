@@ -3,7 +3,7 @@
  * functions of the throw records the API serves (service/practice.py), so the
  * page and its tests agree on every word. */
 
-import { feetInches } from "./line.mjs";
+import { feetInches, SLIDE_SHOWN } from "./line.mjs";
 
 const RINGS = {
   button: "Button", 4: "4-foot", 8: "8-foot", 12: "12-foot",
@@ -69,16 +69,18 @@ function setParts(m, curl) {
 
 /* The card's three lines and the set: { slide, release, final, set }, each
  * null where it was not measured or is not shown. null altogether for a
- * record from before the slide and release lines were stored. */
-export function aimFigures(t) {
+ * record from before the slide and release lines were stored. While the
+ * slide is held back (SLIDE_SHOWN, core/line.mjs) there is no slide key and
+ * no set. */
+export function aimFigures(t, { slide = SLIDE_SHOWN } = {}) {
   const line = t?.line;
   if (!line || !("slide" in line)) return null;
-  return {
-    slide: aimParts(line.slide),
+  const out = {
     release: aimParts(line.release_line),
     final: finalParts(line),
-    set: line.set?.shown ? setParts(line.set.m, t.curl) : null,
+    set: slide && line.set?.shown ? setParts(line.set.m, t.curl) : null,
   };
+  return slide ? { slide: aimParts(line.slide), ...out } : out;
 }
 
 /* A figure in words: '9" narrow', "to the broom", '8" left of centre'. */

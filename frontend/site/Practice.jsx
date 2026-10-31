@@ -123,7 +123,7 @@ function LinesHero({ t, figures, children = null }) {
   const change = figures.set && <div className="slide-change">{figures.set.value} from the slide</div>;
   return (
     <div className="slide-hero">
-      {figure("slide", "Slide", figures.slide, why)}
+      {"slide" in figures && figure("slide", "Slide", figures.slide, why)}
       {figure("release", "Release", figures.release, why, change)}
       {figure("final", "Final", figures.final, "not measured")}
       {children}

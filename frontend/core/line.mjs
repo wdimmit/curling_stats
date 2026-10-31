@@ -321,6 +321,13 @@ const curlFig = c => c?.m != null
  * charts keep the single line they had, and show no empty Slide or Release. */
 export const aimReadable = doc => Number(doc?.schema_version) >= AIM_SCHEMA;
 
+/* The slide line, and the set between it and the release line, are stored but
+ * not shown: on 249 hosted rocks (2026-10-31) the slide read outside the broom
+ * by 0.40 x the broom's offset from centre -- PR #2's off-centre problem --
+ * and the cause (the slide itself, or the long camera's lateral scale behind
+ * the tee) is open. Shared with the practice card (core/practice.mjs). */
+export const SLIDE_SHOWN = false;
+
 const FINAL_THIN = "too few sightings past the hog line";
 
 /* A slide or release line's miss at the broom when it is shown, else null. */
@@ -388,15 +395,15 @@ function aimFig(key, label, l, a, note) {
 /* How far the release moved the line from the slide's, when it is more than
  * the two lines' own error: + wider, − narrower, as the practice card says it
  * -- short enough for the desktop card's one line of note. */
-function setNote(n) {
-  if (!n.set_shown) return "9 ft past the release";
+function setNote(n, slide) {
+  if (!slide || !n.set_shown) return "9 ft past the release";
   const m = n.set_m;
   if (n.turn !== "left" && n.turn !== "right") return `${feetInches(m)} ${m > 0 ? "right" : "left"} of the slide`;
   return `${m > 0 ? "+" : "−"}${feetInches(m)} from the slide`;
 }
 
 /* `n` is lineNumbers' answer for this rock, for a caller that has it already. */
-export function lineFigures(shot, doc, n = lineNumbers(shot, doc)) {
+export function lineFigures(shot, doc, n = lineNumbers(shot, doc), { slide = SLIDE_SHOWN } = {}) {
   const { reason, predates } = n;
   const weight = n.split_s != null
     ? fig("weight", "Weight", `${n.split_s.toFixed(1)} s`,
@@ -414,7 +421,7 @@ export function lineFigures(shot, doc, n = lineNumbers(shot, doc)) {
   const aims = aimReadable(doc);
   const finalLabel = aims ? "Final" : "At the broom";
   const lines = (value, note) => (aims
-    ? [fig("slide", "Slide", value, note), fig("release", "Release", value, note)] : []);
+    ? [...(slide ? [fig("slide", "Slide", value, note)] : []), fig("release", "Release", value, note)] : []);
   if (reason) {
     return { predates, reason, figures: withRotation([
       ...lines("–", reason), fig("broom", finalLabel, "–", reason),
@@ -433,8 +440,9 @@ export function lineFigures(shot, doc, n = lineNumbers(shot, doc)) {
   }
   const l = shot.line;
   const worded = f => (f.miss == null ? f : { ...fig(f.key, f.label, atBroom(f.miss, n.turn), f.note) });
-  const aimFigs = aims ? [worded(aimFig("slide", "Slide", l, l.slide, "the slide, to the broom")),
-                          worded(aimFig("release", "Release", l, l.release_line, setNote(n)))] : [];
+  const aimFigs = !aims ? [] : [
+    ...(slide ? [worded(aimFig("slide", "Slide", l, l.slide, "the slide, to the broom"))] : []),
+    worded(aimFig("release", "Release", l, l.release_line, setNote(n, slide)))];
   const broom = n.miss_m == null ? fig("broom", finalLabel, "–", FINAL_THIN)
     : fig("broom", finalLabel, atBroom(n.miss_m, n.turn),
           aims ? "9 ft past the hog line" : "the thrown line, at the broom");

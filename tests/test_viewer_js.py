@@ -2824,9 +2824,20 @@ class TestAimFigures:
         base.update(line)
         return dict(TestLineFigures().measured(), line=base)
 
-    def figs(self, s, doc=None):
-        got = run_js(f"out(lineFigures({json.dumps(s)}, {json.dumps(doc or self.D10)}));")
+    def figs(self, s, doc=None, slide=True):
+        """With the slide shown, as it would be once it is trusted; the default
+        holds it back (test_slide_held_back_by_default)."""
+        opts = "{slide: true}" if slide else "{}"
+        got = run_js(f"out(lineFigures({json.dumps(s)}, {json.dumps(doc or self.D10)}, undefined, {opts}));")
         return got, {f["key"]: f for f in got["figures"]}
+
+    def test_slide_held_back_by_default(self):
+        # 2026-10-31: on 249 hosted rocks the slide read outside the broom by
+        # 0.40 x the broom's offset from centre (PR #2's signature), so neither
+        # it nor the set is shown until that is understood.
+        got, f = self.figs(self.measured(set={"m": 0.35, "se_m": 0.04, "shown": True}), slide=False)
+        assert [x["label"] for x in got["figures"]] == [x for x in self.LABELS if x != "Slide"]
+        assert f["release"]["note"] == "9 ft past the release"
 
     def test_three_lines_at_the_broom(self):
         got, f = self.figs(self.measured())
@@ -2912,7 +2923,9 @@ class TestBroomlessLine:
             "1 ft", "from its line to where it stopped", None)
 
     def test_broomless_rock_shows_dashes_for_three_lines(self):
-        _, f = self.figs(self.broomless(), {**DOUBLES7, "schema_version": 10})
+        got = run_js(f"out(lineFigures({json.dumps(self.broomless())}, "
+                     f"{json.dumps({**DOUBLES7, 'schema_version': 10})}, undefined, {{slide: true}}));")
+        f = {x["key"]: x for x in got["figures"]}
         for key in ("slide", "release", "broom"):
             assert (f[key]["value"], f[key]["note"]) == ("–", "no broom held in the house")
         assert f["broom"]["label"] == "Final"

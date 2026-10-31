@@ -66,7 +66,14 @@ def throw(**line):
 
 
 def figs(t):
-    return js(f"P.aimFigures({json.dumps(t)})")
+    """With the slide shown; the default holds it back."""
+    return js(f"P.aimFigures({json.dumps(t)}, {{slide: true}})")
+
+
+def test_slide_and_set_held_back_by_default():
+    got = js(f"P.aimFigures({json.dumps(throw())})")
+    assert "slide" not in got and got["set"] is None
+    assert got["release"] == {"value": '4"', "side": "wide"}
 
 
 def test_aim_figures_in_inch_marks():
