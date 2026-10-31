@@ -386,12 +386,13 @@ function aimFig(key, label, l, a, note) {
 }
 
 /* How far the release moved the line from the slide's, when it is more than
- * the two lines' own error: + is wide (or right with no curl). */
+ * the two lines' own error: + wider, − narrower, as the practice card says it
+ * -- short enough for the desktop card's one line of note. */
 function setNote(n) {
   if (!n.set_shown) return "9 ft past the release";
   const m = n.set_m;
   if (n.turn !== "left" && n.turn !== "right") return `${feetInches(m)} ${m > 0 ? "right" : "left"} of the slide`;
-  return `${feetInches(m)} ${m > 0 ? "wider" : "narrower"} than the slide`;
+  return `${m > 0 ? "+" : "−"}${feetInches(m)} from the slide`;
 }
 
 /* `n` is lineNumbers' answer for this rock, for a caller that has it already. */

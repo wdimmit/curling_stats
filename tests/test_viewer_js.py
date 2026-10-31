@@ -2837,9 +2837,10 @@ class TestAimFigures:
 
     def test_set_shows_on_the_release_note_only_when_shown(self):
         _, f = self.figs(self.measured(set={"m": 0.35, "se_m": 0.04, "shown": True}))
-        assert f["release"]["note"] == "1 ft 2 in wider than the slide"
+        # Signed like the practice card's ('+7" from the slide'): one line on the desktop card.
+        assert f["release"]["note"] == "+1 ft 2 in from the slide"
         _, f = self.figs(self.measured(set={"m": -0.35, "se_m": 0.04, "shown": True}))
-        assert f["release"]["note"] == "1 ft 2 in narrower than the slide"
+        assert f["release"]["note"] == "−1 ft 2 in from the slide"
 
     def test_no_release_read_says_so(self):
         s = self.measured(slide=None, release_line=None, set=None)
