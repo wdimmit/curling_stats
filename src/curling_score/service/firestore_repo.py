@@ -796,19 +796,23 @@ class FirestoreRepo:
         ref.update(fields)
         return LabelItem.from_dict(ref.get().to_dict())
 
-    def _label_items_query(self, kind, state, after, n_labels=None):
+    def _label_items_query(self, kind, state, after):
         from google.cloud.firestore_v1.base_query import FieldFilter
 
         q = self._where(LABEL_ITEMS, "kind", "==", kind)
         q = q.where(filter=FieldFilter("state", "==", state))
-        if n_labels is not None:
-            q = q.where(filter=FieldFilter("n_labels", "==", n_labels))
         if after is not None:
             q = q.where(filter=FieldFilter("created_at", ">", after))
         return q.order_by("created_at")
 
-    def open_label_items(self, kind, n_labels, limit, after=None):
-        q = self._label_items_query(kind, "open", after, n_labels).limit(limit)
+    def open_label_items(self, kind, limit, before=None):
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        q = self._where(LABEL_ITEMS, "kind", "==", kind)
+        q = q.where(filter=FieldFilter("state", "==", "open"))
+        if before is not None:
+            q = q.where(filter=FieldFilter("created_at", "<", before))
+        q = q.order_by("created_at", direction=self._fs.Query.DESCENDING).limit(limit)
         return [LabelItem.from_dict(d.to_dict()) for d in q.stream()]
 
     def list_label_items(self, kind, state, limit, after=None):

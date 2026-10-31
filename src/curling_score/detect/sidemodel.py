@@ -1,17 +1,11 @@
-"""Time the hog crossing with a trained detector instead of a colour scan.
+"""Time the hog crossing with a trained detector.
 
-``longview`` proposes stones by colour: find a saturated red or yellow blob,
-walk down for granite, call the bottom of it the stone's edge. That proposer is
-what this replaces. Everything downstream -- what counts as moving, what makes
-two crossers ambiguous, steadiness, the speed bound, the interpolation between
-the two samples that straddle the line -- comes from
-``longview.crossing_from_tracks``, unchanged and shared.
+The model proposes the stones; everything downstream -- what counts as moving,
+what makes two crossers ambiguous, steadiness, the speed bound, the
+interpolation between the two samples that straddle the line -- is
+``longview.crossing_from_tracks``.
 
-That sharing is the point. The interesting question is not "can a neural net
-time a crossing" but "was the *proposer* the thing holding this back", and the
-only way to answer it is to change one step and nothing else.
-
-The model reads the band crop ``harvest.sidepool.band_crop`` defines, because
+The model reads the band crop ``geometry.sideview.band_crop`` defines, because
 that is what it was trained on: full-height views contain racks, a scoreboard
 and a far wall it has never been shown. Rows come back in the crop's
 coordinates and are lifted into the view's before tracking, since the gates
@@ -27,7 +21,7 @@ import numpy as np
 
 from curling_score.detect import longview
 from curling_score.fpframes import record as fp_record
-from curling_score.harvest import sidepool
+from curling_score.geometry.sideview import band_crop
 
 # Class indices as `train.dataset.CLASSES` orders them.
 _CLASS_FOR = {"red": 0, "yellow": 1}
@@ -52,9 +46,7 @@ WIDTH_TOL = (0.5, 2.0)
 # -- the throw was refused. This detector sees the granite nearly every frame
 # at 30 fps; a thrower or sweeper hiding it costs a few. Across the 11-video
 # harness this turned 19 "two candidates" refusals into crossings, each one
-# checked on its frame, and moved no crossing that was already timed. The
-# colour scan keeps no bound: it loses the stone at the paint as a matter of
-# course, and at 0.5 s it lost 4 of VXU9's 27 hand-marked crossings.
+# checked on its frame, and moved no crossing that was already timed.
 STRADDLE_GAP_MAX_S = 0.5
 
 # Frames per inference call. 16 at imgsz 800 is about 230 MiB of activations,
@@ -66,11 +58,10 @@ def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
     """``{track_key: [(t, edge_row, body_px, cx), ...]}`` from a trained detector.
 
     Entries carry the column ``cx`` as a fourth element, which
-    ``longview.crossing_from_tracks`` ignores -- reading the first three is
-    enough for the same gates to work over this dict as over the colour scan's.
+    ``longview.crossing_from_tracks`` ignores; the line pass reads it.
     """
     want = _CLASS_FOR[color]
-    y0, y1 = sidepool.band_crop(view)
+    y0, y1 = band_crop(view)
     x, _y, w, h = view.rect
     tracks: dict[int, list] = {}
 
@@ -121,11 +112,10 @@ def propose(model, frames, view, color: str, times, *, conf=CONF_MIN):
     return tracks
 
 
-# What this proposer's edge is worth against a person's eye. `longview`'s
-# OFFSET_S (+0.073 s) corrects the COLOUR SCAN, whose trailing edge includes
-# the stone's contact shadow and so reads early. A trained detector draws the
-# granite's own edge, slightly above the contact point, and reads late instead
-# -- so inheriting the colour scan's correction pushed it later still.
+# What this proposer's edge is worth against a person's eye. The colour scan
+# this replaced read early (+0.073 s: its trailing edge took in the stone's
+# contact shadow); a trained detector draws the granite's own edge, slightly
+# above the contact point, and needs none.
 #
 # Fitted on end 1 of datasets/hogmarks and checked on end 2; see
 # scripts/ds13/compare_hogmarks.py. Set to 0.0 to measure the raw proposer.
@@ -155,7 +145,7 @@ def find_in_frames(model, frames, view, color: str, times,
 
 def find_crossing(model, video, view, color: str, t0: float, t1: float,
                   fps: float = 30.0) -> longview.Crossing:
-    """Seek, decode and time one crossing. Mirrors ``longview.find_crossing``."""
+    """Seek, decode and time one crossing."""
     frames, times = longview.decode(video, view.rect, t0, t1, fps)
     if not len(frames):
         return longview.Crossing(None, "no frames decoded", longview.KEY_NO_FRAMES)
@@ -232,13 +222,10 @@ def default_model():
 
 
 def default_finder():
-    """A ``find`` for ``hogtime.time_hog_crossings``, or None for the colour scan.
-
-    Returns None when no side model is configured, so the caller keeps
-    ``longview.find_crossing`` -- the overhead pipeline worked before the side
-    view existed and still does. The model is loaded on the first call rather
-    than at import, because importing this module must not need a GPU, weights
-    or ultralytics.
+    """A ``find`` for ``hogtime.time_hog_crossings``, or None when the side
+    model is switched off (``none``). The model is loaded on the first call
+    rather than at import, because importing this module must not need a GPU,
+    weights or ultralytics.
     """
     from curling_score import weights as weights_mod
 

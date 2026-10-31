@@ -44,8 +44,6 @@ def a_played_game(w, doc=None):  # noqa: F811  (w: the fixture, passed through)
     """A processed game with one chart; (chart id, share slug, source id)."""
     doc = doc or played_doc()
     fmt = (doc.get("format") or {}).get("name")
-    if fmt:
-        w["settings"].doubles_enabled = True
     body = {"url": f"https://youtu.be/{VID}", **({"format": fmt} if fmt else {})}
     slug = post(w, "/api/submissions", body, MAKER).json()["slug"]
     work_through(w, doc=doc, games=1, fmt=fmt)

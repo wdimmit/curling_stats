@@ -805,3 +805,109 @@ class TestPlacedStones:
         got = shots.from_deliveries(dvs, fr, fmt=F.DOUBLES, before=self.PLACED, base=2)
         assert got[0].missing is True and got[1].missing is False
         assert got[0].color == "red" and got[1].color == "yellow"
+
+
+class TestChangesTheShooterCouldNotMake:
+    """A removal or a move needs the shooter to reach the stone, fast enough
+    to send it that far (`shots._unreachable`)."""
+
+    def _dv(self, color, t, x, y_rest, v0, *, a=0.1, y0=5.0):
+        """A rock tracked straight down the sheet from y0 at v0 m/s, slowing
+        at ``a``, to rest at y_rest -- or still running there, if v0 is more
+        than that distance takes."""
+        from curling_score.detect.delivery import Delivery
+
+        track, s, v, dt = [], 0.0, v0, 0.1
+        while y0 - s > y_rest and v > 0:
+            track.append((t + len(track) * dt, x, y0 - s))
+            s += v * dt
+            v -= a * dt
+        track.append((t + len(track) * dt, x, y_rest))
+        return Delivery(color=color, t_enter=t, t_rest=track[-1][0], entry_y_m=y0,
+                        rest_x_m=x, rest_y_m=y_rest, travel_m=y0 - y_rest,
+                        track=tuple(track))
+
+    def _frames(self, at):
+        out = []
+        for t in [i * 0.5 for i in range(400)]:
+            cur = []
+            for start, stones in sorted(at.items()):
+                if t >= start:
+                    cur = stones
+            out.append((t, cur))
+        return out
+
+    def test_a_draw_that_stops_short_does_not_remove_a_guard_it_passed(self):
+        # f_0zkA: rock 16 stops in front of the house, 0.6 m off two guards
+        # the players then stood over; the read lost both.
+        guards = [det("yellow", 0.45, 2.9), det("yellow", 0.40, 3.3)]
+        dv = self._dv("red", 10, -0.15, 2.1, 0.76)
+        rest = det("red", -0.15, 2.1)
+        frames = self._frames({0: guards, 5: guards, dv.t_rest + 0.5: [rest]})
+        shot = shots.from_deliveries([dv], frames, before=guards, base=2)[0]
+        assert shot.house_delta["removed"] == []
+        assert sorted(_xy(s) for s in shot.stones) == sorted(
+            [(0.45, 2.9), (0.4, 3.3), (-0.15, 2.1)])
+
+    def test_a_takeout_through_a_stone_removes_it(self):
+        target = det("yellow", 0.0, 0.5)
+        dv = self._dv("red", 10, 0.0, -1.0, 2.0)
+        frames = self._frames({0: [target], dv.t_rest + 0.5: [det("red", 0.0, -1.0)]})
+        shot = shots.from_deliveries([dv], frames, before=[target], base=1)[0]
+        assert [c["color"] for c in shot.house_delta["removed"]] == ["yellow"]
+
+    def test_a_stone_read_moved_far_from_the_path_is_where_it_was(self):
+        # f_0ZH3: two reds pushed half a metre by hand, 1.4-1.9 m off the
+        # shooter's path.
+        red = det("red", 1.5, 0.5)
+        dv = self._dv("yellow", 10, -0.5, -0.5, 1.5)
+        after = [det("red", 1.5, 0.0), det("yellow", -0.5, -0.5)]
+        frames = self._frames({0: [red], dv.t_rest + 0.5: after})
+        shot = shots.from_deliveries([dv], frames, before=[red], base=1)[0]
+        assert shot.house_delta["moved"] == []
+        assert (1.5, 0.5) in [_xy(s) for s in shot.stones]
+
+    def test_a_stone_struck_by_a_struck_stone_is_removed_too(self):
+        hit, behind = det("yellow", 0.0, 0.5), det("yellow", 0.6, 0.2)
+        dv = self._dv("red", 10, 0.0, 0.0, 2.5)
+        frames = self._frames({0: [hit, behind], dv.t_rest + 0.5: [det("red", 0.0, 0.0)]})
+        shot = shots.from_deliveries([dv], frames, before=[hit, behind], base=2)[0]
+        assert len(shot.house_delta["removed"]) == 2
+
+    def test_without_a_track_nothing_is_ruled_out(self):
+        from curling_score.detect.delivery import Delivery
+
+        guard = det("yellow", 0.3, 2.9)
+        dv = Delivery(color="red", t_enter=10, t_rest=20, entry_y_m=5.0, rest_x_m=-0.15,
+                      rest_y_m=2.1, travel_m=3.0)
+        frames = self._frames({0: [guard], 20.5: [det("red", -0.15, 2.1)]})
+        shot = shots.from_deliveries([dv], frames, before=[guard], base=1)[0]
+        assert len(shot.house_delta["removed"]) == 1
+
+
+def _xy(stone):
+    return (round(stone.x_m, 3), round(stone.y_m, 3))
+
+
+class TestAHitPassedOnByAStoneThatHardlyMoved:
+    def test_a_guard_nudged_into_the_stone_behind_it_moves_that_stone(self):
+        # -f3R g1 e3 r16: the shooter stops on a guard it tapped 0.2 m, not a
+        # move, and the guard drove the red behind it 0.4 m deeper.
+        t = TestChangesTheShooterCouldNotMake()
+        guard, red = det("yellow", 0.0, 2.6), det("red", 0.0, 2.0)
+        dv = t._dv("red", 10, 0.0, 2.85, 1.2, a=0.2)
+        after = [det("yellow", 0.0, 2.45), det("red", 0.0, 1.6), det("red", 0.0, 2.85)]
+        frames = t._frames({0: [guard, red], dv.t_rest + 0.5: after})
+        shot = shots.from_deliveries([dv], frames, before=[guard, red], base=2)[0]
+        assert [c["color"] for c in shot.house_delta["moved"]] == ["red"]
+
+    def test_only_an_ends_last_rock_is_judged(self):
+        # Between rocks the next read says whether a stone is gone.
+        t = TestChangesTheShooterCouldNotMake()
+        guard = det("yellow", 0.45, 2.9)
+        first = t._dv("red", 10, -0.15, 2.1, 0.76)
+        second = t._dv("yellow", 60, 1.5, 0.0, 1.7)
+        frames = t._frames({0: [guard], first.t_rest + 0.5: [det("red", -0.15, 2.1)],
+                            second.t_rest + 0.5: [det("red", -0.15, 2.1), det("yellow", 1.5, 0.0)]})
+        got = shots.from_deliveries([first, second], frames, before=[guard], base=1)
+        assert len(got[0].house_delta["removed"]) == 1

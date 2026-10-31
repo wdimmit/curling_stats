@@ -42,12 +42,19 @@ OVERHEAD_MIN_S = 1.0
 CLIP_STYLE = 2
 
 
+def _release_timed(rock: dict) -> bool:
+    """A rock the overhead never followed in (detect.release.RELEASE_REASONS)
+    is timed by its release: its t_enter is that, and no arrival."""
+    enter = rock.get("t_enter_s")
+    return enter is not None and enter == rock.get("t_release_s")
+
+
 def throw_from_rock(rock: dict) -> dict:
     """``rock`` as the practice cutter and overlay read a throw."""
     line = rock.get("line") or {}
     broom = rock.get("target_broom")
     t_far = rock.get("t_far_s")
-    if t_far is None:
+    if t_far is None and not _release_timed(rock):
         t_far = rock.get("t_enter_s")
     out_line = None
     if line:
@@ -111,7 +118,10 @@ def plan(throw: dict, sideviews, panel) -> practice_clips.ClipPlan | None:
     first = base.pieces[0]
     if first.view != CAMERA_FOR[OTHER_HOUSE[throw["house"]]]:
         return base
-    times = [t for t in (throw.get("t_enter_s"), throw.get("t_far_s")) if t is not None]
+    # Cut to the panel at a release-timed t_enter and the clip watches an empty
+    # house while the rock is still on its way (`_release_timed`).
+    enter = None if _release_timed(throw) else throw.get("t_enter_s")
+    times = [t for t in (enter, throw.get("t_far_s")) if t is not None]
     if not times:
         return base
     switch = max(first.t0, min(times) - OVERHEAD_LEAD_S)

@@ -374,7 +374,7 @@ class TestPlaylistWatcher:
         yt = FakeYouTube(playlists={"PL1": ["vidA", "vidB", "vidC"]})
         yt.add(VideoMeta("vidA", "Sheet 1", "UCclub", 14000.0, "none", at(-3600)))
         yt.add(VideoMeta("vidB", "Sheet 2", "UCclub", 14000.0, "none", at(-3600)))
-        yt.add(VideoMeta("vidC", "Sheet 3", "UCclub", 0.0, "live", at(-100)))
+        yt.add(VideoMeta("vidC", "Sheet 3", "UCclub", 0.0, "upcoming", at(-100)))
         return repo, yt
 
     def test_new_archived_videos_become_queued_runs(self):
@@ -397,18 +397,6 @@ class TestPlaylistWatcher:
         afters = sorted(repo.job_for_run(r).run_after for r in result["created"])
         assert afters == [T0, T0 + timedelta(seconds=playlists.DOWNLOAD_STAGGER_S)]
         assert playlists.DOWNLOAD_STAGGER_S == 600
-
-    def test_a_live_stream_is_left_for_the_next_poll(self):
-        repo, yt = self._setup()
-        playlists.poll(repo, yt, processing_version="p+m", now=T0)
-        pl = repo.get_playlist("p")
-        assert "vidC" not in pl.last_seen_video_ids
-        assert set(pl.last_seen_video_ids) == {"vidA", "vidB"}
-        # Once archived, the next poll picks it up.
-        yt.add(VideoMeta("vidC", "Sheet 3", "UCclub", 14000.0, "none", at(0)))
-        result = playlists.poll(repo, yt, processing_version="p+m", now=at(3600))
-        assert len(result["created"]) == 1
-        assert repo.list_runs()[0].video_id == "vidC"
 
     def test_already_seen_videos_are_not_requeued(self):
         repo, yt = self._setup()
@@ -452,18 +440,12 @@ class TestPlaylistWatcher:
         playlists.poll(repo, yt, processing_version="p+m", now=at(10), force=True)
         assert yt.calls == calls
 
-    def test_a_doubles_title_is_fours_unless_doubles_is_on(self):
+    def test_a_doubles_title_makes_a_doubles_run(self):
         repo, yt = self._setup()
         yt.add(VideoMeta("vidA", "3/19 - Sheet 1 - Thursday Mixed Doubles League",
                          "UCclub", 6000.0, "none", at(-3600)))
         playlists.poll(repo, yt, processing_version="p+m", now=T0)
         assert {r.video_id: r.format for r in repo.list_runs()} \
-            == {"vidA": "fours", "vidB": "fours"}
-        on = MemoryRepo()
-        on.put_playlist(WatchedPlaylist(id="p", playlist_id="PL1", label="Thursday",
-                                        created_at=T0))
-        playlists.poll(on, yt, processing_version="p+m", now=T0, doubles_enabled=True)
-        assert {r.video_id: r.format for r in on.list_runs()} \
             == {"vidA": "doubles", "vidB": "fours"}
 
     def test_a_video_already_processed_is_not_reprocessed(self):

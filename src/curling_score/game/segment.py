@@ -196,23 +196,36 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
                 merged.append([house, i0, i1])
 
         ends: list[EndSegment] = []
-        last_i1 = 0     # one past the last sample of ends[-1]
+        last_i1 = 0     # one past the last sample of ends[-1]'s runs that could be ends
+        core_end_s = 0.0  # where those runs left ends[-1]
         for h, i0, i1 in merged:
-            if span(i0, i1) < min_end_s:
-                continue
+            # A run too short to be an end still finishes the one before it
+            # when it would have joined it -- entTaSBFK3A end 2: rock 12's
+            # takeout emptied the house, a red jacket over the other button
+            # read as a stone, and the last 4 rocks ran 150 s. It only moves
+            # where that end finishes, though: whether the end is whole, and
+            # whether its house held its stones, stay as the runs that could
+            # be ends left them, so practice stones flickering before a game
+            # (_OGoqF5W9-I) cannot add up to a whole end that then refuses the
+            # first real one, and a rock waiting at the hack while the next
+            # end begins (AEqLTgM25Tc end 5) does not count as held.
+            long = span(i0, i1) >= min_end_s
             if (ends and ends[-1].house == h
-                    and (ends[-1].end_s - ends[-1].start_s < whole_s
-                         or _held(samples[last_i1:i0], h))):
+                    and (core_end_s - ends[-1].start_s < whole_s
+                         or (long and _held(samples[last_i1:i0], h)))):
                 # One end the other house's short run cut in two (WHOLE_END_S):
                 # 10/01 Thursday Morning sheet 2 end 4, and Mens sheet 5 three
                 # times in one game -- or, however long it had run, one whose
                 # house kept its stones throughout: 10/02 Friday sheet 5 end 6.
                 ends[-1].end_s = samples[i1 - 1].t
-                last_i1 = i1
+                if long:
+                    core_end_s, last_i1 = ends[-1].end_s, i1
+                continue
+            if not long:
                 continue
             ends.append(EndSegment(number=0, house=h, start_s=samples[i0].t,
                                    end_s=samples[i1 - 1].t))
-            last_i1 = i1
+            core_end_s, last_i1 = ends[-1].end_s, i1
         if not ends:
             continue
         # The recording's first game is numbered from 2 when it opens on an

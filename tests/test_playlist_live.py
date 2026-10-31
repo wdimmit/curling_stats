@@ -96,7 +96,6 @@ def live_setup(live_status="live"):
 
 
 def poll(repo, yt, t=THU_7PM, **kw):
-    kw.setdefault("live", True)
     return playlists.poll(repo, yt, processing_version="p+m", now=t, tz=TZ,
                           allowed_channels={"UCclub"}, force=True, **kw)
 
@@ -138,11 +137,6 @@ class TestAStreamGoingLive:
         assert repo.list_runs() == []
         assert ("vidL", "channel_not_allowed") in result["skipped"]
         assert "vidL" in repo.get_playlist("p").last_seen_video_ids
-
-    def test_without_live_on_it_waits_for_the_recording_as_before(self):
-        repo, yt = live_setup()
-        poll(repo, yt, live=False)
-        assert repo.list_runs() == []
 
 
 class TestOnceTheRecordingIsArchived:

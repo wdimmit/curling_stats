@@ -221,17 +221,54 @@ body:is([data-page="thinking"], [data-page="ice"]) :is(table, th, h2, .pill, .ta
    sit where the worker placed them. Practice and My shots. */
 .clip-box { position:relative; width:min(100%, calc(60vh * 600 / 810));
             aspect-ratio:600 / 810; margin:10px auto 4px; background:#000;
-            border-radius:8px; overflow:hidden; }
+            border-radius:8px; overflow:hidden;
+            /* The lines' colours, shared by the lines and their key. */
+            --line-thrown:#ff2fd0; --line-aim:#2fd8ff;
+            --dot-thrown:#cc1f96; --dot-aim:#0f86c4; }
 .clip-box video.practice-clip { position:absolute; inset:0; width:100%; height:100%;
                                 object-fit:fill; display:block; }
 svg.clip-lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+/* Thin enough to see the rock past: a 0.6 px line on a thin dark edge that
+   keeps it legible on white ice. The aim's edge is dashed with it, so its
+   gaps stay open. */
 svg.clip-lines polyline, svg.clip-lines circle {
-  fill:none; stroke-width:3; stroke-linecap:round; vector-effect:non-scaling-stroke; }
-svg.clip-lines .under { stroke:rgba(0,0,0,.45); stroke-width:6; stroke-dasharray:none; }
-svg.clip-lines .thrown, svg.clip-lines .broom { stroke:#ff2fd0; }
-svg.clip-lines .aim { stroke:#2fd8ff; stroke-dasharray:9 7; }
-svg.clip-lines .dot { stroke:#fff; stroke-width:1.5; }
+  fill:none; stroke-width:.6; stroke-linecap:round; vector-effect:non-scaling-stroke; }
+svg.clip-lines .edge { stroke:rgba(0,0,0,.3); stroke-width:1.5; }
+/* A little translucent, so the ice and the rock show through. */
+svg.clip-lines .thrown, svg.clip-lines .broom { stroke:var(--line-thrown); stroke-opacity:.8; }
+svg.clip-lines .aim { stroke:var(--line-aim); stroke-opacity:.8; }
+svg.clip-lines .aim, svg.clip-lines .aim-edge { stroke-dasharray:3 3; stroke-linecap:butt; }
+svg.clip-lines circle.edge { stroke-width:1.5; }
+/* Bold: thick and near solid, to read on a phone at the rink. */
+svg.clip-lines.bold polyline, svg.clip-lines.bold circle { stroke-width:1.5; }
+svg.clip-lines.bold .edge, svg.clip-lines.bold circle.edge { stroke:rgba(0,0,0,.4); stroke-width:3; }
+svg.clip-lines.bold .thrown, svg.clip-lines.bold .broom,
+svg.clip-lines.bold .aim { stroke-opacity:.9; }
+/* The slide's dots cross both white ice and the thrower's dark clothes, so
+   their fills are the lines' hues at middle lightness: at least 3:1 against
+   either. Small, so they do not hide the rock; a light disc under each
+   (clip.jsx) parts it from the line under it and from its neighbours. */
+svg.clip-lines .dot { stroke:none; }
+svg.clip-lines .dot-halo { fill:rgba(255,255,255,.75); stroke:none; }
+svg.clip-lines .dot.aim { fill:var(--dot-aim); }
+svg.clip-lines .dot.thrown { fill:var(--dot-thrown); }
+svg.clip-lines .dot.unknown { fill:#6b7280; }
 .clip-tools { font-size:13px; margin:0 0 8px; text-align:center; }
+/* On the clip's top edge, over the back wall and the far ice where no line
+   runs, and clear of the player's own controls at the foot: the key to the
+   lines at the left, the switch for them at the right. */
+.clip-key, .clip-switch { position:absolute; top:6px; background:rgba(0,0,0,.6); color:#fff;
+  font-size:11px; line-height:1.3; border-radius:6px; }
+.clip-key { left:6px; margin:0; padding:4px 7px; list-style:none; pointer-events:none; }
+.clip-key li { display:flex; align-items:center; gap:6px; }
+.clip-key svg { width:18px; height:8px; flex:none; }
+.clip-key .thrown, .clip-key .broom { stroke:var(--line-thrown); stroke-width:1.5; fill:none; }
+.clip-key .aim { stroke:var(--line-aim); stroke-width:1.5; stroke-dasharray:3 2; }
+.clip-key .dot-halo { fill:rgba(255,255,255,.75); }
+.clip-key .dot.aim { fill:var(--dot-aim); }
+.clip-key .dot.thrown { fill:var(--dot-thrown); }
+.clip-switch { right:6px; border:none; padding:4px 8px; cursor:pointer; }
+.clip-switch:hover { background:rgba(0,0,0,.8); }
 /* My shots: a rock's clip opens in a row of its own under the rock. */
 #shots tr.clip-row td { padding:0 0 10px; }
 /* The ranked team leads; who it played is there to place the game, so it

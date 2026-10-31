@@ -55,6 +55,10 @@ weights/*.pt
 # ds17b supersedes ds16a (2026-10-09): ds16a's set plus ds17, sliding throwers' heads
 # and the arriving stones a sweeper stands over. ds16a is kept as its baseline.
 !weights/ds17b.pt
+# overhead-3 supersedes ds17b (2026-10-30): ds17b's set plus the members' own /label
+# boxes from the overhead panels and 45 empty panels of an ice logo
+# (datasets/overhead-3). ds17b is kept as its baseline.
+!weights/overhead-3.pt
 # ds13a does not supersede ds11a: they read different cameras. ds11a detects
 # stones in the overhead panels, looking straight down; ds13a detects them in
 # the wide side view, edge-on at thirty metres, to time the hog crossing.
@@ -70,6 +74,9 @@ weights/*.pt
 # ds13e supersedes ds13d (2026-10-13): ds13d's set plus the kink wave, frames where
 # the delivery path kinked, the stone boxed alone. ds13d is kept as its baseline.
 !weights/ds13e.pt
+# long-1 supersedes ds13e (2026-10-28): ds13e's set plus the members' own /label boxes
+# from the long camera (datasets/long-1). ds13e is kept as its baseline.
+!weights/long-1.pt
 
 # Harvested board frames for the card-digit training set. What training
 # consumes is the ~24x22 px card window, and those are committed in

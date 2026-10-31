@@ -168,39 +168,42 @@ def ids(items):
     return [i.id for i in items]
 
 
-def test_next_items_finishes_half_done_first_and_never_repeats(repo):
+def test_next_items_serves_the_newest_first_and_never_repeats(repo):
     put(repo, 1)
     put(repo, 2)
     put(repo, 3, n_labels=1, by=["u1"])
     assert ids(next_items(repo, "box", "u2", T0)) == ["b_3"]
-    assert ids(next_items(repo, "box", "u1", T0, n=2)) == ["b_1", "b_2"]
-    # asking again within the hold gets the held ones back, the first first
-    assert ids(next_items(repo, "box", "u1", T0 + timedelta(seconds=30), n=1)) == ["b_1"]
+    assert ids(next_items(repo, "box", "u1", T0, n=2)) == ["b_2", "b_1"]
+    # asking again within the hold gets the held ones back, the newest first
+    assert ids(next_items(repo, "box", "u1", T0 + timedelta(seconds=30), n=1)) == ["b_2"]
     # u2 holds b_3 and u1 holds b_1, b_2: nothing is left for a third member but their own
     assert ids(next_items(repo, "box", "u3", T0 + timedelta(seconds=30))) == []
     # once the holds lapse they are free again
     late = T0 + timedelta(seconds=HOLD_S + 60)
-    assert ids(next_items(repo, "box", "u3", late, n=3)) == ["b_3", "b_1", "b_2"]
+    assert ids(next_items(repo, "box", "u3", late, n=3)) == ["b_3", "b_2", "b_1"]
 
 
-def test_next_items_puts_your_own_hold_ahead_of_half_done_items(repo):
+def test_a_new_batch_comes_before_an_older_half_done_one(repo):
+    # 2026-10-30: the batch just published is wanted first, a label or not
+    put(repo, 1, n_labels=1, by=["u2"])
+    put(repo, 2)
+    assert ids(next_items(repo, "box", "u1", T0, n=2)) == ["b_2", "b_1"]
+
+
+def test_next_items_puts_your_own_hold_ahead_of_newer_items(repo):
     put(repo, 1)
-    put(repo, 2, n_labels=1, by=["u2"])
-    assert ids(next_items(repo, "box", "u1", T0)) == ["b_2"]
-    repo.update_label_item("b_2", hold_uid=None, hold_until=None)
-    assert ids(next_items(repo, "box", "u3", T0)) == ["b_2"]
-    repo.update_label_item("b_2", hold_uid=None, hold_until=None)
-    # u1 holds b_1 (n=0) by hand; a half-done b_2 is free but their hold comes first
+    put(repo, 2)
     repo.hold_label_item("b_1", "u1", T0, HOLD_S)
     assert ids(next_items(repo, "box", "u1", T0)) == ["b_1"]
+    assert ids(next_items(repo, "box", "u2", T0)) == ["b_2"]
 
 
 def test_next_items_skips_what_you_labelled_or_skipped_and_pages_on(repo):
     for n in range(1, 4):
         put(repo, n)
-    repo.update_label_item("b_1", skipped_by=["u1"])
+    repo.update_label_item("b_3", skipped_by=["u1"])
     repo.update_label_item("b_2", n_labels=1, labelled_by=["u1"])
-    assert ids(next_items(repo, "box", "u1", T0, n=5)) == ["b_3"]
+    assert ids(next_items(repo, "box", "u1", T0, n=5)) == ["b_1"]
 
 
 def test_next_items_pages_past_the_first_page(repo, monkeypatch):
@@ -208,7 +211,7 @@ def test_next_items_pages_past_the_first_page(repo, monkeypatch):
     monkeypatch.setattr(labelling, "PAGE", 2)
     for n in range(1, 6):
         put(repo, n)
-    assert ids(next_items(repo, "box", "u1", T0, n=4)) == ["b_1", "b_2", "b_3", "b_4"]
+    assert ids(next_items(repo, "box", "u1", T0, n=4)) == ["b_5", "b_4", "b_3", "b_2"]
 
 
 def test_next_items_ignores_other_kinds_and_closed_items(repo):
@@ -218,20 +221,10 @@ def test_next_items_ignores_other_kinds_and_closed_items(repo):
     assert next_items(repo, "release", "u1", T0) == []
 
 
-def test_a_half_done_item_past_the_first_page_is_still_offered(repo):
-    # u1 has labelled the oldest PAGE+5 half-done items; u2's later one still needs a second label
+def test_an_item_past_the_first_page_is_still_offered(repo):
+    # u1 has labelled the newest PAGE+5 items; an older one still needs a label
     from curling_score.service import labelling
+    put(repo, 0, n_labels=1, by=["u2"])
     for n in range(1, labelling.PAGE + 6):
         put(repo, n, n_labels=1, by=["u1"])
-    put(repo, 100, n_labels=1, by=["u2"])
-    assert ids(next_items(repo, "box", "u1", T0)) == ["b_100"]
-
-
-def test_half_done_paging_is_capped(repo, monkeypatch):
-    from curling_score.service import labelling
-    monkeypatch.setattr(labelling, "PAGE", 2)
-    monkeypatch.setattr(labelling, "HALF_PAGES", 2)
-    for n in range(1, 7):
-        put(repo, n, n_labels=1, by=["u1"])
-    put(repo, 100, n_labels=1, by=["u2"])
-    assert next_items(repo, "box", "u1", T0) == []             # beyond the 2 pages looked at
+    assert ids(next_items(repo, "box", "u1", T0)) == ["b_0"]

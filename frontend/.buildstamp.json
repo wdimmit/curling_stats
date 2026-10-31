@@ -17,7 +17,7 @@
     "frontend/core/linechart.mjs": "def1cf0bc8f8a4d85469b4bd4a222f987f0aba06f417628b9cdee83475da4e3b",
     "frontend/core/myshots.mjs": "878ebdea5d8599b7c46acddf10436ad2facd0d2400f482034c101f380f42a3e7",
     "frontend/core/overrides.mjs": "20fe3c8155ed6df0ffcc2f8c394082c61773184cf470ae6011afbe1d4c4413ec",
-    "frontend/core/playlists.mjs": "7b578c6b5d0579f9032f3d0c287f5f41008e610a0a1e6923d1c468ca800fd768",
+    "frontend/core/playlists.mjs": "f31edacfec52b689cfe7aa9edd6ebac90e171f5c2172b92a6ed1012abcc36204",
     "frontend/core/practice.mjs": "f0f5a593a302bcf13247b369d756b1512ad90b43ea55fb7226ad2d4e7a9f21a7",
     "frontend/core/report.mjs": "7bb9374198cdccf4ca7380a72ee620ced50868bdf0f0de19bbc87a4dd4480aaa",
     "frontend/core/shotclip.mjs": "cb4b6ee605e41308770edf681b824f5db06cfd206bffd3f81a4f47cebaf63ef5",
@@ -51,20 +51,20 @@
     "frontend/site/Join.jsx": "4f915fd7c6d9de9aa5430ea63f61d30218b1ebbac63cc0076e09a9482eca4374",
     "frontend/site/Label.jsx": "bf3bac6073466eb8c59e431919f1b3cbae7353b420f16ce470e58791cdc9a1a6",
     "frontend/site/Mine.jsx": "9046a65032365a6452a05141a7814e1164a341e90c44e973c9c730b987fc988f",
-    "frontend/site/Playlists.jsx": "2f927ff13f7f3b5db866f7593604dfe9f3b72cfcbb5e47530b4d50660a6417d4",
+    "frontend/site/Playlists.jsx": "da55443aad9e78a7f0041caf35d233d64927f1ef4bea77f36e2e14c6ffbcf664",
     "frontend/site/Practice.jsx": "35df13aadc9c5eb4b1e32fc0f9b926d60913ec6e4b001c0aa543062f2c0df6ea",
     "frontend/site/ShotCharts.jsx": "f77f480eae042abc0158ec7780ab8cee8f56dfa6ab80b133a0d325b6d3a1d3e7",
     "frontend/site/Shots.jsx": "f8af8e9f1d2e795cfb2477021190f305ac04d0d9f162a80f55ce0ce3a627c912",
-    "frontend/site/SignIn.jsx": "214d8ea19ab8a7cc702529150d6919be2bbc5aa9e64ee36fd142cb5718ad801f",
+    "frontend/site/SignIn.jsx": "304bf91dd8b3795772260bb8ff73361110bbb6f01ba96021538f59f30ebb78de",
     "frontend/site/Status.jsx": "ddbd5c1e00f84a360632a62079010f655b28475ff151ee136202da6ec2870b50",
-    "frontend/site/Submit.jsx": "b8397958a374d109e606f51be147589864f2c2f0bb3f7de82e1198d1496e173c",
-    "frontend/site/Thinking.jsx": "94d07d85c06482feb08fb0ed8229ee669a733942e40cd9947483de66d5dbb8a6",
+    "frontend/site/Submit.jsx": "77175b9798ac258db5dbf798d10212e581dbb60ef6878f9c6941605f249ac3a2",
+    "frontend/site/Thinking.jsx": "cb1b92bf22b885133be25a481918a2b8d9f741714e6ee9649749844db23a6627",
     "frontend/site/Users.jsx": "b433c54cd4bd2353e6182d4fe2abba55a8955cf77e3098ee31204dd2cb82687b",
-    "frontend/site/auth.js": "c36b54a2ac47c50715d68c8dce913532bc8dde7e02a36cfe2f5a63fce3786885",
-    "frontend/site/clip.jsx": "4e3126676665d42a44b73bbebdb5967bb245fb4b96c379d69ab0b56ffa11e280",
+    "frontend/site/auth.js": "bcb98ee6bb36b92b14414b8fbdec5eeac73dcd32b0b054adfa3cb492ddae5cb1",
+    "frontend/site/clip.jsx": "813feb4d8c69fe8a50f1b3c91f01165578ef5aad1d82288ae1acf5b6956db804",
     "frontend/site/fmt.js": "66f571f6910f4c27ab7758831a0b3e71af5df6def64729d6697bb73d4161eada",
     "frontend/site/main.jsx": "c08441a19bef7091b5ef528041945b70717d85326dd9af6ebaf25b16d19acb4d",
-    "frontend/site/signInDialog.js": "bf1998a3024f33431613920e387b62335c0508d73cbd09c5ad09a016a3418822",
+    "frontend/site/signInDialog.js": "aac0f303058d3d0cc564066eb827505fcb053291678e1fb5f05b6d4a280831ee",
     "frontend/site/signinState.mjs": "341882fcb8e3c1e3412ca51c5e582597f078818a3b860f8beb82a3df7522a46e",
     "frontend/site/ui.jsx": "4101cef2a8467a22afcf58aa4c043736317bdadc08beca17d5223674774affef",
     "frontend/site/useAuth.js": "637bd013b9d2171273d9b04d4d12482866a9ef008b3db63329ca0dc848952118",
@@ -93,7 +93,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "a21332cce937a8b5408604b23d4c1f786ac9ed981724f5f2c82b02024c5eb409",
-    "src/curling_score/viewer/app.js": "316ec775929cf43f94998541c18d5c23ad84f85b789d9f12a0394d0a7dcbcfda"
+    "src/curling_score/service/static/site.js": "c8a6530961e2c8f70f718a2996b2f94c19f43a91385193bc58a33a57688c8e38",
+    "src/curling_score/viewer/app.js": "eb6ffecc84b3609163712103a8720bbf82d6d3aa1946e8e54ae84f5ca19e1cbc"
   }
 }

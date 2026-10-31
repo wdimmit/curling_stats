@@ -14,7 +14,7 @@ from curling_score.game import farfollow as FF
 from curling_score.game import linetime as L
 from curling_score.game import sidereleases as S
 from curling_score.geometry import constants as C
-from curling_score.harvest import sidepool
+from curling_score.geometry.sideview import band_crop
 from tests import test_farfollow as FFT
 from tests import test_sidereleases
 from tests import test_linetime as LT

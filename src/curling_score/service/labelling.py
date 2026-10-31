@@ -2,9 +2,9 @@
 answer is one we can keep.
 
 An item is handed out under a hold (a lease on it for HOLD_S), so two members
-don't spend their time on the same item while others wait. Items already
-labelled once come first, because a second label finishes them; after those,
-the oldest untouched ones. What a member is shown never includes the known
+don't spend their time on the same item while others wait. The newest
+items come first, so a batch just published is labelled before older ones
+(user, 2026-10-30), whether or not an item has a label already. What a member is shown never includes the known
 answer, the item's origin, or who else has seen it.
 
 Nothing here knows about HTTP: the API turns a ValueError from check_answer
@@ -23,10 +23,6 @@ MAX_LABELS = 2
 RETIRE_AFTER_SKIPS = 5
 # Items read from the repo per query.
 PAGE = 50
-# Pages of half-done items looked through for one this member can still take.
-# A member who has labelled the oldest of them would otherwise be told there
-# is nothing left while later ones wait; the cap keeps a long queue cheap.
-HALF_PAGES = 5
 # More boxes than this on one image is a mistake, not a careful answer.
 MAX_BOXES = 60
 
@@ -59,16 +55,14 @@ def _is_free(item: LabelItem, uid: str, now: datetime) -> bool:
 def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[LabelItem]:
     """Up to ``n`` items for this member, each now held for them.
 
-    Order: the member's own live hold (a reload resumes), then items with one
-    label already, then untouched ones, oldest first. The first page of each
-    is read up front, which is where a member's own hold is found without a
-    query of its own; either list is paged on only if that isn't enough
-    (half-done ones for at most HALF_PAGES pages).
-    A hold that comes back None was lost to someone else, so we move on.
+    Order: the member's own live hold (a reload resumes), then the open items
+    newest first. The own hold is looked for in the first page only; one
+    older than that lapses after HOLD_S like any other. Pages on until ``n``
+    are found or the open items run out. A hold that comes back None was lost
+    to someone else, so we move on.
     """
-    half = repo.open_label_items(kind, 1, PAGE)
-    fresh = repo.open_label_items(kind, 0, PAGE)
-    own = [i for i in half + fresh if i.hold_uid == uid and _is_free(i, uid, now)]
+    page = repo.open_label_items(kind, PAGE)
+    own = [i for i in page if i.hold_uid == uid and _is_free(i, uid, now)]
     own_ids = {i.id for i in own}
     got: list[LabelItem] = []
 
@@ -83,16 +77,9 @@ def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[Lab
                 got.append(held)
 
     take(own)
-    take([i for i in half if i.id not in own_ids])
-    page, pages = half, 1
-    while len(got) < n and len(page) >= PAGE and pages < HALF_PAGES:
-        page = repo.open_label_items(kind, 1, PAGE, after=page[-1].created_at)
-        pages += 1
-        take([i for i in page if i.id not in own_ids])
-    take([i for i in fresh if i.id not in own_ids])
-    page = fresh
+    take([i for i in page if i.id not in own_ids])
     while len(got) < n and len(page) >= PAGE:
-        page = repo.open_label_items(kind, 0, PAGE, after=page[-1].created_at)
+        page = repo.open_label_items(kind, PAGE, before=page[-1].created_at)
         take([i for i in page if i.id not in own_ids])
     return got
 

@@ -85,6 +85,34 @@ function PaceTable({ rows }) {
   );
 }
 
+/* Each named team once: its thinking over every end it played in the league,
+ * and how many games that is. */
+function TeamTable({ rows }) {
+  const top = Math.max(...rows.map(r => r.per_end_s));
+  return (
+    <table className="rank">
+      <tbody>
+        <tr><th>#</th><th>Team</th><th className="num">Games</th><th>Per end</th></tr>
+        {rows.map((r, i) => (
+          <tr key={r.team}>
+            <td className="rk">{i + 1}</td>
+            <td className="teams">{r.team}</td>
+            <td className="num" data-label="Games">{r.games}</td>
+            <td className="pace">
+              <div>
+                <span className="val">{mmss(r.per_end_s)}</span>
+                <span className="mag" aria-hidden="true">
+                  <span style={{ width: `${(100 * r.per_end_s / top).toFixed(1)}%` }} />
+                </span>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function Thinking() {
   const { user, ready, accounts } = useAuthUser();
   // Asked only once auth has decided, and then with the person's token.
@@ -109,8 +137,8 @@ export function Thinking() {
                       ["/submit", "Submit a link"]]} />
       <main>
         <p className="muted" style={{ marginTop: 0 }}>How long a team took to decide its shots,
-        divided by the ends it played, grouped by league. A team is listed once for each game it
-        played. The league is the YouTube playlist the stream was published in. Leagues with no
+        divided by the ends it played, grouped by league. The first two tables list a team once for
+        each game it played; the third averages each named team over all its games. The league is the YouTube playlist the stream was published in. Leagues with no
         game in the last two weeks are left off.</p>
         {signedOut ? (
           <Card>
@@ -155,6 +183,13 @@ export function Thinking() {
               {league.games * 2 > league.fastest.length ? (
                 <p className="muted note">The fastest {league.fastest.length} of {league.games * 2}:
                 each of the league's {league.games} games has two teams.</p>
+              ) : null}
+              <h2>Teams on average <small>every game a team played, slowest first</small></h2>
+              {league.by_team?.length ? <TeamTable rows={league.by_team} />
+                : <p className="muted note">No team in this league has been named yet.</p>}
+              {league.by_team?.length && league.unnamed_rows ? (
+                <p className="muted note">Teams are matched by name, so {league.unnamed_rows} of
+                the league's {league.games * 2} team-games, with no name given, are left out.</p>
               ) : null}
               <p className="muted note">Thinking time runs from when the previous rock comes to rest
               (plus 5 s) until the next rock crosses the tee line at the throwing end. The first rock

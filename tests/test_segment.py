@@ -82,6 +82,47 @@ class TestAHouseClearedMidEnd:
         two on 10/01 had run 250-465 s when their house was cleared."""
         assert segment.WHOLE_END_S == 540.0
 
+    def test_a_tail_too_short_to_be_an_end_is_still_joined(self):
+        """entTaSBFK3A end 2 under overhead-1: rock 12's takeout emptied the
+        top house 485 s in, a player's red jacket over the bottom button read
+        as a stone for one keyframe, and the end's last 4 rocks ran 150 s --
+        under the floor, so they were dropped before they could be joined
+        back on, and belonged to no end."""
+        samples = profile([(180, 0, 6), (97, 2, 0), (7, 0, 0), (1, 0, 1), (7, 0, 0),
+                           (30, 1, 0), (8, 0, 0), (180, 0, 7)])
+        ends = segment.segment_games(samples)[0].ends
+        assert [e.house for e in ends] == ["bottom", "top", "bottom"]
+        assert ends[1].end_s == pytest.approx(900.0 + 5 * (97 + 15 + 30), abs=15)
+
+    def test_a_short_tail_after_a_whole_end_is_still_not_joined(self):
+        whole = int(segment.WHOLE_END_S // 5) + 20
+        samples = profile([(180, 0, 6), (whole, 5, 0), (20, 0, 4), (30, 4, 0), (8, 0, 0),
+                           (180, 0, 7)])
+        top = segment.segment_games(samples)[0].ends[1]
+        assert top.end_s == pytest.approx(900.0 + 5 * (whole - 1), abs=15)
+
+    def test_a_short_run_after_a_whole_end_is_not_joined_for_holding_stones(self):
+        """AEqLTgM25Tc end 5 (1,010 s): as end 6 began in the other house, a
+        rock waiting at the hack kept one stone in this one, ties named it,
+        and 95 s of end 6 would have been joined to end 5 as if held."""
+        whole = int(segment.WHOLE_END_S // 5) + 20
+        samples = profile([(180, 0, 6), (whole, 5, 0), (4, 1, 2), (20, 3, 0), (8, 0, 0),
+                           (180, 0, 7)])
+        top = segment.segment_games(samples)[0].ends[1]
+        assert top.end_s == pytest.approx(900.0 + 5 * (whole - 1), abs=15)
+
+    def test_short_runs_joined_on_never_make_an_end_whole(self):
+        """_OGoqF5W9-I under the overhead-1 candidate: practice stones before
+        the game left 240 s of the bottom house and a flicker of short runs
+        either side. Joined on, the flicker made that 540 s, a whole end, and
+        the game's real first end -- the same house -- was refused and
+        numbered 2. It joins the practice stretch, as it always did."""
+        samples = profile([(50, 0, 2), (18, 2, 0), (20, 0, 2), (6, 2, 0), (20, 0, 1), (30, 2, 0),
+                           (27, 0, 0), (180, 0, 6), (180, 5, 0)])
+        ends = segment.segment_games(samples)[0].ends
+        assert [e.house for e in ends] == ["bottom", "top"]
+        assert ends[1].start_s == pytest.approx(5 * (50 + 18 + 20 + 6 + 20 + 30 + 27 + 180), abs=15)
+
     def test_a_doubles_end_scales_it_with_the_floor(self):
         """Ten rocks, not sixteen: 2.25 x 150 s, under the shortest of 111
         complete doubles ends (470 s)."""

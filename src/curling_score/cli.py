@@ -536,50 +536,6 @@ def _add_harvest(sub):
     p.set_defaults(func=_harvest)
 
 
-def _sideframes(args) -> int:
-    """Build ds13, the side-view training set, one stage at a time.
-
-    Same reasoning as ``_harvest``: 1197 clips on a box across the network is
-    not a run anyone restarts from the top, so each stage reads a file and
-    writes a file.
-    """
-    from curling_score.harvest import sidestages
-
-    return sidestages.run(args)
-
-
-def _add_sideframes(sub):
-    p = sub.add_parser(
-        "sideframes", help="build a side-view training set (see ds13)")
-    stage = p.add_subparsers(dest="stage", required=True)
-
-    for name, help_text in (
-        ("views", "locate both side views of every ds11 video, or say why not"),
-        ("propose", "scan the clips and bank every candidate frame"),
-        ("select", "choose ds13's 600 frames"),
-        ("build", "write the YOLO tree from ds13's manifest"),
-    ):
-        q = stage.add_parser(name, help=help_text)
-        q.add_argument("--videos", default="datasets/ds11/videos.json",
-                       help="ds11's own video list, for its splits")
-        q.add_argument("--root", help="where the clips are cached")
-        q.add_argument("--out", help="where crops or the YOLO tree go")
-        q.add_argument("--pool", help="where candidate crops were banked")
-        q.add_argument("--views", default="datasets/ds13/sideviews.json")
-        q.add_argument("--manifest", default="datasets/ds13/manifest.json")
-        q.add_argument("--fps", type=float, default=5.0,
-                       help="detection rate inside a clip")
-        q.add_argument("--limit", type=int)
-        q.add_argument("--wave", choices=("full", "window"), default="full",
-                       help="'window' selects the ~200-frame shot-driven wave "
-                            "from whole VODs; 'full' the 600-frame clip set")
-        q.add_argument("--force", action="store_true",
-                       help="redo a video already banked, instead of "
-                            "skipping it (views/propose only)")
-
-    p.set_defaults(func=_sideframes)
-
-
 def _live_replay(args) -> int:
     """A cached video played back as a live stream, through the live session:
     each settled end is built and published as it would be on a league night.
@@ -632,9 +588,9 @@ def _live_replay(args) -> int:
 
 
 def _practice_replay(args) -> int:
-    """A cached video watched as a practice session: the stream picked up a
-    lookback before Start, each throw reported as it comes to rest, and how
-    long after that each one was published."""
+    """A cached video watched as a practice session from ``--from`` (Start):
+    each throw reported as it comes to rest, and how long after that each one
+    was published."""
     from curling_score.live import replay, session as live
     from curling_score.practice import harness
     from curling_score.practice.pipeline import PracticePipeline
@@ -648,10 +604,8 @@ def _practice_replay(args) -> int:
         weights, args.imgsz, args.device, skip_longview=args.no_longview,
         skip_line=args.no_line, progress=print)
     release_model = analyze_mod.load_release_model(line_model, print)
-    start = max(0.0, args.from_s - args.lookback)
     rec = replay.ReplayRecording(args.video, out / "recording.ts", speed=args.speed,
-                                 start_s=start, end_s=args.to_s,
-                                 burst_s=args.from_s - start).start()
+                                 start_s=args.from_s, end_s=args.to_s).start()
     heads = harness.HeadClock().start(rec)
     sink = harness.Sink(out, heads)
     clipper = None
@@ -664,7 +618,7 @@ def _practice_replay(args) -> int:
                                   line=line_model is not None, progress=print),
         models=live.Models(detector=detector, broom_model=broom_model,
                            line_model=line_model, release_model=release_model),
-        since_s=args.from_s - rec.t0_s, t0_s=rec.t0_s, publish=sink.publish,
+        t0_s=rec.t0_s, publish=sink.publish,
         clipper=clipper, progress=print)
     try:
         harness.run(watch, recording=rec)
@@ -828,10 +782,8 @@ def main(argv=None) -> int:
                    help="where the session starts (Start), in seconds into the video")
     p.add_argument("--to", dest="to_s", type=float, required=True,
                    help="where the replay stops, in seconds into the video")
-    p.add_argument("--lookback", type=float, default=1200.0,
-                   help="footage before Start to calibrate from, written at once (default: 1200)")
     p.add_argument("--speed", type=float, default=1.0,
-                   help="playback speed against real time after the lookback (default: 1)")
+                   help="playback speed against real time (default: 1)")
     p.add_argument("--out", default="out/practice/run", help="output directory")
     p.add_argument("--weights", default=_default_weights(),
                    help="a trained YOLO model to detect with, or 'none'")
@@ -859,7 +811,6 @@ def main(argv=None) -> int:
     p.set_defaults(func=_cameras_calibrate)
 
     _add_harvest(sub)
-    _add_sideframes(sub)
 
     p = sub.add_parser("train", help="train a stone detector")
     p.add_argument("--data", required=True, help="path to curling.yaml")

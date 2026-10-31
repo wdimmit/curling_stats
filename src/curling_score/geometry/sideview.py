@@ -767,3 +767,59 @@ def lateral_from_strip(view: SideView, strip: Strip) -> SideView:
         line = tuple((p + q) / 2 for p, q in zip(strip.left, strip.right))
     return dataclasses.replace(view, centre_col=line[0] + line[1] * view.tee_row,
                                lat_px_per_m_at_tee=float(lat), centre_line=line)
+
+
+# How far past the hog line a delivery is still worth a frame. Three metres is
+# about 52 image rows at the club's fitted geometry -- enough to hold a stone
+# just past the line without running down into the foreground, where
+# perspective stretches a stone across half the frame.
+PAST_HOG_M = 3.0
+
+
+def ice_bounds(view) -> tuple[int, int]:
+    """The rows a delivery crossing the hog line can occupy.
+
+    The racks of stones stored beside the sheet are red and in every frame;
+    a crop that takes them in fills a training set with furniture, not play.
+
+    This is a **depth** bound, not a lateral one. ``SideView`` maps image rows
+    to metres *along* the sheet and carries no lateral scale whatever, so there
+    is no sideline to derive; but the racks do not sit beside the sheet in
+    image terms, they sit *above* the house on the platform behind it.
+    Measured on real frames from VXU9xwmugRg they run rows ~365-405, against a
+    fitted tee at ~435 and hog at ~520.
+
+    So the band runs from the tee to ``PAST_HOG_M`` past the hog line. The tee
+    is the top rather than the back line (row ~415) or the hack (row ~398)
+    because only the tee clears the racks with any margin -- the hack line
+    computes to a row *inside* the measured rack band, and would have excluded
+    nothing.
+    """
+    top = view.row_for(0.0)                                  # the tee
+    bottom = view.row_for(C.TEE_TO_HOGLINE_M + PAST_HOG_M)
+    return int(round(top)), int(round(bottom))
+
+
+# How far below the hog line the crop runs, past `ice_bounds`. A delivery keeps
+# travelling toward the camera after it crosses, and 60 rows is about a second
+# of that at the club's geometry.
+#
+# There is no matching pad ABOVE. The band's top is the tee, and the racks of
+# stones sit immediately above it -- measured rows ~365-405 against a tee at
+# ~435. Any upward padding at all walks them back into the frame, which is the
+# thing the crop exists to prevent: an unlabelled stone in a training image is
+# not neutral, it teaches the model that stones are background.
+BAND_PAD_BELOW = 60
+
+
+def band_crop(view) -> tuple[int, int]:
+    """The rows of a view the side models see, and are trained on.
+
+    Cropping to this is what lets a labelling session be *complete*. Out of
+    band there are parked stones, racks, the far wall and the scoreboard; a
+    reviewer either boxes all of them, which is work with no bearing on timing
+    a hog crossing, or leaves them unboxed, which poisons the set. Removing the
+    pixels removes the question.
+    """
+    top, bottom = ice_bounds(view)
+    return int(top), int(bottom + BAND_PAD_BELOW)

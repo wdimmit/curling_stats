@@ -150,10 +150,7 @@ class TestRelay:
         statuses = [claim(w, "000000", rid=f"{i:022d}").status_code for i in range(61)]
         assert statuses[60] == 429
 
-    def test_a_link_already_sent_still_finishes_with_the_chooser_offering_none(self, w):
-        # EMAIL_LINK_SIGNIN only decides what the chooser offers; /signin and
-        # its relay keep working, for links sent before it was switched off.
-        assert w["settings"].email_link_signin is False
+    def test_a_relayed_link_is_claimed_with_its_code(self, w):
         code = relay(w).json()["code"]
         assert claim(w, code).json() == {"link": link()}
 

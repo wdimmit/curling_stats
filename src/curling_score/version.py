@@ -302,7 +302,31 @@ from pathlib import Path
 # the frames, is a real stone touching one of its own colour. s13's game: only
 # e3 differs, and the guard stays in the house from s13 on. Detections re-infer:
 # `rocks.py` is in the detection cache's key.
-PIPELINE_VERSION = "2026.10.26.1"
+# 2026.10.28.1: a stone the house places after the shooter's track was lost
+# (`release.settle`'s release-add) rests when it is first still in its place
+# (`release._settled_at`: within 0.3 m, then 0.05 m for 1.5 s), not when the
+# house is read SETTLE_S after the release; and a rock timed by its release
+# (t_enter == t_release) keeps the long cameras in its clip
+# (`game/clips._release_timed`) instead of cutting to an empty house. 10/20
+# Tuesday S2 g2 e5 r11 (flag f_1EuZ): rest 11546 -> 11531.4, the guard's parked
+# track having taken the shooter's path at the hit. On the 16 harness games
+# board agreement stays 40/54; four release-add rests move 16-24 s earlier and
+# three houses by cm, and 4RrN g1 e4 r10's earlier read sees a jacket at the
+# house edge (now harvested as a false positive).
+# 2026.10.29.1: a run of one house too short to be an end still finishes the
+# end before it when it would have joined it (`segment.segment_games`), but
+# never makes that end whole or counts toward `_held`. entTaSBFK3A e2: a red
+# jacket over the other button cut the last 4 rocks off; they are back. On the
+# 11 harness videos, both overhead models, 20 hash seeds: no end starts,
+# merges, splits or renumbers; AEqLTgM25Tc g0's last end runs 70 s longer.
+# 2026.10.29.2: the last rock cannot move a stone it never reached or was too
+# slow to reach (`shots._unreachable`, `_put_back`): its track must come
+# within 0.43 m of the stone, directly or through a stone it did reach, and
+# its approach speed must carry the stone out of play or as far as it moved.
+# Last rock only: the house read after it often lands in the clearing. On the
+# 16 harness games board agreement 40 -> 41/54; 10 last rocks change, 7 right
+# in the video, none worse.
+PIPELINE_VERSION = "2026.10.29.2"
 
 
 def model_id(weights) -> str:
@@ -328,8 +352,8 @@ def processing_version(weights, side_weights=None, broom_weights=None, line=Fals
     ``side_weights`` is folded in because the side-view detector changes the
     timeline as surely as the overhead one does -- it is what times every
     throwing-end hog crossing, and so every split. Leaving it out would let a
-    timeline made with the colour scan be reused for one made with a trained
-    detector, which is exactly the quiet mixing this string exists to prevent.
+    timeline made with one side model, or none, be reused for one made with
+    another, which is exactly the quiet mixing this string exists to prevent.
 
     Omitted entirely when there is no side model, so every timeline produced
     before there was one keeps the identity it was published with.
