@@ -41,8 +41,11 @@ log = logging.getLogger(__name__)
 SLIDE_FROM_M = -(C.TEE_TO_HACKLINE_M + C.TEE_TO_BACKLINE_M) / 2
 SLIDE_MIN_N, SLIDE_MIN_SPAN_M = 8, 2.0
 RELEASE_MIN_N, RELEASE_MIN_SPAN_M = 15, 2.0
-# A line whose standard error at the broom is over this is not shown.
-# Provisional until the A/B on hosted games sets it.
+# A line whose standard error at the broom is over this is not shown. Set on
+# the A/B of 2026-10-31 (583 rocks, three games on sheets 1-3): the slide's
+# error at the broom runs median 2.4 in, p90 5.3, p95 6.6, and the release's
+# 1.7 / 3.5 / 4.1, so 6 in hides the worst 6% of slides (18% on 09/23 sheet 3,
+# whose hack end reads noisier) and 1% of releases.
 SE_MAX_M = 0.15
 # The set is shown only when it is this many standard errors of itself.
 SET_SIGMAS = 2.0
