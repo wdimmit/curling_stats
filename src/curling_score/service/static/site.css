@@ -217,8 +217,8 @@ svg.clip-lines polyline, svg.clip-lines circle {
   fill:none; stroke-width:.6; stroke-linecap:round; vector-effect:non-scaling-stroke; }
 svg.clip-lines .edge { stroke:rgba(0,0,0,.3); stroke-width:1.5; }
 /* A little translucent, so the ice and the rock show through. */
-svg.clip-lines .thrown, svg.clip-lines .broom { stroke:#ff2fd0; stroke-opacity:.7; }
-svg.clip-lines .aim { stroke:#2fd8ff; stroke-opacity:.7; }
+svg.clip-lines .thrown, svg.clip-lines .broom { stroke:#ff2fd0; stroke-opacity:.8; }
+svg.clip-lines .aim { stroke:#2fd8ff; stroke-opacity:.8; }
 svg.clip-lines .aim, svg.clip-lines .aim-edge { stroke-dasharray:3 3; stroke-linecap:butt; }
 svg.clip-lines circle.edge { stroke-width:1.5; }
 /* The slide's dots cross both white ice and the thrower's dark clothes, so
