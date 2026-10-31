@@ -59,40 +59,40 @@ def summary(t):
 
 def test_the_slide_aimed_off_and_the_release_moving_it():
     # Curling left, right (+x) is wide.
-    assert summary(throw(-9, 2)) == {"slide": "Slide: 9 in narrow",
-                                     "release": "Release: 2 in wide (set +11 in)"}
+    assert summary(throw(-9, 2)) == {"slide": "Slide: 9\" narrow",
+                                     "release": "Release: 2\" wide (set +11\")"}
 
 
 def test_curling_right_turns_wide_and_narrow_around():
     assert summary(throw(-9, 2, curl="right")) == {
-        "slide": "Slide: 9 in wide", "release": "Release: 2 in narrow (set −11 in)"}
+        "slide": "Slide: 9\" wide", "release": "Release: 2\" narrow (set −11\")"}
 
 
 def test_without_a_curl_the_sides_are_left_and_right():
     assert summary(throw(-9, 2, curl=None)) == {
-        "slide": "Slide: 9 in left", "release": "Release: 2 in right (set 11 in right)"}
+        "slide": "Slide: 9\" left", "release": "Release: 2\" right (set 11\" right)"}
 
 
 def test_a_set_within_its_uncertainty_is_left_out():
     # Set -1 in, under twice the 1.5 in floor on R's error.
-    assert summary(throw(1.6, 0.5)) == {"slide": "Slide: 2 in wide",
+    assert summary(throw(1.6, 0.5)) == {"slide": "Slide: 2\" wide",
                                         "release": "Release: to the broom"}
 
 
 def test_within_an_inch_either_side_is_to_the_broom():
     got = summary(throw(0.1, 8))
     assert got["slide"] == "Slide: to the broom"
-    assert got["release"] == "Release: 8 in wide (set +8 in)"
-    assert summary(throw(-8, 0.1))["release"] == "Release: to the broom (set +8 in)"
+    assert got["release"] == "Release: 8\" wide (set +8\")"
+    assert summary(throw(-8, 0.1))["release"] == "Release: to the broom (set +8\")"
     # Judged on the figure as shown: 1 in is to the broom, 2 in is not.
     assert summary(throw(-1.4, 8))["slide"] == "Slide: to the broom"
-    assert summary(throw(-1.6, 8))["slide"] == "Slide: 2 in narrow"
+    assert summary(throw(-1.6, 8))["slide"] == "Slide: 2\" narrow"
 
 
 def test_rounded_to_the_nearest_inch():
     # Finer would claim more than the cameras measure: their error is inches.
-    assert summary(throw(-8.8, 3.1))["slide"] == "Slide: 9 in narrow"
-    assert summary(throw(-8.8, 3.1))["release"] == "Release: 3 in wide (set +12 in)"
+    assert summary(throw(-8.8, 3.1))["slide"] == "Slide: 9\" narrow"
+    assert summary(throw(-8.8, 3.1))["release"] == "Release: 3\" wide (set +12\")"
 
 
 def test_the_fit_leaves_out_the_push_off_and_the_last_six_feet_and_a_half_metre():
@@ -103,7 +103,7 @@ def test_the_fit_leaves_out_the_push_off_and_the_last_six_feet_and_a_half_metre(
 
 def test_no_release_point_means_no_slide_and_no_set():
     assert summary(throw(-9, 2, release=False)) == {"slide": None,
-                                                    "release": "Release: 2 in wide"}
+                                                    "release": "Release: 2\" wide"}
 
 
 def test_no_broom_means_no_summary():
@@ -112,8 +112,8 @@ def test_no_broom_means_no_summary():
 
 def test_too_short_a_slide_is_not_fitted():
     # 0.5 m steps leave 12 points over 5.5 m: fitted. 1.0 m steps leave 6: refused.
-    assert summary(throw(-9, 2, step=0.5))["slide"] == "Slide: 9 in narrow"
-    assert summary(throw(-9, 2, step=1.0)) == {"slide": None, "release": "Release: 2 in wide"}
+    assert summary(throw(-9, 2, step=0.5))["slide"] == "Slide: 9\" narrow"
+    assert summary(throw(-9, 2, step=1.0)) == {"slide": None, "release": "Release: 2\" wide"}
 
 
 def test_a_noisy_slide_needs_a_bigger_set_to_show_it():
@@ -126,34 +126,34 @@ def test_a_noisy_slide_needs_a_bigger_set_to_show_it():
 
 def test_the_figures_for_the_hero_come_in_parts():
     assert js("S.slideFigures(T)", T=throw(-9, 2)) == {
-        "slide": {"value": "9 in", "side": "narrow"},
-        "release": {"value": "2 in", "side": "wide"},
-        "set": {"value": "+11 in"}}
-    assert js("S.slideFigures(T)", T=throw(-9, 2, curl="right"))["set"] == {"value": "−11 in"}
+        "slide": {"value": "9\"", "side": "narrow"},
+        "release": {"value": "2\"", "side": "wide"},
+        "set": {"value": "+11\""}}
+    assert js("S.slideFigures(T)", T=throw(-9, 2, curl="right"))["set"] == {"value": "−11\""}
     got = js("S.slideFigures(T)", T=throw(0.1, 0.5))
     assert got["slide"] == {"value": "to the broom", "side": None}
     assert got["set"] is None
     assert js("S.slideFigures(T)", T=throw(-9, 2, release=False))["slide"] is None
     assert js("S.slideFigures(T)", T=throw(-9, 2, curl=None))["set"] == {
-        "value": "11 in right"}
+        "value": "11\" right"}
     assert js("S.slideFigures(T)", T=throw(-9, 2, broom=False)) is None
 
 
 def test_the_figures_in_short_words_for_the_throws_table():
     f = js("S.slideFigures(T)", T=throw(-9, 2))
-    assert js("S.figureWords(F.slide)", F=f) == "9 in narrow"
-    assert js("S.setWords(F.set)", F=f) == "+11 in"
-    assert js("S.setWords(S.slideFigures(T).set)", T=throw(-9, 2, curl="right")) == "−11 in"
+    assert js("S.figureWords(F.slide)", F=f) == "9\" narrow"
+    assert js("S.setWords(F.set)", F=f) == "+11\""
+    assert js("S.setWords(S.slideFigures(T).set)", T=throw(-9, 2, curl="right")) == "−11\""
     assert js("S.figureWords({value: 'to the broom', side: null})") == "to the broom"
-    assert js("S.setWords(S.slideFigures(T).set)", T=throw(-9, 2, curl=None)) == "11 in right"
+    assert js("S.setWords(S.slideFigures(T).set)", T=throw(-9, 2, curl=None)) == "11\" right"
 
 
 def test_the_throws_table_says_what_the_card_says():
     # Inches past a foot, as the card has them, not "1 ft 2 in".
-    assert js("S.releaseWords(T)", T=throw(-9, 14)) == "14 in wide"
+    assert js("S.releaseWords(T)", T=throw(-9, 14)) == "14\" wide"
     # The card's to-the-broom, not lineText's narrower one: 1.4 in rounds to 1.
     assert js("S.releaseWords(T)", T=throw(-9, 1.4)) == "to the broom"
-    assert js("S.releaseWords(T)", T=throw(-9, 2, curl="right")) == "2 in narrow"
+    assert js("S.releaseWords(T)", T=throw(-9, 2, curl="right")) == "2\" narrow"
     # No broom: nothing here, and the table falls back on lineText.
     assert js("S.releaseWords(T)", T=throw(-9, 2, broom=False)) is None
 

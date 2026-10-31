@@ -99,19 +99,19 @@ function inches(v) {
   return String(Math.round(Math.abs(v)));
 }
 
-/* { value: "9 in", side: "narrow" }, or { value: "to the broom", side: null }
+/* { value: '9"', side: "narrow" }, or { value: "to the broom", side: null }
  * within ON_BROOM_IN either side. ``v`` is signed right. */
 function offsetParts(v, tw) {
   if (Number(inches(v)) <= ON_BROOM_IN) return { value: "to the broom", side: null };
   const side = tw == null ? (v > 0 ? "right" : "left") : (-tw * v > 0 ? "wide" : "narrow");
-  return { value: `${inches(v)} in`, side };
+  return { value: `${inches(v)}"`, side };
 }
 
-/* The set as { value }: signed, + toward wide and − toward narrow ("+11 in",
- * "−11 in"); without a curl, which way it moved ("11 in right"). */
+/* The set as { value }: signed, + toward wide and − toward narrow ('+11"',
+ * '−11"'); without a curl, which way it moved ('11" right'). */
 function setParts(set, tw) {
-  if (tw == null) return { value: `${inches(set)} in ${set > 0 ? "right" : "left"}` };
-  return { value: `${set > 0 ? "+" : "−"}${inches(set)} in` };
+  if (tw == null) return { value: `${inches(set)}" ${set > 0 ? "right" : "left"}` };
+  return { value: `${set > 0 ? "+" : "−"}${inches(set)}"` };
 }
 
 /* The summary in parts, for the page to lay out: { slide, release, set },
@@ -138,20 +138,20 @@ export function slideSummary(t) {
   };
 }
 
-/* A slide or release figure in words: "9 in narrow", "to the broom". */
+/* A slide or release figure in words: '9" narrow', "to the broom". */
 export function figureWords(f) {
   return f.side ? `${f.value} ${f.side}` : f.value;
 }
 
 /* The throws table's Line: the card's Release figure in words, so the two
- * agree on inches and on what counts as to the broom ("14 in wide", not
+ * agree on inches and on what counts as to the broom ('14" wide', not
  * "1 ft 2 in wide"). Null without a broom, for the table to fall back on. */
 export function releaseWords(t) {
   const f = slideFigures(t);
   return f && figureWords(f.release);
 }
 
-/* The set in short words: "+11 in", or "11 in right" without a curl. */
+/* The set in short words: '+11"', or '11" right' without a curl. */
 export function setWords(s) {
   return s.value;
 }

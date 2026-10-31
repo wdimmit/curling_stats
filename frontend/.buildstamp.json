@@ -22,7 +22,7 @@
     "frontend/core/report.mjs": "7bb9374198cdccf4ca7380a72ee620ced50868bdf0f0de19bbc87a4dd4480aaa",
     "frontend/core/shotclip.mjs": "cb4b6ee605e41308770edf681b824f5db06cfd206bffd3f81a4f47cebaf63ef5",
     "frontend/core/shots.mjs": "069aec2c81a69a467885c2585228c23516ab646e5de0df7632fffeec28172102",
-    "frontend/core/slide.mjs": "1c7cf97abeddb352a4d27926e01faa2843552b8725713cec32c1730fc149f95b",
+    "frontend/core/slide.mjs": "040fd53d99b347231955dd817a8775c559a0fd611a010924b8ef51c058d6210c",
     "frontend/core/speed.mjs": "99ef2edf1f96624b44954fca8c3fb688fc3681621b4a6cf0e08e4652c9abecc6",
     "frontend/core/stats.mjs": "e46d873b7c0f52055162813df60f9cfab5a4d526115fbbba60c973dd27325d07",
     "frontend/core/tablet.mjs": "9458c37883d15605f583ad07dc89a9d736935afd903da99cd779afe48f8e594d",
@@ -93,7 +93,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "6e03c6dca71c4b9bfada910c3e16d1ee0e2f85cf51952a40daaa553eb5816af6",
+    "src/curling_score/service/static/site.js": "f18f2b1aa37c7664fb0c13c2ad4682c86ae78c607466cee1dd1464821acc6666",
     "src/curling_score/viewer/app.js": "eb6ffecc84b3609163712103a8720bbf82d6d3aa1946e8e54ae84f5ca19e1cbc"
   }
 }
