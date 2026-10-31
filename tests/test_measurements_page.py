@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from curling_score.game import aimlines, linetime, spinfit, spintime, thinking
+from curling_score.game import aimlines, hogtime, linetime, spinfit, spintime, thinking
 from curling_score.geometry import constants as C
 from tests.test_service_api import world  # noqa: F401 - the app on in-memory fakes
 
@@ -40,6 +40,7 @@ def stated():
         ("set threshold", {2.0: "twice"}[aimlines.SET_SIGMAS]),
         ("on the broom, both pages", f"within {js_const('frontend/core/line.mjs', 'ON_M') / IN:g} in of the broom"),
         ("on the line at the hog line", f"means within {round(js_const('frontend/core/line.mjs', 'ON_M') / IN)} in"),
+        ("hog crossing frame rate", f"{hogtime.READ_FPS:g} frames a second"),
         ("rotation start", f"{spintime.FROM_M:g} m past the tee"),
         ("rotation turns", {1.25: "first 1¼ turns"}[spinfit.EARLY_TURNS]),
         ("rotation range", {0.5: "under half a turn"}[spinfit.RANGE_BELOW_TURNS]),
