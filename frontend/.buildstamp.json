@@ -65,7 +65,7 @@
     "frontend/site/main.jsx": "c08441a19bef7091b5ef528041945b70717d85326dd9af6ebaf25b16d19acb4d",
     "frontend/site/signInDialog.js": "aac0f303058d3d0cc564066eb827505fcb053291678e1fb5f05b6d4a280831ee",
     "frontend/site/signinState.mjs": "341882fcb8e3c1e3412ca51c5e582597f078818a3b860f8beb82a3df7522a46e",
-    "frontend/site/ui.jsx": "4101cef2a8467a22afcf58aa4c043736317bdadc08beca17d5223674774affef",
+    "frontend/site/ui.jsx": "04a340c4c9cbbaebfb7d3516d7d6233c1cef25c91d84b1b4e59ab7488bc4a1c5",
     "frontend/site/useAuth.js": "637bd013b9d2171273d9b04d4d12482866a9ef008b3db63329ca0dc848952118",
     "frontend/viewer/App.jsx": "93b73aa980a4e66ef5331fc91205ca266c9bfa7ed240d9a597ff7cf2d1e9e840",
     "frontend/viewer/ChartPanel.jsx": "922fc5ac6a29a627848cbb04d44270cbc6572231df0349c9fdc5410283cd0e55",
@@ -92,7 +92,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "2ecad85c07b28d66b1e3942375a956e7b92cf3af598b9ba8cf9b4d82311dd512",
+    "src/curling_score/service/static/site.js": "84b28b64bb478e9283f688822f5b3288f531b1880258091892d09f31938d89ae",
     "src/curling_score/viewer/app.js": "206ed18651ff98ee6d47a3614a7fea6553f9c520b2c4c287244a5537d798854e"
   }
 }

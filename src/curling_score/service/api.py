@@ -1028,6 +1028,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def privacy_page():
         return page("privacy.html")
 
+    # How each figure on a shot is measured, for club members. A plain page
+    # too, beside the terms; it changes with the measurements it describes.
+    @app.get("/measurements", response_class=HTMLResponse)
+    def measurements_page():
+        return page("measurements.html")
+
     # Nothing here is for search engines: the games carry people's names,
     # and every page is reached from the club's own links or by being sent one.
     @app.get("/robots.txt", response_class=PlainTextResponse)
