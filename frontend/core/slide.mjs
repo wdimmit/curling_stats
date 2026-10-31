@@ -127,17 +127,6 @@ export function slideFigures(t) {
   };
 }
 
-/* The summary as two lines: { slide, release }, slide null when it cannot be
- * measured. Null altogether without a broom. */
-export function slideSummary(t) {
-  const f = slideFigures(t);
-  if (!f) return null;
-  return {
-    slide: f.slide && `Slide: ${figureWords(f.slide)}`,
-    release: `Release: ${figureWords(f.release)}${f.set ? ` (set ${setWords(f.set)})` : ""}`,
-  };
-}
-
 /* A slide or release figure in words: '9" narrow', "to the broom". */
 export function figureWords(f) {
   return f.side ? `${f.value} ${f.side}` : f.value;
@@ -149,9 +138,4 @@ export function figureWords(f) {
 export function releaseWords(t) {
   const f = slideFigures(t);
   return f && figureWords(f.release);
-}
-
-/* The set in short words: '+11"', or '11" right' without a curl. */
-export function setWords(s) {
-  return s.value;
 }

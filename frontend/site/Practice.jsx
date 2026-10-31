@@ -100,12 +100,12 @@ function SensorLine({ t, sensors }) {
   );
 }
 
-/* Where the slide was aimed, where the release sent the rock and the weight,
- * large, under the delivery chart where the Line and Weight rows were; then
- * ``children`` (where the rock came to rest). Under the release, smaller, how
- * far the release moved the line from the slide's; left out when it is too
- * small to tell from the measurement's error. */
-function SlideHero({ figures, split, children = null }) {
+/* Where the slide was aimed and where the release sent the rock, large, under
+ * the delivery chart where the Line row was; then ``children`` (the weight and
+ * where the rock came to rest). Under the release, smaller, how far the
+ * release moved the line from the slide's; left out when it is too small to
+ * tell from the measurement's error. */
+function SlideHero({ figures, children = null }) {
   // A figure in words ("to the broom") is set a size down from one in
   // numbers, so it fits the column on a phone.
   const value = f => (
@@ -120,13 +120,24 @@ function SlideHero({ figures, split, children = null }) {
     </div>
   );
   const change = figures.set && <div className="slide-change">{figures.set.value}</div>;
-  const weight = split != null ? { value: weightText(split), side: null } : null;
   return (
     <div className="slide-hero">
       {figure("slide", "Slide", figures.slide)}
       {figure("release", "Release", figures.release, change)}
-      {figure("weight", "Hog to hog", weight)}
       {children}
+    </div>
+  );
+}
+
+/* The weight, hog to hog, in the figures' style. Only for a rock that
+ * arrived: one that did not never crossed the far hog line, so it has no
+ * split (game/split.py long_split). */
+function WeightFigure({ split }) {
+  return (
+    <div className="slide-figure weight">
+      <div className="slide-label">Hog to hog</div>
+      {split != null ? <div className="slide-value">{weightText(split)}</div>
+                     : <div className="slide-value none">not timed</div>}
     </div>
   );
 }
@@ -192,7 +203,7 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
         <>
           <p><strong>Released, didn't arrive</strong> (hogged?)</p>
           {figures ? (
-            <SlideHero figures={figures} split={t.split_s}>
+            <SlideHero figures={figures}>
               <SensorFigures t={t} sensors={sensors} />
             </SlideHero>
           ) : (
@@ -206,7 +217,8 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
           {figures ? (
             <div style={{ flex: 1 }}>
-              <SlideHero figures={figures} split={t.split_s}>
+              <SlideHero figures={figures}>
+                <WeightFigure split={t.split_s} />
                 <RestFigure rest={t.rest} />
                 <SensorFigures t={t} sensors={sensors} />
               </SlideHero>

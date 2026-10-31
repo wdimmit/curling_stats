@@ -53,46 +53,52 @@ def throw(s_in, r_in, curl="left", slope=0.001, release=True, broom=True, step=0
     return {"line": line, "broom": BROOM if broom else None, "curl": curl}
 
 
-def summary(t):
-    return js("S.slideSummary(T)", T=t)
+def figures(t):
+    """The figures as the page reads them: the slide and the release in words
+    (the card's figure, the throws table's Line), the set as shown under the
+    release; None for what is not shown."""
+    return js("(f => f && {slide: f.slide && S.figureWords(f.slide), "
+              "release: S.figureWords(f.release), set: f.set && f.set.value})"
+              "(S.slideFigures(T))", T=t)
 
 
 def test_the_slide_aimed_off_and_the_release_moving_it():
     # Curling left, right (+x) is wide.
-    assert summary(throw(-9, 2)) == {"slide": "Slide: 9\" narrow",
-                                     "release": "Release: 2\" wide (set +11\")"}
+    assert figures(throw(-9, 2)) == {"slide": "9\" narrow", "release": "2\" wide",
+                                     "set": "+11\""}
 
 
 def test_curling_right_turns_wide_and_narrow_around():
-    assert summary(throw(-9, 2, curl="right")) == {
-        "slide": "Slide: 9\" wide", "release": "Release: 2\" narrow (set −11\")"}
+    assert figures(throw(-9, 2, curl="right")) == {
+        "slide": "9\" wide", "release": "2\" narrow", "set": "−11\""}
 
 
 def test_without_a_curl_the_sides_are_left_and_right():
-    assert summary(throw(-9, 2, curl=None)) == {
-        "slide": "Slide: 9\" left", "release": "Release: 2\" right (set 11\" right)"}
+    assert figures(throw(-9, 2, curl=None)) == {
+        "slide": "9\" left", "release": "2\" right", "set": "11\" right"}
 
 
 def test_a_set_within_its_uncertainty_is_left_out():
     # Set -1 in, under twice the 1.5 in floor on R's error.
-    assert summary(throw(1.6, 0.5)) == {"slide": "Slide: 2\" wide",
-                                        "release": "Release: to the broom"}
+    assert figures(throw(1.6, 0.5)) == {"slide": "2\" wide", "release": "to the broom",
+                                        "set": None}
 
 
 def test_within_an_inch_either_side_is_to_the_broom():
-    got = summary(throw(0.1, 8))
-    assert got["slide"] == "Slide: to the broom"
-    assert got["release"] == "Release: 8\" wide (set +8\")"
-    assert summary(throw(-8, 0.1))["release"] == "Release: to the broom (set +8\")"
+    got = figures(throw(0.1, 8))
+    assert got["slide"] == "to the broom"
+    assert (got["release"], got["set"]) == ("8\" wide", "+8\"")
+    got = figures(throw(-8, 0.1))
+    assert (got["release"], got["set"]) == ("to the broom", "+8\"")
     # Judged on the figure as shown: 1 in is to the broom, 2 in is not.
-    assert summary(throw(-1.4, 8))["slide"] == "Slide: to the broom"
-    assert summary(throw(-1.6, 8))["slide"] == "Slide: 2\" narrow"
+    assert figures(throw(-1.4, 8))["slide"] == "to the broom"
+    assert figures(throw(-1.6, 8))["slide"] == "2\" narrow"
 
 
 def test_rounded_to_the_nearest_inch():
     # Finer would claim more than the cameras measure: their error is inches.
-    assert summary(throw(-8.8, 3.1))["slide"] == "Slide: 9\" narrow"
-    assert summary(throw(-8.8, 3.1))["release"] == "Release: 3\" wide (set +12\")"
+    assert figures(throw(-8.8, 3.1)) == {"slide": "9\" narrow", "release": "3\" wide",
+                                         "set": "+12\""}
 
 
 def test_the_fit_leaves_out_the_push_off_and_the_last_six_feet_and_a_half_metre():
@@ -102,50 +108,39 @@ def test_the_fit_leaves_out_the_push_off_and_the_last_six_feet_and_a_half_metre(
 
 
 def test_no_release_point_means_no_slide_and_no_set():
-    assert summary(throw(-9, 2, release=False)) == {"slide": None,
-                                                    "release": "Release: 2\" wide"}
+    assert figures(throw(-9, 2, release=False)) == {"slide": None, "release": "2\" wide",
+                                                    "set": None}
 
 
-def test_no_broom_means_no_summary():
-    assert summary(throw(-9, 2, broom=False)) is None
+def test_no_broom_means_no_figures():
+    assert figures(throw(-9, 2, broom=False)) is None
 
 
 def test_too_short_a_slide_is_not_fitted():
     # 0.5 m steps leave 12 points over 5.5 m: fitted. 1.0 m steps leave 6: refused.
-    assert summary(throw(-9, 2, step=0.5))["slide"] == "Slide: 9\" narrow"
-    assert summary(throw(-9, 2, step=1.0)) == {"slide": None, "release": "Release: 2\" wide"}
+    assert figures(throw(-9, 2, step=0.5))["slide"] == "9\" narrow"
+    assert figures(throw(-9, 2, step=1.0)) == {"slide": None, "release": "2\" wide",
+                                               "set": None}
 
 
 def test_a_noisy_slide_needs_a_bigger_set_to_show_it():
-    noisy = throw(-1.5, 2, noise=[0.0, 0.02, -0.02, 0.01, -0.01])
-    got = js("S.slideReading(T)", T=noisy)
-    assert got["se_s_in"] > 0.3
-    assert got["set_in"] == pytest.approx(3.5, abs=0.3)
-    assert got["set_shown"] is (abs(got["set_in"]) > 2 * (got["se_s_in"] ** 2 + 1.5 ** 2) ** 0.5)
+    # The same 4 in set both times. Through a clean slide the bar is 2 x 1.5 in,
+    # so it shows; scatter of up to 2 cm puts the slide's own error near 1.6 in
+    # at the broom, the bar near 4.4 in, and it does not.
+    assert figures(throw(-2, 2))["set"] == "+4\""
+    noisy = throw(-2, 2, noise=[0.0, 0.02, -0.02, 0.01, -0.01])
+    assert figures(noisy)["set"] is None
+    assert js("S.slideReading(T).set_in", T=noisy) == pytest.approx(4.0, abs=0.3)
 
 
-def test_the_figures_for_the_hero_come_in_parts():
+def test_the_figures_for_the_card_come_in_parts():
     assert js("S.slideFigures(T)", T=throw(-9, 2)) == {
         "slide": {"value": "9\"", "side": "narrow"},
         "release": {"value": "2\"", "side": "wide"},
         "set": {"value": "+11\""}}
-    assert js("S.slideFigures(T)", T=throw(-9, 2, curl="right"))["set"] == {"value": "−11\""}
     got = js("S.slideFigures(T)", T=throw(0.1, 0.5))
     assert got["slide"] == {"value": "to the broom", "side": None}
     assert got["set"] is None
-    assert js("S.slideFigures(T)", T=throw(-9, 2, release=False))["slide"] is None
-    assert js("S.slideFigures(T)", T=throw(-9, 2, curl=None))["set"] == {
-        "value": "11\" right"}
-    assert js("S.slideFigures(T)", T=throw(-9, 2, broom=False)) is None
-
-
-def test_the_figures_in_short_words_for_the_throws_table():
-    f = js("S.slideFigures(T)", T=throw(-9, 2))
-    assert js("S.figureWords(F.slide)", F=f) == "9\" narrow"
-    assert js("S.setWords(F.set)", F=f) == "+11\""
-    assert js("S.setWords(S.slideFigures(T).set)", T=throw(-9, 2, curl="right")) == "−11\""
-    assert js("S.figureWords({value: 'to the broom', side: null})") == "to the broom"
-    assert js("S.setWords(S.slideFigures(T).set)", T=throw(-9, 2, curl=None)) == "11\" right"
 
 
 def test_the_throws_table_says_what_the_card_says():
@@ -159,5 +154,5 @@ def test_the_throws_table_says_what_the_card_says():
 
 
 def test_nothing_to_say_without_a_line():
-    assert js("S.slideSummary({line: null, broom: null, curl: null})") is None
-    assert js("S.slideSummary({})") is None
+    assert js("S.slideFigures({line: null, broom: null, curl: null})") is None
+    assert js("S.slideFigures({})") is None
