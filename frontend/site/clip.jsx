@@ -83,7 +83,7 @@ function ClipLines({ overlay, video }) {
       {/* The dots sit about a ring's width apart, so every light ring goes
           down first, as a disc under all of them: no dot covers another's. */}
       {dots.map(([, u, v], i) => (
-        <circle key={`halo-${i}`} cx={u * CLIP_W} cy={v * CLIP_H} r="2" className="dot-halo" />
+        <circle key={`halo-${i}`} cx={u * CLIP_W} cy={v * CLIP_H} r="2.25" className="dot-halo" />
       ))}
       {dots.map(([, u, v, kind], i) => (
         // Coloured as the line the rock is on: in the hand it travels the
