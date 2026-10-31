@@ -13,7 +13,7 @@ import { Card, Header, Pill, Warn } from "./ui.jsx";
 import { clipState, curlText, lengthText, lineText, mergeTimings, restText, sensorText,
          rotationText, shown, summary, weightText } from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
-import { slideFigures } from "../core/slide.mjs";
+import { releaseWords, slideFigures } from "../core/slide.mjs";
 import { ClipPlayer } from "./clip.jsx";
 import { DeliveryChart, dotColours } from "../viewer/Delivery.jsx";
 
@@ -325,7 +325,7 @@ function Live({ id, onDone, heading }) {
                 <td>{n}</td>
                 <td>{rotationText(t, session.hand) ?? "–"}</td>
                 <td>{weightText(t.split_s) ?? "–"}</td>
-                <td>{lineText(t.line, { short: true }) ?? "–"}</td>
+                <td>{releaseWords(t) ?? lineText(t.line, { short: true }) ?? "–"}</td>
                 <td>{t.arrived ? restText(t.rest) ?? "–" : "didn't arrive"}</td>
                 {sensors && <td>{weightText(t.sensor?.long_s) ?? "–"}</td>}
               </tr>

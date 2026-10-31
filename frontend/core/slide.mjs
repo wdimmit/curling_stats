@@ -143,6 +143,14 @@ export function figureWords(f) {
   return f.side ? `${f.value} ${f.side}` : f.value;
 }
 
+/* The throws table's Line: the card's Release figure in words, so the two
+ * agree on inches and on what counts as to the broom ("14 in wide", not
+ * "1 ft 2 in wide"). Null without a broom, for the table to fall back on. */
+export function releaseWords(t) {
+  const f = slideFigures(t);
+  return f && figureWords(f.release);
+}
+
 /* The set in short words: "+11 in", or "11 in right" without a curl. */
 export function setWords(s) {
   return s.value;

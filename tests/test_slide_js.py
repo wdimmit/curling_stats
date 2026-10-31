@@ -148,6 +148,16 @@ def test_the_figures_in_short_words_for_the_throws_table():
     assert js("S.setWords(S.slideFigures(T).set)", T=throw(-9, 2, curl=None)) == "11 in right"
 
 
+def test_the_throws_table_says_what_the_card_says():
+    # Inches past a foot, as the card has them, not "1 ft 2 in".
+    assert js("S.releaseWords(T)", T=throw(-9, 14)) == "14 in wide"
+    # The card's to-the-broom, not lineText's narrower one: 1.4 in rounds to 1.
+    assert js("S.releaseWords(T)", T=throw(-9, 1.4)) == "to the broom"
+    assert js("S.releaseWords(T)", T=throw(-9, 2, curl="right")) == "2 in narrow"
+    # No broom: nothing here, and the table falls back on lineText.
+    assert js("S.releaseWords(T)", T=throw(-9, 2, broom=False)) is None
+
+
 def test_nothing_to_say_without_a_line():
     assert js("S.slideSummary({line: null, broom: null, curl: null})") is None
     assert js("S.slideSummary({})") is None
