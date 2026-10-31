@@ -96,6 +96,7 @@ export const buildGameView = core.buildGameView;
 
 export const lineFigures = core.lineFigures;
 export const feetInches = core.feetInches;
+export const ON_M = core.ON_M;
 export const lineReason = core.lineReason;
 export const lineX = core.lineX;
 export const restOf = core.restOf;

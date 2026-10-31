@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Measurements · curling.dimmit.net</title>
+<link rel="stylesheet" href="/static/site.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&amp;display=swap">
+<!-- Plain HTML, no bundle, like the terms and privacy pages. How each figure
+     on a shot is measured, for club members. It must change in the same
+     change as the measurement it describes (the owner's rule, 2026-10-31):
+       lines        game/linetime.py, game/aimlines.py
+       release      game/releasetime.py
+       hack, hog    frontend/core/line.mjs (hackFig, lineNumbers)
+       weight       game/split.py, game/hogtime.py, game/fartime.py
+       rotation     game/spintime.py, game/spinfit.py
+       curl         game/linetime.py, frontend/core/line.mjs (curlOf)
+       rest         detect/delivery.py, game/shots.py
+       thinking     game/thinking.py
+     tests/test_measurements_page.py holds the numbers here to the code's. -->
+<style>
+  :root { --m-ice:#f7f9fa; --m-paint:#9aa6ad; --m-ring-b:#cfdfee; --m-ring-r:#f1d3d1;
+          --m-slide:#7a4fd1; --m-release:#1d66c8; --m-final:#c25a0f; --m-spin:#2a8a5a;
+          --m-path:#16130c; --m-wedge:rgba(29,102,200,.10); --m-grace:#dcd5c3; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --m-ice:#1f2428; --m-paint:#5c6870; --m-ring-b:#24384b; --m-ring-r:#45292b;
+    --m-slide:#ad8cf2; --m-release:#6aa5f2; --m-final:#f0954a; --m-spin:#5cc893;
+    --m-path:#f2ece0; --m-wedge:rgba(106,165,242,.14); --m-grace:#372f22; } }
+  .legal figure { margin:18px 0 22px; max-width:420px; }
+  .legal figure svg { display:block; width:100%; height:auto; font-family:var(--display); }
+  .legal figcaption { color:var(--muted); font-size:14px; margin-top:6px; }
+  .legal .key { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; vertical-align:-1px; }
+  svg .ice { fill:var(--m-ice); stroke:var(--line); }
+  svg .paint { stroke:var(--m-paint); stroke-width:1; fill:none; }
+  svg .hog { stroke:var(--m-paint); stroke-width:2.5; }
+  svg .r12 { fill:var(--m-ring-b); } svg .r4 { fill:var(--m-ring-r); } svg .rw { fill:var(--m-ice); }
+  svg .hackfoot { fill:var(--ink); }
+  svg .rockpath { stroke:var(--m-path); stroke-width:1.6; fill:none; opacity:.55; stroke-linejoin:round; }
+  svg .stone { fill:var(--panel); stroke:var(--ink); stroke-width:1.5; }
+  svg .stone.rest { fill:var(--yellow); }
+  svg .relpt { fill:var(--m-release); stroke:var(--panel); stroke-width:1.5; }
+  svg .fit { stroke-width:6; stroke-linecap:round; opacity:.8; }
+  svg .ext { stroke-width:1.4; stroke-dasharray:5 4; fill:none; }
+  svg .bracket { stroke-width:3; stroke-linecap:round; }
+  svg .slide { stroke:var(--m-slide); } svg .release { stroke:var(--m-release); } svg .final { stroke:var(--m-final); }
+  svg .dot.slide { fill:var(--m-slide); } svg .dot.release { fill:var(--m-release); } svg .dot.final { fill:var(--m-final); }
+  svg .slidet { fill:var(--m-slide); } svg .releaset { fill:var(--m-release); } svg .finalt { fill:var(--m-final); }
+  svg .ext.aim { stroke:var(--ink); }
+  svg .broom { stroke:var(--ink); stroke-width:2; fill:none; }
+  svg .measure { stroke:var(--ink); stroke-width:1.5; }
+  svg .inset { fill:var(--panel); stroke:var(--line); }
+  svg .lbl { fill:var(--ink); font-size:13px; }
+  svg .sm { fill:var(--muted); font-size:11.5px; font-weight:500; }
+  svg .lbl.slidet tspan:first-child { fill:var(--m-slide); }
+  svg .lbl.releaset tspan:first-child { fill:var(--m-release); }
+  svg .lbl.finalt tspan:first-child { fill:var(--m-final); }
+  svg .wedge { fill:var(--m-wedge); }
+  svg .cam { fill:var(--ink); }
+  svg .camtop { fill:var(--panel); stroke:var(--ink); stroke-width:2; }
+  svg .overview { fill:none; stroke:var(--m-release); stroke-width:1.2; stroke-dasharray:3 3; }
+  svg .turn circle { fill:var(--panel); stroke:var(--m-spin); stroke-width:1.5; }
+  svg .turn line { stroke:var(--m-spin); stroke-width:2; stroke-linecap:round; }
+  svg .bracket.spin { stroke:var(--m-spin); }
+  svg .pale { opacity:.35; }
+  svg .grace { fill:var(--m-grace); } svg .clock { fill:var(--m-release); opacity:.25; }
+  svg .tick { stroke:var(--ink); stroke-width:1.5; }
+</style>
+<body>
+<header>
+  <h1><a href="/">curling.dimmit.net</a></h1>
+  <a href="/terms">Terms</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/measurements" class="here" aria-current="page">Measurements</a>
+</header>
+<main class="legal">
+<h1>How we measure a shot</h1>
+<p class="muted">Last updated October 31, 2026</p>
+
+<p>Every figure on a shot is read from the club's video. This page explains each one: where on the sheet it is measured, which camera sees it, and how far to trust it. Where a figure could not be measured well enough, it shows a dash (–) rather than a guess.</p>
+<p>In the drawings the thrower is at the bottom, as on a game's page. Distances along the sheet are to scale. Across the sheet they are stretched, so that differences of a few inches show. The rock in them is a made-up example.</p>
+
+<h2 id="cameras">The cameras</h2>
+<p>Each sheet has four cameras. A <strong>long camera</strong> hangs behind each end and looks down the whole sheet. For any throw, the one at the far end faces the thrower: it sees the slide, the release, the hog line and the rock's first few seconds. The one behind the thrower sees the rock run down to the far house and the skip's broom. An <strong>overhead camera</strong> above each house looks straight down on it, which is the best view of where stones come to rest.</p>
+<p>The long cameras are measured against the paint on the ice: the rings, the hog lines, the centre line, the four-foot strip and the sidelines. Checked against that paint, they place a stone across the sheet to within about an inch, from the hack to well past the hog line.</p>
+<figure>
+<svg viewBox="0 0 380 540" role="img" aria-label="Four cameras on a sheet: a long camera behind each end looking down the sheet, and an overhead camera above each house">
+  <rect class="ice" x="63" y="34" width="114" height="460"/>
+  <ellipse class="r12" cx="120" cy="438" rx="43.9" ry="18.3"/>
+  <ellipse class="rw" cx="120" cy="438" rx="29.3" ry="12.2"/>
+  <ellipse class="r4" cx="120" cy="438" rx="14.6" ry="6.1"/>
+  <ellipse class="rw" cx="120" cy="438" rx="3.6" ry="1.5"/>
+  <ellipse class="r12" cx="120" cy="90.5" rx="43.9" ry="18.3"/>
+  <ellipse class="rw" cx="120" cy="90.5" rx="29.3" ry="12.2"/>
+  <ellipse class="r4" cx="120" cy="90.5" rx="14.6" ry="6.1"/>
+  <ellipse class="rw" cx="120" cy="90.5" rx="3.6" ry="1.5"/>
+  <line class="paint" x1="120" y1="34" x2="120" y2="494"/>
+  <line class="paint" x1="63" y1="438" x2="177" y2="438"/>
+  <line class="paint" x1="63" y1="90.5" x2="177" y2="90.5"/>
+  <line class="paint" x1="63" y1="456.3" x2="177" y2="456.3"/>
+  <line class="paint" x1="63" y1="72.2" x2="177" y2="72.2"/>
+  <line class="hog" x1="63" y1="374" x2="177" y2="374"/>
+  <line class="hog" x1="63" y1="154.5" x2="177" y2="154.5"/>
+  <rect class="hackfoot" x="114.5" y="471.6" width="3.6" height="6"/>
+  <rect class="hackfoot" x="121.8" y="471.6" width="3.6" height="6"/>
+  <polygon class="wedge" points="120,508 64.8,154.5 175.2,154.5"/>
+  <rect class="cam" x="111" y="502" width="18" height="12" rx="2"/>
+  <polygon class="wedge" points="120,20 64.8,374 175.2,374"/>
+  <rect class="cam" x="111" y="14" width="18" height="12" rx="2"/>
+  <rect class="overview" x="63" y="392" width="114" height="92"/>
+  <circle class="camtop" cx="165.6" cy="402" r="6"/>
+  <rect class="overview" x="63" y="44.5" width="114" height="92"/>
+  <circle class="camtop" cx="165.6" cy="54.5" r="6"/>
+  <text class="lbl" x="196" y="488"><tspan font-weight="700">Long camera</tspan><tspan class="sm" x="196" dy="14">behind the thrower: the</tspan><tspan class="sm" x="196" dy="13">rock's run to the far house</tspan></text>
+  <text class="lbl" x="196" y="428"><tspan font-weight="700">Overhead camera</tspan><tspan class="sm" x="196" dy="14">above each house:</tspan><tspan class="sm" x="196" dy="13">where stones rest</tspan></text>
+  <text class="lbl" x="196" y="80.5"><tspan font-weight="700">Overhead camera</tspan></text>
+  <text class="lbl" x="196" y="24"><tspan font-weight="700">Long camera</tspan><tspan class="sm" x="196" dy="14">at the far end, facing the</tspan><tspan class="sm" x="196" dy="13">thrower: slide and release</tspan></text>
+</svg>
+<figcaption>The two long cameras and the two overhead cameras. Each long camera sees the far half of the sheet best.</figcaption>
+</figure>
+
+<h2 id="lines">Slide, Release and Final at the broom</h2>
+<p>Three straight lines are fitted through the rock's path, each over a different stretch of the delivery, and each is projected down the sheet to the skip's broom. Where it crosses the broom's depth the distance from the broom is measured.</p>
+<ul>
+  <li><span class="key" style="background:var(--m-slide)"></span><strong>Slide</strong> is where the slide was aimed. It is fitted from halfway between the hack and the back line to the release point.</li>
+  <li><span class="key" style="background:var(--m-release)"></span><strong>Release</strong> is where the release sent the rock. It is fitted over the first 9 ft past the release point.</li>
+  <li><span class="key" style="background:var(--m-final)"></span><strong>Final</strong> is the line the rock was running on once it was free. It is fitted over the first 9 ft past the hog line. This is the figure in the Line column of a practice session's table.</li>
+</ul>
+<p>All three are read from the long camera at the far end, which sees every frame of the delivery (30 frames per second).</p>
+<p><strong>Wide or narrow.</strong> Wide is the side away from the way the rock curled; narrow is the side it curled toward. A rock that did not curl either way is said to be left or right of the broom. A line within 2 in of the broom reads "On the broom" on a game's page and "to the broom" on a practice card, where the figures are in whole inches.</p>
+<p><strong>From the slide.</strong> Under Release, "+8″ from the slide" says the release sent the rock 8 inches wider than the slide was aimed (− is narrower). It is shown only when the difference is more than twice the two lines' combined uncertainty, so a figure there is a real change, not noise.</p>
+<p><strong>When a line shows a dash.</strong> Each line knows its own uncertainty at the broom, worked out from how closely the stone's path follows it. A Slide or Release line whose uncertainty at the broom is more than 6 in is not shown. Neither is shown when the release point was not read. Typically they are good to about 2 in.</p>
+<p>On brooms well off the centre line, the slide usually points outside the broom, and the rock curls back in. That is what the rocks did: it holds against the paint, the overhead cameras and the broom itself.</p>
+<figure>
+<svg viewBox="0 0 400 650" role="img" aria-label="The three lines: the slide from 9 ft behind the tee to the release, the release over the first 9 ft past it, the final over the first 9 ft past the hog line, each extended to the broom">
+  <rect class="ice" x="30" y="16" width="190" height="618"/>
+  <ellipse class="r12" cx="125" cy="568" rx="73.2" ry="27.4"/>
+  <ellipse class="rw" cx="125" cy="568" rx="48.8" ry="18.3"/>
+  <ellipse class="r4" cx="125" cy="568" rx="24.4" ry="9.2"/>
+  <ellipse class="rw" cx="125" cy="568" rx="6.1" ry="2.3"/>
+  <ellipse class="r12" cx="125" cy="46.8" rx="73.2" ry="27.4"/>
+  <ellipse class="rw" cx="125" cy="46.8" rx="48.8" ry="18.3"/>
+  <ellipse class="r4" cx="125" cy="46.8" rx="24.4" ry="9.2"/>
+  <ellipse class="rw" cx="125" cy="46.8" rx="6.1" ry="2.3"/>
+  <line class="paint" x1="125" y1="16" x2="125" y2="634"/>
+  <line class="paint" x1="30" y1="568" x2="220" y2="568"/>
+  <line class="paint" x1="30" y1="46.8" x2="220" y2="46.8"/>
+  <line class="paint" x1="30" y1="595.4" x2="220" y2="595.4"/>
+  <line class="paint" x1="30" y1="19.4" x2="220" y2="19.4"/>
+  <line class="hog" x1="30" y1="472" x2="220" y2="472"/>
+  <line class="hog" x1="30" y1="142.8" x2="220" y2="142.8"/>
+  <rect class="hackfoot" x="115.9" y="619.9" width="6.1" height="6"/>
+  <rect class="hackfoot" x="128" y="619.9" width="6.1" height="6"/>
+  <text class="sm" x="26" y="146.8" text-anchor="end">hog</text>
+  <text class="sm" x="26" y="50.8" text-anchor="end">tee</text>
+  <text class="sm" x="26" y="476" text-anchor="end">hog</text>
+  <text class="sm" x="26" y="572" text-anchor="end">tee</text>
+  <text class="sm" x="26" y="626.9" text-anchor="end">hack</text>
+  <polyline class="rockpath" points="121,616 120.9,612.2 120.8,608.5 120.6,604.8 120.5,601 120.4,597.2 120.3,593.5 120.2,589.8 120.1,586 119.9,582.2 119.8,578.5 119.7,574.8 119.6,571 119.5,567.2 119.3,563.5 119.2,559.8 119.1,556 119,552.2 118.9,548.5 118.7,544.8 118.6,541 118.5,537.2 118.4,533.5 118.3,529.8 118.2,526 118,522.2 117.9,518.5 117.8,514.8 117.7,511 117.6,507.2 117.4,503.5 117.3,499.8 117.2,496 117.1,492.2 117,488.5 116.8,484.7 116.6,481 116.5,477.2 116.3,473.5 116.1,469.7 115.9,466 115.7,462.2 115.5,458.5 115.3,454.7 115.2,451 115,447.2 114.8,443.5 114.6,439.7 114.4,436 114.3,432.2 114.1,428.5 113.9,424.7 113.8,421 113.6,417.2 113.4,413.5 113.3,409.7 113.1,406 112.9,402.2 112.8,398.5 112.6,394.7 112.4,391 112.3,387.2 112.1,383.5 111.9,379.7 111.8,376 111.6,372.2 111.5,368.5 111.3,364.7 111.2,361 111.1,357.2 110.9,353.5 110.8,349.7 110.7,346 110.6,342.2 110.5,338.5 110.4,334.7 110.3,331 110.2,327.2 110.1,323.5 110,319.7 110,316 109.9,312.2 109.8,308.5 109.8,304.7 109.7,301 109.7,297.2 109.7,293.5 109.7,289.7 109.6,286 109.6,282.2 109.6,278.5 109.6,274.7 109.6,271 109.7,267.2 109.7,263.5 109.7,259.7 109.8,256 109.8,252.2 109.9,248.5 109.9,244.7 110,241 110.1,237.2 110.1,233.5 110.2,229.7 110.3,226 110.4,222.2 110.6,218.5 110.7,214.7 110.8,211 110.9,207.2 111.1,203.5 111.2,199.7 111.4,196 111.6,192.2 111.7,188.5 111.9,184.7 112.1,181 112.3,177.2 112.5,173.5 112.7,169.7 113,166 113.2,162.2 113.4,158.5 113.7,154.7 113.9,151 114.2,147.2 114.5,143.5 114.7,139.7 115,136 115.3,132.2 115.6,128.5 115.9,124.7 116.2,121 116.6,117.2 116.9,113.5 117.3,109.7 117.6,106 118,102.2 118.3,98.5 118.7,94.7 119.1,91 119.5,87.2 119.9,83.5 120.3,79.8 120.7,76 121.2,72.2 121.6,68.5 122.1,64.8 122.5,61 123,57.2 123.6,52"/>
+  <circle class="stone" cx="121" cy="616" r="5"/>
+  <circle class="stone rest" cx="123.6" cy="52" r="5"/>
+  <circle class="relpt" cx="116.9" cy="485.5" r="4"/>
+  <line class="ext slide" x1="116.9" y1="485.5" x2="103" y2="46.8"/>
+  <line class="ext release" x1="114.8" y1="444.4" x2="95" y2="46.8"/>
+  <line class="ext final" x1="114.2" y1="430.8" x2="97" y2="46.8"/>
+  <line class="fit slide" x1="120.8" y1="609.1" x2="116.9" y2="485.5"/>
+  <line class="fit release" x1="116.9" y1="485.5" x2="114.8" y2="444.4"/>
+  <line class="fit final" x1="116.2" y1="472" x2="114.2" y2="430.8"/>
+  <path class="broom" d="M95.2,41.8 L105.2,51.8 M105.2,41.8 L95.2,51.8"/>
+  <line class="bracket slide" x1="233" y1="485.5" x2="233" y2="609.1"/>
+  <line class="bracket release" x1="245" y1="444.4" x2="245" y2="485.5"/>
+  <line class="bracket final" x1="257" y1="430.8" x2="257" y2="472"/>
+  <text class="lbl finalt" x="266" y="404"><tspan font-weight="700">Final</tspan><tspan class="sm" x="266" dy="14">first 9 ft past</tspan><tspan class="sm" x="266" dy="13">the hog line</tspan></text>
+  <text class="lbl releaset" x="266" y="452"><tspan font-weight="700">Release</tspan><tspan class="sm" x="266" dy="14">first 9 ft past</tspan><tspan class="sm" x="266" dy="13">the release</tspan></text>
+  <text class="lbl slidet" x="266" y="535"><tspan font-weight="700">Slide</tspan><tspan class="sm" x="266" dy="14">9 ft behind the tee</tspan><tspan class="sm" x="266" dy="13">to the release</tspan></text>
+  <text class="sm" x="124.9" y="489.5">release</text>
+  <text class="sm" x="92.2" y="38.8" text-anchor="end">broom</text>
+  <rect class="inset" x="262" y="16" width="134" height="150" rx="6"/>
+  <text class="lbl" x="270" y="34" font-weight="700">At the broom</text>
+  <text class="sm" x="270" y="48">zoomed across</text>
+  <line class="paint" x1="268" y1="76" x2="390" y2="76"/>
+  <path class="broom" d="M336,71 L346,81 M346,71 L336,81"/>
+  <circle class="dot slide" cx="362" cy="76" r="4"/>
+  <circle class="dot release" cx="302" cy="76" r="4"/>
+  <circle class="dot final" cx="317" cy="76" r="4"/>
+  <circle class="dot slide" cx="274" cy="102" r="4"/>
+  <text class="sm" x="284" y="106">Slide 3″ narrow</text>
+  <circle class="dot release" cx="274" cy="120" r="4"/>
+  <text class="sm" x="284" y="124">Release 5″ wide</text>
+  <circle class="dot final" cx="274" cy="138" r="4"/>
+  <text class="sm" x="284" y="142">Final 3″ wide</text>
+  <text class="sm" x="270" y="158">+8″ from the slide</text>
+</svg>
+<figcaption>The three stretches each line is fitted over (the brackets), and the lines followed to the broom.</figcaption>
+</figure>
+
+<h2 id="release">Release point</h2>
+<p>The moment the thrower's hand comes off the handle. A small model looks at the stone in every frame of the long camera at the far end, starting 20 in behind the tee, and says whether the hand is still on the handle; the release is where that answer changes and stays changed. On the delivery chart the dots before it are navy and those after it gold. Checked against releases marked by hand, it lands within 20 in on 18 throws out of 20, typically within 3 in.</p>
+
+<h2 id="hack">Hack, and At the hog line</h2>
+<p><strong>Hack</strong> is the hack the player throws from, Left or Right, read from where their stones sit before the push across the whole game. Under it is where this rock's stone was set, measured from the centre line.</p>
+<p><strong>At the hog line</strong> compares the rock, as its final line crosses the hog line, with a straight line from the middle of that player's hack to the broom. "On the line" means within 2 in.</p>
+<figure>
+<svg viewBox="0 0 400 360" role="img" aria-label="The hack is where the stone sat before the push; at the hog line the rock is measured against the line from the hack to the broom">
+  <rect class="ice" x="37" y="14" width="230" height="338"/>
+  <ellipse class="r12" cx="152" cy="237.6" rx="115" ry="47.6"/>
+  <ellipse class="rw" cx="152" cy="237.6" rx="115" ry="31.7"/>
+  <ellipse class="r4" cx="152" cy="237.6" rx="61" ry="15.9"/>
+  <ellipse class="rw" cx="152" cy="237.6" rx="15.2" ry="4"/>
+  <line class="paint" x1="152" y1="14" x2="152" y2="352"/>
+  <line class="paint" x1="37" y1="237.6" x2="267" y2="237.6"/>
+  <line class="paint" x1="37" y1="285.2" x2="267" y2="285.2"/>
+  <line class="hog" x1="37" y1="71.2" x2="267" y2="71.2"/>
+  <rect class="hackfoot" x="129.2" y="329.7" width="15.2" height="6"/>
+  <rect class="hackfoot" x="159.6" y="329.7" width="15.2" height="6"/>
+  <text class="sm" x="33" y="75.2" text-anchor="end">hog</text>
+  <text class="sm" x="33" y="241.6" text-anchor="end">tee</text>
+  <text class="sm" x="33" y="336.7" text-anchor="end">hack</text>
+  <line class="ext aim" x1="136.8" y1="332.7" x2="121.9" y2="14"/>
+  <polyline class="rockpath" points="132,320.8 136.5,14"/>
+  <circle class="stone" cx="132" cy="320.8" r="9"/>
+  <line class="measure" x1="124.5" y1="61.2" x2="135.7" y2="61.2"/>
+  <text class="sm" x="141.7" y="65.2">4″ narrow</text>
+  <text class="lbl" x="276" y="41.2"><tspan font-weight="700">At the hog line</tspan><tspan class="sm" x="276" dy="14">the rock against the</tspan><tspan class="sm" x="276" dy="13">hack-to-broom line</tspan></text>
+  <text class="lbl" x="276" y="286.8"><tspan font-weight="700">Hack</tspan><tspan class="sm" x="276" dy="14">where the stone sat</tspan><tspan class="sm" x="276" dy="13">before the push</tspan></text>
+  <text class="sm" x="116.8" y="34.8" text-anchor="end">to the broom</text>
+</svg>
+<figcaption>Where the stone sat before the push, and the rock against the hack-to-broom line at the hog line.</figcaption>
+</figure>
+
+<h2 id="weight">Weight</h2>
+<p>The time the rock took from the hog line at the thrower's end to the hog line at the far end, in seconds: the hog-to-hog time. Each line is timed when the front of the stone first touches the paint, and a different camera times each one.</p>
+<ul>
+  <li><strong>The thrower's hog line</strong> is timed by the long camera at the far end, which faces the thrower and sees that line painted across its picture. (No long camera can see the hog line at its own end: it is just below the camera, out of view.) It sees 30 frames a second, and its crossings agree with crossings marked by hand to about a tenth of a second.</li>
+  <li><strong>The far hog line</strong> is timed by the overhead camera above the house the rock is thrown to. That line sits right at the top edge of its picture, where the lens bends the paint into a slight curve, so the crossing is read at the point where the rock itself crosses.</li>
+</ul>
+<p>The overhead camera above the thrower's house sees the thrower's hog line too, but the thrower and sweepers often stand between it and the stone, so it is used only as a check.</p>
+<p>A rock that never reached the far hog line has no weight. Neither does one whose two crossings don't fit together: a rock only slows down, so if it seems to have crossed the far line much faster than the near one, the two cameras were not watching the same rock.</p>
+<p><strong>Estimated.</strong> Sometimes the overhead camera first sees the rock just past the far hog line, often with the sweepers over it. The crossing is then worked back from the rock's first few sightings, and the weight is marked "estimated".</p>
+<p><strong>How far to trust it.</strong> The two crossings come from two cameras, and the club's video does not always keep their clocks in step. On some nights that has put the weights thrown toward one end out by up to half a second.</p>
+
+<h2 id="rotation">Rotation</h2>
+<p>How fast the thrower sets the rock turning, in turns a minute (rpm). The long camera at the far end follows the rock from 5 ft past the hog line at the thrower's end. By then the thrower's hand is well clear of the handle, so it is the rock's own spin being timed. A second small model finds the two ends of the handle in each frame, ten times a second. As the stone turns, the handle swings across it once a turn; the rpm is how often it swings.</p>
+<p>The rpm is the rate over the first 1¼ turns from there: the spin as thrown, before the rock slows. At a usual 10 to 15 rpm, that is the next 5 to 8 seconds. Within that it agrees with careful frame-by-frame counts to about 10%. A rock seen turning under half a turn, usually a fast hit or a very slowly rotating rock, is given as a range, such as 3–5 rpm. Under about a third of a turn there is no reading.</p>
+<p><strong>In-turn or out-turn</strong> comes from which way the rock curled and which hack the player throws from (on a practice session, the hand picked when it was started): the handle's swing looks the same either way round.</p>
+<figure>
+<svg viewBox="0 0 380 370" role="img" aria-label="Rotation is timed from the handle's swing, over the first one and a quarter turns from 5 ft past the hog line">
+  <rect class="ice" x="48" y="30" width="144" height="329"/>
+  <line class="paint" x1="120" y1="30" x2="120" y2="359"/>
+  <line class="hog" x1="48" y1="325.4" x2="192" y2="325.4"/>
+  <text class="sm" x="44" y="329.4" text-anchor="end">hog</text>
+  <text class="sm" x="44" y="307" text-anchor="end">+5 ft</text>
+  <polyline class="rockpath" points="105,359 91.2,30"/>
+  <g class="turn"><circle cx="102.7" cy="303" r="6"/><line x1="102.7" y1="303" x2="102.7" y2="295"/></g>
+  <g class="turn"><circle cx="101.9" cy="285.5" r="6"/><line x1="101.9" y1="285.5" x2="95.8" y2="280.4"/></g>
+  <g class="turn"><circle cx="101.2" cy="268" r="6"/><line x1="101.2" y1="268" x2="93.3" y2="269.4"/></g>
+  <g class="turn"><circle cx="100.4" cy="250.5" r="6"/><line x1="100.4" y1="250.5" x2="96.4" y2="257.4"/></g>
+  <g class="turn"><circle cx="99.7" cy="233" r="6"/><line x1="99.7" y1="233" x2="102.5" y2="240.5"/></g>
+  <g class="turn"><circle cx="99" cy="215.5" r="6"/><line x1="99" y1="215.5" x2="106.5" y2="218.2"/></g>
+  <g class="turn"><circle cx="98.2" cy="198" r="6"/><line x1="98.2" y1="198" x2="105.2" y2="194"/></g>
+  <g class="turn"><circle cx="97.5" cy="180.5" r="6"/><line x1="97.5" y1="180.5" x2="98.9" y2="172.6"/></g>
+  <g class="turn"><circle cx="96.8" cy="163" r="6"/><line x1="96.8" y1="163" x2="91.6" y2="156.9"/></g>
+  <g class="turn pale"><circle cx="96" cy="145.5" r="6"/><line x1="96" y1="145.5" x2="88" y2="145.5"/></g>
+  <g class="turn pale"><circle cx="95.3" cy="128" r="6"/><line x1="95.3" y1="128" x2="90.2" y2="134.1"/></g>
+  <g class="turn pale"><circle cx="94.6" cy="110.5" r="6"/><line x1="94.6" y1="110.5" x2="96" y2="118.4"/></g>
+  <g class="turn pale"><circle cx="93.8" cy="93" r="6"/><line x1="93.8" y1="93" x2="100.8" y2="97"/></g>
+  <g class="turn pale"><circle cx="93.1" cy="75.5" r="6"/><line x1="93.1" y1="75.5" x2="100.6" y2="72.8"/></g>
+  <g class="turn pale"><circle cx="92.4" cy="58" r="6"/><line x1="92.4" y1="58" x2="95.1" y2="50.5"/></g>
+  <line class="bracket spin" x1="208" y1="149" x2="208" y2="303"/>
+  <line class="bracket spin pale" x1="208" y1="51" x2="208" y2="149"/>
+  <text class="lbl" x="218" y="219"><tspan font-weight="700">rpm</tspan><tspan class="sm" x="218" dy="14">the first 1¼ turns, from</tspan><tspan class="sm" x="218" dy="13">5 ft past the hog line</tspan></text>
+  <text class="lbl" x="218" y="93"><tspan class="sm">followed on to the</tspan><tspan class="sm" x="218" dy="13">bottom of the picture</tspan></text>
+  <rect class="cam" x="111" y="8" width="18" height="12" rx="2"/>
+  <text class="sm" x="134" y="18">long camera at the far end</text>
+</svg>
+<figcaption>The rate is timed from the handle's swing over the first 1¼ turns, starting 5 ft past the hog line.</figcaption>
+</figure>
+
+<h2 id="curl">Curl</h2>
+<p>How far the rock ended up from its final line: the final line is followed on to where the rock stopped, or to where it first hit a stone, and the distance across is the curl. The long camera behind the thrower follows the rock all the way down. The rock is said to have curled one way or the other only when that distance is 2 in or more.</p>
+<figure>
+<svg viewBox="0 0 380 360" role="img" aria-label="Curl is how far the rock ended up from its final line, extended">
+  <rect class="ice" x="20" y="14" width="240" height="332.8"/>
+  <ellipse class="r12" cx="140" cy="67.4" rx="109.7" ry="47.6"/>
+  <ellipse class="rw" cx="140" cy="67.4" rx="73.1" ry="31.7"/>
+  <ellipse class="r4" cx="140" cy="67.4" rx="36.6" ry="15.9"/>
+  <ellipse class="rw" cx="140" cy="67.4" rx="9.1" ry="4"/>
+  <line class="paint" x1="140" y1="14" x2="140" y2="346.8"/>
+  <line class="paint" x1="20" y1="67.4" x2="260" y2="67.4"/>
+  <line class="paint" x1="20" y1="19.8" x2="260" y2="19.8"/>
+  <line class="hog" x1="20" y1="233.8" x2="260" y2="233.8"/>
+  <text class="sm" x="16" y="71.4" text-anchor="end">tee</text>
+  <text class="sm" x="16" y="237.8" text-anchor="end">hog</text>
+  <line class="ext final" x1="108.8" y1="346.8" x2="98" y2="67.4"/>
+  <polyline class="rockpath" points="118.9,346.8 119,341.6 119.2,336.4 119.4,331.2 119.6,326 119.8,320.8 120,315.6 120.2,310.4 120.4,305.2 120.7,300 120.9,294.8 121.1,289.6 121.4,284.4 121.7,279.2 121.9,274 122.2,268.8 122.5,263.6 122.8,258.4 123.1,253.2 123.4,248 123.7,242.8 124,237.6 124.3,232.4 124.7,227.2 125,222 125.4,216.8 125.7,211.6 126.1,206.4 126.5,201.2 126.9,196 127.3,190.8 127.7,185.6 128.1,180.4 128.5,175.2 128.9,170 129.3,164.8 129.8,159.6 130.2,154.4 130.7,149.2 131.2,144 131.6,138.8 132.1,133.6 132.6,128.4 133.1,123.2 133.6,118 134.1,112.8 134.6,107.6 135.2,102.4 135.7,97.2 136.3,92 136.8,86.8 137.9,76.4"/>
+  <circle class="stone rest" cx="137.9" cy="76.4" r="8"/>
+  <line class="measure" x1="98.3" y1="92.4" x2="137.9" y2="92.4"/>
+  <text class="lbl" x="272" y="190.8"><tspan font-weight="700">Curl</tspan><tspan class="sm" x="272" dy="14">from the final line</tspan><tspan class="sm" x="272" dy="13">to where it stopped</tspan></text>
+  <text class="sm" x="100.8" y="294.8" text-anchor="end">final line</text>
+</svg>
+<figcaption>Curl: from the final line, followed on, to where the rock stopped.</figcaption>
+</figure>
+
+<h2 id="rest">Came to rest</h2>
+<p>Where the rock stopped, from the overhead camera above the house: which ring it is in, and how far it is from the button. The overhead camera sees the house from directly above, so this is the most exact figure on the page, good to about an inch.</p>
+
+<h2 id="thinking">Thinking time</h2>
+<p>How long a team took to decide on a shot. As in a timed game, the clock runs while the team is deciding and stops once the stone is on its way: from 5 seconds after the previous stone comes to rest (time to clear the ice), until this stone crosses the tee line at the throwing end. An end's first stone is not timed, because there is no stone before it to start the clock, and neither is a stone thrown after one that never came to rest.</p>
+<figure>
+<svg viewBox="0 0 380 118" role="img" aria-label="Thinking time runs from 5 seconds after the previous stone comes to rest until this stone crosses the tee line">
+  <line class="paint" x1="16" y1="62" x2="368" y2="62"/>
+  <rect class="grace" x="40" y="54" width="44" height="16"/>
+  <rect class="clock" x="84" y="54" width="204" height="16"/>
+  <line class="tick" x1="40" y1="46" x2="40" y2="78"/>
+  <line class="tick" x1="84" y1="46" x2="84" y2="78"/>
+  <line class="tick" x1="288" y1="46" x2="288" y2="78"/>
+  <text class="sm" x="40" y="26" text-anchor="middle">previous stone</text>
+  <text class="sm" x="40" y="38" text-anchor="middle">rests</text>
+  <text class="sm" x="62" y="94" text-anchor="middle">5 s</text>
+  <text class="lbl" x="186" y="66" text-anchor="middle" font-weight="700">thinking time</text>
+  <text class="sm" x="288" y="26" text-anchor="middle">stone crosses</text>
+  <text class="sm" x="288" y="38" text-anchor="middle">the tee line</text>
+  <text class="sm" x="186" y="94" text-anchor="middle">the team's clock runs</text>
+</svg>
+<figcaption>The thinking-time clock for one stone.</figcaption>
+</figure>
+
+</main>
+<footer><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/measurements">Measurements</a></footer>
+</html>

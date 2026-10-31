@@ -15,7 +15,7 @@ import math
 from dataclasses import dataclass
 
 from curling_score.detect import longview, rest
-from curling_score.game import (broomtime, fartime, hogtime, linetime, releasetime,
+from curling_score.game import (aimlines, broomtime, fartime, hogtime, linetime, releasetime,
                                 sidereleases, spintime, thinking)
 from curling_score.game import shots as shots_mod
 from curling_score.game.shots import Shot
@@ -121,6 +121,8 @@ def enrich(video, setups, sideviews, models, *, house, arrival, release, house_f
             if arrival is not None:
                 _run("release", stages.release, shots, keeper, hog_view,
                      model=release_model)
+                # The slide and release lines need the release point.
+                aimlines.attach_aim_lines(shots)
         finally:
             if keeper is not None:
                 keeper.clear()

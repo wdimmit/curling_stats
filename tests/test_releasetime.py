@@ -162,7 +162,7 @@ class Keeper:
 def line_with(delivery=tuple(tuple(s) for s in DELIVERY)):
     return linetime.Line(
         start=(0.05, TEE_Y + 1.0), at_hog_x=0.1, at_hog_offset=0.01, at_broom_x=0.2,
-        miss=0.02, curl="left", side="wide", confirmed=True, hog_path=((30.0, 0.1),),
+        miss=0.02, curl="left", side="wide", hog_path=((30.0, 0.1),),
         path=((20.0, 0.2),), fit_n=12, fit_rms=0.01, delivery=delivery)
 
 

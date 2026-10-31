@@ -326,7 +326,13 @@ from pathlib import Path
 # Last rock only: the house read after it often lands in the clearing. On the
 # 16 harness games board agreement 40 -> 41/54; 10 last rocks change, 7 right
 # in the video, none worse.
-PIPELINE_VERSION = "2026.10.29.2"
+# 2026.10.31.1: three lines at the broom (spec 2026-10-31-slide-release-final-
+# lines): the final line is fitted over the first 9 ft past the hog line
+# (`linetime.final_fit`; the 6.4-10 m fit stays the pass's own), and the slide
+# and release lines (`game/aimlines.py`) from halfway to the back line to the
+# release point and over 9 ft past it. The line check from behind the thrower
+# is retired. Timeline schema 10.
+PIPELINE_VERSION = "2026.10.31.1"
 
 
 def model_id(weights) -> str:

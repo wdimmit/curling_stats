@@ -9,7 +9,7 @@ every time on the stream's clock.
 
 import math
 
-from curling_score.game import fartime, hogtime, split
+from curling_score.game import aimlines, fartime, hogtime, split
 from curling_score.geometry import constants as C
 
 # The rings a resting stone is said to be in: the smallest one it touches.
@@ -101,7 +101,7 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
             "hog_offset_m": _r(line.at_hog_offset, 4),
             # The thrown line's x at the throwing hog line: with the broom (or
             # the far tee), what the clip overlay draws it through.
-            "at_hog_x": _r(line.at_hog_x, 4), "confirmed": line.confirmed,
+            "at_hog_x": _r(line.at_hog_x, 4),
             # Where it was aimed at the far tee: only when no broom was held.
             "aim_x": _r(getattr(line, "at_tee_x", None), 4),
             # The delivery from the hack, as the viewer's Delivery chart reads
@@ -110,7 +110,11 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
             "start": None if line.start is None else {"x": _r(line.start[0], 4),
                                                       "y": _r(line.start[1], 3)},
             "delivery": [[_r(t, 2), _r(y, 2), _r(x, 3)]
-                         for t, y, x in getattr(line, "delivery", ())]},
+                         for t, y, x in getattr(line, "delivery", ())],
+            # Where the slide and the release sent it, as the timeline has them.
+            "slide": aimlines.aim_json(getattr(line, "slide", None)),
+            "release_line": aimlines.aim_json(getattr(line, "release_line", None)),
+            "set": aimlines.set_json(getattr(line, "set", None))},
         # The rock's rotation as thrown (game/spintime.py): a range when it
         # showed under half a turn in view.
         "spin": _spin(getattr(shot, "spin", None)),
@@ -120,6 +124,8 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
     # Where the hand let go, [t, y, x] like a delivery sample: absent when it
     # was not read, as the timeline leaves it (timeline._line).
     hand = getattr(line, "release", None)
+    if line is not None and getattr(line, "final_refused", False):
+        out["line"]["final_refused"] = True
     if hand is not None:
         out["line"]["release"] = [_r(hand[0], 2), _r(hand[1], 2), _r(hand[2], 3)]
     return out

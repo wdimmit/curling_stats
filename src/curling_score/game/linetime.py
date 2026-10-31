@@ -3,8 +3,8 @@
 The stone's line just past the throwing hog line -- read from the side camera
 that times that crossing, where the stone has certainly left the hand and has
 barely begun to curl -- extended to the skip's broom. Then, from the camera
-behind the thrower, where the stone actually went, which confirms the line and
-says which way it curled.
+behind the thrower, where the stone actually went, which says which way it
+curled.
 
 Everything here is in the timeline's frame: metres from the destination tee,
 +y up-sheet toward the thrower, +x the thrower's right.
@@ -13,6 +13,8 @@ Attach-only, like ``hogtime`` and ``broomtime``: it may give a shot a
 ``line`` and can never add, drop or renumber one. Measured on four games on
 2026-09-24 (``~/curling-work/line-spike``): the line fits straight to
 0.2-0.4 cm and the camera behind the thrower agrees with it to about 4 cm.
+That check ran on every rock until 2026-10-31, when it was retired (spec
+docs/superpowers/specs/2026-10-31-slide-release-final-lines-design.md).
 
 In doubles the partner is usually sweeping rather than holding a broom in the
 house, and a rock nobody held a broom for is still measured: its start, line,
@@ -25,7 +27,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -41,16 +43,19 @@ TEE_Y = C.TEE_TO_TEE_M                          # the throwing tee
 HOG_Y = C.TEE_TO_TEE_M - C.TEE_TO_HOGLINE_M     # the throwing hog line
 # Free flight only: past the hog line the stone has certainly been released,
 # and within 10 m of the tee it has barely curled.
+# This fit is the pass's own: whether a rock has a line at all, where the
+# path behind the thrower is seeded, which of several brooms it was thrown at.
 FIT_PAST_TEE_M = (C.TEE_TO_HOGLINE_M, 10.0)
 FIT_MIN_N = 15
 FIT_MIN_SPAN_M = 2.5
-# The camera behind the thrower checks the line only where the rock has barely
-# begun to curl: 5.3-9.3 m past the throwing hog line, where the spike found it
-# on the fitted line to about 4 cm (2026-09-24). Nearer the house the rock has
-# curled 10-36 cm off its thrown line, and comparing there measures the curl.
-CONFIRM_WINDOW_Y = (19.0, 23.0)
-CONFIRM_MIN_N = 3
-CONFIRM_TOL_M = 0.10
+# The final line the figures report: the first 9 ft past the hog line (the
+# user's, 2026-10-31). Light rocks pick up curl over 6.4-10 m (+7-11 cm at the
+# broom under 2.2 m/s); the shorter window takes less of it. Two metres of the
+# window's 2.74 is enough: a band that starts a little late still fits.
+NINE_FT_M = 9 * 0.3048
+FINAL_PAST_TEE_M = (C.TEE_TO_HOGLINE_M, C.TEE_TO_HOGLINE_M + NINE_FT_M)
+FINAL_MIN_N = 15
+FINAL_MIN_SPAN_M = 2.0
 CURL_MIN_M = 0.05
 THIN_M = 0.5
 
@@ -69,33 +74,51 @@ class Fit:
 @dataclass(frozen=True)
 class Line:
     start: tuple | None          # (x, y): the stone before push-off
-    at_hog_x: float
+    at_hog_x: float | None       # the final line's; None with final_refused
     at_hog_offset: float | None  # at_hog_x less the start-to-broom line there
-    at_broom_x: float | None     # None: nobody held a broom (doubles)
+    at_broom_x: float | None     # None: nobody held a broom (doubles), or final_refused
     miss: float | None           # at_broom_x - broom x, signed
     curl: str | None             # "left" | "right"
     side: str | None             # "wide" | "narrow"
-    confirmed: bool | None
     hog_path: tuple              # ((y, x), ...) thinned, travel order
     path: tuple                  # ((y, x), ...) thinned, travel order
-    fit_n: int
-    fit_rms: float
+    fit_n: int | None            # the final fit's
+    fit_rms: float | None
     at_tee_x: float | None = None  # the line's x at the destination tee, only without a broom
     delivery: tuple = ()         # ((t, y, x), ...) from the rest to past the hog line; see read_delivery
     release: tuple | None = None  # (t, y, x): the point on delivery the hand let go; see releasetime
+    # The 9 ft final window could not be fitted, though the pass's own fit
+    # could: the rock keeps its line, path and curl, and reports no final line.
+    final_refused: bool = False
+    # Whether a broom was held: with final_refused nothing else says so.
+    held_broom: bool = True
+    # hog_track's samples as read, (t, x, y, y_past_tee) at 30 fps: the release
+    # line continues the delivery on them. Not serialised.
+    track: tuple = field(default=(), repr=False, compare=False)
+    # aimlines.attach_aim_lines': AimLine, AimLine, AimSet.
+    slide: object = None
+    release_line: object = None
+    set: object = None
 
 
-def fit_line(track) -> Fit | None:
-    """A straight x(y) through the free-flight samples, or None."""
-    lo, hi = FIT_PAST_TEE_M
+def fit_line(track, window=FIT_PAST_TEE_M, min_n: int = FIT_MIN_N,
+             min_span: float = FIT_MIN_SPAN_M) -> Fit | None:
+    """A straight x(y) through the samples ``window`` metres past the throwing
+    tee, or None with fewer than ``min_n`` of them or spanning under ``min_span``."""
+    lo, hi = window
     pts = [(y, x) for _t, x, y, yp in track if lo <= yp <= hi]
-    if len(pts) < FIT_MIN_N:
+    if len(pts) < min_n:
         return None
     ys = np.array([p[0] for p in pts]); xs = np.array([p[1] for p in pts])
-    if np.ptp(ys) < FIT_MIN_SPAN_M:
+    if np.ptp(ys) < min_span:
         return None
     b, a = np.polyfit(ys, xs, 1)
     return Fit(a=float(a), b=float(b), n=len(pts), rms=float(np.std(xs - (a + b * ys))))
+
+
+def final_fit(track) -> Fit | None:
+    """The final line: the first 9 ft past the hog line."""
+    return fit_line(track, FINAL_PAST_TEE_M, FINAL_MIN_N, FINAL_MIN_SPAN_M)
 
 
 def aim_x(start, broom, y: float) -> float:
@@ -128,18 +151,6 @@ def side_of(miss: float, curl: str | None) -> str | None:
     return "wide" if np.sign(miss) == -toward else "narrow"
 
 
-def confirmed_by(path, fit: Fit) -> bool | None:
-    """Does the camera behind the thrower see the rock on the fitted line,
-    where the rock has not yet curled away from it? None when it did not see
-    the rock there."""
-    lo, hi = CONFIRM_WINDOW_Y
-    seen = [(y, x) for y, x in path if lo <= y <= hi]
-    if len(seen) < CONFIRM_MIN_N:
-        return None
-    dev = float(np.median([abs(x - fit.x(y)) for y, x in seen]))
-    return dev <= CONFIRM_TOL_M
-
-
 def thin(points, step: float = THIN_M) -> tuple:
     """About one (y, x) per ``step`` metres of travel, the last always kept."""
     if not points:
@@ -153,31 +164,36 @@ def thin(points, step: float = THIN_M) -> tuple:
     return tuple(out)
 
 
-def measure(fit: Fit, track, start, broom, rest=None, path=(), delivery=()) -> Line:
+def measure(fit: Fit, track, start, broom, rest=None, path=(), delivery=(), *,
+            final: Fit | None) -> Line:
     """Everything the Detail pane says about one rock, from its pieces.
 
-    ``broom`` None is a rock nobody held a broom for (doubles): the offset at
-    the hog line, the miss and the side are None, and ``at_tee_x`` pins the
-    line in their place."""
-    at_hog_x = fit.x(HOG_Y)
+    ``fit`` is the pass's own line; ``final`` the 9 ft one the figures
+    report, None when it could not be fitted (``final_refused``: no figure
+    against the broom, but the curl still comes from ``fit``). ``broom`` None
+    is a rock nobody held a broom for (doubles): the offset at the hog line,
+    the miss and the side are None, and ``at_tee_x`` pins the line in their
+    place."""
     end = rest if rest is not None else ((path[-1][1], path[-1][0]) if path else None)
-    curl = curl_of(fit, end)
-    if broom is None:
-        offset = at_broom_x = miss = side = None
-        at_tee_x = fit.x(0.0)
-    else:
-        bx, by = broom
-        offset = None if start is None else at_hog_x - aim_x(start, broom, HOG_Y)
-        at_broom_x = fit.x(by)
-        miss = at_broom_x - bx
-        side = side_of(miss, curl)
-        at_tee_x = None
+    curl = curl_of(final or fit, end)
+    at_hog_x = offset = at_broom_x = miss = side = at_tee_x = None
+    if final is not None:
+        at_hog_x = final.x(HOG_Y)
+        if broom is None:
+            at_tee_x = final.x(0.0)
+        else:
+            bx, by = broom
+            offset = None if start is None else at_hog_x - aim_x(start, broom, HOG_Y)
+            at_broom_x = final.x(by)
+            miss = at_broom_x - bx
+            side = side_of(miss, curl)
     return Line(start=start, at_hog_x=at_hog_x, at_hog_offset=offset,
                 at_broom_x=at_broom_x, miss=miss, curl=curl, side=side,
-                confirmed=confirmed_by(list(path), fit),
                 hog_path=thin([(y, x) for _t, x, y, _yp in track]),
-                path=thin(list(path)), fit_n=fit.n, fit_rms=fit.rms, at_tee_x=at_tee_x,
-                delivery=tuple(delivery))
+                path=thin(list(path)), fit_n=None if final is None else final.n,
+                fit_rms=None if final is None else final.rms, at_tee_x=at_tee_x,
+                delivery=tuple(delivery), final_refused=final is None,
+                held_broom=broom is not None, track=tuple(track))
 
 
 CROP_EDGE_ROWS = 6          # the box is clipped at the band's bottom edge
@@ -584,7 +600,8 @@ def time_lines(shots, video, hog_view, dest_view, *, model=None, decode=None, de
                              path_until(shot), fit, decode=decode, detect=detect_bands)
             shot.line = measure(fit, track, frames.start,
                                 None if broom is None else (broom.x_m, broom.y_m),
-                                rest=_rest(shot), path=path, delivery=delivery)
+                                rest=_rest(shot), path=path, delivery=delivery,
+                                final=final_fit(track))
             n += 1
         except Exception:
             log.exception("line pass failed on shot %s; it keeps no line",

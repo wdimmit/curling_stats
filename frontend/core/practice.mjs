@@ -3,15 +3,14 @@
  * functions of the throw records the API serves (service/practice.py), so the
  * page and its tests agree on every word. */
 
-import { feetInches } from "./line.mjs";
+import { feetInches, ON_M, SLIDE_SHOWN } from "./line.mjs";
 
 const RINGS = {
   button: "Button", 4: "4-foot", 8: "8-foot", 12: "12-foot",
   short: "In front", long: "Behind", out: "Out of play",
 };
-// A miss this small is on the broom: under the detector's own accuracy.
-const ON_BROOM_M = 0.0254;
-// "On the broom" for the summary strip: within six inches.
+// "On the broom" for the summary strip: within six inches. (A single figure's
+// "to the broom" is ON_M, shared with the game page.)
 const NEAR_BROOM_M = 0.1524;
 
 export function ringWord(rest) {
@@ -25,11 +24,77 @@ export function restText(rest) {
   return `${ring} · ${feetInches(rest.to_tee_m)} from the tee`;
 }
 
-/* ``short`` is the throws table's: "5 in narrow", the broom left understood. */
+const IN_PER_M = 1 / 0.0254;
+
+/* Whole inches: finer would claim more than the cameras measure. */
+const inches = v => String(Math.round(Math.abs(v) * IN_PER_M));
+
+/* A miss at the broom as { value: '9"', side: "narrow" }, or "to the broom"
+ * within an inch. ``side`` is the pipeline's; without one, left or right. */
+function offsetParts(miss, side) {
+  if (Math.abs(miss) <= ON_M) return { value: "to the broom", side: null };
+  return { value: `${inches(miss)}"`, side: side ?? (miss > 0 ? "right" : "left") };
+}
+
+/* A broomless line, where it crosses the far tee: '8" left of centre'. */
+const centreParts = x => ({ value: `${inches(x)}"`, side: `${x < 0 ? "left" : "right"} of centre` });
+
+/* The final line's figure: against the broom, else the far tee; null when
+ * it could not be fitted. */
+function finalParts(line) {
+  if (!line || line.final_refused) return null;
+  if (line.miss_m != null) return offsetParts(line.miss_m, line.side);
+  if (line.aim_x != null) return centreParts(line.aim_x);
+  return null;
+}
+
+/* A slide or release line's figure, null when it was not fitted or is too
+ * uncertain to show (game/aimlines.py). */
+function aimParts(a) {
+  if (!a || !a.shown) return null;
+  if (a.at_broom) return offsetParts(a.at_broom.miss_m, a.side);
+  if (a.at_tee) return centreParts(a.at_tee.x);
+  return null;
+}
+
+/* How far the release moved the line from the slide's: '+7"' wide, '−7"'
+ * narrow, or '7" right' without a curl. */
+function setParts(m, curl) {
+  if (curl !== "left" && curl !== "right") return { value: `${inches(m)}" ${m > 0 ? "right" : "left"}` };
+  return { value: `${m > 0 ? "+" : "−"}${inches(m)}"` };
+}
+
+/* The card's three lines and the set: { slide, release, final, set }, each
+ * null where it was not measured or is not shown. null altogether for a
+ * record from before the slide and release lines were stored. While the
+ * slide is held back (SLIDE_SHOWN, core/line.mjs) there is no slide key and
+ * no set. */
+export function aimFigures(t, { slide = SLIDE_SHOWN } = {}) {
+  const line = t?.line;
+  if (!line || !("slide" in line)) return null;
+  const out = {
+    release: aimParts(line.release_line),
+    final: finalParts(line),
+    set: slide && line.set?.shown ? setParts(line.set.m, t.curl) : null,
+  };
+  return slide ? { slide: aimParts(line.slide), ...out } : out;
+}
+
+/* A figure in words: '9" narrow', "to the broom", '8" left of centre'. */
+export function figureWords(f) {
+  return f.side ? `${f.value} ${f.side}` : f.value;
+}
+
+/* ``short`` is the throws table's, in the card's inch marks: '5" narrow',
+ * the broom left understood. */
 export function lineText(line, { short = false } = {}) {
   if (!line) return null;
+  if (short) {
+    const f = finalParts(line);
+    return f && figureWords(f);
+  }
   if (line.miss_m != null) {
-    if (Math.abs(line.miss_m) < ON_BROOM_M) return "On the broom";
+    if (Math.abs(line.miss_m) <= ON_M) return "On the broom";
     const off = `${feetInches(line.miss_m)} ${line.side ?? (line.miss_m < 0 ? "left" : "right")}`;
     return short ? off : `${off} of the broom`;
   }
