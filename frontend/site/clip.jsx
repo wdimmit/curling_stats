@@ -75,30 +75,15 @@ function ClipLines({ overlay, video }) {
   return (
     <svg className="clip-lines" viewBox={`0 0 ${CLIP_W} ${CLIP_H}`} preserveAspectRatio="none"
          aria-hidden="true">
-      {/* The lines fade toward the camera: that is where the rock is biggest
-          and where the calibration, made from the far end's paint, is least sure. */}
-      <defs>
-        <linearGradient id="clip-lines-fade" gradientUnits="userSpaceOnUse"
-                        x1="0" y1="0" x2="0" y2={CLIP_H}>
-          <stop offset="0.35" stopColor="#fff" />
-          <stop offset="1" stopColor="#fff" stopOpacity="0.3" />
-        </linearGradient>
-        <mask id="clip-lines-mask" maskUnits="userSpaceOnUse" x="0" y="0"
-              width={CLIP_W} height={CLIP_H}>
-          <rect width={CLIP_W} height={CLIP_H} fill="url(#clip-lines-fade)" />
-        </mask>
-      </defs>
-      <g mask="url(#clip-lines-mask)">
-        {marks.map(([kind, line]) => <polyline key={`${kind}-edge`} points={pts(line)}
-                                               className={`edge ${kind}-edge`} />)}
-        {broom && <circle {...broom} className="edge" />}
-        {marks.map(([kind, line]) => <polyline key={kind} points={pts(line)} className={kind} />)}
-        {broom && <circle {...broom} className="broom" />}
-      </g>
+      {marks.map(([kind, line]) => <polyline key={`${kind}-edge`} points={pts(line)}
+                                             className={`edge ${kind}-edge`} />)}
+      {broom && <circle {...broom} className="edge" />}
+      {marks.map(([kind, line]) => <polyline key={kind} points={pts(line)} className={kind} />)}
+      {broom && <circle {...broom} className="broom" />}
       {/* The dots sit about a ring's width apart, so every light ring goes
           down first, as a disc under all of them: no dot covers another's. */}
       {dots.map(([, u, v], i) => (
-        <circle key={`halo-${i}`} cx={u * CLIP_W} cy={v * CLIP_H} r="1.75" className="dot-halo" />
+        <circle key={`halo-${i}`} cx={u * CLIP_W} cy={v * CLIP_H} r="2" className="dot-halo" />
       ))}
       {dots.map(([, u, v, kind], i) => (
         // Coloured as the line the rock is on: in the hand it travels the
