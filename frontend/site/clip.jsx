@@ -86,7 +86,9 @@ function ClipLines({ overlay, video }) {
   );
 }
 
-export function ClipPlayer({ src, overlay, burned = false, autoPlay = false }) {
+/* ``under`` goes right under the picture, above the legend; it shows while
+ * the clip's link is still coming, too. */
+export function ClipPlayer({ src, overlay, burned = false, autoPlay = false, under = null }) {
   const [link, setLink] = useState(null);
   const [again, setAgain] = useState(false);
   const [lines, setLines] = useState(savedLines);
@@ -98,7 +100,7 @@ export function ClipPlayer({ src, overlay, burned = false, autoPlay = false }) {
     clipLink(src).then(l => { if (on) setLink(l); });
     return () => { on = false; };
   }, [src]);
-  if (!link?.url) return null;
+  if (!link?.url) return under;
   const retry = () => {
     if (again) return;
     setAgain(true);
@@ -113,6 +115,7 @@ export function ClipPlayer({ src, overlay, burned = false, autoPlay = false }) {
                muted={autoPlay} autoPlay={autoPlay} preload="metadata" onError={retry} />
         {lines && overlay && !burned && <ClipLines overlay={overlay} video={video} />}
       </div>
+      {under}
       {burned ? (
         <p className="clip-tools muted">
           {link.download && <><a href={link.download} download>⬇ Download</a>{" "}</>}

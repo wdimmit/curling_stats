@@ -13,6 +13,7 @@ import { Card, Header, Pill, Warn } from "./ui.jsx";
 import { clipState, curlText, lengthText, lineText, mergeTimings, restText, sensorText,
          rotationText, shown, summary, weightText } from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
+import { slideFigures } from "../core/slide.mjs";
 import { ClipPlayer } from "./clip.jsx";
 import { DeliveryChart, dotColours } from "../viewer/Delivery.jsx";
 
@@ -99,8 +100,39 @@ function SensorLine({ t, sensors }) {
   );
 }
 
+/* Where the slide was aimed and where the release sent the rock, large, right
+ * under the clip. Under the release, smaller, how far the release moved the
+ * line from the slide's; left out when it is too small to tell from the
+ * measurement's error. */
+function SlideHero({ figures }) {
+  const value = f => <div className="slide-value">{f.value}{f.side && <span> {f.side}</span>}</div>;
+  const figure = (kind, label, f, extra = null) => (
+    <div className={`slide-figure ${kind}`}>
+      <div className="slide-label">{label}</div>
+      {f ? value(f) : <div className="slide-value none">not measured</div>}
+      {extra}
+    </div>
+  );
+  const change = figures.set && <div className="slide-change">{figures.set.value}</div>;
+  return (
+    <div className="slide-hero">
+      {figure("slide", "Slide", figures.slide)}
+      {figure("release", "Release", figures.release, change)}
+    </div>
+  );
+}
+
 function Latest({ t, n, sid, live, newest, sensors, onHide }) {
   const clip = clipState(t, { live, newest });
+  const figures = slideFigures(t);
+  const hero = figures && <SlideHero figures={figures} />;
+  // The hero's Release figure says what "Line" would, so only one shows.
+  const lineRow = !figures && (
+    <>
+      <dt className="muted">Line</dt>
+      <dd>{lineText(t.line) ?? "not measured"}</dd>
+    </>
+  );
   return (
     <Card>
       <p className="muted" style={{ margin: 0 }}>
@@ -109,24 +141,23 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
       {clip === "play" && (
         <ClipPlayer src={`/api/practice/sessions/${encodeURIComponent(sid)}/throws/`
                          + `${encodeURIComponent(t.id)}/clip`}
-                    overlay={t.overlay} autoPlay={live && newest} />
+                    overlay={t.overlay} autoPlay={live && newest} under={hero} />
       )}
       {clip === "wait" && <p className="muted">Clip on its way…</p>}
+      {clip !== "play" && hero}
       <Delivery t={t} n={n} />
       {!t.arrived ? (
         <>
           <p><strong>Released, didn't arrive</strong> (hogged?)</p>
           <dl style={{ margin: 0 }}>
-            <dt className="muted">Line</dt>
-            <dd>{lineText(t.line) ?? "not measured"}</dd>
+            {lineRow}
             <SensorLine t={t} sensors={sensors} />
           </dl>
         </>
       ) : (
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
           <dl style={{ flex: 1, margin: 0 }}>
-            <dt className="muted">Line</dt>
-            <dd>{lineText(t.line) ?? "not measured"}</dd>
+            {lineRow}
             <dt className="muted">Weight</dt>
             <dd>{weightText(t.split_s) ? `${weightText(t.split_s)} hog to hog` : "not timed"}</dd>
             <dt className="muted">Came to rest</dt>
