@@ -52,7 +52,7 @@
     "frontend/site/Label.jsx": "bf3bac6073466eb8c59e431919f1b3cbae7353b420f16ce470e58791cdc9a1a6",
     "frontend/site/Mine.jsx": "9046a65032365a6452a05141a7814e1164a341e90c44e973c9c730b987fc988f",
     "frontend/site/Playlists.jsx": "2f927ff13f7f3b5db866f7593604dfe9f3b72cfcbb5e47530b4d50660a6417d4",
-    "frontend/site/Practice.jsx": "35fa5bac60dacb7adedfdfa369543ff715821a72d65b41209a65fd9503299f6d",
+    "frontend/site/Practice.jsx": "35df13aadc9c5eb4b1e32fc0f9b926d60913ec6e4b001c0aa543062f2c0df6ea",
     "frontend/site/ShotCharts.jsx": "f77f480eae042abc0158ec7780ab8cee8f56dfa6ab80b133a0d325b6d3a1d3e7",
     "frontend/site/Shots.jsx": "f8af8e9f1d2e795cfb2477021190f305ac04d0d9f162a80f55ce0ce3a627c912",
     "frontend/site/SignIn.jsx": "214d8ea19ab8a7cc702529150d6919be2bbc5aa9e64ee36fd142cb5718ad801f",
@@ -93,7 +93,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "72478b44996e19b693c28b31cbb1259bffdb36d971e46c2f6cfa50553693db02",
+    "src/curling_score/service/static/site.js": "a21332cce937a8b5408604b23d4c1f786ac9ed981724f5f2c82b02024c5eb409",
     "src/curling_score/viewer/app.js": "316ec775929cf43f94998541c18d5c23ad84f85b789d9f12a0394d0a7dcbcfda"
   }
 }

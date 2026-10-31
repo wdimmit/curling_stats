@@ -145,6 +145,20 @@ function RestFigure({ rest }) {
   );
 }
 
+/* What the person's own sensors timed this throw at, in the figures' style,
+ * on a session an app pushes to (has_sensors); nothing on one it does not. */
+function SensorFigures({ t, sensors }) {
+  if (!sensors) return null;
+  const figure = (label, s) => (
+    <div className="slide-figure sensor">
+      <div className="slide-label">{label}</div>
+      {s != null ? <div className="slide-value">{s.toFixed(2)}<span> s</span></div>
+                 : <div className="slide-value none">not timed</div>}
+    </div>
+  );
+  return <>{figure("Sensor short", t.sensor?.short_s)}{figure("Sensor long", t.sensor?.long_s)}</>;
+}
+
 function Latest({ t, n, sid, live, newest, sensors, onHide }) {
   const clip = clipState(t, { live, newest });
   const figures = slideFigures(t);
@@ -177,11 +191,16 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
       {!t.arrived ? (
         <>
           <p><strong>Released, didn't arrive</strong> (hogged?)</p>
-          {figures && <SlideHero figures={figures} split={t.split_s} />}
-          <dl style={{ margin: figures && sensors ? "8px 0 0" : 0 }}>
-            {lineRow}
-            <SensorLine t={t} sensors={sensors} />
-          </dl>
+          {figures ? (
+            <SlideHero figures={figures} split={t.split_s}>
+              <SensorFigures t={t} sensors={sensors} />
+            </SlideHero>
+          ) : (
+            <dl style={{ margin: 0 }}>
+              {lineRow}
+              <SensorLine t={t} sensors={sensors} />
+            </dl>
+          )}
         </>
       ) : (
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
@@ -189,12 +208,8 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
             <div style={{ flex: 1 }}>
               <SlideHero figures={figures} split={t.split_s}>
                 <RestFigure rest={t.rest} />
+                <SensorFigures t={t} sensors={sensors} />
               </SlideHero>
-              {sensors && (
-                <dl style={{ margin: "8px 0 0" }}>
-                  <SensorLine t={t} sensors={sensors} />
-                </dl>
-              )}
             </div>
           ) : (
             <dl style={{ flex: 1, margin: 0 }}>
