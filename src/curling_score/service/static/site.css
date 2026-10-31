@@ -194,6 +194,21 @@ body:is([data-page="thinking"], [data-page="ice"]) :is(table, th, h2, .pill, .ta
 #practice .sheets a.btn { min-width:48px; text-align:center; }
 #practice a.plain { color:inherit; text-decoration:none; }
 #practice .not-mine { margin:12px 0 0; text-align:right; }
+/* Where the slide and the release were aimed, the weight and where the rock
+   came to rest, two by two in the column beside the house: label, figure and
+   note close under each other. */
+#practice .slide-hero { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:11px 16px; }
+#practice .slide-label { font-family:var(--display); font-size:11px; font-weight:700;
+  line-height:1.35; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+#practice .slide-value { font-family:var(--display); font-size:22px; font-weight:700;
+  line-height:1.1; font-variant-numeric:tabular-nums; }
+#practice .slide-value span { font-size:15px; font-weight:600; }
+#practice .slide-value.none { font-size:15px; font-weight:600; color:var(--muted); }
+#practice .slide-value.words { font-size:17px; }
+/* How far the release moved the line from the slide's, under the release. */
+#practice .slide-change { font-family:var(--display); font-size:13px; font-weight:600;
+  line-height:1.35; color:var(--muted); font-variant-numeric:tabular-nums; }
 #practice button.quiet { background:none; border:none; padding:4px 0; font-size:14px;
                          color:var(--muted); text-decoration:underline; }
 #practice .undo-bar { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:10;
