@@ -90,7 +90,7 @@ export function Detail({ shot, doc }) {
                label={`The sheet from above, thrower at the bottom: ${seen}`} />
         <Figures figures={f.figures} />
       </div>
-      <p className="dcap">Sheet from above, thrower at the bottom · across ×3 · figures ±4 in{wideGloss}</p>
+      <p className="dcap">Sheet from above, thrower at the bottom · across ×3 · figures ±2 in{wideGloss}</p>
     </>
   );
 }
@@ -116,7 +116,7 @@ export function DeskDetail({ shot, doc }) {
       {g ? <DeliveryChart g={g} label={deliveryLabel(shot, true, g)} fluid /> : null}
       {why ? <p className="dlvnone">{why}</p> : null}
       <Figures figures={f.figures} />
-      <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±4 in{wideGloss}
+      <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±2 in{wideGloss}
         {g ? ` · below it, the hack to 1.5 m past the hog line, across ×${g.stretch}, a dot every ${g.every.short}`
              + dotColours(g) : ""}</p>
     </>

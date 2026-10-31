@@ -2259,15 +2259,16 @@ class TestLineFigures:
         got = run_js('out([0.0254, -0.3048, 0.712, 0.3302, 2.4892].map(feetInches));')
         assert got == ["1 in", "1 ft", "2 ft 4 in", "1 ft 1 in", "8 ft 2 in"]
 
-    def test_within_an_inch_and_a_half_is_on_the_broom(self):
-        # The same 1.5 in as the practice card's "to the broom" (user, 2026-10-31).
-        assert run_js("out(ON_BROOM_M)") == pytest.approx(1.5 * 0.0254)
-        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.035})))
+    def test_within_two_inches_is_on_the_broom(self):
+        # The lines' typical error at the broom, the same on every page and for
+        # At the hog line's "On the line" (user, 2026-10-31).
+        assert run_js("out(ON_M)") == pytest.approx(2 * 0.0254)
+        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.05})))
         assert f["broom"]["value"] == "On the broom"
-        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.045})))
+        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.055})))
         assert f["broom"]["value"] == "2 in narrow"
         # The strip draws no miss for a rock the figure calls on the broom.
-        s = self.measured(at_broom={"x": -1.612, "miss_m": 0.035})
+        s = self.measured(at_broom={"x": -1.597, "miss_m": 0.05})
         assert run_js(f"out(stripGeometry({json.dumps(s)}).miss);") is None
 
     def test_a_retired_check_that_disagreed_no_longer_greys_the_number(self):
@@ -3246,14 +3247,14 @@ class TestTheDetailPane:
         assert "width={s.broom.w} height={s.broom.h}" in self.SRC.read_text()
 
     def test_the_caption_is_the_spec_s(self):
-        assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±4 in") in self.SRC.read_text()
+        assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±2 in") in self.SRC.read_text()
 
     def test_the_desktop_turns_the_strip_and_shares_the_figures(self):
         src = self.SRC.read_text()
         assert "sideways(stripShapes(stripGeometry(shot, DESKBOX)))" in src
         assert "stripShapes(stripGeometry(shot))" in src
         assert src.count("<Figures figures={f.figures} />") == 2
-        assert ("Sheet from above, thrower at the left · across ×1.5 · figures ±4 in") in src
+        assert ("Sheet from above, thrower at the left · across ×1.5 · figures ±2 in") in src
 
     def test_a_broomless_rock_drops_the_intended_line_and_the_wide_gloss(self):
         # M2: a doubles rock nobody held a broom for has no intended line to

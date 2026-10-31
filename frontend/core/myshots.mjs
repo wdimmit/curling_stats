@@ -12,7 +12,7 @@ import { SCATTERBOX, TYPE } from "./constants.mjs";
 import { roleText } from "./format.mjs";
 import { aimFrame } from "./delivery.mjs";
 import {
-  ON_BROOM_M, feetInches, formatHash, lineFigures, lineNumbers, median, narrowOf, sideNames, turnName, withHash,
+  ON_M, feetInches, formatHash, lineFigures, lineNumbers, median, narrowOf, sideNames, turnName, withHash,
 } from "./line.mjs";
 import { groupOf, positionLabel } from "./report.mjs";
 import { notThrown, typeOf } from "./shots.mjs";
@@ -274,7 +274,7 @@ export function summaryText(sum, turn) {
   const [plus, minus] = turn ? ["narrow", "wide"] : ["right", "left"];
   const w = sum.weight, b = sum.broom;
   const typical = b.n === 0 ? "–"
-    : Math.abs(b.median) <= ON_BROOM_M ? "On the broom"
+    : Math.abs(b.median) <= ON_M ? "On the broom"
     : `${feetInches(b.median)} ${b.median > 0 ? plus : minus}`;
   const some = (k, what) => (k ? `${k} ${what}` : null);
   return {
@@ -386,7 +386,7 @@ export function missScatter(rows, turn, box = SCATTERBOX) {
   const sides = sideNames(turn);
   return {
     w, h, plot: { x: pad.l, y: pad.t, w: plotW, h: plotH },
-    band: { x: r1(X(-ON_BROOM_M)), y: pad.t, w: r1(X(ON_BROOM_M) - X(-ON_BROOM_M)), h: plotH },
+    band: { x: r1(X(-ON_M)), y: pad.t, w: r1(X(ON_M) - X(-ON_M)), h: plotH },
     xTicks, yTicks,
     sides: [{ x: pad.l + 2, y: pad.t - 8, text: sides[0], anchor: "start" },
             { x: pad.l + plotW - 2, y: pad.t - 8, text: sides[1], anchor: "end" }],

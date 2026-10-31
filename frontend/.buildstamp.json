@@ -13,12 +13,12 @@
     "frontend/core/ice.mjs": "d69e203b48bf33d1b0db2cfd17ed69555d77e6e5502b3c8af700e6acb3c7a989",
     "frontend/core/index.mjs": "75f9e2ae6002cd92b1749fda1be4242be76704e47793adabbcd21f1f74c5b3f2",
     "frontend/core/labelling.mjs": "191150fe92f0ac476cf76bd704c556303d2fa34a9abb0a8fb55e7c829fb22419",
-    "frontend/core/line.mjs": "2530095c41c7c7f707e987b65b625ea1c8ce5f1ee4eb4c72669f41eb2ca9c42c",
+    "frontend/core/line.mjs": "b900c6f1aa61603a6c8fd0f4327d6d3c78b334c255ddbf33168d1aa3a8f937f2",
     "frontend/core/linechart.mjs": "def1cf0bc8f8a4d85469b4bd4a222f987f0aba06f417628b9cdee83475da4e3b",
-    "frontend/core/myshots.mjs": "4ce1e2ad3151abd330c8c3ee82fe6cce2e4eaaaa942e7d5cb6a78f00713929b3",
+    "frontend/core/myshots.mjs": "3ab84420bb611857d57b0ab5b67469c242f5e48a7ac1e1cdaa945ab3c399fd6b",
     "frontend/core/overrides.mjs": "20fe3c8155ed6df0ffcc2f8c394082c61773184cf470ae6011afbe1d4c4413ec",
     "frontend/core/playlists.mjs": "f31edacfec52b689cfe7aa9edd6ebac90e171f5c2172b92a6ed1012abcc36204",
-    "frontend/core/practice.mjs": "b3e9a053735d2f6d802eadb040888fae3f32e1970820484a7e5114fd2fb472d9",
+    "frontend/core/practice.mjs": "e5b0b5ba804e5031bf07bc841ba2cacfd84559f38c07a166da8b686a44112e41",
     "frontend/core/report.mjs": "7bb9374198cdccf4ca7380a72ee620ced50868bdf0f0de19bbc87a4dd4480aaa",
     "frontend/core/shotclip.mjs": "cb4b6ee605e41308770edf681b824f5db06cfd206bffd3f81a4f47cebaf63ef5",
     "frontend/core/shots.mjs": "069aec2c81a69a467885c2585228c23516ab646e5de0df7632fffeec28172102",
@@ -72,7 +72,7 @@
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "3207f9bdfc9d56b0bbf5222d136dde05327fd98c60a499be9269bfc51f23d1a9",
     "frontend/viewer/DeliveryDialog.jsx": "e1aaa15458bb0850dcd30f77ff147991c039c5274a9d134aeb38297733425d04",
-    "frontend/viewer/Detail.jsx": "35a6a6d08bdca35d7390ffd731e03b886aa5c0b92f75057c6c3fb5d9f11d1d60",
+    "frontend/viewer/Detail.jsx": "5b1af91e2415a534949c3714dc7c0a224531f0ce22e56e0ec73c0e1864c2eadd",
     "frontend/viewer/EndDialog.jsx": "206c98583783cc13806a036c1852fb1890bc648b5d3b55cff4c0e4c7bebc9acb",
     "frontend/viewer/Flag.jsx": "7f2b7a7d3e63d89d1d356c257546b7c844896bce6fec4dc276dcd8a0e5a88c90",
     "frontend/viewer/House.jsx": "79fec635673be84115d3718e576921ab3ce65676412febdbf344296520dc4762",
@@ -83,7 +83,7 @@
     "frontend/viewer/Report.jsx": "6836f45b6cbd915b04c1c6de8c86dc9500c107ddd6d6bd28e61b1b5b06aeb120",
     "frontend/viewer/Sheet.jsx": "29c1f7e0a4c8eecb494c00c858aedbdccbaa3e5592ca723a062baa5fd21eaa6b",
     "frontend/viewer/ShotClip.jsx": "9b81d357377afc80ca3742f6c643fe34d2278ca73e8049e5d0810ab5e0ee0f88",
-    "frontend/viewer/Side.jsx": "f25ea91724d13ede61434cd515c6c5979c0e23b4195d02f77aecef3d340e00ff",
+    "frontend/viewer/Side.jsx": "9541c6f45ea38200178e1c93222bb73bf243b5a0fb6dd24bd349b155a697491c",
     "frontend/viewer/Teams.jsx": "8998c4f6a35de0f1c62e514749fa1f1037c6476ef5fc9ecd361096a0a3183bc8",
     "frontend/viewer/ThinkingDialog.jsx": "6e25b3b58cd17c73482af2d66baeda160de4c135c91c9f84a1ddca4d34661a88",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
@@ -92,7 +92,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "f6667c72ff978d9f499441c625b0a4c8990f7a9c4a87246737a00a9378a8f4a1",
-    "src/curling_score/viewer/app.js": "2c9f3a4e86c8e1b5be631b5f58ba51c46af60e3345c3f3e9288664fbe67e32d2"
+    "src/curling_score/service/static/site.js": "983189073f6b75c1ec527af324c7470520fc6c1f2d34fe2782f63f2949dd72f4",
+    "src/curling_score/viewer/app.js": "6afb477a365585b951a1d24b850c602941ebe3bc238b62c1d3c71d454403656a"
   }
 }

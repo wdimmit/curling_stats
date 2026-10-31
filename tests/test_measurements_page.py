@@ -38,7 +38,7 @@ def stated():
         ("slide start", f"{round(-aimlines.SLIDE_FROM_M / FT)} ft behind the tee"),
         ("line error ceiling", f"more than {round(aimlines.SE_MAX_M / IN)} in"),
         ("set threshold", {2.0: "twice"}[aimlines.SET_SIGMAS]),
-        ("on the broom, both pages", f"within {js_const('frontend/core/line.mjs', 'ON_BROOM_M') / IN:g} in of the broom"),
+        ("on the broom, both pages", f"within {js_const('frontend/core/line.mjs', 'ON_M') / IN:g} in of the broom"),
         ("on the line at the hog line", f"means within {round(js_const('frontend/core/line.mjs', 'ON_M') / IN)} in"),
         ("rotation start", f"{spintime.FROM_M:g} m past the tee"),
         ("rotation turns", {1.25: "first 1¼ turns"}[spinfit.EARLY_TURNS]),
