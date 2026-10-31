@@ -393,7 +393,7 @@ export function missScatter(rows, turn, box = SCATTERBOX) {
     xLabel: "at the broom", yLabel: "hog to hog, s",
     points: plotted.map(r => ({
       key: r.key, href: r.href, cx: r1(X(r.nums.miss_m)), cy: r1(Y(r.nums.split_s)),
-      hollow: !!r.nums.split_estimated, dim: r.nums.tick === "disagrees",
+      hollow: !!r.nums.split_estimated,
       clipped: Math.abs(r.nums.miss_m) > half,
     })),
     skipped: rows.length - plotted.length,

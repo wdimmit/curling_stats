@@ -10,6 +10,9 @@ import { formatOf, lineWithoutBroom } from "./format.mjs";
 import { notThrown } from "./shots.mjs";
 
 export const LINE_SCHEMA = 6;
+// Schema 10: the slide and release lines beside the final one, each at the
+// broom (game/aimlines.py), and the final line over 9 ft past the hog line.
+export const AIM_SCHEMA = 10;
 export const HOG_Y = 34.747 - 6.401;      // the throwing hog line, house metres
 export const TEE_Y = 34.747;              // the throwing tee
 export const HACK_Y = 34.747 + 3.658;     // the hack line
@@ -314,16 +317,14 @@ const curlFig = c => c?.m != null
   ? fig("curl", "Curl", feetInches(c.m), c.hit ? "from its line to where it hit a stone" : "from its line to where it stopped")
   : fig("curl", "Curl", "–", c?.hit ? "hit a stone before it was seen" : "no rest position");
 
-/* Whether the camera behind the thrower confirmed this line, and the note
- * that says so -- shared by the broom figure (broom path) and the curl
- * figure (broomless path, where nothing else carries `line.confirmed`). */
-function confirmTick(l) {
-  const tick = l.confirmed === true ? "confirmed" : l.confirmed === false ? "disagrees" : "unseen";
-  const note = { confirmed: "confirmed from behind the thrower",
-                 unseen: "not confirmed: hidden from behind the thrower",
-                 disagrees: "the camera behind the thrower disagrees" }[tick];
-  return { tick, note };
-}
+/* Does this chart carry the slide and release lines: schema 10 on. Older
+ * charts keep the single line they had, and show no empty Slide or Release. */
+export const aimReadable = doc => Number(doc?.schema_version) >= AIM_SCHEMA;
+
+const FINAL_THIN = "too few sightings past the hog line";
+
+/* A slide or release line's miss at the broom when it is shown, else null. */
+const aimMiss = a => (a?.shown && typeof a.at_broom?.miss_m === "number" ? a.at_broom.miss_m : null);
 
 /* The figures' numbers, before any words: what the report adds up and plots
  * across many rocks. Follows lineFigures branch for branch -- it is what
@@ -337,13 +338,19 @@ export function lineNumbers(shot, doc) {
     reason, predates: reason === "This chart predates line measurement", broomless: false,
     split_s: split, split_estimated: split != null && isSplitEstimated(shot),
     rest: restOf(shot), hack: hackOf(shot),
-    miss_m: null, on_broom: null, hog_off_m: null, curl: null, turn: null, tick: null,
+    miss_m: null, on_broom: null, hog_off_m: null, curl: null, turn: null,
+    slide_m: null, release_m: null, set_m: null, set_shown: false, final_refused: false,
   };
   if (!l) return out;
-  out.tick = confirmTick(l).tick;
   out.curl = curlOf(shot);
   out.turn = turnOf(shot, out.curl);
+  out.final_refused = l.final_refused === true;
   if (!shot.target_broom) return { ...out, broomless: true };
+  out.slide_m = aimMiss(l.slide);
+  out.release_m = aimMiss(l.release_line);
+  out.set_shown = l.set?.shown === true;
+  out.set_m = out.set_shown ? l.set.m : null;
+  if (out.final_refused || typeof l.at_broom?.miss_m !== "number") return out;
   out.miss_m = l.at_broom.miss_m;
   out.on_broom = Math.abs(out.miss_m) < ON_M;
   // The same two lines as At the broom, read at the hog line: the thrown line,
@@ -366,6 +373,27 @@ export function narrowOf(v, turn) {
 export const sideNames = turn =>
   (turn === "right" ? ["wide", "narrow"] : turn === "left" ? ["narrow", "wide"] : ["left", "right"]);
 
+/* A miss at the broom in words: "On the broom", "2 ft 4 in wide". */
+const atBroom = (v, turn) => (Math.abs(v) < ON_M ? "On the broom" : `${feetInches(v)} ${sideWord(v, turn)}`);
+
+/* The slide or release figure (`key`), from its stored line `a`: why it is a
+ * dash, or its miss and `note`. */
+function aimFig(key, label, l, a, note) {
+  if (!Array.isArray(l.release)) return fig(key, label, "–", "no release read");
+  if (!a || !a.at_broom) return fig(key, label, "–", "too few sightings");
+  if (!a.shown) return fig(key, label, "–", "too uncertain to show");
+  return { ...fig(key, label, "", note), miss: a.at_broom.miss_m };
+}
+
+/* How far the release moved the line from the slide's, when it is more than
+ * the two lines' own error: + is wide (or right with no curl). */
+function setNote(n) {
+  if (!n.set_shown) return "9 ft past the release";
+  const m = n.set_m;
+  if (n.turn !== "left" && n.turn !== "right") return `${feetInches(m)} ${m > 0 ? "right" : "left"} of the slide`;
+  return `${feetInches(m)} ${m > 0 ? "wider" : "narrower"} than the slide`;
+}
+
 /* `n` is lineNumbers' answer for this rock, for a caller that has it already. */
 export function lineFigures(shot, doc, n = lineNumbers(shot, doc)) {
   const { reason, predates } = n;
@@ -380,35 +408,43 @@ export function lineFigures(shot, doc, n = lineNumbers(shot, doc)) {
   const restFig = n.rest
     ? fig("rest", "Came to rest", zone(n.rest), `${Math.hypot(n.rest.x, n.rest.y).toFixed(1)} m from the button`)
     : fig("rest", "Came to rest", "–", "not matched to a stone");
+  // Schema 10 on: the slide and release lines lead, and the broom figure is
+  // the final line. Before it, the one line the chart has.
+  const aims = aimReadable(doc);
+  const finalLabel = aims ? "Final" : "At the broom";
+  const lines = (value, note) => (aims
+    ? [fig("slide", "Slide", value, note), fig("release", "Release", value, note)] : []);
   if (reason) {
     return { predates, reason, figures: withRotation([
-      fig("broom", "At the broom", "–", reason),
+      ...lines("–", reason), fig("broom", finalLabel, "–", reason),
       hackFig(shot), fig("hog", "At the hog line", "–", reason),
       weight, fig("curl", "Curl", "–", ""), restFig]) };
   }
-  const { tick, note: tickNote } = confirmTick(shot.line);
   if (n.broomless) {
     // A doubles rock nobody held a broom for: nothing measures against one,
-    // but the hack, the weight, the rest and the curl's own note do not need
-    // it. The curl figure still carries whether the camera behind the
-    // thrower confirmed this line, since nothing else here can.
-    const curlBase = curlFig(n.curl);
-    const curl = { ...curlBase, tick, dim: tick === "disagrees", note: `${curlBase.note} · ${tickNote}` };
+    // but the hack, the weight, the rest and the curl do not need it.
     return { predates, reason, figures: withRotation([
-      fig("broom", "At the broom", "–", "no broom held in the house"),
+      ...lines("–", "no broom held in the house"),
+      fig("broom", finalLabel, "–", "no broom held in the house"),
       hackFig(shot),
       fig("hog", "At the hog line", "–", "no broom to aim at"),
-      weight, curl, restFig]) };
+      weight, curlFig(n.curl), restFig]) };
   }
-  const broom = fig("broom", "At the broom",
-                    n.on_broom ? "On the broom" : `${feetInches(n.miss_m)} ${sideWord(n.miss_m, n.turn)}`,
-                    tickNote, { tick, dim: tick === "disagrees" });
+  const l = shot.line;
+  const worded = f => (f.miss == null ? f : { ...fig(f.key, f.label, atBroom(f.miss, n.turn), f.note) });
+  const aimFigs = aims ? [worded(aimFig("slide", "Slide", l, l.slide, "the slide, to the broom")),
+                          worded(aimFig("release", "Release", l, l.release_line, setNote(n)))] : [];
+  const broom = n.miss_m == null ? fig("broom", finalLabel, "–", FINAL_THIN)
+    : fig("broom", finalLabel, atBroom(n.miss_m, n.turn),
+          aims ? "9 ft past the hog line" : "the thrown line, at the broom");
   const off = n.hog_off_m;
-  const hog = off == null ? fig("hog", "At the hog line", "–", "needs the hack")
+  const hog = n.final_refused ? fig("hog", "At the hog line", "–", FINAL_THIN)
+    : off == null ? fig("hog", "At the hog line", "–", "needs the hack")
     : fig("hog", "At the hog line",
           Math.abs(off) < ON_M ? "On the line" : `${feetInches(off)} ${sideWord(off, n.turn)}`,
           "of the hack-to-broom line");
-  return { predates, reason, figures: withRotation([broom, hackFig(shot), hog, weight, curlFig(n.curl), restFig]) };
+  return { predates, reason, figures: withRotation([...aimFigs, broom, hackFig(shot), hog, weight,
+                                                    curlFig(n.curl), restFig]) };
 }
 
 const SWIPE_MIN_PX = 50;
@@ -518,7 +554,7 @@ export function stripGeometry(shot, box = STRIPBOX) {
   // the broom. A doubles rock nobody held a broom for still has its thrown
   // line, extended to the tee (`at_tee`), and where it went.
   const broomless = l && !b && l.at_tee?.x != null;
-  if (!l || (!b && !broomless)) return { ...sheet, aim: null, thrown: null, ext: null, path: null, start: null, miss: null };
+  if (!l || (!b && !broomless && !l.final_refused)) return { ...sheet, aim: null, thrown: null, ext: null, path: null, start: null, miss: null };
   const hp = (l.hog_path || []).map(([y, x]) => [x, y]);
   const lastY = hp.length ? hp[hp.length - 1][1] : HOG_Y - 3.6;
   if (broomless) {
@@ -530,8 +566,18 @@ export function stripGeometry(shot, box = STRIPBOX) {
       start: l.start ? pt(l.start.x, l.start.y) : null,
     };
   }
-  const miss = l.at_broom.miss_m;
   const side = hackOf(shot);
+  // A final line too thin to fit: the track and the path, nothing extended.
+  if (l.final_refused) {
+    return {
+      ...sheet, miss: null, ext: null,
+      aim: b && side ? pts([[side === "left" ? -HACK_X_M : HACK_X_M, HACK_Y], [b.x, b.y]]) : null,
+      thrown: pts(hp),
+      path: l.path?.length >= 2 ? pts(l.path.map(([y, x]) => [x, y])) : null,
+      start: l.start ? pt(l.start.x, l.start.y) : null,
+    };
+  }
+  const miss = l.at_broom.miss_m;
   return {
     ...sheet,
     // The intended line runs from the hack, as the hog-line figure measures it.

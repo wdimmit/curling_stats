@@ -59,7 +59,7 @@ export function MissScatter({ rows, turn }) {
             <circle cx={p.cx} cy={p.cy} r={p.clipped ? 6 : 4.5}
                     fill={p.clipped || p.hollow ? PAINT.ice : PAINT.accent} stroke={PAINT.accent}
                     strokeWidth={1.5} strokeDasharray={p.clipped ? "2 2" : undefined}
-                    opacity={p.dim ? 0.35 : 0.8} />
+                    opacity={0.8} />
           </a>
         ))}
       </svg>
@@ -76,7 +76,7 @@ export function MissScatter({ rows, turn }) {
 export function DeliveryOverlay({ rows, turn }) {
   const clip = useClipId();
   const paths = rows.filter(r => r.path).map(r => ({
-    key: r.key, pts: r.path.pts, start: r.path.start, release: r.path.release, dim: r.nums.tick === "disagrees" }));
+    key: r.key, pts: r.path.pts, start: r.path.start, release: r.path.release }));
   if (!paths.length) return <p className="muted shotchart-none">No rock here has a delivery path.</p>;
   const g = deliveryOverlay(paths, turn);
   const { plot } = g;
@@ -95,7 +95,7 @@ export function DeliveryOverlay({ rows, turn }) {
           <line x1={g.aim.x1} y1={g.aim.y1} x2={g.aim.x2} y2={g.aim.y2}
                 stroke={PAINT.rail} strokeDasharray="4 3" />
           {g.rocks.map(r => (
-            <g key={r.key} opacity={r.dim ? 0.4 : 1}>
+            <g key={r.key}>
               <polyline points={r.d} fill="none" stroke={PAINT.accent} strokeOpacity={0.28}
                         strokeWidth={1.3} strokeLinejoin="round" />
               {r.start && <circle cx={r.start.x} cy={r.start.y} r={2.2} fill={PAINT.accent} fillOpacity={0.5} />}
