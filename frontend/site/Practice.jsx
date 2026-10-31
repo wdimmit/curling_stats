@@ -100,9 +100,10 @@ function SensorLine({ t, sensors }) {
   );
 }
 
-/* Where the slide was aimed and where the release sent the rock, large, under
+/* Where the slide was aimed and the line the rock was thrown on (the thrown
+ * line past the hog, extended to the broom: the table's Line), large, under
  * the delivery chart where the Line row was; then ``children`` (the weight and
- * where the rock came to rest). Under the release, smaller, how far the
+ * where the rock came to rest). Under the line, smaller, how far the
  * release moved the line from the slide's; left out when it is too small to
  * tell from the measurement's error. */
 function SlideHero({ figures, children = null }) {
@@ -123,7 +124,7 @@ function SlideHero({ figures, children = null }) {
   return (
     <div className="slide-hero">
       {figure("slide", "Slide", figures.slide)}
-      {figure("release", "Release", figures.release, change)}
+      {figure("release", "Line", figures.release, change)}
       {children}
     </div>
   );
@@ -173,7 +174,7 @@ function SensorFigures({ t, sensors }) {
 function Latest({ t, n, sid, live, newest, sensors, onHide }) {
   const clip = clipState(t, { live, newest });
   const figures = slideFigures(t);
-  // The Release and Hog to hog figures say what "Line" and "Weight" would, so
+  // The Line and Hog to hog figures say what the Line and Weight rows would, so
   // only one of each shows.
   const lineRow = !figures && (
     <>

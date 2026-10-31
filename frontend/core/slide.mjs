@@ -132,7 +132,7 @@ export function figureWords(f) {
   return f.side ? `${f.value} ${f.side}` : f.value;
 }
 
-/* The throws table's Line: the card's Release figure in words, so the two
+/* The throws table's Line: the card's Line figure in words, so the two
  * agree on inches and on what counts as to the broom ('14" wide', not
  * "1 ft 2 in wide"). Null without a broom, for the table to fall back on. */
 export function releaseWords(t) {

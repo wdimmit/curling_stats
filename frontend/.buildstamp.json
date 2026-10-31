@@ -22,7 +22,7 @@
     "frontend/core/report.mjs": "7bb9374198cdccf4ca7380a72ee620ced50868bdf0f0de19bbc87a4dd4480aaa",
     "frontend/core/shotclip.mjs": "cb4b6ee605e41308770edf681b824f5db06cfd206bffd3f81a4f47cebaf63ef5",
     "frontend/core/shots.mjs": "069aec2c81a69a467885c2585228c23516ab646e5de0df7632fffeec28172102",
-    "frontend/core/slide.mjs": "7101fdf2fd43306b09c35a699ef2b2a6b2b9ae0c7aff24d3fc816b3db2e15a8b",
+    "frontend/core/slide.mjs": "ead5fb9eedb7f4aaf39e2172d792fe2991bf6365833121cefa49d4fb1abecb79",
     "frontend/core/speed.mjs": "99ef2edf1f96624b44954fca8c3fb688fc3681621b4a6cf0e08e4652c9abecc6",
     "frontend/core/stats.mjs": "e46d873b7c0f52055162813df60f9cfab5a4d526115fbbba60c973dd27325d07",
     "frontend/core/tablet.mjs": "9458c37883d15605f583ad07dc89a9d736935afd903da99cd779afe48f8e594d",
@@ -52,7 +52,7 @@
     "frontend/site/Label.jsx": "bf3bac6073466eb8c59e431919f1b3cbae7353b420f16ce470e58791cdc9a1a6",
     "frontend/site/Mine.jsx": "9046a65032365a6452a05141a7814e1164a341e90c44e973c9c730b987fc988f",
     "frontend/site/Playlists.jsx": "da55443aad9e78a7f0041caf35d233d64927f1ef4bea77f36e2e14c6ffbcf664",
-    "frontend/site/Practice.jsx": "769701c2504a99a3f82d02e36b06e2dc260184079ab69f249b7a8742196a5e2a",
+    "frontend/site/Practice.jsx": "0f7448bfdd2ff358423f51a1a2ad86b7cbd50e7aeea036f2871c6444209b16c6",
     "frontend/site/ShotCharts.jsx": "f77f480eae042abc0158ec7780ab8cee8f56dfa6ab80b133a0d325b6d3a1d3e7",
     "frontend/site/Shots.jsx": "f8af8e9f1d2e795cfb2477021190f305ac04d0d9f162a80f55ce0ce3a627c912",
     "frontend/site/SignIn.jsx": "304bf91dd8b3795772260bb8ff73361110bbb6f01ba96021538f59f30ebb78de",
@@ -93,7 +93,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "b986d4e201b65984ea281bc9e1a25a6b2f85cd8c923f8aad5677106d2af4ecad",
+    "src/curling_score/service/static/site.js": "6b8fcdd406eef41efe07055aa2d1de1c058b9e2ecbea2b6e79da560fb44a0203",
     "src/curling_score/viewer/app.js": "eb6ffecc84b3609163712103a8720bbf82d6d3aa1946e8e54ae84f5ca19e1cbc"
   }
 }
