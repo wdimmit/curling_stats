@@ -70,10 +70,11 @@ def figs(t):
     return js(f"P.aimFigures({json.dumps(t)}, {{slide: true}})")
 
 
-def test_slide_and_set_held_back_by_default():
-    got = js(f"P.aimFigures({json.dumps(throw())})")
-    assert "slide" not in got and got["set"] is None
-    assert got["release"] == {"value": '4"', "side": "wide"}
+def test_slide_and_set_shown_by_default():
+    assert js(f"P.aimFigures({json.dumps(throw())})") == figs(throw())
+    held = js(f"P.aimFigures({json.dumps(throw())}, {{slide: false}})")
+    assert "slide" not in held and held["set"] is None
+    assert held["release"] == {"value": '4"', "side": "wide"}
 
 
 def test_aim_figures_in_inch_marks():

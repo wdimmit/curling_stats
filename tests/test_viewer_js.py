@@ -2825,16 +2825,18 @@ class TestAimFigures:
         return dict(TestLineFigures().measured(), line=base)
 
     def figs(self, s, doc=None, slide=True):
-        """With the slide shown, as it would be once it is trusted; the default
-        holds it back (test_slide_held_back_by_default)."""
-        opts = "{slide: true}" if slide else "{}"
+        """With the slide shown or, ``slide=False``, held back."""
+        opts = "{slide: true}" if slide else "{slide: false}"
         got = run_js(f"out(lineFigures({json.dumps(s)}, {json.dumps(doc or self.D10)}, undefined, {opts}));")
         return got, {f["key"]: f for f in got["figures"]}
 
-    def test_slide_held_back_by_default(self):
-        # 2026-10-31: on 249 hosted rocks the slide read outside the broom by
-        # 0.40 x the broom's offset from centre (PR #2's signature), so neither
-        # it nor the set is shown until that is understood.
+    def test_slide_shown_by_default(self):
+        # Held back for an hour on 2026-10-31 as a possible calibration error;
+        # the cameras checked out against paint, the overhead and the broom pad,
+        # so the slide and the set are shown. The hold-back stays an option.
+        got = run_js(f"out(lineFigures({json.dumps(self.measured(set={'m': 0.35, 'se_m': 0.04, 'shown': True}))}, "
+                     f"{json.dumps(self.D10)}));")
+        assert [x["label"] for x in got["figures"]] == self.LABELS
         got, f = self.figs(self.measured(set={"m": 0.35, "se_m": 0.04, "shown": True}), slide=False)
         assert [x["label"] for x in got["figures"]] == [x for x in self.LABELS if x != "Slide"]
         assert f["release"]["note"] == "9 ft past the release"

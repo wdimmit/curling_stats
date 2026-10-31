@@ -321,12 +321,14 @@ const curlFig = c => c?.m != null
  * charts keep the single line they had, and show no empty Slide or Release. */
 export const aimReadable = doc => Number(doc?.schema_version) >= AIM_SCHEMA;
 
-/* The slide line, and the set between it and the release line, are stored but
- * not shown: on 249 hosted rocks (2026-10-31) the slide read outside the broom
- * by 0.40 x the broom's offset from centre -- PR #2's off-centre problem --
- * and the cause (the slide itself, or the long camera's lateral scale behind
- * the tee) is open. Shared with the practice card (core/practice.mjs). */
-export const SLIDE_SHOWN = false;
+/* Whether the slide line, and the set between it and the release line, are
+ * shown. On 249 hosted rocks (2026-10-31) the slide read outside the broom by
+ * 0.40 x the broom's offset from centre, PR #2's off-centre reading; checked
+ * that day against the paint behind the tee, the overhead's rests and the
+ * broom pad, the cameras are right and the stone really leaves the hack
+ * heading outside the broom, so it is shown. false holds both back without a
+ * reprocess. Shared with the practice card (core/practice.mjs). */
+export const SLIDE_SHOWN = true;
 
 const FINAL_THIN = "too few sightings past the hog line";
 
