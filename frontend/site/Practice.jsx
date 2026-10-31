@@ -124,6 +124,20 @@ function SlideHero({ figures, split }) {
   );
 }
 
+/* Where the rock came to rest, in the figures' style beside the house: the
+ * ring large, how far from the tee under it. */
+function RestFigure({ rest }) {
+  const [ring, distance] = (restText(rest) ?? "").split(" · ");
+  return (
+    <div className="slide-figure rest">
+      <div className="slide-label">Came to rest</div>
+      {ring ? <div className="slide-value">{ring}</div>
+            : <div className="slide-value none">not seen</div>}
+      {distance && <div className="slide-change">{distance}</div>}
+    </div>
+  );
+}
+
 function Latest({ t, n, sid, live, newest, sensors, onHide }) {
   const clip = clipState(t, { live, newest });
   const figures = slideFigures(t);
@@ -165,13 +179,24 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
         </>
       ) : (
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <dl style={{ flex: 1, margin: 0 }}>
-            {lineRow}
-            {weightRow}
-            <dt className="muted">Came to rest</dt>
-            <dd>{restText(t.rest) ?? "not seen"}</dd>
-            <SensorLine t={t} sensors={sensors} />
-          </dl>
+          {figures ? (
+            <div style={{ flex: 1 }}>
+              <RestFigure rest={t.rest} />
+              {sensors && (
+                <dl style={{ margin: "8px 0 0" }}>
+                  <SensorLine t={t} sensors={sensors} />
+                </dl>
+              )}
+            </div>
+          ) : (
+            <dl style={{ flex: 1, margin: 0 }}>
+              {lineRow}
+              {weightRow}
+              <dt className="muted">Came to rest</dt>
+              <dd>{restText(t.rest) ?? "not seen"}</dd>
+              <SensorLine t={t} sensors={sensors} />
+            </dl>
+          )}
           <House rest={t.rest} broom={t.broom} />
         </div>
       )}
