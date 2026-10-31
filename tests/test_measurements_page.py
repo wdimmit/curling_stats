@@ -23,8 +23,9 @@ def text():
 
 
 def js_const(path, name):
-    m = re.search(rf"\b{name}\s*=\s*([0-9.]+)", (ROOT / path).read_text())
-    return float(m.group(1))
+    """A constant from a JS module, a number or a product of two (`1.5 * 0.0254`)."""
+    m = re.search(rf"\b{name}\s*=\s*([0-9.]+)(?:\s*\*\s*([0-9.]+))?", (ROOT / path).read_text())
+    return float(m.group(1)) * (float(m.group(2)) if m.group(2) else 1.0)
 
 
 def stated():
@@ -37,8 +38,8 @@ def stated():
         ("slide start", f"{round(-aimlines.SLIDE_FROM_M / FT)} ft behind the tee"),
         ("line error ceiling", f"more than {round(aimlines.SE_MAX_M / IN)} in"),
         ("set threshold", {2.0: "twice"}[aimlines.SET_SIGMAS]),
-        ("on the broom, game page", f"within {round(js_const('frontend/core/line.mjs', 'ON_M') / IN)} in"),
-        ("on the broom, practice card", {1.0: "within an inch"}[js_const('frontend/core/practice.mjs', 'ON_BROOM_IN')]),
+        ("on the broom, both pages", f"within {js_const('frontend/core/line.mjs', 'ON_BROOM_M') / IN:g} in of the broom"),
+        ("on the line at the hog line", f"means within {round(js_const('frontend/core/line.mjs', 'ON_M') / IN)} in"),
         ("rotation start", f"{spintime.FROM_M:g} m past the tee"),
         ("rotation turns", {1.25: "first 1¼ turns"}[spinfit.EARLY_TURNS]),
         ("rotation range", {0.5: "under half a turn"}[spinfit.RANGE_BELOW_TURNS]),

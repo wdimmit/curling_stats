@@ -16,7 +16,10 @@ export const AIM_SCHEMA = 10;
 export const HOG_Y = 34.747 - 6.401;      // the throwing hog line, house metres
 export const TEE_Y = 34.747;              // the throwing tee
 export const HACK_Y = 34.747 + 3.658;     // the hack line
-export const ON_M = 0.10;                 // inside the measurement's own error
+export const ON_M = 0.10;                 // "On the line" at the hog line: inside the measurement's own error
+// "On the broom" (and the practice card's "to the broom"): within 1.5 in either
+// side, the same on every page (the owner's call, 2026-10-31).
+export const ON_BROOM_M = 1.5 * 0.0254;
 // A foothold's centre. WCF R1: each hack's inside edge is 76 mm from the
 // centre line and a hack is at most 152 mm wide. There is no centre hack.
 export const HACK_X_M = 0.152;
@@ -361,7 +364,7 @@ export function lineNumbers(shot, doc) {
   out.set_m = out.set_shown ? l.set.m : null;
   if (out.final_refused || typeof l.at_broom?.miss_m !== "number") return out;
   out.miss_m = l.at_broom.miss_m;
-  out.on_broom = Math.abs(out.miss_m) < ON_M;
+  out.on_broom = Math.abs(out.miss_m) <= ON_BROOM_M;
   // The same two lines as At the broom, read at the hog line: the thrown line,
   // and the line from this rock's hack to the broom. Not the pipeline's
   // `offset_m`, which starts that line at the stone instead.
@@ -383,7 +386,7 @@ export const sideNames = turn =>
   (turn === "right" ? ["wide", "narrow"] : turn === "left" ? ["narrow", "wide"] : ["left", "right"]);
 
 /* A miss at the broom in words: "On the broom", "2 ft 4 in wide". */
-const atBroom = (v, turn) => (Math.abs(v) < ON_M ? "On the broom" : `${feetInches(v)} ${sideWord(v, turn)}`);
+const atBroom = (v, turn) => (Math.abs(v) <= ON_BROOM_M ? "On the broom" : `${feetInches(v)} ${sideWord(v, turn)}`);
 
 /* The slide or release figure (`key`), from its stored line `a`: why it is a
  * dash, or its miss and `note`. */
@@ -599,7 +602,7 @@ export function stripGeometry(shot, box = STRIPBOX) {
     ext: pts([[lineX(shot, lastY), lastY], [lineX(shot, b.y), b.y]]),
     path: l.path?.length >= 2 ? pts(l.path.map(([y, x]) => [x, y])) : null,
     start: l.start ? pt(l.start.x, l.start.y) : null,
-    miss: Math.abs(miss) < ON_M ? null
+    miss: Math.abs(miss) <= ON_BROOM_M ? null
       : { x1: +px(b.x).toFixed(1), x2: +px(l.at_broom.x).toFixed(1), y: +(py(b.y) - 7).toFixed(1), label: feetInches(miss) },
   };
 }

@@ -85,9 +85,11 @@ def test_aim_figures_in_inch_marks():
     assert figs(throw(set={"m": -0.1778, "se_m": 0.03, "shown": True}))["set"] == {"value": "−7\""}
 
 
-def test_within_an_inch_is_to_the_broom():
-    got = figs(throw(slide=aim(0.02, "narrow")))
-    assert got["slide"] == {"value": "to the broom", "side": None}
+def test_within_an_inch_and_a_half_is_to_the_broom():
+    # The game page's threshold too, on the measured miss, not its rounding.
+    assert figs(throw(slide=aim(0.035, "narrow")))["slide"] == {"value": "to the broom", "side": None}
+    assert figs(throw(slide=aim(0.040, "narrow")))["slide"] == {"value": '2"', "side": "narrow"}
+    assert js('P.lineText({miss_m: 0.035, side: "wide", aim_x: null})') == "On the broom"
 
 
 def test_set_without_curl_says_which_way():

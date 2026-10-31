@@ -2259,9 +2259,16 @@ class TestLineFigures:
         got = run_js('out([0.0254, -0.3048, 0.712, 0.3302, 2.4892].map(feetInches));')
         assert got == ["1 in", "1 ft", "2 ft 4 in", "1 ft 1 in", "8 ft 2 in"]
 
-    def test_within_ten_centimetres_is_on_the_broom(self):
-        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.06})))
+    def test_within_an_inch_and_a_half_is_on_the_broom(self):
+        # The same 1.5 in as the practice card's "to the broom" (user, 2026-10-31).
+        assert run_js("out(ON_BROOM_M)") == pytest.approx(1.5 * 0.0254)
+        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.035})))
         assert f["broom"]["value"] == "On the broom"
+        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.045})))
+        assert f["broom"]["value"] == "2 in narrow"
+        # The strip draws no miss for a rock the figure calls on the broom.
+        s = self.measured(at_broom={"x": -1.612, "miss_m": 0.035})
+        assert run_js(f"out(stripGeometry({json.dumps(s)}).miss);") is None
 
     def test_a_retired_check_that_disagreed_no_longer_greys_the_number(self):
         f = self.by_key(self.figs(self.measured(confirmed=False)))

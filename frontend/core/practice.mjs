@@ -3,15 +3,14 @@
  * functions of the throw records the API serves (service/practice.py), so the
  * page and its tests agree on every word. */
 
-import { feetInches, SLIDE_SHOWN } from "./line.mjs";
+import { feetInches, ON_BROOM_M, SLIDE_SHOWN } from "./line.mjs";
 
 const RINGS = {
   button: "Button", 4: "4-foot", 8: "8-foot", 12: "12-foot",
   short: "In front", long: "Behind", out: "Out of play",
 };
-// A miss this small is on the broom: under the detector's own accuracy.
-const ON_BROOM_M = 0.0254;
-// "On the broom" for the summary strip: within six inches.
+// "On the broom" for the summary strip: within six inches. (A single figure's
+// "to the broom" is ON_BROOM_M, shared with the game page.)
 const NEAR_BROOM_M = 0.1524;
 
 export function ringWord(rest) {
@@ -26,8 +25,6 @@ export function restText(rest) {
 }
 
 const IN_PER_M = 1 / 0.0254;
-// Curlers count 2 in across the broom as on it: within an inch either side.
-const ON_BROOM_IN = 1.0;
 
 /* Whole inches: finer would claim more than the cameras measure. */
 const inches = v => String(Math.round(Math.abs(v) * IN_PER_M));
@@ -35,7 +32,7 @@ const inches = v => String(Math.round(Math.abs(v) * IN_PER_M));
 /* A miss at the broom as { value: '9"', side: "narrow" }, or "to the broom"
  * within an inch. ``side`` is the pipeline's; without one, left or right. */
 function offsetParts(miss, side) {
-  if (Number(inches(miss)) <= ON_BROOM_IN) return { value: "to the broom", side: null };
+  if (Math.abs(miss) <= ON_BROOM_M) return { value: "to the broom", side: null };
   return { value: `${inches(miss)}"`, side: side ?? (miss > 0 ? "right" : "left") };
 }
 
@@ -97,7 +94,7 @@ export function lineText(line, { short = false } = {}) {
     return f && figureWords(f);
   }
   if (line.miss_m != null) {
-    if (Math.abs(line.miss_m) < ON_BROOM_M) return "On the broom";
+    if (Math.abs(line.miss_m) <= ON_BROOM_M) return "On the broom";
     const off = `${feetInches(line.miss_m)} ${line.side ?? (line.miss_m < 0 ? "left" : "right")}`;
     return short ? off : `${off} of the broom`;
   }
