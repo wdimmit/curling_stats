@@ -46,7 +46,7 @@ def _line(l):
            "at_hog": {"x": r(l.at_hog_x), "offset_m": r(l.at_hog_offset)},
            # null, not absent: a doubles rock nobody held a broom for.
            "at_broom": None if l.at_broom_x is None else {"x": r(l.at_broom_x), "miss_m": r(l.miss)},
-           "side": l.side, "curl": l.curl, "confirmed": l.confirmed,
+           "side": l.side, "curl": l.curl,
            "hog_path": [[r(y, 2), r(x, 3)] for y, x in l.hog_path],
            "path": [[r(y, 2), r(x, 3)] for y, x in l.path],
            # [t, y, x], t seconds from the release: the delivery chart's dots.

@@ -915,13 +915,13 @@ class TestLine:
         from curling_score.game.linetime import Line
         line = Line(start=(-0.23151, 38.0712), at_hog_x=-0.75712, at_hog_offset=-0.16333,
                     at_broom_x=-2.35912, miss=-0.71234, curl="right", side="wide",
-                    confirmed=True, hog_path=((28.3461, -0.75712),), path=((20.0124, -1.18049),),
+                    hog_path=((28.3461, -0.75712),), path=((20.0124, -1.18049),),
                     fit_n=53, fit_rms=0.00412)
         got = self._end(line)["shots"][0]["line"]
         assert got == {"start": {"x": -0.2315, "y": 38.071},
                        "at_hog": {"x": -0.7571, "offset_m": -0.1633},
                        "at_broom": {"x": -2.3591, "miss_m": -0.7123},
-                       "side": "wide", "curl": "right", "confirmed": True,
+                       "side": "wide", "curl": "right",
                        "hog_path": [[28.35, -0.757]], "path": [[20.01, -1.18]],
                        "delivery": [],
                        "fit": {"n": 53, "rms_m": 0.0041}}
@@ -934,13 +934,13 @@ class TestLine:
         from curling_score.game.linetime import Line
         line = Line(start=(-0.23151, 38.0712), at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=None, miss=None, curl="right", side=None,
-                    confirmed=None, hog_path=((28.3461, -0.75712),), path=(),
+                    hog_path=((28.3461, -0.75712),), path=(),
                     fit_n=41, fit_rms=0.00312, at_tee_x=-1.50049)
         got = self._end(line)["shots"][0]["line"]
         assert got == {"start": {"x": -0.2315, "y": 38.071},
                        "at_hog": {"x": -0.7571, "offset_m": None},
                        "at_broom": None,
-                       "side": None, "curl": "right", "confirmed": None,
+                       "side": None, "curl": "right",
                        "hog_path": [[28.35, -0.757]], "path": [],
                        "delivery": [],
                        "fit": {"n": 41, "rms_m": 0.0031},
@@ -950,7 +950,7 @@ class TestLine:
         from curling_score.game.linetime import Line
         line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
-                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01,
+                    hog_path=(), path=(), fit_n=20, fit_rms=0.01,
                     delivery=((-3.0, 37.94712, -0.151234), (0.10000001, 36.5049, -0.14449)))
         got = self._end(line)["shots"][0]["line"]["delivery"]
         assert got == [[-3.0, 37.95, -0.151], [0.1, 36.5, -0.144]]
@@ -959,7 +959,7 @@ class TestLine:
         from curling_score.game.linetime import Line
         line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
-                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01,
+                    hog_path=(), path=(), fit_n=20, fit_rms=0.01,
                     release=(1.2345, 30.1234, -0.14199))
         assert self._end(line)["shots"][0]["line"]["release"] == [1.23, 30.12, -0.142]
 
@@ -967,14 +967,14 @@ class TestLine:
         from curling_score.game.linetime import Line
         line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
-                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01)
+                    hog_path=(), path=(), fit_n=20, fit_rms=0.01)
         assert "release" not in self._end(line)["shots"][0]["line"]
 
     def test_a_broom_line_has_no_tee_key(self):
         from curling_score.game.linetime import Line
         line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
-                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01)
+                    hog_path=(), path=(), fit_n=20, fit_rms=0.01)
         assert "at_tee" not in self._end(line)["shots"][0]["line"]
 
 

@@ -38,6 +38,41 @@ class TestFitLine:
         assert L.fit_line(straight(0.3, -0.02, lo=6.5, hi=8.5)) is None
 
 
+def measured(track, *args, **kw):
+    """measure() with the internal fit and the 9 ft final fit both from ``track``."""
+    return L.measure(L.fit_line(track), track, *args, final=L.final_fit(track), **kw)
+
+
+class TestFinalFit:
+    def test_final_window_is_nine_feet_past_the_hog_line(self):
+        assert L.FINAL_PAST_TEE_M == pytest.approx((6.401, 6.401 + 2.7432))
+        # x = 0.01 * yp inside 6.401-9.144 m, 1.0 beyond: only the window may be fitted.
+        yps = [6.0 + 0.05 * i for i in range(100)]
+        track = [(i / 30, 0.01 * yp if yp <= 9.1442 else 1.0, TEE - yp, yp)
+                 for i, yp in enumerate(yps)]
+        fit = L.final_fit(track)
+        assert fit is not None and fit.rms < 1e-6
+
+    def test_two_metres_of_the_window_is_enough(self):
+        assert L.final_fit(straight(0.3, -0.02, lo=6.5, hi=8.6, n=40)) is not None
+        assert L.final_fit(straight(0.3, -0.02, lo=6.5, hi=8.3, n=40)) is None
+
+    def test_refused_final_keeps_the_line_and_its_curl(self):
+        internal = L.Fit(a=0.0, b=0.0, n=40, rms=0.002)
+        line = L.measure(internal, [], None, (-0.5, 0.0), rest=(0.3, 0.0), final=None)
+        assert line.final_refused is True
+        assert (line.miss, line.at_broom_x, line.at_hog_x, line.side, line.fit_n) == \
+            (None, None, None, None, None)
+        assert line.curl == "right"                     # from the internal fit
+
+    def test_the_final_fit_supplies_the_figures(self):
+        internal = L.Fit(a=0.0, b=0.0, n=40, rms=0.002)
+        final = L.Fit(a=-0.2, b=0.0, n=30, rms=0.001)
+        line = L.measure(internal, [], None, (0.0, 0.0), rest=(0.3, 0.0), final=final)
+        assert line.miss == pytest.approx(-0.2) and line.fit_n == 30
+        assert line.final_refused is False and not hasattr(line, "confirmed")
+
+
 class TestMeasure:
     START, BROOM = (0.0, 38.405), (1.0, 0.0)
 
@@ -48,28 +83,28 @@ class TestMeasure:
 
     def test_a_rock_thrown_at_the_broom_misses_by_nothing(self):
         track = self.aimed()
-        line = L.measure(L.fit_line(track), track, self.START, self.BROOM)
+        line = measured(track, self.START, self.BROOM)
         assert line.miss == pytest.approx(0.0, abs=1e-9)
         assert line.at_hog_offset == pytest.approx(0.0, abs=1e-9)
 
     def test_a_parallel_line_ten_centimetres_out_misses_by_ten(self):
         track = self.aimed(0.10)
-        line = L.measure(L.fit_line(track), track, self.START, self.BROOM)
+        line = measured(track, self.START, self.BROOM)
         assert (line.miss, line.at_hog_offset) == (pytest.approx(0.10), pytest.approx(0.10))
 
     def test_no_start_means_no_offset_at_the_hog_line(self):
         track = self.aimed()
-        assert L.measure(L.fit_line(track), track, None, self.BROOM).at_hog_offset is None
+        assert measured(track, None, self.BROOM).at_hog_offset is None
 
     def test_wide_is_the_side_away_from_the_curl(self):
         track = self.aimed(0.30)                        # 30 cm right of a broom on the right
         rest = (0.2, 0.5)                               # ...and it curled back left to rest
-        line = L.measure(L.fit_line(track), track, self.START, self.BROOM, rest=rest)
+        line = measured(track, self.START, self.BROOM, rest=rest)
         assert (line.curl, line.side) == ("left", "wide")
 
     def test_narrow_is_the_side_the_rock_curls_toward(self):
         track = self.aimed(-0.30)
-        line = L.measure(L.fit_line(track), track, self.START, self.BROOM, rest=(0.2, 0.5))
+        line = measured(track, self.START, self.BROOM, rest=(0.2, 0.5))
         assert (line.curl, line.side) == ("left", "narrow")
 
     def test_a_miss_of_nothing_is_still_a_side_and_no_error(self):
@@ -77,13 +112,13 @@ class TestMeasure:
 
     def test_no_curl_direction_is_no_side(self):
         track = self.aimed(0.30)
-        line = L.measure(L.fit_line(track), track, self.START, self.BROOM)
+        line = measured(track, self.START, self.BROOM)
         assert (line.curl, line.side) == (None, None)
 
     def test_no_broom_is_a_line_with_no_broom_figures(self):
         track = self.aimed(0.30)
         fit = L.fit_line(track)
-        line = L.measure(fit, track, self.START, None, rest=(0.2, 0.5))
+        line = L.measure(fit, track, self.START, None, rest=(0.2, 0.5), final=fit)
         assert (line.at_broom_x, line.miss, line.at_hog_offset, line.side) == (None, None, None, None)
         assert line.curl == "left"
         assert line.at_hog_x == pytest.approx(fit.x(L.HOG_Y))
@@ -92,39 +127,12 @@ class TestMeasure:
 
     def test_no_broom_and_no_start_is_still_a_line(self):
         track = self.aimed()
-        line = L.measure(L.fit_line(track), track, None, None)
+        line = measured(track, None, None)
         assert line.start is None and line.at_tee_x is not None
 
     def test_a_broom_line_has_no_tee_point(self):
         track = self.aimed()
-        assert L.measure(L.fit_line(track), track, self.START, self.BROOM).at_tee_x is None
-
-
-class TestConfirmedBy:
-    FIT = L.Fit(a=0.5, b=0.01, n=40, rms=0.002)
-
-    def path(self, off=0.0, top=20.0):
-        return [(y, self.FIT.x(y) + off) for y in [top - 0.25 * i for i in range(40)]]
-
-    def test_a_path_on_the_line_confirms_it(self):
-        assert L.confirmed_by(self.path(), self.FIT) is True
-
-    def test_a_path_thirty_centimetres_off_disagrees(self):
-        assert L.confirmed_by(self.path(0.30), self.FIT) is False
-
-    def test_a_path_first_seen_too_near_the_house_says_nothing(self):
-        assert L.confirmed_by(self.path(top=10.0), self.FIT) is None
-        assert L.confirmed_by([], self.FIT) is None
-
-    def test_a_path_first_seen_near_the_house_after_it_curled_says_nothing(self):
-        # first seen 16 m out, already 30 cm off the thrown line: that is curl
-        late = [(y, self.FIT.x(y) + 0.30) for y in [16.0 - 0.25 * i for i in range(40)]]
-        assert L.confirmed_by(late, self.FIT) is None
-
-    def test_only_the_window_is_compared_not_where_it_curled_later(self):
-        on_then_curls = [(y, self.FIT.x(y) + (0.0 if y >= 19.0 else 0.4)) for y in
-                         [23.5 - 0.25 * i for i in range(60)]]
-        assert L.confirmed_by(on_then_curls, self.FIT) is True
+        assert measured(track, self.START, self.BROOM).at_tee_x is None
 
 
 class TestThin:
@@ -425,6 +433,12 @@ class TestTimeLines:
         self.run([s])
         assert s.line is not None and s.line.fit_n >= 15
         assert self.n == 1
+
+    def test_time_lines_keeps_the_raw_track(self):
+        crossing = crossing_for(self.stone_to(11.5))
+        s = self.shot(crossing)
+        self.run([s])
+        assert len(s.line.track) == len(L.hog_track(crossing, HOG_VIEW)) > 0
 
     def test_a_failure_measuring_one_shot_leaves_it_without_a_line_and_does_not_raise(self):
         # The start-window decode raises for `bad` (release at t=100) only;

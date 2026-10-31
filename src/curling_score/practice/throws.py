@@ -101,7 +101,7 @@ def throw_record(shot, *, house: str, t0_s: float = 0.0) -> dict:
             "hog_offset_m": _r(line.at_hog_offset, 4),
             # The thrown line's x at the throwing hog line: with the broom (or
             # the far tee), what the clip overlay draws it through.
-            "at_hog_x": _r(line.at_hog_x, 4), "confirmed": line.confirmed,
+            "at_hog_x": _r(line.at_hog_x, 4),
             # Where it was aimed at the far tee: only when no broom was held.
             "aim_x": _r(getattr(line, "at_tee_x", None), 4),
             # The delivery from the hack, as the viewer's Delivery chart reads

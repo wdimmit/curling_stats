@@ -28,7 +28,7 @@ def arrival(color="red", t_enter=40.0, x=0.1, y=-0.4, came_to_rest=True):
 
 def line(**kw):
     base = dict(start=(0.0, -3.6), at_hog_x=0.1, at_hog_offset=0.08, at_broom_x=-0.57,
-                miss=-0.12, curl="left", side="narrow", confirmed=True, hog_path=(),
+                miss=-0.12, curl="left", side="narrow", hog_path=(),
                 path=(), fit_n=12, fit_rms=0.01)
     return Line(**{**base, **kw})
 
@@ -66,7 +66,7 @@ class TestThrowRecord:
         assert got["curl"] == "left"
         assert got["broom"] == {"x": -0.45, "y": 0.0}
         assert got["line"] == {"miss_m": -0.12, "side": "narrow", "hog_offset_m": 0.08,
-                               "at_hog_x": 0.1, "confirmed": True, "aim_x": None,
+                               "at_hog_x": 0.1, "aim_x": None,
                                "start": {"x": 0.0, "y": -3.6}, "delivery": []}
         # Where it rests is the house read's stone, not the track's last point.
         assert got["rest"] == {"x": 0.12, "y": -0.41, "to_tee_m": 0.427, "ring": "4"}
@@ -149,5 +149,5 @@ class TestThrowRecord:
         shot.line = line(at_broom_x=None, miss=None, side=None, at_tee_x=-0.21)
         got = throws.throw_record(shot, house="top")["line"]
         assert got == {"miss_m": None, "side": None, "hog_offset_m": 0.08, "at_hog_x": 0.1,
-                       "confirmed": True, "aim_x": -0.21,
+                       "aim_x": -0.21,
                        "start": {"x": 0.0, "y": -3.6}, "delivery": []}
