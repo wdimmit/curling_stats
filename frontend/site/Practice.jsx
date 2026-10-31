@@ -101,11 +101,17 @@ function SensorLine({ t, sensors }) {
 }
 
 /* Where the slide was aimed, where the release sent the rock and the weight,
- * large, right under the clip. Under the release, smaller, how far the release
- * moved the line from the slide's; left out when it is too small to tell from
- * the measurement's error. */
-function SlideHero({ figures, split }) {
-  const value = f => <div className="slide-value">{f.value}{f.side && <span> {f.side}</span>}</div>;
+ * large, under the delivery chart where the Line and Weight rows were; then
+ * ``children`` (where the rock came to rest). Under the release, smaller, how
+ * far the release moved the line from the slide's; left out when it is too
+ * small to tell from the measurement's error. */
+function SlideHero({ figures, split, children = null }) {
+  // A figure in words ("to the broom") is set a size down from one in
+  // numbers, so it fits the column on a phone.
+  const value = f => (
+    <div className={/\d/.test(f.value) ? "slide-value" : "slide-value words"}>
+      {f.value}{f.side && <span> {f.side}</span>}</div>
+  );
   const figure = (kind, label, f, extra = null) => (
     <div className={`slide-figure ${kind}`}>
       <div className="slide-label">{label}</div>
@@ -120,12 +126,13 @@ function SlideHero({ figures, split }) {
       {figure("slide", "Slide", figures.slide)}
       {figure("release", "Release", figures.release, change)}
       {figure("weight", "Hog to hog", weight)}
+      {children}
     </div>
   );
 }
 
-/* Where the rock came to rest, in the figures' style beside the house: the
- * ring large, how far from the tee under it. */
+/* Where the rock came to rest, in the figures' style: the ring large, how far
+ * from the tee under it. */
 function RestFigure({ rest }) {
   const [ring, distance] = (restText(rest) ?? "").split(" · ");
   return (
@@ -141,9 +148,8 @@ function RestFigure({ rest }) {
 function Latest({ t, n, sid, live, newest, sensors, onHide }) {
   const clip = clipState(t, { live, newest });
   const figures = slideFigures(t);
-  const hero = figures && <SlideHero figures={figures} split={t.split_s} />;
-  // The hero's Release and Hog to hog figures say what "Line" and "Weight"
-  // would, so only one of each shows.
+  // The Release and Hog to hog figures say what "Line" and "Weight" would, so
+  // only one of each shows.
   const lineRow = !figures && (
     <>
       <dt className="muted">Line</dt>
@@ -164,15 +170,15 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
       {clip === "play" && (
         <ClipPlayer src={`/api/practice/sessions/${encodeURIComponent(sid)}/throws/`
                          + `${encodeURIComponent(t.id)}/clip`}
-                    overlay={t.overlay} autoPlay={live && newest} under={hero} />
+                    overlay={t.overlay} autoPlay={live && newest} />
       )}
       {clip === "wait" && <p className="muted">Clip on its way…</p>}
-      {clip !== "play" && hero}
       <Delivery t={t} n={n} />
       {!t.arrived ? (
         <>
           <p><strong>Released, didn't arrive</strong> (hogged?)</p>
-          <dl style={{ margin: 0 }}>
+          {figures && <SlideHero figures={figures} split={t.split_s} />}
+          <dl style={{ margin: figures && sensors ? "8px 0 0" : 0 }}>
             {lineRow}
             <SensorLine t={t} sensors={sensors} />
           </dl>
@@ -181,7 +187,9 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
           {figures ? (
             <div style={{ flex: 1 }}>
-              <RestFigure rest={t.rest} />
+              <SlideHero figures={figures} split={t.split_s}>
+                <RestFigure rest={t.rest} />
+              </SlideHero>
               {sensors && (
                 <dl style={{ margin: "8px 0 0" }}>
                   <SensorLine t={t} sensors={sensors} />
