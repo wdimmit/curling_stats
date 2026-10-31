@@ -90,6 +90,8 @@ class Line:
     # The 9 ft final window could not be fitted, though the pass's own fit
     # could: the rock keeps its line, path and curl, and reports no final line.
     final_refused: bool = False
+    # Whether a broom was held: with final_refused nothing else says so.
+    held_broom: bool = True
     # hog_track's samples as read, (t, x, y, y_past_tee) at 30 fps: the release
     # line continues the delivery on them. Not serialised.
     track: tuple = field(default=(), repr=False, compare=False)
@@ -190,7 +192,8 @@ def measure(fit: Fit, track, start, broom, rest=None, path=(), delivery=(), *,
                 hog_path=thin([(y, x) for _t, x, y, _yp in track]),
                 path=thin(list(path)), fit_n=None if final is None else final.n,
                 fit_rms=None if final is None else final.rms, at_tee_x=at_tee_x,
-                delivery=tuple(delivery), final_refused=final is None, track=tuple(track))
+                delivery=tuple(delivery), final_refused=final is None,
+                held_broom=broom is not None, track=tuple(track))
 
 
 CROP_EDGE_ROWS = 6          # the box is clipped at the band's bottom edge

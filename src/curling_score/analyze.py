@@ -16,6 +16,7 @@ from curling_score.detect import (broommodel, delivery, longview, release, relea
                                   rocks, sequence, sidemodel, spinmodel)
 from curling_score.fpframes import record as fp_record
 from curling_score.game import (
+    aimlines,
     boardsplit,
     broomtime,
     endcheck,
@@ -455,7 +456,7 @@ class StageClock:
     mark to ``name``; stages marked more than once add up."""
 
     ORDER = ("detect", "rules", "follow", "lost", "hog", "side", "brooms",
-             "lines", "release", "spin")
+             "lines", "release", "aim", "spin")
 
     def __init__(self, clock=time.monotonic):
         self.clock = clock
@@ -713,6 +714,11 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
                         log.exception("end %s: the release read failed; no releases",
                                       end.number)
                     stages.mark("release")
+                    # Where the slide was aimed and where the release sent the
+                    # rock: two more lines, read from the release point on.
+                    n_aim = aimlines.attach_aim_lines(shots)
+                    progress(f"    end {end.number}: aim lines {n_aim}/{len(shots)}")
+                    stages.mark("aim")
             finally:
                 # ~20 MB a rock: let it go before the next end, whatever happened.
                 if keeper is not None:

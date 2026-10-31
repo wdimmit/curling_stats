@@ -64,6 +64,7 @@ class TestFinalFit:
         assert (line.miss, line.at_broom_x, line.at_hog_x, line.side, line.fit_n) == \
             (None, None, None, None, None)
         assert line.curl == "right"                     # from the internal fit
+        assert line.held_broom is True
 
     def test_the_final_fit_supplies_the_figures(self):
         internal = L.Fit(a=0.0, b=0.0, n=40, rms=0.002)
