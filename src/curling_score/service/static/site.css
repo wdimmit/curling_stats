@@ -210,12 +210,25 @@ body:is([data-page="thinking"], [data-page="ice"]) :is(table, th, h2, .pill, .ta
 .clip-box video.practice-clip { position:absolute; inset:0; width:100%; height:100%;
                                 object-fit:fill; display:block; }
 svg.clip-lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+/* Thin enough to see the rock past: a 0.6 px line on a thin dark edge that
+   keeps it legible on white ice. The aim's edge is dashed with it, so its
+   gaps stay open. */
 svg.clip-lines polyline, svg.clip-lines circle {
-  fill:none; stroke-width:3; stroke-linecap:round; vector-effect:non-scaling-stroke; }
-svg.clip-lines .under { stroke:rgba(0,0,0,.45); stroke-width:6; stroke-dasharray:none; }
+  fill:none; stroke-width:.6; stroke-linecap:round; vector-effect:non-scaling-stroke; }
+svg.clip-lines .edge { stroke:rgba(0,0,0,.3); stroke-width:1.5; }
 svg.clip-lines .thrown, svg.clip-lines .broom { stroke:#ff2fd0; }
-svg.clip-lines .aim { stroke:#2fd8ff; stroke-dasharray:9 7; }
-svg.clip-lines .dot { stroke:#fff; stroke-width:1.5; }
+svg.clip-lines .aim { stroke:#2fd8ff; }
+svg.clip-lines .aim, svg.clip-lines .aim-edge { stroke-dasharray:3 3; stroke-linecap:butt; }
+svg.clip-lines circle.edge { stroke-width:1.5; }
+/* The slide's dots cross both white ice and the thrower's dark clothes, so
+   their fills are the lines' hues at middle lightness: at least 3:1 against
+   either. Small, so they do not hide the rock; a light disc under each
+   (clip.jsx) parts it from the line under it and from its neighbours. */
+svg.clip-lines .dot { stroke:none; }
+svg.clip-lines .dot-halo { fill:rgba(255,255,255,.75); stroke:none; }
+svg.clip-lines .dot.aim { fill:#0f86c4; }
+svg.clip-lines .dot.thrown { fill:#cc1f96; }
+svg.clip-lines .dot.unknown { fill:#6b7280; }
 .clip-tools { font-size:13px; margin:0 0 8px; text-align:center; }
 /* My shots: a rock's clip opens in a row of its own under the rock. */
 #shots tr.clip-row td { padding:0 0 10px; }

@@ -6,10 +6,11 @@
  * A link that has expired under an open page is asked for once more. */
 import { useEffect, useRef, useState } from "react";
 import { authedFetch } from "./auth.js";
-import { DELIVERY_COLORS } from "../core/constants.mjs";
 import { dotsShown, linkFresh, overlayAt } from "../core/practice.mjs";
 
 const LINES_KEY = "practice.lines";
+// A slide dot's kind (before or after the release) to the line it lies on.
+const DOT_LINE = { before: "aim", after: "thrown" };
 // A clip's picture, as the worker scales it (practice/clips.py CLIP_SIZE).
 const CLIP_W = 600, CLIP_H = 810;
 
@@ -66,21 +67,44 @@ function ClipLines({ overlay, video }) {
   if (!piece) return null;
   const pts = line => line.map(([u, v]) => `${(u * CLIP_W).toFixed(1)},${(v * CLIP_H).toFixed(1)}`)
     .join(" ");
-  const drawn = (line, kind) => line && [
-    <polyline key={`${kind}-under`} points={pts(line)} className="under" />,
-    <polyline key={kind} points={pts(line)} className={kind} />];
+  // Every edge goes down before any line, so where the two lines run together
+  // one's dark edge never covers the other.
+  const marks = [["aim", piece.aim], ["thrown", piece.thrown]].filter(([, line]) => line);
+  const broom = piece.broom && { cx: piece.broom[0] * CLIP_W, cy: piece.broom[1] * CLIP_H, r: 9 };
+  const dots = (piece.dots ?? []).slice(0, shown);
   return (
     <svg className="clip-lines" viewBox={`0 0 ${CLIP_W} ${CLIP_H}`} preserveAspectRatio="none"
          aria-hidden="true">
-      {drawn(piece.aim, "aim")}
-      {drawn(piece.thrown, "thrown")}
-      {piece.broom && <>
-        <circle cx={piece.broom[0] * CLIP_W} cy={piece.broom[1] * CLIP_H} r="13" className="under" />
-        <circle cx={piece.broom[0] * CLIP_W} cy={piece.broom[1] * CLIP_H} r="13" className="broom" />
-      </>}
-      {(piece.dots ?? []).slice(0, shown).map(([, u, v, kind], i) => (
-        <circle key={`dot-${i}`} cx={u * CLIP_W} cy={v * CLIP_H} r="4" className="dot"
-                style={{ fill: DELIVERY_COLORS[kind] ?? DELIVERY_COLORS.unknown }} />
+      {/* The lines fade toward the camera: that is where the rock is biggest
+          and where the calibration, made from the far end's paint, is least sure. */}
+      <defs>
+        <linearGradient id="clip-lines-fade" gradientUnits="userSpaceOnUse"
+                        x1="0" y1="0" x2="0" y2={CLIP_H}>
+          <stop offset="0.35" stopColor="#fff" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0.3" />
+        </linearGradient>
+        <mask id="clip-lines-mask" maskUnits="userSpaceOnUse" x="0" y="0"
+              width={CLIP_W} height={CLIP_H}>
+          <rect width={CLIP_W} height={CLIP_H} fill="url(#clip-lines-fade)" />
+        </mask>
+      </defs>
+      <g mask="url(#clip-lines-mask)">
+        {marks.map(([kind, line]) => <polyline key={`${kind}-edge`} points={pts(line)}
+                                               className={`edge ${kind}-edge`} />)}
+        {broom && <circle {...broom} className="edge" />}
+        {marks.map(([kind, line]) => <polyline key={kind} points={pts(line)} className={kind} />)}
+        {broom && <circle {...broom} className="broom" />}
+      </g>
+      {/* The dots sit about a ring's width apart, so every light ring goes
+          down first, as a disc under all of them: no dot covers another's. */}
+      {dots.map(([, u, v], i) => (
+        <circle key={`halo-${i}`} cx={u * CLIP_W} cy={v * CLIP_H} r="1.75" className="dot-halo" />
+      ))}
+      {dots.map(([, u, v, kind], i) => (
+        // Coloured as the line the rock is on: in the hand it travels the
+        // hack-to-broom aim, once let go the thrown line.
+        <circle key={`dot-${i}`} cx={u * CLIP_W} cy={v * CLIP_H} r="1.25"
+                className={`dot ${DOT_LINE[kind] ?? "unknown"}`} />
       ))}
     </svg>
   );
