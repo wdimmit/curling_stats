@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from curling_score.game import aimlines, hogtime, linetime, spinfit, spintime, thinking
+from curling_score.game import aimlines, hogtime, linetime, releasetime, spinfit, spintime, thinking
 from curling_score.geometry import constants as C
 from tests.test_service_api import world  # noqa: F401 - the app on in-memory fakes
 
@@ -32,20 +32,21 @@ def stated():
     """(what, phrase the page must say), each phrase built from the code."""
     nine = round(linetime.NINE_FT_M / FT)
     assert linetime.FINAL_PAST_TEE_M[0] == C.TEE_TO_HOGLINE_M
+    assert aimlines.SLIDE_FROM_M == -(C.TEE_TO_HACKLINE_M + C.TEE_TO_BACKLINE_M) / 2
     return [
         ("final window", f"first {nine} ft past the hog line"),
         ("release window", f"first {nine} ft past the release"),
-        ("slide start", f"{round(-aimlines.SLIDE_FROM_M / FT)} ft behind the tee"),
+        ("slide start", "from halfway between the hack and the back line"),
+        ("release search start", f"{round(-releasetime.FROM_M / IN)} in behind the tee"),
         ("line error ceiling", f"more than {round(aimlines.SE_MAX_M / IN)} in"),
         ("set threshold", {2.0: "twice"}[aimlines.SET_SIGMAS]),
         ("on the broom, both pages", f"within {js_const('frontend/core/line.mjs', 'ON_M') / IN:g} in of the broom"),
         ("on the line at the hog line", f"means within {round(js_const('frontend/core/line.mjs', 'ON_M') / IN)} in"),
         ("hog crossing frame rate", f"{hogtime.READ_FPS:g} frames a second"),
         ("rotation start", f"{round((spintime.FROM_M - C.TEE_TO_HOGLINE_M) / FT)} ft past the hog line at the thrower's end"),
-        ("rotation start, from the tee", f"{spintime.FROM_M:g} m from the tee"),
         ("rotation turns", {1.25: "first 1¼ turns"}[spinfit.EARLY_TURNS]),
         ("rotation range", {0.5: "under half a turn"}[spinfit.RANGE_BELOW_TURNS]),
-        ("curl threshold", f"{round(linetime.CURL_MIN_M * 100)} cm"),
+        ("curl threshold", f"{round(linetime.CURL_MIN_M / IN)} in or more"),
         ("thinking grace", f"{thinking.GRACE_S:g} seconds"),
     ]
 
