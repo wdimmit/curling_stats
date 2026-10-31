@@ -361,7 +361,11 @@ export function lineNumbers(shot, doc) {
   out.slide_m = aimMiss(l.slide);
   out.release_m = aimMiss(l.release_line);
   out.set_shown = l.set?.shown === true;
-  out.set_m = out.set_shown ? l.set.m : null;
+  // Stored + wide by the pipeline's curl, read to where the rock rested; the
+  // figures' wide follows `turn`, which a hit reads at the contact and a
+  // hit-and-roll flips. Back to + right, then into turn's frame.
+  out.set_m = !out.set_shown ? null
+    : l.set.m * (l.curl === "right" ? -1 : 1) * (out.turn === "right" ? -1 : 1);
   if (out.final_refused || typeof l.at_broom?.miss_m !== "number") return out;
   out.miss_m = l.at_broom.miss_m;
   out.on_broom = Math.abs(out.miss_m) <= ON_M;

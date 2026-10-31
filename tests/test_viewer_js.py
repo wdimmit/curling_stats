@@ -2863,6 +2863,22 @@ class TestAimFigures:
         _, f = self.figs(self.measured(set={"m": -0.35, "se_m": 0.04, "shown": True}))
         assert f["release"]["note"] == "−1 ft 2 in from the slide"
 
+    def test_the_set_follows_the_figures_turn_after_a_hit_and_roll(self):
+        """The stored set is signed toward wide by the pipeline's curl, read to
+        where the rock rested; the figures read a hit's turn at the contact
+        instead. s_0NOn e1 r14 curled left into the red and rolled right, so
+        `line.curl` is "right" and the figures' turn "left". A release 0.35 m
+        right of the slide is stored as -0.35 (narrower, curling right) but is
+        wider on the page (Copilot on PR #3)."""
+        s = TestCurlStopsAtAHit().s_0NOn_e1_s14()
+        broom = s["target_broom"]["x"]
+        aim = lambda miss: {**self.aim(miss), "at_broom": {"x": broom + miss, "miss_m": miss}}
+        s["line"].update(release=[833.0, 29.5, -0.05], slide=aim(-0.10), release_line=aim(0.25),
+                         set={"m": -0.35, "se_m": 0.04, "shown": True})
+        _, f = self.figs(s)
+        assert (f["slide"]["value"], f["release"]["value"]) == ("4 in narrow", "10 in wide")
+        assert f["release"]["note"] == "+1 ft 2 in from the slide"
+
     def test_no_release_read_says_so(self):
         s = self.measured(slide=None, release_line=None, set=None)
         del s["line"]["release"]
