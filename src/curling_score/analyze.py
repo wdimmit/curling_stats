@@ -1085,7 +1085,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         strip = proxy.strip_rect(panels.top, panels.bottom)
         phase("proxy", 0.0, "building strip proxy")
         read_path = proxy.ensure_proxy(
-            path, info.video_id, strip, root=root, progress=progress
+            path, info.video_id, strip, root=root, progress=progress,
+            tick=lambda: phase("proxy", 0.0, "building strip proxy"),
         )
         phase("proxy", 1.0, "proxy ready")
         read_setups = _proxy_setups(setups, strip)
