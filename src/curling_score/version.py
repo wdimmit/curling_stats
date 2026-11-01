@@ -332,7 +332,11 @@ from pathlib import Path
 # and release lines (`game/aimlines.py`) from halfway to the back line to the
 # release point and over 9 ft past it. The line check from behind the thrower
 # is retired. Timeline schema 10.
-PIPELINE_VERSION = "2026.10.31.1"
+# 2026.10.31.2: a stone passing through one house while a takeout has left the
+# house in play empty no longer cuts that end in two (`segment._passing`).
+# overhead-3 sees those stones where ds17b missed them: 10/25 Sunday Skips
+# sheet 1 lost end 1's first 4 rocks, and with them every board score.
+PIPELINE_VERSION = "2026.10.31.2"
 
 
 def model_id(weights) -> str:
