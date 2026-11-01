@@ -1,6 +1,6 @@
 # A player class in the overhead detector
 
-**Status:** draft for the user's review, 2026-11-01.
+**Status:** approved by the user, 2026-11-01.
 
 ## Why
 
