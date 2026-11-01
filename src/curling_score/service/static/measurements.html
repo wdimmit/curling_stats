@@ -17,6 +17,7 @@
        curl         game/linetime.py, frontend/core/line.mjs (curlOf)
        rest         detect/delivery.py, game/shots.py
        thinking     game/thinking.py
+       types        game/classify.py, game/shots.py (house_delta)
      tests/test_measurements_page.py holds the numbers here to the code's. -->
 <style>
   :root { --m-ice:#f7f9fa; --m-paint:#9aa6ad; --m-ring-b:#cfdfee; --m-ring-r:#f1d3d1;
@@ -74,9 +75,9 @@
 </header>
 <main class="legal">
 <h1>How we measure a shot</h1>
-<p class="muted">Last updated October 31, 2026</p>
+<p class="muted">Last updated November 1, 2026</p>
 
-<p>Every figure on a shot is read from the club's video. This page explains each one: where on the sheet it is measured, which camera sees it, and how far to trust it. Where a figure could not be measured well enough, it shows a dash (–) rather than a guess.</p>
+<p>Every figure on a shot is read from the club's video. This page explains each one: where on the sheet it is measured, which camera sees it, and how far to trust it. The last section says how each rock is given a type. Where a figure could not be measured well enough, it shows a dash (–) rather than a guess.</p>
 <p>In the drawings the thrower is at the bottom, as on a game's page. Distances along the sheet are to scale. Across the sheet they are stretched, so that differences of a few inches show. The rock in them is a made-up example.</p>
 
 <h2 id="cameras">The cameras</h2>
@@ -323,6 +324,20 @@
 </svg>
 <figcaption>The thinking-time clock for one stone.</figcaption>
 </figure>
+
+<h2 id="types">Shot Type:</h2>
+<p>Each rock is given a type from what it was seen to do, never from what was called. A stone that knocks out a guard is a peel if that was the call and a wrecked draw if it was not, and the video can't tell those apart. So the type is kept coarse, and the finer ones (a freeze, a peel, a hit and roll) are left to the person charting the game, who can change any rock's type.</p>
+<ul>
+  <li><strong>Hit</strong>: it moved a stone that was already in play by about a foot or more, or knocked one out of play. This is decided first, so a rock that struck something is a hit wherever it ended up, even if it rolled out. The overhead camera compares the stones in the house before the rock with those after it.</li>
+  <li><strong>Draw</strong>: it came to rest in the house, with any part of the stone over the twelve-foot ring, and moved nothing.</li>
+  <li><strong>Guard</strong>: it came to rest in play outside the house and moved nothing. The tee line does not matter: a stone short of the house and one behind it, still in play, are both guards.</li>
+  <li><strong>Through</strong>: it went clean over the back line, touching nothing, at draw weight: a long time over 12.5 seconds.</li>
+  <li><strong>Flashed</strong>: it went out of play touching nothing, at takeout weight: 12.5 seconds or under. A rock that left play with no weight reading is called Flashed too, as the commoner way to get there, at a lower confidence.</li>
+  <li><strong>Hogged</strong>: the overhead camera at the thrower's end saw it leave, nothing arrived at the far house, and the far house did not change.</li>
+  <li><strong>Unknown</strong>: too little of the rock was seen to say.</li>
+</ul>
+<p>The 12.5 seconds is the usual dividing line between draw weight and takeout weight. It is not tuned to the club's ice. How fast a rock is going as it reaches the far house does not separate them: by then a takeout has lost most of its speed, and measured across whole games the two overlapped completely.</p>
+<p><strong>How far to trust it.</strong> Under Shot type a rock says "auto" and how confident the type is, from 0 to 1. A hit, seen in the house, is the surest type. A rock resting within about 6 in of the edge of the house could as easily be a draw as a guard, and gets the same lower confidence. A type says nothing about whether the shot was good.</p>
 
 </main>
 <footer><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/measurements">Measurements</a></footer>

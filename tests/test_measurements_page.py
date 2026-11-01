@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from curling_score.game import aimlines, hogtime, linetime, releasetime, spinfit, spintime, thinking
+from curling_score.game import aimlines, classify, hogtime, linetime, releasetime, shots, spinfit, spintime, thinking
 from curling_score.geometry import constants as C
 from tests.test_service_api import world  # noqa: F401 - the app on in-memory fakes
 
@@ -48,6 +48,10 @@ def stated():
         ("rotation range", {0.5: "under half a turn"}[spinfit.RANGE_BELOW_TURNS]),
         ("curl threshold", f"{round(linetime.CURL_MIN_M / IN)} in or more"),
         ("thinking grace", f"{thinking.GRACE_S:g} seconds"),
+        ("draw or takeout weight", f"draw weight: a long time over {classify.SPLIT_HIT_MAX_S:g} seconds"),
+        ("takeout weight", f"{classify.SPLIT_HIT_MAX_S:g} seconds or under"),
+        ("a hit moves a stone", {1: "by about a foot"}[round(shots.MOVED_MIN_M / FT)]),
+        ("house edge", f"within about {round(classify.BOUNDARY_M / IN)} in of the edge of the house"),
     ]
 
 
