@@ -3792,15 +3792,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.post("/api/admin/label-answers/discard")
     async def admin_label_answers_discard(request: Request,
                                           authorization: str | None = Header(default=None)):
-        """Drop every answer of one kind by one member (by uid) and reopen the
+        """Drop every player answer by one member (by uid) and reopen the
         items that fall short without it. The member is not handed those items
         again, and cannot answer them."""
         require_admin(authorization)
         body = await request.json()
         uid = body.get("uid") if isinstance(body, dict) else None
         kind = body.get("kind") if isinstance(body, dict) else None
-        if not isinstance(uid, str) or not uid or kind not in LABEL_KINDS:
-            raise HTTPException(422, "send a uid and a kind of box, release or player")
+        if not isinstance(uid, str) or not uid:
+            raise HTTPException(422, "send a uid and a kind")
+        # The export and agreement scripts don't skip discarded answers yet,
+        # so only player answers (which they never read) can be dropped.
+        if kind != "player":
+            raise HTTPException(422, "only player answers can be discarded")
         return {"reopened": repo.discard_label_answers(uid, kind, now())}
 
     @app.get("/api/admin/label-items")

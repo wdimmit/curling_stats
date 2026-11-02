@@ -309,6 +309,18 @@ def test_discarding_needs_the_admin_token_and_a_good_body(w):
     assert r.status_code == 422
 
 
+def test_only_player_answers_can_be_discarded(w):
+    publish(w, 1)
+    assert answer(w, SARAH, "b_0").status_code == 200
+    for kind in ("box", "release"):
+        r = discard(w, "uid-sarah", kind=kind)
+        assert r.status_code == 422 and "only player" in r.json()["detail"]
+    [a] = w["repo"].label_answers("b_0")
+    assert a.discarded is False
+    got = w["repo"].get_label_item("b_0")
+    assert (got.state, got.n_labels, got.labelled_by) == ("open", 1, ["uid-sarah"])
+
+
 def test_admin_listing_names_the_player_kind(w):
     r = w["client"].get("/api/admin/label-items?kind=nope&state=done", headers=ADMIN)
     assert r.status_code == 422 and "box, release or player" in r.json()["detail"]
