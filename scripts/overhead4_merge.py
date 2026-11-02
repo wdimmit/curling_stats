@@ -19,6 +19,8 @@ the frame's stem (`origin.stem` in players.jsonl): item ids are opaque. A stem
 labelled in two places (ds11's val, say, published as its own fold as well as
 inside fold `all`) is fine if the two labels agree and an error if they don't.
 A label file of no lines is a frame reviewed with nobody on the ice, and is kept.
+A base frame with no stone label file at all is an error (it would be taught as
+background), as is an --out whose images/ or labels/ already hold files.
 
 Training on a partly reviewed frame is the thing this refuses: a base frame with
 no player label is an error naming it, unless its stem is in --leave-out (one
@@ -46,7 +48,8 @@ import shutil
 import sys
 from pathlib import Path
 
-NAMES = ("red", "yellow", "player")
+# overhead-3's own names for 0 and 1 (its data.yaml), then player.
+NAMES = ("red_stone", "yellow_stone", "player")
 PLAYER = "2"
 SUFFIXES = (".jpg", ".jpeg", ".png")
 
@@ -133,8 +136,14 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
     """
     if pilot and "overhead-4" in str(Path(out).resolve()):
         raise ValueError(f"a pilot set must not go under overhead-4: {out}")
+    for sub in ("images", "labels"):
+        if (out / sub).is_dir() and any(p.is_file() for p in (out / sub).rglob("*")):
+            raise ValueError(f"{out / sub} already holds files; frames left from an earlier "
+                             "merge would be trained on. Merge into an empty folder.")
     labels = player_labels(players)
     frames = sorted(p for p in base_images.rglob("*") if p.suffix.lower() in SUFFIXES)
+    if not frames:
+        raise ValueError(f"no images under {base_images}")
     stems = [p.stem for p in frames]
     if len(set(stems)) != len(stems):
         raise ValueError("two base frames share a stem; players are matched by stem")
@@ -143,6 +152,13 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
         raise ValueError(f"{len(missing)} base frames have no player label and are not in "
                          f"the leave-out list: {', '.join(missing[:10])}"
                          + (" ..." if len(missing) > 10 else ""))
+    # A frame with no stone label file is not a frame with no stones: it would be
+    # taught as background. (Logo crops ship empty files.) Usually a wrong --base.
+    unread = [p.stem for p in frames if p.stem in labels and p.stem not in leave_out
+              and not (base_labels / p.relative_to(base_images).with_suffix(".txt")).is_file()]
+    if unread:
+        raise ValueError(f"{len(unread)} base frames have no stone label file under {base_labels}: "
+                         f"{', '.join(unread[:10])}" + (" ..." if len(unread) > 10 else ""))
     hard = agreed_stones(hard_stones) if hard_stones else {}
     clash = sorted(set(hard) & set(stems))
     if clash:
@@ -159,8 +175,7 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
             counts["unlabelled"] += 1
             continue
         label = base_labels / path.relative_to(base_images).with_suffix(".txt")
-        stones = [ln for ln in _lines(label.read_text()) if ln.split()[0] != PLAYER] \
-            if label.is_file() else []
+        stones = [ln for ln in _lines(label.read_text()) if ln.split()[0] != PLAYER]
         _write(out, path.relative_to(base_images), path, stones + labels[path.stem])
         counts["kept"] += 1
     for stem in sorted((set(labels) | set(hard)) - set(stems)) if hard_stones else ():

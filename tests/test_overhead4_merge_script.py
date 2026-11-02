@@ -94,7 +94,7 @@ def test_data_yaml_names_the_three_classes(tmp_path):
     m4.merge(bi, bl, pl, tmp_path / "out", set())
     yaml = (tmp_path / "out/data.yaml").read_text()
     assert f"path: {(tmp_path / 'out').resolve()}" in yaml
-    assert "names:\n  0: red\n  1: yellow\n  2: player\n" in yaml
+    assert "names:\n  0: red_stone\n  1: yellow_stone\n  2: player\n" in yaml
 
 
 def test_raises_on_a_frame_with_no_player_label(tmp_path):
@@ -322,3 +322,51 @@ def test_settle_via_the_cli(tmp_path, capsys):
     assert m4.main(["settle", "--export", str(export), "--players", str(root)]) == 0
     out = capsys.readouterr().out
     assert "settled 1" in out and "c" in out        # the stem still to leave out
+
+
+def test_a_base_frame_with_no_stone_label_file_is_an_error(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES, "train/b": STONES})
+    (bl / "train" / "b.txt").unlink()
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER), "b": ("p_2", PLAYER)})
+    with pytest.raises(ValueError, match="b"):
+        m4.merge(bi, bl, pl, tmp_path / "out", set())
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_wrong_base_labels_folder_is_an_error_not_a_set_without_stones(tmp_path):
+    bi, _ = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)})
+    with pytest.raises(ValueError, match="stone label"):
+        m4.merge(bi, tmp_path / "elsewhere", pl, tmp_path / "out", set())
+    assert m4.main(["--base", str(tmp_path / "b" / "images"), "--players", str(pl),
+                    "--out", str(tmp_path / "out")]) == 1
+
+
+def test_a_missing_stone_label_does_not_matter_for_a_frame_left_out_or_dropped(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES, "train/b": STONES, "train/c": STONES})
+    (bl / "train" / "b.txt").unlink()
+    (bl / "train" / "c.txt").unlink()
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER), "b": ("p_2", PLAYER)})
+    got = m4.merge(bi, bl, pl, tmp_path / "out", {"b"}, pilot=True)    # c unlabelled, b left out
+    assert got["kept"] == 1
+
+
+def test_a_non_empty_out_is_refused(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)})
+    _write(tmp_path / "out/images/train/stale.jpg", b"old")
+    with pytest.raises(ValueError, match="already holds"):
+        m4.merge(bi, bl, pl, tmp_path / "out", set())
+    assert not (tmp_path / "out/labels").exists()
+    # and a frame left in labels/ alone is just as stale
+    _write(tmp_path / "out2/labels/train/stale.txt", "")
+    with pytest.raises(ValueError, match="already holds"):
+        m4.merge(bi, bl, pl, tmp_path / "out2", set(), pilot=True)
+
+
+def test_an_out_with_only_empty_folders_is_fine(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)})
+    (tmp_path / "out/images/train").mkdir(parents=True)
+    m4.merge(bi, bl, pl, tmp_path / "out", set())
+    assert (tmp_path / "out/labels/train/a.txt").is_file()
