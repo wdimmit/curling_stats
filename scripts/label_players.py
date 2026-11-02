@@ -4,6 +4,21 @@
     python scripts/label_players.py publish --images DIR --labels DIR \\
         --dataset overhead-3 --fold all --batch players-1 --weights yolo11x-pose.pt
     ... publish ... --dry-run --out /tmp/players-look
+    python scripts/label_players.py ends --timelines DIR... --out ends.json
+    python scripts/label_players.py sort --images DIR --labels DIR --ends ends.json \\
+        [--provenance member.jsonl...] --out sides.json
+    ... publish ... --sides sides.json
+
+Only the receiving panel's frames are wanted: overhead-4 reads that panel and
+overhead-3 keeps the throwing one, so a throwing-panel frame would be labelled
+for nothing. `ends` gathers every end's span and house from timelines (the
+hosted ones: `gcloud storage cat gs://<bucket>/runs/<video>/<run>/timeline.json`
+into a folder, one file a run; the worker caches add none the hosted set lacks).
+`sort` places each frame by its name (`<video>_<t|b>_<s>_<cs>`), or for a
+member frame named by item id by its row in labels_export's member.jsonl, and
+the ends (see `sort_frame`); `publish --sides` then takes only the frames sort
+kept, and records the side in each item's origin. player_mine.py's hard batch
+needs no sorting: it reads each end's receiving panel only.
 
 DIR is an existing YOLO dataset folder: images (any depth below --images) and a
 `<stem>.txt` of stone labels (0 red, 1 yellow) under --labels at the same
@@ -64,6 +79,7 @@ import json
 import math
 import os
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -88,6 +104,15 @@ CONTACT_FRAMES = 40
 CONTACT_COLS, CONTACT_TILE = 8, (200, 344)
 SUFFIXES = (".jpg", ".jpeg", ".png")
 COLORS = ("red", "yellow")
+PANELS = {"t": "top", "b": "bottom"}
+STEM = re.compile(r"^(.{11})_([tb])_(\d{6})_(\d{2})$")
+# A frame up to this long before an end's start is in that end's run-up.
+RUN_UP_S = 600.0
+# With no timeline, a frame with this many stones or more is taken for the
+# receiving panel. On the 943 existing-set frames a hosted timeline placed:
+# 0-1 stones were 54 receiving, 332 throwing; 2 were 41 and 17; 3 or more were
+# 497 and 2. Mid-end the throwing house holds only the stone being thrown.
+MIN_STONES = 2
 
 
 def load_model(path: str):
@@ -189,6 +214,78 @@ def picks(images: Path) -> dict[str, dict]:
     return out
 
 
+def end_spans(doc: dict) -> list[tuple[float, float, str]]:
+    """``(start_s, end_s, house)`` of every end in a timeline document."""
+    out = []
+    for g in doc.get("games") or []:
+        for e in g.get("ends") or []:
+            if e.get("house") in PANELS.values() and e.get("start_s") is not None \
+                    and e.get("end_s") is not None:
+                out.append((float(e["start_s"]), float(e["end_s"]), e["house"]))
+    return out
+
+
+def side_of(spans, panel: str, t: float) -> str | None:
+    """``"receiving"`` or ``"throwing"``: what ``panel`` was at ``t`` by the ends
+    in ``spans``, or None when they do not say.
+
+    Inside an end, the end's house is receiving and the other throwing. Before
+    one, within RUN_UP_S, the next end's: its run-up is read on its panels. Two
+    runs that disagree say nothing.
+    """
+    inside = {"receiving" if h == panel else "throwing" for a, b, h in spans if a <= t <= b}
+    if inside:
+        return inside.pop() if len(inside) == 1 else None
+    nxt = [(a, h) for a, b, h in spans if 0 < a - t <= RUN_UP_S]
+    if not nxt:
+        return None
+    return "receiving" if min(nxt)[1] == panel else "throwing"
+
+
+def parse_stem(stem: str) -> tuple[str, str, float] | None:
+    """``(video, panel, t)`` from an existing-set stem ``<video>_<t|b>_<s>_<cs>``."""
+    m = STEM.match(stem)
+    if m is None:
+        return None
+    video, letter, s, cs = m.groups()
+    return video, PANELS[letter], int(s) + int(cs) / 100
+
+
+def provenance(paths) -> dict[str, tuple[str, str, float]]:
+    """``{stem: (video, panel, t)}`` from labels_export's ``member.jsonl`` files,
+    whose rows' ``id`` is the frame's stem."""
+    out = {}
+    for path in paths:
+        for line in Path(path).read_text().splitlines():
+            try:
+                row = json.loads(line)
+                o = row["origin"]
+                out[row["id"]] = (o["video_id"], o["where"], float(o["t"]))
+            except (ValueError, KeyError, TypeError):
+                continue
+    return out
+
+
+def sort_frame(n_stones: int, where, ends: dict) -> dict:
+    """Whether to publish a frame, from where it was taken (``(video, panel, t)``
+    or None) and how many stones its label has.
+
+    overhead-4 reads only the receiving panel, so a throwing-panel frame is a
+    frame labelled for nothing. A frame with no provenance (the logo crops,
+    taken outside play) is kept. One whose video's timeline places it keeps or
+    goes by that. Otherwise the stones decide: MIN_STONES or more and it is
+    kept.
+    """
+    if where is None:
+        return {"keep": True, "side": None, "by": "no provenance"}
+    video, panel, t = where
+    side = side_of(ends.get(video) or [], panel, t)
+    if side is not None:
+        return {"keep": side == "receiving", "side": side, "by": "timeline"}
+    keep = n_stones >= MIN_STONES
+    return {"keep": keep, "side": "receiving" if keep else "throwing", "by": "stones"}
+
+
 def contact_sheet(frames: list[tuple]) -> np.ndarray:
     """A grid of ``(image, item)``: each frame's starts in green and stones in their colour."""
     import cv2
@@ -213,6 +310,44 @@ def contact_sheet(frames: list[tuple]) -> np.ndarray:
                       for r in range(rows)])
 
 
+def cmd_ends(args) -> int:
+    """Write ``{video: [[start_s, end_s, house], ...]}`` from every timeline
+    under the folders, all of a video's runs together."""
+    ends: dict[str, set] = {}
+    for root in args.timelines:
+        for path in sorted(root.rglob("*.json")):
+            try:
+                doc = json.loads(path.read_text())
+                video = doc["source"]["video_id"]
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            ends.setdefault(video, set()).update(end_spans(doc))
+    out = {v: [list(s) for s in sorted(spans)] for v, spans in sorted(ends.items())}
+    args.out.write_text(json.dumps(out))
+    print(f"{sum(map(len, out.values()))} ends of {len(out)} videos to {args.out}")
+    return 0
+
+
+def cmd_sort(args) -> int:
+    """Write ``{stem: {keep, side, by}}`` for every frame under --images."""
+    ends = json.loads(args.ends.read_text())
+    prov = provenance(args.provenance)
+    out, counts = {}, {}
+    for path in _frames(args.images):
+        label = args.labels / path.relative_to(args.images).with_suffix(".txt")
+        n = sum(1 for line in label.read_text().splitlines() if line.strip()) \
+            if label.is_file() else 0
+        got = sort_frame(n, parse_stem(path.stem) or prov.get(path.stem), ends)
+        out[path.stem] = got
+        key = ("kept" if got["keep"] else "left out") + f" by {got['by']}"
+        counts[key] = counts.get(key, 0) + 1
+    args.out.write_text(json.dumps(out, indent=0, sort_keys=True))
+    for key, n in sorted(counts.items()):
+        print(f"{n:6}  {key}")
+    print(f"{sum(g['keep'] for g in out.values())} of {len(out)} kept, to {args.out}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -229,7 +364,23 @@ def main(argv=None) -> int:
     p.add_argument("--dry-run", action="store_true",
                    help="send nothing; write the items and a contact sheet to --out")
     p.add_argument("--out", type=Path, metavar="DIR")
+    p.add_argument("--sides", type=Path, metavar="JSON",
+                   help="sort's output: publish only the frames it keeps")
+    e = sub.add_parser("ends", help="every end's span and house, from timelines")
+    e.add_argument("--timelines", type=Path, nargs="+", required=True, metavar="DIR")
+    e.add_argument("--out", type=Path, required=True, metavar="JSON")
+    s = sub.add_parser("sort", help="receiving or throwing panel, frame by frame")
+    s.add_argument("--images", type=Path, required=True, metavar="DIR")
+    s.add_argument("--labels", type=Path, required=True, metavar="DIR")
+    s.add_argument("--ends", type=Path, required=True, metavar="JSON", help="ends' output")
+    s.add_argument("--provenance", type=Path, nargs="*", default=[], metavar="JSONL",
+                   help="labels_export member.jsonl files, for frames named by item id")
+    s.add_argument("--out", type=Path, required=True, metavar="JSON")
     args = ap.parse_args(argv)
+    if args.cmd == "ends":
+        return cmd_ends(args)
+    if args.cmd == "sort":
+        return cmd_sort(args)
 
     if args.dry_run and not args.out:
         print("--dry-run needs --out", file=sys.stderr)
@@ -247,6 +398,17 @@ def main(argv=None) -> int:
               f"{args.fold!r}: ds11's val frames are published as fold val, once. Pass "
               "images/train and labels/train for fold all, or --fold val.", file=sys.stderr)
         return 2
+    sides = {}
+    if args.sides:
+        sides = json.loads(args.sides.read_text())
+        unsorted = [p for p in paths if p.stem not in sides]
+        if unsorted:
+            print(f"{len(unsorted)} frames are not in {args.sides} (first {unsorted[0]}): "
+                  "sort this folder first", file=sys.stderr)
+            return 2
+        n = len(paths)
+        paths = [p for p in paths if sides[p.stem]["keep"]]
+        print(f"{len(paths)} of {n} frames kept by {args.sides.name}")
     token = os.environ.get("ADMIN_TOKEN", "").strip()
     if not args.dry_run and not token:
         print("set ADMIN_TOKEN (see scripts/users.py)", file=sys.stderr)
@@ -278,8 +440,10 @@ def main(argv=None) -> int:
             h, w = img.shape[:2]
             label = args.labels / path.relative_to(args.images).with_suffix(".txt")
             stones = stones_from_label(label.read_text(), w, h) if label.is_file() else []
+            side = (sides.get(path.stem) or {}).get("side")
             item = item_for(args.dataset, args.fold, path.stem, w, h, pose_starts(img, model),
-                            stones, args.batch, extra.get(path.stem, {}))
+                            stones, args.batch,
+                            {**extra.get(path.stem, {}), **({"side": side} if side else {})})
         except Exception as err:            # one bad frame must not stop the rest
             skipped += 1
             print(f"{path.name}: {type(err).__name__}: {err}, skipped", file=sys.stderr)

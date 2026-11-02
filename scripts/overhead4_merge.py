@@ -4,7 +4,8 @@
     python scripts/overhead4_merge.py --base /data/wdd/curling/overhead-3/folds/all \\
         --players datasets/member-labels/DATE/players \\
         [--hard-stones .../boxes/agreed [--hard-settled box-edits.json]] \\
-        [--leave-out left-out.txt] [--pilot] --out /data/wdd/curling/overhead-4/folds/all
+        [--leave-out left-out.txt] [--sides sides.json] [--pilot] \\
+        --out /data/wdd/curling/overhead-4/folds/all
     python scripts/overhead4_merge.py settle --export edits.json --players .../players
 
 --base is a YOLO folder with `images/` and `labels/` (the laptop's overhead-3
@@ -30,6 +31,13 @@ stem per line; the frames the owner could not settle), which drops it and
 counts it. --pilot drops the unlabelled frames and counts them instead, for an
 early run on what is reviewed so far, and refuses an --out containing
 `overhead-4`, so a pilot set can never be the real one.
+
+Only receiving-panel frames are published (label_players.py sort and
+publish --sides). --sides is that sort's output, `datasets/overhead-4/
+sides.json`: a base frame it left out (the throwing panel) and that has no
+player label is dropped and counted in `throwing`, not an error; one with a
+label anyway is kept. With --sides, a base frame the file doesn't cover is an
+error.
 
 --hard-stones is `labels_export.py --kind box`'s `boxes/agreed/` folder, for the
 hard batch (scripts/player_mine.py, published as `hard-1`). A hard frame goes
@@ -164,13 +172,15 @@ def _data_yaml(out: Path) -> None:
 
 def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_out: set[str],
           pilot: bool = False, hard_stones: Path | None = None,
-          hard_settled: Path | None = None, hard_disputed: Path | None = None) -> dict:
+          hard_settled: Path | None = None, hard_disputed: Path | None = None,
+          sides: dict | None = None) -> dict:
     """Write the merged set to ``out`` and return the counts.
 
     kept: frames written (hard: of them from the hard batch); unlabelled:
     base frames dropped for want of a player label (pilot only; otherwise
-    one is an error); left_out: frames dropped by ``leave_out``; base: base
-    frames looked at. With ``hard_stones``, hard_no_stones is the player labels
+    one is an error); left_out: frames dropped by ``leave_out``; throwing:
+    unlabelled base frames ``sides`` (label_players.py sort's output) left
+    out; base: base frames looked at. With ``hard_stones``, hard_no_stones is the player labels
     that match neither a base frame nor an agreed (or, with ``hard_settled``, the
     owner's settled) hard frame (a hard frame whose stones nobody settled; with a
     val-only --base, the train labels too) and hard_no_player the hard frames
@@ -191,7 +201,14 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
     stems = [p.stem for p in frames]
     if len(set(stems)) != len(stems):
         raise ValueError("two base frames share a stem; players are matched by stem")
-    missing = [s for s in stems if s not in labels and s not in leave_out]
+    thrown = set()
+    if sides is not None:
+        unsorted = [s for s in stems if s not in sides]
+        if unsorted:
+            raise ValueError(f"{len(unsorted)} base frames are not in the sides file: "
+                             f"{', '.join(unsorted[:10])}" + (" ..." if len(unsorted) > 10 else ""))
+        thrown = {s for s in stems if not sides[s]["keep"] and s not in labels}
+    missing = [s for s in stems if s not in labels and s not in leave_out and s not in thrown]
     if missing and not pilot:
         raise ValueError(f"{len(missing)} base frames have no player label and are not in "
                          f"the leave-out list: {', '.join(missing[:10])}"
@@ -216,11 +233,14 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
         raise ValueError(f"hard frames that are base frames too: {', '.join(clash[:10])}")
 
     counts = dict.fromkeys(("base", "kept", "hard", "hard_settled", "unlabelled", "left_out",
-                            "hard_no_stones", "hard_no_player"), 0)
+                            "throwing", "hard_no_stones", "hard_no_player"), 0)
     for path in frames:
         counts["base"] += 1
         if path.stem in leave_out:
             counts["left_out"] += 1
+            continue
+        if path.stem in thrown:
+            counts["throwing"] += 1
             continue
         if path.stem not in labels:
             counts["unlabelled"] += 1
@@ -315,6 +335,8 @@ def main(argv=None) -> int:
     ap.add_argument("--hard-disputed", type=Path, metavar="DIR",
                     help="the box export's disputed/ folder (default: beside --hard-stones)")
     ap.add_argument("--leave-out", type=Path, metavar="FILE", help="one stem per line")
+    ap.add_argument("--sides", type=Path, metavar="JSON",
+                    help="label_players.py sort's output: unlabelled throwing frames are dropped")
     ap.add_argument("--pilot", action="store_true",
                     help="drop unlabelled frames instead of failing; not under overhead-4")
     ap.add_argument("--out", type=Path, required=True, metavar="DIR")
@@ -322,7 +344,8 @@ def main(argv=None) -> int:
     try:
         got = merge(args.base / "images", args.base / "labels", args.players, args.out,
                     _leave_out(args.leave_out), args.pilot, args.hard_stones,
-                    args.hard_settled, args.hard_disputed)
+                    args.hard_settled, args.hard_disputed,
+                    json.loads(args.sides.read_text()) if args.sides else None)
     except (OSError, ValueError) as err:
         print(f"{type(err).__name__}: {err}", file=sys.stderr)
         return 1

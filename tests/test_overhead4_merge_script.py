@@ -464,3 +464,50 @@ def test_main_takes_hard_settled_and_hard_disputed(tmp_path, capsys):
     assert rc == 0 and "hard_settled 1" in capsys.readouterr().out
     assert (tmp_path / "out/labels/train/h2.txt").read_text() == \
         "0 0.500000 0.400000 0.100000 0.100000\n" + PLAYER
+
+
+# --- the sides file: only receiving-panel frames were published ----------------
+
+def _sides(**keep):
+    return {stem: {"keep": k, "side": "receiving" if k else "throwing", "by": "timeline"}
+            for stem, k in keep.items()}
+
+
+def test_an_unlabelled_throwing_frame_is_dropped_and_counted_not_an_error(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES, "train/t": ""})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)})
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(), sides=_sides(a=True, t=False))
+    assert (got["kept"], got["throwing"]) == (1, 1)
+    assert not (tmp_path / "out/labels/train/t.txt").exists()
+
+
+def test_a_kept_frame_with_no_label_is_still_an_error_with_sides(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {})
+    with pytest.raises(ValueError, match="no player label"):
+        m4.merge(bi, bl, pl, tmp_path / "out", set(), sides=_sides(a=True))
+
+
+def test_a_throwing_frame_labelled_anyway_is_kept(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/t": STONES})
+    pl = players(tmp_path / "p", {"t": ("p_1", PLAYER)})
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(), sides=_sides(t=False))
+    assert (got["kept"], got["throwing"]) == (1, 0)
+
+
+def test_a_base_frame_the_sides_file_does_not_cover_is_an_error(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES, "train/b": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER), "b": ("p_2", PLAYER)})
+    with pytest.raises(ValueError, match="not in the sides file"):
+        m4.merge(bi, bl, pl, tmp_path / "out", set(), sides=_sides(a=True))
+
+
+def test_main_reads_sides(tmp_path, capsys):
+    base(tmp_path / "b", {"train/a": STONES, "train/t": ""})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)})
+    sides = tmp_path / "sides.json"
+    sides.write_text(json.dumps(_sides(a=True, t=False)))
+    rc = m4.main(["--base", str(tmp_path / "b"), "--players", str(pl), "--sides", str(sides),
+                  "--out", str(tmp_path / "out")])
+    assert rc == 0
+    assert "throwing 1" in capsys.readouterr().out

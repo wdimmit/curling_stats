@@ -368,3 +368,120 @@ def test_a_picks_file_inside_the_images_folder_counts_too_and_null_fields_are_le
     (images / "picks.jsonl").write_text(json.dumps({"stem": "a", "video": "V", "game": None}) + "\n")
     assert lp.picks(images) == {"a": {"video": "V"}}
     assert lp.picks(tmp_path / "nowhere") == {}
+
+
+# --- receiving or throwing ------------------------------------------------------
+
+SPANS = [(100.0, 700.0, "bottom"), (760.0, 1400.0, "top")]
+
+
+def test_inside_an_end_its_house_is_receiving_and_the_other_throwing():
+    assert lp.side_of(SPANS, "bottom", 300.0) == "receiving"
+    assert lp.side_of(SPANS, "top", 300.0) == "throwing"
+    assert lp.side_of(SPANS, "top", 1400.0) == "receiving"
+
+
+def test_between_ends_a_frame_belongs_to_the_next_ends_run_up():
+    assert lp.side_of(SPANS, "top", 730.0) == "receiving"
+    assert lp.side_of(SPANS, "bottom", 730.0) == "throwing"
+
+
+def test_far_from_any_end_or_with_runs_disagreeing_the_ends_say_nothing():
+    assert lp.side_of(SPANS, "top", 5000.0) is None
+    assert lp.side_of(SPANS, "top", 100.0 - lp.RUN_UP_S - 1) is None
+    assert lp.side_of(SPANS + [(200.0, 300.0, "top")], "top", 250.0) is None
+    assert lp.side_of([], "top", 250.0) is None
+
+
+def test_a_stem_gives_video_panel_and_time_and_an_item_id_does_not():
+    assert lp.parse_stem("-0pMQupm60I_b_000615_40") == ("-0pMQupm60I", "bottom", 615.4)
+    assert lp.parse_stem("Y_XxbP1-G_o_t_003416_20") == ("Y_XxbP1-G_o", "top", 3416.2)
+    assert lp.parse_stem("b_81b4b696fd7bf9e1") is None
+    assert lp.parse_stem("qMDNIgIGHZs_t_003725_90_logo1") is None
+
+
+def test_the_timeline_decides_where_it_can_and_the_stones_where_it_cannot():
+    ends = {"vid": SPANS}
+    assert lp.sort_frame(0, ("vid", "bottom", 300.0), ends) == {
+        "keep": True, "side": "receiving", "by": "timeline"}
+    assert lp.sort_frame(9, ("vid", "top", 300.0), ends) == {
+        "keep": False, "side": "throwing", "by": "timeline"}
+    assert lp.sort_frame(lp.MIN_STONES, ("other", "top", 300.0), ends)["keep"] is True
+    assert lp.sort_frame(lp.MIN_STONES - 1, ("other", "top", 300.0), ends) == {
+        "keep": False, "side": "throwing", "by": "stones"}
+    assert lp.sort_frame(0, None, ends) == {"keep": True, "side": None, "by": "no provenance"}
+
+
+def _timeline(video, ends):
+    return {"source": {"video_id": video},
+            "games": [{"ends": [{"house": h, "start_s": a, "end_s": b} for a, b, h in ends]}]}
+
+
+def test_ends_joins_every_run_of_a_video_and_skips_what_is_not_a_timeline(tmp_path):
+    tl = tmp_path / "tl"
+    tl.mkdir()
+    (tl / "r1.json").write_text(json.dumps(_timeline("vid", SPANS[:1])))
+    (tl / "r2.json").write_text(json.dumps(_timeline("vid", SPANS)))
+    (tl / "junk.json").write_text("{}")
+    out = tmp_path / "ends.json"
+    assert lp.main(["ends", "--timelines", str(tl), "--out", str(out)]) == 0
+    assert json.loads(out.read_text()) == {"vid": [list(s) for s in SPANS]}
+
+
+def test_sort_places_named_and_member_frames_and_keeps_ones_with_no_provenance(tmp_path):
+    import cv2
+    images, labels = tmp_path / "images", tmp_path / "labels"
+    images.mkdir()
+    labels.mkdir()
+    stems = ["vid_padding_b_000300_00", "vidxxxxxxxx_t_000300_00", "b_0123456789abcdef",
+             "qMDNIgIGHZs_t_003725_90_logo1"]
+    for s in stems:
+        cv2.imwrite(str(images / f"{s}.jpg"), np.zeros((8, 8, 3), np.uint8))
+    (labels / "vidxxxxxxxx_t_000300_00.txt").write_text("0 .5 .5 .1 .1\n1 .2 .2 .1 .1\n\n")
+    ends = tmp_path / "ends.json"
+    ends.write_text(json.dumps({"vidxxxxxxxx": [[100.0, 700.0, "bottom"]],
+                                "vidyyyyyyyy": [[100.0, 700.0, "top"]]}))
+    member = tmp_path / "member.jsonl"
+    member.write_text(json.dumps({"id": "b_0123456789abcdef", "origin": {
+        "video_id": "vidyyyyyyyy", "where": "top", "t": 250.5}}) + "\n")
+    out = tmp_path / "sides.json"
+    rc = lp.main(["sort", "--images", str(images), "--labels", str(labels), "--ends", str(ends),
+                  "--provenance", str(member), "--out", str(out)])
+    assert rc == 0
+    got = json.loads(out.read_text())
+    assert got["vidxxxxxxxx_t_000300_00"] == {"keep": False, "side": "throwing", "by": "timeline"}
+    assert got["b_0123456789abcdef"] == {"keep": True, "side": "receiving", "by": "timeline"}
+    assert got["qMDNIgIGHZs_t_003725_90_logo1"]["by"] == "no provenance"
+    # A video no timeline covers goes by its stones: none here.
+    assert got["vid_padding_b_000300_00"] == {"keep": False, "side": "throwing", "by": "stones"}
+
+
+def test_publish_with_sides_takes_only_kept_frames_and_records_their_side(tmp_path, monkeypatch):
+    images, labels = _dataset(tmp_path, names=("a", "b", "c"))
+    sides = tmp_path / "sides.json"
+    sides.write_text(json.dumps({"a": {"keep": True, "side": "receiving", "by": "timeline"},
+                                 "b": {"keep": False, "side": "throwing", "by": "stones"},
+                                 "c": {"keep": True, "side": None, "by": "no provenance"}}))
+    monkeypatch.setattr(lp, "load_model", lambda path: StubPose([]))
+    out = tmp_path / "out"
+    rc = lp.main(["publish", "--images", str(images), "--labels", str(labels), "--dataset", "d",
+                  "--fold", "f", "--batch", "pl", "--weights", "w.pt", "--dry-run",
+                  "--out", str(out), "--sides", str(sides)])
+    assert rc == 0
+    origins = {i["stem"]: i for i in (json.loads(f.read_text())["payload"]["origin"]
+                                      for f in out.glob("p_*.json"))}
+    assert sorted(origins) == ["a", "c"]
+    assert origins["a"]["side"] == "receiving"
+    assert "side" not in origins["c"]
+
+
+def test_publish_refuses_frames_the_sides_file_does_not_cover(tmp_path, monkeypatch, capsys):
+    images, labels = _dataset(tmp_path)
+    sides = tmp_path / "sides.json"
+    sides.write_text(json.dumps({"a": {"keep": True, "side": "receiving", "by": "timeline"}}))
+    monkeypatch.setattr(lp, "load_model", lambda path: pytest.fail("loaded the model"))
+    rc = lp.main(["publish", "--images", str(images), "--labels", str(labels), "--dataset", "d",
+                  "--fold", "f", "--batch", "pl", "--weights", "w.pt", "--dry-run",
+                  "--out", str(tmp_path / "out"), "--sides", str(sides)])
+    assert rc == 2
+    assert "not in" in capsys.readouterr().err
