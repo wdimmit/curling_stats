@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Mine the hard batch for player labels: new overhead frames from cached hosted games.
 
-    docker run --rm --cpus=2 --cpu-shares=128 -e OMP_NUM_THREADS=2 \\
+    docker run --rm --cpus=2 --cpu-shares=128 --memory=6g -e OMP_NUM_THREADS=2 \\
         -v /data/wdd/curling-cache:/c1:ro -v /data/wdd/curling-cache-2:/c2:ro \\
         -v /data/wdd/scratch/occl:/pose:ro -v /data/wdd/scratch/players:/w \\
         --entrypoint python curling-worker:local /w/scripts/player_mine.py \\
@@ -14,7 +14,9 @@ copied to /data/wdd/scratch/players/scripts (the image has the code, the
 overhead weights and ultralytics but not these scripts) and the repo's
 datasets/overhead-4/exclude-videos.txt beside them. The caches are mounted
 read-only; everything runs on the CPU, at --cpus=2 and a low --cpu-shares so
-game processing comes first.
+game processing comes first, and --memory=6g so a runaway run is the container's
+to lose, not a worker's (no --pid=host: the container needs no view of the box's
+processes).
 
 `mine` reads each video's newest timeline (`<cache>/out/r_*/timeline.json`),
 skips the videos --exclude names (the harness's and overhead-2's held-out
