@@ -487,6 +487,19 @@ def test_a_stone_fix_is_written_as_the_frames_stone_label_and_drawn_for_a_look(t
     assert (out / "players" / "stonefix" / "sheet-01.jpg").stat().st_size > 0
 
 
+def test_each_labelled_frame_has_the_stones_it_showed_written(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    player_item(api, "p_a", [("u1", play_ans())], stones=stone_fix((100, 40, 120, 60, "yellow")))
+    player_item(api, "p_bare", [("u1", play_ans())])
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    shown = out / "players" / "labelled" / "shown"
+    (line,) = (shown / "p_a.txt").read_text().splitlines()
+    assert line.split()[0] == "1"
+    assert [float(v) for v in line.split()[1:]] == pytest.approx(
+        [110 / 200, 50 / 100, 20 / 200, 20 / 100], abs=1e-6)
+    assert (shown / "p_bare.txt").read_text() == ""
+
+
 def test_a_fix_to_no_stones_is_an_empty_stone_label(tmp_path, monkeypatch):
     api = FakeApi([], page=500)
     player_item(api, "p_clear", [("u1", {**play_ans(), "stones": []})],

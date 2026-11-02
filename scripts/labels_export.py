@@ -44,6 +44,8 @@ Under --out:
                         stones/<id>.txt (classes 0/1, the frame's whole stone
                         label; empty if they removed every stone) and the row's
                         `stones`; overhead4_merge.py takes it over the base's.
+                        shown/<id>.txt is the stones the frame showed (classes
+                        0/1), which settle a hard-batch frame left unfixed.
   players/to_user/      the frames nobody could settle (a can't-tell, or `retired`)
                         as the box editor with its player option: the item's stones
                         (classes 0/1) and the detector's starts (class 2) to fix;
@@ -492,9 +494,9 @@ def export_players(items: list[dict], out: Path, opener, seed: int = 0,
     lab, mine = root / "labelled", root / "to_user"
     # A fix is written only by the answer that made it: one left from an
     # earlier export (its answer since discarded) must not outlive it.
-    for d in (lab / "stones", root / "stonefix"):
+    for d in (lab / "stones", lab / "shown", root / "stonefix"):
         shutil.rmtree(d, ignore_errors=True)
-    for d in (lab / "images", lab / "labels", mine / "images"):
+    for d in (lab / "images", lab / "labels", lab / "shown", mine / "images"):
         d.mkdir(parents=True, exist_ok=True)
     emails = {u["id"]: u.get("email") for u in users}
     rates = untouched_rates(items)
@@ -533,6 +535,7 @@ def export_players(items: list[dict], out: Path, opener, seed: int = 0,
         boxes = _clip_players(answers[0]["answer"]["boxes"], w, h)
         (lab / "images" / f"{item['id']}.jpg").write_bytes(image)
         (lab / "labels" / f"{item['id']}.txt").write_text(_yolo(boxes, w, h, CLASSES))
+        (lab / "shown" / f"{item['id']}.txt").write_text(_yolo(payload.get("stones") or [], w, h))
         row = {"id": item["id"], "origin": origin, "members": _members(answers), "boxes": boxes}
         uid = answers[0]["uid"]
         fix = answers[0]["answer"].get("stones")

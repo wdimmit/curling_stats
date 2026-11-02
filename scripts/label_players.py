@@ -47,8 +47,9 @@ each item's JSON and `contact.jpg`, the starts (green) and stones over 40 random
 frames, for a look before publishing.
 
 Members can fix a frame's stones as well ("Fix stones" on the page), and the
-fix replaces the frame's stone label. --lock-stones takes that away: pass it
-for player_mine.py's hard batch, whose stones are rock-box items of their own.
+fix replaces the frame's stone label. --lock-stones takes that away. The hard
+batch (player_mine.py; publish it with --dataset hard) takes no lock: its stones
+are settled once, in the player flow (overhead4_merge.py, the user 2026-11-02).
 
 A `picks.jsonl` beside --images (player_mine.py's hard batch has one, next to
 its `images/`) gives each frame's provenance: the row for the frame's stem adds

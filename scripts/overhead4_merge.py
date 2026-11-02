@@ -34,9 +34,7 @@ early run on what is reviewed so far, and refuses an --out containing
 
 A frame whose stones a member fixed in the player flow (labels_export's
 `stones/<id>.txt`) takes the member's stones instead of the base's, counted in
-`stones_fixed`; the fix goes in as it is (the user, 2026-11-02). Hard-batch
-frames take no fix: their stones are locked on the page and decided by their
-rock-box items.
+`stones_fixed`; the fix goes in as it is (the user, 2026-11-02).
 
 Only receiving-panel frames are published (label_players.py sort and
 publish --sides). --sides is that sort's output, `datasets/overhead-4/
@@ -45,11 +43,18 @@ player label is dropped and counted in `throwing`, not an error; one with a
 label anyway is kept. With --sides, a base frame the file doesn't cover is an
 error.
 
---hard-stones is `labels_export.py --kind box`'s `boxes/agreed/` folder, for the
-hard batch (scripts/player_mine.py, published as `hard-1`). A hard frame goes
-into train when its stones were agreed by the members (or settled by the owner,
-below) and it has a player label; a hard frame short of either is dropped and
-counted (`hard_no_stones`, `hard_no_player`).
+The hard batch (scripts/player_mine.py, published as `hard-1` with
+label_players.py --dataset hard) is settled once, in the player flow (the user,
+2026-11-02): a labelled frame of dataset `hard` goes into train with the stones
+its member fixed there, else the ones its rock-box items settled (below), else
+the stones it showed (labels_export's `shown/<id>.txt`), which the member saw
+and could have fixed (counted `hard_as_shown`). One with none of these is
+counted in `hard_no_stones`.
+
+--hard-stones is `labels_export.py --kind box`'s `boxes/agreed/` folder, the
+hard batch's rock-box items. With it, any player label that matches neither a
+base frame nor a hard frame with stones counts in `hard_no_stones`, and an
+agreed frame with no player label in `hard_no_player`.
 
 The hard batch's stones go up as unflagged box items holding overhead-3's own
 reads, so two members accepting them untouched is a rubber stamp
@@ -77,6 +82,7 @@ from pathlib import Path
 # overhead-3's own names for 0 and 1 (its data.yaml), then player.
 NAMES = ("red_stone", "yellow_stone", "player")
 PLAYER = "2"
+HARD = "hard"  # the hard batch's dataset (label_players.py publish --dataset)
 SUFFIXES = (".jpg", ".jpeg", ".png")
 
 
@@ -129,6 +135,26 @@ def stone_fixes(players: Path) -> dict[str, list[str]]:
         if row.get("stones") is not None and path.is_file():
             out[row["origin"]["stem"]] = [ln for ln in _lines(path.read_text())
                                           if ln.split()[0] in ("0", "1")]
+    return out
+
+
+def hard_frames(players: Path) -> dict[str, tuple[Path, list[str] | None]]:
+    """``{stem: (image, stone lines shown or None)}`` of the labelled frames of
+    the hard batch (origin.dataset HARD); None when the export wrote no
+    `shown/<id>.txt` for the frame."""
+    root = _labelled(players)
+    out = {}
+    for line in root.joinpath("players.jsonl").read_text().splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        origin = row.get("origin") or {}
+        if origin.get("dataset") != HARD:
+            continue
+        path = root / "shown" / f"{row['id']}.txt"
+        out[origin["stem"]] = (root / "images" / f"{row['id']}.jpg",
+                               [ln for ln in _lines(path.read_text()) if ln.split()[0] in ("0", "1")]
+                               if path.is_file() else None)
     return out
 
 
@@ -203,7 +229,9 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
     base frames dropped for want of a player label (pilot only; otherwise
     one is an error); left_out: frames dropped by ``leave_out``; throwing:
     unlabelled base frames ``sides`` (label_players.py sort's output) left
-    out; base: base frames looked at. With ``hard_stones``, hard_no_stones is the player labels
+    out; base: base frames looked at. hard: kept hard frames, of them
+    hard_as_shown with the stones they showed (a hard frame's player-flow fix
+    counts in stones_fixed). With ``hard_stones``, hard_no_stones is the player labels
     that match neither a base frame nor an agreed (or, with ``hard_settled``, the
     owner's settled) hard frame (a hard frame whose stones nobody settled; with a
     val-only --base, the train labels too) and hard_no_player the hard frames
@@ -252,12 +280,14 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
         owners = settled_stones(hard_settled, hard_disputed or Path(hard_stones).parent / "disputed")
         owners = {k: v for k, v in owners.items() if k not in hard}
         hard = {**owners, **hard}
-    clash = sorted(set(hard) & set(stems))
+    batch = hard_frames(players)
+    clash = sorted((set(hard) | set(batch)) & set(stems))
     if clash:
         raise ValueError(f"hard frames that are base frames too: {', '.join(clash[:10])}")
 
-    counts = dict.fromkeys(("base", "kept", "hard", "hard_settled", "unlabelled", "left_out",
-                            "throwing", "stones_fixed", "hard_no_stones", "hard_no_player"), 0)
+    counts = dict.fromkeys(("base", "kept", "hard", "hard_settled", "hard_as_shown",
+                            "unlabelled", "left_out", "throwing", "stones_fixed",
+                            "hard_no_stones", "hard_no_player"), 0)
     for path in frames:
         counts["base"] += 1
         if path.stem in leave_out:
@@ -276,19 +306,32 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
             counts["stones_fixed"] += 1
         _write(out, path.relative_to(base_images), path, stones + labels[path.stem])
         counts["kept"] += 1
-    for stem in sorted((set(labels) | set(hard)) - set(stems)) if hard_stones else ():
+    extra = set(batch) | (set(labels) | set(hard) if hard_stones else set())
+    for stem in sorted(extra - set(stems)):
         if stem in leave_out:
             counts["left_out"] += 1
-        elif stem not in hard:
-            counts["hard_no_stones"] += 1
-        elif stem not in labels:
-            counts["hard_no_player"] += 1
-        else:
+            continue
+        if stem in batch and stem in fixes:
+            image, stones = batch[stem][0], fixes[stem]
+        elif stem in hard:
             image, stones = hard[stem]
-            _write(out, Path("train") / f"{stem}{image.suffix}", image, stones + labels[stem])
-            counts["kept"] += 1
-            counts["hard"] += 1
+        elif stem in batch and batch[stem][1] is not None:
+            image, stones = batch[stem]
+        else:
+            counts["hard_no_stones"] += 1
+            continue
+        if stem not in labels:
+            counts["hard_no_player"] += 1
+            continue
+        _write(out, Path("train") / f"{stem}{image.suffix}", image, stones + labels[stem])
+        counts["kept"] += 1
+        counts["hard"] += 1
+        if stem in batch and stem in fixes:
+            counts["stones_fixed"] += 1
+        elif stem in hard:
             counts["hard_settled"] += stem in owners
+        else:
+            counts["hard_as_shown"] += 1
     out.mkdir(parents=True, exist_ok=True)
     _data_yaml(out)
     return counts

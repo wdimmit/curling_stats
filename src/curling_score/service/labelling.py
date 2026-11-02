@@ -167,8 +167,8 @@ def _check_player_answer(item: LabelItem, answer: dict) -> dict:
     """The players, and, if the member fixed the stones too, ``stones``: the
     frame's whole stone set as they left it, which replaces the stone label.
     No ``stones`` means the stones were left as they were. An item whose
-    payload says ``stones_locked`` (the hard batch, whose stones are rock-box
-    items of their own) takes no fix."""
+    payload says ``stones_locked`` (label_players.py --lock-stones) takes no
+    fix."""
     out = _check_boxes(item, answer, coloured=False)
     fixed = answer.get("stones")
     if out["cant_tell"] or fixed is None:

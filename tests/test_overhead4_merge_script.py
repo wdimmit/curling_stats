@@ -39,7 +39,7 @@ def players(root: Path, rows: dict[str, tuple[str, str]], dataset="overhead-3", 
             fixes=True) -> Path:
     """``{stem: (item id, label text)}`` as players/labelled/ from labels_export.
     With ``fixes``, each row says it has a stone fix (labels_export's ``stones``),
-    which ``fixed`` then writes."""
+    which ``fixed`` then writes; a set of item ids says so for those rows only."""
     lab = root / "labelled"
     lab.mkdir(parents=True, exist_ok=True)
     with open(lab / "players.jsonl", "w") as fh:
@@ -47,7 +47,7 @@ def players(root: Path, rows: dict[str, tuple[str, str]], dataset="overhead-3", 
             _write(lab / "labels" / f"{item}.txt", label)
             _write(lab / "images" / f"{item}.jpg", b"jpeg")
             row = {"id": item, "origin": {"dataset": dataset, "fold": fold, "stem": stem}}
-            if fixes:
+            if fixes is True or item in (fixes or ()):
                 row["stones"] = []
             fh.write(json.dumps(row) + "\n")
     return lab
@@ -558,3 +558,66 @@ def test_a_stone_file_the_rows_do_not_name_as_a_fix_is_ignored(tmp_path):
     got = m4.merge(bi, bl, pl, tmp_path / "out", set())
     assert (tmp_path / "out/labels/train/a.txt").read_text() == STONES + PLAYER
     assert got["stones_fixed"] == 0
+
+
+# --- the hard batch, settled once in the player flow ----------------------------
+
+def shown(root: Path, item: str, label: str) -> None:
+    _write(root / "labelled" / "shown" / f"{item}.txt", label)
+
+
+FIX = "1 0.300000 0.300000 0.100000 0.100000\n"
+SHOWN = "0 0.700000 0.700000 0.100000 0.100000\n"
+
+
+def test_a_hard_frame_takes_its_fixed_or_its_shown_stones(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"h1": ("p_1", PLAYER), "h2": ("p_2", "")},
+                 dataset="hard", fold="hard-1", fixes={"p_1"})
+    for item in ("p_1", "p_2"):
+        shown(tmp_path / "p", item, SHOWN)
+    fixed(tmp_path / "p", "p_1", FIX)
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(), pilot=True)
+    assert (tmp_path / "out/labels/train/h1.txt").read_text() == FIX + PLAYER
+    assert (tmp_path / "out/labels/train/h2.txt").read_text() == SHOWN
+    assert (tmp_path / "out/images/train/h1.jpg").read_bytes() == b"jpeg"
+    assert (got["kept"], got["hard"], got["stones_fixed"], got["hard_as_shown"]) == (2, 2, 1, 1)
+
+
+def test_a_fix_beats_agreed_stones_and_agreed_stones_beat_shown_ones(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"h1": ("p_1", PLAYER), "h2": ("p_2", PLAYER)},
+                 dataset="hard", fixes={"p_1"})
+    for item in ("p_1", "p_2"):
+        shown(tmp_path / "p", item, SHOWN)
+    fixed(tmp_path / "p", "p_1", FIX)
+    agreed = hard(tmp_path / "h", {"h1": STONES, "h2": STONES})
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(), pilot=True, hard_stones=agreed)
+    assert (tmp_path / "out/labels/train/h1.txt").read_text() == FIX + PLAYER
+    assert (tmp_path / "out/labels/train/h2.txt").read_text() == STONES + PLAYER
+    assert (tmp_path / "out/images/train/h2.jpg").read_bytes() == b"jpeg hard h2"
+    assert (got["hard"], got["stones_fixed"], got["hard_as_shown"]) == (2, 1, 0)
+
+
+def test_a_hard_frame_with_no_shown_stones_waits_for_its_rock_box_items(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"h1": ("p_1", PLAYER)}, dataset="hard", fixes=False)
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(), pilot=True)
+    assert not (tmp_path / "out/labels/train/h1.txt").exists()
+    assert (got["hard"], got["hard_no_stones"]) == (0, 1)
+
+
+def test_shown_stones_make_no_hard_frame_outside_the_hard_batch(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER), "x": ("p_2", PLAYER)})
+    shown(tmp_path / "p", "p_2", SHOWN)
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set())
+    assert got["hard"] == 0 and not (tmp_path / "out/labels/train/x.txt").exists()
+
+
+def test_a_hard_batch_stem_that_is_also_a_base_stem_is_refused(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)}, dataset="hard")
+    shown(tmp_path / "p", "p_1", SHOWN)
+    with pytest.raises(ValueError, match="base frames too"):
+        m4.merge(bi, bl, pl, tmp_path / "out", set())

@@ -275,10 +275,13 @@ frame's stone label (the user's call); stones left as they were send
 nothing and the label is kept exactly. The export writes each fix
 (`players/labelled/stones/<id>.txt`) and a contact sheet of every fixed frame
 (`players/stonefix/`, before in grey, after in colour) for a look; the merge
-takes the fix over the base's stones and counts them. Hard-batch items are
-published with their stones locked (`label_players.py --lock-stones`): their
-stones are rock-box items of their own, so the page has no Fix stones there
-and the server refuses a fix.
+takes the fix over the base's stones and counts them. Hard-batch items were
+first published with their stones locked (`label_players.py --lock-stones`),
+their stones left to rock-box items of their own. The user unlocked them the
+same day: a hard frame's stones are settled **once, in the player flow** — the
+member's fix, else what its rock-box items settled, else the stones it showed,
+which the member saw and could have fixed (the export's
+`players/labelled/shown/<id>.txt`; the merge's `hard_as_shown`).
 
 ### Export and quality
 
