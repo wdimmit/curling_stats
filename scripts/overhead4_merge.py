@@ -117,7 +117,8 @@ def player_labels(players: Path) -> dict[str, list[str]]:
 
 def stone_fixes(players: Path) -> dict[str, list[str]]:
     """The stone lines (classes 0 and 1) of each frame a member fixed the stones
-    of in the player flow (labels_export's `stones/<id>.txt`), by stem."""
+    of in the player flow (labels_export's `stones/<id>.txt`), by stem. Only a
+    row that says it has a fix (``stones``) counts; a stray file does not."""
     root = _labelled(players)
     out = {}
     for line in root.joinpath("players.jsonl").read_text().splitlines():
@@ -125,7 +126,7 @@ def stone_fixes(players: Path) -> dict[str, list[str]]:
             continue
         row = json.loads(line)
         path = root / "stones" / f"{row['id']}.txt"
-        if path.is_file():
+        if row.get("stones") is not None and path.is_file():
             out[row["origin"]["stem"]] = [ln for ln in _lines(path.read_text())
                                           if ln.split()[0] in ("0", "1")]
     return out

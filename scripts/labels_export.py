@@ -76,6 +76,7 @@ import math
 import os
 import random
 import re
+import shutil
 import statistics
 import sys
 import urllib.error
@@ -489,6 +490,10 @@ def export_players(items: list[dict], out: Path, opener, seed: int = 0,
     check, drawn from what was written. `users` gives the emails for it."""
     root = out / "players"
     lab, mine = root / "labelled", root / "to_user"
+    # A fix is written only by the answer that made it: one left from an
+    # earlier export (its answer since discarded) must not outlive it.
+    for d in (lab / "stones", root / "stonefix"):
+        shutil.rmtree(d, ignore_errors=True)
     for d in (lab / "images", lab / "labels", mine / "images"):
         d.mkdir(parents=True, exist_ok=True)
     emails = {u["id"]: u.get("email") for u in users}

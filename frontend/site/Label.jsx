@@ -286,7 +286,8 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
   };
   const shownColour = sel >= 0 && active.boxes[sel] ? active.boxes[sel].color : colour;
   const toggleFixing = () => {
-    if (!canFix) return;
+    // Not mid-drag: the drag's box is an index into the list being left.
+    if (!canFix || broken || drag.current) return;
     setSel(-1);
     setColourPref(fixing ? undefined : "red");
     setFixing(!fixing);
@@ -339,6 +340,9 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
       if (!d) return;
       const p = point(e), { w, h } = act.current.item;
       if (d.mode === "corner") {
+        // A click on a corner selects the box; only a drag moves the corner.
+        if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < CLICK_PX) return;
+        d.moved = true;
         act.current.edit(cur => setBox(cur, d.i, moveCorner(cur.boxes[d.i], d.corner, p.x, p.y, w, h)));
       } else if (d.mode === "move") {
         if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < CLICK_PX) return;
@@ -378,7 +382,8 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
     const c = cornerAt(active, p.x, p.y, pad);
     if (c) {
       setSel(c.i);
-      drag.current = { mode: "corner", i: c.i, corner: c.corner };
+      drag.current = { mode: "corner", i: c.i, corner: c.corner, cx: e.clientX, cy: e.clientY,
+                       moved: false };
       return;
     }
     const i = boxAt(active, p.x, p.y, 0);
@@ -472,7 +477,10 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
             Keep dashed box <kbd>K</kbd></button>
         ) : null}
         {canFix ? (
-          <button disabled={busy || broken} aria-pressed={fixing} onClick={toggleFixing}>
+          // No focus from a click, so Enter still finishes the frame rather than
+          // pressing this again.
+          <button disabled={busy || broken} aria-pressed={fixing} onClick={toggleFixing}
+                  onMouseDown={e => e.preventDefault()}>
             {fixing ? "Back to players" : "Fix stones"} <kbd>F</kbd></button>
         ) : null}
         <button disabled={busy || sel < 0} onClick={() => { edit(cur => removeBox(cur, sel)); setSel(-1); }}>

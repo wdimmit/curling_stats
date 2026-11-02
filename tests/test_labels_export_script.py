@@ -495,6 +495,19 @@ def test_a_fix_to_no_stones_is_an_empty_stone_label(tmp_path, monkeypatch):
     assert (out / "players" / "labelled" / "stones" / "p_clear.txt").read_text() == ""
 
 
+def test_a_re_export_leaves_no_stone_fix_from_an_earlier_run(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    item = player_item(api, "p_fix", [("u1", {**play_ans(), "stones": stone_fix((10, 10, 20, 20, "red"))})])
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    assert (out / "players" / "labelled" / "stones" / "p_fix.txt").exists()
+    # u1's answer is discarded and u2 answers without a fix.
+    item["answers"] = [{**item["answers"][0], "discarded": True},
+                       {**answer("p_fix", "u2", "player", play_ans()), "discarded": False}]
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    assert not (out / "players" / "labelled" / "stones" / "p_fix.txt").exists()
+    assert not list((out / "players" / "stonefix").glob("sheet-*.jpg"))
+
+
 def test_boxes_past_the_edge_are_clamped_and_slivers_dropped(tmp_path, monkeypatch):
     api = FakeApi([], page=500)
     player_item(api, "p_edge", [("u1", play_ans(pbox(-5, 10, 40, 120), pbox(300, 0, 310, 50)))])

@@ -35,16 +35,21 @@ def base(root: Path, frames: dict[str, str]) -> tuple[Path, Path]:
     return root / "images", root / "labels"
 
 
-def players(root: Path, rows: dict[str, tuple[str, str]], dataset="overhead-3", fold="all") -> Path:
-    """``{stem: (item id, label text)}`` as players/labelled/ from labels_export."""
+def players(root: Path, rows: dict[str, tuple[str, str]], dataset="overhead-3", fold="all",
+            fixes=True) -> Path:
+    """``{stem: (item id, label text)}`` as players/labelled/ from labels_export.
+    With ``fixes``, each row says it has a stone fix (labels_export's ``stones``),
+    which ``fixed`` then writes."""
     lab = root / "labelled"
     lab.mkdir(parents=True, exist_ok=True)
     with open(lab / "players.jsonl", "w") as fh:
         for stem, (item, label) in rows.items():
             _write(lab / "labels" / f"{item}.txt", label)
             _write(lab / "images" / f"{item}.jpg", b"jpeg")
-            fh.write(json.dumps({"id": item, "origin": {"dataset": dataset, "fold": fold,
-                                                        "stem": stem}}) + "\n")
+            row = {"id": item, "origin": {"dataset": dataset, "fold": fold, "stem": stem}}
+            if fixes:
+                row["stones"] = []
+            fh.write(json.dumps(row) + "\n")
     return lab
 
 
@@ -544,3 +549,12 @@ def test_a_stone_fix_keeps_only_stone_classes(tmp_path):
     fixed(tmp_path / "p", "p_1", "0 0.3 0.3 0.1 0.1\n2 0.5 0.5 0.1 0.1\n")
     m4.merge(bi, bl, pl, tmp_path / "out", set())
     assert (tmp_path / "out/labels/train/a.txt").read_text() == "0 0.3 0.3 0.1 0.1\n" + PLAYER
+
+
+def test_a_stone_file_the_rows_do_not_name_as_a_fix_is_ignored(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)}, fixes=False)
+    fixed(tmp_path / "p", "p_1", "")      # left over from an earlier export
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set())
+    assert (tmp_path / "out/labels/train/a.txt").read_text() == STONES + PLAYER
+    assert got["stones_fixed"] == 0

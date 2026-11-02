@@ -225,13 +225,22 @@ def test_a_fixed_stone_follows_the_box_rules():
     with pytest.raises(ValueError, match="outside"):
         check_answer(item, player_ok(stones=[stone(x1=140)]))
     with pytest.raises(ValueError, match="small"):
-        check_answer(item, player_ok(stones=[stone(x1=51)]))
+        check_answer(item, player_ok(stones=[stone(y1=10)]))
     with pytest.raises(ValueError, match="red or yellow"):
         check_answer(item, player_ok(stones=[stone(color="player")]))
     with pytest.raises(ValueError, match="stones"):
         check_answer(item, player_ok(stones={"x0": 1}))
     with pytest.raises(ValueError, match="at most"):
         check_answer(item, player_ok(stones=[stone()] * 61))
+
+
+def test_a_fix_may_keep_a_sliver_of_a_stone_at_the_edge():
+    # A stone cut off by the panel's edge comes in as a sliver; a fix that keeps
+    # it as it was must not be refused for being small.
+    got = check_answer(player_item(), player_ok(stones=[stone(x0=0, x1=1.2)]))
+    assert got["stones"][0]["x1"] == 1.2
+    with pytest.raises(ValueError, match="small"):
+        check_answer(player_item(), player_ok(stones=[stone(x0=5, x1=5)]))
 
 
 def test_stones_cannot_be_fixed_where_they_are_locked():

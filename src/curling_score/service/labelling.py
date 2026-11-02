@@ -94,9 +94,11 @@ def _num(v, what: str) -> float:
     return float(v)
 
 
-def _box_geometry(b, w: float, h: float) -> tuple[float, float, float, float]:
+def _box_geometry(b, w: float, h: float,
+                  min_px: float = MIN_BOX_PX) -> tuple[float, float, float, float]:
     """A box's corners, clipped to the image, or ValueError if it is not a box
-    inside the image (allowing EDGE_SLOP_PX) at least MIN_BOX_PX a side."""
+    inside the image (allowing EDGE_SLOP_PX) at least ``min_px`` a side, and
+    never empty."""
     if not isinstance(b, dict):
         raise ValueError("a box is not an object")
     x0, y0, x1, y1 = (_num(b.get(k), k) for k in ("x0", "y0", "x1", "y1"))
@@ -104,8 +106,8 @@ def _box_geometry(b, w: float, h: float) -> tuple[float, float, float, float]:
             or x1 > w + EDGE_SLOP_PX or y1 > h + EDGE_SLOP_PX):
         raise ValueError("a box is outside the image")
     x0, y0, x1, y1 = max(x0, 0.0), max(y0, 0.0), min(x1, float(w)), min(y1, float(h))
-    floor = MIN_BOX_PX - MIN_BOX_TOLERANCE_PX
-    if x1 - x0 < floor or y1 - y0 < floor:
+    floor = min_px - MIN_BOX_TOLERANCE_PX
+    if x1 - x0 <= 0 or y1 - y0 <= 0 or x1 - x0 < floor or y1 - y0 < floor:
         raise ValueError("a box is too small")
     return x0, y0, x1, y1
 
@@ -179,7 +181,9 @@ def _check_player_answer(item: LabelItem, answer: dict) -> dict:
         raise ValueError(f"at most {MAX_BOXES} stones")
     stones = []
     for b in fixed:
-        x0, y0, x1, y1 = _box_geometry(b, item.payload["w"], item.payload["h"])
+        # No size floor: a stone cut off at the edge comes as a sliver, and a
+        # fix that keeps it as it was must still go through.
+        x0, y0, x1, y1 = _box_geometry(b, item.payload["w"], item.payload["h"], min_px=0)
         if b.get("color") not in BOX_COLORS:
             raise ValueError("a stone needs a colour, red or yellow")
         stones.append({"x0": x0, "y0": y0, "x1": x1, "y1": y1, "color": b["color"]})

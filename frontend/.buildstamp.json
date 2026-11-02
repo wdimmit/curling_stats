@@ -48,7 +48,7 @@
     "frontend/site/Games.jsx": "f6bfed25d0cf2d3f991af74dda7fa0267658c8d8faf561d9a452f62215d57adb",
     "frontend/site/Ice.jsx": "9969c576bc7af68bb71d4cc3448e11dbaea34c659a77d139dacd60664171c7b8",
     "frontend/site/Join.jsx": "4f915fd7c6d9de9aa5430ea63f61d30218b1ebbac63cc0076e09a9482eca4374",
-    "frontend/site/Label.jsx": "720011c18d0dc1e32a334bf29c06fc8d8845344e4914447a5cda5266bba52a6c",
+    "frontend/site/Label.jsx": "0f4d4714f6324d048360fff8baa5aef90898e44982ff2d6e4b96220d53a33ed0",
     "frontend/site/Mine.jsx": "9046a65032365a6452a05141a7814e1164a341e90c44e973c9c730b987fc988f",
     "frontend/site/Playlists.jsx": "da55443aad9e78a7f0041caf35d233d64927f1ef4bea77f36e2e14c6ffbcf664",
     "frontend/site/Practice.jsx": "f707a247b652dba413145ea866df2b5358d1becfe989721273a1dcdbde88e4c6",
@@ -92,7 +92,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "675897d4d1e78142ae0cb394a82c252a9ff1c8a634bbc71a14aad7f528b349ba",
+    "src/curling_score/service/static/site.js": "935c19e7dff04aa281eb679472faa24b8add3a0f8cb79512522980d75ebb805c",
     "src/curling_score/viewer/app.js": "42109c57d2b864817ab611d1f3f8e96153acff019aaf2bceebb57b02f88864ec"
   }
 }
