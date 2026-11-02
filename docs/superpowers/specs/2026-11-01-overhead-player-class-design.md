@@ -54,6 +54,12 @@ COCO misses.
   fully reviewed, a pilot model is trained on just those frames (unreviewed
   frames left out whole) for an early read on whether the player class
   learns. It is never shipped.
+- **overhead-4 reads only the receiving panel** (the user, 2026-11-02).
+  Each end's receiving panel, where the house read and the cover check
+  live, is read by overhead-4. The throwing panel (releases, the hog-line
+  split, hogged rocks) and the pass that finds games and ends keep
+  overhead-3, where occlusion doesn't matter. So only receiving-panel frames
+  are labelled and trained on.
 - The rest of the design as played back (2026-11-01) was approved: what
   gets labelled, what a box covers, what a reviewer does, the cover check
   reading the detector's own boxes, the shipping bar, and the out-of-scope
@@ -64,10 +70,12 @@ COCO misses.
 1. Every frame of the next overhead training set, and of its validation
    set, has every visible player boxed, reviewed by a person.
 2. A new model, **overhead-4**, detects red stones, yellow stones and
-   players, with stones at least as good as overhead-3.
+   players on the receiving panel, with stones there at least as good as
+   overhead-3's.
 3. The cover check in `shots.from_deliveries` reads overhead-4's player
-   boxes from the house frames already in hand. There is no second model
-   and no extra decoding.
+   boxes from the house frames already in hand. No frame is read twice and
+   there is no extra decoding: overhead-4 replaces overhead-3 on the
+   receiving panel rather than running beside it.
 4. On the 16-game harness it catches at least what the pose prototype
    caught, and fixes both of f_0zkA's rocks.
 
@@ -78,6 +86,9 @@ COCO misses.
   or sweepers. Those can come later and are not designed here.
 - Shipping the pose prototype in the meantime. It stays parked on its
   branch.
+- Practice sessions. They read both houses together with no ends, and
+  build their house change without the cover check, so they keep
+  overhead-3.
 - Reprocessing hosted games. Shipping overhead-4 does not imply a
   reprocess; that is the user's call afterwards, as usual.
 - Identifying anyone. A player box is a body outline from above, with no
@@ -172,9 +183,22 @@ broom shaft over a stone, which is not a player.
 ### Frames to label
 
 1. **The existing set:** overhead-3's 2,249 training frames (fold `all`
-   plus the 45 logo crops).
-2. **Its validation set:** ds11 val's 364 frames, so player detection can be
-   measured and not only stones.
+   plus the 45 logo crops), receiving panel only: 1,595 of them.
+2. **Its validation set:** ds11 val's 364 frames, receiving panel only (281),
+   so player detection can be measured and not only stones.
+
+   The sorting (`label_players.py ends` and `sort`; `datasets/overhead-4/`
+   `ends.json` and `sides.json`): a frame's name, or for a member frame its
+   export row, gives video, panel and time. Where a hosted timeline covers
+   the video (110 of the 221 videos, 943 frames), the end it falls in says
+   which panel was receiving; a frame before an end belongs to that end's
+   run-up. Otherwise, a frame with 2 or more stones is kept and one with 0
+   or 1 is left out. On the frames a timeline placed, 0-1 stones were 54
+   receiving to 332 throwing, 2 were 41 to 17, and 3 or more 497 to 2. The
+   45 logo crops have no time and are kept: they are empty frames, cheap to
+   review, and keep overhead-4 off the logo. In all 1,876 of 2,613 are kept;
+   about 50 of them are probably throwing frames (the 2-stone ones), and
+   about 55 receiving frames with 0-1 stones are lost.
 3. **A hard batch of about 300 new frames**, mined from cached hosted games
    and excluding the 11 harness videos and overhead-2's held-out videos
    (`datasets/overhead-2/heldout-videos.txt`). Weighted toward what COCO
@@ -188,13 +212,16 @@ broom shaft over a stone, which is not a player.
    - a share of ordinary frames (players standing and sweeping), so the
      batch is not all hard cases.
 
+   The miner reads only each end's receiving panel, inside the end, so the
+   hard batch needs no sorting.
+
    Selection, mix and per-video caps are the builder's call. Spread over
    games, sheets and clubs as the red1 batch was (≤ 3 per kind per video).
    The hard batch's stone boxes need labels too, since these frames join
    the training set. They are pre-boxed by overhead-3 and reviewed as
    ordinary box items before or alongside their player review.
 
-About 2,900 frames in all, one review each.
+About 2,200 frames in all, one review each.
 
 ### Pre-boxes
 
@@ -261,8 +288,9 @@ not pre-boxes and are not editable here.
 
 ### overhead-4
 
-- **Set:** the overhead-3 set with player boxes merged in (class 2), plus
-  the hard batch (stones and players). Val: ds11 val with players.
+- **Set:** the overhead-3 set's receiving-panel frames with player boxes
+  merged in (class 2), plus the hard batch (stones and players). Val: ds11
+  val's receiving-panel frames with players.
 - **Recipe:** overhead-3's (`scripts/logo1/run_overhead3.sh`), with three
   classes, on the laptop. Train a held-out-fold model too, for a fair
   comparison on overhead-2's held-out videos, as before.
@@ -273,6 +301,15 @@ not pre-boxes and are not editable here.
   be updated in the same change (see next section).
 
 ### The pipeline reads player boxes
+
+- **Two overhead models.** `build_profile` (games and ends) and each end's
+  throwing-panel read keep overhead-3. Each end's receiving-panel read
+  (`sequence.detect_end`, or the receiving span of `detect_spans` in the
+  one-pass read) uses overhead-4. `detect_spans` takes a detector per span.
+  Every panel frame still goes through one model, so inference per end is
+  unchanged; the worker loads both. The detection cache already keys on the
+  detector. The processing version includes both weights, and both model
+  files ship.
 
 - `detect/yolo.py` splits rows into stones (classes 0 and 1, as today) and
   players (class 2). Stones go on exactly as before. Players travel with the
@@ -316,13 +353,16 @@ main + overhead-3 against overhead-4 + the cover check:
   whether the cover check fixes rock 16 by itself (my call: reported, not
   gated).
 - **Stones:** releases, splits and colour flips not worse than overhead-3
-  beyond seed noise. Stone mAP on ds11 val and on the held-out videos not
-  worse.
+  beyond seed noise. Releases and the throwing end's split are still read
+  by overhead-3, so a change there is a bug in the wiring, not the model.
+  Stone mAP on ds11 val's receiving frames and on the held-out videos'
+  receiving frames not worse.
 - **Players:** recall and precision on the reviewed val, reported, with the
   pose model's numbers beside them for comparison. No bar of its own; the
   house-read bar above is the one that counts.
 - **Runtime:** detection time per end not measurably worse (the panel input
-  size is unchanged).
+  size is unchanged, and each frame still sees one model). Worker memory
+  with both models loaded reported.
 
 If overhead-4 misses the bar, report and stop. Don't ship partial wins
 without asking.
@@ -350,8 +390,9 @@ one change that must come before them, because the labelling happens there.
 5. Model check: training curves, stone AP against overhead-3, player
    precision and recall against the pose model, and the hard frames the pose
    model missed. Report, and wait for the user's go.
-6. Pipeline: class splitting in `yolo.py`, player boxes through the cache,
-   and the cover check reading them, with tests.
+6. Pipeline: overhead-4 on the receiving panel and overhead-3 elsewhere,
+   class splitting in `yolo.py`, player boxes through the cache, and the
+   cover check reading them, with tests.
 7. Harness acceptance, then ship (model files, MODEL_ID, worker + API
    deploy in quiet hours) on the user's go.
 

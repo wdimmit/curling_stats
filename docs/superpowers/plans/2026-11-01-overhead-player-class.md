@@ -8,6 +8,8 @@
 
 **Architecture:** Each house frame's detections stay a list of stone `Detection`s. It becomes a `Seen` (a `list` subclass) that also carries `.players`, so every stone consumer is untouched and the cover check can read the boxes. `/label` gets a third item kind, `player`, which needs one answer per item and has an admin route to reopen a dropped member's answers. Labels are exported as YOLO class 2 and merged into overhead-3's set, and overhead-4 is trained on the laptop with overhead-3's recipe.
 
+**Receiving panel only (the user, 2026-11-02):** overhead-4 reads each end's receiving panel. The pass that finds games and ends, each end's throwing panel, and practice keep overhead-3. Only receiving-panel frames are published and trained on: `label_players.py ends`/`sort` sorted the existing set (`datasets/overhead-4/ends.json`, `sides.json`; 1,876 of 2,613 kept), `publish --sides` and `overhead4_merge.py --sides` use the result, and Task 11a wires the two models.
+
 **Tech Stack:** Python 3 (ultralytics YOLO, numpy, FastAPI, Firestore), React 19 via esbuild (`frontend/`), node for the JS tests.
 
 **Spec:** `docs/superpowers/specs/2026-11-01-overhead-player-class-design.md` (approved 2026-11-01). Read it first. This plan argues from it.
@@ -15,6 +17,7 @@
 ## Global Constraints
 
 - Player is **class 2**. Red is 0 and yellow is 1, unchanged.
+- overhead-4 reads **only each end's receiving panel**. Everything else that reads the overhead keeps overhead-3. Publish existing-set frames only with `--sides datasets/overhead-4/sides.json`.
 - The cover rule as proven: covered when unseen in ≥ `MIN_UNSEEN` frames and a player box, padded by `C.STONE_RADIUS_M`, is over the spot in ≥ `COVERED_SHARE = 0.8` of them. The cover check uses the house frames' own rate (10 fps). Start at `MIN_UNSEEN = 5`, which is 0.5 s and the same span as the prototype's 2 samples at 2 fps, and re-check it in Task 14.
 - Pose pre-boxes: `yolo11x-pose.pt`, class 0, imgsz 640, confidence ≥ **0.1** (ruled 2026-11-01 from a 74-player count: 0.25 found 42, 0.1 found 54, junk 0.07 a frame). CPU, 2 threads.
 - Labels needed per item: box 2, release 2, **player 1**. Retire after 5 skips (`RETIRE_AFTER_SKIPS`).
@@ -146,7 +149,7 @@
 - [ ] **Step 1: Write the failing tests:** `pick` honours the per-video cap, the total and the ordinary share, never picks an excluded video, and is stable for a seed.
 - [ ] **Step 2: Run** the test file. Expected: FAIL. **Step 3: Implement.** **Step 4: Run** it. Expected: PASS. **Step 5: Commit.**
 - [ ] **Step 6: Mine** in the throwaway container (`--cpus=2`, low `--cpu-shares`, pose on CPU) from videos already cached on the Ryzen. Exclude the 11 harness videos and `datasets/overhead-2/heldout-videos.txt`. Report the counts by kind and video.
-- [ ] **Step 7: Publish the existing set first, then val.** On the laptop, run `label_players.py publish --dry-run --out` for overhead-3's `folds/all` **train only** (`images/train`, `labels/train`: 2,204 frames plus the 45 logo crops; its `images/val` is ds11 val by symlink and must not be published twice), look at the contact sheet, and publish. Then do the same for ds11 val (364 frames). Val is newer than the training set, so members reach it sooner, which gives the pilot (Task 7) a val to measure on. Report the counts.
+- [ ] **Step 7: Publish the existing set first, then val.** On the laptop, run `label_players.py publish --sides /data/wdd/curling/overhead-4/sides.json --dry-run --out` for overhead-3's `folds/all` **train only** (`images/train`, `labels/train`; its `images/val` is ds11 val by symlink and must not be published twice): 1,595 of its 2,249 frames, the 45 logo crops among them. Look at the contact sheet, and publish. Then do the same for ds11 val (281 of 364). The sort is done (2026-11-02, from the 270 hosted timelines of 110 videos); redo it with `ends` and `sort` only if the set changes. Val is newer than the training set, so members reach it sooner, which gives the pilot (Task 7) a val to measure on. Report the counts.
 - [ ] **Step 8: Publish the hard batch last**, so newest-first hands it out first. On the Ryzen, publish its stone boxes as `box` items with `label_fp.py`, then its player items with `label_players.py`. Report the counts and the `/label` link for the user to hand out.
 
 ---
@@ -196,7 +199,7 @@
     - With `pilot`, frames with no player label are dropped and counted instead. It also refuses an `out` whose path contains `overhead-4`, so a pilot set can never become the real one.
     - Frames in `leave_out` are dropped and counted.
     - It returns counts and writes `data.yaml` with `names: {0: red, 1: yellow, 2: player}`.
-  - CLI: `overhead4_merge.py --base DIR --players DIR [--hard-stones DIR] [--leave-out FILE] [--pilot] --out DIR`. Hard-batch frames come in only when they have both reviewed stone boxes and a player label. The stone boxes are either agreed (the box export's `agreed/`) or settled by the owner in `boxedit` from the box export's `disputed/` (`--hard-settled EDITS.json`; ruled 2026-11-01: two untouched answers are a rubber stamp and go to the owner, as in the ordinary box flow).
+  - CLI: `overhead4_merge.py --base DIR --players DIR [--hard-stones DIR] [--leave-out FILE] [--sides JSON] [--pilot] --out DIR`. With `--sides` (added 2026-11-02), a base frame sorted to the throwing panel with no player label is dropped and counted (`throwing`), not an error. Hard-batch frames come in only when they have both reviewed stone boxes and a player label. The stone boxes are either agreed (the box export's `agreed/`) or settled by the owner in `boxedit` from the box export's `disputed/` (`--hard-settled EDITS.json`; ruled 2026-11-01: two untouched answers are a rubber stamp and go to the owner, as in the ordinary box flow).
   - `run_overhead4.sh DATA_YAML NAME`: `run_overhead3.sh`'s recipe, with the data and run name as arguments. nc comes from `data.yaml`.
   - `player_eval.match(pred: list[tuple], truth: list[tuple], iou: float = 0.5) -> tuple[int, int, int]`: greedy IoU matching, highest confidence first. Boxes are `(x0, y0, x1, y1[, conf])`. Returns (tp, fp, fn).
   - CLI: `player_eval.py --val DIR --model PT [--pose PT] [--conf 0.25] [--curves RESULTS_CSV ...] [--sheet FRAMES_DIR]`.
@@ -218,7 +221,7 @@
 Not overhead-4, and never shipped. Its only use is an early read on convergence. Every frame in it is fully reviewed, and unreviewed frames are left out whole.
 
 - [ ] **Step 1: Wait for enough reviews.** Start once the hard batch is fully reviewed, plus ≥ 300 frames of the existing set and ≥ 150 of ds11 val. Check with `labels_status.py`, and give the user a progress line when asked.
-- [ ] **Step 2: Export and merge.** Run `labels_export.py --kind player`, then `overhead4_merge.py --pilot --out /data/wdd/curling/pilot-players/folds/all` with the hard batch. Merge the reviewed val frames into the pilot's val in the same way.
+- [ ] **Step 2: Export and merge.** Run `labels_export.py --kind player`, then `overhead4_merge.py --pilot --sides <sides.json> --out /data/wdd/curling/pilot-players/folds/all` with the hard batch. Merge the reviewed val frames into the pilot's val in the same way.
 - [ ] **Step 3: Train** with `run_overhead4.sh <pilot data.yaml> pilot-players` on the laptop. The recipe is unchanged.
 - [ ] **Step 4: Evaluate.**
   - `player_eval.py` against the pilot val, with `--pose`.
@@ -233,7 +236,7 @@ Not overhead-4, and never shipped. Its only use is an early read on convergence.
 - Create: `datasets/overhead-4/README.md`
 
 - [ ] **Step 1: Settle the user's list.** Hand the user `players/to_user/index.html`, served over HTTP (memory: ds11-review-workflow), and the spot-check sheets. Discard any member they drop with the admin route. Re-export after the reopened items are answered. Commit the user's edits when they arrive. Frames the user also can't settle go in `leave_out`. Report how many stone frames left.
-- [ ] **Step 2: Merge and train on the laptop.** Merge without `--pilot` into `/data/wdd/curling/overhead-4/folds/all`, and merge ds11 val with players into its val. Make the held-out fold the way overhead-2's was. Train `all` and the held-out fold with `run_overhead4.sh`.
+- [ ] **Step 2: Merge and train on the laptop.** Merge without `--pilot`, with `--sides`, into `/data/wdd/curling/overhead-4/folds/all`, and merge ds11 val's receiving frames with players into its val. Make the held-out fold the way overhead-2's was. Train `all` and the held-out fold with `run_overhead4.sh`.
 - [ ] **Step 3:** Write `datasets/overhead-4/README.md` with the counts, the left-out frames and the recipe. Commit it.
 
 ### Task 9: Model check: does overhead-4 converge? (report; stop for the user's go)
@@ -243,8 +246,8 @@ Not overhead-4, and never shipped. Its only use is an early read on convergence.
   - the best epoch came before the last (patience ended it, or it flattened);
   - the `all` and held-out-fold runs behaved alike.
 - [ ] **Step 2: Check the numbers.**
-  - Stone AP per class (red, yellow) on ds11 val, overhead-4 against overhead-3.
-  - Stone mAP of the held-out-fold model on overhead-2's held-out videos, against overhead-3's held-out-fold model.
+  - Stone AP per class (red, yellow) on ds11 val's receiving frames (overhead-4's val), overhead-4 against overhead-3 on the same frames.
+  - Stone mAP of the held-out-fold model on overhead-2's held-out videos' receiving frames, against overhead-3's held-out-fold model on the same frames.
   - Player precision and recall on the reviewed val, against yolo11x-pose and the pilot.
 - [ ] **Step 3: Look at the hard cases:** `--sheet` on the same frames as the pilot.
 - [ ] **Step 4: Report** to the user with the curves, the numbers and the contact sheet. Pipeline work (Phase 4) starts only on their go. If it hasn't converged, or stones are worse, say so with the evidence and the options. Don't pick one.
@@ -297,6 +300,28 @@ Not overhead-4, and never shipped. Its only use is an early read on convergence.
 - [ ] **Step 3: Implement.** In the cache, add arrays `pcounts` (int32) and one float64 array per `PlayerBox` field, named `p_<field>`. Bump `FORMAT_VERSION` to 2.
 - [ ] **Step 4: Run** `tests/test_detcache.py tests/test_cache.py tests/test_yolo.py`. Expected: PASS.
 - [ ] **Step 5: Commit** with the message "detect: player boxes through the sideline cut, the cache and the live decode".
+
+### Task 11a: Two overhead models: overhead-4 on the receiving panel
+
+**Files:**
+- Modify: `src/curling_score/weights.py` (the receiving-panel weights: `receiving_path()`, defaulting to `default_path()` until overhead-4 ships)
+- Modify: `src/curling_score/analyze.py` (`load_models`, `EndContext`, `build_one_end`, `processing_version`'s arguments)
+- Modify: `src/curling_score/detect/sequence.py` (`detect_spans` takes `(setup, from_s, fps, detector)` spans, or a detector per span)
+- Modify: `src/curling_score/version.py` (both weights in the processing version)
+- Test: `tests/test_analyze.py` (or the file that covers `build_one_end`), `tests/test_detcache.py`
+
+**Interfaces:**
+- Consumes: `rocks.Seen` (Task 10), the cache with players (Task 11).
+- Produces: `EndContext.house_detector`: overhead-4, used for `end.house`'s read (`detect_end`, or its span in `detect_spans`). `EndContext.detector` stays overhead-3 and reads the far panel and `build_profile`. Practice (`practice/pipeline.py`) passes overhead-3 for both houses, unchanged. Live uses the same `build_one_end`, so it follows.
+
+- [ ] **Step 1: Write the failing tests:**
+  - `test_receiving_panel_reads_with_the_house_detector`: with two stub detectors that tag what they return, `build_one_end`'s house frames come from the house detector and the far panel's from the other, in both one-pass and two-pass modes.
+  - `test_profile_keeps_the_stone_detector`: `build_profile` is called with overhead-3's detector.
+  - `test_detect_spans_uses_each_spans_detector`: two spans, two stub detectors, each span's frames from its own.
+  - `test_processing_version_names_both_weights`: changing either weights file changes the processing version.
+  - With one weights file for both (before the ship), behaviour and processing version are unchanged from today.
+- [ ] **Step 2: Run** them. Expected: FAIL. **Step 3: Implement.** Each panel frame still goes through one model; one decode serves both spans as now, with a batch per detector. **Step 4: Run** them and `tests/test_detcache.py tests/test_yolo.py`: PASS.
+- [ ] **Step 5: Commit** with the message "analyze: overhead-4 reads the receiving panel; overhead-3 the rest".
 
 ### Task 12: The cover check reads the house frames' player boxes
 
@@ -363,14 +388,14 @@ Not overhead-4, and never shipped. Its only use is an early read on convergence.
 - [ ] **Step 5: `MIN_UNSEEN`.** Rerun the candidate at 3 and 10. Keep the value with the most recovered stones and zero false holds. If it isn't 5, change it in `cover.py` and commit that.
 - [ ] **Step 6: f_0zkA.** On the Ryzen, replay 6vOTUuUSMKc g2 e7 as on 2026-11-01. Required: rocks 15 and 16 lose their phantom removals, with the reach veto on. Also report a run with the veto off, using a throwaway local edit that is not committed.
 - [ ] **Step 7: Stones.**
-  - Releases, splits and colour flips with `ab_rel_ff.py` (memory: validating-release-changes): not worse beyond seed noise.
+  - Releases, splits and colour flips with `ab_rel_ff.py` (memory: validating-release-changes): not worse beyond seed noise. The throwing panel is still overhead-3's, so its detections and the profile's games and ends must match the baseline exactly; a difference there is a wiring bug.
   - Stone mAP and player precision and recall, from Task 9, carried into the report.
-  - Detection seconds per end: not measurably worse.
+  - Detection seconds per end: not measurably worse. Worker memory with both models loaded, reported.
 - [ ] **Step 8: Report** to the user in one message, with the numbers against each bar. If any bar is missed, stop there.
 
 ### Task 15: Ship (on the user's go)
 
-- [ ] **Step 1:** Make the model change commit: `weights.DEFAULT_NAME`, `Dockerfile.worker` `ARG MODEL`, the `.gitignore` exception and `cloudrun.yaml` `MODEL_ID` (memory: red1-overhead-frames, the overhead-3 ship). Merge `player-class` to main.
+- [ ] **Step 1:** Make the model change commit: overhead-3 stays `weights.DEFAULT_NAME`; overhead-4 becomes the receiving-panel weights (Task 11a), shipped beside it in `Dockerfile.worker` with its `.gitignore` exception. Check how `MODEL_ID` (`cloudrun.yaml`) is matched against the workers and make it cover both models (memory: red1-overhead-frames, the overhead-3 ship). Merge `player-class` to main.
 - [ ] **Step 2:** In quiet hours, with nothing awaiting playlist acceptance (memory: youtube-gentle), deploy both workers from a clean worktree. The API deploy with the new `MODEL_ID` is handed to the user, and the deploys must land together or claims get 409. Expect the detection cache to turn over.
 - [ ] **Step 3:** Watch the first processed end on each worker. Confirm the timeline shows player-backed put-backs only where expected, and that per-end time is unchanged. Update memory `occlusion-hold.md` and the index. Leave any reprocess to the user.
 
