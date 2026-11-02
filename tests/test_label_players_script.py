@@ -272,3 +272,99 @@ def test_publishing_goes_a_page_at_a_time_with_only_that_pages_images(tmp_path, 
     assert rc == 0
     assert calls == [(2, True), (1, True)]
     assert "opened 3," in capsys.readouterr().out
+
+
+# --- val frames, threads, picks ----------------------------------------------
+
+def _dry(images, labels, out, *extra, fold="f"):
+    return lp.main(["publish", "--images", str(images), "--labels", str(labels), "--dataset", "d",
+                    "--fold", fold, "--batch", "pl", "--weights", "w.pt", "--dry-run",
+                    "--out", str(out), *extra])
+
+
+def _train_and_val(tmp_path):
+    import cv2
+    images, labels = tmp_path / "images", tmp_path / "labels"
+    for sub, n in (("train", "a"), ("val", "b")):
+        (images / sub).mkdir(parents=True)
+        (labels / sub).mkdir(parents=True)
+        cv2.imwrite(str(images / sub / f"{n}.jpg"), np.full((200, 100, 3), 200, np.uint8))
+    return images, labels
+
+
+def test_a_val_frame_is_refused_unless_the_fold_is_val(tmp_path, monkeypatch, capsys):
+    images, labels = _train_and_val(tmp_path)
+    monkeypatch.setattr(lp, "load_model", lambda path: pytest.fail("loaded with val frames in an all fold"))
+    rc = _dry(images, labels, tmp_path / "out", fold="all")
+    err = capsys.readouterr().err
+    assert rc == 2 and "val" in err and "b.jpg" in err and "--fold" in err
+    assert not (tmp_path / "out").exists()
+
+
+def test_the_train_folder_alone_is_fine_for_fold_all(tmp_path, monkeypatch):
+    images, labels = _train_and_val(tmp_path)
+    monkeypatch.setattr(lp, "load_model", lambda path: StubPose([]))
+    out = tmp_path / "out"
+    assert _dry(images / "train", labels / "train", out, fold="all") == 0
+    assert [json.loads(f.read_text())["payload"]["origin"]["stem"]
+            for f in out.glob("p_*.json")] == ["a"]
+
+
+def test_fold_val_takes_val_frames_and_a_val_images_folder_is_not_refused(tmp_path, monkeypatch):
+    images, labels = _train_and_val(tmp_path)
+    monkeypatch.setattr(lp, "load_model", lambda path: StubPose([]))
+    assert _dry(images / "val", labels / "val", tmp_path / "o1", fold="val") == 0
+    assert _dry(images, labels, tmp_path / "o2", fold="val") == 0
+    assert len(list((tmp_path / "o2").glob("p_*.json"))) == 2
+    # The images folder itself being `val` is as much a val frame under fold all.
+    assert _dry(images / "val", labels / "val", tmp_path / "o3", fold="all") == 2
+
+
+def _stub_torch(monkeypatch):
+    import sys
+    import types
+    got = []
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(set_num_threads=got.append))
+    return got
+
+
+def test_pose_runs_on_two_threads_by_default(tmp_path, monkeypatch):
+    images, labels = _dataset(tmp_path)
+    got = _stub_torch(monkeypatch)
+    monkeypatch.setattr(lp, "load_model", lambda path: StubPose([]))
+    assert _dry(images, labels, tmp_path / "out") == 0
+    assert got == [2]
+
+
+def test_threads_can_be_set_and_are_applied_before_the_model_loads(tmp_path, monkeypatch):
+    images, labels = _dataset(tmp_path)
+    got = _stub_torch(monkeypatch)
+    seen = []
+    monkeypatch.setattr(lp, "load_model", lambda path: seen.append(list(got)) or StubPose([]))
+    assert _dry(images, labels, tmp_path / "out", "--threads", "1") == 0
+    assert got == [1] and seen == [[1]]
+
+
+def test_a_picks_row_gives_the_items_origin_its_provenance(tmp_path, monkeypatch):
+    images, labels = _dataset(tmp_path)
+    rows = [{"stem": "a", "video": "VID", "t": 12.5, "rect": [1, 2, 3, 4], "kind": "lost_no_pose",
+             "game": 1, "end": 3, "sheet": 2, "club": "evergreen", "panel": "t", "info": {"x": 1}},
+            {"stem": "zzz", "video": "other"}]
+    (tmp_path / "picks.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows) + "not json\n")
+    monkeypatch.setattr(lp, "load_model", lambda path: StubPose([]))
+    out = tmp_path / "out"
+    assert _dry(images, labels, out) == 0
+    by_stem = {i["payload"]["origin"]["stem"]: i["payload"]["origin"]
+               for i in (json.loads(f.read_text()) for f in out.glob("p_*.json"))}
+    assert by_stem["a"] == {"dataset": "d", "fold": "f", "stem": "a", "video": "VID", "t": 12.5,
+                            "rect": [1, 2, 3, 4], "kind": "lost_no_pose", "game": 1, "end": 3,
+                            "sheet": 2, "club": "evergreen"}
+    assert by_stem["b"] == {"dataset": "d", "fold": "f", "stem": "b"}      # no pick: as before
+
+
+def test_a_picks_file_inside_the_images_folder_counts_too_and_null_fields_are_left_out(tmp_path):
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "picks.jsonl").write_text(json.dumps({"stem": "a", "video": "V", "game": None}) + "\n")
+    assert lp.picks(images) == {"a": {"video": "V"}}
+    assert lp.picks(tmp_path / "nowhere") == {}

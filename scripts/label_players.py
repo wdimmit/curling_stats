@@ -5,17 +5,23 @@
         --dataset overhead-3 --fold all --batch players-1 --weights yolo11x-pose.pt
     ... publish ... --dry-run --out /tmp/players-look
 
-DIR is an existing YOLO dataset folder: images (any depth below --images, as in
-`images/train` and `images/val`) and a `<stem>.txt` of stone labels (0 red,
-1 yellow) under --labels at the same relative path. Each image becomes one
+DIR is an existing YOLO dataset folder: images (any depth below --images) and a
+`<stem>.txt` of stone labels (0 red, 1 yellow) under --labels at the same
+relative path. Pass `images/train` and `labels/train` for fold `all`: the
+laptop's overhead-3 fold `all` also has `images/val`, symlinks into ds11's
+val, which is published on its own as fold `val` (a frame published under two
+folds is two items and, merged, two labels that may differ). The run refuses
+any image under a `val` folder unless --fold is `val`. Each image becomes one
 item whose `starts` are the people a COCO pose model (yolo11x-pose, person
 class, 640 px, confidence >= 0.1) finds, and whose `stones` are the known
 stones, drawn on the page for context only. The member boxes every player,
 head to feet as seen from above, not the broom, and a player cut off at the
 edge up to the edge; the answer trains the next stone detector's player class.
 
-Pose runs on the CPU, so it can share a box with a production worker; give a
-long run a low `nice`. The images go up as they are on disk, a page of items at a time. ADMIN_TOKEN and
+Pose runs on the CPU, so it can share a box with a production worker: it uses
+--threads CPU threads (default 2, as player_mine.py does; torch would otherwise
+take every core), and a long run wants a low `nice`. The images go up as they
+are on disk, a page of items at a time. ADMIN_TOKEN and
 BASE_URL are read as for scripts/label_fp.py (BASE_URL defaults to
 https://curling.dimmit.net; the token is tried with one cheap admin read before
 the model loads, and is never printed). --weights, or POSE_WEIGHTS, is the
@@ -24,6 +30,11 @@ pose checkpoint; nothing is downloaded.
 --dry-run sends nothing and needs no token. --out, with or without it, writes
 each item's JSON and `contact.jpg`, the starts (green) and stones over 40 random
 frames, for a look before publishing.
+
+A `picks.jsonl` beside --images (player_mine.py's hard batch has one, next to
+its `images/`) gives each frame's provenance: the row for the frame's stem adds
+video, t, rect, kind, game, end, sheet and club, where it has them, to the
+item's origin, as label_fp.py --frames does.
 
 An item's id is `p_` and a hash of dataset/fold/stem (label_publish.opaque_id),
 so it says nothing about the video, and the same frame is the same id on every
@@ -66,6 +77,9 @@ import label_publish  # noqa: E402
 
 POSE_CONF = 0.1
 POSE_IMGSZ = 640
+POSE_THREADS = 2
+# What a picks.jsonl row hands on to the item's origin (as label_fp.PICK_KEYS).
+PICK_KEYS = ("video", "t", "rect", "kind", "game", "end", "sheet", "club")
 # The server refuses an answer box under this size (service.labelling.MIN_BOX_PX),
 # and one more than 1 px outside the image, so a start is clipped and kept only
 # if it stays a box.
@@ -148,6 +162,33 @@ def _frames(images: Path) -> list[Path]:
     return sorted(p for p in images.rglob("*") if p.suffix.lower() in SUFFIXES)
 
 
+def val_frames(images: Path, paths: list[Path]) -> list[Path]:
+    """The frames with a ``val`` folder in their path: below ``images`` or
+    ``images`` itself."""
+    return [p for p in paths if "val" in (*p.relative_to(images).parent.parts, images.name)]
+
+
+def picks(images: Path) -> dict[str, dict]:
+    """The rows of the picks.jsonl beside ``images`` by stem (none without one),
+    each cut to PICK_KEYS and what is not null."""
+    try:
+        text = (images / "picks.jsonl").read_text()
+    except OSError:
+        try:
+            text = (images.parent / "picks.jsonl").read_text()
+        except OSError:
+            return {}
+    out = {}
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("stem"):
+            out[row["stem"]] = {k: row[k] for k in PICK_KEYS if row.get(k) is not None}
+    return out
+
+
 def contact_sheet(frames: list[tuple]) -> np.ndarray:
     """A grid of ``(image, item)``: each frame's starts in green and stones in their colour."""
     import cv2
@@ -183,6 +224,8 @@ def main(argv=None) -> int:
     p.add_argument("--batch", required=True, help="the items' batch name")
     p.add_argument("--weights", default=os.environ.get("POSE_WEIGHTS"), metavar="PT",
                    help="the yolo11x-pose checkpoint (default $POSE_WEIGHTS)")
+    p.add_argument("--threads", type=int, default=POSE_THREADS,
+                   help="CPU threads for the pose model (default %(default)s)")
     p.add_argument("--dry-run", action="store_true",
                    help="send nothing; write the items and a contact sheet to --out")
     p.add_argument("--out", type=Path, metavar="DIR")
@@ -197,6 +240,13 @@ def main(argv=None) -> int:
     if not args.weights:
         print("give --weights or set POSE_WEIGHTS", file=sys.stderr)
         return 2
+    paths = _frames(args.images)
+    bad = val_frames(args.images, paths) if args.fold != "val" else []
+    if bad:
+        print(f"{len(bad)} images are under a val folder (first {bad[0]}) but --fold is "
+              f"{args.fold!r}: ds11's val frames are published as fold val, once. Pass "
+              "images/train and labels/train for fold all, or --fold val.", file=sys.stderr)
+        return 2
     token = os.environ.get("ADMIN_TOKEN", "").strip()
     if not args.dry_run and not token:
         print("set ADMIN_TOKEN (see scripts/users.py)", file=sys.stderr)
@@ -210,12 +260,14 @@ def main(argv=None) -> int:
             return 1
 
     import cv2
+    import torch
 
+    torch.set_num_threads(args.threads)
     model = load_model(args.weights)
     # Only the contact sheet's frames stay decoded, and an image's bytes are read
     # again when its page is published: a run over thousands of frames on a box
     # shared with workers holds the items and paths, not the pixels.
-    paths = _frames(args.images)
+    extra = picks(args.images)
     looked_at = set(random.Random(0).sample(range(len(paths)), min(CONTACT_FRAMES, len(paths))))
     items, files, frames, skipped = [], {}, [], 0
     for n, path in enumerate(paths):
@@ -227,7 +279,7 @@ def main(argv=None) -> int:
             label = args.labels / path.relative_to(args.images).with_suffix(".txt")
             stones = stones_from_label(label.read_text(), w, h) if label.is_file() else []
             item = item_for(args.dataset, args.fold, path.stem, w, h, pose_starts(img, model),
-                            stones, args.batch, {})
+                            stones, args.batch, extra.get(path.stem, {}))
         except Exception as err:            # one bad frame must not stop the rest
             skipped += 1
             print(f"{path.name}: {type(err).__name__}: {err}, skipped", file=sys.stderr)
