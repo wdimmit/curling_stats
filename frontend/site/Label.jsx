@@ -604,7 +604,7 @@ const FLOWS = {
                { src: "/static/label-player-edge.jpg",
                  caption: "Cut off at the edge: box what shows." },
                { src: "/static/label-player-broom.jpg",
-                 caption: "A broom over a stone: not a player." }] },
+                 caption: "A broom reaching over a stone: box the player, not the broom." }] },
   releases: { kind: "release", name: "Release marks", Flow: ReleaseFlow,
               howto: "Find the first frame where the hand is clearly off the handle. If the "
                      + "thrower lets go and grabs it again, mark the last let-go." },
