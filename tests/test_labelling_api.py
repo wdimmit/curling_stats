@@ -7,6 +7,7 @@ admin route, their images put where the route said, then opened with /ready.
 
 import pytest
 
+from curling_score.service.labelling import RETIRE_AFTER_SKIPS
 from tests.test_service_api import ADMIN
 from tests.test_service_auth import ALEX, MAKER, SARAH, w  # noqa: F401  (w is a fixture)
 
@@ -91,7 +92,7 @@ def test_two_members_label_an_item_and_counts_go_up(w):
     assert first["items"][0]["image_url"].endswith("labelling/box/b_0.jpg")
     r = answer(w, SARAH, "b_0")
     assert r.json() == {"result": "added", "count": 1}
-    assert w["client"].get("/api/label/me", headers=SARAH).json() == {"box": 1, "release": 0}
+    assert w["client"].get("/api/label/me", headers=SARAH).json() == {"box": 1, "release": 0, "player": 0}
     # The half-done item goes to the next member before the untouched one.
     second = w["client"].get("/api/label/box/next", headers=ALEX).json()
     assert [i["id"] for i in second["items"]] == ["b_0"]
@@ -216,6 +217,101 @@ def test_creating_a_pending_item_again_gives_a_fresh_upload_and_keeps_it(w):
     [got] = r.json()["items"]
     assert got["state"] == "pending" and got["upload"] is not None
     assert w["repo"].get_label_item("b_0").payload["w"] == 640
+
+
+PLAYER_PAYLOAD = {"w": 640, "h": 360, "origin": {"video_id": "v"},
+                  "starts": [{"x0": 10, "y0": 10, "x1": 40, "y1": 90, "conf": 0.7}],
+                  "stones": [{"x0": 300, "y0": 100, "x1": 310, "y1": 110, "color": "red"}]}
+PLAYER_ANSWER = {"cant_tell": False, "starts": ["untouched"],
+                 "boxes": [{"x0": 10, "y0": 10, "x1": 40, "y1": 90, "start": 0}]}
+
+
+def publish_players(w, n=2):
+    publish(w, n, "player", payload=PLAYER_PAYLOAD)
+
+
+def state(w, item_id):
+    return w["repo"].get_label_item(item_id).state
+
+
+def test_one_player_answer_makes_the_item_done(w):
+    publish_players(w, 1)
+    r = answer(w, SARAH, "b_0", PLAYER_ANSWER, "player")
+    assert r.json() == {"result": "added", "count": 1}
+    assert state(w, "b_0") == "done"
+    assert answer(w, ALEX, "b_0", PLAYER_ANSWER, "player").json()["detail"] == "full"
+
+
+def test_player_cant_tell_makes_the_item_done(w):
+    publish_players(w, 1)
+    assert answer(w, SARAH, "b_0", {"cant_tell": True}, "player").status_code == 200
+    assert state(w, "b_0") == "done"
+
+
+def test_a_coloured_player_box_is_422(w):
+    publish_players(w, 1)
+    bad = {**PLAYER_ANSWER, "boxes": [{**PLAYER_ANSWER["boxes"][0], "color": "red"}]}
+    assert answer(w, SARAH, "b_0", bad, "player").status_code == 422
+
+
+def test_five_skips_retire_a_player_item(w):
+    publish_players(w, 1)
+    for n in range(5):
+        w["repo"].skip_label_item("b_0", f"u{n}", w["clock"](), RETIRE_AFTER_SKIPS)
+    assert state(w, "b_0") == "retired"
+
+
+def test_player_payload_origin_is_not_shown_to_members(w):
+    publish_players(w, 1)
+    [got] = w["client"].get("/api/label/player/next", headers=SARAH).json()["items"]
+    assert "origin" not in got and got["stones"] and got["kind"] == "player"
+
+
+def test_box_items_still_need_two_answers(w):
+    publish(w, 1)
+    answer(w, SARAH, "b_0")
+    assert state(w, "b_0") == "open"
+    answer(w, ALEX, "b_0")
+    assert state(w, "b_0") == "done"
+
+
+def discard(w, uid, kind="player", headers=ADMIN):
+    return w["client"].post("/api/admin/label-answers/discard", headers=headers,
+                            json={"uid": uid, "kind": kind})
+
+
+def test_discarding_reopens_the_item_and_the_dropped_member_stays_out(w):
+    publish_players(w, 1)
+    assert answer(w, SARAH, "b_0", PLAYER_ANSWER, "player").status_code == 200
+    assert state(w, "b_0") == "done"
+    r = discard(w, "uid-sarah")
+    assert r.status_code == 200 and r.json() == {"reopened": ["b_0"]}
+    got = w["repo"].get_label_item("b_0")
+    assert (got.state, got.n_labels, got.done_at) == ("open", 0, None)
+    # A second member is handed it; the dropped member is not.
+    assert [i["id"] for i in w["client"].get("/api/label/player/next", headers=ALEX)
+            .json()["items"]] == ["b_0"]
+    assert w["client"].get("/api/label/player/next", headers=SARAH).json()["items"] == []
+    # Their re-post is refused, and does not bring the answer back.
+    r = answer(w, SARAH, "b_0", PLAYER_ANSWER, "player")
+    assert r.status_code == 409 and r.json()["detail"] == "closed"
+    assert answer(w, ALEX, "b_0", PLAYER_ANSWER, "player").status_code == 200
+    assert state(w, "b_0") == "done"
+    # Discarding again finds nothing left to drop.
+    assert discard(w, "uid-sarah").json() == {"reopened": []}
+
+
+def test_discarding_needs_the_admin_token_and_a_good_body(w):
+    assert discard(w, "uid-sarah", headers=SARAH).status_code == 401
+    assert discard(w, "uid-sarah", headers={}).status_code == 401
+    assert discard(w, "uid-sarah", kind="nope").status_code == 422
+    r = w["client"].post("/api/admin/label-answers/discard", headers=ADMIN, json={"kind": "player"})
+    assert r.status_code == 422
+
+
+def test_admin_listing_names_the_player_kind(w):
+    r = w["client"].get("/api/admin/label-items?kind=nope&state=done", headers=ADMIN)
+    assert r.status_code == 422 and "box, release or player" in r.json()["detail"]
 
 
 def test_admin_listing_returns_answers_and_pages(w):

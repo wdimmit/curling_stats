@@ -2289,7 +2289,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         result, _ = repo.submit_label(
             LabelAnswer(id=label_answer_id(item_id, me.id), item_id=item_id, kind=kind,
                         uid=me.id, at=t, seconds=seconds, answer=checked),
-            t, labelling.MAX_LABELS)
+            t, labelling.LABELS_NEEDED[kind])
         if result == "missing":
             raise HTTPException(404, "no such item")
         if result in ("full", "held", "closed"):
@@ -3789,6 +3789,20 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 missing.append(item_id)
         return {"opened": opened, "missing_image": missing}
 
+    @app.post("/api/admin/label-answers/discard")
+    async def admin_label_answers_discard(request: Request,
+                                          authorization: str | None = Header(default=None)):
+        """Drop every answer of one kind by one member (by uid) and reopen the
+        items that fall short without it. The member is not handed those items
+        again, and cannot answer them."""
+        require_admin(authorization)
+        body = await request.json()
+        uid = body.get("uid") if isinstance(body, dict) else None
+        kind = body.get("kind") if isinstance(body, dict) else None
+        if not isinstance(uid, str) or not uid or kind not in LABEL_KINDS:
+            raise HTTPException(422, "send a uid and a kind of box, release or player")
+        return {"reopened": repo.discard_label_answers(uid, kind, now())}
+
     @app.get("/api/admin/label-items")
     def admin_label_items(kind: str, state: str, after: str | None = None,
                           limit: int = Query(100, ge=1, le=500),
@@ -3797,7 +3811,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         `after`, the `after` of the last page."""
         require_admin(authorization)
         if kind not in LABEL_KINDS or state not in LABEL_STATES:
-            raise HTTPException(422, "kind is box or release; state is "
+            raise HTTPException(422, "kind is box, release or player; state is "
                                 + ", ".join(LABEL_STATES))
         since = None
         if after:

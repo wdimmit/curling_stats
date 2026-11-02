@@ -17,8 +17,9 @@ from curling_score.service.records import LABEL_KINDS, LabelItem
 
 # How long an item is reserved for the member it was handed to.
 HOLD_S = 600
-# Labels an item gets before it is done.
-MAX_LABELS = 2
+# Labels an item gets before it is done. A player image is one member's
+# answer; a stone or a release is checked by a second.
+LABELS_NEEDED = {"box": 2, "release": 2, "player": 1}
 # Skips by different members before an item is retired as not worth asking.
 RETIRE_AFTER_SKIPS = 5
 # Items read from the repo per query.
@@ -93,7 +94,9 @@ def _num(v, what: str) -> float:
     return float(v)
 
 
-def _check_box_answer(item: LabelItem, answer: dict) -> dict:
+def _check_boxes(item: LabelItem, answer: dict, coloured: bool) -> dict:
+    """The boxes-and-starts answer shared by stones (``coloured``, each box
+    red or yellow, a flagged start must be acted on) and players (no colour)."""
     if answer.get("cant_tell") is True:
         return {"cant_tell": True, "boxes": [], "starts": []}
     payload = item.payload
@@ -107,7 +110,7 @@ def _check_box_answer(item: LabelItem, answer: dict) -> dict:
     if any(s not in START_STATUSES for s in starts):
         raise ValueError("unknown start status")
     for s, given in zip(starts, payload["starts"]):
-        if given.get("flagged") and s == "untouched":
+        if coloured and given.get("flagged") and s == "untouched":
             raise ValueError("the flagged start must be kept, changed or deleted")
     if len(boxes) > MAX_BOXES:
         raise ValueError(f"at most {MAX_BOXES} boxes")
@@ -123,8 +126,10 @@ def _check_box_answer(item: LabelItem, answer: dict) -> dict:
         floor = MIN_BOX_PX - MIN_BOX_TOLERANCE_PX
         if x1 - x0 < floor or y1 - y0 < floor:
             raise ValueError("a box is too small")
-        if b.get("color") not in BOX_COLORS:
+        if coloured and b.get("color") not in BOX_COLORS:
             raise ValueError("a box needs a colour, red or yellow")
+        if not coloured and "color" in b:
+            raise ValueError("a player box has no colour")
         start = b.get("start")
         if start is not None:
             if isinstance(start, bool) or not isinstance(start, int) \
@@ -133,14 +138,24 @@ def _check_box_answer(item: LabelItem, answer: dict) -> dict:
             if start in seen:
                 raise ValueError("a start is boxed twice")
             seen.add(start)
-        out.append({"x0": x0, "y0": y0, "x1": x1, "y1": y1,
-                    "color": b["color"], "start": start})
+        kept = {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "start": start}
+        if coloured:
+            kept["color"] = b["color"]
+        out.append(kept)
     for i, s in enumerate(starts):
         if s == "deleted" and i in seen:
             raise ValueError("a deleted start still has a box")
         if s != "deleted" and i not in seen:
             raise ValueError("a start that isn't deleted needs its box")
     return {"cant_tell": False, "boxes": out, "starts": list(starts)}
+
+
+def _check_box_answer(item: LabelItem, answer: dict) -> dict:
+    return _check_boxes(item, answer, coloured=True)
+
+
+def _check_player_answer(item: LabelItem, answer: dict) -> dict:
+    return _check_boxes(item, answer, coloured=False)
 
 
 def _check_release_answer(item: LabelItem, answer: dict) -> dict:
@@ -165,6 +180,8 @@ def check_answer(item: LabelItem, answer: dict) -> dict:
         return _check_box_answer(item, answer)
     if item.kind == "release":
         return _check_release_answer(item, answer)
+    if item.kind == "player":
+        return _check_player_answer(item, answer)
     raise ValueError(f"unknown kind {item.kind!r}")
 
 

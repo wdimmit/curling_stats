@@ -182,6 +182,7 @@ class Repo(Protocol):
                      max_labels: int) -> tuple[str, LabelItem | None]: ...
     def skip_label_item(self, item_id: str, uid: str, now: datetime,
                         retire_after: int) -> LabelItem | None: ...
+    def discard_label_answers(self, uid: str, kind: str, now: datetime) -> list[str]: ...
     def label_answers(self, item_id: str) -> list[LabelAnswer]: ...
     def label_count(self, uid: str, kind: str) -> int: ...
     # rate limit
@@ -876,6 +877,10 @@ class MemoryRepo:
             if item.state in ("pending", "retired"):
                 return "closed", item
             if answer.uid in item.labelled_by:
+                # A dropped member's answer stays dropped; they can't resubmit it.
+                had = self.label_answers_.get(answer.id)
+                if had is not None and had.discarded:
+                    return "closed", item
                 self.label_answers_[answer.id] = answer
                 return "replaced", item
             if item.n_labels >= max_labels:
@@ -905,6 +910,23 @@ class MemoryRepo:
             if item.skips >= retire_after:
                 item.state = "retired"
             return item
+
+    def discard_label_answers(self, uid, kind, now):
+        with self._lock:
+            reopened = []
+            for a in sorted(self.label_answers_.values(), key=lambda a: a.at):
+                if a.uid != uid or a.kind != kind or a.discarded:
+                    continue
+                a.discarded = True
+                item = self.label_items.get(a.item_id)
+                if item is None:
+                    continue
+                item.n_labels = max(item.n_labels - 1, 0)
+                # uid stays in labelled_by: the item is not offered to them again.
+                if item.state == "done":
+                    item.state, item.done_at = "open", None
+                    reopened.append(item.id)
+            return reopened
 
     def label_answers(self, item_id):
         out = [a for a in self.label_answers_.values() if a.item_id == item_id]

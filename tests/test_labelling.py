@@ -28,6 +28,19 @@ def release_item():
                               "fps": 30.0, "frames": [], "origin": {}})
 
 
+def player_item():  # 100x50 image, one detected start
+    payload = {"image": "k", "w": 100, "h": 50, "starts": [
+        {"x0": 10, "y0": 10, "x1": 20, "y1": 30, "conf": 0.8}],
+        "stones": [{"x0": 50, "y0": 10, "x1": 56, "y1": 16, "color": "red"}],
+        "origin": {"video_id": "v"}}
+    return LabelItem(id="p_1", kind="player", created_at=T0, batch="t", state="open",
+                     payload=payload)
+
+
+def player_box(**over):
+    return {"x0": 10, "y0": 10, "x1": 20, "y1": 30, "start": 0, **over}
+
+
 def two_boxes(**over):
     a = {"x0": 10, "y0": 10, "x1": 20, "y1": 18, "color": "red", "start": 0}
     b = {"x0": 50, "y0": 10, "x1": 60, "y1": 18, "color": "yellow", "start": 1}
@@ -123,6 +136,61 @@ def test_too_many_boxes_are_refused():
 def test_cant_tell_needs_nothing_else():
     got = check_answer(box_item(), {"cant_tell": True, "boxes": [{"junk": 1}], "starts": ["x"]})
     assert got == {"cant_tell": True, "boxes": [], "starts": []}
+
+
+def test_a_player_answer_keeps_boxes_without_a_colour():
+    got = check_answer(player_item(), {"cant_tell": False, "starts": ["untouched"],
+                                       "boxes": [player_box(),
+                                                 player_box(x0=60, x1=70, start=None)]})
+    assert got == {"cant_tell": False, "starts": ["untouched"], "boxes": [
+        {"x0": 10, "y0": 10, "x1": 20, "y1": 30, "start": 0},
+        {"x0": 60, "y0": 10, "x1": 70, "y1": 30, "start": None}]}
+
+
+def test_a_player_box_with_a_colour_is_refused():
+    with pytest.raises(ValueError, match="colour"):
+        check_answer(player_item(), {"cant_tell": False, "starts": ["kept"],
+                                     "boxes": [player_box(color="red")]})
+
+
+def test_an_untouched_player_start_is_accepted_and_there_is_no_flagged_rule():
+    item = player_item()
+    item.payload["starts"][0]["flagged"] = True
+    got = check_answer(item, {"cant_tell": False, "starts": ["untouched"],
+                              "boxes": [player_box()]})
+    assert got["starts"] == ["untouched"]
+
+
+def test_a_player_image_with_nobody_in_it_can_be_answered_empty():
+    item = player_item()
+    item.payload["starts"] = []
+    assert check_answer(item, {"cant_tell": False, "starts": [], "boxes": []}) == {
+        "cant_tell": False, "boxes": [], "starts": []}
+
+
+def test_player_cant_tell_needs_nothing_else():
+    got = check_answer(player_item(), {"cant_tell": True, "boxes": [{"junk": 1}]})
+    assert got == {"cant_tell": True, "boxes": [], "starts": []}
+
+
+def test_player_boxes_follow_the_box_rules():
+    item = player_item()
+    ok = {"cant_tell": False, "starts": ["untouched"], "boxes": [player_box()]}
+    with pytest.raises(ValueError, match="outside"):
+        check_answer(item, {**ok, "boxes": [player_box(x1=140)]})
+    with pytest.raises(ValueError, match="small"):
+        check_answer(item, {**ok, "boxes": [player_box(x1=12)]})
+    with pytest.raises(ValueError, match="needs its box"):
+        check_answer(item, {**ok, "boxes": []})
+    with pytest.raises(ValueError, match="deleted start"):
+        check_answer(item, {**ok, "starts": ["deleted"]})
+    with pytest.raises(ValueError, match="twice"):
+        check_answer(item, {**ok, "boxes": [player_box(), player_box(y0=11)]})
+    with pytest.raises(ValueError, match="one status"):
+        check_answer(item, {**ok, "starts": []})
+    with pytest.raises(ValueError, match="at most"):
+        check_answer(item, {**ok, "boxes": [player_box()] + [
+            player_box(x0=1, x1=9, start=None) for _ in range(60)]})
 
 
 def test_release_answers():

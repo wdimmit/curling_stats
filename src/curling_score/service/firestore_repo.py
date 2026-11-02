@@ -855,6 +855,10 @@ class FirestoreRepo:
             if item.state in ("pending", "retired"):
                 return "closed", item
             if answer.uid in item.labelled_by:
+                # A dropped member's answer stays dropped; they can't resubmit it.
+                had = answer_ref.get(transaction=tx)
+                if had.exists and had.to_dict().get("discarded"):
+                    return "closed", item
                 tx.set(answer_ref, answer.to_dict())
                 return "replaced", item
             if item.n_labels >= max_labels:
@@ -893,6 +897,40 @@ class FirestoreRepo:
             return LabelItem.from_dict({**snap.to_dict(), **update})
 
         return _skip(self.db.transaction())
+
+    def discard_label_answers(self, uid, kind, now):
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        q = self._where(LABEL_ANSWERS, "uid", "==", uid).where(
+            filter=FieldFilter("kind", "==", kind))
+        todo = sorted((LabelAnswer.from_dict(d.to_dict()) for d in q.stream()),
+                      key=lambda a: a.at)
+        reopened = []
+
+        for a in todo:
+            ref = self._col(LABEL_ITEMS).document(a.item_id)
+            answer_ref = self._col(LABEL_ANSWERS).document(a.id)
+
+            @self._fs.transactional
+            def _discard(tx):
+                got = answer_ref.get(transaction=tx)
+                if not got.exists or got.to_dict().get("discarded"):
+                    return False
+                snap = ref.get(transaction=tx)
+                tx.update(answer_ref, {"discarded": True})
+                if not snap.exists:
+                    return False
+                item = LabelItem.from_dict(snap.to_dict())
+                # uid stays in labelled_by: the item is not offered to them again.
+                update = {"n_labels": max(item.n_labels - 1, 0)}
+                if item.state == "done":
+                    update.update(state="open", done_at=None)
+                tx.update(ref, update)
+                return item.state == "done"
+
+            if _discard(self.db.transaction()):
+                reopened.append(a.item_id)
+        return reopened
 
     def label_answers(self, item_id):
         docs = [LabelAnswer.from_dict(d.to_dict())
