@@ -50,6 +50,10 @@ COCO misses.
 - **Model first.** Extraction, labelling and training come before the
   pipeline changes, and the model's convergence is checked before them
   (see Order of work).
+- **A pilot first.** Once the hard batch and a few hundred other frames are
+  fully reviewed, a pilot model is trained on just those frames (unreviewed
+  frames left out whole) for an early read on whether the player class
+  learns. It is never shipped.
 - The rest of the design as played back (2026-11-01) was approved: what
   gets labelled, what a box covers, what a reviewer does, the cover check
   reading the detector's own boxes, the shipping bar, and the out-of-scope

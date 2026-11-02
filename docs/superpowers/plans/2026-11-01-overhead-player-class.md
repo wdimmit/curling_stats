@@ -4,7 +4,7 @@
 
 **Goal:** The overhead detector learns a third class, player (overhead-4), from pose pre-boxes that members review on `/label`. The house read then puts back a stone lost under a player, using the detector's own player boxes.
 
-**Order (the user, 2026-11-01):** extraction, labelling and training come first, and the model is checked for convergence (Task 7) before any pipeline change. `/label` is the one change that has to come before them, because the labelling happens there.
+**Order (the user, 2026-11-01):** extraction, labelling and training come first, and the model is checked for convergence, first on a pilot (Task 7) and then in full (Task 9), before any pipeline change. `/label` is the one change that has to come before them, because the labelling happens there.
 
 **Architecture:** Each house frame's detections stay a list of stone `Detection`s. It becomes a `Seen` (a `list` subclass) that also carries `.players`, so every stone consumer is untouched and the cover check can read the boxes. `/label` gets a third item kind, `player`, which needs one answer per item and has an admin route to reopen a dropped member's answers. Labels are exported as YOLO class 2 and merged into overhead-3's set, and overhead-4 is trained on the laptop with overhead-3's recipe.
 
@@ -15,19 +15,19 @@
 ## Global Constraints
 
 - Player is **class 2**. Red is 0 and yellow is 1, unchanged.
-- The cover rule as proven: covered when unseen in ≥ `MIN_UNSEEN` frames and a player box, padded by `C.STONE_RADIUS_M`, is over the spot in ≥ `COVERED_SHARE = 0.8` of them. The cover check uses the house frames' own rate (10 fps). Start at `MIN_UNSEEN = 5`, which is 0.5 s and the same span as the prototype's 2 samples at 2 fps, and re-check it in Task 12.
+- The cover rule as proven: covered when unseen in ≥ `MIN_UNSEEN` frames and a player box, padded by `C.STONE_RADIUS_M`, is over the spot in ≥ `COVERED_SHARE = 0.8` of them. The cover check uses the house frames' own rate (10 fps). Start at `MIN_UNSEEN = 5`, which is 0.5 s and the same span as the prototype's 2 samples at 2 fps, and re-check it in Task 14.
 - Pose pre-boxes: `yolo11x-pose.pt`, class 0, imgsz 640, confidence ≥ **0.25**.
 - Labels needed per item: box 2, release 2, **player 1**. Retire after 5 skips (`RETIRE_AFTER_SKIPS`).
 - No new VOD downloads. New frames come from the worker caches. Don't evict the 11 harness videos. Exclude them and `datasets/overhead-2/heldout-videos.txt` from the hard batch.
 - Nothing may slow or risk the workers. Scripts on the Ryzen run in a throwaway `curling-worker:local` container with `--cpus=2` and low `--cpu-shares`, with pose on CPU. Training runs on the laptop.
 - Two branches, each in a worktree off main:
   - `player-labels` holds Phases 1–3: `/label`, publishing, export, and the merge and training scripts. It merges to main for the API deploy.
-  - `player-class` holds the pipeline (Phase 4) and starts only after the user's go on the model (Task 7). It reaches main only in Task 13, so no worker built from main picks it up early.
+  - `player-class` holds the pipeline (Phase 4) and starts only after the user's go on the model (Task 9). It reaches main only in Task 15, so no worker built from main picks it up early.
 
   The checkout is shared, so commit only your own files. Don't push. The user runs API deploys when the classifier refuses them. Quote times in Seattle time.
 - The admin token is never printed. Read it from the gcloud secret into a variable (as `scripts/users.py` documents).
 - Run the affected test files only, because the full suite OOMs on this box. Before running `tests/test_repo_contract.py`, start the Firestore emulator (memory: firestore-emulator).
-- Any edit to `detect/yolo.py` or `detect/rocks.py` changes the detection cache key (`cache._SOURCE_MODULES`), and so does the model change. **Don't deploy Tasks 8–10 to the workers before overhead-4 ships.** They ship together in Task 13, so the cache turns over once.
+- Any edit to `detect/yolo.py` or `detect/rocks.py` changes the detection cache key (`cache._SOURCE_MODULES`), and so does the model change. **Don't deploy Tasks 10–12 to the workers before overhead-4 ships.** They ship together in Task 15, so the cache turns over once.
 - The privacy page line changes in the same deploy that opens player items.
 
 ## Review Focus
@@ -36,7 +36,7 @@
 2. **A frame with no players.** With no starts and nothing drawn, Enter is a valid answer meaning "no players" and must be accepted. The export must write an empty label file, not skip the frame (tests in Tasks 1, 2, 5).
 3. **A dropped member posting again to a reopened item.** This must be refused (`closed`) and must not replace or revive the discarded answer (test in Task 1).
 4. **Answer documents written before this change** have no `discarded` field. They must load as not discarded, in both the memory repo and Firestore (contract test in Task 1).
-5. **The harness or replay reading frames that lost their players.** If `rocks.separated` or a list comprehension rebuilds the frames, players are dropped and the cover check silently does nothing. House frames must reach `from_deliveries` as `Seen`, and the harness prints how many frames carried players (test and output in Task 11).
+5. **The harness or replay reading frames that lost their players.** If `rocks.separated` or a list comprehension rebuilds the frames, players are dropped and the cover check silently does nothing. House frames must reach `from_deliveries` as `Seen`, and the harness prints how many frames carried players (test and output in Task 13).
 
 ---
 
@@ -146,7 +146,7 @@
 - [ ] **Step 1: Write the failing tests:** `pick` honours the per-video cap, the total and the ordinary share, never picks an excluded video, and is stable for a seed.
 - [ ] **Step 2: Run** the test file. Expected: FAIL. **Step 3: Implement.** **Step 4: Run** it. Expected: PASS. **Step 5: Commit.**
 - [ ] **Step 6: Mine** in the throwaway container (`--cpus=2`, low `--cpu-shares`, pose on CPU) from videos already cached on the Ryzen. Exclude the 11 harness videos and `datasets/overhead-2/heldout-videos.txt`. Report the counts by kind and video.
-- [ ] **Step 7: Publish the existing set first.** On the laptop, run `label_players.py publish --dry-run --out` for overhead-3's `folds/all` (2,204 frames plus the 45 logo crops) and ds11 val (364 frames). Look at the contact sheet, then publish. Report the counts.
+- [ ] **Step 7: Publish the existing set first, then val.** On the laptop, run `label_players.py publish --dry-run --out` for overhead-3's `folds/all` (2,204 frames plus the 45 logo crops), look at the contact sheet, and publish. Then do the same for ds11 val (364 frames). Val is newer than the training set, so members reach it sooner, which gives the pilot (Task 7) a val to measure on. Report the counts.
 - [ ] **Step 8: Publish the hard batch last**, so newest-first hands it out first. On the Ryzen, publish its stone boxes as `box` items with `label_fp.py`, then its player items with `label_players.py`. Report the counts and the `/label` link for the user to hand out.
 
 ---
@@ -181,53 +181,79 @@
   - the spot-check count is `ceil(5%)`.
 - [ ] **Step 2: Run** the test file. Expected: FAIL. **Step 3: Implement.** **Step 4: Run** it plus `tests/test_labels_status_script.py`. Expected: PASS. **Step 5: Commit.**
 
-### Task 6: Settle the user's list; merge; train overhead-4
+### Task 6: Merge, the training script, and the player evaluation
 
 **Files:**
-- Create: `scripts/overhead4_merge.py`, `scripts/logo1/run_overhead4.sh`, `datasets/overhead-4/README.md`
-- Test: `tests/test_overhead4_merge_script.py`
+- Create: `scripts/overhead4_merge.py`, `scripts/logo1/run_overhead4.sh`, `scripts/player_eval.py`
+- Test: `tests/test_overhead4_merge_script.py`, `tests/test_player_eval_script.py`
 
 **Interfaces:**
 - Consumes: Task 5's `players/labelled/` and `players/to_user/`.
 - Produces:
-  - `merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_out: set[str]) -> dict`. For each base frame, it writes the stone lines, minus any class-2 lines, plus the player label's lines. It **raises** if a base frame has no player label and is not in `leave_out`. Frames in `leave_out` are dropped and counted. It returns counts and writes `data.yaml` with `names: {0: red, 1: yellow, 2: player}`.
-  - CLI: `overhead4_merge.py --base DIR --players DIR [--hard-stones DIR] --leave-out FILE --out DIR`. Hard-batch frames come in only when they have both agreed member stone boxes (the box export's `agreed/`) and a player label.
+  - `merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_out: set[str], pilot: bool = False) -> dict`.
+    - For each base frame, it writes the stone lines, minus any class-2 lines, plus the player label's lines.
+    - Without `pilot`, it **raises** if a base frame has no player label and is not in `leave_out`.
+    - With `pilot`, frames with no player label are dropped and counted instead. It also refuses an `out` whose path contains `overhead-4`, so a pilot set can never become the real one.
+    - Frames in `leave_out` are dropped and counted.
+    - It returns counts and writes `data.yaml` with `names: {0: red, 1: yellow, 2: player}`.
+  - CLI: `overhead4_merge.py --base DIR --players DIR [--hard-stones DIR] [--leave-out FILE] [--pilot] --out DIR`. Hard-batch frames come in only when they have both agreed member stone boxes (the box export's `agreed/`) and a player label.
+  - `run_overhead4.sh DATA_YAML NAME`: `run_overhead3.sh`'s recipe, with the data and run name as arguments. nc comes from `data.yaml`.
+  - `player_eval.match(pred: list[tuple], truth: list[tuple], iou: float = 0.5) -> tuple[int, int, int]`: greedy IoU matching, highest confidence first. Boxes are `(x0, y0, x1, y1[, conf])`. Returns (tp, fp, fn).
+  - CLI: `player_eval.py --val DIR --model PT [--pose PT] [--conf 0.25] [--curves RESULTS_CSV ...] [--sheet FRAMES_DIR]`.
+    - It prints player precision and recall for class 2 and, given `--pose`, for pose class 0 at 0.25 and at 0.1.
+    - `--curves` writes `curves.png`: train and val box, cls and dfl loss, and mAP50-95 by epoch, one line per run given.
+    - `--sheet` writes a contact sheet of the model's player boxes at conf 0.25.
 - [ ] **Step 1: Write the failing tests:**
   - `merge` raises on a frame with no player label;
+  - with `pilot`, the same frame is dropped and counted;
+  - `pilot` refuses an `overhead-4` path;
   - `merge` drops and counts a frame in `leave_out`;
   - a merged label is the stone lines plus the class-2 lines;
-  - a hard frame with no agreed stones is left out.
-- [ ] **Step 2: Run** the test files. Expected: FAIL. **Step 3: Implement.** **Step 4: Run** them. Expected: PASS. **Step 5: Commit.**
-- [ ] **Step 6: Settle the user's list.** Hand the user `players/to_user/index.html`, served over HTTP (memory: ds11-review-workflow), and the spot-check sheets. Discard any member they drop with the admin route. Re-export after the reopened items are answered. Commit the user's edits when they arrive. Frames the user also can't settle go in `leave_out`. Report how many stone frames left.
-- [ ] **Step 7: Merge and train on the laptop.** Merge into `/data/wdd/curling/overhead-4/folds/all`, and merge ds11 val with players into its val. Make the held-out fold the way overhead-2's was. `run_overhead4.sh` is `run_overhead3.sh` with the overhead-4 paths, so nc comes from `data.yaml`. Train `all` and the held-out fold. Write `datasets/overhead-4/README.md` with the counts, the left-out frames and the recipe. Commit the README and scripts.
+  - a hard frame with no agreed stones is left out;
+  - `match`: a perfect match, a duplicate prediction counted as fp, a miss counted as fn, and IoU 0.49 not matching.
+- [ ] **Step 2: Run** the test files. Expected: FAIL. **Step 3: Implement.** **Step 4: Run** them. Expected: PASS. **Step 5: Commit** on `player-labels`.
 
-### Task 7: Model check: does overhead-4 converge? (report; stop for the user's go)
+### Task 7: Pilot: does the player class learn? (report; reviews go on meanwhile)
+
+Not overhead-4, and never shipped. Its only use is an early read on convergence. Every frame in it is fully reviewed, and unreviewed frames are left out whole.
+
+- [ ] **Step 1: Wait for enough reviews.** Start once the hard batch is fully reviewed, plus ≥ 300 frames of the existing set and ≥ 150 of ds11 val. Check with `labels_status.py`, and give the user a progress line when asked.
+- [ ] **Step 2: Export and merge.** Run `labels_export.py --kind player`, then `overhead4_merge.py --pilot --out /data/wdd/curling/pilot-players/folds/all` with the hard batch. Merge the reviewed val frames into the pilot's val in the same way.
+- [ ] **Step 3: Train** with `run_overhead4.sh <pilot data.yaml> pilot-players` on the laptop. The recipe is unchanged.
+- [ ] **Step 4: Evaluate.**
+  - `player_eval.py` against the pilot val, with `--pose`.
+  - `--curves`, with the pilot's and overhead-3's `results.csv`.
+  - `--sheet` on the hard frames the pose model missed: rock 15 of 6vOTUuUSMKc g2 e7 (the crouched skip), AEqL e4 2793–2805 and entT g1 e3 9488+. No training set holds these frames.
+  - Stone AP on the pilot val, beside overhead-3's. It is not comparable, because the pilot trains on far fewer stone frames. Report it, but don't judge on it.
+- [ ] **Step 5: Report** the curves, the player precision and recall against the pose model, and the contact sheet. Say whether the player loss plateaued cleanly. This is not a gate: reviews continue either way. If it looks wrong, the user decides whether to change anything before the full run.
+
+### Task 8: Settle the user's list; train overhead-4
 
 **Files:**
-- Create: `scripts/player_eval.py`
-- Test: `tests/test_player_eval_script.py`
+- Create: `datasets/overhead-4/README.md`
 
-**Interfaces:**
-- Consumes: the `all` and held-out-fold runs from Task 6, ds11 val with players, and `yolo11x-pose.pt`.
-- Produces:
-  - `match(pred: list[tuple], truth: list[tuple], iou: float = 0.5) -> tuple[int, int, int]`: greedy IoU matching, highest confidence first. Boxes are `(x0, y0, x1, y1[, conf])`. Returns (tp, fp, fn).
-  - CLI: `player_eval.py --val DIR --model PT [--pose PT] [--conf 0.25]`. It prints player precision and recall for overhead-4 class 2 and, given `--pose`, for pose class 0 at 0.25 and at 0.1.
-  - `curves.png` per run, from ultralytics' `results.csv`: train and val box, cls and dfl loss, and mAP50-95 by epoch.
-- [ ] **Step 1: Write the failing tests** for `match`: a perfect match, a duplicate prediction counted as fp, a miss counted as fn, and IoU 0.49 not matching.
-- [ ] **Step 2: Run** the test file. Expected: FAIL. **Step 3: Implement.** **Step 4: Run** it. Expected: PASS. **Step 5: Commit** on `player-labels`.
-- [ ] **Step 6: Check convergence.** Converged means val losses plateaued without climbing, the best epoch came before the last (patience ended it or it flattened), and the `all` and held-out-fold runs behaved alike. Plot both runs, with overhead-3's `results.csv` beside them.
-- [ ] **Step 7: Check the numbers.**
+- [ ] **Step 1: Settle the user's list.** Hand the user `players/to_user/index.html`, served over HTTP (memory: ds11-review-workflow), and the spot-check sheets. Discard any member they drop with the admin route. Re-export after the reopened items are answered. Commit the user's edits when they arrive. Frames the user also can't settle go in `leave_out`. Report how many stone frames left.
+- [ ] **Step 2: Merge and train on the laptop.** Merge without `--pilot` into `/data/wdd/curling/overhead-4/folds/all`, and merge ds11 val with players into its val. Make the held-out fold the way overhead-2's was. Train `all` and the held-out fold with `run_overhead4.sh`.
+- [ ] **Step 3:** Write `datasets/overhead-4/README.md` with the counts, the left-out frames and the recipe. Commit it.
+
+### Task 9: Model check: does overhead-4 converge? (report; stop for the user's go)
+
+- [ ] **Step 1: Check convergence** with `player_eval.py --curves` for `all`, the held-out fold, the pilot and overhead-3. Converged means:
+  - val losses plateaued without climbing;
+  - the best epoch came before the last (patience ended it, or it flattened);
+  - the `all` and held-out-fold runs behaved alike.
+- [ ] **Step 2: Check the numbers.**
   - Stone AP per class (red, yellow) on ds11 val, overhead-4 against overhead-3.
   - Stone mAP of the held-out-fold model on overhead-2's held-out videos, against overhead-3's held-out-fold model.
-  - Player precision and recall on the reviewed val, against yolo11x-pose.
-- [ ] **Step 8: Look at the hard cases**, using frames no training set holds. Draw a contact sheet of overhead-4's player boxes at conf 0.25 on rock 15 of 6vOTUuUSMKc g2 e7 (the crouched skip), AEqL e4 2793–2805 and entT g1 e3 9488+. Those are where the pose model missed.
-- [ ] **Step 9: Report** to the user with the curves, the numbers and the contact sheet. Pipeline work (Phase 4) starts only on their go. If it hasn't converged, or stones are worse, say so with the evidence and the options. Don't pick one.
+  - Player precision and recall on the reviewed val, against yolo11x-pose and the pilot.
+- [ ] **Step 3: Look at the hard cases:** `--sheet` on the same frames as the pilot.
+- [ ] **Step 4: Report** to the user with the curves, the numbers and the contact sheet. Pipeline work (Phase 4) starts only on their go. If it hasn't converged, or stones are worse, say so with the evidence and the options. Don't pick one.
 
 ---
 
 ## Phase 4: Pipeline (branch `player-class`; after the user's go on the model)
 
-### Task 8: Frames carry player boxes; the class split in `yolo.py`
+### Task 10: Frames carry player boxes; the class split in `yolo.py`
 
 **Files:**
 - Modify: `src/curling_score/detect/rocks.py` (add `PlayerBox`, `Seen` beside `Detection`)
@@ -252,7 +278,7 @@
 - [ ] **Step 4: Run** the same command. Expected: PASS. Also run `tests/test_detcache.py tests/test_cache.py`: PASS.
 - [ ] **Step 5: Commit** `rocks.py`, `yolo.py` and `tests/test_yolo.py` with the message "detect: frames carry the detector's player boxes (class 2)".
 
-### Task 9: Players survive the sideline cut, the cache and the live decode
+### Task 11: Players survive the sideline cut, the cache and the live decode
 
 **Files:**
 - Modify: `src/curling_score/detect/sequence.py` (`_on_sheet`)
@@ -260,7 +286,7 @@
 - Test: `tests/test_detcache.py`
 
 **Interfaces:**
-- Consumes: `rocks.Seen`, `rocks.PlayerBox` (Task 8).
+- Consumes: `rocks.Seen`, `rocks.PlayerBox` (Task 10).
 - Produces: `detect_span`, `detect_end` and `detect_spans` return frames whose detections are `Seen` with players when the detector gives them, both cached and uncached. `_on_sheet` returns `Seen(on_sheet(stones), getattr(stones, "players", ()))`. `cache.load(digest)` returns `Seen` per frame.
 
 - [ ] **Step 1: Write the failing tests:**
@@ -272,7 +298,7 @@
 - [ ] **Step 4: Run** `tests/test_detcache.py tests/test_cache.py tests/test_yolo.py`. Expected: PASS.
 - [ ] **Step 5: Commit** with the message "detect: player boxes through the sideline cut, the cache and the live decode".
 
-### Task 10: The cover check reads the house frames' player boxes
+### Task 12: The cover check reads the house frames' player boxes
 
 **Files:**
 - Create: `src/curling_score/detect/cover.py`. Port it from `git show 185cad0e:src/curling_score/detect/cover.py`, with the decoding and pose model removed.
@@ -280,7 +306,7 @@
 - Test: `tests/test_shots.py`. Port `TestAStoneUnderAPlayer` and `TestCover` from 185cad0e and rewrite them over frames.
 
 **Interfaces:**
-- Consumes: `Seen.players` (Task 8), with house frames from `from_deliveries(house_frames=...)`.
+- Consumes: `Seen.players` (Task 10), with house frames from `from_deliveries(house_frames=...)`.
 - Produces:
   - `cover.covered(x_m: float, y_m: float, color: str, window) -> bool`. `window` is the read's `(t, detections)` frames. A frame where a detection of `color` lies within `SEEN_M = 0.15` m of the spot says nothing. In every other frame, count it unseen, and count it covered if any `players` box grown by `C.STONE_RADIUS_M` contains `(x_m, y_m)`. Return `unseen >= MIN_UNSEEN and covered >= COVERED_SHARE * unseen`. Frames with no `players` attribute have none.
   - `shots.from_deliveries(..., held: list | None = None)`. The check always runs for every rock, before the reach veto, at the prototype's spot: each `house_delta(...)["removed"]` stone that `covered` holds is passed to `_put_back`. When `held` is given, append `{"shot": <shot number>, "color", "x", "y"}` for each put-back. There is no `covered=` parameter. A two-class model's frames have no players, so the check does nothing.
@@ -296,14 +322,14 @@
 - [ ] **Step 4: Run** `tests/test_shots.py tests/test_rest.py`. Expected: PASS.
 - [ ] **Step 5: Commit** with the message "shots: a stone lost under a player is put back (the detector's player boxes)".
 
-### Task 11: The harness reports recovered stones
+### Task 13: The harness reports recovered stones
 
 **Files:**
 - Modify: `scripts/house_read_report.py`
 - Test: `tests/test_house_read_report.py` (new). Load the script with `importlib`, as `tests/test_labels_export_script.py` does.
 
 **Interfaces:**
-- Consumes: `from_deliveries(held=...)` (Task 10).
+- Consumes: `from_deliveries(held=...)` (Task 12).
 - Produces:
   - Every row gets `held: [{"color","x","y"}]`, the put-backs for that shot.
   - `replay` passes the unseparated detector frames as `house_frames`. It prints `frames with players: N of M` per video.
@@ -322,7 +348,7 @@
 
 ## Phase 5: Acceptance and ship
 
-### Task 12: Acceptance on the harness (report; stop if the bar is missed)
+### Task 14: Acceptance on the harness (report; stop if the bar is missed)
 
 **Files:** none committed beyond the reports' notes. Runs on the laptop kit `/data/wdd/curling/houseread-1027` and on the Ryzen for f_0zkA.
 
@@ -338,11 +364,11 @@
 - [ ] **Step 6: f_0zkA.** On the Ryzen, replay 6vOTUuUSMKc g2 e7 as on 2026-11-01. Required: rocks 15 and 16 lose their phantom removals, with the reach veto on. Also report a run with the veto off, using a throwaway local edit that is not committed.
 - [ ] **Step 7: Stones.**
   - Releases, splits and colour flips with `ab_rel_ff.py` (memory: validating-release-changes): not worse beyond seed noise.
-  - Stone mAP and player precision and recall, from Task 7, carried into the report.
+  - Stone mAP and player precision and recall, from Task 9, carried into the report.
   - Detection seconds per end: not measurably worse.
 - [ ] **Step 8: Report** to the user in one message, with the numbers against each bar. If any bar is missed, stop there.
 
-### Task 13: Ship (on the user's go)
+### Task 15: Ship (on the user's go)
 
 - [ ] **Step 1:** Make the model change commit: `weights.DEFAULT_NAME`, `Dockerfile.worker` `ARG MODEL`, the `.gitignore` exception and `cloudrun.yaml` `MODEL_ID` (memory: red1-overhead-frames, the overhead-3 ship). Merge `player-class` to main.
 - [ ] **Step 2:** In quiet hours, with nothing awaiting playlist acceptance (memory: youtube-gentle), deploy both workers from a clean worktree. The API deploy with the new `MODEL_ID` is handed to the user, and the deploys must land together or claims get 409. Expect the detection cache to turn over.
