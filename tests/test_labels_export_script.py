@@ -519,10 +519,15 @@ def test_the_untouched_rate(tmp_path, monkeypatch):
     api = FakeApi([], users=[{"id": "u1", "email": "a@x.org"}, {"id": "u2", "email": "b@x.org"}],
                   page=500)
     s2 = [{"x0": 1, "y0": 1, "x1": 9, "y1": 9, "conf": 0.9}] * 2
-    # u1 accepts everything, including a frame with no starts and no boxes
+    # u1 accepts everything, but answers a frame with no starts and no boxes (not counted
+    # either way) and changes one
     player_item(api, "p_a", [("u1", play_ans(pbox(1, 1, 9, 9, 0), pbox(1, 1, 9, 9, 1),
                                              starts=["untouched", "untouched"]))], starts=s2)
     player_item(api, "p_b", [("u1", play_ans())])
+    player_item(api, "p_f", [("u1", play_ans(pbox(2, 2, 9, 9, 0), starts=["changed"]))],
+                starts=s2[:1])
+    # u3 only ever sees empty frames: no rate
+    player_item(api, "p_g", [("u3", play_ans())])
     # u2 moves one, draws one, and cannot tell once
     player_item(api, "p_c", [("u2", play_ans(pbox(2, 2, 9, 9, 0), pbox(1, 1, 9, 9, 1),
                                              starts=["changed", "untouched"]))], starts=s2)
@@ -531,7 +536,8 @@ def test_the_untouched_rate(tmp_path, monkeypatch):
     player_item(api, "p_e", [("u2", play_ans(cant_tell=True))])
     code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
     m = json.loads((out / "members.json").read_text())
-    assert m["u1"]["untouched_rate"] == 1.0 and m["u1"]["player"] == 2
+    assert m["u1"]["untouched_rate"] == 0.5 and m["u1"]["player"] == 3
+    assert m["u3"]["untouched_rate"] is None and m["u3"]["player"] == 1
     assert m["u2"]["untouched_rate"] == 0.0 and m["u2"]["player"] == 3
     assert m["u2"]["email"] == "b@x.org" and m["u2"]["checks"] == {"n": 0, "agree": 0}
 

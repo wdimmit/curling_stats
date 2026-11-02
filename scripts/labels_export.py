@@ -53,7 +53,9 @@ Under --out:
                         per answer, checks {n, agree} against the items whose
                         answer we already knew, and for players untouched_rate:
                         the share of their answers that accepted every start and
-                        drew nothing (can't-tells aside).
+                        drew nothing (can't-tells aside, and answers to frames
+                        with no starts and no boxes, where there was nothing
+                        to touch: those count in neither half).
 
 Check items (those with a known answer) score the member and are otherwise left
 out: their answer is not a member's to give. Agreement is
@@ -364,8 +366,8 @@ def _live(item: dict) -> list[dict]:
 
 def _untouched(answer: dict) -> bool:
     """Every start accepted as it was and nothing drawn: the member changed
-    nothing. From the stored answer, not the page; an answer to a frame with no
-    starts and no boxes is untouched too."""
+    nothing. From the stored answer, not the page. (An answer to a frame with no
+    starts and no boxes is vacuously so; untouched_rates leaves those out.)"""
     return (not answer.get("cant_tell")
             and all(s == "untouched" for s in answer.get("starts") or [])
             and not any(b.get("start") is None for b in answer.get("boxes") or []))
@@ -373,13 +375,17 @@ def _untouched(answer: dict) -> bool:
 
 def untouched_rates(items: list[dict]) -> dict[str, float]:
     """Per uid, the share of their live player answers that were untouched,
-    over those that were not can't-tells. A member with only can't-tells has none."""
+    over those that were not can't-tells and had something to touch: an answer
+    to an item with no starts and no boxes is in neither the numerator nor the
+    denominator. A member with only those has none."""
     got: dict[str, list[int]] = {}
     for item in items:
         if item["kind"] != "player":
             continue
         for a in _live(item):
-            if not a["answer"].get("cant_tell"):
+            nothing_to_touch = (not item["payload"].get("starts")
+                                and not a["answer"].get("boxes"))
+            if not a["answer"].get("cant_tell") and not nothing_to_touch:
                 n = got.setdefault(a["uid"], [0, 0])
                 n[0] += 1
                 n[1] += _untouched(a["answer"])
