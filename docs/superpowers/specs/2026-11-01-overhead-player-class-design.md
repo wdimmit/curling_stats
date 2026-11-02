@@ -47,6 +47,9 @@ COCO misses.
 - **Review happens on `/label`**, by members, like the stone boxes.
 - **One review per frame** is enough, not the two the stone and release
   items get.
+- **Model first.** Extraction, labelling and training come before the
+  pipeline changes, and the model's convergence is checked before them
+  (see Order of work).
 - The rest of the design as played back (2026-11-01) was approved: what
   gets labelled, what a box covers, what a reviewer does, the cover check
   reading the detector's own boxes, the shipping bar, and the out-of-scope
@@ -330,16 +333,22 @@ name.
 
 ## Order of work
 
-1. Pipeline groundwork that can land before overhead-4 exists: class
-   splitting in `yolo.py` (a no-op with a two-class model) and the cover
-   check ported to read player boxes, with tests.
-2. `/label` player items: API, page, how-to, publish and export, privacy
+The user, 2026-11-01: extraction, labelling and training come first, so the
+model's convergence is known before the pipeline changes. `/label` is the
+one change that must come before them, because the labelling happens there.
+
+1. `/label` player items: API, page, how-to, publish and export, privacy
    page. The API deploy is the user's.
-3. Publish: the hard batch (mined on the Ryzen) and the existing set plus
-   val (from the laptop), pose pre-boxed.
-4. Members review. This is the long pole; the user hands out the link.
-5. Export, spot check, merge, train overhead-4 on the laptop.
-6. Harness acceptance, then ship (model files, MODEL_ID, worker + API
+2. Publish: the existing set and val (from the laptop), then the hard batch
+   (mined on the Ryzen), pose pre-boxed.
+3. Members review. This is the long pole; the user hands out the link.
+4. Export, spot check, merge, train overhead-4 on the laptop.
+5. Model check: training curves, stone AP against overhead-3, player
+   precision and recall against the pose model, and the hard frames the pose
+   model missed. Report, and wait for the user's go.
+6. Pipeline: class splitting in `yolo.py`, player boxes through the cache,
+   and the cover check reading them, with tests.
+7. Harness acceptance, then ship (model files, MODEL_ID, worker + API
    deploy in quiet hours) on the user's go.
 
 ## Left to the builder
