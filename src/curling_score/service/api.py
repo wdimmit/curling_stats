@@ -32,7 +32,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -3794,15 +3794,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return {"opened": opened, "missing_image": missing}
 
     @app.post("/api/admin/label-answers/discard")
-    async def admin_label_answers_discard(request: Request,
-                                          authorization: str | None = Header(default=None)):
+    def admin_label_answers_discard(body: dict = Body(...),
+                                    authorization: str | None = Header(default=None)):
         """Drop every player answer by one member (by uid) and reopen the
         items that fall short without it. The member is not handed those items
-        again, and cannot answer them."""
+        again, and cannot answer them.
+
+        A discard is a snapshot: it drops the answers the member has given by
+        now, and ones given later still count. Run it again just before the
+        final export. Sync, since each answer is a Firestore transaction.
+        """
         require_admin(authorization)
-        body = await request.json()
-        uid = body.get("uid") if isinstance(body, dict) else None
-        kind = body.get("kind") if isinstance(body, dict) else None
+        uid, kind = body.get("uid"), body.get("kind")
         if not isinstance(uid, str) or not uid:
             raise HTTPException(422, "send a uid and a kind")
         # The export and agreement scripts don't skip discarded answers yet,

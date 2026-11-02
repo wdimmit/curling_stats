@@ -307,6 +307,18 @@ def test_discarding_needs_the_admin_token_and_a_good_body(w):
     assert discard(w, "uid-sarah", kind="nope").status_code == 422
     r = w["client"].post("/api/admin/label-answers/discard", headers=ADMIN, json={"kind": "player"})
     assert r.status_code == 422
+    r = w["client"].post("/api/admin/label-answers/discard", headers=ADMIN, json=["uid-sarah"])
+    assert r.status_code == 422
+
+
+def test_the_discard_route_is_a_sync_one_so_its_transactions_stay_off_the_event_loop():
+    import inspect
+
+    from curling_score.service import api
+
+    src = inspect.getsource(api)
+    assert "async def admin_label_answers_discard" not in src
+    assert "def admin_label_answers_discard" in src
 
 
 def test_only_player_answers_can_be_discarded(w):
