@@ -16,7 +16,7 @@
 
 - Player is **class 2**. Red is 0 and yellow is 1, unchanged.
 - The cover rule as proven: covered when unseen in ≥ `MIN_UNSEEN` frames and a player box, padded by `C.STONE_RADIUS_M`, is over the spot in ≥ `COVERED_SHARE = 0.8` of them. The cover check uses the house frames' own rate (10 fps). Start at `MIN_UNSEEN = 5`, which is 0.5 s and the same span as the prototype's 2 samples at 2 fps, and re-check it in Task 14.
-- Pose pre-boxes: `yolo11x-pose.pt`, class 0, imgsz 640, confidence ≥ **0.25**.
+- Pose pre-boxes: `yolo11x-pose.pt`, class 0, imgsz 640, confidence ≥ **0.1** (ruled 2026-11-01 from a 74-player count: 0.25 found 42, 0.1 found 54, junk 0.07 a frame). CPU, 2 threads.
 - Labels needed per item: box 2, release 2, **player 1**. Retire after 5 skips (`RETIRE_AFTER_SKIPS`).
 - No new VOD downloads. New frames come from the worker caches. Don't evict the 11 harness videos. Exclude them and `datasets/overhead-2/heldout-videos.txt` from the hard batch.
 - Nothing may slow or risk the workers. Scripts on the Ryzen run in a throwaway `curling-worker:local` container with `--cpus=2` and low `--cpu-shares`, with pose on CPU. Training runs on the laptop.
@@ -91,7 +91,7 @@
   - `HowtoDialog` takes optional `figures: [{src, caption}]`.
 - Exact copy:
   - How-to: "Box every person you can see: head, body, arms, legs and feet as seen from above. Not the broom, and not a stone in their hand. A player cut off at the edge gets a box over the part you can see, and so does anyone from the next sheet. A crouched or kneeling player is still a player. A shoe, glove or broom head left on the ice is not. The grey boxes are stones and can't be changed. If there are no people, press Enter."
-  - Figure captions: "A crouched skip, from above: box all of them." / "Cut off at the edge: box what shows." / "A broom over a stone: not a player."
+  - Figure captions: "A crouched skip, from above: box all of them." / "Cut off at the edge: box what shows." / "A broom reaching over a stone: box the player, not the broom." (ruled: the chosen frame shows a player whose broom spans the house). The figures have the intended boxes drawn on them.
   - Privacy, replacing "asked to mark where the stones are or when a thrower let go" with "asked to mark where the stones and players are or when a thrower let go". The next sentence stays. Add after it: "A box around a player is only an outline: nothing about who they are is stored with it."
 - [ ] **Step 1: Write the failing JS tests** in `tests/test_labelling_js.py`:
   - `playerAnswer(startPlayers(ITEM_P))` keeps every start, with no `color` key;
@@ -117,7 +117,7 @@
 **Interfaces:**
 - Consumes: `label_publish.publish`, `label_publish.opaque_id`, `label_publish.preflight`.
 - Produces:
-  - `pose_starts(img, model) -> list[dict]`: `yolo11x-pose` class-0 boxes at conf ≥ 0.25, imgsz 640, `device="cpu"`, each `{"x0","y0","x1","y1","conf"}`, **clipped to the image** and dropped if under `MIN_BOX_PX` once clipped. Whether to trim boxes to the keypoints plus a margin is the builder's call. Make it on 30 frames rendered both ways and write the decision in the docstring.
+  - `pose_starts(img, model) -> list[dict]`: `yolo11x-pose` class-0 boxes at conf ≥ 0.1, imgsz 640, `device="cpu"`, each `{"x0","y0","x1","y1","conf"}`, **clipped to the image** and dropped if under `MIN_BOX_PX` once clipped. Whether to trim boxes to the keypoints plus a margin is the builder's call. Make it on 30 frames rendered both ways and write the decision in the docstring.
   - `stones_from_label(txt: str, w: int, h: int) -> list[dict]`: YOLO class 0/1 lines become `{"x0","y0","x1","y1","color"}` in pixels. Other classes are ignored.
   - `item_for(dataset: str, fold: str, stem: str, w: int, h: int, starts, stones, batch: str, extra_origin: dict) -> dict`, with id `opaque_id("p_", f"{dataset}/{fold}/{stem}")` and kind `"player"`. Origin holds `dataset, fold, stem`, plus `video, t, rect` when known.
   - CLI `publish --images DIR --labels DIR --dataset NAME --fold NAME --batch NAME [--dry-run] [--out DIR]`. `--out` writes the items and a contact sheet of starts over 40 random frames, for a look before publishing. It reads `ADMIN_TOKEN` and `BASE_URL` as `label_fp.py` does.
@@ -125,7 +125,7 @@
   - `item_for` shape and stable opaque ids (the same key gives the same id, and the id contains no stem text);
   - `stones_from_label` maps a known line to its pixels;
   - `pose_starts` with a stub model clips a box running off the image and drops one under 3 px;
-  - starts under conf 0.25 are dropped.
+  - starts under conf 0.1 are dropped.
 - [ ] **Step 2: Run** the test file. Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** it. Expected: PASS.
@@ -140,13 +140,13 @@
 **Interfaces:**
 - Consumes: `label_players.pose_starts`, `sequence.detect_span` with overhead-3, `house_read_report.replay`'s window logic, and `label_fp.py publish` for the stone box items.
 - Produces:
-  - `pick(cands: list[dict], exclude: set[str], per_kind_per_video: int = 3, total: int = 300, seed: int = 0) -> list[dict]`. `exclude` holds video ids. Each candidate is `{"video", "t", "kind"}`, with kind in `lost_no_pose`, `crouched`, `edge` or `ordinary`. It caps each (video, kind) at 3, spreads over videos, sheets and clubs, and fills `ordinary` to about 20% of the total.
+  - `pick(cands: list[dict], exclude: set[str], per_kind_per_video: int = 3, total: int = 300, seed: int = 0) -> list[dict]`. `exclude` holds video ids. Each candidate is `{"video", "t", "kind"}`, with kind in `lost_no_pose`, `pose_unsure`, `edge` or `ordinary`. It caps each (video, kind) at 3, spreads over videos, sheets and clubs, and fills `ordinary` to about 20% of the total.
   - Output in `/data/wdd/scratch/players/hard/`: `images/<stem>.jpg` (house panel crop), `labels/<stem>.txt` (overhead-3 stone boxes), `picks.jsonl`.
-  - Mining rules are the builder's call, within spec §"Frames to label". The starting point is the prototype's diagnostic: a stone the read lost with its spot unseen and no pose box (`lost_no_pose`). Pose boxes with an aspect near square and a small area count as crouched. Boxes touching the panel edge count as edge.
+  - Mining rules are the builder's call, within spec §"Frames to label". The starting point is the prototype's diagnostic: a stone the read lost with its spot unseen and no pose box (`lost_no_pose`). A person pose finds only below 0.25 (no ≥ 0.25 box over it) makes the frame `pose_unsure` (ruled 2026-11-01: a size/aspect "crouched" rule picked standing sweepers in the smoke run). Boxes touching the panel edge count as edge.
 - [ ] **Step 1: Write the failing tests:** `pick` honours the per-video cap, the total and the ordinary share, never picks an excluded video, and is stable for a seed.
 - [ ] **Step 2: Run** the test file. Expected: FAIL. **Step 3: Implement.** **Step 4: Run** it. Expected: PASS. **Step 5: Commit.**
 - [ ] **Step 6: Mine** in the throwaway container (`--cpus=2`, low `--cpu-shares`, pose on CPU) from videos already cached on the Ryzen. Exclude the 11 harness videos and `datasets/overhead-2/heldout-videos.txt`. Report the counts by kind and video.
-- [ ] **Step 7: Publish the existing set first, then val.** On the laptop, run `label_players.py publish --dry-run --out` for overhead-3's `folds/all` (2,204 frames plus the 45 logo crops), look at the contact sheet, and publish. Then do the same for ds11 val (364 frames). Val is newer than the training set, so members reach it sooner, which gives the pilot (Task 7) a val to measure on. Report the counts.
+- [ ] **Step 7: Publish the existing set first, then val.** On the laptop, run `label_players.py publish --dry-run --out` for overhead-3's `folds/all` **train only** (`images/train`, `labels/train`: 2,204 frames plus the 45 logo crops; its `images/val` is ds11 val by symlink and must not be published twice), look at the contact sheet, and publish. Then do the same for ds11 val (364 frames). Val is newer than the training set, so members reach it sooner, which gives the pilot (Task 7) a val to measure on. Report the counts.
 - [ ] **Step 8: Publish the hard batch last**, so newest-first hands it out first. On the Ryzen, publish its stone boxes as `box` items with `label_fp.py`, then its player items with `label_players.py`. Report the counts and the `/label` link for the user to hand out.
 
 ---
@@ -196,7 +196,7 @@
     - With `pilot`, frames with no player label are dropped and counted instead. It also refuses an `out` whose path contains `overhead-4`, so a pilot set can never become the real one.
     - Frames in `leave_out` are dropped and counted.
     - It returns counts and writes `data.yaml` with `names: {0: red, 1: yellow, 2: player}`.
-  - CLI: `overhead4_merge.py --base DIR --players DIR [--hard-stones DIR] [--leave-out FILE] [--pilot] --out DIR`. Hard-batch frames come in only when they have both agreed member stone boxes (the box export's `agreed/`) and a player label.
+  - CLI: `overhead4_merge.py --base DIR --players DIR [--hard-stones DIR] [--leave-out FILE] [--pilot] --out DIR`. Hard-batch frames come in only when they have both reviewed stone boxes and a player label. The stone boxes are either agreed (the box export's `agreed/`) or settled by the owner in `boxedit` from the box export's `disputed/` (`--hard-settled EDITS.json`; ruled 2026-11-01: two untouched answers are a rubber stamp and go to the owner, as in the ordinary box flow).
   - `run_overhead4.sh DATA_YAML NAME`: `run_overhead3.sh`'s recipe, with the data and run name as arguments. nc comes from `data.yaml`.
   - `player_eval.match(pred: list[tuple], truth: list[tuple], iou: float = 0.5) -> tuple[int, int, int]`: greedy IoU matching, highest confidence first. Boxes are `(x0, y0, x1, y1[, conf])`. Returns (tp, fp, fn).
   - CLI: `player_eval.py --val DIR --model PT [--pose PT] [--conf 0.25] [--curves RESULTS_CSV ...] [--sheet FRAMES_DIR]`.
