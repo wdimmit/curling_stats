@@ -437,6 +437,17 @@ def test_frames_start_from_the_label_none_flagged(tmp_path):
     assert got["vidA_b_000100_00_ordinary"]["payload"]["starts"] == []
 
 
+def test_a_stone_too_thin_to_be_a_box_once_clipped_is_not_a_start(tmp_path):
+    stem = _frames_folder(tmp_path)
+    # the second sticks 1 px into the left edge (300 px wide: 0.0033 across, centred at -0.0017
+    # of the frame), the third is 2 px tall, the fourth is whole and kept
+    (tmp_path / "labels" / f"{stem}.txt").write_text(
+        "0 0.5 0.5 0.1 0.03\n1 0.0 0.5 0.0066667 0.03\n0 0.5 0.1 0.1 0.002\n1 0.2 0.8 0.1 0.03\n")
+    got = {i["payload"]["origin"]["stem"]: i for i, _ in fp.frame_items(tmp_path, "hard-1")}
+    starts = got[stem]["payload"]["starts"]
+    assert [(s["color"], s["x0"]) for s in starts] == [("red", 135.0), ("yellow", 45.0)]
+
+
 def test_frame_ids_are_stable_and_never_a_check_frames(tmp_path):
     stem = _frames_folder(tmp_path)
     a = {i["id"] for i, _ in fp.frame_items(tmp_path, "x")}

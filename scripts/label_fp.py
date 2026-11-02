@@ -331,7 +331,11 @@ def _frame_item(folder: Path, path: Path, pick: dict, batch: str):
     label = folder / "labels" / f"{path.stem}.txt"
     stones = label_players.stones_from_label(label.read_text(), w, h) if label.is_file() else []
     crop = (0, 0, w, h)
-    starts = [_start(_box(s), crop, s["color"], None, False) for s in stones]
+    # As label_players.pose_starts does: a start the server would refuse as a
+    # box (under MIN_BOX_PX once clipped to the frame) is not offered.
+    starts = [_start(_box(s), crop, s["color"], None, False) for s in stones
+              if s["x1"] - s["x0"] >= label_players.MIN_BOX_PX
+              and s["y1"] - s["y0"] >= label_players.MIN_BOX_PX]
     row = {"stem": path.stem, "camera": "overhead", "video_id": pick.get("video"),
            "t": pick.get("t"), "where": pick.get("panel")}
     item = item_for(row, crop, starts, batch)
