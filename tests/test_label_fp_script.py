@@ -399,3 +399,75 @@ def test_with_both_weights_there_is_no_warning(tmp_path, monkeypatch, capsys):
                         lambda *a, **k: {"opened": [], "skipped": [], "missing_image": []})
     assert fp.main(["publish", "--caches", str(cache)]) == 0
     assert "WARNING" not in capsys.readouterr().err
+
+
+# --- frames folders (player_mine.py's hard batch) ----------------------------
+
+def _frames_folder(root, picks=True):
+    import cv2
+    import numpy as np
+    (root / "images").mkdir(parents=True)
+    (root / "labels").mkdir()
+    stem = "vidA_t_014450_00_edge"
+    cv2.imwrite(str(root / "images" / f"{stem}.jpg"), np.zeros((1000, 300, 3), np.uint8))
+    (root / "labels" / f"{stem}.txt").write_text("0 0.5 0.5 0.1 0.03\n1 0.2 0.1 0.1 0.03\n")
+    cv2.imwrite(str(root / "images" / "vidA_b_000100_00_ordinary.jpg"),
+                np.zeros((1000, 300, 3), np.uint8))
+    if picks:
+        (root / "picks.jsonl").write_text(json.dumps(
+            {"video": "vidA", "t": 14450.0, "kind": "edge", "rect": [800, 10, 300, 1000],
+             "stem": stem, "panel": "top", "sheet": 2, "club": None, "game": 0, "end": 3,
+             "info": None}) + "\n")
+    return stem
+
+
+def test_frames_start_from_the_label_none_flagged(tmp_path):
+    stem = _frames_folder(tmp_path)
+    got = {i["payload"]["origin"]["stem"]: i for i, _ in fp.frame_items(tmp_path, "hard-1")}
+    item = got[stem]
+    assert item["kind"] == "box" and item["batch"] == "hard-1" and "reference" not in item
+    p = item["payload"]
+    assert (p["w"], p["h"]) == (300, 1000)
+    assert p["starts"] == [
+        {"x0": 135.0, "y0": 485.0, "x1": 165.0, "y1": 515.0, "color": "red", "conf": None,
+         "flagged": False},
+        {"x0": 45.0, "y0": 85.0, "x1": 75.0, "y1": 115.0, "color": "yellow", "conf": None,
+         "flagged": False}]
+    # a frame without a label file has no stones
+    assert got["vidA_b_000100_00_ordinary"]["payload"]["starts"] == []
+
+
+def test_frame_ids_are_stable_and_never_a_check_frames(tmp_path):
+    stem = _frames_folder(tmp_path)
+    a = {i["id"] for i, _ in fp.frame_items(tmp_path, "x")}
+    b = {i["id"] for i, _ in fp.frame_items(tmp_path, "y")}
+    assert a == b and fp.item_id(stem) in a
+    assert all(i.startswith("b_") for i in a)
+    assert fp.item_id(stem, check=True) not in a
+
+
+def test_frame_origin_carries_the_pick(tmp_path):
+    stem = _frames_folder(tmp_path)
+    got = {i["payload"]["origin"]["stem"]: i["payload"]["origin"]
+           for i, _ in fp.frame_items(tmp_path, "x")}
+    o = got[stem]
+    assert o["video_id"] == "vidA" and o["t"] == 14450.0 and o["where"] == "top"
+    assert o["camera"] == "overhead" and o["crop"] == [0, 0, 300, 1000]
+    assert (o["kind"], o["rect"], o["game"], o["end"], o["sheet"]) == (
+        "edge", [800, 10, 300, 1000], 0, 3, 2)
+    # without a pick row the origin still says which frame it is
+    other = got["vidA_b_000100_00_ordinary"]
+    assert other["video_id"] is None and "kind" not in other
+
+
+def test_frames_dry_run_publishes_nothing_and_loads_no_detector(tmp_path, monkeypatch):
+    _frames_folder(tmp_path / "hard")
+    monkeypatch.setattr(fp, "load_detectors", lambda: pytest.fail("loaded a detector"))
+    monkeypatch.setattr(fp.label_publish, "publish",
+                        lambda *a, **k: pytest.fail("published in a dry run"))
+    monkeypatch.setattr(fp.label_publish, "preflight",
+                        lambda *a, **k: pytest.fail("asked the server in a dry run"))
+    out = tmp_path / "out"
+    assert fp.main(["publish", "--frames", str(tmp_path / "hard"), "--dry-run",
+                    "--batch", "hard-1", "--out", str(out)]) == 0
+    assert len(list(out.glob("b_*.json"))) == 2 and len(list(out.glob("b_*.jpg"))) == 2

@@ -8,6 +8,7 @@
         publish --caches /c1 /c2 [--since 2026-10-20] [--batch NAME]
     ... label_fp.py publish --caches /c1 /c2 --dry-run --out /w/out
     ... label_fp.py publish --checks DIR [--checks-camera overhead|side]
+    ... label_fp.py publish --frames DIR [--batch NAME]
 
 On the worker box, with this repo's scripts/ and src/ copied to
 /data/wdd/scratch/label-fp (the image has the weights and ultralytics but not
@@ -33,6 +34,14 @@ published whole, with those boxes as the item's `reference`, so a member's
 answer can be held against a known one. Boxes are in the image's own pixels,
 and all the images are of one camera (--checks-camera, side by default). The
 most confident pre-box is the flagged one; with none, a centred 40x17 box is.
+
+--frames takes a folder of `images/<stem>.jpg` and `labels/<stem>.txt` (YOLO
+stone labels, 0 red, 1 yellow), as scripts/player_mine.py writes the hard
+batch: each image is published whole, overhead, with its labelled stones as
+the starts and none flagged, so the member reviews boxes a model drew rather
+than answering a doubt. The folder's picks.jsonl, when there is one, adds each
+frame's video, time, panel, kind, rect, game, end and sheet to the origin. No
+detector is loaded for these.
 
 An item's id is `b_` and a hash of its stem (`item_id`; label_publish.opaque_id),
 so it says nothing about the video or whether it is a check, and the same stem
@@ -290,6 +299,61 @@ def check_items(folder: Path, camera: str, detect, batch: str, names=None, skips
                 skips.append(stem)
 
 
+PICK_KEYS = ("kind", "rect", "game", "end", "sheet", "club")
+
+
+def _picks(folder: Path) -> dict:
+    """The rows of a frames folder's picks.jsonl by stem; none without one."""
+    try:
+        text = (folder / "picks.jsonl").read_text()
+    except OSError:
+        return {}
+    out = {}
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("stem"):
+            out[row["stem"]] = row
+    return out
+
+
+def _frame_item(folder: Path, path: Path, pick: dict, batch: str):
+    import cv2
+
+    import label_players
+
+    img = cv2.imread(str(path))
+    if img is None:
+        raise ValueError("not a readable image")
+    h, w = img.shape[:2]
+    label = folder / "labels" / f"{path.stem}.txt"
+    stones = label_players.stones_from_label(label.read_text(), w, h) if label.is_file() else []
+    crop = (0, 0, w, h)
+    starts = [_start(_box(s), crop, s["color"], None, False) for s in stones]
+    row = {"stem": path.stem, "camera": "overhead", "video_id": pick.get("video"),
+           "t": pick.get("t"), "where": pick.get("panel")}
+    item = item_for(row, crop, starts, batch)
+    item["payload"]["origin"].update({k: pick[k] for k in PICK_KEYS if k in pick})
+    return item, path.read_bytes()
+
+
+def frame_items(folder: Path, batch: str, skips=None):
+    """``(item, jpeg bytes)`` for each image of a frames folder (``images/``
+    and ``labels/``, as player_mine.py writes them). A frame that cannot be
+    read is reported and its stem appended to ``skips``; the rest still come
+    out."""
+    picks = _picks(folder)
+    for path in sorted((folder / "images").glob("*.jpg")):
+        try:
+            yield _frame_item(folder, path, picks.get(path.stem, {}), batch)
+        except Exception as err:
+            print(f"frame {path.stem}: skipped, {err}", file=sys.stderr)
+            if skips is not None:
+                skips.append(path.stem)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -301,6 +365,9 @@ def main(argv=None) -> int:
     p.add_argument("--checks", type=Path, metavar="DIR",
                    help="a folder of hand-labelled <stem>.jpg and boxes.json")
     p.add_argument("--checks-camera", choices=("side", "overhead"), default="side")
+    p.add_argument("--frames", type=Path, metavar="DIR",
+                   help="a folder of images/ and labels/ (YOLO) to publish with those "
+                        "stones as unflagged starts")
     p.add_argument("--no-prebox", action="store_true",
                    help="publish even though a camera has no weights, so its frames "
                         "come without pre-drawn boxes")
@@ -312,8 +379,11 @@ def main(argv=None) -> int:
     if args.dry_run and not args.out:
         print("--dry-run needs --out", file=sys.stderr)
         return 2
-    if not args.caches and not args.checks:
-        print("give --caches and/or --checks", file=sys.stderr)
+    if not args.caches and not args.checks and not args.frames:
+        print("give --caches, --checks and/or --frames", file=sys.stderr)
+        return 2
+    if args.frames and not (args.frames / "images").is_dir():
+        print(f"no images folder in {args.frames}", file=sys.stderr)
         return 2
     token = os.environ.get("ADMIN_TOKEN", "").strip()
     if not args.dry_run and not token:
@@ -328,7 +398,11 @@ def main(argv=None) -> int:
             print(refused, file=sys.stderr)
             return 1
 
-    detect, names = load_detectors()
+    # A frames folder brings its own boxes: no detector is needed for it.
+    if args.caches or args.checks:
+        detect, names = load_detectors()
+    else:
+        detect, names = None, dict.fromkeys(CAMERAS)
     lacking = [c for c in CAMERAS if c not in names]
     if lacking:
         print(f"WARNING: no weights for the {' and '.join(lacking)} camera: its frames "
@@ -361,6 +435,10 @@ def main(argv=None) -> int:
         except (OSError, ValueError) as err:
             print(f"cannot read the check frames in {args.checks}: {err}", file=sys.stderr)
             return 1
+        skipped += len(bad)
+    if args.frames:
+        bad = []
+        made.extend(frame_items(args.frames, batch, bad))
         skipped += len(bad)
 
     ids = [i["id"] for i, _ in made]
