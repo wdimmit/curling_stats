@@ -70,9 +70,9 @@ def test_a_box_under_three_px_once_clipped_is_dropped():
 
 
 def test_starts_under_the_confidence_floor_are_dropped():
-    dets = [(10, 10, 60, 100, 0.24, 0), (110, 10, 160, 100, 0.25, 0), (210, 10, 260, 100, 0.9, 0)]
+    dets = [(10, 10, 60, 100, 0.09, 0), (110, 10, 160, 100, 0.1, 0), (210, 10, 260, 100, 0.9, 0)]
     got = lp.pose_starts(frame(), StubPose(dets))
-    assert [s["conf"] for s in got] == [0.25, 0.9]
+    assert [s["conf"] for s in got] == [0.1, 0.9]
 
 
 def test_only_people_are_boxed_and_the_model_is_asked_the_agreed_way():
@@ -80,7 +80,7 @@ def test_only_people_are_boxed_and_the_model_is_asked_the_agreed_way():
     got = lp.pose_starts(frame(), model)
     assert len(got) == 1
     kw = model.calls[0]
-    assert kw["imgsz"] == 640 and kw["device"] == "cpu" and kw["conf"] == 0.25
+    assert kw["imgsz"] == 640 and kw["device"] == "cpu" and kw["conf"] == 0.1
 
 
 def test_no_detection_is_no_starts():

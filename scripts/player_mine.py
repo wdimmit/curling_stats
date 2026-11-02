@@ -25,20 +25,25 @@ that fits:
   lost_no_pose  a stone the house read lost after a rock (its house_delta
                 removed it) that a later rock's read finds again where it sat,
                 so it never left; in that rock's read window the frame shows
-                its spot with no stone of its colour seen there and no pose box
-                over it. The prototype cover check's diagnostic, narrowed to
-                stones that came back, since a stone really knocked out leaves
-                bare ice and the same "unseen, no pose box".
-  crouched      a pose box near square (sides within CROUCH_ASPECT) and no
-                bigger than CROUCH_MAX_M a side at the house's scale, not at
-                the edge: a skip down behind the house, a sweeper kneeling.
+                its spot with no stone of its colour seen there and no pose
+                pre-box over it. The prototype cover check's diagnostic,
+                narrowed to stones that came back, since a stone really knocked
+                out leaves bare ice and the same "unseen, no pose box".
+  pose_unsure   a person the pose model finds only under SURE_CONF (0.25), at
+                IoU under SAME_PERSON_IOU with every box at or over it: what
+                the model nearly misses, crouched and kneeling players among
+                them. A rule on the box's size and shape was tried first and
+                dropped: on the smoke run (-Sk44TBt8HI) it took standing and
+                bent-over sweepers, which are compact from above too, while the
+                players really down on the ice had no box at 0.25 at all.
   edge          a pose box touching the panel's edge: a player cut off by it.
   ordinary      players, none of the above: standing and sweeping.
 
-The crouched, edge and ordinary frames come from a few moments around each
-rock of --ends-per-video ends: as it arrives with its sweepers, after it
-stops, and before the next one reaches the house, while the skip holds the
-broom. The lost_no_pose frames come from the read window of every end. Each
+Pose boxes come from label_players.pose_starts, the pre-boxes members see
+(its floor is under SURE_CONF). The pose_unsure, edge and ordinary frames
+come from a few moments around each rock of --ends-per-video ends: as it
+arrives with its sweepers, after it stops, and before the next one reaches
+the house, while the skip holds the broom. The lost_no_pose frames come from the read window of every end. Each
 video keeps at most CANDS_PER_KIND of each kind, spread over its time, under
 `cands/` (the crop and overhead-3's stones, as YOLO labels), and its list in
 `mined/<video>.json`; a video already there is not mined again.
@@ -66,7 +71,7 @@ _HERE = str(Path(__file__).resolve().parent)
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-HARD = ("lost_no_pose", "crouched", "edge")
+HARD = ("lost_no_pose", "pose_unsure", "edge")
 KINDS = HARD + ("ordinary",)
 ORDINARY_SHARE = 0.2
 # Two picks of one video closer than this are near the same frame.
@@ -86,8 +91,10 @@ MIN_UNSEEN = 2
 SETTLE_WINDOW_S = 12.0                  # game.shots.SETTLE_WINDOW_S
 LOST_PER_VIDEO = 8                      # read windows searched per video, at most
 EDGE_PX = 2.0
-CROUCH_ASPECT = 1.4
-CROUCH_MAX_M = 1.0
+# A pose box at or over this is one the pre-boxes have always kept; under it,
+# and on no such box (the same person found twice), the model was unsure.
+SURE_CONF = 0.25
+SAME_PERSON_IOU = 0.5
 # Moments around each rock (its house-panel arrival and rest): sweepers coming
 # in with it, the house after it stops, the skip holding the broom before the
 # next one arrives.
@@ -201,19 +208,29 @@ def stem_for(video: str, house: str, t: float, kind: str) -> str:
     return f"{video}_{PANEL_LETTER.get(house, house)}_{t:09.2f}".replace(".", "_") + f"_{kind}"
 
 
-def classify(people: list[dict], w: int, h: int, px_per_m: float) -> str | None:
-    """A frame's kind from its pose boxes (panel pixels), or None with nobody in it."""
+def _iou(a: dict, b: dict) -> float:
+    iw = min(a["x1"], b["x1"]) - max(a["x0"], b["x0"])
+    ih = min(a["y1"], b["y1"]) - max(a["y0"], b["y0"])
+    if iw <= 0 or ih <= 0:
+        return 0.0
+    inter = iw * ih
+    area = lambda d: (d["x1"] - d["x0"]) * (d["y1"] - d["y0"])  # noqa: E731
+    return inter / (area(a) + area(b) - inter)
+
+
+def classify(people: list[dict], w: int, h: int) -> str | None:
+    """A frame's kind from its pose boxes (panel pixels, with ``conf``), or None
+    with nobody in it."""
     if not people:
         return None
-    kinds = set()
-    for b in people:
-        bw, bh = b["x1"] - b["x0"], b["y1"] - b["y0"]
-        if b["x0"] <= EDGE_PX or b["y0"] <= EDGE_PX or b["x1"] >= w - EDGE_PX \
-                or b["y1"] >= h - EDGE_PX:
-            kinds.add("edge")
-        elif max(bw, bh) <= CROUCH_MAX_M * px_per_m and max(bw, bh) <= CROUCH_ASPECT * min(bw, bh):
-            kinds.add("crouched")
-    return next((k for k in ("crouched", "edge") if k in kinds), "ordinary")
+    sure = [b for b in people if b["conf"] >= SURE_CONF]
+    if any(b["conf"] < SURE_CONF and all(_iou(b, s) < SAME_PERSON_IOU for s in sure)
+           for b in people):
+        return "pose_unsure"
+    if any(b["x0"] <= EDGE_PX or b["y0"] <= EDGE_PX or b["x1"] >= w - EDGE_PX
+           or b["y1"] >= h - EDGE_PX for b in people):
+        return "edge"
+    return "ordinary"
 
 
 def _rests(end: dict) -> list[dict]:
@@ -423,7 +440,7 @@ def mine_video(vid, doc, video, models, out: Path, ends_per_video: int,
                   "unseen_no_pose": len(hits)})
 
     for g, e in spread(ends, ends_per_video):
-        rect, calib = panels[e["house"]]
+        rect, _calib = panels[e["house"]]
         for t in spread(moments(e), moments_per_end):
             t, img = _frame(video, t, rect)
             if img is None:
@@ -431,7 +448,7 @@ def mine_video(vid, doc, video, models, out: Path, ends_per_video: int,
             n["frames"] += 1
             people = models.people(img)
             h, w = img.shape[:2]
-            kind = classify(people, w, h, calib.px_per_m)
+            kind = classify(people, w, h)
             if kind is not None:
                 keep(kind, g, e, t, img, people, models.stones(img))
 

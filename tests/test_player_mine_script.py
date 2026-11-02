@@ -18,7 +18,7 @@ def _load(name):
 
 pm = _load("player_mine")
 
-KINDS = ("lost_no_pose", "crouched", "edge", "ordinary")
+KINDS = ("lost_no_pose", "pose_unsure", "edge", "ordinary")
 
 
 def _cands(videos=40, per=8, kinds=KINDS, sheets=4):
@@ -46,7 +46,7 @@ def test_reaches_the_total_with_about_a_fifth_ordinary():
     kinds = Counter(c["kind"] for c in got)
     assert kinds["ordinary"] == 60
     # the hard kinds share the rest evenly when all have plenty
-    assert {kinds[k] for k in ("lost_no_pose", "crouched", "edge")} == {80}
+    assert {kinds[k] for k in ("lost_no_pose", "pose_unsure", "edge")} == {80}
 
 
 def test_short_of_hard_cases_keeps_ordinary_at_a_fifth():
@@ -80,7 +80,7 @@ def test_spreads_over_sheets():
 
 def test_frames_close_in_time_count_once():
     cands = [{"video": "a", "t": 100.0 + i, "kind": "edge"} for i in range(5)]
-    cands += [{"video": "a", "t": 100.5 + i, "kind": "crouched"} for i in range(5)]
+    cands += [{"video": "a", "t": 100.5 + i, "kind": "pose_unsure"} for i in range(5)]
     got = pm.pick(cands, set(), total=10)
     ts = sorted(c["t"] for c in got)
     assert len(got) == 1
@@ -101,19 +101,25 @@ def test_unknown_kind_is_refused():
         pm.pick([{"video": "a", "t": 1.0, "kind": "standing"}], set())
 
 
-def _box(x0, y0, x1, y1):
-    return {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "conf": 0.5}
+def _box(x0, y0, x1, y1, conf=0.5):
+    return {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "conf": conf}
 
 
 def test_classify_a_frame_by_its_pose_boxes():
-    w, h, ppm = 300, 1000, 60.0
-    assert pm.classify([], w, h, ppm) is None
-    assert pm.classify([_box(100, 400, 140, 520)], w, h, ppm) == "ordinary"     # tall
-    assert pm.classify([_box(100, 400, 150, 450)], w, h, ppm) == "crouched"     # small, square
-    assert pm.classify([_box(100, 400, 200, 500)], w, h, ppm) == "ordinary"     # square, too big
-    assert pm.classify([_box(0, 400, 40, 520)], w, h, ppm) == "edge"
-    assert pm.classify([_box(0, 400, 40, 440), _box(100, 400, 140, 520)], w, h, ppm) == "edge"
-    assert pm.classify([_box(0, 400, 40, 520), _box(100, 400, 150, 450)], w, h, ppm) == "crouched"
+    w, h = 300, 1000
+    assert pm.classify([], w, h) is None
+    assert pm.classify([_box(100, 400, 140, 520)], w, h) == "ordinary"
+    assert pm.classify([_box(0, 400, 40, 520)], w, h) == "edge"
+    assert pm.classify([_box(0, 400, 40, 440), _box(100, 400, 140, 520)], w, h) == "edge"
+    # a person found only under the sure confidence, that no sure box covers
+    assert pm.classify([_box(100, 400, 140, 520, 0.12)], w, h) == "pose_unsure"
+    assert pm.classify([_box(0, 400, 40, 520), _box(100, 600, 140, 720, 0.2)], w, h) \
+        == "pose_unsure"
+    # under the sure line but on a sure box: the same person, found
+    assert pm.classify([_box(100, 400, 140, 520, 0.9), _box(102, 405, 140, 525, 0.15)], w, h) \
+        == "ordinary"
+    # a sure box at the line itself is sure
+    assert pm.classify([_box(100, 400, 140, 520, pm.SURE_CONF)], w, h) == "ordinary"
 
 
 def test_lost_stones_are_the_ones_a_later_read_finds_again():

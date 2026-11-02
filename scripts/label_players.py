@@ -9,7 +9,7 @@ DIR is an existing YOLO dataset folder: images (any depth below --images, as in
 `images/train` and `images/val`) and a `<stem>.txt` of stone labels (0 red,
 1 yellow) under --labels at the same relative path. Each image becomes one
 item whose `starts` are the people a COCO pose model (yolo11x-pose, person
-class, 640 px, confidence >= 0.25) finds, and whose `stones` are the known
+class, 640 px, confidence >= 0.1) finds, and whose `stones` are the known
 stones, drawn on the page for context only. The member boxes every player,
 head to feet as seen from above, not the broom, and a player cut off at the
 edge up to the edge; the answer trains the next stone detector's player class.
@@ -29,6 +29,15 @@ An item's id is `p_` and a hash of dataset/fold/stem (label_publish.opaque_id),
 so it says nothing about the video, and the same frame is the same id on every
 run; dataset, fold and stem stay in the item's origin, which members are never
 sent. Rerunning changes nothing already open.
+
+The floor is 0.1, the lowest of 0.1, 0.15 and 0.25 whose junk stayed well under
+a box a frame. Counted by eye on 30 frames (20 random overhead-3 training
+frames and the 10 frames of player_mine.py's smoke run, 74 players):
+0.25 found 42 and missed 32, with 1 junk box; 0.15 found 49, missed 25, junk
+1; 0.1 found 54, missed 20, junk 2 (one a second box on a player already
+boxed). At 0.25 most frames went out with players unboxed, which invites
+members to press Enter on them. The rest are mostly players seen straight
+down or down on the ice, which the model misses at any confidence.
 
 Boxes are the model's own, not trimmed to its keypoints plus a margin. Both
 were rendered on 30 overhead-3 frames and looked at: the keypoints are
@@ -55,7 +64,7 @@ if _HERE not in sys.path:
 
 import label_publish  # noqa: E402
 
-POSE_CONF = 0.25
+POSE_CONF = 0.1
 POSE_IMGSZ = 640
 # The server refuses an answer box under this size (service.labelling.MIN_BOX_PX),
 # and one more than 1 px outside the image, so a start is clipped and kept only
