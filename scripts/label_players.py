@@ -15,7 +15,7 @@ head to feet as seen from above, not the broom, and a player cut off at the
 edge up to the edge; the answer trains the next stone detector's player class.
 
 Pose runs on the CPU, so it can share a box with a production worker; give a
-long run a low `nice`. The images go up as they are on disk. ADMIN_TOKEN and
+long run a low `nice`. The images go up as they are on disk, a page of items at a time. ADMIN_TOKEN and
 BASE_URL are read as for scripts/label_fp.py (BASE_URL defaults to
 https://curling.dimmit.net; the token is tried with one cheap admin read before
 the model loads, and is never printed). --weights, or POSE_WEIGHTS, is the
@@ -41,6 +41,7 @@ is a little loose far more easily than one that has lost a limb.
 
 import argparse
 import json
+import math
 import os
 import random
 import sys
@@ -98,16 +99,29 @@ def pose_starts(img, model) -> list[dict]:
 
 
 def stones_from_label(txt: str, w: int, h: int) -> list[dict]:
-    """The stones of a YOLO label file, in pixels; classes other than 0 and 1 are ignored."""
+    """The stones of a YOLO label file, in pixels, clipped to the image.
+
+    Classes other than 0 and 1, short or non-numeric lines, and stones with
+    nothing left inside the image are ignored; the page draws them for context
+    only, but never off the canvas.
+    """
     out = []
     for line in txt.splitlines():
         parts = line.split()
         if len(parts) < 5 or parts[0] not in ("0", "1"):
             continue
-        cx, cy, bw, bh = (float(v) for v in parts[1:5])
-        out.append({"x0": round((cx - bw / 2) * w, 1), "y0": round((cy - bh / 2) * h, 1),
-                    "x1": round((cx + bw / 2) * w, 1), "y1": round((cy + bh / 2) * h, 1),
-                    "color": COLORS[int(parts[0])]})
+        try:
+            cx, cy, bw, bh = (float(v) for v in parts[1:5])
+        except ValueError:
+            continue
+        if not all(math.isfinite(v) for v in (cx, cy, bw, bh)):
+            continue
+        x0, y0 = max(0.0, (cx - bw / 2) * w), max(0.0, (cy - bh / 2) * h)
+        x1, y1 = min(float(w), (cx + bw / 2) * w), min(float(h), (cy + bh / 2) * h)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        out.append({"x0": round(x0, 1), "y0": round(y0, 1), "x1": round(x1, 1),
+                    "y1": round(y1, 1), "color": COLORS[int(parts[0])]})
     return out
 
 
@@ -189,11 +203,15 @@ def main(argv=None) -> int:
     import cv2
 
     model = load_model(args.weights)
-    items, images, frames, skipped = [], {}, [], 0
-    for path in _frames(args.images):
+    # Only the contact sheet's frames stay decoded, and an image's bytes are read
+    # again when its page is published: a run over thousands of frames on a box
+    # shared with workers holds the items and paths, not the pixels.
+    paths = _frames(args.images)
+    looked_at = set(random.Random(0).sample(range(len(paths)), min(CONTACT_FRAMES, len(paths))))
+    items, files, frames, skipped = [], {}, [], 0
+    for n, path in enumerate(paths):
         try:
-            data = path.read_bytes()
-            img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+            img = cv2.imread(str(path))
             if img is None:
                 raise ValueError("not a readable image")
             h, w = img.shape[:2]
@@ -206,8 +224,9 @@ def main(argv=None) -> int:
             print(f"{path.name}: {type(err).__name__}: {err}, skipped", file=sys.stderr)
             continue
         items.append(item)
-        images[item["id"]] = data
-        frames.append((img, item))
+        files[item["id"]] = path
+        if n in looked_at:
+            frames.append((img, item))
 
     ids = [i["id"] for i in items]
     if len(set(ids)) != len(ids):
@@ -221,14 +240,19 @@ def main(argv=None) -> int:
         for item in items:
             (args.out / f"{item['id']}.json").write_text(json.dumps(item, indent=1))
         if frames:
-            pick = random.Random(0).sample(frames, min(CONTACT_FRAMES, len(frames)))
-            cv2.imwrite(str(args.out / "contact.jpg"), contact_sheet(pick))
+            cv2.imwrite(str(args.out / "contact.jpg"), contact_sheet(frames))
         print(f"wrote {len(items)} item files and contact.jpg to {args.out}")
     if args.dry_run:
         print("dry run: sent nothing")
         return 0
+    got = {"opened": [], "skipped": [], "missing_image": []}
     try:
-        got = label_publish.publish(base, token, items, images)
+        for i in range(0, len(items), label_publish.PAGE):
+            page = items[i:i + label_publish.PAGE]
+            page_got = label_publish.publish(base, token, page,
+                                             {x["id"]: files[x["id"]].read_bytes() for x in page})
+            for k in got:
+                got[k] += page_got[k]
     except OSError as err:                  # URLError and HTTPError are OSErrors
         print(f"could not publish: {label_publish.why(err)}", file=sys.stderr)
         return 1

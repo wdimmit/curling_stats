@@ -100,6 +100,18 @@ def test_other_classes_blank_and_short_lines_are_ignored():
     assert [s["color"] for s in lp.stones_from_label(txt, 100, 100)] == ["red"]
 
 
+def test_a_malformed_line_is_ignored_and_the_rest_of_the_label_is_kept():
+    txt = "0 abc 0.5 0.1 0.1\n1 0.5 0.5 nan 0.1\n1 0.5 0.5 0.2 0.2\n"
+    assert [s["color"] for s in lp.stones_from_label(txt, 100, 100)] == ["yellow"]
+
+
+def test_stones_are_clipped_to_the_image_and_one_wholly_outside_is_dropped():
+    txt = "0 0.0 0.5 0.2 0.2\n1 1.05 0.5 0.2 0.2\n0 1.5 0.5 0.1 0.1\n"
+    got = lp.stones_from_label(txt, 100, 200)
+    assert got == [{"x0": 0.0, "y0": 80.0, "x1": 10.0, "y1": 120.0, "color": "red"},
+                   {"x0": 95.0, "y0": 80.0, "x1": 100.0, "y1": 120.0, "color": "yellow"}]
+
+
 # --- item_for ---------------------------------------------------------------
 
 def make_item(**kw):
@@ -225,3 +237,38 @@ def test_a_real_run_publishes_the_items_with_their_image_bytes(tmp_path, monkeyp
     a = next(i for i in sent["items"] if i["payload"]["origin"]["stem"] == "a")
     assert sent["imgs"][a["id"]] == (images / "a.jpg").read_bytes()
     assert "tok-secret" not in capsys.readouterr().out
+
+
+def test_only_the_contact_sheets_frames_are_kept_decoded(tmp_path, monkeypatch):
+    images, labels = _dataset(tmp_path, names=("a", "b", "c", "d"))
+    monkeypatch.setattr(lp, "load_model", lambda path: StubPose([]))
+    monkeypatch.setattr(lp, "CONTACT_FRAMES", 2)
+    kept = []
+    real = lp.contact_sheet
+    monkeypatch.setattr(lp, "contact_sheet", lambda frames: kept.append(len(frames)) or real(frames))
+    out = tmp_path / "out"
+    rc = lp.main(["publish", "--images", str(images), "--labels", str(labels), "--dataset", "d",
+                  "--fold", "f", "--batch", "pl", "--weights", "w.pt", "--dry-run",
+                  "--out", str(out)])
+    assert rc == 0 and kept == [2]
+    assert len(list(out.glob("p_*.json"))) == 4
+
+
+def test_publishing_goes_a_page_at_a_time_with_only_that_pages_images(tmp_path, monkeypatch, capsys):
+    images, labels = _dataset(tmp_path, names=("a", "b", "c"))
+    monkeypatch.setenv("ADMIN_TOKEN", "tok")
+    monkeypatch.setattr(lp.label_publish, "preflight", lambda base, token: None)
+    monkeypatch.setattr(lp.label_publish, "PAGE", 2)
+    monkeypatch.setattr(lp, "load_model", lambda path: StubPose([]))
+    calls = []
+
+    def fake_publish(base, token, items, imgs):
+        calls.append((len(items), set(imgs) == {i["id"] for i in items}))
+        return {"opened": [i["id"] for i in items], "skipped": [], "missing_image": []}
+
+    monkeypatch.setattr(lp.label_publish, "publish", fake_publish)
+    rc = lp.main(["publish", "--images", str(images), "--labels", str(labels), "--dataset", "d",
+                  "--fold", "f", "--batch", "pl", "--weights", "w.pt"])
+    assert rc == 0
+    assert calls == [(2, True), (1, True)]
+    assert "opened 3," in capsys.readouterr().out
