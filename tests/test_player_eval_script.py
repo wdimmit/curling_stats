@@ -78,11 +78,12 @@ class FakeModel:
 
     def __init__(self, boxes, shape=(100, 200)):
         self.boxes, self.shape = boxes, shape
-        self.calls = []
+        self.calls, self.sizes = [], []
 
-    def predict(self, path, conf, classes, verbose):
+    def predict(self, path, conf, classes, imgsz, verbose):
         import numpy as np
         self.calls.append((conf, classes))
+        self.sizes.append(imgsz)
         keep = [b for b in self.boxes if b[4] >= conf]
 
         class T:
@@ -152,3 +153,49 @@ def test_a_sheet_of_the_models_player_boxes(tmp_path):
     assert pe.write_sheet(model, frames, tmp_path / "sheet.jpg", 0.25) == 3
     assert cv2.imread(str(tmp_path / "sheet.jpg")) is not None
     assert all(call == (0.25, [2]) for call in model.calls)
+
+
+def test_the_model_runs_at_the_pipelines_448_by_default():
+    assert pe.IMGSZ == 448
+    model = FakeModel([(50, 25, 150, 75, 0.6)])
+    pe.predict(model, Path("x.jpg"), pe.PLAYER_CLASS, 0.25)
+    assert model.sizes == [448]
+    pe.predict(model, Path("x.jpg"), pe.PLAYER_CLASS, 0.25, imgsz=640)
+    assert model.sizes == [448, 640]
+
+
+def test_evaluate_and_the_sheet_pass_imgsz_on(tmp_path):
+    import cv2
+    import numpy as np
+    val = _val(tmp_path / "v", {"a": "2 0.5 0.5 0.5 0.5\n"})
+    model = FakeModel([(50, 25, 150, 75, 0.6)])
+    pe.evaluate(model, val, pe.PLAYER_CLASS, [0.25])
+    pe.evaluate(model, val, pe.PLAYER_CLASS, [0.25], imgsz=512)
+    assert model.sizes == [448, 512]
+    frames = tmp_path / "frames"
+    frames.mkdir()
+    cv2.imwrite(str(frames / "f.jpg"), np.full((100, 200, 3), 128, np.uint8))
+    sheet = FakeModel([])
+    pe.write_sheet(sheet, frames, tmp_path / "s.jpg", 0.25)
+    assert sheet.sizes == [448]
+
+
+def test_main_defaults_to_imgsz_448_and_takes_another(tmp_path, monkeypatch):
+    import sys
+    import types
+    val = _val(tmp_path / "v", {"a": "2 0.5 0.5 0.5 0.5\n"})
+    made = []
+
+    def YOLO(path):
+        made.append(FakeModel([(50, 25, 150, 75, 0.6)]))
+        return made[-1]
+
+    monkeypatch.setitem(sys.modules, "ultralytics", types.SimpleNamespace(YOLO=YOLO))
+    assert pe.main(["--val", str(val), "--model", "m.pt", "--pose", "p.pt",
+                    "--out", str(tmp_path / "o")]) == 0
+    assert set(made[0].sizes) == {448}
+    assert set(made[1].sizes) == {640}              # the incumbent at its own size
+    made.clear()
+    assert pe.main(["--val", str(val), "--model", "m.pt", "--imgsz", "512",
+                    "--out", str(tmp_path / "o")]) == 0
+    assert set(made[0].sizes) == {512}

@@ -2,15 +2,18 @@
 """How well does a model find the players: precision and recall, loss curves, a contact sheet.
 
     python scripts/player_eval.py --val /data/wdd/curling/pilot-players/folds/val \\
-        --model runs/pilot-players/weights/best.pt [--pose yolo11x-pose.pt] [--conf 0.25] \\
+        --model runs/pilot-players/weights/best.pt [--pose yolo11x-pose.pt] [--conf 0.25] [--imgsz 448] \\
         [--curves runs/pilot-players/results.csv runs/overhead-3/results.csv] \\
         [--sheet FRAMES_DIR] [--out DIR]
 
 --val is a folder with `images/` and `labels/` (any depth; a label is
 `labels/<path of the image>.txt`), as overhead4_merge.py writes one; the truth
 is each label's class 2 lines. --model is an overhead-4 checkpoint and its
-class 2 is scored at --conf. --pose adds yolo11x-pose's person class (COCO 0),
-the incumbent, at 0.25 and at 0.1. A prediction is right if it overlaps an
+class 2 is scored at --conf, with the model run at --imgsz (default 448, the
+size the pipeline gives the overhead model, analyze.py; ultralytics' own default
+is 640, which is not what production sees). --pose adds yolo11x-pose's person
+class (COCO 0), the incumbent, at 0.25 and at 0.1, at the 640 label_players.py
+pre-boxes with. A prediction is right if it overlaps an
 unmatched player at IoU >= 0.5 (`match`, greedy, most confident first); the
 counts are over every frame, and a frame with no label file is skipped.
 
@@ -33,6 +36,8 @@ if _HERE not in sys.path:
 
 PLAYER_CLASS = 2
 POSE_PERSON = 0
+IMGSZ = 448             # analyze.py's input size for the overhead model
+POSE_IMGSZ = 640        # label_players.POSE_IMGSZ, the size the incumbent is used at
 IOU_MATCH = 0.5
 SHEET_FRAMES = 40
 SUFFIXES = (".jpg", ".jpeg", ".png")
@@ -84,10 +89,11 @@ def _frames(images: Path) -> list[Path]:
     return sorted(p for p in images.rglob("*") if p.suffix.lower() in SUFFIXES)
 
 
-def predict(model, path: Path, cls: int, conf: float) -> tuple[list[tuple], tuple[int, int]]:
-    """``model``'s class ``cls`` boxes on one image as (x0, y0, x1, y1, conf), and
-    the image's (w, h)."""
-    res = model.predict(str(path), conf=conf, classes=[cls], verbose=False)[0]
+def predict(model, path: Path, cls: int, conf: float,
+            imgsz: int = IMGSZ) -> tuple[list[tuple], tuple[int, int]]:
+    """``model``'s class ``cls`` boxes on one image, run at ``imgsz``, as
+    (x0, y0, x1, y1, conf), and the image's (w, h)."""
+    res = model.predict(str(path), conf=conf, classes=[cls], imgsz=imgsz, verbose=False)[0]
     h, w = res.orig_shape
     boxes = [] if res.boxes is None else [
         (*map(float, b), float(c)) for b, c in zip(res.boxes.xyxy.cpu().numpy(),
@@ -95,7 +101,8 @@ def predict(model, path: Path, cls: int, conf: float) -> tuple[list[tuple], tupl
     return boxes, (w, h)
 
 
-def evaluate(model, val: Path, cls: int, confs: list[float]) -> dict[float, tuple[int, int, int]]:
+def evaluate(model, val: Path, cls: int, confs: list[float],
+             imgsz: int = IMGSZ) -> dict[float, tuple[int, int, int]]:
     """Summed (tp, fp, fn) over the frames of ``val`` at each confidence. The model
     runs once, at the lowest."""
     totals = {c: [0, 0, 0] for c in confs}
@@ -103,7 +110,7 @@ def evaluate(model, val: Path, cls: int, confs: list[float]) -> dict[float, tupl
         label = val / "labels" / path.relative_to(val / "images").with_suffix(".txt")
         if not label.is_file():
             continue
-        boxes, (w, h) = predict(model, path, cls, min(confs))
+        boxes, (w, h) = predict(model, path, cls, min(confs), imgsz)
         truth = truth_players(label.read_text(), w, h)
         for c in confs:
             for i, v in enumerate(match([b for b in boxes if b[4] >= c], truth)):
@@ -159,7 +166,7 @@ def _run_name(arg: str) -> tuple[str, Path]:
     return Path(arg).resolve().parent.name, Path(arg)
 
 
-def write_sheet(model, frames: Path, dest: Path, conf: float) -> int:
+def write_sheet(model, frames: Path, dest: Path, conf: float, imgsz: int = IMGSZ) -> int:
     """The model's player boxes over a sample of ``frames``, as a contact sheet."""
     import cv2
 
@@ -172,7 +179,7 @@ def write_sheet(model, frames: Path, dest: Path, conf: float) -> int:
         img = cv2.imread(str(paths[i]))
         if img is None:
             continue
-        boxes, (w, h) = predict(model, paths[i], PLAYER_CLASS, conf)
+        boxes, (w, h) = predict(model, paths[i], PLAYER_CLASS, conf, imgsz)
         starts = [{"x0": b[0], "y0": b[1], "x1": b[2], "y1": b[3]} for b in boxes]
         shown.append((img, {"payload": {"w": w, "h": h, "starts": starts, "stones": []}}))
     if shown:
@@ -186,6 +193,8 @@ def main(argv=None) -> int:
     ap.add_argument("--model", metavar="PT", help="an overhead-4 checkpoint (player is class 2)")
     ap.add_argument("--pose", metavar="PT", help="yolo11x-pose, scored on its person class")
     ap.add_argument("--conf", type=float, default=0.25)
+    ap.add_argument("--imgsz", type=int, default=IMGSZ,
+                    help="the model's input size (default %(default)s, the pipeline's)")
     ap.add_argument("--curves", nargs="+", metavar="RESULTS_CSV")
     ap.add_argument("--sheet", type=Path, metavar="FRAMES_DIR")
     ap.add_argument("--out", type=Path, default=Path("."), metavar="DIR",
@@ -205,11 +214,12 @@ def main(argv=None) -> int:
 
         model = YOLO(args.model)
     if args.val:
-        scored = [("player (class 2)", model, PLAYER_CLASS, [args.conf])]
+        scored = [("player (class 2)", model, PLAYER_CLASS, [args.conf], args.imgsz)]
         if args.pose:
-            scored.append(("pose person (class 0)", YOLO(args.pose), POSE_PERSON, [0.25, 0.1]))
-        for name, m, cls, confs in scored:
-            for conf, (tp, fp, fn) in evaluate(m, args.val, cls, confs).items():
+            scored.append(("pose person (class 0)", YOLO(args.pose), POSE_PERSON, [0.25, 0.1],
+                           POSE_IMGSZ))
+        for name, m, cls, confs, size in scored:
+            for conf, (tp, fp, fn) in evaluate(m, args.val, cls, confs, size).items():
                 p, r = precision_recall(tp, fp, fn)
                 print(f"{name} at {conf}: precision {p:.3f} recall {r:.3f} (tp {tp} fp {fp} fn {fn})")
     if args.curves:
@@ -217,7 +227,7 @@ def main(argv=None) -> int:
         plot_curves({n: read_results(p) for n, p in runs.items()}, args.out / "curves.png")
         print(f"wrote {args.out / 'curves.png'}")
     if args.sheet:
-        n = write_sheet(model, args.sheet, args.out / "sheet.jpg", args.conf)
+        n = write_sheet(model, args.sheet, args.out / "sheet.jpg", args.conf, args.imgsz)
         print(f"wrote {args.out / 'sheet.jpg'} ({n} frames)")
     return 0
 
