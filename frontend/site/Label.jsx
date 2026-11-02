@@ -24,9 +24,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
 import { CANT_TELL, MIN_WIDTH_PX, addBox, boxAnswer, boxAt, canFinish, conflictNotice,
-         cornerAt, drawScale, drawnBox, keepFlagged, moveBox, moveCorner, playerAnswer,
-         releaseAnswer, removeBox, setBox, setColour, spriteOffset, startBoxes, startPlayers,
-         step } from "../core/labelling.mjs";
+         cornerAt, drawScale, drawnBox, editStones, keepFlagged, moveBox, moveCorner,
+         playerAnswer, releaseAnswer, removeBox, setBox, setColour, spriteOffset, startBoxes,
+         startPlayers, step, stonesFixed } from "../core/labelling.mjs";
 import { signInTrouble } from "./signinState.mjs";
 import { Card, Header } from "./ui.jsx";
 import { useAuthUser } from "./useAuth.js";
@@ -223,8 +223,11 @@ function useLabelQueue(kind, active) {
  *
  * One editor for both. A rock box has a colour (R, Y) and the computer may be
  * unsure of one start (K). A player box has neither, and the item's stones are
- * drawn greyed for context: they are not in the state, so nothing can select,
- * move or delete one, and a drag that starts on one draws a player box. */
+ * drawn greyed for context: nothing can select, move or delete one, and a drag
+ * that starts on one draws a player box. "Fix stones" (F) turns the same editor
+ * on the stones (the state's `stones`, with colours) and dims the players;
+ * F again goes back. Enter finishes the frame from either. An item whose
+ * stones are locked (the hard batch) has no Fix stones. */
 
 const BOX_MODE = {
   coloured: true, start: startBoxes, answer: boxAnswer,
@@ -232,18 +235,24 @@ const BOX_MODE = {
   alt: "Stones on the ice, to be boxed" };
 const PLAYER_MODE = {
   coloured: false, start: startPlayers, answer: playerAnswer,
-  keys: ["s", "n", "Enter", "Delete", "Backspace"],
+  keys: ["f", "r", "y", "s", "n", "Enter", "Delete", "Backspace"],
   alt: "The ice with its stones greyed, and the people on it to be boxed" };
 
 function BoxFlow(props) { return <BoxEditor mode={BOX_MODE} {...props} />; }
 function PlayerFlow(props) { return <BoxEditor mode={PLAYER_MODE} {...props} />; }
 
 function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSkip, onBack }) {
-  const { coloured } = mode;
   const [s, setS] = useState(() => restore || mode.start(item));
   const [sel, setSel] = useState(-1);
+  // Player mode only: the stones, not the players, are being edited.
+  const [fixing, setFixing] = useState(false);
+  const canFix = !mode.coloured && !item.stones_locked;
+  const coloured = mode.coloured || fixing;
+  // What the tools act on: the stones while fixing them, else the state itself.
+  const active = fixing ? s.stones : s;
+  const edit = f => setS(cur => (fixing ? editStones(cur, f) : f(cur)));
   // For the next box they draw; a player has none.
-  const [colour, setColourPref] = useState(coloured ? "red" : undefined);
+  const [colour, setColourPref] = useState(mode.coloured ? "red" : undefined);
   const [hint, setHint] = useState("");
   const [ghost, setGhost] = useState(null);
   const [cursor, setCursor] = useState("crosshair");
@@ -273,12 +282,19 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
 
   const pickColour = c => {
     setColourPref(c);
-    if (sel >= 0) setS(cur => setColour(cur, sel, c));
+    if (sel >= 0) edit(cur => setColour(cur, sel, c));
   };
-  const shownColour = sel >= 0 && s.boxes[sel] ? s.boxes[sel].color : colour;
+  const shownColour = sel >= 0 && active.boxes[sel] ? active.boxes[sel].color : colour;
+  const toggleFixing = () => {
+    if (!canFix) return;
+    setSel(-1);
+    setColourPref(fixing ? undefined : "red");
+    setFixing(!fixing);
+  };
 
   const act = useRef({});
-  act.current = { s, sel, colour, busy, paused, broken, canBack, onSkip, finish, item, pickColour, mode };
+  act.current = { s, sel, colour, busy, paused, broken, canBack, onSkip, finish, item, pickColour,
+                  mode, coloured, edit, fixing, toggleFixing };
 
   useEffect(() => {
     const key = e => {
@@ -292,10 +308,12 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
       e.preventDefault();
       if (a.busy) return;
       setHint("");
-      if (k === "r" || k === "y") {
-        a.pickColour(k === "r" ? "red" : "yellow");
+      if (k === "f") {
+        a.toggleFixing();
+      } else if (k === "r" || k === "y") {
+        if (a.coloured) a.pickColour(k === "r" ? "red" : "yellow");
       } else if (k === "Delete" || k === "Backspace") {
-        if (a.sel >= 0) { setS(cur => removeBox(cur, a.sel)); setSel(-1); }
+        if (a.sel >= 0) { a.edit(cur => removeBox(cur, a.sel)); setSel(-1); }
       } else if (k === "k") {
         setS(cur => keepFlagged(cur));
       } else if (k === "n") {
@@ -321,11 +339,11 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
       if (!d) return;
       const p = point(e), { w, h } = act.current.item;
       if (d.mode === "corner") {
-        setS(cur => setBox(cur, d.i, moveCorner(cur.boxes[d.i], d.corner, p.x, p.y, w, h)));
+        act.current.edit(cur => setBox(cur, d.i, moveCorner(cur.boxes[d.i], d.corner, p.x, p.y, w, h)));
       } else if (d.mode === "move") {
         if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < CLICK_PX) return;
         d.moved = true;
-        setS(cur => setBox(cur, d.i, moveBox(d.box, p.x - d.x, p.y - d.y, w, h)));
+        act.current.edit(cur => setBox(cur, d.i, moveBox(d.box, p.x - d.x, p.y - d.y, w, h)));
       } else {
         setGhost({ x0: Math.min(d.x, p.x), y0: Math.min(d.y, p.y),
                    x1: Math.max(d.x, p.x), y1: Math.max(d.y, p.y) });
@@ -339,8 +357,9 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
       const p = point(e), { w, h } = act.current.item;
       const box = drawnBox(d.x, d.y, p.x, p.y, w, h, act.current.colour);
       if (box) {
-        setSel(sRef.current.boxes.length);
-        setS(cur => addBox(cur, box));
+        const a = act.current;
+        setSel((a.fixing ? sRef.current.stones : sRef.current).boxes.length);
+        a.edit(cur => addBox(cur, box));
       } else {
         setSel(-1);   // a click on empty ice
       }
@@ -356,16 +375,16 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
     e.preventDefault();
     setHint("");
     const p = point(e), pad = GRAB_PX / scale;
-    const c = cornerAt(s, p.x, p.y, pad);
+    const c = cornerAt(active, p.x, p.y, pad);
     if (c) {
       setSel(c.i);
       drag.current = { mode: "corner", i: c.i, corner: c.corner };
       return;
     }
-    const i = boxAt(s, p.x, p.y, 0);
+    const i = boxAt(active, p.x, p.y, 0);
     if (i >= 0) {
       setSel(i);
-      drag.current = { mode: "move", i, box: s.boxes[i], x: p.x, y: p.y,
+      drag.current = { mode: "move", i, box: active.boxes[i], x: p.x, y: p.y,
                        cx: e.clientX, cy: e.clientY, moved: false };
       return;
     }
@@ -374,13 +393,17 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
 
   const hover = e => {
     if (drag.current) return;
-    const p = point(e), c = cornerAt(s, p.x, p.y, GRAB_PX / scale);
-    setCursor(c ? RESIZE_CURSOR[c.corner] : boxAt(s, p.x, p.y, 0) >= 0 ? "move" : "crosshair");
+    const p = point(e), c = cornerAt(active, p.x, p.y, GRAB_PX / scale);
+    setCursor(c ? RESIZE_CURSOR[c.corner] : boxAt(active, p.x, p.y, 0) >= 0 ? "move" : "crosshair");
   };
 
   const flaggedOpen = s.flagged >= 0 && s.starts[s.flagged] === "untouched";
   const w = item.w * scale, h = item.h * scale;
-  const stones = coloured ? [] : item.stones || [];
+  // Grey context: the stones (as fixed so far) behind the players, or the
+  // players, dimmed, behind the stones being fixed.
+  const stones = mode.coloured || fixing ? [] : s.stones?.boxes || item.stones || [];
+  const dimmed = fixing ? s.boxes : [];
+  const fixed = canFix && stonesFixed(s);
 
   return (
     <div className="label-flow" data-item={item.id}>
@@ -397,7 +420,11 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
               <rect key={`stone${i}`} x={b.x0} y={b.y0} width={b.x1 - b.x0} height={b.y1 - b.y0}
                     className="label-stone" />
             ))}
-            {s.boxes.map((b, i) => {
+            {dimmed.map((b, i) => (
+              <rect key={`player${i}`} x={b.x0} y={b.y0} width={b.x1 - b.x0} height={b.y1 - b.y0}
+                    className="label-box player dim" />
+            ))}
+            {active.boxes.map((b, i) => {
               const dashed = flaggedOpen && b.start === s.flagged;
               return (
                 <g key={i}>
@@ -411,7 +438,7 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
             {ghost ? <rect x={ghost.x0} y={ghost.y0} width={ghost.x1 - ghost.x0}
                            height={ghost.y1 - ghost.y0} className={`label-box ${coloured ? colour : "player"} dashed`} /> : null}
           </svg>
-          {coloured ? s.boxes.map((b, i) => {
+          {coloured ? active.boxes.map((b, i) => {
             const dashed = flaggedOpen && b.start === s.flagged;
             const top = b.y0 * scale;
             return (
@@ -440,23 +467,34 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
                 onClick={() => (canFinish(s) ? finish(mode.answer(s))
                                              : setHint("Keep (K), fix or delete the dashed box first"))}>
           Done <kbd>Enter</kbd></button>
-        {coloured ? (
+        {mode.coloured ? (
           <button disabled={busy || !flaggedOpen} onClick={() => setS(keepFlagged)}>
             Keep dashed box <kbd>K</kbd></button>
         ) : null}
-        <button disabled={busy || sel < 0} onClick={() => { setS(cur => removeBox(cur, sel)); setSel(-1); }}>
+        {canFix ? (
+          <button disabled={busy || broken} aria-pressed={fixing} onClick={toggleFixing}>
+            {fixing ? "Back to players" : "Fix stones"} <kbd>F</kbd></button>
+        ) : null}
+        <button disabled={busy || sel < 0} onClick={() => { edit(cur => removeBox(cur, sel)); setSel(-1); }}>
           Delete <kbd>Del</kbd></button>
         <button disabled={busy || broken} onClick={() => finish(CANT_TELL)}>Can't tell <kbd>S</kbd></button>
         <button ref={skipRef} disabled={busy} onClick={onSkip}>Skip <kbd>N</kbd></button>
         <button disabled={busy || !canBack} onClick={onBack}>Back</button>
       </div>
       <p className="muted label-keys">
-        {coloured ? (
+        {fixing ? (
+          <>Fixing the stones: drag a corner to resize, drag inside a box to move it, drag on empty
+            ice to draw one, <kbd>Del</kbd> to delete. <kbd>R</kbd> red, <kbd>Y</kbd> yellow for the
+            selected stone (or the next one you draw). <kbd>F</kbd> goes back to the players;{" "}
+            <kbd>Enter</kbd> finishes the frame.</>
+        ) : coloured ? (
           <>Drag a corner to resize, drag inside a box to move it, drag on empty ice to draw one.{" "}
             <kbd>R</kbd> red, <kbd>Y</kbd> yellow for the selected box (or the next one you draw).</>
         ) : (
           <>Drag a corner to resize, drag inside a box to move it, drag anywhere else, even over a
-            grey stone, to draw one. With nobody to box, just press <kbd>Enter</kbd>.</>
+            grey stone, to draw one. With nobody to box, just press <kbd>Enter</kbd>.
+            {canFix ? <> A stone's box wrong, or a stone with none? <kbd>F</kbd> fixes the stones.</> : null}
+            {fixed ? <> <strong>You've changed the stones.</strong></> : null}</>
         )}
       </p>
     </div>
@@ -596,8 +634,10 @@ const FLOWS = {
                     + "above. Not the broom, and not a stone in their hand. A player cut off at "
                     + "the edge gets a box over the part you can see, and so does anyone from the "
                     + "next sheet. A crouched or kneeling player is still a player. A shoe, glove "
-                    + "or broom head left on the ice is not. The grey boxes are stones and can't "
-                    + "be changed. If there are no people, press Enter.",
+                    + "or broom head left on the ice is not. If there are no people, press Enter. "
+                    + "The grey boxes are stones. If one is wrong, or a stone has no box, press "
+                    + "Fix stones (F) to fix them as on the rock boxes, then F to come back to "
+                    + "the players. Leave them alone if they look right.",
              figures: [
                { src: "/static/label-player-crouched.jpg",
                  caption: "A crouched skip, from above: box all of them." },

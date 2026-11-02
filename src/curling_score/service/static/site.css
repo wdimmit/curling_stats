@@ -694,6 +694,8 @@ body[data-page="signin"] main { max-width:520px; }
 .label-box.red { stroke:var(--red); }
 .label-box.yellow { stroke:var(--yellow); }
 .label-box.player { stroke:#1fb6e0; }
+/* The players behind the stones being fixed: there, not editable. */
+.label-box.player.dim { stroke-opacity:.4; pointer-events:none; }
 .label-stone { fill:rgb(130 130 130 / .35); stroke:#8a8a8a; stroke-width:2px;
                vector-effect:non-scaling-stroke; pointer-events:none; }
 .label-box.dashed { stroke-dasharray:6 4; }

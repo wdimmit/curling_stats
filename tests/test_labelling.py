@@ -193,6 +193,60 @@ def test_player_boxes_follow_the_box_rules():
             player_box(x0=1, x1=9, start=None) for _ in range(60)]})
 
 
+# --- stones fixed in the player flow ---------------------------------------------
+
+def player_ok(**over):
+    return {"cant_tell": False, "starts": ["untouched"], "boxes": [player_box()], **over}
+
+
+def stone(**over):
+    return {"x0": 50, "y0": 10, "x1": 56, "y1": 16, "color": "red", **over}
+
+
+def test_an_answer_that_leaves_the_stones_alone_says_nothing_about_them():
+    assert "stones" not in check_answer(player_item(), player_ok())
+    assert "stones" not in check_answer(player_item(), player_ok(stones=None))
+
+
+def test_fixed_stones_are_kept_whole_with_their_colours():
+    got = check_answer(player_item(), player_ok(stones=[
+        stone(x0=51), stone(x0=70, x1=80, y0=30, y1=40, color="yellow", start=3)]))
+    assert got["stones"] == [{"x0": 51, "y0": 10, "x1": 56, "y1": 16, "color": "red"},
+                             {"x0": 70, "y0": 30, "x1": 80, "y1": 40, "color": "yellow"}]
+    assert got["boxes"] == [{"x0": 10, "y0": 10, "x1": 20, "y1": 30, "start": 0}]
+
+
+def test_fixed_stones_may_be_none_at_all():
+    assert check_answer(player_item(), player_ok(stones=[]))["stones"] == []
+
+
+def test_a_fixed_stone_follows_the_box_rules():
+    item = player_item()
+    with pytest.raises(ValueError, match="outside"):
+        check_answer(item, player_ok(stones=[stone(x1=140)]))
+    with pytest.raises(ValueError, match="small"):
+        check_answer(item, player_ok(stones=[stone(x1=51)]))
+    with pytest.raises(ValueError, match="red or yellow"):
+        check_answer(item, player_ok(stones=[stone(color="player")]))
+    with pytest.raises(ValueError, match="stones"):
+        check_answer(item, player_ok(stones={"x0": 1}))
+    with pytest.raises(ValueError, match="at most"):
+        check_answer(item, player_ok(stones=[stone()] * 61))
+
+
+def test_stones_cannot_be_fixed_where_they_are_locked():
+    item = player_item()
+    item.payload["stones_locked"] = True
+    with pytest.raises(ValueError, match="locked"):
+        check_answer(item, player_ok(stones=[stone()]))
+    assert "stones" not in check_answer(item, player_ok())
+
+
+def test_cant_tell_drops_any_stones():
+    got = check_answer(player_item(), {"cant_tell": True, "stones": [stone()]})
+    assert got == {"cant_tell": True, "boxes": [], "starts": []}
+
+
 def test_release_answers():
     item = release_item()
     assert check_answer(item, {"mark": "off", "frame": 3}) == {"mark": "off", "frame": 3}

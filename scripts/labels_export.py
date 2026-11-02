@@ -39,7 +39,11 @@ Under --out:
                         labels/<id>.txt (YOLO, class 2 = player only; empty when
                         nobody was on the ice) and players.jsonl: id, origin,
                         boxes in image pixels, members. One answer each, no pairs.
-                        Answers an admin discarded are ignored entirely.
+                        Answers an admin discarded are ignored entirely. A member
+                        who fixed the stones ("Fix stones") also gives
+                        stones/<id>.txt (classes 0/1, the frame's whole stone
+                        label; empty if they removed every stone) and the row's
+                        `stones`; overhead4_merge.py takes it over the base's.
   players/to_user/      the frames nobody could settle (a can't-tell, or `retired`)
                         as the box editor with its player option: the item's stones
                         (classes 0/1) and the detector's starts (class 2) to fix;
@@ -48,6 +52,10 @@ Under --out:
                         answers, each tile its boxes, the member's email and the
                         item id; members who changed nothing are drawn more
                         often. spotcheck.jsonl says which and where.
+  players/stonefix/     the same sheets of every frame whose stones a member
+                        fixed: the stones before in thick grey, after in their
+                        colours. stonefix.jsonl says which and where. For a look;
+                        fixes go into training as they are.
 
   members.json          per account: email, how many of each kind, median seconds
                         per answer, checks {n, agree} against the items whose
@@ -431,6 +439,9 @@ def _spot_tile(row: dict, font):
     k = min(tw / w, th / h)
     img = img.resize((max(1, round(w * k)), max(1, round(h * k))))
     d = ImageDraw.Draw(img)
+    for b in row.get("before") or ():
+        d.rectangle([b["x0"] * k, b["y0"] * k, b["x1"] * k, b["y1"] * k],
+                    outline=(150, 150, 150), width=3)
     for b in row["stones"]:
         d.rectangle([b["x0"] * k, b["y0"] * k, b["x1"] * k, b["y1"] * k],
                     outline=SPOT_STONES.get(b["color"], (160, 160, 160)), width=1)
@@ -443,7 +454,7 @@ def _spot_tile(row: dict, font):
     return tile
 
 
-def _write_spotcheck(rows: list[dict], dest: Path) -> None:
+def _write_spotcheck(rows: list[dict], dest: Path, log_name: str = "spotcheck.jsonl") -> None:
     """spotcheck/sheet-NN.jpg, SPOT_GRID x SPOT_GRID tiles a sheet (the last
     sheet as many rows of tiles as it needs), and spotcheck.jsonl."""
     from PIL import Image, ImageFont
@@ -466,7 +477,7 @@ def _write_spotcheck(rows: list[dict], dest: Path) -> None:
             log.append({"id": row["id"], "uid": row["uid"], "email": row["email"],
                         "sheet": name, "tile": i})
         sheet.save(dest / name, "JPEG", quality=FRAME_QUALITY)
-    _write_jsonl(dest / "spotcheck.jsonl", log)
+    _write_jsonl(dest / log_name, log)
 
 
 def export_players(items: list[dict], out: Path, opener, seed: int = 0,
@@ -482,7 +493,7 @@ def export_players(items: list[dict], out: Path, opener, seed: int = 0,
         d.mkdir(parents=True, exist_ok=True)
     emails = {u["id"]: u.get("email") for u in users}
     rates = untouched_rates(items)
-    written, editor, to_user, spot, skipped = [], [], [], [], []
+    written, editor, to_user, spot, fixes, skipped = [], [], [], [], [], []
     for item in items:
         if item.get("reference") is not None:
             continue
@@ -517,9 +528,17 @@ def export_players(items: list[dict], out: Path, opener, seed: int = 0,
         boxes = _clip_players(answers[0]["answer"]["boxes"], w, h)
         (lab / "images" / f"{item['id']}.jpg").write_bytes(image)
         (lab / "labels" / f"{item['id']}.txt").write_text(_yolo(boxes, w, h, CLASSES))
-        written.append({"id": item["id"], "origin": origin, "members": _members(answers),
-                        "boxes": boxes})
+        row = {"id": item["id"], "origin": origin, "members": _members(answers), "boxes": boxes}
         uid = answers[0]["uid"]
+        fix = answers[0]["answer"].get("stones")
+        if fix is not None:
+            (lab / "stones").mkdir(exist_ok=True)
+            (lab / "stones" / f"{item['id']}.txt").write_text(_yolo(fix, w, h))
+            row["stones"] = fix
+            fixes.append({"id": item["id"], "uid": uid, "email": emails.get(uid) or uid,
+                          "path": lab / "images" / f"{item['id']}.jpg", "w": w, "h": h,
+                          "before": payload.get("stones") or [], "stones": fix, "boxes": boxes})
+        written.append(row)
         spot.append({"id": item["id"], "uid": uid, "email": emails.get(uid) or uid,
                      "path": lab / "images" / f"{item['id']}.jpg", "w": w, "h": h,
                      "stones": payload.get("stones") or [], "boxes": boxes})
@@ -530,6 +549,7 @@ def export_players(items: list[dict], out: Path, opener, seed: int = 0,
     spot.sort(key=lambda r: r["id"])
     _write_spotcheck(spot_pick(spot, math.ceil(SPOT_SHARE * len(spot)),
                                lambda r: rates.get(r["uid"]), seed), root / "spotcheck")
+    _write_spotcheck(fixes, root / "stonefix", "stonefix.jsonl")
     return len(written), len(to_user), skipped
 
 

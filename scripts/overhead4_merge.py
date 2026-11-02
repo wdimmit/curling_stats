@@ -32,6 +32,12 @@ counts it. --pilot drops the unlabelled frames and counts them instead, for an
 early run on what is reviewed so far, and refuses an --out containing
 `overhead-4`, so a pilot set can never be the real one.
 
+A frame whose stones a member fixed in the player flow (labels_export's
+`stones/<id>.txt`) takes the member's stones instead of the base's, counted in
+`stones_fixed`; the fix goes in as it is (the user, 2026-11-02). Hard-batch
+frames take no fix: their stones are locked on the page and decided by their
+rock-box items.
+
 Only receiving-panel frames are published (label_players.py sort and
 publish --sides). --sides is that sort's output, `datasets/overhead-4/
 sides.json`: a base frame it left out (the throwing panel) and that has no
@@ -106,6 +112,22 @@ def player_labels(players: Path) -> dict[str, list[str]]:
             raise ValueError(f"{stem} is labelled twice with different players ({row['id']} "
                              "is the second); settle which is right")
         out[stem] = lines
+    return out
+
+
+def stone_fixes(players: Path) -> dict[str, list[str]]:
+    """The stone lines (classes 0 and 1) of each frame a member fixed the stones
+    of in the player flow (labels_export's `stones/<id>.txt`), by stem."""
+    root = _labelled(players)
+    out = {}
+    for line in root.joinpath("players.jsonl").read_text().splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        path = root / "stones" / f"{row['id']}.txt"
+        if path.is_file():
+            out[row["origin"]["stem"]] = [ln for ln in _lines(path.read_text())
+                                          if ln.split()[0] in ("0", "1")]
     return out
 
 
@@ -195,6 +217,7 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
             raise ValueError(f"{out / sub} already holds files; frames left from an earlier "
                              "merge would be trained on. Merge into an empty folder.")
     labels = player_labels(players)
+    fixes = stone_fixes(players)
     frames = sorted(p for p in base_images.rglob("*") if p.suffix.lower() in SUFFIXES)
     if not frames:
         raise ValueError(f"no images under {base_images}")
@@ -233,7 +256,7 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
         raise ValueError(f"hard frames that are base frames too: {', '.join(clash[:10])}")
 
     counts = dict.fromkeys(("base", "kept", "hard", "hard_settled", "unlabelled", "left_out",
-                            "throwing", "hard_no_stones", "hard_no_player"), 0)
+                            "throwing", "stones_fixed", "hard_no_stones", "hard_no_player"), 0)
     for path in frames:
         counts["base"] += 1
         if path.stem in leave_out:
@@ -247,6 +270,9 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
             continue
         label = base_labels / path.relative_to(base_images).with_suffix(".txt")
         stones = [ln for ln in _lines(label.read_text()) if ln.split()[0] != PLAYER]
+        if path.stem in fixes:
+            stones = fixes[path.stem]
+            counts["stones_fixed"] += 1
         _write(out, path.relative_to(base_images), path, stones + labels[path.stem])
         counts["kept"] += 1
     for stem in sorted((set(labels) | set(hard)) - set(stems)) if hard_stones else ():

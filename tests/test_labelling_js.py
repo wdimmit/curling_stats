@@ -211,6 +211,44 @@ def test_no_players_is_an_empty_answer():
     assert js("L.playerAnswer(L.removeBox(P(), 1))")["starts"] == ["untouched", "deleted"]
 
 
+def test_a_fresh_player_state_holds_the_stones_coloured_and_editable():
+    s = js("P()")
+    assert s["stones"]["boxes"] == [{"x0": 200, "y0": 100, "x1": 240, "y1": 140,
+                                     "color": "red", "start": None}]
+    assert s["stones"]["starts"] == [] and s["stones"]["flagged"] == -1
+    assert js("L.stonesFixed(P())") is False
+
+
+def test_a_stone_fix_goes_in_the_answer_as_the_whole_set():
+    ans = js("L.playerAnswer(L.editStones(P(), st => L.setColour(st, 0, 'yellow')))")
+    assert ans["stones"] == [{"x0": 200, "y0": 100, "x1": 240, "y1": 140, "color": "yellow"}]
+    drawn = js("L.playerAnswer(L.editStones(P(), st => "
+               "L.addBox(st, L.drawnBox(10, 10, 30.04, 30, 720, 360, 'red'))))")
+    assert [b["color"] for b in drawn["stones"]] == ["red", "red"]
+    assert drawn["stones"][1] == {"x0": 10, "y0": 10, "x1": 30, "y1": 30, "color": "red"}
+    # The players are answered as before.
+    assert drawn["starts"] == ["untouched", "untouched"]
+
+
+def test_deleting_every_stone_is_a_fix_to_no_stones():
+    assert js("L.playerAnswer(L.editStones(P(), st => L.removeBox(st, 0)))")["stones"] == []
+
+
+def test_stones_put_back_as_they_were_are_no_fix():
+    assert "stones" not in js("L.playerAnswer(L.editStones(P(), st => L.setBox(st, 0, {...st.boxes[0]})))")
+    assert "stones" not in js("L.playerAnswer(L.editStones(P(), st => "
+                              "L.setColour(L.setColour(st, 0, 'yellow'), 0, 'red')))")
+    assert js("L.stonesFixed(L.editStones(P(), st => L.removeBox(st, 0)))") is True
+
+
+def test_a_stone_fix_does_not_count_against_untouched_players():
+    assert js("L.untouched(L.editStones(P(), st => L.removeBox(st, 0)))") is True
+
+
+def test_an_item_with_no_stones_starts_with_none():
+    assert js("L.startPlayers({...itemP, stones: undefined}).stones.boxes") == []
+
+
 def test_sprite_offsets_walk_rows():
     # Frame i is at column i % cols, row i // cols; the sprite slides the other way.
     assert js("L.spriteOffset(rel, 0)") == {"x": 0, "y": 0}

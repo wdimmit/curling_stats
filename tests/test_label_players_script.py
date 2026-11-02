@@ -485,3 +485,15 @@ def test_publish_refuses_frames_the_sides_file_does_not_cover(tmp_path, monkeypa
                   "--out", str(tmp_path / "out"), "--sides", str(sides)])
     assert rc == 2
     assert "not in" in capsys.readouterr().err
+
+
+def test_lock_stones_marks_every_item_and_is_off_by_default(tmp_path, monkeypatch):
+    images, labels = _dataset(tmp_path)
+    monkeypatch.setattr(lp, "load_model", lambda path: StubPose([]))
+    args = ["publish", "--images", str(images), "--labels", str(labels), "--dataset", "d",
+            "--fold", "f", "--batch", "pl", "--weights", "w.pt", "--dry-run"]
+    assert lp.main(args + ["--out", str(tmp_path / "open")]) == 0
+    assert lp.main(args + ["--out", str(tmp_path / "locked"), "--lock-stones"]) == 0
+    payloads = lambda d: [json.loads(f.read_text())["payload"] for f in (tmp_path / d).glob("p_*.json")]
+    assert all("stones_locked" not in p for p in payloads("open"))
+    assert [p["stones_locked"] for p in payloads("locked")] == [True, True]

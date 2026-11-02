@@ -263,6 +263,23 @@ not pre-boxes and are not editable here.
   wherever the images are, off the workers' GPUs (laptop GPU, or the
   Ryzen's quiet hours).
 
+### Fix stones (the user, 2026-11-02)
+
+While boxing players a member can also fix the frame's stones, as a safety
+net, not a second review. The player screen stays as it was (stones grey);
+a **Fix stones (F)** button turns the rock-box tools on the stones (draw,
+move, resize, delete, R/Y colour) and dims the players; F goes back. Enter
+finishes the frame from either. A fix is the frame's whole stone set as the
+member left it, and it **goes straight into training** in place of the
+frame's stone label (the user's call); stones left as they were send
+nothing and the label is kept exactly. The export writes each fix
+(`players/labelled/stones/<id>.txt`) and a contact sheet of every fixed frame
+(`players/stonefix/`, before in grey, after in colour) for a look; the merge
+takes the fix over the base's stones and counts them. Hard-batch items are
+published with their stones locked (`label_players.py --lock-stones`): their
+stones are rock-box items of their own, so the page has no Fix stones there
+and the server refuses a fix.
+
 ### Export and quality
 
 - `labels_export.py --kind player` writes each answered item as a YOLO label

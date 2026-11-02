@@ -30,10 +30,31 @@ export function startBoxes(item) {
 
 /* The state for a fresh player item: its starts as boxes with no colour (a
  * player has none), none acted on. The computer is never unsure of exactly one
- * start here, so nothing is flagged and the member can always finish. */
+ * start here, so nothing is flagged and the member can always finish.
+ *
+ * `stones` is a state of its own, for "Fix stones": the item's stones as
+ * coloured boxes belonging to no start, edited with the same functions
+ * (`editStones`). `stonesAtStart` is what they were, to tell a fix from none. */
 export function startPlayers(item) {
   const boxes = item.starts.map((s, i) => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, start: i }));
-  return { boxes, starts: item.starts.map(() => "untouched"), flagged: -1 };
+  const stones = (item.stones || []).map(b => ({
+    x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, color: b.color === "yellow" ? "yellow" : "red",
+    start: null }));
+  return { boxes, starts: item.starts.map(() => "untouched"), flagged: -1,
+           stones: { boxes: stones, starts: [], flagged: -1 }, stonesAtStart: stones };
+}
+
+/* The player state with `f` applied to its stones. */
+export function editStones(state, f) {
+  return { ...state, stones: f(state.stones) };
+}
+
+const stoneKey = b => [tenth(b.x0), tenth(b.y0), tenth(b.x1), tenth(b.y1), b.color].join();
+
+/* Whether the stones differ from what the item came with. */
+export function stonesFixed(state) {
+  const now = state.stones?.boxes || [], was = state.stonesAtStart || [];
+  return now.length !== was.length || now.some((b, i) => stoneKey(b) !== stoneKey(was[i]));
 }
 
 /* The index of the topmost box (the last drawn) holding the point, allowing
@@ -158,7 +179,10 @@ export function boxAnswer(state) {
  * is in the picture. */
 export function playerAnswer(state) {
   const a = boxAnswer(state);
-  return { ...a, boxes: a.boxes.map(({ color, ...b }) => b) };
+  const out = { ...a, boxes: a.boxes.map(({ color, ...b }) => b) };
+  if (!stonesFixed(state)) return out;
+  // The whole stone set as the member left it: the server's label for the frame.
+  return { ...out, stones: boxAnswer(state.stones).boxes.map(({ start, ...b }) => b) };
 }
 
 /* True while nothing has been moved, deleted or drawn: every start as the

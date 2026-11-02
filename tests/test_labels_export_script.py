@@ -460,6 +460,41 @@ def test_an_answer_with_no_players_is_an_empty_label_file(tmp_path, monkeypatch)
     assert not (out / "players" / "to_user" / "images" / "p_none.jpg").exists()
 
 
+def stone_fix(*boxes):
+    return [{"x0": x0, "y0": y0, "x1": x1, "y1": y1, "color": c} for x0, y0, x1, y1, c in boxes]
+
+
+def test_a_stone_fix_is_written_as_the_frames_stone_label_and_drawn_for_a_look(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    ans = {**play_ans(pbox(20, 10, 60, 90)),
+           "stones": stone_fix((100, 40, 120, 60, "yellow"), (150, 10, 160, 20, "red"))}
+    player_item(api, "p_fix", [("u1", ans)],
+                stones=stone_fix((101, 40, 121, 60, "red")))
+    player_item(api, "p_plain", [("u1", play_ans(pbox(20, 10, 60, 90)))])
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    assert code == 0
+    lab = out / "players" / "labelled"
+    lines = (lab / "stones" / "p_fix.txt").read_text().splitlines()
+    assert [ln.split()[0] for ln in lines] == ["1", "0"]
+    assert [float(v) for v in lines[0].split()[1:]] == pytest.approx(
+        [110 / 200, 50 / 100, 20 / 200, 20 / 100], abs=1e-6)
+    rows = {r["id"]: r for r in jsonl(lab / "players.jsonl")}
+    assert [b["color"] for b in rows["p_fix"]["stones"]] == ["yellow", "red"]
+    assert "stones" not in rows["p_plain"]
+    assert not (lab / "stones" / "p_plain.txt").exists()
+    (fix,) = jsonl(out / "players" / "stonefix" / "stonefix.jsonl")
+    assert fix["id"] == "p_fix"
+    assert (out / "players" / "stonefix" / "sheet-01.jpg").stat().st_size > 0
+
+
+def test_a_fix_to_no_stones_is_an_empty_stone_label(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    player_item(api, "p_clear", [("u1", {**play_ans(), "stones": []})],
+                stones=stone_fix((101, 40, 121, 60, "red")))
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    assert (out / "players" / "labelled" / "stones" / "p_clear.txt").read_text() == ""
+
+
 def test_boxes_past_the_edge_are_clamped_and_slivers_dropped(tmp_path, monkeypatch):
     api = FakeApi([], page=500)
     player_item(api, "p_edge", [("u1", play_ans(pbox(-5, 10, 40, 120), pbox(300, 0, 310, 50)))])

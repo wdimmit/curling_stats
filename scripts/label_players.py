@@ -46,6 +46,10 @@ pose checkpoint; nothing is downloaded.
 each item's JSON and `contact.jpg`, the starts (green) and stones over 40 random
 frames, for a look before publishing.
 
+Members can fix a frame's stones as well ("Fix stones" on the page), and the
+fix replaces the frame's stone label. --lock-stones takes that away: pass it
+for player_mine.py's hard batch, whose stones are rock-box items of their own.
+
 A `picks.jsonl` beside --images (player_mine.py's hard batch has one, next to
 its `images/`) gives each frame's provenance: the row for the frame's stem adds
 video, t, rect, kind, game, end, sheet and club, where it has them, to the
@@ -174,13 +178,16 @@ def stones_from_label(txt: str, w: int, h: int) -> list[dict]:
 
 
 def item_for(dataset: str, fold: str, stem: str, w: int, h: int, starts: list[dict],
-             stones: list[dict], batch: str, extra_origin: dict) -> dict:
-    """The create call's item for one frame; the server sets payload["image"]."""
+             stones: list[dict], batch: str, extra_origin: dict,
+             stones_locked: bool = False) -> dict:
+    """The create call's item for one frame; the server sets payload["image"].
+    ``stones_locked`` takes away the page's Fix stones."""
     origin = {"dataset": dataset, "fold": fold, "stem": stem, **extra_origin}
+    payload = {"w": int(w), "h": int(h), "starts": starts, "stones": stones, "origin": origin}
+    if stones_locked:
+        payload["stones_locked"] = True
     return {"id": label_publish.opaque_id("p_", f"{dataset}/{fold}/{stem}"), "kind": "player",
-            "batch": batch,
-            "payload": {"w": int(w), "h": int(h), "starts": starts, "stones": stones,
-                        "origin": origin}}
+            "batch": batch, "payload": payload}
 
 
 def _frames(images: Path) -> list[Path]:
@@ -364,6 +371,9 @@ def main(argv=None) -> int:
     p.add_argument("--dry-run", action="store_true",
                    help="send nothing; write the items and a contact sheet to --out")
     p.add_argument("--out", type=Path, metavar="DIR")
+    p.add_argument("--lock-stones", action="store_true",
+                   help="no Fix stones on these items (the hard batch: its stones are "
+                        "rock-box items of their own)")
     p.add_argument("--sides", type=Path, metavar="JSON",
                    help="sort's output: publish only the frames it keeps")
     e = sub.add_parser("ends", help="every end's span and house, from timelines")
@@ -443,7 +453,8 @@ def main(argv=None) -> int:
             side = (sides.get(path.stem) or {}).get("side")
             item = item_for(args.dataset, args.fold, path.stem, w, h, pose_starts(img, model),
                             stones, args.batch,
-                            {**extra.get(path.stem, {}), **({"side": side} if side else {})})
+                            {**extra.get(path.stem, {}), **({"side": side} if side else {})},
+                            args.lock_stones)
         except Exception as err:            # one bad frame must not stop the rest
             skipped += 1
             print(f"{path.name}: {type(err).__name__}: {err}, skipped", file=sys.stderr)
@@ -459,7 +470,8 @@ def main(argv=None) -> int:
         return 1
     people = sum(len(i["payload"]["starts"]) for i in items)
     print(f"{len(items)} items in batch {args.batch}, {people} pre-boxed people"
-          + (f", {skipped} skipped" if skipped else ""))
+          + (f", {skipped} skipped" if skipped else "")
+          + (", stones locked" if args.lock_stones else ""))
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
         for item in items:

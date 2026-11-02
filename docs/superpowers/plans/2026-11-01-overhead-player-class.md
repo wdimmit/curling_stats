@@ -150,7 +150,7 @@
 - [ ] **Step 2: Run** the test file. Expected: FAIL. **Step 3: Implement.** **Step 4: Run** it. Expected: PASS. **Step 5: Commit.**
 - [ ] **Step 6: Mine** in the throwaway container (`--cpus=2`, low `--cpu-shares`, pose on CPU) from videos already cached on the Ryzen. Exclude the 11 harness videos and `datasets/overhead-2/heldout-videos.txt`. Report the counts by kind and video.
 - [ ] **Step 7: Publish the existing set first, then val.** On the laptop, run `label_players.py publish --sides /data/wdd/curling/overhead-4/sides.json --dry-run --out` for overhead-3's `folds/all` **train only** (`images/train`, `labels/train`; its `images/val` is ds11 val by symlink and must not be published twice): 1,595 of its 2,249 frames, the 45 logo crops among them. Look at the contact sheet, and publish. Then do the same for ds11 val (281 of 364). The sort is done (2026-11-02, from the 270 hosted timelines of 110 videos); redo it with `ends` and `sort` only if the set changes. Val is newer than the training set, so members reach it sooner, which gives the pilot (Task 7) a val to measure on. Report the counts.
-- [ ] **Step 8: Publish the hard batch last**, so newest-first hands it out first. On the Ryzen, publish its stone boxes as `box` items with `label_fp.py`, then its player items with `label_players.py`. Report the counts and the `/label` link for the user to hand out.
+- [ ] **Step 8: Publish the hard batch last**, so newest-first hands it out first. On the Ryzen, publish its stone boxes as `box` items with `label_fp.py`, then its player items with `label_players.py --lock-stones` (their stones are the box items; added 2026-11-02 with Fix stones). Report the counts and the `/label` link for the user to hand out.
 
 ---
 

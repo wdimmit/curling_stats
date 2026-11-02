@@ -511,3 +511,36 @@ def test_main_reads_sides(tmp_path, capsys):
                   "--out", str(tmp_path / "out")])
     assert rc == 0
     assert "throwing 1" in capsys.readouterr().out
+
+
+# --- stones a member fixed in the player flow ---------------------------------
+
+def fixed(root: Path, item: str, label: str) -> None:
+    _write(root / "labelled" / "stones" / f"{item}.txt", label)
+
+
+def test_a_stone_fix_replaces_the_frames_stones(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES, "train/b": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER), "b": ("p_2", PLAYER)})
+    fix = "1 0.300000 0.300000 0.100000 0.100000\n"
+    fixed(tmp_path / "p", "p_1", fix)
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set())
+    assert (tmp_path / "out/labels/train/a.txt").read_text() == fix + PLAYER
+    assert (tmp_path / "out/labels/train/b.txt").read_text() == STONES + PLAYER
+    assert got["stones_fixed"] == 1
+
+
+def test_a_fix_to_no_stones_leaves_just_the_players(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)})
+    fixed(tmp_path / "p", "p_1", "")
+    m4.merge(bi, bl, pl, tmp_path / "out", set())
+    assert (tmp_path / "out/labels/train/a.txt").read_text() == PLAYER
+
+
+def test_a_stone_fix_keeps_only_stone_classes(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)})
+    fixed(tmp_path / "p", "p_1", "0 0.3 0.3 0.1 0.1\n2 0.5 0.5 0.1 0.1\n")
+    m4.merge(bi, bl, pl, tmp_path / "out", set())
+    assert (tmp_path / "out/labels/train/a.txt").read_text() == "0 0.3 0.3 0.1 0.1\n" + PLAYER

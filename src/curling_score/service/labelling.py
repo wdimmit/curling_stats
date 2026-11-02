@@ -94,6 +94,22 @@ def _num(v, what: str) -> float:
     return float(v)
 
 
+def _box_geometry(b, w: float, h: float) -> tuple[float, float, float, float]:
+    """A box's corners, clipped to the image, or ValueError if it is not a box
+    inside the image (allowing EDGE_SLOP_PX) at least MIN_BOX_PX a side."""
+    if not isinstance(b, dict):
+        raise ValueError("a box is not an object")
+    x0, y0, x1, y1 = (_num(b.get(k), k) for k in ("x0", "y0", "x1", "y1"))
+    if (x0 < -EDGE_SLOP_PX or y0 < -EDGE_SLOP_PX
+            or x1 > w + EDGE_SLOP_PX or y1 > h + EDGE_SLOP_PX):
+        raise ValueError("a box is outside the image")
+    x0, y0, x1, y1 = max(x0, 0.0), max(y0, 0.0), min(x1, float(w)), min(y1, float(h))
+    floor = MIN_BOX_PX - MIN_BOX_TOLERANCE_PX
+    if x1 - x0 < floor or y1 - y0 < floor:
+        raise ValueError("a box is too small")
+    return x0, y0, x1, y1
+
+
 def _check_boxes(item: LabelItem, answer: dict, coloured: bool) -> dict:
     """The boxes-and-starts answer shared by stones (``coloured``, each box
     red or yellow, a flagged start must be acted on) and players (no colour)."""
@@ -116,16 +132,7 @@ def _check_boxes(item: LabelItem, answer: dict, coloured: bool) -> dict:
         raise ValueError(f"at most {MAX_BOXES} boxes")
     out, seen = [], set()
     for b in boxes:
-        if not isinstance(b, dict):
-            raise ValueError("a box is not an object")
-        x0, y0, x1, y1 = (_num(b.get(k), k) for k in ("x0", "y0", "x1", "y1"))
-        if (x0 < -EDGE_SLOP_PX or y0 < -EDGE_SLOP_PX
-                or x1 > w + EDGE_SLOP_PX or y1 > h + EDGE_SLOP_PX):
-            raise ValueError("a box is outside the image")
-        x0, y0, x1, y1 = max(x0, 0.0), max(y0, 0.0), min(x1, float(w)), min(y1, float(h))
-        floor = MIN_BOX_PX - MIN_BOX_TOLERANCE_PX
-        if x1 - x0 < floor or y1 - y0 < floor:
-            raise ValueError("a box is too small")
+        x0, y0, x1, y1 = _box_geometry(b, w, h)
         if coloured and b.get("color") not in BOX_COLORS:
             raise ValueError("a box needs a colour, red or yellow")
         if not coloured and "color" in b:
@@ -155,7 +162,28 @@ def _check_box_answer(item: LabelItem, answer: dict) -> dict:
 
 
 def _check_player_answer(item: LabelItem, answer: dict) -> dict:
-    return _check_boxes(item, answer, coloured=False)
+    """The players, and, if the member fixed the stones too, ``stones``: the
+    frame's whole stone set as they left it, which replaces the stone label.
+    No ``stones`` means the stones were left as they were. An item whose
+    payload says ``stones_locked`` (the hard batch, whose stones are rock-box
+    items of their own) takes no fix."""
+    out = _check_boxes(item, answer, coloured=False)
+    fixed = answer.get("stones")
+    if out["cant_tell"] or fixed is None:
+        return out
+    if item.payload.get("stones_locked"):
+        raise ValueError("this frame's stones are locked")
+    if not isinstance(fixed, list):
+        raise ValueError("stones is a list of boxes")
+    if len(fixed) > MAX_BOXES:
+        raise ValueError(f"at most {MAX_BOXES} stones")
+    stones = []
+    for b in fixed:
+        x0, y0, x1, y1 = _box_geometry(b, item.payload["w"], item.payload["h"])
+        if b.get("color") not in BOX_COLORS:
+            raise ValueError("a stone needs a colour, red or yellow")
+        stones.append({"x0": x0, "y0": y0, "x1": x1, "y1": y1, "color": b["color"]})
+    return {**out, "stones": stones}
 
 
 def _check_release_answer(item: LabelItem, answer: dict) -> dict:
