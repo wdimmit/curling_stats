@@ -399,3 +399,225 @@ def test_member_mode_takes_one_members_boxes_from_open_items_too(tmp_path, monke
     assert ovh["id"] == "b_done" and ovh["boxes"][0]["color"] == "yellow"
     assert (member / "overhead" / "labels" / "b_done.txt").read_text().split()[0] == "1"
     assert not (out / "boxes" / "agreed").exists()
+
+
+# ---- player items -------------------------------------------------------------
+
+def pbox(x0, y0, x1, y1, start=None):
+    return {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "start": start}
+
+
+def play_ans(*boxes, starts=(), cant_tell=False):
+    return {"cant_tell": cant_tell, "boxes": list(boxes), "starts": list(starts)}
+
+
+def player_item(api, item_id, answers, state="done", starts=(), stones=(), w=200, h=100):
+    """`answers` are (uid, answer) or (uid, answer, discarded)."""
+    url = api.put_image(f"{item_id}.jpg", jpeg(size=(w, h)))
+    item = {"id": item_id, "kind": "player", "created_at": _stamp(), "batch": "players-1",
+            "state": state,
+            "payload": {"image": f"labelling/player/{item_id}.jpg", "w": w, "h": h,
+                        "starts": list(starts), "stones": list(stones),
+                        "origin": {"dataset": "overhead-3", "fold": "all", "stem": item_id}},
+            "reference": None, "image_url": url,
+            "answers": []}
+    for uid, a, *gone in answers:
+        item["answers"].append({**answer(item_id, uid, "player", a), "discarded": bool(gone and gone[0])})
+    api.items.append(item)
+    return item
+
+
+def test_a_done_player_item_gives_an_image_and_a_class_2_label(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    player_item(api, "p_one", [("u1", play_ans(pbox(20, 10, 60, 90, start=0),
+                                               pbox(100, 20, 120, 60),
+                                               starts=["kept"]), )],
+                starts=[{"x0": 20, "y0": 10, "x1": 60, "y1": 90, "conf": 0.9}])
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    assert code == 0
+    lab = out / "players" / "labelled"
+    assert (lab / "images" / "p_one.jpg").read_bytes() == api.images["p_one.jpg"]
+    lines = (lab / "labels" / "p_one.txt").read_text().splitlines()
+    assert [ln.split()[0] for ln in lines] == ["2", "2"]
+    assert [float(v) for v in lines[0].split()[1:]] == pytest.approx(
+        [40 / 200, 50 / 100, 40 / 200, 80 / 100], abs=1e-6)
+    (row,) = jsonl(lab / "players.jsonl")
+    assert row["id"] == "p_one" and row["origin"]["stem"] == "p_one"
+    assert row["members"] == [{"uid": "u1", "seconds": 5.0}]
+    assert len(row["boxes"]) == 2
+
+
+def test_an_answer_with_no_players_is_an_empty_label_file(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    player_item(api, "p_none", [("u1", play_ans())])
+    player_item(api, "p_gone", [("u1", play_ans(starts=["deleted"]))],
+                starts=[{"x0": 5, "y0": 5, "x1": 20, "y1": 50, "conf": 0.5}])
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    lab = out / "players" / "labelled" / "labels"
+    assert (lab / "p_none.txt").read_text() == ""
+    assert (lab / "p_gone.txt").read_text() == ""
+    assert (out / "players" / "labelled" / "images" / "p_none.jpg").exists()
+    assert not (out / "players" / "to_user" / "images" / "p_none.jpg").exists()
+
+
+def test_boxes_past_the_edge_are_clamped_and_slivers_dropped(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    player_item(api, "p_edge", [("u1", play_ans(pbox(-5, 10, 40, 120), pbox(300, 0, 310, 50)))])
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    (line,) = (out / "players" / "labelled" / "labels" / "p_edge.txt").read_text().splitlines()
+    assert [float(v) for v in line.split()[1:]] == pytest.approx(
+        [20 / 200, 55 / 100, 40 / 200, 90 / 100], abs=1e-6)
+
+
+def test_cant_tell_and_retired_player_items_go_to_the_user(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    stones = [{"x0": 10, "y0": 10, "x1": 30, "y1": 20, "color": "red"},
+              {"x0": 50, "y0": 10, "x1": 70, "y1": 20, "color": "yellow"}]
+    starts = [{"x0": 100, "y0": 20, "x1": 140, "y1": 90, "conf": 0.8}]
+    player_item(api, "p_ct", [("u1", play_ans(cant_tell=True))], stones=stones, starts=starts)
+    player_item(api, "p_skip", [], state="retired", stones=stones, starts=starts)
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    dest = out / "players" / "to_user"
+    assert (dest / "images" / "p_ct.jpg").exists() and (dest / "images" / "p_skip.jpg").exists()
+    assert not list((out / "players" / "labelled" / "images").iterdir())
+    blob = (dest / "index.html").read_text().split("const ITEMS = ", 1)[1].split(";\n", 1)[0]
+    items = {i["stem"]: i for i in json.loads(blob)}
+    assert [b[0] for b in items["p_ct"]["boxes"]] == [0, 1, 2]
+    assert items["p_ct"]["boxes"][0][1:] == pytest.approx([20 / 200, 15 / 100, 20 / 200, 10 / 100])
+    assert [b[0] for b in items["p_skip"]["boxes"]] == [0, 1, 2]
+    assert '+player (H)' in (dest / "index.html").read_text()
+    why = {r["id"]: r["why"] for r in jsonl(dest / "to_user.jsonl")}
+    assert why == {"p_ct": "cant_tell", "p_skip": "skipped"}
+
+
+def test_a_discarded_answer_is_ignored_and_its_item_is_not_written(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    player_item(api, "p_bad", [("u9", play_ans(pbox(20, 10, 60, 90)), True)])
+    player_item(api, "p_redo", [("u9", play_ans(pbox(1, 1, 5, 5)), True),
+                                ("u1", play_ans(pbox(20, 10, 60, 90)))])
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    lab = out / "players" / "labelled"
+    assert not (lab / "images" / "p_bad.jpg").exists()
+    assert not (out / "players" / "to_user" / "images" / "p_bad.jpg").exists()
+    assert (lab / "labels" / "p_redo.txt").read_text().count("\n") == 1
+    (row,) = jsonl(lab / "players.jsonl")
+    assert row["members"] == [{"uid": "u1", "seconds": 5.0}]
+    # nor does the discarded member show in the report
+    m = json.loads((out / "members.json").read_text())
+    assert "u9" not in m or m["u9"]["player"] == 0
+
+
+def test_an_answer_without_the_discarded_key_is_live(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    item = player_item(api, "p_old", [("u1", play_ans(pbox(20, 10, 60, 90)))])
+    del item["answers"][0]["discarded"]
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    assert (out / "players" / "labelled" / "labels" / "p_old.txt").exists()
+
+
+def test_the_untouched_rate(tmp_path, monkeypatch):
+    api = FakeApi([], users=[{"id": "u1", "email": "a@x.org"}, {"id": "u2", "email": "b@x.org"}],
+                  page=500)
+    s2 = [{"x0": 1, "y0": 1, "x1": 9, "y1": 9, "conf": 0.9}] * 2
+    # u1 accepts everything, including a frame with no starts and no boxes
+    player_item(api, "p_a", [("u1", play_ans(pbox(1, 1, 9, 9, 0), pbox(1, 1, 9, 9, 1),
+                                             starts=["untouched", "untouched"]))], starts=s2)
+    player_item(api, "p_b", [("u1", play_ans())])
+    # u2 moves one, draws one, and cannot tell once
+    player_item(api, "p_c", [("u2", play_ans(pbox(2, 2, 9, 9, 0), pbox(1, 1, 9, 9, 1),
+                                             starts=["changed", "untouched"]))], starts=s2)
+    player_item(api, "p_d", [("u2", play_ans(pbox(1, 1, 9, 9), starts=["untouched"]))],
+                starts=s2[:1])
+    player_item(api, "p_e", [("u2", play_ans(cant_tell=True))])
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    m = json.loads((out / "members.json").read_text())
+    assert m["u1"]["untouched_rate"] == 1.0 and m["u1"]["player"] == 2
+    assert m["u2"]["untouched_rate"] == 0.0 and m["u2"]["player"] == 3
+    assert m["u2"]["email"] == "b@x.org" and m["u2"]["checks"] == {"n": 0, "agree": 0}
+
+
+def test_member_report_untouched_rate_is_none_without_player_answers():
+    items = [{"id": "b", "kind": "box", "reference": None,
+              "answers": [answer("b", "u1", "box", box_ans(box(1, 1, 5, 5)))]}]
+    assert exp.member_report(items, [])["u1"]["untouched_rate"] is None
+
+
+def test_the_spot_check_is_five_percent_rounded_up(tmp_path, monkeypatch):
+    import math
+    api = FakeApi([], users=[{"id": "u1", "email": "a@x.org"}], page=500)
+    for i in range(41):
+        player_item(api, f"p_{i:02d}", [("u1", play_ans(pbox(20, 10, 60, 90)))],
+                    stones=[{"x0": 10, "y0": 10, "x1": 30, "y1": 20, "color": "red"}])
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    spot = out / "players" / "spotcheck"
+    drawn = jsonl(spot / "spotcheck.jsonl")
+    assert len(drawn) == math.ceil(0.05 * 41) == 3
+    assert all(r["email"] == "a@x.org" for r in drawn)
+    assert [p.name for p in sorted(spot.glob("sheet-*.jpg"))] == ["sheet-01.jpg"]
+    from PIL import Image
+    assert Image.open(spot / "sheet-01.jpg").width > 400
+
+
+def test_a_spot_check_over_sixteen_makes_a_second_sheet(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    for i in range(330):                                    # 5% of 330 -> 17 tiles
+        player_item(api, f"p_{i:03d}", [("u1", play_ans())], w=40, h=20)
+    code, out = run(api, tmp_path, monkeypatch, "--kind", "player")
+    spot = out / "players" / "spotcheck"
+    assert len(jsonl(spot / "spotcheck.jsonl")) == 17
+    assert [p.name for p in sorted(spot.glob("sheet-*.jpg"))] == ["sheet-01.jpg", "sheet-02.jpg"]
+
+
+def test_the_spot_check_leans_on_the_members_who_change_nothing():
+    heavy = exp.spot_weight(1.0)
+    assert heavy == 4.0 and exp.spot_weight(0.0) == 1.0 and exp.spot_weight(None) == 1.0
+    rates = {"stamp": 1.0, "careful": 0.0}
+    items = [{"id": f"{u}{i}", "uid": u} for u in rates for i in range(200)]
+    picks = [exp.spot_pick(items, 40, lambda r: rates[r["uid"]], seed=s) for s in range(20)]
+    stamped = sum(r["uid"] == "stamp" for p in picks for r in p) / (20 * 40)
+    assert 0.65 < stamped < 0.9                              # 4 : 1 is 0.8, no replacement dips it
+
+
+def test_the_spot_check_is_the_same_every_time(tmp_path, monkeypatch):
+    def once(sub):
+        api = FakeApi([], page=500)
+        for i in range(60):
+            player_item(api, f"p_{i:02d}", [("u1", play_ans(pbox(20, 10, 60, 90)))])
+        sub.mkdir()
+        return run(api, sub, monkeypatch, "--kind", "player")[1]
+    a, b = once(tmp_path / "a"), once(tmp_path / "b")
+    assert [r["id"] for r in jsonl(a / "players" / "spotcheck" / "spotcheck.jsonl")] == \
+        [r["id"] for r in jsonl(b / "players" / "spotcheck" / "spotcheck.jsonl")]
+
+
+def test_player_is_not_read_unless_asked_for(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    player_item(api, "p_one", [("u1", play_ans())])
+    code, out = run(api, tmp_path, monkeypatch)
+    assert not (out / "players").exists()
+    assert not any("kind=player" in u for u, _ in api.calls)
+
+
+def test_player_images_are_fetched_without_the_admin_token(tmp_path, monkeypatch):
+    api = FakeApi([], page=500)
+    player_item(api, "p_one", [("u1", play_ans())])
+    run(api, tmp_path, monkeypatch, "--kind", "player")
+    assert all(auth is None for url, auth in api.calls if "bucket.test" in url)
+
+
+def test_an_unreadable_player_image_is_skipped_and_said(tmp_path, monkeypatch, capsys):
+    api = FakeApi([], page=500)
+    player_item(api, "p_one", [("u1", play_ans())])
+    player_item(api, "p_two", [("u1", play_ans())])
+    real = api.__call__
+
+    def flaky(req, timeout=None):
+        if "p_one" in req.full_url and req.full_url.startswith("https://bucket.test"):
+            raise OSError("boom")
+        return real(req, timeout)
+    monkeypatch.setenv("ADMIN_TOKEN", "t")
+    out = tmp_path / "o"
+    assert exp.main(["--out", str(out), "--kind", "player"], opener=flaky) == 1
+    assert "p_one" in capsys.readouterr().err
+    assert not (out / "players" / "labelled" / "images" / "p_one.jpg").exists()
+    assert (out / "players" / "labelled" / "images" / "p_two.jpg").exists()

@@ -64,15 +64,86 @@ _BROOM_HELP = (
     "the session beside the images.</p>")
 
 
-def _as_broom(page: str) -> str:
+# The player page: the stone page plus a third class, armed with H, for the
+# people on the ice. Red and yellow stay (the stones are shown and editable).
+# A player is not a stone's size, so it is placed by dragging a box out rather
+# than by a click the segmenter or the geometry sizes; P is still "previous
+# frame". Each old text must occur exactly once in _PAGE, as for the broom, and
+# a test holds that.
+_PLAYER_EDITS = (
+    ("--red:#e03c3c;", "--red:#e03c3c; --ply:#2a6fd0;"),
+    (".bx.c1 { border-color:var(--yel); }",
+     ".bx.c1 { border-color:var(--yel); }\n  .bx.c2 { border-color:var(--ply); }"),
+    ('<button id="addy">+yellow (Y)</button>',
+     '<button id="addy">+yellow (Y)</button>\n  <button id="addp">+player (H)</button>'),
+    ('k === "r" || k === "y"', 'k === "r" || k === "y" || k === "h"'),
+    ('setArm(k === "r" ? 0 : 1)', 'setArm(k === "r" ? 0 : k === "y" ? 1 : 2)'),
+    ('document.getElementById("addy").classList.toggle("on", arm === 1);',
+     'document.getElementById("addy").classList.toggle("on", arm === 1);\n'
+     '  document.getElementById("addp").classList.toggle("on", arm === 2);'),
+    ('document.getElementById("addy").onclick = () => setArm(1);',
+     'document.getElementById("addy").onclick = () => setArm(1);\n'
+     'document.getElementById("addp").onclick = () => setArm(2);'),
+    # With players armed a press on a stone's body draws too, since players
+    # stand over stones; a press on a player's box or on any handle still
+    # moves or resizes it.
+    ("  if (!bx) {\n    if (arm !== null) { place(item, nx, ny, arm, fig); }",
+     "  if (!bx || (arm === 2 && !ev.target.dataset.corner\n"
+     "              && st(item).boxes[+bx.dataset.i][0] !== 2)) {\n"
+     "    if (arm === 2) { startDraw(ev, fig, item, stage, r, nx, ny); }\n"
+     "    else if (arm !== null) { place(item, nx, ny, arm, fig); }"),
+    ("let drag = null;\n",
+     "let drag = null;\n\n"
+     "// A new player box starts as a point under the pointer and is then resized\n"
+     "// from its far corner like any other; a click that drags nowhere leaves none.\n"
+     "function startDraw(ev, fig, item, stage, r, nx, ny) {\n"
+     "  const boxes = st(item).boxes;\n"
+     "  boxes.push([2, nx, ny, 0, 0]);\n"
+     '  drag = {fig, item, i: boxes.length - 1, corner: "se", nx, ny,\n'
+     "          start: boxes[boxes.length - 1].slice(), rect: r, fresh: true};\n"
+     "  stage.setPointerCapture(ev.pointerId);\n"
+     "  ev.preventDefault();\n"
+     "}\n\n"
+     "function endDraw(d) {\n"
+     "  const b = st(d.item).boxes[d.i];\n"
+     "  if (b && (b[3] < 0.004 || b[4] < 0.004)) {\n"
+     "    st(d.item).boxes.splice(d.i, 1);\n"
+     "    drawBoxes(d.fig, d.item);\n"
+     "  }\n"
+     "}\n"),
+    ('window.addEventListener("pointerup", () => { if (drag) { save(); drag = null; } });',
+     'window.addEventListener("pointerup", () => {\n'
+     "  if (drag) { if (drag.fresh) endDraw(drag); save(); drag = null; }\n"
+     "});"),
+)
+_PLAYER_HELP = (
+    '<p class="muted">Box <b>every player</b>, head to feet as seen from above, '
+    "not the broom; one cut off by the frame's edge is boxed up to the edge. "
+    "Press <b>H</b> to arm, then <b>drag</b> a box out over the player; drag it "
+    "to move, a corner to resize, <b>Delete</b> to remove. Stones are drawn red "
+    "and yellow, players blue; <b>R</b> and <b>Y</b> still add stones. Mark each "
+    "frame reviewed with <b>space</b> -- a reviewed frame with no player box says "
+    "nobody was on the ice. <b>N</b>/<b>P</b> move between frames; <b>Save to "
+    "server</b> writes the session beside the images.</p>")
+
+
+def _variant(page: str, edits: tuple, help_html: str) -> str:
     import re
 
-    for old, new in _BROOM_EDITS:
+    for old, new in edits:
         page = page.replace(old, new, 1)
-    page, n = re.subn(r'<p class="muted">.*?</p>', _BROOM_HELP, page,
+    page, n = re.subn(r'<p class="muted">.*?</p>', help_html, page,
                       count=1, flags=re.S)
     assert n == 1
     return page
+
+
+def _as_broom(page: str) -> str:
+    return _variant(page, _BROOM_EDITS, _BROOM_HELP)
+
+
+def _as_player(page: str) -> str:
+    return _variant(page, _PLAYER_EDITS, _PLAYER_HELP)
 
 
 def frame_geometry(view, width_at_hog: float, row_offset: int = 0) -> dict:
@@ -113,9 +184,10 @@ def render(items, out_dir, *, scope: str, title: str = "Fix the boxes",
     cannot be dragged, and are never exported -- the other member's answer on
     a disputed item.
 
-    ``kind="broom"`` renders the one-class broom-head page.
+    ``kind="broom"`` renders the one-class broom-head page; ``kind="player"``
+    the stone page with a third class, blue, for the players.
     """
-    if kind not in ("stone", "broom"):
+    if kind not in ("stone", "broom", "player"):
         raise ValueError(f"no editor for {kind!r}")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -126,7 +198,11 @@ def render(items, out_dir, *, scope: str, title: str = "Fix the boxes",
     html = (_PAGE.replace("__DATA__", data)
             .replace("__SCOPE__", _html.escape(scope))
             .replace("__TITLE__", _html.escape(title)))
-    page.write_text(_as_broom(html) if kind == "broom" else html)
+    if kind == "broom":
+        html = _as_broom(html)
+    elif kind == "player":
+        html = _as_player(html)
+    page.write_text(html)
     return page
 
 

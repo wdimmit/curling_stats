@@ -57,3 +57,23 @@ def test_no_token_is_exit_2(monkeypatch, capsys):
     monkeypatch.delenv("ADMIN_TOKEN", raising=False)
     assert status.main([]) == 2
     assert "ADMIN_TOKEN" in capsys.readouterr().err
+
+
+def test_a_player_report():
+    answer = lambda uid, at, starts, boxes: {"uid": uid, "at": at, "seconds": 8.0,  # noqa: E731
+                                            "answer": {"cant_tell": False, "starts": starts,
+                                                       "boxes": boxes}}
+    gone = dict(answer("u9", "9", [], []), discarded=True)
+    items = [item(1, "done", [answer("u1", "1", ["untouched"], [dict(BOX, start=0)])]),
+             item(2, "open", [answer("u1", "2", [], [dict(BOX, start=None)]), gone]),
+             item(3, "retired", [])]
+    lines = status.summarise("player", items, {"u1": "one@example.org"})
+    assert lines[0] == "Player boxes: 3 items"
+    assert not any("finished pairs" in ln for ln in lines)
+    assert lines[-1] == ("  one@example.org: 2 labels, median 8 s, 0 can't tell, "
+                         "1 changed nothing, no checks yet")
+    assert not any("u9" in ln for ln in lines)
+
+
+def test_player_is_a_kind():
+    assert "player" in status.KINDS
