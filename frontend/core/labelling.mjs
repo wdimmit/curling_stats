@@ -1,5 +1,5 @@
-/* The members' labelling page's arithmetic: boxing stones on a still (where a
- * click lands, what a dragged corner may do) and marking the release on a
+/* The members' labelling page's arithmetic: boxing stones or players on a
+ * still (where a click lands, what a dragged corner may do) and marking the release on a
  * strip of frames (below), and the answers the server will take
  * (service/labelling.py check_answer). No DOM, so node tests it.
  *
@@ -26,6 +26,14 @@ export function startBoxes(item) {
     color: s.color === "yellow" ? "yellow" : "red", start: i }));
   return { boxes, starts: item.starts.map(() => "untouched"),
            flagged: item.starts.findIndex(s => s.flagged) };
+}
+
+/* The state for a fresh player item: its starts as boxes with no colour (a
+ * player has none), none acted on. The computer is never unsure of exactly one
+ * start here, so nothing is flagged and the member can always finish. */
+export function startPlayers(item) {
+  const boxes = item.starts.map((s, i) => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, start: i }));
+  return { boxes, starts: item.starts.map(() => "untouched"), flagged: -1 };
 }
 
 /* The index of the topmost box (the last drawn) holding the point, allowing
@@ -143,6 +151,20 @@ export function boxAnswer(state) {
                                    y1: tenth(b.y1), color: b.color, start: b.start })),
     starts: state.starts.slice(),
   };
+}
+
+/* What to send for players: the boxes' answer without a colour, which the
+ * server refuses on a player. No starts and no boxes is an answer too: nobody
+ * is in the picture. */
+export function playerAnswer(state) {
+  const a = boxAnswer(state);
+  return { ...a, boxes: a.boxes.map(({ color, ...b }) => b) };
+}
+
+/* True while nothing has been moved, deleted or drawn: every start as the
+ * computer proposed it, and no box of the member's own. */
+export function untouched(state) {
+  return state.starts.every(s => s === "untouched") && state.boxes.every(b => b.start != null);
 }
 
 /* ------------------------------------------------------- release marks

@@ -12,7 +12,7 @@
     "frontend/core/houseimage.mjs": "66480b400329879398ba815ffcc54642eff3bbfd5f22ba7dec76ec374d9cf09e",
     "frontend/core/ice.mjs": "d69e203b48bf33d1b0db2cfd17ed69555d77e6e5502b3c8af700e6acb3c7a989",
     "frontend/core/index.mjs": "75f9e2ae6002cd92b1749fda1be4242be76704e47793adabbcd21f1f74c5b3f2",
-    "frontend/core/labelling.mjs": "191150fe92f0ac476cf76bd704c556303d2fa34a9abb0a8fb55e7c829fb22419",
+    "frontend/core/labelling.mjs": "697bc9c99326cc4c26554a2ea3d1c7740e0f1a7a0af04be3ed452007acbf040c",
     "frontend/core/line.mjs": "6f472181ac66fd581f43dbbd2dcd7466e474266aa2745a360bf8bff94cb86f8f",
     "frontend/core/linechart.mjs": "def1cf0bc8f8a4d85469b4bd4a222f987f0aba06f417628b9cdee83475da4e3b",
     "frontend/core/myshots.mjs": "3ab84420bb611857d57b0ab5b67469c242f5e48a7ac1e1cdaa945ab3c399fd6b",
@@ -48,7 +48,7 @@
     "frontend/site/Games.jsx": "f6bfed25d0cf2d3f991af74dda7fa0267658c8d8faf561d9a452f62215d57adb",
     "frontend/site/Ice.jsx": "9969c576bc7af68bb71d4cc3448e11dbaea34c659a77d139dacd60664171c7b8",
     "frontend/site/Join.jsx": "4f915fd7c6d9de9aa5430ea63f61d30218b1ebbac63cc0076e09a9482eca4374",
-    "frontend/site/Label.jsx": "bf3bac6073466eb8c59e431919f1b3cbae7353b420f16ce470e58791cdc9a1a6",
+    "frontend/site/Label.jsx": "6ebecef4273cd1fade661a37feb6d507331efeb5a352efa99e25b868c001f2eb",
     "frontend/site/Mine.jsx": "9046a65032365a6452a05141a7814e1164a341e90c44e973c9c730b987fc988f",
     "frontend/site/Playlists.jsx": "da55443aad9e78a7f0041caf35d233d64927f1ef4bea77f36e2e14c6ffbcf664",
     "frontend/site/Practice.jsx": "f707a247b652dba413145ea866df2b5358d1becfe989721273a1dcdbde88e4c6",
@@ -92,7 +92,7 @@
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "c481f2ea3256397deece56b759db82527c8af5fd9ea063e6cfd5d991a4d1e758",
+    "src/curling_score/service/static/site.js": "10b51e9c4cb6fce7d79d96966b01ab10fa8fa2bcce8fcfac69cc335200df97d7",
     "src/curling_score/viewer/app.js": "42109c57d2b864817ab611d1f3f8e96153acff019aaf2bceebb57b02f88864ec"
   }
 }

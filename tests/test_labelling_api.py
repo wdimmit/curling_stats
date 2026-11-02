@@ -367,3 +367,12 @@ def test_the_label_page_is_served(w):
 def test_the_privacy_page_says_members_may_be_asked_to_label(w):
     text = w["client"].get("/privacy").text
     assert "volunteer to help" in text and "train the software" in text
+    assert "stones and players are" in text
+    assert "nothing about who they are is stored with it" in text
+
+
+def test_the_how_to_figures_are_served(w):
+    for name in ("crouched", "edge", "broom"):
+        r = w["client"].get(f"/static/label-player-{name}.jpg")
+        assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+        assert r.content[:2] == b"\xff\xd8"

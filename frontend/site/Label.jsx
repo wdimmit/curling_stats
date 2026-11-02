@@ -1,19 +1,20 @@
-/* Members' labelling: box the stones on a still, or mark the frame a hand
- * lets go of the handle, one item at a time.
+/* Members' labelling: box the stones or the people on a still, or mark the
+ * frame a hand lets go of the handle, one item at a time.
  *
  * For boxes, what the software gets wrong is shown with a box of the
- * computer's own; the member fixes, deletes or adds boxes. For releases they
- * step through a strip of frames and name the first with the hand clearly
- * off, and the pipeline's own guess is never shown. The answer goes to
+ * computer's own; the member fixes, deletes or adds boxes. People are boxed
+ * the same way, without a colour, over stones drawn greyed for context. For
+ * releases they step through a strip of frames and name the first with the
+ * hand clearly off, and the pipeline's own guess is never shown. The answer goes to
  * /api/label/{kind}/{id} (service/labelling.py check_answer says which
  * answers are kept). All of the arithmetic -- which box a click lands on,
  * what a corner may do, the answer's shape -- is core/labelling.mjs, tested in
  * node; this file draws and listens.
  *
- * Two flows share one page, chosen by the URL hash (#boxes, the default, or
- * #releases). Each is a component handed the item and the few things the
- * queue does (submit, skip, back); useLabelQueue holds what is not flow
- * specific: the item in front of the member, one fetched ahead, and the one
+ * Three flows share one page, chosen by the URL hash (#boxes, the default,
+ * #players or #releases). Each is a component handed the item and the few
+ * things the queue does (submit, skip, back); useLabelQueue holds what is not
+ * flow specific: the item in front of the member, one fetched ahead, and the one
  * before for Back. A flow is signed-in only, and needs a computer: boxing a
  * stone to a few pixels is not a thumb's job.
  *
@@ -23,8 +24,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
 import { CANT_TELL, MIN_WIDTH_PX, addBox, boxAnswer, boxAt, canFinish, conflictNotice,
-         cornerAt, drawScale, drawnBox, keepFlagged, moveBox, moveCorner, releaseAnswer, removeBox,
-         setBox, setColour, spriteOffset, startBoxes, step } from "../core/labelling.mjs";
+         cornerAt, drawScale, drawnBox, keepFlagged, moveBox, moveCorner, playerAnswer,
+         releaseAnswer, removeBox, setBox, setColour, spriteOffset, startBoxes, startPlayers,
+         step } from "../core/labelling.mjs";
 import { signInTrouble } from "./signinState.mjs";
 import { Card, Header } from "./ui.jsx";
 import { useAuthUser } from "./useAuth.js";
@@ -56,7 +58,7 @@ function useWindowSize() {
 }
 
 function readFlow() {
-  return location.hash === "#releases" ? "releases" : "boxes";
+  return ["#releases", "#players"].includes(location.hash) ? location.hash.slice(1) : "boxes";
 }
 
 const post = (url, body) => authedFetch(url, {
@@ -217,12 +219,31 @@ function useLabelQueue(kind, active) {
   return { ...view, submit, skip, back, reload: () => load() };
 }
 
-/* ------------------------------------------------------------ rock boxes */
+/* ------------------------------------------------------- rock and player boxes
+ *
+ * One editor for both. A rock box has a colour (R, Y) and the computer may be
+ * unsure of one start (K). A player box has neither, and the item's stones are
+ * drawn greyed for context: they are not in the state, so nothing can select,
+ * move or delete one, and a drag that starts on one draws a player box. */
 
-function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBack }) {
-  const [s, setS] = useState(() => restore || startBoxes(item));
+const BOX_MODE = {
+  coloured: true, start: startBoxes, answer: boxAnswer,
+  keys: ["r", "y", "k", "s", "n", "Enter", "Delete", "Backspace"],
+  alt: "Stones on the ice, to be boxed" };
+const PLAYER_MODE = {
+  coloured: false, start: startPlayers, answer: playerAnswer,
+  keys: ["s", "n", "Enter", "Delete", "Backspace"],
+  alt: "The ice with its stones greyed, and the people on it to be boxed" };
+
+function BoxFlow(props) { return <BoxEditor mode={BOX_MODE} {...props} />; }
+function PlayerFlow(props) { return <BoxEditor mode={PLAYER_MODE} {...props} />; }
+
+function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSkip, onBack }) {
+  const { coloured } = mode;
+  const [s, setS] = useState(() => restore || mode.start(item));
   const [sel, setSel] = useState(-1);
-  const [colour, setColourPref] = useState("red");   // for the next box they draw
+  // For the next box they draw; a player has none.
+  const [colour, setColourPref] = useState(coloured ? "red" : undefined);
   const [hint, setHint] = useState("");
   const [ghost, setGhost] = useState(null);
   const [cursor, setCursor] = useState("crosshair");
@@ -257,7 +278,7 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
   const shownColour = sel >= 0 && s.boxes[sel] ? s.boxes[sel].color : colour;
 
   const act = useRef({});
-  act.current = { s, sel, colour, busy, paused, broken, canBack, onSkip, finish, item, pickColour };
+  act.current = { s, sel, colour, busy, paused, broken, canBack, onSkip, finish, item, pickColour, mode };
 
   useEffect(() => {
     const key = e => {
@@ -267,7 +288,7 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
       if (e.key === "Enter" && e.target.tagName === "BUTTON") return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      if (!["r", "y", "k", "s", "n", "Enter", "Delete", "Backspace"].includes(k)) return;
+      if (!a.mode.keys.includes(k)) return;
       e.preventDefault();
       if (a.busy) return;
       setHint("");
@@ -286,7 +307,7 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
       } else if (!canFinish(sRef.current)) {
         setHint("Keep (K), fix or delete the dashed box first");
       } else {
-        a.finish(boxAnswer(sRef.current));
+        a.finish(a.mode.answer(sRef.current));
       }
     };
     addEventListener("keydown", key);
@@ -359,6 +380,7 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
 
   const flaggedOpen = s.flagged >= 0 && s.starts[s.flagged] === "untouched";
   const w = item.w * scale, h = item.h * scale;
+  const stones = coloured ? [] : item.stones || [];
 
   return (
     <div className="label-flow" data-item={item.id}>
@@ -366,11 +388,15 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
         <div className="warn" role="alert">This image didn't load. Skip it (N) and try the next.</div>
       ) : (
         <div className="label-stage" style={{ width: w, height: h }}>
-          <img src={item.image_url} width={w} height={h} alt="Stones on the ice, to be boxed"
+          <img src={item.image_url} width={w} height={h} alt={mode.alt}
                draggable={false} onError={() => setBroken(true)}
                onLoad={() => { t0.current = Date.now(); }} />
           <svg ref={svgRef} width={w} height={h} viewBox={`0 0 ${item.w} ${item.h}`}
                style={{ cursor }} onMouseDown={down} onMouseMove={hover}>
+            {stones.map((b, i) => (
+              <rect key={`stone${i}`} x={b.x0} y={b.y0} width={b.x1 - b.x0} height={b.y1 - b.y0}
+                    className="label-stone" />
+            ))}
             {s.boxes.map((b, i) => {
               const dashed = flaggedOpen && b.start === s.flagged;
               return (
@@ -378,14 +404,14 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
                   {i === sel ? <rect x={b.x0} y={b.y0} width={b.x1 - b.x0} height={b.y1 - b.y0}
                                      className="label-halo" /> : null}
                   <rect x={b.x0} y={b.y0} width={b.x1 - b.x0} height={b.y1 - b.y0}
-                        className={`label-box ${b.color}${dashed ? " dashed" : ""}`} />
+                        className={`label-box ${coloured ? b.color : "player"}${dashed ? " dashed" : ""}`} />
                 </g>
               );
             })}
             {ghost ? <rect x={ghost.x0} y={ghost.y0} width={ghost.x1 - ghost.x0}
-                           height={ghost.y1 - ghost.y0} className={`label-box ${colour} dashed`} /> : null}
+                           height={ghost.y1 - ghost.y0} className={`label-box ${coloured ? colour : "player"} dashed`} /> : null}
           </svg>
-          {s.boxes.map((b, i) => {
+          {coloured ? s.boxes.map((b, i) => {
             const dashed = flaggedOpen && b.start === s.flagged;
             const top = b.y0 * scale;
             return (
@@ -394,26 +420,30 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
                 {b.color}{dashed ? " ?" : ""}
               </span>
             );
-          })}
+          }) : null}
         </div>
       )}
       <p className="label-msg" role="status" aria-live="polite">{hint}</p>
       <div className="row label-actions">
         {/* The colour R and Y set: the selected box's while one is selected,
             otherwise the next box drawn. */}
-        <div className="label-colour" role="group" aria-label="Box colour">
-          {["red", "yellow"].map(c => (
-            <button key={c} className={`label-swatch ${c}`} aria-pressed={shownColour === c}
-                    disabled={busy} onClick={() => pickColour(c)}>
-              {c === "red" ? "Red" : "Yellow"} <kbd>{c === "red" ? "R" : "Y"}</kbd></button>
-          ))}
-        </div>
+        {coloured ? (
+          <div className="label-colour" role="group" aria-label="Box colour">
+            {["red", "yellow"].map(c => (
+              <button key={c} className={`label-swatch ${c}`} aria-pressed={shownColour === c}
+                      disabled={busy} onClick={() => pickColour(c)}>
+                {c === "red" ? "Red" : "Yellow"} <kbd>{c === "red" ? "R" : "Y"}</kbd></button>
+            ))}
+          </div>
+        ) : null}
         <button className="primary" disabled={busy || broken}
-                onClick={() => (canFinish(s) ? finish(boxAnswer(s))
+                onClick={() => (canFinish(s) ? finish(mode.answer(s))
                                              : setHint("Keep (K), fix or delete the dashed box first"))}>
           Done <kbd>Enter</kbd></button>
-        <button disabled={busy || !flaggedOpen} onClick={() => setS(keepFlagged)}>
-          Keep dashed box <kbd>K</kbd></button>
+        {coloured ? (
+          <button disabled={busy || !flaggedOpen} onClick={() => setS(keepFlagged)}>
+            Keep dashed box <kbd>K</kbd></button>
+        ) : null}
         <button disabled={busy || sel < 0} onClick={() => { setS(cur => removeBox(cur, sel)); setSel(-1); }}>
           Delete <kbd>Del</kbd></button>
         <button disabled={busy || broken} onClick={() => finish(CANT_TELL)}>Can't tell <kbd>S</kbd></button>
@@ -421,8 +451,13 @@ function BoxFlow({ item, restore, busy, canBack, paused, onSubmit, onSkip, onBac
         <button disabled={busy || !canBack} onClick={onBack}>Back</button>
       </div>
       <p className="muted label-keys">
-        Drag a corner to resize, drag inside a box to move it, drag on empty ice to draw one.
-        <kbd>R</kbd> red, <kbd>Y</kbd> yellow for the selected box (or the next one you draw).
+        {coloured ? (
+          <>Drag a corner to resize, drag inside a box to move it, drag on empty ice to draw one.{" "}
+            <kbd>R</kbd> red, <kbd>Y</kbd> yellow for the selected box (or the next one you draw).</>
+        ) : (
+          <>Drag a corner to resize, drag inside a box to move it, drag anywhere else, even over a
+            grey stone, to draw one. With nobody to box, just press <kbd>Enter</kbd>.</>
+        )}
       </p>
     </div>
   );
@@ -556,6 +591,20 @@ const FLOWS = {
            howto: "Box every stone you can see, even part-hidden ones. People, brooms and shoes "
                   + "get no box. The dashed box is what the computer wasn't sure about, but "
                   + "there may be other mistakes." },
+  players: { kind: "player", name: "Player boxes", Flow: PlayerFlow,
+             howto: "Box every person you can see: head, body, arms, legs and feet as seen from "
+                    + "above. Not the broom, and not a stone in their hand. A player cut off at "
+                    + "the edge gets a box over the part you can see, and so does anyone from the "
+                    + "next sheet. A crouched or kneeling player is still a player. A shoe, glove "
+                    + "or broom head left on the ice is not. The grey boxes are stones and can't "
+                    + "be changed. If there are no people, press Enter.",
+             figures: [
+               { src: "/static/label-player-crouched.jpg",
+                 caption: "A crouched skip, from above: box all of them." },
+               { src: "/static/label-player-edge.jpg",
+                 caption: "Cut off at the edge: box what shows." },
+               { src: "/static/label-player-broom.jpg",
+                 caption: "A broom over a stone: not a player." }] },
   releases: { kind: "release", name: "Release marks", Flow: ReleaseFlow,
               howto: "Find the first frame where the hand is clearly off the handle. If the "
                      + "thrower lets go and grabs it again, mark the last let-go." },
@@ -566,7 +615,7 @@ const FLOWS = {
  * the picture left people pressing keys that did nothing. The modal blocks the
  * page until "Got it", which has the focus, so Enter dismisses it; Escape does
  * not, so nobody waves it away unread. */
-function HowtoDialog({ name, text, onDone }) {
+function HowtoDialog({ name, text, figures, onDone }) {
   const ref = useRef(null);
   useEffect(() => {
     const d = ref.current;
@@ -574,17 +623,27 @@ function HowtoDialog({ name, text, onDone }) {
     return () => { if (d?.open) d.close(); };
   }, []);
   return (
-    <dialog ref={ref} className="label-howto" aria-labelledby="label-howto-title"
+    <dialog ref={ref} className={`label-howto${figures ? " figs" : ""}`} aria-labelledby="label-howto-title"
             onCancel={e => e.preventDefault()}>
       <h2 id="label-howto-title">{name}</h2>
       <p>{text}</p>
+      {figures ? (
+        <div className="label-figs">
+          {figures.map(f => (
+            <figure key={f.src}>
+              <img src={f.src} alt="" />
+              <figcaption>{f.caption}</figcaption>
+            </figure>
+          ))}
+        </div>
+      ) : null}
       <button className="primary" autoFocus onClick={onDone}>Got it</button>
     </dialog>
   );
 }
 
 function Stage({ flow }) {
-  const { kind, Flow, howto } = FLOWS[flow];
+  const { kind, Flow, howto, figures } = FLOWS[flow];
   const q = useLabelQueue(kind, true);
   const [showHowto, setShowHowto] = useState(() => !seenHowto(flow));
   const dismiss = () => { rememberHowto(flow); setShowHowto(false); };
@@ -595,10 +654,12 @@ function Stage({ flow }) {
         <b>{FLOWS[flow].name}</b>
         {q.count != null ? <span>You've labelled {q.count}</span> : null}
         <span style={{ flex: 1 }} />
-        <a href={flow === "boxes" ? "#releases" : "#boxes"}>
-          {flow === "boxes" ? FLOWS.releases.name : FLOWS.boxes.name}</a>
+        {Object.keys(FLOWS).filter(f => f !== flow).map(f => (
+          <a key={f} href={`#${f}`}>{FLOWS[f].name}</a>
+        ))}
       </div>
-      {showHowto ? <HowtoDialog name={FLOWS[flow].name} text={howto} onDone={dismiss} /> : null}
+      {showHowto ? <HowtoDialog name={FLOWS[flow].name} text={howto} figures={figures}
+                                onDone={dismiss} /> : null}
       {q.notice ? <div className="warn" role="status">{q.notice}</div> : null}
       {q.phase === "loading" ? <p className="muted">Loading…</p>
        : q.phase === "error" ? (

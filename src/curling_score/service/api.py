@@ -73,7 +73,11 @@ VIEWER_ASSETS = {"app.js": "application/javascript", "style.css": "text/css",
 # it 404s at runtime with nothing to catch it -- which is what the test named
 # "every script a page asks for is actually served" exists for.
 STATIC_ASSETS = {"site.js": "application/javascript",
-                 "site.css": "text/css"}
+                 "site.css": "text/css",
+                 # The player flow's how-to figures (site/Label.jsx).
+                 "label-player-crouched.jpg": "image/jpeg",
+                 "label-player-edge.jpg": "image/jpeg",
+                 "label-player-broom.jpg": "image/jpeg"}
 
 
 @lru_cache(maxsize=16)

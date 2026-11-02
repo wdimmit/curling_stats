@@ -678,6 +678,14 @@ body[data-page="signin"] main { max-width:520px; }
 .label-howto::backdrop { background:rgb(0 0 0 / .45); }
 .label-howto h2 { margin:0 0 8px; font:700 19px/1.25 var(--display, inherit); }
 .label-howto p { margin:0 0 16px; }
+/* The player flow's how-to carries three figures side by side. */
+.label-howto.figs { max-width:min(760px, calc(100vw - 32px)); margin-top:min(6vh, 48px); }
+.label-figs { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin:0 0 16px; }
+.label-figs figure { margin:0; }
+/* The frames are tall: sized to the window so "Got it" stays on screen. */
+.label-figs img { display:block; width:100%; height:clamp(180px, calc(100vh - 400px), 420px);
+                  object-fit:contain; background:var(--bg); border:1px solid var(--line); }
+.label-figs figcaption { margin-top:4px; font-size:13px; line-height:1.3; color:var(--muted); }
 .label-stage { position:relative; line-height:0; user-select:none; -webkit-user-select:none;
                border:1px solid var(--line); }
 .label-stage img { display:block; }
@@ -685,6 +693,9 @@ body[data-page="signin"] main { max-width:520px; }
 .label-box { fill:none; stroke-width:2px; vector-effect:non-scaling-stroke; }
 .label-box.red { stroke:var(--red); }
 .label-box.yellow { stroke:var(--yellow); }
+.label-box.player { stroke:#1fb6e0; }
+.label-stone { fill:rgb(130 130 130 / .35); stroke:#8a8a8a; stroke-width:2px;
+               vector-effect:non-scaling-stroke; pointer-events:none; }
 .label-box.dashed { stroke-dasharray:6 4; }
 .label-halo { fill:none; stroke:#fff; stroke-width:5px; stroke-opacity:.85;
               vector-effect:non-scaling-stroke; }
