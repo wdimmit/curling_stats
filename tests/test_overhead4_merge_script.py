@@ -370,3 +370,97 @@ def test_an_out_with_only_empty_folders_is_fine(tmp_path):
     (tmp_path / "out/images/train").mkdir(parents=True)
     m4.merge(bi, bl, pl, tmp_path / "out", set())
     assert (tmp_path / "out/labels/train/a.txt").is_file()
+
+
+# --- the owner's settled stones for the hard batch ----------------------------
+
+def disputed(root: Path, rows: dict[str, str]) -> Path:
+    """The box export's disputed/ for ``{item id: stem}``."""
+    d = root / "disputed"
+    (d / "images").mkdir(parents=True, exist_ok=True)
+    with open(d / "disputed.jsonl", "w") as fh:
+        for item, stem in rows.items():
+            _write(d / "images" / f"{item}.jpg", b"jpeg disputed " + stem.encode())
+            fh.write(json.dumps({"id": item, "why": "rubber_stamp", "origin": {"stem": stem}}) + "\n")
+    return d
+
+
+def edits(path: Path, boxes: dict, reviewed: list[str]) -> Path:
+    path.write_text(json.dumps({"scope": "member-labels", "boxes": boxes, "reviewed": reviewed}))
+    return path
+
+
+def test_a_hard_frame_the_members_rubber_stamped_enters_on_the_owners_settled_stones(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER), "h1": ("p_2", PLAYER),
+                                  "h2": ("p_3", PLAYER), "h3": ("p_4", PLAYER)}, dataset="hard-1")
+    agreed = hard(tmp_path / "x/boxes", {"h1": STONES})
+    disputed(tmp_path / "x/boxes", {"b_10": "h2", "b_11": "h3"})
+    export = edits(tmp_path / "edits.json",
+                   {"b_10": [[0, 0.5, 0.4, 0.1, 0.1], [1, 0.2, 0.7, 0.1, 0.1]],
+                    "b_11": [[0, 0.5, 0.5, 0.1, 0.1]]},
+                   ["b_10"])                         # b_11 was touched, never marked reviewed
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(), hard_stones=agreed, hard_settled=export)
+    assert (tmp_path / "out/labels/train/h2.txt").read_text() == STONES + PLAYER
+    assert (tmp_path / "out/images/train/h2.jpg").read_bytes() == b"jpeg disputed h2"
+    assert (tmp_path / "out/labels/train/h1.txt").read_text() == STONES + PLAYER
+    assert not (tmp_path / "out/labels/train/h3.txt").exists()
+    assert (got["kept"], got["hard"], got["hard_settled"], got["hard_no_stones"]) == (3, 2, 1, 1)
+
+
+def test_settled_stones_are_only_classes_0_and_1_and_a_reviewed_empty_frame_is_kept(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER), "h2": ("p_3", PLAYER)}, dataset="hard-1")
+    agreed = hard(tmp_path / "x/boxes", {})
+    disputed(tmp_path / "x/boxes", {"b_10": "h2"})
+    export = edits(tmp_path / "edits.json", {"b_10": [[2, 0.1, 0.1, 0.1, 0.1]]}, ["b_10"])
+    m4.merge(bi, bl, pl, tmp_path / "out", set(), hard_stones=agreed, hard_settled=export)
+    assert (tmp_path / "out/labels/train/h2.txt").read_text() == PLAYER
+
+
+def test_an_agreed_frame_keeps_its_agreed_stones_over_a_settled_one(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER), "h1": ("p_2", PLAYER)}, dataset="hard-1")
+    agreed = hard(tmp_path / "x/boxes", {"h1": STONES})
+    disputed(tmp_path / "x/boxes", {"b_10": "h1"})
+    export = edits(tmp_path / "edits.json", {"b_10": [[0, 0.9, 0.9, 0.1, 0.1]]}, ["b_10"])
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(), hard_stones=agreed, hard_settled=export)
+    assert (tmp_path / "out/labels/train/h1.txt").read_text() == STONES + PLAYER
+    assert got["hard"] == 1 and got["hard_settled"] == 0
+
+
+def test_a_settled_hard_frame_still_needs_a_player_label_and_obeys_leave_out(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER), "h3": ("p_4", PLAYER)}, dataset="hard-1")
+    agreed = hard(tmp_path / "x/boxes", {})
+    disputed(tmp_path / "x/boxes", {"b_10": "h2", "b_11": "h3"})
+    export = edits(tmp_path / "edits.json", {"b_10": [], "b_11": []}, ["b_10", "b_11"])
+    got = m4.merge(bi, bl, pl, tmp_path / "out", {"h3"}, hard_stones=agreed, hard_settled=export)
+    assert (got["hard"], got["hard_no_player"], got["left_out"]) == (0, 1, 1)
+
+
+def test_hard_settled_without_hard_stones_is_refused_and_two_unlike_settlements_too(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)})
+    export = edits(tmp_path / "edits.json", {}, [])
+    with pytest.raises(ValueError, match="hard-stones"):
+        m4.merge(bi, bl, pl, tmp_path / "out", set(), hard_settled=export)
+    d = disputed(tmp_path / "x/boxes", {"b_10": "h2", "b_11": "h2"})
+    export = edits(tmp_path / "edits2.json", {"b_10": [[0, 0.5, 0.4, 0.1, 0.1]], "b_11": []},
+                   ["b_10", "b_11"])
+    with pytest.raises(ValueError, match="h2"):
+        m4.settled_stones(export, d)
+
+
+def test_main_takes_hard_settled_and_hard_disputed(tmp_path, capsys):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    players(tmp_path / "p", {"a": ("p_1", PLAYER), "h2": ("p_3", PLAYER)}, dataset="hard-1")
+    agreed = hard(tmp_path / "x/boxes", {})
+    d = disputed(tmp_path / "elsewhere", {"b_10": "h2"})
+    export = edits(tmp_path / "edits.json", {"b_10": [[0, 0.5, 0.4, 0.1, 0.1]]}, ["b_10"])
+    rc = m4.main(["--base", str(tmp_path / "b"), "--players", str(tmp_path / "p"),
+                  "--hard-stones", str(agreed), "--hard-settled", str(export),
+                  "--hard-disputed", str(d), "--out", str(tmp_path / "out")])
+    assert rc == 0 and "hard_settled 1" in capsys.readouterr().out
+    assert (tmp_path / "out/labels/train/h2.txt").read_text() == \
+        "0 0.500000 0.400000 0.100000 0.100000\n" + PLAYER

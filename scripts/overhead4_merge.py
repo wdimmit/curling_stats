@@ -2,22 +2,24 @@
 """Build overhead-4's training set: overhead-3's stones plus the members' player boxes.
 
     python scripts/overhead4_merge.py --base /data/wdd/curling/overhead-3/folds/all \\
-        --players datasets/member-labels/DATE/players [--hard-stones .../boxes/agreed] \\
+        --players datasets/member-labels/DATE/players \\
+        [--hard-stones .../boxes/agreed [--hard-settled box-edits.json]] \\
         [--leave-out left-out.txt] [--pilot] --out /data/wdd/curling/overhead-4/folds/all
     python scripts/overhead4_merge.py settle --export edits.json --players .../players
 
 --base is a YOLO folder with `images/` and `labels/` (the laptop's overhead-3
 fold `all` has `images/train` and `images/val`, symlinks into ds11's set and
 the logo crops; a frame is copied, not linked, and the train/val folders carry
-over). --players is `labels_export.py --kind player`'s `players/` folder, or
+over). Fold `all`'s players are published from its `images/train` only: its
+`images/val` is ds11's val, published on its own as fold `val` (label_players.py
+refuses a val frame under another fold), and both go in the merge under --base. --players is `labels_export.py --kind player`'s `players/` folder, or
 its `labelled/` inside it. The output has the same layout, with a `data.yaml`
 for the three classes: 0 red, 1 yellow, 2 player.
 
 A frame's label is its stone lines (classes 0 and 1; any class 2 already in the
 file is dropped) plus the frame's player lines. The player labels are found by
 the frame's stem (`origin.stem` in players.jsonl): item ids are opaque. A stem
-labelled in two places (ds11's val, say, published as its own fold as well as
-inside fold `all`) is fine if the two labels agree and an error if they don't.
+labelled in two places is fine if the two labels agree and an error if they don't.
 A label file of no lines is a frame reviewed with nobody on the ice, and is kept.
 A base frame with no stone label file at all is an error (it would be taught as
 background), as is an --out whose images/ or labels/ already hold files.
@@ -31,9 +33,19 @@ early run on what is reviewed so far, and refuses an --out containing
 
 --hard-stones is `labels_export.py --kind box`'s `boxes/agreed/` folder, for the
 hard batch (scripts/player_mine.py, published as `hard-1`). A hard frame goes
-into train when its stones were agreed by the members and it has a player label;
-a hard frame short of either is dropped and counted (`hard_no_stones`,
-`hard_no_player`).
+into train when its stones were agreed by the members (or settled by the owner,
+below) and it has a player label; a hard frame short of either is dropped and
+counted (`hard_no_stones`, `hard_no_player`).
+
+The hard batch's stones go up as unflagged box items holding overhead-3's own
+reads, so two members accepting them untouched is a rubber stamp
+(labelagree.box_verdict) and the item is disputed, never agreed. The owner
+settles those in the box export's `boxes/disputed/` editor; --hard-settled is
+that editor's export (`boxes`: item id -> [[cls, cx, cy, w, h]], `reviewed`),
+read with `boxes/disputed/disputed.jsonl` (next to agreed/, or --hard-disputed)
+to find each item id's stem. Only reviewed items count, with their class 0 and 1
+boxes as the stone label; a stem agreed already keeps the agreed boxes. They are
+counted in `hard_settled` as well as `hard`.
 
 The frames the owner settles in the box editor (`players/to_user/`) come back
 as an editor export. `settle` turns each frame it marks reviewed into an entry
@@ -104,6 +116,34 @@ def agreed_stones(hard: Path) -> dict[str, tuple[Path, list[str]]]:
     return out
 
 
+def settled_stones(export: Path, disputed: Path) -> dict[str, tuple[Path, list[str]]]:
+    """``{stem: (image, stone lines)}`` of the owner's reviewed box-editor frames.
+
+    ``export`` is the editor's export of ``disputed`` (the box export's
+    `boxes/disputed/` folder): a frame counts only if it is in ``reviewed``, and
+    its class 0 and 1 boxes are its stones (none is a frame with no stones).
+    Two reviewed items of one stem that differ are an error.
+    """
+    data = json.loads(export.read_text())
+    boxes, reviewed = data.get("boxes") or {}, set(data.get("reviewed") or [])
+    out: dict[str, tuple[Path, list[str]]] = {}
+    for line in disputed.joinpath("disputed.jsonl").read_text().splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        stem = (row.get("origin") or {}).get("stem")
+        image = disputed / "images" / f"{row['id']}.jpg"
+        if not stem or row["id"] not in reviewed or not image.is_file():
+            continue
+        lines = ["{} ".format(int(b[0])) + " ".join(f"{v:.6f}" for v in b[1:5])
+                 for b in boxes.get(row["id"]) or [] if int(b[0]) in (0, 1)]
+        if stem in out and out[stem][1] != lines:
+            raise ValueError(f"{stem} is settled twice with different stones ({row['id']} "
+                             "is the second); settle which is right")
+        out[stem] = (image, lines)
+    return out
+
+
 def _write(out: Path, rel: Path, image: Path, lines: list[str]) -> None:
     """One frame: the image copied (a link is followed) to ``rel`` under
     images/, and its label beside it under labels/."""
@@ -123,16 +163,20 @@ def _data_yaml(out: Path) -> None:
 
 
 def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_out: set[str],
-          pilot: bool = False, hard_stones: Path | None = None) -> dict:
+          pilot: bool = False, hard_stones: Path | None = None,
+          hard_settled: Path | None = None, hard_disputed: Path | None = None) -> dict:
     """Write the merged set to ``out`` and return the counts.
 
     kept: frames written (hard: of them from the hard batch); unlabelled:
     base frames dropped for want of a player label (pilot only; otherwise
     one is an error); left_out: frames dropped by ``leave_out``; base: base
     frames looked at. With ``hard_stones``, hard_no_stones is the player labels
-    that match neither a base frame nor an agreed hard frame (a hard frame whose
-    stones the members never agreed on; with a val-only --base, the train labels
-    too) and hard_no_player the agreed hard frames with no player label.
+    that match neither a base frame nor an agreed (or, with ``hard_settled``, the
+    owner's settled) hard frame (a hard frame whose stones nobody settled; with a
+    val-only --base, the train labels too) and hard_no_player the hard frames
+    with stones and no player label; hard_settled counts the kept hard frames
+    whose stones are the owner's. ``hard_disputed`` is the box export's
+    disputed/ folder, next to ``hard_stones``'s agreed/ unless given.
     """
     if pilot and "overhead-4" in str(Path(out).resolve()):
         raise ValueError(f"a pilot set must not go under overhead-4: {out}")
@@ -159,12 +203,19 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
     if unread:
         raise ValueError(f"{len(unread)} base frames have no stone label file under {base_labels}: "
                          f"{', '.join(unread[:10])}" + (" ..." if len(unread) > 10 else ""))
+    if hard_settled and not hard_stones:
+        raise ValueError("--hard-settled goes with --hard-stones (the hard batch)")
     hard = agreed_stones(hard_stones) if hard_stones else {}
+    owners = {}
+    if hard_settled:
+        owners = settled_stones(hard_settled, hard_disputed or Path(hard_stones).parent / "disputed")
+        owners = {k: v for k, v in owners.items() if k not in hard}
+        hard = {**owners, **hard}
     clash = sorted(set(hard) & set(stems))
     if clash:
         raise ValueError(f"hard frames that are base frames too: {', '.join(clash[:10])}")
 
-    counts = dict.fromkeys(("base", "kept", "hard", "unlabelled", "left_out",
+    counts = dict.fromkeys(("base", "kept", "hard", "hard_settled", "unlabelled", "left_out",
                             "hard_no_stones", "hard_no_player"), 0)
     for path in frames:
         counts["base"] += 1
@@ -190,6 +241,7 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
             _write(out, Path("train") / f"{stem}{image.suffix}", image, stones + labels[stem])
             counts["kept"] += 1
             counts["hard"] += 1
+            counts["hard_settled"] += stem in owners
     out.mkdir(parents=True, exist_ok=True)
     _data_yaml(out)
     return counts
@@ -257,6 +309,11 @@ def main(argv=None) -> int:
     ap.add_argument("--players", type=Path, required=True, metavar="DIR")
     ap.add_argument("--hard-stones", type=Path, metavar="DIR",
                     help="the box export's agreed/ folder, for the hard batch")
+    ap.add_argument("--hard-settled", type=Path, metavar="FILE",
+                    help="the box editor's export of boxes/disputed/: the owner's stones "
+                         "for hard frames the members did not agree on")
+    ap.add_argument("--hard-disputed", type=Path, metavar="DIR",
+                    help="the box export's disputed/ folder (default: beside --hard-stones)")
     ap.add_argument("--leave-out", type=Path, metavar="FILE", help="one stem per line")
     ap.add_argument("--pilot", action="store_true",
                     help="drop unlabelled frames instead of failing; not under overhead-4")
@@ -264,7 +321,8 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     try:
         got = merge(args.base / "images", args.base / "labels", args.players, args.out,
-                    _leave_out(args.leave_out), args.pilot, args.hard_stones)
+                    _leave_out(args.leave_out), args.pilot, args.hard_stones,
+                    args.hard_settled, args.hard_disputed)
     except (OSError, ValueError) as err:
         print(f"{type(err).__name__}: {err}", file=sys.stderr)
         return 1
