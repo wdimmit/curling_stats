@@ -102,7 +102,11 @@ class PlayerBox:
 
 class Seen(list):
     """One frame's stones -- a plain list of :class:`Detection`, so every stone
-    consumer reads it as before -- with the frame's player boxes alongside."""
+    consumer reads it as before -- with the frame's player boxes alongside.
+
+    List equality ignores ``players``; ``list(seen)``, slicing and ``+`` return
+    plain lists without them, so code that rebuilds frames drops the players
+    (and the cover check then does nothing)."""
 
     def __init__(self, stones=(), players=()):
         super().__init__(stones)

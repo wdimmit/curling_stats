@@ -113,6 +113,21 @@ class TestFramesCarryPlayerBoxes:
         assert p.x0_m <= p.x1_m and p.y0_m <= p.y1_m
         assert (p.x0_m, p.y0_m) != (p.x1_m, p.y1_m)
 
+    def test_a_skewed_calibration_is_covered_by_all_four_corners(self):
+        # The panels' calibration is a scale and a shift, so two diagonal
+        # corners already bound the box (the test calibration cannot tell the
+        # two apart); a shear puts the metre box's edges at the others.
+        class Sheared:
+            def to_sheet(self, x, y):
+                return x / 100 - y / 200, y / 100
+
+        (p,) = yolo.players_from_rows([(100, 100, 60, 80, 0.7, 2)], Sheared())
+        # Corners (70,60) (130,60) (70,140) (130,140) give x = 0.4 1.0 0.0 0.6;
+        # the (70,60)-(130,140) pair alone would say 0.4 .. 0.6.
+        assert (p.x0_m, p.x1_m) == pytest.approx((0.0, 1.0))
+        assert (p.y0_m, p.y1_m) == pytest.approx((0.6, 1.4))
+        assert (p.x0_px, p.y0_px, p.x1_px, p.y1_px) == (70, 60, 130, 140)
+
     def test_seen_pickles_with_players(self, cal):
         import pickle
 

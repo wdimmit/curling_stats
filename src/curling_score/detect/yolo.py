@@ -60,13 +60,15 @@ def players_from_rows(rows, calib, conf=None):
         if int(cls) != PLAYER_CLASS or (conf is not None and score < conf):
             continue
         x0, y0, x1, y1 = cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
-        ax, ay = calib.to_sheet(x0, y0)
-        bx, by = calib.to_sheet(x1, y1)
+        # All four corners: a calibration that is not a plain scale and shift
+        # can leave two diagonal ones short of the box.
+        xs, ys = zip(*(calib.to_sheet(x, y)
+                       for x, y in ((x0, y0), (x1, y0), (x0, y1), (x1, y1))))
         out.append(
             PlayerBox(
                 x0_px=x0, y0_px=y0, x1_px=x1, y1_px=y1,
-                x0_m=float(min(ax, bx)), y0_m=float(min(ay, by)),
-                x1_m=float(max(ax, bx)), y1_m=float(max(ay, by)),
+                x0_m=float(min(xs)), y0_m=float(min(ys)),
+                x1_m=float(max(xs)), y1_m=float(max(ys)),
                 confidence=score,
             )
         )
