@@ -6,7 +6,9 @@ house for the whole of a rock's window reads exactly like that stone knocked
 out of play (6vOTUuUSMKc g1 e7 rock 15, f_0zkA). The detector's own player
 boxes (`rocks.Seen.players`, class 2) can. A hidden stone's spot is under a
 player in every frame it goes unseen, where one really taken out leaves bare
-ice there as soon as nobody stands on it.
+ice there as soon as nobody stands on it. A stone knocked out shows its spot
+bare at once, however many players cross it later; one hidden is under
+somebody from the moment it goes.
 
 An off-the-shelf COCO pose model finds the players from above, though not
 easily: it learned people side-on, and a crouched body seen from straight up
@@ -30,6 +32,11 @@ SEEN_M = 0.15
 # stone left. The house is read at 10 fps, so five frames is half a second.
 COVERED_SHARE = 0.8
 MIN_UNSEEN = 5
+# And a player was over it in each of the first ONSET frames of the last
+# stretch it went unseen in: its spot was never bare as it went. Harness
+# 11/03: the three stones held wrongly were each knocked out, their spots bare
+# for a second or more before the players walked across them.
+ONSET = 3
 
 
 def covered(x_m: float, y_m: float, color: str, window) -> bool:
@@ -44,15 +51,22 @@ def covered(x_m: float, y_m: float, color: str, window) -> bool:
     stone sat, a sweeper beside it).
     """
     unseen = hidden = 0
+    onset: list[bool] = []
+    was_seen = True
     for _, dets in window:
         near = [s for s in dets
                 if ((s.x_m - x_m) ** 2 + (s.y_m - y_m) ** 2) ** 0.5 <= SEEN_M]
         if any(s.color == color for s in near):
+            was_seen = True
             continue
+        if was_seen:
+            onset, was_seen = [], False
         unseen += 1
-        if near:
-            continue
         pad = C.STONE_RADIUS_M
-        hidden += any(p.x0_m - pad <= x_m <= p.x1_m + pad and p.y0_m - pad <= y_m <= p.y1_m + pad
-                      for p in getattr(dets, "players", ()))
-    return unseen >= MIN_UNSEEN and hidden >= COVERED_SHARE * unseen
+        over = not near and any(
+            p.x0_m - pad <= x_m <= p.x1_m + pad and p.y0_m - pad <= y_m <= p.y1_m + pad
+            for p in getattr(dets, "players", ()))
+        hidden += over
+        if len(onset) < ONSET:
+            onset.append(over)
+    return unseen >= MIN_UNSEEN and hidden >= COVERED_SHARE * unseen and all(onset)

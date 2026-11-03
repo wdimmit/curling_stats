@@ -1071,6 +1071,26 @@ class TestCover:
     def test_frames_with_no_players_attribute_have_none(self):
         assert not self._covered([(i * 0.1, []) for i in range(8)])
 
+    def test_a_spot_bare_when_it_went_and_walked_over_after_is_not_cover(self):
+        # 4RrN g0 e2 rock 16: the red knocked out, its spot bare for a second,
+        # then the players walked across it for the rest of the window --
+        # covered in 90% of the frames, but not when it went.
+        assert not self._covered(self._window(*[None] * 10, *[self.OVER] * 90))
+
+    def test_covered_from_its_first_unseen_frame(self):
+        assert self._covered(self._window(*[self.OVER] * 90, *[None] * 10))
+
+    def test_one_bare_frame_at_the_onset_is_enough_to_refuse(self):
+        assert not self._covered(self._window(None, *[self.OVER] * 20))
+
+    def test_the_onset_is_the_last_time_it_went_unseen(self):
+        # Seen, then a player steps over it: the unseen stretch starts covered.
+        # A bare miss earlier, before it was seen again, does not count against it.
+        window = [(0.0, seen([], []))]
+        window += [(0.1 + i * 0.1, seen([det("red", 1.02, 0.98)], [])) for i in range(5)]
+        window += [(1.0 + i * 0.1, seen([], [self.OVER])) for i in range(20)]
+        assert self._covered(window)
+
     def test_another_colours_stone_on_the_spot_proves_it_open(self):
         # A hit-and-stick: a yellow sits where the red was, a player box over
         # it too. The spot is in view, so the red is not under anybody.
