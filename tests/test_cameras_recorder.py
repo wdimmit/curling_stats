@@ -201,26 +201,25 @@ def test_start_refuses_a_camera_that_sends_nothing(tmp_path):
 
 
 def test_a_capture_that_dies_at_start_gives_its_reason(tmp_path):
-    # Without the tap a capture exits at once, saying why, and that is the
+    # Without ffmpeg a capture exits at once, saying why, and that is the
     # error: not "sent no H.264", which sends whoever reads it to the camera.
-    world = World(tmp_path, dying={"1A-HOUSE": "the packet tap is not loaded "
-                                                "(/opt/ndi/libavcodec-ndi.so.61 is missing: "
-                                                "capture runs only in the worker image)\n"})
+    world = World(tmp_path, dying={"1A-HOUSE": "ffmpeg is not installed: capture runs only in "
+                                                "the worker image\n"})
     world.clock = time.monotonic
-    with pytest.raises(LiveError, match=r"^camera 1A-HOUSE's capture exited \(1\): the packet "
-                                        r"tap is not loaded \(/opt/ndi/"):
+    with pytest.raises(LiveError, match=r"^camera 1A-HOUSE's capture exited \(1\): ffmpeg is "
+                                        r"not installed: capture runs only in the worker image$"):
         world.recorder().start()
     assert ("composer",) not in world.events
 
 
 def test_a_capture_that_dies_at_start_names_its_error_not_its_chatter(tmp_path):
     world = World(tmp_path, dying={"1A-HOUSE": (
-        "2026-10-24 15:09:01,100 INFO capture 1A-HOUSE: looking for 1A-HOUSE\n"
-        "2026-10-24 15:09:16,100 ERROR capture 1A-HOUSE: stopping: not in the finder "
-        "within 15 s\n")})
+        "2026-11-03 15:09:01,100 INFO capture 1A-HOUSE: connecting to "
+        "srt://192.168.0.241:1600?mode=caller&latency=500000&timeout=5000000\n"
+        "2026-11-03 15:09:16,100 ERROR capture 1A-HOUSE: stopping: no keyframe within 15 s\n")})
     world.clock = time.monotonic
     with pytest.raises(LiveError, match=r"^camera 1A-HOUSE's capture exited \(1\): stopping: "
-                                        r"not in the finder within 15 s$"):
+                                        r"no keyframe within 15 s$"):
         world.recorder().start()
 
 

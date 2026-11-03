@@ -3,7 +3,6 @@ still while they stop."""
 
 import contextlib
 import io
-import json
 import logging
 import os
 import select
@@ -209,15 +208,6 @@ def test_sheet_cameras_long_views_by_sheet():
         "house_a": "2A-HOUSE", "house_h": "2H-HOUSE", "long_a": "2A-PTZ", "long_h": "2H-PTZ"}
     every = [name for sheet in range(1, 6) for name in inventory.sheet_cameras(sheet).values()]
     assert sorted(every) == sorted(inventory.CAMERAS)
-
-
-def test_ndi_config_lists_all_twenty_ips(tmp_path):
-    inventory.ndi_config(tmp_path / "ndi")
-
-    config = json.loads((tmp_path / "ndi" / "ndi-config.v1.json").read_text())
-    ips = config["ndi"]["networks"]["ips"].split(",")
-    assert sorted(ips) == [f"192.168.0.{n}" for n in range(231, 251)]
-    assert sorted(ips) == sorted(inventory.CAMERAS.values())
 
 
 def test_holder_passes_packets_through():
