@@ -176,3 +176,65 @@ class TestReleasePath:
         monkeypatch.setattr(weights, "_candidates", lambda name=None: names.append(name) or iter(()))
         weights.release_path()
         assert names == [weights.RELEASE_NAME] == ["release1.pt"]
+
+
+class TestReceivingPath:
+    """The receiving panel's model (overhead-4 once it ships): pinned by its
+    own variable, else the stone model's file."""
+
+    def test_unset_it_is_the_stone_model(self, monkeypatch):
+        monkeypatch.delenv(weights.RECEIVING_ENV_VAR, raising=False)
+        assert weights.receiving_path() == weights.default_path()
+
+    def test_a_set_path_is_used(self, monkeypatch, tmp_path):
+        p = tmp_path / "o4.pt"; p.write_bytes(b"x")
+        monkeypatch.setenv(weights.RECEIVING_ENV_VAR, str(p))
+        assert weights.receiving_path() == p
+
+    def test_a_set_but_missing_path_raises(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(weights.RECEIVING_ENV_VAR, str(tmp_path / "nope.pt"))
+        with pytest.raises(FileNotFoundError, match="nope.pt"):
+            weights.receiving_path()
+
+    def test_none_is_no_model_of_its_own(self, monkeypatch):
+        monkeypatch.setenv(weights.RECEIVING_ENV_VAR, "none")
+        assert weights.receiving_path() is None
+
+
+class TestReceivingFor:
+    """What the receiving panel reads with beside a run's stone weights."""
+
+    def test_with_no_model_of_its_own_it_follows_the_stone_weights(
+            self, monkeypatch, tmp_path):
+        """A run pinned to other stone weights (an A/B) reads both panels
+        with them, as it did before there were two models."""
+        monkeypatch.delenv(weights.RECEIVING_ENV_VAR, raising=False)
+        other = tmp_path / "other.pt"; other.write_bytes(b"x")
+        assert weights.receiving_for(other) == other
+        assert weights.receiving_for(None) is None
+
+    def test_a_model_of_its_own_is_used_whatever_the_stones(self, monkeypatch, tmp_path):
+        p = tmp_path / "o4.pt"; p.write_bytes(b"x")
+        monkeypatch.setenv(weights.RECEIVING_ENV_VAR, str(p))
+        assert weights.receiving_for(weights.default_path()) == p
+
+    def test_none_follows_the_stone_weights(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(weights.RECEIVING_ENV_VAR, "none")
+        other = tmp_path / "other.pt"; other.write_bytes(b"x")
+        assert weights.receiving_for(other) == other
+
+
+class TestSameFile:
+    def test_one_file_by_two_spellings(self, tmp_path):
+        p = tmp_path / "w.pt"; p.write_bytes(b"x")
+        assert weights.same_file(p, str(tmp_path / "." / "w.pt"))
+
+    def test_two_files(self, tmp_path):
+        a, b = tmp_path / "a.pt", tmp_path / "b.pt"
+        a.write_bytes(b"x"); b.write_bytes(b"x")
+        assert not weights.same_file(a, b)
+
+    def test_none_is_only_the_same_as_none(self, tmp_path):
+        p = tmp_path / "w.pt"; p.write_bytes(b"x")
+        assert weights.same_file(None, None)
+        assert not weights.same_file(p, None) and not weights.same_file(None, p)

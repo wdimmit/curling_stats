@@ -551,6 +551,10 @@ def _live_replay(args) -> int:
     detector, broom_model, line_model = analyze_mod.load_models(
         weights, args.imgsz, args.device, skip_longview=args.no_longview,
         skip_line=args.no_line, progress=print)
+    # The receiving panel's model, pinned by CURLING_SCORE_RECEIVING_WEIGHTS.
+    house_weights = weights_mod.receiving_for(weights)
+    house_detector = analyze_mod.load_house_detector(
+        detector, weights, house_weights, args.imgsz, args.device, print)
     release_model = analyze_mod.load_release_model(line_model, print)
     rec = replay.ReplayRecording(args.video, out / "recording.ts",
                                  speed=args.speed).start()
@@ -574,10 +578,12 @@ def _live_replay(args) -> int:
     session = live.LiveSession(
         video_id=vid, url=url, recording=rec, fmt=format_mod.by_name(args.format),
         pipeline=live.VideoPipeline(weights=weights, skip_longview=args.no_longview,
-                                    line=line_model is not None, progress=print),
+                                    line=line_model is not None, progress=print,
+                                    house_weights=house_weights),
         sheet=args.sheet,
         models=live.Models(detector=detector, broom_model=broom_model,
-                           line_model=line_model, release_model=release_model),
+                           line_model=line_model, release_model=release_model,
+                           house_detector=house_detector),
         publish=publish, progress=print)
     try:
         runner.run_session(session)

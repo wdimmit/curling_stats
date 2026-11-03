@@ -118,6 +118,9 @@ class Models:
     broom_model: object = None
     line_model: object = None
     release_model: object = None
+    # The receiving panel's (`analyze.EndContext.house_detector`); None reads
+    # it with `detector`. Practice reads both houses with `detector`.
+    house_detector: object = None
 
 
 def _side_worth(cal) -> int:
@@ -373,7 +376,8 @@ class LiveSession:
             detector=self.models.detector, broom_model=self.models.broom_model,
             line_model=self.models.line_model, fmt=self.fmt, use_cache=False,
             one_pass=True, progress=self.progress,
-            release_model=self.models.release_model)
+            release_model=self.models.release_model,
+            house_detector=self.models.house_detector)
         run_up = self.run_up[key] if again else self.prev_end_s
         # The recorder only notes what the checks reject; the frames are cut
         # later, on the manager's keep thread, never inside an end's build.
@@ -507,9 +511,12 @@ class VideoPipeline:
     """
 
     def __init__(self, *, weights=None, skip_longview=False, line=True,
-                 progress=log.info):
+                 progress=log.info, house_weights=None):
         self.weights, self.skip_longview = weights, skip_longview
         self.line, self.progress = line, progress
+        # The receiving panel's weights, named in the processing version;
+        # None (or `weights`' file) is one model for both.
+        self.house_weights = house_weights
 
     def calibrate(self, path, until_s):
         from curling_score.geometry import layout
@@ -559,4 +566,5 @@ class VideoPipeline:
             self.weights, weights_mod.side_path(), weights_mod.broom_path(),
             line=self.line and sideviews is not None, spin_weights=weights_mod.spin_path(),
             release_weights=(weights_mod.release_path() if releasemodel.runs_here()
-                             else None))
+                             else None),
+            house_weights=self.house_weights)

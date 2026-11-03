@@ -242,3 +242,69 @@ class TestPlayers:
                                        Detector())
         assert len(got) == 2
         assert all(f.players == (p,) and len(f) == 1 for _, f in got)
+
+
+class TestADetectorPerSpan:
+    """overhead-4 reads the receiving panel and overhead-3 the thrower's,
+    from one decode: a span may name its own detector."""
+
+    class Setup:
+        calib = calib()
+
+        def __init__(self, rect):
+            self.rect = rect
+
+        def on_sheet(self, stones):
+            return list(stones)
+
+    class Tagger:
+        def __init__(self, tag):
+            self.tag, self.batches = tag, 0
+
+        def find_stones_batch(self, imgs, calib):
+            self.batches += 1
+            return [Seen([det(self.tag)]) for _ in imgs]
+
+    def windows(self, monkeypatch):
+        img = np.zeros((4, 4, 3), np.uint8)
+        monkeypatch.setattr(sequence.F, "windows", lambda path, wins, end_s: iter(
+            [(0, 0.0, img), (1, 0.0, img), (0, 0.2, img), (1, 0.4, img)]))
+
+    def test_detect_spans_uses_each_spans_detector(self, monkeypatch):
+        self.windows(monkeypatch)
+        house, stones = self.Tagger("house"), self.Tagger("stones")
+        near, far = self.Setup((0, 0, 4, 4)), self.Setup((4, 0, 4, 4))
+        got = sequence.detect_spans("v.mp4", [(near, 0.0, 5.0, house), (far, 0.0, 2.5)],
+                                    1.0, stones)
+        assert [[d.color for d in f] for _, f in got[0]] == [["house"], ["house"]]
+        assert [[d.color for d in f] for _, f in got[1]] == [["stones"], ["stones"]]
+
+    def test_spans_sharing_a_detector_share_its_threads(self, monkeypatch):
+        """One model in memory and one pair of detection threads, as before:
+        a detector given twice is not run twice over."""
+        self.windows(monkeypatch)
+        made = []
+        real = sequence._DetectBehind
+
+        class Counted(real):
+            def __init__(self, detector):
+                made.append(detector)
+                super().__init__(detector)
+
+        monkeypatch.setattr(sequence, "_DetectBehind", Counted)
+        one = self.Tagger("stones")
+        near, far = self.Setup((0, 0, 4, 4)), self.Setup((4, 0, 4, 4))
+        got = sequence.detect_spans("v.mp4", [(near, 0.0, 5.0, one), (far, 0.0, 2.5)],
+                                    1.0, one)
+        assert made == [one]
+        assert [len(s) for s in got] == [2, 2]
+
+    def test_a_span_may_name_the_classical_detector(self, monkeypatch):
+        self.windows(monkeypatch)
+        monkeypatch.setattr("curling_score.detect.rocks.find_stones",
+                            lambda img, calib: [det("classical")])
+        near, far = self.Setup((0, 0, 4, 4)), self.Setup((4, 0, 4, 4))
+        got = sequence.detect_spans("v.mp4", [(near, 0.0, 5.0, None), (far, 0.0, 2.5)],
+                                    1.0, self.Tagger("stones"))
+        assert {d.color for _, f in got[0] for d in f} == {"classical"}
+        assert {d.color for _, f in got[1] for d in f} == {"stones"}

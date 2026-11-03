@@ -356,7 +356,7 @@ def model_id(weights) -> str:
 
 
 def processing_version(weights, side_weights=None, broom_weights=None, line=False,
-                       spin_weights=None, release_weights=None) -> str:
+                       spin_weights=None, release_weights=None, house_weights=None) -> str:
     """The full identity of one analysis configuration.
 
     ``side_weights`` is folded in because the side-view detector changes the
@@ -384,8 +384,18 @@ def processing_version(weights, side_weights=None, broom_weights=None, line=Fals
     ``release_weights``, the hand model, puts the release on every rock's
     delivery path, so a new one moves those points. It is named after the
     spin, and only with the line, whose delivery path it reads along.
+
+    ``house_weights``, the receiving panel's model (overhead-4), reads every
+    end's deliveries and house, so it is named right after the stone model --
+    but only when it is a file of its own: None, or the same file as
+    ``weights``, is one model for both, and every timeline made that way keeps
+    the identity it was published with.
     """
+    from curling_score.weights import same_file
+
     base = f"{PIPELINE_VERSION}+{model_id(weights)}"
+    if house_weights is not None and not same_file(house_weights, weights):
+        base = f"{base}+house-{model_id(house_weights)}"
     out = base if side_weights is None else f"{base}+side-{model_id(side_weights)}"
     out = out if broom_weights is None else f"{out}+broom-{model_id(broom_weights)}"
     if not (line and side_weights is not None):

@@ -49,6 +49,14 @@ from pathlib import Path
 DEFAULT_NAME = "overhead-3.pt"
 ENV_VAR = "CURLING_SCORE_WEIGHTS"
 
+# The receiving panel's detector: each end's house played to, where the
+# deliveries are tracked and the house is read. A model of its own there
+# (overhead-4, with a player class) while DEFAULT_NAME keeps the thrower's
+# panel, the profile that finds games and ends, and practice. Until it ships
+# the receiving panel reads with DEFAULT_NAME's file, and one file for both
+# is one model loaded and the processing version unchanged.
+RECEIVING_ENV_VAR = "CURLING_SCORE_RECEIVING_WEIGHTS"
+
 # The SIDE-view detector, which times the throwing end's hog crossing. A
 # different camera and a different job from DEFAULT_NAME: that one reads the
 # overhead panels looking straight down, this one reads a disc edge-on at
@@ -166,6 +174,49 @@ def default_path():
         f"no {DEFAULT_NAME} found in a weights/ directory near "
         f"{Path(__file__).resolve().parents[2]}. Set {ENV_VAR} to a weights "
         f"file, or to 'none' for the classical colour detector.")
+
+
+def receiving_path():
+    """The receiving panel's weights: ``CURLING_SCORE_RECEIVING_WEIGHTS``, else
+    :func:`default_path`'s. ``none`` is no model of its own -- None, and the
+    panel reads with the stone weights. A path that is set but missing raises.
+    """
+    chosen = os.environ.get(RECEIVING_ENV_VAR)
+    if chosen:
+        if chosen.strip().lower() in ("none", ""):
+            return None
+        path = Path(chosen)
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"{RECEIVING_ENV_VAR}={chosen} does not exist. Set it to a weights "
+                f"file, or to 'none' to read the receiving panel with the stone "
+                f"weights.")
+        return path
+    return default_path()
+
+
+def receiving_for(weights):
+    """What the receiving panel reads with beside stone weights ``weights``.
+
+    The receiving model when it is one of its own (pinned, or a default file
+    other than :func:`default_path`'s); else ``weights`` itself, so a run
+    pinned to other stone weights -- an A/B -- reads both panels with them,
+    as it did before there were two models.
+    """
+    if os.environ.get(RECEIVING_ENV_VAR):
+        return receiving_path() or weights
+    try:
+        house, stones = receiving_path(), default_path()
+    except FileNotFoundError:
+        return weights
+    return weights if same_file(house, stones) else house
+
+
+def same_file(a, b) -> bool:
+    """Whether two weights, paths or None, are one file (None only matches None)."""
+    if a is None or b is None:
+        return a is None and b is None
+    return Path(a).resolve() == Path(b).resolve()
 
 
 def side_path():

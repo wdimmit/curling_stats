@@ -75,7 +75,7 @@ def test_a_live_end_decodes_its_window_once(monkeypatch):
     calls = []
 
     def spans(path, specs, end_s, detector=None):
-        calls.append(("spans", path, [(s.rect, start, fps) for s, start, fps in specs], end_s))
+        calls.append(("spans", path, [(s.rect, start, fps) for s, start, fps, *_ in specs], end_s))
         return [[] for _ in specs]
 
     monkeypatch.setattr(analyze.sequence, "detect_spans", spans)

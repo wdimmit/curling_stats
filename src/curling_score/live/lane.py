@@ -315,6 +315,7 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
     one it calibrates from its own recording every time.
     """
     from curling_score import analyze, fpframes, version
+    from curling_score import weights as weights_mod
     from curling_score.fpframes import record
     from curling_score.game import format as format_mod
     from curling_score.ingest import source
@@ -322,6 +323,9 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
 
     loaded = []
     ids = []        # the detectors' ids, hashed once for every stream
+    # The league ends' receiving panel reads with its own model when there is
+    # one (`analyze.load_house_detector`); practice reads both with `weights`.
+    house_weights = weights_mod.receiving_for(weights)
 
     def recorder_for(job):
         """The job's false-positive recorder, or None: nothing here may stop a
@@ -345,7 +349,9 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
                 progress=progress)
             loaded.append(live.Models(
                 detector=detector, broom_model=broom_model, line_model=line_model,
-                release_model=analyze.load_release_model(line_model, progress)))
+                release_model=analyze.load_release_model(line_model, progress),
+                house_detector=analyze.load_house_detector(
+                    detector, weights, house_weights, imgsz, device, progress)))
         models, job = loaded[0], stream.job
         if is_practice(job):
             import time as _time
@@ -394,7 +400,7 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             recording=stream.recorder, fmt=format_mod.by_name(job.get("format") or "fours"),
             pipeline=live.VideoPipeline(weights=weights, skip_longview=skip_longview,
                                         line=models.line_model is not None,
-                                        progress=progress),
+                                        progress=progress, house_weights=house_weights),
             sheet=_sheet(job), models=models, publish=publish, progress=progress,
             fp_recorder=recorder_for(job))
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import nullcontext
+from contextlib import ExitStack
 
 from curling_score.detect import cache
 from curling_score.detect.rocks import Seen
@@ -150,24 +150,33 @@ def detect_spans(path, specs, end_s: float, detector=None):
     ``detect_span(..., use_cache=False)`` would give it. For a live recording,
     which has no strip proxy and no detection cache: decoding each frame once
     for both panels halves the dominant cost of a live end.
+
+    A spec may name its own detector, ``(setup, start_s, fps, detector)``
+    (None for the classical one): the receiving panel reads with overhead-4,
+    the thrower's with overhead-3. One without reads with ``detector``. Each
+    detector runs behind the decode once, however many spans share it.
     """
     from curling_score.detect import rocks
 
     out = [[] for _ in specs]
     batches = [[] for _ in specs]
-    behind = _DetectBehind(detector) if detector is not None else None
+    dets = [spec[3] if len(spec) > 3 else detector for spec in specs]
+    behinds = {}
 
     def flush(i):
         setup, batch = specs[i][0], batches[i]
-        if behind is None:
+        if dets[i] is None:
             out[i].extend((t, rocks.find_stones(img, setup.calib)) for t, img in batch)
         else:
-            behind.submit(out[i], batch, setup.calib)
+            behinds[id(dets[i])].submit(out[i], batch, setup.calib)
         batches[i] = []
 
-    with behind or nullcontext():
-        for i, t, img in F.windows(path, [(start, fps, setup.rect)
-                                          for setup, start, fps in specs], end_s):
+    with ExitStack() as stack:
+        for det in dets:
+            if det is not None and id(det) not in behinds:
+                behinds[id(det)] = stack.enter_context(_DetectBehind(det))
+        for i, t, img in F.windows(path, [(spec[1], spec[2], spec[0].rect)
+                                          for spec in specs], end_s):
             batches[i].append((t, img))
             if len(batches[i]) >= BATCH:
                 flush(i)

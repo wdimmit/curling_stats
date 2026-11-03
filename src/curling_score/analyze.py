@@ -305,6 +305,10 @@ class EndContext:
     # The hand model, which reads where the thrower let go along the line's
     # delivery path (`load_release_model`); None reads no releases.
     release_model: object = None
+    # What reads each end's receiving panel, `end.house` (overhead-4,
+    # `load_house_detector`); `detector` reads the thrower's. None reads both
+    # with `detector`.
+    house_detector: object = None
 
 
 @dataclass
@@ -360,13 +364,8 @@ def load_models(weights, imgsz: int, device, *, skip_longview: bool,
                 skip_line: bool, progress=log.info):
     """The overhead detector, the broom model and the line model: ``(detector,
     broom_model, line_model)``, each None where it is not wanted or not there."""
-    detector = None
-    if weights:
-        from curling_score.detect import yolo
-
-        detector = yolo.YoloDetector(weights, conf=0.30, device=device,
-                                     imgsz=imgsz)
-        detector.model.overrides["half"] = True
+    detector = _overhead_detector(weights, imgsz, device) if weights else None
+    if detector is not None:
         progress(f"detecting with {weights} at imgsz={imgsz}")
     # The skip's target broom, read in the camera that sees the destination
     # house. None without a model -- no brooms, the same timeline otherwise.
@@ -387,6 +386,27 @@ def load_models(weights, imgsz: int, device, *, skip_longview: bool,
     if line_model is not None and spinmodel.default_model() is not None:
         progress(f"reading spin with {weights_mod.spin_path()}")
     return detector, broom_model, line_model
+
+
+def _overhead_detector(weights, imgsz: int, device):
+    from curling_score.detect import yolo
+
+    detector = yolo.YoloDetector(weights, conf=0.30, device=device, imgsz=imgsz)
+    detector.model.overrides["half"] = True
+    return detector
+
+
+def load_house_detector(detector, weights, house_weights, imgsz: int, device,
+                        progress=log.info):
+    """What reads each end's receiving panel beside ``detector``, which was
+    loaded from ``weights``: ``detector`` itself when ``house_weights`` is None
+    or the same file -- one model in memory, and the detection cache's keys
+    as they were -- else a second model, loaded as the first was."""
+    if house_weights is None or weights_mod.same_file(house_weights, weights):
+        return detector
+    house = _overhead_detector(house_weights, imgsz, device)
+    progress(f"reading the receiving panel with {house_weights} at imgsz={imgsz}")
+    return house
 
 
 def load_release_model(line_model, progress=log.info):
@@ -494,17 +514,20 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     from_s = run_up_from(prev_end_s, end.start_s,
                          crossed_games=end is game.ends[0])
     far = read_setups[OTHER_HOUSE[end.house]]
+    # The receiving panel reads with its own model; the thrower's with the
+    # stone model (`EndContext.house_detector`).
+    house_detector = ctx.detector if ctx.house_detector is None else ctx.house_detector
     if ctx.one_pass:
         from curling_score.detect.delivery import REQUIRED_LOOKBACK_S
 
         # The spans detect_end and the far panel's detect_span would read.
         near_from = max(0.0, min(end.start_s - REQUIRED_LOOKBACK_S, from_s))
         seq, far_seq = sequence.detect_spans(
-            read_path, [(setup, near_from, ctx.shot_fps),
+            read_path, [(setup, near_from, ctx.shot_fps, house_detector),
                         (far, from_s, release.RELEASE_FPS)], end.end_s, ctx.detector)
     else:
         seq = sequence.detect_end(read_path, setup, end, ctx.shot_fps,
-                                  ctx.detector, use_cache=ctx.use_cache,
+                                  house_detector, use_cache=ctx.use_cache,
                                   from_s=from_s)
     stages.mark("detect")
     # The tracking keeps same-colour stones a stone's width apart; the house
@@ -1097,6 +1120,10 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     detector, broom_model, line_model = load_models(
         weights, imgsz, device, skip_longview=skip_longview,
         skip_line=skip_line, progress=progress)
+    # The receiving panel's model; the profile below keeps `detector`.
+    house_weights = weights_mod.receiving_for(weights)
+    house_detector = load_house_detector(detector, weights, house_weights, imgsz,
+                                         device, progress)
     release_model = load_release_model(line_model, progress)
 
     phase("profile", 0.0, "finding games and ends")
@@ -1137,6 +1164,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         recording_start_s=float(start_s or 0.0),
         recording_end_s=samples[-1].t if samples else None,
         frame_setups=setups, release_model=release_model,
+        house_detector=house_detector,
     )
     out_games = build_games(
         ctx, games, phase=phase,
@@ -1165,7 +1193,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             line=line_model is not None and sideviews is not None,
             spin_weights=weights_mod.spin_path(),
             release_weights=(None if release_model is None
-                             else weights_mod.release_path())),
+                             else weights_mod.release_path()),
+            house_weights=house_weights),
         fmt=fmt,
         check=check,
     )
