@@ -1,12 +1,13 @@
 """Capture: which camera is which, timing its packets, and holding its picture
 still while they stop."""
 
+import contextlib
 import io
 import json
 import logging
 import os
+import select
 import signal
-import struct
 import subprocess
 import sys
 import threading
@@ -18,7 +19,7 @@ import av
 import numpy as np
 import pytest
 
-from curling_score.cameras import capture, inventory, tap
+from curling_score.cameras import capture, inventory
 
 SPS_PPS_IDR = b"\x00\x00\x00\x01\x67sps\x00\x00\x00\x01\x68pps\x00\x00\x00\x01\x65idr"
 P1 = b"\x00\x00\x00\x01\x41p1"
@@ -43,18 +44,21 @@ def holder():
     return capture.Holder(lambda data, at, key: out.append(data), clock=clock), clock, out
 
 
-def h264(count=12, gop=6):
+def h264(count=12, gop=6, size=(64, 48), noise=False):
     """Real H.264 as the cameras send it, Annex-B with SPS and PPS before every
-    keyframe: [(packet, keyframe)]."""
+    keyframe: [(packet, keyframe)]. ``noise`` makes the frames as big as real
+    ones of their size."""
     codec = av.CodecContext.create("libx264", "w")
-    codec.width, codec.height, codec.pix_fmt = 64, 48, "yuv420p"
+    (codec.width, codec.height), codec.pix_fmt = size, "yuv420p"
     codec.time_base = Fraction(1, 60)
     codec.thread_count = 1
     codec.options = {"preset": "ultrafast", "x264-params":
                      f"repeat-headers=1:keyint={gop}:min-keyint={gop}:scenecut=0:bframes=0"}
     out = []
     for i in range(count):
-        frame = av.VideoFrame.from_ndarray(np.full((48, 64, 3), 8 * i, np.uint8), format="rgb24")
+        pixels = (np.random.default_rng(i).integers(0, 256, (size[1], size[0], 3), np.uint8)
+                  if noise else np.full((size[1], size[0], 3), 8 * i, np.uint8))
+        frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
         frame.pts = i
         out += [(bytes(p), p.is_keyframe) for p in codec.encode(frame)]
     return out + [(bytes(p), p.is_keyframe) for p in codec.encode(None)]
@@ -341,51 +345,20 @@ def test_a_live_camera_starts_at_its_newest_keyframe_once_the_fifo_opens(tmp_pat
     assert queued(fifo) == [SPS_PPS_IDR + b"2", SPS_PPS_IDR + b"3", P1]
 
 
-def test_the_tap_reader_gives_the_holder_packets_before_the_fifo_opens(tmp_path):
-    """The reader once passed packets on only after the composer opened the
-    FIFO, so a camera quiet after its first keyframe left nothing to hold."""
-    read, write = os.pipe()
-    with os.fdopen(write, "wb") as w:
-        now = time.monotonic_ns()
-        w.write(struct.pack("<IBqq", len(SPS_PPS_IDR), 1, 0, now) + SPS_PPS_IDR)
-        w.write(struct.pack("<IBqq", len(P1), 0, 166_667, now) + P1)
-    cap = capture_reading(tmp_path, time.monotonic(), read)
-    cap._read()                            # to the end of the pipe
-    assert (tmp_path / "first").read_bytes() == SPS_PPS_IDR
-    assert not cap.fifo.opened.is_set() and not cap.fifo._queue
-    cap.fifo.opened.set()
-    assert cap.holder.tick() is True
-    assert queued(cap.fifo) == [SPS_PPS_IDR]
-
-
-def capture_reading(tmp_path, t0, fd=None):
+def capture_reading(tmp_path, t0):
     args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
                                          "--first", str(tmp_path / "first"), "--t0", str(t0)])
-    args.tap_fd, args.parent = fd, os.getppid()
+    args.parent = os.getppid()
     return capture._Capture(args)
 
 
-def test_the_tap_reader_times_packets_by_the_cameras_clock_from_the_sessions_zero(tmp_path):
-    """Three packets a frame apart that reached the Ryzen bunched up: each is
-    timed as the camera spaced them, anchored to the quickest, in seconds
-    since the recorder's start (--t0)."""
-    t0 = time.monotonic() - 6.0
-    pts0 = 16_419_840_000_000_000          # 100 ns units, as libndi gives them
-    read, write = os.pipe()
-    with os.fdopen(write, "wb") as w:
-        for i, (data, late) in enumerate([(SPS_PPS_IDR, 0.0), (P1, 0.013), (P2, 0.001)]):
-            arrived = round((t0 + 5.5 + i / 60 + late) * 1e9)   # SRT_LATENCY_S later
-            w.write(struct.pack("<IBqq", len(data), i == 0, pts0 + i * tap.PTS_HZ // 60, arrived)
-                    + data)
-    cap = capture_reading(tmp_path, t0, read)
-    cap.fifo.opened.set()
-    cap._read()
-
-    assert [t for t, _, _ in cap.fifo._queue] == pytest.approx([5.0, 5.0 + 1 / 60, 5.0 + 2 / 60],
-                                                               abs=1e-6)
-
-
 # --- the camera over SRT: MPEG-TS from ffmpeg ------------------------------------
+
+
+def camera_h264(count=12, gop=6):
+    """h264() with frames big enough that a demuxer probing PROBE's bytes
+    passes them on as they come, as a real camera's (~100 KB keyframes) are."""
+    return h264(count, gop, size=(320, 240), noise=True)
 
 
 def mpegts(packets, pts0=0):
@@ -422,6 +395,37 @@ def test_ffmpeg_copies_the_cameras_video_to_mpegts_on_stdout():
     assert cmd[cmd.index("-i") + 1] == capture.srt_url("3H-HOUSE")
     assert cmd[cmd.index("-map") + 1] == "0:v:0"
     assert cmd[cmd.index("-c") + 1] == "copy" and cmd[cmd.index("-f") + 1] == "mpegts"
+
+
+def test_ffmpeg_probes_the_camera_as_little_as_it_can():
+    """ffmpeg's default probe holds a new connection's first ~4 s back and
+    then sends them in a burst, which CameraClock can only time by arrival
+    (2A-PTZ, 2026-11-03: worst 3.6 s late; with these, 0.07 s)."""
+    cmd = capture.ffmpeg_command("3H-HOUSE")
+    before_input = cmd[:cmd.index("-i")]
+    for option, value in capture.PROBE.items():
+        assert before_input[before_input.index(f"-{option}") + 1] == value
+
+
+def test_the_reader_passes_packets_on_without_waiting_for_more(tmp_path):
+    """A connection's first packets go on at once: the demuxer must not wait
+    for seconds of stream to probe it."""
+    read, write = os.pipe()
+    data = mpegts(camera_h264(6))
+    assert len(data) > 2 * int(capture.PROBE["probesize"])    # a real keyframe is ~100 KB
+    threading.Thread(target=os.write, args=(write, data), daemon=True).start()
+    cap = capture_reading(tmp_path, time.monotonic())
+    reader = threading.Thread(target=cap._read_stream, args=(os.fdopen(read, "rb"), 0),
+                              daemon=True)
+    reader.start()
+    try:
+        deadline = time.monotonic() + 2.0
+        while not (tmp_path / "first").exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert (tmp_path / "first").exists()
+    finally:
+        os.close(write)
+        reader.join(2)
 
 
 def test_pts_unwrap_carries_on_across_the_33_bit_wrap():
@@ -610,8 +614,8 @@ def test_one_warning_for_a_composer_that_stays_behind(tmp_path, caplog):
 
 def test_full_queue_never_blocks_the_reader_and_resumes_at_a_keyframe(monkeypatch, tmp_path,
                                                                       caplog):
-    """A composer that stops reading must not back up into the tap, and so
-    into libndi: past BACKLOG packets (a guard on memory, since none older
+    """A composer that stops reading must not back up into the reader, and so
+    into ffmpeg: past BACKLOG packets (a guard on memory, since none older
     than MAX_AGE_S is written anyway) what does not fit is dropped, and the
     stream picks up again at a keyframe."""
     monkeypatch.setattr(capture, "BACKLOG", 3)
@@ -663,73 +667,210 @@ def test_reconnects_back_off_and_start_over_once_packets_flow():
     assert r.due() is True
 
 
-def test_without_the_tap_a_capture_exits_naming_it(monkeypatch, tmp_path):
-    """A capture outside the worker image cannot hear any camera: it says why,
-    so the recorder's error can say it too."""
-    monkeypatch.setattr(capture.tap, "TAP_DIR", tmp_path / "ndi")
-    args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
-                                         "--first", str(tmp_path / "first"), "--t0", "0"])
-    with pytest.raises(SystemExit) as exited:
-        capture._exec_with_tap(args, [])
-    assert str(exited.value.code).startswith("the packet tap is not loaded (")
-    assert str(tmp_path / "ndi" / "libavcodec-ndi.so.61") in str(exited.value.code)
+# --- the capture's ffmpeg: connecting, reconnecting, ending ----------------------
 
-
-# A capture whose camera is not there, run with libndi faked: the finder is
-# stuck in a call that holds the GIL, as cyndilib's calls do, and the FIFO's
-# writer is blocked opening a FIFO nobody reads.
-_STUCK = """
-import ctypes, os, sys, types
-
-libc = ctypes.PyDLL(None)                 # a call through it keeps the GIL
-held = ctypes.create_string_buffer(64)    # zeroed: a default pthread mutex on glibc
-libc.pthread_mutex_lock(held)
-
-class Finder:
-    def wait_for_sources(self, timeout):
-        print("stuck", flush=True)
-        # Never returns, signal or not: libndi waiting on a camera that is not
-        # there, with the GIL held.
-        libc.pthread_mutex_lock(held)
-
-    def update_sources(self):
-        return []
-
-for name in ("cyndilib", "cyndilib.finder", "cyndilib.receiver", "cyndilib.video_frame",
-             "cyndilib.wrapper", "cyndilib.wrapper.ndi_recv"):
-    sys.modules[name] = types.ModuleType(name)
-sys.modules["cyndilib.finder"].Finder = Finder
-sys.modules["cyndilib.receiver"].Receiver = sys.modules["cyndilib.receiver"].ReceiveFrameType = None
-sys.modules["cyndilib.video_frame"].VideoRecvFrame = None
-ndi_recv = sys.modules["cyndilib.wrapper.ndi_recv"]
-ndi_recv.RecvBandwidth = ndi_recv.RecvColorFormat = None
-
-from curling_score.cameras import capture
-
-fifo, first = sys.argv[1:3]
-args = capture._parser().parse_args(["--camera", "5H-POV", "--fifo", fifo, "--first", first,
-                                     "--t0", "0"])
-args.tap_fd, _ = os.pipe()
-args.parent = os.getppid()
-sys.exit(capture._Capture(args).run())
+# A stand-in for ffmpeg: MODE SPAWNS [TS]. Each run notes "<pid> <time>" in
+# SPAWNS. "sleep" sends nothing; "exit" exits 1 at once; "send" sends TS on its
+# first run only, then sleeps (a camera that stalls); "stderr" first writes
+# 1 MB of lines to stderr.
+_FAKE = """
+import os, sys, time
+mode, spawns = sys.argv[1], sys.argv[2]
+with open(spawns, "a") as f:
+    f.write(f"{os.getpid()} {time.monotonic()}\\n")
+first = len(open(spawns).read().splitlines()) == 1
+if mode == "exit":
+    sys.exit(1)
+if mode == "stderr":
+    for _ in range(10_000):
+        sys.stderr.write("x" * 99 + "\\n")
+    sys.stderr.flush()
+if mode in ("send", "stderr") and first:
+    time.sleep(0.3)
+    sys.stdout.buffer.write(open(sys.argv[3], "rb").read())
+    sys.stdout.flush()
+time.sleep(3600)
 """
 
 
-def test_sigterm_ends_a_capture_stuck_in_libndi_at_once(tmp_path):
-    """A capture whose camera had gone silent ignored SIGTERM for over 5 s and
-    was killed (Task 11, D8): a Python handler runs only once the call it is
-    stuck in returns. The recorder gives a capture CAPTURE_EXIT_S."""
-    fifo = tmp_path / "cam.nut"
-    os.mkfifo(fifo)
-    src = Path(capture.__file__).resolve().parents[2]
-    proc = subprocess.Popen([sys.executable, "-c", _STUCK, str(fifo), str(tmp_path / "first")],
-                            stdout=subprocess.PIPE, env={**os.environ, "PYTHONPATH": str(src)})
+def fake_ffmpeg(monkeypatch, tmp_path, mode, ts=b""):
+    """Make captures run the stand-in in ``mode``; the file its runs note
+    themselves in."""
+    fake, spawns, src = tmp_path / "fake_ffmpeg.py", tmp_path / "spawns", tmp_path / "src.ts"
+    fake.write_text(_FAKE)
+    src.write_bytes(ts)
+    monkeypatch.setattr(capture, "ffmpeg_command",
+                        lambda camera: [sys.executable, str(fake), mode, str(spawns), str(src)])
+    return spawns
+
+
+def spawned(spawns):
+    """[(pid, time)] of the stand-in's runs."""
+    if not spawns.exists():
+        return []
+    return [(int(p), float(t)) for p, t in (line.split() for line in spawns.read_text().splitlines())]
+
+
+def alive(pid):
+    """Whether ``pid`` runs: not gone, and not a zombie."""
     try:
-        assert proc.stdout.readline() == b"stuck\n"
-        proc.send_signal(signal.SIGTERM)
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except FileNotFoundError:
+        return False
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"
+
+
+def running_capture(tmp_path):
+    os.mkfifo(tmp_path / "f")
+    return capture_reading(tmp_path, time.monotonic())
+
+
+def stop_after(cap, seconds):
+    timer = threading.Timer(seconds, cap.stop, (0, "test over"))
+    timer.start()
+    return timer
+
+
+def test_a_camera_that_never_answers_ends_the_capture_after_first_s(monkeypatch, tmp_path, caplog):
+    fake_ffmpeg(monkeypatch, tmp_path, "sleep")
+    monkeypatch.setattr(capture, "FIRST_S", 0.3)
+    cap = running_capture(tmp_path)
+    began = time.monotonic()
+    assert cap.run() == 1
+    assert time.monotonic() - began < 2.0
+    assert "no keyframe within" in caplog.text
+
+
+def test_a_stalled_stream_reconnects_at_doubling_gaps(monkeypatch, tmp_path):
+    spawns = fake_ffmpeg(monkeypatch, tmp_path, "send", mpegts(camera_h264(12)))
+    cap = running_capture(tmp_path)
+    cap.reconnects = capture.Reconnects(first_s=0.2, max_s=0.8)
+    stop_after(cap, 3.5)
+    cap.run()
+
+    runs = spawned(spawns)
+    assert len(runs) >= 4
+    gaps = np.diff([t for _, t in runs])
+    assert all(b >= a - 0.15 for a, b in zip(gaps[1:], gaps[2:]))
+    assert gaps.max() <= 0.8 + 0.3
+    time.sleep(0.2)
+    assert not any(alive(pid) for pid, _ in runs)
+
+
+def test_an_ffmpeg_that_exits_at_once_is_not_restarted_in_a_tight_loop(monkeypatch, tmp_path):
+    spawns = fake_ffmpeg(monkeypatch, tmp_path, "exit")
+    cap = running_capture(tmp_path)
+    cap.reconnects = capture.Reconnects(first_s=0.2, max_s=0.8)
+    stop_after(cap, 2.0)
+    cap.run()
+    assert 2 <= len(spawned(spawns)) <= 5
+
+
+def read_fifo(path, done):
+    """Everything written to the FIFO at ``path`` until ``done`` is set."""
+    chunks = []
+
+    def run():
+        fd = os.open(path, os.O_RDONLY)
+        while not done.is_set():
+            ready, _, _ = select.select([fd], [], [], 0.05)
+            if ready:
+                data = os.read(fd, 1 << 16)
+                if not data:
+                    break
+                chunks.append(data)
+        os.close(fd)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return chunks, thread
+
+
+def test_packets_from_an_mpegts_source_reach_the_fifo_with_their_times(monkeypatch, tmp_path):
+    source = camera_h264(12, gop=6)
+    fake_ffmpeg(monkeypatch, tmp_path, "send", mpegts(source))
+    cap = running_capture(tmp_path)
+    done = threading.Event()
+    chunks, reader = read_fifo(tmp_path / "f", done)
+    stop_after(cap, 0.7)                   # before the Holder repeats anything
+    cap.run()
+    time.sleep(0.2)
+    done.set()
+    reader.join(2)
+
+    # The demuxer gives a packet once the next one starts, so the last of the
+    # file waits for its end (live, the next comes 1/60 s later).
+    source = source[:-1]
+    got = demux_nut(b"".join(chunks))[:len(source)]
+    assert [k for _, k, _ in got] == [k for _, k in source]
+    assert all(data.endswith(src) for (_, _, data), (src, _) in zip(got, source))
+    # The stand-in sends the file at once, a burst CameraClock times by
+    # arrival; the spacing of live packets is test_the_srt_reader_times_*'s.
+    assert all(np.diff([t for t, _, _ in got]) > 0)
+
+
+def test_ffmpegs_stderr_is_drained(monkeypatch, tmp_path):
+    fake_ffmpeg(monkeypatch, tmp_path, "stderr", mpegts(camera_h264(6)))
+    cap = running_capture(tmp_path)
+
+    def stop_once_first():
+        deadline = time.monotonic() + 3.0
+        while not (tmp_path / "first").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        cap.stop(0, "test over")
+
+    threading.Thread(target=stop_once_first, daemon=True).start()
+    cap.run()
+    assert (tmp_path / "first").exists()
+
+
+# A capture run as the recorder runs it, with the stand-in for ffmpeg.
+_CHILD = """
+import sys
+from curling_score.cameras import capture
+fake, spawns, fifo, first = sys.argv[1:5]
+capture.shutil.which = lambda name: "/usr/bin/" + name
+capture.ffmpeg_command = lambda camera: [sys.executable, fake, "sleep", spawns]
+capture.main(["--camera", "2A-HOUSE", "--fifo", fifo, "--first", first, "--t0", "0"])
+"""
+
+
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGKILL])
+def test_a_signal_ends_a_capture_and_its_ffmpeg_at_once(tmp_path, sig):
+    """The recorder ends a capture with SIGTERM, and kills one that lingers. A
+    capture's ffmpeg must go with it, or it keeps pulling the camera."""
+    fake, spawns = tmp_path / "fake_ffmpeg.py", tmp_path / "spawns"
+    fake.write_text(_FAKE)
+    os.mkfifo(tmp_path / "f")
+    src = Path(capture.__file__).resolve().parents[2]
+    proc = subprocess.Popen([sys.executable, "-c", _CHILD, str(fake), str(spawns),
+                             str(tmp_path / "f"), str(tmp_path / "first")],
+                            env={**os.environ, "PYTHONPATH": str(src)})
+    try:
+        deadline = time.monotonic() + 10
+        while not spawned(spawns) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        (pid, _), = spawned(spawns)
+        proc.send_signal(sig)
         began = time.monotonic()
         proc.wait(timeout=3)
         assert time.monotonic() - began < 1.0
+        while alive(pid) and time.monotonic() - began < 2.0:
+            time.sleep(0.05)
+        assert not alive(pid)
     finally:
         proc.kill()
         proc.wait()
+        for pid, _ in spawned(spawns):
+            with contextlib.suppress(ProcessLookupError):   # it may go as we look
+                os.kill(pid, signal.SIGKILL)
+
+
+def test_without_ffmpeg_a_capture_exits_naming_it(monkeypatch, tmp_path):
+    """A capture outside the worker image cannot reach any camera: it says
+    why, so the recorder's error can say it too."""
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(SystemExit) as exited:
+        capture.main(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
+                      "--first", str(tmp_path / "first"), "--t0", "0"])
+    assert str(exited.value.code).startswith("ffmpeg is not installed")
