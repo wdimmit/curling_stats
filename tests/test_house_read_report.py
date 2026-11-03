@@ -38,35 +38,74 @@ def row(shot, stones, held=None, color="red", end=1, missing=False, last=False):
 
 
 def test_recovered_tags_put_back_and_seen():
-    old = [row(1, [stone("red", 0, 0)]),
-           row(2, [stone("red", 0, 0), stone("yellow", 1, 1)])]
-    new = [row(1, [stone("red", 0, 0), stone("yellow", 0.5, 0.5)],
-               held=[stone("yellow", 0.5, 0.5)]),
-           row(2, [stone("red", 0, 0), stone("yellow", 1, 1), stone("red", 2, 2)],
-               held=[])]
+    # The baseline had a yellow and a red in play at shot 1 and lost each at
+    # shot 2; the new run has them back, the yellow from `held`.
+    both = [stone("red", 0, 0), stone("yellow", 0.5, 0.5)]
+    old = [row(1, both), row(2, [])]
+    new = [row(1, both), row(2, both, held=[stone("yellow", 0.5, 0.5)])]
     got = rep.recovered(old, new)
     assert [(r["shot"], r["color"], r["x"], r["y"], r["how"]) for r in got] == [
-        (1, "yellow", 0.5, 0.5, "put back"), (2, "red", 2, 2, "seen")]
+        (2, "red", 0, 0, "seen"), (2, "yellow", 0.5, 0.5, "put back")]
     assert {"video", "game", "end"} <= set(got[0])
 
 
+def test_a_stone_new_in_the_house_is_not_recovered():
+    # The baseline never had the yellow at (1, 1) in play: a read that adds a
+    # stone is not a read that gets one back.
+    old = [row(1, [stone("red", 0, 0)]), row(2, [stone("red", 0, 0)])]
+    new = [row(1, [stone("red", 0, 0)]),
+           row(2, [stone("red", 0, 0), stone("yellow", 1, 1)])]
+    assert rep.recovered(old, new) == []
+    # Nor is anything at shot 1, with no row before it.
+    assert rep.recovered([row(1, [])], [row(1, [stone("red", 0, 0)])]) == []
+
+
+def test_a_stone_lost_at_one_shot_and_kept_counts_once():
+    gone = [stone("red", 3, 3)]
+    old = [row(1, gone), row(2, []), row(3, []), row(4, [])]
+    new = [row(1, gone), row(2, gone), row(3, gone), row(4, gone)]
+    got = rep.recovered(old, new)
+    assert [(r["shot"], r["color"]) for r in got] == [(2, "red")]
+
+
+def test_a_missing_row_before_recovers_nothing():
+    old = [row(1, [], missing=True), row(2, [])]
+    new = [row(1, [], missing=True), row(2, [stone("red", 0, 0)])]
+    assert rep.recovered(old, new) == []
+    assert rep.recovered([row(2, [])], [row(2, [stone("red", 0, 0)])]) == []
+
+
+def test_ends_do_not_borrow_each_others_rows():
+    old = [row(1, [stone("red", 0, 0)], end=1), row(1, [], end=2)]
+    new = [row(1, [stone("red", 0, 0)], end=1), row(1, [stone("red", 0, 0)], end=2)]
+    assert rep.recovered(old, new) == []
+
+
 def test_moved_less_than_seen_m_is_not_recovered():
-    old = [row(1, [stone("red", 0, 0)])]
-    near = [row(1, [stone("red", 0.1, 0)])]
-    far = [row(1, [stone("red", 0.2, 0)])]
-    assert rep.recovered(old, near) == []
-    assert [r["how"] for r in rep.recovered(old, far)] == ["seen"]
+    first = row(1, [stone("red", 0, 0)])
+    old = [first, row(2, [])]
+
+    def after(stones):
+        return [first, row(2, stones)]
+
+    assert [r["how"] for r in rep.recovered(old, after([stone("red", 0.1, 0)]))] == ["seen"]
+    # Further than SEEN_M from where it sat: a different stone, not that one.
+    assert rep.recovered(old, after([stone("red", 0.2, 0)])) == []
     # Colour counts: a yellow where a red sat is a new stone.
-    assert len(rep.recovered(old, [row(1, [stone("yellow", 0, 0)])])) == 1
+    assert rep.recovered(old, after([stone("yellow", 0, 0)])) == []
+    # A settled stone the read moves by under SEEN_M was never lost.
+    assert rep.recovered([first, row(2, [stone("red", 0.1, 0)])],
+                         after([stone("red", 0, 0)])) == []
 
 
 def test_recovered_matches_shots_not_rest_times():
-    old = [row(1, [stone("red", 0, 0)])]
-    new = [row(1, [stone("red", 0, 0), stone("yellow", 1, 1)])]
-    new[0]["t_rest"] += 0.4  # another model's run settles the shot a little later
+    old = [row(1, [stone("red", 0, 0), stone("yellow", 1, 1)]), row(2, [stone("red", 0, 0)])]
+    new = [row(1, [stone("red", 0, 0), stone("yellow", 1, 1)]),
+           row(2, [stone("red", 0, 0), stone("yellow", 1, 1)])]
+    new[1]["t_rest"] += 0.4  # another model's run settles the shot a little later
     assert [r["color"] for r in rep.recovered(old, new)] == ["yellow"]
     assert rep.unmatched(old, new) == 0
-    assert rep.unmatched(old, new + [row(2, [stone("red", 3, 3)])]) == 1
+    assert rep.unmatched(old, new + [row(3, [stone("red", 3, 3)])]) == 1
 
 
 def test_recovered_skips_missing_and_unmatched_rows():
@@ -82,18 +121,24 @@ def _write(tmp_path, name, rows):
     return str(p)
 
 
-def _pair(tmp_path, tag, lost_color="yellow"):
-    old = _write(tmp_path, f"{tag}-old.json", [row(1, [stone("red", 0, 0)])])
-    new = _write(tmp_path, f"{tag}-new.json",
-                 [row(1, [stone("red", 0, 0), stone(lost_color, 1, 1)])])
+def _pair(tmp_path, tag):
+    """The baseline had the red and a yellow at shot 1 and lost the yellow at
+    shot 2; the new run has it."""
+    both = [stone("red", 0, 0), stone("yellow", 1, 1)]
+    old = _write(tmp_path, f"{tag}-old.json", [row(1, both), row(2, [stone("red", 0, 0)])])
+    new = _write(tmp_path, f"{tag}-new.json", [row(1, both), row(2, both)])
     return old, new
+
+
+def _nothing(tmp_path):
+    rows = [row(1, [stone("red", 0, 0)]), row(2, [stone("red", 0, 0)])]
+    return _write(tmp_path, "o.json", rows), _write(tmp_path, "n.json", rows)
 
 
 def test_expect_reports_still_lost(tmp_path, capsys):
     p_old, p_new = _pair(tmp_path, "proto")
     # This comparison recovers nothing.
-    old, new = _write(tmp_path, "o.json", [row(1, [stone("red", 0, 0)])]), \
-        _write(tmp_path, "n.json", [row(1, [stone("red", 0, 0)])])
+    old, new = _nothing(tmp_path)
     code = rep.compare([old], [new], expect=([p_old], [p_new]))
     out = capsys.readouterr().out
     assert code == 1
@@ -105,40 +150,47 @@ def test_expect_passes_when_recovered(tmp_path, capsys):
     old, new = _pair(tmp_path, "cur")
     # The new run put it back 0.1 m from where the prototype had it.
     new_rows = json.loads(Path(new).read_text())
-    new_rows[0]["stones"][1] = stone("yellow", 1.1, 1)
-    new_rows[0]["held"] = [stone("yellow", 1.1, 1)]
+    new_rows[1]["stones"][1] = stone("yellow", 1.1, 1)
+    new_rows[1]["held"] = [stone("yellow", 1.1, 1)]
     Path(new).write_text(json.dumps(new_rows))
     assert rep.compare([old], [new], expect=([p_old], [p_new])) == 0
     out = capsys.readouterr().out
     assert "STILL LOST" not in out
-    assert "put back" in out
+    # Both runs' counts on one line, by the same rule.
+    assert ("recovered, this run: 1 stones (1 put back, 0 seen)" in out
+            and "prototype pair: 1 stones (0 put back, 1 seen)" in out)
+    assert [l for l in out.splitlines() if l.startswith("recovered")][0].count("|") == 1
 
 
 def test_expect_judges_the_new_rows_not_the_recovered_list(tmp_path, capsys):
     # The baseline already sees the yellow, so nothing is recovered here, but
     # nothing is lost either.
     p_old, p_new = _pair(tmp_path, "proto")
-    both = [row(1, [stone("red", 0, 0), stone("yellow", 1.05, 1)])]
+    both = [row(1, [stone("red", 0, 0), stone("yellow", 1.05, 1)]),
+            row(2, [stone("red", 0, 0), stone("yellow", 1.05, 1)])]
     old, new = _write(tmp_path, "o.json", both), _write(tmp_path, "n.json", both)
     assert rep.compare([old], [new], expect=([p_old], [p_new])) == 0
     out = capsys.readouterr().out
-    assert "recovered: 0 stones" in out and "STILL LOST" not in out
+    assert "recovered, this run: 0 stones" in out and "STILL LOST" not in out
 
 
 def test_expect_row_missing_from_the_new_run_is_still_lost(tmp_path, capsys):
     p_old, p_new = _pair(tmp_path, "proto")
-    old = _write(tmp_path, "o.json", [row(2, [])])
-    new = _write(tmp_path, "n.json", [row(2, [])])
+    old = _write(tmp_path, "o.json", [row(3, [])])
+    new = _write(tmp_path, "n.json", [row(3, [])])
     assert rep.compare([old], [new], expect=([p_old], [p_new])) == 1
     assert "no row in the new run" in capsys.readouterr().out
-    new = _write(tmp_path, "n2.json", [row(1, [], missing=True)])
+    new = _write(tmp_path, "n2.json", [row(1, []), row(2, [], missing=True)])
     assert rep.compare([old], [new], expect=([p_old], [p_new])) == 1
     assert "row is missing" in capsys.readouterr().out
 
 
 def test_expect_wrong_colour_or_shot_is_still_lost(tmp_path, capsys):
     p_old, p_new = _pair(tmp_path, "proto")
-    old, new = _pair(tmp_path, "cur", lost_color="red")
+    old, new = _nothing(tmp_path)
+    new_rows = json.loads(Path(new).read_text())
+    new_rows[1]["stones"].append(stone("red", 1, 1))  # right place, wrong colour
+    Path(new).write_text(json.dumps(new_rows))
     assert rep.compare([old], [new], expect=([p_old], [p_new])) == 1
     assert "STILL LOST" in capsys.readouterr().out
 
@@ -147,7 +199,7 @@ def test_compare_without_expect_returns_zero(tmp_path, capsys):
     old, new = _pair(tmp_path, "cur")
     assert rep.compare([old], [new]) == 0
     out = capsys.readouterr().out
-    assert "recovered: 1" in out
+    assert "recovered, this run: 1" in out and "prototype" not in out
 
 
 def test_old_rows_without_held_load(tmp_path):
