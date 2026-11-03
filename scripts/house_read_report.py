@@ -25,9 +25,14 @@ and is empty when ``from_deliveries`` (an older ``PYTHONPATH``) cannot.
 ``--compare`` also lists the stones the new run has that the old did not
 (``recovered``: no same-colour stone of the old row within 0.15 m), as "put
 back" when the new row's ``held`` has it, else "seen". ``--expect`` takes
-another pair, say a prototype's, and every stone that pair recovered which this
-comparison does not -- same video, game, end and shot, same colour, within
-0.15 m -- prints ``STILL LOST`` and the exit code is 1.
+another pair, say a prototype's, and every stone that pair recovered which the
+new run's own row for that shot (same video, game, end and shot number) has no
+same-colour stone within 0.15 m of -- or has no row, or a missing one -- prints
+``STILL LOST`` and the exit code is 1. It is the new run's row that counts, not
+this comparison's recovered list: the prototype read with an older model, and a
+stone the baseline already sees is not "recovered" here but is not lost.
+Rows are matched on video, game, end and shot number; new rows with no old row
+are counted and printed, not silently dropped.
 
 A diff that adds a stone of the colour that did not throw is impossible on the
 ice: nothing but the thrown rock arrives. It is the house read's own error
@@ -169,14 +174,15 @@ def _load_rows(paths):
 
 def recovered(old, new):
     """Stones of ``new`` that ``old`` had no same-colour stone within ``SEEN_M``
-    of, shot by shot (rows matched as ``compare`` does: video, game, end and
-    rest time). ``how`` is "put back" when the new row's ``held`` has the stone
+    of, shot by shot (rows matched on video, game, end and shot number, as
+    ``--expect`` does; ``unmatched`` counts the rows that find no partner).
+    ``how`` is "put back" when the new row's ``held`` has the stone
     -- same colour within ``SEEN_M`` -- else "seen". Old rows without ``held``
     are fine; only the new row's is read."""
-    by_old = {_key(r): r for r in old}
+    by_old = {_shot_key(r): r for r in old}
     out = []
     for n in new:
-        r = by_old.get(_key(n))
+        r = by_old.get(_shot_key(n))
         if n["missing"] or r is None or r["missing"]:
             continue
         for st in n["stones"]:
@@ -189,6 +195,13 @@ def recovered(old, new):
     return out
 
 
+def unmatched(old, new):
+    """How many non-missing rows of ``new`` have no row in ``old`` -- their
+    stones are not looked at by ``recovered``."""
+    have = {_shot_key(r) for r in old}
+    return sum(not n["missing"] and _shot_key(n) not in have for n in new)
+
+
 def _key(r):
     return (r["video"], r["game"], r["end"], r.get("t_rest"))
 
@@ -199,7 +212,8 @@ def _shot_key(r):
 
 def compare(old_paths, new_paths, expect=None):
     """Print how the houses changed; the exit code is 1 when ``expect`` -- a
-    ``(old_paths, new_paths)`` pair -- recovered a stone this pair does not."""
+    ``(old_paths, new_paths)`` pair -- recovered a stone the new run's own row
+    for that shot lacks."""
     old, new = _load_rows(old_paths), _load_rows(new_paths)
     key = _key
     by_new = {key(r): r for r in new}
@@ -230,19 +244,28 @@ def compare(old_paths, new_paths, expect=None):
               f"{' last' if r['last'] else '     '}  {what}")
     got = recovered(old, new)
     by_how = {h: sum(g["how"] == h for g in got) for h in ("put back", "seen")}
-    print(f"recovered: {len(got)} stones ({by_how['put back']} put back, {by_how['seen']} seen)")
+    print(f"recovered: {len(got)} stones ({by_how['put back']} put back, {by_how['seen']} seen);"
+          f" {unmatched(old, new)} new rows with no old row (not looked at)")
     for g in got:
         print(f"  {g['video']} g{g['game']} e{g['end']} #{g['shot']:2d} {g['color']:6s}"
               f" at ({g['x']:.2f}, {g['y']:.2f})  {g['how']}")
     if not expect:
         return 0
-    proto = recovered(_load_rows(expect[0]), _load_rows(expect[1]))
-    lost = [p for p in proto if not any(
-        _shot_key(p) == _shot_key(g) and _near(p, g) for g in got)]
+    p_old, p_new = _load_rows(expect[0]), _load_rows(expect[1])
+    proto = recovered(p_old, p_new)
+    print(f"prototype pair: {unmatched(p_old, p_new)} new rows with no old row (not looked at)")
+    rows = {_shot_key(r): r for r in new}
+    lost = []
+    for p in proto:
+        r = rows.get(_shot_key(p))
+        if r is None or r["missing"]:
+            lost.append((p, "no row in the new run" if r is None else "the new run's row is missing"))
+        elif not any(_near(p, st) for st in r["stones"]):
+            lost.append((p, "not in the new run's row"))
     print(f"expected from the prototype: {len(proto)} stones, {len(lost)} still lost")
-    for p in lost:
+    for p, why in lost:
         print(f"  STILL LOST {p['video']} g{p['game']} e{p['end']} #{p['shot']:2d} "
-              f"{p['color']:6s} at ({p['x']:.2f}, {p['y']:.2f})")
+              f"{p['color']:6s} at ({p['x']:.2f}, {p['y']:.2f})  {why}")
     return 1 if lost else 0
 
 

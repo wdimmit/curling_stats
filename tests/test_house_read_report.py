@@ -60,6 +60,15 @@ def test_moved_less_than_seen_m_is_not_recovered():
     assert len(rep.recovered(old, [row(1, [stone("yellow", 0, 0)])])) == 1
 
 
+def test_recovered_matches_shots_not_rest_times():
+    old = [row(1, [stone("red", 0, 0)])]
+    new = [row(1, [stone("red", 0, 0), stone("yellow", 1, 1)])]
+    new[0]["t_rest"] += 0.4  # another model's run settles the shot a little later
+    assert [r["color"] for r in rep.recovered(old, new)] == ["yellow"]
+    assert rep.unmatched(old, new) == 0
+    assert rep.unmatched(old, new + [row(2, [stone("red", 3, 3)])]) == 1
+
+
 def test_recovered_skips_missing_and_unmatched_rows():
     old = [row(1, [], missing=True), row(2, [stone("red", 0, 0)])]
     new = [row(1, [stone("red", 5, 5)], missing=True),
@@ -88,7 +97,7 @@ def test_expect_reports_still_lost(tmp_path, capsys):
     code = rep.compare([old], [new], expect=([p_old], [p_new]))
     out = capsys.readouterr().out
     assert code == 1
-    assert "STILL LOST" in out and "yellow" in out
+    assert "STILL LOST" in out and "yellow" in out and "not in the new run's row" in out
 
 
 def test_expect_passes_when_recovered(tmp_path, capsys):
@@ -103,6 +112,28 @@ def test_expect_passes_when_recovered(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "STILL LOST" not in out
     assert "put back" in out
+
+
+def test_expect_judges_the_new_rows_not_the_recovered_list(tmp_path, capsys):
+    # The baseline already sees the yellow, so nothing is recovered here, but
+    # nothing is lost either.
+    p_old, p_new = _pair(tmp_path, "proto")
+    both = [row(1, [stone("red", 0, 0), stone("yellow", 1.05, 1)])]
+    old, new = _write(tmp_path, "o.json", both), _write(tmp_path, "n.json", both)
+    assert rep.compare([old], [new], expect=([p_old], [p_new])) == 0
+    out = capsys.readouterr().out
+    assert "recovered: 0 stones" in out and "STILL LOST" not in out
+
+
+def test_expect_row_missing_from_the_new_run_is_still_lost(tmp_path, capsys):
+    p_old, p_new = _pair(tmp_path, "proto")
+    old = _write(tmp_path, "o.json", [row(2, [])])
+    new = _write(tmp_path, "n.json", [row(2, [])])
+    assert rep.compare([old], [new], expect=([p_old], [p_new])) == 1
+    assert "no row in the new run" in capsys.readouterr().out
+    new = _write(tmp_path, "n2.json", [row(1, [], missing=True)])
+    assert rep.compare([old], [new], expect=([p_old], [p_new])) == 1
+    assert "row is missing" in capsys.readouterr().out
 
 
 def test_expect_wrong_colour_or_shot_is_still_lost(tmp_path, capsys):
