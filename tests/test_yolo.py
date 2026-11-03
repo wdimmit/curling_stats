@@ -68,6 +68,61 @@ class TestSeparationIsEnforced:
         assert got[0].confidence == pytest.approx(0.59)
 
 
+class TestFramesCarryPlayerBoxes:
+    """Class 2 is a player: never a stone, kept on the frame for the cover check."""
+
+    def test_two_class_rows_give_the_same_stones(self, cal):
+        rows = [(150, 150, 40, 40, 0.9, 0), (100, 100, 22, 22, 0.7, 1)]
+        got = yolo.frame_from_rows(rows, cal)
+        assert got == yolo.stones_from_rows(rows, cal)
+        assert got.players == ()
+
+    def test_player_rows_are_not_stones(self, cal):
+        rows = [(150, 150, 40, 40, 0.9, 0), (100, 100, 60, 80, 0.7, 2)]
+        got = yolo.frame_from_rows(rows, cal)
+        assert len(got) == 1
+        (p,) = got.players
+        assert (p.x0_px, p.y0_px, p.x1_px, p.y1_px) == (70, 60, 130, 140)
+        assert p.confidence == 0.7
+        x0, y0 = cal.to_sheet(70, 60)
+        x1, y1 = cal.to_sheet(130, 140)
+        assert (p.x0_m, p.y0_m, p.x1_m, p.y1_m) == pytest.approx(
+            (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
+
+    def test_a_player_beyond_the_sideline_is_kept(self, cal):
+        from curling_score.geometry import constants as C
+
+        px, py = cal.to_pixels(C.SIDELINE_ABS_X_M + 0.4, 0.0)
+        got = yolo.frame_from_rows([(px, py, 30, 30, 0.9, 2)], cal)
+        assert len(got.players) == 1
+
+    def test_conf_filters_players_like_stones(self, cal):
+        rows = [(100, 100, 60, 80, 0.3, 2), (150, 150, 40, 40, 0.2, 0)]
+        got = yolo.frame_from_rows(rows, cal, conf=0.5)
+        assert len(got) == 0 and got.players == ()
+
+    def test_stones_from_rows_does_not_choke_on_a_player_row(self, cal):
+        assert yolo.stones_from_rows([(100, 100, 60, 80, 0.7, 2)], cal) == []
+
+    def test_flipped_calib_player_box_is_ordered(self, cal):
+        import dataclasses
+
+        flipped = dataclasses.replace(cal, flipped=True)
+        assert flipped.flipped
+        p = yolo.frame_from_rows([(100, 100, 60, 80, 0.7, 2)], flipped).players[0]
+        assert p.x0_m <= p.x1_m and p.y0_m <= p.y1_m
+        assert (p.x0_m, p.y0_m) != (p.x1_m, p.y1_m)
+
+    def test_seen_pickles_with_players(self, cal):
+        import pickle
+
+        seen = yolo.frame_from_rows(
+            [(150, 150, 40, 40, 0.9, 0), (100, 100, 60, 80, 0.7, 2)], cal)
+        back = pickle.loads(pickle.dumps(seen))
+        assert back.players == seen.players
+        assert back == seen
+
+
 class TestABatchLeavesTheGpuOnce:
     """`result_rows` reads a batch in one copy; the stones must be exactly the
     ones reading every box on its own gives."""

@@ -14,18 +14,24 @@ everything downstream is unchanged.
 
 from functools import lru_cache
 
-from curling_score.detect.rocks import Detection, enforce_separation
+from curling_score.detect.rocks import Detection, PlayerBox, Seen, enforce_separation
 from curling_score.geometry import constants as C
 
 CLASS_COLORS = ("red", "yellow")
+PLAYER_CLASS = 2
 DEFAULT_CONF = 0.25
 
 
 def stones_from_rows(rows, calib, conf=None):
-    """Stones in sheet metres from ``(cx, cy, w, h, conf, cls)`` box rows."""
+    """Stones in sheet metres from ``(cx, cy, w, h, conf, cls)`` box rows.
+
+    Player rows are not stones and are skipped; :func:`frame_from_rows` keeps them.
+    """
     out = []
     for cx, cy, w, h, score, cls in rows:
         if conf is not None and score < conf:
+            continue
+        if int(cls) == PLAYER_CLASS:
             continue
         x_m, y_m = calib.to_sheet(cx, cy)
         # The adjacent sheet is visible at the edge of some panels.
@@ -44,6 +50,33 @@ def stones_from_rows(rows, calib, conf=None):
         )
     # Two same-colour boxes nearer than a stone's width are not two stones.
     return enforce_separation(out)
+
+
+def players_from_rows(rows, calib, conf=None):
+    """Player boxes from ``(cx, cy, w, h, conf, cls)`` rows. Not cut at the
+    sideline: a player on the next sheet still covers what they cover."""
+    out = []
+    for cx, cy, w, h, score, cls in rows:
+        if int(cls) != PLAYER_CLASS or (conf is not None and score < conf):
+            continue
+        x0, y0, x1, y1 = cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
+        ax, ay = calib.to_sheet(x0, y0)
+        bx, by = calib.to_sheet(x1, y1)
+        out.append(
+            PlayerBox(
+                x0_px=x0, y0_px=y0, x1_px=x1, y1_px=y1,
+                x0_m=float(min(ax, bx)), y0_m=float(min(ay, by)),
+                x1_m=float(max(ax, bx)), y1_m=float(max(ay, by)),
+                confidence=score,
+            )
+        )
+    return tuple(out)
+
+
+def frame_from_rows(rows, calib, conf=None):
+    """A frame's stones, with its player boxes, from model box rows."""
+    return Seen(stones_from_rows(rows, calib, conf),
+                players_from_rows(rows, calib, conf))
 
 
 def boxes_to_stones(boxes, calib, conf=None):
@@ -128,11 +161,11 @@ class YoloDetector:
         )
 
     def find_stones(self, panel, calib):
-        return stones_from_rows(result_rows(self._predict(panel)[:1])[0], calib)
+        return frame_from_rows(result_rows(self._predict(panel)[:1])[0], calib)
 
     def find_stones_batch(self, panels, calib):
         """Detect over many panels at once -- far faster on a GPU."""
-        return [stones_from_rows(rows, calib)
+        return [frame_from_rows(rows, calib)
                 for rows in result_rows(self._predict(panels))]
 
     def find_stones_each(self, panels, calibs):
@@ -140,5 +173,5 @@ class YoloDetector:
         calibration -- both houses of a frame in one call."""
         if not panels:
             return []
-        return [stones_from_rows(rows, calib)
+        return [frame_from_rows(rows, calib)
                 for rows, calib in zip(result_rows(self._predict(list(panels))), calibs)]

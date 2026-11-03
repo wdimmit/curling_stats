@@ -83,6 +83,32 @@ class Detection:
         return (self.x_m**2 + self.y_m**2) ** 0.5
 
 
+@dataclass(frozen=True)
+class PlayerBox:
+    """A player the detector found in one panel: its box in panel pixels and in
+    sheet metres. The metre box is the pixel corners through the calibration,
+    ordered so x0 <= x1 and y0 <= y1 (a flipped calibration swaps them)."""
+
+    x0_px: float
+    y0_px: float
+    x1_px: float
+    y1_px: float
+    x0_m: float
+    y0_m: float
+    x1_m: float
+    y1_m: float
+    confidence: float
+
+
+class Seen(list):
+    """One frame's stones -- a plain list of :class:`Detection`, so every stone
+    consumer reads it as before -- with the frame's player boxes alongside."""
+
+    def __init__(self, stones=(), players=()):
+        super().__init__(stones)
+        self.players = tuple(players)
+
+
 def _color_mask(hsv: np.ndarray, bands) -> np.ndarray:
     mask = np.zeros(hsv.shape[:2], np.uint8)
     for lo, hi in bands:
