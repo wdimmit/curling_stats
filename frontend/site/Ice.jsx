@@ -406,8 +406,7 @@ export function Ice() {
 
   return (
     <>
-      <Header links={[["/", "All games"], ["/thinking", "Thinking time"], ["/ice", "Ice report", true],
-                      ["/submit", "Submit a link"]]} />
+      <Header links={[["/", "All games"], ["/thinking", "Thinking time"], ["/ice", "Ice report", true]]} />
       <main>
         <p className="muted" style={{ marginTop: 0 }}>How much the ice curled in a league draw,
         against another draw. Only rocks that stopped in the house without touching another stone
