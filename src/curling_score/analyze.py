@@ -657,12 +657,16 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     # The next end's run-up begins when this end's last rock stopped.
     closed_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
     late = joined_late(prev_end_s, end.start_s, ctx.recording_start_s)
+    held: list = []
     shots = shots_mod.from_deliveries(
         kept, seq, house_frames=house_seq, thrown_by={id(d): r for r, d in thrown_by.items()},
         fmt=fmt,
         before=placed.seed if placed is not None else (),
         base=placement.fill_base(placed, fmt),
-        joined_late=late)
+        joined_late=late, held=held)
+    if held:
+        progress(f"    end {end.number}: {len(held)} stone(s) held under a player: "
+                 + ", ".join(f"rock {h['shot']} {h['color']}" for h in held))
     lead_missed = 0
     if late:
         while lead_missed < len(shots) and shots[lead_missed].missing:

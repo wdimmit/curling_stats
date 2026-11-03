@@ -72,6 +72,40 @@ class TestBuildOneEnd:
         assert used == {TOP.rect: ["overhead-3"], BOTTOM.rect: ["overhead-3"]}
 
 
+class TestHeldUnderAPlayer:
+    """A stone put back because a player stood over it (`shots.from_deliveries`
+    reports it in `held`) is one progress line in the end's log."""
+
+    def run(self, monkeypatch, held):
+        monkeypatch.setattr(analyze.sequence, "detect_end", lambda *a, **kw: [])
+        monkeypatch.setattr(analyze.sequence, "detect_span", lambda *a, **kw: [])
+
+        def from_deliveries(*a, held=None, **kw):
+            held.extend(held_rows)
+            return []
+
+        held_rows = held
+        monkeypatch.setattr(analyze.shots_mod, "from_deliveries", from_deliveries)
+        lines = []
+        ctx = analyze.EndContext(
+            path="rec.ts", read_path="rec.ts", read_setups={"top": TOP, "bottom": BOTTOM},
+            sideviews=None, detector=None, broom_model=None, line_model=None,
+            fmt=format_mod.FOURS, use_cache=False, one_pass=False, progress=lines.append)
+        game = GameSegment(index=0, start_s=1000.0, end_s=1900.0,
+                           ends=[EndSegment(number=3, house="top", start_s=1000.0,
+                                            end_s=1900.0)])
+        analyze.build_one_end(ctx, game, game.ends[0], prev_end_s=None, board_score=None)
+        return lines
+
+    def test_a_held_stone_is_logged_with_its_rock(self, monkeypatch):
+        lines = self.run(monkeypatch, [{"shot": 15, "color": "red", "x": -1.65, "y": -1.52},
+                                       {"shot": 16, "color": "yellow", "x": 0.0, "y": 0.5}])
+        assert "    end 3: 2 stone(s) held under a player: rock 15 red, rock 16 yellow" in lines
+
+    def test_nothing_held_logs_nothing(self, monkeypatch):
+        assert not [l for l in self.run(monkeypatch, []) if "held" in l]
+
+
 class TestLoadHouseDetector:
     class Fake:
         made = []
