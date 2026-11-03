@@ -418,6 +418,16 @@ def test_the_reader_passes_packets_on_without_waiting_for_more(tmp_path):
         reader.join(2)
 
 
+@pytest.mark.parametrize("camera, delay", [("2H-HOUSE", 0.565), ("3A-HOUSE", 0.565),
+                                           ("1A-POV", 0.562), ("5H-POV", 0.562),
+                                           ("2H-PTZ", 0.591), ("3H-PTZ", 0.591)])
+def test_each_camera_model_is_timed_where_ndi_timed_it(camera, delay):
+    """SRT delivers a frame later than NDI did, by the latency and then by an
+    amount of each camera model's own (2026-11-03: same frames, by clock
+    value, on two cameras of each model)."""
+    assert capture.delivery_delay_s(camera) == pytest.approx(delay, abs=1e-9)
+
+
 def test_pts_unwrap_carries_on_across_the_33_bit_wrap():
     u = capture.PtsUnwrap()
     w = capture.PTS_WRAP
@@ -433,12 +443,13 @@ def test_pts_unwrap_takes_already_unwrapped_pts_as_they_are():
 def test_the_srt_reader_times_packets_by_the_cameras_clock_less_the_latency(tmp_path):
     """Packets 1/60 s apart by pts that reached the Ryzen bunched up: each is
     timed as the camera spaced them, anchored to the quickest arrival, and
-    SRT_LATENCY_S before it, in seconds since --t0."""
+    the camera's delivery delay before it, in seconds since --t0."""
     t0 = time.monotonic() - 6.0
     packets = h264(3, gop=3)
     late = [0.0, 0.013, 0.001]
     cap = capture_reading(tmp_path, t0)
-    cap.now = arrivals([t0 + 5.5 + i / 60 + late[i] for i in range(3)])
+    delay = capture.delivery_delay_s("2A-HOUSE")
+    cap.now = arrivals([t0 + 5.0 + delay + i / 60 + late[i] for i in range(3)])
     cap.fifo.opened.set()
     assert cap._read_stream(io.BytesIO(mpegts(packets)), 0) == 3
 

@@ -17,11 +17,11 @@ the FIFO, as NUT (``_Nut``), for the composer to keep. A composer that falls
 behind then only delays the recording; it never moves a frame in it. The time
 is the camera's own clock (the packet's 90 kHz MPEG-TS pts, unwrapped at
 2^33), anchored to when the packets reached the Ryzen (``CameraClock``), and
-put ``SRT_LATENCY_S`` before arrival, where NDI put them. The camera's clock
-spaces the frames as it took them, where arrivals bunch up; it is trusted for
-nothing more. A HOUSE camera's pts is its encoder's uptime, and the long
-cameras' NTP times disagree with each other by 10-90 ms from day to day, while
-each camera's delay to the Ryzen holds to 1-2 ms ("Camera sync" in
+put the camera's ``delivery_delay_s`` before arrival, where NDI put them. The
+camera's clock spaces the frames as it took them, where arrivals bunch up; it
+is trusted for nothing more. A HOUSE camera's pts is its encoder's uptime, and
+the long cameras' NTP times disagree with each other by 10-90 ms from day to
+day, while each camera's delay to the Ryzen holds to 1-2 ms ("Camera sync" in
 docs/superpowers/specs/2026-10-29-practice-srt-capture-design.md). A held
 keyframe is timed when it is written.
 
@@ -134,6 +134,13 @@ BACKLOG = 600
 SRT_PORT = 1600
 SRT_LATENCY_S = 0.5
 SRT_TIMEOUT_S = 5.0
+# How much later than NDI each camera model's frames reach us over SRT, past
+# SRT_LATENCY_S: the same frames (NDI timecode = SRT pts) received both ways,
+# 5 min on each of two cameras per model, agreed to 2 ms (2026-11-03). Taking
+# it off puts every camera where NDI put it, and the PTZs 27 ms earlier
+# against the house cameras than SRT's arrivals alone would, as hits showed
+# (house -0.03 s against a PTZ, 2026-10-30).
+SRT_EXTRA_S = {"HOUSE": 0.065, "POV": 0.062, "PTZ": 0.091}
 # How little ffmpeg and our demuxer probe a new connection before passing
 # packets on. By default each held a connection's first ~4 s back and then sent
 # them in a burst, which CameraClock can only time by arrival: worst 3.6 s
@@ -215,6 +222,12 @@ def srt_url(camera: str) -> str:
     timeout (in microseconds, as ffmpeg's srt protocol takes them)."""
     return (f"srt://{inventory.CAMERAS[camera]}:{SRT_PORT}?mode=caller"
             f"&latency={round(SRT_LATENCY_S * 1e6)}&timeout={round(SRT_TIMEOUT_S * 1e6)}")
+
+
+def delivery_delay_s(camera: str) -> float:
+    """How long after NDI's time for a frame ``camera``'s reaches us over SRT;
+    its times are put that much before arrival."""
+    return SRT_LATENCY_S + SRT_EXTRA_S[camera.split("-", 1)[1]]
 
 
 def ffmpeg_command(camera: str) -> list[str]:
@@ -484,12 +497,14 @@ class _Capture:
         self.camera, self.first, self.parent = args.camera, args.first, args.parent
         t0 = args.t0
 
-        # SRT delivers each packet SRT_LATENCY_S after the camera sent it, so
-        # every time here sits that much before arrival, where NDI's were.
-        def session() -> float:
-            return time.monotonic() - t0 - SRT_LATENCY_S
+        # Every time here sits the camera's delivery delay before arrival,
+        # where NDI's were.
+        delay = delivery_delay_s(self.camera)
 
-        self.times = CameraClock(t0 + SRT_LATENCY_S)
+        def session() -> float:
+            return time.monotonic() - t0 - delay
+
+        self.times = CameraClock(t0 + delay)
         self.now: Callable[[], float] = time.monotonic   # when a packet arrived
         self.generation = 0                               # the current connection's
         self.fifo = _Fifo(args.fifo, clock=session)
