@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 
 from curling_score.detect import cache
-from curling_score.detect.rocks import Detection
+from curling_score.detect import sequence
+from curling_score.detect.rocks import Detection, PlayerBox, Seen
 from curling_score.geometry.calibrate import PanelCalib
 
 
@@ -167,3 +168,77 @@ class TestWeightsAreKnownByContent:
         a, b = tmp_path / "a.pt", tmp_path / "b.pt"
         a.write_bytes(b"one"); b.write_bytes(b"two")
         assert cache._weights_identity(a)[2] != cache._weights_identity(b)[2]
+
+
+def box(x=0.5, conf=0.8):
+    return PlayerBox(x0_px=10.0 + x, y0_px=20.0, x1_px=40.0 + x, y1_px=90.0,
+                     x0_m=x - 0.2, y0_m=-1.1, x1_m=x + 0.2, y1_m=1.3,
+                     confidence=conf)
+
+
+class TestPlayers:
+    def test_cache_round_trips_players(self, tmp_path):
+        k = cache.key(**args(tmp_path))
+        a, b = box(0.5), box(-1.25, 0.61)
+        frames = [(0.0, Seen([det()], players=())),
+                  (0.2, Seen([], players=(a,))),
+                  (0.4, Seen([det("yellow", 1.0, 2.0)], players=(a, b)))]
+        cache.save(k, frames)
+        got = cache.load(k)
+        assert got == frames
+        assert all(isinstance(f, Seen) for _, f in got)
+        assert [f.players for _, f in got] == [(), (a,), (a, b)]
+        assert all(type(v) is float for _, f in got for p in f.players
+                   for v in vars(p).values())
+
+    def test_plain_lists_load_as_seen_without_players(self, tmp_path):
+        k = cache.key(**args(tmp_path))
+        cache.save(k, seq())
+        got = cache.load(k)
+        assert got == seq()
+        assert all(isinstance(f, Seen) and f.players == () for _, f in got)
+
+    def test_the_stored_format_is_version_2(self):
+        assert cache.FORMAT_VERSION == 2
+
+    def test_on_sheet_keeps_players(self):
+        class Setup:
+            def on_sheet(self, stones):
+                return [d for d in stones if d.x_m < 1.0]
+
+        p = box()
+        out = sequence._on_sheet(
+            Setup(), [(0.0, Seen([det(), det("yellow", 5.0, 0.0)], players=(p,)))])
+        assert [len(f) for _, f in out] == [1]
+        assert out[0][1].players == (p,)
+
+    def test_on_sheet_from_the_classical_detector_has_no_players(self):
+        class Setup:
+            def on_sheet(self, stones):
+                return list(stones)
+
+        out = sequence._on_sheet(Setup(), [(0.0, [det()])])
+        assert out[0][1] == [det()]
+        assert out[0][1].players == ()
+
+    def test_detect_spans_keeps_players(self, monkeypatch):
+        p = box()
+
+        class Setup:
+            rect = (0, 0, 10, 10)
+            calib = calib()
+
+            def on_sheet(self, stones):
+                return list(stones)
+
+        class Detector:
+            def find_stones_batch(self, imgs, calib):
+                return [Seen([det()], players=(p,)) for _ in imgs]
+
+        img = np.zeros((4, 4, 3), np.uint8)
+        monkeypatch.setattr(sequence.F, "windows",
+                            lambda path, wins, end_s: iter([(0, 0.0, img), (0, 0.2, img)]))
+        (got,) = sequence.detect_spans("v.mp4", [(Setup(), 0.0, 5.0)], 1.0,
+                                       Detector())
+        assert len(got) == 2
+        assert all(f.players == (p,) and len(f) == 1 for _, f in got)

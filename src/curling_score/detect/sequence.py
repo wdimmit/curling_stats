@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 
 from curling_score.detect import cache
+from curling_score.detect.rocks import Seen
 from curling_score.ingest import frames as F
 
 log = logging.getLogger(__name__)
@@ -133,11 +134,13 @@ def detect_span(path, setup, start_s: float, end_s: float, fps: float,
 
 def _on_sheet(setup, seq):
     """``seq`` without the stones beyond ``setup``'s painted sidelines
-    (`profile.PanelSetup.on_sheet`)."""
+    (`profile.PanelSetup.on_sheet`). A frame's players stay, whatever the
+    sidelines drop: `on_sheet` hands back a plain list, which has none."""
     on_sheet = getattr(setup, "on_sheet", None)
     if on_sheet is None:
         return seq
-    return [(t, on_sheet(stones)) for t, stones in seq]
+    return [(t, Seen(on_sheet(stones), getattr(stones, "players", ())))
+            for t, stones in seq]
 
 
 def detect_spans(path, specs, end_s: float, detector=None):

@@ -21,15 +21,15 @@ import functools
 import hashlib
 import json
 import os
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, fields, is_dataclass
 from pathlib import Path
 
 import numpy as np
 
-from curling_score.detect.rocks import Detection
+from curling_score.detect.rocks import Detection, PlayerBox, Seen
 
 # Changing how a detection is stored or replayed must not read old files back.
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 # Any change to these files can change a detection, so they are part of the key.
 _SOURCE_MODULES = (
     "curling_score.detect.rocks",
@@ -38,6 +38,9 @@ _SOURCE_MODULES = (
 )
 _COLORS = ("red", "yellow")
 _FIELDS = ("x_m", "y_m", "x_px", "y_px", "area_px", "confidence")
+# A frame's players are stored beside its stones: ``pcounts`` per frame and one
+# ``p_<field>`` array per PlayerBox field.
+_PLAYER_FIELDS = tuple(f.name for f in fields(PlayerBox))
 
 
 def cache_dir() -> Path:
@@ -132,15 +135,22 @@ def load(digest: str):
         ts, counts = z["ts"], z["counts"]
         cols = z["color"]
         vals = {f: z[f] for f in _FIELDS}
-    out, i = [], 0
-    for t, n in zip(ts.tolist(), counts.tolist()):
+        pcounts = z["pcounts"]
+        pvals = {f: z[f"p_{f}"] for f in _PLAYER_FIELDS}
+    out, i, j = [], 0, 0
+    for t, n, m in zip(ts.tolist(), counts.tolist(), pcounts.tolist()):
         dets = [
             Detection(color=_COLORS[cols[i + k]],
                       **{f: float(vals[f][i + k]) for f in _FIELDS})
             for k in range(n)
         ]
-        out.append((t, dets))
+        players = [
+            PlayerBox(**{f: float(pvals[f][j + k]) for f in _PLAYER_FIELDS})
+            for k in range(m)
+        ]
+        out.append((t, Seen(dets, players)))
         i += n
+        j += m
     return out
 
 
@@ -148,11 +158,17 @@ def save(digest: str, seq) -> None:
     d = cache_dir()
     d.mkdir(parents=True, exist_ok=True)
     flat = [det for _t, dets in seq for det in dets]
+    # A classical frame is a plain list: no players.
+    players = [[*getattr(dets, "players", ())] for _t, dets in seq]
+    pflat = [p for ps in players for p in ps]
     arrays = {
         "ts": np.array([t for t, _ in seq], dtype=np.float64),
         "counts": np.array([len(dets) for _, dets in seq], dtype=np.int32),
         "color": np.array([_COLORS.index(d.color) for d in flat], dtype=np.uint8),
+        "pcounts": np.array([len(ps) for ps in players], dtype=np.int32),
     }
+    for f in _PLAYER_FIELDS:
+        arrays[f"p_{f}"] = np.array([getattr(p, f) for p in pflat], dtype=np.float64)
     for f in _FIELDS:
         # float64, not float32: the point of the cache is that a replayed run
         # and a fresh one are the same run. Rounding to single precision moves
