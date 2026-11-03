@@ -60,18 +60,16 @@ rebases them), which ``CameraClock`` takes as a clock step and anchors anew.
 - the FIFO's reader goes away;
 - the parent process goes away.
 
-The parent is watched with ``getppid()``. ``ffmpeg`` is started with
-``PR_SET_PDEATHSIG`` (``_die_with_parent``), so it dies with the capture
-however the capture ends, even by SIGKILL. That signal fires when the
-*thread* that started the child exits, so only the main thread, which lives
-until the end, starts one. The process ends with ``os._exit``: the FIFO's
+The parent is watched with ``getppid()``. ``ffmpeg`` runs under ``setpriv
+--pdeathsig KILL``, so it dies with the capture however the capture ends, even
+by SIGKILL. That signal fires when the *thread* that started the child exits,
+so only the main thread, which lives until the end, starts one. The process ends with ``os._exit``: the FIFO's
 writer may be blocked on its pipe once the reader has stopped.
 """
 
 from __future__ import annotations
 
 import argparse
-import ctypes
 import io
 import logging
 import os
@@ -153,7 +151,10 @@ _PTS_HZ = 90_000
 # Holder's flag for a keyframe.
 KEYFRAME = 0x01
 _MODULE = "curling_score.cameras.capture"
-_PR_SET_PDEATHSIG = 1
+# What ffmpeg runs under: the kernel kills it when the capture ends, however it
+# ends (see Exits). setpriv sets that in the child, where a Python preexec_fn
+# could deadlock in a process that has threads.
+_DIE_WITH_PARENT = ["setpriv", "--pdeathsig", "KILL", "--"]
 # What the FIFO's times count in.
 _TIME_BASE = Fraction(1, 1_000_000)
 
@@ -507,6 +508,9 @@ class _Capture:
         self.times = CameraClock(t0 + delay)
         self.now: Callable[[], float] = time.monotonic   # when a packet arrived
         self.generation = 0                               # the current connection's
+        # Taken to pass a packet on, and to start a new connection: a reader
+        # whose connection has been replaced passes nothing more.
+        self._passing = threading.Lock()
         self.fifo = _Fifo(args.fifo, clock=session)
         self.holder = Holder(self.fifo.write, clock=session)
         self.reconnects = Reconnects()
@@ -544,13 +548,14 @@ class _Capture:
 
     def _connect(self) -> None:
         """A new SRT connection: a new ffmpeg, whose MPEG-TS a reader of its
-        own passes on. Only ever on the main thread (see _die_with_parent)."""
+        own passes on. Only ever on the main thread (see Exits)."""
+        with self._passing:
+            self.generation += 1
         self._end_ffmpeg()
-        self.generation += 1
         log.info("connecting to %s", srt_url(self.camera))
-        proc = subprocess.Popen(ffmpeg_command(self.camera), stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                preexec_fn=_die_with_parent)
+        proc = subprocess.Popen([*_DIE_WITH_PARENT, *ffmpeg_command(self.camera)],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
         self._ffmpeg = proc
         generation = self.generation
         self._thread(lambda: self._read_stream(proc.stdout, generation), f"reader-{generation}",
@@ -582,20 +587,22 @@ class _Capture:
             with av.open(stream, format="mpegts", options=PROBE) as ts:
                 video = ts.streams.video[0]
                 for packet in ts.demux(video):
-                    if generation != self.generation:
-                        break
                     if not packet.size:
                         continue
                     arrived = self.now()
-                    self.reconnects.heard()
                     payload, key = bytes(packet), packet.is_keyframe
-                    if key and self.first_at is None:
-                        self._save_first(payload)
                     pts_s = None if packet.pts is None else unwrap(packet.pts) / _PTS_HZ
-                    # Before the FIFO is open too: the Holder keeps the newest
-                    # keyframe, which is where the FIFO's stream starts.
-                    self.holder.packet(KEYFRAME if key else 0, payload,
-                                       self.times.time(pts_s, arrived))
+                    with self._passing:
+                        if generation != self.generation:
+                            break
+                        self.reconnects.heard()
+                        if key and self.first_at is None:
+                            self._save_first(payload)
+                        # Before the FIFO is open too: the Holder keeps the
+                        # newest keyframe, which is where the FIFO's stream
+                        # starts.
+                        self.holder.packet(KEYFRAME if key else 0, payload,
+                                           self.times.time(pts_s, arrived))
                     n += 1
         except av.error.FFmpegError as exc:
             log.warning("the stream ended: %s", exc)
@@ -628,14 +635,6 @@ class _Capture:
                     self.stop(1, f"{name}: {type(exc).__name__}: {exc}")
 
         threading.Thread(target=run, name=name, daemon=True).start()
-
-
-def _die_with_parent() -> None:
-    """In ffmpeg's child, before it runs: be killed when the capture ends,
-    however it ends. The kernel sends it when the *thread* that started the
-    child exits, which is why only the main thread starts one."""
-    libc = ctypes.CDLL(None, use_errno=True)
-    libc.prctl(_PR_SET_PDEATHSIG, signal.SIGKILL)
 
 
 def _parser() -> argparse.ArgumentParser:

@@ -767,6 +767,62 @@ def test_an_ffmpeg_that_exits_at_once_is_not_restarted_in_a_tight_loop(monkeypat
     assert 2 <= len(spawned(spawns)) <= 5
 
 
+def test_an_old_connections_last_packets_stop_once_a_reconnect_begins(monkeypatch, tmp_path):
+    """Killing the old ffmpeg ends its stream, and the demuxer then lets go
+    of the packet it held. That one must not count as the camera heard (it
+    would start the backoff over) nor race the new connection's packets."""
+    fake_ffmpeg(monkeypatch, tmp_path, "send", mpegts(camera_h264(12)))
+    cap = running_capture(tmp_path)
+    after, reconnecting = [], threading.Event()
+    real_packet, real_end = cap.holder.packet, cap._end_ffmpeg
+
+    def packet(*args, **kwargs):
+        after.append(reconnecting.is_set())
+        return real_packet(*args, **kwargs)
+
+    def end_and_let_it_drain():
+        reconnecting.set()
+        real_end()
+        time.sleep(0.3)
+
+    cap.holder.packet = packet
+    cap._connect()
+    deadline = time.monotonic() + 5
+    while len(after) < 10 and time.monotonic() < deadline:
+        time.sleep(0.02)
+    time.sleep(0.3)
+    assert 10 <= len(after) < 12           # the last waits for the stream's end
+    cap._end_ffmpeg = end_and_let_it_drain
+    try:
+        cap._connect()
+    finally:
+        real_end()
+    assert not any(after)
+
+
+def test_ffmpeg_runs_under_setpriv_with_no_python_in_the_child(monkeypatch, tmp_path):
+    """Python code run in a child forked from a process with threads (a
+    preexec_fn) can deadlock, and then Popen never returns and the camera
+    freezes. setpriv sets the parent-death signal instead."""
+    fake_ffmpeg(monkeypatch, tmp_path, "sleep")
+    started, real_popen = [], subprocess.Popen
+
+    def popen(args, **kwargs):
+        started.append((args, kwargs))
+        return real_popen(args, **kwargs)
+
+    monkeypatch.setattr(capture.subprocess, "Popen", popen)
+    cap = running_capture(tmp_path)
+    try:
+        cap._connect()
+    finally:
+        cap._end_ffmpeg()
+    (args, kwargs), = started
+    assert args[:4] == ["setpriv", "--pdeathsig", "KILL", "--"]
+    assert args[4:] == capture.ffmpeg_command("2A-HOUSE")
+    assert kwargs.get("preexec_fn") is None
+
+
 def read_fifo(path, done):
     """Everything written to the FIFO at ``path`` until ``done`` is set."""
     chunks = []

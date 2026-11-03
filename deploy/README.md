@@ -306,10 +306,13 @@ cuts the clips of the rocks people say they threw: no GPU, four CPUs.
 
 ## Practice on the club's cameras
 
-A practice session reads the sheet's own cameras (the club's 20 NDI sources),
-so Start works whenever no league is on, streamed or not. Only a worker on the
-club's network can read them: the Ryzen's `worker` and `worker2`. The design is
-`docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md`. Practice
+A practice session reads the sheet's own cameras (the club's 20 cameras, over
+SRT on UDP 1600), so Start works whenever no league is on, streamed or not.
+Only a worker on the club's network can read them: the Ryzen's `worker` and
+`worker2`. The design is
+`docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md`, and since
+2026-11 `docs/superpowers/specs/2026-10-29-practice-srt-capture-design.md` (SRT
+in place of NDI). Practice
 read a sheet's YouTube practice stream until 2026-10-25; that path is gone, and
 there is no switching back to it. Sessions from then still read as they did.
 
@@ -332,13 +335,12 @@ feature (a value set only in a shell is gone at the next declarative deploy):
 - `PRACTICE_MAX_CAMERA_WATCHES` (default 2, and 2 in `cloudrun.yaml`): how many
   sheets may be read from the cameras at once. A Start that would open another
   sheet's cameras past it is refused with "Practice on the cameras is full"; a
-  Start that joins a sheet already practising never is. The cap is for the
-  Ryzen's link to the cameras, which runs at 100 Mbit/s and carries about two
-  sheets (each needs 31-38 Mbit/s). Past that the cameras fall into keyframe
-  storms, and a camera that re-keys degrades every receiver it has, the club's
-  own broadcast included. Once the link is fixed and
-  `cat /sys/class/net/enp4s0/speed` on the Ryzen reads `1000`, raise it to 5 in
-  `cloudrun.yaml` and deploy.
+  Start that joins a sheet already practising never is. The link to the
+  cameras is no longer the limit: it has run at gigabit since 2026-10-31 and
+  carried all 20 cameras over SRT for an hour (~180 Mbit/s). The Ryzen's
+  composers are (~2.7 cores and an NVENC session a sheet), until the
+  `camera-direct` work removes them; raise the cap only after trying more
+  sheets at once on the Ryzen.
 - `PROXY_HOPS` (default 1, which is right for Cloud Run, a domain mapping
   included): the club-address check relies on it. `client_ip` takes the entry
   `PROXY_HOPS` from the end of `X-Forwarded-For`, the ones our own proxies
@@ -358,8 +360,8 @@ feature (a value set only in a shell is gone at the next declarative deploy):
   one a sheet, split 3/2 between the workers, once the link lets the API's cap
   rise to five (`PRACTICE_MAX_CAMERA_WATCHES`, above). Keep it at 3 or more.
 - The workers stay on the compose project's network (`deploy_default`). They
-  find and read the cameras with the NDI config the capture writes for itself,
-  so no `network_mode: host` is needed.
+  call each camera's SRT listener (outgoing UDP to port 1600) from there, so no
+  `network_mode: host` is needed.
 - `worker` holds both GPUs, with `CUDA_VISIBLE_DEVICES=0` to keep its models and
   NVENC on card 0. NVENC on card 0 fails in a container that does not also have
   card 1 ("unsupported device"); card 1 alone encodes, so `worker2` keeps only
@@ -368,9 +370,10 @@ feature (a value set only in a shell is gone at the next declarative deploy):
 
 **Calibrating a sheet.** A watch records from Start, so it has no footage of
 the sheet from before, and at Start there are players on the ice. So each sheet
-keeps a calibration made while it was empty. With the sheet empty and no session on it, in each worker, one after
-the other, never both at once (one NDI connection per camera; let the first
-finish before starting the second):
+keeps a calibration made while it was empty. With the sheet empty and no
+session on it, in each worker (one after the other is simplest; at once is
+also fine, since a second SRT caller to a camera gets its own stream, and two
+of ours per house camera is within the limit):
 
 ```bash
 docker compose -f deploy/docker-compose.worker.yml exec worker  curling-score cameras-calibrate --sheet 2
