@@ -1,0 +1,245 @@
+"""The house-read harness: which stones a new read recovers, and whether the
+prototype's recoveries still hold. Rows are what ``replay`` writes; the
+replay itself is run with its heavy collaborators faked."""
+
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def _load(name):
+    sys.path.insert(0, str(SCRIPTS))
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+rep = _load("house_read_report")
+
+
+def stone(color, x, y):
+    return {"color": color, "x": x, "y": y}
+
+
+def row(shot, stones, held=None, color="red", end=1, missing=False, last=False):
+    r = {"video": "v", "game": 0, "end": end, "shot": shot, "color": color,
+         "missing": missing, "last": last, "t_rest": None if missing else 10.0 * shot,
+         "stones": stones, "house_delta": None, "delivered_stone_index": None}
+    if held is not None:
+        r["held"] = held
+    return r
+
+
+def test_recovered_tags_put_back_and_seen():
+    old = [row(1, [stone("red", 0, 0)]),
+           row(2, [stone("red", 0, 0), stone("yellow", 1, 1)])]
+    new = [row(1, [stone("red", 0, 0), stone("yellow", 0.5, 0.5)],
+               held=[stone("yellow", 0.5, 0.5)]),
+           row(2, [stone("red", 0, 0), stone("yellow", 1, 1), stone("red", 2, 2)],
+               held=[])]
+    got = rep.recovered(old, new)
+    assert [(r["shot"], r["color"], r["x"], r["y"], r["how"]) for r in got] == [
+        (1, "yellow", 0.5, 0.5, "put back"), (2, "red", 2, 2, "seen")]
+    assert {"video", "game", "end"} <= set(got[0])
+
+
+def test_moved_less_than_seen_m_is_not_recovered():
+    old = [row(1, [stone("red", 0, 0)])]
+    near = [row(1, [stone("red", 0.1, 0)])]
+    far = [row(1, [stone("red", 0.2, 0)])]
+    assert rep.recovered(old, near) == []
+    assert [r["how"] for r in rep.recovered(old, far)] == ["seen"]
+    # Colour counts: a yellow where a red sat is a new stone.
+    assert len(rep.recovered(old, [row(1, [stone("yellow", 0, 0)])])) == 1
+
+
+def test_recovered_skips_missing_and_unmatched_rows():
+    old = [row(1, [], missing=True), row(2, [stone("red", 0, 0)])]
+    new = [row(1, [stone("red", 5, 5)], missing=True),
+           row(2, [stone("red", 0, 0)]), row(3, [stone("red", 9, 9)])]
+    assert rep.recovered(old, new) == []
+
+
+def _write(tmp_path, name, rows):
+    p = tmp_path / name
+    p.write_text(json.dumps(rows))
+    return str(p)
+
+
+def _pair(tmp_path, tag, lost_color="yellow"):
+    old = _write(tmp_path, f"{tag}-old.json", [row(1, [stone("red", 0, 0)])])
+    new = _write(tmp_path, f"{tag}-new.json",
+                 [row(1, [stone("red", 0, 0), stone(lost_color, 1, 1)])])
+    return old, new
+
+
+def test_expect_reports_still_lost(tmp_path, capsys):
+    p_old, p_new = _pair(tmp_path, "proto")
+    # This comparison recovers nothing.
+    old, new = _write(tmp_path, "o.json", [row(1, [stone("red", 0, 0)])]), \
+        _write(tmp_path, "n.json", [row(1, [stone("red", 0, 0)])])
+    code = rep.compare([old], [new], expect=([p_old], [p_new]))
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "STILL LOST" in out and "yellow" in out
+
+
+def test_expect_passes_when_recovered(tmp_path, capsys):
+    p_old, p_new = _pair(tmp_path, "proto")
+    old, new = _pair(tmp_path, "cur")
+    # The new run put it back 0.1 m from where the prototype had it.
+    new_rows = json.loads(Path(new).read_text())
+    new_rows[0]["stones"][1] = stone("yellow", 1.1, 1)
+    new_rows[0]["held"] = [stone("yellow", 1.1, 1)]
+    Path(new).write_text(json.dumps(new_rows))
+    assert rep.compare([old], [new], expect=([p_old], [p_new])) == 0
+    out = capsys.readouterr().out
+    assert "STILL LOST" not in out
+    assert "put back" in out
+
+
+def test_expect_wrong_colour_or_shot_is_still_lost(tmp_path, capsys):
+    p_old, p_new = _pair(tmp_path, "proto")
+    old, new = _pair(tmp_path, "cur", lost_color="red")
+    assert rep.compare([old], [new], expect=([p_old], [p_new])) == 1
+    assert "STILL LOST" in capsys.readouterr().out
+
+
+def test_compare_without_expect_returns_zero(tmp_path, capsys):
+    old, new = _pair(tmp_path, "cur")
+    assert rep.compare([old], [new]) == 0
+    out = capsys.readouterr().out
+    assert "recovered: 1" in out
+
+
+def test_old_rows_without_held_load(tmp_path):
+    old, new = _pair(tmp_path, "cur")
+    assert "held" not in json.loads(Path(old).read_text())[0]
+    assert rep.compare([old], [new]) == 0
+
+
+# --- replay, with its collaborators faked ------------------------------------
+
+
+class _Frames(list):
+    def __init__(self, stones=(), players=()):
+        super().__init__(stones)
+        self.players = tuple(players)
+
+
+def _fake_replay(monkeypatch, tmp_path):
+    """Fake what ``replay`` calls, for one game of one end; returns what the
+    fakes saw. The test sets ``from_deliveries`` itself."""
+    seen = SimpleNamespace(detectors=[], from_args=None)
+
+    class FakeDetector:
+        def __init__(self, weights, **kw):
+            self.weights = weights
+            self.model = SimpleNamespace(overrides={})
+            seen.detectors.append(self)
+
+    frames = [(0.0, _Frames()), (1.0, _Frames(players=[(0, 0, 1, 1)])),
+              (2.0, _Frames(players=[(0, 0, 1, 1)]))]
+    setup = SimpleNamespace(view_x_limit_m=1.0, view_y_min_m=0.0)
+
+    def detect_end(path, s, end, fps, detector, from_s=None):
+        seen.end_detector = detector
+        return list(frames)
+
+    def detect_span(path, s, a, b, fps, detector):
+        seen.span_detector = detector
+        return []
+
+    monkeypatch.setattr(rep, "setups_for",
+                        lambda video, vid, root: ({}, SimpleNamespace(top=0, bottom=1)))
+    monkeypatch.setattr(rep.proxy, "strip_rect", lambda a, b: None)
+    monkeypatch.setattr(rep.proxy, "proxy_path", lambda vid, strip, root: "p.mp4")
+    monkeypatch.setattr(rep.analyze_mod, "_proxy_setups",
+                        lambda setups, strip: {"top": setup, "bottom": setup})
+    monkeypatch.setattr(rep.analyze_mod, "run_up_from", lambda prev, start: 0.0)
+    monkeypatch.setattr(rep.yolo, "YoloDetector", FakeDetector)
+    monkeypatch.setattr(rep.sequence, "detect_end", detect_end)
+    monkeypatch.setattr(rep.sequence, "detect_span", detect_span)
+    monkeypatch.setattr(rep.D, "find_deliveries", lambda *a, **k: [])
+    monkeypatch.setattr(rep.secondpass, "gaps_to_search", lambda *a: [])
+    monkeypatch.setattr(rep.secondpass, "search", lambda *a: [])
+    monkeypatch.setattr(rep.release, "find_and_pair",
+                        lambda *a, **k: (None, {}, []))
+    monkeypatch.setattr(rep.fit, "drop_clearing", lambda *a: [])
+    monkeypatch.setattr(rep.fit, "released_ids", lambda *a: set())
+    monkeypatch.setattr(rep.fit, "paired_ids", lambda *a: set())
+    monkeypatch.setattr(rep.fit, "fit_end", lambda ds, paired: ds)
+
+    tl = tmp_path / "t.json"
+    tl.write_text(json.dumps({
+        "source": {"video_id": "vid"},
+        "games": [{"index": 0, "ends": [
+            {"number": 1, "house": "top", "start_s": 0.0, "end_s": 5.0, "shots": []}]}]}))
+    seen.timeline = str(tl)
+    seen.frames = frames
+    return seen
+
+
+def _shot(number):
+    return SimpleNamespace(number=number, missing=False, color="red", t_rest_s=3.0,
+                           stones=[SimpleNamespace(color="red", x_m=1.0, y_m=2.0)],
+                           house_delta=None, delivered_stone_index=None)
+
+
+def test_replay_keeps_players_and_records_held(monkeypatch, tmp_path, capsys):
+    def from_deliveries(frames, kw):
+        # Put back one stone for shot 2 only.
+        kw["held"].append({"shot": 2, "color": "red", "x": 1.0004, "y": 2.0})
+        return [_shot(1), _shot(2)]
+
+    seen = _fake_replay(monkeypatch, tmp_path)
+    # from_deliveries accepts held, so the script must pass it.
+    monkeypatch.setattr(rep.shots_mod, "from_deliveries", _accepting(seen, from_deliveries))
+    rows = rep.replay(seen.timeline, tmp_path, "far.pt")
+    frames, kw = seen.from_args
+    assert all(a is b for (_, a), (_, b) in zip(frames, seen.frames))  # players survive
+    assert kw["house_frames"] is frames
+    assert [r["held"] for r in rows] == [[], [stone("red", 1.0, 2.0)]]
+    assert "frames with players: 2 of 3" in capsys.readouterr().out
+
+
+def _accepting(seen, from_deliveries):
+    def fake(deliveries, frames, thrown_by=None, house_frames=None, held=None):
+        seen.from_args = (frames, {"house_frames": house_frames, "held": held})
+        return from_deliveries(frames, {"held": held})
+    return fake
+
+
+def test_replay_without_held_in_from_deliveries_gives_empty_held(monkeypatch, tmp_path):
+    seen = _fake_replay(monkeypatch, tmp_path)
+
+    def no_held(deliveries, frames, thrown_by=None, house_frames=None):
+        seen.from_args = (frames, {"house_frames": house_frames})
+        return [_shot(1)]
+
+    monkeypatch.setattr(rep.shots_mod, "from_deliveries", no_held)
+    rows = rep.replay(seen.timeline, tmp_path, "far.pt")
+    assert rows[0]["held"] == []
+
+
+def test_house_detector_reads_the_receiving_panel_only(monkeypatch, tmp_path):
+    seen = _fake_replay(monkeypatch, tmp_path)
+    monkeypatch.setattr(rep.shots_mod, "from_deliveries", _accepting(seen, lambda f, kw: []))
+    rep.replay(seen.timeline, tmp_path, "far.pt", house_weights="house.pt")
+    assert seen.end_detector.weights == "house.pt"
+    assert seen.span_detector.weights == "far.pt"
+    assert len(seen.detectors) == 2
+
+
+def test_equal_house_weights_reuse_one_detector(monkeypatch, tmp_path):
+    seen = _fake_replay(monkeypatch, tmp_path)
+    monkeypatch.setattr(rep.shots_mod, "from_deliveries", _accepting(seen, lambda f, kw: []))
+    rep.replay(seen.timeline, tmp_path, "far.pt", house_weights="far.pt")
+    assert len(seen.detectors) == 1 and seen.end_detector is seen.span_detector
