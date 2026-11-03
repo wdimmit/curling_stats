@@ -37,7 +37,7 @@ from curling_score.game import (
     thinking,
 )
 from curling_score.game import format as format_mod
-from curling_score.geometry import endcam, layout, sideview
+from curling_score.geometry import constants as C, endcam, layout, sideview
 from curling_score.ingest import cache, frames as F, proxy, source
 
 log = logging.getLogger(__name__)
@@ -351,10 +351,47 @@ def _end_views(calib_frames, panels, club, progress, cameras=None, end_camera=Tr
                      f"{fit.view.hog_row:.1f}, d {fit.view.d_m:.2f} m, ring {fit.ring_residual_m * 100:.1f} cm, "
                      f"centre line on {fit.centre_rows} rows")
             views[hogtime.CAMERA_FOR[house]] = fit.view
+        if club.logo_rows and not end_camera:
+            views = _tie_on_logo(plate, views, rects, cameras, club.logo_rows, progress)
         return views
     except sideview.SideViewError as exc:
         progress(f"{kind} cameras unusable, so this video has no splits: {exc}")
         return None
+
+
+def _tie_on_logo(plate, views, rects, cameras, logo_rows, progress):
+    """The two long cameras refitted together on a logo both see; the fits
+    as they were if it cannot be read or the tie does not close."""
+    from curling_score.game import hogtime
+    from curling_score.geometry import logotie
+
+    side_of = {hogtime.CAMERA_FOR[house]: side for house, (side, _paint) in cameras.items()}
+    paint_of = {hogtime.CAMERA_FOR[house]: paint for house, (_side, paint) in cameras.items()}
+    names = sorted(views)
+    try:
+        cams = []
+        for name in names:
+            x0, y0, w, h = rects[side_of[name]]
+            img = np.ascontiguousarray(plate[y0:y0 + h, x0:x0 + w])
+            outer, inner = endcam.ring_edges(img, paint_of[name])
+            cams.append(logotie.Camera(
+                view=views[name], ring_pts=np.vstack([outer, inner]),
+                ring_radii=np.r_[np.full(len(outer), C.R_12FT_M),
+                                 np.full(len(inner), paint_of[name].inner_radius_m)],
+                outline=logotie.logo_outline(img, logo_rows[side_of[name]])))
+        got = logotie.tie(*cams)
+    except sideview.SideViewError as exc:
+        progress(f"long cameras not tied on the logo: {exc}")
+        return views
+    if not got.logo_after_m <= logotie.MAX_LOGO_RESIDUAL_M:
+        progress(f"long cameras not tied: the logo still {got.logo_after_m * 100:.1f} cm apart")
+        return views
+    for name, v in zip(names, got.views):
+        progress(f"{name} long camera tied on the logo: d {views[name].d_m:.2f} -> {v.d_m:.2f} m, "
+                 f"lateral {views[name].lat_px_per_m_at_tee:.1f} -> {v.lat_px_per_m_at_tee:.1f} px/m at the tee")
+    progress(f"logo outlines {got.logo_before_m * 100:.1f} -> {got.logo_after_m * 100:.1f} cm apart; rings "
+             + ", ".join(f"{r * 100:.1f} cm" for r in got.ring_m))
+    return dict(zip(names, got.views))
 
 
 def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info,

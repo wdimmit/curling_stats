@@ -38,6 +38,9 @@ class Club:
     panel_layout: PanelLayout | None = None
     # The rows of the side views that are ice and not broadcast graphics.
     side_rows: tuple[int, int] | None = None
+    # Rows of each long camera that hold a logo painted on the ice that both
+    # see, to tie the two cameras' fits together by (`logotie`): side -> rows.
+    logo_rows: dict | None = None
 
 
 # The two houses are played toward from opposite directions, and Granite's
@@ -83,6 +86,8 @@ SWIFT_CURRENT = Club("swift-current", (
     house: (side, EndPaint(ring=RED_HSV, inner_radius_m=C.R_8FT_M, hog="dark", centre="sidelines"))
     for house, side in (("top", "left"), ("bottom", "right"))
 }, panel_layout=PanelLayout(top=(730, 8, 460, 454), bottom=(730, 613, 460, 454)),
-    side_rows=(0, 990))
+    side_rows=(0, 990),
+    # The Pepsi logo at centre ice, near the bottom of both long cameras.
+    logo_rows={"left": (770, 990), "right": (800, 990)})
 
 CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT)}
