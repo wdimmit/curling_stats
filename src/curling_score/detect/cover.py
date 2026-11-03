@@ -37,14 +37,21 @@ def covered(x_m: float, y_m: float, color: str, window) -> bool:
     ``(t, detections)`` frames -- missed it?
 
     A player's box, grown by a stone's radius, is over the spot when it holds
-    it: the stone is under the box if its edge is.
+    it: the stone is under the box if its edge is. A frame showing a stone of
+    the *other* colour on the spot counts unseen and never covered, player
+    box or not: a stone sitting there proves the spot is in view, so ours is
+    not under anybody (a hit-and-stick leaves the shooter where the removed
+    stone sat, a sweeper beside it).
     """
     unseen = hidden = 0
     for _, dets in window:
-        if any(s.color == color and ((s.x_m - x_m) ** 2 + (s.y_m - y_m) ** 2) ** 0.5 <= SEEN_M
-               for s in dets):
+        near = [s for s in dets
+                if ((s.x_m - x_m) ** 2 + (s.y_m - y_m) ** 2) ** 0.5 <= SEEN_M]
+        if any(s.color == color for s in near):
             continue
         unseen += 1
+        if near:
+            continue
         pad = C.STONE_RADIUS_M
         hidden += any(p.x0_m - pad <= x_m <= p.x1_m + pad and p.y0_m - pad <= y_m <= p.y1_m + pad
                       for p in getattr(dets, "players", ()))

@@ -648,7 +648,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
         # only the read's own frames -- the last rock's cut at the first hand
         # on a settled stone, so the players clearing the house are not held
         # against it.
-        if stones and window:
+        if window:
             hidden = [("removed", c) for c in house_delta(
                 previous, stones, thrower=dv.color, delivered=thrown)["removed"]
                 if covered(c["x"], c["y"], c["color"], window)]

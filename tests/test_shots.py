@@ -989,6 +989,17 @@ class TestAStoneUnderAPlayer:
         assert sorted(_xy(s) for s in first.stones) == sorted(_xy(s) for s in bare_first.stones)
         assert held == []
 
+    def test_a_read_that_lost_everything_still_puts_the_stone_back(self):
+        # The read is empty, a player over the only previous stone: the check
+        # runs without a stone in the read to hang it on.
+        back = det("red", *self.BACK)
+        frames = self._frames({0: [back], 17: []}, players=17.0, until=68.0)
+        held = []
+        (shot,) = shots.from_deliveries([self._dv("yellow", 10)], frames, house_frames=frames,
+                                        before=[back], base=1, held=held)
+        assert [_xy(s) for s in shot.stones] == [self.BACK]
+        assert held == [{"shot": 1, "color": "red", "x": -1.65, "y": -1.52}]
+
     def test_the_last_rock_is_checked_too(self):
         # The last rock's window is cut where a settled stone is pushed off
         # (here at 24 s); the player is gone by then and the red still missing.
@@ -1059,3 +1070,9 @@ class TestCover:
 
     def test_frames_with_no_players_attribute_have_none(self):
         assert not self._covered([(i * 0.1, []) for i in range(8)])
+
+    def test_another_colours_stone_on_the_spot_proves_it_open(self):
+        # A hit-and-stick: a yellow sits where the red was, a player box over
+        # it too. The spot is in view, so the red is not under anybody.
+        window = [(i * 0.1, seen([det("yellow", 1.02, 0.98)], [self.OVER])) for i in range(8)]
+        assert not self._covered(window)
