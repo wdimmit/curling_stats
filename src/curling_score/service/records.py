@@ -373,9 +373,6 @@ class WatchedPlaylist:
     schedule: list = field(default_factory=list)
     live_poll_s: float = 180.0
     idle_poll_s: float | None = 3600.0
-    # A sheet's practice streams, not league games: never polled for games.
-    # (Practice sessions read the club's cameras, not these.)
-    practice: bool = False
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
@@ -649,7 +646,10 @@ class SensorTiming:
     ``hog_at``, when it crossed the throwing hog line by the app's clock. It
     belongs to the session whose window held ``hog_at`` and is paired with a
     camera throw when the session is read (service/practice.match_timings).
-    ``at``/``at_is`` are what the app said: one crossing's time, and which."""
+    ``at``/``at_is`` are what the app said: one crossing's time, and which.
+    ``clock_offset_s`` is our clock less the phone's, from the push's
+    ``sent_at``; ``hog_at`` has it added. None when the app sent no sent_at,
+    and ``hog_at`` is then on the phone's clock."""
 
     id: str
     user_id: str
@@ -662,6 +662,7 @@ class SensorTiming:
     short_s: float | None = None
     long_s: float | None = None
     key_id: str | None = None
+    clock_offset_s: float | None = None
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
@@ -676,8 +677,9 @@ def sensor_timing_id(user_id: str, client_id: str) -> str:
 # Members' labelling: small questions put to many members, each answered by
 # the same few people the way an item's `max_labels` says (service/repo.py).
 # "box" is a rock the detector found, to be boxed or called not-a-rock;
-# "release" is a delivery, to be marked where the hand lets go.
-LABEL_KINDS = ("box", "release")
+# "release" is a delivery, to be marked where the hand lets go; "player" is an
+# overhead frame, to box the people in it.
+LABEL_KINDS = ("box", "release", "player")
 # "pending" is made but not yet handed out; "open" is being labelled; "done"
 # has its labels; "retired" was skipped by too many to be worth asking.
 LABEL_STATES = ("pending", "open", "done", "retired")
@@ -721,7 +723,9 @@ class LabelItem:
 
 @dataclass
 class LabelAnswer:
-    """One member's answer to one item, kept after the item is done."""
+    """One member's answer to one item, kept after the item is done.
+    ``discarded`` is an answer an admin dropped (a member we don't trust): it
+    stays on file but no longer counts toward its item."""
 
     id: str
     item_id: str
@@ -730,6 +734,7 @@ class LabelAnswer:
     at: datetime
     seconds: float
     answer: dict
+    discarded: bool = False
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

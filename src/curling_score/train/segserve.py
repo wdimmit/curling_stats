@@ -4,9 +4,10 @@ The review of the first fifty frames settled what the colour detector can and
 cannot do. It finds *where* something red or yellow is, which is a real skill --
 a handle is genuinely saturated against grey ice. It is bad at two other
 things, and they turned out to be the ones that mattered: deciding whether the
-thing is a stone, and saying how far it extends. ``longview.candidates`` walks
-down from the handle looking for granite and stops at whatever is darker than
-ice, so its box was always a guess, and essentially none of them were usable.
+thing is a stone, and saying how far it extends. The long camera's old colour
+scan walked down from the handle looking for granite and stopped at whatever
+was darker than ice, so its box was always a guess, and essentially none of
+them were usable.
 
 A person settles identity in the time it takes to look. So let them: the click
 says *this is a red stone*, and SAM says where its edges are. Measured on an

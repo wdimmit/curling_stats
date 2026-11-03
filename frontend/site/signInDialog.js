@@ -12,11 +12,9 @@
  * auth.js hands it (auth.js api()), and the small decisions -- is this an
  * address, is that a code -- are signinState's.
  *
- * Three views. Choose: Google, or an address to email a link to -- the
- * address only once the site has switched emailed links on (api.emailLink),
- * and until then Google alone. Waiting: for that link, with a box for the
- * code the link shows when it opens in some other browser (a mail app's own,
- * often, on a phone). Name: asked once, after this tab finishes a link
+ * Three views. Choose: Google, or an address to email a link to. Waiting:
+ * for that link, with a box for the code the link shows when it opens in
+ * some other browser (a mail app's own, often, on a phone). Name: asked once, after this tab finishes a link
  * sign-in for an account that has none. */
 import { cleanEmail, emailFailed, failed, isFresh, parseCode } from "./signinState.mjs";
 
@@ -184,11 +182,8 @@ function run(api, view, resumed = null) {
     function choose(email = "") {
       const google = h("button", { type: "button", class: "si-primary si-wide" },
                        "Continue with Google");
-      // Until the site switches emailed links on (auth.js emailLinkOn), the
-      // chooser is Google alone: offered before Firebase will send them,
-      // every "Email me a link" would fail.
-      const input = api.emailLink ? h("input", { id: "signInDialogEmail", type: "email",
-                                                 autocomplete: "email", required: "" }) : null;
+      const input = h("input", { id: "signInDialogEmail", type: "email",
+                                 autocomplete: "email", required: "" });
       const say = sayLine();
 
       // Only this button waits on the popup. Firebase takes some seconds to
@@ -202,16 +197,14 @@ function run(api, view, resumed = null) {
         api.signInWithGoogle().then(u => end(true, u), e => {
           google.disabled = false;
           if (e?.code === "auth/account-exists-with-different-credential") {
-            if (input) input.value = e.customData?.email || input.value;
+            input.value = e.customData?.email || input.value;
             say.textContent = LINKED;
-            input?.focus();
+            input.focus();
           } else if (!SHUT.has(e?.code)) {
             say.textContent = failed("Couldn't sign in with Google", e);
           }
         });
       });
-      if (!input) { show(google, title("Sign in"), google, say); return; }
-
       input.value = email;
       const form = h("form", {},
         h("label", { for: "signInDialogEmail" }, "Email"), input,
@@ -352,7 +345,7 @@ function run(api, view, resumed = null) {
       // code box: most often a viewer chart or a review page, which load
       // auth.js only when somebody signs in, reloaded while its person was in
       // the mail app. "Use a different address" leads back to the chooser.
-      const last = api.emailLink ? api.pending() : null;
+      const last = api.pending();
       const live = isFresh(last, Date.now());
       if (live && !api.currentUser()) { pending = last; wait(); }
       else choose(live ? last.email : "");

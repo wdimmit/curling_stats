@@ -25,7 +25,8 @@ import numpy as np
 sys.path.insert(0, "/home/tcuser/src/curling_score/.claude/worktrees/longview/src")
 
 from curling_score.detect import longview
-from curling_score.harvest import sidepool, sideviews as SV
+from curling_score.geometry.sideview import band_crop
+from curling_score.harvest import sideviews as SV
 from curling_score.train import boxedit
 from ultralytics import YOLO
 
@@ -64,7 +65,7 @@ for r in sample:
         continue
     vv = SV.from_json(views_doc[vid])
     view = dict(SV.usable_views(vv))[r["view"]]
-    y0, y1 = sidepool.band_crop(view)
+    y0, y1 = band_crop(view)
     img = cv2.imread(str(src))
     lo, hi = max(0, y0), min(img.shape[0], y1)
     crop = img[lo:hi, :].copy()

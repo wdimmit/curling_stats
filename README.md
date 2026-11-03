@@ -31,7 +31,7 @@ The `gpu` extra is torch and ultralytics, which every default model in
 `weights/` needs. To run without the extra, set `CURLING_SCORE_WEIGHTS`,
 `CURLING_SCORE_SIDE_WEIGHTS`, `CURLING_SCORE_BROOM_WEIGHTS`,
 `CURLING_SCORE_SPIN_WEIGHTS` and `CURLING_SCORE_RELEASE_WEIGHTS` to `none`. You
-get the colour detector, colour-scan hog crossings, and no brooms, spin or
+get the colour detector, and no long-camera hog crossings, brooms, spin or
 release reads. The models run on a CPU, but a GPU is what makes it practical: a
 live end took 60-70 s to build on the hosted worker after the 2026-10-12
 performance pass, and the build is bound by the CPU more than the GPU. If
@@ -193,7 +193,7 @@ radius 0.142).
 | Job                                                         | Default                                           | Override                        | Set to `none` for   |
 | ----------------------------------------------------------- | ------------------------------------------------- | ------------------------------- | ------------------- |
 | Stones in the overhead panels                               | `weights/ds17b.pt`                                | `CURLING_SCORE_WEIGHTS`         | the colour detector |
-| Stones crossing the throwing hog line, in the long camera   | `weights/ds13e.pt`                                | `CURLING_SCORE_SIDE_WEIGHTS`    | the colour scan     |
+| Stones crossing the throwing hog line, in the long camera   | `weights/long-1.pt`                               | `CURLING_SCORE_SIDE_WEIGHTS`    | no hog times        |
 | The skip's broom head, in the long camera                   | `weights/broom4.pt`                               | `CURLING_SCORE_BROOM_WEIGHTS`   | no brooms           |
 | A stone's handle, for its spin, in the long camera          | `weights/spin1.pt`                                | `CURLING_SCORE_SPIN_WEIGHTS`    | no spin             |
 | The thrower's hand on or off the handle, in the long camera | `weights/release1.pt`                             | `CURLING_SCORE_RELEASE_WEIGHTS` | no release reads    |
@@ -516,20 +516,19 @@ row per team per game.
 Leave `FIREBASE_PROJECT` unset and there are no accounts: no sign-in button,
 and the service behaves exactly as it did before any of it was added: anyone
 charts, and a chart's link is all it takes to change it.
-The switches below default to off and are set in `deploy/cloudrun.yaml`:
+Two switches default to off and are set in `deploy/cloudrun.yaml`:
 
-- `DOUBLES_ENABLED` and `LIVE_ENABLED` switch on doubles submissions and live
-  jobs.
 - `REQUIRE_APPROVAL` holds a pasted link or a playlist's new game as
   `pending_approval` until an admin approves it, instead of queueing it.
 - `PRACTICE_ENABLED` opens practice sessions at `/practice/sheet/N`, read from
   the sheet's own cameras by a worker on the club's network
   ([deploy](deploy/README.md#practice-on-the-clubs-cameras)).
-- `GAME_CLIPS_ENABLED` cuts clips of the rocks a person says they threw, shown
-  on My shots at `/shots`, by the worker box's `clips` service
-  ([deploy](deploy/README.md#two-workers-and-the-clips-worker-on-one-box)).
-- `EMAIL_LINK_SIGNIN` offers "Email me a link" beside Google sign-in; turning
-  it on has an order to it ([deploy](deploy/README.md#first-time-setup-once)).
+
+Clips of the rocks a person says they threw are shown on My shots at `/shots`,
+cut by the worker box's `clips` service
+([deploy](deploy/README.md#two-workers-and-the-clips-worker-on-one-box)).
+Sign-in offers Google or an emailed link, which needs Firebase set up for it
+first ([deploy](deploy/README.md#first-time-setup-once)).
 
 Members also label rock boxes and release marks for training at `/label`
 (`docs/superpowers/specs/2026-10-22-member-labelling-design.md`).

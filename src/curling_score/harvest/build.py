@@ -23,9 +23,8 @@ def build(doc, pool_dir, out_dir, splits=("train", "val"), iter_frames=None) -> 
 
     ``iter_frames`` defaults to :func:`curling_score.harvest.manifest.
     iter_frames`, the overhead-set reader. A caller walking a different
-    manifest shape -- ``manifest.side_iter_frames`` for the side-view set --
-    passes that instead; everything else about the tree it writes is
-    unchanged.
+    manifest shape passes its own instead; everything else about the tree it
+    writes is unchanged.
     """
     pool_dir, out_dir = Path(pool_dir), Path(out_dir)
     for split in splits:

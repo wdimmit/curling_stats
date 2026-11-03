@@ -20,6 +20,50 @@ class TestProxyPath:
         assert proxy.is_cached("VID", (0, 0, 10, 10), root=tmp_path) is False
 
 
+def _clip(path, seconds=6):
+    import subprocess
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi",
+                    "-i", f"testsrc=size=640x360:rate=30:duration={seconds}",
+                    "-c:v", "libx264", "-preset", "ultrafast", str(path)], check=True)
+    return path
+
+
+class TestEnsureProxyKeepsTheJob:
+    """10/30 Friday: a job's lease runs out after ten minutes without a word,
+    and two strip proxies building at once took seventeen. Each job went to
+    the other worker, which started its proxy again."""
+
+    def test_ticks_while_the_encode_runs(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(proxy, "TICK_S", 0.01)
+        ticks = []
+        dest = proxy.ensure_proxy(_clip(tmp_path / "v.mp4"), "VID", (0, 0, 320, 360),
+                                  root=tmp_path, tick=lambda: ticks.append(1))
+        assert dest.exists()
+        assert len(ticks) >= 2
+
+    def test_a_lost_job_stops_the_encode_and_leaves_no_file(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(proxy, "TICK_S", 0.01)
+
+        class Lost(Exception):
+            pass
+
+        def tick():
+            raise Lost
+
+        with pytest.raises(Lost):
+            proxy.ensure_proxy(_clip(tmp_path / "v.mp4", seconds=60), "VID", (0, 0, 320, 360),
+                               root=tmp_path, tick=tick)
+        assert list((tmp_path / "proxies").iterdir()) == []
+
+    def test_a_failed_encode_still_raises(self, tmp_path):
+        bad = tmp_path / "v.mp4"
+        bad.write_bytes(b"not a video")
+        import subprocess
+        with pytest.raises(subprocess.CalledProcessError):
+            proxy.ensure_proxy(bad, "VID", (0, 0, 320, 360), root=tmp_path, tick=lambda: None)
+        assert list((tmp_path / "proxies").iterdir()) == []
+
+
 class TestTranslateRect:
     def test_panel_rects_move_into_proxy_coordinates(self):
         strip = (810, 10, 297, 1060)

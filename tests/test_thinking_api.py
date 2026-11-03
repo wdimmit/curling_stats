@@ -246,7 +246,6 @@ class TestTheLeagueIsThePlaylist:
 
 class TestDoubles:
     def test_a_doubles_league_is_marked_and_kept_apart(self, world):
-        world["settings"].doubles_enabled = True
         add_doubles_video(world)
         submit(world, url=f"https://youtu.be/{DOUBLES_VID}")
         work_through(world, doc=with_thinking(sample_doc(1), [(40.0, 80.0)]), games=1,

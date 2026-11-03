@@ -61,12 +61,7 @@ const stripWords = shot => isBroomless(shot)
   ? { seen: "the thrown line and where the rock went", wideGloss: "" }
   : { seen: "the intended line, the thrown line and where the rock went", wideGloss: " · wide = the side away from the curl" };
 
-const Check = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"
-       style={{ fill: "none", strokeWidth: 2.6 }}><path d="M4 12 L10 18 L20 6" /></svg>
-);
-
-/* The six figures. The phone stacks them; the desktop card's CSS lays them
+/* The figures. The phone stacks them; the desktop card's CSS lays them
  * out three across. `children` is a last cell after them (the portrait iPad's
  * Line & speed). */
 export function Figures({ figures, children }) {
@@ -76,9 +71,7 @@ export function Figures({ figures, children }) {
         <div key={x.key} className={x.dim ? "dfig dim" : "dfig"}>
           <dt>{x.label}</dt>
           <dd className="dval">{x.value}</dd>
-          <dd className={x.tick ? `dnote ${x.tick}` : "dnote"} {...(x.title ? { title: x.title } : {})}>
-            {x.tick === "confirmed" ? <Check /> : null}{x.note}
-          </dd>
+          <dd className="dnote" {...(x.title ? { title: x.title } : {})}>{x.note}</dd>
         </div>
       ))}
       {children}
@@ -97,7 +90,7 @@ export function Detail({ shot, doc }) {
                label={`The sheet from above, thrower at the bottom: ${seen}`} />
         <Figures figures={f.figures} />
       </div>
-      <p className="dcap">Sheet from above, thrower at the bottom · across ×3 · figures ±4 in{wideGloss}</p>
+      <p className="dcap">Sheet from above, thrower at the bottom · across ×3 · figures ±2 in{wideGloss}</p>
     </>
   );
 }
@@ -123,7 +116,7 @@ export function DeskDetail({ shot, doc }) {
       {g ? <DeliveryChart g={g} label={deliveryLabel(shot, true, g)} fluid /> : null}
       {why ? <p className="dlvnone">{why}</p> : null}
       <Figures figures={f.figures} />
-      <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±4 in{wideGloss}
+      <p className="dcap">Sheet from above, thrower at the left · across ×1.5 · figures ±2 in{wideGloss}
         {g ? ` · below it, the hack to 1.5 m past the hog line, across ×${g.stretch}, a dot every ${g.every.short}`
              + dotColours(g) : ""}</p>
     </>

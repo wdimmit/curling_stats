@@ -47,8 +47,7 @@ def test_practice_records_are_backed_up():
     assert other.get_session("ps_1").user_id == "u_1"
 
 
-def test_a_playlist_can_be_a_practice_playlist():
-    pl = WatchedPlaylist(id="p_1", playlist_id="PLErN0WbLUyFI", label="Practice",
-                         created_at=T, practice=True)
-    assert WatchedPlaylist.from_dict(pl.to_dict()).practice
-    assert not WatchedPlaylist(id="p", playlist_id="x", label="l", created_at=T).practice
+def test_a_playlist_stored_with_the_old_practice_flag_still_loads():
+    stored = {**WatchedPlaylist(id="p", playlist_id="x", label="l", created_at=T).to_dict(),
+              "practice": False}
+    assert WatchedPlaylist.from_dict(stored).label == "l"

@@ -41,12 +41,86 @@ def test_the_line_against_the_broom_or_where_it_was_aimed():
 
 
 def test_the_tables_line_leaves_off_the_broom():
+    # In inch marks, as the card's figures are (PR #2).
     assert js('P.lineText({miss_m: -0.12, side: "narrow", aim_x: null}, {short: true})') == \
-        "5 in narrow"
+        '5" narrow'
     assert js('P.lineText({miss_m: 0.33, side: "wide", aim_x: null}, {short: true})') == \
-        "1 ft 1 in wide"
+        '13" wide'
     assert js('P.lineText({miss_m: 0.01, side: "wide", aim_x: null}, {short: true})') == \
-        "On the broom"
+        "to the broom"
+    assert js('P.lineText({miss_m: null, side: null, aim_x: -0.2032}, {short: true})') == \
+        '8" left of centre'
+
+
+def aim(miss, side, shown=True):
+    return {"at_broom": {"x": 0.0, "miss_m": miss}, "side": side, "shown": shown,
+            "fit": {"n": 40, "n_eff": 12.0, "rms_m": 0.004, "se_m": 0.03}}
+
+
+def throw(**line):
+    base = {"miss_m": -0.127, "side": "wide", "aim_x": None, "release": [1.0, 29.0, -0.2],
+            "slide": aim(0.0762, "narrow"), "release_line": aim(-0.1016, "wide"),
+            "set": {"m": 0.1778, "se_m": 0.03, "shown": True}}
+    base.update(line)
+    return {"curl": "right", "line": base}
+
+
+def figs(t):
+    """With the slide shown; the default holds it back."""
+    return js(f"P.aimFigures({json.dumps(t)}, {{slide: true}})")
+
+
+def test_slide_and_set_shown_by_default():
+    assert js(f"P.aimFigures({json.dumps(throw())})") == figs(throw())
+    held = js(f"P.aimFigures({json.dumps(throw())}, {{slide: false}})")
+    assert "slide" not in held and held["set"] is None
+    assert held["release"] == {"value": '4"', "side": "wide"}
+
+
+def test_aim_figures_in_inch_marks():
+    assert figs(throw()) == {"slide": {"value": '3"', "side": "narrow"},
+                             "release": {"value": '4"', "side": "wide"},
+                             "final": {"value": '5"', "side": "wide"},
+                             "set": {"value": '+7"'}}
+    assert figs(throw(set={"m": -0.1778, "se_m": 0.03, "shown": True}))["set"] == {"value": "−7\""}
+
+
+def test_within_two_inches_is_to_the_broom():
+    # The game page's threshold too, on the measured miss, not its rounding.
+    assert figs(throw(slide=aim(0.050, "narrow")))["slide"] == {"value": "to the broom", "side": None}
+    assert figs(throw(slide=aim(0.052, "narrow")))["slide"] == {"value": '2"', "side": "narrow"}
+    assert js('P.lineText({miss_m: 0.05, side: "wide", aim_x: null})') == "On the broom"
+
+
+def test_set_without_curl_says_which_way():
+    t = dict(throw(), curl=None)
+    assert figs(t)["set"] == {"value": '7" right'}
+
+
+def test_not_shown_or_missing_is_null():
+    got = figs(throw(slide=None, release_line=aim(-0.1, "wide", shown=False),
+                     set={"m": 0.1, "se_m": 0.2, "shown": False}, final_refused=True, miss_m=None))
+    assert got == {"slide": None, "release": None, "final": None, "set": None}
+
+
+def test_broomless_reads_against_centre():
+    tee = {"at_broom": None, "at_tee": {"x": -0.2032}, "side": None, "shown": True,
+           "fit": {"n": 40, "n_eff": 12.0, "rms_m": 0.004, "se_m": 0.03}}
+    t = throw(slide=tee, release_line=tee, set=None, miss_m=None, side=None, aim_x=0.1016)
+    got = figs(t)
+    assert js(f"P.figureWords({json.dumps(got['slide'])})") == '8" left of centre'
+    assert js(f"P.figureWords({json.dumps(got['final'])})") == '4" right of centre'
+
+
+def test_old_record_has_no_aim_figures():
+    assert js('P.aimFigures({curl: "right", line: {miss_m: -0.1, side: "wide", aim_x: null}})') is None
+    assert js('P.aimFigures({line: null})') is None
+
+
+def test_table_line_matches_the_card():
+    t = throw()
+    words = js(f"P.figureWords(P.aimFigures({json.dumps(t)}).final)")
+    assert js(f"P.lineText({json.dumps(t['line'])}, {{short: true}})") == words == '5" wide'
 
 
 def test_weight_and_curl():

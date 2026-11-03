@@ -47,7 +47,7 @@ export function FiguresCard({ shot, doc, onLine, children }) {
             </Figures>
             {onLine ? null : (
               <p className="dcap">
-                {isBroomless(shot) ? "Figures ±4 in" : "Figures ±4 in · wide = the side away from the curl"}
+                {isBroomless(shot) ? "Figures ±2 in" : "Figures ±2 in · wide = the side away from the curl"}
               </p>
             )}
           </>

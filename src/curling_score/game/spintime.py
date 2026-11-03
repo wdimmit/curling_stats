@@ -26,7 +26,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from curling_score.game import linetime, spinfit
-from curling_score.harvest import sidepool
+from curling_score.geometry.sideview import band_crop
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def track_of(crossing, view):
     if crossing is None or getattr(crossing, "track_key", None) is None \
             or not getattr(crossing, "samples", ()):
         return []
-    edge = sidepool.band_crop(view)[1] - linetime.CROP_EDGE_ROWS
+    edge = band_crop(view)[1] - linetime.CROP_EDGE_ROWS
     samples = [s for s in crossing.samples if s[2] < edge]
     if not samples:
         return []

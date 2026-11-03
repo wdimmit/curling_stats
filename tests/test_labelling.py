@@ -28,6 +28,19 @@ def release_item():
                               "fps": 30.0, "frames": [], "origin": {}})
 
 
+def player_item():  # 100x50 image, one detected start
+    payload = {"image": "k", "w": 100, "h": 50, "starts": [
+        {"x0": 10, "y0": 10, "x1": 20, "y1": 30, "conf": 0.8}],
+        "stones": [{"x0": 50, "y0": 10, "x1": 56, "y1": 16, "color": "red"}],
+        "origin": {"video_id": "v"}}
+    return LabelItem(id="p_1", kind="player", created_at=T0, batch="t", state="open",
+                     payload=payload)
+
+
+def player_box(**over):
+    return {"x0": 10, "y0": 10, "x1": 20, "y1": 30, "start": 0, **over}
+
+
 def two_boxes(**over):
     a = {"x0": 10, "y0": 10, "x1": 20, "y1": 18, "color": "red", "start": 0}
     b = {"x0": 50, "y0": 10, "x1": 60, "y1": 18, "color": "yellow", "start": 1}
@@ -125,6 +138,124 @@ def test_cant_tell_needs_nothing_else():
     assert got == {"cant_tell": True, "boxes": [], "starts": []}
 
 
+def test_a_player_answer_keeps_boxes_without_a_colour():
+    got = check_answer(player_item(), {"cant_tell": False, "starts": ["untouched"],
+                                       "boxes": [player_box(),
+                                                 player_box(x0=60, x1=70, start=None)]})
+    assert got == {"cant_tell": False, "starts": ["untouched"], "boxes": [
+        {"x0": 10, "y0": 10, "x1": 20, "y1": 30, "start": 0},
+        {"x0": 60, "y0": 10, "x1": 70, "y1": 30, "start": None}]}
+
+
+def test_a_player_box_with_a_colour_is_refused():
+    with pytest.raises(ValueError, match="colour"):
+        check_answer(player_item(), {"cant_tell": False, "starts": ["kept"],
+                                     "boxes": [player_box(color="red")]})
+
+
+def test_an_untouched_player_start_is_accepted_and_there_is_no_flagged_rule():
+    item = player_item()
+    item.payload["starts"][0]["flagged"] = True
+    got = check_answer(item, {"cant_tell": False, "starts": ["untouched"],
+                              "boxes": [player_box()]})
+    assert got["starts"] == ["untouched"]
+
+
+def test_a_player_image_with_nobody_in_it_can_be_answered_empty():
+    item = player_item()
+    item.payload["starts"] = []
+    assert check_answer(item, {"cant_tell": False, "starts": [], "boxes": []}) == {
+        "cant_tell": False, "boxes": [], "starts": []}
+
+
+def test_player_cant_tell_needs_nothing_else():
+    got = check_answer(player_item(), {"cant_tell": True, "boxes": [{"junk": 1}]})
+    assert got == {"cant_tell": True, "boxes": [], "starts": []}
+
+
+def test_player_boxes_follow_the_box_rules():
+    item = player_item()
+    ok = {"cant_tell": False, "starts": ["untouched"], "boxes": [player_box()]}
+    with pytest.raises(ValueError, match="outside"):
+        check_answer(item, {**ok, "boxes": [player_box(x1=140)]})
+    with pytest.raises(ValueError, match="small"):
+        check_answer(item, {**ok, "boxes": [player_box(x1=12)]})
+    with pytest.raises(ValueError, match="needs its box"):
+        check_answer(item, {**ok, "boxes": []})
+    with pytest.raises(ValueError, match="deleted start"):
+        check_answer(item, {**ok, "starts": ["deleted"]})
+    with pytest.raises(ValueError, match="twice"):
+        check_answer(item, {**ok, "boxes": [player_box(), player_box(y0=11)]})
+    with pytest.raises(ValueError, match="one status"):
+        check_answer(item, {**ok, "starts": []})
+    with pytest.raises(ValueError, match="at most"):
+        check_answer(item, {**ok, "boxes": [player_box()] + [
+            player_box(x0=1, x1=9, start=None) for _ in range(60)]})
+
+
+# --- stones fixed in the player flow ---------------------------------------------
+
+def player_ok(**over):
+    return {"cant_tell": False, "starts": ["untouched"], "boxes": [player_box()], **over}
+
+
+def stone(**over):
+    return {"x0": 50, "y0": 10, "x1": 56, "y1": 16, "color": "red", **over}
+
+
+def test_an_answer_that_leaves_the_stones_alone_says_nothing_about_them():
+    assert "stones" not in check_answer(player_item(), player_ok())
+    assert "stones" not in check_answer(player_item(), player_ok(stones=None))
+
+
+def test_fixed_stones_are_kept_whole_with_their_colours():
+    got = check_answer(player_item(), player_ok(stones=[
+        stone(x0=51), stone(x0=70, x1=80, y0=30, y1=40, color="yellow", start=3)]))
+    assert got["stones"] == [{"x0": 51, "y0": 10, "x1": 56, "y1": 16, "color": "red"},
+                             {"x0": 70, "y0": 30, "x1": 80, "y1": 40, "color": "yellow"}]
+    assert got["boxes"] == [{"x0": 10, "y0": 10, "x1": 20, "y1": 30, "start": 0}]
+
+
+def test_fixed_stones_may_be_none_at_all():
+    assert check_answer(player_item(), player_ok(stones=[]))["stones"] == []
+
+
+def test_a_fixed_stone_follows_the_box_rules():
+    item = player_item()
+    with pytest.raises(ValueError, match="outside"):
+        check_answer(item, player_ok(stones=[stone(x1=140)]))
+    with pytest.raises(ValueError, match="small"):
+        check_answer(item, player_ok(stones=[stone(y1=10)]))
+    with pytest.raises(ValueError, match="red or yellow"):
+        check_answer(item, player_ok(stones=[stone(color="player")]))
+    with pytest.raises(ValueError, match="stones"):
+        check_answer(item, player_ok(stones={"x0": 1}))
+    with pytest.raises(ValueError, match="at most"):
+        check_answer(item, player_ok(stones=[stone()] * 61))
+
+
+def test_a_fix_may_keep_a_sliver_of_a_stone_at_the_edge():
+    # A stone cut off by the panel's edge comes in as a sliver; a fix that keeps
+    # it as it was must not be refused for being small.
+    got = check_answer(player_item(), player_ok(stones=[stone(x0=0, x1=1.2)]))
+    assert got["stones"][0]["x1"] == 1.2
+    with pytest.raises(ValueError, match="small"):
+        check_answer(player_item(), player_ok(stones=[stone(x0=5, x1=5)]))
+
+
+def test_stones_cannot_be_fixed_where_they_are_locked():
+    item = player_item()
+    item.payload["stones_locked"] = True
+    with pytest.raises(ValueError, match="locked"):
+        check_answer(item, player_ok(stones=[stone()]))
+    assert "stones" not in check_answer(item, player_ok())
+
+
+def test_cant_tell_drops_any_stones():
+    got = check_answer(player_item(), {"cant_tell": True, "stones": [stone()]})
+    assert got == {"cant_tell": True, "boxes": [], "starts": []}
+
+
 def test_release_answers():
     item = release_item()
     assert check_answer(item, {"mark": "off", "frame": 3}) == {"mark": "off", "frame": 3}
@@ -168,39 +299,42 @@ def ids(items):
     return [i.id for i in items]
 
 
-def test_next_items_finishes_half_done_first_and_never_repeats(repo):
+def test_next_items_serves_the_newest_first_and_never_repeats(repo):
     put(repo, 1)
     put(repo, 2)
     put(repo, 3, n_labels=1, by=["u1"])
     assert ids(next_items(repo, "box", "u2", T0)) == ["b_3"]
-    assert ids(next_items(repo, "box", "u1", T0, n=2)) == ["b_1", "b_2"]
-    # asking again within the hold gets the held ones back, the first first
-    assert ids(next_items(repo, "box", "u1", T0 + timedelta(seconds=30), n=1)) == ["b_1"]
+    assert ids(next_items(repo, "box", "u1", T0, n=2)) == ["b_2", "b_1"]
+    # asking again within the hold gets the held ones back, the newest first
+    assert ids(next_items(repo, "box", "u1", T0 + timedelta(seconds=30), n=1)) == ["b_2"]
     # u2 holds b_3 and u1 holds b_1, b_2: nothing is left for a third member but their own
     assert ids(next_items(repo, "box", "u3", T0 + timedelta(seconds=30))) == []
     # once the holds lapse they are free again
     late = T0 + timedelta(seconds=HOLD_S + 60)
-    assert ids(next_items(repo, "box", "u3", late, n=3)) == ["b_3", "b_1", "b_2"]
+    assert ids(next_items(repo, "box", "u3", late, n=3)) == ["b_3", "b_2", "b_1"]
 
 
-def test_next_items_puts_your_own_hold_ahead_of_half_done_items(repo):
+def test_a_new_batch_comes_before_an_older_half_done_one(repo):
+    # 2026-10-30: the batch just published is wanted first, a label or not
+    put(repo, 1, n_labels=1, by=["u2"])
+    put(repo, 2)
+    assert ids(next_items(repo, "box", "u1", T0, n=2)) == ["b_2", "b_1"]
+
+
+def test_next_items_puts_your_own_hold_ahead_of_newer_items(repo):
     put(repo, 1)
-    put(repo, 2, n_labels=1, by=["u2"])
-    assert ids(next_items(repo, "box", "u1", T0)) == ["b_2"]
-    repo.update_label_item("b_2", hold_uid=None, hold_until=None)
-    assert ids(next_items(repo, "box", "u3", T0)) == ["b_2"]
-    repo.update_label_item("b_2", hold_uid=None, hold_until=None)
-    # u1 holds b_1 (n=0) by hand; a half-done b_2 is free but their hold comes first
+    put(repo, 2)
     repo.hold_label_item("b_1", "u1", T0, HOLD_S)
     assert ids(next_items(repo, "box", "u1", T0)) == ["b_1"]
+    assert ids(next_items(repo, "box", "u2", T0)) == ["b_2"]
 
 
 def test_next_items_skips_what_you_labelled_or_skipped_and_pages_on(repo):
     for n in range(1, 4):
         put(repo, n)
-    repo.update_label_item("b_1", skipped_by=["u1"])
+    repo.update_label_item("b_3", skipped_by=["u1"])
     repo.update_label_item("b_2", n_labels=1, labelled_by=["u1"])
-    assert ids(next_items(repo, "box", "u1", T0, n=5)) == ["b_3"]
+    assert ids(next_items(repo, "box", "u1", T0, n=5)) == ["b_1"]
 
 
 def test_next_items_pages_past_the_first_page(repo, monkeypatch):
@@ -208,7 +342,7 @@ def test_next_items_pages_past_the_first_page(repo, monkeypatch):
     monkeypatch.setattr(labelling, "PAGE", 2)
     for n in range(1, 6):
         put(repo, n)
-    assert ids(next_items(repo, "box", "u1", T0, n=4)) == ["b_1", "b_2", "b_3", "b_4"]
+    assert ids(next_items(repo, "box", "u1", T0, n=4)) == ["b_5", "b_4", "b_3", "b_2"]
 
 
 def test_next_items_ignores_other_kinds_and_closed_items(repo):
@@ -218,20 +352,10 @@ def test_next_items_ignores_other_kinds_and_closed_items(repo):
     assert next_items(repo, "release", "u1", T0) == []
 
 
-def test_a_half_done_item_past_the_first_page_is_still_offered(repo):
-    # u1 has labelled the oldest PAGE+5 half-done items; u2's later one still needs a second label
+def test_an_item_past_the_first_page_is_still_offered(repo):
+    # u1 has labelled the newest PAGE+5 items; an older one still needs a label
     from curling_score.service import labelling
+    put(repo, 0, n_labels=1, by=["u2"])
     for n in range(1, labelling.PAGE + 6):
         put(repo, n, n_labels=1, by=["u1"])
-    put(repo, 100, n_labels=1, by=["u2"])
-    assert ids(next_items(repo, "box", "u1", T0)) == ["b_100"]
-
-
-def test_half_done_paging_is_capped(repo, monkeypatch):
-    from curling_score.service import labelling
-    monkeypatch.setattr(labelling, "PAGE", 2)
-    monkeypatch.setattr(labelling, "HALF_PAGES", 2)
-    for n in range(1, 7):
-        put(repo, n, n_labels=1, by=["u1"])
-    put(repo, 100, n_labels=1, by=["u2"])
-    assert next_items(repo, "box", "u1", T0) == []             # beyond the 2 pages looked at
+    assert ids(next_items(repo, "box", "u1", T0)) == ["b_0"]

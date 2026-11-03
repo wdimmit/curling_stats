@@ -54,6 +54,21 @@ class TestReading:
                                     "short_s": 3.0, "long_s": 14.0})
         assert hog["hog_at"] == back["hog_at"] == far["hog_at"] == T0 + timedelta(seconds=63)
 
+    def test_on_our_clock_when_the_push_says_how_far_the_phones_is_off(self):
+        got = practice.read_timing({"client_id": "a", "at": ms(107), "at_is": "far",
+                                    "long_s": 14.0}, offset_s=-30.0)
+        assert got["hog_at"] == T0 + timedelta(seconds=63) and got["clock_offset_s"] == -30.0
+        assert got["at"] == T0 + timedelta(seconds=107)          # as the app said
+        assert practice.read_timing({"client_id": "a", "at": ms(63), "at_is": "hog",
+                                     "long_s": 14.0})["clock_offset_s"] is None
+
+    def test_the_offset_is_our_clock_less_the_phones(self):
+        assert practice.clock_offset(ms(644), NOW) == pytest.approx(-44.0)
+        with pytest.raises(practice.BadTiming, match="milliseconds"):
+            practice.clock_offset(ms(600) // 1000, NOW)          # seconds, not ms
+        with pytest.raises(practice.BadTiming):
+            practice.clock_offset("soon", NOW)
+
     def test_one_duration_is_enough_when_it_is_not_the_one_needed(self):
         got = practice.read_timing({"client_id": "a", "at": ms(63), "at_is": "hog",
                                     "long_s": 14.0})
@@ -257,6 +272,28 @@ class TestPushing:
         # A minute on, and still nothing seen: the cameras missed it.
         w["clock"].advance(60)
         assert view(w, sid).json()["timings"][0]["pending"] is False
+
+    def test_a_phone_clock_44_s_fast_still_pairs_when_it_sends_sent_at(self, w):
+        key = make_key(w)
+        sid = start(w).json()["id"]
+        job = claim(w)
+        w["clock"].advance(200)
+        body = {"sent_at": ms(200 + 44), "timings": [at_hog(63.4 + 44, "a")]}
+        got = w["client"].post(PUSH, headers=bearer(key), json=body)
+        assert got.status_code == 200, got.text
+        (kept,) = w["repo"].timings_for_session(sid)
+        assert kept.clock_offset_s == pytest.approx(-44.0)
+        publish(w, job, doc([cam_throw(60.0)], WALL0))
+        (th,) = view(w, sid).json()["throws"]
+        assert th["sensor"]["gap_s"] == 0.4
+
+    @pytest.mark.parametrize("sent_at", ["now", 1793023145, True])
+    def test_a_sent_at_that_is_not_epoch_ms_is_a_422(self, w, sent_at):
+        key = make_key(w)
+        start(w)
+        w["clock"].advance(100)
+        body = {"sent_at": sent_at, "timings": [at_hog(63, "a")]}
+        assert w["client"].post(PUSH, headers=bearer(key), json=body).status_code == 422
 
     def test_a_session_with_no_timings_says_so(self, w):
         sid = start(w).json()["id"]

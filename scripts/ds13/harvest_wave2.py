@@ -51,7 +51,8 @@ def main() -> int:
     args = ap.parse_args()
 
     from curling_score.detect import longview
-    from curling_score.harvest import sidepool, sideviews as SV
+    from curling_score.geometry.sideview import band_crop
+from curling_score.harvest import sideviews as SV
     from curling_score.ingest import frames as F
     from curling_score.train import boxedit
     from ultralytics import YOLO
@@ -79,7 +80,7 @@ def main() -> int:
         for clip in clips:
             offset = F.stream_start_s(clip)
             for name, view in views.items():
-                y0, y1 = sidepool.band_crop(view)
+                y0, y1 = band_crop(view)
                 for t, img in F.window(clip, 0.0, 24.0, fps=SCAN_FPS,
                                        crop=view.rect):
                     lo, hi = max(0, y0), min(img.shape[0], y1)

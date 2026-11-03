@@ -2226,10 +2226,11 @@ class TestLineFigures:
     def by_key(self, got):
         return {f["key"]: f for f in got["figures"]}
 
-    def test_a_wide_throw_confirmed_from_behind_the_thrower(self):
+    def test_a_wide_throw(self):
+        # A stored `confirmed` (the retired check) changes nothing.
         f = self.by_key(self.figs(self.measured()))
         assert (f["broom"]["value"], f["broom"]["note"], f["broom"]["tick"]) == (
-            "2 ft 4 in wide", "confirmed from behind the thrower", "confirmed")
+            "2 ft 4 in wide", "the thrown line, at the broom", None)
         assert (f["hack"]["value"], f["hack"]["note"]) == ("Left", "stone set 9 in left of centre")
         # From the left hack's foothold, (-0.152, 38.405), to the broom: that
         # line is at x -0.545 at the hog line, and the rock at -0.757.
@@ -2258,18 +2259,22 @@ class TestLineFigures:
         got = run_js('out([0.0254, -0.3048, 0.712, 0.3302, 2.4892].map(feetInches));')
         assert got == ["1 in", "1 ft", "2 ft 4 in", "1 ft 1 in", "8 ft 2 in"]
 
-    def test_within_ten_centimetres_is_on_the_broom(self):
-        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.06})))
+    def test_within_two_inches_is_on_the_broom(self):
+        # The lines' typical error at the broom, the same on every page and for
+        # At the hog line's "On the line" (user, 2026-10-31).
+        assert run_js("out(ON_M)") == pytest.approx(2 * 0.0254)
+        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.05})))
         assert f["broom"]["value"] == "On the broom"
+        f = self.by_key(self.figs(self.measured(at_broom={"x": -1.6, "miss_m": 0.055})))
+        assert f["broom"]["value"] == "2 in narrow"
+        # The strip draws no miss for a rock the figure calls on the broom.
+        s = self.measured(at_broom={"x": -1.597, "miss_m": 0.05})
+        assert run_js(f"out(stripGeometry({json.dumps(s)}).miss);") is None
 
-    def test_hidden_from_behind_the_thrower_keeps_the_number_and_says_so(self):
-        f = self.by_key(self.figs(self.measured(confirmed=None)))
-        assert (f["broom"]["value"], f["broom"]["note"], f["broom"]["tick"], f["broom"]["dim"]) == (
-            "2 ft 4 in wide", "not confirmed: hidden from behind the thrower", "unseen", False)
-
-    def test_a_check_that_disagrees_greys_the_number(self):
+    def test_a_retired_check_that_disagreed_no_longer_greys_the_number(self):
         f = self.by_key(self.figs(self.measured(confirmed=False)))
-        assert (f["broom"]["note"], f["broom"]["dim"]) == ("the camera behind the thrower disagrees", True)
+        assert (f["broom"]["value"], f["broom"]["tick"], f["broom"]["dim"]) == (
+            "2 ft 4 in wide", None, False)
 
     def test_no_curl_direction_says_left_or_right(self):
         f = self.by_key(self.figs(self.measured(side=None, curl=None,
@@ -2808,6 +2813,118 @@ DOUBLES_FORMAT = {"name": "doubles", "stones_per_team": 6, "placed_per_team": 1,
                   "delivered_per_team": 5, "delivered_per_end": 10,
                   "positions": ["A", "B"], "throw_table": [1, 2, 2, 2, 1],
                   "blank_passes_hammer": True, "swappable": True}
+class TestAimFigures:
+    """Schema 10: the slide, release and final lines, each at the broom."""
+
+    D10 = {"schema_version": 10}
+    LABELS = ["Slide", "Release", "Final", "Hack", "At the hog line", "Weight", "Rotation",
+              "Curl", "Came to rest"]
+
+    def aim(self, miss, shown=True):
+        return {"at_broom": {"x": -1.647 + miss, "miss_m": miss}, "side": None, "shown": shown,
+                "fit": {"n": 40, "n_eff": 12.0, "rms_m": 0.004, "se_m": 0.03}}
+
+    def measured(self, **line):
+        base = TestLineFigures().measured()["line"]
+        base = {k: v for k, v in base.items() if k != "confirmed"}
+        base.update(release=[1.2, 29.5, -0.3], slide=self.aim(0.15), release_line=self.aim(-0.20),
+                    set={"m": 0.35, "se_m": 0.04, "shown": False})
+        base.update(line)
+        return dict(TestLineFigures().measured(), line=base)
+
+    def figs(self, s, doc=None, slide=True):
+        """With the slide shown or, ``slide=False``, held back."""
+        opts = "{slide: true}" if slide else "{slide: false}"
+        got = run_js(f"out(lineFigures({json.dumps(s)}, {json.dumps(doc or self.D10)}, undefined, {opts}));")
+        return got, {f["key"]: f for f in got["figures"]}
+
+    def test_slide_shown_by_default(self):
+        # Held back for an hour on 2026-10-31 as a possible calibration error;
+        # the cameras checked out against paint, the overhead and the broom pad,
+        # so the slide and the set are shown. The hold-back stays an option.
+        got = run_js(f"out(lineFigures({json.dumps(self.measured(set={'m': 0.35, 'se_m': 0.04, 'shown': True}))}, "
+                     f"{json.dumps(self.D10)}));")
+        assert [x["label"] for x in got["figures"]] == self.LABELS
+        got, f = self.figs(self.measured(set={"m": 0.35, "se_m": 0.04, "shown": True}), slide=False)
+        assert [x["label"] for x in got["figures"]] == [x for x in self.LABELS if x != "Slide"]
+        assert f["release"]["note"] == "9 ft past the release"
+
+    def test_three_lines_at_the_broom(self):
+        got, f = self.figs(self.measured())
+        assert [x["label"] for x in got["figures"]] == self.LABELS
+        assert (f["slide"]["value"], f["slide"]["note"]) == ("6 in narrow", "the slide, to the broom")
+        assert (f["release"]["value"], f["release"]["note"]) == ("8 in wide", "9 ft past the release")
+        assert (f["broom"]["value"], f["broom"]["note"]) == ("2 ft 4 in wide", "9 ft past the hog line")
+
+    def test_set_shows_on_the_release_note_only_when_shown(self):
+        _, f = self.figs(self.measured(set={"m": 0.35, "se_m": 0.04, "shown": True}))
+        # Signed like the practice card's ('+7" from the slide'): one line on the desktop card.
+        assert f["release"]["note"] == "+1 ft 2 in from the slide"
+        _, f = self.figs(self.measured(set={"m": -0.35, "se_m": 0.04, "shown": True}))
+        assert f["release"]["note"] == "−1 ft 2 in from the slide"
+
+    def test_the_set_follows_the_figures_turn_after_a_hit_and_roll(self):
+        """The stored set is signed toward wide by the pipeline's curl, read to
+        where the rock rested; the figures read a hit's turn at the contact
+        instead. s_0NOn e1 r14 curled left into the red and rolled right, so
+        `line.curl` is "right" and the figures' turn "left". A release 0.35 m
+        right of the slide is stored as -0.35 (narrower, curling right) but is
+        wider on the page (Copilot on PR #3)."""
+        s = TestCurlStopsAtAHit().s_0NOn_e1_s14()
+        broom = s["target_broom"]["x"]
+        aim = lambda miss: {**self.aim(miss), "at_broom": {"x": broom + miss, "miss_m": miss}}
+        s["line"].update(release=[833.0, 29.5, -0.05], slide=aim(-0.10), release_line=aim(0.25),
+                         set={"m": -0.35, "se_m": 0.04, "shown": True})
+        _, f = self.figs(s)
+        assert (f["slide"]["value"], f["release"]["value"]) == ("4 in narrow", "10 in wide")
+        assert f["release"]["note"] == "+1 ft 2 in from the slide"
+
+    def test_no_release_read_says_so(self):
+        s = self.measured(slide=None, release_line=None, set=None)
+        del s["line"]["release"]
+        _, f = self.figs(s)
+        assert (f["slide"]["value"], f["slide"]["note"]) == ("–", "no release read")
+        assert (f["release"]["value"], f["release"]["note"]) == ("–", "no release read")
+        assert f["broom"]["value"] == "2 ft 4 in wide"
+
+    def test_a_line_too_thin_or_too_uncertain_is_a_dash(self):
+        _, f = self.figs(self.measured(slide=None, release_line=self.aim(-0.2, shown=False)))
+        assert (f["slide"]["value"], f["slide"]["note"]) == ("–", "too few sightings")
+        assert (f["release"]["value"], f["release"]["note"]) == ("–", "too uncertain to show")
+
+    def test_refused_final_is_a_dash_not_no_broom(self):
+        s = self.measured(final_refused=True, at_broom={"x": None, "miss_m": None},
+                          at_hog={"x": None, "offset_m": None}, fit=None)
+        _, f = self.figs(s)
+        assert (f["broom"]["value"], f["broom"]["note"]) == ("–", "too few sightings past the hog line")
+        assert (f["hog"]["value"], f["hog"]["note"]) == ("–", "too few sightings past the hog line")
+        assert f["slide"]["value"] == "6 in narrow"
+        g = run_js(f"out(stripGeometry({json.dumps(s)}));")
+        assert (g["ext"], g["miss"]) == (None, None) and g["thrown"] is not None
+
+    def test_refused_final_curl_says_why(self):
+        # The curl's distance needs the final line; its direction (line.curl)
+        # still names the turn, but the figure says why there is no number.
+        s = self.measured(final_refused=True, at_broom={"x": None, "miss_m": None},
+                          at_hog={"x": None, "offset_m": None}, fit=None)
+        _, f = self.figs(s)
+        assert (f["curl"]["value"], f["curl"]["note"]) == ("–", "too few sightings past the hog line")
+        assert f["rest"]["value"] == "12-foot"
+
+    def test_schema_9_chart_keeps_its_figures(self):
+        old = TestLineFigures().measured()                  # carries confirmed: True
+        got, f = self.figs(old, {"schema_version": 9})
+        assert [x["label"] for x in got["figures"]] == [
+            "At the broom", "Hack", "At the hog line", "Weight", "Rotation", "Curl", "Came to rest"]
+        assert all(x["tick"] is None for x in got["figures"])
+
+    def test_lines_numbers_for_the_report(self):
+        n = run_js(f"out(lineNumbers({json.dumps(self.measured(set={'m': 0.35, 'se_m': 0.04, 'shown': True}))}, {json.dumps(self.D10)}));")
+        assert (n["slide_m"], n["release_m"], n["set_m"], n["final_refused"]) == (0.15, -0.2, 0.35, False)
+        r = run_js(f"out(lineNumbers({json.dumps(self.measured(final_refused=True, at_broom={'x': None, 'miss_m': None}))}, {json.dumps(self.D10)}));")
+        assert (r["miss_m"], r["on_broom"], r["final_refused"]) == (None, None, True)
+
+
 DOUBLES7 = {"schema_version": 7, "format": DOUBLES_FORMAT}
 
 
@@ -2836,25 +2953,17 @@ class TestBroomlessLine:
         assert run_js(f"out(lineX({json.dumps(self.broomless())}, 0));") == pytest.approx(-1.5)
         got, f = self.figs(self.broomless())
         assert got["reason"] is None
-        # base's confirmed defaults to True.
-        assert (f["curl"]["value"], f["curl"]["note"]) == (
-            "1 ft", "from its line to where it stopped · confirmed from behind the thrower")
+        # base's retired `confirmed` is ignored.
+        assert (f["curl"]["value"], f["curl"]["note"], f["curl"]["tick"]) == (
+            "1 ft", "from its line to where it stopped", None)
 
-    def test_the_curl_figure_carries_the_camera_behind_the_thrower_s_check(self):
-        # M1: no other figure carries `line.confirmed` for a broomless rock,
-        # so the curl figure does -- the broom figure stays a dash, untouched.
-        _, f = self.figs(self.broomless(confirmed=True))
-        assert (f["curl"]["tick"], f["curl"]["dim"]) == ("confirmed", False)
-        assert f["curl"]["note"].endswith("· confirmed from behind the thrower")
-        assert (f["broom"]["tick"], f["broom"]["value"]) == (None, "–")
-
-        _, f = self.figs(self.broomless(confirmed=False))
-        assert (f["curl"]["tick"], f["curl"]["dim"]) == ("disagrees", True)
-        assert f["curl"]["note"].endswith("· the camera behind the thrower disagrees")
-
-        _, f = self.figs(self.broomless(confirmed=None))
-        assert (f["curl"]["tick"], f["curl"]["dim"]) == ("unseen", False)
-        assert f["curl"]["note"].endswith("· not confirmed: hidden from behind the thrower")
+    def test_broomless_rock_shows_dashes_for_three_lines(self):
+        got = run_js(f"out(lineFigures({json.dumps(self.broomless())}, "
+                     f"{json.dumps({**DOUBLES7, 'schema_version': 10})}, undefined, {{slide: true}}));")
+        f = {x["key"]: x for x in got["figures"]}
+        for key in ("slide", "release", "broom"):
+            assert (f[key]["value"], f[key]["note"]) == ("–", "no broom held in the house")
+        assert f["broom"]["label"] == "Final"
 
     def test_broom_figures_are_dashes_and_the_rest_are_measured(self):
         _, f = self.figs(self.broomless())
@@ -2883,7 +2992,7 @@ class TestBroomlessLine:
         s["delivered_stone_index"] = None
         _, f = self.figs(s)
         assert (f["curl"]["value"], f["curl"]["note"]) == (
-            "–", "no rest position · confirmed from behind the thrower")
+            "–", "no rest position")
 
     def test_a_broomless_line_without_at_tee_draws_no_line(self):
         s = self.broomless(at_tee=None)
@@ -3154,14 +3263,14 @@ class TestTheDetailPane:
         assert "width={s.broom.w} height={s.broom.h}" in self.SRC.read_text()
 
     def test_the_caption_is_the_spec_s(self):
-        assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±4 in") in self.SRC.read_text()
+        assert ("Sheet from above, thrower at the bottom · across ×3 · figures ±2 in") in self.SRC.read_text()
 
     def test_the_desktop_turns_the_strip_and_shares_the_figures(self):
         src = self.SRC.read_text()
         assert "sideways(stripShapes(stripGeometry(shot, DESKBOX)))" in src
         assert "stripShapes(stripGeometry(shot))" in src
         assert src.count("<Figures figures={f.figures} />") == 2
-        assert ("Sheet from above, thrower at the left · across ×1.5 · figures ±4 in") in src
+        assert ("Sheet from above, thrower at the left · across ×1.5 · figures ±2 in") in src
 
     def test_a_broomless_rock_drops_the_intended_line_and_the_wide_gloss(self):
         # M2: a doubles rock nobody held a broom for has no intended line to
@@ -5521,8 +5630,9 @@ class TestLineNumbers:
         assert f["broom"] == "2 ft 4 in wide"
         # The hack-to-broom line is at x -0.545 at the hog line; the rock at -0.757.
         assert n["hog_off_m"] == pytest.approx(-0.757 + 0.545, abs=0.002)
-        assert (n["split_s"], n["split_estimated"], n["turn"], n["hack"], n["tick"]) == (
-            13.79, False, "right", "left", "confirmed")
+        assert (n["split_s"], n["split_estimated"], n["turn"], n["hack"]) == (
+            13.79, False, "right", "left")
+        assert "tick" not in n
         assert n["curl"]["m"] == pytest.approx(1.143, abs=0.01) and n["curl"]["hit"] is False
         assert n["rest"] == {"x": -1.1529, "y": 1.3486}
         assert n["reason"] is None and n["broomless"] is False
@@ -5863,7 +5973,7 @@ class TestShotGroups:
 class TestMissScatter:
     def test_the_frame_and_the_points(self):
         rows = [_row("Draw", "right", miss=0.3048, split=13.5), _row("Draw", "right", miss=-0.6, split=14.4, est=True),
-                _row("Draw", "right", miss=0.0, split=14.0, tick="disagrees"), _row("Draw", "right")]
+                _row("Draw", "right", miss=0.0, split=14.0), _row("Draw", "right")]
         g = run_js(f"out(missScatter({json.dumps(rows)}, 'right'));")
         assert [s["text"] for s in g["sides"]] == ["wide", "narrow"]
         assert [t["label"] for t in g["xTicks"]] == ["2 ft", "1 ft", "0", "1 ft", "2 ft"]
@@ -5874,7 +5984,8 @@ class TestMissScatter:
         heavy, light, on = g["points"]
         assert heavy["cy"] < on["cy"] < light["cy"]           # heavier (shorter split) at the top
         assert light["cx"] < on["cx"] < heavy["cx"]           # left of the broom to the left
-        assert light["hollow"] and on["dim"] and not heavy["hollow"]
+        assert light["hollow"] and not heavy["hollow"]
+        assert "dim" not in on                                # the retired line check
         assert g["skipped"] == 1
 
     def test_counter_clockwise_and_a_miss_off_the_chart(self):
@@ -6318,7 +6429,7 @@ class TestTheShotsPage:
         page = self.src("frontend/site/ShotCharts.jsx")
         overlay = page[page.index("export function DeliveryOverlay("):]
         # The row's path (aimFrame's, mirrored with the rest) carries its release to core.
-        assert "release: r.path.release," in overlay
+        assert "release: r.path.release " in overlay
         assert "{r.release && <line x1={-RELEASE_TICK} y1={0} x2={RELEASE_TICK} y2={0}" in overlay
         assert "transform={`translate(${r.release.x} ${r.release.y})`}" in overlay
         assert "Release" not in overlay.replace("RELEASE_TICK", "")      # no word on the plot

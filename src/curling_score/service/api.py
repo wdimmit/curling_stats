@@ -32,7 +32,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -73,7 +73,11 @@ VIEWER_ASSETS = {"app.js": "application/javascript", "style.css": "text/css",
 # it 404s at runtime with nothing to catch it -- which is what the test named
 # "every script a page asks for is actually served" exists for.
 STATIC_ASSETS = {"site.js": "application/javascript",
-                 "site.css": "text/css"}
+                 "site.css": "text/css",
+                 # The player flow's how-to figures (site/Label.jsx).
+                 "label-player-crouched.jpg": "image/jpeg",
+                 "label-player-edge.jpg": "image/jpeg",
+                 "label-player-broom.jpg": "image/jpeg"}
 
 
 @lru_cache(maxsize=16)
@@ -224,17 +228,6 @@ class Settings:
     admin_token: str = ""
     allowed_channels: set = field(default_factory=set)
     require_approval: bool = False
-    # Whether a submission, the playlist poller or a reprocess may make a
-    # mixed doubles run. Off until the viewer can chart one: while off, asking
-    # for doubles is refused and a doubles title is read as fours, so the
-    # service behaves exactly as it did before formats. The worker is not
-    # gated -- it builds whatever format the job it claimed says.
-    doubles_enabled: bool = False
-    # Whether the playlist poller queues a stream that has gone live as a live
-    # job. Off until a worker that can follow one is running: a live run no
-    # worker claims would stand in for the recording and keep it from ever
-    # being queued the ordinary way.
-    live_enabled: bool = False
     # Practice sessions: /practice/sheet/N and its API, on the club's cameras.
     # Off until a worker that can see them (WORKER_PRACTICE=1 and
     # WORKER_CAMERAS=1) is running; turning it off is how practice is closed.
@@ -247,15 +240,6 @@ class Settings:
     # cameras fall into keyframe storms, which the club's own receivers see
     # too. A Start that joins a sheet's running watch is never counted.
     practice_max_camera_watches: int = 2
-    # Clips of the rocks a person says they threw, on My shots: asked for when
-    # a play is saved or its report read, cut by the clips worker. Off until a
-    # worker running WORKER_ROLE=clips is up.
-    game_clips_enabled: bool = False
-    # Whether the sign-in chooser offers an emailed link beside Google. Off
-    # until Email/Password and its Email link option are on in the Firebase
-    # console, or every "Email me a link" fails. /signin and its relay work
-    # either way, so a link already sent still finishes (deploy/README.md).
-    email_link_signin: bool = False
     # The club's own clock, which playlists' schedules are written in.
     club_tz: str = "America/Los_Angeles"
     model_id: str = "classical"
@@ -295,14 +279,10 @@ class Settings:
             admin_token=env("ADMIN_TOKEN", ""),
             allowed_channels=chans,
             require_approval=env("REQUIRE_APPROVAL", "0") in ("1", "true", "yes"),
-            doubles_enabled=env("DOUBLES_ENABLED", "0") in ("1", "true", "yes"),
-            live_enabled=env("LIVE_ENABLED", "0") in ("1", "true", "yes"),
             practice_enabled=env("PRACTICE_ENABLED", "0") in ("1", "true", "yes"),
             club_ips=frozenset(ip.strip() for ip in env("PRACTICE_CLUB_IPS", "").split(",")
                                if ip.strip()),
             practice_max_camera_watches=int(env("PRACTICE_MAX_CAMERA_WATCHES", "2")),
-            game_clips_enabled=env("GAME_CLIPS_ENABLED", "0") in ("1", "true", "yes"),
-            email_link_signin=env("EMAIL_LINK_SIGNIN", "0") in ("1", "true", "yes"),
             club_tz=env("CLUB_TZ", "America/Los_Angeles"),
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
@@ -616,26 +596,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     def requested_format(value) -> str | None:
         """The format a request asked for, or None to let the title decide.
-
-        Anything but a known name is a 400, and so is doubles while the
-        service has it switched off (``Settings.doubles_enabled``).
-        """
+        Anything but a known name is a 400."""
         if value in (None, "", "auto"):
             return None
         # A list or an object is not a name, and is unhashable besides: the
         # dict lookup would raise and answer a malformed body with a 500.
         if not isinstance(value, str) or value not in format_mod.FORMATS:
             raise HTTPException(400, f"format must be one of {sorted(format_mod.FORMATS)}")
-        if value != "fours" and not settings.doubles_enabled:
-            raise HTTPException(400, "doubles games are not supported yet")
         return value
-
-    def allowed_format(name: str | None) -> str | None:
-        """``name``, unless it is a format the service has switched off, which
-        is read as fours -- what every run was before formats existed."""
-        if name not in (None, "fours") and not settings.doubles_enabled:
-            return "fours"
-        return name
 
     def game_doc(run: Run, game_index: int | None, src: Source | None = None,
                  start_s: float | None = None) -> dict:
@@ -1063,6 +1031,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.get("/privacy", response_class=HTMLResponse)
     def privacy_page():
         return page("privacy.html")
+
+    # How each figure on a shot is measured, for club members. A plain page
+    # too, beside the terms; it changes with the measurements it describes.
+    @app.get("/measurements", response_class=HTMLResponse)
+    def measurements_page():
+        return page("measurements.html")
 
     # Nothing here is for search engines: the games carry people's names,
     # and every page is reached from the club's own links or by being sent one.
@@ -1588,7 +1562,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                                        settings.max_hours)
         except SubmissionError as exc:
             raise HTTPException(exc.status, exc.message)
-        fmt_name = fmt_name or allowed_format(source.format_from_title(meta.title))
+        fmt_name = fmt_name or source.format_from_title(meta.title)
 
         run = dedupe.find_reusable_run(repo.runs_for_video(link.video_id),
                                        settings.processing_version, start_s,
@@ -1721,15 +1695,6 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             ]
         return out
 
-    @app.get("/api/features")
-    def features():
-        """What the site pages may offer. Doubles stays off until the viewer and
-        pipeline are ready for it, and the submit form only shows the choice
-        when it is on."""
-        return JSONResponse({"doubles": bool(settings.doubles_enabled),
-                             "practice": bool(settings.practice_enabled)},
-                            headers={"Cache-Control": "public, max-age=300"})
-
     @app.get("/api/auth/config")
     def auth_config():
         """What the browser needs to start a sign-in, or that it cannot.
@@ -1737,8 +1702,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         Served rather than templated into each page: there are four places that
         render HTML and one of them would eventually be forgotten. With no
         project configured this reports disabled and the whole feature simply
-        is not there. `emailLink` is whether the chooser offers an emailed
-        link beside Google (Settings.email_link_signin).
+        is not there.
         """
         if not (auth.enabled and settings.firebase_api_key):
             return JSONResponse({"enabled": False},
@@ -1747,8 +1711,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                              "apiKey": settings.firebase_api_key,
                              "authDomain": settings.firebase_auth_domain,
                              "projectId": settings.firebase_project,
-                             "emulator": settings.auth_emulator or None,
-                             "emailLink": bool(settings.email_link_signin)},
+                             "emulator": settings.auth_emulator or None},
                             headers={"Cache-Control": "public, max-age=300"})
 
     @app.post("/api/signin/relay")
@@ -2330,7 +2293,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         result, _ = repo.submit_label(
             LabelAnswer(id=label_answer_id(item_id, me.id), item_id=item_id, kind=kind,
                         uid=me.id, at=t, seconds=seconds, answer=checked),
-            t, labelling.MAX_LABELS)
+            t, labelling.LABELS_NEEDED[kind])
         if result == "missing":
             raise HTTPException(404, "no such item")
         if result in ("full", "held", "closed"):
@@ -2504,16 +2467,15 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if switched is not None:
             src = repo.set_switched_ends(src.id, color, switched_entry(switched, me)) or src
             log.info("switched ends of %s set to %s on %s by %s", color, switched, src.id, me.id)
-        if settings.game_clips_enabled:
-            # Asked for now, while the game's video is surely still cached;
-            # the report asks again for anything this misses.
-            try:
-                doc, run, _ = play_doc(play, src)
-                ask_for_clips(play, doc, run)
-            except HTTPException as exc:
-                log.info("clips for play %s not asked for: %s", play.id, exc.detail)
-            except Exception:  # noqa: BLE001
-                log.exception("clips for play %s not asked for", play.id)
+        # Clips asked for now, while the game's video is surely still cached;
+        # the report asks again for anything this misses.
+        try:
+            doc, run, _ = play_doc(play, src)
+            ask_for_clips(play, doc, run)
+        except HTTPException as exc:
+            log.info("clips for play %s not asked for: %s", play.id, exc.detail)
+        except Exception:  # noqa: BLE001
+            log.exception("clips for play %s not asked for", play.id)
         log.info("play %s %d (%s) on %s by %s", color, slot, link, src.id, me.id)
         # A doubles play says which ends its pair switched; fours never do.
         mine = {"switched_ends": switched_of(src, color)} if fmt.swappable else {}
@@ -2733,10 +2695,6 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             log.exception("clips for play %s were not asked for", play.id)
             return None
 
-    def clips_on():
-        if not settings.game_clips_enabled:
-            raise HTTPException(404, "clips are not switched on")
-
     def report_doc(user_id: str, source_id: str, request: Request):
         """The game as the report reads it: graded by the chart the play was
         saved from, if it was, then cut down to this player's rocks and the
@@ -2745,7 +2703,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if play is None or src is None:
             raise HTTPException(404, "you have not said which rocks you threw in that game")
         doc, run, fallback = play_doc(play, src)
-        clips = ask_for_clips(play, doc, run) if settings.game_clips_enabled else None
+        clips = ask_for_clips(play, doc, run)
         if clips is None:
             # Named all the same: a star is kept by its rock's name.
             gameclips.mark_rocks(doc, play.color, play.slot)
@@ -2769,7 +2727,6 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def report_clips(user_id: str, source_id: str) -> dict:
         """Where a play's clips stand, without the document: the page asks
         this while any are on their way."""
-        clips_on()
         play, src = find_play(user_id, source_id)
         run = report_run(play, src) if play and src else None
         if run is None:
@@ -2788,7 +2745,6 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     def report_clip(user_id: str, source_id: str, rock: str) -> dict:
         """A short-lived link to one of a play's clips."""
-        clips_on()
         play, src = find_play(user_id, source_id)
         run = report_run(play, src) if play and src else None
         if run is None or not gameclips.GAME_ROCK.match(rock):
@@ -2835,7 +2791,6 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         """Where a clip of one shot stands; the page asks every few seconds
         while it is on its way. A game still being streamed has clips of the
         rocks in its published ends, cut from the recording being made."""
-        clips_on()
         sid, run = shot_clip_target(path, rock)
         if run.status not in ("ready", "live"):
             return {"state": "busy"}
@@ -2845,7 +2800,6 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     async def api_ask_shot_clip(request: Request, authorization: str | None = Header(default=None)):
         """Ask for a clip of one shot: ``{path, rock}``, the page and the
         rock's name (`gameclips.rock_name`)."""
-        clips_on()
         user = require_user(authorization)
         try:
             body = await request.json()
@@ -3047,8 +3001,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     async def push_timings(request: Request, authorization: str | None = Header(default=None)):
         """A sensor app's timings, each kept on the key's owner's session that
         was running when it was thrown, and paired with a camera throw when
-        that session is read (practice.match_timings). Each timing is answered
-        on its own; the push is a 409 only when none had a session to go to."""
+        that session is read (practice.match_timings). The push's ``sent_at``,
+        the phone's clock as it sent, puts the app's times on ours. Each timing
+        is answered on its own; the push is a 409 only when none had a session
+        to go to."""
         practice_on()
         me, key = require_key(authorization)
         try:
@@ -3060,14 +3016,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(422, "send {\"timings\": [...]}")
         if len(items) > TIMINGS_PER_PUSH:
             raise HTTPException(422, f"at most {TIMINGS_PER_PUSH} timings a push")
-        if not repo.bump_rate_limit("timings:" + me.id, now(), TIMINGS_HOUR_LIMIT,
+        t = now()
+        offset = None
+        if body.get("sent_at") is not None:
+            try:
+                offset = practice.clock_offset(body["sent_at"], t)
+            except practice.BadTiming as e:
+                raise HTTPException(422, str(e)) from None
+        if not repo.bump_rate_limit("timings:" + me.id, t, TIMINGS_HOUR_LIMIT,
                                     TIMINGS_DAY_LIMIT):
             raise HTTPException(429, "that is a lot of timings; try again later")
         out, kept, homeless = [], 0, 0
         for item in items:
             cid = item.get("client_id") if isinstance(item, dict) else None
             try:
-                got = practice.add_timing(repo, me.id, item, now(), key_id=key.id)
+                got = practice.add_timing(repo, me.id, item, t, key_id=key.id,
+                                          offset_s=offset)
             except practice.BadTiming as e:
                 out.append({"client_id": cid, "error": str(e)})
                 continue
@@ -3229,11 +3193,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                               version=body.get("version"), model_id=body.get("model_id"),
                               gpu=body.get("gpu"), current_job_id=job.id))
         # A practice watch is recorded from the sheet's cameras, from its claim
-        # on; one handed out again resumes its session (practice_resume). A
-        # job left from when practice read YouTube says no source, and the
-        # worker refuses it.
+        # on; one handed out again resumes its session (practice_resume).
         practice_fields = {}
-        if job.kind == "practice" and run.source == practice.CAMERAS:
+        if job.kind == "practice":
             practice_fields = {"source": practice.CAMERAS}
             resume = practice_resume(job)
             if resume is not None:
@@ -3698,7 +3660,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                   sheet=base.sheet if base else None,
                   published_at=base.published_at if base else None,
                   league=base.league if base else None,
-                  format=asked or allowed_format(base.format if base else None),
+                  format=asked or (base.format if base else None),
                   playlist_id=base.playlist_id if base else None)
         repo.put_run(run)
         repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t, run_after=t))
@@ -3716,7 +3678,6 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         made. Ask it once: a
         second ask before the first is cut queues every rock again."""
         require_admin(authorization)
-        clips_on()
         skipped, done = [], 0
         for play in repo.all_plays():
             src = canonical_source(play.source_id)
@@ -3832,6 +3793,27 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 missing.append(item_id)
         return {"opened": opened, "missing_image": missing}
 
+    @app.post("/api/admin/label-answers/discard")
+    def admin_label_answers_discard(body: dict = Body(...),
+                                    authorization: str | None = Header(default=None)):
+        """Drop every player answer by one member (by uid) and reopen the
+        items that fall short without it. The member is not handed those items
+        again, and cannot answer them.
+
+        A discard is a snapshot: it drops the answers the member has given by
+        now, and ones given later still count. Run it again just before the
+        final export. Sync, since each answer is a Firestore transaction.
+        """
+        require_admin(authorization)
+        uid, kind = body.get("uid"), body.get("kind")
+        if not isinstance(uid, str) or not uid:
+            raise HTTPException(422, "send a uid and a kind")
+        # The export and agreement scripts don't skip discarded answers yet,
+        # so only player answers (which they never read) can be dropped.
+        if kind != "player":
+            raise HTTPException(422, "only player answers can be discarded")
+        return {"reopened": repo.discard_label_answers(uid, kind, now())}
+
     @app.get("/api/admin/label-items")
     def admin_label_items(kind: str, state: str, after: str | None = None,
                           limit: int = Query(100, ge=1, le=500),
@@ -3840,7 +3822,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         `after`, the `after` of the last page."""
         require_admin(authorization)
         if kind not in LABEL_KINDS or state not in LABEL_STATES:
-            raise HTTPException(422, "kind is box or release; state is "
+            raise HTTPException(422, "kind is box, release or player; state is "
                                 + ", ".join(LABEL_STATES))
         since = None
         if after:
@@ -4098,8 +4080,6 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                         raise ValueError(f"{key} is at least 60 seconds")
             if "live_poll_s" in fields and fields["live_poll_s"] is None:
                 raise ValueError("live_poll_s cannot be empty")
-            if "practice" in fields and not isinstance(fields["practice"], bool):
-                raise ValueError("practice is true or false")
         except (ValueError, TypeError) as e:
             raise HTTPException(422, str(e)) from e
         return fields
@@ -4112,8 +4092,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if any(p.playlist_id == pid for p in repo.list_playlists()):
             raise HTTPException(409, f"playlist {pid} is already watched")
         body["label"] = str(body.get("label") or "").strip() or pid
-        fields = playlist_fields(body, {"label", "schedule", "live_poll_s", "idle_poll_s",
-                                        "practice"})
+        fields = playlist_fields(body, {"label", "schedule", "live_poll_s", "idle_poll_s"})
         pl = playlists.new_watched_playlist(pid, fields.pop("label"), now())
         for key, value in fields.items():
             setattr(pl, key, value)
@@ -4129,8 +4108,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if repo.get_playlist(pid) is None:
             raise HTTPException(404, "no such playlist")
         fields = playlist_fields(await request.json(),
-                                 {"label", "enabled", "schedule", "live_poll_s", "idle_poll_s",
-                                  "practice"})
+                                 {"label", "enabled", "schedule", "live_poll_s",
+                                  "idle_poll_s"})
         if fields.get("enabled") is True:
             fields.update(failures=0, last_error=None)
         pl = repo.update_playlist(pid, **fields)
@@ -4155,8 +4134,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             allowed_channels=settings.allowed_channels or None,
             max_hours=min(settings.max_hours, dedupe.MAX_WHOLE_S / 3600),
             initial_status="pending_approval" if settings.require_approval else "queued",
-            doubles_enabled=settings.doubles_enabled, tz=settings.club_tz,
-            force=force, live=settings.live_enabled,
+            tz=settings.club_tz, force=force,
         )
         # A league stream going live closes practice on every sheet: leagues
         # use all five. Before the index's early return, so it never waits for

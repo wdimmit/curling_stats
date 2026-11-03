@@ -25,6 +25,17 @@ ITEM = {
     ],
 }
 
+# Two provisional players and a stone to show greyed, on the same image.
+ITEM_P = {
+    "id": "p1", "kind": "player", "image_url": "x", "w": 720, "h": 360,
+    "starts": [
+        {"x0": 20, "y0": 30, "x1": 70, "y1": 120, "conf": 0.8},
+        {"x0": 400, "y0": 200, "x1": 460, "y1": 300, "conf": 0.4},
+    ],
+    "stones": [{"x0": 200, "y0": 100, "x1": 240, "y1": 140, "color": "red"}],
+}
+ITEM_NONE = {**ITEM_P, "id": "p2", "starts": []}
+
 # Ten frames in a sprite four across: three rows, the last one short.
 RELEASE = {"id": "r1", "kind": "release", "image_url": "x", "cols": 4, "fw": 160, "fh": 120,
            "n": 10, "fps": 10}
@@ -34,6 +45,8 @@ def js(expr: str):
     script = (f"const L = await import({MODULE.as_uri()!r});\n"
               f"const item = {json.dumps(ITEM)};\n"
               f"const rel = {json.dumps(RELEASE)};\n"
+              f"const itemP = {json.dumps(ITEM_P)}, itemNone = {json.dumps(ITEM_NONE)};\n"
+              f"const P = () => L.startPlayers(itemP);\n"   # a fresh player state
               f"const s0 = L.startBoxes(item);\n"
               f"console.log(JSON.stringify({expr}));")
     proc = subprocess.run([node, "--input-type=module", "-e", script],
@@ -145,6 +158,95 @@ def test_box_answer_matches_the_server_shape():
     assert set(ans["boxes"][3]) == {"x0", "y0", "x1", "y1", "color", "start"}
     assert ans["boxes"][3]["x0"] == 400  # a tenth of a pixel is plenty
     assert js("L.CANT_TELL") == {"cant_tell": True}
+
+
+def test_player_starts_become_boxes_with_no_colour():
+    s = js("P()")
+    assert s["starts"] == ["untouched"] * 2 and s["flagged"] == -1
+    assert [b["start"] for b in s["boxes"]] == [0, 1]
+    assert all("color" not in b for b in s["boxes"])
+    # Nothing is flagged, so nothing stops them finishing.
+    assert js("L.canFinish(P())") is True
+
+
+def test_a_player_answer_keeps_every_start_and_has_no_colour():
+    ans = js("L.playerAnswer(P())")
+    assert ans["cant_tell"] is False
+    assert ans["starts"] == ["untouched", "untouched"]
+    assert [b["start"] for b in ans["boxes"]] == [0, 1]
+    assert all(set(b) == {"x0", "y0", "x1", "y1", "start"} for b in ans["boxes"])
+    # A box drawn on top has no start and no colour either, even if a colour is passed.
+    drawn = js("L.playerAnswer(L.addBox(P(), L.drawnBox(300.04, 20, 340, 60, 720, 360)))")
+    assert [b["start"] for b in drawn["boxes"]] == [0, 1, None]
+    assert set(drawn["boxes"][2]) == {"x0", "y0", "x1", "y1", "start"}
+    assert drawn["boxes"][2]["x0"] == 300
+    assert js("L.playerAnswer(L.addBox(P(), {x0: 1, y0: 2, x1: 30, y1: 40, color: 'red'}))")["boxes"][2].get("color") is None
+
+
+def test_deleting_a_player_reads_deleted():
+    s = js("L.removeBox(P(), 0)")
+    assert s["starts"] == ["deleted", "untouched"]
+    ans = js("L.playerAnswer(L.removeBox(P(), 0))")
+    assert ans["starts"] == ["deleted", "untouched"]
+    assert [b["start"] for b in ans["boxes"]] == [1]
+    # Moving one is a change.
+    moved = js('L.setBox(P(), 1, L.moveBox(P().boxes[1], 5, 0, 720, 360))')
+    assert moved["starts"] == ["untouched", "changed"]
+
+
+def test_untouched_is_true_only_before_any_change():
+    assert js("L.untouched(P())") is True
+    assert js("L.untouched(L.removeBox(P(), 1))") is False
+    assert js("L.untouched(L.setBox(P(), 0, L.moveBox(P().boxes[0], 5, 0, 720, 360)))") is False
+    assert js("L.untouched(L.addBox(P(), L.drawnBox(300, 20, 340, 60, 720, 360)))") is False
+    # Putting a box back where it was is no change.
+    assert js("L.untouched(L.setBox(P(), 0, {...P().boxes[0]}))") is True
+    # No starts and nothing drawn: untouched, and removing a drawn box leaves it so.
+    assert js("L.untouched(L.startPlayers(itemNone))") is True
+    assert js("L.untouched(L.removeBox(L.addBox(P(), L.drawnBox(300, 20, 340, 60, 720, 360)), 2))") is True
+
+
+def test_no_players_is_an_empty_answer():
+    assert js("L.playerAnswer(L.startPlayers(itemNone))") == {"cant_tell": False, "boxes": [], "starts": []}
+    assert js("L.playerAnswer(L.removeBox(P(), 1))")["starts"] == ["untouched", "deleted"]
+
+
+def test_a_fresh_player_state_holds_the_stones_coloured_and_editable():
+    s = js("P()")
+    assert s["stones"]["boxes"] == [{"x0": 200, "y0": 100, "x1": 240, "y1": 140,
+                                     "color": "red", "start": None}]
+    assert s["stones"]["starts"] == [] and s["stones"]["flagged"] == -1
+    assert js("L.stonesFixed(P())") is False
+
+
+def test_a_stone_fix_goes_in_the_answer_as_the_whole_set():
+    ans = js("L.playerAnswer(L.editStones(P(), st => L.setColour(st, 0, 'yellow')))")
+    assert ans["stones"] == [{"x0": 200, "y0": 100, "x1": 240, "y1": 140, "color": "yellow"}]
+    drawn = js("L.playerAnswer(L.editStones(P(), st => "
+               "L.addBox(st, L.drawnBox(10, 10, 30.04, 30, 720, 360, 'red'))))")
+    assert [b["color"] for b in drawn["stones"]] == ["red", "red"]
+    assert drawn["stones"][1] == {"x0": 10, "y0": 10, "x1": 30, "y1": 30, "color": "red"}
+    # The players are answered as before.
+    assert drawn["starts"] == ["untouched", "untouched"]
+
+
+def test_deleting_every_stone_is_a_fix_to_no_stones():
+    assert js("L.playerAnswer(L.editStones(P(), st => L.removeBox(st, 0)))")["stones"] == []
+
+
+def test_stones_put_back_as_they_were_are_no_fix():
+    assert "stones" not in js("L.playerAnswer(L.editStones(P(), st => L.setBox(st, 0, {...st.boxes[0]})))")
+    assert "stones" not in js("L.playerAnswer(L.editStones(P(), st => "
+                              "L.setColour(L.setColour(st, 0, 'yellow'), 0, 'red')))")
+    assert js("L.stonesFixed(L.editStones(P(), st => L.removeBox(st, 0)))") is True
+
+
+def test_a_stone_fix_does_not_count_against_untouched_players():
+    assert js("L.untouched(L.editStones(P(), st => L.removeBox(st, 0)))") is True
+
+
+def test_an_item_with_no_stones_starts_with_none():
+    assert js("L.startPlayers({...itemP, stones: undefined}).stones.boxes") == []
 
 
 def test_sprite_offsets_walk_rows():

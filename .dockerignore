@@ -10,6 +10,8 @@ runs/
 *.jpg
 *.mp4
 *.npz
+# The /label how-to figures, served by the API (api.STATIC_ASSETS).
+!src/curling_score/service/static/*.jpg
 __pycache__/
 .pytest_cache/
 frontend/

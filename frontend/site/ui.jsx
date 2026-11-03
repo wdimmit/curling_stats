@@ -59,12 +59,13 @@ export function Header({ links = [], children }) {
   );
 }
 
-/* Under every page: what the site promises, and what it keeps. Plain pages
- * of their own (static/terms.html, privacy.html), so these are plain links. */
+/* Under every page: what the site promises, what it keeps, and how it
+ * measures. Plain pages of their own (static/terms.html, privacy.html,
+ * measurements.html), so these are plain links. */
 export function LegalLinks() {
   return (
-    <nav className="legal-links" aria-label="Terms and privacy">
-      <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
+    <nav className="legal-links" aria-label="Terms, privacy and measurements">
+      <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/measurements">Measurements</a>
     </nav>
   );
 }

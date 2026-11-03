@@ -1,5 +1,5 @@
-/* The members' labelling page's arithmetic: boxing stones on a still (where a
- * click lands, what a dragged corner may do) and marking the release on a
+/* The members' labelling page's arithmetic: boxing stones or players on a
+ * still (where a click lands, what a dragged corner may do) and marking the release on a
  * strip of frames (below), and the answers the server will take
  * (service/labelling.py check_answer). No DOM, so node tests it.
  *
@@ -26,6 +26,35 @@ export function startBoxes(item) {
     color: s.color === "yellow" ? "yellow" : "red", start: i }));
   return { boxes, starts: item.starts.map(() => "untouched"),
            flagged: item.starts.findIndex(s => s.flagged) };
+}
+
+/* The state for a fresh player item: its starts as boxes with no colour (a
+ * player has none), none acted on. The computer is never unsure of exactly one
+ * start here, so nothing is flagged and the member can always finish.
+ *
+ * `stones` is a state of its own, for "Fix stones": the item's stones as
+ * coloured boxes belonging to no start, edited with the same functions
+ * (`editStones`). `stonesAtStart` is what they were, to tell a fix from none. */
+export function startPlayers(item) {
+  const boxes = item.starts.map((s, i) => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, start: i }));
+  const stones = (item.stones || []).map(b => ({
+    x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, color: b.color === "yellow" ? "yellow" : "red",
+    start: null }));
+  return { boxes, starts: item.starts.map(() => "untouched"), flagged: -1,
+           stones: { boxes: stones, starts: [], flagged: -1 }, stonesAtStart: stones };
+}
+
+/* The player state with `f` applied to its stones. */
+export function editStones(state, f) {
+  return { ...state, stones: f(state.stones) };
+}
+
+const stoneKey = b => [tenth(b.x0), tenth(b.y0), tenth(b.x1), tenth(b.y1), b.color].join();
+
+/* Whether the stones differ from what the item came with. */
+export function stonesFixed(state) {
+  const now = state.stones?.boxes || [], was = state.stonesAtStart || [];
+  return now.length !== was.length || now.some((b, i) => stoneKey(b) !== stoneKey(was[i]));
 }
 
 /* The index of the topmost box (the last drawn) holding the point, allowing
@@ -143,6 +172,23 @@ export function boxAnswer(state) {
                                    y1: tenth(b.y1), color: b.color, start: b.start })),
     starts: state.starts.slice(),
   };
+}
+
+/* What to send for players: the boxes' answer without a colour, which the
+ * server refuses on a player. No starts and no boxes is an answer too: nobody
+ * is in the picture. */
+export function playerAnswer(state) {
+  const a = boxAnswer(state);
+  const out = { ...a, boxes: a.boxes.map(({ color, ...b }) => b) };
+  if (!stonesFixed(state)) return out;
+  // The whole stone set as the member left it: the server's label for the frame.
+  return { ...out, stones: boxAnswer(state.stones).boxes.map(({ start, ...b }) => b) };
+}
+
+/* True while nothing has been moved, deleted or drawn: every start as the
+ * computer proposed it, and no box of the member's own. */
+export function untouched(state) {
+  return state.starts.every(s => s === "untouched") && state.boxes.every(b => b.start != null);
 }
 
 /* ------------------------------------------------------- release marks

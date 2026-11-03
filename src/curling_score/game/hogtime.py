@@ -25,8 +25,8 @@ CAMERA_FOR = {"top": "left", "bottom": "right"}
 ARRIVAL_LOOKBACK_S = (8.0, 20.0)
 
 
-# The rate ``find`` reads at when it is not told one (`sidemodel.find_crossing`,
-# `longview.find_crossing`): what the next rock's window is decoded ahead at.
+# The rate ``find`` reads at when it is not told one (`sidemodel.find_crossing`):
+# what the next rock's window is decoded ahead at.
 READ_FPS = 30.0
 
 
@@ -49,13 +49,15 @@ def window_for(shot):
 def time_hog_crossings(shots, video, view, *, find=None) -> None:
     """Give every shot its throwing-end hog crossing, in place.
 
-    ``find`` defaults to the side-view detector when one is configured, and to
-    ``longview.find_crossing`` -- the colour scan -- when none is. Resolved per
-    call rather than as a default argument value, so the model is not loaded by
-    importing this module and a test can still pass its own.
+    ``find`` defaults to the side-view detector; with it switched off
+    (``none``) no shot is given one. Resolved per call rather than as a default
+    argument value, so the model is not loaded by importing this module and a
+    test can still pass its own.
     """
     if find is None:
-        find = sidemodel.default_finder() or longview.find_crossing
+        find = sidemodel.default_finder()
+        if find is None:
+            return
     todo = [(shot, win) for shot in shots if (win := window_for(shot)) is not None]
     for i, (shot, (t0, t1)) in enumerate(todo):
         # The next rocks' windows decode while this one's is searched

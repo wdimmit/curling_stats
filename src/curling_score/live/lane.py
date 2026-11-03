@@ -386,7 +386,7 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
                 pipeline=PracticePipeline(weights=weights, skip_longview=skip_longview,
                                           line=models.line_model is not None,
                                           progress=progress),
-                models=models, since_s=0.0, t0_s=t0_s, wall_t0=began,
+                models=models, t0_s=t0_s, wall_t0=began,
                 publish=publish, progress=progress, clipper=clipper,
                 saved_calibration=saved, save_calibration=save, prior_throws=prior)
         return live.LiveSession(

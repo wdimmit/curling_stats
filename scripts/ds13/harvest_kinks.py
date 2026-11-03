@@ -21,7 +21,7 @@ For each game this recomputes the kinks from the served ``line.delivery``,
 keeps the worst per rock in each of three depths (behind the tee, tee to +4 m,
 past +4 m), cuts one short stream-copied clip per rock on the worker, and finds
 which crop the kinked dot came from by matching it to a box's bottom-centre in
-production's two crops (``linetime.read_delivery``'s and ``sidepool.band_crop``).
+production's two crops (``linetime.read_delivery``'s and ``sideview.band_crop``).
 That crop is what is labelled. A ``train`` game offers its worst kinks by depth
 and crop, capped per game, plus ordinary confident frames so the set does not
 learn only the failures; a ``heldout`` game its worst kinks and as many frames
@@ -55,7 +55,7 @@ from mask_wave import inside, mask, window  # noqa: E402
 from curling_score.analyze import OTHER_HOUSE
 from curling_score.game import hogtime, linetime
 from curling_score.geometry import constants as C
-from curling_score.harvest import sidepool
+from curling_score.geometry.sideview import band_crop
 
 TEE_Y = C.TEE_TO_TEE_M
 R = C.STONE_RADIUS_M
@@ -129,7 +129,7 @@ def dot_pixel(view, yp, x):
 def crops_for(view, height):
     top = max(0, int(view.row_for(-(C.TEE_TO_HACKLINE_M + 1.0))) - 30)
     bot = min(height, int(view.row_for(linetime.DELIVERY_TO_M + R)) + 30)
-    btop, bbot = sidepool.band_crop(view)
+    btop, bbot = band_crop(view)
     return {"read": (top, bot), "band": (max(0, btop), min(height, bbot))}
 
 
@@ -214,7 +214,7 @@ def main() -> int:
 
     from ultralytics import YOLO
     from curling_score.detect import longview
-    from curling_score.harvest.sideframes import stem_for
+    from curling_score.harvest.candidates import stem_for
     from curling_score.train import boxedit
 
     out = Path(args.out).expanduser(); (out / "images").mkdir(parents=True, exist_ok=True)

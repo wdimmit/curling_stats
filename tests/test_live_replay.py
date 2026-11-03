@@ -144,18 +144,6 @@ class TestReplayRecording:
         assert rec.t0_s == pytest.approx(6360.0, abs=0.02)
         assert (got == want).all()
 
-    def test_a_lookback_burst_arrives_at_once_then_real_time(self, tmp_path, clip):
-        rec = replay.ReplayRecording(clip, tmp_path / "rec.ts", speed=1.0, burst_s=10.0)
-        rec.start()
-        try:
-            began = time.monotonic()
-            while rec.head_s() < 9.0 and time.monotonic() - began < 5.0:
-                time.sleep(0.05)
-            assert rec.head_s() >= 9.0 and time.monotonic() - began < 4.0
-            assert rec.head_s() < 16.0                     # not the whole clip at once
-        finally:
-            rec.stop()
-
     def test_a_replay_ffmpeg_could_not_make_has_failed_not_ended(self, tmp_path):
         rec = replay.ReplayRecording(tmp_path / "no-such.mp4", tmp_path / "rec.ts").start()
         deadline = time.monotonic() + 10

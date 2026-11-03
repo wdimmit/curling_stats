@@ -23,15 +23,16 @@ def shots(doc):
 def summary(doc):
     broomed = [s for _g, _e, s in shots(doc) if s.get("target_broom") and not s.get("missing")]
     lined = [s for s in broomed if s.get("line")]
+    # Schema 10: a final line the 9 ft window could not fit has no miss.
     out = [s["line"]["at_broom"]["miss_m"] * (1 if s["target_broom"]["x"] >= 0 else -1)
-           for s in lined if abs(s["target_broom"]["x"]) > 0.3]
-    conf = [s["line"]["confirmed"] for s in lined]
+           for s in lined if abs(s["target_broom"]["x"]) > 0.3
+           and (s["line"].get("at_broom") or {}).get("miss_m") is not None]
+    refused = sum(1 for s in lined if s["line"].get("final_refused"))
     print(f"shots with a broom {len(broomed)}, with a line {len(lined)} "
-          f"({len(lined) / max(1, len(broomed)):.0%})")
+          f"({len(lined) / max(1, len(broomed)):.0%}), final refused {refused}")
     if out:
         print(f"  line at the broom, + outside: median {100 * statistics.median(out):+.0f} cm "
               f"over {len(out)} shots with |broom x| > 0.3")
-    print(f"  confirmed {conf.count(True)}, disagrees {conf.count(False)}, unseen {conf.count(None)}")
 
 
 def _unstamped(v):

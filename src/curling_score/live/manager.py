@@ -30,12 +30,6 @@ def is_practice(job) -> bool:
     return job.get("kind") == "practice"
 
 
-def on_cameras(job) -> bool:
-    """A job on the sheet's own cameras (``service.practice.CAMERAS``): every
-    practice job. One without it is from when practice read YouTube."""
-    return job.get("source") == "cameras"
-
-
 @dataclass
 class Stream:
     """One live job in hand: its recorder, and the lane's session for it."""
@@ -88,11 +82,6 @@ class LiveManager:
         import os
 
         if is_practice(job):
-            if not on_cameras(job):
-                # Queued when practice read a sheet's YouTube stream, which it
-                # no longer does: failed for good, never recorded.
-                raise LiveError("practice reads the club's cameras, and this job is not on "
-                                f"them (source {job.get('source')!r})")
             from curling_score.cameras.recorder import CameraRecorder
 
             # In the directory finish() clears: a practice recording is never kept.

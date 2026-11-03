@@ -1024,14 +1024,14 @@ def answer(item_id, uid, a=None):
 
 
 class TestLabelling:
-    def test_open_items_by_label_count_oldest_first(self, repo):
+    def test_open_items_newest_first(self, repo):
         for i in (3, 1, 2):
             repo.put_label_item(item(i))
         repo.put_label_item(item(4, n_labels=1))
         repo.put_label_item(item(5, state="pending"))
-        assert [x.id for x in repo.open_label_items("box", 0, 10)] == ["b_1", "b_2", "b_3"]
-        assert [x.id for x in repo.open_label_items("box", 0, 10, after=at(1))] == ["b_2", "b_3"]
-        assert [x.id for x in repo.open_label_items("box", 1, 10)] == ["b_4"]
+        assert [x.id for x in repo.open_label_items("box", 10)] == ["b_4", "b_3", "b_2", "b_1"]
+        assert [x.id for x in repo.open_label_items("box", 2)] == ["b_4", "b_3"]
+        assert [x.id for x in repo.open_label_items("box", 10, before=at(3))] == ["b_2", "b_1"]
 
     def test_pending_items_are_never_handed_out(self, repo):
         repo.put_label_item(item(1, state="pending"))
@@ -1077,6 +1077,47 @@ class TestLabelling:
         repo.skip_label_item("b_1", "u1", at(10), 5)
         assert repo.hold_label_item("b_1", "u1", at(11), 600) is None
         assert repo.hold_label_item("b_1", "u2", at(11), 600) is not None
+
+    def test_discarding_a_members_answers_reopens_their_items(self, repo):
+        for i in (1, 2, 3):
+            repo.put_label_item(item(i))
+        repo.submit_label(answer("b_1", "u1"), at(10), 1)            # done at one label
+        repo.submit_label(answer("b_2", "u1"), at(11), 2)            # half done
+        repo.submit_label(answer("b_2", "u2"), at(12), 2)            # done at two
+        repo.submit_label(answer("b_3", "u2"), at(13), 2)            # not u1's
+        assert repo.discard_label_answers("u1", "box", at(20)) == ["b_1", "b_2"]
+        one, two = repo.get_label_item("b_1"), repo.get_label_item("b_2")
+        assert (one.state, one.n_labels, one.done_at, one.labelled_by) == ("open", 0, None, ["u1"])
+        assert (two.state, two.n_labels, two.done_at, two.labelled_by) == (
+            "open", 1, None, ["u1", "u2"])
+        assert repo.get_label_item("b_3").n_labels == 1
+        assert {a.uid: a.discarded for a in repo.label_answers("b_2")} == {"u1": True, "u2": False}
+        assert repo.hold_label_item("b_1", "u1", at(21), 600) is None   # never offered again
+        assert repo.hold_label_item("b_1", "u2", at(21), 600) is not None
+        # Their re-post is closed, and a second discard has nothing to do.
+        assert repo.submit_label(answer("b_1", "u1"), at(22), 1)[0] == "closed"
+        assert repo.label_answers("b_1")[0].discarded is True
+        assert repo.discard_label_answers("u1", "box", at(23)) == []
+        assert repo.get_label_item("b_2").n_labels == 1
+
+    def test_discarding_leaves_other_kinds_alone(self, repo):
+        repo.put_label_item(item(1))
+        repo.submit_label(answer("b_1", "u1"), at(10), 2)
+        assert repo.discard_label_answers("u1", "player", at(20)) == []
+        assert repo.get_label_item("b_1").n_labels == 1
+        assert repo.label_answers("b_1")[0].discarded is False
+
+    def test_an_answer_written_without_discarded_loads_as_not_discarded(self, repo):
+        repo.put_label_item(item(1))
+        repo.submit_label(answer("b_1", "u1"), at(10), 1)
+        old = {k: v for k, v in answer("b_1", "u1").to_dict().items() if k != "discarded"}
+        assert "discarded" not in old
+        assert LabelAnswer.from_dict(old).discarded is False
+        if isinstance(repo, MemoryRepo):
+            return
+        repo._col("label_answers").document(label_answer_id("b_1", "u1")).set(old)
+        assert repo.label_answers("b_1")[0].discarded is False
+        assert repo.discard_label_answers("u1", "box", at(20)) == ["b_1"]
 
     def test_listing_by_state_and_round_trip(self, repo):
         repo.put_label_item(item(1, reference={"mark": "off", "frame": 3},

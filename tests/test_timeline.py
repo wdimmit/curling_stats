@@ -368,8 +368,11 @@ class TestTimingFields:
         rock the camera never followed, which is an empty list.
         9 adds `spin` to every shot: rpm at release from the camera facing the
         thrower, or null when not read. An 8 has no such key, which readers
-        must treat as not measured -- the viewer shows no Rotation figure."""
-        assert timeline.SCHEMA_VERSION == 9
+        must treat as not measured -- the viewer shows no Rotation figure.
+        10 adds each line's `slide`, `release_line` and `set`, fits the final
+        line over 9 ft past the hog line (`final_refused` when it cannot), and
+        drops `confirmed`."""
+        assert timeline.SCHEMA_VERSION == 10
 
     def test_a_placeholder_shot_has_no_timings(self):
         end = timeline.build_end(
@@ -915,16 +918,17 @@ class TestLine:
         from curling_score.game.linetime import Line
         line = Line(start=(-0.23151, 38.0712), at_hog_x=-0.75712, at_hog_offset=-0.16333,
                     at_broom_x=-2.35912, miss=-0.71234, curl="right", side="wide",
-                    confirmed=True, hog_path=((28.3461, -0.75712),), path=((20.0124, -1.18049),),
+                    hog_path=((28.3461, -0.75712),), path=((20.0124, -1.18049),),
                     fit_n=53, fit_rms=0.00412)
         got = self._end(line)["shots"][0]["line"]
         assert got == {"start": {"x": -0.2315, "y": 38.071},
                        "at_hog": {"x": -0.7571, "offset_m": -0.1633},
                        "at_broom": {"x": -2.3591, "miss_m": -0.7123},
-                       "side": "wide", "curl": "right", "confirmed": True,
+                       "side": "wide", "curl": "right",
                        "hog_path": [[28.35, -0.757]], "path": [[20.01, -1.18]],
                        "delivery": [],
-                       "fit": {"n": 53, "rms_m": 0.0041}}
+                       "fit": {"n": 53, "rms_m": 0.0041},
+                       "slide": None, "release_line": None, "set": None}
 
     def test_no_line_is_null_not_absent(self):
         shot = self._end(None)["shots"][0]
@@ -934,23 +938,24 @@ class TestLine:
         from curling_score.game.linetime import Line
         line = Line(start=(-0.23151, 38.0712), at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=None, miss=None, curl="right", side=None,
-                    confirmed=None, hog_path=((28.3461, -0.75712),), path=(),
+                    hog_path=((28.3461, -0.75712),), path=(),
                     fit_n=41, fit_rms=0.00312, at_tee_x=-1.50049)
         got = self._end(line)["shots"][0]["line"]
         assert got == {"start": {"x": -0.2315, "y": 38.071},
                        "at_hog": {"x": -0.7571, "offset_m": None},
                        "at_broom": None,
-                       "side": None, "curl": "right", "confirmed": None,
+                       "side": None, "curl": "right",
                        "hog_path": [[28.35, -0.757]], "path": [],
                        "delivery": [],
                        "fit": {"n": 41, "rms_m": 0.0031},
+                       "slide": None, "release_line": None, "set": None,
                        "at_tee": {"x": -1.5005}}
 
     def test_the_delivery_is_published_in_house_metres_every_tenth_of_a_second(self):
         from curling_score.game.linetime import Line
         line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
-                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01,
+                    hog_path=(), path=(), fit_n=20, fit_rms=0.01,
                     delivery=((-3.0, 37.94712, -0.151234), (0.10000001, 36.5049, -0.14449)))
         got = self._end(line)["shots"][0]["line"]["delivery"]
         assert got == [[-3.0, 37.95, -0.151], [0.1, 36.5, -0.144]]
@@ -959,7 +964,7 @@ class TestLine:
         from curling_score.game.linetime import Line
         line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
-                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01,
+                    hog_path=(), path=(), fit_n=20, fit_rms=0.01,
                     release=(1.2345, 30.1234, -0.14199))
         assert self._end(line)["shots"][0]["line"]["release"] == [1.23, 30.12, -0.142]
 
@@ -967,14 +972,48 @@ class TestLine:
         from curling_score.game.linetime import Line
         line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
-                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01)
+                    hog_path=(), path=(), fit_n=20, fit_rms=0.01)
         assert "release" not in self._end(line)["shots"][0]["line"]
+
+    def test_line_carries_slide_release_and_set(self):
+        from curling_score.game import aimlines as A
+        from curling_score.game.linetime import Line
+        slide = A.AimLine(a=0.1, b=0.0, n=40, n_eff=12.3, rms=0.004, se_m=0.03,
+                          at_broom_x=0.1, miss=0.0762, side="narrow", at_tee_x=None, shown=True)
+        rel = A.AimLine(a=-0.1, b=0.0, n=60, n_eff=20.0, rms=0.003, se_m=0.02,
+                        at_broom_x=-0.1, miss=-0.1016, side="wide", at_tee_x=None, shown=True)
+        aset = A.AimSet(m=0.1778, se_m=0.036, shown=True)
+        line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
+                    at_broom_x=-2.35912, miss=-0.71234, curl="right", side="wide",
+                    hog_path=(), path=(), fit_n=20, fit_rms=0.01,
+                    slide=slide, release_line=rel, set=aset)
+        doc = self._end(line)
+        got = doc["shots"][0]["line"]
+        assert timeline.SCHEMA_VERSION == 10
+        assert got["slide"] == A.aim_json(slide) and got["release_line"] == A.aim_json(rel)
+        assert got["set"] == A.set_json(aset)
+        assert "confirmed" not in got and "final_refused" not in got
+
+    def test_refused_final_serialises_its_marker(self):
+        from curling_score.game.linetime import Line
+        held = Line(start=None, at_hog_x=None, at_hog_offset=None, at_broom_x=None, miss=None,
+                    curl="right", side=None, hog_path=(), path=(), fit_n=None, fit_rms=None,
+                    final_refused=True, held_broom=True)
+        got = self._end(held)["shots"][0]["line"]
+        assert got["final_refused"] is True and got["fit"] is None
+        assert got["at_broom"] == {"x": None, "miss_m": None}
+        assert got["at_hog"] == {"x": None, "offset_m": None}
+        assert got["curl"] == "right"
+        broomless = Line(start=None, at_hog_x=None, at_hog_offset=None, at_broom_x=None,
+                         miss=None, curl=None, side=None, hog_path=(), path=(), fit_n=None,
+                         fit_rms=None, final_refused=True, held_broom=False)
+        assert self._end(broomless)["shots"][0]["line"]["at_broom"] is None
 
     def test_a_broom_line_has_no_tee_key(self):
         from curling_score.game.linetime import Line
         line = Line(start=None, at_hog_x=-0.75712, at_hog_offset=None,
                     at_broom_x=-2.35912, miss=-0.71234, curl=None, side=None,
-                    confirmed=None, hog_path=(), path=(), fit_n=20, fit_rms=0.01)
+                    hog_path=(), path=(), fit_n=20, fit_rms=0.01)
         assert "at_tee" not in self._end(line)["shots"][0]["line"]
 
 
@@ -985,7 +1024,7 @@ class TestTheFormatIsRecorded:
     def test_a_fours_document_has_no_format_block(self):
         doc = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[])
         assert "format" not in doc
-        assert doc["schema_version"] == 9
+        assert doc["schema_version"] == timeline.SCHEMA_VERSION
 
     def test_a_doubles_document_says_so(self):
         doc = timeline.build_document("v", "u", 1, 10.0, calibration={}, games=[],
@@ -1538,7 +1577,7 @@ class TestSpin:
         assert "spin" in end["shots"][0] and end["shots"][0]["spin"] is None
 
     def test_the_schema_says_spin_was_read(self):
-        assert timeline.SCHEMA_VERSION == 9
+        assert timeline.SCHEMA_VERSION >= 9
 
 
 def _short(doc, colours=("red",)):

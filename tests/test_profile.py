@@ -138,9 +138,11 @@ class TestThursdayMensSheet1:
 
     def test_game_2_end_2_keeps_its_last_five_rocks(self):
         """Players walking through the far house cut it at 8320 s on the
-        thresholds' counts; its rocks 12-16 came down to 8720 s."""
+        thresholds' counts; its rocks 12-16 came down to 8720 s. Since
+        `segment._passing` the thresholds keep them too: what cut it was a
+        keyframe or two of the far house while this one sat emptied."""
         samples, thresholds, _ = _fixture()
         by_counter = [segment.segment_games(s)[0].ends[3] for s in (samples, thresholds)]
         assert [e.house for e in by_counter] == ["top", "top"]
         assert [e.end_s for e in by_counter] == [pytest.approx(8695.0, abs=5),
-                                                 pytest.approx(8320.0, abs=5)]
+                                                 pytest.approx(8765.0, abs=5)]

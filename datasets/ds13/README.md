@@ -17,7 +17,8 @@ page is the **calibration census** that came first.
 
 ## What the calibration found
 
-`sideviews.json` is the output of `cs sideframes views` over ds11's whole
+`sideviews.json` is the output of `cs sideframes views` (removed 2026-10-30,
+with the colour scan it ran on) over ds11's whole
 archive — 120 videos, 240 wide side views, one frame per clip medianed into a
 clean plate per video.
 

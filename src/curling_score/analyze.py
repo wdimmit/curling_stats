@@ -13,9 +13,10 @@ import numpy as np
 from curling_score import clubs, timeline, version
 from curling_score import weights as weights_mod
 from curling_score.detect import (broommodel, delivery, longview, release, releasemodel,
-                                  sequence, sidemodel, spinmodel)
+                                  rocks, sequence, sidemodel, spinmodel)
 from curling_score.fpframes import record as fp_record
 from curling_score.game import (
+    aimlines,
     boardsplit,
     broomtime,
     endcheck,
@@ -541,7 +542,7 @@ class StageClock:
     mark to ``name``; stages marked more than once add up."""
 
     ORDER = ("detect", "rules", "follow", "lost", "hog", "side", "brooms",
-             "lines", "release", "spin")
+             "lines", "release", "aim", "spin")
 
     def __init__(self, clock=time.monotonic):
         self.clock = clock
@@ -592,6 +593,12 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
                                   ctx.detector, use_cache=ctx.use_cache,
                                   from_s=from_s)
     stages.mark("detect")
+    # The tracking keeps same-colour stones a stone's width apart; the house
+    # read takes the detector's frames, where two touching stones both show.
+    house_seq = seq
+    seq = rocks.separated(seq)
+    if ctx.one_pass:
+        far_seq = rocks.separated(far_seq)
     # Anything thrown since the previous end closed is this end's;
     # anything earlier on this panel is not.
     deliveries = [
@@ -630,7 +637,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     # would have hidden the very gap that finds it.
     stages.mark("rules")
     if not ctx.one_pass:
-        far_seq = list(sequence.detect_span(
+        far_seq = rocks.separated(sequence.detect_span(
             read_path, far, from_s, end.end_s,
             release.RELEASE_FPS, ctx.detector, use_cache=ctx.use_cache))
         stages.mark("detect")
@@ -721,7 +728,7 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     closed_s = min(end.end_s, kept[-1].t_rest) if kept else end.end_s
     late = joined_late(prev_end_s, end.start_s, ctx.recording_start_s)
     shots = shots_mod.from_deliveries(
-        kept, seq, thrown_by={id(d): r for r, d in thrown_by.items()},
+        kept, seq, house_frames=house_seq, thrown_by={id(d): r for r, d in thrown_by.items()},
         fmt=fmt,
         before=placed.seed if placed is not None else (),
         base=placement.fill_base(placed, fmt),
@@ -800,6 +807,11 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
                         log.exception("end %s: the release read failed; no releases",
                                       end.number)
                     stages.mark("release")
+                    # Where the slide was aimed and where the release sent the
+                    # rock: two more lines, read from the release point on.
+                    n_aim = aimlines.attach_aim_lines(shots)
+                    progress(f"    end {end.number}: aim lines {n_aim}/{len(shots)}")
+                    stages.mark("aim")
             finally:
                 # ~20 MB a rock: let it go before the next end, whatever happened.
                 if keeper is not None:
@@ -1174,7 +1186,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         strip = proxy.strip_rect(panels.top, panels.bottom)
         phase("proxy", 0.0, "building strip proxy")
         read_path = proxy.ensure_proxy(
-            path, info.video_id, strip, root=root, progress=progress
+            path, info.video_id, strip, root=root, progress=progress,
+            tick=lambda: phase("proxy", 0.0, "building strip proxy"),
         )
         phase("proxy", 1.0, "proxy ready")
         read_setups = _proxy_setups(setups, strip)

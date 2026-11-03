@@ -26,7 +26,7 @@ def js(expr: str):
 def pl(**kw):
     """A playlist as GET /api/admin/playlists serves it."""
     return {"id": "p_1", "playlist_id": "PLabc", "label": "Thursday", "enabled": True,
-            "schedule": [THU], "live_poll_s": 180.0, "idle_poll_s": 3600.0, "practice": False,
+            "schedule": [THU], "live_poll_s": 180.0, "idle_poll_s": 3600.0,
             "failures": 0, "last_error": None, "last_polled_at": None,
             "last_seen_video_ids": [], **kw}
 
@@ -75,11 +75,6 @@ class TestHowOftenItIsLookedAt:
             "Looked at every 2 hours."
         assert js(f"P.pollText({json.dumps(pl(schedule=[], idle_poll_s=None))})") == \
             "Never looked at."
-
-    def test_a_practice_playlist_is_never_polled_for_games(self):
-        # Nor read for practice sessions, which read the club's cameras.
-        assert js(f"P.pollText({json.dumps(pl(practice=True))})") == \
-            "Practice streams: never polled for games."
 
     def test_intervals(self):
         assert js("[180, 90, 3600, 5400, 7200].map(P.every)") == [
@@ -130,7 +125,7 @@ class TestTheForm:
         p = pl(schedule=[{"days": ["tue", "thu"], "start": "18:00", "end": "23:30"}],
                live_poll_s=120.0, idle_poll_s=None)
         got = body(js(f"P.formFrom({json.dumps(p)})"))
-        assert got == {"body": {"label": "Thursday", "practice": False,
+        assert got == {"body": {"label": "Thursday",
                                 "schedule": p["schedule"], "live_poll_s": 120,
                                 "idle_poll_s": None}}
 
@@ -150,10 +145,6 @@ class TestTheForm:
 
     def test_a_new_night_is_an_evening_with_no_day_yet(self):
         assert js("P.newNight()") == {"days": [], "start": "18:00", "end": "23:30"}
-
-    def test_a_practice_playlist_sends_no_nights(self):
-        got = body(form(label="Sheets", practice=True, nights=[{"days": []}], liveMin=""))
-        assert got == {"body": {"label": "Sheets", "practice": True}}
 
     def test_what_is_plainly_missing_is_said_before_it_is_sent(self):
         assert "link" in body(form(), adding=True)["error"]

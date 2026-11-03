@@ -140,8 +140,10 @@ class TestTheLongCameraPasses:
         assert all(k is keeper for _name, k in calls[:5])
         assert all(k is None for _name, k in calls[5:])
         assert keeper.cleared and longview._keeping is None
-        assert marks.index("lines") < marks.index("release") < marks.index("spin")
+        assert marks.index("lines") < marks.index("release") < marks.index("aim") \
+            < marks.index("spin")
         assert "    end 1: release 0/0 in 0.0 s (3 MB kept)" in said
+        assert "    end 1: aim lines 0/0" in said
         assert built["shots"] == []
 
     def test_a_pass_that_raises_still_lets_the_keeper_go(self, monkeypatch,

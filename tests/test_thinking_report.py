@@ -165,6 +165,35 @@ class TestBuild:
         assert {r["games_in_video"] for r in only(tr.build([a, b]))["teams"]} == {2}
 
 
+class TestByTeam:
+    def test_a_team_averages_over_all_its_ends_slowest_first(self):
+        league = only(tr.build([
+            src("a", 600, 200, ends=6, team_red="Dimmit", team_yellow="Smith"),
+            src("b", 100, 400, ends=2, team_red="Smith", team_yellow="dimmit ", days=7)]))
+        assert [(t["team"], t["games"]) for t in league["by_team"]] == [
+            ("dimmit", 2), ("Smith", 2)]
+        dimmit, smith = league["by_team"]
+        assert dimmit["per_end_s"] == pytest.approx(1000 / 8)
+        assert smith["per_end_s"] == pytest.approx(300 / 8)
+
+    def test_every_team_is_listed_however_many(self):
+        games = [src(f"g{i}", 100, 100, team_red=f"R{i}", team_yellow=f"Y{i}") for i in range(12)]
+        league = only(tr.build(games, top=5))
+        assert len(league["by_team"]) == 24
+        assert {t["games"] for t in league["by_team"]} == {1}
+
+    def test_an_unnamed_team_is_left_out_and_counted(self):
+        league = only(tr.build([src("a", 300, 200, team_red="Dimmit"), src("b", 100, 100)]))
+        assert [t["team"] for t in league["by_team"]] == ["Dimmit"]
+        assert league["unnamed_rows"] == 3
+
+    def test_the_most_used_spelling_names_the_team(self):
+        league = only(tr.build([src("a", 1, 1, team_red="dimmit"),
+                                src("b", 1, 1, team_red="Dimmit", days=1),
+                                src("c", 1, 1, team_red="Dimmit", days=2)]))
+        assert [t["team"] for t in league["by_team"]] == ["Dimmit"]
+
+
 class TestRecentLeagues:
     """Only leagues with a game in the last two weeks are listed; a past
     season drops off the page however slow its teams were."""

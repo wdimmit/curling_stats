@@ -43,7 +43,7 @@ where = ["src"]
 # base install: `analyze` reads the scoreboard without the `gpu` extra.
 "curling_score.game" = ["*.npz"]
 "curling_score.viewer" = ["*.html", "*.js", "*.css", "*.woff2", "*.txt"]
-"curling_score.service" = ["static/*.html", "static/*.js", "static/*.css"]
+"curling_score.service" = ["static/*.html", "static/*.js", "static/*.css", "static/*.jpg"]
 # Each sheet's fitted camera layout, read by the composer in the worker image.
 "curling_score.cameras" = ["layouts/*.json"]
 

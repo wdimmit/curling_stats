@@ -82,6 +82,47 @@ class TestAHouseClearedMidEnd:
         two on 10/01 had run 250-465 s when their house was cleared."""
         assert segment.WHOLE_END_S == 540.0
 
+    def test_a_tail_too_short_to_be_an_end_is_still_joined(self):
+        """entTaSBFK3A end 2 under overhead-1: rock 12's takeout emptied the
+        top house 485 s in, a player's red jacket over the bottom button read
+        as a stone for one keyframe, and the end's last 4 rocks ran 150 s --
+        under the floor, so they were dropped before they could be joined
+        back on, and belonged to no end."""
+        samples = profile([(180, 0, 6), (97, 2, 0), (7, 0, 0), (1, 0, 1), (7, 0, 0),
+                           (30, 1, 0), (8, 0, 0), (180, 0, 7)])
+        ends = segment.segment_games(samples)[0].ends
+        assert [e.house for e in ends] == ["bottom", "top", "bottom"]
+        assert ends[1].end_s == pytest.approx(900.0 + 5 * (97 + 15 + 30), abs=15)
+
+    def test_a_short_tail_after_a_whole_end_is_still_not_joined(self):
+        whole = int(segment.WHOLE_END_S // 5) + 20
+        samples = profile([(180, 0, 6), (whole, 5, 0), (20, 0, 4), (30, 4, 0), (8, 0, 0),
+                           (180, 0, 7)])
+        top = segment.segment_games(samples)[0].ends[1]
+        assert top.end_s == pytest.approx(900.0 + 5 * (whole - 1), abs=15)
+
+    def test_a_short_run_after_a_whole_end_is_not_joined_for_holding_stones(self):
+        """AEqLTgM25Tc end 5 (1,010 s): as end 6 began in the other house, a
+        rock waiting at the hack kept one stone in this one, ties named it,
+        and 95 s of end 6 would have been joined to end 5 as if held."""
+        whole = int(segment.WHOLE_END_S // 5) + 20
+        samples = profile([(180, 0, 6), (whole, 5, 0), (4, 1, 2), (20, 3, 0), (8, 0, 0),
+                           (180, 0, 7)])
+        top = segment.segment_games(samples)[0].ends[1]
+        assert top.end_s == pytest.approx(900.0 + 5 * (whole - 1), abs=15)
+
+    def test_short_runs_joined_on_never_make_an_end_whole(self):
+        """_OGoqF5W9-I under the overhead-1 candidate: practice stones before
+        the game left 240 s of the bottom house and a flicker of short runs
+        either side. Joined on, the flicker made that 540 s, a whole end, and
+        the game's real first end -- the same house -- was refused and
+        numbered 2. It joins the practice stretch, as it always did."""
+        samples = profile([(50, 0, 2), (18, 2, 0), (20, 0, 2), (6, 2, 0), (20, 0, 1), (30, 2, 0),
+                           (27, 0, 0), (180, 0, 6), (180, 5, 0)])
+        ends = segment.segment_games(samples)[0].ends
+        assert [e.house for e in ends] == ["bottom", "top"]
+        assert ends[1].start_s == pytest.approx(5 * (50 + 18 + 20 + 6 + 20 + 30 + 27 + 180), abs=15)
+
     def test_a_doubles_end_scales_it_with_the_floor(self):
         """Ten rocks, not sixteen: 2.25 x 150 s, under the shortest of 111
         complete doubles ends (470 s)."""
@@ -120,6 +161,71 @@ class TestAHouseThatKeptItsStones:
         assert [e.house for e in ends] == ["bottom", "top", "top", "bottom"]
 
 
+class TestAStonePassingThroughTheOtherHouse:
+    """10/25 Sunday Skips sheet 1, end 1, under overhead-3: by 380 s every
+    stone had been hit out of the bottom house, and at 402.5 s the next rock,
+    sliding out of the hack, was counted in the top house -- one keyframe,
+    which the smoothing spread over 12 s of "top". That cut the end's first
+    200 s off, too short to be an end, and with no end before it to join they
+    were dropped: the end began at 415 s with 10 of its 16 rocks, and the
+    board's scores could not be placed. ds17b missed the passing stone and
+    began it at 177.5 s. Keyframes 2.5 s apart, as on that recording."""
+
+    def _emptied(self, passing=1, first=80, top_then=1):
+        return profile([(12, 0, 0), (first, 0, 1), (14, 0, 0), (passing, top_then, 0), (6, 0, 0),
+                        (200, 0, 2), (360, 3, 0), (360, 0, 3)], step=2.5)
+
+    def test_the_end_keeps_its_first_rocks(self):
+        ends = segment.segment_games(self._emptied())[0].ends
+        assert [e.house for e in ends] == ["bottom", "top", "bottom"]
+        assert ends[0].start_s == pytest.approx(30.0, abs=5)
+
+    def test_two_keyframes_of_it_are_still_passing(self):
+        ends = segment.segment_games(self._emptied(passing=2))[0].ends
+        assert ends[0].start_s == pytest.approx(30.0, abs=5)
+
+    def test_a_stone_that_stays_is_not_passing(self):
+        """A stone seen for longer is the other house holding one, which the
+        rules before this already judged; it is left to them."""
+        ends = segment.segment_games(self._emptied(passing=3))[0].ends
+        assert ends[0].start_s > 250.0
+
+    def test_later_in_the_game_too(self):
+        """An end after the first has an end before it, in the other house,
+        and the cut-off rocks could not join that one either."""
+        samples = profile([(360, 3, 0), (80, 0, 1), (14, 0, 0), (1, 1, 0), (6, 0, 0),
+                           (200, 0, 2), (360, 3, 0)], step=2.5)
+        ends = segment.segment_games(samples)[0].ends
+        assert [e.house for e in ends] == ["top", "bottom", "top"]
+        assert ends[1].start_s == pytest.approx(900.0, abs=5)
+
+    def test_the_next_end_s_first_rock_still_finishes_the_end_before(self):
+        """Between ends the first rock of the next one slides through the
+        house just cleared -- the same house, not the other one. Untouched:
+        it finishes the end before it, as it always did."""
+        samples = profile([(360, 0, 3), (14, 0, 0), (1, 0, 1), (14, 0, 0), (360, 3, 0)], step=2.5)
+        ends = segment.segment_games(samples)[0].ends
+        assert [e.house for e in ends] == ["bottom", "top"]
+        assert ends[0].end_s >= 2.5 * (360 + 14)
+
+    def test_specks_on_an_empty_sheet_are_not_play(self):
+        """hOKZoeJNTpM, 9,510-9,750 s, long after its last game: four
+        single-keyframe specks in the bottom house and one in the top. Taking
+        the top one out joined the bottom ones into 240 s of "bottom" -- an end,
+        and a third game. Only a house holding stones either side is in play."""
+        samples = profile([(360, 0, 3), (360, 3, 0), (100, 0, 0), (1, 0, 1), (15, 0, 0), (1, 0, 1),
+                           (8, 0, 0), (1, 0, 1), (7, 0, 0), (1, 1, 0), (10, 0, 0), (1, 0, 1),
+                           (100, 0, 0)])
+        assert len(segment.segment_games(samples)) == 1
+
+    def test_a_whole_end_is_not_joined_across_a_passing_stone(self):
+        """The 09/29 Supper case: what follows a whole end is the next draw."""
+        whole = int(segment.WHOLE_END_S // 2.5) + 20
+        samples = profile([(whole, 0, 3), (14, 0, 0), (1, 1, 0), (6, 0, 0), (200, 0, 2)], step=2.5)
+        ends = segment.segment_games(samples)[0].ends
+        assert [e.house for e in ends] == ["bottom", "bottom"]
+
+
 def _fixture(video_id):
     import json
     from pathlib import Path
@@ -143,6 +249,23 @@ class TestFridayEveningSheet5:
         # The start moves a keyframe with the hash seed (`_smooth`'s tie-break).
         assert (end6.house, end6.end_s) == ("top", 7015.0)
         assert end6.start_s == pytest.approx(5935.0, abs=5)
+
+
+class TestSundaySkipsSheet1:
+    """The recording's own profile under overhead-3 (tests/fixtures/profiles):
+    the stone passing through the top house at 402.5 s, mid end 1."""
+
+    def test_end_1_begins_with_the_game(self):
+        ends = segment.segment_games(_fixture("1MK77SP66GE"))[0].ends
+        # 177.5 or 180.0 with the hash seed (`_smooth`'s tie-break), as ds17b's.
+        assert (ends[0].house, ends[0].end_s) == ("bottom", 737.5)
+        assert ends[0].start_s == pytest.approx(178.75, abs=1.25)
+
+    def test_its_seven_ends_alternate(self):
+        ends = segment.segment_games(_fixture("1MK77SP66GE"))[0].ends
+        houses = [e.house for e in ends]
+        assert len(ends) == 7
+        assert all(a != b for a, b in zip(houses, houses[1:])), houses
 
 
 class TestThursdayMorningSheet2:

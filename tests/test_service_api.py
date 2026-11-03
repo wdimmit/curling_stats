@@ -1659,11 +1659,8 @@ class TestRoleSwapCharting:
 
 
 class TestFormat:
-    @pytest.fixture(autouse=True)
-    def _doubles_on(self, world):
-        # The hosted service keeps doubles off until it can chart them; these
-        # tests are about what happens once it is on.
-        world["settings"].doubles_enabled = True
+    def test_asking_for_fours_is_fine(self, world):
+        assert submit(world, format="fours").status_code == 201
 
     def test_a_doubles_title_queues_a_doubles_run(self, world):
         add_doubles_video(world)
@@ -1809,65 +1806,6 @@ class TestFormat:
         assert len(r.json()["created"]) == 1
         (run,) = world["repo"].runs_for_video(DOUBLES_VID)
         assert run.format == "doubles"
-
-
-class TestDoublesIsOffUntilItCanBeCharted:
-    """The hosted service makes no doubles runs until DOUBLES_ENABLED says so:
-    the viewer cannot chart one yet. Off, everything is as it was."""
-
-    def test_it_is_off_unless_the_environment_says_so(self, monkeypatch):
-        monkeypatch.delenv("DOUBLES_ENABLED", raising=False)
-        assert Settings.from_env().doubles_enabled is False
-        assert Settings().doubles_enabled is False
-        for on in ("1", "true", "yes"):
-            monkeypatch.setenv("DOUBLES_ENABLED", on)
-            assert Settings.from_env().doubles_enabled is True
-        monkeypatch.setenv("DOUBLES_ENABLED", "0")
-        assert Settings.from_env().doubles_enabled is False
-
-    def test_asking_for_doubles_is_a_400(self, world):
-        r = submit(world, format="doubles")
-        assert r.status_code == 400
-        assert r.json()["detail"] == "doubles games are not supported yet"
-        assert world["repo"].runs_for_video(VID) == []
-
-    def test_asking_for_fours_is_fine(self, world):
-        assert submit(world, format="fours").status_code == 201
-
-    def test_a_doubles_title_queues_a_fours_run(self, world):
-        add_doubles_video(world)
-        assert submit(world, url=f"https://youtu.be/{DOUBLES_VID}").status_code == 201
-        (run,) = world["repo"].runs_for_video(DOUBLES_VID)
-        assert run.format == "fours"
-        r = world["client"].post("/api/worker/claim", headers=WORKER,
-                                 json={"worker_id": "home", "model_id": "m-abc"})
-        assert r.json()["job"]["format"] == "fours"
-
-    def test_the_poller_makes_fours_runs(self, world):
-        add_doubles_video(world)
-        world["repo"].put_playlist(WatchedPlaylist(id="p", playlist_id="PLthu",
-                                                   label="Thursday", created_at=T0))
-        world["yt"]._playlists["PLthu"] = [DOUBLES_VID]
-        r = world["client"].post("/api/admin/poll-playlists", headers=ADMIN)
-        assert len(r.json()["created"]) == 1
-        (run,) = world["repo"].runs_for_video(DOUBLES_VID)
-        assert run.format == "fours"
-
-    def test_a_reprocess_cannot_ask_for_doubles(self, world):
-        submit(world)
-        r = world["client"].post("/api/admin/reprocess", headers=ADMIN,
-                                 json={"video_id": VID, "format": "doubles"})
-        assert r.status_code == 400
-        assert r.json()["detail"] == "doubles games are not supported yet"
-
-    def test_a_reprocess_makes_fours_even_of_a_doubles_run(self, world):
-        add_doubles_video(world)
-        world["settings"].doubles_enabled = True
-        submit(world, url=f"https://youtu.be/{DOUBLES_VID}")
-        world["settings"].doubles_enabled = False
-        r = world["client"].post("/api/admin/reprocess", headers=ADMIN,
-                                 json={"video_id": DOUBLES_VID})
-        assert world["repo"].get_run(r.json()["run_id"]).format == "fours"
 
 
 class TestFlags:
@@ -2082,13 +2020,6 @@ class TestFlags:
         codes = [self.flag(world, f"/c/{ch.id}/", ip=f"10.0.0.{i}, 9.9.9.9, 35.1.1.{i}").status_code
                  for i in range(21)]
         assert codes[20] == 429
-
-
-def test_the_site_learns_whether_doubles_is_on(world):
-    r = world["client"].get("/api/features")
-    assert r.status_code == 200 and r.json() == {"doubles": False, "practice": False}
-    world["settings"].doubles_enabled = True
-    assert world["client"].get("/api/features").json() == {"doubles": True, "practice": False}
 
 
 class TestTheChartSaysWhichGameAndWhen:
