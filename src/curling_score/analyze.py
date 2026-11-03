@@ -322,27 +322,38 @@ class BoardRead:
     block: dict
 
 
-def _end_views(calib_frames, panels, club, progress):
+def _side_rects(panels, club, w, h):
+    rects = sideview.locate(panels, width=w, height=h)
+    if club.side_rows is not None:
+        y0, y1 = club.side_rows
+        rects = {n: (x, y0, rw, y1 - y0) for n, (x, _y, rw, _h) in rects.items()}
+    return rects
+
+
+def _end_views(calib_frames, panels, club, progress, cameras=None, end_camera=True):
     """A club whose side cameras each look back at their own house: one
     `SideView` per house, named for the role the long cameras' names carry --
     ``hogtime.CAMERA_FOR[house]``, the camera that sees that house's tee and
-    hog line -- so every consumer reads it as it reads Granite's."""
+    hog line -- so every consumer reads it as it reads Granite's. With
+    ``end_camera`` False, ``cameras`` are long cameras fitted the same way."""
     from curling_score.game import hogtime
 
     h, w = calib_frames[0].shape[:2]
     plate = np.median(np.stack([f.astype("float32") for f in calib_frames]), axis=0).astype("uint8")
+    kind = "end" if end_camera else "long"
     try:
-        rects = sideview.locate(panels, width=w, height=h)
+        rects = _side_rects(panels, club, w, h)
         views = {}
-        for house, (side, paint) in club.end_cameras.items():
-            fit = endcam.solve(plate, rects[side], paint, name=f"{side} ({house} house)")
-            progress(f"{side} end camera, {house} house: tee row {fit.view.tee_row:.1f}, hog row "
+        for house, (side, paint) in (cameras or club.end_cameras).items():
+            fit = endcam.solve(plate, rects[side], paint, name=f"{side} ({house} house)",
+                               end_camera=end_camera)
+            progress(f"{side} {kind} camera, {house} house: tee row {fit.view.tee_row:.1f}, hog row "
                      f"{fit.view.hog_row:.1f}, d {fit.view.d_m:.2f} m, ring {fit.ring_residual_m * 100:.1f} cm, "
                      f"centre line on {fit.centre_rows} rows")
             views[hogtime.CAMERA_FOR[house]] = fit.view
         return views
     except sideview.SideViewError as exc:
-        progress(f"end cameras unusable, so this video has no splits: {exc}")
+        progress(f"{kind} cameras unusable, so this video has no splits: {exc}")
         return None
 
 
@@ -353,7 +364,7 @@ def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info,
     Returns ``(panels, setups, sideviews)``; ``sideviews`` is None when they
     were skipped or could not be read, which costs the splits and nothing else.
     """
-    panels = layout.detect_panels(calib_frames)
+    panels = club.panel_layout or layout.detect_panels(calib_frames)
     setups = profile.calibrate_panels(calib_frames, panels, club)
     for name, setup in setups.items():
         residual = setup.calib.residual_m
@@ -376,6 +387,8 @@ def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info,
     sideviews = None
     if not skip_longview and club.end_cameras:
         sideviews = _end_views(calib_frames, panels, club, progress)
+    elif not skip_longview and club.long_cameras:
+        sideviews = _end_views(calib_frames, panels, club, progress, club.long_cameras, end_camera=False)
     elif not skip_longview:
         h, w = calib_frames[0].shape[:2]
         plate = np.median(
