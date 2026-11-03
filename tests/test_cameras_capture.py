@@ -349,7 +349,7 @@ def test_the_tap_reader_gives_the_holder_packets_before_the_fifo_opens(tmp_path)
         now = time.monotonic_ns()
         w.write(struct.pack("<IBqq", len(SPS_PPS_IDR), 1, 0, now) + SPS_PPS_IDR)
         w.write(struct.pack("<IBqq", len(P1), 0, 166_667, now) + P1)
-    cap = capture_reading(tmp_path, read, time.monotonic())
+    cap = capture_reading(tmp_path, time.monotonic(), read)
     cap._read()                            # to the end of the pipe
     assert (tmp_path / "first").read_bytes() == SPS_PPS_IDR
     assert not cap.fifo.opened.is_set() and not cap.fifo._queue
@@ -358,7 +358,7 @@ def test_the_tap_reader_gives_the_holder_packets_before_the_fifo_opens(tmp_path)
     assert queued(cap.fifo) == [SPS_PPS_IDR]
 
 
-def capture_reading(tmp_path, fd, t0):
+def capture_reading(tmp_path, t0, fd=None):
     args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
                                          "--first", str(tmp_path / "first"), "--t0", str(t0)])
     args.tap_fd, args.parent = fd, os.getppid()
@@ -374,15 +374,115 @@ def test_the_tap_reader_times_packets_by_the_cameras_clock_from_the_sessions_zer
     read, write = os.pipe()
     with os.fdopen(write, "wb") as w:
         for i, (data, late) in enumerate([(SPS_PPS_IDR, 0.0), (P1, 0.013), (P2, 0.001)]):
-            arrived = round((t0 + 5.0 + i / 60 + late) * 1e9)
+            arrived = round((t0 + 5.5 + i / 60 + late) * 1e9)   # SRT_LATENCY_S later
             w.write(struct.pack("<IBqq", len(data), i == 0, pts0 + i * tap.PTS_HZ // 60, arrived)
                     + data)
-    cap = capture_reading(tmp_path, read, t0)
+    cap = capture_reading(tmp_path, t0, read)
     cap.fifo.opened.set()
     cap._read()
 
     assert [t for t, _, _ in cap.fifo._queue] == pytest.approx([5.0, 5.0 + 1 / 60, 5.0 + 2 / 60],
                                                                abs=1e-6)
+
+
+# --- the camera over SRT: MPEG-TS from ffmpeg ------------------------------------
+
+
+def mpegts(packets, pts0=0):
+    """The h264() packets muxed as MPEG-TS, 1/60 s apart from pts0 (90 kHz),
+    as ffmpeg sends them."""
+    buf = io.BytesIO()
+    with av.open(io.BytesIO(packets[0][0]), format="h264") as raw, \
+            av.open(buf, "w", format="mpegts") as out:
+        stream = out.add_stream_from_template(raw.streams.video[0])
+        stream.time_base = Fraction(1, 90_000)
+        for i, (data, key) in enumerate(packets):
+            packet = av.Packet(data)
+            packet.stream, packet.time_base = stream, Fraction(1, 90_000)
+            packet.pts = packet.dts = pts0 + i * 1500
+            packet.is_keyframe = key
+            out.mux(packet)
+    return buf.getvalue()
+
+
+def arrivals(times):
+    """A clock that gives ``times`` in turn, one per packet."""
+    it = iter(times)
+    return lambda: next(it)
+
+
+def test_srt_url_names_the_cameras_address_port_latency_and_timeout():
+    assert capture.srt_url("3H-HOUSE") == ("srt://192.168.0.248:1600?mode=caller"
+                                           "&latency=500000&timeout=5000000")
+
+
+def test_ffmpeg_copies_the_cameras_video_to_mpegts_on_stdout():
+    cmd = capture.ffmpeg_command("3H-HOUSE")
+    assert cmd[0] == "ffmpeg" and cmd[-1] == "-"
+    assert cmd[cmd.index("-i") + 1] == capture.srt_url("3H-HOUSE")
+    assert cmd[cmd.index("-map") + 1] == "0:v:0"
+    assert cmd[cmd.index("-c") + 1] == "copy" and cmd[cmd.index("-f") + 1] == "mpegts"
+
+
+def test_pts_unwrap_carries_on_across_the_33_bit_wrap():
+    u = capture.PtsUnwrap()
+    w = capture.PTS_WRAP
+    assert [u(p) for p in (w - 3000, w - 1500, 0, 1500)] == [w - 3000, w - 1500, w, w + 1500]
+
+
+def test_pts_unwrap_takes_already_unwrapped_pts_as_they_are():
+    u = capture.PtsUnwrap()
+    w = capture.PTS_WRAP
+    assert [u(p) for p in (w - 1500, w, w + 1500)] == [w - 1500, w, w + 1500]
+
+
+def test_the_srt_reader_times_packets_by_the_cameras_clock_less_the_latency(tmp_path):
+    """Packets 1/60 s apart by pts that reached the Ryzen bunched up: each is
+    timed as the camera spaced them, anchored to the quickest arrival, and
+    SRT_LATENCY_S before it, in seconds since --t0."""
+    t0 = time.monotonic() - 6.0
+    packets = h264(3, gop=3)
+    late = [0.0, 0.013, 0.001]
+    cap = capture_reading(tmp_path, t0)
+    cap.now = arrivals([t0 + 5.5 + i / 60 + late[i] for i in range(3)])
+    cap.fifo.opened.set()
+    assert cap._read_stream(io.BytesIO(mpegts(packets)), 0) == 3
+
+    assert [t for t, _, _ in cap.fifo._queue] == pytest.approx([5.0, 5.0 + 1 / 60, 5.0 + 2 / 60],
+                                                               abs=1e-6)
+
+
+def test_the_srt_reader_keeps_time_across_a_pts_wrap(tmp_path):
+    t0 = time.monotonic() - 6.0
+    packets = h264(12)
+    cap = capture_reading(tmp_path, t0)
+    cap.now = arrivals([t0 + 5.0 + i / 60 for i in range(len(packets))])
+    cap.fifo.opened.set()
+    cap._read_stream(io.BytesIO(mpegts(packets, pts0=capture.PTS_WRAP - 6 * 1500)), 0)
+
+    times = [t for t, _, _ in cap.fifo._queue]
+    assert len(times) == len(packets)
+    assert np.diff(times) == pytest.approx([1 / 60] * (len(times) - 1), abs=1e-6)
+
+
+def test_the_srt_reader_saves_the_first_keyframe_and_holds_it_before_the_fifo_opens(tmp_path):
+    packets = h264(6, gop=6)
+    cap = capture_reading(tmp_path, time.monotonic())
+    cap._read_stream(io.BytesIO(mpegts(packets)), 0)
+    first = (tmp_path / "first").read_bytes()
+    assert first.endswith(packets[0][0])   # MPEG-TS puts an access unit delimiter first
+    assert not cap.fifo.opened.is_set() and not cap.fifo._queue
+    cap.fifo.opened.set()
+    assert cap.holder.tick() is True
+    assert queued(cap.fifo) == [first]
+
+
+def test_an_old_connections_reader_stops_once_a_new_one_exists(tmp_path):
+    cap = capture_reading(tmp_path, time.monotonic())
+    cap.fifo.opened.set()
+    cap.generation = 1
+    assert cap._read_stream(io.BytesIO(mpegts(h264(12))), 0) == 0
+    assert not cap.fifo._queue and not (tmp_path / "first").exists()
 
 
 def opened_fifo(tmp_path, clock):

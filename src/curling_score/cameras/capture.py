@@ -15,11 +15,15 @@ capture can check what the camera sends before anything reads the FIFO.
 recorder's start on ``time.monotonic``'s clock, and its time goes with it into
 the FIFO, as NUT (``_Nut``), for the composer to keep. A composer that falls
 behind then only delays the recording; it never moves a frame in it. The time
-is the camera's own clock (the packet's pts), anchored to when the packets
-reached the Ryzen (``CameraClock``); the tap takes both in libndi's own call.
-The camera's clock spaces the frames as it took them, where arrivals bunch
-up; it is trusted for nothing more, since the HOUSE cameras' clocks are years
-off and every camera's drifts. A held keyframe is timed when it is written.
+is the camera's own clock (the packet's 90 kHz MPEG-TS pts, unwrapped at
+2^33), anchored to when the packets reached the Ryzen (``CameraClock``), and
+put ``SRT_LATENCY_S`` before arrival, where NDI put them. The camera's clock
+spaces the frames as it took them, where arrivals bunch up; it is trusted for
+nothing more. A HOUSE camera's pts is its encoder's uptime, and the long
+cameras' NTP times disagree with each other by 10-90 ms from day to day, while
+each camera's delay to the Ryzen holds to 1-2 ms ("Camera sync" in
+docs/superpowers/specs/2026-10-29-practice-srt-capture-design.md). A held
+keyframe is timed when it is written.
 
 **One process per camera, re-executed.** The tap (``tap.py``) keeps one H.264
 context per process, so each camera needs a process of its own. libndi finds
@@ -84,7 +88,7 @@ from collections import deque
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
-from typing import NoReturn
+from typing import BinaryIO, NoReturn
 
 # Before cyndilib loads libndi, which loads the tap: PyAV's own FFmpeg is bound
 # to itself as it loads, so none of its calls can reach the tap's avcodec_*.
@@ -132,6 +136,18 @@ MAX_AGE_S = 5.0
 # altogether (MAX_AGE_S is judged as a packet is written). Past it, packets are
 # dropped until the next keyframe: blocking would stall libndi.
 BACKLOG = 600
+# Each camera serves SRT on this UDP port; we connect as a caller. Latency 500
+# ms ran clean on sheet 4 during a league, where 200 ms once lost packets on
+# 4H-PTZ (2026-10-29). A connection that hears nothing for SRT_TIMEOUT_S ends,
+# rather than hang.
+SRT_PORT = 1600
+SRT_LATENCY_S = 0.5
+SRT_TIMEOUT_S = 5.0
+# MPEG-TS pts are 90 kHz and wrap at 2^33 (~26.5 h).
+PTS_WRAP = 1 << 33
+_PTS_HZ = 90_000
+# Holder's flag for a keyframe.
+KEYFRAME = 0x01
 _MODULE = "curling_score.cameras.capture"
 _TAP_LIB = "libavcodec-ndi.so.61"
 # What the FIFO's times count in.
@@ -174,7 +190,7 @@ class Holder:
     def packet(self, flags: int, payload: bytes, at: float | None = None) -> None:
         """A packet from the camera, timed ``at`` on ``clock`` (now if None)."""
         with self._lock:
-            key = bool(flags & tap.KEYFRAME)
+            key = bool(flags & KEYFRAME)
             if self._need_key and not key:
                 return
             if key:
@@ -195,6 +211,40 @@ class Holder:
             self._need_key = True
             self._hold_at = now + self.period_s
             return self._write(self._key, now, True) is not False
+
+
+def srt_url(camera: str) -> str:
+    """Where ffmpeg calls ``camera``: its SRT listener, with our latency and
+    timeout (in microseconds, as ffmpeg's srt protocol takes them)."""
+    return (f"srt://{inventory.CAMERAS[camera]}:{SRT_PORT}?mode=caller"
+            f"&latency={round(SRT_LATENCY_S * 1e6)}&timeout={round(SRT_TIMEOUT_S * 1e6)}")
+
+
+def ffmpeg_command(camera: str) -> list[str]:
+    """ffmpeg as the SRT caller: the camera's video copied, untouched, to
+    MPEG-TS on stdout."""
+    return ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning", "-i", srt_url(camera),
+            "-map", "0:v:0", "-c", "copy", "-f", "mpegts", "-"]
+
+
+class PtsUnwrap:
+    """MPEG-TS pts, which wrap at 2^33, as ticks that do not.
+
+    A pts more than half the wrap below the one before has wrapped. One the
+    demuxer has already unwrapped is taken modulo the wrap first, so it reads
+    the same.
+    """
+
+    def __init__(self):
+        self._last: int | None = None
+        self._base = 0
+
+    def __call__(self, pts: int) -> int:
+        pts %= PTS_WRAP
+        if self._last is not None and pts < self._last - PTS_WRAP // 2:
+            self._base += PTS_WRAP
+        self._last = pts
+        return self._base + pts
 
 
 class Reconnects:
@@ -437,10 +487,14 @@ class _Capture:
         self.tap_fd = args.tap_fd
         t0 = args.t0
 
+        # SRT delivers each packet SRT_LATENCY_S after the camera sent it, so
+        # every time here sits that much before arrival, where NDI's were.
         def session() -> float:
-            return time.monotonic() - t0
+            return time.monotonic() - t0 - SRT_LATENCY_S
 
-        self.times = CameraClock(t0)
+        self.times = CameraClock(t0 + SRT_LATENCY_S)
+        self.now: Callable[[], float] = time.monotonic   # when a packet arrived
+        self.generation = 0                               # the current connection's
         self.fifo = _Fifo(args.fifo, clock=session)
         self.holder = Holder(self.fifo.write, clock=session)
         self.reconnects = Reconnects()
@@ -539,6 +593,34 @@ class _Capture:
         # close. So this read never reaches the end of the pipe; a tap that
         # stops writing shows as silence, which the reconnect clock handles.
         self.stop(1, "the tap's pipe closed")
+
+    def _read_stream(self, stream: BinaryIO, generation: int) -> int:
+        """Pass on the video packets of one connection's MPEG-TS, until it
+        ends or a newer connection (``generation``) replaces it. How many
+        were passed on."""
+        unwrap, n = PtsUnwrap(), 0
+        try:
+            with av.open(stream, format="mpegts") as ts:
+                video = ts.streams.video[0]
+                for packet in ts.demux(video):
+                    if generation != self.generation:
+                        break
+                    if not packet.size:
+                        continue
+                    arrived = self.now()
+                    self.reconnects.heard()
+                    payload, key = bytes(packet), packet.is_keyframe
+                    if key and self.first_at is None:
+                        self._save_first(payload)
+                    pts_s = None if packet.pts is None else unwrap(packet.pts) / _PTS_HZ
+                    # Before the FIFO is open too: the Holder keeps the newest
+                    # keyframe, which is where the FIFO's stream starts.
+                    self.holder.packet(KEYFRAME if key else 0, payload,
+                                       self.times.time(pts_s, arrived))
+                    n += 1
+        except av.error.FFmpegError as exc:
+            log.warning("the stream ended: %s", exc)
+        return n
 
     def _save_first(self, payload: bytes) -> None:
         part = self.first.with_name(self.first.name + ".part")
