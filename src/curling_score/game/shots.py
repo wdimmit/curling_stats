@@ -538,7 +538,8 @@ def _with_placeholders(deliveries):
 
 def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S,
                     thrown_by=None, fmt=None, before=(), base: int = 0,
-                    joined_late: bool = False, house_frames=None):
+                    joined_late: bool = False, house_frames=None,
+                    held: list | None = None):
     """Build the shot list from observed deliveries.
 
     Not inferred from how the house changed between settled states, which
@@ -566,7 +567,14 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     reads ``frames``. The delivery tracking keeps same-colour stones a stone's
     width apart, and two touching stones at rest read closer than that
     (`rocks.ONE_STONE_M`), so the house wants the detector's own frames.
+
+    A stone a read loses is put back where it sat if a player's box stood over
+    its spot whenever it went unseen (`detect.cover`): the read cannot see it,
+    which is not the stone gone. The boxes come with the house frames; frames
+    without any change nothing. ``held``, when given, collects each stone put
+    back as ``{"shot", "color", "x", "y"}``.
     """
+    from curling_score.detect.cover import covered
     from curling_score.detect.rest import stones_in_window, until_disturbed
     from curling_score.game.format import FOURS
 
@@ -578,6 +586,7 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
     per_end = (fmt or FOURS).delivered_per_end
 
     houses: dict[int, list] = {}
+    reads: dict[int, list] = {}
     for i, dv in enumerate(deliveries):
         # Read between this stone settling and the next one being thrown.
         start = dv.t_rest
@@ -595,8 +604,11 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
         # as it was: a stone lifted off there -- out of play at the side -- is
         # outvoted, where a cut would hand its removal to the next rock.
         if window and i + 1 == len(deliveries):
-            window = until_disturbed(window)
+            # A prefix, taken by length: until_disturbed hands back plain
+            # lists, and the frames' player boxes must stay with the read.
+            window = window[:len(until_disturbed(window))]
         houses[i] = stones_in_window(window) if window else []
+        reads[i] = window
 
     out: list[Shot] = []
     previous: list = list(before)
@@ -628,9 +640,23 @@ def from_deliveries(deliveries, frames, settle_window_s: float = SETTLE_WINDOW_S
                 )
             )
             continue
-        stones = houses[seen]
+        stones, window = houses[seen], reads[seen]
         seen += 1
         thrown = _delivered_index(stones, dv, previous)
+        # A stone lost while a player stood over it is still where it sat.
+        # Every rock, unlike the reach veto below: this needs no tracked path,
+        # only the read's own frames -- the last rock's cut at the first hand
+        # on a settled stone, so the players clearing the house are not held
+        # against it.
+        if stones and window:
+            hidden = [("removed", c) for c in house_delta(
+                previous, stones, thrower=dv.color, delivered=thrown)["removed"]
+                if covered(c["x"], c["y"], c["color"], window)]
+            if hidden:
+                stones = _put_back(stones, previous, hidden)
+                if held is not None:
+                    held.extend({"shot": len(out) + 1, "color": c["color"],
+                                 "x": c["x"], "y": c["y"]} for _, c in hidden)
         # A stone this rock could not have reached is still where it was.
         # Only the last rock: between rocks the next read settles it, and
         # the tracking and the panel scale up-sheet are too rough to overrule

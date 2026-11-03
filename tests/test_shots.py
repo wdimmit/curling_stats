@@ -911,3 +911,151 @@ class TestAHitPassedOnByAStoneThatHardlyMoved:
                             second.t_rest + 0.5: [det("red", -0.15, 2.1), det("yellow", 1.5, 0.0)]})
         got = shots.from_deliveries([first, second], frames, before=[guard], base=1)
         assert len(got[0].house_delta["removed"]) == 1
+
+
+def seen(stones=(), players=()):
+    from curling_score.detect.rocks import Seen
+
+    return Seen(stones, players)
+
+
+def player_over(x, y, half=0.3):
+    """A player box 2 * half m square about (x, y)."""
+    from curling_score.detect.rocks import PlayerBox
+
+    return PlayerBox(0.0, 0.0, 1.0, 1.0, x - half, y - half, x + half, y + half, 0.9)
+
+
+class TestAStoneUnderAPlayer:
+    """A stone the read lost while a player stood over it is still there
+    (`detect.cover.covered`, from the frames' own player boxes)."""
+
+    BACK = (-1.65, -1.52)
+
+    def _dv(self, color, t):
+        from curling_score.detect.delivery import Delivery
+
+        return Delivery(color=color, t_enter=t, t_rest=t + 8.0, entry_y_m=4.0,
+                        rest_x_m=0.0, rest_y_m=0.0, travel_m=3.0)
+
+    def _frames(self, at, players=None, plain=False, until=1000.0):
+        """10 fps frames; `at` maps a time to a stone list. A player stands
+        over the back stone's spot from `players` (a start time) to `until`."""
+        out = []
+        for i in range(800):
+            t = i * 0.1
+            cur = []
+            for start, stones in sorted(at.items()):
+                if t >= start:
+                    cur = stones
+            if plain:
+                out.append((t, list(cur)))
+            else:
+                over = players is not None and players <= t < until
+                out.append((t, seen(cur, [player_over(*self.BACK)] if over else [])))
+        return out
+
+    def _end(self, **kw):
+        # 6vOTUuUSMKc g1 e7 rock 15: a skip crouched over the red behind
+        # the house for all of the next rock's window, then stepped off it.
+        back, shooter = det("red", *self.BACK), det("yellow", 0.3, 0.5)
+        dvs = [self._dv("yellow", 10), self._dv("red", 60)]
+        frames = self._frames({0: [back], 17: [shooter],
+                               69: [back, shooter, det("red", 0.0, 0.0)]}, **kw)
+        held = []
+        got = shots.from_deliveries(dvs, frames, house_frames=frames, before=[back], base=1,
+                                    held=held)
+        return got, held
+
+    def test_a_covered_stone_is_put_back(self):
+        (first, second), held = self._end(players=17.0, until=68.0)
+        assert first.house_delta["removed"] == []
+        assert sorted(_xy(s) for s in first.stones) == [self.BACK, (0.3, 0.5)]
+        assert second.house_delta["added"] == [{"color": "red", "x": 0.0, "y": 0.0}]
+        assert held == [{"shot": 1, "color": "red", "x": -1.65, "y": -1.52}]
+
+    def test_a_stone_seen_gone_stays_removed(self):
+        (first, _), held = self._end()
+        assert [c["color"] for c in first.house_delta["removed"]] == ["red"]
+        assert held == []
+
+    def test_plain_lists_change_nothing(self):
+        # No players attribute at all: exactly the read made without the check.
+        (first, second), held = self._end(plain=True)
+        (bare_first, bare_second), _ = self._end()
+        assert [c["color"] for c in first.house_delta["removed"]] == ["red"]
+        assert first.house_delta == bare_first.house_delta
+        assert second.house_delta == bare_second.house_delta
+        assert sorted(_xy(s) for s in first.stones) == sorted(_xy(s) for s in bare_first.stones)
+        assert held == []
+
+    def test_the_last_rock_is_checked_too(self):
+        # The last rock's window is cut where a settled stone is pushed off
+        # (here at 24 s); the player is gone by then and the red still missing.
+        # Over the whole 12 s window that is half the frames, so the check
+        # reads the window the vote did, not the one it was cut from.
+        back, old = det("red", *self.BACK), det("yellow", 0.3, 0.5)
+        red = det("red", 0.0, 0.0)
+        # A broom pushes it off a few centimetres a frame.
+        push = {24 + 0.1 * k: [det("yellow", 0.3, 0.5 + 0.05 * (k + 1)), red] for k in range(10)}
+        frames = self._frames({0: [back, old], 17: [old, red], **push,
+                               25: [det("yellow", 0.3, 1.0), red]},
+                              players=17.0, until=24.0)
+        held = []
+        (shot,) = shots.from_deliveries([self._dv("red", 10)], frames, house_frames=frames,
+                                        before=[back, old], base=2, held=held)
+        assert shot.house_delta["removed"] == []
+        assert self.BACK in [_xy(s) for s in shot.stones]
+        assert held == [{"shot": 1, "color": "red", "x": -1.65, "y": -1.52}]
+
+
+class TestCover:
+    """`covered` counts a stone hidden only when a player was over its spot in
+    the frames it went unseen."""
+
+    X, Y = 1.0, 1.0
+    OVER = player_over(1.0, 1.0)
+
+    def _window(self, *boxes, seen_stone=()):
+        frames = [(i * 0.1, seen([], [b] if b else [])) for i, b in enumerate(boxes)]
+        frames += [(10.0 + i * 0.1, seen([det("red", 1.02, 0.98)], [])) for i in range(len(seen_stone))]
+        return frames
+
+    def _covered(self, window, color="red"):
+        from curling_score.detect.cover import covered
+
+        return covered(self.X, self.Y, color, window)
+
+    def test_under_a_player_whenever_unseen(self):
+        assert self._covered(self._window(*[self.OVER] * 6))
+
+    def test_an_open_empty_spot_means_it_left(self):
+        assert not self._covered(self._window(*[self.OVER] * 4, None, None))
+
+    def test_frames_it_was_seen_in_say_nothing(self):
+        # Seen with no player over it, three times: not counted either way.
+        assert self._covered(self._window(*[self.OVER] * 5, seen_stone=[0, 0, 0]))
+
+    def test_another_colour_does_not_count_as_seen(self):
+        # The same frames, asked of a yellow stone: the red there is not it,
+        # so those three frames are unseen and bare.
+        assert not self._covered(self._window(*[self.OVER] * 5, seen_stone=[0, 0, 0]),
+                                 color="yellow")
+
+    def test_four_unseen_frames_is_not_enough(self):
+        assert not self._covered(self._window(*[self.OVER] * 4))
+
+    def test_a_box_beside_the_spot_is_not_over_it(self):
+        from curling_score.geometry import constants as C
+
+        # Its right edge 0.2 m clear of the stone's left edge.
+        beside = player_over(self.X - C.STONE_RADIUS_M - 0.2 - 0.3, self.Y)
+        assert not self._covered(self._window(*[beside] * 6))
+
+    def test_a_box_whose_edge_a_stone_width_short_still_covers_it(self):
+        # The stone's centre is 0.1 m past the box, inside its radius.
+        near = player_over(self.X - 0.1 - 0.3, self.Y)
+        assert self._covered(self._window(*[near] * 6))
+
+    def test_frames_with_no_players_attribute_have_none(self):
+        assert not self._covered([(i * 0.1, []) for i in range(8)])
