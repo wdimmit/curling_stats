@@ -243,7 +243,10 @@ def solve(plate, rect, paint: EndPaint, name: str = "end", end_camera: bool = Tr
         top = int(outer[:, 1].min()) - 30
         line, centre_rows = _sideline_centre(lum, p, hog, rect, np.arange(top, int(hog) + 60), name)
         return _finish(view, rect, pts, radii, outer, hog, p, line, centre_rows, name, end_camera)
-    rows = np.arange(int(outer[:, 1].max()) + 10, int(hog) - 6, 2)
+    # A long camera sees the far house small, with few rows to its hog line,
+    # but the line runs on toward the camera: trace it the rest of the view.
+    last = int(hog) - 6 if end_camera else h - 2
+    rows = np.arange(int(outer[:, 1].max()) + 10, last, 2)
     q = (p[3], p[2])
     keep = np.zeros(0, bool)
     for half in _CL_HALVES:

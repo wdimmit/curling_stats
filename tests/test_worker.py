@@ -95,6 +95,24 @@ class TestProcessJob:
         phases = [p for p, _f in api.progress_calls]
         assert phases[0] == "download" and "upload" in phases
 
+    def test_the_channel_picks_the_club(self, tmp_path):
+        """A worker is handed only a video, so the club comes from its channel."""
+        from curling_score import clubs
+        seen = []
+
+        def analyze_fn(url, **kw):
+            seen.append(kw["club"])
+            return fake_doc()
+
+        def ardsley_info(url):
+            return VideoInfo("uToUaZayB9o", "Friday Night League [A]", 11328.0, True, False,
+                             None, None, clubs.ARDSLEY.channel_ids[0])
+
+        for info in (fake_info, ardsley_info):
+            worker.process_job(JOB, FakeApi([]), "home", root=tmp_path, weights=None,
+                               out_dir=tmp_path / "out", analyze_fn=analyze_fn, fetch_info=info)
+        assert seen == [clubs.GRANITE, clubs.ARDSLEY]
+
     def test_the_window_and_sheet_reach_the_pipeline(self, tmp_path):
         api = FakeApi([])
         seen = {}

@@ -41,6 +41,9 @@ class Club:
     # Rows of each long camera that hold a logo painted on the ice that both
     # see, to tie the two cameras' fits together by (`logotie`): side -> rows.
     logo_rows: dict | None = None
+    # The YouTube channels that carry this club's stream, so a worker given
+    # only a video can pick the profile.
+    channel_ids: tuple[str, ...] = ()
 
 
 # The two houses are played toward from opposite directions, and Granite's
@@ -90,4 +93,31 @@ SWIFT_CURRENT = Club("swift-current", (
     # The Pepsi logo at centre ice, near the bottom of both long cameras.
     logo_rows={"left": (770, 990), "right": (800, 990)})
 
-CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT)}
+# Ardsley's stream (1920x1080): Granite's arrangement -- two overheads
+# stacked in a centre strip, top house entered from below, and long cameras
+# either side, the left one looking down at the top house -- but framed in
+# thin navy and gold lines rather than letterbox bars, so the panels are
+# fixed. The houses paint 12-to-8 blue around a red 4-foot. The wall behind
+# each house is the same blue, so the long cameras' views start below it;
+# the sponsor bar starts at row 1018. Hog lines are dark. The overheads'
+# ice is tinted blue (H 107-114, S 40-73) and passes BLUE_HSV; the ring is
+# H ~120, S 180+.
+_ARDSLEY_BLUE = ((115, 120, 30), (135, 255, 255))
+ARDSLEY = Club("ardsley", (
+    ("top", Panel("bottom", HousePaint(twelve_ft=(_ARDSLEY_BLUE,), four_ft=RED_HSV))),
+    ("bottom", Panel("top", HousePaint(twelve_ft=(_ARDSLEY_BLUE,), four_ft=RED_HSV))),
+), long_cameras={
+    house: (side, EndPaint(ring=(BLUE_HSV,), inner_radius_m=C.R_8FT_M, hog="dark"))
+    for house, side in (("top", "left"), ("bottom", "right"))
+}, panel_layout=PanelLayout(top=(821, 7, 278, 498), bottom=(821, 515, 278, 488)),
+    side_rows=(335, 1015), channel_ids=("UCyU3Hul8S0_AqhYnqNMuGRw",))
+
+CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT, ARDSLEY)}
+
+
+def for_channel(channel_id) -> Club:
+    """The club whose stream a YouTube channel carries; Granite otherwise."""
+    for club in CLUBS.values():
+        if channel_id and channel_id in club.channel_ids:
+            return club
+    return GRANITE

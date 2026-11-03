@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-from curling_score import analyze as analyze_mod, fpframes, timeline, version
+from curling_score import analyze as analyze_mod, clubs, fpframes, timeline, version
 from curling_score.fpframes import record, store
 from curling_score.ingest import cache, prune, source
 
@@ -319,7 +319,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
             sheet=job.get("sheet"), game_format=job.get("format") or "fours",
             skip_scoreboard=False,
             skip_longview=skip_longview, on_phase=on_phase,
-            download_attempts=1,
+            download_attempts=1, club=clubs.for_channel(info.channel_id),
         )
     run_dir = out_dir / job["run_id"]
     analyze_mod.write(doc, run_dir)
