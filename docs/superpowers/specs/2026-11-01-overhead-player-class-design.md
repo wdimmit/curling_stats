@@ -54,6 +54,15 @@ COCO misses.
   fully reviewed, a pilot model is trained on just those frames (unreviewed
   frames left out whole) for an early read on whether the player class
   learns. It is never shipped.
+- **The existing set's unreviewed frames take the pilot's boxes** (the
+  user, 2026-11-02, after three pilots: "nearly perfect on people").
+  The hard batch (298 of 300) and ds11 val (281) were reviewed; of the
+  existing set, 125 were. The other 1,470 receiving-panel frames take
+  pilot-1102c's player boxes at conf 0.45 (`overhead4_merge.py --auto`),
+  which on the pilot's 61 held-out frames found 118 of 122 players with
+  10 extra boxes, mostly slivers at the frame edge. This accepts what
+  anti-goal 2 warns of on those frames (a missed player, about 3%, is
+  taught as background), knowingly. A member's later label still wins.
 - **overhead-4 reads only the receiving panel** (the user, 2026-11-02).
   Each end's receiving panel, where the house read and the cover check
   live, is read by overhead-4. The throwing panel (releases, the hog-line
@@ -315,7 +324,8 @@ which the member saw and could have fixed (the export's
   classes, on the laptop. Train a held-out-fold model too, for a fair
   comparison on overhead-2's held-out videos, as before.
 - **Gate:** don't start until every frame in the set has its player review
-  (anti-goal 2). Hard-batch frames whose stone boxes are not yet reviewed
+  (anti-goal 2), or, for the existing set's frames, the pilot's boxes (see
+  Decided with the user). Hard-batch frames whose stone boxes are not yet reviewed
   are left out, not trained half-labelled.
 - **Class index:** player is class 2. Any consumer that reads classes must
   be updated in the same change (see next section).

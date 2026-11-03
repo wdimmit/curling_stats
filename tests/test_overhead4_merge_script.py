@@ -621,3 +621,65 @@ def test_a_hard_batch_stem_that_is_also_a_base_stem_is_refused(tmp_path):
     shown(tmp_path / "p", "p_1", SHOWN)
     with pytest.raises(ValueError, match="base frames too"):
         m4.merge(bi, bl, pl, tmp_path / "out", set())
+
+
+# --- the model's player boxes for frames no member reviewed (--auto) -----------
+
+AUTO = "2 0.300000 0.300000 0.100000 0.200000\n"
+
+
+def auto(root: Path, labels: dict[str, str]) -> Path:
+    for stem, text in labels.items():
+        _write(root / f"{stem}.txt", text)
+    return root
+
+
+def test_an_unlabelled_frame_takes_the_models_players_and_is_counted(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES, "train/b": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)}, fixes=False)
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(), auto=auto(tmp_path / "auto", {"b": AUTO}))
+    assert (tmp_path / "out/labels/train/b.txt").read_text() == STONES + AUTO
+    assert (got["kept"], got["auto"]) == (2, 1)
+
+
+def test_a_members_label_beats_the_models(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {"a": ("p_1", PLAYER)}, fixes=False)
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(), auto=auto(tmp_path / "auto", {"a": AUTO}))
+    assert (tmp_path / "out/labels/train/a.txt").read_text() == STONES + PLAYER
+    assert got["auto"] == 0
+
+
+def test_the_models_file_gives_only_players_and_may_be_empty(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES, "train/b": STONES})
+    pl = players(tmp_path / "p", {}, fixes=False)
+    got = m4.merge(bi, bl, pl, tmp_path / "out", set(),
+                   auto=auto(tmp_path / "auto", {"a": "0 0.1 0.1 0.1 0.1\n" + AUTO, "b": ""}))
+    assert (tmp_path / "out/labels/train/a.txt").read_text() == STONES + AUTO
+    assert (tmp_path / "out/labels/train/b.txt").read_text() == STONES
+    assert got["auto"] == 2
+
+
+def test_the_model_fills_no_throwing_frame_and_no_frame_left_out(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES, "train/t": STONES, "train/x": STONES})
+    pl = players(tmp_path / "p", {}, fixes=False)
+    got = m4.merge(bi, bl, pl, tmp_path / "out", {"x"}, sides=_sides(a=True, t=False, x=True),
+                   auto=auto(tmp_path / "auto", {"a": AUTO, "t": AUTO, "x": AUTO}))
+    assert (got["kept"], got["auto"], got["throwing"], got["left_out"]) == (1, 1, 1, 1)
+    assert not (tmp_path / "out/labels/train/t.txt").exists()
+
+
+def test_a_frame_neither_reviewed_nor_in_the_models_folder_is_still_an_error(tmp_path):
+    bi, bl = base(tmp_path / "b", {"train/a": STONES, "train/b": STONES})
+    pl = players(tmp_path / "p", {}, fixes=False)
+    with pytest.raises(ValueError, match="b"):
+        m4.merge(bi, bl, pl, tmp_path / "out", set(), auto=auto(tmp_path / "auto", {"a": AUTO}))
+
+
+def test_main_reads_auto(tmp_path, capsys):
+    base(tmp_path / "b", {"train/a": STONES})
+    pl = players(tmp_path / "p", {}, fixes=False)
+    rc = m4.main(["--base", str(tmp_path / "b"), "--players", str(pl),
+                  "--auto", str(auto(tmp_path / "auto", {"a": AUTO})), "--out", str(tmp_path / "out")])
+    assert rc == 0
+    assert "auto 1" in capsys.readouterr().out

@@ -4,7 +4,7 @@
     python scripts/overhead4_merge.py --base /data/wdd/curling/overhead-3/folds/all \\
         --players datasets/member-labels/DATE/players \\
         [--hard-stones .../boxes/agreed [--hard-settled box-edits.json]] \\
-        [--leave-out left-out.txt] [--sides sides.json] [--pilot] \\
+        [--leave-out left-out.txt] [--sides sides.json] [--auto DIR] [--pilot] \\
         --out /data/wdd/curling/overhead-4/folds/all
     python scripts/overhead4_merge.py settle --export edits.json --players .../players
 
@@ -31,6 +31,13 @@ stem per line; the frames the owner could not settle), which drops it and
 counts it. --pilot drops the unlabelled frames and counts them instead, for an
 early run on what is reviewed so far, and refuses an --out containing
 `overhead-4`, so a pilot set can never be the real one.
+
+--auto is a folder of `<stem>.txt` YOLO files holding a model's player boxes,
+for the receiving-panel frames no member reviewed: such a frame takes the
+file's class-2 lines (an empty file is a frame with nobody on it) and counts in
+`auto`; a member's label always wins. The user, 2026-11-02: the pilot's boxes
+were near perfect, so the existing set's unreviewed frames take them rather
+than wait for a review. The hard batch and val are reviewed and take none.
 
 A frame whose stones a member fixed in the player flow (labels_export's
 `stones/<id>.txt`) takes the member's stones instead of the base's, counted in
@@ -222,10 +229,11 @@ def _data_yaml(out: Path) -> None:
 def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_out: set[str],
           pilot: bool = False, hard_stones: Path | None = None,
           hard_settled: Path | None = None, hard_disputed: Path | None = None,
-          sides: dict | None = None) -> dict:
+          sides: dict | None = None, auto: Path | None = None) -> dict:
     """Write the merged set to ``out`` and return the counts.
 
-    kept: frames written (hard: of them from the hard batch); unlabelled:
+    kept: frames written (hard: of them from the hard batch; auto: of them
+    with ``auto``'s player boxes, no member's); unlabelled:
     base frames dropped for want of a player label (pilot only; otherwise
     one is an error); left_out: frames dropped by ``leave_out``; throwing:
     unlabelled base frames ``sides`` (label_players.py sort's output) left
@@ -260,6 +268,14 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
             raise ValueError(f"{len(unsorted)} base frames are not in the sides file: "
                              f"{', '.join(unsorted[:10])}" + (" ..." if len(unsorted) > 10 else ""))
         thrown = {s for s in stems if not sides[s]["keep"] and s not in labels}
+    machine = {}
+    if auto is not None:
+        for stem in stems:
+            path = Path(auto) / f"{stem}.txt"
+            if stem not in labels and stem not in thrown and stem not in leave_out \
+                    and path.is_file():
+                machine[stem] = [ln for ln in _lines(path.read_text()) if ln.split()[0] == PLAYER]
+        labels = {**labels, **machine}
     missing = [s for s in stems if s not in labels and s not in leave_out and s not in thrown]
     if missing and not pilot:
         raise ValueError(f"{len(missing)} base frames have no player label and are not in "
@@ -285,7 +301,7 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
     if clash:
         raise ValueError(f"hard frames that are base frames too: {', '.join(clash[:10])}")
 
-    counts = dict.fromkeys(("base", "kept", "hard", "hard_settled", "hard_as_shown",
+    counts = dict.fromkeys(("base", "kept", "auto", "hard", "hard_settled", "hard_as_shown",
                             "unlabelled", "left_out", "throwing", "stones_fixed",
                             "hard_no_stones", "hard_no_player"), 0)
     for path in frames:
@@ -306,6 +322,7 @@ def merge(base_images: Path, base_labels: Path, players: Path, out: Path, leave_
             counts["stones_fixed"] += 1
         _write(out, path.relative_to(base_images), path, stones + labels[path.stem])
         counts["kept"] += 1
+        counts["auto"] += path.stem in machine
     extra = set(batch) | (set(labels) | set(hard) if hard_stones else set())
     for stem in sorted(extra - set(stems)):
         if stem in leave_out:
@@ -407,6 +424,8 @@ def main(argv=None) -> int:
     ap.add_argument("--leave-out", type=Path, metavar="FILE", help="one stem per line")
     ap.add_argument("--sides", type=Path, metavar="JSON",
                     help="label_players.py sort's output: unlabelled throwing frames are dropped")
+    ap.add_argument("--auto", type=Path, metavar="DIR",
+                    help="<stem>.txt player boxes from a model, for frames no member reviewed")
     ap.add_argument("--pilot", action="store_true",
                     help="drop unlabelled frames instead of failing; not under overhead-4")
     ap.add_argument("--out", type=Path, required=True, metavar="DIR")
@@ -415,7 +434,7 @@ def main(argv=None) -> int:
         got = merge(args.base / "images", args.base / "labels", args.players, args.out,
                     _leave_out(args.leave_out), args.pilot, args.hard_stones,
                     args.hard_settled, args.hard_disputed,
-                    json.loads(args.sides.read_text()) if args.sides else None)
+                    json.loads(args.sides.read_text()) if args.sides else None, args.auto)
     except (OSError, ValueError) as err:
         print(f"{type(err).__name__}: {err}", file=sys.stderr)
         return 1

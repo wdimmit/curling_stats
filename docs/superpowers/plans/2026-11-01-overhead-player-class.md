@@ -236,7 +236,7 @@ Not overhead-4, and never shipped. Its only use is an early read on convergence.
 - Create: `datasets/overhead-4/README.md`
 
 - [ ] **Step 1: Settle the user's list.** Hand the user `players/to_user/index.html`, served over HTTP (memory: ds11-review-workflow), and the spot-check sheets. Discard any member they drop with the admin route. Re-export after the reopened items are answered. Commit the user's edits when they arrive. Frames the user also can't settle go in `leave_out`. Report how many stone frames left.
-- [ ] **Step 2: Merge and train on the laptop.** Merge without `--pilot`, with `--sides`, into `/data/wdd/curling/overhead-4/folds/all`, and merge ds11 val's receiving frames with players into its val. Make the held-out fold the way overhead-2's was. Train `all` and the held-out fold with `run_overhead4.sh`.
+- [ ] **Step 2: Merge and train on the laptop.** Merge without `--pilot`, with `--sides` and `--auto` (the user, 2026-11-02: the existing set's unreviewed frames take pilot-1102c's player boxes at conf 0.45, one `<stem>.txt` each), into `/data/wdd/curling/overhead-4/folds/all`, and merge ds11 val's receiving frames with players into its val. Make the held-out fold the way overhead-2's was. Train `all` and the held-out fold with `run_overhead4.sh`.
 - [ ] **Step 3:** Write `datasets/overhead-4/README.md` with the counts, the left-out frames and the recipe. Commit it.
 
 ### Task 9: Model check: does overhead-4 converge? (report; stop for the user's go)
