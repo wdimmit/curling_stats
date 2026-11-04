@@ -12,7 +12,7 @@ from curling_score.geometry.calibrate import CalibrationError
 from curling_score.geometry.sideview import SideView
 from curling_score.live import session
 from curling_score.live.session import Calibration, LiveError
-from tests.test_cameras_calstore import calibration
+from tests.test_cameras_calstore import camera_calibration as calibration
 
 
 def complete(**kw) -> Calibration:

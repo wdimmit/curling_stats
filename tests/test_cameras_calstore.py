@@ -44,23 +44,59 @@ def calibration(frames=None) -> Calibration:
                        side_expected=False)
 
 
+# Each house view as a camera feed's calibration holds it: its own pixels,
+# turned and scaled from its camera by the view's cut.
+TURNED = {"top": Cut("top", (521, 200, 1160, 672), 90, (297, 514)),
+          "bottom": Cut("bottom", (125, 200, 1269, 730), 90, (297, 514))}
+
+
+def views(top=None, bottom=None):
+    """Each house view's own frame, as a camera feed's view gives it."""
+    return {"top": synth.house_panel(**(top or {})),
+            "bottom": synth.house_panel(**(bottom or {"cx": 148.0, "cy": 360.0}))}
+
+
+def camera_calibration() -> Calibration:
+    """A camera feed's calibration: each panel the whole of its view."""
+    panels = views()
+    setups = {}
+    for name, side in PANEL_SIDES:
+        calib = calibrate.solve(panels[name], side)
+        setups[name] = PanelSetup(rect=(0, 0, 297, 514), calib=calib, name=name,
+                                  transform=TURNED[name])
+    return Calibration(panels=None, setups=setups, sideviews=None, until_s=60.0,
+                       side_expected=False)
+
+
 # --- the store -----------------------------------------------------------------
 
 
 def test_calstore_roundtrip(tmp_path):
-    store, cal = calstore.CalStore(tmp_path), calibration()
+    store, cal = calstore.CalStore(tmp_path), camera_calibration()
     store.save(3, cal)
     assert (tmp_path / "cameras" / "cal" / "sheet3.pkl").is_file()
     assert store.load(3) == cal
     assert store.load(2) is None                   # each sheet has its own
 
 
-def test_calstore_roundtrip_keeps_cut(tmp_path):
+def test_a_camera_calibration_round_trips_with_its_cuts(tmp_path):
+    store = calstore.CalStore(tmp_path)
+    store.save(3, camera_calibration())
+    loaded = store.load(3)
+    assert loaded.setups["top"].cut == TURNED["top"]
+    assert loaded.setups["bottom"].cut == TURNED["bottom"]
+
+
+def test_a_composite_era_calibration_is_not_loaded(tmp_path, caplog):
+    """One made from the composite has its panels in the composite's pixels:
+    on a camera's own frames it would put every stone in the wrong place."""
     store = calstore.CalStore(tmp_path)
     store.save(3, calibration())
-    loaded = store.load(3)
-    assert loaded.setups["top"].cut == Cut("top", TOP_RECT)
-    assert loaded.setups["bottom"].cut == Cut("bottom", BOTTOM_RECT)
+    with caplog.at_level(logging.WARNING, logger=calstore.__name__):
+        assert store.load(3) is None
+    said = [r.getMessage() for r in caplog.records]
+    assert said == ["saved calibration for sheet 3 is from the composite; a session will "
+                    "calibrate from the cameras and save a new one (or run cameras-calibrate)"]
 
 
 def test_calstore_missing_is_none(tmp_path):
@@ -69,8 +105,8 @@ def test_calstore_missing_is_none(tmp_path):
 
 def test_a_save_replaces_the_one_before_and_leaves_nothing_else_behind(tmp_path):
     store = calstore.CalStore(tmp_path)
-    store.save(1, calibration())
-    newer = calibration()
+    store.save(1, camera_calibration())
+    newer = camera_calibration()
     newer.until_s = 99.0
     store.save(1, newer)
     assert store.load(1).until_s == 99.0
@@ -89,6 +125,16 @@ def test_an_unreadable_file_is_none_with_a_warning(tmp_path, caplog, content):
 
 
 # --- the check -----------------------------------------------------------------
+
+
+def test_check_house_reads_each_views_own_frames():
+    """A camera feed's check: each panel's median over its own view's frames."""
+    cal = camera_calibration()
+    each = views()
+    assert calstore.check_house(cal, {n: [f] for n, f in each.items()}) is HouseCheck.AGREES
+    moved = views(top={"cx": 148.0 + 3 * calstore.RING_AGREE_PX})
+    assert calstore.check_house(cal, {n: [f] for n, f in moved.items()}) is HouseCheck.DISAGREES
+    assert calstore.check_house(cal, {"top": [], "bottom": []}) is HouseCheck.UNREADABLE
 
 
 def test_the_house_agrees_on_the_panels_it_was_made_from():

@@ -886,8 +886,11 @@ def cstream(n, **extra):
 def calibration(hog="paint"):
     from curling_score.live.session import Calibration
 
+    # A transform: a camera feed's calibration is in its views' own pixels,
+    # and the store keeps no other kind.
     return Calibration(panels=None, until_s=10.0, sideviews=None, side_expected=False,
-                       setups={h: SimpleNamespace(hog_line=hog) for h in ("top", "bottom")})
+                       setups={h: SimpleNamespace(hog_line=hog, transform=f"cut {h}")
+                               for h in ("top", "bottom")})
 
 
 class TestCameraWatchesInTheLane:
