@@ -1,29 +1,29 @@
-"""One camera's H.264, over SRT into a FIFO.
+"""One camera's H.264, over SRT into a file of its own.
 
     python -m curling_score.cameras.capture --camera 1A-POV \\
-        --fifo cam-long_a.nut --first first-long_a.h264 --t0 81234.567
+        --out long_a.ts --first first-long_a.h264 --t0 81234.567
 
 This holds one SRT connection to one camera for as long as it runs, and writes
-the camera's packets, untouched and each with its time, to ``--fifo`` for a
-composer to read. What the composer reads starts at the camera's newest
-keyframe when it opens the FIFO, held until the next one comes (they come
-every 2 s), so a camera that has gone quiet since still gives it a picture.
-The first keyframe is also copied to ``--first``, so whoever started the
-capture can check what the camera sends before anything reads the FIFO.
+the camera's packets, untouched, to ``--out`` as MPEG-TS, each at its time on
+the recording's clock (``_TsFile``). The recorder's four captures make a
+sheet's four files, which the tracker reads view by view; nothing composes
+them. The first keyframe is also copied to ``--first``, so whoever started
+the capture can check what the camera sends.
 
 **Time.** Every packet is timed here, in seconds since ``--t0``, the
-recorder's start on ``time.monotonic``'s clock, and its time goes with it into
-the FIFO, as NUT (``_Nut``), for the composer to keep. A composer that falls
-behind then only delays the recording; it never moves a frame in it. The time
-is the camera's own clock (the packet's 90 kHz MPEG-TS pts, unwrapped at
-2^33), anchored to when the packets reached the Ryzen (``CameraClock``), and
-put the camera's ``delivery_delay_s`` before arrival, where NDI put them. The
-camera's clock spaces the frames as it took them, where arrivals bunch up; it
-is trusted for nothing more. A HOUSE camera's pts is its encoder's uptime, and
-the long cameras' NTP times disagree with each other by 10-90 ms from day to
-day, while each camera's delay to the Ryzen holds to 1-2 ms ("Camera sync" in
+recorder's start on ``time.monotonic``'s clock, and written with that time as
+its pts, so every reader's ``t`` is the recording's. The time is the camera's
+own clock (the packet's 90 kHz MPEG-TS pts, unwrapped at 2^33), anchored to
+when the packets reached the Ryzen (``CameraClock``), and put the camera's
+``delivery_delay_s`` before arrival, where NDI put them. The camera's clock
+spaces the frames as it took them, where arrivals bunch up; it is trusted for
+nothing more. A HOUSE camera's pts is its encoder's uptime, and the long
+cameras' NTP times disagree with each other by 10-90 ms from day to day,
+while each camera's delay to the Ryzen holds to 1-2 ms ("Camera sync" in
 docs/superpowers/specs/2026-10-29-practice-srt-capture-design.md). A held
-keyframe is timed when it is written.
+keyframe is timed when it is written. The file's first packet, the camera's
+first keyframe, is written at 0, so every camera's file starts at the
+recording's zero (readers count from a file's start).
 
 **The connection.** Every camera runs an SRT listener on UDP 1600
 (``SRT_PORT``). ``ffmpeg`` is the caller (``ffmpeg_command``): it copies the
@@ -32,39 +32,38 @@ here. PyAV's own FFmpeg has no ``srt`` (checked 2026-11-03). A second caller
 to a camera gets its own stream and leaves ours alone (2026-11-03).
 
 **Threads.**
-- The main thread starts each ``ffmpeg`` and checks on the camera and the
-  parent every ``PUMP_S``.
-- A reader per connection passes its packets on (``_read_stream``), and stops
+- The main thread starts each ``ffmpeg``, checks on the camera and the
+  parent every ``PUMP_S``, and says how far the file reaches every
+  ``HEAD_EVERY_S`` (``@head <seconds>`` on stdout, for the recorder).
+- A reader per connection writes its packets (``_read_stream``), and stops
   once a newer connection replaces it.
 - A relay per connection logs ``ffmpeg``'s own lines, so it never blocks on a
   full stderr.
 - A ticker keeps the picture still while packets stop (``Holder``).
-- A writer feeds the FIFO from a queue, so a composer that is not reading
-  never backs up into the reader. A packet's wait in the queue only delays the
-  recording, but one that has waited more than ``MAX_AGE_S`` is never
-  written. What is queued then goes, and the stream starts again at a
-  keyframe while the ``Holder`` holds the picture.
+
+Packets are written as they come, on the reader's thread: a write to the
+page cache does not wait, and there is no reader to wait for.
 
 **Stalls.** Liveness is judged from packets. After ``RECONNECT_S`` without one
 -- a stalled stream, or an ``ffmpeg`` that has exited -- the capture kills its
 ``ffmpeg`` and starts a new one. It tries again at doubling gaps up to
 ``RECONNECT_MAX_S``, and starts over once packets flow again, so a camera that
 is down is never hammered: the club's own production reads it too. Meanwhile
-the ``Holder`` repeats the last keyframe, so the composer's picture holds
-still rather than stopping. Each new connection's pts start again (ffmpeg
+the ``Holder`` repeats the last keyframe, so the file goes on, a still
+picture, rather than stopping. Each new connection's pts start again (ffmpeg
 rebases them), which ``CameraClock`` takes as a clock step and anchors anew.
 
 **Exits.** SIGTERM ends it at once, by the signal's default action. These exit
 1, so a camera connection never outlives the session that wanted it:
 - no keyframe arrives within ``FIRST_S`` of starting;
-- the FIFO's reader goes away;
+- the file cannot be written (a full disk);
 - the parent process goes away.
 
 The parent is watched with ``getppid()``. ``ffmpeg`` runs under ``setpriv
 --pdeathsig KILL``, so it dies with the capture however the capture ends, even
 by SIGKILL. That signal fires when the *thread* that started the child exits,
-so only the main thread, which lives until the end, starts one. The process ends with ``os._exit``: the FIFO's
-writer may be blocked on its pipe once the reader has stopped.
+so only the main thread, which lives until the end, starts one. The process
+ends with ``os._exit``, whatever its threads are doing.
 """
 
 from __future__ import annotations
@@ -113,18 +112,8 @@ ANCHOR_WINDOW_S = 10.0
 # A camera's clock that moves this much more or less than the arrivals between
 # two packets has been set (a reboot, NTP), and is anchored again at once.
 CLOCK_STEP_S = 1.0
-# A packet that has waited this long for the composer is never fed to it. Its
-# time goes with it, so waiting only delays the recording, which head_s shows;
-# this bounds the delay and what the queue holds. A practice clip cut puts the
-# composers 0.5-0.8 s behind for a moment (2026-10-25), and a hold-up of a few
-# seconds is waited out too: dropping froze each camera on an old keyframe for
-# up to 2 s.
-MAX_AGE_S = 5.0
-# Packets queued, at most: 10 s at 60 fps, about 12 MB at a long view's ~10
-# Mbit/s. Only a guard on memory, for a composer that has stopped reading
-# altogether (MAX_AGE_S is judged as a packet is written). Past it, packets are
-# dropped until the next keyframe: blocking would stall the reader.
-BACKLOG = 600
+# How often the capture says how far its file reaches.
+HEAD_EVERY_S = 0.5
 # Each camera serves SRT on this UDP port; we connect as a caller. Latency 500
 # ms ran clean on sheet 4 during a league, where 200 ms once lost packets on
 # 4H-PTZ (2026-10-29). A connection that hears nothing for SRT_TIMEOUT_S ends,
@@ -155,8 +144,8 @@ _MODULE = "curling_score.cameras.capture"
 # ends (see Exits). setpriv sets that in the child, where a Python preexec_fn
 # could deadlock in a process that has threads.
 _DIE_WITH_PARENT = ["setpriv", "--pdeathsig", "KILL", "--"]
-# What the FIFO's times count in.
-_TIME_BASE = Fraction(1, 1_000_000)
+# What the file's times count in: MPEG-TS's own 90 kHz.
+_TIME_BASE = Fraction(1, _PTS_HZ)
 
 
 class Holder:
@@ -164,15 +153,15 @@ class Holder:
     stop.
 
     Once nothing has come for ``hold_after_s``, ``tick`` writes the last
-    keyframe again every ``period_s``. The composer keeps getting frames, of a
-    still picture. A keyframe can be decoded alone, because these cameras send
+    keyframe again every ``period_s``. The file keeps getting frames, of a
+    still picture, so its readers' head goes on. A keyframe can be decoded alone, because these cameras send
     SPS and PPS with every IDR.
 
     What is written always starts at a keyframe: nothing before the first one.
     After a hold, nothing is written until the next keyframe, because the
     P-frames in between refer to pictures that were never passed on. The same
     goes after ``write`` returns False, which says it dropped what it was given
-    -- as it does until the composer opens the FIFO. The newest keyframe is
+    -- as a file that cannot be written does. The newest keyframe is
     kept all the same, so the picture starts from it, held, once ``write``
     takes it; and after a drop the picture is held at once, until a keyframe
     comes.
@@ -355,142 +344,63 @@ class CameraClock:
         return t
 
 
-class _Nut:
-    """A camera's packets as NUT, each with its time: what the composer reads.
+class _TsFile:
+    """A camera's packets as MPEG-TS in a file, each at its time on the
+    recording's clock: what the tracker reads.
 
-    NUT keeps each time exactly, here in microseconds, with no wrap and no
-    offset of its own. Nothing is encoded: the stream is copied from
-    ``template``, a keyframe opened as raw H.264, whose SPS gives the codec and
-    size the composer needs before its first frame. ``packet`` gives back
-    each packet's bytes at once.
+    Nothing is encoded: the stream is copied from the first packet, a
+    keyframe (``Holder``), whose SPS gives the codec and size. The muxer
+    writes each pts as it is given (``mpegts_copyts``: no offset of its own)
+    and passes each packet on as it is muxed, unbuffered, so whatever
+    ``write`` has taken is on disk when it returns, and ``head`` (the last
+    time written) is what readers can read up to.
+
+    The first packet goes at 0 whatever its time: the camera's first picture
+    is held from the recording's zero until its next frame. Readers count a
+    file's times from its start, so this is what puts every camera's file on
+    the one clock, however long each camera took to answer.
+
+    ``on_error`` is told of a write that failed (a full disk), and the packet
+    is refused.
     """
 
-    def __init__(self, template: bytes):
-        self._parts: list[bytes] = []
-        self._last = -1                     # the last time written, in microseconds
-        with av.open(io.BytesIO(template), format="h264") as raw:
-            self._out = av.open(self, "w", format="nut", options={"flush_packets": "1"})
-            self._stream = self._out.add_stream_from_template(raw.streams.video[0])
-        self._stream.time_base = _TIME_BASE
-
-    def write(self, data: bytes) -> int:
-        """Where PyAV writes the NUT."""
-        self._parts.append(data)
-        return len(data)
-
-    def packet(self, data: bytes, at: float, key: bool) -> bytes:
-        """The NUT for ``data``, a keyframe or not, at ``at`` seconds. Times
-        must increase: one at or before the last goes a microsecond after it
-        (a camera's first packet after a hold can be timed before the last
-        held picture, which was timed when it was written)."""
-        us = max(round(at * 1_000_000), self._last + 1)
-        self._last = us
-        packet = av.Packet(data)
-        packet.stream, packet.time_base = self._stream, _TIME_BASE
-        packet.pts = packet.dts = us
-        packet.is_keyframe = key
-        self._out.mux(packet)
-        out = b"".join(self._parts)
-        self._parts.clear()
-        return out
-
-
-class _Fifo:
-    """The FIFO's writing end, fed from a queue by a thread of its own, as
-    NUT.
-
-    ``write`` never blocks: a full queue drops the data and says so, because a
-    blocked reader would hold up the camera's packets.
-    The writer never writes a packet more than MAX_AGE_S old (by ``clock``,
-    the clock its times are on): it drops it with everything queued behind it,
-    and the next ``write`` that is not a keyframe is refused, so the stream
-    starts again at one.
-    """
-
-    def __init__(self, path: Path, *, clock: Callable[[], float] = time.monotonic):
-        self.path, self.clock = path, clock
-        self.opened = threading.Event()
-        self._queue: deque[tuple[float, bytes, bool]] = deque()   # (time, packet, keyframe)
-        self._ready = threading.Condition()
-        self._restart = False         # dropped as late: start again at a keyframe
-        self._full = False
-        self._late: tuple[int, float] | None = None   # packets dropped, at worst how late
-        self._nut: _Nut | None = None
+    def __init__(self, path: Path, *, on_error: Callable[[OSError], None] | None = None):
+        self.path, self.on_error = Path(path), on_error
+        self.head: float | None = None
+        self._last = -1                     # the last pts written, 90 kHz
+        self._file = self._out = self._stream = None
 
     def write(self, data: bytes, at: float, key: bool) -> bool:
-        """Queue ``data``, timed ``at``. False if it was dropped: nothing has
-        opened the FIFO yet, the queue was full, or late packets were dropped
-        and this is not the keyframe to start again at. Called by one thread
-        at a time (under the Holder's lock)."""
-        with self._ready:
-            if not self.opened.is_set():
-                return False
-            if self._restart:
-                self._restart = False
-                if not key:
-                    return False
-            if len(self._queue) >= BACKLOG:
-                if not self._full:
-                    log.warning("the composer is %d packets behind; dropping to the next keyframe",
-                                BACKLOG)
-                    self._full = True
-                return False
-            if self._full:
-                log.info("the composer is reading again")
-                self._full = False
-            self._queue.append((at, data, key))
-            self._ready.notify()
-            return True
+        """Write ``data`` at ``at`` seconds. Times must increase: one at or
+        before the last goes a tick after it (a camera's first packet after a
+        hold can be timed before the last held picture, which was timed when
+        it was written). False if it could not be written."""
+        try:
+            if self._out is None:
+                self._open(data)
+                pts = 0
+            else:
+                pts = max(round(at * _PTS_HZ), self._last + 1)
+            packet = av.Packet(data)
+            packet.stream, packet.time_base = self._stream, _TIME_BASE
+            packet.pts = packet.dts = pts
+            packet.is_keyframe = key
+            self._out.mux(packet)
+        except OSError as exc:
+            if self.on_error is not None:
+                self.on_error(exc)
+            return False
+        self._last = pts
+        self.head = pts / _PTS_HZ
+        return True
 
-    def _take(self) -> tuple[float, bytes, bool] | None:
-        """The next ``(time, packet, keyframe)`` to write, or None if there
-        was none fit to: one more than MAX_AGE_S old goes, with all queued
-        behind it."""
-        with self._ready:
-            if not self._queue:
-                return None
-            item = self._queue.popleft()
-            late = self.clock() - item[0]
-            if late <= MAX_AGE_S:
-                if self._late is not None:
-                    log.info("the composer has caught up after dropping %d packets "
-                             "(at worst %.1f s behind)", *self._late)
-                    self._late = None
-                return item
-            dropped = 1 + len(self._queue)
-            self._queue.clear()
-            self._restart = True
-            if self._late is None:
-                log.warning("the composer is %.1f s behind; dropping %d packets and starting "
-                            "again at a keyframe", late, dropped)
-                self._late = (0, 0.0)
-            self._late = (self._late[0] + dropped, max(self._late[1], late))
-            return None
-
-    def _next(self) -> tuple[float, bytes, bool]:
-        """The next ``(time, packet, keyframe)`` to write, waiting for one."""
-        with self._ready:
-            while True:
-                self._ready.wait_for(lambda: self._queue)
-                item = self._take()
-                if item is not None:
-                    return item
-
-    def run(self) -> None:
-        """Open the FIFO, which waits for its reader. Then write what is
-        queued. A reader that goes away raises BrokenPipeError."""
-        fd = os.open(self.path, os.O_WRONLY)
-        self.opened.set()
-        while True:
-            self._send(fd, *self._next())
-
-    def _send(self, fd: int, at: float, data: bytes, key: bool) -> None:
-        if self._nut is None:
-            # The stream starts at a keyframe (Holder), which says what it is.
-            self._nut = _Nut(data)
-        view = memoryview(self._nut.packet(data, at, key))
-        while view:
-            view = view[os.write(fd, view):]
+    def _open(self, template: bytes) -> None:
+        self._file = open(self.path, "wb", buffering=0)  # noqa: SIM115 - held for the run
+        with av.open(io.BytesIO(template), format="h264") as raw:
+            self._out = av.open(self._file, "w", format="mpegts",
+                                options={"mpegts_copyts": "1", "flush_packets": "1"})
+            self._stream = self._out.add_stream_from_template(raw.streams.video[0])
+        self._stream.time_base = _TIME_BASE
 
 
 class _Capture:
@@ -511,8 +421,8 @@ class _Capture:
         # Taken to pass a packet on, and to start a new connection: a reader
         # whose connection has been replaced passes nothing more.
         self._passing = threading.Lock()
-        self.fifo = _Fifo(args.fifo, clock=session)
-        self.holder = Holder(self.fifo.write, clock=session)
+        self.out = _TsFile(args.out, on_error=self._unwritable)
+        self.holder = Holder(self.out.write, clock=session)
         self.reconnects = Reconnects()
         self.first_at: float | None = None
         self.exit_code: int | None = None
@@ -525,11 +435,14 @@ class _Capture:
             self.exit_code = code
             log.error("stopping: %s", why)
 
+    def _unwritable(self, exc: OSError) -> None:
+        self.stop(1, f"cannot write {self.out.path}: {exc}")
+
     def run(self) -> int:
         # The default action, whatever the parent left (see Exits).
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         began = time.monotonic()
-        self._thread(self.fifo.run, "fifo-writer")
+        said_at, said = began, None
         self._thread(self._tick, "ticker")
         self._connect()
         try:
@@ -541,6 +454,10 @@ class _Capture:
                     if self.reconnects.due():
                         log.warning("no packets for %.1f s; reconnecting", self.reconnects.quiet_s())
                         self._connect()
+                    now, head = time.monotonic(), self.out.head
+                    if now - said_at >= HEAD_EVERY_S and head is not None and head != said:
+                        print(f"@head {head:.3f}", flush=True)
+                        said_at, said = now, head
                     time.sleep(PUMP_S)
         finally:
             self._end_ffmpeg()
@@ -598,9 +515,6 @@ class _Capture:
                         self.reconnects.heard()
                         if key and self.first_at is None:
                             self._save_first(payload)
-                        # Before the FIFO is open too: the Holder keeps the
-                        # newest keyframe, which is where the FIFO's stream
-                        # starts.
                         self.holder.packet(KEYFRAME if key else 0, payload,
                                            self.times.time(pts_s, arrived))
                     n += 1
@@ -627,8 +541,6 @@ class _Capture:
         def run():
             try:
                 target()
-            except BrokenPipeError:
-                self.stop(1, "the FIFO's reader went away")
             except Exception as exc:  # noqa: BLE001 - any thread's failure ends the capture
                 log.exception("%s failed", name)
                 if not quiet:
@@ -640,7 +552,7 @@ class _Capture:
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog=f"python -m {_MODULE}", description=__doc__.split("\n\n")[0])
     p.add_argument("--camera", required=True, choices=sorted(inventory.CAMERAS))
-    p.add_argument("--fifo", required=True, type=Path, help="the FIFO the packets go to")
+    p.add_argument("--out", required=True, type=Path, help="the MPEG-TS file the packets go to")
     p.add_argument("--first", required=True, type=Path, help="where the first keyframe is copied")
     p.add_argument("--t0", required=True, type=float,
                    help="the session's zero on time.monotonic's clock: packets are timed from it")

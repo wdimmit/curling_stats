@@ -5,7 +5,6 @@ import contextlib
 import io
 import logging
 import os
-import select
 import signal
 import subprocess
 import sys
@@ -63,11 +62,12 @@ def h264(count=12, gop=6, size=(64, 48), noise=False):
     return out + [(bytes(p), p.is_keyframe) for p in codec.encode(None)]
 
 
-def demux_nut(data):
-    """[(time, keyframe, packet)] read back from NUT by PyAV."""
-    with av.open(io.BytesIO(data), format="nut") as c:
+def read_ts(path):
+    """[(time, keyframe, packet)] of a capture's file, read back by PyAV: the
+    time is the packet's pts in seconds."""
+    with av.open(str(path)) as c:
         return [(float(p.pts * p.time_base), p.is_keyframe, bytes(p))
-                for p in c.demux() if p.size]
+                for p in c.demux(video=0) if p.size]
 
 
 # --- the camera's clock, anchored to arrival ------------------------------------
@@ -173,31 +173,49 @@ def test_a_time_before_the_sessions_zero_is_zero():
 # --- the FIFO's container ---------------------------------------------------------
 
 
-def test_nut_gives_back_each_packets_time_to_the_microsecond():
-    """What the capture writes, read back by PyAV: every packet, untouched, at
-    the time it was given, whatever the spacing. NUT counts in microseconds."""
-    packets = h264()
-    times = [1.0 + i / 60 + (0.0213 if i >= 6 else 0.0) + i * 3.7e-7
-             for i in range(len(packets))]
-    nut = capture._Nut(packets[0][0])
-    chunks = [nut.packet(p, t, k) for (p, k), t in zip(packets, times)]
+def test_a_packet_reads_back_at_its_recorder_time(tmp_path):
+    """What the capture writes, read as every reader reads it: each packet at
+    the time it was given, on the recording's clock. The first is the
+    camera's first keyframe, held from the recording's zero, so the file
+    starts at 0 however late the camera's first packet came, as every other
+    camera's file does."""
+    from curling_score.ingest import frames
 
-    # Each packet's bytes come out as it goes in: nothing waits in a buffer.
-    assert all(len(c) > len(p) for c, (p, _) in zip(chunks, packets))
-    got = demux_nut(b"".join(chunks))
-    assert [(p, k) for _, k, p in got] == packets
-    assert np.abs(np.array([t for t, _, _ in got]) - times).max() <= 1e-6
+    path = tmp_path / "house_a.ts"
+    out = capture._TsFile(path)
+    for i, (data, key) in enumerate(camera_h264(60, gop=30)):
+        out.write(data, 0.613 + i / 60, key)
+    assert frames.stream_start_s(path) == 0.0
+    got = [t for t, _ in frames.window(path, 0.0, 1.2, 60.0)]
+    assert got[0] == 0.0
+    assert got[30] == pytest.approx(0.613 + 30 / 60, abs=1 / 90_000)
 
 
-def test_nut_times_always_increase():
+def test_times_never_go_back(tmp_path):
     """A held keyframe is timed by the session clock and a camera's packet by
     the camera's: the first packet after a hold can be timed before the last
-    held picture. NUT needs times that increase, so it goes a microsecond on."""
-    (key, _), (p, _) = h264(count=2)
-    nut = capture._Nut(key)
-    got = demux_nut(nut.packet(key, 2.0, True) + nut.packet(p, 1.9995, False))
+    held picture. It goes a tick (1/90000 s) after it."""
+    (key, _), (p, _), (p2, _) = h264(count=3)
+    out = capture._TsFile(tmp_path / "c.ts")
+    out.write(key, 2.0, True)
+    out.write(p, 2.5, False)
+    out.write(p2, 2.4995, False)
+    assert [t for t, _, _ in read_ts(tmp_path / "c.ts")] == pytest.approx(
+        [0.0, 2.5, 2.5 + 1 / 90_000], abs=1e-9)
 
-    assert [t for t, _, _ in got] == pytest.approx([2.0, 2.000001], abs=1e-9)
+
+def test_a_written_packet_is_readable_at_once(tmp_path):
+    """A watch reads up to the head the capture reports: whatever ``write``
+    has taken is on disk when it returns."""
+    path = tmp_path / "c.ts"
+    out = capture._TsFile(path)
+    packets = h264(count=8)
+    for i, (data, key) in enumerate(packets):
+        assert out.write(data, 1.0 + i / 60, key) is True
+        assert out.head == pytest.approx(0.0 if i == 0 else 1.0 + i / 60, abs=1 / 90_000)
+        got = read_ts(path)
+        assert len(got) == i + 1
+        assert all(g.endswith(d) for (_, _, g), (d, _) in zip(got, packets))
 
 
 def test_sheet_cameras_long_views_by_sheet():
@@ -284,59 +302,12 @@ def test_hold_waits_for_a_keyframe_before_resuming():
     assert out[-2:] == [SPS_PPS_IDR + b"2", P2]
 
 
-def taken(fifo):
-    """``(time, packet, keyframe)`` for each packet the FIFO's writer would
-    write next, in order, without waiting."""
-    out = []
-    while fifo._queue:
-        item = fifo._take()
-        if item is not None:
-            out.append(item)
-    return out
-
-
-def queued(fifo):
-    """The packets the FIFO's writer would write next."""
-    return [data for _, data, _ in taken(fifo)]
-
-
-def test_a_keyframe_from_before_the_fifo_opens_is_held_once_it_does(tmp_path):
-    """A camera that sent its first keyframe and then nothing: the composer,
-    which opens its FIFOs one at a time and probes each, must still get a
-    picture from it, or it never starts."""
-    clock = Clock()
-    fifo = capture._Fifo(tmp_path / "cam.nut", clock=clock)
-    h = capture.Holder(fifo.write, clock=clock)
-    h.packet(1, SPS_PPS_IDR)
-    h.packet(0, P1)
-    clock.t += 5.0
-    h.tick()
-    assert queued(fifo) == []              # nothing reads the FIFO yet
-    fifo.opened.set()                      # the composer opens it; the camera is quiet
-    for _ in range(3):
-        clock.t += PERIOD
-        assert h.tick() is True
-    assert queued(fifo) == [SPS_PPS_IDR] * 3
-
-
-def test_a_live_camera_starts_at_its_newest_keyframe_once_the_fifo_opens(tmp_path):
-    clock = Clock()
-    fifo = capture._Fifo(tmp_path / "cam.nut", clock=clock)
-    h = capture.Holder(fifo.write, clock=clock)
-    h.packet(1, SPS_PPS_IDR)
-    h.packet(1, SPS_PPS_IDR + b"2")
-    h.packet(0, P1)
-    fifo.opened.set()
-    clock.t += PERIOD
-    h.tick()
-    h.packet(0, P2)                        # refers to pictures never passed on
-    h.packet(1, SPS_PPS_IDR + b"3")
-    h.packet(0, P1)
-    assert queued(fifo) == [SPS_PPS_IDR + b"2", SPS_PPS_IDR + b"3", P1]
+# Where a test capture writes: 2A-HOUSE is sheet 2's house_a.
+OUT = "house_a.ts"
 
 
 def capture_reading(tmp_path, t0):
-    args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
+    args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--out", str(tmp_path / OUT),
                                          "--first", str(tmp_path / "first"), "--t0", str(t0)])
     args.parent = os.getppid()
     return capture._Capture(args)
@@ -450,11 +421,11 @@ def test_the_srt_reader_times_packets_by_the_cameras_clock_less_the_latency(tmp_
     cap = capture_reading(tmp_path, t0)
     delay = capture.delivery_delay_s("2A-HOUSE")
     cap.now = arrivals([t0 + 5.0 + delay + i / 60 + late[i] for i in range(3)])
-    cap.fifo.opened.set()
     assert cap._read_stream(io.BytesIO(mpegts(packets)), 0) == 3
 
-    assert [t for t, _, _ in cap.fifo._queue] == pytest.approx([5.0, 5.0 + 1 / 60, 5.0 + 2 / 60],
-                                                               abs=1e-6)
+    # The first, a keyframe, holds the file's start at the recording's zero.
+    assert [t for t, _, _ in read_ts(tmp_path / OUT)] == pytest.approx(
+        [0.0, 5.0 + 1 / 60, 5.0 + 2 / 60], abs=1 / 90_000)
 
 
 def test_the_srt_reader_keeps_time_across_a_pts_wrap(tmp_path):
@@ -462,189 +433,53 @@ def test_the_srt_reader_keeps_time_across_a_pts_wrap(tmp_path):
     packets = h264(12)
     cap = capture_reading(tmp_path, t0)
     cap.now = arrivals([t0 + 5.0 + i / 60 for i in range(len(packets))])
-    cap.fifo.opened.set()
     cap._read_stream(io.BytesIO(mpegts(packets, pts0=capture.PTS_WRAP - 6 * 1500)), 0)
 
-    times = [t for t, _, _ in cap.fifo._queue]
+    times = [t for t, _, _ in read_ts(tmp_path / OUT)]
     assert len(times) == len(packets)
-    assert np.diff(times) == pytest.approx([1 / 60] * (len(times) - 1), abs=1e-6)
+    assert np.diff(times[1:]) == pytest.approx([1 / 60] * (len(times) - 2), abs=1 / 90_000)
 
 
-def test_the_srt_reader_saves_the_first_keyframe_and_holds_it_before_the_fifo_opens(tmp_path):
+def test_the_srt_reader_saves_the_first_keyframe_and_starts_the_file_with_it(tmp_path):
     packets = h264(6, gop=6)
     cap = capture_reading(tmp_path, time.monotonic())
     cap._read_stream(io.BytesIO(mpegts(packets)), 0)
     first = (tmp_path / "first").read_bytes()
     assert first.endswith(packets[0][0])   # MPEG-TS puts an access unit delimiter first
-    assert not cap.fifo.opened.is_set() and not cap.fifo._queue
-    cap.fifo.opened.set()
-    assert cap.holder.tick() is True
-    assert queued(cap.fifo) == [first]
+    t, key, data = read_ts(tmp_path / OUT)[0]
+    assert (t, key) == (0.0, True) and data.endswith(packets[0][0])
 
 
 def test_an_old_connections_reader_stops_once_a_new_one_exists(tmp_path):
     cap = capture_reading(tmp_path, time.monotonic())
-    cap.fifo.opened.set()
     cap.generation = 1
     assert cap._read_stream(io.BytesIO(mpegts(h264(12))), 0) == 0
-    assert not cap.fifo._queue and not (tmp_path / "first").exists()
+    assert not (tmp_path / OUT).exists() and not (tmp_path / "first").exists()
 
 
-def opened_fifo(tmp_path, clock):
-    fifo = capture._Fifo(tmp_path / "cam.nut", clock=clock)
-    fifo.opened.set()
-    return fifo
-
-
-def test_a_composer_seconds_behind_only_delays_the_packets(tmp_path):
-    """Each packet carries its own time to the composer, so one that has
-    waited still goes where it belongs: a composer that stops reading for a
-    few seconds loses nothing, and its recording is only later."""
-    clock = Clock()
-    fifo = opened_fifo(tmp_path, clock)
-    h = capture.Holder(fifo.write, clock=clock)
-    t = clock.t
-    sent = [(t + i * PERIOD, data, i == 0) for i, data in enumerate([SPS_PPS_IDR, P1, P2, P1])]
-    for at, data, key in sent:
-        h.packet(int(key), data, at)
-    clock.t = t + 4.0
-
-    assert taken(fifo) == sent
-
-
-def test_a_packet_that_waited_too_long_is_dropped_with_all_queued(tmp_path, caplog):
-    """A packet's wait here only delays the recording, but the delay, and the
-    memory the queue takes, have a bound: none older than MAX_AGE_S is ever
-    fed to the composer. What is queued goes, the stream starts again at a
-    keyframe, and the picture is held meanwhile."""
-    clock = Clock()
-    fifo = opened_fifo(tmp_path, clock)
-    h = capture.Holder(fifo.write, clock=clock)
-    t = clock.t
-    h.packet(1, SPS_PPS_IDR, t)
-    h.packet(0, P1, t + PERIOD)
-    h.packet(0, P2, t + 2 * PERIOD)
-    clock.t = t + capture.MAX_AGE_S - 0.1
-    assert fifo._take()[1] == SPS_PPS_IDR
-    clock.t = t + capture.MAX_AGE_S + 0.2  # the composer stopped reading for a while
-    with caplog.at_level(logging.INFO, logger=capture.__name__):
-        assert fifo._take() is None
-        assert not fifo._queue
-        h.packet(0, P1 + b"later", clock.t)   # refers to pictures that went
-        assert queued(fifo) == []
-        clock.t += PERIOD
-        assert h.tick() is True            # held at once, not after hold_after_s
-        h.packet(1, SPS_PPS_IDR + b"2", clock.t)
-        h.packet(0, P2 + b"2", clock.t)
-        assert queued(fifo) == [SPS_PPS_IDR, SPS_PPS_IDR + b"2", P2 + b"2"]
-    warned = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert warned == ["the composer is 5.2 s behind; dropping 2 packets and starting again "
-                      "at a keyframe"]
-    assert "the composer has caught up" in caplog.text
-
-
-def test_a_clip_cuts_hiccup_is_waited_out_not_dropped(tmp_path):
-    """A practice clip cut put the composers 0.5-0.8 s behind for a moment
-    (2026-10-25). All of a sheet's cameras wait alike, so they stay in step;
-    dropping instead jumped each back to its last keyframe for up to 2 s."""
-    clock = Clock()
-    fifo = opened_fifo(tmp_path, clock)
-    h = capture.Holder(fifo.write, clock=clock)
-    t = clock.t
-    h.packet(1, SPS_PPS_IDR, t)
-    h.packet(0, P1, t + PERIOD)
-    clock.t = t + 0.8
-    assert queued(fifo) == [SPS_PPS_IDR, P1]
-
-
-def test_the_fifo_carries_live_and_held_pictures_at_their_times(tmp_path):
-    """From the Holder to the bytes on the FIFO: a camera's packets at the
-    times they were given, then its last keyframe held at the session clock's
-    now, and the camera's next keyframe after the last held picture even when
-    its own time is a little before it."""
+def test_the_file_carries_live_and_held_pictures_at_their_times(tmp_path):
+    """From the Holder to the file: a camera's packets at the times they were
+    given, then its last keyframe held at the session clock's now, and the
+    camera's next keyframe after the last held picture even when its own
+    time is a little before it."""
     packets = h264(count=7)                # a keyframe, five P-frames, a keyframe
     clock = Clock()
-    fifo = opened_fifo(tmp_path, clock)
-    h = capture.Holder(fifo.write, clock=clock)
+    out = capture._TsFile(tmp_path / "c.ts")
+    h = capture.Holder(out.write, clock=clock)
     t = clock.t
     for i, (data, key) in enumerate(packets[:6]):
         h.packet(int(key), data, t + i * PERIOD)
     clock.t = t + 5 * PERIOD + 0.6         # the camera goes quiet: its keyframe is held
     assert h.tick() is True
     h.packet(1, packets[6][0], clock.t - 0.002)
-    out = tmp_path / "out.nut"
-    fd = os.open(out, os.O_WRONLY | os.O_CREAT)
-    try:
-        for item in taken(fifo):
-            fifo._send(fd, *item)
-    finally:
-        os.close(fd)
 
-    got = demux_nut(out.read_bytes())
-    assert [p for _, _, p in got] == [p for p, _ in packets[:6]] + [packets[0][0], packets[6][0]]
+    got = read_ts(tmp_path / "c.ts")
+    want = [p for p, _ in packets[:6]] + [packets[0][0], packets[6][0]]
+    assert len(got) == len(want) and all(g.endswith(w) for (_, _, g), w in zip(got, want))
     assert [k for _, k, _ in got] == [True, *[False] * 5, True, True]
     assert [x for x, _, _ in got] == pytest.approx(
-        [t + i * PERIOD for i in range(6)] + [clock.t, clock.t + 1e-6], abs=1e-6)
-
-
-def test_a_keyframe_after_a_drop_starts_the_stream_again_at_once(tmp_path):
-    clock = Clock()
-    fifo = opened_fifo(tmp_path, clock)
-    h = capture.Holder(fifo.write, clock=clock)
-    h.packet(1, SPS_PPS_IDR, clock.t)
-    h.packet(0, P1, clock.t)
-    clock.t += capture.MAX_AGE_S + 0.1
-    assert fifo._take() is None
-    h.packet(1, SPS_PPS_IDR + b"2", clock.t)
-    h.packet(0, P2, clock.t)
-    assert queued(fifo) == [SPS_PPS_IDR + b"2", P2]
-
-
-def test_one_warning_for_a_composer_that_stays_behind(tmp_path, caplog):
-    clock = Clock()
-    fifo = opened_fifo(tmp_path, clock)
-    h = capture.Holder(fifo.write, clock=clock)
-    with caplog.at_level(logging.WARNING, logger=capture.__name__):
-        for _ in range(3):
-            h.packet(1, SPS_PPS_IDR, clock.t)
-            h.packet(0, P1, clock.t)
-            clock.t += capture.MAX_AGE_S + 0.1
-            assert fifo._take() is None
-    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
-
-
-def test_full_queue_never_blocks_the_reader_and_resumes_at_a_keyframe(monkeypatch, tmp_path,
-                                                                      caplog):
-    """A composer that stops reading must not back up into the reader, and so
-    into ffmpeg: past BACKLOG packets (a guard on memory, since none older
-    than MAX_AGE_S is written anyway) what does not fit is dropped, and the
-    stream picks up again at a keyframe."""
-    monkeypatch.setattr(capture, "BACKLOG", 3)
-    clock = Clock()
-    fifo = opened_fifo(tmp_path, clock)
-    h = capture.Holder(fifo.write, clock=clock)
-
-    def overflow():
-        h.packet(1, SPS_PPS_IDR)
-        h.packet(0, P1)
-        h.packet(0, P2)
-        h.packet(0, b"\x00\x00\x00\x01\x41dropped")
-        h.packet(1, SPS_PPS_IDR + b"dropped")
-        h.tick()
-
-    with caplog.at_level(logging.WARNING):
-        reader = threading.Thread(target=overflow, daemon=True)
-        reader.start()
-        reader.join(timeout=2.0)
-    assert not reader.is_alive(), "Holder.packet blocked on a full queue"
-    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
-
-    assert queued(fifo) == [SPS_PPS_IDR, P1, P2]
-    h.packet(0, b"\x00\x00\x00\x01\x41after")
-    assert not fifo._queue
-    h.packet(1, SPS_PPS_IDR + b"2")
-    h.packet(0, P1)
-    assert queued(fifo) == [SPS_PPS_IDR + b"2", P1]
+        [0.0] + [t + i * PERIOD for i in range(1, 6)] + [clock.t, clock.t + 1 / 90_000],
+        abs=1 / 90_000)
 
 
 def test_reconnects_back_off_and_start_over_once_packets_flow():
@@ -722,7 +557,6 @@ def alive(pid):
 
 
 def running_capture(tmp_path):
-    os.mkfifo(tmp_path / "f")
     return capture_reading(tmp_path, time.monotonic())
 
 
@@ -823,47 +657,52 @@ def test_ffmpeg_runs_under_setpriv_with_no_python_in_the_child(monkeypatch, tmp_
     assert kwargs.get("preexec_fn") is None
 
 
-def read_fifo(path, done):
-    """Everything written to the FIFO at ``path`` until ``done`` is set."""
-    chunks = []
-
-    def run():
-        fd = os.open(path, os.O_RDONLY)
-        while not done.is_set():
-            ready, _, _ = select.select([fd], [], [], 0.05)
-            if ready:
-                data = os.read(fd, 1 << 16)
-                if not data:
-                    break
-                chunks.append(data)
-        os.close(fd)
-
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    return chunks, thread
-
-
-def test_packets_from_an_mpegts_source_reach_the_fifo_with_their_times(monkeypatch, tmp_path):
+def test_packets_from_an_mpegts_source_reach_the_file_with_their_times(monkeypatch, tmp_path):
     source = camera_h264(12, gop=6)
     fake_ffmpeg(monkeypatch, tmp_path, "send", mpegts(source))
     cap = running_capture(tmp_path)
-    done = threading.Event()
-    chunks, reader = read_fifo(tmp_path / "f", done)
     stop_after(cap, 0.7)                   # before the Holder repeats anything
     cap.run()
-    time.sleep(0.2)
-    done.set()
-    reader.join(2)
 
     # The demuxer gives a packet once the next one starts, so the last of the
-    # file waits for its end (live, the next comes 1/60 s later).
+    # source waits for its end (live, the next comes 1/60 s later).
     source = source[:-1]
-    got = demux_nut(b"".join(chunks))[:len(source)]
+    got = read_ts(tmp_path / OUT)[:len(source)]
     assert [k for _, k, _ in got] == [k for _, k in source]
     assert all(data.endswith(src) for (_, _, data), (src, _) in zip(got, source))
     # The stand-in sends the file at once, a burst CameraClock times by
     # arrival; the spacing of live packets is test_the_srt_reader_times_*'s.
     assert all(np.diff([t for t, _, _ in got]) > 0)
+
+
+def test_head_lines_follow_what_was_written(monkeypatch, tmp_path, capsys):
+    """The recorder learns how far each camera's file reaches from these."""
+    fake_ffmpeg(monkeypatch, tmp_path, "send", mpegts(camera_h264(12, gop=6)))
+    cap = running_capture(tmp_path)
+    stop_after(cap, 1.5)
+    cap.run()
+    heads = [float(line.split()[1]) for line in capsys.readouterr().out.splitlines()
+             if line.startswith("@head ")]
+    assert len(heads) >= 2 and all(np.diff(heads) > 0)
+    assert cap.out.head - heads[-1] < 0.6
+
+
+def test_a_write_error_ends_the_capture(monkeypatch, tmp_path, caplog):
+    """/dev/full takes the open and refuses every write, as a full disk does."""
+    spawns = fake_ffmpeg(monkeypatch, tmp_path, "send", mpegts(camera_h264(12, gop=6)))
+    args = capture._parser().parse_args(["--camera", "2A-HOUSE", "--out", "/dev/full",
+                                         "--first", str(tmp_path / "first"), "--t0",
+                                         str(time.monotonic())])
+    args.parent = os.getppid()
+    cap = capture._Capture(args)
+    timer = stop_after(cap, 5.0)
+    began = time.monotonic()
+    with caplog.at_level(logging.ERROR, logger="curling_score.cameras.capture"):
+        assert cap.run() == 1
+    timer.cancel()
+    assert time.monotonic() - began < 3.0
+    assert "cannot write /dev/full" in caplog.text and "No space left" in caplog.text
+    assert not any(alive(pid) for pid, _ in spawned(spawns))
 
 
 def test_ffmpegs_stderr_is_drained(monkeypatch, tmp_path):
@@ -885,10 +724,10 @@ def test_ffmpegs_stderr_is_drained(monkeypatch, tmp_path):
 _CHILD = """
 import sys
 from curling_score.cameras import capture
-fake, spawns, fifo, first = sys.argv[1:5]
+fake, spawns, out, first = sys.argv[1:5]
 capture.shutil.which = lambda name: "/usr/bin/" + name
 capture.ffmpeg_command = lambda camera: [sys.executable, fake, "sleep", spawns]
-capture.main(["--camera", "2A-HOUSE", "--fifo", fifo, "--first", first, "--t0", "0"])
+capture.main(["--camera", "2A-HOUSE", "--out", out, "--first", first, "--t0", "0"])
 """
 
 
@@ -898,10 +737,9 @@ def test_a_signal_ends_a_capture_and_its_ffmpeg_at_once(tmp_path, sig):
     capture's ffmpeg must go with it, or it keeps pulling the camera."""
     fake, spawns = tmp_path / "fake_ffmpeg.py", tmp_path / "spawns"
     fake.write_text(_FAKE)
-    os.mkfifo(tmp_path / "f")
     src = Path(capture.__file__).resolve().parents[2]
     proc = subprocess.Popen([sys.executable, "-c", _CHILD, str(fake), str(spawns),
-                             str(tmp_path / "f"), str(tmp_path / "first")],
+                             str(tmp_path / OUT), str(tmp_path / "first")],
                             env={**os.environ, "PYTHONPATH": str(src)})
     try:
         deadline = time.monotonic() + 10
@@ -928,6 +766,6 @@ def test_without_ffmpeg_a_capture_exits_naming_it(monkeypatch, tmp_path):
     why, so the recorder's error can say it too."""
     monkeypatch.setenv("PATH", str(tmp_path))
     with pytest.raises(SystemExit) as exited:
-        capture.main(["--camera", "2A-HOUSE", "--fifo", str(tmp_path / "f"),
+        capture.main(["--camera", "2A-HOUSE", "--out", str(tmp_path / OUT),
                       "--first", str(tmp_path / "first"), "--t0", "0"])
     assert str(exited.value.code).startswith("ffmpeg is not installed")
