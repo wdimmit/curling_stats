@@ -42,6 +42,9 @@ class Cut:
     size: tuple[int, int] | None = None
 
     def __post_init__(self):
+        object.__setattr__(self, "crop", tuple(int(v) for v in self.crop))
+        if self.size is not None:
+            object.__setattr__(self, "size", tuple(int(v) for v in self.size))
         if self.rotate not in ROTATIONS:
             raise ValueError(
                 f"{self.name or 'cut'}: rotate must be one of {ROTATIONS}, not {self.rotate}")

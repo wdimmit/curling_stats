@@ -186,3 +186,69 @@ class TestWholeFrameReads:
         split = as_feed("/v/x.mp4").on(("bottom",), "/v/y.mp4")
         with pytest.raises(NotImplementedError, match="phase 2"):
             profile.panels_file(split)
+
+
+# --- phase 2: the cameras' own files ------------------------------------------
+
+from curling_score.feeds import cameras  # noqa: E402
+
+
+def test_camera_feed_puts_each_view_in_its_cameras_file():
+    feed = cameras.camera_feed(Path("d"), 2)
+    assert feed.kind == "cameras" and feed.sheet == 2
+    assert feed.path_for("top") == Path("d/house_h.ts")
+    assert feed.path_for("bottom") == Path("d/house_a.ts")
+    assert feed.path_for("left") == Path("d/long_a.ts")
+    assert feed.path_for("right") == Path("d/long_h.ts")
+    assert feed.path_for("board") == Path("d/long_h.ts")
+
+
+@pytest.mark.parametrize("sheet", [1, 2, 3, 4, 5])
+def test_view_roles_match_every_sheets_layout(sheet):
+    sl = layout.load(sheet)
+    out = {p.role: p.out for p in sl.placements}
+    assert out["house_h"][1] < out["house_a"][1]
+    assert out["long_a"][0] < out["long_h"][0]
+
+
+@pytest.mark.parametrize("sheet", [1, 2, 3, 4, 5])
+def test_long_views_are_crops_and_houses_are_turned(sheet):
+    sl = layout.load(sheet)
+    cuts = cameras.view_cuts(sl)
+    assert set(cuts) == {"top", "bottom", "left", "right"}
+    assert cuts["left"].is_crop and cuts["right"].is_crop
+    for name in ("top", "bottom"):
+        p = cameras.placement_for(sl, name)
+        assert cuts[name].rotate == 90
+        assert cuts[name].out_size == tuple(p.out[2:])
+        assert cuts[name].name == name
+
+
+def test_a_scaled_long_view_is_not_a_crop():
+    p = layout.Placement("long_a", (0, 0, 800, 1080), 0, (0, 0, 400, 540))
+    cut = cameras.view_cut("left", p)
+    assert not cut.is_crop and cut.out_size == (400, 540)
+
+
+def test_feed_str_names_its_files_and_never_raises():
+    feed = cameras.camera_feed(Path("d"), 2)
+    assert "cameras feed" in str(feed) and "house_h.ts" in str(feed)
+    with pytest.raises(TypeError):
+        os.fspath(feed)
+
+
+def test_path_for_an_unknown_view_is_a_value_error():
+    with pytest.raises(ValueError, match="no such view: tpo"):
+        cameras.camera_feed(Path("d"), 2).path_for("tpo")
+
+
+def test_feed_paths_are_read_only():
+    feed = as_feed("v.mp4")
+    with pytest.raises(TypeError):
+        feed.paths["top"] = Path("x")
+
+
+def test_cut_coerces_its_crop():
+    c = Cut("x", [1, 2, 3, 4], 0, [5, 6])
+    assert c.crop == (1, 2, 3, 4) and c.size == (5, 6)
+    assert hash(c) == hash(Cut("x", (1, 2, 3, 4), 0, (5, 6)))
