@@ -37,6 +37,15 @@ def when(throw: dict) -> float:
     return throw["t_rest_s"] if throw.get("arrived") else throw["t_release_s"]
 
 
+def apart(x: dict, y: dict) -> float:
+    """How far apart in time two throws are: by release when both have one
+    (a stone that leaves the panel is last seen at a moment that differs
+    between runs, so its rest time does too), else as ``when``."""
+    if x.get("t_release_s") is not None and y.get("t_release_s") is not None:
+        return abs(x["t_release_s"] - y["t_release_s"])
+    return abs(when(x) - when(y))
+
+
 def pair(a: list[dict], b: list[dict], tol_s: float = PAIR_S):
     """``(pairs, only_a, only_b)``: each of ``a``'s throws with the nearest of
     ``b``'s of the same house and colour within ``tol_s``, in time order."""
@@ -44,11 +53,11 @@ def pair(a: list[dict], b: list[dict], tol_s: float = PAIR_S):
     pairs, only_a = [], []
     for x in sorted(a, key=when):
         near = [y for y in left if (y["house"], y["color"]) == (x["house"], x["color"])
-                and abs(when(y) - when(x)) <= tol_s]
+                and apart(x, y) <= tol_s]
         if not near:
             only_a.append(x)
             continue
-        y = min(near, key=lambda y: abs(when(y) - when(x)))
+        y = min(near, key=lambda y: apart(x, y))
         left.remove(y)
         pairs.append((x, y))
     return pairs, only_a, sorted(left, key=when)

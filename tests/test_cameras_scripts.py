@@ -165,6 +165,16 @@ def test_compare_passes_a_matching_pair(tmp_path, capsys):
     assert "gate: PASS" in capsys.readouterr().out
 
 
+def test_compare_pairs_one_release_whose_rests_were_seen_apart():
+    """11/04 gate: one throw, released 0.02 s apart in the two runs, last seen
+    1.8 s apart as it left the panel. It is one throw, not two unmatched."""
+    compare = _load("compare_replays")
+    x = {**throw(2511.85), "t_release_s": 2485.93}
+    y = {**throw(2513.66), "t_release_s": 2485.94}
+    pairs, only_a, only_b = compare.pair([x], [y])
+    assert (len(pairs), only_a, only_b) == (1, [], [])
+
+
 def test_compare_fails_on_latency(tmp_path, capsys):
     compare = _load("compare_replays")
     a = write(tmp_path / "comp", [throw(100.0 + 60 * i) for i in range(10)])
