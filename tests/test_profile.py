@@ -23,6 +23,9 @@ class Setup:
     def on_sheet(self, stones):
         return stones
 
+    def in_play(self, stones):
+        return stones
+
 
 class Detector:
     """Finds as many stones in a panel as its first pixel's value, and keeps
@@ -116,7 +119,21 @@ class TestThursdayMensSheet1:
 
         return boardsplit.split_games([_night(samples)], read), reads
 
-    def test_on_the_detectors_counts_the_night_splits_into_its_two_games(self):
+    def test_on_the_detectors_counts_the_empty_sheet_ends_the_game(self):
+        """Since `segment._drop_strays`: one keyframe of a "stone" in the
+        bottom house at 6680 s, 115 s into 330 s of empty sheet, no longer
+        breaks it up, and the empty-sheet rule parts the games where the
+        board did."""
+        samples, _, _ = _fixture()
+        games = segment.segment_games(samples)
+        assert [len(g.ends) for g in games] == [2, 3]
+        assert games[0].end_s == pytest.approx(6540.0, abs=5)
+        assert games[1].start_s == pytest.approx(6920.0, abs=5)
+
+    def test_on_the_detectors_counts_the_board_parts_them_too(self, monkeypatch):
+        """Without that, as before it: one game by the empty sheet, split by
+        the board cleared across the changeover."""
+        monkeypatch.setattr(segment, "STRAY_KEYFRAMES", 0)
         samples, _, _ = _fixture()
         games, reads = self._split(samples)
         assert [len(g.ends) for g in games] == [7, 3]
@@ -142,7 +159,8 @@ class TestThursdayMensSheet1:
         `segment._passing` the thresholds keep them too: what cut it was a
         keyframe or two of the far house while this one sat emptied."""
         samples, thresholds, _ = _fixture()
-        by_counter = [segment.segment_games(s)[0].ends[3] for s in (samples, thresholds)]
+        by_counter = [[e for g in segment.segment_games(s) for e in g.ends][3]
+                      for s in (samples, thresholds)]
         assert [e.house for e in by_counter] == ["top", "top"]
         assert [e.end_s for e in by_counter] == [pytest.approx(8695.0, abs=5),
                                                  pytest.approx(8765.0, abs=5)]

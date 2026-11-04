@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 from curling_score.detect import rocks
 from curling_score.game.segment import Sample
-from curling_score.geometry import calibrate, hogpaint, layout, lighting, sidepaint
+from curling_score.geometry import backpaint, calibrate, hogpaint, layout, lighting, sidepaint
 
 
 @dataclass(frozen=True)
@@ -41,6 +41,12 @@ class PanelSetup:
     # beyond one is on the next sheet, and is not counted or tracked here.
     # None -- a setup pickled before this existed -- excludes nothing.
     sidelines: sidepaint.Sidelines | None = None
+    # The panel's painted back line (``geometry/backpaint.py``): a stone
+    # wholly beyond it is out of play, and the activity profile does not count
+    # it. None -- not found, or a setup pickled before this existed -- excludes
+    # nothing; ``back_line_error`` says why it was not found.
+    back_line: backpaint.BackLine | None = None
+    back_line_error: str | None = None
 
     def crop(self, frame):
         x, y, w, h = self.rect
@@ -51,6 +57,17 @@ class PanelSetup:
         if self.sidelines is None:
             return stones
         return [s for s in stones if not self.sidelines.beyond(s.x_px, s.y_px)]
+
+    def in_play(self, stones):
+        """``stones`` on this sheet (:meth:`on_sheet`) without those wholly
+        beyond the panel's painted back line: the stones that can keep an end
+        going. Only the activity profile asks; tracking still follows a stone
+        through the back line, which is how a delivery that leaves play is told
+        from one that stops."""
+        stones = self.on_sheet(stones)
+        if self.back_line is None:
+            return stones
+        return [s for s in stones if not self.back_line.beyond(s.x_px, s.y_px, s.area_px)]
 
     @property
     def view_x_limit_m(self) -> float:
@@ -123,9 +140,12 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> Pa
         line, err = hogpaint.find_hog_line(median, calib), None
     except hogpaint.HogPaintError as exc:
         line, err = None, f"{name} panel: {exc}"
-    # And the sidelines' paint, where the panel reaches them.
+    # And the sidelines' paint, where the panel reaches them, and the back line's.
+    back, back_err = backpaint.find_back_line(median, calib)
     return PanelSetup(rect=rect, calib=calib, hog_line=line, hog_line_error=err,
-                      sidelines=sidepaint.find_sidelines(median, calib))
+                      sidelines=sidepaint.find_sidelines(median, calib),
+                      back_line=back,
+                      back_line_error=None if back_err is None else f"{name} panel: {back_err}")
 
 
 def calibrate_panels(frames, panels: layout.PanelLayout):
@@ -141,7 +161,8 @@ def count_frame(frame, setups, detector=None) -> tuple[int, int, bool, bool]:
     """Stone counts and playability for both panels of one frame, counted by
     ``detector`` -- a trained one, see the module docstring -- or, without
     one, by the colour thresholds. A panel too dark to play counts none, and
-    no panel counts a stone beyond its painted sidelines (`PanelSetup.on_sheet`)."""
+    no panel counts a stone beyond its painted sidelines or wholly beyond its
+    painted back line (`PanelSetup.in_play`)."""
     panels = {name: setups[name].crop(frame) for name in ("top", "bottom")}
     playable = {name: lighting.is_playable(panel) for name, panel in panels.items()}
     lit = [name for name in ("top", "bottom") if playable[name]]
@@ -152,7 +173,7 @@ def count_frame(frame, setups, detector=None) -> tuple[int, int, bool, bool]:
     else:
         found = [rocks.find_stones(panels[n], setups[n].calib) for n in lit]
     for name, stones in zip(lit, found):
-        counts[name] = len(setups[name].on_sheet(stones))
+        counts[name] = len(setups[name].in_play(stones))
     return counts["top"], counts["bottom"], playable["top"], playable["bottom"]
 
 
