@@ -191,7 +191,7 @@ class TestSetupCut:
         turned = Cut("top", (0, 0, 534, 300), rotate=90, size=(300, 534))
         t = profile.PanelSetup(rect=(0, 0, 300, 534), calib=TOP, name="top",
                                transform=turned)
-        with pytest.raises(NotImplementedError, match="phase 2"):
+        with pytest.raises(NotImplementedError, match="made by frames"):
             t.crop(frame)
 
     def test_crop_without_a_transform_is_the_slice(self):

@@ -11,6 +11,7 @@ old rectangle: the same FFmpeg step, the same numpy slice, the same cache key.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -74,16 +75,42 @@ class Cut:
             steps.append("scale={}:{}".format(*self.size))
         return ",".join(steps)
 
+    def frames(self):
+        """``av.VideoFrame -> BGR ndarray`` for one pass over a file.
+
+        A crop converts the frame to BGR and slices it (``apply``), exactly as
+        before cuts. A turned or scaled cut runs ``steps()`` in a PyAV filter
+        graph, built from the first frame and kept for the pass, then converts
+        to BGR in the graph: the chain an FFmpeg reader runs, in the same
+        order, so the pixels match it.
+        """
+        if self.is_crop:
+            from av.video.reformatter import VideoReformatter
+
+            reformatter = VideoReformatter()
+            return lambda frame: self.apply(
+                reformatter.reformat(frame, format="bgr24").to_ndarray())
+        graph = None
+
+        def cut(frame):
+            nonlocal graph
+            if graph is None:
+                graph = _graph(frame, self.steps())
+            graph.push(frame)
+            return np.ascontiguousarray(graph.pull().to_ndarray())
+
+        return cut
+
     def apply(self, bgr: np.ndarray) -> np.ndarray:
         """Cut a decoded frame. Only a crop can be taken in numpy here; a
-        turned or scaled cut is made by FFmpeg.
+        turned or scaled cut is made by ``frames()``.
 
         This slices the frame after it is converted to BGR; ``steps()`` crops
         in yuv420p, before. They give the same pixels only at even x and y
         (chroma is sited on pairs); at an odd offset the edge's chroma differs.
         ``steps()`` is the reference for pixel parity."""
         if not self.is_crop:
-            raise NotImplementedError("phase 2")
+            raise NotImplementedError("a turned or scaled cut is made by frames()")
         x, y, w, h = self.crop
         return np.ascontiguousarray(bgr[y:y + h, x:x + w])
 
@@ -112,3 +139,21 @@ class Cut:
         is the placement's ``out`` size (its x, y are only where it lands)."""
         _, _, ow, oh = p.out
         return cls(name, tuple(p.crop), p.rotate, (ow, oh))
+
+
+def _graph(frame, steps: str):
+    """A configured filter graph taking frames like ``frame`` through
+    ``steps`` (an FFmpeg chain, ``name=args`` joined by commas) to BGR."""
+    import av.filter
+
+    graph = av.filter.Graph()
+    nodes = [graph.add_buffer(width=frame.width, height=frame.height,
+                              format=frame.format.name,
+                              time_base=frame.time_base or Fraction(1, 1000))]
+    for step in steps.split(","):
+        name, _, args = step.partition("=")
+        nodes.append(graph.add(name, args or None))
+    nodes.append(graph.add("format", "bgr24"))
+    nodes.append(graph.add("buffersink"))
+    graph.link_nodes(*nodes).configure()
+    return graph

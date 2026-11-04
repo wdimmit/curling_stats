@@ -186,8 +186,11 @@ def keyframe_times(path, start_s: float, end_s: float):
     return sorted(times), read_to
 
 
-def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
+def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None, cut=None):
     """Yield ``(t, frame)`` for every keyframe in the video.
+
+    With a ``Cut`` the keyframes are of that view: from the file its feed
+    gives it, cut as ``Cut.frames`` cuts.
 
     With ``decode=False`` the frames are not converted to arrays and ``None`` is
     yielded in their place, which is much faster when only timing is wanted.
@@ -197,6 +200,12 @@ def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
     video -- reaching the one-hour mark by scanning costs about ten seconds, and
     it grows from there.
     """
+    if cut is not None:
+        path = as_feed(path).path_for(cut.name)
+        convert = cut.frames()
+    else:
+        def convert(frame):
+            return frame.to_ndarray(format="bgr24")
     path = os.fspath(path)
     lead = seek_lead(path) if start_s is not None else 0.0
     _quiet_ffmpeg()
@@ -223,14 +232,14 @@ def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None):
                 ht, hf = held
                 held = None
                 if ht >= start_s - 10.0 and (end_s is None or ht <= end_s):
-                    yield ht, (hf.to_ndarray(format="bgr24") if decode else None)
+                    yield ht, (convert(hf) if decode else None)
             if start_s is not None and t < start_s - 10.0:
                 continue
             if end_s is not None and t > end_s:
                 break
-            yield t, (frame.to_ndarray(format="bgr24") if decode else None)
+            yield t, (convert(frame) if decode else None)
         if held is not None and held[0] >= start_s - 10.0 and (end_s is None or held[0] <= end_s):
-            yield held[0], (held[1].to_ndarray(format="bgr24") if decode else None)
+            yield held[0], (convert(held[1]) if decode else None)
 
 
 # Decoder threads for a pass over a file. PyAV's own choice is one per core,
@@ -250,27 +259,47 @@ def _converter():
     return lambda frame: reformatter.reformat(frame, format="bgr24").to_ndarray()
 
 
-def _source(path, crop):
-    """``(file, apply)`` for one view of ``path``: the file to open and what to
-    do to each decoded frame (``None`` to keep it whole).
+class _Decoded:
+    """A decoded frame on its way to the specs that want it: its BGR is made
+    once, when the first of them needs it."""
 
-    A ``Cut`` names its view, so the feed says which file it lives in; a bare
-    rect or ``None`` is read from ``path`` itself, which must then be one file.
-    A rect keeps the numpy slice it always had, byte for byte.
+    __slots__ = ("frame", "_to_bgr", "_bgr")
+
+    def __init__(self, frame, to_bgr):
+        self.frame, self._to_bgr, self._bgr = frame, to_bgr, None
+
+    @property
+    def bgr(self):
+        if self._bgr is None:
+            self._bgr = self._to_bgr(self.frame)
+        return self._bgr
+
+
+def _source(path, crop):
+    """``(file, cut)`` for one view of ``path``: the file to open and what to
+    do to each decoded frame (a ``_Decoded``) to give the view's picture.
+
+    A ``Cut`` names its view, so the feed says which file it lives in; a crop
+    slices the frame's BGR, and a turned or scaled cut runs its own filter
+    graph (``Cut.frames``), one for the pass. A bare rect or ``None`` is read
+    from ``path`` itself, which must then be one file. A rect keeps the numpy
+    slice it always had, byte for byte.
     """
     if isinstance(crop, Cut):
-        if not crop.is_crop:
-            raise NotImplementedError("phase 2")
-        return str(as_feed(path).path_for(crop.name)), crop.apply
+        file = str(as_feed(path).path_for(crop.name))
+        if crop.is_crop:
+            return file, lambda d: crop.apply(d.bgr)
+        graph = crop.frames()
+        return file, lambda d: graph(d.frame)
     # Normalised as a Cut's file is, so a call mixing the two on one path
     # ("./v.mp4") sees one file.
     file = str(Path(os.fspath(path)))
     if crop is None:
-        return file, None
+        return file, lambda d: d.bgr
 
-    def apply(img):
+    def apply(d):
         x, y, w, h = crop
-        return np.ascontiguousarray(img[y : y + h, x : x + w])
+        return np.ascontiguousarray(d.bgr[y : y + h, x : x + w])
 
     return file, apply
 
@@ -286,7 +315,7 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
     if end_s < start_s:
         raise ValueError("end_s must not precede start_s")
     step = 1.0 / fps
-    path, apply = _source(path, crop)
+    path, cut = _source(path, crop)
 
     _quiet_ffmpeg()
     with av.open(str(path)) as container:
@@ -308,10 +337,7 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
                 continue
             if t > end_s + 1e-9:
                 break
-            img = to_bgr(frame)
-            if apply is not None:
-                img = apply(img)
-            yield t, img
+            yield t, cut(_Decoded(frame, to_bgr))
             # Advance past the frame we just emitted so a slow source cannot
             # emit two frames for the same slot.
             while next_wanted <= t + 1e-9:
@@ -319,7 +345,7 @@ def window(path, start_s: float, end_s: float, fps: float, crop=None):
 
 
 def windows(path, specs, end_s: float):
-    """Several windows of one file from a single decode.
+    """Several windows from as few decodes as there are files.
 
     Each spec is ``(start_s, fps, crop)``; this yields ``(i, t, frame)``, and
     spec ``i`` gets exactly the frames ``window(path, start_s, end_s, fps,
@@ -327,17 +353,27 @@ def windows(path, specs, end_s: float):
     panels over nearly the same span, and decoding it once instead of twice
     is most of the difference between a live end's cost and a recorded one's.
 
-    ``path`` is a file or a ``Feed``, and every spec's view must be in the one
-    file: a ``Cut`` of another file is a second decode, which phase 2's
-    cameras need and this does not do.
+    ``path`` is a file or a ``Feed``. Specs whose views are in one file share
+    its decode; a camera feed's views are in a file each, which are decoded
+    one after another -- not on threads: PyAV decoding in a second thread has
+    deadlocked here before. So the frames come file by file, each file's in
+    time order.
     """
     sources = [_source(path, crop) for _, _, crop in specs]
-    files = {file for file, _ in sources}
-    if len(files) > 1:
-        raise NotImplementedError("phase 2: specs span files")
-    path = files.pop() if files else str(Path(os.fspath(path)))
-    wanted = [float(start) for start, _, _ in specs]
-    steps = [1.0 / fps for _, fps, _ in specs]
+    by_file: dict[str, list[int]] = {}
+    for i, (file, _) in enumerate(sources):
+        by_file.setdefault(file, []).append(i)
+    if not by_file:
+        return
+    for file, indices in by_file.items():
+        yield from _windows_of(file, [(i, specs[i], sources[i][1]) for i in indices], end_s)
+
+
+def _windows_of(path, specs, end_s: float):
+    """``windows`` over one file: ``specs`` are ``(i, (start_s, fps, _), cut)``."""
+    wanted = {i: float(spec[0]) for i, spec, _ in specs}
+    steps = {i: 1.0 / spec[1] for i, spec, _ in specs}
+    cuts = {i: cut for i, _, cut in specs}
     lead = seek_lead(path)
     _quiet_ffmpeg()
     with av.open(str(path)) as container:
@@ -345,23 +381,21 @@ def windows(path, specs, end_s: float):
         stream.thread_type = "AUTO"
         stream.thread_count = DECODE_THREADS
         offset = _stream_start(stream)
-        target_pts = int((min(wanted) - lead + offset) / stream.time_base)
+        target_pts = int((min(wanted.values()) - lead + offset) / stream.time_base)
         container.seek(target_pts, backward=True, stream=stream)
         to_bgr = _converter()
         for frame in container.decode(stream):
             if frame.pts is None:
                 continue
             t = float(frame.pts * stream.time_base) - offset
-            due = [i for i in range(len(specs)) if t >= wanted[i] - 1e-9]
+            due = [i for i in wanted if t >= wanted[i] - 1e-9]
             if not due:
                 continue
             if t > end_s + 1e-9:
                 break
-            img = to_bgr(frame)
+            decoded = _Decoded(frame, to_bgr)
             for i in due:
-                apply = sources[i][1]
-                out = img if apply is None else apply(img)
-                yield i, t, out
+                yield i, t, cuts[i](decoded)
                 while wanted[i] <= t + 1e-9:
                     wanted[i] += steps[i]
 
@@ -385,7 +419,7 @@ def sample_keyframes(path, count: int = 24, stride: int = 90, with_times: bool =
 
 
 def spread_keyframes(path, until_s: float, count: int = 24,
-                     with_times: bool = False, start_s: float | None = None):
+                     with_times: bool = False, start_s: float | None = None, cut=None):
     """``count`` keyframes spread evenly over ``[0, until_s]``, or all of them
     when there are fewer; over ``[start_s, until_s]`` given a ``start_s``
     (from the last keyframe at or before it, as ``keyframe_sweep`` starts).
@@ -395,10 +429,12 @@ def spread_keyframes(path, until_s: float, count: int = 24,
     Two sweeps, the first of them without decoding, so only the chosen frames
     are ever held.
     """
-    n = sum(1 for _ in keyframe_sweep(path, decode=False, start_s=start_s, end_s=until_s))
+    n = sum(1 for _ in keyframe_sweep(path, decode=False, start_s=start_s, end_s=until_s,
+                                      cut=cut))
     stride = max(1, n // count)
     out = []
-    for i, (t, img) in enumerate(keyframe_sweep(path, start_s=start_s, end_s=until_s)):
+    for i, (t, img) in enumerate(keyframe_sweep(path, start_s=start_s, end_s=until_s,
+                                                cut=cut)):
         if i % stride:
             continue
         out.append((t, img) if with_times else img)
