@@ -1,59 +1,47 @@
-"""A sheet's four cameras, composed into one growing recording.
+"""A sheet's four cameras, each recorded into a growing file of its own.
 
 ``CameraRecorder`` stands where ``live.recorder.YtDlpRecorder`` stands for a
 practice watch: the manager starts, checks and stops it, and the watch reads
 ``path`` up to ``head_s()``. Behind it, four ``capture`` processes (one per
-camera, ``capture.py``) each write a camera's H.264 into a FIFO, and one FFmpeg,
-the composer, lays the four out as YouTube does (``layout.py``) and encodes a
-1920x1080p60 MPEG-TS on NVENC.
+camera, ``capture.py``) each write a camera's H.264 into ``<role>.ts``. Nothing
+composes them: ``path`` is a camera feed (``feeds/cameras.py``), and the
+tracker reads each view from its camera's file, cut as the sheet's layout
+says. That saves the composer's ~2.7 cores and an NVENC session a sheet.
 
-**Starting.** The captures come first, then their first keyframes are checked,
-then the composer starts. A capture copies its first keyframe to
-``first-<role>.h264`` from its SRT reader, whether or not anything has opened
-its FIFO yet (its FIFO writer waits for a reader on a thread of its own), so
-waiting for all four before the composer exists cannot deadlock. A camera that
-sends nothing, or anything but H.264 1920x1080 (the size the layouts' crops are
-in), fails the start before anything is encoded. ffprobe reads the keyframes,
-in a subprocess: PyAV in a second thread has deadlocked before
-(``ingest/frames.py``). A capture that exits before its first keyframe has
-said why (no ffmpeg, a camera that never answers), and its last error is the
-start's.
+**Starting.** The captures come first, then their first keyframes are checked.
+A capture copies its first keyframe to ``first-<role>.h264`` from its SRT
+reader. A camera that sends nothing, or anything but H.264 1920x1080 (the size
+the layouts' crops are in), fails the start, and every file it had begun is
+deleted. ffprobe reads the keyframes, in a subprocess: PyAV in a second
+thread has deadlocked before (``ingest/frames.py``). A capture that exits
+before its first keyframe has said why (no ffmpeg, a camera that never
+answers), and its last error is the start's.
 
 **The clock.** The recording's zero is read on ``clock`` (``time.monotonic``)
 as it starts, before any capture, with ``wall_started`` beside it. Each capture
 times its camera's packets in seconds since that zero (``--t0``), by the
 camera's own clock anchored to their arrival (``capture.CameraClock``), and
-writes them to its FIFO as NUT with their times. The composer keeps the times
-(``-copyts``, nothing shifted), so a frame at t in the composite was taken at
-``wall_started + t``. ``head_s()`` is how far the composite reaches, by its
-frames (``composite_s``). A composer that falls behind delays the recording,
-and ``head_s`` with it, but moves nothing in it. Until the cameras' first
-frames come the composite is the grey base alone. Nothing is recorded from
-before Start.
+writes them at those times; each file starts at the zero. So a frame at t in
+any of the four was taken at ``wall_started + t``. Each capture says how far
+its file reaches (``@head <s>`` lines), and ``head_s()`` is the least of them:
+how far every view can be read. Nothing is recorded from before Start.
 
 **A camera that stops.** A capture holds its camera's last keyframe while
-packets stop and reconnects by itself. One that exits all the same is logged,
-and the recording goes on: its FIFO ends, and the overlay holds its last frame.
-If every capture has gone the recording ends, because the composer's grey base
-is a generated source that would then run unpaced: 20 s of video in 2.8 s once
-its input ended, measured.
+packets stop and reconnects by itself, so its file goes on. One that exits all
+the same is logged, and the recording goes on: that view's file ends there,
+and ``head_s`` follows the cameras still running. If every capture has gone
+the recording ends.
 
-**Ending.** The recording fails (``LiveError``) when the composer exits or its
-head stalls for ``STALL_S``. A capture drops packets rather than block when the
-composer falls behind, so a composer that stops reading shows up only as a
-stall. A stop takes down the captures before the composer: a composer gone from
-under them reads to them as their reader going away, which they report as an
-error.
+**Ending.** The recording fails (``LiveError``) when its head stalls for
+``STALL_S``, or every capture has gone.
 
-**Logs.** The captures log under a lock their packets also go through, so their
-output is always drained, onto this module's logger. The composer's goes to a
-``_Part`` for its progress, and its last lines are logged if it exits.
+**Logs.** The captures log onto this module's logger, at their own levels;
+their head lines are read, not logged.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import re
 import subprocess
 import sys
@@ -64,7 +52,8 @@ from pathlib import Path
 from typing import NoReturn
 
 from curling_score.cameras import inventory, layout
-from curling_score.live.recorder import MAX_RECORD_S, WALL_MARGIN_S, _Part, progress_time
+from curling_score.feeds.cameras import camera_feed
+from curling_score.live.recorder import MAX_RECORD_S, WALL_MARGIN_S
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -76,40 +65,19 @@ CODEC, CAMERA_W, CAMERA_H = "h264", 1920, 1080
 FIRST_TIMEOUT_S = 15.0
 FIRST_POLL_S = 0.1
 PROBE_TIMEOUT_S = 10.0
-# A composer whose head has not moved for this long has stopped. Opening and
-# probing its four inputs one at a time, each from a camera keyframe (every
-# 2 s), took 9 s to its first progress on sheet 1; with PROBE, 1.3-1.4 s.
+# A recording whose head has not moved for this long has stopped. A capture
+# that hears nothing reconnects on its own and its Holder keeps its file going,
+# so a head that stands still this long is every camera stuck at once.
 STALL_S = 30.0
-# Threads for each camera's decoder and for each filtergraph's slices. FFmpeg's
-# default is a thread per CPU, and at a live 60 fps all of them waking for
-# every frame cost 9.1 cores a sheet on the Ryzen; two each cost 2.6, keeping
-# up the same (sheet 1, 2026-10-24). Neither 1 nor 4 did better with a graph
-# per camera (layout.filtergraphs; test patterns, 2026-10-24).
-DECODE_THREADS = 2
-FILTER_THREADS = 2
-# How much ffmpeg reads of each input to learn what it is before it opens the
-# next: as little as it can. Each FIFO's NUT header says H.264 1920x1080, its
-# stream starts at a keyframe carrying SPS and PPS (capture.Holder), and each
-# packet carries its time, so there is no frame rate to learn. ffmpeg's own
-# probe took ~0.3 s an input, and the cameras opened first were 0.6-1.2 s
-# behind once the composer read them; this takes 0.05 s, and leaves them
-# 0.14-0.30 s behind (sheet 2, 2026-10-24). When a FIFO started at the first
-# keyframe after it was opened, they were 7.1 / 5.0 / 3.1 / 1.4 s behind at
-# +10 s.
-PROBE = ["-probesize", "32", "-analyzeduration", "1"]
 # How long a capture that has exited gets for the rest of its output to be read.
 RELAY_JOIN_S = 2.0
 # How long a process has to exit after SIGTERM before it is killed.
 CAPTURE_EXIT_S = 5.0
-COMPOSER_EXIT_S = 10.0
-# How much of the composer's output is kept for the log should it exit.
-TAIL_BYTES = 4096
-TAIL_LINES = 5
 _CAPTURE = "curling_score.cameras.capture"
 # A capture's log line: "<date> <time> <LEVEL> capture <camera>: <message>".
 _LOG_LINE = re.compile(r"^\S+ \S+ (DEBUG|INFO|WARNING|ERROR|CRITICAL) (.*)$")
-# The frames so far in one of ffmpeg's progress lines: "frame= 3735 fps= 60 ...".
-_FRAME_RE = re.compile(r"\bframe=\s*(\d+)")
+# How far a capture's file reaches: "@head 12.345".
+_HEAD_LINE = re.compile(r"^@head (\d+(?:\.\d+)?)$")
 
 
 def probe(path: Path) -> tuple[str, int, int] | None:
@@ -130,46 +98,13 @@ def probe(path: Path) -> tuple[str, int, int] | None:
         return None
 
 
-def _input(fifo: Path) -> list[str]:
-    """How the composer opens a capture's FIFO: NUT, whose times it keeps."""
-    return ["-threads", str(DECODE_THREADS), "-thread_queue_size", "1024",
-            *PROBE, "-f", "nut", "-i", str(fifo)]
-
-
-def composite_s(line: str) -> float | None:
-    """How far the composite reaches by one of the composer's progress lines:
-    its frames so far, ``layout.FPS`` a second from the recording's zero. Not
-    its ``time=``: with ``-copyts`` ffmpeg counts that from the first time it
-    reports, as far after the zero as the composite had got by then."""
-    m = _FRAME_RE.search(line)
-    return int(m.group(1)) / layout.FPS if m else None
-
-
-class _Tail:
-    """A process's output on its way to a ``_Part``, keeping its last
-    ``TAIL_BYTES``: what ffmpeg said before it exited."""
-
-    def __init__(self, stream):
-        self._stream, self._last = stream, b""
-
-    def read(self, n: int) -> bytes:
-        chunk = self._stream.read(n)
-        self._last = (self._last + chunk)[-TAIL_BYTES:]
-        return chunk
-
-    def lines(self) -> list[str]:
-        """Its last lines, without the progress lines."""
-        text = self._last.decode("utf-8", "replace")
-        return [line.strip() for line in re.split(r"[\r\n]", text)
-                if line.strip() and progress_time(line) is None][-TAIL_LINES:]
-
-
 class CameraRecorder:
-    """Sheet ``sheet``'s four cameras, composed into ``directory/rec.0.ts``.
+    """Sheet ``sheet``'s four cameras, each into ``directory/<role>.ts``.
 
     The interface is ``YtDlpRecorder``'s, as the manager and the practice watch
-    use it. The recording starts at Start, so it never holds anything from
-    before, and is never ``whole``.
+    use it, but ``path`` is a camera feed: never one camera's file. The
+    recording starts at Start, so it never holds anything from before, and is
+    never ``whole``.
     """
 
     def __init__(self, sheet: int, directory: Path, *, popen=subprocess.Popen,
@@ -179,7 +114,7 @@ class CameraRecorder:
                  probe: Callable[[Path], tuple[str, int, int] | None] = probe,
                  max_s: float = MAX_RECORD_S):
         self.sheet, self.dir = sheet, Path(directory)
-        self.path = self.dir / "rec.0.ts"
+        self.path = camera_feed(self.dir, sheet)
         self.t0: float | None = None             # the recording's zero, on clock
         self.wall_started: float | None = None   # the same moment by wall
         self._popen, self.clock, self.wall, self._probe = popen, clock, wall, probe
@@ -188,9 +123,9 @@ class CameraRecorder:
         self._captures: dict[str, subprocess.Popen] = {}     # role -> process
         self._relays: dict[str, threading.Thread] = {}       # role -> its log's reader
         self._said: dict[str, str] = {}                      # role -> its last error
+        self._heads: dict[str, float] = {}                   # role -> how far its file reaches
         self._gone: set[str] = set()
-        self._composer: _Part | None = None
-        self._tail: _Tail | None = None
+        self._head = 0.0                                     # the last head_s() of any camera
         # check() runs on the manager's thread, stop() may come from another;
         # a check that ends the recording stops it from inside.
         self._lock = threading.RLock()
@@ -202,17 +137,16 @@ class CameraRecorder:
 
     def start(self):
         try:
-            sheet_layout = layout.load(self.sheet)
+            layout.load(self.sheet)
         except LookupError as exc:
             raise LiveError(str(exc)) from exc
         self.dir.mkdir(parents=True, exist_ok=True)
-        # Together: a frame at t in the composite was taken at wall_started + t.
+        # Together: a frame at t in any camera's file was taken at wall_started + t.
         self.t0, self.wall_started = self.clock(), self.wall()
         try:
             for role, name in self._cameras.items():
                 self._spawn_capture(role, name)
             self._await_first()
-            self._spawn_composer(sheet_layout)
         except BaseException:
             # No camera connection may outlive the recording that wanted it,
             # and no camera's picture either.
@@ -220,26 +154,26 @@ class CameraRecorder:
             self._ended = True
             for role in self._cameras:
                 first = self._first(role)
-                for path in (first, first.with_name(first.name + ".part"), self._fifo(role)):
+                for path in (first, first.with_name(first.name + ".part"), self._out(role)):
                     path.unlink(missing_ok=True)
             raise
         self._started_at = self._progress_at = self.clock()
+        log.info("recording sheet %d's cameras into %s", self.sheet, self.dir)
         return self
 
-    def _fifo(self, role: str) -> Path:
-        return self.dir / f"cam-{role}.nut"
+    def _out(self, role: str) -> Path:
+        return self.dir / f"{role}.ts"
 
     def _first(self, role: str) -> Path:
         return self.dir / f"first-{role}.h264"
 
     def _spawn_capture(self, role: str, name: str) -> None:
-        fifo, first = self._fifo(role), self._first(role)
-        # Whatever an earlier recording here left is not this camera's answer.
-        fifo.unlink(missing_ok=True)
+        out, first = self._out(role), self._first(role)
+        # Whatever an earlier recording here left is not this camera's.
+        out.unlink(missing_ok=True)
         first.unlink(missing_ok=True)
-        os.mkfifo(fifo)
         proc = self._popen(
-            [sys.executable, "-m", _CAPTURE, "--camera", name, "--fifo", str(fifo),
+            [sys.executable, "-m", _CAPTURE, "--camera", name, "--out", str(out),
              "--first", str(first), "--t0", str(self.t0)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self._captures[role] = proc
@@ -251,11 +185,16 @@ class CameraRecorder:
     def _relay(self, role: str, name: str, stream) -> None:
         """Pass a capture's log lines on, at their own level, keeping the last
         error it said: a line at ERROR, or one said outside its log (a
-        traceback, or exiting before logging)."""
+        traceback, or exiting before logging). Its head lines are taken, not
+        logged."""
         level = logging.INFO
         prefix = f"capture {name}: "
         for raw in iter(stream.readline, b""):
             line = raw.decode("utf-8", "replace").rstrip()
+            head = _HEAD_LINE.match(line)
+            if head:
+                self._heads[role] = float(head.group(1))
+                continue
             m = _LOG_LINE.match(line)
             if m:
                 level, line = logging.getLevelName(m.group(1)), m.group(2)
@@ -283,7 +222,7 @@ class CameraRecorder:
             if self._probe(self._first(role)) != (CODEC, CAMERA_W, CAMERA_H):
                 self._refuse(role)
         # They were only for this check, and are frames of whoever is on the
-        # sheet: the composer reads the FIFOs.
+        # sheet: readers read the cameras' files.
         for role in self._cameras:
             self._first(role).unlink()
 
@@ -297,32 +236,6 @@ class CameraRecorder:
         raise LiveError(f"camera {name} sent no H.264 {CAMERA_W}x{CAMERA_H} "
                         f"within {self.first_timeout_s:g} s")
 
-    def _spawn_composer(self, sheet_layout: layout.SheetLayout) -> None:
-        inputs = {role: i for i, role in enumerate(self._cameras)}
-        # -stats: the progress _Part reads, which -loglevel warning would hide.
-        cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "warning", "-stats", "-y",
-               "-filter_complex_threads", str(FILTER_THREADS), "-copyts"]
-        for role in self._cameras:
-            cmd += _input(self._fifo(role))
-        # A graph per camera, each on a thread of its own (layout.filtergraphs).
-        for graph in layout.filtergraphs(sheet_layout, inputs=inputs):
-            cmd += ["-filter_complex", graph]
-        # -t: a composer left behind by a recorder that died (the worker
-        # killed) has nobody to stop it, and once its captures are gone too it
-        # runs unpaced. It stops after the recording's cap, and the margin
-        # check() allows the wall clock, however fast it runs.
-        cmd += ["-map", "[out]",
-                "-c:v", "h264_nvenc", "-b:v", "20M", "-maxrate", "25M", "-g", "60", "-bf", "0",
-                "-t", str(self.max_s + WALL_MARGIN_S),
-                "-f", "mpegts", str(self.path)]
-        # Unbuffered: _Part reads 4 KiB at a time, and a buffered pipe waits for
-        # all of it, ~20 s of progress lines, before the head can move.
-        proc = self._popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, bufsize=0)
-        self._tail = proc.stdout = _Tail(proc.stdout)
-        self._composer = _Part(self.path, proc, progress=composite_s)
-        log.info("recording sheet %d's cameras into %s", self.sheet, self.path)
-
     def check(self):
         """Keep an eye on the recording. Called every few seconds by the
         manager's thread; a call while another, or a stop, is under way
@@ -335,8 +248,17 @@ class CameraRecorder:
             self._lock.release()
 
     def _check(self) -> None:
-        if self._ended or self._stopped or self._composer is None:
+        if self._ended or self._stopped or self._started_at is None:
             return
+        for role, proc in self._captures.items():
+            code = proc.poll()
+            if code is not None and role not in self._gone:
+                self._relays[role].join(timeout=RELAY_JOIN_S)
+                self._gone.add(role)
+                log.warning("camera %s's capture exited (%s); its view stops at %.1f s",
+                            self._cameras[role], code, self._heads.get(role, 0.0))
+        if len(self._gone) == len(self._captures):
+            self._end(f"every camera of sheet {self.sheet} has stopped")
         now, head = self.clock(), self.head_s()
         if head >= self.max_s or now - self._started_at >= self.max_s + WALL_MARGIN_S:
             log.info("sheet %d's recording reached the %.0f h cap", self.sheet, self.max_s / 3600)
@@ -345,27 +267,11 @@ class CameraRecorder:
             return
         if head > self._progress_head:
             self._progress_head, self._progress_at = head, now
-        # The composer first: its captures go down with it, and are no news.
-        code = self._composer.proc.poll()
-        if code is not None:
-            self._composer.reader.join(timeout=5)
-            said = self._tail.lines()
-            self._end(f"sheet {self.sheet}'s composer exited ({code})"
-                      + (f": {said[-1]}" if said else ""))
         if now - self._progress_at >= STALL_S:
-            self._end(f"sheet {self.sheet}'s composer stalled at {head:.0f} s")
-        for role, proc in self._captures.items():
-            code = proc.poll()
-            if code is not None and role not in self._gone:
-                self._gone.add(role)
-                log.warning("camera %s's capture exited (%s); its picture holds its last frame",
-                            self._cameras[role], code)
-        if len(self._gone) == len(self._captures):
-            self._end(f"every camera of sheet {self.sheet} has stopped")
+            self._end(f"sheet {self.sheet}'s recording stalled at {head:.0f} s")
 
     def _end(self, why: str) -> NoReturn:
-        said = self._tail.lines() if self._tail else []
-        log.warning("%s%s", why, "".join(f"\n  ffmpeg: {line}" for line in said))
+        log.warning("%s", why)
         self.stop()
         self._ended = True
         raise LiveError(why)
@@ -378,7 +284,7 @@ class CameraRecorder:
         return False
 
     def stop(self):
-        """Stop the captures, then the composer."""
+        """Stop the captures."""
         with self._lock:
             self._stopped = True
             captures = [p for p in self._captures.values() if p.poll() is None]
@@ -386,14 +292,18 @@ class CameraRecorder:
                 proc.terminate()
             for proc in captures:
                 _wait(proc, CAPTURE_EXIT_S)
-            if self._composer is not None and self._composer.proc.poll() is None:
-                self._composer.proc.terminate()
-                _wait(self._composer.proc, COMPOSER_EXIT_S)
 
     # --- what readers see -----------------------------------------------------
 
     def head_s(self) -> float:
-        return self._composer.head if self._composer is not None else 0.0
+        """How far every view can be read: the least of the heads of the
+        cameras still running (nothing until each has said), or of them all
+        once none is. It never goes back: a slow camera that stops leaves the
+        others' reach, and no reader has read past what it was told."""
+        running = [role for role in self._cameras if role not in self._gone] or list(self._cameras)
+        if all(role in self._heads for role in running):
+            self._head = max(self._head, min(self._heads[role] for role in running))
+        return self._head
 
 
 def _wait(proc, timeout_s: float) -> None:

@@ -3,14 +3,17 @@
 The tracker, its models and its calibration were all built on YouTube's
 composite: the two long views either side, and the two house cameras turned
 into a grey-barred strip down the middle (``geometry/layout.py``). The camera
-path rebuilds that picture from the raw cameras, so each sheet needs the crop,
-turn and scale that put each camera where YouTube put it. Those are fitted
+path reads each camera's own file, cut to what YouTube showed of it
+(``feeds/cameras.py``), so each sheet needs the crop, turn and scale that put
+each camera where YouTube put it. Those are fitted
 once per sheet from a YouTube frame (``scripts/cameras/fit_layout.py``) and
 kept in ``layouts/sheet{N}.json``; panel sizes differ by sheet, and sheets 2-4's
 long cameras were re-aimed for 2026-27.
 
-``filtergraphs`` turns a layout into the FFmpeg ``-filter_complex`` graphs the
-composer runs.
+``filtergraphs`` turns a layout into the FFmpeg ``-filter_complex`` graphs that
+compose the four into YouTube's picture. Recording no longer does
+(``recorder.py``); ``scripts/cameras/compose_offline.py`` does, to compare
+the two ways of reading a sheet.
 """
 
 from __future__ import annotations
