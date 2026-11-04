@@ -140,6 +140,7 @@ def calibration_block(setups, sideviews) -> dict:
                 "residual_m": (None if s.calib.residual_m is None
                                else round(s.calib.residual_m, 5)),
                 "flipped": s.calib.flipped,
+                **({} if s.calib.aspect == 1.0 else {"aspect": round(s.calib.aspect, 5)}),
                 "hog_line": None if s.hog_line is None else s.hog_line.to_json(),
                 "hog_line_error": s.hog_line_error,
                 "sidelines": None if s.sidelines is None else s.sidelines.to_json(),

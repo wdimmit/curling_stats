@@ -45,7 +45,7 @@ SHOT_JOB = "cs_"
 # style is cut again when the backfill asks for that (`recut`).
 CLIP_STYLE = 2
 # Of each overhead panel's calibration, what a clip is drawn by.
-_PANEL_KEYS = ("rect", "center_px", "px_per_m", "flipped")
+_PANEL_KEYS = ("rect", "center_px", "px_per_m", "flipped", "aspect")
 # How long a game's video is taken to stay in the workers' caches after its
 # run was analysed: past it, no clip of a shot is offered. A live game's
 # recording is kept as long (deploy/docker-compose.worker.yml

@@ -112,7 +112,33 @@ ARDSLEY = Club("ardsley", (
 }, panel_layout=PanelLayout(top=(821, 7, 278, 498), bottom=(821, 515, 278, 488)),
     side_rows=(335, 1015), channel_ids=("UCyU3Hul8S0_AqhYnqNMuGRw",))
 
-CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT, ARDSLEY)}
+# Martensville's broadcast (SSN for CurlingZone, 1920x1080): Swift Current's
+# arrangement -- two overheads in a centre strip framed in blue, both with the
+# front of the house at the top, long cameras either side with the left one
+# looking down at the top house. The house is a brewery's logo: a yellow band
+# whose outer edge is the 12-foot circle (stones agree, 0.29 m at the scale it
+# gives) and whose inner edge is 1.30 m out, not the 8-foot; the thin circle
+# inside it is decoration, not the 4-foot. The overhead tiles are stretched,
+# 0.94-0.95 as tall as wide. Hog lines are blue; the centre line is painted,
+# faintly, and sponsors' logos break it up on the right camera. The sheet's
+# name bar starts at row 978. CurlingZone carries many venues, so no channel
+# picks this profile.
+_MARTENSVILLE_YELLOW = ((18, 60, 110), (40, 255, 255))
+# The long cameras see the band paler and browner: H 19-27, S 57-93.
+_MARTENSVILLE_FAR_YELLOW = ((12, 35, 80), (40, 255, 255))
+_MARTENSVILLE_HOUSE = HousePaint(twelve_ft=(_MARTENSVILLE_YELLOW,), inner_radius_m=1.30,
+                                 fit_aspect=True)
+MARTENSVILLE = Club("martensville", (
+    ("top", Panel("top", _MARTENSVILLE_HOUSE)),
+    ("bottom", Panel("top", _MARTENSVILLE_HOUSE)),
+), long_cameras={
+    house: (side, EndPaint(ring=(_MARTENSVILLE_FAR_YELLOW,), inner_radius_m=1.30, hog="blue",
+                          centre_min_rows=40))
+    for house, side in (("top", "left"), ("bottom", "right"))
+}, panel_layout=PanelLayout(top=(728, 7, 468, 462), bottom=(728, 608, 468, 459)),
+    side_rows=(330, 975))
+
+CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT, ARDSLEY, MARTENSVILLE)}
 
 
 def for_channel(channel_id) -> Club:

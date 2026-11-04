@@ -46,6 +46,12 @@ class HousePaint:
     twelve_ft: tuple
     four_ft: tuple | None = None
     four_ft_edge: str = "outer"
+    # Where ``twelve_ft``'s inner edge really is: the 8-foot circle, except
+    # where a club paints a logo band that stops short of it.
+    inner_radius_m: float = C.R_8FT_M
+    # Fit the panel's height-to-width scale from the 12-foot ellipse, for a
+    # broadcast that stretches its overhead tiles. Granite's are square.
+    fit_aspect: bool = False
 
 
 GRANITE_HOUSE = HousePaint(twelve_ft=(GREEN_HSV,), four_ft=(BLUE_HSV,))
@@ -166,11 +172,12 @@ def find_rings(panel, paint: HousePaint = GRANITE_HOUSE) -> Rings:
     return Rings(twelve_ft=twelve, four_ft=four)
 
 
-def _inner_radius(blob: np.ndarray, cx: float, cy: float) -> float:
-    """Median nearest-edge radius: the inner boundary of an annulus."""
+def _inner_radius(blob: np.ndarray, cx: float, cy: float, aspect: float = 1.0) -> float:
+    """Median nearest-edge radius: the inner boundary of an annulus, in
+    pixels across the image where the panel is stretched by ``aspect``."""
     ys, xs = np.nonzero(blob)
-    ang = np.arctan2(ys - cy, xs - cx)
-    rad = np.hypot(xs - cx, ys - cy)
+    ang = np.arctan2((ys - cy) / aspect, xs - cx)
+    rad = np.hypot(xs - cx, (ys - cy) / aspect)
     bins = ((ang + np.pi) / (2 * np.pi) * _ANGLE_BINS).astype(int) % _ANGLE_BINS
     best = np.full(_ANGLE_BINS, np.inf)
     np.minimum.at(best, bins, rad)
@@ -195,10 +202,13 @@ class PanelCalib:
     edge_erosion_px: float
     residual_m: float | None  # None where the club paints no 4-foot ring to check by
     flipped: bool  # True when the delivery end is at the top of the image
+    # Pixels per metre down the image over pixels per metre across it:
+    # ``px_per_m`` is the scale across. 1 but for a stretched broadcast tile.
+    aspect: float = 1.0
 
     def to_sheet(self, x_px: float, y_px: float) -> tuple[float, float]:
         dx = (x_px - self.center_px[0]) / self.px_per_m
-        dy = (y_px - self.center_px[1]) / self.px_per_m
+        dy = (y_px - self.center_px[1]) / (self.px_per_m * self.aspect)
         return (-dx, -dy) if self.flipped else (dx, dy)
 
     def to_pixels(self, x_m: float, y_m: float) -> tuple[float, float]:
@@ -206,7 +216,7 @@ class PanelCalib:
             x_m, y_m = -x_m, -y_m
         return (
             self.center_px[0] + x_m * self.px_per_m,
-            self.center_px[1] + y_m * self.px_per_m,
+            self.center_px[1] + y_m * self.px_per_m * self.aspect,
         )
 
 
@@ -248,8 +258,11 @@ def solve(panel, delivery_side: str = "bottom",
         raise CalibrationError("lost the 12-foot ring while measuring its inner edge")
 
     r12 = rings.twelve_ft.radius_px
-    r8 = _inner_radius(blob, cx, cy)
-    px_per_m = (r12 + r8) / (C.R_12FT_M + C.R_8FT_M)
+    aspect = 1.0
+    if paint.fit_aspect:
+        cx, cy, r12, aspect = _axis_aligned_outer(blob)
+    r8 = _inner_radius(blob, cx, cy, aspect)
+    px_per_m = (r12 + r8) / (C.R_12FT_M + paint.inner_radius_m)
     if px_per_m <= 0:
         raise CalibrationError("degenerate scale")
 
@@ -263,4 +276,31 @@ def solve(panel, delivery_side: str = "bottom",
         edge_erosion_px=float(erosion),
         residual_m=None if residual_px is None else float(residual_px / px_per_m),
         flipped=(delivery_side == "top"),
+        aspect=float(aspect),
     )
+
+
+def _axis_aligned_outer(blob: np.ndarray):
+    """``(cx, cy, half-width, height / width)`` of an ellipse with its axes
+    along the image's, fitted to the blob's outer edge: a stretched tile's
+    circle, which a rotated ellipse would fit no better."""
+    ys, xs = np.nonzero(blob)
+    pts, n_filled = _outer_boundary(xs, ys, float(xs.mean()), float(ys.mean()))
+    if pts is None:
+        raise CalibrationError(f"the twelve_ft covers only {n_filled} of {_ANGLE_BINS} angles")
+    x, y = pts[:, 0].astype(float), pts[:, 1].astype(float)
+    keep = np.ones(len(x), bool)
+    for _ in range(2):
+        # x^2 + B y^2 + D x + E y + F = 0
+        (B, D, E, F), *_ = np.linalg.lstsq(
+            np.c_[y[keep] ** 2, x[keep], y[keep], np.ones(keep.sum())], -x[keep] ** 2, rcond=None)
+        if B <= 0:
+            raise CalibrationError("the twelve_ft does not fit an ellipse")
+        cx, cy = -D / 2, -E / (2 * B)
+        a2 = cx * cx + B * cy * cy - F
+        if a2 <= 0:
+            raise CalibrationError("the twelve_ft does not fit an ellipse")
+        a, aspect = float(np.sqrt(a2)), float(1 / np.sqrt(B))
+        r = np.hypot(x - cx, (y - cy) / aspect)
+        keep = np.abs(r - a) <= _OUTLIER_TOL * a
+    return float(cx), float(cy), a, aspect

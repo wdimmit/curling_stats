@@ -49,11 +49,14 @@ class EndPaint:
     ring: tuple
     inner_radius_m: float
     also: tuple = ()
-    # The hog line's paint: "red", or "dark" for a grey-black line. And where
+    # The hog line's paint: "red", "blue", or "dark" for a grey-black line. And where
     # the centre line comes from: its "paint", or the midpoint of the two
     # "sidelines" where it is not painted, as at Swift Current.
     hog: str = "red"
     centre: str = "paint"
+    # The fewest rows a painted centre line must be traced on: fewer where
+    # logos on the ice break up a faint line, as at Martensville.
+    centre_min_rows: int = _CL_MIN_ROWS
 
 
 @dataclass(frozen=True)
@@ -106,12 +109,13 @@ def ring_edges(view, paint: EndPaint):
     return outer, inner
 
 
-def hog_row(view, below_row: int) -> float:
-    """The hog line's red paint: the reddest row below the house, sub-pixel."""
+def hog_row(view, below_row: int, colour: str = "red") -> float:
+    """The hog line's paint: the reddest (or bluest) row below the house, sub-pixel."""
     v = view.astype(np.float32)
     w = v.shape[1]
     mid = v[:, int(w * 0.3):int(w * 0.7)]
-    red = (mid[:, :, 2] - (mid[:, :, 0] + mid[:, :, 1]) / 2).mean(axis=1)[below_row:]
+    ch = 2 if colour == "red" else 0  # BGR
+    red = (mid[:, :, ch] - (mid[:, :, 1] + mid[:, :, 2 - ch]) / 2).mean(axis=1)[below_row:]
     if len(red) < 3:
         raise SideViewError("no ice below the house to look for a hog line")
     i = int(np.argmax(red))
@@ -218,7 +222,8 @@ def solve(plate, rect, paint: EndPaint, name: str = "end", end_camera: bool = Tr
     x0, y0, w, h = rect
     view = np.ascontiguousarray(np.asarray(plate)[y0:y0 + h, x0:x0 + w])
     outer, inner = ring_edges(view, paint)
-    hog = (dark_hog_row if paint.hog == "dark" else hog_row)(view, int(outer[:, 1].max()) + 20)
+    below = int(outer[:, 1].max()) + 20
+    hog = dark_hog_row(view, below) if paint.hog == "dark" else hog_row(view, below, paint.hog)
     pts = np.vstack([outer, inner])
     radii = np.r_[np.full(len(outer), C.R_12FT_M), np.full(len(inner), paint.inner_radius_m)]
     xl, xr = outer[:, 0].min(), outer[:, 0].max()
@@ -255,7 +260,7 @@ def solve(plate, rect, paint: EndPaint, name: str = "end", end_camera: bool = Tr
         if q2 is None:
             raise SideViewError(f"{name}: no painted centre line below the house")
         q = q2
-    if keep.sum() < _CL_MIN_ROWS:
+    if keep.sum() < paint.centre_min_rows:
         raise SideViewError(f"{name}: the centre line was traced on only {int(keep.sum())} rows")
     line = (float(q[1]), float(q[0]))
     return _finish(view, rect, pts, radii, outer, hog, p, line, int(keep.sum()), name, end_camera)

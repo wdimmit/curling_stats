@@ -109,7 +109,8 @@ def _calib_to_json(cal):
         return None
     return {"center_px": list(cal.center_px), "px_per_m": cal.px_per_m,
             "edge_erosion_px": cal.edge_erosion_px, "residual_m": cal.residual_m,
-            "flipped": cal.flipped}
+            "flipped": cal.flipped,
+            **({} if cal.aspect == 1.0 else {"aspect": cal.aspect})}
 
 
 def _calib_from_json(d):
@@ -118,7 +119,7 @@ def _calib_from_json(d):
     return calibrate.PanelCalib(
         center_px=tuple(d["center_px"]), px_per_m=d["px_per_m"],
         edge_erosion_px=d["edge_erosion_px"], residual_m=d["residual_m"],
-        flipped=d["flipped"])
+        flipped=d["flipped"], aspect=d.get("aspect", 1.0))
 
 
 def to_json(setup: VideoSetup) -> dict:

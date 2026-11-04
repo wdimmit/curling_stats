@@ -88,6 +88,7 @@ class Panel:
     center_px: tuple
     px_per_m: float
     flipped: bool
+    aspect: float = 1.0  # down over across, for a stretched broadcast tile
 
     @classmethod
     def from_calibration(cls, cal: dict | None):
@@ -95,7 +96,8 @@ class Panel:
         try:
             return cls(rect=tuple(int(v) for v in cal["rect"]),
                          center_px=(float(cal["center_px"][0]), float(cal["center_px"][1])),
-                         px_per_m=float(cal["px_per_m"]), flipped=bool(cal["flipped"]))
+                         px_per_m=float(cal["px_per_m"]), flipped=bool(cal["flipped"]),
+                         aspect=float(cal.get("aspect", 1.0)))
         except (KeyError, TypeError, ValueError, IndexError):
             return None
 
@@ -106,7 +108,7 @@ class Panel:
         if self.flipped:
             x, y = -x, -y
         u = (self.center_px[0] + x * self.px_per_m) / self.rect[2]
-        v = (self.center_px[1] + y * self.px_per_m) / self.rect[3]
+        v = (self.center_px[1] + y * self.px_per_m * self.aspect) / self.rect[3]
         return [1 - u, 1 - v] if self.flipped else [u, v]
 
     def box(self, size) -> tuple:
