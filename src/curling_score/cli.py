@@ -590,7 +590,8 @@ def _live_replay(args) -> int:
 def _practice_replay(args) -> int:
     """A cached video watched as a practice session from ``--from`` (Start):
     each throw reported as it comes to rest, and how long after that each one
-    was published."""
+    was published. Or a sheet's camera files (``--cameras``), as the recorder
+    wrote them, watched from their start as the cameras' own session."""
     from curling_score.live import replay, session as live
     from curling_score.practice import harness
     from curling_score.practice.pipeline import PracticePipeline
@@ -604,8 +605,12 @@ def _practice_replay(args) -> int:
         weights, args.imgsz, args.device, skip_longview=args.no_longview,
         skip_line=args.no_line, progress=print)
     release_model = analyze_mod.load_release_model(line_model, print)
-    rec = replay.ReplayRecording(args.video, out / "recording.ts", speed=args.speed,
-                                 start_s=args.from_s, end_s=args.to_s).start()
+    if args.cameras:
+        rec = replay.CameraReplay(args.cameras, out / "cameras", args.sheet,
+                                  speed=args.speed).start()
+    else:
+        rec = replay.ReplayRecording(args.video, out / "recording.ts", speed=args.speed,
+                                     start_s=args.from_s, end_s=args.to_s).start()
     heads = harness.HeadClock().start(rec)
     sink = harness.Sink(out, heads)
     clipper = None
@@ -627,6 +632,16 @@ def _practice_replay(args) -> int:
         heads.stop()
     print(f"{len(sink.seen)} throw(s); see {out / 'throws.jsonl'}")
     return 0
+
+
+def _check_practice_replay(p, args) -> None:
+    """A replay is of a video between two times, or of a sheet's camera files."""
+    if bool(args.video) == bool(args.cameras):
+        p.error("give a video or --cameras, one of them")
+    if args.cameras and args.sheet is None:
+        p.error("--cameras needs --sheet")
+    if args.video and (args.from_s is None or args.to_s is None):
+        p.error("a video needs --from and --to")
 
 
 # While a sheet's calibration is recorded, the recorder is checked this often
@@ -776,11 +791,17 @@ def main(argv=None) -> int:
     p.set_defaults(func=_live_replay)
 
     p = sub.add_parser("practice-replay",
-                       help="replay a cached video as a practice session, one throw at a time")
-    p.add_argument("video", help="a cached video file")
-    p.add_argument("--from", dest="from_s", type=float, required=True,
+                       help="replay a cached video, or a sheet's camera files, as a practice "
+                            "session, one throw at a time")
+    p.add_argument("video", nargs="?", help="a cached video file")
+    p.add_argument("--cameras", metavar="DIR",
+                   help="instead of a video: a sheet's camera files, <role>.ts as the "
+                        "recorder writes them, replayed from their start")
+    p.add_argument("--sheet", type=int, choices=range(1, 6),
+                   help="the sheet the --cameras files are of, whose layout cuts them")
+    p.add_argument("--from", dest="from_s", type=float,
                    help="where the session starts (Start), in seconds into the video")
-    p.add_argument("--to", dest="to_s", type=float, required=True,
+    p.add_argument("--to", dest="to_s", type=float,
                    help="where the replay stops, in seconds into the video")
     p.add_argument("--speed", type=float, default=1.0,
                    help="playback speed against real time (default: 1)")
@@ -796,6 +817,7 @@ def main(argv=None) -> int:
     p.add_argument("--clips", action="store_true",
                    help="cut each throw's clip into <out>/clips, as a worker would upload it")
     p.set_defaults(func=_practice_replay)
+    practice_replay = p
 
     p = sub.add_parser("cameras-calibrate",
                        help="calibrate a sheet from its cameras and save the calibration "
@@ -896,6 +918,8 @@ def main(argv=None) -> int:
     p.set_defaults(func=_info)
 
     args = parser.parse_args(argv)
+    if args.command == "practice-replay":
+        _check_practice_replay(practice_replay, args)
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(message)s",
