@@ -319,7 +319,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
             sheet=job.get("sheet"), game_format=job.get("format") or "fours",
             skip_scoreboard=False,
             skip_longview=skip_longview, on_phase=on_phase,
-            download_attempts=1, club=clubs.for_channel(info.channel_id),
+            download_attempts=1, club=_club(info.channel_id),
         )
     run_dir = out_dir / job["run_id"]
     analyze_mod.write(doc, run_dir)
@@ -408,6 +408,19 @@ def resolve_skip_longview() -> bool:
     for the per-shot ffmpeg decode the side views need, not a new default.
     """
     return os.environ.get("SKIP_LONGVIEW") == "1"
+
+
+def _club(channel_id):
+    """The club whose stream this is: ``CLUB`` if set, else the video's channel.
+
+    ``CLUB`` names a profile in ``clubs.CLUBS``, for a worker set up for one
+    club whose channel carries many venues' streams (CurlingZone's, for
+    Martensville), so no channel id can pick it.
+    """
+    name = os.environ.get("CLUB")
+    if name:
+        return clubs.CLUBS[name]
+    return clubs.for_channel(channel_id)
 
 
 def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | None,

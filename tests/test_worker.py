@@ -113,6 +113,20 @@ class TestProcessJob:
                                out_dir=tmp_path / "out", analyze_fn=analyze_fn, fetch_info=info)
         assert seen == [clubs.GRANITE, clubs.ARDSLEY]
 
+    def test_club_overrides_the_channel(self, tmp_path, monkeypatch):
+        """A worker set up for one club whose channel carries many venues."""
+        from curling_score import clubs
+        seen = []
+
+        def analyze_fn(url, **kw):
+            seen.append(kw["club"])
+            return fake_doc()
+
+        monkeypatch.setenv("CLUB", "martensville")
+        worker.process_job(JOB, FakeApi([]), "home", root=tmp_path, weights=None,
+                           out_dir=tmp_path / "out", analyze_fn=analyze_fn, fetch_info=fake_info)
+        assert seen == [clubs.MARTENSVILLE]
+
     def test_the_window_and_sheet_reach_the_pipeline(self, tmp_path):
         api = FakeApi([])
         seen = {}
