@@ -1,0 +1,1411 @@
+{
+ "what": "mv1: Martensville's logo houses (ZJG9RZ69Wg4)",
+ "scope": "mv1:train",
+ "prelabel": {
+  "weights": "overhead-3.pt",
+  "conf": 0.25,
+  "imgsz": 448,
+  "classes": {
+   "0": "red_stone",
+   "1": "yellow_stone"
+  }
+ },
+ "selection": {
+  "shares": {
+   "empty-top": 15,
+   "empty-bottom": 15,
+   "play-top": 35,
+   "play-bottom": 35
+  },
+  "sure_conf": 0.3,
+  "cell_px": 12,
+  "static_share": 0.3,
+  "static_cells": {
+   "top": [
+    [
+     16,
+     26
+    ],
+    [
+     16,
+     27
+    ],
+    [
+     16,
+     28
+    ],
+    [
+     17,
+     26
+    ],
+    [
+     17,
+     27
+    ],
+    [
+     17,
+     28
+    ],
+    [
+     18,
+     26
+    ],
+    [
+     18,
+     27
+    ],
+    [
+     18,
+     28
+    ],
+    [
+     19,
+     3
+    ],
+    [
+     19,
+     4
+    ],
+    [
+     19,
+     5
+    ],
+    [
+     19,
+     26
+    ],
+    [
+     19,
+     27
+    ],
+    [
+     19,
+     28
+    ],
+    [
+     20,
+     3
+    ],
+    [
+     20,
+     4
+    ],
+    [
+     20,
+     5
+    ],
+    [
+     20,
+     26
+    ],
+    [
+     20,
+     27
+    ],
+    [
+     20,
+     28
+    ],
+    [
+     21,
+     3
+    ],
+    [
+     21,
+     4
+    ],
+    [
+     21,
+     5
+    ],
+    [
+     21,
+     26
+    ],
+    [
+     21,
+     27
+    ],
+    [
+     21,
+     28
+    ]
+   ],
+   "bottom": [
+    [
+     16,
+     27
+    ],
+    [
+     16,
+     28
+    ],
+    [
+     16,
+     29
+    ],
+    [
+     17,
+     27
+    ],
+    [
+     17,
+     28
+    ],
+    [
+     17,
+     29
+    ],
+    [
+     18,
+     25
+    ],
+    [
+     18,
+     26
+    ],
+    [
+     18,
+     27
+    ],
+    [
+     18,
+     28
+    ],
+    [
+     18,
+     29
+    ],
+    [
+     18,
+     30
+    ],
+    [
+     18,
+     31
+    ],
+    [
+     19,
+     25
+    ],
+    [
+     19,
+     26
+    ],
+    [
+     19,
+     27
+    ],
+    [
+     19,
+     29
+    ],
+    [
+     19,
+     30
+    ],
+    [
+     19,
+     31
+    ],
+    [
+     20,
+     3
+    ],
+    [
+     20,
+     4
+    ],
+    [
+     20,
+     5
+    ],
+    [
+     20,
+     25
+    ],
+    [
+     20,
+     26
+    ],
+    [
+     20,
+     27
+    ],
+    [
+     20,
+     28
+    ],
+    [
+     20,
+     29
+    ],
+    [
+     20,
+     30
+    ],
+    [
+     20,
+     31
+    ],
+    [
+     21,
+     3
+    ],
+    [
+     21,
+     4
+    ],
+    [
+     21,
+     5
+    ],
+    [
+     21,
+     27
+    ],
+    [
+     21,
+     28
+    ],
+    [
+     21,
+     29
+    ],
+    [
+     22,
+     3
+    ],
+    [
+     22,
+     4
+    ],
+    [
+     22,
+     5
+    ],
+    [
+     22,
+     27
+    ],
+    [
+     22,
+     28
+    ],
+    [
+     22,
+     29
+    ]
+   ]
+  },
+  "mined_every_s": 2.0
+ },
+ "by_kind": {
+  "empty-top": 15,
+  "empty-bottom": 15,
+  "play-top": 35,
+  "play-bottom": 35
+ },
+ "frames": [
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 982.0,
+   "score": 2.601,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000982_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 1168.0,
+   "score": 2.603,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_001168_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 1290.0,
+   "score": 2.61,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_001290_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 1676.0,
+   "score": 2.602,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_001676_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 2014.0,
+   "score": 2.587,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002014_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 3136.0,
+   "score": 2.605,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_003136_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 3284.0,
+   "score": 2.606,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_003284_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 3590.0,
+   "score": 2.612,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_003590_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 3902.0,
+   "score": 2.601,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_003902_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 4104.0,
+   "score": 2.603,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004104_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 5286.0,
+   "score": 2.606,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_005286_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 5434.0,
+   "score": 2.598,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_005434_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 5764.0,
+   "score": 2.605,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_005764_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 6102.0,
+   "score": 2.618,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_006102_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "top",
+   "t": 6398.0,
+   "score": 2.602,
+   "mined_boxes": 3,
+   "candidates": 2031,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_006398_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 260.0,
+   "score": 4.138,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_000260_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 434.0,
+   "score": 4.058,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_000434_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 740.0,
+   "score": 4.047,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_000740_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 1972.0,
+   "score": 4.061,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001972_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 2190.0,
+   "score": 4.221,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_002190_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 2468.0,
+   "score": 4.142,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_002468_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 2740.0,
+   "score": 4.059,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_002740_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 3000.0,
+   "score": 4.118,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003000_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 4082.0,
+   "score": 4.087,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_004082_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 4502.0,
+   "score": 4.228,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_004502_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 4816.0,
+   "score": 3.955,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_004816_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 5066.0,
+   "score": 4.116,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_005066_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 5266.0,
+   "score": 4.31,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_005266_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 6136.0,
+   "score": 3.975,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_006136_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "empty",
+   "panel": "bottom",
+   "t": 6386.0,
+   "score": 4.103,
+   "mined_boxes": 5,
+   "candidates": 1972,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_006386_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 186.0,
+   "score": 4,
+   "mined_boxes": 5,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000186_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 340.0,
+   "score": 3,
+   "mined_boxes": 3,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000340_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 374.0,
+   "score": 4,
+   "mined_boxes": 5,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000374_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 474.0,
+   "score": 3,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000474_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 542.0,
+   "score": 4,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000542_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 598.0,
+   "score": 6,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000598_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 668.0,
+   "score": 6,
+   "mined_boxes": 9,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000668_00",
+   "prelabels": 9
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 748.0,
+   "score": 8,
+   "mined_boxes": 9,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000748_00",
+   "prelabels": 9
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 856.0,
+   "score": 7,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000856_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 928.0,
+   "score": 9,
+   "mined_boxes": 9,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000928_00",
+   "prelabels": 9
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 930.0,
+   "score": 9,
+   "mined_boxes": 9,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_000930_00",
+   "prelabels": 9
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2138.0,
+   "score": 3,
+   "mined_boxes": 5,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002138_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2186.0,
+   "score": 4,
+   "mined_boxes": 5,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002186_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2246.0,
+   "score": 4,
+   "mined_boxes": 7,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002246_00",
+   "prelabels": 7
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2310.0,
+   "score": 6,
+   "mined_boxes": 7,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002310_00",
+   "prelabels": 7
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2426.0,
+   "score": 7,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002426_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2512.0,
+   "score": 9,
+   "mined_boxes": 8,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002512_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2572.0,
+   "score": 5,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002572_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2624.0,
+   "score": 9,
+   "mined_boxes": 8,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002624_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2660.0,
+   "score": 9,
+   "mined_boxes": 8,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002660_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2792.0,
+   "score": 11,
+   "mined_boxes": 8,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002792_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 2854.0,
+   "score": 13,
+   "mined_boxes": 9,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_002854_00",
+   "prelabels": 9
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4252.0,
+   "score": 4,
+   "mined_boxes": 5,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004252_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4326.0,
+   "score": 4,
+   "mined_boxes": 4,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004326_00",
+   "prelabels": 4
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4328.0,
+   "score": 4,
+   "mined_boxes": 4,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004328_00",
+   "prelabels": 4
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4438.0,
+   "score": 7,
+   "mined_boxes": 5,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004438_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4482.0,
+   "score": 6,
+   "mined_boxes": 7,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004482_00",
+   "prelabels": 7
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4580.0,
+   "score": 5,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004580_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4642.0,
+   "score": 6,
+   "mined_boxes": 7,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004642_00",
+   "prelabels": 7
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4726.0,
+   "score": 7,
+   "mined_boxes": 8,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004726_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4808.0,
+   "score": 6,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004808_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4824.0,
+   "score": 6,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004824_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4896.0,
+   "score": 5,
+   "mined_boxes": 6,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004896_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 4976.0,
+   "score": 6,
+   "mined_boxes": 7,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_004976_00",
+   "prelabels": 7
+  },
+  {
+   "kind": "play",
+   "panel": "top",
+   "t": 5052.0,
+   "score": 9,
+   "mined_boxes": 10,
+   "candidates": 1234,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_t_005052_00",
+   "prelabels": 10
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 2.0,
+   "score": 3,
+   "mined_boxes": 4,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_000002_00",
+   "prelabels": 4
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1042.0,
+   "score": 2,
+   "mined_boxes": 4,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001042_00",
+   "prelabels": 4
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1176.0,
+   "score": 5,
+   "mined_boxes": 6,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001176_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1246.0,
+   "score": 7,
+   "mined_boxes": 8,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001246_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1296.0,
+   "score": 5,
+   "mined_boxes": 6,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001296_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1410.0,
+   "score": 4,
+   "mined_boxes": 8,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001410_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1438.0,
+   "score": 6,
+   "mined_boxes": 7,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001438_00",
+   "prelabels": 7
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1504.0,
+   "score": 3,
+   "mined_boxes": 4,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001504_00",
+   "prelabels": 4
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1630.0,
+   "score": 7,
+   "mined_boxes": 9,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001630_00",
+   "prelabels": 10
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1706.0,
+   "score": 7,
+   "mined_boxes": 9,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001706_00",
+   "prelabels": 9
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1732.0,
+   "score": 8,
+   "mined_boxes": 9,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001732_00",
+   "prelabels": 9
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1786.0,
+   "score": 10,
+   "mined_boxes": 7,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001786_00",
+   "prelabels": 7
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1858.0,
+   "score": 10,
+   "mined_boxes": 7,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001858_00",
+   "prelabels": 7
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 1938.0,
+   "score": 11,
+   "mined_boxes": 10,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_001938_00",
+   "prelabels": 11
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3106.0,
+   "score": 6,
+   "mined_boxes": 8,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003106_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3160.0,
+   "score": 7,
+   "mined_boxes": 6,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003160_00",
+   "prelabels": 7
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3196.0,
+   "score": 7,
+   "mined_boxes": 9,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003196_00",
+   "prelabels": 10
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3256.0,
+   "score": 8,
+   "mined_boxes": 8,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003256_00",
+   "prelabels": 9
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3364.0,
+   "score": 9,
+   "mined_boxes": 6,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003364_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3414.0,
+   "score": 10,
+   "mined_boxes": 8,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003414_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3478.0,
+   "score": 8,
+   "mined_boxes": 7,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003478_00",
+   "prelabels": 8
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3564.0,
+   "score": 9,
+   "mined_boxes": 10,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003564_00",
+   "prelabels": 10
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3654.0,
+   "score": 10,
+   "mined_boxes": 12,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003654_00",
+   "prelabels": 12
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3756.0,
+   "score": 10,
+   "mined_boxes": 10,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003756_00",
+   "prelabels": 10
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3774.0,
+   "score": 10,
+   "mined_boxes": 11,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003774_00",
+   "prelabels": 11
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3866.0,
+   "score": 11,
+   "mined_boxes": 11,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003866_00",
+   "prelabels": 11
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 3940.0,
+   "score": 14,
+   "mined_boxes": 12,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_003940_00",
+   "prelabels": 12
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 5542.0,
+   "score": 6,
+   "mined_boxes": 3,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_005542_00",
+   "prelabels": 3
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 5628.0,
+   "score": 6,
+   "mined_boxes": 6,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_005628_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 5656.0,
+   "score": 5,
+   "mined_boxes": 4,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_005656_00",
+   "prelabels": 4
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 5726.0,
+   "score": 6,
+   "mined_boxes": 6,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_005726_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 5846.0,
+   "score": 6,
+   "mined_boxes": 4,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_005846_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 5874.0,
+   "score": 6,
+   "mined_boxes": 5,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_005874_00",
+   "prelabels": 5
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 5952.0,
+   "score": 3,
+   "mined_boxes": 6,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_005952_00",
+   "prelabels": 6
+  },
+  {
+   "kind": "play",
+   "panel": "bottom",
+   "t": 6068.0,
+   "score": 5,
+   "mined_boxes": 7,
+   "candidates": 1294,
+   "video": "ZJG9RZ69Wg4",
+   "stem": "ZJG9RZ69Wg4_b_006068_00",
+   "prelabels": 7
+  }
+ ]
+}

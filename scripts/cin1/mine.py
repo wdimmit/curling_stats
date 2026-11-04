@@ -35,7 +35,8 @@ def main():
     doc = json.loads(a.timeline.read_text())
     cal = {name: doc["calibration"][name] for name in ("top", "bottom")}
     calibs = {name: PanelCalib(center_px=tuple(c["center_px"]), px_per_m=c["px_per_m"], edge_erosion_px=0.0,
-                               residual_m=c["residual_m"], flipped=c["flipped"]) for name, c in cal.items()}
+                               residual_m=c["residual_m"], flipped=c["flipped"],
+                               aspect=c.get("aspect", 1.0)) for name, c in cal.items()}
     rects = {name: c["rect"] for name, c in cal.items()}
     x0 = min(r[0] for r in rects.values())
     y0 = min(r[1] for r in rects.values())
