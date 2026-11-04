@@ -1,6 +1,8 @@
 # Pluggable input: the club's cameras for league and practice, YouTube kept (design)
 
 Date: 2026-10-25. Status: design, approved by the user (plan review in session). Branch `camera-direct`.
+Amended 2026-10-29: the cameras are read over **SRT**, not NDI (see "Capture over SRT"). Where this document
+says NDI for the new design, read SRT.
 
 ## Context
 
@@ -20,6 +22,14 @@ The user wants:
 - **No YouTube downloads.** The YouTube stream itself is NOT downloaded. Clips come from the local camera feeds.
 - **Retention.** Raw camera files are kept a few days. Overnight, every rock of a camera game gets its clip cut,
   so Clip… still works after the raw files are dropped.
+
+**User decisions (2026-10-29):**
+- **SRT replaces NDI everywhere NDI was planned**, practice included. There is no NDI fallback: the NDI library, the
+  packet tap and everything built for them go.
+- **Practice's capture moves to SRT first, on main** (revised the same day; it replaced "ship everything
+  together"). The swap from NDI to SRT capture, with the composer kept, is built and deployed from main
+  (`docs/superpowers/specs/2026-10-29-practice-srt-capture-design.md` on main). This branch takes it when it next
+  merges main, and builds the rest on SRT. Everything else here still ships together from this branch.
 
 ## What exploration established
 
@@ -49,9 +59,27 @@ The user wants:
   - `recording.path` / `head_s()` assume one file.
   - Cross-camera timing (`split.long_split`, `release.find_and_pair`, `farfollow`, `linetime`) needs only a shared
     clock. The cameras give one, and with it timing is better than YouTube's ±0.5 s drift.
+- **The cameras serve SRT** (measured 2026-10-28/29; scripts and results in `/data/wdd/scratch/camera-direct/` on
+  the Ryzen):
+  - All 20 cameras (`inventory.CAMERAS`, 192.168.0.231-.250) run an SRT listener on **UDP 1600**. A plain caller
+    connects: no stream id, no passphrase.
+  - Each serves **H.264 Main, 1920x1080, 60 fps, in MPEG-TS, about 9.5 Mbit/s**. Sheet 4's cameras send H.264 over
+    SRT even though they send HEVC over NDI.
+  - **The NDI house-camera dropout does not happen on SRT.** 3H-HOUSE over SRT for 90 min (`srt-ab/`): one
+    connection, longest gap between frames 0.25 s. An NDI receiver on the same camera at the same time dropped for
+    32, 16, 16 and 16 s.
+  - **During a league broadcast:** all four sheet 4 cameras over SRT for 2 h (`srt-s4-1029/`, 500 ms latency): one
+    connection each, 60.04 fps, longest gap 0.13 s, no SRT packet loss. The club's broadcast and our five live
+    YouTube games carried on normally.
+  - **Open:** the workers logged 18 H.264 decode errors in the YouTube recordings of sheets 1 and 3 during that
+    run. Last night's league logged none. Each was one damaged frame and every end published, but the run did not
+    show whether our SRT traffic contributed.
+  - **Not yet known:** what a second SRT caller to the same camera gets: a second stream, a refusal, or the first
+    caller dropped.
 - **Hard limits on the Ryzen:**
-  - `enp4s0` links at 100 Mbit/s today (at most 2 sheets at 31-38 Mbit/s each). The user is bringing it up at
-    1 Gbit/s on 2026-10-25, well before any deploy, so all five sheets are the target.
+  - `enp4s0` links at 100 Mbit/s today, still on 2026-10-29. Over SRT a sheet is ~38 Mbit/s and all 20 cameras
+    ~190 Mbit/s, so more than two sheets at once needs the gigabit link the user is bringing up. All five sheets
+    are the target.
   - /data has 917 GB free. Raw footage is ~16 GB per sheet-hour.
   - Lane CPU is ~72% decode and bound by memory bandwidth.
   - A consumer NVENC allows ~5 sessions per system, so per-view re-encoding of 20 streams is out.
@@ -102,14 +130,68 @@ The consumers to switch from `(path, rect)` to `View`:
 - `detect/cache` keys (path + chain);
 - `fpframes`: name the camera by view name, not by rect tuple.
 
-### Camera recording without a composer (`cameras/recorder.py`)
+### Capture over SRT, and recording without a composer (`cameras/capture.py`, `cameras/recorder.py`)
 
-- Replace the composer with a `-c copy` remux per camera into a growing `live/<id>/<role>.ts`. Use `-copyts` with
-  `CameraClock` times, so all four files share the recorder's zero.
-- The capture's existing `Holder` keeps a stalled camera's file continuous.
-- The slate guard, capture processes, `Reconnects` and `MAX_AGE_S` are unchanged.
+(Replaces the NDI capture, amended 2026-10-29.)
+
+**One capture process per camera, over SRT.**
+- It connects as an SRT caller to `srt://<camera ip>:1600`, the address from `inventory.CAMERAS`, with a 500 ms
+  latency (measured clean on sheet 4 during a league, where 200 ms once lost packets on 4H-PTZ). There is no finder
+  and no camera name lookup.
+- It reads the camera's MPEG-TS through FFmpeg's `srt` protocol, which the worker image's ffmpeg already has. Its
+  H.264 packets are copied, never decoded or encoded.
+- **The shared clock is unchanged.** `CameraClock` times every packet from its pts (the camera's clock spaces the
+  frames) anchored to its arrival on the Ryzen (the cameras' clocks are off and drift). SRT pts are 90 kHz and wrap
+  at 2^33 (~26.5 h): a wrap must read as continuous time, not as a clock step.
+  - Measured 2026-11-03 (see "Camera sync" in `2026-10-29-practice-srt-capture-design.md` on main):
+    - The long cameras' NTP times disagree by 10-90 ms from day to day, but arrival delays hold to 1-2 ms.
+    - The arrival anchor is within sd 6.5 ms of the hour-long tie.
+    - On the 11/02 sheet 3 league, arrival read 30 ms off between the two PTZs; NTP would have read 47 ms off.
+  - No flash test (user: do our best with what we have).
+  - Main's SRT capture (`practice-srt`) takes each camera model's own delivery delay off: 0.5 s plus 65 ms (HOUSE),
+    62 ms (POV) or 91 ms (PTZ), measured against NDI on the same frames. That puts every camera where NDI put it, and
+    the PTZs 27 ms earlier against the houses than raw arrival would. The league path inherits it with the capture.
+- **Sync watchdog (league, phase 3).** Each camera run records, in its timeline diagnostics, the readings that need
+  no calibration:
+  - the long-camera pair's offset, from split-sync `mid` read in both throwing directions;
+  - house against long, from clean hits (`hits.py` in `sync-check/` is the prototype).
+
+  Both are logged per run and pooled per sheet over weeks. A per-camera correction constant is added to
+  `CameraClock` only when the pooled numbers justify one (about 50 clean hits or more), and only with the user's
+  OK. Until then the readings are reported, not applied.
+- **Kept from today:** `Holder` (a stalled camera's file holds its last keyframe), `Reconnects` (5 s, doubling to
+  60 s, so a stuck capture never hammers a camera), `MAX_AGE_S`, the first-keyframe check (`--first`), and the exits
+  (camera silent at start, parent gone).
+- **Builder's call:** whether the process drives `ffmpeg` as a subprocess (as `srt_recv.py` in the measurements
+  did) or opens the URL in PyAV directly. PyAV's own FFmpeg must have `srt` for the second; check before choosing.
+
+**Recording without a composer.**
+- Each capture writes its camera's packets, with their `CameraClock` times, into a growing `live/<id>/<role>.ts`, so
+  all four files share the recorder's zero. The NUT FIFOs and the composer go.
 - This removes ~2.7 cores and an NVENC session per sheet, and the 0.5-0.8 s composer lag during clip cuts (F2).
+- **Timestamps in the files (Claude's call, 2026-10-29):** each packet's pts and dts are rewritten to its
+  `CameraClock` time, so readers, `frames.seek_lead` and `head_s` use the shared zero directly, and a reconnect gap
+  reads as a gap. The cameras send no B-frames (pts = dts on 2,400 packets checked from `srt-s4-1029/`) and a
+  keyframe about every 2.2 s, so one time per packet serves both. A sidecar offset map is not used.
+- **One caller per camera (Claude's call):** whatever the phase 0 test finds, a camera held by a recording on this
+  box is not opened by anything else on it (a per-camera lock; `cameras-calibrate` and test tools refuse or reuse
+  the running file). If the test shows a second caller drops the first, the lock is the only protection, and the
+  dev box must not pull SRT while the Ryzen records.
+- **Disk (Claude's call):** over SRT a sheet-hour is ~17 GB. `WORKER_CAMERA_DAYS` stays the default, but pruning
+  also drops the oldest kept camera games whenever /data falls below a free-space floor (builder picks the
+  number, at least one five-sheet night, ~350 GB).
+- **`CAMERA_MAX_SHEETS` (Claude's call):** defaults to 2 while `enp4s0` is at 100 Mbit/s; the deploy raises it to
+  5 once the link reads 1000.
+- The slate guard and the per-session limits are unchanged.
 - `CameraRecorder` yields a `CameraFeed`. The lane and session read `feed` in place of `recording.path`.
+
+**NDI goes.** Removed: `cameras/tap.py`, `cameras/ndi_tap.c` and the `ndi-tap` build stage in `Dockerfile.worker`;
+`cyndilib` from the image; `inventory.ndi_config`; the NDI-specific parts of `capture.py` (finder, receive pump,
+tap reader, re-exec with `tap_env`). Inventory keeps the camera names and addresses. The compose notes on NDI
+(`deploy/docker-compose.worker.yml`) are rewritten for SRT; the containers reach the cameras from
+`deploy_default` as outgoing UDP, with no `network_mode: host`. **The SRT capture itself and the NDI removal come
+from main** (the practice-first decision above). This branch keeps only the composer removal and the per-camera
+`.ts` writing.
 
 ### League games on cameras
 
@@ -176,8 +258,15 @@ phase 1 refactor, even though phase 1 changes no behaviour.
 
 0. **Feasibility.** Measure only; no product code. Write the spec doc
    `docs/superpowers/specs/2026-10-25-pluggable-input-design.md` from this plan first.
-   - **Link.** Once the user has `enp4s0` at 1 Gbit/s (2026-10-25), confirm `/sys/class/net/enp4s0/speed` reads
-     1000. Then run a five-sheet capture-only test: drops, keyframe storms, CPU.
+   - **Link.** Once the user has `enp4s0` at 1 Gbit/s, confirm `/sys/class/net/enp4s0/speed` reads 1000. Then run
+     a five-sheet SRT capture-only test at night: drops, CPU, disk rate.
+   - **SRT, done 2026-10-28/29:** dropout-free on 3H, and four cameras through a league broadcast (see "What
+     exploration established"). This covers "Receiver headroom during a broadcast" below for one sheet.
+   - **A second SRT caller.** At night, connect two callers to one camera and record what each gets. The design
+     assumes one caller per camera; if a second one drops the first, nothing (a clip tool, a test script) may open a
+     camera that a recording holds.
+   - **Decode-error baseline.** At a league with no SRT pull, count the workers' `error while decoding` lines over
+     the draw, to compare with the 18 during the sheet 4 SRT run.
    - **League capture permission (user/club).** Practice was agreed for when nothing is streamed. League capture
      needs the club's OK and a privacy page update.
    - **Receiver headroom during a broadcast.** With the club's production running, one extra receiver per camera
@@ -192,7 +281,8 @@ phase 1 refactor, even though phase 1 changes no behaviour.
    - **Scoreboard.** Confirm the board appears in raw `long_h` on all five sheets.
 1. **The `feeds` module, with YouTube only.** No change in behaviour.
    - Gate: identical timelines on the harness videos (`ab_rel_ff.py`, the 16-game harness).
-2. **Camera recorder without a composer, and practice on `CameraFeed`.**
+2. **The camera recorder without a composer, and practice on `CameraFeed`**, on top of main's SRT capture (merge
+   main first).
    - Gate: a recorded practice session replayed both ways from the same raw files (an offline-composed composite
      against per-view) finds the same throws, with rest within a few cm.
    - Gate: latency p90 ≤ 20 s, with calibration agreement.
@@ -209,12 +299,14 @@ phase 1 refactor, even though phase 1 changes no behaviour.
 ## Critical files
 
 - **New:** `src/curling_score/feeds/{__init__,base,youtube,cameras}.py`.
+- **Removed:** `cameras/tap.py`, `cameras/ndi_tap.c`.
 - **Changed:**
   - `ingest/frames.py`, `ingest/proxy.py`, `ingest/prune.py`, `ingest/cache.py`;
   - `detect/longview.py`, `detect/lanekeep.py`, `detect/sequence.py`, `detect/cache.py`;
   - `geometry/sideview.py`, `game/profile.py`, `analyze.py`;
   - `live/session.py`, `live/lane.py`, `live/manager.py`;
-  - `cameras/recorder.py`, `cameras/calstore.py`;
+  - `cameras/capture.py` (SRT), `cameras/recorder.py`, `cameras/calstore.py`, `cameras/inventory.py`;
+  - `Dockerfile.worker` (no tap stage, no cyndilib);
   - `practice/clips.py`, `practice/overlay.py`, `game/clips.py`, `game/clipburn.py`;
   - `game/scoreboard.py`, `game/boardsplit.py`;
   - `service/playlists.py`, `service/records.py` (`Playlist.input`, `Run.source`, the time offset);
@@ -223,7 +315,7 @@ phase 1 refactor, even though phase 1 changes no behaviour.
   - `deploy/docker-compose.worker.yml`, `deploy/cloudrun.yaml`, `service/static/privacy.html`.
 - **Reused:**
   - `cameras/layout.Placement`/`filtergraphs` (the chain builder);
-  - `cameras/capture.CameraClock`/`Holder`;
+  - `cameras/capture.CameraClock`/`Holder`/`Reconnects`;
   - `frames.seek_lead` (the MPEG-TS seek gotcha);
   - `gameclips` shot clip jobs and `clips/backfill`;
   - `prune.prune`, `cache.keep_*`;
@@ -231,6 +323,9 @@ phase 1 refactor, even though phase 1 changes no behaviour.
 
 ## Verification
 
+- **SRT capture:** unit tests for the 2^33 pts wrap through `CameraClock`, reconnect timing and the first-keyframe
+  exit, using a recorded `.ts` from `srt-s4-1029/` (or a local SRT listener) in place of a camera; then a live
+  practice session on the Ryzen at night, all four cameras of a sheet, frame gaps logged as in the measurements.
 - **Unit tests:** feeds chains match `layout.filtergraphs` pixel for pixel on test patterns; `count_frame` pairing
   across files; legacy timeline rect conversion; the poller's capacity fallback; prune order. Run the affected
   subsets only; the full suite OOMs here.
