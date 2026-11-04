@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from curling_score.feeds import Cut, as_feed
 from curling_score.game.hogtime import CAMERA_FOR
 from curling_score.geometry import constants as G
 from curling_score.ingest import frames
@@ -79,7 +80,7 @@ def exit_time(throw: dict, view) -> float | None:
     if t_hog is None or t_far is None or t_far <= t_hog:
         return None
     try:
-        at = view.metres_at(view.rect[3] - 1)
+        at = view.metres_at(view.cut.out_size[1] - 1)
     except (ZeroDivisionError, ValueError):
         return None
     if not math.isfinite(at) or at <= NEAR_HOG_M:
@@ -142,9 +143,10 @@ def cut(plan: ClipPlan, views: dict, out_path, *, t0_s: float = 0.0, size=CLIP_S
         fps: int = CLIP_FPS, timeout_s: float = CUT_TIMEOUT_S, run=subprocess.run) -> None:
     """Cut ``plan`` into ``out_path`` with one ffmpeg run.
 
-    ``views`` maps a view to ``(source, crop)``: the file it is in and the
-    rectangle of it, or None for a whole frame. Times are on the stream's
-    clock; ``t0_s`` is where the sources begin on it.
+    ``views`` maps a view to ``(source, cut)``: the file it is in and how the
+    view is taken from it (a ``Cut``, or a bare rectangle), or None for a whole
+    frame. Times are on the stream's clock; ``t0_s`` is where the sources
+    begin on it.
 
     Bounded by `-fs` and a timeout, as `harvest/clips.py` learned to be.
     """
@@ -201,10 +203,12 @@ def decode_args(plan: ClipPlan, views: dict, *, t0_s: float = 0.0, size=CLIP_SIZ
         graph.append(f"[{i}:v]split={n}" + "".join(f"[{x}]" for x in labels)
                      if n > 1 else f"[{i}:v]null[{labels[0]}]")
     for k, p in enumerate(plan.pieces):
-        src, crop = views[p.view]
+        src, cut = views[p.view]
         a = p.t0 - t0_s + offsets[src]
         b = p.t1 - t0_s + offsets[src]
-        box = f"crop={crop[2]}:{crop[3]}:{crop[0]}:{crop[1]}," if crop else ""
+        # The view's own chain, the readers' (feeds/cut.py): a crop, or a
+        # camera's turn and scale.
+        box = f"{Cut.of(cut).steps()}," if cut else ""
         graph.append(f"[{branches[src].pop(0)}]trim=start={a:.3f}:end={b:.3f},"
                      f"setpts=PTS-STARTPTS,{box}scale={width}:{height},setsar=1,"
                      f"fps={fps}[p{k}]")
@@ -234,7 +238,10 @@ class Clipper:
 
     def make(self, throw, plan_, cal, *, t0_s: float = 0.0) -> bool:
         """Cut and deliver one clip; False if either did not happen."""
-        views = {name: (self.recording.path, sv.rect) for name, sv in cal.sideviews.items()}
+        # Each view from the file it lives in -- a camera's own, on a camera
+        # feed -- taken as the calibration took it.
+        feed = as_feed(self.recording.path)
+        views = {name: (feed.path_for(name), sv.cut) for name, sv in cal.sideviews.items()}
         self.workdir.mkdir(parents=True, exist_ok=True)
         out = self.workdir / f"{throw['id']}.mp4"
         began = time.monotonic()
