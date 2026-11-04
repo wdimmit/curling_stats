@@ -516,6 +516,14 @@ class VideoPipeline:
         from curling_score.geometry import layout
         from curling_score.ingest import frames as F
 
+        if as_feed(path).kind == "cameras":
+            # Each view is in its camera's file, cut as the sheet's layout says.
+            from curling_score.feeds import cameras
+
+            panels, setups, sideviews = cameras.calibrate(
+                path, until_s, skip_longview=self.skip_longview, progress=self.progress)
+            return Calibration(panels=panels, setups=setups, sideviews=sideviews,
+                               until_s=until_s, side_expected=not self.skip_longview)
         frames = F.spread_keyframes(path, until_s, count=analyze.CALIB_FRAMES)
         if len(frames) < 2:
             raise CalibrationError(f"{len(frames)} keyframe(s) in the first "

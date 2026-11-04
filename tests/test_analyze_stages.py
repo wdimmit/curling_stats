@@ -234,3 +234,75 @@ class TestTheContextCarriesFeeds:
         assert ctx.read_path == ctx.path
         assert ctx.path.single() == original
         assert seen["sweep"] == [original]
+
+
+class TestCalibrateGivenPanels:
+    """Phase 2: a camera feed's panels and side views come from the sheet's
+    layout, not from looking for them."""
+
+    def test_calibrate_from_with_given_panels_skips_detection(self, monkeypatch):
+        import numpy as np
+
+        from curling_score.game import profile
+        from curling_score.geometry import layout as glayout
+        from curling_score.geometry import sideview
+
+        def refuse(*a, **k):
+            raise AssertionError("looked for what it was given")
+
+        seen = {}
+        monkeypatch.setattr(glayout, "detect_panels", refuse)
+        monkeypatch.setattr(sideview, "locate", refuse)
+        monkeypatch.setattr(profile, "calibrate_panels",
+                            lambda frames, panels: seen.setdefault("panels", panels) and {})
+        monkeypatch.setattr(sideview, "solve",
+                            lambda plate, rect, name="": seen.setdefault(name, rect))
+        monkeypatch.setattr(analyze, "_with_lateral", lambda plate, v, n, progress: v)
+        panels = glayout.PanelLayout(top=(810, 10, 297, 514), bottom=(810, 552, 297, 517))
+        rects = {"left": (0, 0, 800, 1080), "right": (1120, 0, 800, 1080)}
+        frames = [np.zeros((1080, 1920, 3), np.uint8)] * 2
+        got_panels, _, sides = analyze.calibrate_from(
+            frames, skip_longview=False, progress=lambda m: None, panels=panels,
+            side_rects=rects)
+        assert got_panels is panels and seen["panels"] is panels
+        assert seen["left"] == rects["left"] and seen["right"] == rects["right"]
+        assert sides == rects
+
+    def test_pipeline_calibrates_a_camera_feed_through_the_layout(self, monkeypatch):
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        import numpy as np
+
+        from curling_score.cameras import layout as clayout
+        from curling_score.feeds import cameras
+        from curling_score.game import profile
+        from curling_score.live.session import VideoPipeline
+
+        sl = clayout.load(2)
+        outs = {n: cameras.placement_for(sl, n).out for n in cameras.CUT_VIEWS}
+        views = {n: [np.zeros((h, w, 3), np.uint8)] * 3 for n, (_, _, w, h) in outs.items()}
+        monkeypatch.setattr(cameras, "view_keyframes", lambda feed, cuts, until_s, count, **k: views)
+        seen = {}
+
+        def calibrate_from(frames, *, skip_longview, progress, panels=None, side_rects=None):
+            seen.update(n=len(frames), shape=frames[0].shape, panels=panels, rects=side_rects)
+            setups = {n: profile.PanelSetup(rect=getattr(panels, n),
+                                            calib=SimpleNamespace(px_per_m=100.0))
+                      for n in ("top", "bottom")}
+            from curling_score.geometry.sideview import SideView
+            sides = {n: SideView(rect=r, tee_row=1.0, hog_row=2.0, name=n)
+                     for n, r in side_rects.items()}
+            return panels, setups, sides
+
+        monkeypatch.setattr(analyze, "calibrate_from", calibrate_from)
+        cal = VideoPipeline(progress=lambda m: None).calibrate(cameras.camera_feed(Path("d"), 2),
+                                                               60.0)
+        assert seen["n"] == 3 and seen["shape"] == (1080, 1920, 3)
+        assert (seen["panels"].top, seen["panels"].bottom) == (outs["top"], outs["bottom"])
+        assert seen["rects"] == {"left": outs["left"], "right": outs["right"]}
+        cuts = cameras.view_cuts(sl)
+        assert cal.setups["top"].transform == cuts["top"]
+        assert cal.setups["top"].rect == (0, 0, *cuts["top"].out_size)
+        assert cal.sideviews["right"].transform == cuts["right"]
+        assert cal.until_s == 60.0

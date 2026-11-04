@@ -323,13 +323,18 @@ class BoardRead:
     block: dict
 
 
-def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info):
+def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info,
+                   panels=None, side_rects=None):
     """Panels, their calibrations and the side views, from a few keyframes.
 
     Returns ``(panels, setups, sideviews)``; ``sideviews`` is None when they
     were skipped or could not be read, which costs the splits and nothing else.
+    ``panels`` (a ``PanelLayout``) and ``side_rects`` say where they are,
+    where that is known (frames composed from a sheet's cameras,
+    ``feeds/cameras.py``); otherwise they are looked for.
     """
-    panels = layout.detect_panels(calib_frames)
+    if panels is None:
+        panels = layout.detect_panels(calib_frames)
     setups = profile.calibrate_panels(calib_frames, panels)
     for name, setup in setups.items():
         progress(
@@ -353,7 +358,7 @@ def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info):
         plate = np.median(
             np.stack([f.astype("float32") for f in calib_frames]), axis=0)
         try:
-            rects = sideview.locate(panels, width=w, height=h)
+            rects = side_rects or sideview.locate(panels, width=w, height=h)
             sideviews = {n: sideview.solve(plate, r, name=n)
                          for n, r in rects.items()}
             sideviews = {n: _with_lateral(plate, v, n, progress)

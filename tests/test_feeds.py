@@ -252,3 +252,88 @@ def test_cut_coerces_its_crop():
     c = Cut("x", [1, 2, 3, 4], 0, [5, 6])
     assert c.crop == (1, 2, 3, 4) and c.size == (5, 6)
     assert hash(c) == hash(Cut("x", (1, 2, 3, 4), 0, (5, 6)))
+
+
+# --- phase 2: calibrating a camera feed ------------------------------------------
+
+def _outs(sheet=2):
+    sl = layout.load(sheet)
+    return sl, {n: cameras.placement_for(sl, n).out for n in cameras.CUT_VIEWS}
+
+
+def test_compose_places_each_view_at_its_out():
+    sl, outs = _outs()
+    colours = {"top": (255, 0, 0), "bottom": (0, 255, 0), "left": (0, 0, 255),
+               "right": (255, 255, 0)}
+    views = {n: np.full((outs[n][3], outs[n][2], 3), c, np.uint8) for n, c in colours.items()}
+    frame = cameras.compose(views, sl)
+    assert frame.shape == (1080, 1920, 3)
+    grey = int(sl.background, 16) & 0xFF
+    covered = np.zeros((1080, 1920), bool)
+    for n, (x, y, w, h) in outs.items():
+        assert (frame[y:y + h, x:x + w] == colours[n]).all()
+        covered[y:y + h, x:x + w] = True
+    assert (frame[~covered] == grey).all()
+
+
+def test_compose_refuses_a_wrong_sized_view():
+    sl, outs = _outs()
+    views = {n: np.zeros((outs[n][3], outs[n][2], 3), np.uint8) for n in outs}
+    views["top"] = views["top"][:-1]
+    with pytest.raises(ValueError, match="top"):
+        cameras.compose(views, sl)
+
+
+def _setup(rect):
+    from types import SimpleNamespace
+
+    from curling_score.game import profile
+
+    return profile.PanelSetup(rect=rect, calib=SimpleNamespace(px_per_m=100.0))
+
+
+def _side(rect, name=""):
+    from curling_score.geometry.sideview import SideView
+
+    return SideView(rect=rect, tee_row=430.0, hog_row=520.0, name=name)
+
+
+def test_localize_moves_setups_into_their_views():
+    sl, outs = _outs()
+    setups = {n: _setup(outs[n]) for n in ("top", "bottom")}
+    sides = {n: _side(outs[n], n) for n in ("left", "right")}
+    got_setups, got_sides = cameras.localize(setups, sides, sl)
+    cuts = cameras.view_cuts(sl)
+    top = got_setups["top"]
+    assert top.rect == (0, 0, 297, 514) and top.transform == cuts["top"] and top.name == "top"
+    assert top.calib is setups["top"].calib
+    left = got_sides["left"]
+    assert left.rect == (0, 0, 800, 1080) and left.transform.is_crop
+    assert left.tee_row == 430.0 and left.cut == cuts["left"]
+    assert cameras.localize(setups, None, sl)[1] is None
+
+
+def test_localize_refuses_a_setup_not_at_its_out():
+    sl, outs = _outs()
+    x, y, w, h = outs["top"]
+    setups = {"top": _setup((x + 1, y, w, h)), "bottom": _setup(outs["bottom"])}
+    with pytest.raises(ValueError, match="top"):
+        cameras.localize(setups, None, sl)
+
+
+def test_view_keyframes_cuts_each_view_and_trims_to_the_shortest(monkeypatch):
+    from curling_score.ingest import frames as F
+
+    seen = []
+
+    def spread(path, until_s, count=24, with_times=False, start_s=None, cut=None):
+        seen.append((cut.name, until_s, count, start_s))
+        n = 3 if cut.name == "bottom" else 4
+        return [np.zeros((cut.out_size[1], cut.out_size[0], 3), np.uint8)] * n
+
+    monkeypatch.setattr(F, "spread_keyframes", spread)
+    sl, _ = _outs()
+    feed = cameras.camera_feed(Path("d"), 2)
+    got = cameras.view_keyframes(feed, cameras.view_cuts(sl), 60.0, 8, start_s=5.0)
+    assert {n: len(v) for n, v in got.items()} == {n: 3 for n in cameras.CUT_VIEWS}
+    assert sorted(seen) == sorted((n, 60.0, 8, 5.0) for n in cameras.CUT_VIEWS)
