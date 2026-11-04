@@ -67,6 +67,19 @@ SMOOTH_SAMPLES = 5
 # to be an end (`_passing`). A stone seen in more keyframes than this is held
 # there, not passing through, and is left to the rules for that.
 PASSING_KEYFRAMES = 2
+# A stone seen in no more keyframes than this, alone on an empty sheet, does
+# not break up an empty stretch long enough to end a game (`_drop_strays`).
+# 11/03 Tuesday Super League sheet 4: a broom head held into the top panel's
+# corner behind the back line read as a stone in two keyframes four minutes
+# into the 7 pm to 9 pm changeover, and the 280 s of empty sheet that should
+# have ended the game came out as 130 s and 115 s either side of it. The
+# smoothing spreads those two keyframes over 25-30 s, so the test counts the
+# raw keyframes, as `PASSING_KEYFRAMES` does.
+STRAY_KEYFRAMES = 2
+# ... with at least this much empty sheet either side of it: a delivery thrown
+# through an emptied house in the course of an end has the next rock 30-40 s
+# behind it, and the end before it as close.
+STRAY_EMPTY_S = 60.0
 # How far past the rule's own threshold a stretch of play or of empty sheet
 # must run before a stream still being recorded treats it as settled. The
 # smoothing can still relabel the last couple of samples, which can take a
@@ -209,6 +222,35 @@ def _played_before(samples, runs, first) -> bool:
             and first.start_s - samples[i1 - 1].t < PLAYED_BEFORE_MAX_GAP_S)
 
 
+def _drop_strays(runs, raw, samples) -> list:
+    """``runs`` with every stray stone (``STRAY_KEYFRAMES``) inside an empty
+    stretch long enough to end a game taken out, the empty runs either side of
+    it made one.
+
+    Only where the whole stretch, stray and all, is ``GAME_GAP_S`` or more, and
+    either side of the stray at least ``STRAY_EMPTY_S``: inside a game, where
+    nothing sits empty that long, a stray never moves an end -- its short run
+    may be a delivery thrown through an emptied house, which is still in its
+    end's window. Here it only lets the empty sheet end the game it would have
+    ended.
+    """
+    def span(r):
+        return samples[r[2] - 1].t - samples[r[1]].t
+
+    out = list(runs)
+    k = 1
+    while k < len(out) - 1:
+        before, (h, i0, i1), after = out[k - 1], out[k], out[k + 1]
+        if (h is not None and before[0] is None and after[0] is None
+                and sum(raw[i] == h for i in range(i0, i1)) <= STRAY_KEYFRAMES
+                and span(before) >= STRAY_EMPTY_S and span(after) >= STRAY_EMPTY_S
+                and samples[after[2] - 1].t - samples[before[1]].t >= GAME_GAP_S):
+            out[k - 1:k + 2] = [(None, before[1], after[2])]
+            continue
+        k += 1
+    return out
+
+
 def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
     """Group an activity profile into games, each holding its ends in order."""
     samples = list(samples)
@@ -217,7 +259,7 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
 
     raw = _active_house(samples)
     active = _passing(raw, _smooth(raw), samples, WHOLE_END_FACTOR * min_end_s)
-    runs = _runs(active, samples)
+    runs = _drop_strays(_runs(active, samples), raw, samples)
 
     def span(i0, i1):
         return samples[i1 - 1].t - samples[i0].t
@@ -317,7 +359,8 @@ def settled_ends(samples, min_end_s: float = MIN_END_S, *,
             game.closed = True
         return games
 
-    runs = _runs(_smooth(_active_house(samples)), samples)
+    raw = _active_house(samples)
+    runs = _drop_strays(_runs(_smooth(raw), samples), raw, samples)
     house, i0, _ = runs[-1]
     empty_tail_s = samples[-1].t - samples[i0].t if house is None else 0.0
 
