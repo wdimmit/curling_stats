@@ -43,10 +43,26 @@ time (PST). Scratch on the Ryzen: `/data/wdd/scratch/practice-srt/` (gates) and 
   - 0.035-0.042 cores per capture;
   - no reconnects.
 
-## Task 5: gate 1, sheet 2 for an hour
+A daytime attempt (11/03 13:24 PST: sheets 2, 3 and 4 at once) was stopped after 2.5 min. A member's practice on
+sheet 4 (the deployed NDI code) was already running, and four composers on one box all fell 8-10 s behind. That
+session lost ~2 min 10 s (13:24:44-13:26:55). The captures were not the cause: the composers are what caps camera
+practice at 2 sheets. Its files are in `aborted-1103/`.
 
-Pending. `run_gates.sh` starts it after 23:00 PST once nothing is live.
+## Task 5: gate 1, sheet 2 for an hour (11/03 23:36 - 11/04 00:36 PST)
 
-## Task 6: gate 2, sheets 3 and 4 for an hour
+**Passed.**
 
-Pending. It runs after gate 1.
+- 216,089 frames in 3,601 s: 60.00 fps; the largest gap 0.017 s, no gap over 1 s.
+- Median CPU per capture with its `ffmpeg`: 0.032-0.043 cores (max 0.049); all four together 0.156.
+- No reconnects, no `LiveError`, and no composer drops.
+
+## Task 6: gate 2, sheets 3 and 4 for an hour (11/04 00:41 - 01:41 PST)
+
+**Passed.**
+
+- Sheet 3: 216,125 frames in 3,602 s; sheet 4: 216,065 in 3,601 s. Both 60.00 fps, the largest gap 0.017 s, none
+  over 1 s.
+- Median CPU per capture: 0.033-0.046 cores (max 0.056); all eight together 0.327, against the limit of 0.8.
+- No reconnects, no `LiveError`, no composer drops.
+- Three frames a sheet (at 300, 1800 and 3500 s) look right. There are no decode artifacts, and the wall clock in
+  both long views reads the time of night. The ice lights were off, so most house panels are black.
