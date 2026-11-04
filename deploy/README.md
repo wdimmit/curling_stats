@@ -36,14 +36,19 @@ gcloud firestore indexes composite create --collection-group=vod_runs \
 # that lists them, or the admin list fails until the index has built.
 gcloud firestore indexes composite create --collection-group=flags \
   --field-config=field-path=status,order=ascending --field-config=field-path=created_at,order=descending
-# Member labelling (/label): a kind's open items with so many labels, and a
-# kind's items in one state, both oldest first.
+# Member labelling (/label): a kind's items in one state oldest first (the
+# admin list), and its open items newest first (what members are handed; the
+# n_labels index is from before 2026-10-30 and no longer queried). Create the
+# newest-first one before deploying the API that hands items out that way.
 gcloud firestore indexes composite create --collection-group=label_items \
   --field-config=field-path=kind,order=ascending --field-config=field-path=state,order=ascending \
   --field-config=field-path=n_labels,order=ascending --field-config=field-path=created_at,order=ascending
 gcloud firestore indexes composite create --collection-group=label_items \
   --field-config=field-path=kind,order=ascending --field-config=field-path=state,order=ascending \
   --field-config=field-path=created_at,order=ascending
+gcloud firestore indexes composite create --collection-group=label_items \
+  --field-config=field-path=kind,order=ascending --field-config=field-path=state,order=ascending \
+  --field-config=field-path=created_at,order=descending
 gcloud firestore fields ttls update expires_at --collection-group=rate_limits --enable-ttl
 gcloud firestore fields ttls update expires_at --collection-group=invites --enable-ttl
 # Emailed links opened in another browser are held for ten minutes; this clears the unclaimed ones.
@@ -85,23 +90,17 @@ gcloud services enable identitytoolkit.googleapis.com
 # Nothing new is needed in Secret Manager or IAM: verifying an ID token uses
 # only Google's public certificates and the project id.
 #
-# Signing in with an emailed link comes after Google, in this order:
-#   1. Deploy with EMAIL_LINK_SIGNIN "0" in cloudrun.yaml. The chooser
-#      offers Google alone, and the server already treats an unverified
-#      password account as nobody, which has to be live before step 3.
-#   2. The signin_relays TTL (its gcloud line is in the Firestore block
-#      above), so relays nobody claims are cleared.
-#   3. Authentication > Sign-in method > enable Email/Password, and inside it
-#      Email link (passwordless sign-in). Firebase requires both. The site
-#      never offers passwords.
-#   4. Set EMAIL_LINK_SIGNIN to "1" in cloudrun.yaml and deploy again: the
-#      chooser offers "Email me a link".
-# To take it away, set EMAIL_LINK_SIGNIN back to "0" and deploy. The chooser
-# is Google alone again, and /signin still finishes a link already sent.
+# The chooser always offers "Email me a link" beside Google, so a new
+# project needs, before its first deploy:
+#   - the signin_relays TTL (its gcloud line is in the Firestore block
+#     above), so relays nobody claims are cleared;
+#   - Authentication > Sign-in method > Email/Password, and inside it Email
+#     link (passwordless sign-in). Firebase requires both. The site never
+#     offers passwords. Without them every emailed link fails to send.
 # Before rolling the API back past e4e8c79d ("an unverified password account
-# is nobody"), switch Email/Password off and set EMAIL_LINK_SIGNIN to "0":
-# an older API with the provider on lets anyone who makes a password account
-# under a member's address be that member.
+# is nobody"), switch Email/Password off: an older API with the provider on
+# lets anyone who makes a password account under a member's address be that
+# member.
 #
 # A risk accepted on 2026-10-21: with Email/Password on, anyone with the web
 # API key can make a password account under the address of a member who has
@@ -243,7 +242,7 @@ docker compose -f deploy/docker-compose.worker.yml logs pot | tail   # a line pe
 ### Following live games
 
 With `WORKER_LIVE=1` in `worker.env` the worker also follows live streams (the
-API queues them when `LIVE_ENABLED=1` there -- see "Watching a league"). A
+API queues them from watched playlists -- see "Watching a league"). A
 thread claims live jobs, up to `LIVE_MAX_STREAMS` at once (default 6), and
 records each with yt-dlp from the stream's first segment into
 `/data/cache/live/<video>/rec.N.ts`; the main loop builds every end as it
@@ -307,10 +306,13 @@ cuts the clips of the rocks people say they threw: no GPU, four CPUs.
 
 ## Practice on the club's cameras
 
-A practice session reads the sheet's own cameras (the club's 20 NDI sources),
-so Start works whenever no league is on, streamed or not. Only a worker on the
-club's network can read them: the Ryzen's `worker` and `worker2`. The design is
-`docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md`. Practice
+A practice session reads the sheet's own cameras (the club's 20 cameras, over
+SRT on UDP 1600), so Start works whenever no league is on, streamed or not.
+Only a worker on the club's network can read them: the Ryzen's `worker` and
+`worker2`. The design is
+`docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md`, and since
+2026-11 `docs/superpowers/specs/2026-10-29-practice-srt-capture-design.md` (SRT
+in place of NDI). Practice
 read a sheet's YouTube practice stream until 2026-10-25; that path is gone, and
 there is no switching back to it. Sessions from then still read as they did.
 
@@ -333,13 +335,12 @@ feature (a value set only in a shell is gone at the next declarative deploy):
 - `PRACTICE_MAX_CAMERA_WATCHES` (default 2, and 2 in `cloudrun.yaml`): how many
   sheets may be read from the cameras at once. A Start that would open another
   sheet's cameras past it is refused with "Practice on the cameras is full"; a
-  Start that joins a sheet already practising never is. The cap is for the
-  Ryzen's link to the cameras, which runs at 100 Mbit/s and carries about two
-  sheets (each needs 31-38 Mbit/s). Past that the cameras fall into keyframe
-  storms, and a camera that re-keys degrades every receiver it has, the club's
-  own broadcast included. Once the link is fixed and
-  `cat /sys/class/net/enp4s0/speed` on the Ryzen reads `1000`, raise it to 5 in
-  `cloudrun.yaml` and deploy.
+  Start that joins a sheet already practising never is. The link to the
+  cameras is no longer the limit: it has run at gigabit since 2026-10-31 and
+  carried all 20 cameras over SRT for an hour (~180 Mbit/s). The Ryzen's
+  composers are (~2.7 cores and an NVENC session a sheet), until the
+  `camera-direct` work removes them; raise the cap only after trying more
+  sheets at once on the Ryzen.
 - `PROXY_HOPS` (default 1, which is right for Cloud Run, a domain mapping
   included): the club-address check relies on it. `client_ip` takes the entry
   `PROXY_HOPS` from the end of `X-Forwarded-For`, the ones our own proxies
@@ -359,8 +360,8 @@ feature (a value set only in a shell is gone at the next declarative deploy):
   one a sheet, split 3/2 between the workers, once the link lets the API's cap
   rise to five (`PRACTICE_MAX_CAMERA_WATCHES`, above). Keep it at 3 or more.
 - The workers stay on the compose project's network (`deploy_default`). They
-  find and read the cameras with the NDI config the capture writes for itself,
-  so no `network_mode: host` is needed.
+  call each camera's SRT listener (outgoing UDP to port 1600) from there, so no
+  `network_mode: host` is needed.
 - `worker` holds both GPUs, with `CUDA_VISIBLE_DEVICES=0` to keep its models and
   NVENC on card 0. NVENC on card 0 fails in a container that does not also have
   card 1 ("unsupported device"); card 1 alone encodes, so `worker2` keeps only
@@ -369,9 +370,10 @@ feature (a value set only in a shell is gone at the next declarative deploy):
 
 **Calibrating a sheet.** A watch records from Start, so it has no footage of
 the sheet from before, and at Start there are players on the ice. So each sheet
-keeps a calibration made while it was empty. With the sheet empty and no session on it, in each worker, one after
-the other, never both at once (one NDI connection per camera; let the first
-finish before starting the second):
+keeps a calibration made while it was empty. With the sheet empty and no
+session on it, in each worker (one after the other is simplest; at once is
+also fine, since a second SRT caller to a camera gets its own stream, and two
+of ours per house camera is within the limit):
 
 ```bash
 docker compose -f deploy/docker-compose.worker.yml exec worker  curling-score cameras-calibrate --sheet 2
@@ -441,12 +443,11 @@ seen within minutes of going live. Outside, every `idle_poll_s` (default 3600,
 or `null` for never). The channel index for the thinking report still runs
 once an hour, on the first poll of the hour.
 
-With `LIVE_ENABLED=1` on the API, a stream that has gone live in a watched
-playlist is queued as a **live job**: it skips approval, and a worker follows
-the game as it is played, publishing each end as it finishes. Leave it off
-until a worker that can follow a stream is running -- a live run nobody claims
-stands in for the recording, which the poller then never queues the ordinary
-way. (One still queued when its recording is archived gives way to it.) The
+A stream that has gone live in a watched playlist is queued as a **live
+job**: it skips approval, and a worker with `WORKER_LIVE=1` follows the game
+as it is played, publishing each end as it finishes. A live run nobody claims
+stands in for the recording until the recording is archived, which it then
+gives way to. The
 doubles playlist stays out of the poller entirely.
 
 ## The nightly review

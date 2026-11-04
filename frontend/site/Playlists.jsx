@@ -95,40 +95,30 @@ function PlaylistForm({ initial, adding, clubTz, onDone, onCancel }) {
              onChange={e => set({ label: e.target.value })} placeholder="Thursday League" />
       <p className="muted hint">The league its games are filed under
         {adding && "; left empty, the playlist's id"}.</p>
-      <label className="tick">
-        <input type="checkbox" checked={form.practice}
-               onChange={e => set({ practice: e.target.checked })} /> Practice streams, not
-        league games
-      </label>
-      {form.practice ? (
-        <p className="muted hint">A sheet's practice streams are never polled for games, so
-        this has no league nights. Practice sessions read the club's cameras, not these.</p>
-      ) : <>
-        <h3>League nights</h3>
-        <p className="muted hint">In the club's time ({clubTz}). On these it is looked at every
-        few minutes, so a stream is caught as it starts.</p>
-        {form.nights.map((night, i) => (
-          <Night key={i} night={night} n={i + 1} idp={`${idp}-n${i}`}
-                 onChange={w => setNight(i, w)}
-                 onRemove={() => set({ nights: form.nights.filter((_, j) => j !== i) })} />
-        ))}
-        <button type="button" onClick={() => set({ nights: [...form.nights, newNight()] })}>
-          Add a night</button>
-        <div className="row every">
-          <label className="inline" htmlFor={`${idp}-live`}>On those nights, every</label>
-          <input id={`${idp}-live`} type="number" min="1" step="any" value={form.liveMin}
-                 onChange={e => set({ liveMin: e.target.value })} /> min
-        </div>
-        <div className="row every">
-          <label className="inline" htmlFor={`${idp}-idle`}>Otherwise, every</label>
-          <input id={`${idp}-idle`} type="number" min="1" step="any" value={form.idleMin}
-                 disabled={form.idleNever} onChange={e => set({ idleMin: e.target.value })} /> min
-          <label className="tick">
-            <input type="checkbox" checked={form.idleNever}
-                   onChange={e => set({ idleNever: e.target.checked })} /> Never
-          </label>
-        </div>
-      </>}
+      <h3>League nights</h3>
+      <p className="muted hint">In the club's time ({clubTz}). On these it is looked at every
+      few minutes, so a stream is caught as it starts.</p>
+      {form.nights.map((night, i) => (
+        <Night key={i} night={night} n={i + 1} idp={`${idp}-n${i}`}
+               onChange={w => setNight(i, w)}
+               onRemove={() => set({ nights: form.nights.filter((_, j) => j !== i) })} />
+      ))}
+      <button type="button" onClick={() => set({ nights: [...form.nights, newNight()] })}>
+        Add a night</button>
+      <div className="row every">
+        <label className="inline" htmlFor={`${idp}-live`}>On those nights, every</label>
+        <input id={`${idp}-live`} type="number" min="1" step="any" value={form.liveMin}
+               onChange={e => set({ liveMin: e.target.value })} /> min
+      </div>
+      <div className="row every">
+        <label className="inline" htmlFor={`${idp}-idle`}>Otherwise, every</label>
+        <input id={`${idp}-idle`} type="number" min="1" step="any" value={form.idleMin}
+               disabled={form.idleNever} onChange={e => set({ idleMin: e.target.value })} /> min
+        <label className="tick">
+          <input type="checkbox" checked={form.idleNever}
+                 onChange={e => set({ idleNever: e.target.checked })} /> Never
+        </label>
+      </div>
       <div className="row" style={{ marginTop: 16 }}>
         <button className="primary" type="submit" disabled={busy}>
           {adding ? "Watch it" : "Save"}</button>
@@ -171,13 +161,12 @@ function Playlist({ pl, clubTz, onChanged, onRemoved }) {
       <div className="plhead">
         <h3>{pl.label}</h3>
         <Pill kind={status.kind}>{status.text}</Pill>
-        {pl.practice && <Pill>practice</Pill>}
       </div>
       <p className="muted"><a href={playlistUrl(pl.playlist_id)} target="_blank"
                               rel="noopener noreferrer">{pl.playlist_id}</a></p>
-      {!pl.practice && <p>{scheduleText(pl.schedule) || "No league nights"}</p>}
+      <p>{scheduleText(pl.schedule) || "No league nights"}</p>
       <p className="muted">{pollText(pl)}</p>
-      {!pl.practice && <p className="muted">{lastLookText(pl, Date.now())}</p>}
+      <p className="muted">{lastLookText(pl, Date.now())}</p>
       {trouble && <div className="warn">{trouble}</div>}
       {removing ? (
         <div className="warn">

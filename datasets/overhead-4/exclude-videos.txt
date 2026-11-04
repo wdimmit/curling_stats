@@ -1,0 +1,27 @@
+# Videos scripts/player_mine.py never mines for the hard batch (player labels).
+# The harness: the 11 videos of the 16 games in the laptop's
+# /data/wdd/curling/houseread-1027/main1101/*.json.
+-f3R1D3bQ0E
+4RrNWSeNnMU
+AEqLTgM25Tc
+OcyhldUbu8A
+PGltvgB2yIM
+VXU9xwmugRg
+_OGoqF5W9-I
+entTaSBFK3A
+hOKZoeJNTpM
+jgZ9wlxGYHM
+n51rf_nFlhM
+# overhead-2's held-out videos (datasets/overhead-2/heldout-videos.txt).
+pe328PUupXs
+XbBwOnjkhpY
+0YRS0cKQr90
+2uu7zViTEqY
+6NXngUptP08
+9oTddHJ2al8
+Bi25MphuqwY
+EvW9jenUR5g
+GwSqCBTjrog
+IXUQubhOsYo
+LBUTCcOC2yI
+P1TqndPD5p8

@@ -5,7 +5,7 @@
  * The poller (service/playlists.py) looks at each playlist on its own
  * schedule: every `live_poll_s` inside one of its windows -- its league
  * nights, in the club's time -- and every `idle_poll_s` outside them, or
- * never when that is null. A practice playlist is never polled for games. */
+ * never when that is null. */
 
 export const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 export const DAY_NAMES = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri",
@@ -42,7 +42,6 @@ export function every(seconds) {
 
 /* How often the poller looks at it, in a sentence. */
 export function pollText(pl) {
-  if (pl.practice) return "Practice streams: never polled for games.";
   const idle = pl.idle_poll_s == null ? null : `every ${every(pl.idle_poll_s)}`;
   if (!pl.schedule?.length) return idle ? `Looked at ${idle}.` : "Never looked at.";
   return `Looked at every ${every(pl.live_poll_s)} on those nights, `
@@ -93,12 +92,12 @@ const minutes = seconds => String(Number((seconds / 60).toFixed(2)));
 
 export const newNight = () => ({ days: [], start: "18:00", end: "23:30" });
 
-export const emptyForm = () => ({ link: "", label: "", practice: false, nights: [],
+export const emptyForm = () => ({ link: "", label: "", nights: [],
                                   liveMin: "3", idleMin: "60", idleNever: false });
 
 export function formFrom(pl) {
   return {
-    id: pl.id, link: pl.playlist_id, label: pl.label, practice: !!pl.practice,
+    id: pl.id, link: pl.playlist_id, label: pl.label,
     nights: (pl.schedule || []).map(w => ({ days: [...w.days], start: w.start, end: w.end })),
     liveMin: minutes(pl.live_poll_s ?? 180),
     idleMin: minutes(pl.idle_poll_s ?? 3600),
@@ -115,18 +114,15 @@ export const toggleDay = (days, d) =>
  * words; these only spare a round trip for what is plainly missing.
  *
  * Only adding sends the link: a change cannot point a playlist at another.
- * An empty name when adding is the playlist's id, the server's default. A
- * practice playlist is never polled, so its nights and intervals are left as
- * they were rather than sent. */
+ * An empty name when adding is the playlist's id, the server's default. */
 export function bodyFrom(form, { adding = false } = {}) {
-  const body = { label: form.label.trim(), practice: !!form.practice };
+  const body = { label: form.label.trim() };
   if (adding) {
     if (!form.link.trim()) return { error: "Paste the playlist's link." };
     body.playlist_id = form.link.trim();
   } else if (!body.label) {
     return { error: "Give it a name: its games are filed under it." };
   }
-  if (body.practice) return { body };
   for (const w of form.nights) {
     if (!w.days.length) return { error: "Tick the day of each league night." };
     if (!w.start || !w.end) return { error: "Give each league night a start and an end." };

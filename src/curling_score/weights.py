@@ -1,6 +1,18 @@
 """Which detector runs when nobody says.
 
-Standardised on **ds17b** as of 2026-10-09: ds16a's recipe and training set
+**overhead-3** as of 2026-10-30, the first overhead model named for the camera
+rather than in the ds sequence: ds17b's set plus 231 overhead frames a member
+boxed on /label (red clothing and red stones at the release among them,
+`datasets/overhead-2`) and 45 empty panels of a red logo in the ice that
+overhead-2 read as a red stone once play stopped (`datasets/overhead-3`). On
+the 11-video release harness against ds17b: releases 1698 against 1701, splits
+1649 against 1653, no colour changed, and the one end that lost rocks
+(entTaSBFK3A end 2, a one-keyframe flicker) keeps all 16 on the segmenter of
+2026.10.29.1. overhead-2's held-out fold, on a member's frames from videos it
+never saw: red stones at the release found better (mAP50-95 0.45 -> 0.65),
+fewer boxes on clothing, ds11 val mAP50-95 0.921 -> 0.919.
+
+ds17b (2026-10-09 to 2026-10-30) was ds16a's recipe and training set
 plus ds17, 311 reviewed throwing-panel frames (`datasets/ds17/`). ds16a read a
 sliding thrower's head, hat or hood, seen from straight above right behind the
 stone, as a stone at up to 0.98; at 10 fps a red toque outvoted three real
@@ -34,7 +46,7 @@ saying so would leave every downstream number quietly incomparable.
 import os
 from pathlib import Path
 
-DEFAULT_NAME = "ds17b.pt"
+DEFAULT_NAME = "overhead-3.pt"
 ENV_VAR = "CURLING_SCORE_WEIGHTS"
 
 # The SIDE-view detector, which times the throwing end's hog crossing. A
@@ -76,10 +88,20 @@ ENV_VAR = "CURLING_SCORE_WEIGHTS"
 # It scores lower against the hack wave's own labels (val mAP50-95 0.70 ->
 # 0.65), which take in a hand or shoe the kink wave's rule leaves out.
 #
-# `none` selects the colour scan, and so does a missing file -- the side view
-# is an improvement on a pipeline that worked without it, not a dependency of
-# it. Unlike DEFAULT_NAME, absence here is not an error.
-SIDE_NAME = "ds13e.pt"
+# long-1 replaced it on 2026-10-28, the first of the long-camera models named
+# for the camera rather than in the ds sequence: ds13e's set (with the hack wave
+# relabelled) plus 92 long-camera frames a member boxed on /label
+# (datasets/long-1). Through the production delivery code on 821 rocks of seven
+# games, the path's kinks went from 822 to 661 (across 96 -> 71, along 726 ->
+# 590), fewer in every game; crossings 821 against 815, the line 0.15 cm apart
+# at the hog line (median), the broom figure 0.54 in, the start 3.2 cm. On the
+# held-out members' frames it finds more stones (mAP50 0.89 -> 0.94) but fits
+# their boxes less tightly (mAP50-95 0.78 -> 0.75).
+#
+# `none` leaves the throwing hog line untimed from the long camera. Like
+# DEFAULT_NAME, a missing file is an error: the colour scan it once fell back
+# to is gone (2026-10-30).
+SIDE_NAME = "long-1.pt"
 SIDE_ENV_VAR = "CURLING_SCORE_SIDE_WEIGHTS"
 
 # The broom-head detector, which finds the skip's target broom in the camera
@@ -147,16 +169,10 @@ def default_path():
 
 
 def side_path():
-    """The side-view detector, or None to time crossings by colour scan.
-
-    Resolved like :func:`default_path`, with one deliberate difference: a
-    missing file is not an error. The overhead pipeline predates the side view
-    and still runs without it; falling back is a worse answer, not a broken
-    one, and `version.processing_version` records which was used either way.
-
-    A path that is SET but missing still raises. That is a deployment saying it
-    wants a particular model and not getting it, which is worth stopping for.
-    """
+    """The side-view detector, or None when it is switched off (``none``):
+    then the long camera times no hog crossings, and the lines, brooms,
+    spins and releases it feeds go without. Resolved like
+    :func:`default_path`; a path set or defaulted but missing raises."""
     chosen = os.environ.get(SIDE_ENV_VAR)
     if chosen:
         if chosen.strip().lower() in ("none", "classical", ""):
@@ -165,13 +181,16 @@ def side_path():
         if not path.is_file():
             raise FileNotFoundError(
                 f"{SIDE_ENV_VAR}={chosen} does not exist. Set it to a weights "
-                f"file, or to 'none' to time crossings by colour scan.")
+                f"file, or to 'none' for no long-camera hog crossings.")
         return path
 
     for path in _candidates(SIDE_NAME):
         if path.is_file():
             return path
-    return None
+    raise FileNotFoundError(
+        f"no {SIDE_NAME} found in a weights/ directory near "
+        f"{Path(__file__).resolve().parents[2]}. Set {SIDE_ENV_VAR} to a weights "
+        f"file, or to 'none' for no long-camera hog crossings.")
 
 
 def broom_path():

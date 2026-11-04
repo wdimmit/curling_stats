@@ -1,9 +1,9 @@
-"""One camera's H.264, from libndi through the tap into a FIFO.
+"""One camera's H.264, over SRT into a FIFO.
 
     python -m curling_score.cameras.capture --camera 1A-POV \\
         --fifo cam-long_a.nut --first first-long_a.h264 --t0 81234.567
 
-This holds one NDI connection to one camera for as long as it runs, and writes
+This holds one SRT connection to one camera for as long as it runs, and writes
 the camera's packets, untouched and each with its time, to ``--fifo`` for a
 composer to read. What the composer reads starts at the camera's newest
 keyframe when it opens the FIFO, held until the next one comes (they come
@@ -15,59 +15,56 @@ capture can check what the camera sends before anything reads the FIFO.
 recorder's start on ``time.monotonic``'s clock, and its time goes with it into
 the FIFO, as NUT (``_Nut``), for the composer to keep. A composer that falls
 behind then only delays the recording; it never moves a frame in it. The time
-is the camera's own clock (the packet's pts), anchored to when the packets
-reached the Ryzen (``CameraClock``); the tap takes both in libndi's own call.
-The camera's clock spaces the frames as it took them, where arrivals bunch
-up; it is trusted for nothing more, since the HOUSE cameras' clocks are years
-off and every camera's drifts. A held keyframe is timed when it is written.
+is the camera's own clock (the packet's 90 kHz MPEG-TS pts, unwrapped at
+2^33), anchored to when the packets reached the Ryzen (``CameraClock``), and
+put the camera's ``delivery_delay_s`` before arrival, where NDI put them. The
+camera's clock spaces the frames as it took them, where arrivals bunch up; it
+is trusted for nothing more. A HOUSE camera's pts is its encoder's uptime, and
+the long cameras' NTP times disagree with each other by 10-90 ms from day to
+day, while each camera's delay to the Ryzen holds to 1-2 ms ("Camera sync" in
+docs/superpowers/specs/2026-10-29-practice-srt-capture-design.md). A held
+keyframe is timed when it is written.
 
-**One process per camera, re-executed.** The tap (``tap.py``) keeps one H.264
-context per process, so each camera needs a process of its own. libndi finds
-the tap through ``LD_LIBRARY_PATH``, and the loader reads that only when a
-process starts. So ``main`` writes ``ndi-config.v1.json``, makes the tap's
-pipe, and execs itself with ``tap.tap_env``'s environment and
-``NDI_CONFIG_DIR``. It stays one process: whoever started it signals and waits
-on the PID it got, and needs no special environment of its own.
+**The connection.** Every camera runs an SRT listener on UDP 1600
+(``SRT_PORT``). ``ffmpeg`` is the caller (``ffmpeg_command``): it copies the
+camera's video, untouched, to MPEG-TS on its stdout, and PyAV demuxes that
+here. PyAV's own FFmpeg has no ``srt`` (checked 2026-11-03). A second caller
+to a camera gets its own stream and leaves ours alone (2026-11-03).
 
 **Threads.**
-- The main thread runs cyndilib's receive pump. With libndi's decode off,
-  ``receive()`` never returns a video frame, but the pump keeps asking, as
-  every receiver measured on 2026-10-24 did. cyndilib holds the GIL while
-  ``receive()`` waits, so the pump asks without waiting and sleeps in between.
-- A reader drains the tap's pipe. The tap never makes libndi's own thread
-  wait for it: it queues up to ~3 s of packets, then drops to the next
-  keyframe (``ndi_tap.c``). That matters while cyndilib's disconnect or
-  connect_to holds the GIL and waits on libndi's thread.
+- The main thread starts each ``ffmpeg`` and checks on the camera and the
+  parent every ``PUMP_S``.
+- A reader per connection passes its packets on (``_read_stream``), and stops
+  once a newer connection replaces it.
+- A relay per connection logs ``ffmpeg``'s own lines, so it never blocks on a
+  full stderr.
 - A ticker keeps the picture still while packets stop (``Holder``).
 - A writer feeds the FIFO from a queue, so a composer that is not reading
-  never backs up into libndi. A packet's wait in the queue only delays the
+  never backs up into the reader. A packet's wait in the queue only delays the
   recording, but one that has waited more than ``MAX_AGE_S`` is never
   written. What is queued then goes, and the stream starts again at a
   keyframe while the ``Holder`` holds the picture.
 
-**Stalls.** Liveness is judged from the tap's packets, never from
-``receive()``. After ``RECONNECT_S`` without a packet the receiver reconnects.
-It tries again at doubling gaps up to ``RECONNECT_MAX_S``, and starts over once
-packets flow again, so a stuck receiver cannot hammer a camera the club's own
-production also reads. Meanwhile the ``Holder`` repeats the last keyframe, so
-the composer's picture holds still rather than stopping.
+**Stalls.** Liveness is judged from packets. After ``RECONNECT_S`` without one
+-- a stalled stream, or an ``ffmpeg`` that has exited -- the capture kills its
+``ffmpeg`` and starts a new one. It tries again at doubling gaps up to
+``RECONNECT_MAX_S``, and starts over once packets flow again, so a camera that
+is down is never hammered: the club's own production reads it too. Meanwhile
+the ``Holder`` repeats the last keyframe, so the composer's picture holds
+still rather than stopping. Each new connection's pts start again (ffmpeg
+rebases them), which ``CameraClock`` takes as a clock step and anchors anew.
 
-**Exits.** SIGTERM ends it at once, by the signal's default action. A Python
-handler would run only once the main thread got back to Python, and a capture
-whose camera has gone quiet can sit in libndi, which cyndilib calls holding
-the GIL, for longer than the recorder waits (over 5 s, 2026-10-24). These exit
+**Exits.** SIGTERM ends it at once, by the signal's default action. These exit
 1, so a camera connection never outlives the session that wanted it:
-- the camera is not in the finder within ``FIND_S``;
-- no keyframe arrives within ``FIRST_S`` of connecting;
+- no keyframe arrives within ``FIRST_S`` of starting;
 - the FIFO's reader goes away;
 - the parent process goes away.
 
-The parent is watched with ``getppid()``, not ``PR_SET_PDEATHSIG``: that
-signal fires when the *thread* that started this process exits, not its
-process. The process ends with ``os._exit``. Tearing libndi down in Python's
-finalizers can wait on libndi's threads, and the tap's writer may be blocked
-on its pipe once the reader has stopped. The kernel closes the camera's sockets
-either way.
+The parent is watched with ``getppid()``. ``ffmpeg`` runs under ``setpriv
+--pdeathsig KILL``, so it dies with the capture however the capture ends, even
+by SIGKILL. That signal fires when the *thread* that started the child exits,
+so only the main thread, which lives until the end, starts one. The process ends with ``os._exit``: the FIFO's
+writer may be blocked on its pipe once the reader has stopped.
 """
 
 from __future__ import annotations
@@ -76,7 +73,9 @@ import argparse
 import io
 import logging
 import os
+import shutil
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -84,13 +83,11 @@ from collections import deque
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
-from typing import NoReturn
+from typing import BinaryIO, NoReturn
 
-# Before cyndilib loads libndi, which loads the tap: PyAV's own FFmpeg is bound
-# to itself as it loads, so none of its calls can reach the tap's avcodec_*.
 import av
 
-from curling_score.cameras import inventory, tap
+from curling_score.cameras import inventory
 
 log = logging.getLogger(__name__)
 
@@ -103,14 +100,10 @@ log = logging.getLogger(__name__)
 RECONNECT_S = 5.0
 RECONNECT_MAX_S = 60.0
 # The recorder gives a camera 15 s to send its first keyframe. A capture that
-# cannot find its camera, or hears no keyframe, gives up on the same scale
-# rather than hold a connection nobody will read.
-FIND_S = 15.0
+# hears no keyframe gives up on the same scale rather than hold a connection
+# nobody will read.
 FIRST_S = 15.0
-# How often the finder is looked at while the camera is not in it yet.
-FIND_POLL_S = 0.5
-# How often the pump asks libndi for frames and checks on the camera and the
-# parent.
+# How often the capture checks on the camera and the parent.
 PUMP_S = 0.1
 # A camera's clock is anchored to the quickest of its packets over this long.
 # Arrivals jitter over the quickest by 1-3 ms at the median and up to ~100 ms
@@ -130,10 +123,38 @@ MAX_AGE_S = 5.0
 # Packets queued, at most: 10 s at 60 fps, about 12 MB at a long view's ~10
 # Mbit/s. Only a guard on memory, for a composer that has stopped reading
 # altogether (MAX_AGE_S is judged as a packet is written). Past it, packets are
-# dropped until the next keyframe: blocking would stall libndi.
+# dropped until the next keyframe: blocking would stall the reader.
 BACKLOG = 600
+# Each camera serves SRT on this UDP port; we connect as a caller. Latency 500
+# ms ran clean on sheet 4 during a league, where 200 ms once lost packets on
+# 4H-PTZ (2026-10-29). A connection that hears nothing for SRT_TIMEOUT_S ends,
+# rather than hang.
+SRT_PORT = 1600
+SRT_LATENCY_S = 0.5
+SRT_TIMEOUT_S = 5.0
+# How much later than NDI each camera model's frames reach us over SRT, past
+# SRT_LATENCY_S: the same frames (NDI timecode = SRT pts) received both ways,
+# 5 min on each of two cameras per model, agreed to 2 ms (2026-11-03). Taking
+# it off puts every camera where NDI put it, and the PTZs 27 ms earlier
+# against the house cameras than SRT's arrivals alone would, as hits showed
+# (house -0.03 s against a PTZ, 2026-10-30).
+SRT_EXTRA_S = {"HOUSE": 0.065, "POV": 0.062, "PTZ": 0.091}
+# How little ffmpeg and our demuxer probe a new connection before passing
+# packets on. By default each held a connection's first ~4 s back and then sent
+# them in a burst, which CameraClock can only time by arrival: worst 3.6 s
+# late on 2A-PTZ; with these on both, first packets in 0.7 s and none more than
+# 0.07 s late (2026-11-03).
+PROBE = {"probesize": "32768", "analyzeduration": "0", "fpsprobesize": "0"}
+# MPEG-TS pts are 90 kHz and wrap at 2^33 (~26.5 h).
+PTS_WRAP = 1 << 33
+_PTS_HZ = 90_000
+# Holder's flag for a keyframe.
+KEYFRAME = 0x01
 _MODULE = "curling_score.cameras.capture"
-_TAP_LIB = "libavcodec-ndi.so.61"
+# What ffmpeg runs under: the kernel kills it when the capture ends, however it
+# ends (see Exits). setpriv sets that in the child, where a Python preexec_fn
+# could deadlock in a process that has threads.
+_DIE_WITH_PARENT = ["setpriv", "--pdeathsig", "KILL", "--"]
 # What the FIFO's times count in.
 _TIME_BASE = Fraction(1, 1_000_000)
 
@@ -174,7 +195,7 @@ class Holder:
     def packet(self, flags: int, payload: bytes, at: float | None = None) -> None:
         """A packet from the camera, timed ``at`` on ``clock`` (now if None)."""
         with self._lock:
-            key = bool(flags & tap.KEYFRAME)
+            key = bool(flags & KEYFRAME)
             if self._need_key and not key:
                 return
             if key:
@@ -195,6 +216,47 @@ class Holder:
             self._need_key = True
             self._hold_at = now + self.period_s
             return self._write(self._key, now, True) is not False
+
+
+def srt_url(camera: str) -> str:
+    """Where ffmpeg calls ``camera``: its SRT listener, with our latency and
+    timeout (in microseconds, as ffmpeg's srt protocol takes them)."""
+    return (f"srt://{inventory.CAMERAS[camera]}:{SRT_PORT}?mode=caller"
+            f"&latency={round(SRT_LATENCY_S * 1e6)}&timeout={round(SRT_TIMEOUT_S * 1e6)}")
+
+
+def delivery_delay_s(camera: str) -> float:
+    """How long after NDI's time for a frame ``camera``'s reaches us over SRT;
+    its times are put that much before arrival."""
+    return SRT_LATENCY_S + SRT_EXTRA_S[camera.split("-", 1)[1]]
+
+
+def ffmpeg_command(camera: str) -> list[str]:
+    """ffmpeg as the SRT caller: the camera's video copied, untouched, to
+    MPEG-TS on stdout."""
+    probe = [arg for option, value in PROBE.items() for arg in (f"-{option}", value)]
+    return ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning", *probe, "-i", srt_url(camera),
+            "-map", "0:v:0", "-c", "copy", "-f", "mpegts", "-"]
+
+
+class PtsUnwrap:
+    """MPEG-TS pts, which wrap at 2^33, as ticks that do not.
+
+    A pts more than half the wrap below the one before has wrapped. One the
+    demuxer has already unwrapped is taken modulo the wrap first, so it reads
+    the same.
+    """
+
+    def __init__(self):
+        self._last: int | None = None
+        self._base = 0
+
+    def __call__(self, pts: int) -> int:
+        pts %= PTS_WRAP
+        if self._last is not None and pts < self._last - PTS_WRAP // 2:
+            self._base += PTS_WRAP
+        self._last = pts
+        return self._base + pts
 
 
 class Reconnects:
@@ -338,7 +400,7 @@ class _Fifo:
     NUT.
 
     ``write`` never blocks: a full queue drops the data and says so, because a
-    blocked tap reader would hold up the camera's packets in the tap.
+    blocked reader would hold up the camera's packets.
     The writer never writes a packet more than MAX_AGE_S old (by ``clock``,
     the clock its times are on): it drops it with everything queued behind it,
     and the next ``write`` that is not a keyframe is refused, so the stream
@@ -434,19 +496,27 @@ class _Fifo:
 class _Capture:
     def __init__(self, args: argparse.Namespace):
         self.camera, self.first, self.parent = args.camera, args.first, args.parent
-        self.tap_fd = args.tap_fd
         t0 = args.t0
 
-        def session() -> float:
-            return time.monotonic() - t0
+        # Every time here sits the camera's delivery delay before arrival,
+        # where NDI's were.
+        delay = delivery_delay_s(self.camera)
 
-        self.times = CameraClock(t0)
+        def session() -> float:
+            return time.monotonic() - t0 - delay
+
+        self.times = CameraClock(t0 + delay)
+        self.now: Callable[[], float] = time.monotonic   # when a packet arrived
+        self.generation = 0                               # the current connection's
+        # Taken to pass a packet on, and to start a new connection: a reader
+        # whose connection has been replaced passes nothing more.
+        self._passing = threading.Lock()
         self.fifo = _Fifo(args.fifo, clock=session)
         self.holder = Holder(self.fifo.write, clock=session)
         self.reconnects = Reconnects()
         self.first_at: float | None = None
         self.exit_code: int | None = None
-        self._stalled = False
+        self._ffmpeg: subprocess.Popen | None = None
 
     def stop(self, code: int, why: str) -> None:
         """End the process with ``code``. Called from any thread, so it takes
@@ -458,87 +528,85 @@ class _Capture:
     def run(self) -> int:
         # The default action, whatever the parent left (see Exits).
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
-        from cyndilib.finder import Finder
-        from cyndilib.receiver import Receiver, ReceiveFrameType
-        from cyndilib.video_frame import VideoRecvFrame
-        from cyndilib.wrapper.ndi_recv import RecvBandwidth, RecvColorFormat
-
-        self._thread(self._read, "tap-reader")
+        began = time.monotonic()
         self._thread(self.fifo.run, "fifo-writer")
-        finder = Finder()
-        source = self._find(finder)
-        if source is None:
-            return self.exit_code
-        video = VideoRecvFrame()
-        receiver = Receiver(color_format=RecvColorFormat.UYVY_BGRA,
-                            bandwidth=RecvBandwidth.highest, recv_name="curling-score")
-        receiver.set_video_frame(video)
-        receiver.connect_to(source)
-        connected_at = time.monotonic()
-        self.reconnects.heard()
-        log.info("connected to %s", source.name)
         self._thread(self._tick, "ticker")
-        while self.exit_code is None:
-            got = receiver.receive(ReceiveFrameType.recv_video, 0)
-            # Only with libndi's decode on: a frame left unread fills
-            # cyndilib's buffers.
-            if got & ReceiveFrameType.recv_video:
-                video.skip_frames(False)
-            elif got == ReceiveFrameType.recv_buffers_full:
-                video.skip_frames(True)
-            if self.first_at is None and time.monotonic() - connected_at > FIRST_S:
-                self.stop(1, f"no keyframe within {FIRST_S:.0f} s of connecting")
-            self._check_parent()
-            if self.exit_code is None:
-                self._check_stall(receiver, source)
-                time.sleep(PUMP_S)
+        self._connect()
+        try:
+            while self.exit_code is None:
+                if self.first_at is None and time.monotonic() - began > FIRST_S:
+                    self.stop(1, f"no keyframe within {FIRST_S:.0f} s")
+                self._check_parent()
+                if self.exit_code is None:
+                    if self.reconnects.due():
+                        log.warning("no packets for %.1f s; reconnecting", self.reconnects.quiet_s())
+                        self._connect()
+                    time.sleep(PUMP_S)
+        finally:
+            self._end_ffmpeg()
         return self.exit_code
 
-    def _find(self, finder):
-        deadline = time.monotonic() + FIND_S
-        while self.exit_code is None:
-            finder.wait_for_sources(FIND_POLL_S)
-            for name in finder.update_sources():
-                if name.split(" (")[0] == self.camera:
-                    return finder.get_source(name)
-            if time.monotonic() >= deadline:
-                self.stop(1, f"not in the finder within {FIND_S:.0f} s")
-            self._check_parent()
-        return None
+    def _connect(self) -> None:
+        """A new SRT connection: a new ffmpeg, whose MPEG-TS a reader of its
+        own passes on. Only ever on the main thread (see Exits)."""
+        with self._passing:
+            self.generation += 1
+        self._end_ffmpeg()
+        log.info("connecting to %s", srt_url(self.camera))
+        proc = subprocess.Popen([*_DIE_WITH_PARENT, *ffmpeg_command(self.camera)],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        self._ffmpeg = proc
+        generation = self.generation
+        self._thread(lambda: self._read_stream(proc.stdout, generation), f"reader-{generation}",
+                     quiet=True)
+        self._thread(lambda: self._relay(proc.stderr), f"ffmpeg-log-{generation}", quiet=True)
+
+    def _end_ffmpeg(self) -> None:
+        if self._ffmpeg is not None:
+            self._ffmpeg.kill()
+            self._ffmpeg.wait()
+            self._ffmpeg = None
+
+    @staticmethod
+    def _relay(stream: BinaryIO) -> None:
+        """ffmpeg's own lines, so it never blocks on a full stderr."""
+        for line in stream:
+            log.warning("ffmpeg: %s", line.decode(errors="replace").rstrip())
 
     def _check_parent(self) -> None:
         if os.getppid() != self.parent:
             self.stop(1, f"parent {self.parent} went away")
 
-    def _check_stall(self, receiver, source) -> None:
-        if self.reconnects.due():
-            # Receiver.reconnect() does nothing while libndi still counts the
-            # connection, which is when a camera goes quiet without dropping
-            # it, so disconnect and connect again.
-            log.warning("no packets for %.1f s; reconnecting", self.reconnects.quiet_s())
-            receiver.disconnect()
-            receiver.connect_to(source)
-            self._stalled = True
-        elif self._stalled and self.reconnects.quiet_s() < self.reconnects.first_s:
-            log.info("packets again")
-            self._stalled = False
-
-    def _read(self) -> None:
-        with open(self.tap_fd, "rb") as f:
-            for flags, pts, arrived_s, payload in tap.read_records(f):
-                self.reconnects.heard()
-                if flags & tap.KEYFRAME and self.first_at is None:
-                    self._save_first(payload)
-                at = self.times.time(None if pts is None else pts / tap.PTS_HZ, arrived_s)
-                # Before the FIFO is open too: the Holder keeps the newest
-                # keyframe, which is where the FIFO's stream starts.
-                self.holder.packet(flags, payload, at)
-        # Not expected: the tap writes from inside this process, through the
-        # pipe's write end (NDI_TAP_FD), which therefore stays open as long as
-        # the capture runs -- and it is the tap's to write on, not ours to
-        # close. So this read never reaches the end of the pipe; a tap that
-        # stops writing shows as silence, which the reconnect clock handles.
-        self.stop(1, "the tap's pipe closed")
+    def _read_stream(self, stream: BinaryIO, generation: int) -> int:
+        """Pass on the video packets of one connection's MPEG-TS, until it
+        ends or a newer connection (``generation``) replaces it. How many
+        were passed on."""
+        unwrap, n = PtsUnwrap(), 0
+        try:
+            with av.open(stream, format="mpegts", options=PROBE) as ts:
+                video = ts.streams.video[0]
+                for packet in ts.demux(video):
+                    if not packet.size:
+                        continue
+                    arrived = self.now()
+                    payload, key = bytes(packet), packet.is_keyframe
+                    pts_s = None if packet.pts is None else unwrap(packet.pts) / _PTS_HZ
+                    with self._passing:
+                        if generation != self.generation:
+                            break
+                        self.reconnects.heard()
+                        if key and self.first_at is None:
+                            self._save_first(payload)
+                        # Before the FIFO is open too: the Holder keeps the
+                        # newest keyframe, which is where the FIFO's stream
+                        # starts.
+                        self.holder.packet(KEYFRAME if key else 0, payload,
+                                           self.times.time(pts_s, arrived))
+                    n += 1
+        except av.error.FFmpegError as exc:
+            log.warning("the stream ended: %s", exc)
+        return n
 
     def _save_first(self, payload: bytes) -> None:
         part = self.first.with_name(self.first.name + ".part")
@@ -552,7 +620,10 @@ class _Capture:
             self.holder.tick()
             time.sleep(self.holder.period_s)
 
-    def _thread(self, target: Callable[[], None], name: str) -> None:
+    def _thread(self, target: Callable[[], object], name: str, *, quiet: bool = False) -> None:
+        """Run ``target`` on a daemon thread. Its failure ends the capture,
+        unless ``quiet``: one connection's reader or log ending is no reason
+        to (a dead connection shows as silence, which reconnects)."""
         def run():
             try:
                 target()
@@ -560,7 +631,8 @@ class _Capture:
                 self.stop(1, "the FIFO's reader went away")
             except Exception as exc:  # noqa: BLE001 - any thread's failure ends the capture
                 log.exception("%s failed", name)
-                self.stop(1, f"{name}: {type(exc).__name__}: {exc}")
+                if not quiet:
+                    self.stop(1, f"{name}: {type(exc).__name__}: {exc}")
 
         threading.Thread(target=run, name=name, daemon=True).start()
 
@@ -572,35 +644,16 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--first", required=True, type=Path, help="where the first keyframe is copied")
     p.add_argument("--t0", required=True, type=float,
                    help="the session's zero on time.monotonic's clock: packets are timed from it")
-    p.add_argument("--ndi-dir", type=Path,
-                   help="where ndi-config.v1.json is written (default: ndi/ beside --fifo)")
-    # Set by main() when it re-executes itself.
-    p.add_argument("--tap-fd", type=int, help=argparse.SUPPRESS)
-    p.add_argument("--parent", type=int, help=argparse.SUPPRESS)
     return p
-
-
-def _exec_with_tap(args: argparse.Namespace, argv: list[str]) -> None:
-    if not (tap.TAP_DIR / _TAP_LIB).exists():
-        # Said on stderr as it exits; the recorder makes it its error.
-        sys.exit(f"the packet tap is not loaded ({tap.TAP_DIR / _TAP_LIB} is missing: "
-                 "capture runs only in the worker image)")
-    ndi_dir = (args.ndi_dir or args.fifo.parent / "ndi").absolute()
-    inventory.ndi_config(ndi_dir)
-    read, write = os.pipe()
-    os.set_inheritable(read, True)
-    os.set_inheritable(write, True)
-    env = {**os.environ, **tap.tap_env(write, decode=False), "NDI_CONFIG_DIR": str(ndi_dir)}
-    os.execve(sys.executable,
-              [sys.executable, "-m", _MODULE, *argv,
-               "--tap-fd", str(read), "--parent", str(os.getppid())], env)
 
 
 def main(argv: list[str] | None = None) -> NoReturn:
     argv = sys.argv[1:] if argv is None else list(argv)
     args = _parser().parse_args(argv)
-    if args.tap_fd is None:
-        _exec_with_tap(args, argv)
+    if shutil.which("ffmpeg") is None:
+        # Said on stderr as it exits; the recorder makes it its error.
+        sys.exit("ffmpeg is not installed: capture runs only in the worker image")
+    args.parent = os.getppid()
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                         format=f"%(asctime)s %(levelname)s capture {args.camera}: %(message)s")
     try:

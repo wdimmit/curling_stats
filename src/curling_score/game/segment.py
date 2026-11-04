@@ -59,6 +59,14 @@ PLAYED_BEFORE_MAX_GAP_S = 120.0
 GAME_GAP_S = 240.0
 # A player standing over the stones hides them briefly; smooth that away.
 SMOOTH_SAMPLES = 5
+# A delivery slides through its own house on the way out of the hack, in view
+# for a keyframe or two. While a takeout has left the house in play empty, that
+# one stone is the most stones on the sheet, and the smoothing spreads it over
+# SMOOTH_SAMPLES keyframes of the other house in play: 10/25 Sunday Skips sheet
+# 1 under overhead-3, 402.5 s, which cut end 1's first 200 s off as too short
+# to be an end (`_passing`). A stone seen in more keyframes than this is held
+# there, not passing through, and is left to the rules for that.
+PASSING_KEYFRAMES = 2
 # How far past the rule's own threshold a stretch of play or of empty sheet
 # must run before a stream still being recorded treats it as settled. The
 # smoothing can still relabel the last couple of samples, which can take a
@@ -125,6 +133,46 @@ def _smooth(active: list[str | None]) -> list[str | None]:
     return out
 
 
+def _passing(raw, active, samples, whole_s: float) -> list[str | None]:
+    """``active`` with the stones passing through one house taken out while
+    the other, the house in play, sits emptied mid-end (``PASSING_KEYFRAMES``).
+
+    Only a run inside an empty stretch, seen in at most that many keyframes,
+    with the other house holding stones on both sides of it -- and that house not yet
+    in play as long as a whole end (``whole_s``), after which what follows is
+    the next draw (`test_a_whole_end_is_never_joined_to_what_follows_it`).
+    Taken out, the two runs either side are one, as an empty stretch alone
+    always left them. A stone sliding through the house an end just finished,
+    the next end's first, is the same house on one side and is left alone.
+    """
+    out = list(active)
+    runs = _runs(active, samples)
+    for k in range(1, len(runs) - 1):
+        h, i0, i1 = runs[k]
+        if h is None or runs[k - 1][0] is not None or runs[k + 1][0] is not None:
+            continue
+        if sum(raw[i] == h for i in range(i0, i1)) > PASSING_KEYFRAMES:
+            continue
+        before = [r for r in runs[:k] if r[0] is not None and out[r[1]] is not None]
+        after = next((r for r in runs[k + 1:] if r[0] is not None), None)
+        if not before or after is None or before[-1][0] == h or after[0] != before[-1][0]:
+            continue
+        # Holding stones either side, not specks of its own on an empty sheet
+        # (hOKZoeJNTpM, 9,510-9,750 s).
+        if any(sum(raw[i] == r[0] for i in range(r[1], r[2])) <= PASSING_KEYFRAMES
+               for r in (before[-1], after)):
+            continue
+        first = before[-1]
+        for r in reversed(before):
+            if r[0] != first[0]:
+                break
+            first = r
+        if samples[before[-1][2] - 1].t - samples[first[1]].t >= whole_s:
+            continue
+        out[i0:i1] = [None] * (i1 - i0)
+    return out
+
+
 def _held(samples, house: str) -> bool:
     """Whether ``house`` showed stones in every one of ``samples``.
 
@@ -167,7 +215,8 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
     if not samples:
         return []
 
-    active = _smooth(_active_house(samples))
+    raw = _active_house(samples)
+    active = _passing(raw, _smooth(raw), samples, WHOLE_END_FACTOR * min_end_s)
     runs = _runs(active, samples)
 
     def span(i0, i1):
@@ -196,23 +245,36 @@ def segment_games(samples, min_end_s: float = MIN_END_S) -> list[GameSegment]:
                 merged.append([house, i0, i1])
 
         ends: list[EndSegment] = []
-        last_i1 = 0     # one past the last sample of ends[-1]
+        last_i1 = 0     # one past the last sample of ends[-1]'s runs that could be ends
+        core_end_s = 0.0  # where those runs left ends[-1]
         for h, i0, i1 in merged:
-            if span(i0, i1) < min_end_s:
-                continue
+            # A run too short to be an end still finishes the one before it
+            # when it would have joined it -- entTaSBFK3A end 2: rock 12's
+            # takeout emptied the house, a red jacket over the other button
+            # read as a stone, and the last 4 rocks ran 150 s. It only moves
+            # where that end finishes, though: whether the end is whole, and
+            # whether its house held its stones, stay as the runs that could
+            # be ends left them, so practice stones flickering before a game
+            # (_OGoqF5W9-I) cannot add up to a whole end that then refuses the
+            # first real one, and a rock waiting at the hack while the next
+            # end begins (AEqLTgM25Tc end 5) does not count as held.
+            long = span(i0, i1) >= min_end_s
             if (ends and ends[-1].house == h
-                    and (ends[-1].end_s - ends[-1].start_s < whole_s
-                         or _held(samples[last_i1:i0], h))):
+                    and (core_end_s - ends[-1].start_s < whole_s
+                         or (long and _held(samples[last_i1:i0], h)))):
                 # One end the other house's short run cut in two (WHOLE_END_S):
                 # 10/01 Thursday Morning sheet 2 end 4, and Mens sheet 5 three
                 # times in one game -- or, however long it had run, one whose
                 # house kept its stones throughout: 10/02 Friday sheet 5 end 6.
                 ends[-1].end_s = samples[i1 - 1].t
-                last_i1 = i1
+                if long:
+                    core_end_s, last_i1 = ends[-1].end_s, i1
+                continue
+            if not long:
                 continue
             ends.append(EndSegment(number=0, house=h, start_s=samples[i0].t,
                                    end_s=samples[i1 - 1].t))
-            last_i1 = i1
+            core_end_s, last_i1 = ends[-1].end_s, i1
         if not ends:
             continue
         # The recording's first game is numbered from 2 when it opens on an

@@ -1,9 +1,8 @@
-"""Practice on the club's own NDI cameras.
+"""Practice on the club's own cameras, over SRT.
 
-libndi (in the cyndilib wheel) receives each camera's H.264, and a stand-in
-for the libavcodec it decodes with hands those packets on untouched (``tap``),
-so a sheet's four cameras can be composed into one recording without anything
-decoding them twice.
+Each camera's H.264 is copied, never decoded (``capture``), and a sheet's four
+cameras are composed into one recording (``recorder``).
 
-See docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md.
+See docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md and
+docs/superpowers/specs/2026-10-29-practice-srt-capture-design.md.
 """

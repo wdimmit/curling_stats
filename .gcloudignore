@@ -33,6 +33,8 @@ design/
 *.png
 *.mp4
 *.npz
+# The /label how-to figures, served by the API (api.STATIC_ASSETS).
+!src/curling_score/service/static/*.jpg
 
 # The API image needs no model at all; the worker image needs only the default
 # one, which Dockerfile.worker names. Shipping the others is 60 MB per build.

@@ -9,14 +9,15 @@ the composer, lays the four out as YouTube does (``layout.py``) and encodes a
 
 **Starting.** The captures come first, then their first keyframes are checked,
 then the composer starts. A capture copies its first keyframe to
-``first-<role>.h264`` from its tap reader, whether or not anything has opened
+``first-<role>.h264`` from its SRT reader, whether or not anything has opened
 its FIFO yet (its FIFO writer waits for a reader on a thread of its own), so
 waiting for all four before the composer exists cannot deadlock. A camera that
 sends nothing, or anything but H.264 1920x1080 (the size the layouts' crops are
 in), fails the start before anything is encoded. ffprobe reads the keyframes,
 in a subprocess: PyAV in a second thread has deadlocked before
 (``ingest/frames.py``). A capture that exits before its first keyframe has
-said why (no tap, no such camera), and its last error is the start's.
+said why (no ffmpeg, a camera that never answers), and its last error is the
+start's.
 
 **The clock.** The recording's zero is read on ``clock`` (``time.monotonic``)
 as it starts, before any capture, with ``wall_started`` beside it. Each capture
@@ -71,7 +72,7 @@ log = logging.getLogger(__name__)
 # What a camera must send: the size the layouts' crops are in.
 CODEC, CAMERA_W, CAMERA_H = "h264", 1920, 1080
 # How long the four cameras get to send a first keyframe. A capture gives up
-# on the same scale (capture.FIND_S, capture.FIRST_S).
+# on the same scale (capture.FIRST_S).
 FIRST_TIMEOUT_S = 15.0
 FIRST_POLL_S = 0.1
 PROBE_TIMEOUT_S = 10.0

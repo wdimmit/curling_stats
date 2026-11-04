@@ -17,13 +17,13 @@ SARAH = {"Authorization": "Bearer tok-sarah"}
 ALEX = {"Authorization": "Bearer tok-alex"}
 
 
-def make(live=False):
+def make():
     clock, repo = Clock(), MemoryRepo()
     yt = FakeYouTube(playlists={"PLabc": ["liveVid0001"]})
     yt.add(VideoMeta("liveVid0001", "10/1 - Sheet 3 - Thursday League", CLUB, 0.0, "live", T0))
     settings = Settings(public_base_url="https://chart.example", worker_token="w",
                         admin_token="admin-secret", allowed_channels={CLUB},
-                        model_id="m-abc", live_enabled=live, club_tz="America/Vancouver")
+                        model_id="m-abc", club_tz="America/Vancouver")
     auth = FakeVerifier()
     auth.add("tok-sarah", "uid-sarah", "sarah@example.org", "Sarah")
     auth.add("tok-alex", "uid-alex", "alex@example.org", "Alex")
@@ -183,9 +183,8 @@ class TestTheScheduledPoll:
         assert client.post("/api/admin/poll-playlists",
                            headers=ADMIN).json().get("index") == "not due"
 
-    def test_a_live_stream_is_queued_only_with_live_on(self):
-        for live, expect in ((False, 0), (True, 1)):
-            client, repo, _ = make(live=live)
-            add(client, playlist_id="PLabc")
-            client.post("/api/admin/poll-playlists", headers=ADMIN)
-            assert len([r for r in repo.list_runs() if r.kind == "live"]) == expect
+    def test_a_live_stream_is_queued_as_a_live_run(self):
+        client, repo, _ = make()
+        add(client, playlist_id="PLabc")
+        client.post("/api/admin/poll-playlists", headers=ADMIN)
+        assert len([r for r in repo.list_runs() if r.kind == "live"]) == 1

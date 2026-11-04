@@ -109,16 +109,12 @@ class TestTheDefaultFinder:
         # t0 is release.t + WINDOW_S[0] = 11.0, and the stub returns t0 + 1.
         assert shot.t_hog_s == pytest.approx(12.0)
 
-    def test_it_falls_back_to_the_colour_scan_with_no_side_model(self, monkeypatch):
+    def test_with_the_side_model_switched_off_nothing_is_timed(self, monkeypatch):
         monkeypatch.setattr(hogtime.sidemodel, "default_finder", lambda: None)
-        calls = []
-        monkeypatch.setattr(hogtime.longview, "find_crossing",
-                            lambda *a, **k: calls.append(a) or
-                            longview.Crossing(None, "no", longview.KEY_NO_CANDIDATE))
         shot = types.SimpleNamespace(color="red", missing=False,
                                      release=types.SimpleNamespace(t=10.0))
         hogtime.time_hog_crossings([shot], "v.mp4", object())
-        assert calls, "the colour scan was not used as the fallback"
+        assert not hasattr(shot, "t_hog_s")
 
     def test_a_side_model_is_preferred_when_configured(self, monkeypatch):
         used = []

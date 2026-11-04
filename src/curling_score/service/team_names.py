@@ -10,11 +10,7 @@ club's playlist, which is a season of a league, so last season's teams -- who
 may since have split up or taken new names -- are not offered.
 """
 
-from curling_score.service.thinking_report import league_of
-
-
-def _key(name: str) -> str:
-    return " ".join(name.split()).casefold()
+from curling_score.service.thinking_report import league_of, team_key as _key
 
 
 def suggest(sources, game) -> dict:

@@ -143,6 +143,17 @@ REASON_THROUGH = "release-through"
 RELEASE_REASONS = (REASON, REASON_ADD, REASON_REMOVE, REASON_REST, REASON_THROUGH)
 # How long after the throw to read the far house for what it did.
 SETTLE_S = 36.0
+# A stone that appeared is timed to rest from the first moment it stops near
+# its place -- within SETTLED_NEAR_M of it, then still to SETTLED_STILL_M
+# through the next SETTLED_HOLD_S, seen in SETTLED_SHARE of those frames --
+# not from when the house was read: the clip and the house after the shot
+# start there. 10/20 Super S2 g2 e5 r11 (f_1EuZ) hit a guard and crept to a
+# stop 22 s after release, the last 10 cm in 1.6 s; read at 36 s, its clip
+# ran 33 s.
+SETTLED_NEAR_M = 0.3
+SETTLED_STILL_M = 0.05
+SETTLED_HOLD_S = 1.5
+SETTLED_SHARE = 0.8
 
 
 @dataclass(frozen=True)
@@ -449,6 +460,28 @@ def ran_through(release: Release, t_last: float, x_m: float, track=()) -> D.Deli
                       reason=REASON_THROUGH, track=tuple(track), release=release)
 
 
+def _settled_at(frames, color: str, x: float, y: float, t0: float, t1: float) -> float:
+    """The first moment in [t0, t1] from which a stone of ``color`` near (x, y)
+    has stopped -- see SETTLED_NEAR_M -- or ``t1`` when none does sooner."""
+    seen = []                      # (t, the sighting nearest (x, y), or None)
+    for t, dets in frames:
+        if t0 <= t <= t1 + SETTLED_HOLD_S:
+            near = [((d.x_m - x) ** 2 + (d.y_m - y) ** 2, d) for d in dets if d.color == color]
+            best = min(near, key=lambda n: n[0], default=None)
+            seen.append((t, best[1] if best and best[0] <= SETTLED_NEAR_M ** 2 else None))
+    for i, (t, d) in enumerate(seen):
+        if t > t1:
+            break
+        if d is None:
+            continue
+        held = [e for tt, e in seen[i:] if tt <= t + SETTLED_HOLD_S]
+        still = [e for e in held if e is not None
+                 and ((e.x_m - d.x_m) ** 2 + (e.y_m - d.y_m) ** 2) ** 0.5 <= SETTLED_STILL_M]
+        if len(still) >= SETTLED_SHARE * len(held):
+            return t
+    return t1
+
+
 def settle(release: Release, frames) -> D.Delivery:
     """What became of a throw the house camera did not follow, read from the house.
 
@@ -468,7 +501,8 @@ def settle(release: Release, frames) -> D.Delivery:
     mine = [(x, y) for c, x, y in added if c == release.color]
     if mine:
         x, y = mine[0]
-        return D.Delivery(color=release.color, t_enter=t, t_rest=t + SETTLE_S,
+        t_rest = _settled_at(frames, release.color, x, y, t + MIN_LAG_S, t + SETTLE_S)
+        return D.Delivery(color=release.color, t_enter=t, t_rest=t_rest,
                           entry_y_m=C.HOGGED_Y_M, rest_x_m=x, rest_y_m=y,
                           travel_m=C.HOGGED_Y_M - y, came_to_rest=True, reason=REASON_ADD,
                           release=release)

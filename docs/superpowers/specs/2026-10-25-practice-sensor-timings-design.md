@@ -43,7 +43,7 @@ POST https://curling.dimmit.net/api/practice/sensors
 Authorization: Bearer csk_...
 Content-Type: application/json
 
-{"timings": [
+{"sent_at": 1793023149870, "timings": [
   {"client_id": "9f1c0e2a-0001", "at": 1793023145123, "at_is": "hog",
    "short_s": 3.21, "long_s": 13.94}
 ]}
@@ -51,6 +51,7 @@ Content-Type: application/json
 
 | field | meaning |
 |---|---|
+| `sent_at` | Optional, once per push: epoch ms by the phone's clock as it sends. The site takes `clock_offset_s` = its own clock − `sent_at` and adds it to every hog time in the push, so the phone's clock no longer matters. Not within a day of the site's clock → 422. Added 2026-10-27, after the first real session's phone ran 44 s fast. |
 | `client_id` | The app's own id for this throw: 1-64 of `A-Z a-z 0-9 . _ : -`. Sending the same one again is a no-op, so retry anything you are unsure arrived. |
 | `at` | Epoch **milliseconds** of one line crossing, by the phone's clock. |
 | `at_is` | Which crossing `at` is: `back`, `hog` (the throwing hog line) or `far` (the far hog line). |
@@ -72,7 +73,7 @@ window runs from 5 s before Start to 2 minutes after the session ended. A timing
 **before** the session was started never goes in, so start the session on the site before throwing.
 
 A timing more than 60 s ahead of the site's clock is refused, because the phone's clock is wrong.
-Keep the phone on network time.
+Without `sent_at`, keep the phone on network time.
 
 ### The answer
 

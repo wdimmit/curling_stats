@@ -82,10 +82,42 @@ def _when(row):
     return row["played_at"] or ""
 
 
+def team_key(name: str) -> str:
+    """A typed team name as one team: "Dimmit" and "dimmit " are the same."""
+    return " ".join(name.split()).casefold()
+
+
+def _by_team(rows) -> tuple[list[dict], int]:
+    """Every named team in the league, slowest first: its thinking over all
+    the ends it played, so a long game counts for more than a short one.
+    Each spelling a team went by is one team, called the way it was written
+    most often, the newer on a tie. A row with no name is no team anyone can
+    find, so it is left out and counted."""
+    teams, unnamed = {}, 0
+    for r in rows:
+        said = " ".join((r["team"] or "").split())
+        if not said:
+            unnamed += 1
+            continue
+        t = teams.setdefault(team_key(said), {"games": 0, "thinking_s": 0.0, "ends": 0,
+                                              "said": {}})
+        t["games"] += 1
+        t["thinking_s"] += r["thinking_s"]
+        t["ends"] += max(r["ends"], 1)
+        uses, last = t["said"].get(said, (0, ""))
+        t["said"][said] = (uses + 1, max(last, _when(r)))
+    out = [{"team": max(t["said"], key=lambda s: (*t["said"][s], s)),
+            "games": t["games"], "ends": t["ends"], "thinking_s": t["thinking_s"],
+            "per_end_s": t["thinking_s"] / t["ends"]} for t in teams.values()]
+    out.sort(key=lambda t: (-t["per_end_s"], t["team"].casefold()))
+    return out, unnamed
+
+
 def build(sources, top: int = TOP, since=None) -> dict:
     """Group games by league and rank its teams, one row per team per game,
     by thinking per end -- the slowest `top` rows as `teams`, and the
-    quickest `top` as `fastest`, both ranked over every game in the league.
+    quickest `top` as `fastest`, both ranked over every game in the league,
+    and every named team's average over all its games as `by_team`.
 
     A league is also split by format: a doubles end is ten thrown rocks and
     a fours end sixteen, so their per-end times are not the same measure.
@@ -129,6 +161,7 @@ def build(sources, top: int = TOP, since=None) -> dict:
         slowest = sorted(g["rows"], key=lambda r: (r["per_end_s"], _when(r)), reverse=True)
         fastest = sorted(g["rows"], key=lambda r: (r["per_end_s"], _when(r)))
         dates = [r["played_at"] for r in slowest if r["played_at"]]
+        by_team, unnamed = _by_team(g["rows"])
         leagues.append({
             "league": g["league"], "format": g["format"],
             # A playlist title and a stream-title league that read the same
@@ -141,6 +174,7 @@ def build(sources, top: int = TOP, since=None) -> dict:
             "avg_per_end_s": sum(r["thinking_s"] for r in slowest) / sum(max(r["ends"], 1) for r in slowest),
             "teams": slowest[:top],
             "fastest": fastest[:top],
+            "by_team": by_team, "unnamed_rows": unnamed,
         })
     leagues.sort(key=lambda lg: (lg["last_played_at"] or "", lg["league"]), reverse=True)
     return {"leagues": leagues, "pending": len(pending), "top": top}

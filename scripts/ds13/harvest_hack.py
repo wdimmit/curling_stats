@@ -1,6 +1,6 @@
 """Hack wave: side-view frames between the hack and the tee, for ds13's next model.
 
-Every frame ds13 was trained on is cropped to ``sidepool.band_crop`` -- the tee
+Every frame ds13 was trained on is cropped to ``sideview.band_crop`` -- the tee
 to past the hog line -- so the model has never seen a stone behind the tee.
 It finds one there anyway, but worse: on the 96 rocks of s_0N8Q2sB4vY8Hv4Ooq
 (2026-09-28) it held 99-100% of frames past +2 m against 85-90% between the
@@ -310,7 +310,7 @@ def main() -> int:
 
     from ultralytics import YOLO
     from curling_score.detect import longview
-    from curling_score.harvest.sideframes import stem_for
+    from curling_score.harvest.candidates import stem_for
     from curling_score.train import boxedit
 
     out = Path(args.out).expanduser(); (out / "images").mkdir(parents=True, exist_ok=True)

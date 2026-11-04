@@ -28,6 +28,9 @@ from pathlib import Path
 # so we keep the encode visually lossless rather than saving disk.
 CRF = 18
 PRESET = "veryfast"
+# A job's lease runs out after ten minutes without a word (service.repo.LEASE_S),
+# and two builds at once take about seventeen: say something every minute.
+TICK_S = 60.0
 # The activity profile reads keyframes, so the proxy must carry them at the same
 # spacing as the source or the profile silently loses samples. These club
 # streams key every 5 s at 30 fps; left to itself x264 chose 8.33 s, which cost
@@ -82,8 +85,29 @@ def translate(rect, strip):
     return (x - sx, y - sy, w, h)
 
 
-def ensure_proxy(video_path, vid, strip, root=None, progress=None) -> Path:
-    """Return a proxy of the strip, building it only if it is not cached."""
+def _encode(cmd, tick=None) -> None:
+    """Run ffmpeg, calling ``tick()`` every TICK_S while it works. Whatever
+    tick raises (the job was lost, or must yield) stops the encode."""
+    proc = subprocess.Popen(cmd)
+    try:
+        while True:
+            try:
+                code = proc.wait(timeout=TICK_S)
+                break
+            except subprocess.TimeoutExpired:
+                if tick:
+                    tick()
+    except BaseException:
+        proc.kill()
+        proc.wait()
+        raise
+    if code:
+        raise subprocess.CalledProcessError(code, cmd)
+
+
+def ensure_proxy(video_path, vid, strip, root=None, progress=None, tick=None) -> Path:
+    """Return a proxy of the strip, building it only if it is not cached.
+    ``tick()`` is called every TICK_S while it builds."""
     dest = proxy_path(vid, strip, root)
     if is_cached(vid, strip, root):
         return dest
@@ -104,7 +128,7 @@ def ensure_proxy(video_path, vid, strip, root=None, progress=None) -> Path:
     if progress:
         progress(f"building strip proxy {w}x{h} (one-off, ~9 min for a 4 h video)")
     try:
-        subprocess.run(cmd, check=True)
+        _encode(cmd, tick)
         tmp.replace(dest)
     finally:
         tmp.unlink(missing_ok=True)

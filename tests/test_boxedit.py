@@ -284,6 +284,57 @@ class TestBroomPage:
             boxedit.render(_one_item(), tmp_path, scope="s", kind="sweeper")
 
 
+class TestPlayerPage:
+    def test_h_arms_class_2_and_the_button_is_there(self, tmp_path):
+        page = boxedit.render(_one_item(), tmp_path, scope="players", kind="player").read_text()
+        assert '<button id="addp">+player (H)</button>' in page
+        assert 'k === "r" || k === "y" || k === "h"' in page
+        assert 'setArm(k === "r" ? 0 : k === "y" ? 1 : 2)' in page
+        assert 'document.getElementById("addp").onclick = () => setArm(2)' in page
+
+    def test_red_and_yellow_are_still_there(self, tmp_path):
+        page = boxedit.render(_one_item(), tmp_path, scope="players", kind="player").read_text()
+        assert '<button id="addr">+red (R)</button>' in page
+        assert '<button id="addy">+yellow (Y)</button>' in page
+
+    def test_a_player_is_blue(self, tmp_path):
+        page = boxedit.render(_one_item(), tmp_path, scope="players", kind="player").read_text()
+        assert "--ply:#2a6fd0;" in page
+        assert ".bx.c2 { border-color:var(--ply); }" in page
+
+    def test_a_player_is_dragged_out_and_p_is_still_previous(self, tmp_path):
+        page = boxedit.render(_one_item(), tmp_path, scope="players", kind="player").read_text()
+        assert "startDraw(ev, fig, item, stage, r, nx, ny)" in page
+        assert 'k === "n" || k === "p"' in page          # untouched: P is the previous frame
+        # class 2 never goes to the segmenter
+        assert "if (arm === 2)" in page.split("function onDown(", 1)[1].split("\n}\n", 1)[0]
+
+    def test_the_stone_page_is_untouched_by_it(self, tmp_path):
+        page = boxedit.render(_one_item(), tmp_path, scope="s").read_text()
+        assert "addp" not in page and "--ply" not in page
+
+    def test_it_still_calls_the_segmenter(self, tmp_path):
+        from curling_score.train import segserve
+        boxedit.render(_one_item(), tmp_path, scope="players", kind="player")
+        segserve.check_page(tmp_path)
+
+    def test_every_edit_finds_its_text_in_the_template(self):
+        for old, _new in boxedit._PLAYER_EDITS:
+            assert boxedit._PAGE.count(old) == 1, old
+
+    def test_the_help_text_is_the_players(self, tmp_path):
+        page = boxedit.render(_one_item(), tmp_path, scope="players", kind="player").read_text()
+        assert "<b>H</b>" in page and "drag" in page.lower()
+        assert page.count('<p class="muted">') == 1
+
+    def test_proposed_players_arrive_as_class_2_boxes(self, tmp_path):
+        items = [{**_one_item()[0], "boxes": [[2, 0.5, 0.5, 0.1, 0.3], [0, 0.2, 0.2, 0.05, 0.1]]}]
+        page = boxedit.render(items, tmp_path, scope="players", kind="player",
+                              proposals=True).read_text()
+        blob = page.split("const ITEMS = ", 1)[1].split(";\n", 1)[0]
+        assert [b[0] for b in json.loads(blob)[0]["boxes"]] == [2, 0]
+
+
 class TestGhosts:
     """The other member's boxes on a disputed item: shown so the second look
     is a comparison, never part of what the page hands back."""

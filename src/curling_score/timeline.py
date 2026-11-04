@@ -8,13 +8,17 @@ down-sheet.
 from copy import deepcopy
 from datetime import datetime, timezone
 
-from curling_score.game import classify, fartime, hogtime, rules, shots as shots_mod, split, thinking
+from curling_score.game import (aimlines, classify, fartime, hogtime, rules, shots as shots_mod,
+                                split, thinking)
 from curling_score.game import format as format_mod
 from curling_score.geometry import constants as C
 from curling_score.ingest.source import watch_url_at
 
 # 9: each shot's "spin" (rpm at release, game/spintime.py).
-SCHEMA_VERSION = 9
+# 10: each line's "slide", "release_line" and "set" (game/aimlines.py); the
+# final line is fitted over 9 ft past the hog line, "final_refused" when it
+# could not be; "confirmed" is gone.
+SCHEMA_VERSION = 10
 
 # To watch the shot being called and thrown, the video starts this far back
 # from the release.
@@ -46,12 +50,21 @@ def _line(l):
            "at_hog": {"x": r(l.at_hog_x), "offset_m": r(l.at_hog_offset)},
            # null, not absent: a doubles rock nobody held a broom for.
            "at_broom": None if l.at_broom_x is None else {"x": r(l.at_broom_x), "miss_m": r(l.miss)},
-           "side": l.side, "curl": l.curl, "confirmed": l.confirmed,
+           "side": l.side, "curl": l.curl,
            "hog_path": [[r(y, 2), r(x, 3)] for y, x in l.hog_path],
            "path": [[r(y, 2), r(x, 3)] for y, x in l.path],
            # [t, y, x], t seconds from the release: the delivery chart's dots.
            "delivery": [[r(t, 2), r(y, 2), r(x, 3)] for t, y, x in getattr(l, "delivery", ())],
-           "fit": {"n": int(l.fit_n), "rms_m": r(l.fit_rms)}}
+           "fit": None if l.fit_n is None else {"n": int(l.fit_n), "rms_m": r(l.fit_rms)},
+           "slide": aimlines.aim_json(getattr(l, "slide", None)),
+           "release_line": aimlines.aim_json(getattr(l, "release_line", None)),
+           "set": aimlines.set_json(getattr(l, "set", None))}
+    # A held broom with no final line to read against it: not "no broom held"
+    # (at_broom null), but a final line too thin to fit.
+    if getattr(l, "final_refused", False):
+        out["final_refused"] = True
+        if getattr(l, "held_broom", True):
+            out["at_broom"] = {"x": None, "miss_m": None}
     # Only a broomless line has one; a line with a broom -- every
     # four-player line -- has none.
     tee = getattr(l, "at_tee_x", None)

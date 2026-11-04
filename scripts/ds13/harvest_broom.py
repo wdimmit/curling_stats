@@ -10,7 +10,7 @@ alone in exactly those frames.
 
 For each game this cuts one stream-copied clip per scanned rock on the worker,
 follows the thrown rock through the band (the tee to past the hog line, as
-``sidepool.band_crop`` -- the crop hogtime reads) at 30 fps, and measures each
+``sideview.band_crop`` -- the crop hogtime reads) at 30 fps, and measures each
 frame's box against the rock's own running median size. A frame whose box is
 WIDE_RATIO or more over it, in width or height, is a widening; one frame per
 widening episode is offered, the widest.
@@ -50,7 +50,7 @@ from mask_wave import inside, mask, window  # noqa: E402
 from curling_score.analyze import OTHER_HOUSE
 from curling_score.game import hogtime
 from curling_score.geometry import constants as C
-from curling_score.harvest import sidepool
+from curling_score.geometry.sideview import band_crop
 
 TEE_Y = C.TEE_TO_TEE_M
 FPS = 30.0
@@ -179,7 +179,7 @@ def main() -> int:
 
     from ultralytics import YOLO
     from curling_score.detect import longview
-    from curling_score.harvest.sideframes import stem_for
+    from curling_score.harvest.candidates import stem_for
     from curling_score.train import boxedit
 
     out = Path(args.out).expanduser(); (out / "images").mkdir(parents=True, exist_ok=True)
@@ -206,7 +206,7 @@ def main() -> int:
         for n, (e, s) in names.items():
             vname = hogtime.CAMERA_FOR[OTHER_HOUSE[e["house"]]]
             view = views[vname]
-            top, bot = sidepool.band_crop(view)
+            top, bot = band_crop(view)
             t0 = s["t_release_s"] + WINDOW_S[0]; t1 = s["t_release_s"] + WINDOW_S[1]
             clip = work / vid / f"clip_{n}.mp4"
             if n not in offsets or not clip.exists():

@@ -183,3 +183,30 @@ def test_models_from_before_the_release_model_read_none():
     calls = []
     measure(calls, dv=arrival(), models=SimpleNamespace(broom_model="broom", line_model="line"))
     assert calls[-2] == ("release", "right", None)
+
+
+def test_aim_lines_follow_the_release():
+    """The slide and release lines need the release point, so they are fitted
+    right after the release pass, as in a game's end."""
+    import dataclasses
+
+    from curling_score.game import linetime as L
+
+    tee = L.TEE_Y
+    delivery = tuple((i / 30, tee - d, 0.001 * d)
+                     for i, d in enumerate(x * 0.05 for x in range(-64, 159)))   # -3.2..7.9 m
+
+    def line_stage(shots, *a, **k):
+        shots[0].line = L.Line(start=None, at_hog_x=0.0, at_hog_offset=None, at_broom_x=None,
+                               miss=None, curl="right", side=None, hog_path=(), path=(),
+                               fit_n=30, fit_rms=0.001, delivery=delivery)
+
+    def release_stage(shots, *a, **k):
+        shots[0].line = dataclasses.replace(shots[0].line, release=(1.0, tee - 5.0, 0.005))
+
+    noop = lambda *a, **k: None                          # noqa: E731
+    shot = E.enrich("rec.ts", SETUPS, SIDEVIEWS, MODELS, house="top", arrival=arrival(),
+                    release=Release("red", 22.0, 1.0, 2.0), house_frames=[], throw_frames=[],
+                    stages=E.Stages(hog=noop, side_release=noop, broom=noop, line=line_stage,
+                                    release=release_stage, spin=noop))
+    assert shot.line.release_line is not None and shot.line.slide is not None

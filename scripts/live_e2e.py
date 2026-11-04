@@ -3,7 +3,7 @@
     python scripts/live_e2e.py --out DIR --youtube VIDEO_ID [...]
     python scripts/live_e2e.py --out DIR --replay VIDEO.mp4 [...] --speed 1
 
-The API runs in-process (memory repo and store, LIVE_ENABLED) and the worker
+The API runs in-process (memory repo and store) and the worker
 talks to it through FastAPI's test client, so nothing listens on a port. Each
 video becomes a queued live job; the worker's manager claims and records it
 (from YouTube, or a cached video played back as if live) and the lane builds
@@ -69,8 +69,7 @@ def main(argv=None) -> int:
     weights = str(weights_mod.default_path())
     repo, store, yt = MemoryRepo(), MemoryStore(), FakeYouTube()
     settings = Settings(public_base_url="http://testserver", worker_token="w",
-                        admin_token="a", model_id=version.model_id(weights),
-                        live_enabled=True)
+                        admin_token="a", model_id=version.model_id(weights))
     app = create_app(repo, store, yt, settings)
     t0 = time.monotonic()
     now = datetime.now(timezone.utc)

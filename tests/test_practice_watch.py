@@ -85,10 +85,10 @@ def hack(color, t):
     return [(t, det(color, 0.0, -3.6))]
 
 
-def watched(pipeline, since_s=20.0, until_s=100.0, t0_s=0.0, clock=None, **kw):
+def watched(pipeline, until_s=100.0, t0_s=0.0, clock=None, **kw):
     rec, docs = Rec(), []
     w = W.PracticeWatch(recording=rec, pipeline=pipeline, models=SimpleNamespace(detector=None),
-                        since_s=since_s, t0_s=t0_s, publish=docs.append,
+                        t0_s=t0_s, publish=docs.append,
                         clock=clock or (lambda: 0.0), **kw)
     while rec.head < until_s:
         rec.head = min(until_s, rec.head + 1.0)
@@ -109,7 +109,7 @@ def test_a_throw_is_published_once_with_its_release():
     assert (th["house"], th["color"], th["arrived"]) == ("top", "red", True)
     assert th["t_release_s"] == 1022.0 and th["release_source"] == "overhead"
     assert docs[-1]["status"] == "ended" and w.done
-    assert docs[-1]["since_s"] == 1020.0 and docs[-1]["t0_s"] == 1000.0
+    assert docs[-1]["t0_s"] == 1000.0
 
 
 def test_a_release_that_never_arrives_becomes_a_throw_a_minute_later():
@@ -126,30 +126,12 @@ def test_an_arrival_nothing_released_is_reported_without_a_release():
     assert w.throws[0]["release_source"] is None and w.throws[0]["t_release_s"] is None
 
 
-def test_a_throw_released_before_start_is_left_out():
-    top = sheet(thrown("red", t0=66.0, x=0.2), thrown("red", t0=96.0, x=-0.6), until_s=140.0)
-    bottom = sheet(hack("red", 50.0), hack("red", 80.0), until_s=140.0)
-    w, _ = watched(Pipeline(top=top, bottom=bottom), since_s=60.0, until_s=140.0)
-    assert [t["t_release_s"] for t in w.throws] == [80.0]
-
-
-def test_it_calibrates_only_once_the_lookback_is_there():
-    p, rec = Pipeline(), Rec(head=10.0)
-    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=20.0,
-                        clock=lambda: 0.0)
-    assert w.step() is False and p.calibrated == []
-    rec.head = 20.0
-    assert w.step() is True
-    assert p.calibrated == [20.0] and w.status == "watching"
-
-
 def test_a_recording_from_start_is_not_read_before_it_holds_anything():
-    # The cameras' recording starts at Start (since_s 0): at first the composer
+    # The cameras' recording starts at Start: at first the composer
     # has written nothing, then too little to calibrate from. Nothing to do yet,
     # and no try spent.
     p, rec = Pipeline(), Rec(head=0.0)
-    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=0.0,
-                        clock=lambda: 0.0)
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, clock=lambda: 0.0)
     assert w.step() is False
     rec.head = W.READ_MIN_S - 0.1
     assert w.step() is False
@@ -163,8 +145,7 @@ def test_a_recording_with_no_file_yet_is_nothing_to_do():
     # PyAV raised FileNotFoundError before rec.0.ts existed: that is not a
     # failure for the lane to count, nor a calibration try.
     p, rec = Pipeline(cals=[FileNotFoundError("rec.ts"), cal()]), Rec(head=W.READ_MIN_S)
-    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=0.0,
-                        clock=lambda: 0.0)
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, clock=lambda: 0.0)
     assert w.step() is False
     assert w.calib_tries == 0 and w.status == "calibrating"
     assert w.step() is True                        # no minute's wait: nothing was tried
@@ -174,8 +155,7 @@ def test_a_recording_with_no_file_yet_is_nothing_to_do():
 def test_a_saved_calibration_is_not_checked_against_a_file_not_there_yet():
     saved = sided()
     p, rec = Pipeline(saved_ok=[FileNotFoundError("rec.ts"), AGREES]), Rec(head=W.CHECK_MIN_S)
-    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=0.0,
-                        clock=lambda: 0.0, saved_calibration=saved)
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, clock=lambda: 0.0, saved_calibration=saved)
     assert w.step() is False and w.status == "calibrating"
     assert w.step() is True                        # the check was still owed
     assert w.cal is saved and p.calibrated == []
@@ -184,8 +164,7 @@ def test_a_saved_calibration_is_not_checked_against_a_file_not_there_yet():
 def test_an_incomplete_calibration_is_tried_again_a_minute_later():
     now = [0.0]
     p, rec = Pipeline(cals=[cal(complete=False), cal()]), Rec(head=20.0)
-    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=20.0,
-                        clock=lambda: now[0])
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, clock=lambda: now[0])
     assert w.step() is True and w.status == "calibrating"
     assert w.step() is False                       # not yet a minute
     now[0] = 60.0
@@ -196,8 +175,7 @@ def test_an_incomplete_calibration_is_tried_again_a_minute_later():
 def test_it_gives_up_after_its_calibration_tries():
     now, docs = [0.0], []
     p, rec = Pipeline(cals=[CalibrationError("no panels")]), Rec(head=20.0)
-    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=20.0,
-                        publish=docs.append, clock=lambda: now[0])
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, publish=docs.append, clock=lambda: now[0])
     for _ in range(W.CALIB_TRIES):
         assert w.step() is True
         now[0] += W.CALIB_RETRY_S
@@ -208,7 +186,7 @@ def test_it_gives_up_after_its_calibration_tries():
 def test_told_to_stop_it_reads_what_is_recorded_then_ends():
     p, rec, docs = Pipeline(), Rec(head=20.0), []
     w = W.PracticeWatch(recording=rec, pipeline=p, models=SimpleNamespace(detector=None),
-                        since_s=20.0, publish=docs.append, clock=lambda: 0.0)
+                        publish=docs.append, clock=lambda: 0.0)
     w.step()                                       # calibrated
     rec.head = 31.0
     w.request_stop()
@@ -223,7 +201,7 @@ def test_told_to_stop_it_ends_even_while_the_recording_keeps_growing():
     # the head would end only when a step happened to land between segments.
     p, rec = Pipeline(), Rec(head=20.0)
     w = W.PracticeWatch(recording=rec, pipeline=p, models=SimpleNamespace(detector=None),
-                        since_s=20.0, clock=lambda: 0.0)
+                        clock=lambda: 0.0)
     w.step()
     rec.head = 31.0
     w.request_stop()
@@ -237,17 +215,15 @@ def test_told_to_stop_it_ends_even_while_the_recording_keeps_growing():
 
 
 def test_a_stop_while_calibrating_ends_it():
-    p, rec = Pipeline(), Rec(head=5.0)             # the lookback is still arriving
-    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, since_s=20.0,
-                        clock=lambda: 0.0)
+    p, rec = Pipeline(), Rec(head=0.0)             # nothing to calibrate from yet
+    w = W.PracticeWatch(recording=rec, pipeline=p, models=None, clock=lambda: 0.0)
     w.request_stop()
     assert w.step() is True
     assert w.done and w.status == "ended" and p.calibrated == []
 
 
 def test_the_document_says_when_the_recording_began_by_the_wall_clock():
-    w = W.PracticeWatch(recording=Rec(), pipeline=Pipeline(), models=None, since_s=20.0,
-                        wall_t0=1760000000.0)
+    w = W.PracticeWatch(recording=Rec(), pipeline=Pipeline(), models=None, wall_t0=1760000000.0)
     assert w.document()["wall_t0"] == 1760000000.0
 
 
@@ -263,7 +239,7 @@ def test_the_document_says_how_much_lane_the_watch_has_used():
 
     rec = Rec(head=20.0)
     w = W.PracticeWatch(recording=rec, pipeline=Slow(), models=SimpleNamespace(detector=None),
-                        since_s=20.0, clock=lambda: now[0])
+                        clock=lambda: now[0])
     w.step()                                       # calibrated, instantly
     rec.head = 26.0
     w.step()                                       # one read of 1.5 s
@@ -277,13 +253,13 @@ def earlier(t, clip=True):
 
 
 def resumed(clipper=None, prior=None):
-    """A camera watch resumed 600 s into its session (since_s 0: a direct
+    """A camera watch resumed 600 s into its session (a direct
     feed records from Start), with a throw released at t=12 of its recording."""
     rec, docs = Rec(), []
     w = W.PracticeWatch(recording=rec, pipeline=Pipeline(
                             top=sheet(thrown("red", t0=30.0), until_s=100.0),
                             bottom=sheet(hack("red", 12.0), until_s=100.0)),
-                        models=SimpleNamespace(detector=None), since_s=0.0, t0_s=600.0,
+                        models=SimpleNamespace(detector=None), t0_s=600.0,
                         publish=lambda d: docs.append(copy.deepcopy(d)), clock=lambda: 0.0,
                         clipper=clipper, prior_throws=prior or [earlier(30.0)])
     while rec.head < 100.0:
@@ -323,14 +299,14 @@ def test_a_resumed_watchs_lost_clip_says_none_is_coming():
     assert prior[1]["clip"] is False                    # the job's copy is untouched
 
 
-def test_a_long_catch_up_is_read_in_pieces_from_the_look_back():
+def test_a_long_catch_up_is_read_in_pieces():
     p = Pipeline()
     rec = Rec(head=500.0)
     w = W.PracticeWatch(recording=rec, pipeline=p, models=SimpleNamespace(detector=None),
-                        since_s=100.0, clock=lambda: 0.0)
+                        clock=lambda: 0.0)
     while w.step():
         pass
-    assert p.spans[0][0] == 64.0                   # Start less a delivery's look-back
+    assert p.spans[0][0] == 0.0                    # from Start
     assert all(b - a <= W.STEP_MAX_S for a, b in p.spans)
     assert all(p.spans[i][1] == p.spans[i + 1][0] for i in range(len(p.spans) - 1))
     assert p.spans[-1][1] == 498.0                 # just behind the head
@@ -349,12 +325,11 @@ def sided(complete=True):
 
 
 def saving(pipeline, *, saved=None, head=W.CHECK_MIN_S, now=None, save=None, **kw):
-    """A watch from Start (``since_s`` 0, as on a direct feed, which has no
-    lookback) holding ``saved``; ``saves`` collects what it asks to be kept."""
+    """A watch from Start holding ``saved``; ``saves`` collects what it asks to be kept."""
     saves, rec = [], Rec(head=head)
     now = now if now is not None else [0.0]
     w = W.PracticeWatch(recording=rec, pipeline=pipeline, models=SimpleNamespace(detector=None),
-                        since_s=0.0, clock=lambda: now[0], saved_calibration=saved,
+                        clock=lambda: now[0], saved_calibration=saved,
                         save_calibration=save or saves.append, **kw)
     return w, rec, saves, now
 
@@ -539,7 +514,7 @@ def test_a_watch_without_the_side_views_never_seeds(saved):
 def test_without_anywhere_to_keep_it_a_calibration_is_just_used():
     rec = Rec(head=W.CHECK_MIN_S)
     w = W.PracticeWatch(recording=rec, pipeline=Pipeline(cals=[sided()]), models=None,
-                        since_s=0.0, clock=lambda: 0.0)
+                        clock=lambda: 0.0)
     assert w.step() is True and w.status == "watching"
 
 
@@ -580,8 +555,7 @@ def clipped(clipper, until_s=100.0):
     w = W.PracticeWatch(recording=rec, pipeline=Pipeline(
                             top=sheet(thrown("red", t0=40.0), until_s=until_s),
                             bottom=sheet(hack("red", 22.0), until_s=until_s)),
-                        models=SimpleNamespace(detector=None), since_s=20.0,
-                        publish=lambda d: docs.append(copy.deepcopy(d)), clock=lambda: 0.0,
+                        models=SimpleNamespace(detector=None), publish=lambda d: docs.append(copy.deepcopy(d)), clock=lambda: 0.0,
                         clipper=clipper)
     while rec.head < until_s:
         rec.head = min(until_s, rec.head + 1.0)

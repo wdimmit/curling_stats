@@ -5,12 +5,8 @@ Start, or a recording replayed (`practice-replay`) -- and turns it into a list
 of throws. Each call to :meth:`step` does the one most useful
 thing there is to do, and says whether it did anything:
 
-* **Calibrate** once the recording reaches ``since_s``, and holds something
-  to read (READ_MIN_S: a recording that begins at Start has no file at first).
-  Everything before ``since_s`` is the lookback: footage from before Start,
-  there only to calibrate from (`live.session.VideoPipeline.calibrate`,
-  medians of a mostly empty sheet). Only a replay has one: the cameras record
-  from Start, so a camera watch's ``since_s`` is 0.
+* **Calibrate** once the recording, which begins at Start, holds something
+  to read (READ_MIN_S: at first there is no file).
   A calibration missing a hog line or a side view is tried again every
   CALIB_RETRY_S, keeping the best, until CALIB_TRIES. A watch given a saved
   calibration (``cameras/calstore.py``) first
@@ -28,17 +24,14 @@ thing there is to do, and says whether it did anything:
   (`practice.enrich`), and publish.
 * **Finish** once the recording has ended and been read to its end.
 
-Reading starts a delivery's look-back before Start, so a throw just after
-Start is judged on as much as any other; a throw released before Start is
-left out. Everything that touches video goes through ``pipeline``, so the
-watch's own decisions are testable without any.
+Everything that touches video goes through ``pipeline``, so the watch's own
+decisions are testable without any.
 """
 
 import logging
 import time
 
 from curling_score.cameras.calstore import HouseCheck
-from curling_score.detect import delivery
 from curling_score.geometry.calibrate import CalibrationError
 from curling_score.live.session import _worth
 from curling_score.practice import throws
@@ -89,12 +82,12 @@ def _thrown_at(arrival, rel) -> float:
 
 
 class PracticeWatch:
-    def __init__(self, *, recording, pipeline, models, since_s: float, t0_s: float = 0.0,
+    def __init__(self, *, recording, pipeline, models, t0_s: float = 0.0,
                  wall_t0=None, publish=None, clipper=None, clock=time.monotonic,
                  progress=log.info, saved_calibration=None, save_calibration=None,
                  prior_throws=()):
-        """``since_s`` is Start on the recording's clock; ``t0_s`` is where the
-        recording begins on the stream's, which every published time is on.
+        """The recording begins at Start; ``t0_s`` is where it begins on the
+        stream's clock, which every published time is on.
         ``wall_t0`` is when the recording begins by the wall clock (epoch
         seconds), for a live stream whose own clock is not known.
         ``saved_calibration`` is the sheet's calibration from before, to be
@@ -107,7 +100,7 @@ class PracticeWatch:
         footage is not in this recording. A clip still to be cut (False) is
         none coming (None) now; one that is up stays up."""
         self.rec, self.pipeline, self.models = recording, pipeline, models
-        self.since_s, self.t0_s, self.wall_t0 = float(since_s), float(t0_s), wall_t0
+        self.t0_s, self.wall_t0 = float(t0_s), wall_t0
         self._stop, self._stop_at = False, None
         # Lane seconds spent calibrating and reading: what a practice watch
         # costs the lane.
@@ -122,7 +115,7 @@ class PracticeWatch:
         self.calib_tries = 0
         self.calib_next = float("-inf")
         self.status = "calibrating"
-        self.done_s = max(0.0, self.since_s - delivery.REQUIRED_LOOKBACK_S)
+        self.done_s = 0.0
         self.buffers = {h: Buffer() for h in HOUSES}
         self.finders = self.books = None
         # A clip the old recording went without will never come: say so, or
@@ -169,14 +162,13 @@ class PracticeWatch:
     def document(self) -> dict:
         return {"practice": 1, "status": self.status, "t0_s": self.t0_s,
                 "wall_t0": self.wall_t0, "busy_s": round(self.busy_s, 2),
-                "since_s": round(self.t0_s + self.since_s, 2),
                 "recorded_s": round(self.t0_s + self.done_s, 2),
                 "throws": list(self.throws)}
 
     # --- calibrating -------------------------------------------------------------
 
     def _calibrate(self, head, ended) -> bool:
-        if (head < self.since_s and not ended) or self.clock() < self.calib_next:
+        if self.clock() < self.calib_next:
             return False
         if head < READ_MIN_S and not ended:
             return False
@@ -300,8 +292,6 @@ class PracticeWatch:
                     for r in self.books[throwing].unarrived(upto)]
         added = 0
         for house, arrival, rel in sorted(new, key=lambda n: _thrown_at(n[1], n[2])):
-            if _thrown_at(arrival, rel) < self.since_s:
-                continue                       # thrown before Start
             shot = self.pipeline.enrich(
                 self.rec.path, self.cal, self.models, house=house, arrival=arrival,
                 release=rel, house_frames=self.buffers[house].frames,

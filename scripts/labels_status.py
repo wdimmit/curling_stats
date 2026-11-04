@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from curling_score.train.labelagree import (  # noqa: E402
     agrees_with_reference, box_verdict, release_verdict)
 
-KINDS = ("box", "release")
+KINDS = ("box", "release", "player")
 STATES = ("open", "done", "retired", "pending")
 PAGE = 500
 
@@ -78,21 +78,24 @@ def _changed_nothing(answer: dict) -> bool:
 
 
 def _cant_tell(kind: str, answer: dict) -> bool:
-    return bool(answer.get("cant_tell")) if kind == "box" else answer.get("mark") == "cant_tell"
+    return bool(answer.get("cant_tell")) if kind != "release" else answer.get("mark") == "cant_tell"
 
 
 def summarise(kind: str, items: list[dict], names: dict) -> list[str]:
     """The report for one flow, as lines."""
     states = Counter(i["state"] for i in items)
     counts = Counter(i["n_labels"] for i in items)
-    out = [f"{'Rock boxes' if kind == 'box' else 'Release marks'}: {len(items)} items",
+    title = {"box": "Rock boxes", "release": "Release marks", "player": "Player boxes"}[kind]
+    out = [f"{title}: {len(items)} items",
            "  " + ", ".join(f"{states[s]} {s}" for s in STATES if states[s]),
            "  labels per item: " + ", ".join(f"{counts[n]} with {n}" for n in sorted(counts))]
 
     verdict = box_verdict if kind == "box" else release_verdict
     pairs = Counter()
     for it in items:
-        if it["state"] == "done" and not it.get("reference") and len(it["answers"]) >= 2:
+        # a player item has one answer: no pairs to agree
+        if (kind != "player" and it["state"] == "done" and not it.get("reference")
+                and len(it["answers"]) >= 2):
             a, b = sorted(it["answers"], key=lambda x: x["at"])[:2]
             v = verdict(a["answer"], b["answer"])
             pairs["agree" if v["agree"] else v["why"]] += 1
@@ -103,11 +106,13 @@ def summarise(kind: str, items: list[dict], names: dict) -> list[str]:
     per = defaultdict(lambda: {"n": 0, "secs": [], "cant": 0, "stamp": 0, "checks": 0, "right": 0})
     for it in items:
         for a in it["answers"]:
+            if a.get("discarded"):          # an admin dropped it: it never happened
+                continue
             m = per[a["uid"]]
             m["n"] += 1
             m["secs"].append(a["seconds"])
             m["cant"] += _cant_tell(kind, a["answer"])
-            if kind == "box":
+            if kind != "release":
                 m["stamp"] += _changed_nothing(a["answer"])
             if it.get("reference"):
                 m["checks"] += 1
@@ -115,7 +120,7 @@ def summarise(kind: str, items: list[dict], names: dict) -> list[str]:
     for uid, m in sorted(per.items(), key=lambda kv: -kv[1]["n"]):
         secs = sorted(m["secs"])
         bits = [f"{m['n']} labels", f"median {secs[len(secs) // 2]:.0f} s", f"{m['cant']} can't tell"]
-        if kind == "box":
+        if kind != "release":
             bits.append(f"{m['stamp']} changed nothing")
         bits.append(f"checks {m['right']}/{m['checks']}" if m["checks"] else "no checks yet")
         out.append(f"  {names.get(uid) or uid}: " + ", ".join(bits))

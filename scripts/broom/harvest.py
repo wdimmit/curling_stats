@@ -93,7 +93,7 @@ def main() -> int:
     args = ap.parse_args()
 
     from curling_score.detect import broommodel, longview
-    from curling_score.harvest.sideframes import stem_for
+    from curling_score.harvest.candidates import stem_for
     from curling_score.train import boxedit
 
     doc = json.loads(Path(args.timeline).expanduser().read_text())

@@ -2,9 +2,9 @@
 answer is one we can keep.
 
 An item is handed out under a hold (a lease on it for HOLD_S), so two members
-don't spend their time on the same item while others wait. Items already
-labelled once come first, because a second label finishes them; after those,
-the oldest untouched ones. What a member is shown never includes the known
+don't spend their time on the same item while others wait. The newest
+items come first, so a batch just published is labelled before older ones
+(user, 2026-10-30), whether or not an item has a label already. What a member is shown never includes the known
 answer, the item's origin, or who else has seen it.
 
 Nothing here knows about HTTP: the API turns a ValueError from check_answer
@@ -17,16 +17,13 @@ from curling_score.service.records import LABEL_KINDS, LabelItem
 
 # How long an item is reserved for the member it was handed to.
 HOLD_S = 600
-# Labels an item gets before it is done.
-MAX_LABELS = 2
+# Labels an item gets before it is done. A player image is one member's
+# answer; a stone or a release is checked by a second.
+LABELS_NEEDED = {"box": 2, "release": 2, "player": 1}
 # Skips by different members before an item is retired as not worth asking.
 RETIRE_AFTER_SKIPS = 5
 # Items read from the repo per query.
 PAGE = 50
-# Pages of half-done items looked through for one this member can still take.
-# A member who has labelled the oldest of them would otherwise be told there
-# is nothing left while later ones wait; the cap keeps a long queue cheap.
-HALF_PAGES = 5
 # More boxes than this on one image is a mistake, not a careful answer.
 MAX_BOXES = 60
 
@@ -59,16 +56,14 @@ def _is_free(item: LabelItem, uid: str, now: datetime) -> bool:
 def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[LabelItem]:
     """Up to ``n`` items for this member, each now held for them.
 
-    Order: the member's own live hold (a reload resumes), then items with one
-    label already, then untouched ones, oldest first. The first page of each
-    is read up front, which is where a member's own hold is found without a
-    query of its own; either list is paged on only if that isn't enough
-    (half-done ones for at most HALF_PAGES pages).
-    A hold that comes back None was lost to someone else, so we move on.
+    Order: the member's own live hold (a reload resumes), then the open items
+    newest first. The own hold is looked for in the first page only; one
+    older than that lapses after HOLD_S like any other. Pages on until ``n``
+    are found or the open items run out. A hold that comes back None was lost
+    to someone else, so we move on.
     """
-    half = repo.open_label_items(kind, 1, PAGE)
-    fresh = repo.open_label_items(kind, 0, PAGE)
-    own = [i for i in half + fresh if i.hold_uid == uid and _is_free(i, uid, now)]
+    page = repo.open_label_items(kind, PAGE)
+    own = [i for i in page if i.hold_uid == uid and _is_free(i, uid, now)]
     own_ids = {i.id for i in own}
     got: list[LabelItem] = []
 
@@ -83,16 +78,9 @@ def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[Lab
                 got.append(held)
 
     take(own)
-    take([i for i in half if i.id not in own_ids])
-    page, pages = half, 1
-    while len(got) < n and len(page) >= PAGE and pages < HALF_PAGES:
-        page = repo.open_label_items(kind, 1, PAGE, after=page[-1].created_at)
-        pages += 1
-        take([i for i in page if i.id not in own_ids])
-    take([i for i in fresh if i.id not in own_ids])
-    page = fresh
+    take([i for i in page if i.id not in own_ids])
     while len(got) < n and len(page) >= PAGE:
-        page = repo.open_label_items(kind, 0, PAGE, after=page[-1].created_at)
+        page = repo.open_label_items(kind, PAGE, before=page[-1].created_at)
         take([i for i in page if i.id not in own_ids])
     return got
 
@@ -106,7 +94,27 @@ def _num(v, what: str) -> float:
     return float(v)
 
 
-def _check_box_answer(item: LabelItem, answer: dict) -> dict:
+def _box_geometry(b, w: float, h: float,
+                  min_px: float = MIN_BOX_PX) -> tuple[float, float, float, float]:
+    """A box's corners, clipped to the image, or ValueError if it is not a box
+    inside the image (allowing EDGE_SLOP_PX) at least ``min_px`` a side, and
+    never empty."""
+    if not isinstance(b, dict):
+        raise ValueError("a box is not an object")
+    x0, y0, x1, y1 = (_num(b.get(k), k) for k in ("x0", "y0", "x1", "y1"))
+    if (x0 < -EDGE_SLOP_PX or y0 < -EDGE_SLOP_PX
+            or x1 > w + EDGE_SLOP_PX or y1 > h + EDGE_SLOP_PX):
+        raise ValueError("a box is outside the image")
+    x0, y0, x1, y1 = max(x0, 0.0), max(y0, 0.0), min(x1, float(w)), min(y1, float(h))
+    floor = min_px - MIN_BOX_TOLERANCE_PX
+    if x1 - x0 <= 0 or y1 - y0 <= 0 or x1 - x0 < floor or y1 - y0 < floor:
+        raise ValueError("a box is too small")
+    return x0, y0, x1, y1
+
+
+def _check_boxes(item: LabelItem, answer: dict, coloured: bool) -> dict:
+    """The boxes-and-starts answer shared by stones (``coloured``, each box
+    red or yellow, a flagged start must be acted on) and players (no colour)."""
     if answer.get("cant_tell") is True:
         return {"cant_tell": True, "boxes": [], "starts": []}
     payload = item.payload
@@ -120,24 +128,17 @@ def _check_box_answer(item: LabelItem, answer: dict) -> dict:
     if any(s not in START_STATUSES for s in starts):
         raise ValueError("unknown start status")
     for s, given in zip(starts, payload["starts"]):
-        if given.get("flagged") and s == "untouched":
+        if coloured and given.get("flagged") and s == "untouched":
             raise ValueError("the flagged start must be kept, changed or deleted")
     if len(boxes) > MAX_BOXES:
         raise ValueError(f"at most {MAX_BOXES} boxes")
     out, seen = [], set()
     for b in boxes:
-        if not isinstance(b, dict):
-            raise ValueError("a box is not an object")
-        x0, y0, x1, y1 = (_num(b.get(k), k) for k in ("x0", "y0", "x1", "y1"))
-        if (x0 < -EDGE_SLOP_PX or y0 < -EDGE_SLOP_PX
-                or x1 > w + EDGE_SLOP_PX or y1 > h + EDGE_SLOP_PX):
-            raise ValueError("a box is outside the image")
-        x0, y0, x1, y1 = max(x0, 0.0), max(y0, 0.0), min(x1, float(w)), min(y1, float(h))
-        floor = MIN_BOX_PX - MIN_BOX_TOLERANCE_PX
-        if x1 - x0 < floor or y1 - y0 < floor:
-            raise ValueError("a box is too small")
-        if b.get("color") not in BOX_COLORS:
+        x0, y0, x1, y1 = _box_geometry(b, w, h)
+        if coloured and b.get("color") not in BOX_COLORS:
             raise ValueError("a box needs a colour, red or yellow")
+        if not coloured and "color" in b:
+            raise ValueError("a player box has no colour")
         start = b.get("start")
         if start is not None:
             if isinstance(start, bool) or not isinstance(start, int) \
@@ -146,14 +147,47 @@ def _check_box_answer(item: LabelItem, answer: dict) -> dict:
             if start in seen:
                 raise ValueError("a start is boxed twice")
             seen.add(start)
-        out.append({"x0": x0, "y0": y0, "x1": x1, "y1": y1,
-                    "color": b["color"], "start": start})
+        kept = {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "start": start}
+        if coloured:
+            kept["color"] = b["color"]
+        out.append(kept)
     for i, s in enumerate(starts):
         if s == "deleted" and i in seen:
             raise ValueError("a deleted start still has a box")
         if s != "deleted" and i not in seen:
             raise ValueError("a start that isn't deleted needs its box")
     return {"cant_tell": False, "boxes": out, "starts": list(starts)}
+
+
+def _check_box_answer(item: LabelItem, answer: dict) -> dict:
+    return _check_boxes(item, answer, coloured=True)
+
+
+def _check_player_answer(item: LabelItem, answer: dict) -> dict:
+    """The players, and, if the member fixed the stones too, ``stones``: the
+    frame's whole stone set as they left it, which replaces the stone label.
+    No ``stones`` means the stones were left as they were. An item whose
+    payload says ``stones_locked`` (label_players.py --lock-stones) takes no
+    fix."""
+    out = _check_boxes(item, answer, coloured=False)
+    fixed = answer.get("stones")
+    if out["cant_tell"] or fixed is None:
+        return out
+    if item.payload.get("stones_locked"):
+        raise ValueError("this frame's stones are locked")
+    if not isinstance(fixed, list):
+        raise ValueError("stones is a list of boxes")
+    if len(fixed) > MAX_BOXES:
+        raise ValueError(f"at most {MAX_BOXES} stones")
+    stones = []
+    for b in fixed:
+        # No size floor: a stone cut off at the edge comes as a sliver, and a
+        # fix that keeps it as it was must still go through.
+        x0, y0, x1, y1 = _box_geometry(b, item.payload["w"], item.payload["h"], min_px=0)
+        if b.get("color") not in BOX_COLORS:
+            raise ValueError("a stone needs a colour, red or yellow")
+        stones.append({"x0": x0, "y0": y0, "x1": x1, "y1": y1, "color": b["color"]})
+    return {**out, "stones": stones}
 
 
 def _check_release_answer(item: LabelItem, answer: dict) -> dict:
@@ -178,6 +212,8 @@ def check_answer(item: LabelItem, answer: dict) -> dict:
         return _check_box_answer(item, answer)
     if item.kind == "release":
         return _check_release_answer(item, answer)
+    if item.kind == "player":
+        return _check_player_answer(item, answer)
     raise ValueError(f"unknown kind {item.kind!r}")
 
 

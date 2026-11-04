@@ -29,8 +29,7 @@ MAKER = {"Authorization": "Bearer tok-maker"}
 
 
 def _world(auth, **more):
-    """The service with `auth`; `more` sets further Settings, such as
-    email_link_signin=True."""
+    """The service with `auth`; `more` sets further Settings."""
     clock = Clock()
     repo, store = MemoryRepo(), MemoryStore()
     yt = FakeYouTube()
@@ -131,21 +130,6 @@ class TestSigningIn:
         cfg = w["client"].get("/api/auth/config").json()
         assert cfg["enabled"] and cfg["apiKey"] == "AIzaFake"
         assert cfg["projectId"] == "proj"
-
-    def test_the_chooser_offers_no_emailed_link_until_it_is_switched_on(self, w):
-        # Off until Email link is on in the Firebase console too: offered
-        # before then, every "Email me a link" fails (deploy/README.md).
-        assert w["client"].get("/api/auth/config").json()["emailLink"] is False
-
-    def test_switched_on_the_chooser_offers_an_emailed_link(self):
-        on = _world(FakeVerifier(), email_link_signin=True)
-        assert on["client"].get("/api/auth/config").json()["emailLink"] is True
-
-    def test_the_switch_is_read_from_the_environment(self, monkeypatch):
-        monkeypatch.delenv("EMAIL_LINK_SIGNIN", raising=False)
-        assert Settings.from_env().email_link_signin is False
-        monkeypatch.setenv("EMAIL_LINK_SIGNIN", "1")
-        assert Settings.from_env().email_link_signin is True
 
     def test_first_sight_of_a_token_creates_the_person(self, w):
         me = w["client"].get("/api/me", headers=SARAH).json()

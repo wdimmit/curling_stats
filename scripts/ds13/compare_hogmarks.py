@@ -1,15 +1,10 @@
-"""Colour scan against trained detector, on the crossings a person timed.
+"""A side-view detector on the crossings a person timed.
 
 ``datasets/hogmarks/VXU9xwmugRg.json`` holds 27 crossings a person marked
 frame by frame against the paint. That is the only ground truth this project
-has for when a stone actually crossed, and it is what
-``tests/test_longview.py::TestAgainstHandMarkedCrossings`` measures against --
-a test marked slow, so the ordinary suite never runs it.
-
-Both detectors get the same window, the same view, the same gates. Only the
-step that says "there is a stone at this row in this frame" differs. Writes
-each model-timed crossing's frame out so the timing can be checked by eye
-rather than only by arithmetic.
+has for when a stone actually crossed. Writes each model-timed crossing's
+frame out so the timing can be checked by eye rather than only by
+arithmetic.
 """
 import argparse
 import json
@@ -54,15 +49,12 @@ def main() -> int:
                                             args.fps)
             if not len(frames):
                 continue
-            classic = longview.find_in_frames(frames, view, m["color"], times)
             modelled = sidemodel.find_in_frames(model, frames, view,
                                                 m["color"], times)
             truth = m["hog_crossing_s"]
             rows.append({
                 "release": m["release_t_s"], "color": m["color"],
                 "truth": truth, "view": end["side_view"],
-                "classic_t": classic.t, "classic_key": classic.key,
-                "classic_err": None if classic.t is None else classic.t - truth,
                 "model_t": modelled.t, "model_key": modelled.key,
                 "model_err": None if modelled.t is None else modelled.t - truth,
             })
@@ -104,7 +96,6 @@ def main() -> int:
             print(f"  refused      {dict(keys)}")
 
     print(f"{len(rows)} hand-marked crossings")
-    report("classic")
     report("model")
     return 0
 

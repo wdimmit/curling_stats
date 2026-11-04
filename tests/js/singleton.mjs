@@ -96,6 +96,7 @@ export const buildGameView = core.buildGameView;
 
 export const lineFigures = core.lineFigures;
 export const feetInches = core.feetInches;
+export const ON_M = core.ON_M;
 export const lineReason = core.lineReason;
 export const lineX = core.lineX;
 export const restOf = core.restOf;
@@ -158,6 +159,8 @@ export const positionLabel = core.positionLabel;
 export const playText = core.playText;
 export const gameText = core.gameText;
 export const pickedText = core.pickedText;
+export const starredRows = core.starredRows;
+export const starredText = core.starredText;
 export const sharingText = core.sharingText;
 export const pickerRow = core.pickerRow;
 export const playerRocks = core.playerRocks;

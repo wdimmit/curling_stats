@@ -10,7 +10,7 @@ import { authedFetch, signIn } from "./auth.js";
 import { signInTrouble } from "./signinState.mjs";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Pill, Warn } from "./ui.jsx";
-import { clipState, curlText, lengthText, lineText, mergeTimings, restText, sensorText,
+import { aimFigures, clipState, curlText, lengthText, lineText, mergeTimings, restText, sensorText,
          rotationText, shown, summary, weightText } from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
 import { ClipPlayer } from "./clip.jsx";
@@ -99,8 +99,83 @@ function SensorLine({ t, sensors }) {
   );
 }
 
+/* The three lines at the broom, large, under the delivery chart: where the
+ * slide was aimed, where the release sent the rock (with how far it moved the
+ * line from the slide's under it, when that is more than the two lines'
+ * error) and the final line past the hog line; then ``children``. From the
+ * stored lines (game/aimlines.py), so the game page says the same. The
+ * layout is leilani-oti's, from PR #2. */
+function LinesHero({ t, figures, children = null }) {
+  // A figure in words ("to the broom") is set a size down from one in
+  // numbers, so it fits the column on a phone.
+  const value = f => (
+    <div className={/\d/.test(f.value) ? "slide-value" : "slide-value words"}>
+      {f.value}{f.side && <span> {f.side}</span>}</div>
+  );
+  const figure = (kind, label, f, why, extra = null) => (
+    <div className={`slide-figure ${kind}`}>
+      <div className="slide-label">{label}</div>
+      {f ? value(f) : <div className="slide-value none">{why}</div>}
+      {extra}
+    </div>
+  );
+  const why = Array.isArray(t.line?.release) ? "not measured" : "no release read";
+  const change = figures.set && <div className="slide-change">{figures.set.value} from the slide</div>;
+  return (
+    <div className="slide-hero">
+      {"slide" in figures && figure("slide", "Slide", figures.slide, why)}
+      {figure("release", "Release", figures.release, why, change)}
+      {figure("final", "Final", figures.final, "not measured")}
+      {children}
+    </div>
+  );
+}
+
+/* The weight, hog to hog, in the figures' style. Only for a rock that
+ * arrived: one that did not never crossed the far hog line, so it has no
+ * split (game/split.py long_split). */
+function WeightFigure({ split }) {
+  return (
+    <div className="slide-figure weight">
+      <div className="slide-label">Hog to hog</div>
+      {split != null ? <div className="slide-value">{weightText(split)}</div>
+                     : <div className="slide-value none">not timed</div>}
+    </div>
+  );
+}
+
+/* Where the rock came to rest, in the figures' style: the ring large, how far
+ * from the tee under it. */
+function RestFigure({ rest }) {
+  const [ring, distance] = (restText(rest) ?? "").split(" · ");
+  return (
+    <div className="slide-figure rest">
+      <div className="slide-label">Came to rest</div>
+      {ring ? <div className="slide-value">{ring}</div>
+            : <div className="slide-value none">not seen</div>}
+      {distance && <div className="slide-change">{distance}</div>}
+    </div>
+  );
+}
+
+/* What the person's own sensors timed this throw at, in the figures' style,
+ * on a session an app pushes to (has_sensors); nothing on one it does not. */
+function SensorFigures({ t, sensors }) {
+  if (!sensors) return null;
+  const figure = (label, s) => (
+    <div className="slide-figure sensor">
+      <div className="slide-label">{label}</div>
+      {s != null ? <div className="slide-value">{s.toFixed(2)}<span> s</span></div>
+                 : <div className="slide-value none">not timed</div>}
+    </div>
+  );
+  return <>{figure("Sensor short", t.sensor?.short_s)}{figure("Sensor long", t.sensor?.long_s)}</>;
+}
+
 function Latest({ t, n, sid, live, newest, sensors, onHide }) {
   const clip = clipState(t, { live, newest });
+  // A throw recorded before the three lines were stored keeps its rows.
+  const figures = aimFigures(t);
   return (
     <Card>
       <p className="muted" style={{ margin: 0 }}>
@@ -116,23 +191,39 @@ function Latest({ t, n, sid, live, newest, sensors, onHide }) {
       {!t.arrived ? (
         <>
           <p><strong>Released, didn't arrive</strong> (hogged?)</p>
-          <dl style={{ margin: 0 }}>
-            <dt className="muted">Line</dt>
-            <dd>{lineText(t.line) ?? "not measured"}</dd>
-            <SensorLine t={t} sensors={sensors} />
-          </dl>
+          {figures ? (
+            <LinesHero t={t} figures={figures}>
+              <SensorFigures t={t} sensors={sensors} />
+            </LinesHero>
+          ) : (
+            <dl style={{ margin: 0 }}>
+              <dt className="muted">Line</dt>
+              <dd>{lineText(t.line) ?? "not measured"}</dd>
+              <SensorLine t={t} sensors={sensors} />
+            </dl>
+          )}
         </>
       ) : (
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <dl style={{ flex: 1, margin: 0 }}>
-            <dt className="muted">Line</dt>
-            <dd>{lineText(t.line) ?? "not measured"}</dd>
-            <dt className="muted">Weight</dt>
-            <dd>{weightText(t.split_s) ? `${weightText(t.split_s)} hog to hog` : "not timed"}</dd>
-            <dt className="muted">Came to rest</dt>
-            <dd>{restText(t.rest) ?? "not seen"}</dd>
-            <SensorLine t={t} sensors={sensors} />
-          </dl>
+          {figures ? (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <LinesHero t={t} figures={figures}>
+                <WeightFigure split={t.split_s} />
+                <RestFigure rest={t.rest} />
+                <SensorFigures t={t} sensors={sensors} />
+              </LinesHero>
+            </div>
+          ) : (
+            <dl style={{ flex: 1, margin: 0 }}>
+              <dt className="muted">Line</dt>
+              <dd>{lineText(t.line) ?? "not measured"}</dd>
+              <dt className="muted">Weight</dt>
+              <dd>{weightText(t.split_s) ? `${weightText(t.split_s)} hog to hog` : "not timed"}</dd>
+              <dt className="muted">Came to rest</dt>
+              <dd>{restText(t.rest) ?? "not seen"}</dd>
+              <SensorLine t={t} sensors={sensors} />
+            </dl>
+          )}
           <House rest={t.rest} broom={t.broom} />
         </div>
       )}

@@ -65,8 +65,7 @@ def settings(env=os.environ) -> Settings:
 def model_ids(weights) -> dict:
     """The overhead and side detectors in use, as ``version.model_id`` names.
 
-    ``side`` is None when the worker has no side-view model and times
-    crossings by colour scan instead.
+    ``side`` is None when the side-view model is switched off (``none``).
     """
     from .. import version
     from .. import weights as weights_mod

@@ -32,11 +32,23 @@ class TestDefaultPath:
         assert weights.default_path() is None
 
 
+class TestSidePath:
+    def test_a_missing_side_model_is_an_error(self, monkeypatch):
+        # There is no colour scan to fall back to any more.
+        monkeypatch.delenv("CURLING_SCORE_SIDE_WEIGHTS", raising=False)
+        monkeypatch.setattr(weights, "SIDE_NAME", "no-such-model.pt")
+        with pytest.raises(FileNotFoundError, match="no-such-model.pt"):
+            weights.side_path()
+
+    def test_none_switches_it_off(self, monkeypatch):
+        monkeypatch.setenv("CURLING_SCORE_SIDE_WEIGHTS", "none")
+        assert weights.side_path() is None
+
+
 class TestTheWorkerImageShipsBothDetectors:
-    """A worker image built without the side model would reprocess an archive,
-    succeed, and quietly republish the old answers -- because `side_path`
-    treats a missing file as "use the colour scan", which is right in general
-    and wrong for a deployment that asked for the model."""
+    """A worker image built without the side model would fail every run; one
+    with an unpinned model would reprocess an archive and quietly republish
+    answers from a model nobody chose."""
 
     def _dockerfile(self):
         from pathlib import Path
