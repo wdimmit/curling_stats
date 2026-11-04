@@ -73,9 +73,21 @@ def main():
     ap.add_argument("main")
     ap.add_argument("--seeds", default="0-9")
     ap.add_argument("--one", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--windows", action="store_true",
+                    help="check each hosted end's last rest against base's and new's windows")
     a = ap.parse_args()
     if a.one:
         return run_one(a)
+    if a.windows:
+        import statistics
+        for arm, st in windows(a.profiles, a.timelines, a.main).items():
+            t = sorted(st["tails"])
+            print(f"{arm}: {st['ends']} chart ends covered; last rest outside the window: "
+                  f"{len(st['outside'])}; tail after the last rest median "
+                  f"{statistics.median(t):.0f} s, min {t[0]:.0f} s, p10 {t[len(t) // 10]:.0f} s, p90 {t[int(len(t) * 0.9)]:.0f} s, max {t[-1]:.0f} s")
+            for row in st["outside"]:
+                print("   outside", row)
+        return
     lo, hi = (int(x) for x in a.seeds.split("-"))
     per_seed = {}
     for seed in range(lo, hi + 1):
@@ -113,6 +125,31 @@ def main():
         if seeds_differ:
             print(f"  new differs from seed {lo} under seeds {seeds_differ}")
         print("  chart:", chart_ends(a.timelines, vid))
+
+
+
+def windows(profiles, timelines, main_py, seed=0):
+    """Every hosted chart end against the segment end that covers it, in base
+    and new: whether its last rock's rest falls inside, and the tail after it."""
+    env = dict(os.environ, PYTHONHASHSEED=str(seed))
+    res = json.loads(subprocess.run([sys.executable, __file__, profiles, timelines, main_py, "--one"],
+                                    env=env, capture_output=True, text=True, check=True).stdout)
+    stats = {arm: {"ends": 0, "outside": [], "tails": []} for arm in ("base", "new")}
+    for vid, arms in res.items():
+        chart = [r for r in chart_ends(timelines, vid) if r[4] is not None and r[5] is not None]
+        for arm in ("base", "new"):
+            segs = [e for g in arms[arm] for e in g]
+            for (_g0, gi, num, house, first, last, n) in chart:
+                cover = [e for e in segs if e[0] == house and e[1] <= last and e[2] >= first]
+                if not cover:
+                    continue
+                stats[arm]["ends"] += 1
+                e = max(cover, key=lambda e: min(e[2], last) - max(e[1], first))
+                if e[2] < last:
+                    stats[arm]["outside"].append((vid, gi, num, house, first, last, e))
+                else:
+                    stats[arm]["tails"].append(e[2] - last)
+    return stats
 
 
 if __name__ == "__main__":

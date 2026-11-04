@@ -336,7 +336,21 @@ from pathlib import Path
 # house in play empty no longer cuts that end in two (`segment._passing`).
 # overhead-3 sees those stones where ds17b missed them: 10/25 Sunday Skips
 # sheet 1 lost end 1's first 4 rocks, and with them every board score.
-PIPELINE_VERSION = "2026.10.31.2"
+# 2026.11.04.1: a stone wholly beyond a panel's painted back line is out of
+# play, and the activity profile no longer counts it (`geometry/backpaint.py`;
+# the calibration puts the line 3-6 rows behind its paint, so the metre test
+# could not see it). And a stray of at most two keyframes, alone with a minute
+# of empty sheet either side, no longer breaks up an empty stretch long enough
+# to end a game (`segment._drop_strays`). 11/03 Tuesday Super League S4 live: a
+# broom head behind the top panel's back line, four minutes into the
+# changeover, held the 7 pm game open into the 9 pm one (13 ends charted as
+# one game); with these it splits 8 + 5. Profile-only A/B on the 91 kept
+# recordings of 10/14-11/03 with charts, under 10 hash seeds: pk_gN splits
+# 8 + 8 as its chart, 2vKX loses a phantom post-game end, six games' last ends
+# stop at their rocks instead of running on into the post-game; no chart end's
+# last rest falls outside its end (839 ends; tail after it median 49 -> 46 s,
+# min 8 -> 6 s). Tracking is unchanged.
+PIPELINE_VERSION = "2026.11.04.1"
 
 
 def model_id(weights) -> str:
