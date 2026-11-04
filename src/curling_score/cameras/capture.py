@@ -114,6 +114,11 @@ ANCHOR_WINDOW_S = 10.0
 CLOCK_STEP_S = 1.0
 # How often the capture says how far its file reaches.
 HEAD_EVERY_S = 0.5
+# How often a silent camera's last keyframe is written again. Each is a whole
+# IDR on disk (~1.3 MB/s is a house camera's normal rate), so a few a second:
+# enough to keep the head moving and the 5 fps readers fed, not enough for a
+# camera that stays down to fill /data for every sheet.
+HOLD_PERIOD_S = 0.2
 # Each camera serves SRT on this UDP port; we connect as a caller. Latency 500
 # ms ran clean on sheet 4 during a league, where 200 ms once lost packets on
 # 4H-PTZ (2026-10-29). A connection that hears nothing for SRT_TIMEOUT_S ends,
@@ -422,7 +427,7 @@ class _Capture:
         # whose connection has been replaced passes nothing more.
         self._passing = threading.Lock()
         self.out = _TsFile(args.out, on_error=self._unwritable)
-        self.holder = Holder(self.out.write, clock=session)
+        self.holder = Holder(self.out.write, clock=session, period_s=HOLD_PERIOD_S)
         self.reconnects = Reconnects()
         self.first_at: float | None = None
         self.exit_code: int | None = None

@@ -313,6 +313,25 @@ def capture_reading(tmp_path, t0):
     return capture._Capture(args)
 
 
+def test_a_silent_camera_writes_a_few_held_keyframes_a_second(tmp_path):
+    """Final review 11/04: a held keyframe is a whole IDR on disk. At 60 a
+    second a camera that stays down grows its file by tens of MB/s and can
+    fill /data for every sheet; a few a second keeps the head moving and the
+    5 fps readers fed."""
+    cap = capture_reading(tmp_path, time.monotonic())
+    written = []
+    clock = Clock()
+    cap.holder._write = lambda payload, at, key: written.append(payload)
+    cap.holder.clock = clock
+    cap.holder.packet(1, SPS_PPS_IDR)
+    clock.t += 1.0                       # silent past hold_after_s
+    end = clock.t + 10.0
+    while clock.t < end:                 # ten held seconds, ticked as the ticker does
+        cap.holder.tick()
+        clock.t += cap.holder.period_s
+    assert len(written) - 1 <= 10 * 5
+
+
 # --- the camera over SRT: MPEG-TS from ffmpeg ------------------------------------
 
 
