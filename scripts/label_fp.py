@@ -37,11 +37,12 @@ most confident pre-box is the flagged one; with none, a centred 40x17 box is.
 
 --frames takes a folder of `images/<stem>.jpg` and `labels/<stem>.txt` (YOLO
 stone labels, 0 red, 1 yellow), as scripts/player_mine.py writes the hard
-batch: each image is published whole, overhead, with its labelled stones as
-the starts and none flagged, so the member reviews boxes a model drew rather
-than answering a doubt. The folder's picks.jsonl, when there is one, adds each
-frame's video, time, panel, kind, rect, game, end and sheet to the origin. No
-detector is loaded for these.
+batch: each image is published whole, overhead unless its pick says
+`"camera": "side"`, with its labelled stones as the starts and none flagged,
+so the member reviews boxes a model drew rather than answering a doubt. The
+folder's picks.jsonl, when there is one, adds each frame's video, time, panel,
+kind, rect, game, end, sheet and camera to the origin. No detector is loaded
+for these.
 
 An item's id is `b_` and a hash of its stem (`item_id`; label_publish.opaque_id),
 so it says nothing about the video or whether it is a check, and the same stem
@@ -299,7 +300,7 @@ def check_items(folder: Path, camera: str, detect, batch: str, names=None, skips
                 skips.append(stem)
 
 
-PICK_KEYS = ("kind", "rect", "game", "end", "sheet", "club")
+PICK_KEYS = ("kind", "rect", "game", "end", "sheet", "club", "camera")
 
 
 def _picks(folder: Path) -> dict:

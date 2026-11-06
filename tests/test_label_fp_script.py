@@ -487,6 +487,15 @@ def test_frame_origin_carries_the_pick(tmp_path):
     assert other["video_id"] is None and "kind" not in other
 
 
+def test_a_pick_can_say_the_frame_is_a_side_camera_s(tmp_path):
+    stem = _frames_folder(tmp_path, picks=False)
+    (tmp_path / "picks.jsonl").write_text(json.dumps({"stem": stem, "camera": "side"}) + "\n")
+    got = {i["payload"]["origin"]["stem"]: i["payload"]["origin"]
+           for i, _ in fp.frame_items(tmp_path, "x")}
+    assert got[stem]["camera"] == "side"
+    assert got["vidA_b_000100_00_ordinary"]["camera"] == "overhead"
+
+
 def test_frames_dry_run_publishes_nothing_and_loads_no_detector(tmp_path, monkeypatch):
     _frames_folder(tmp_path / "hard")
     monkeypatch.setattr(fp, "load_detectors", lambda: pytest.fail("loaded a detector"))
