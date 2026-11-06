@@ -127,7 +127,7 @@ class TestTheForm:
         got = body(js(f"P.formFrom({json.dumps(p)})"))
         assert got == {"body": {"label": "Thursday",
                                 "schedule": p["schedule"], "live_poll_s": 120,
-                                "idle_poll_s": None}}
+                                "idle_poll_s": None, "input": "youtube"}}
 
     def test_adding_sends_the_link_and_a_change_does_not(self):
         f = form(link="  https://www.youtube.com/playlist?list=PLabc ", label=" Thu ",
@@ -158,3 +158,16 @@ class TestTheForm:
         assert "some other time" in body(form(label="T", idleNever=True))["error"]
         assert body(form(label="T", nights=[THU], idleNever=True, idleMin=""))["body"][
             "idle_poll_s"] is None
+
+
+def test_a_playlists_input_goes_back_and_forth():
+    assert js("P.emptyForm().input") == "youtube"
+    assert js(f"P.formFrom({json.dumps(pl(input='cameras'))}).input") == "cameras"
+    assert js(f"P.formFrom({json.dumps(pl())}).input") == "youtube"   # from before inputs
+    assert body(form(label="Thu", input="cameras"))["body"]["input"] == "cameras"
+
+
+def test_a_playlists_input_in_words():
+    assert js(f"P.inputText({json.dumps(pl(input='cameras'))})") == \
+        "Live games are read from each sheet's cameras, where the site can; the rest from the stream."
+    assert js(f"P.inputText({json.dumps(pl())})") == "Live games are read from the stream."

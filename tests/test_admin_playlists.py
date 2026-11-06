@@ -188,3 +188,34 @@ class TestTheScheduledPoll:
         add(client, playlist_id="PLabc")
         client.post("/api/admin/poll-playlists", headers=ADMIN)
         assert len([r for r in repo.list_runs() if r.kind == "live"]) == 1
+
+
+class TestACamerasPlaylist:
+    def test_its_input_can_be_set_and_nonsense_is_refused(self):
+        client, repo, _ = make()
+        pid = add(client, playlist_id="PLabc", input="cameras").json()["id"]
+        assert repo.get_playlist(pid).input == "cameras"
+        assert client.patch(f"/api/admin/playlists/{pid}", headers=ADMIN,
+                            json={"input": "youtube"}).status_code == 200
+        assert repo.get_playlist(pid).input == "youtube"
+        assert client.patch(f"/api/admin/playlists/{pid}", headers=ADMIN,
+                            json={"input": "ndi"}).status_code == 422
+
+    def test_the_poll_reads_a_live_game_from_the_cameras(self):
+        client, repo, _ = make()
+        add(client, playlist_id="PLabc", input="cameras")
+        client.post("/api/admin/poll-playlists", headers=ADMIN)
+        (run,) = [r for r in repo.list_runs() if r.kind == "live"]
+        assert run.source == "cameras" and repo.job_for_run(run.id).kind == "camera_live"
+
+    def test_the_settings_say_which_sheets_and_how_many(self, monkeypatch):
+        from curling_score.service.api import Settings
+
+        monkeypatch.setenv("CAMERA_SHEETS", "3, 4")
+        monkeypatch.setenv("CAMERA_MAX_SHEETS", "1")
+        s = Settings.from_env()
+        assert (s.camera_sheets, s.camera_max_sheets) == (frozenset({3, 4}), 1)
+        monkeypatch.delenv("CAMERA_SHEETS")
+        monkeypatch.delenv("CAMERA_MAX_SHEETS")
+        s = Settings.from_env()
+        assert (s.camera_sheets, s.camera_max_sheets) == (frozenset({1, 2, 3, 4, 5}), 2)

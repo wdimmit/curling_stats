@@ -20,7 +20,13 @@ RUN_STATUSES = ("pending_approval", "queued", "processing", "live", "ready",
 # A job is a recording to analyse whole, or a stream to follow while it plays.
 # Live jobs are claimed first; a record from before kinds is a recording.
 # "practice" reads a sheet's cameras while someone practises on it.
-JOB_KINDS = ("vod", "live", "practice")
+# "camera_live" is a league game read from its sheet's cameras instead of the
+# stream, and "camera_vod" one read again from those cameras' kept files.
+JOB_KINDS = ("vod", "live", "practice", "camera_live", "camera_vod")
+# The jobs only a worker that can see the club's cameras may take.
+CAMERA_KINDS = ("practice", "camera_live", "camera_vod")
+# Where a playlist's live games are read from.
+PLAYLIST_INPUTS = ("youtube", "cameras")
 JOB_STATES = ("queued", "running", "done", "failed")
 FAIL_KINDS = ("transient", "blocked", "permanent")
 
@@ -55,8 +61,12 @@ class Run:
     kind: str = "vod"
     # "cameras" for a practice watch read from the club's own cameras, whose
     # `video_id` is a name we made up (practice.camera_video_id), not a
-    # YouTube id; None for everything read from YouTube.
+    # YouTube id, and for a league game read from its sheet's cameras (its
+    # `video_id` is the stream's); None for everything read from YouTube.
     source: str | None = None
+    # A camera league game's stream was seen over (the poller): the worker is
+    # told to stop recording its cameras.
+    stream_ended_at: datetime | None = None
     revised_at: datetime | None = None
     timeline_key: str | None = None
     meta_key: str | None = None
@@ -373,6 +383,9 @@ class WatchedPlaylist:
     schedule: list = field(default_factory=list)
     live_poll_s: float = 180.0
     idle_poll_s: float | None = 3600.0
+    # Where its live games are read from: "youtube" (the stream) or "cameras"
+    # (each sheet's own cameras, up to the API's CAMERA_MAX_SHEETS at once).
+    input: str = "youtube"
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

@@ -88,17 +88,41 @@ def due(pl, now: datetime, tz: str) -> bool:
     return (now - pl.last_polled_at).total_seconds() >= interval - DUE_SLACK_S
 
 
+# A camera game that is queued, or recording, or finishing its last ends.
+_CAMERA_GOING = ("queued", "processing", "live")
+
+
+def camera_games(repo) -> int:
+    """How many league games are being read from the cameras: what the cap
+    (CAMERA_MAX_SHEETS) counts."""
+    return sum(1 for status in _CAMERA_GOING for r in repo.list_runs(status=status, limit=500)
+               if r.kind == "live" and r.source == "cameras")
+
+
+def mark_stream_ended(repo, video_id: str, now: datetime) -> None:
+    """A stream no longer live: its camera game, if one is going, is told to
+    stop recording (the worker's heartbeat), once."""
+    for r in repo.runs_for_video(video_id):
+        if (r.kind == "live" and r.source == "cameras" and r.status in ("processing", "live")
+                and r.stream_ended_at is None):
+            repo.update_run(r.id, stream_ended_at=now)
+
+
 def poll(repo, youtube, *, processing_version: str, now: datetime,
          allowed_channels: set[str] | None = None, max_hours: float = 5.0,
          max_new: int = MAX_AUTO_PER_POLL, initial_status: str = "queued",
-         tz: str = "America/Los_Angeles", force: bool = False) -> dict:
+         tz: str = "America/Los_Angeles", force: bool = False,
+         camera_sheets: set | frozenset = frozenset(), camera_max_sheets: int = 0) -> dict:
     """Look at every enabled playlist that is due. Returns what happened.
 
     A run's format comes from its title. ``force`` polls every playlist
     whatever its schedule. A stream that has gone live is queued as a live
     job, which skips approval -- the admin chose the playlist -- and the
     recording cap, and leaves the video unseen until its recording is
-    archived.
+    archived. On a ``cameras`` playlist a stream whose title names a sheet in
+    ``camera_sheets`` is read from that sheet's cameras instead, while fewer
+    than ``camera_max_sheets`` camera games are queued or going; any other is
+    read from the stream, as on any playlist.
     """
     created, live_created, skipped, errors = [], [], [], []
     n_queued = 0
@@ -120,6 +144,8 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
         new_ids = [v for v in ids if v not in seen]
         accepted_now = []
         for meta in youtube.videos(new_ids) if new_ids else []:
+            if meta.live_status != "live":
+                mark_stream_ended(repo, meta.video_id, now)
             if meta.live_status == "live":
                 if allowed_channels and meta.channel_id not in allowed_channels:
                     accepted_now.append(meta.video_id)
@@ -128,17 +154,21 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                 # Once per stream: a live run that failed is left to the
                 # recording's ordinary run, not queued again every poll.
                 if not any(r.kind == "live" for r in repo.runs_for_video(meta.video_id)):
+                    sheet = source.sheet_from_title(meta.title)
+                    cameras = (pl.input == "cameras" and sheet in camera_sheets
+                               and camera_games(repo) < camera_max_sheets)
                     run = Run(
                         id=slug.new_run_id(), video_id=meta.video_id,
                         processing_version=processing_version, status="queued",
                         created_at=now, title=meta.title, channel_id=meta.channel_id,
                         published_at=meta.published_at, playlist_id=pl.playlist_id,
                         league=pl.label, format=source.format_from_title(meta.title),
-                        kind="live", sheet=source.sheet_from_title(meta.title),
+                        kind="live", sheet=sheet, source="cameras" if cameras else None,
                     )
                     repo.put_run(run)
                     repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued",
-                                     created_at=now, run_after=now, kind="live"))
+                                     created_at=now, run_after=now,
+                                     kind="camera_live" if cameras else "live"))
                     live_created.append(run.id)
                 continue
             if len(created) >= max_new:

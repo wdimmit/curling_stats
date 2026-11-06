@@ -43,8 +43,9 @@ from curling_score.service import (dedupe, gameclips, ice_report, labelling, pla
                                    playlists, practice, signin, slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, LABEL_KINDS, ROLES, ApiKey, ClipJob, Chart, Flag, Invite, Job, LabelAnswer,
-    LabelItem, Play, Review, Run, SigninRelay, Source, Team, TeamNameEdit, User, Worker,
+    CAMERA_KINDS, JOB_KINDS, LABEL_KINDS, PLAYLIST_INPUTS, ROLES, ApiKey, ClipJob, Chart,
+    Flag, Invite, Job, LabelAnswer, LabelItem, Play, Review, Run, SigninRelay, Source, Team,
+    TeamNameEdit, User, Worker,
     label_answer_id, play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
@@ -240,6 +241,10 @@ class Settings:
     # cameras fall into keyframe storms, which the club's own receivers see
     # too. A Start that joins a sheet's running watch is never counted.
     practice_max_camera_watches: int = 2
+    # League games on a `cameras` playlist: the sheets whose cameras may be
+    # read for one, and how many at once (the rest are read from the stream).
+    camera_sheets: frozenset = frozenset({1, 2, 3, 4, 5})
+    camera_max_sheets: int = 2
     # The club's own clock, which playlists' schedules are written in.
     club_tz: str = "America/Los_Angeles"
     model_id: str = "classical"
@@ -283,6 +288,9 @@ class Settings:
             club_ips=frozenset(ip.strip() for ip in env("PRACTICE_CLUB_IPS", "").split(",")
                                if ip.strip()),
             practice_max_camera_watches=int(env("PRACTICE_MAX_CAMERA_WATCHES", "2")),
+            camera_sheets=frozenset(int(n) for n in env("CAMERA_SHEETS", "1,2,3,4,5").split(",")
+                                    if n.strip()),
+            camera_max_sheets=int(env("CAMERA_MAX_SHEETS", "2")),
             club_tz=env("CLUB_TZ", "America/Los_Angeles"),
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
@@ -4080,6 +4088,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                         raise ValueError(f"{key} is at least 60 seconds")
             if "live_poll_s" in fields and fields["live_poll_s"] is None:
                 raise ValueError("live_poll_s cannot be empty")
+            if "input" in fields and fields["input"] not in PLAYLIST_INPUTS:
+                raise ValueError(f"input is one of {', '.join(PLAYLIST_INPUTS)}")
         except (ValueError, TypeError) as e:
             raise HTTPException(422, str(e)) from e
         return fields
@@ -4092,7 +4102,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if any(p.playlist_id == pid for p in repo.list_playlists()):
             raise HTTPException(409, f"playlist {pid} is already watched")
         body["label"] = str(body.get("label") or "").strip() or pid
-        fields = playlist_fields(body, {"label", "schedule", "live_poll_s", "idle_poll_s"})
+        fields = playlist_fields(body, {"label", "schedule", "live_poll_s", "idle_poll_s",
+                                        "input"})
         pl = playlists.new_watched_playlist(pid, fields.pop("label"), now())
         for key, value in fields.items():
             setattr(pl, key, value)
@@ -4109,7 +4120,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(404, "no such playlist")
         fields = playlist_fields(await request.json(),
                                  {"label", "enabled", "schedule", "live_poll_s",
-                                  "idle_poll_s"})
+                                  "idle_poll_s", "input"})
         if fields.get("enabled") is True:
             fields.update(failures=0, last_error=None)
         pl = repo.update_playlist(pid, **fields)
@@ -4135,6 +4146,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             max_hours=min(settings.max_hours, dedupe.MAX_WHOLE_S / 3600),
             initial_status="pending_approval" if settings.require_approval else "queued",
             tz=settings.club_tz, force=force,
+            camera_sheets=settings.camera_sheets, camera_max_sheets=settings.camera_max_sheets,
         )
         # A league stream going live closes practice on every sheet: leagues
         # use all five. Before the index's early return, so it never waits for
