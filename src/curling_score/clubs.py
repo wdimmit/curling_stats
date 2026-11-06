@@ -172,7 +172,10 @@ DALLAS = Club("dallas", (
     house: (side, EndPaint(ring=(BLUE_HSV,), inner_radius_m=C.R_8FT_M, hog="dark"))
     for house, side in (("top", "right"), ("bottom", "left"))
 }, panel_layout=PanelLayout(top=(764, 0, 379, 526), bottom=(764, 526, 379, 554)),
-    side_rows=(0, 1080),
+    # The long cameras' ice starts below the far wall: the clubhouse window
+    # above it holds a blue neon cowboy hat, which in the 5U Qualifier's
+    # framing (46wEMds_tYQ) outweighs the ring and was fitted as the house.
+    side_rows=(390, 1080),
     # overhead-3 and long-1 have never seen a green stone: they missed DFW's
     # or read them as yellow (dfw1, dfw2).
     overhead_model="dfw1a.pt", side_model="dfw2a.pt")
