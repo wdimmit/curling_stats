@@ -13,7 +13,7 @@ Beside the output, ``norm.head`` says how many seconds have been written (the
 live lane's `head_s`), rewritten every second; ``norm.done`` appears when the
 input has ended -- nothing new for TIMEOUT_S -- and everything is flushed.
 
-    python normalize_live.py PLATES RAW.ts OUT_DIR [--green-to-red]
+    python normalize_live.py PLATES RAW.ts OUT_DIR [--green-to-red] [--layout]
 """
 
 import argparse
@@ -33,11 +33,11 @@ import normalize as N  # noqa: E402
 TIMEOUT_S = 300  # no new frame for this long: the stream is over
 
 
-def _reader(raw: Path, timeout_s: float):
+def _reader(raw: Path, timeout_s: float, size=(N.W, N.H)):
     return subprocess.Popen([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
         "-follow", "1", "-rw_timeout", str(int(timeout_s * 1_000_000)), "-i", str(raw),
-        "-map", "0:v:0", "-fps_mode", "passthrough", "-vf", f"scale={N.W}:{N.H}",
+        "-map", "0:v:0", "-fps_mode", "passthrough", "-vf", f"scale={size[0]}:{size[1]}",
         "-f", "rawvideo", "-pix_fmt", "bgr24", "-"], stdout=subprocess.PIPE)
 
 
@@ -61,14 +61,21 @@ def main():
     ap.add_argument("--fps", type=float, default=30.0)
     ap.add_argument("--timeout", type=float, default=TIMEOUT_S, help="seconds without a new frame = the end")
     ap.add_argument("--green-to-red", action="store_true", help="the scaffold, not the fix")
+    ap.add_argument("--layout", action="store_true",
+                    help="PLATES holds T.png + layout.json (normalize_layout.py): another event's framing")
     a = ap.parse_args()
 
     a.out.mkdir(parents=True, exist_ok=True)
     while not a.raw.exists():
         time.sleep(2)
-    plates = N.Plates(a.plates)
-    src, enc = _reader(a.raw, a.timeout), _writer(a.out / "norm.ts", a.fps)
-    size = N.W * N.H * 3
+    if a.layout:
+        from normalize_layout import LayoutPlates
+        plates = LayoutPlates(a.plates)
+    else:
+        plates = N.Plates(a.plates)
+    w, h = getattr(plates, "size", (N.W, N.H))
+    src, enc = _reader(a.raw, a.timeout, (w, h)), _writer(a.out / "norm.ts", a.fps)
+    size = w * h * 3
     pending = deque()          # (frame, kind) not yet written
     kinds = deque(maxlen=2 * N.GUARD + 1)
     last = plates.T.copy()
@@ -78,7 +85,10 @@ def main():
     def emit(frame, kind, bad):
         nonlocal last, written
         if not bad:
-            last = frame if kind == "T" else plates.to_three_panel(frame, int(kind[1]))
+            if a.layout:
+                last = plates.convert(frame, kind)
+            else:
+                last = frame if kind == "T" else plates.to_three_panel(frame, int(kind[1]))
         out = N.green_to_red(last) if a.green_to_red else last
         enc.stdin.write(out.tobytes())
         written += 1
@@ -94,7 +104,7 @@ def main():
         buf = src.stdout.read(size)
         if len(buf) < size:
             break
-        frame = np.frombuffer(buf, np.uint8).reshape(N.H, N.W, 3)
+        frame = np.frombuffer(buf, np.uint8).reshape(h, w, 3)
         kind, _, _ = plates.classify(frame)
         counts[kind] = counts.get(kind, 0) + 1
         kinds.append(kind)

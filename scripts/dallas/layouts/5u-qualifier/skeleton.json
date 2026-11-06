@@ -1,0 +1,7 @@
+{"size": [1280, 720],
+ "views": {
+  "T": {"seams": [533, 785], "dark": null,
+        "regions": {"long_left": {"src": [0, 0, 533, 720], "kind": "long"},
+                    "overhead_top": {"src": [535, 0, 785, 362], "kind": "overhead"},
+                    "overhead_bottom": {"src": [535, 364, 785, 720], "kind": "overhead"},
+                    "long_right": {"src": [787, 0, 1276, 720], "kind": "long"}}}}}

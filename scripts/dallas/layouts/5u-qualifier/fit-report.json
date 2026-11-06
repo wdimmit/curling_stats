@@ -1,0 +1,43 @@
+{
+ "T": {
+  "frames": 43,
+  "long_left": {
+   "inliers": 131,
+   "matches": 413,
+   "rms_px": 1.05,
+   "scale": 1.5054,
+   "rot_deg": -0.093
+  },
+  "overhead_top": {
+   "ring_src": [
+    668.6,
+    231.3,
+    95.2
+   ],
+   "ring_canon": [
+    945.1,
+    326.8,
+    164.6
+   ]
+  },
+  "overhead_bottom": {
+   "ring_src": [
+    659.9,
+    595.2,
+    107.0
+   ],
+   "ring_canon": [
+    953.4,
+    887.0,
+    164.3
+   ]
+  },
+  "long_right": {
+   "inliers": 126,
+   "matches": 573,
+   "rms_px": 1.02,
+   "scale": 1.3453,
+   "rot_deg": -0.084
+  }
+ }
+}
