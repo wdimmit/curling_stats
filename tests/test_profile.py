@@ -252,10 +252,12 @@ class TestSetupCut:
 # --- a camera feed: each house in its own file ----------------------------------------------
 
 class ViewSetup(Setup):
-    """A panel setup on its own view: the whole picture is the panel."""
+    """A panel setup on its own view, as a camera feed's is: a turned, scaled
+    cut, which -- like PanelSetup's -- cannot be taken from a decoded picture.
+    The sweep has already cut the view; the picture is the panel."""
 
     def crop(self, frame):
-        return frame
+        raise NotImplementedError("a turned or scaled cut is made by frames()")
 
 
 def view(n):

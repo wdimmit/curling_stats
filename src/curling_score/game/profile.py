@@ -202,10 +202,9 @@ def count_frame(frame, setups, detector=None) -> tuple[int, int, bool, bool]:
 
 def count_views(views: dict, setups, detector=None) -> tuple[int, int, bool, bool]:
     """:func:`count_frame` for a camera feed: each house from its own view's
-    picture (``views["top"]``, ``views["bottom"]``), as :func:`sweep` pairs
-    them."""
-    return _count({name: setups[name].crop(views[name]) for name in ("top", "bottom")},
-                  setups, detector)
+    picture (``views["top"]``, ``views["bottom"]``), as :func:`feed_sweep`
+    pairs them -- already cut to the view, so the picture is the panel."""
+    return _count({name: views[name] for name in ("top", "bottom")}, setups, detector)
 
 
 def _count(panels, setups, detector):
