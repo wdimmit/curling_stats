@@ -113,3 +113,97 @@ def match(piece: Path, piece_t_s: float, camera: Path, guess_s: float, sheet: in
 def agree(a: Match, b: Match, frames: int = 2) -> bool:
     """Two matches that put the camera at the same place, within ``frames``."""
     return abs(a.offset_s - b.offset_s) <= frames / FPS + 1e-9
+
+
+# --- following the clock through a game -----------------------------------------
+#
+# A YouTube video can lose picture partway with no gap in its time: on 11/05
+# sheet 4 it sat 908.94 s from the cameras until about video t 3000 and 914.72 s
+# after. So a camera game's clock is a list of steps, found by checking the
+# video against the camera every so often and narrowing down where a change
+# happened.
+
+# A step is placed to within this much of the video's time ...
+PLACE_S = 10.0
+# ... with at most this many probes; then it stays at the middle of what is left.
+MAX_PROBES = 8
+
+
+class ClockTrack:
+    """The steps of a camera game's clock, from checks of the video against the
+    camera (``add``) and probes between them (``probe``/``add_probe``).
+
+    The first offset is confirmed by two checks in a row that agree. After it,
+    a check that disagrees is a candidate, and the next check agreeing with the
+    candidate confirms a step between the last check that agreed with the old
+    offset and the candidate. Pure: the caller fetches and matches.
+    """
+
+    def __init__(self, frames: int = 2):
+        self.frames = frames
+        self._first: Match | None = None
+        self._offset: float | None = None
+        self._last_t: float | None = None       # the last check agreeing with _offset
+        self._candidate: tuple[float, Match] | None = None
+        self._steps: list[list[float]] = []
+        self._placing: dict | None = None
+
+    def _agree(self, a: float, b: Match) -> bool:
+        return agree(Match(a, 0.0), b, self.frames)
+
+    def add(self, video_t_s: float, m: Match | None) -> None:
+        """A check: the match of the video at ``video_t_s`` (None: no match)."""
+        if m is None:
+            return
+        if self._offset is None:
+            if self._first is not None and self._agree(self._first.offset_s, m):
+                self._offset, self._last_t = self._first.offset_s, video_t_s
+                self._steps = [[0.0, self._offset]]
+            else:
+                self._first = m
+            return
+        if self._agree(self._offset, m):
+            self._last_t, self._candidate = video_t_s, None
+            return
+        if self._candidate is not None and agree(self._candidate[1], m, self.frames):
+            cand_t, cand = self._candidate
+            old, new = self._offset, cand.offset_s
+            self._placing = {"lo": self._last_t, "hi": cand_t, "old": old, "new": new,
+                             "probes": 0}
+            self._steps.append([(self._last_t + cand_t) / 2 - new, new])
+            self._offset, self._last_t, self._candidate = new, video_t_s, None
+            return
+        self._candidate = (video_t_s, m)
+
+    def probe(self) -> float | None:
+        """A video time to check next, while a step is not yet placed; else None."""
+        p = self._placing
+        if p is None:
+            return None
+        if p["hi"] - p["lo"] <= PLACE_S or p["probes"] >= MAX_PROBES:
+            self._placing = None
+            return None
+        return (p["lo"] + p["hi"]) / 2
+
+    def add_probe(self, video_t_s: float, m: Match | None) -> None:
+        """What a probe at ``video_t_s`` found."""
+        p = self._placing
+        if p is None:
+            return
+        p["probes"] += 1
+        if m is not None and self._agree(p["old"], m):
+            p["lo"] = video_t_s
+        elif m is not None and self._agree(p["new"], m):
+            p["hi"] = video_t_s
+        self._steps[-1][0] = (p["lo"] + p["hi"]) / 2 - p["new"]
+
+    def steps(self) -> list[list[float]]:
+        """``[[camera_from_s, offset_s], ...]``; empty before the first offset."""
+        return [list(s) for s in self._steps]
+
+    def clock(self, aligned: str = "segment") -> dict | None:
+        """The clock for ``timeline.build_document``; None before the first offset."""
+        if not self._steps:
+            return None
+        return {"kind": "cameras", "aligned": aligned, "offset_s": self._steps[0][1],
+                "steps": self.steps()}
