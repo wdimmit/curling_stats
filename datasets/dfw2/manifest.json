@@ -1,0 +1,3489 @@
+{
+ "what": "dfw2: DFW's long cameras, green and yellow stones (vvy26k01ZcI)",
+ "scope": "dfw2:train",
+ "images": "normalised video, true colours (scripts/dallas/normalize.py)",
+ "prelabel": {
+  "weights": "long-1.pt",
+  "on": "the green-to-red copy of the same frame",
+  "note": "cin2's prelabel: conf 0.1, stone-width gate",
+  "classes": {
+   "0": "red_stone (DFW: green)",
+   "1": "yellow_stone"
+  }
+ },
+ "selection": {
+  "shares": {
+   "release": 30,
+   "travel": 20,
+   "coming": 25,
+   "house": 25
+  },
+  "release_at": [
+   0.5,
+   0.9
+  ],
+  "travel_at": [
+   0.25,
+   0.5
+  ],
+  "coming_before_s": 2.0,
+  "house_after_s": 0.5,
+  "crop_above_tee": 120,
+  "guard_s": 1.0,
+  "pools": {
+   "release": 65,
+   "travel": 46,
+   "coming": 90,
+   "house": 88
+  }
+ },
+ "views": {
+  "left": {
+   "rect": [
+    1143,
+    0,
+    777,
+    1080
+   ],
+   "tee_row": 461.75,
+   "hog_row": 543.06,
+   "d_m": 38.9468,
+   "centre_col": 358.64,
+   "lat_px_per_m_at_tee": 149.387,
+   "centre_line": [
+    358.875,
+    -0.000506
+   ]
+  },
+  "right": {
+   "rect": [
+    0,
+    0,
+    764,
+    1080
+   ],
+   "tee_row": 457.82,
+   "hog_row": 547.38,
+   "d_m": 41.1865,
+   "centre_col": 373.34,
+   "lat_px_per_m_at_tee": 162.758,
+   "centre_line": [
+    367.946,
+    0.011791
+   ]
+  }
+ },
+ "by_kind": {
+  "coming": 25,
+  "house": 25,
+  "travel": 20,
+  "release": 30
+ },
+ "by_layout": {
+  "T": 79,
+  "S0": 5,
+  "S1": 16
+ },
+ "frames": [
+  {
+   "end": 1,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "flashed",
+   "tee": 55.98,
+   "hog": null,
+   "enter": 70.0,
+   "rest": 74.9,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 68.0,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000068_00",
+   "frame": 2040,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 1,
+   "copy_drift": 0.35,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "flashed",
+   "tee": 55.98,
+   "hog": null,
+   "enter": 70.0,
+   "rest": 74.9,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 75.4,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000075_40",
+   "frame": 2262,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 0,
+   "copy_drift": 0.42,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 105.68,
+   "hog": 108.43,
+   "enter": 104.8,
+   "rest": 126.8,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 106.6,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000106_60",
+   "frame": 3198,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 0,
+   "copy_drift": 0.31,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 105.68,
+   "hog": 108.43,
+   "enter": 104.8,
+   "rest": 126.8,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 108.167,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_000108_17",
+   "frame": 3245,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 8,
+   "copy_drift": 0.31,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 4,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 194.94,
+   "hog": 197.31,
+   "enter": 209.5,
+   "rest": 215.7,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 207.5,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000207_50",
+   "frame": 6225,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 6,
+   "copy_drift": 0.36,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 4,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 194.94,
+   "hog": 197.31,
+   "enter": 209.5,
+   "rest": 215.7,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 216.2,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000216_20",
+   "frame": 6486,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 4,
+   "copy_drift": 0.37,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 306.47,
+   "hog": 308.84,
+   "enter": 320.9,
+   "rest": 326.6,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 308.6,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_000308_60",
+   "frame": 9258,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 5,
+   "copy_drift": 0.37,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 306.47,
+   "hog": 308.84,
+   "enter": 320.9,
+   "rest": 326.6,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 314.867,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000314_87",
+   "frame": 9446,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 6,
+   "copy_drift": 0.42,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "hit",
+   "tee": 455.5,
+   "hog": null,
+   "enter": 471.5,
+   "rest": 478.0,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 469.5,
+   "layout": "S0",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000469_50",
+   "frame": 14085,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 7,
+   "copy_drift": 0.48,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "hit",
+   "tee": 455.5,
+   "hog": null,
+   "enter": 471.5,
+   "rest": 478.0,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 478.5,
+   "layout": "S0",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000478_50",
+   "frame": 14355,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 7,
+   "copy_drift": 0.41,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 12,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 617.44,
+   "hog": 620.1,
+   "enter": 616.4,
+   "rest": 638.9,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 614.4,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000614_40",
+   "frame": 18432,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 9,
+   "copy_drift": 0.37,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 12,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 617.44,
+   "hog": 620.1,
+   "enter": 616.4,
+   "rest": 638.9,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 639.4,
+   "layout": "S0",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000639_40",
+   "frame": 19182,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 9,
+   "copy_drift": 0.5,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 14,
+   "color": "yellow",
+   "shot_type": "hit",
+   "tee": 798.27,
+   "hog": 800.35,
+   "enter": 797.5,
+   "rest": 813.4,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 798.933,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_000798_93",
+   "frame": 23968,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 11,
+   "copy_drift": 0.45,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 14,
+   "color": "yellow",
+   "shot_type": "hit",
+   "tee": 798.27,
+   "hog": 800.35,
+   "enter": 797.5,
+   "rest": 813.4,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 800.133,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_000800_13",
+   "frame": 24004,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.36,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 1,
+   "shot": 16,
+   "color": "yellow",
+   "shot_type": "hit",
+   "tee": 990.27,
+   "hog": 992.4,
+   "enter": 1001.9,
+   "rest": 1008.0,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 992.2,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_000992_20",
+   "frame": 29766,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 1,
+   "copy_drift": 0.35,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 1060.19,
+   "hog": null,
+   "enter": 1078.1,
+   "rest": 1087.8,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 1076.1,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001076_10",
+   "frame": 32283,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 1,
+   "copy_drift": 0.4,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 1060.19,
+   "hog": null,
+   "enter": 1078.1,
+   "rest": 1087.8,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 1088.3,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001088_30",
+   "frame": 32649,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 1,
+   "copy_drift": 0.43,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 4,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 1216.5,
+   "hog": null,
+   "enter": 1232.5,
+   "rest": 1240.3,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 1240.8,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001240_80",
+   "frame": 37224,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.38,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 5,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 1258.37,
+   "hog": 1261.44,
+   "enter": 1279.8,
+   "rest": 1284.2,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 1259.9,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_001259_90",
+   "frame": 37797,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 5,
+   "copy_drift": 0.48,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 5,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 1258.37,
+   "hog": 1261.44,
+   "enter": 1279.8,
+   "rest": 1284.2,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 1277.8,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001277_80",
+   "frame": 38334,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 2,
+   "copy_drift": 0.45,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 1392.79,
+   "hog": 1395.65,
+   "enter": 1391.8,
+   "rest": 1397.8,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 1389.8,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001389_80",
+   "frame": 41694,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 5,
+   "copy_drift": 0.39,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 1392.79,
+   "hog": 1395.65,
+   "enter": 1391.8,
+   "rest": 1397.8,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "travel",
+   "view": "right",
+   "t": 1393.733,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001393_73",
+   "frame": 41812,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 8,
+   "copy_drift": 0.35,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 1392.79,
+   "hog": 1395.65,
+   "enter": 1391.8,
+   "rest": 1397.8,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 1395.367,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_001395_37",
+   "frame": 41861,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 5,
+   "copy_drift": 0.46,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "hit",
+   "tee": 1476.16,
+   "hog": 1478.87,
+   "enter": 1494.1,
+   "rest": 1497.1,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 1497.6,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001497_60",
+   "frame": 44928,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 3,
+   "copy_drift": 0.38,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 12,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 1634.9,
+   "hog": null,
+   "enter": 1650.9,
+   "rest": 1653.4,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 1648.9,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001648_90",
+   "frame": 49467,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 6,
+   "copy_drift": 0.49,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 12,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 1634.9,
+   "hog": null,
+   "enter": 1650.9,
+   "rest": 1653.4,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 1653.9,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001653_90",
+   "frame": 49617,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 8,
+   "copy_drift": 0.5,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 13,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 1732.2,
+   "hog": 1735.27,
+   "enter": 1754.1,
+   "rest": 1756.8,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 1733.733,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_001733_73",
+   "frame": 52012,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 3,
+   "copy_drift": 0.42,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 15,
+   "color": "red",
+   "shot_type": "hit",
+   "tee": 1903.54,
+   "hog": 1905.98,
+   "enter": 1916.1,
+   "rest": 1922.2,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 1904.767,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_001904_77",
+   "frame": 57143,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 3,
+   "copy_drift": 0.4,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 15,
+   "color": "red",
+   "shot_type": "hit",
+   "tee": 1903.54,
+   "hog": 1905.98,
+   "enter": 1916.1,
+   "rest": 1922.2,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 1914.1,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_001914_10",
+   "frame": 57423,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 7,
+   "copy_drift": 0.49,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 2,
+   "shot": 16,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 1995.45,
+   "hog": 1998.2,
+   "enter": 2014.7,
+   "rest": 2018.6,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 2019.1,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_002019_10",
+   "frame": 60573,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 8,
+   "copy_drift": 0.61,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 3,
+   "color": "yellow",
+   "shot_type": "draw",
+   "tee": 2160.04,
+   "hog": 2162.74,
+   "enter": 2178.4,
+   "rest": 2186.0,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 2161.4,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_002161_40",
+   "frame": 64842,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 8,
+   "copy_drift": 0.38,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 4,
+   "color": "red",
+   "shot_type": "flashed",
+   "tee": 2206.46,
+   "hog": 2209.49,
+   "enter": 2229.4,
+   "rest": 2233.9,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 2227.4,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002227_40",
+   "frame": 66822,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 4,
+   "copy_drift": 0.48,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 5,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 2250.66,
+   "hog": 2253.22,
+   "enter": 2267.5,
+   "rest": 2276.3,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 2251.933,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_002251_93",
+   "frame": 67558,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 7,
+   "copy_drift": 0.44,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 5,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 2250.66,
+   "hog": 2253.22,
+   "enter": 2267.5,
+   "rest": 2276.3,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 2256.8,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002256_80",
+   "frame": 67704,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 2,
+   "copy_drift": 0.53,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 5,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 2250.66,
+   "hog": 2253.22,
+   "enter": 2267.5,
+   "rest": 2276.3,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 2276.8,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002276_80",
+   "frame": 68304,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 2,
+   "copy_drift": 0.48,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 7,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 2444.46,
+   "hog": 2447.54,
+   "enter": 2443.5,
+   "rest": 2466.75,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 2446.0,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_002446_00",
+   "frame": 73380,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 5,
+   "copy_drift": 0.35,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 8,
+   "color": "red",
+   "shot_type": "hogged",
+   "tee": 2507.34,
+   "hog": 2509.97,
+   "enter": 2506.6,
+   "rest": 2512.6,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 2504.6,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002504_60",
+   "frame": 75138,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 5,
+   "copy_drift": 0.51,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 8,
+   "color": "red",
+   "shot_type": "hogged",
+   "tee": 2507.34,
+   "hog": 2509.97,
+   "enter": 2506.6,
+   "rest": 2512.6,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 2508.3,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002508_30",
+   "frame": 75249,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 6,
+   "copy_drift": 0.5,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 9,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 2556.15,
+   "hog": 2558.72,
+   "enter": 2555.3,
+   "rest": 2561.3,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 2557.433,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_002557_43",
+   "frame": 76723,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 6,
+   "copy_drift": 0.32,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 9,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 2556.15,
+   "hog": 2558.72,
+   "enter": 2555.3,
+   "rest": 2561.3,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 2561.8,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002561_80",
+   "frame": 76854,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 7,
+   "copy_drift": 0.54,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 11,
+   "color": "yellow",
+   "shot_type": "draw",
+   "tee": 2670.13,
+   "hog": 2672.77,
+   "enter": 2687.9,
+   "rest": 2693.5,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 2680.333,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002680_33",
+   "frame": 80410,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 11,
+   "copy_drift": 0.54,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 12,
+   "color": "red",
+   "shot_type": "hit",
+   "tee": 2772.9,
+   "hog": 2775.16,
+   "enter": 2785.6,
+   "rest": 2797.0,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 2783.6,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002783_60",
+   "frame": 83508,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 12,
+   "copy_drift": 0.55,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 13,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 2872.25,
+   "hog": 2875.19,
+   "enter": 2871.4,
+   "rest": 2894.15,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 2874.9,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_002874_90",
+   "frame": 86247,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 2,
+   "copy_drift": 0.5,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 13,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 2872.25,
+   "hog": 2875.19,
+   "enter": 2871.4,
+   "rest": 2894.15,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 2894.667,
+   "layout": "S0",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002894_67",
+   "frame": 86840,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 7,
+   "copy_drift": 0.53,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 14,
+   "color": "red",
+   "shot_type": "hogged",
+   "tee": 2956.14,
+   "hog": 2959.22,
+   "enter": 2955.2,
+   "rest": 2961.2,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 2958.2,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_002958_20",
+   "frame": 88746,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 11,
+   "copy_drift": 0.54,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 3,
+   "shot": 15,
+   "color": "yellow",
+   "shot_type": "hit",
+   "tee": 3047.61,
+   "hog": 3050.29,
+   "enter": 3073.7,
+   "rest": 3085.0,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 3050.033,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003050_03",
+   "frame": 91501,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 1,
+   "copy_drift": 0.36,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 3125.88,
+   "hog": 3128.79,
+   "enter": 3149.0,
+   "rest": 3155.1,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 3147.0,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003147_00",
+   "frame": 94410,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 2,
+   "copy_drift": 0.41,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "draw",
+   "tee": 3194.65,
+   "hog": 3197.32,
+   "enter": 3212.6,
+   "rest": 3219.2,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 3197.067,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_003197_07",
+   "frame": 95912,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 6,
+   "copy_drift": 0.47,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "draw",
+   "tee": 3194.65,
+   "hog": 3197.32,
+   "enter": 3212.6,
+   "rest": 3219.2,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 3219.7,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003219_70",
+   "frame": 96591,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 2,
+   "copy_drift": 0.46,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 4,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 3289.07,
+   "hog": 3291.56,
+   "enter": 3304.9,
+   "rest": 3312.1,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 3291.3,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_003291_30",
+   "frame": 98739,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 6,
+   "copy_drift": 0.52,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 4,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 3289.07,
+   "hog": 3291.56,
+   "enter": 3304.9,
+   "rest": 3312.1,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 3302.9,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003302_90",
+   "frame": 99087,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 3,
+   "copy_drift": 0.41,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 5,
+   "color": "red",
+   "shot_type": "unknown",
+   "tee": 3335.42,
+   "hog": 3338.3,
+   "enter": 3354.2,
+   "rest": 3359.3,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "travel",
+   "view": "right",
+   "t": 3342.267,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003342_27",
+   "frame": 100268,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 2,
+   "copy_drift": 0.64,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 5,
+   "color": "red",
+   "shot_type": "unknown",
+   "tee": 3335.42,
+   "hog": 3338.3,
+   "enter": 3354.2,
+   "rest": 3359.3,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 3359.8,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003359_80",
+   "frame": 100794,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.49,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 3470.4,
+   "hog": null,
+   "enter": 3486.4,
+   "rest": 3490.6,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 3484.4,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003484_40",
+   "frame": 104532,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.53,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 3527.1,
+   "hog": null,
+   "enter": 3543.1,
+   "rest": 3547.6,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 3548.1,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003548_10",
+   "frame": 106443,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 7,
+   "copy_drift": 0.5,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 10,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 3584.36,
+   "hog": 3586.72,
+   "enter": 3597.8,
+   "rest": 3603.5,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 3586.5,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_003586_50",
+   "frame": 107595,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 4,
+   "copy_drift": 0.46,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 12,
+   "color": "yellow",
+   "shot_type": "hit",
+   "tee": 3672.92,
+   "hog": 3674.88,
+   "enter": 3683.5,
+   "rest": 3695.0,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 3681.5,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003681_50",
+   "frame": 110445,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 7,
+   "copy_drift": 0.61,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 12,
+   "color": "yellow",
+   "shot_type": "hit",
+   "tee": 3672.92,
+   "hog": 3674.88,
+   "enter": 3683.5,
+   "rest": 3695.0,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 3695.5,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003695_50",
+   "frame": 110865,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 11,
+   "copy_drift": 0.49,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 13,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 3750.24,
+   "hog": 3753.18,
+   "enter": 3768.7,
+   "rest": 3777.3,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 3751.7,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_003751_70",
+   "frame": 112551,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 1,
+   "copy_drift": 0.47,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 15,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 3923.42,
+   "hog": 3926.5,
+   "enter": 3944.4,
+   "rest": 3949.4,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "travel",
+   "view": "right",
+   "t": 3930.967,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003930_97",
+   "frame": 117929,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 11,
+   "copy_drift": 0.58,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 15,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 3923.42,
+   "hog": 3926.5,
+   "enter": 3944.4,
+   "rest": 3949.4,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 3942.4,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_003942_40",
+   "frame": 118272,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 7,
+   "copy_drift": 0.61,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 4,
+   "shot": 16,
+   "color": "yellow",
+   "shot_type": "hit",
+   "tee": 3999.62,
+   "hog": null,
+   "enter": 4009.1,
+   "rest": 4011.9,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 4012.4,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_004012_40",
+   "frame": 120372,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 8,
+   "copy_drift": 0.63,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 3,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 4229.94,
+   "hog": 4232.41,
+   "enter": 4245.8,
+   "rest": 4250.6,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 4231.167,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_004231_17",
+   "frame": 126935,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.41,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 3,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 4229.94,
+   "hog": 4232.41,
+   "enter": 4245.8,
+   "rest": 4250.6,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 4243.8,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004243_80",
+   "frame": 127314,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 3,
+   "copy_drift": 0.56,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 3,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 4229.94,
+   "hog": 4232.41,
+   "enter": 4245.8,
+   "rest": 4250.6,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 4251.1,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004251_10",
+   "frame": 127533,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 4,
+   "copy_drift": 0.47,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 4,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 4275.07,
+   "hog": 4278.11,
+   "enter": 4297.8,
+   "rest": 4300.7,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 4287.967,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004287_97",
+   "frame": 128639,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 1,
+   "copy_drift": 0.59,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 5,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 4328.43,
+   "hog": 4331.49,
+   "enter": 4327.5,
+   "rest": 4333.5,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 4329.967,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_004329_97",
+   "frame": 129899,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.49,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 6,
+   "color": "red",
+   "shot_type": "hit",
+   "tee": 4365.12,
+   "hog": 4367.94,
+   "enter": 4383.3,
+   "rest": 4387.3,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 4375.633,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004375_63",
+   "frame": 131269,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 2,
+   "copy_drift": 0.59,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 6,
+   "color": "red",
+   "shot_type": "hit",
+   "tee": 4365.12,
+   "hog": 4367.94,
+   "enter": 4383.3,
+   "rest": 4387.3,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 4381.3,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004381_30",
+   "frame": 131439,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 2,
+   "copy_drift": 0.5,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 7,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 4406.48,
+   "hog": 4409.56,
+   "enter": 4405.63,
+   "rest": 4429.63,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 4408.033,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_004408_03",
+   "frame": 132241,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.44,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 7,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 4406.48,
+   "hog": 4409.56,
+   "enter": 4405.63,
+   "rest": 4429.63,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 4430.133,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004430_13",
+   "frame": 132904,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 4,
+   "copy_drift": 0.58,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 8,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 4459.57,
+   "hog": 4462.39,
+   "enter": 4478.03,
+   "rest": 4482.63,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 4470.2,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004470_20",
+   "frame": 134106,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 4,
+   "copy_drift": 0.6,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 9,
+   "color": "yellow",
+   "shot_type": "flashed",
+   "tee": 4509.9,
+   "hog": 4512.18,
+   "enter": 4522.53,
+   "rest": 4525.73,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 4511.033,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_004511_03",
+   "frame": 135331,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 6,
+   "copy_drift": 0.4,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 10,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 4547.55,
+   "hog": 4550.42,
+   "enter": 4546.73,
+   "rest": 4566.48,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 4544.733,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004544_73",
+   "frame": 136342,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 5,
+   "copy_drift": 0.43,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 10,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 4547.55,
+   "hog": 4550.42,
+   "enter": 4546.73,
+   "rest": 4566.48,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 4548.567,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004548_57",
+   "frame": 136457,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 8,
+   "copy_drift": 0.53,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 10,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 4547.55,
+   "hog": 4550.42,
+   "enter": 4546.73,
+   "rest": 4566.48,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 4566.967,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004566_97",
+   "frame": 137009,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 3,
+   "copy_drift": 0.51,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 11,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 4611.87,
+   "hog": 4614.94,
+   "enter": 4610.83,
+   "rest": 4616.83,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 4613.4,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_004613_40",
+   "frame": 138402,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 6,
+   "copy_drift": 0.54,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 14,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 4895.97,
+   "hog": 4898.7,
+   "enter": 4895.23,
+   "rest": 4920.13,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "release",
+   "view": "right",
+   "t": 4897.333,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_004897_33",
+   "frame": 146920,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 3,
+   "copy_drift": 0.4,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 14,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 4895.97,
+   "hog": 4898.7,
+   "enter": 4895.23,
+   "rest": 4920.13,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "travel",
+   "view": "left",
+   "t": 4897.833,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_004897_83",
+   "frame": 146935,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 9,
+   "copy_drift": 0.52,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 15,
+   "color": "yellow",
+   "shot_type": "hit",
+   "tee": 5035.19,
+   "hog": 5038.04,
+   "enter": 5034.33,
+   "rest": 5067.73,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "coming",
+   "view": "left",
+   "t": 5032.333,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_005032_33",
+   "frame": 150970,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 14,
+   "copy_drift": 0.46,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 5,
+   "shot": 15,
+   "color": "yellow",
+   "shot_type": "hit",
+   "tee": 5035.19,
+   "hog": 5038.04,
+   "enter": 5034.33,
+   "rest": 5067.73,
+   "target_view": "left",
+   "delivering_view": "right",
+   "kind": "house",
+   "view": "left",
+   "t": 5068.233,
+   "layout": "S0",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_005068_23",
+   "frame": 152047,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 6,
+   "copy_drift": 0.52,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 1,
+   "color": "red",
+   "shot_type": "guard",
+   "tee": 5109.9,
+   "hog": 5112.92,
+   "enter": 5132.03,
+   "rest": 5134.53,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "travel",
+   "view": "right",
+   "t": 5122.467,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005122_47",
+   "frame": 153674,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 2,
+   "copy_drift": 0.63,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 5176.78,
+   "hog": 5179.68,
+   "enter": 5175.83,
+   "rest": 5181.83,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 5173.833,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005173_83",
+   "frame": 155215,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 1,
+   "copy_drift": 0.45,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 5176.78,
+   "hog": 5179.68,
+   "enter": 5175.83,
+   "rest": 5181.83,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 5178.233,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_005178_23",
+   "frame": 155347,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 7,
+   "copy_drift": 0.48,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 2,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 5176.78,
+   "hog": 5179.68,
+   "enter": 5175.83,
+   "rest": 5181.83,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 5182.333,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005182_33",
+   "frame": 155470,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 2,
+   "copy_drift": 0.68,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 3,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 5211.2,
+   "hog": 5214.05,
+   "enter": 5229.83,
+   "rest": 5236.93,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "travel",
+   "view": "right",
+   "t": 5221.933,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005221_93",
+   "frame": 156658,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 3,
+   "copy_drift": 0.69,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 4,
+   "color": "yellow",
+   "shot_type": "draw",
+   "tee": 5260.18,
+   "hog": 5262.92,
+   "enter": 5278.13,
+   "rest": 5282.93,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 5261.533,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_005261_53",
+   "frame": 157846,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 5,
+   "copy_drift": 0.5,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 5362.06,
+   "hog": 5365.18,
+   "enter": 5361.07,
+   "rest": 5367.07,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 5359.067,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005359_07",
+   "frame": 160772,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.42,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 5362.06,
+   "hog": 5365.18,
+   "enter": 5361.07,
+   "rest": 5367.07,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 5363.633,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_005363_63",
+   "frame": 160909,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 4,
+   "copy_drift": 0.54,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 5362.06,
+   "hog": 5365.18,
+   "enter": 5361.07,
+   "rest": 5367.07,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "travel",
+   "view": "right",
+   "t": 5364.167,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005364_17",
+   "frame": 160925,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.32,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 6,
+   "color": "yellow",
+   "shot_type": "hogged",
+   "tee": 5362.06,
+   "hog": 5365.18,
+   "enter": 5361.07,
+   "rest": 5367.07,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 5367.567,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005367_57",
+   "frame": 161027,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.56,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "draw",
+   "tee": 5445.61,
+   "hog": 5448.35,
+   "enter": 5463.67,
+   "rest": 5469.07,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 5446.967,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_005446_97",
+   "frame": 163409,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 4,
+   "copy_drift": 0.52,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 8,
+   "color": "yellow",
+   "shot_type": "draw",
+   "tee": 5445.61,
+   "hog": 5448.35,
+   "enter": 5463.67,
+   "rest": 5469.07,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "travel",
+   "view": "right",
+   "t": 5452.167,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005452_17",
+   "frame": 163565,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.6,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 5508.32,
+   "hog": 5511.19,
+   "enter": 5525.97,
+   "rest": 5533.47,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 5523.967,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005523_97",
+   "frame": 165719,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 2,
+   "copy_drift": 0.55,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 9,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 5508.32,
+   "hog": 5511.19,
+   "enter": 5525.97,
+   "rest": 5533.47,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 5533.967,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005533_97",
+   "frame": 166019,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 5,
+   "copy_drift": 0.45,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 10,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 5561.52,
+   "hog": 5564.48,
+   "enter": 5582.37,
+   "rest": 5583.47,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 5563.0,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_005563_00",
+   "frame": 166890,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 4,
+   "copy_drift": 0.56,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 10,
+   "color": "yellow",
+   "shot_type": "guard",
+   "tee": 5561.52,
+   "hog": 5564.48,
+   "enter": 5582.37,
+   "rest": 5583.47,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "travel",
+   "view": "right",
+   "t": 5568.967,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005568_97",
+   "frame": 167069,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 5,
+   "copy_drift": 0.65,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 13,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 5733.75,
+   "hog": 5736.76,
+   "enter": 5755.77,
+   "rest": 5758.17,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "release",
+   "view": "left",
+   "t": 5736.467,
+   "layout": "T",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_l_005736_47",
+   "frame": 172094,
+   "crop_top": 341,
+   "width": 777,
+   "height": 739,
+   "prelabels": 5,
+   "copy_drift": 0.49,
+   "add_box": [
+    [
+     0.03471,
+     0.02862
+    ],
+    [
+     0.12234,
+     0.10089
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 13,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 5733.75,
+   "hog": 5736.76,
+   "enter": 5755.77,
+   "rest": 5758.17,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "coming",
+   "view": "right",
+   "t": 5753.767,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005753_77",
+   "frame": 172613,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 4,
+   "copy_drift": 0.58,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  },
+  {
+   "end": 6,
+   "shot": 13,
+   "color": "red",
+   "shot_type": "draw",
+   "tee": 5733.75,
+   "hog": 5736.76,
+   "enter": 5755.77,
+   "rest": 5758.17,
+   "target_view": "right",
+   "delivering_view": "left",
+   "kind": "house",
+   "view": "right",
+   "t": 5758.667,
+   "layout": "S1",
+   "video": "vvy26k01ZcI",
+   "stem": "vvy26k01ZcI_r_005758_67",
+   "frame": 172760,
+   "crop_top": 337,
+   "width": 764,
+   "height": 743,
+   "prelabels": 7,
+   "copy_drift": 0.54,
+   "add_box": [
+    [
+     0.04084,
+     0.03294
+    ],
+    [
+     0.12377,
+     0.09982
+    ]
+   ]
+  }
+ ]
+}
