@@ -2247,7 +2247,28 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         return kind
 
     def label_image_url(item: LabelItem) -> str:
-        return store.presign_get(item.payload["image"], 3600)
+        url = store.presign_get(item.payload["image"], 3600)
+        if url.startswith("memory://"):
+            # No real bucket behind this store (a local server): serve it ourselves.
+            return url_for(f"/api/label/image/{item.id}")
+        return url
+
+    @app.get("/api/label/image/{item_id}")
+    def label_image(item_id: str):
+        """An item's image, only when the store has no bucket to sign a URL for.
+
+        An <img> cannot send a token, so this asks for none, as a signed URL
+        does not; it exists only on a server whose state lives in memory, and
+        everywhere else answers 404 like a missing item.
+        """
+        item = repo.get_label_item(item_id) if LABEL_ID.match(item_id) else None
+        if item is None or not store.presign_get(item.payload["image"]).startswith("memory://"):
+            raise HTTPException(404, "no such item")
+        data = store.get_bytes(item.payload["image"])
+        if data is None:
+            raise HTTPException(404, "no image yet")
+        return Response(content=data, media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=3600"})
 
     @app.get("/api/label/me")
     def label_me(authorization: str | None = Header(default=None)):
@@ -3767,10 +3788,27 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 repo.put_label_item(have)
             # Only a pending item still wants its image; anything further
             # along has one and must not be pointed at a fresh upload.
-            out.append({"id": have.id, "state": have.state,
-                        "upload": (store.presign_put(key, "image/jpeg")
-                                   if have.state == "pending" else None)})
+            upload = store.presign_put(key, "image/jpeg") if have.state == "pending" else None
+            if upload and upload["url"].startswith("memory://"):
+                # No real bucket behind this store: take the bytes ourselves.
+                upload = {"url": url_for(f"/api/admin/label-items/{have.id}/image"),
+                          "headers": {"Content-Type": "image/jpeg"}}
+            out.append({"id": have.id, "state": have.state, "upload": upload})
         return {"items": out}
+
+    @app.put("/api/admin/label-items/{item_id}/image")
+    async def admin_label_item_image(item_id: str, request: Request,
+                                     authorization: str | None = Header(default=None)):
+        """The fallback upload path, used only when the store cannot sign URLs."""
+        require_admin(authorization)
+        item = repo.get_label_item(item_id) if LABEL_ID.match(item_id) else None
+        if item is None or item.state != "pending":
+            raise HTTPException(409, "that item is not waiting for its image")
+        key = item.payload["image"]
+        if not store.presign_put(key, "image/jpeg")["url"].startswith("memory://"):
+            raise HTTPException(404, "upload to the signed URL")
+        store.put_bytes(key, await request.body(), "image/jpeg")
+        return {"ok": True}
 
     @app.post("/api/admin/label-items/ready")
     async def admin_label_items_ready(request: Request,

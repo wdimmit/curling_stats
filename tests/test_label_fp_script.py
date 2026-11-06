@@ -170,6 +170,22 @@ def test_a_rerun_reuploads_pending_and_skips_open():
     assert got["missing_image"] == []
 
 
+def test_an_upload_back_through_our_own_api_carries_the_admin_token():
+    """A server with no bucket (a local one) takes the image itself, as an admin call."""
+    server = Server({"b_a": {"url": "http://box:8797/api/admin/label-items/b_a/image",
+                             "headers": {"Content-Type": "image/jpeg"}}})
+    pub.publish("http://box:8797", "tok", [{"id": "b_a", "kind": "box", "batch": "x", "payload": {}}],
+                {"b_a": b"AAA"}, opener=server)
+    [put] = [c for c in server.calls if c[0] == "PUT"]
+    assert put[2]["Authorization"] == "Bearer tok" and put[3] == b"AAA"
+    # A look-alike host is not our API.
+    server = Server({"b_a": {"url": "http://box:8797.evil/x", "headers": {}}})
+    pub.publish("http://box:8797", "tok", [{"id": "b_a", "kind": "box", "batch": "x", "payload": {}}],
+                {"b_a": b"AAA"}, opener=server)
+    [put] = [c for c in server.calls if c[0] == "PUT"]
+    assert "Authorization" not in put[2]
+
+
 def test_dry_run_sends_nothing():
     def boom(*a, **k):
         raise AssertionError("sent a request")

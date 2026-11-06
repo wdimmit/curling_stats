@@ -60,7 +60,8 @@ def test_create_hands_back_an_upload_and_stores_the_item_pending(w):
     r = w["client"].post("/api/admin/label-items", json={"items": [item(0)]}, headers=ADMIN)
     [got] = r.json()["items"]
     assert got["id"] == "b_0" and got["state"] == "pending"
-    assert got["upload"]["url"].endswith("labelling/box/b_0.jpg")
+    # The memory store has no bucket to sign for, so the API takes the bytes.
+    assert got["upload"]["url"].endswith("/api/admin/label-items/b_0/image")
     stored = w["repo"].get_label_item("b_0")
     assert stored.payload["image"] == "labelling/box/b_0.jpg"
     assert stored.state == "pending"
@@ -89,7 +90,7 @@ def test_two_members_label_an_item_and_counts_go_up(w):
     publish(w)
     first = w["client"].get("/api/label/box/next", headers=SARAH).json()
     assert [i["id"] for i in first["items"]] == ["b_0"] and first["count"] == 0
-    assert first["items"][0]["image_url"].endswith("labelling/box/b_0.jpg")
+    assert first["items"][0]["image_url"].endswith("/api/label/image/b_0")
     r = answer(w, SARAH, "b_0")
     assert r.json() == {"result": "added", "count": 1}
     assert w["client"].get("/api/label/me", headers=SARAH).json() == {"box": 1, "release": 0, "player": 0}
@@ -349,7 +350,7 @@ def test_admin_listing_returns_answers_and_pages(w):
         answer(w, who, "b_0")
     done = w["client"].get("/api/admin/label-items?kind=box&state=done", headers=ADMIN).json()
     [only] = done["items"]
-    assert only["id"] == "b_0" and only["image_url"].endswith("labelling/box/b_0.jpg")
+    assert only["id"] == "b_0" and only["image_url"].endswith("/api/label/image/b_0")
     assert sorted(a["uid"] for a in only["answers"]) == ["uid-alex", "uid-sarah"]
     assert only["answers"][0]["answer"]["starts"] == ["kept"]
     first = w["client"].get("/api/admin/label-items?kind=box&state=open&limit=1",
@@ -388,3 +389,43 @@ def test_the_how_to_figures_are_served(w):
         r = w["client"].get(f"/static/label-player-{name}.jpg")
         assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
         assert r.content[:2] == b"\xff\xd8"
+
+
+def test_a_server_without_a_bucket_takes_and_serves_the_images_itself(w):
+    """A local server (memory store): the upload and the image go through the API."""
+    c = w["client"]
+    [got] = c.post("/api/admin/label-items", json={"items": [item(0)]}, headers=ADMIN).json()["items"]
+    path = got["upload"]["url"].split("testserver", 1)[-1]
+    assert c.put(path, content=b"jpeg bytes", headers=SARAH).status_code == 401
+    assert c.put(path, content=b"jpeg bytes", headers=ADMIN).status_code == 200
+    assert c.post("/api/admin/label-items/ready", json={"ids": ["b_0"]},
+                  headers=ADMIN).json()["opened"] == ["b_0"]
+    # Once it is no longer pending it takes no new image.
+    assert c.put(path, content=b"other", headers=ADMIN).status_code == 409
+    [shown] = c.get("/api/label/box/next", headers=SARAH).json()["items"]
+    r = c.get(shown["image_url"].split("testserver", 1)[-1])
+    assert r.status_code == 200 and r.content == b"jpeg bytes"
+    assert r.headers["content-type"] == "image/jpeg"
+
+
+def test_the_image_route_knows_only_items_with_images(w):
+    c = w["client"]
+    assert c.get("/api/label/image/b_9").status_code == 404
+    assert c.get("/api/label/image/..%2Fx").status_code == 404
+    c.post("/api/admin/label-items", json={"items": [item(0)]}, headers=ADMIN)
+    assert c.get("/api/label/image/b_0").status_code == 404  # pending, no image yet
+
+
+def test_with_a_bucket_the_image_route_is_not_there(w, monkeypatch):
+    """A store that signs URLs (GCS) hands those out; the API serves nothing."""
+    publish(w, n=1)
+    monkeypatch.setattr(w["store"], "presign_get",
+                        lambda key, expires_s=3600, download_as=None: f"https://bucket.example/{key}?sig=x")
+    monkeypatch.setattr(w["store"], "presign_put",
+                        lambda key, content_type, expires_s=3600: {"url": f"https://bucket.example/{key}",
+                                                                   "headers": {}})
+    assert w["client"].get("/api/label/image/b_0").status_code == 404
+    [shown] = w["client"].get("/api/label/box/next", headers=SARAH).json()["items"]
+    assert shown["image_url"].startswith("https://bucket.example/")
+    assert w["client"].put("/api/admin/label-items/b_0/image", content=b"x",
+                           headers=ADMIN).status_code in (404, 409)

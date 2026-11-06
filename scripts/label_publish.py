@@ -112,6 +112,10 @@ def publish(base: str, token: str, items: list[dict], images: dict[str, bytes], 
         elif item_id not in images:
             result["missing_image"].append(item_id)
         else:
+            if upload["url"].startswith(base.rstrip("/") + "/"):
+                # A server with no bucket takes the bytes itself, as an admin call.
+                upload = {**upload, "headers": {**(upload.get("headers") or {}),
+                                                "Authorization": f"Bearer {token}"}}
             _put(upload, images[item_id], opener)
             ready.append(item_id)
     if ready:
