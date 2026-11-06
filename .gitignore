@@ -82,12 +82,14 @@ weights/*.pt
 # Cincinnati sponsor ring it read as red stones; cin3a (end cameras) is ds13e's
 # set plus cin2 and cin3, Cincinnati's end cameras; cin2a is kept as cin3a's
 # baseline. mv1a (overhead) is overhead-3's set plus mv1, Martensville's logo
-# house. dfw1a (overhead) is overhead-3's set plus dfw1, DFW's green stones.
+# house. dfw1a (overhead) is overhead-3's set plus dfw1, DFW's green stones;
+# dfw2a (long cameras) is long-1's set plus the first 67 dfw2 frames.
 !weights/cin1a-11n.pt
 !weights/cin2a.pt
 !weights/cin3a.pt
 !weights/mv1a.pt
 !weights/dfw1a.pt
+!weights/dfw2a.pt
 
 # Harvested board frames for the card-digit training set. What training
 # consumes is the ~24x22 px card window, and those are committed in

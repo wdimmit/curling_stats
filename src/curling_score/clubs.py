@@ -173,9 +173,9 @@ DALLAS = Club("dallas", (
     for house, side in (("top", "right"), ("bottom", "left"))
 }, panel_layout=PanelLayout(top=(764, 0, 379, 526), bottom=(764, 526, 379, 554)),
     side_rows=(0, 1080),
-    # overhead-3 has never seen a green stone: it missed DFW's or read them as
-    # yellow (dfw1). The long cameras still run long-1 until dfw2 is labelled.
-    overhead_model="dfw1a.pt")
+    # overhead-3 and long-1 have never seen a green stone: they missed DFW's
+    # or read them as yellow (dfw1, dfw2).
+    overhead_model="dfw1a.pt", side_model="dfw2a.pt")
 
 CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT, ARDSLEY, MARTENSVILLE, DALLAS)}
 
