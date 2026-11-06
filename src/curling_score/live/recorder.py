@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 
 from curling_score.ingest import cache, source
+from curling_score.live import hls
+from curling_score.live.hls import first_media_sequence  # noqa: F401 - where callers look
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -46,7 +48,6 @@ EXIT_GRACE_S = 240.0
 # While waiting that out, YouTube is asked at most this often.
 LIVE_ASK_S = 30.0
 _TIME_RE = re.compile(r"time=(\d+):(\d\d):(\d\d(?:\.\d+)?)")
-_SEQ_RE = re.compile(r"#EXT-X-MEDIA-SEQUENCE:(\d+)")
 
 
 def progress_time(line: str) -> float | None:
@@ -55,11 +56,6 @@ def progress_time(line: str) -> float | None:
     if not m:
         return None
     return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
-
-
-def first_media_sequence(playlist: str) -> int | None:
-    m = _SEQ_RE.search(playlist or "")
-    return int(m.group(1)) if m else None
 
 
 class _Part:
@@ -267,28 +263,15 @@ class YtDlpRecorder:
         return args
 
     def _info(self):
-        import yt_dlp
-
-        opts = {"quiet": True, "no_warnings": True, "skip_download": True}
-        if self.pot_provider:
-            opts["extractor_args"] = {"youtubepot-bgutilhttp": {"base_url": [self.pot_provider]}}
-        if self.cookies:
-            opts["cookiefile"] = str(self.cookies)
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            return ydl.extract_info(source.canonical_url(self.video_id), download=False)
+        return hls.info(self.video_id, pot_provider=self.pot_provider, cookies=self.cookies)
 
     def _resolve_hls(self):
         """The media playlist yt-dlp will record, to check where it begins."""
-        formats = [f for f in self._info().get("formats", [])
-                   if str(f.get("protocol", "")).startswith("m3u8")
-                   and (f.get("height") or 0) <= 1080 and f.get("vcodec", "none") != "none"]
-        return max(formats, key=lambda f: f.get("height") or 0)["url"] if formats else None
+        return hls.pick_playlist(self._info())
 
     @staticmethod
     def _fetch_text(url):
-        import httpx
-
-        return httpx.get(url, timeout=30.0).text
+        return hls.fetch_text(url)
 
     def _still_live(self) -> bool:
         try:
