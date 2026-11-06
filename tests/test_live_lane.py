@@ -1105,6 +1105,9 @@ class Aligned:
     def clock(self):
         return self.value
 
+    def stop(self):
+        self.stopped = True
+
 
 class ClockedSession(Session):
     def __init__(self, stream, publish, **kw):
@@ -1158,3 +1161,89 @@ def test_a_worker_that_sees_the_cameras_claims_camera_games(monkeypatch, tmp_pat
         worker.build_live("http://api", "t", "w", root=tmp_path, weights=None, start=False)
         assert ("camera_live" in seen["kinds"]) == (cameras == "1")
         assert seen["keep_youtube"] is True
+
+
+class TestKeepingACameraGame:
+    CLOCK = {"kind": "cameras", "aligned": "segment", "offset_s": -908.16,
+             "steps": [[0.0, -908.16]]}
+
+    def manager(self, tmp_path, whole):
+        cams = tmp_path / "cams"
+
+        class Files(CamRecorder):
+            def __init__(self, job):
+                super().__init__(job)
+                self.dir = cams / "live" / "ryzen" / job["video_id"]
+                self.dir.mkdir(parents=True)
+                for role in ("house_a", "house_h", "long_a", "long_h"):
+                    (self.dir / f"{role}.ts").write_bytes(b"ts")
+                self.path = self.dir
+
+            def whole(self):
+                return whole
+
+        m = manager_mod.LiveManager(
+            Api([camera_job(3)]), "ryzen", model_id="m", gpu=None, root=tmp_path / "cache",
+            kinds=("camera_live",), cameras=True, cams_root=cams,
+            make_recorder=Files, make_aligner=lambda job, rec: Aligned(self.CLOCK),
+            background=lambda fn: fn())
+        m.poll_once()
+        return m, cams
+
+    def test_a_whole_game_is_kept_with_its_clock(self, tmp_path):
+        import json
+
+        m, cams = self.manager(tmp_path, whole=True)
+        (s,) = m.streams()
+        m.finish(s)
+        kept = cams / "kept" / "liveVid0003"
+        assert sorted(p.name for p in kept.iterdir()) == \
+            ["clock.json", "house_a.ts", "house_h.ts", "long_a.ts", "long_h.ts"]
+        assert json.loads((kept / "clock.json").read_text()) == \
+            {"sheet": 3, "wall_started": 1793900701.0, "clock": self.CLOCK}
+        assert not (cams / "live" / "ryzen" / "liveVid0003").exists()
+
+    def test_a_game_that_did_not_end_with_its_stream_is_not_kept(self, tmp_path):
+        m, cams = self.manager(tmp_path, whole=False)
+        (s,) = m.streams()
+        m.finish(s)
+        assert not (cams / "kept").exists()
+        assert not (cams / "live" / "ryzen" / "liveVid0003").exists()
+
+    def test_a_camera_game_records_into_the_shared_place(self, monkeypatch, tmp_path):
+        from curling_score.cameras import recorder as cameras
+
+        made = []
+        monkeypatch.setattr(cameras, "CameraRecorder",
+                            lambda sheet, d, **kw: made.append(d) or CamRecorder(None))
+        m = manager_mod.LiveManager(Api(), "ryzen", model_id="m", gpu=None,
+                                    root=tmp_path / "cache", cams_root=tmp_path / "cams")
+        m._recorder(camera_job(3))
+        m._recorder({**camera_job(4), "kind": "practice"})
+        assert made == [tmp_path / "cams" / "live" / "ryzen" / "liveVid0003",
+                        tmp_path / "cache" / "live" / "liveVid0004"]
+
+
+def test_the_worker_records_camera_games_in_the_shared_place(monkeypatch, tmp_path):
+    from curling_score.ingest import prune
+    from curling_score.service import worker
+
+    seen, pruned = {}, []
+    monkeypatch.setattr(manager_mod, "LiveManager",
+                        lambda *a, **kw: seen.update(kw) or SimpleNamespace(start=lambda: None))
+    monkeypatch.setattr(prune, "prune", lambda *a, **kw: pruned.append(kw) or [])
+    cams = tmp_path / "cams"
+    stale = cams / "live" / "w" / "oldVid"
+    other = cams / "live" / "w2" / "theirs"
+    stale.mkdir(parents=True)
+    other.mkdir(parents=True)
+    monkeypatch.setenv("WORKER_LIVE", "1")
+    monkeypatch.setenv("WORKER_CAMERAS", "1")
+    monkeypatch.setenv("WORKER_CAMS", str(cams))
+    monkeypatch.setenv("WORKER_CAMERA_DAYS", "3")
+    worker.build_live("http://api", "t", "w", root=tmp_path / "cache", weights=None,
+                      start=False, cache_gb=300.0)
+    assert seen["cams_root"] == cams
+    assert not stale.exists() and other.exists()      # its own leftovers only
+    seen["prune"]()
+    assert pruned[0]["cams_root"] == cams and pruned[0]["camera_days"] == 3.0

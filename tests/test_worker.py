@@ -631,7 +631,8 @@ class TestBuildingTheLiveLane:
                                 start=False, cache_gb=300.0, min_free_gb=40.0,
                                 recording_days=7.0)
         got.manager.prune()
-        assert calls == [(300.0, {"min_free_gb": 40.0, "recording_days": 7.0})]
+        assert calls == [(300.0, {"min_free_gb": 40.0, "recording_days": 7.0,
+                                  "cams_root": None, "camera_days": 3.0})]
 
 
 class TestTheWorkerOutlivesItsLiveLane:

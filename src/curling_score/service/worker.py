@@ -545,9 +545,17 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     from curling_score.live import lane, manager
 
     shutil.rmtree(root / "live", ignore_errors=True)
+    # Camera games record into the workers' shared place, each worker under
+    # its own name: its leftovers go, never the other worker's game.
+    cams_root = Path(os.environ["WORKER_CAMS"]) if os.environ.get("WORKER_CAMS") else None
+    if cams_root is not None:
+        shutil.rmtree(cams_root / "live" / worker_id, ignore_errors=True)
+    camera_days = float(os.environ.get("WORKER_CAMERA_DAYS", "3"))
+
     def prune_cache():
         removed = prune.prune(root, cache_gb, min_free_gb=min_free_gb,
-                              recording_days=recording_days)
+                              recording_days=recording_days,
+                              cams_root=cams_root, camera_days=camera_days)
         if removed:
             log.info("pruned %d cached media files", len(removed))
 
@@ -557,7 +565,7 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
         max_streams=int(os.environ.get("LIVE_MAX_STREAMS", manager.MAX_STREAMS)),
         prune=prune_cache if cache_gb is not None else None,
         kinds=live_kinds(), cameras=os.environ.get("WORKER_CAMERAS") == "1",
-        keep_youtube=os.environ.get("CAMERA_KEEP_YOUTUBE") == "1")
+        keep_youtube=os.environ.get("CAMERA_KEEP_YOUTUBE") == "1", cams_root=cams_root)
     if start:
         mgr.start()
     return lane.LiveLane(

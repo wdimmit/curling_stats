@@ -106,8 +106,41 @@ def expire_recordings(root, days: float, now: float | None = None) -> list[tuple
     return removed
 
 
+def kept_camera_games(cams_root) -> list[tuple[float, Path, int]]:
+    """``(kept at, directory, bytes)`` of every camera game kept under
+    ``cams_root/kept/``, oldest first."""
+    kept = Path(cams_root) / "kept"
+    if not kept.is_dir():
+        return []
+    out = []
+    for d in kept.iterdir():
+        if not d.is_dir():
+            continue
+        try:
+            files = list(d.iterdir())
+            out.append((d.stat().st_mtime, d, sum(f.stat().st_size for f in files)))
+        except FileNotFoundError:     # pruned by the other worker just now
+            continue
+    return sorted(out, key=lambda e: e[0])
+
+
+def prune_camera_games(cams_root, camera_days: float | None, now: float, *,
+                       floor: float, free: float) -> tuple[list[Path], float]:
+    """Delete kept camera games older than ``camera_days``; then, while the
+    disk has less than ``floor`` bytes free, the oldest. Returns what went and
+    the free space after."""
+    removed = []
+    for kept_at, d, size in kept_camera_games(cams_root):
+        if (camera_days is not None and now - kept_at > camera_days * 86400) or free < floor:
+            shutil.rmtree(d, ignore_errors=True)
+            removed.append(d)
+            free += size
+    return removed, free
+
+
 def prune(root, keep_gb: float, now=None, *, min_free_gb: float = 0.0,
-          free_bytes=None, recording_days: float | None = None) -> list[Path]:
+          free_bytes=None, recording_days: float | None = None,
+          cams_root=None, camera_days: float | None = None) -> list[Path]:
     """Delete live recordings past ``recording_days``; then, while the caches
     are over ``keep_gb`` or the disk has less than ``min_free_gb`` free, more
     recordings, oldest kept first; then, for the budget alone, other media,
@@ -120,13 +153,25 @@ def prune(root, keep_gb: float, now=None, *, min_free_gb: float = 0.0,
     within the last hour are left alone -- a job in progress must never find
     its input gone. ``free_bytes`` is the disk's free space, measured when not
     given.
+
+    Before all of it, the camera games kept under ``cams_root`` (for reading
+    again) go after ``camera_days``, and first whenever the disk is short:
+    each is ~16 GB a sheet-hour, and every one of them could still be read
+    again from its YouTube video.
     """
     now = time.time() if now is None else now
-    expired = expire_recordings(root, recording_days, now) if recording_days else []
-    removed = [p for p, _size in expired]
     budget, floor = keep_gb * 1e9, min_free_gb * 1e9
-    free = (shutil.disk_usage(root).free if free_bytes is None
-            else free_bytes + sum(size for _p, size in expired))
+    measured = None
+    if free_bytes is None:
+        disk = cams_root if cams_root is not None and Path(cams_root).exists() else root
+        measured = shutil.disk_usage(disk).free if Path(disk).exists() else 0
+    free = free_bytes if free_bytes is not None else measured
+    removed = []
+    if cams_root is not None:
+        removed, free = prune_camera_games(cams_root, camera_days, now, floor=floor, free=free)
+    expired = expire_recordings(root, recording_days, now) if recording_days else []
+    removed += [p for p, _size in expired]
+    free += sum(size for _p, size in expired)
     media = {}
     for p in media_files(root):
         if ".part" in p.name:

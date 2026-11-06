@@ -541,3 +541,46 @@ class TestAMarkerTakesOnlyWhatItKept:
         cache.keep_partial(rec, "v1", tmp_path)
         import json as _json
         assert _json.loads(cache.kept_marker("v1", tmp_path).read_text())["size"] == 123
+
+
+# --- kept camera games ------------------------------------------------------------------
+
+DAY = 86400.0
+
+
+def kept_game(cams, vid, age_days, now, size=1000):
+    d = cams / "kept" / vid
+    d.mkdir(parents=True)
+    for role in ("house_a", "house_h", "long_a", "long_h"):
+        (d / f"{role}.ts").write_bytes(b"x" * size)
+    (d / "clock.json").write_text("{}")
+    t = now - age_days * DAY
+    for p in [*d.iterdir(), d]:
+        os.utime(p, (t, t))
+    return d
+
+
+class TestKeptCameraGames:
+    def test_games_past_their_days_go_first(self, tmp_path):
+        now = 1_800_000_000.0
+        cams = tmp_path / "cams"
+        old = kept_game(cams, "old", 4, now)
+        new = kept_game(cams, "new", 1, now)
+        removed = prune.prune(tmp_path / "cache", keep_gb=1.0, now=now, cams_root=cams,
+                              camera_days=3, free_bytes=10**12)
+        assert old in removed and not old.exists() and new.exists()
+
+    def test_under_the_floor_the_oldest_game_goes_before_any_video(self, tmp_path):
+        now = 1_800_000_000.0
+        cams, root = tmp_path / "cams", tmp_path / "cache"
+        older = kept_game(cams, "older", 2, now, size=1000)
+        newer = kept_game(cams, "newer", 1, now, size=1000)
+        video = root / "videos" / "vid00000001.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"v" * 1000)
+        os.utime(video, (now - 30 * DAY, now - 30 * DAY))
+        # 3000 bytes short of the floor: one game (4000 bytes) is enough.
+        removed = prune.prune(root, keep_gb=1.0, now=now, cams_root=cams, camera_days=3,
+                              min_free_gb=10000e-9, free_bytes=7000)
+        assert not older.exists() and newer.exists() and video.exists()
+        assert older in removed

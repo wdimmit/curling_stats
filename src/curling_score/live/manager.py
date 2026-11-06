@@ -79,7 +79,7 @@ class LiveManager:
                  max_streams: int = MAX_STREAMS, make_recorder=None,
                  heartbeat_s: float = HEARTBEAT_S, clock=time.monotonic,
                  prune=None, background=_in_background, kinds=("live",), cameras=False,
-                 keep_youtube=False, make_aligner=None):
+                 keep_youtube=False, make_aligner=None, cams_root=None):
         """``prune`` is called once a recording has been kept, to hold the
         cache to its budget; ``background`` runs the keeping, which copies
         gigabytes, somewhere other than the lane's thread. ``kinds`` are the
@@ -88,7 +88,9 @@ class LiveManager:
         claims, which is what a camera practice job waits for. A camera game
         has its clock followed (``make_aligner(job, recorder)``) and, with
         ``keep_youtube``, its stream recorded beside it and kept as any live
-        game's recording is."""
+        game's recording is. A camera game records under ``cams_root`` (the
+        workers' shared place), and one that ended with its stream is kept
+        there for reading again."""
         self.api, self.worker_id, self.model_id, self.gpu = api, worker_id, model_id, gpu
         self.kinds = tuple(kinds)
         self.cameras = cameras
@@ -96,6 +98,7 @@ class LiveManager:
         self.max_streams, self.heartbeat_s, self.clock = max_streams, heartbeat_s, clock
         self.make_recorder = make_recorder or self._recorder
         self.keep_youtube = keep_youtube
+        self.cams_root = Path(cams_root) if cams_root is not None else None
         self.make_aligner = make_aligner or self._aligner
         self.prune, self.background = prune, background
         self._streams = []
@@ -109,8 +112,14 @@ class LiveManager:
         if is_practice(job) or is_camera_game(job):
             from curling_score.cameras import recorder as cameras
 
-            # In the directory finish() clears: a practice recording is never kept.
-            return cameras.CameraRecorder(int(job["sheet"]), self.root / "live" / job["video_id"])
+            if is_camera_game(job) and self.cams_root is not None:
+                # Where it is kept from by a rename (the same mount), under
+                # this worker's name: the other's start-up never clears it.
+                directory = self.cams_root / "live" / self.worker_id / job["video_id"]
+            else:
+                # In the directory finish() clears: a practice recording is never kept.
+                directory = self.root / "live" / job["video_id"]
+            return cameras.CameraRecorder(int(job["sheet"]), directory)
         return self._youtube(job["video_id"], self.root / "live" / job["video_id"])
 
     def _youtube(self, video_id, directory):
@@ -164,6 +173,9 @@ class LiveManager:
         with self._lock:
             if stream in self._streams:
                 self._streams.remove(stream)
+        if is_camera_game(stream.job):
+            self._file_camera_game(stream, keep)
+            return
         if self.root is None:
             return
         vid = stream.job["video_id"]
@@ -205,6 +217,37 @@ class LiveManager:
                     log.warning("prune failed: %s", exc)
 
         self.background(keep_it)
+
+    def _file_camera_game(self, stream, keep: bool):
+        """A camera game that ended with its stream: its four files kept under
+        ``cams_root/kept/<video_id>/`` with ``clock.json`` -- the sheet, the
+        recording's wall start and the clock it was published on -- for
+        reading it again (``camera_vod``). Anything less is deleted."""
+        import json
+        import os
+
+        rec, vid = stream.recorder, stream.job["video_id"]
+        directory = Path(getattr(rec, "dir", "") or "")
+        whole = getattr(rec, "whole", lambda: False)()
+        if not (keep and whole and self.cams_root is not None and directory.is_dir()):
+            if directory.is_dir():
+                shutil.rmtree(directory, ignore_errors=True)
+            return
+        clock = stream.aligner.clock() if stream.aligner is not None else (
+            getattr(stream.session, "clock", None))
+        for extra in directory.iterdir():
+            if extra.suffix != ".ts":
+                extra.unlink(missing_ok=True)
+        dest = self.cams_root / "kept" / vid
+        shutil.rmtree(dest, ignore_errors=True)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        os.rename(directory, dest)
+        (dest / "clock.json").write_text(json.dumps(
+            {"sheet": int(stream.job["sheet"]), "wall_started": rec.wall_started,
+             "clock": clock}))
+        log.info("kept the cameras of %s in %s", vid, dest)
+        if self.prune is not None:
+            self.background(self.prune)
 
     def _keep_reference(self, stream):
         """The YouTube stream recorded beside a camera game, stopped and kept
