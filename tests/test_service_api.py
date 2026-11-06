@@ -813,6 +813,13 @@ class TestCatalogueAndAdmin:
             assert f'href="{other}"' in r.text
             assert 'href="/static/site.css"' in r.text
 
+    def test_the_privacy_page_says_league_games_may_be_read_from_the_cameras(self, world):
+        privacy = " ".join(world["client"].get("/privacy").text.split())
+        assert "read from the club's cameras directly, with the club's agreement, " \
+               "instead of the stream" in privacy
+        assert "kept on the processing computer for up to three days" in privacy
+        assert Settings().camera_max_sheets == 2
+
     def test_the_terms_and_privacy_say_thinking_time_is_for_people_signed_in(self, world):
         c = world["client"]
         terms = " ".join(c.get("/terms").text.split())

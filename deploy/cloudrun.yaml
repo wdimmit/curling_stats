@@ -40,6 +40,11 @@ spec:
             # Sheets read from the cameras at once. The link is gigabit and carried all 20 cameras
             # (2026-11-01); the Ryzen's composers (CPU, NVENC sessions) are what keep it at 2.
             - { name: PRACTICE_MAX_CAMERA_WATCHES, value: "2" }
+            # League games on a `cameras` playlist: the sheets whose cameras may
+            # be read for one, and how many at once; the rest are read from the
+            # stream (camera-direct phase 3). The gate night sets 3,4.
+            - { name: CAMERA_SHEETS, value: "1,2,3,4,5" }
+            - { name: CAMERA_MAX_SHEETS, value: "2" }
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'
