@@ -23,6 +23,10 @@ from curling_score.service.records import (
 )
 
 LEASE_S = 600.0
+# The order jobs are claimed in: games being played (from the stream or the
+# cameras) cannot wait; a practice card is due seconds after a stone stops;
+# then a camera game read again (its files are kept only days); then the rest.
+CLAIM_ORDER = {"live": 0, "camera_live": 0, "practice": 1, "camera_vod": 2, "vod": 3}
 HEARTBEAT_STALE_S = 90.0
 # What one chart's overrides may grow to. Firestore's hard limit is 1 MiB per
 # document and a fully hand-placed game measures ~300 KB, so this leaves room
@@ -293,7 +297,7 @@ class MemoryRepo:
             (j for j in self.jobs.values()
              if j.state == "queued" and (now is None or j.run_after <= now)
              and (kinds is None or (j.kind or "vod") in kinds)),
-            key=lambda j: (j.kind != "live", j.created_at),
+            key=lambda j: (CLAIM_ORDER.get(j.kind or "vod", len(CLAIM_ORDER)), j.created_at),
         )
 
     def claim_job(self, worker_id, now, lease_s=LEASE_S, kinds=("vod",)):

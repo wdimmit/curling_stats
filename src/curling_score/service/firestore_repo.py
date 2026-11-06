@@ -168,18 +168,22 @@ class FirestoreRepo:
             # kinds existed, unfiltered, because a job written then has no
             # `kind` field for an equality filter to match; the few live jobs
             # it can also return are skipped.
-            snap = None
-            if "live" in kinds:
-                docs = list(tx.get(self._ready_query(now, kind="live").limit(1)))
-                snap = docs[0] if docs else None
+            def first(kind):
+                docs = list(tx.get(self._ready_query(now, kind=kind).limit(1)))
+                return docs[0] if docs else None
+
+            # Games being played first, from the stream or the cameras, the
+            # older of the two; then in CLAIM_ORDER.
+            playing = [d for d in (first(k) for k in ("live", "camera_live") if k in kinds) if d]
+            snap = min(playing, key=lambda d: d.to_dict()["created_at"]) if playing else None
             # Practice next: a card is due seconds after a stone stops.
             if snap is None and "practice" in kinds:
-                docs = list(tx.get(self._ready_query(now, kind="practice").limit(1)))
-                snap = docs[0] if docs else None
+                snap = first("practice")
+            if snap is None and "camera_vod" in kinds:
+                snap = first("camera_vod")
             if snap is None and "vod" in kinds:
                 snap = next((d for d in tx.get(self._ready_query(now).limit(20))
-                             if (d.to_dict().get("kind") or "vod") not in ("live", "practice")),
-                            None)
+                             if (d.to_dict().get("kind") or "vod") == "vod"), None)
             if snap is None:
                 return None
             data = snap.to_dict()

@@ -195,3 +195,55 @@ class TestAPausedRecordingSaysSo:
         assert status["status"] == "queued" and status["paused"] is True
         claim(world)
         assert world["client"].get(f"/c/{slug}/status.json").json().get("paused") is False
+
+
+# --- camera games ------------------------------------------------------------------
+
+def add_camera_run(w, kind="camera_live", run_id="r_cam", job_id="j_cam", **run_kw):
+    w["repo"].put_run(Run(id=run_id, video_id=LIVE, status="queued", created_at=T0,
+                          processing_version=w["settings"].processing_version,
+                          kind="live" if kind == "camera_live" else "vod", source="cameras",
+                          title="Tonight - Sheet 3", format="fours", sheet=3,
+                          published_at=T0, **run_kw))
+    w["repo"].put_job(Job(id=job_id, run_id=run_id, state="queued", created_at=T0,
+                          run_after=T0, kind=kind))
+
+
+def camera_claim(w, kinds, cameras=True):
+    body = {"worker_id": "home", "model_id": "m-abc", "kinds": kinds}
+    if cameras:
+        body["cameras"] = True
+    return w["client"].post("/api/worker/claim", json=body, headers=WORKER)
+
+
+class TestCameraGames:
+    def test_a_worker_without_cameras_never_gets_camera_work(self, world):
+        add_camera_run(world)
+        add_camera_run(world, kind="camera_vod", run_id="r_cv", job_id="j_cv")
+        add_live_run(world)
+        kinds = ["live", "camera_live", "camera_vod", "vod"]
+        assert camera_claim(world, kinds, cameras=False).json()["job"]["id"] == "j_live"
+        assert camera_claim(world, kinds, cameras=False).status_code == 204
+
+    def test_a_camera_game_is_claimed_before_a_recording(self, world):
+        assert submit(world).status_code == 201
+        add_camera_run(world)
+        job = camera_claim(world, ["live", "camera_live", "vod"]).json()["job"]
+        assert job["id"] == "j_cam"
+
+    def test_its_claim_says_cameras_and_when_the_stream_began(self, world):
+        add_camera_run(world)
+        job = camera_claim(world, ["live", "camera_live"]).json()["job"]
+        assert (job["kind"], job["source"], job["sheet"]) == ("camera_live", "cameras", 3)
+        assert job["published_at"] == T0.isoformat()
+
+    def test_its_heartbeat_says_stop_once_the_stream_has_ended(self, world):
+        add_camera_run(world)
+        camera_claim(world, ["live", "camera_live"])
+        beat = lambda: world["client"].post(  # noqa: E731
+            "/api/worker/jobs/j_cam/progress", headers=WORKER,
+            json={"worker_id": "home", "phase": "live", "fraction": None,
+                  "message": "recorded 10 min"}).json()
+        assert "stop" not in beat()
+        world["repo"].update_run("r_cam", stream_ended_at=T0)
+        assert beat()["stop"] is True

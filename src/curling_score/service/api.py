@@ -3174,9 +3174,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # it whole.
         kinds = tuple(k for k in (body.get("kinds") or ("vod",)) if k in JOB_KINDS)
         if not body.get("cameras"):
-            # Practice reads the club's cameras, which only a worker that can
-            # see them (WORKER_CAMERAS=1) may claim: the stand-in must not.
-            kinds = tuple(k for k in kinds if k != "practice")
+            # Practice and camera games read the club's cameras, which only a
+            # worker that can see them (WORKER_CAMERAS=1) may claim: the
+            # stand-in must not.
+            kinds = tuple(k for k in kinds if k not in CAMERA_KINDS)
         while True:
             job = repo.claim_job(str(body.get("worker_id", "worker")), t, settings.lease_s,
                                  kinds=kinds)
@@ -3203,6 +3204,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # A practice watch is recorded from the sheet's cameras, from its claim
         # on; one handed out again resumes its session (practice_resume).
         practice_fields = {}
+        if job.kind in ("camera_live", "camera_vod"):
+            practice_fields = {"source": practice.CAMERAS}
+            if job.kind == "camera_live":
+                # Where the stream began: the clock's first guess, and its
+                # fallback when no piece of the stream matches the cameras.
+                practice_fields["published_at"] = _iso(run.published_at)
         if job.kind == "practice":
             practice_fields = {"source": practice.CAMERAS}
             resume = practice_resume(job)
@@ -3287,6 +3294,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # Nobody is watching this sheet any more (stopped, idle, or out of
             # time): the worker reads what it has, publishes, and completes.
             return {"ok": True, "lease_expires_at": _iso(lease), "stop": True}
+        if job.kind == "camera_live":
+            run = repo.get_run(job.run_id)
+            if run is not None and run.stream_ended_at is not None:
+                # The stream is over (the poller saw it): the cameras would
+                # go on for ever, so the worker stops recording them.
+                return {"ok": True, "lease_expires_at": _iso(lease), "stop": True}
         return {"ok": True, "lease_expires_at": _iso(lease)}
 
     @app.post("/api/worker/jobs/{job_id}/artifacts")
