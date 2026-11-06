@@ -233,6 +233,7 @@ Inputs on the Ryzen: `scratch/camera-direct/league-1105/s3-1` and `s4-1` (09:45-
 - Produces: `is_camera(job) -> bool` = `job.get("source") == "cameras"`; `_recorder` gives a `CameraRecorder(sheet, root/"live"/video_id)` for any camera job (practice keeps its own path through `is_practice`).
 - Produces: `class Aligner(video_id, sheet, feed_dir: Path, wall_started: float, published_at: datetime, *, fetch=hls..., match=align.match, now=time.time)` with `step() -> dict | None` -- call it every lane tick; once the recording reaches `ALIGN_AFTER_S = 150`, it fetches the playlist and segment 0 once, then up to `ALIGN_TRIES = 4` segments 60 s apart, each about `ALIGN_BEHIND_S = 90` behind the live edge; it returns `{"kind": "cameras", "offset_s": o, "aligned": "segment"}` when two consecutive matches `agree`, or, after the tries (or on `NoStart`, or any fetch error), `{"kind": "cameras", "offset_s": wall_started - published_at.timestamp(), "aligned": "start_time"}`. Until then None. Guess for `match`: `wall_started - published_at`; `search_s = 30`. At most 1 playlist + 1 + `ALIGN_TRIES` segment fetches per run.
 - Produces: `LiveSession(..., wait_for_clock: bool = False)`; with it set (camera jobs), `publish` is not called while `clock is None` -- ends still build, and the first publish after the clock carries them all (the first end takes 10+ minutes, the clock ~3).
+- Produces: `CAMERA_KEEP_YOUTUBE=1` (worker env, user 2026-11-06: capture the YouTube video at the same time): a `camera_live` stream also runs a `YtDlpRecorder` of its video (`Stream.reference`), started and checked with the camera recorder and stopped when it stops; on finish it is kept exactly as a YouTube live game's recording is today (`cache.keep_recording` when whole, else `keep_partial`). It never feeds the session. A reference recorder that fails is logged and dropped; the camera game goes on.
 - Produces: `CameraRecorder.finish_stream()` -- stop, as the stream is over; `whole()` is True only after it, when the recording never ended by itself (no stall, not every camera gone, not the cap).
 
 - [ ] **Step 1: Failing tests:**
@@ -240,6 +241,7 @@ Inputs on the Ryzen: `scratch/camera-direct/league-1105/s3-1` and `s4-1` (09:45-
   - Aligner, with fakes for fetch and match: two agreeing matches -> `segment`; four disagreeing -> `start_time` with `wall_started - published_at`; `NoStart` -> `start_time` at once; nothing fetched before 150 s recorded; never more than 6 fetches;
   - lane: a `camera_live` stream with `stop_requested` calls `finish_stream()` once, the session finishes and completes; publishes wait for the clock, then carry it;
   - recorder: `finish_stream()` -> `whole()`; a stall then `finish_stream()` -> not whole; the cap -> not whole (Review Focus 3);
+  - reference: with `CAMERA_KEEP_YOUTUBE=1` a `camera_live` stream has a `YtDlpRecorder` beside its camera recorder, both stopped on finish, the YouTube one kept as `videos/<id>.mp4` when whole; without the setting, none; a reference that raises on start leaves the camera game running;
   - worker: `WORKER_CAMERAS=1` adds `camera_live` to the live lane's kinds; without it, not.
 - [ ] **Step 2: FAIL. Step 3: Implement. Step 4: PASS** with the four test files and `tests/test_live_session.py`.
 - [ ] **Step 5: Commit** `worker: league games from the cameras, on the video's clock`.
@@ -295,17 +297,17 @@ Copy, after the paragraph's first two sentences (the user reviews it with this p
 
 Not code. Needs the user's go for the deploy (API + workers) and the night.
 
-- [ ] Deploy from a clean worktree of the branch with main's back-line commits; API with `CAMERA_SHEETS=3,4`, `CAMERA_MAX_SHEETS=2`; the night's playlist set to `cameras`.
+- [ ] Deploy from a clean worktree of the branch with main's back-line commits; API with `CAMERA_SHEETS=3,4`, `CAMERA_MAX_SHEETS=2`; workers with `CAMERA_KEEP_YOUTUBE=1`; the night's playlist set to `cameras`.
 - [ ] During the night: watch claims, the Aligner's result per run (`aligned` must be `segment`), per-end publish lag, decode errors, the two workers' CPU.
-- [ ] Next morning, against the YouTube path on the same games (see the open question below): `compare_timelines.py`, board, splits; deep links checked on a phone (devserve + cdp, memory `headless-phone-check`). Gate as Task 4, plus `aligned: "segment"` on both runs.
+- [ ] Next morning, against the YouTube path on the same games -- `analyze` of the YouTube recordings kept that night (no download): `compare_timelines.py`, board, splits; deep links checked on a phone (devserve + cdp, memory `headless-phone-check`). Gate as Task 4, plus `aligned: "segment"` on both runs.
 - [ ] Results appended to the results doc; the playlist goes back to `youtube` if anything fails.
 
 ## Not in this plan
 
 - The sync watchdog (spec, "Sync watchdog"): reported-only readings; a follow-up once camera games run.
-- Clip... and claimed-rock game clips of camera games: they need the clips worker to read `kept/` (phase 4). Until then those requests fail for camera games as for any game whose video is gone.
+- Clip... and claimed-rock game clips of camera games without `CAMERA_KEEP_YOUTUBE`: they need the clips worker to read `kept/` (phase 4).
 - The nightly clip pass (phase 4), NVDEC decode (only if Gate A's lag misses), merging the practice and league caps.
 
-## Open question for the user (blocks Task 12 only)
+## Decided
 
-Gate B needs a YouTube chart of the same games to compare against. Either the worker also records the YouTube stream of the gate's camera games, as every live game is recorded today (a temporary `CAMERA_KEEP_YOUTUBE=1`, gate nights only), or the archived videos are downloaded and analysed the next morning (a new download, your OK each time). Recommended: the first.
+- Gate B's reference (user, 2026-11-06): the worker records the YouTube stream of each camera game at the same time (`CAMERA_KEEP_YOUTUBE=1`, Task 8). With that recording kept, Clip... also works for those games as for any live game.
