@@ -1,18 +1,18 @@
 {
  "T": {
-  "frames": 43,
+  "frames": 127,
   "long_left": {
-   "inliers": 131,
-   "matches": 413,
-   "rms_px": 1.05,
-   "scale": 1.5054,
-   "rot_deg": -0.093
+   "inliers": 122,
+   "matches": 393,
+   "rms_px": 1.1,
+   "scale": 1.5077,
+   "rot_deg": -0.138
   },
   "overhead_top": {
    "ring_src": [
-    668.6,
-    231.3,
-    95.2
+    659.9,
+    595.2,
+    107.0
    ],
    "ring_canon": [
     945.1,
@@ -22,9 +22,9 @@
   },
   "overhead_bottom": {
    "ring_src": [
-    659.9,
-    595.2,
-    107.0
+    668.6,
+    231.3,
+    95.2
    ],
    "ring_canon": [
     953.4,
@@ -33,11 +33,11 @@
    ]
   },
   "long_right": {
-   "inliers": 126,
-   "matches": 573,
-   "rms_px": 1.02,
-   "scale": 1.3453,
-   "rot_deg": -0.084
+   "inliers": 137,
+   "matches": 540,
+   "rms_px": 1.03,
+   "scale": 1.3457,
+   "rot_deg": -0.083
   }
  }
 }
