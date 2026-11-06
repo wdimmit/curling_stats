@@ -555,7 +555,8 @@ def _live_replay(args) -> int:
 
         camera = Path(args.cameras) / "long_a.ts"
         track = align.track_recording(Path(args.align_to), camera, args.sheet, args.guess_s,
-                                      align.length_s(camera))
+                                      align.length_s(camera),
+                                      video_length_s=align.length_s(Path(args.align_to)))
         clock = track.clock()
         if clock is None:
             print(f"no clock: {args.align_to} never matched {camera} twice in a row")

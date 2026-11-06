@@ -82,7 +82,10 @@ def match(piece: Path, piece_t_s: float, camera: Path, guess_s: float, sheet: in
     search's edge (the true one may lie beyond), or when it is not clearly the
     best (``MIN_MARGIN``)."""
     placement = next(p for p in layout.load(sheet).placements if p.role == "long_a")
-    seg = _frames(Path(piece), placement.out)
+    try:
+        seg = _frames(Path(piece), placement.out)
+    except subprocess.CalledProcessError:
+        return None      # nothing readable: a piece from past the video's end
     n = len(seg)
     if n < FPS // 2:
         return None
@@ -237,12 +240,13 @@ def length_s(path: Path) -> float:
 
 
 def track_recording(video: Path, camera: Path, sheet: int, guess_s: float, length_s: float, *,
-                    every_s: float = RECHECK_S, start_s: float = 300.0, search_s: float = 30.0,
-                    cut=cut_piece, match=match) -> ClockTrack:
+                    video_length_s: float, every_s: float = RECHECK_S, start_s: float = 300.0,
+                    search_s: float = 30.0, cut=cut_piece, match=match) -> ClockTrack:
     """The clock of a camera recording ``length_s`` long against a kept
-    recording of the video (``video``), checked every ``every_s`` of the
-    camera's time from ``start_s``, with probes wherever a step turns up.
-    ``guess_s`` is the offset expected before the first check."""
+    recording of the video (``video``, ``video_length_s`` long), checked every
+    ``every_s`` of the camera's time from ``start_s`` wherever both cover it,
+    with probes wherever a step turns up. ``guess_s`` is the offset expected
+    before the first check."""
     track, offset = ClockTrack(), guess_s
 
     def look(video_t):
@@ -255,6 +259,8 @@ def track_recording(video: Path, camera: Path, sheet: int, guess_s: float, lengt
     camera_t = start_s
     while camera_t + PIECE_S <= length_s:
         video_t = camera_t + offset
+        if video_t + PIECE_S > video_length_s:
+            break
         if video_t >= 0:
             found = look(video_t)
             track.add(video_t, found)

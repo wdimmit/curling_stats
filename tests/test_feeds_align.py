@@ -163,10 +163,19 @@ def test_track_recording_follows_a_kept_video(tmp_path):
         return align.Match(truth(piece_t_s), 2.0)
 
     track = align.track_recording(tmp_path / "v.mp4", tmp_path / "long_a.ts", 4, guess_s=-905.0,
-                                  length_s=11698.0, cut=fake_cut, match=fake_match)
+                                  length_s=11698.0, video_length_s=7195.0,
+                                  cut=fake_cut, match=fake_match)
     (_, first), (camera_from, offset) = track.steps()
     assert (first, offset) == (OLD, NEW)
     assert abs(camera_from + NEW - 3000.0) <= align.PLACE_S
     assert cut == [t for t, _ in looked]
-    # Every check's piece is within the camera's span on the video clock.
+    # Every check's piece is within the camera's span and the video's.
     assert all(0 <= t - g <= 11698.0 for t, g in looked)
+    assert all(0 <= t and t + align.PIECE_S <= 7195.0 for t, _ in looked)
+
+
+def test_an_unreadable_piece_is_no_match(tmp_path):
+    """A piece cut past the video's end is an empty file."""
+    empty = tmp_path / "piece.ts"
+    empty.write_bytes(b"")
+    assert align.match(empty, 7300.0, tmp_path / "long_a.ts", -908.0, sheet=4) is None
