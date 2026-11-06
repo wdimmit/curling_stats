@@ -87,7 +87,7 @@ class PanelSetup:
 PANEL_SIDES = tuple((name, p.delivery_side) for name, p in clubs.GRANITE.panels)
 
 
-def panel_median(frames, rect, name: str = "panel"):
+def panel_median(frames, rect, name: str = "panel", lit_min_p95: float | None = None):
     """The idle house's median over well-lit frames, BGR, cropped to ``rect``.
 
     What the rings and the hog line's paint are both read from. Split out of
@@ -98,7 +98,7 @@ def panel_median(frames, rect, name: str = "panel"):
 
     x, y, w, h = rect
     lit = [f[y : y + h, x : x + w] for f in frames]
-    lit = [p for p in lit if lighting.is_calibratable(p)]
+    lit = [p for p in lit if lighting.is_calibratable(p, lit_min_p95)]
     if not lit:
         raise calibrate.CalibrationError(f"{name} panel: no well-lit frames")
     return np.median(np.stack(lit), axis=0).astype("uint8")
@@ -116,7 +116,7 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel",
     other one's lights are out. The club kills the lights on a sheet as it
     finishes while others play on, so that is a normal night, not a broken one.
     """
-    median = panel_median(frames, rect, name)
+    median = panel_median(frames, rect, name, paint.lit_min_p95)
     calib = calibrate.solve(median, delivery_side, paint)
     # The same median the rings were read from shows the hog line's paint. A
     # panel whose paint cannot be trusted keeps its calibration and says why;

@@ -52,6 +52,12 @@ def is_playable(panel) -> bool:
     return classify(panel) is not Lighting.DARK
 
 
-def is_calibratable(panel) -> bool:
-    """Whether the panel is lit well enough to fit house geometry from."""
-    return classify(panel) is Lighting.LIT
+def is_calibratable(panel, lit_min_p95: float | None = None) -> bool:
+    """Whether the panel is lit well enough to fit house geometry from.
+
+    ``lit_min_p95`` overrides the threshold for a club whose overhead camera is
+    simply exposed darker than Granite's, with the lights fully on.
+    """
+    if lit_min_p95 is None:
+        return classify(panel) is Lighting.LIT
+    return brightness(panel) >= lit_min_p95

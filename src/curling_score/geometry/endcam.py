@@ -252,14 +252,24 @@ def solve(plate, rect, paint: EndPaint, name: str = "end", end_camera: bool = Tr
     # but the line runs on toward the camera: trace it the rest of the view.
     last = int(hog) - 6 if end_camera else h - 2
     rows = np.arange(int(outer[:, 1].max()) + 10, last, 2)
-    q = (p[3], p[2])
-    keep = np.zeros(0, bool)
-    for half in _CL_HALVES:
-        rs, cs = _trace_dips(lum, rows, lambda rr: np.polyval(q, rr), half)
-        q2, keep = _robust_line(rs, cs)
-        if q2 is None:
-            raise SideViewError(f"{name}: no painted centre line below the house")
-        q = q2
+    # Traced from the ring fit's guess, and from a plumb line through the
+    # ring's middle: stones parked against one end of DFW's left camera's ring
+    # tilt the ring fit's guess 1.1 px a row, which no window follows.
+    best = None
+    for q in ((p[3], p[2]), (0.0, (xl + xr) / 2)):
+        keep = np.zeros(0, bool)
+        for half in _CL_HALVES:
+            rs, cs = _trace_dips(lum, rows, lambda rr, q=q: np.polyval(q, rr), half)
+            q2, keep = _robust_line(rs, cs)
+            if q2 is None:
+                break
+            q = q2
+        else:
+            if best is None or keep.sum() > best[1].sum():
+                best = (q, keep)
+    if best is None:
+        raise SideViewError(f"{name}: no painted centre line below the house")
+    q, keep = best
     if keep.sum() < paint.centre_min_rows:
         raise SideViewError(f"{name}: the centre line was traced on only {int(keep.sum())} rows")
     line = (float(q[1]), float(q[0]))

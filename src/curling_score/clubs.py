@@ -152,7 +152,29 @@ MARTENSVILLE = Club("martensville", (
     # game, so the house never emptied (mv1).
     overhead_model="mv1a.pt")
 
-CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT, ARDSLEY, MARTENSVILLE)}
+# DFW Curling Club's broadcast (Dallas, 1920x1080) as `scripts/dallas/normalize.py`
+# rewrites it: the stream cuts every half minute between a three-panel view and a
+# score view of the house in play, and the normaliser maps the score view back into
+# the three-panel one. That is Granite's arrangement -- two overheads in a centre
+# strip, long cameras either side -- with no bars between the panels, both houses
+# front at the top, and the left long camera looking down at the BOTTOM house. The
+# houses paint 12-to-8 blue around a red 4-foot, with the club's logo on the
+# button. Hog lines are dark grey; the centre line is painted. The stones are green
+# and yellow; green is the red_stone class. The overheads are exposed darker
+# than Granite's (value p95 ~145 against 185-204, lights fully on). No channel
+# id until the worker normalises the stream itself: the raw stream under this
+# profile reads nothing.
+_DFW_HOUSE = HousePaint(twelve_ft=(BLUE_HSV,), four_ft=RED_HSV, lit_min_p95=120.0)
+DALLAS = Club("dallas", (
+    ("top", Panel("top", _DFW_HOUSE)),
+    ("bottom", Panel("top", _DFW_HOUSE)),
+), long_cameras={
+    house: (side, EndPaint(ring=(BLUE_HSV,), inner_radius_m=C.R_8FT_M, hog="dark"))
+    for house, side in (("top", "right"), ("bottom", "left"))
+}, panel_layout=PanelLayout(top=(764, 0, 379, 526), bottom=(764, 526, 379, 554)),
+    side_rows=(0, 1080))
+
+CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT, ARDSLEY, MARTENSVILLE, DALLAS)}
 
 
 def for_channel(channel_id) -> Club:

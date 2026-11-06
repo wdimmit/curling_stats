@@ -52,6 +52,9 @@ class HousePaint:
     # Fit the panel's height-to-width scale from the 12-foot ellipse, for a
     # broadcast that stretches its overhead tiles. Granite's are square.
     fit_aspect: bool = False
+    # The 95th-percentile value a panel needs to be calibrated from, for a
+    # camera exposed darker than Granite's; None keeps `lighting`'s threshold.
+    lit_min_p95: float | None = None
 
 
 GRANITE_HOUSE = HousePaint(twelve_ft=(GREEN_HSV,), four_ft=(BLUE_HSV,))
@@ -244,7 +247,7 @@ def solve(panel, delivery_side: str = "bottom",
 
     from curling_score.geometry import lighting
 
-    if not lighting.is_calibratable(panel):
+    if not lighting.is_calibratable(panel, paint.lit_min_p95):
         raise CalibrationError(
             f"panel is {lighting.classify(panel).value}; too poorly lit to calibrate"
         )
