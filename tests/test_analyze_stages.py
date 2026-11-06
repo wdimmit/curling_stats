@@ -236,6 +236,49 @@ class TestTheContextCarriesFeeds:
         assert seen["sweep"] == [original]
 
 
+class TestAnalysingACameraGame:
+    """Phase 3: a camera game read again from its kept files -- no download, no
+    strip proxy, calibrated from the cameras, published on its clock."""
+
+    def test_its_files_are_read_and_its_clock_kept(self, monkeypatch, tmp_path):
+        from curling_score.feeds import cameras
+        from curling_score.game import boardsplit, profile, segment
+        from curling_score.ingest import cache, frames as F, proxy
+
+        def refuse(*a, **k):
+            raise AssertionError("asked for a download or a proxy")
+
+        panels = SimpleNamespace(top=(0, 0, 297, 514), bottom=(0, 514, 297, 514))
+        setups = {n: split_context().read_setups[n] for n in ("top", "bottom")}
+        setups = {n: replace(s, name=n) for n, s in setups.items()}
+        seen = {}
+        monkeypatch.setattr(cache, "ensure_cached", refuse)
+        monkeypatch.setattr(proxy, "ensure_proxy", refuse)
+        monkeypatch.setattr(cameras, "calibrate",
+                            lambda feed, until_s, **k: seen.update(cal=(feed, until_s))
+                            or (panels, setups, None))
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
+        monkeypatch.setattr(analyze, "load_release_model", lambda *a, **k: None)
+        monkeypatch.setattr(F, "keyframe_sweep", lambda path, **k: [])
+        monkeypatch.setattr(profile, "build_profile", lambda *a, **k: [])
+        monkeypatch.setattr(segment, "segment_games", lambda *a, **k: [])
+        monkeypatch.setattr(boardsplit, "join_games", lambda games, states: games)
+        monkeypatch.setattr(boardsplit, "split_games", lambda games, states: games)
+        monkeypatch.setattr(analyze, "build_games",
+                            lambda ctx, games, **k: seen.update(ctx=ctx) or [])
+        feed = cameras.camera_feed(tmp_path / "kept" / "dbV9wuA45Z0", 3)
+        clock = {"kind": "cameras", "aligned": "segment", "offset_s": -908.16,
+                 "steps": [[0.0, -908.16]]}
+        info = SimpleNamespace(title="11/5 - Sheet 3", duration_s=11699.0, sheet=3,
+                               video_id="dbV9wuA45Z0")
+        doc = analyze.analyze("dbV9wuA45Z0", info=info, feed=feed, clock=clock,
+                              skip_scoreboard=True)
+        assert seen["cal"] == (feed, 11699.0)
+        assert seen["ctx"].path == feed and seen["ctx"].read_path == feed
+        assert doc["source"]["clock"] == clock
+        assert doc["source"]["duration_s"] == round(11699.0 - 908.16, 2)
+
+
 class TestCalibrateGivenPanels:
     """Phase 2: a camera feed's panels and side views come from the sheet's
     layout, not from looking for them."""

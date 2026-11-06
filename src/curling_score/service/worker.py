@@ -198,7 +198,7 @@ def classify_error(exc: BaseException) -> str:
         return "blocked"
     permanent = ("private video", "video unavailable", "removed", "no panels",
                  "could not find two panels", "members-only", "no youtube video id",
-                 "not a youtube")
+                 "not a youtube", "no longer kept")
     if any(p in text for p in permanent):
         return "permanent"
     return "transient"
@@ -219,6 +219,42 @@ def gpu_name() -> str | None:
     except Exception:  # noqa: BLE001
         pass
     return None
+
+
+class CameraFilesGone(Exception):
+    """A camera game asked to be read again after its files were pruned."""
+
+
+def vod_claim() -> dict:
+    """What the recordings loop claims: recordings, and camera games read
+    again where this worker can see the cameras' kept files (WORKER_CAMERAS=1)."""
+    if os.environ.get("WORKER_CAMERAS") == "1":
+        return {"kinds": ["vod", "camera_vod"], "cameras": True}
+    return {"kinds": ["vod"]}
+
+
+def kept_camera_game(job: dict, cams_root, probe=None):
+    """``(feed, info, clock)`` of a camera game's kept files, for reading it
+    again; CameraFilesGone once they are pruned -- never a download: the
+    run's YouTube reprocess is the way back then."""
+    import json
+
+    from curling_score.feeds.cameras import camera_feed
+
+    if probe is None:
+        from curling_score.ingest.frames import probe
+    vid = job["video_id"]
+    d = Path(cams_root) / "kept" / vid if cams_root else None
+    if d is None or not (d / "clock.json").is_file():
+        raise CameraFilesGone(f"the camera files of {vid} are no longer kept")
+    kept = json.loads((d / "clock.json").read_text())
+    sheet = int(job.get("sheet") or kept["sheet"])
+    feed = camera_feed(d, sheet)
+    duration = float(probe(feed.path_for("left")).duration_s)
+    info = source.VideoInfo(
+        video_id=vid, title=job.get("title") or vid, duration_s=duration, was_live=True,
+        is_live=False, upload_date=None, sheet=sheet, channel_id=job.get("channel_id"))
+    return feed, info, kept.get("clock")
 
 
 def cached_info(job: dict, root: Path, probe=None) -> source.VideoInfo | None:
@@ -254,7 +290,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
                 weights: str | None, out_dir: Path, skip_longview: bool = False,
                 analyze_fn=None, fetch_info=source.fetch_info,
                 clock=time.monotonic, should_yield=None, probe=None,
-                fp_harvest: fpframes.Settings | None = None) -> dict:
+                fp_harvest: fpframes.Settings | None = None, cams_root=None) -> dict:
     """Run one job end to end. Raises on failure; the caller reports it.
 
     ``should_yield`` is asked at every progress report, and a yes raises
@@ -292,11 +328,18 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
             log.warning("progress (%s %.2f) not delivered: %s", name, fraction, exc)
 
     on_phase("download", 0.0, "checking the video")
-    info = cached_info(job, root, probe)
-    if info is None:
-        info = fetch_info(url)
+    camera_kw = {}
+    if job.get("kind") == "camera_vod":
+        cams_root = cams_root or os.environ.get("WORKER_CAMS")
+        feed, info, clock_ = kept_camera_game(job, cams_root, probe)
+        camera_kw = {"feed": feed, "clock": clock_}
+        log.info("job %s: %s read again from its cameras' kept files", job["id"], info.video_id)
     else:
-        log.info("job %s: %s is cached; not asking YouTube", job["id"], info.video_id)
+        info = cached_info(job, root, probe)
+        if info is None:
+            info = fetch_info(url)
+        else:
+            log.info("job %s: %s is cached; not asking YouTube", job["id"], info.video_id)
     det_dir = root / "detections"
     before = _snapshot(det_dir)
 
@@ -319,7 +362,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
             sheet=job.get("sheet"), game_format=job.get("format") or "fours",
             skip_scoreboard=False,
             skip_longview=skip_longview, on_phase=on_phase,
-            download_attempts=1,
+            download_attempts=1, **camera_kw,
         )
     run_dir = out_dir / job["run_id"]
     analyze_mod.write(doc, run_dir)
@@ -441,8 +484,9 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
         if once and served_live:
             return
         try:
-            job = (api.claim(worker_id, model, gpu) if live is None
-                   else api.claim(worker_id, model, gpu, kinds=["vod"]))
+            claim = vod_claim()
+            job = (api.claim(worker_id, model, gpu) if live is None and len(claim) == 1
+                   else api.claim(worker_id, model, gpu, **claim))
         except Exception as exc:  # noqa: BLE001 - the API may be down; keep trying
             log.warning("claim failed: %s", exc)
             job = None

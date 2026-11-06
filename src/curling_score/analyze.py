@@ -1044,7 +1044,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             skip_scoreboard: bool = False, skip_longview: bool = False,
             skip_line: bool = False,
             on_phase=None, info=None,
-            download_attempts=None) -> dict:
+            download_attempts=None, feed=None, clock: dict | None = None) -> dict:
     """Analyse a club VOD and return the timeline document.
 
     ``start_s``/``end_s`` bound the part of the stream that is *analysed*: the
@@ -1066,6 +1066,12 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     the stages run, for a caller that wants to show progress. ``info`` lets a
     caller that already fetched the metadata pass it in rather than ask
     YouTube twice.
+
+    ``feed`` reads a camera game again from its kept files (a ``cameras``
+    Feed) instead of the video: nothing is downloaded, there is no strip
+    proxy, and the sheet is calibrated from its cameras across
+    ``info.duration_s``. ``clock`` is the clock it was published on
+    (``timeline.build_document``), which this document keeps.
     """
     phase = on_phase or _no_phase
     info = info or source.fetch_info(url)
@@ -1073,6 +1079,12 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     fmt = resolve_format(game_format, info.title)
     progress(f"{info.title} ({info.duration_s / 3600:.2f} h, sheet {sheet}, {fmt.name})")
 
+    if feed is not None and as_feed(feed).kind == "cameras":
+        return _analyze_cameras(
+            url, as_feed(feed), info, sheet, fmt, clock, root=root, shot_fps=shot_fps,
+            progress=progress, weights=weights, imgsz=imgsz, device=device,
+            start_s=start_s, end_s=end_s, skip_scoreboard=skip_scoreboard,
+            skip_longview=skip_longview, skip_line=skip_line, phase=phase)
     phase("download", 0.0, "downloading video")
     download_kwargs = {}
     if download_attempts is not None:
@@ -1118,6 +1130,18 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     else:
         phase("proxy", 1.0, "reading the full frame")
 
+    return _read_games(
+        url, info, sheet, fmt, feed, read_feed, setups, read_setups, sideviews,
+        shot_fps=shot_fps, progress=progress, weights=weights, imgsz=imgsz, device=device,
+        start_s=start_s, end_s=end_s, skip_scoreboard=skip_scoreboard,
+        skip_longview=skip_longview, skip_line=skip_line, phase=phase)
+
+def _read_games(url, info, sheet, fmt, feed, read_feed, setups, read_setups, sideviews, *,
+                shot_fps, progress, weights, imgsz, device, start_s, end_s,
+                skip_scoreboard, skip_longview, skip_line, phase, clock=None) -> dict:
+    """Everything after the source: the models, the activity profile, the
+    games and their ends, the timeline. ``feed`` is what the frames are read
+    from; ``read_feed`` the same or a strip proxy of its houses."""
     detector, broom_model, line_model = load_models(
         weights, imgsz, device, skip_longview=skip_longview,
         skip_line=skip_line, progress=progress)
@@ -1192,7 +1216,28 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
                              else weights_mod.release_path())),
         fmt=fmt,
         check=check,
+        clock=clock,
     )
+
+def _analyze_cameras(url, feed, info, sheet, fmt, clock, *, root, shot_fps, progress, weights,
+                     imgsz, device, start_s, end_s, skip_scoreboard, skip_longview, skip_line,
+                     phase) -> dict:
+    """``analyze`` of a camera game's kept files: calibrated from its cameras
+    across the recording, read without a proxy, published on ``clock``."""
+    from curling_score.feeds import cameras
+
+    phase("download", 1.0, "the cameras' files")
+    progress(f"reading the cameras' files of {info.video_id}")
+    phase("calibrate", 0.0, "sampling keyframes")
+    panels, setups, sideviews = cameras.calibrate(
+        feed, info.duration_s, skip_longview=skip_longview, progress=progress)
+    phase("calibrate", 1.0, "calibrated")
+    phase("proxy", 1.0, "reading the cameras' files")
+    return _read_games(
+        url, info, sheet, fmt, feed, feed, setups, setups, sideviews,
+        shot_fps=shot_fps, progress=progress, weights=weights, imgsz=imgsz, device=device,
+        start_s=start_s, end_s=end_s, skip_scoreboard=skip_scoreboard,
+        skip_longview=skip_longview, skip_line=skip_line, phase=phase, clock=clock)
 
 
 def write(document: dict, out_dir) -> Path:

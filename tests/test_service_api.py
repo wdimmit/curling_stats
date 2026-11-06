@@ -1797,6 +1797,29 @@ class TestFormat:
             assert c.post("/api/admin/reprocess", headers=ADMIN,
                           json={"video_id": VID, "format": bad}).status_code == 400
 
+    def test_a_camera_game_can_be_read_again_from_its_cameras(self, world):
+        repo, c = world["repo"], world["client"]
+        repo.put_run(Run(id="r_cam", video_id=VID, status="ready", created_at=T0,
+                         processing_version="p", kind="live", source="cameras", sheet=3,
+                         title="11/5 - Sheet 3", format="fours"))
+        r = c.post("/api/admin/reprocess", headers=ADMIN,
+                   json={"video_id": VID, "from": "cameras"})
+        assert r.status_code == 200, r.text
+        run = repo.get_run(r.json()["run_id"])
+        assert run.source == "cameras" and run.sheet == 3
+        assert repo.job_for_run(run.id).kind == "camera_vod"
+        # Without "from", the same game is read from YouTube, as any.
+        r = c.post("/api/admin/reprocess", headers=ADMIN, json={"video_id": VID})
+        assert repo.job_for_run(r.json()["run_id"]).kind in (None, "vod")
+
+    def test_only_a_camera_game_can_be_read_from_cameras(self, world):
+        submit(world)
+        r = world["client"].post("/api/admin/reprocess", headers=ADMIN,
+                                 json={"video_id": VID, "from": "cameras"})
+        assert r.status_code == 422
+        assert world["client"].post("/api/admin/reprocess", headers=ADMIN,
+                                    json={"video_id": VID, "from": "ndi"}).status_code == 422
+
     def test_the_poller_reads_a_doubles_title(self, world):
         add_doubles_video(world)
         world["repo"].put_playlist(WatchedPlaylist(id="p", playlist_id="PLthu",

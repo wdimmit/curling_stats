@@ -3672,6 +3672,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         asked = requested_format(body.get("format"))
         prior = repo.runs_for_video(vid)
         base = prior[0] if prior else None
+        # "from": "cameras" reads a camera game again from its sheet's kept
+        # camera files (a worker that can see them); otherwise from YouTube.
+        cameras = body.get("from") == "cameras"
+        if body.get("from") not in (None, "youtube", "cameras"):
+            raise HTTPException(422, "from is youtube or cameras")
+        if cameras:
+            base = next((r for r in prior if r.source == "cameras" and r.kind != "practice"),
+                        None)
+            if base is None:
+                raise HTTPException(422, "that game was not read from the cameras")
         t = now()
         run = Run(id=slug.new_run_id(), video_id=vid,
                   processing_version=settings.processing_version, status="queued",
@@ -3682,9 +3692,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                   published_at=base.published_at if base else None,
                   league=base.league if base else None,
                   format=asked or (base.format if base else None),
-                  playlist_id=base.playlist_id if base else None)
+                  playlist_id=base.playlist_id if base else None,
+                  source="cameras" if cameras else None)
         repo.put_run(run)
-        repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t, run_after=t))
+        repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t,
+                         run_after=t, kind="camera_vod" if cameras else "vod"))
         return {"ok": True, "run_id": run.id}
 
     @app.post("/api/admin/clips/backfill")
