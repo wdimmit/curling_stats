@@ -1,0 +1,89 @@
+"""Matching a piece of the YouTube picture to the long_a camera's file: the
+offset that puts a camera game on the video's clock."""
+
+from fractions import Fraction
+
+import av
+import numpy as np
+import pytest
+
+from curling_score.cameras import layout
+from curling_score.feeds import align
+
+FPS = 60
+
+
+def _write(path, frames, size=(1920, 1080)):
+    with av.open(str(path), "w", format="mpegts") as out:
+        stream = out.add_stream("libx264", rate=FPS)
+        stream.width, stream.height = size
+        stream.pix_fmt = "yuv420p"
+        stream.options = {"preset": "ultrafast", "x264-params": "keyint=60:bframes=0"}
+        stream.codec_context.time_base = Fraction(1, FPS)
+        for i, img in enumerate(frames):
+            frame = av.VideoFrame.from_ndarray(img, format="rgb24")
+            frame.pts = i
+            for packet in stream.encode(frame):
+                out.mux(packet)
+        for packet in stream.encode(None):
+            out.mux(packet)
+
+
+def synthetic_pair(tmp_path, *, piece_from_s, sheet, seconds=12.0, piece_s=3.0, still=False):
+    """A long_a camera file of moving blocks, and a composite piece: ``piece_s``
+    of it from ``piece_from_s``, its long_a crop placed where the layout puts
+    it in a 1920x1080 picture, re-encoded."""
+    p = next(q for q in layout.load(sheet).placements if q.role == "long_a")
+    cx, cy, cw, ch = p.crop
+    ox, oy, ow, oh = p.out
+    rng = np.random.default_rng(7)
+    n = int(seconds * FPS)
+    blocks = rng.integers(0, [cw - 120, ch - 120], size=(n, 6, 2))
+    camera = []
+    for i in range(n):
+        img = np.full((1080, 1920, 3), 90, np.uint8)
+        for bx, by in blocks[0 if still else i]:
+            img[cy + by:cy + by + 120, cx + bx:cx + bx + 120] = 230
+        camera.append(img)
+    cam = tmp_path / "long_a.ts"
+    _write(cam, camera)
+    first = int(round(piece_from_s * FPS))
+    piece_frames = []
+    for img in camera[first:first + int(piece_s * FPS)]:
+        comp = np.full((1080, 1920, 3), 40, np.uint8)
+        comp[oy:oy + oh, ox:ox + ow] = img[cy:cy + ch, cx:cx + cw]
+        piece_frames.append(comp)
+    piece = tmp_path / "piece.ts"
+    _write(piece, piece_frames)
+    return cam, piece
+
+
+def test_match_finds_the_offset_to_a_frame(tmp_path):
+    cam, piece = synthetic_pair(tmp_path, piece_from_s=4.25, sheet=3)
+    # The piece's first frame is camera t 4.25 and video t 1004.25: offset 1000.
+    m = align.match(piece, piece_t_s=1004.25, camera=cam, guess_s=1000.8, sheet=3, search_s=3)
+    assert m is not None
+    assert abs(m.offset_s - 1000.0) < 1 / FPS
+    assert m.margin >= align.MIN_MARGIN
+
+
+def test_a_still_picture_matches_nothing(tmp_path):
+    cam, piece = synthetic_pair(tmp_path, piece_from_s=4.25, sheet=3, still=True)
+    assert align.match(piece, 1004.25, cam, guess_s=1000.8, sheet=3, search_s=3) is None
+
+
+def test_outside_the_camera_file_is_none(tmp_path):
+    cam, piece = synthetic_pair(tmp_path, piece_from_s=4.25, sheet=3)
+    assert align.match(piece, 1004.25, cam, guess_s=900.0, sheet=3, search_s=3) is None
+
+
+def test_a_best_match_at_the_edge_of_the_search_is_none(tmp_path):
+    """The true offset lies outside the window searched: the best of what was
+    searched sits at its edge and says nothing."""
+    cam, piece = synthetic_pair(tmp_path, piece_from_s=4.25, sheet=3)
+    assert align.match(piece, 1004.25, cam, guess_s=1002.5, sheet=3, search_s=1.5) is None
+
+
+def test_agree():
+    assert align.agree(align.Match(600.0, 2.0), align.Match(600.03, 1.5))
+    assert not align.agree(align.Match(600.0, 2.0), align.Match(600.05, 1.5))
