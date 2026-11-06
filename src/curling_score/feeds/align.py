@@ -129,7 +129,10 @@ def agree(a: Match, b: Match, frames: int = 2) -> bool:
 # A step is placed to within this much of the video's time ...
 PLACE_S = 10.0
 # ... with at most this many probes; then it stays at the middle of what is left.
-MAX_PROBES = 8
+MAX_PROBES = 12
+# A probe that matched nothing (a still or crowded picture) is followed by one
+# this far to one side of it, then as far to the other, then twice as far...
+PROBE_NUDGE_S = 30.0
 
 
 class ClockTrack:
@@ -172,7 +175,7 @@ class ClockTrack:
             cand_t, cand = self._candidate
             old, new = self._offset, cand.offset_s
             self._placing = {"lo": self._last_t, "hi": cand_t, "old": old, "new": new,
-                             "probes": 0}
+                             "probes": 0, "misses": 0}
             self._steps.append([(self._last_t + cand_t) / 2 - new, new])
             self._offset, self._last_t, self._candidate = new, video_t_s, None
             return
@@ -186,7 +189,10 @@ class ClockTrack:
         if p["hi"] - p["lo"] <= PLACE_S or p["probes"] >= MAX_PROBES:
             self._placing = None
             return None
-        return (p["lo"] + p["hi"]) / 2
+        k = p["misses"]
+        nudge = ((k + 1) // 2) * PROBE_NUDGE_S * (1 if k % 2 else -1)
+        mid = (p["lo"] + p["hi"]) / 2
+        return min(max(mid + nudge, p["lo"] + 1.0), p["hi"] - 1.0)
 
     def add_probe(self, video_t_s: float, m: Match | None) -> None:
         """What a probe at ``video_t_s`` found."""
@@ -195,9 +201,11 @@ class ClockTrack:
             return
         p["probes"] += 1
         if m is not None and self._agree(p["old"], m):
-            p["lo"] = video_t_s
+            p["lo"], p["misses"] = video_t_s, 0
         elif m is not None and self._agree(p["new"], m):
-            p["hi"] = video_t_s
+            p["hi"], p["misses"] = video_t_s, 0
+        else:
+            p["misses"] += 1
         self._steps[-1][0] = (p["lo"] + p["hi"]) / 2 - p["new"]
 
     def steps(self) -> list[list[float]]:

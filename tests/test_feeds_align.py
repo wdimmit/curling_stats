@@ -179,3 +179,23 @@ def test_an_unreadable_piece_is_no_match(tmp_path):
     empty = tmp_path / "piece.ts"
     empty.write_bytes(b"")
     assert align.match(empty, 7300.0, tmp_path / "long_a.ts", -908.0, sheet=4) is None
+
+
+def test_a_probe_that_finds_nothing_moves_on():
+    """11/05 sheet 4 for real: the checks either side were 2991 (old) and
+    4191 (new), and the picture at their midpoint, 3591, matched nothing. The
+    next probe must look somewhere else, not at 3591 again."""
+    def truth(video_t):
+        return OLD if video_t < 3000.0 else NEW
+
+    track = align.ClockTrack()
+    for t, o in ((1791.0, OLD), (2391.0, OLD), (2991.0, OLD), (3591.0, None), (4191.0, NEW),
+                 (4785.0, NEW)):
+        track.add(t, None if o is None else m(o))
+    seen = []
+    while (t := track.probe()) is not None:
+        seen.append(t)
+        track.add_probe(t, None if abs(t - 3591.0) < 1.0 else m(truth(t)))
+    assert len(set(round(t) for t in seen)) == len(seen)       # never the same place twice
+    (_, _), (camera_from, offset) = track.steps()
+    assert abs(camera_from + NEW - 3000.0) <= align.PLACE_S
