@@ -62,14 +62,14 @@ BOX_ALL = ("GREEN stones are the RED class: box each green stone as red (r), and
            "stone: shoes, gloves, broom heads, sliders.")
 
 
-def throws(timeline):
+def throws(timeline, color=None):
     from curling_score.game import hogtime
 
     other = {"top": "bottom", "bottom": "top"}
     for g in timeline["games"]:
         for e in g["ends"]:
             for s in e["shots"]:
-                if s.get("missing"):
+                if s.get("missing") or (color and s["color"] != color):
                     continue
                 yield {"end": e["number"], "shot": s["number"], "color": s["color"],
                        "shot_type": s.get("shot_type"), "tee": s.get("t_tee_s"), "hog": s.get("t_hog_s"),
@@ -93,11 +93,11 @@ def real(t, view_x, kind, kinds, fps):
     return None
 
 
-def candidates(timeline, views, kinds, fps):
+def candidates(timeline, views, kinds, fps, color=None, release_at=RELEASE_AT):
     pools = {k: [] for k in SHARES}
-    for n, th in enumerate(throws(timeline)):
+    for n, th in enumerate(throws(timeline, color)):
         tee, hog, enter = th["tee"], th["hog"], th["enter"]
-        u, v = RELEASE_AT[n % 2], TRAVEL_AT[n % 2]
+        u, v = release_at[n % len(release_at)], TRAVEL_AT[n % 2]
         for kind, view, t in (
                 ("release", th["delivering_view"], tee and hog and tee + u * (hog - tee)),
                 ("travel", th["target_view"], hog and enter and hog + v * (enter - hog)),
@@ -123,15 +123,20 @@ def build(a):
 
     timeline = json.loads(a.timeline.read_text())
     views = {k: view_from(timeline["calibration"][k]) for k in ("left", "right")}
-    kinds, fps = load_layout(a.layout)
-    pools = candidates(timeline, views, kinds, fps)
-    chosen = [c for kind, n in SHARES.items() for c in spread(pools[kind], n)]
+    # No layout logs: a stream that only ever showed the three-panel view.
+    kinds, fps = load_layout(a.layout) if a.layout else (["T"] * 10 ** 7, 30.0)
+    shares = dict(SHARES) if not a.shares else {
+        k: int(n) for k, n in (kv.split("=") for kv in a.shares.split(","))}
+    release_at = tuple(float(u) for u in a.release_at.split(",")) if a.release_at else RELEASE_AT
+    pools = candidates(timeline, views, kinds, fps, a.color, release_at)
+    chosen = [c for kind, n in shares.items() for c in spread(pools.get(kind, []), n)]
     model = YOLO(a.weights)
     out = a.out.expanduser()
     img_dir, lbl_dir = out / "set/images/train", out / "set/labels/train"
     for d in (img_dir, lbl_dir):
         d.mkdir(parents=True, exist_ok=True)
-    caps = {"true": cv2.VideoCapture(str(a.video)), "g2r": cv2.VideoCapture(str(a.g2r))}
+    # Without a green-to-red copy the model labels the true colours itself.
+    caps = {"true": cv2.VideoCapture(str(a.video)), "g2r": cv2.VideoCapture(str(a.g2r or a.video))}
     frames_out = []
     for c in sorted(chosen, key=lambda c: c["t"]):
         v = views[c["view"]]
@@ -170,7 +175,8 @@ def build(a):
                 "prelabel": {"weights": Path(a.weights).name, "on": "the green-to-red copy of the same frame",
                              "note": "cin2's prelabel: conf 0.1, stone-width gate",
                              "classes": {0: "red_stone (DFW: green)", 1: "yellow_stone"}},
-                "selection": {"shares": SHARES, "release_at": RELEASE_AT, "travel_at": TRAVEL_AT,
+                "selection": {"shares": shares, "release_at": release_at, "travel_at": TRAVEL_AT,
+                              "color": a.color, "prelabel_on": "green-to-red copy" if a.g2r else "true colours",
                               "coming_before_s": COMING_BEFORE_S, "house_after_s": HOUSE_AFTER_S,
                               "crop_above_tee": CROP_ABOVE_TEE, "guard_s": GUARD_S,
                               "pools": {k: len(v) for k, v in pools.items()}},
@@ -213,7 +219,10 @@ def main():
     ap.add_argument("--timeline", type=Path)
     ap.add_argument("--layout", nargs="+", help="the normaliser's per-chunk logs, in order")
     ap.add_argument("--video", type=Path, help="normalised video, true colours")
-    ap.add_argument("--g2r", type=Path, help="normalised video, green-to-red")
+    ap.add_argument("--g2r", type=Path, help="normalised video, green-to-red; without it, the true colours")
+    ap.add_argument("--color", help="only this colour's throws (red = DFW's green)")
+    ap.add_argument("--shares", help="kind=n,... in place of SHARES, e.g. release=30")
+    ap.add_argument("--release-at", help="fractions of the tee-to-hog slide, cycled throw by throw")
     ap.add_argument("--weights")
     ap.add_argument("--video-id", default="vvy26k01ZcI")
     ap.add_argument("--out", type=Path, required=True)
