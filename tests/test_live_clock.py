@@ -132,3 +132,31 @@ def test_it_stops_fetching_at_the_budget():
     a, _ = aligner(now, stream, head)
     run(a, now, head, 3600 * 6)
     assert len(stream.fetched) <= C.MAX_FETCHES
+
+
+def test_a_refused_playlist_falls_back_and_does_not_hammer_youtube():
+    """Review 2: a 403 page parsed as an empty playlist was retried every 5 s,
+    no clock ever came, and every publish of the game was held."""
+    now, head = [WALL], [0.0]
+    stream = Stream(now)
+    asked = []
+
+    def refused(url):
+        asked.append(url)
+        return "<html>403</html>"
+
+    stream.playlist = refused
+    a, _ = aligner(now, stream, head)
+    run(a, now, head, 3600)
+    assert a.clock()["aligned"] == "start_time"
+    assert len(asked) <= C.MAX_FETCHES
+
+
+def test_with_no_clock_by_the_deadline_the_streams_start_stands_in():
+    now, head = [WALL], [0.0]
+    stream = Stream(now)
+    stream.offset_at = lambda t: None          # nothing ever matches
+    a, _ = aligner(now, stream, head)
+    a.match = lambda *a_, **k: None
+    run(a, now, head, C.GIVE_UP_S + 60)
+    assert a.clock()["aligned"] == "start_time"

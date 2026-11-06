@@ -117,9 +117,13 @@ def media_playlist_url(video_id: str, *, pot_provider=None, cookies=None) -> str
 
 
 def fetch_text(url: str) -> str:
+    """The playlist at ``url``; an error page raises rather than reading as
+    an empty playlist."""
     import httpx
 
-    return httpx.get(url, timeout=30.0).text
+    r = httpx.get(url, timeout=30.0)
+    r.raise_for_status()
+    return r.text
 
 
 def fetch_bytes(url: str) -> bytes:

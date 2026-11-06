@@ -3191,6 +3191,15 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # a stopped watch completes, and on to the next.
             log.info("practice job %s: no session left on it; finished unclaimed", job.id)
             practice_complete(job, {})
+        if job.kind == "camera_live" and job.attempts > 1:
+            # Handed out again (a worker restarted, a lease ran out): its
+            # cameras were recorded only from the first claim, and recording
+            # them again would lose the game's start. The stream has it all
+            # from segment 0, so it is followed from YouTube from now on.
+            log.info("camera game %s claimed again: followed from its stream", job.id)
+            repo.update_job(job.id, kind="live")
+            repo.update_run(job.run_id, source=None)
+            job.kind = "live"
         # Whatever went wrong last time is history now; leaving it set means the
         # status page shows a stale failure through an entirely healthy run.
         repo.update_job(job.id, error=None, error_kind=None, phase=None,
@@ -3393,7 +3402,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         job = owned_job(job_id, body.get("worker_id"))
         if job.kind == "practice":
             return practice_publish(job, body)
-        if (job.kind or "vod") != "live":
+        if (job.kind or "vod") not in ("live", "camera_live"):
             raise HTTPException(400, "only a live run publishes before it completes")
         run = repo.get_run(job.run_id)
         tkey = timeline_key(run.video_id, run.id)

@@ -300,3 +300,19 @@ class TestACamerasPlaylist:
         assert repo.get_run(run.id).stream_ended_at == later(THU_7PM, 6)
         camera_poll(repo, yt, later(THU_7PM, 9))
         assert repo.get_run(run.id).stream_ended_at == later(THU_7PM, 6)
+
+
+def test_a_camera_game_is_watched_for_its_end_outside_the_schedule():
+    """Review 4: a game running past its playlist's window must still be told
+    its stream ended within a few minutes, not at the next idle poll."""
+    repo, yt = camera_setup(["11/5 - Sheet 3 - Thursday Morning"])
+    camera_poll(repo, yt)
+    (run,) = repo.list_runs()
+    repo.update_run(run.id, status="live")
+    repo.update_playlist("p", last_polled_at=THU_7PM, idle_poll_s=None)
+    yt.add(VideoMeta("vid0", "11/5 - Sheet 3 - Thursday Morning", "UCclub", 0.0, "none",
+                     THU_7PM))
+    after = later(THU_7PM, 5 * 60)          # 00:00 Friday, outside the 18:00-23:30 window
+    playlists.poll(repo, yt, processing_version="p+m", now=after, tz=TZ,
+                   allowed_channels={"UCclub"}, camera_sheets=ALL_SHEETS, camera_max_sheets=2)
+    assert repo.get_run(run.id).stream_ended_at == after

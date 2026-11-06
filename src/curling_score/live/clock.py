@@ -37,7 +37,10 @@ ALIGN_BEHIND_S = 90.0     # how far behind the live edge a checked segment is
 ALIGN_TRIES = 4           # first checks before falling back to the stream's start
 FIRST_GAP_S = 60.0        # between those first checks
 RECHECK_S = align.RECHECK_S
-MAX_FETCHES = 60          # segments fetched in a game, at most
+MAX_FETCHES = 60          # requests to YouTube in a game, at most (playlists and segments)
+# With no clock by this much recording, the stream's start stands in: a camera
+# game publishes nothing until it has a clock.
+GIVE_UP_S = ALIGN_AFTER_S + ALIGN_TRIES * FIRST_GAP_S + 300.0
 STEP_S = 5.0              # how often the thread looks
 
 
@@ -108,7 +111,12 @@ class Aligner:
 
     def step(self) -> None:
         """At most one fetch-and-match, when one is due."""
-        if self.no_start or self.fetches >= MAX_FETCHES or self.head() < ALIGN_AFTER_S:
+        head = self.head()
+        if head >= GIVE_UP_S and self.clock() is None:
+            log.warning("clock of %s: no match by %.0f s recorded; the stream's start "
+                        "stands in", self.video_id, head)
+            self._fall_back(None)
+        if self.no_start or self.fetches >= MAX_FETCHES or head < ALIGN_AFTER_S:
             return
         probing = self.track.probe() is not None
         if not probing and self.next_check is not None and self.now() < self.next_check:
@@ -127,13 +135,17 @@ class Aligner:
 
     def _look(self, probing: bool) -> None:
         if self.url is None:
+            self.fetches += 1
             self.url = self.resolve()
             if self.url is None:
                 raise ValueError("the stream has no HLS playlist")
+        self.fetches += 1
         text = self.fetch_text(self.url)
         segs = hls.segments(text, self.url, from_start=True)
         if sum(seg.extinf_s for seg in segs) < ALIGN_BEHIND_S + 10.0:
-            return                     # the stream has barely begun: not a try
+            # Barely begun, or not a playlist at all: looked at again later,
+            # and counted, so a page that never fills cannot hold the clock.
+            raise ValueError(f"the playlist holds only {len(segs)} segment(s)")
         if self.seg0 is None:
             self.seg0 = self._fetch(segs[0].uri)
         if probing:

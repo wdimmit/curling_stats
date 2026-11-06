@@ -99,6 +99,13 @@ def camera_games(repo) -> int:
                if r.kind == "live" and r.source == "cameras")
 
 
+def camera_playlists(repo) -> set:
+    """The playlists with a camera game recording."""
+    return {r.playlist_id for status in ("processing", "live")
+            for r in repo.list_runs(status=status, limit=500)
+            if r.kind == "live" and r.source == "cameras" and r.stream_ended_at is None}
+
+
 def mark_stream_ended(repo, video_id: str, now: datetime) -> None:
     """A stream no longer live: its camera game, if one is going, is told to
     stop recording (the worker's heartbeat), once."""
@@ -127,8 +134,14 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
     created, live_created, skipped, errors = [], [], [], []
     n_queued = 0
 
+    watching = camera_playlists(repo)
     for pl in repo.list_playlists():
-        if not pl.enabled or not (force or due(pl, now, tz)):
+        # A camera game must hear its stream end within minutes, whatever the
+        # schedule: its cameras record until it does (privacy page).
+        camera_due = (pl.playlist_id in watching and
+                      (pl.last_polled_at is None or
+                       (now - pl.last_polled_at).total_seconds() >= pl.live_poll_s - DUE_SLACK_S))
+        if not pl.enabled or not (force or camera_due or due(pl, now, tz)):
             continue
         try:
             ids = youtube.playlist_video_ids(pl.playlist_id)

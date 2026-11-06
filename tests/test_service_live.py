@@ -247,3 +247,25 @@ class TestCameraGames:
         assert "stop" not in beat()
         world["repo"].update_run("r_cam", stream_ended_at=T0)
         assert beat()["stop"] is True
+
+
+class TestACameraGameEndToEnd:
+    def test_it_publishes_and_completes_like_a_live_game(self, world):
+        """Review 1: the API refused every publish that was not kind "live"."""
+        add_camera_run(world)
+        camera_claim(world, ["live", "camera_live"])
+        doc = one_game(2)
+        upload(world, "j_cam", doc)
+        r = publish(world, "j_cam", doc)
+        assert r.status_code == 200, r.text
+        assert world["repo"].get_run("r_cam").status == "live"
+
+    def test_a_camera_game_claimed_again_goes_to_youtube(self, world):
+        """Review 3: a worker restarting mid-game would record its cameras from
+        then on, and lose the game's start; the stream has it from segment 0."""
+        add_camera_run(world)
+        camera_claim(world, ["live", "camera_live"])
+        world["repo"].release_jobs("home", T0)
+        job = camera_claim(world, ["live", "camera_live"]).json()["job"]
+        assert job["kind"] == "live" and "source" not in job
+        assert world["repo"].get_run("r_cam").source is None
