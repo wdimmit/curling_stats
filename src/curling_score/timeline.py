@@ -518,12 +518,28 @@ def format_check(games, fmt) -> dict:
 
 
 
-def shift_times(games: list, offset_s: float) -> list:
-    """``games`` on a clock ``offset_s`` later: a deep copy with every moment of
-    the video in it (``VIDEO_TIME_KEYS``, ``VIDEO_TIME_ROWS``) moved, rounded to
-    the hundredth, and everything else as it was."""
+def offset_at(clock, t: float) -> float:
+    """How far a moment ``t`` of a camera recording moves to reach the video's
+    clock. ``clock`` is a document's clock -- its ``steps`` (``[[camera_from_s,
+    offset_s], ...]``) when the video lost time partway, else its one
+    ``offset_s`` -- or a bare offset."""
+    if isinstance(clock, (int, float)):
+        return float(clock)
+    steps = clock.get("steps") or [[0.0, clock["offset_s"]]]
+    offset = steps[0][1]
+    for start, step_offset in steps:
+        if t >= start:
+            offset = step_offset
+    return float(offset)
+
+
+def shift_times(games: list, clock) -> list:
+    """``games`` on the video's clock: a deep copy with every moment of the
+    video in it (``VIDEO_TIME_KEYS``, ``VIDEO_TIME_ROWS``) moved by the step of
+    ``clock`` it falls in (:func:`offset_at`), rounded to the hundredth, and
+    everything else as it was."""
     def move(t):
-        return t if t is None else round(t + offset_s, 2)
+        return t if t is None else round(t + offset_at(clock, t), 2)
 
     def walk(o):
         if isinstance(o, dict):
@@ -556,15 +572,15 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
     be told apart. ``fmt`` is the :class:`format.GameFormat` the game was
     played under; a fours document writes no ``format`` block at all, and a
     document without one reads as fours. ``clock`` (``{"kind": "cameras",
-    "offset_s", "aligned"}``) says the games were read on a camera recording's
-    clock: they are published ``offset_s`` later, on the video's, and the
-    clock is kept in ``source``.
+    "offset_s", "aligned"[, "steps"]}``) says the games were read on a camera
+    recording's clock: they are published on the video's (:func:`offset_at`),
+    and the clock is kept in ``source``.
     """
     if clock is not None:
         # A camera game: its moments move onto the video's clock before the
         # links to the video are made from them.
-        games = shift_times(games, clock["offset_s"])
-        duration_s = float(duration_s) + clock["offset_s"]
+        games = shift_times(games, clock)
+        duration_s = round(float(duration_s) + offset_at(clock, float(duration_s)), 2)
     games = [dict(g) for g in games]
     for game in games:
         for end in game["ends"]:

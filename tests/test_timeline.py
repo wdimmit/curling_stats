@@ -1713,3 +1713,32 @@ class TestPublishedClock:
         a = timeline.build_document("vid", "u", 3, 1000.0, {}, games_with_shot_at(86.7))
         assert "clock" not in a["source"]
         assert a["games"][0]["ends"][0]["shots"][0]["t_video_s"] == 86.7
+
+
+class TestSteppedClock:
+    STEPS = {"kind": "cameras", "aligned": "segment", "offset_s": -908.94,
+             "steps": [[0.0, -908.94], [3850.0, -914.72]]}
+
+    def test_offset_at_picks_the_step(self):
+        assert timeline.offset_at(self.STEPS, 100.0) == -908.94
+        assert timeline.offset_at(self.STEPS, 3849.99) == -908.94
+        assert timeline.offset_at(self.STEPS, 3850.0) == -914.72
+        assert timeline.offset_at({"kind": "cameras", "offset_s": 600.0}, 5.0) == 600.0
+        assert timeline.offset_at(600.0, 5.0) == 600.0
+
+    def test_shift_with_steps_moves_each_moment_by_its_own_step(self):
+        games = [{"start_s": 1000.0, "end_s": 5000.0, "ends": [{"start_s": 2900.0, "end_s": 4100.0,
+                  "shots": [{"t_rest_s": 3000.0, "track": [[3849.9, 0.1, 4.0]]},
+                            {"t_rest_s": 4000.0, "track": [[3850.0, 0.1, 4.0]]}]}]}]
+        out = timeline.shift_times(games, self.STEPS)
+        a, b = out[0]["ends"][0]["shots"]
+        assert a["t_rest_s"] == round(3000.0 - 908.94, 2)
+        assert b["t_rest_s"] == round(4000.0 - 914.72, 2)
+        assert a["track"][0][0] == round(3849.9 - 908.94, 2)
+        assert b["track"][0][0] == round(3850.0 - 914.72, 2)
+        assert out[0]["end_s"] == round(5000.0 - 914.72, 2)
+
+    def test_document_duration_moves_by_its_step(self):
+        doc = timeline.build_document("vid", "u", 4, 7000.0, {}, games_with_shot_at(86.7),
+                                      clock=self.STEPS)
+        assert doc["source"]["duration_s"] == round(7000.0 - 914.72, 2)

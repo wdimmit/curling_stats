@@ -498,7 +498,7 @@ class LiveSession:
                 None if cal is None else cal.sideviews),
             fmt=self.fmt, check=timeline.format_check(out_games, self.fmt),
             clock=self.clock)
-        published_head = head + (self.clock["offset_s"] if self.clock else 0.0)
+        published_head = head + (timeline.offset_at(self.clock, head) if self.clock else 0.0)
         doc["live"] = {"in_progress": not self.done, "recorded_s": round(published_head, 1),
                        "updated_at": self.now().isoformat()}
         return doc
