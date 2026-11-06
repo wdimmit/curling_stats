@@ -144,3 +144,29 @@ def test_probing_gives_up_and_takes_the_middle():
     assert track.probe() is None
     (_, _), (camera_from, offset) = track.steps()
     assert offset == NEW and camera_from + NEW == pytest.approx((900.0 + 1500.0) / 2)
+
+
+def test_track_recording_follows_a_kept_video(tmp_path):
+    """The 11/05 sheet 4 game: checks every 600 s of the camera files, probes
+    placing the step, every piece cut from the kept video at its video time."""
+    def truth(video_t):
+        return OLD if video_t < 3000.0 else NEW
+
+    cut, looked = [], []
+
+    def fake_cut(video, t, dur_s=5.0):
+        cut.append(t)
+        return tmp_path / f"piece-{t:.2f}.ts"
+
+    def fake_match(piece, piece_t_s, camera, guess_s, sheet, *, search_s=30.0):
+        looked.append((piece_t_s, guess_s))
+        return align.Match(truth(piece_t_s), 2.0)
+
+    track = align.track_recording(tmp_path / "v.mp4", tmp_path / "long_a.ts", 4, guess_s=-905.0,
+                                  length_s=11698.0, cut=fake_cut, match=fake_match)
+    (_, first), (camera_from, offset) = track.steps()
+    assert (first, offset) == (OLD, NEW)
+    assert abs(camera_from + NEW - 3000.0) <= align.PLACE_S
+    assert cut == [t for t, _ in looked]
+    # Every check's piece is within the camera's span on the video clock.
+    assert all(0 <= t - g <= 11698.0 for t, g in looked)

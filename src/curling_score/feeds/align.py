@@ -207,3 +207,60 @@ class ClockTrack:
             return None
         return {"kind": "cameras", "aligned": aligned, "offset_s": self._steps[0][1],
                 "steps": self.steps()}
+
+
+# --- a kept recording of the video, all at once ------------------------------------
+
+# How often the video is checked against the camera through a game.
+RECHECK_S = 600.0
+PIECE_S = 5.0
+
+
+def cut_piece(video: Path, t: float, dur_s: float = PIECE_S) -> Path:
+    """``dur_s`` of ``video`` from ``t``, re-encoded into a file of its own whose
+    first frame is ``t`` (an MP4 is cut exactly: it is indexed)."""
+    import tempfile
+
+    out = Path(tempfile.mkdtemp(prefix="align-")) / "piece.ts"
+    subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-ss", f"{t:.3f}", "-i", str(video),
+                    "-t", f"{dur_s:.3f}", "-an", "-c:v", "libx264", "-preset", "ultrafast",
+                    str(out)], check=True)
+    return out
+
+
+def length_s(path: Path) -> float:
+    """How long a media file is, by ffprobe."""
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                          "-of", "csv=p=0", str(path)], capture_output=True, text=True,
+                         check=True).stdout.strip()
+    return float(out)
+
+
+def track_recording(video: Path, camera: Path, sheet: int, guess_s: float, length_s: float, *,
+                    every_s: float = RECHECK_S, start_s: float = 300.0, search_s: float = 30.0,
+                    cut=cut_piece, match=match) -> ClockTrack:
+    """The clock of a camera recording ``length_s`` long against a kept
+    recording of the video (``video``), checked every ``every_s`` of the
+    camera's time from ``start_s``, with probes wherever a step turns up.
+    ``guess_s`` is the offset expected before the first check."""
+    track, offset = ClockTrack(), guess_s
+
+    def look(video_t):
+        piece = cut(video, video_t)
+        try:
+            return match(piece, video_t, camera, offset, sheet, search_s=search_s)
+        finally:
+            Path(piece).unlink(missing_ok=True)
+
+    camera_t = start_s
+    while camera_t + PIECE_S <= length_s:
+        video_t = camera_t + offset
+        if video_t >= 0:
+            found = look(video_t)
+            track.add(video_t, found)
+            if found is not None:
+                offset = found.offset_s
+            while (t := track.probe()) is not None:
+                track.add_probe(t, look(t))
+        camera_t += every_s
+    return track

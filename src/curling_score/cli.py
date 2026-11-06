@@ -546,14 +546,33 @@ def _live_replay(args) -> int:
 
     out = Path(args.out)
     (out / "publishes").mkdir(parents=True, exist_ok=True)
+    clock = None
+    if args.cameras and args.offset_s is not None:
+        clock = {"kind": "cameras", "aligned": "segment", "offset_s": args.offset_s,
+                 "steps": [[0.0, args.offset_s]]}
+    elif args.cameras and args.align_to:
+        from curling_score.feeds import align
+
+        camera = Path(args.cameras) / "long_a.ts"
+        track = align.track_recording(Path(args.align_to), camera, args.sheet, args.guess_s,
+                                      align.length_s(camera))
+        clock = track.clock()
+        if clock is None:
+            print(f"no clock: {args.align_to} never matched {camera} twice in a row")
+            return 1
+        print(f"clock: {json.dumps(clock)}")
     weights = None if (args.weights or "").lower() in ("", "none", "classical") \
         else args.weights
     detector, broom_model, line_model = analyze_mod.load_models(
         weights, args.imgsz, args.device, skip_longview=args.no_longview,
         skip_line=args.no_line, progress=print)
     release_model = analyze_mod.load_release_model(line_model, print)
-    rec = replay.ReplayRecording(args.video, out / "recording.ts",
-                                 speed=args.speed).start()
+    if args.cameras:
+        rec = replay.CameraReplay(args.cameras, out / "cameras", args.sheet,
+                                  speed=args.speed).start()
+    else:
+        rec = replay.ReplayRecording(args.video, out / "recording.ts",
+                                     speed=args.speed).start()
     t0, count = time.monotonic(), [0]
 
     def publish(doc):
@@ -566,11 +585,11 @@ def _live_replay(args) -> int:
               f"recorded to {doc['live']['recorded_s']} s"
               + ("" if doc["live"]["in_progress"] else " -- final"))
 
-    vid = Path(args.video).stem
+    vid = args.video_id or (Path(args.video).stem if args.video else Path(args.cameras).name)
     try:
         url = source.canonical_url(vid)
     except ValueError:
-        url = str(args.video)
+        url = str(args.video or args.cameras)
     session = live.LiveSession(
         video_id=vid, url=url, recording=rec, fmt=format_mod.by_name(args.format),
         pipeline=live.VideoPipeline(weights=weights, skip_longview=args.no_longview,
@@ -579,6 +598,7 @@ def _live_replay(args) -> int:
         models=live.Models(detector=detector, broom_model=broom_model,
                            line_model=line_model, release_model=release_model),
         publish=publish, progress=print)
+    session.clock = clock
     try:
         runner.run_session(session)
     finally:
@@ -632,6 +652,18 @@ def _practice_replay(args) -> int:
         heads.stop()
     print(f"{len(sink.seen)} throw(s); see {out / 'throws.jsonl'}")
     return 0
+
+
+def _check_live_replay(p, args) -> None:
+    """A live replay is of a video, or of a sheet's camera files on a clock."""
+    if bool(args.video) == bool(args.cameras):
+        p.error("give a video or --cameras, one of them")
+    if args.cameras and args.sheet is None:
+        p.error("--cameras needs --sheet: its layout cuts the files")
+    if args.align_to and args.guess_s is None:
+        p.error("--align-to needs --guess-s")
+    if not args.cameras and (args.offset_s is not None or args.align_to or args.video_id):
+        p.error("--offset-s, --align-to and --video-id go with --cameras")
 
 
 def _check_practice_replay(p, args) -> None:
@@ -773,8 +805,22 @@ def main(argv=None) -> int:
     p.set_defaults(func=_analyze)
 
     p = sub.add_parser("live-replay",
-                       help="replay a cached video as a live stream, one end at a time")
-    p.add_argument("video", help="a cached video file")
+                       help="replay a cached video, or a sheet's camera files, as a live "
+                            "stream, one end at a time")
+    p.add_argument("video", nargs="?", help="a cached video file")
+    p.add_argument("--cameras", metavar="DIR",
+                   help="instead of a video: a sheet's camera files, <role>.ts as the "
+                        "recorder writes them, replayed from their start")
+    p.add_argument("--video-id", help="with --cameras: the YouTube video of the game")
+    clock = p.add_mutually_exclusive_group()
+    clock.add_argument("--offset-s", type=float,
+                       help="with --cameras: publish at camera t + this (the video's clock)")
+    clock.add_argument("--align-to", metavar="VIDEO",
+                       help="with --cameras: a kept recording of the game's video, checked "
+                            "against the long_a camera through the game for the clock")
+    p.add_argument("--guess-s", type=float,
+                   help="with --align-to: the offset expected (camera recording's start "
+                        "less the stream's)")
     p.add_argument("--out", default="out-live", help="output directory (default: out-live)")
     p.add_argument("--speed", type=float, default=1.0,
                    help="playback speed against real time (default: 1)")
@@ -789,6 +835,7 @@ def main(argv=None) -> int:
     p.add_argument("--no-line", action="store_true",
                    help="skip measuring where each rock's line passed the broom")
     p.set_defaults(func=_live_replay)
+    live_replay = p
 
     p = sub.add_parser("practice-replay",
                        help="replay a cached video, or a sheet's camera files, as a practice "
@@ -920,6 +967,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.command == "practice-replay":
         _check_practice_replay(practice_replay, args)
+    if args.command == "live-replay":
+        _check_live_replay(live_replay, args)
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(message)s",
