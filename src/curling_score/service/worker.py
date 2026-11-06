@@ -378,8 +378,9 @@ def resolve_weights():
     """Which model this worker runs.
 
     ``WEIGHTS`` still wins, so a deployment can pin a model or ask for the
-    classical detector with ``none``. Unset now means the project default
-    (``weights.DEFAULT_NAME``) rather than the colour detector.
+    classical detector with ``none``. Unset means the ``CLUB``'s own model
+    when it names one, else the project default (``weights.DEFAULT_NAME``)
+    rather than the colour detector.
 
     A worker that cannot find the default falls back to classical and says so,
     rather than refusing to start. That is safe here only because
@@ -391,6 +392,12 @@ def resolve_weights():
     chosen = os.environ.get("WEIGHTS")
     if chosen:
         return None if chosen.strip().lower() in ("none", "classical") else chosen
+    # A worker set up for one club (``CLUB``) runs that club's own model, if
+    # it has one; a missing file then raises rather than falling back, since
+    # Granite's model would read that club's paint as stones.
+    club = clubs.CLUBS[os.environ["CLUB"]] if os.environ.get("CLUB") else None
+    if club is not None and club.overhead_model:
+        return str(weights_mod.default_path(club))
     try:
         path = weights_mod.default_path()
     except FileNotFoundError as exc:

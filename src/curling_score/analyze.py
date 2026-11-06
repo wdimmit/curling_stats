@@ -1,5 +1,6 @@
 """Run the whole pipeline: a YouTube link in, a game timeline out."""
 
+import functools
 import json
 import logging
 import os
@@ -1119,6 +1120,18 @@ def build_games(ctx: EndContext, games, *, read_board=None,
     return out_games
 
 
+def _with_club_models(fn):
+    """Run ``fn`` with its ``club``'s own models resolved (`weights.use_club`):
+    every pass that finds the side model for itself -- the hog timer, the far
+    follower, the processing version -- gets the club's, not Granite's."""
+    @functools.wraps(fn)
+    def run(*args, club: clubs.Club = clubs.GRANITE, **kw):
+        with weights_mod.use_club(club):
+            return fn(*args, club=club, **kw)
+    return run
+
+
+@_with_club_models
 def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             use_proxy: bool = True, weights=None, imgsz: int = 448,
             device=None, *, start_s=None, end_s=None, sheet=None,

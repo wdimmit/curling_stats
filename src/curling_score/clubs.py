@@ -44,6 +44,13 @@ class Club:
     # The YouTube channels that carry this club's stream, so a worker given
     # only a video can pick the profile.
     channel_ids: tuple[str, ...] = ()
+    # Detectors trained for this club's stream, as file names in weights/;
+    # None runs Granite's (`weights.DEFAULT_NAME`, `weights.SIDE_NAME`). The
+    # environment variables there still win. A worker claims jobs under one
+    # overhead model, so a club with its own must be chosen by the worker's
+    # CLUB, not by a channel id.
+    overhead_model: str | None = None
+    side_model: str | None = None
 
 
 # The two houses are played toward from opposite directions, and Granite's
@@ -72,7 +79,11 @@ CINCINNATI = Club("cincinnati", (
     # the left; each sits above its own hog line.
     "top": ("right", EndPaint(ring=_END_PINK, inner_radius_m=C.R_4FT_M, also=(_END_GREY,))),
     "bottom": ("left", EndPaint(ring=(BLUE_HSV,), inner_radius_m=C.R_8FT_M)),
-})
+},
+    # ds17b read the "Cincy Light" sponsor ring as red stones, so the red
+    # house never emptied (cin1); ds13e lost the stone under the thrower's
+    # hand and under the sweepers on the end cameras (cin2, cin3).
+    overhead_model="cin1a-11n.pt", side_model="cin3a.pt")
 
 # Swift Current's broadcast (SSN, 1920x1080): two house-only overheads framed
 # in white with a rotating sponsor tile between them, and long cameras either
@@ -136,7 +147,10 @@ MARTENSVILLE = Club("martensville", (
                           centre_min_rows=40))
     for house, side in (("top", "left"), ("bottom", "right"))
 }, panel_layout=PanelLayout(top=(728, 7, 468, 462), bottom=(728, 608, 468, 459)),
-    side_rows=(330, 975))
+    side_rows=(330, 975),
+    # overhead-3 read the logo's hop cones and lettering as yellow stones all
+    # game, so the house never emptied (mv1).
+    overhead_model="mv1a.pt")
 
 CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT, ARDSLEY, MARTENSVILLE)}
 

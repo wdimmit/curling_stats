@@ -37,13 +37,19 @@ Resolution order:
 
 1. ``CURLING_SCORE_WEIGHTS``, so a deployment can pin its own model. The literal
    ``none`` selects the classical colour detector.
-2. ``weights/<DEFAULT_NAME>`` beside the installed package or the repository.
+2. The club's own model (``clubs.Club.overhead_model``), for another club's
+   stream: the one passed, else the one :func:`use_club` set.
+3. ``weights/<DEFAULT_NAME>`` beside the installed package or the repository.
+
+The side-view detector (:func:`side_path`) resolves the same way, from
+``Club.side_model``.
 
 A path that is set but missing raises. Dropping to the colour detector without
 saying so would leave every downstream number quietly incomparable.
 """
 
 import os
+from contextlib import contextmanager
 from pathlib import Path
 
 DEFAULT_NAME = "overhead-3.pt"
@@ -139,6 +145,37 @@ RELEASE_NAME = "release1.pt"
 RELEASE_ENV_VAR = "CURLING_SCORE_RELEASE_WEIGHTS"
 
 
+# The club whose stream is being analysed, set by `use_club` around a run so the
+# passes that resolve the side model themselves (hogtime, farfollow, the
+# processing version) get the club's. Module-wide rather than a context
+# variable because analyze's worker threads must see it too.
+_active_club = None
+
+
+@contextmanager
+def use_club(club):
+    """Resolve the models of ``club`` (a ``clubs.Club``) while inside."""
+    global _active_club
+    before, _active_club = _active_club, club
+    try:
+        yield
+    finally:
+        _active_club = before
+
+
+def _club_model(attr, club):
+    club = club if club is not None else _active_club
+    name = getattr(club, attr, None)
+    if not name:
+        return None
+    for path in _candidates(name):
+        if path.is_file():
+            return path
+    raise FileNotFoundError(
+        f"club {club.name} names {name}, which is in no weights/ directory near "
+        f"{Path(__file__).resolve().parents[2]}.")
+
+
 def _candidates(name=DEFAULT_NAME):
     here = Path(__file__).resolve()
     # src/curling_score/weights.py -> repo root, and the installed layout above.
@@ -146,8 +183,11 @@ def _candidates(name=DEFAULT_NAME):
         yield base / "weights" / name
 
 
-def default_path():
-    """The weights to detect with, or None for the classical detector."""
+def default_path(club=None):
+    """The weights to detect with, or None for the classical detector.
+
+    ``club`` (else the one :func:`use_club` set) may name its own model.
+    """
     chosen = os.environ.get(ENV_VAR)
     if chosen:
         if chosen.strip().lower() in ("none", "classical", ""):
@@ -159,6 +199,9 @@ def default_path():
                 f"or to 'none' for the classical colour detector.")
         return path
 
+    club_path = _club_model("overhead_model", club)
+    if club_path is not None:
+        return club_path
     for path in _candidates():
         if path.is_file():
             return path
@@ -168,11 +211,12 @@ def default_path():
         f"file, or to 'none' for the classical colour detector.")
 
 
-def side_path():
+def side_path(club=None):
     """The side-view detector, or None when it is switched off (``none``):
     then the long camera times no hog crossings, and the lines, brooms,
     spins and releases it feeds go without. Resolved like
-    :func:`default_path`; a path set or defaulted but missing raises."""
+    :func:`default_path`, the club's from ``Club.side_model``; a path set or
+    defaulted but missing raises."""
     chosen = os.environ.get(SIDE_ENV_VAR)
     if chosen:
         if chosen.strip().lower() in ("none", "classical", ""):
@@ -184,6 +228,9 @@ def side_path():
                 f"file, or to 'none' for no long-camera hog crossings.")
         return path
 
+    club_path = _club_model("side_model", club)
+    if club_path is not None:
+        return club_path
     for path in _candidates(SIDE_NAME):
         if path.is_file():
             return path

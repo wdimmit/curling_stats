@@ -176,3 +176,107 @@ class TestReleasePath:
         monkeypatch.setattr(weights, "_candidates", lambda name=None: names.append(name) or iter(()))
         weights.release_path()
         assert names == [weights.RELEASE_NAME] == ["release1.pt"]
+
+
+class TestClubModels:
+    """Another club's stream runs the detectors trained on it: Granite's read
+    Cincinnati's sponsor ring and Martensville's logo house as stones."""
+
+    @pytest.fixture(autouse=True)
+    def _no_env(self, monkeypatch):
+        monkeypatch.delenv("CURLING_SCORE_WEIGHTS", raising=False)
+        monkeypatch.delenv("CURLING_SCORE_SIDE_WEIGHTS", raising=False)
+
+    def test_a_club_gets_its_own_overhead_model(self):
+        from curling_score import clubs
+        assert weights.default_path(clubs.CINCINNATI).name == "cin1a-11n.pt"
+        assert weights.default_path(clubs.MARTENSVILLE).name == "mv1a.pt"
+        assert weights.default_path(clubs.GRANITE).name == weights.DEFAULT_NAME
+
+    def test_a_club_gets_its_own_side_model_or_granites(self):
+        from curling_score import clubs
+        assert weights.side_path(clubs.CINCINNATI).name == "cin3a.pt"
+        assert weights.side_path(clubs.MARTENSVILLE).name == weights.SIDE_NAME
+
+    def test_the_environment_still_wins(self, tmp_path, monkeypatch):
+        from curling_score import clubs
+        f = tmp_path / "pinned.pt"
+        f.write_bytes(b"x")
+        monkeypatch.setenv("CURLING_SCORE_WEIGHTS", str(f))
+        monkeypatch.setenv("CURLING_SCORE_SIDE_WEIGHTS", str(f))
+        assert weights.default_path(clubs.CINCINNATI) == f
+        assert weights.side_path(clubs.CINCINNATI) == f
+
+    def test_use_club_reaches_callers_that_name_no_club_and_then_ends(self):
+        # hogtime and the processing version call side_path() with no club.
+        from curling_score import clubs
+        with weights.use_club(clubs.CINCINNATI):
+            assert weights.side_path().name == "cin3a.pt"
+        assert weights.side_path().name == weights.SIDE_NAME
+
+    def test_a_club_model_that_is_missing_raises(self):
+        from dataclasses import replace
+
+        from curling_score import clubs
+        club = replace(clubs.CINCINNATI, side_model="no-such-model.pt")
+        with pytest.raises(FileNotFoundError, match="no-such-model.pt"):
+            weights.side_path(club)
+
+    def test_every_club_model_is_shipped_and_committed(self):
+        # .gitignore drops weights/*.pt unless a file is named back in.
+        from curling_score import clubs
+        root = Path(__file__).resolve().parents[1]
+        ignore = (root / ".gitignore").read_text()
+        for club in clubs.CLUBS.values():
+            for name in filter(None, (club.overhead_model, club.side_model)):
+                assert (root / "weights" / name).is_file(), name
+                assert f"!weights/{name}" in ignore.splitlines(), name
+
+    def test_no_club_picked_by_channel_brings_its_own_overhead_model(self):
+        # A worker claims jobs under one overhead model; a channel picks the
+        # club per job, too late to change it.
+        from curling_score import clubs
+        for club in clubs.CLUBS.values():
+            assert not (club.channel_ids and club.overhead_model), club.name
+
+    def test_analyze_runs_inside_its_club(self, monkeypatch):
+        from curling_score import analyze, clubs
+        seen = {}
+
+        @analyze._with_club_models
+        def fake(url, *, club=clubs.GRANITE):
+            seen["side"] = weights.side_path().name
+            return club
+
+        assert fake("u", club=clubs.CINCINNATI) is clubs.CINCINNATI
+        assert seen["side"] == "cin3a.pt"
+        assert weights.side_path().name == weights.SIDE_NAME
+
+    def test_a_club_worker_runs_its_clubs_model(self, monkeypatch):
+        from curling_score.service import worker
+        monkeypatch.delenv("WEIGHTS", raising=False)
+        monkeypatch.setenv("CLUB", "martensville")
+        assert Path(worker.resolve_weights()).name == "mv1a.pt"
+        monkeypatch.setenv("CLUB", "ardsley")
+        assert Path(worker.resolve_weights()).name == weights.DEFAULT_NAME
+
+    def _cli(self, monkeypatch, tmp_path, *extra):
+        from curling_score import cli
+        seen = {}
+        monkeypatch.setattr(cli.analyze_mod, "analyze",
+                            lambda url, **kw: seen.update(kw) or {"games": []})
+        monkeypatch.setattr(cli.analyze_mod, "write",
+                            lambda doc, out: tmp_path / "timeline.json")
+        assert cli.main(["analyze", "u", "--out", str(tmp_path), *extra]) == 0
+        return seen
+
+    def test_the_cli_takes_the_clubs_model(self, monkeypatch, tmp_path):
+        seen = self._cli(monkeypatch, tmp_path, "--club", "cincinnati")
+        assert Path(seen["weights"]).name == "cin1a-11n.pt"
+        seen = self._cli(monkeypatch, tmp_path)
+        assert Path(seen["weights"]).name == weights.DEFAULT_NAME
+
+    def test_the_cli_takes_a_named_model_over_the_clubs(self, monkeypatch, tmp_path):
+        seen = self._cli(monkeypatch, tmp_path, "--club", "cincinnati",
+                         "--weights", "elsewhere.pt")
+        assert seen["weights"] == "elsewhere.pt"

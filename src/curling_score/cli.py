@@ -13,16 +13,21 @@ from curling_score.game import format as format_mod
 from curling_score.ingest import cache, source
 
 
-def _default_weights():
+def _default_weights(club=None):
     """The standard detector, or None if this checkout has no weights.
 
     Resolved for --help and for the default value, so the help text names the
     model that will actually run. A missing file must not stop `--help` or a
-    subcommand that never detects, so the error is deferred to use.
+    subcommand that never detects, so the error is deferred to use. A club
+    that names its own model (``clubs.Club.overhead_model``) gets that one,
+    and its file missing is an error: Granite's would read that club's paint
+    as stones.
     """
     try:
-        path = weights_mod.default_path()
+        path = weights_mod.default_path(club)
     except FileNotFoundError:
+        if club is not None and club.overhead_model:
+            raise
         return None
     return str(path) if path else None
 
@@ -48,16 +53,18 @@ def _score_label(score, board):
 
 
 def _analyze(args) -> int:
+    club = clubs.CLUBS[args.club]
+    weights = args.weights if args.weights is not None else _default_weights(club)
     doc = analyze_mod.analyze(args.url, root=args.cache_root, shot_fps=args.fps,
                               use_proxy=not args.no_proxy,
-                              weights=args.weights, imgsz=args.imgsz,
+                              weights=weights, imgsz=args.imgsz,
                               device=args.device, start_s=args.start,
                               end_s=args.end, sheet=args.sheet,
                               game_format=args.format,
                               skip_scoreboard=args.no_scoreboard,
                               skip_longview=args.no_longview,
                               skip_line=args.no_line,
-                              club=clubs.CLUBS[args.club])
+                              club=club)
     out = analyze_mod.write(doc, args.out)
     print(f"\nwrote {out}")
     for game in doc["games"]:
@@ -734,9 +741,10 @@ def main(argv=None) -> int:
     p.add_argument("--fps", type=float, default=analyze_mod.SHOT_FPS)
     p.add_argument("--no-proxy", action="store_true",
                    help="decode the full frame instead of a cropped strip proxy")
-    p.add_argument("--weights", default=_default_weights(),
-                   help=f"a trained YOLO model to detect with "
-                        f"(default: {_default_weights() or 'classical'})")
+    # Resolved after parsing, once --club is known: a club may name its own.
+    p.add_argument("--weights", default=None,
+                   help=f"a trained YOLO model to detect with (default: the "
+                        f"club's own model, else {_default_weights() or 'classical'})")
     p.add_argument("--imgsz", type=int, default=448)
     p.add_argument("--device", default=None)
     p.add_argument("--start", type=float, default=None,
