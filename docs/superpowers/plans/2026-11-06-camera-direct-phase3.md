@@ -33,6 +33,29 @@
 
 ---
 
+## Amendment (2026-11-06, after Task 2): the clock is a series of steps
+
+**Found in Task 2's real check.** On 11/05 sheet 4 the YouTube video sat at offset -908.94 s from the cameras up to video t 2940 and at -914.72 s from t 3060 on: it lost 5.78 s of picture with no gap in its timestamps (camera files continuous; mp4 pts continuous). Sheet 3 held to 1.5 frames all game. One offset taken at the start would put every later deep link of such a game ~6 s late. So:
+
+- **Clock shape.** `{"kind": "cameras", "aligned": "segment" | "start_time", "offset_s": <the first step's>, "steps": [[camera_from_s, offset_s], ...]}`; the first step's `camera_from_s` is 0; a clock without `steps` is one step. `timeline.offset_at(clock, t) -> float` is the offset of the last step with `camera_from_s <= t`.
+
+### Task 1b: stepped clocks in the document
+- `timeline.shift_times(games, clock)` takes a clock (a bare float still means one step) and moves each moment by `offset_at(clock, moment)`; `build_document` moves `duration_s` by `offset_at(clock, duration_s)`; `LiveSession` moves `recorded_s` the same way.
+- Tests (`tests/test_timeline.py`): `test_offset_at_picks_the_step`; `test_shift_with_steps_moves_each_moment_by_its_own_step` (steps `[[0, -908.94], [3850, -914.72]]`: a shot resting at camera t 3000 moves by -908.94, one at 4000 by -914.72, a track row at 3849.9 by -908.94).
+
+### Task 2b: following the clock through a game
+- `align.ClockTrack(frames: int = 2)` in `feeds/align.py`, pure (no I/O):
+  - `add(video_t_s: float, m: Match | None)` -- a check. The first offset is confirmed by two consecutive agreeing checks. Later, a check agreeing with the current offset confirms it at that time; one that disagrees becomes a candidate, and the next that agrees with the candidate confirms a **step** between the last check that agreed with the old offset and the candidate's time. None is ignored.
+  - `probe() -> float | None` -- a video time to check next while a step is not yet placed within `PLACE_S = 10` (the midpoint of what is left); `add_probe(video_t_s, m)` narrows it (agrees with old: the step is later; with new: earlier; neither or None: counted, and after `MAX_PROBES = 8` the step stays at the midpoint of what is left).
+  - `steps() -> list[list[float]]` -- `[[camera_from_s, offset_s], ...]`, where a step placed at video time `v` begins at camera time `v - new_offset`; `[]` before the first confirmation.
+  - `clock(aligned="segment") -> dict | None`.
+- Tests (`tests/test_feeds_align.py`): one offset confirmed by two checks; a lone disagreeing check changes nothing; a confirmed step from the 11/05 sheet 4 numbers (checks every 600 s, the step between 2940 and 3060) is placed by probes to within 10 s of 3000 and gives `[[0, -908.94], [3000 - (-914.72) +- 10, -914.72]]`; `MAX_PROBES` bounds the probing.
+
+### Changes to later tasks
+- **Task 3** (`--align-to`): the replay checks the kept recording every `RECHECK_S = 600` s across the camera files' length (plus probes) with a `ClockTrack` before it starts, and puts the whole clock on the session (it knows the future). `--offset-s` stays a one-step clock.
+- **Task 8** (`Aligner`): after the first confirmation it checks one segment every `RECHECK_S = 600` s about `ALIGN_BEHIND_S` behind the live edge, and fetches probe segments when the track asks (the segment whose start is nearest the probe time, its exact time from pts against segment 0). The clock it returns grows; the lane puts the newest on the session, so the next publish re-publishes every end on it. Budget: at most `MAX_FETCHES = 60` segments per run, then it stops checking and keeps the clock it has. `start_time` remains the fallback for the first offset only.
+- **Task 4 gate** adds: on sheet 4 the replay's clock has the 5.78 s step, placed within 10 s, and the deep links checked include two shots after it.
+
 ### Task 1: The published clock
 
 **Files:**
