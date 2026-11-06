@@ -147,6 +147,9 @@ class LiveSession:
         self.publish = publish or (lambda doc: None)
         self.progress, self.now = progress, now
         self.fp_recorder = fp_recorder      # collects the checks' false-positive firings
+        # A camera game's published clock (``timeline.build_document``): the
+        # recording's offset from the video, set by the lane once it is known.
+        self.clock = None
         self.min_end_s = fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S
 
         self.calibration = None     # the newest one that worked
@@ -493,8 +496,10 @@ class LiveSession:
             games=out_games, window=(None, None),
             processing_version=self.pipeline.processing_version(
                 None if cal is None else cal.sideviews),
-            fmt=self.fmt, check=timeline.format_check(out_games, self.fmt))
-        doc["live"] = {"in_progress": not self.done, "recorded_s": round(head, 1),
+            fmt=self.fmt, check=timeline.format_check(out_games, self.fmt),
+            clock=self.clock)
+        published_head = head + (self.clock["offset_s"] if self.clock else 0.0)
+        doc["live"] = {"in_progress": not self.done, "recorded_s": round(published_head, 1),
                        "updated_at": self.now().isoformat()}
         return doc
 

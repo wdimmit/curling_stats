@@ -1650,3 +1650,66 @@ class TestShortHanded:
         doc = timeline.assign_short_handed(_short(_fours_doc()))
         cut = timeline.for_player(doc, "red", 3)["games"][0]["ends"][0]["shots"]
         assert [s["number"] for s in cut if "track" in s] == []
+
+
+# --- the published clock (camera games) --------------------------------------
+
+from pathlib import Path
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def walk_items(o):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            yield k, v
+            yield from walk_items(v)
+    elif isinstance(o, list):
+        for v in o:
+            yield from walk_items(v)
+
+
+def games_with_shot_at(t_video_s):
+    return [{"start_s": 50.0, "end_s": 300.0,
+             "ends": [{"start_s": 50.0, "end_s": 200.0,
+                       "shots": [{"t_video_s": t_video_s, "t_rest_s": t_video_s + 30}]}]}]
+
+
+class TestPublishedClock:
+    def test_every_seconds_field_is_classified(self):
+        """A new *_s field must be put in VIDEO_TIME_KEYS or DURATION_KEYS, or a
+        camera game publishes it on the wrong clock."""
+        doc = json.loads((FIXTURES / "timelines/live-dbV9wuA45Z0.json").read_text())
+        seen = {k for k, v in walk_items(doc)
+                if k.endswith("_s") and isinstance(v, (int, float)) and not isinstance(v, bool)}
+        assert seen <= timeline.VIDEO_TIME_KEYS | timeline.DURATION_KEYS, \
+            seen - timeline.VIDEO_TIME_KEYS - timeline.DURATION_KEYS
+        assert not timeline.VIDEO_TIME_KEYS & timeline.DURATION_KEYS
+
+    def test_shift_moves_times_not_durations(self):
+        games = [{"start_s": 100.0, "end_s": 200.0, "ends": [{"start_s": 100.0, "end_s": 150.0,
+                  "shots": [{"t_release_s": 110.0, "t_rest_s": 130.0, "t_hog_s": None,
+                             "long_split_s": 14.37, "thinking_time_s": 13.25,
+                             "track": [[120.0, 0.1, 4.7], [120.1, 0.12, 4.6]]}]}],
+                  "scoreboard": {"read_at_s": 190.0}}]
+        out = timeline.shift_times(games, 2410.66)
+        shot = out[0]["ends"][0]["shots"][0]
+        assert (shot["t_release_s"], shot["t_rest_s"], shot["t_hog_s"]) == (2520.66, 2540.66, None)
+        assert (shot["long_split_s"], shot["thinking_time_s"]) == (14.37, 13.25)
+        assert shot["track"] == [[2530.66, 0.1, 4.7], [2530.76, 0.12, 4.6]]
+        assert out[0]["scoreboard"]["read_at_s"] == 2600.66
+        assert games[0]["start_s"] == 100.0          # the input is untouched
+        assert games[0]["ends"][0]["shots"][0]["track"][0][0] == 120.0
+
+    def test_document_with_a_clock_links_on_the_video_clock(self):
+        clock = {"kind": "cameras", "offset_s": 600.0, "aligned": "segment"}
+        doc = timeline.build_document("vid", "u", 3, 1000.0, {}, games_with_shot_at(86.7),
+                                      clock=clock)
+        shot = doc["games"][0]["ends"][0]["shots"][0]
+        assert shot["t_video_s"] == 686.7 and shot["youtube_url"].endswith("t=686")
+        assert doc["source"]["clock"] == clock and doc["source"]["duration_s"] == 1600.0
+
+    def test_document_without_a_clock_is_unchanged(self):
+        a = timeline.build_document("vid", "u", 3, 1000.0, {}, games_with_shot_at(86.7))
+        assert "clock" not in a["source"]
+        assert a["games"][0]["ends"][0]["shots"][0]["t_video_s"] == 86.7

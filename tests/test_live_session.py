@@ -926,3 +926,23 @@ class TestTheReleaseInTheVersion:
     def test_a_machine_without_a_gpu_does_not(self, monkeypatch, tmp_path):
         got = self.version(monkeypatch, tmp_path, False)
         assert "+spin-spin-" in got and "+release" not in got
+
+
+class TestPublishedClock:
+    def test_a_session_with_a_clock_publishes_on_it(self):
+        docs = []
+        for clock in (None, {"kind": "cameras", "offset_s": 50.0, "aligned": "segment"}):
+            pipe, rec, pub = Pipeline(), Recording(), []
+            s = session(pipe, rec, pub)
+            s.clock = clock
+            run_until(s, rec, 3300.0)
+            docs.append(pub[-1])
+        plain, shifted = docs
+        # The fake pipeline's ends have no shots; their bounds are video times too.
+        bounds = [((ea["start_s"], ea["end_s"]), (eb["start_s"], eb["end_s"]))
+                  for ga, gb in zip(plain["games"], shifted["games"])
+                  for ea, eb in zip(ga["ends"], gb["ends"])]
+        assert bounds and all(b == pytest.approx((a[0] + 50.0, a[1] + 50.0)) for a, b in bounds)
+        assert shifted["live"]["recorded_s"] == pytest.approx(plain["live"]["recorded_s"] + 50.0)
+        assert shifted["source"]["clock"]["offset_s"] == 50.0
+        assert "clock" not in plain["source"]

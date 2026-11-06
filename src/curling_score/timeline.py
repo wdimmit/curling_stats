@@ -20,6 +20,21 @@ from curling_score.ingest.source import watch_url_at
 # could not be; "confirmed" is gone.
 SCHEMA_VERSION = 10
 
+# The published clock. A camera game is read on its recording's clock and
+# published on the YouTube video's: every moment of the video in it moves by
+# the recording's offset, and nothing else does. Every numeric ``*_s`` field a
+# document can carry is one or the other (test_every_seconds_field_is_classified).
+VIDEO_TIME_KEYS = frozenset({
+    "start_s", "end_s", "t_release_s", "t_hog_s", "t_tee_s", "t_far_s", "t_enter_s",
+    "t_rest_s", "t_video_s", "read_at_s"})
+DURATION_KEYS = frozenset({
+    "long_split_s", "long_split_panel_delta_s", "thinking_time_s", "split_s",
+    "entry_speed_m_s", "release_speed_m_s", "v_hog_m_s",
+    # How far the recording reaches: moved by the document, not by shift_times.
+    "recorded_s", "duration_s"})
+# Rows whose column is a moment of the video: a shot's track is [t, x, y].
+VIDEO_TIME_ROWS = {"track": 0}
+
 # To watch the shot being called and thrown, the video starts this far back
 # from the release.
 VIDEO_LEAD_IN_S = 5.0
@@ -502,8 +517,37 @@ def format_check(games, fmt) -> dict:
     return {**out, "looks_like": looks}
 
 
+
+def shift_times(games: list, offset_s: float) -> list:
+    """``games`` on a clock ``offset_s`` later: a deep copy with every moment of
+    the video in it (``VIDEO_TIME_KEYS``, ``VIDEO_TIME_ROWS``) moved, rounded to
+    the hundredth, and everything else as it was."""
+    def move(t):
+        return t if t is None else round(t + offset_s, 2)
+
+    def walk(o):
+        if isinstance(o, dict):
+            out = {}
+            for k, v in o.items():
+                if k in VIDEO_TIME_KEYS and isinstance(v, (int, float)) \
+                        and not isinstance(v, bool):
+                    out[k] = move(v)
+                elif k in VIDEO_TIME_ROWS and isinstance(v, list):
+                    col = VIDEO_TIME_ROWS[k]
+                    out[k] = [[move(x) if i == col else x for i, x in enumerate(row)]
+                              if isinstance(row, list) else deepcopy(row) for row in v]
+                else:
+                    out[k] = walk(v)
+            return out
+        if isinstance(o, list):
+            return [walk(v) for v in o]
+        return o
+
+    return walk(games)
+
 def build_document(video_id, url, sheet, duration_s, calibration, games,
-                   window=None, processing_version=None, fmt=None, check=None) -> dict:
+                   window=None, processing_version=None, fmt=None, check=None,
+                   clock: dict | None = None) -> dict:
     """The whole analysis, ready to write to ``timeline.json``.
 
     ``window`` is the ``(start_s, end_s)`` of the stream that was analysed when
@@ -511,8 +555,16 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
     pipeline and model that produced this, so two documents for one video can
     be told apart. ``fmt`` is the :class:`format.GameFormat` the game was
     played under; a fours document writes no ``format`` block at all, and a
-    document without one reads as fours.
+    document without one reads as fours. ``clock`` (``{"kind": "cameras",
+    "offset_s", "aligned"}``) says the games were read on a camera recording's
+    clock: they are published ``offset_s`` later, on the video's, and the
+    clock is kept in ``source``.
     """
+    if clock is not None:
+        # A camera game: its moments move onto the video's clock before the
+        # links to the video are made from them.
+        games = shift_times(games, clock["offset_s"])
+        duration_s = float(duration_s) + clock["offset_s"]
     games = [dict(g) for g in games]
     for game in games:
         for end in game["ends"]:
@@ -544,6 +596,8 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
         "calibration": calibration,
         "games": games,
     }
+    if clock is not None:
+        doc["source"]["clock"] = dict(clock)
     fmt = fmt or format_mod.FOURS
     if fmt is not format_mod.FOURS:
         # Written only when it says something: a four-player timeline stays
