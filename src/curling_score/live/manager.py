@@ -30,6 +30,20 @@ def is_practice(job) -> bool:
     return job.get("kind") == "practice"
 
 
+def is_camera_game(job) -> bool:
+    """A league game read from its sheet's cameras instead of its stream."""
+    return job.get("kind") == "camera_live"
+
+
+def _published_at(job):
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(job["published_at"]) if job.get("published_at") else None
+    except ValueError:
+        return None
+
+
 @dataclass
 class Stream:
     """One live job in hand: its recorder, and the lane's session for it."""
@@ -43,6 +57,11 @@ class Stream:
     # A practice watch's way to send a throw's clip up: set by the lane.
     send_clip: object = field(default=None, repr=False)
     last_beat: float = 0.0
+    # A camera game's clock (live/clock.Aligner), and the YouTube stream
+    # recorded beside it when CAMERA_KEEP_YOUTUBE asks.
+    aligner: object = None
+    reference: object = None
+    stream_finished: bool = False
     last_doc: dict | None = field(default=None, repr=False)
     # The lane's: a document not yet published, unexpected errors in a row,
     # and when a stream in trouble may be tried again.
@@ -59,19 +78,25 @@ class LiveManager:
     def __init__(self, api, worker_id, *, model_id, gpu, root=None,
                  max_streams: int = MAX_STREAMS, make_recorder=None,
                  heartbeat_s: float = HEARTBEAT_S, clock=time.monotonic,
-                 prune=None, background=_in_background, kinds=("live",), cameras=False):
+                 prune=None, background=_in_background, kinds=("live",), cameras=False,
+                 keep_youtube=False, make_aligner=None):
         """``prune`` is called once a recording has been kept, to hold the
         cache to its budget; ``background`` runs the keeping, which copies
         gigabytes, somewhere other than the lane's thread. ``kinds`` are the
         jobs it claims: league games, and practice where the worker allows.
         ``cameras``: it can see the club's cameras, and says so when it
-        claims, which is what a camera practice job waits for."""
+        claims, which is what a camera practice job waits for. A camera game
+        has its clock followed (``make_aligner(job, recorder)``) and, with
+        ``keep_youtube``, its stream recorded beside it and kept as any live
+        game's recording is."""
         self.api, self.worker_id, self.model_id, self.gpu = api, worker_id, model_id, gpu
         self.kinds = tuple(kinds)
         self.cameras = cameras
         self.root = Path(root) if root is not None else None
         self.max_streams, self.heartbeat_s, self.clock = max_streams, heartbeat_s, clock
         self.make_recorder = make_recorder or self._recorder
+        self.keep_youtube = keep_youtube
+        self.make_aligner = make_aligner or self._aligner
         self.prune, self.background = prune, background
         self._streams = []
         self._lock = threading.Lock()
@@ -81,16 +106,31 @@ class LiveManager:
     def _recorder(self, job):
         import os
 
-        if is_practice(job):
-            from curling_score.cameras.recorder import CameraRecorder
+        if is_practice(job) or is_camera_game(job):
+            from curling_score.cameras import recorder as cameras
 
             # In the directory finish() clears: a practice recording is never kept.
-            return CameraRecorder(int(job["sheet"]), self.root / "live" / job["video_id"])
-        from curling_score.live.recorder import YtDlpRecorder
+            return cameras.CameraRecorder(int(job["sheet"]), self.root / "live" / job["video_id"])
+        return self._youtube(job["video_id"], self.root / "live" / job["video_id"])
 
-        return YtDlpRecorder(job["video_id"], self.root / "live" / job["video_id"],
-                             pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
-                             cookies=os.environ.get("YTDLP_COOKIES"))
+    def _youtube(self, video_id, directory):
+        import os
+
+        from curling_score.live import recorder
+
+        return recorder.YtDlpRecorder(video_id, directory,
+                                      pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
+                                      cookies=os.environ.get("YTDLP_COOKIES"))
+
+    def _aligner(self, job, recorder):
+        import os
+
+        from curling_score.live.clock import Aligner
+
+        return Aligner(job["video_id"], int(job["sheet"]), recorder.dir,
+                       recorder.wall_started, _published_at(job), head=recorder.head_s,
+                       pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
+                       cookies=os.environ.get("YTDLP_COOKIES")).start()
 
     # --- what the lane sees ---------------------------------------------------
 
@@ -117,6 +157,9 @@ class LiveManager:
         read. It is not called for a recording that is not kept, and what it
         raises is logged and goes no further."""
         keep = keep and not is_practice(stream.job)
+        if stream.aligner is not None:
+            stream.aligner.stop()
+        self._keep_reference(stream)
         stream.recorder.stop()
         with self._lock:
             if stream in self._streams:
@@ -163,6 +206,34 @@ class LiveManager:
 
         self.background(keep_it)
 
+    def _keep_reference(self, stream):
+        """The YouTube stream recorded beside a camera game, stopped and kept
+        as any live game's recording is: whole as the video's cached copy."""
+        ref, stream.reference = stream.reference, None
+        if ref is None:
+            return
+        ref.stop()
+        if self.root is None:
+            return
+        vid = stream.job["video_id"]
+        directory = self.root / "live" / f"{vid}-youtube"
+        try:
+            path = ref.path
+        except (AttributeError, IndexError):
+            shutil.rmtree(directory, ignore_errors=True)
+            return
+        file_it = cache.keep_recording if ref.whole() else cache.keep_partial
+
+        def keep_it():
+            try:
+                file_it(path, vid, self.root)
+            except Exception:  # noqa: BLE001
+                log.exception("could not keep the stream beside %s", vid)
+            finally:
+                shutil.rmtree(directory, ignore_errors=True)
+
+        self.background(keep_it)
+
     # --- the thread -----------------------------------------------------------
 
     def poll_once(self):
@@ -193,8 +264,20 @@ class LiveManager:
             log.exception("live job %s: recorder did not start", job["id"])
             self._fail(job, f"{type(exc).__name__}: {exc}", kind="transient")
             return
+        stream = Stream(job=job, recorder=recorder, last_beat=self.clock())
+        if is_camera_game(job):
+            stream.aligner = self.make_aligner(job, recorder)
+            if self.keep_youtube and self.root is not None:
+                try:
+                    stream.reference = self._youtube(
+                        job["video_id"], self.root / "live" / f"{job['video_id']}-youtube")
+                    stream.reference.start()
+                except Exception as exc:  # noqa: BLE001 - the game goes on without it
+                    log.warning("live job %s: its stream is not recorded beside it: %s",
+                                job["id"], exc)
+                    stream.reference = None
         with self._lock:
-            self._streams.append(Stream(job=job, recorder=recorder, last_beat=self.clock()))
+            self._streams.append(stream)
 
     def _fail(self, job, error, kind="permanent"):
         try:
@@ -203,6 +286,13 @@ class LiveManager:
             log.warning("could not report live job %s failing: %s", job["id"], exc)
 
     def _keep(self, stream):
+        if stream.reference is not None:
+            try:
+                stream.reference.check()
+            except Exception as exc:  # noqa: BLE001 - only the reference is lost
+                log.warning("live job %s: the stream beside it stopped: %s",
+                            stream.job["id"], exc)
+                self._keep_reference(stream)
         try:
             stream.recorder.check()
         except LiveError as exc:

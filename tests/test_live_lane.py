@@ -995,3 +995,166 @@ class TestPracticeClipsInTheLane:
         watch = lane_mod.video_sessions("w.pt", progress=lambda m: None)(ps, lambda d: None)
         assert isinstance(watch.clipper, Clipper) and watch.clipper.deliver is ps.send_clip
         assert watch.clipper.keep is False
+
+
+# --- a league game read from its sheet's cameras ------------------------------------------
+
+def camera_job(n):
+    return {**live_job(n), "kind": "camera_live", "source": "cameras",
+            "published_at": "2026-11-05T18:00:09+00:00"}
+
+
+class CamRecorder(Recorder):
+    """A camera recorder stand-in: finish_stream makes it whole."""
+
+    def __init__(self, job):
+        super().__init__(job)
+        self.wall_started, self.finished_stream = 1793900701.0, 0
+        self.dir = Path("/rec")
+
+    def head_s(self):
+        return 600.0
+
+    def finish_stream(self):
+        self.finished_stream += 1
+        self.stopped = True
+
+    def whole(self):
+        return self.finished_stream > 0
+
+
+class TestACameraGameInTheManager:
+    def test_it_is_recorded_from_its_cameras_and_its_clock_is_followed(self, monkeypatch,
+                                                                      tmp_path):
+        from curling_score.cameras import recorder as cameras
+        from curling_score.live import recorder
+
+        made, aligners = [], []
+
+        class Spy(CamRecorder):
+            def __init__(self, sheet, directory, **kw):
+                super().__init__(None)
+                made.append((sheet, directory))
+
+        monkeypatch.setattr(cameras, "CameraRecorder", Spy)
+        monkeypatch.setattr(recorder, "YtDlpRecorder",
+                            lambda *a, **k: (_ for _ in ()).throw(AssertionError("YouTube")))
+        m = manager_mod.LiveManager(
+            Api([camera_job(3)]), "ryzen", model_id="m", gpu=None, root=tmp_path,
+            kinds=("live", "camera_live"), cameras=True,
+            make_aligner=lambda job, rec: aligners.append((job["id"], rec)) or "aligner")
+        m.poll_once()
+        (s,) = m.streams()
+        assert made == [(3, tmp_path / "live" / "liveVid0003")]
+        assert aligners == [("j_3", s.recorder)] and s.aligner == "aligner"
+        assert s.reference is None
+
+    def test_with_keep_youtube_the_stream_is_recorded_beside_it_and_kept(self, monkeypatch,
+                                                                        tmp_path):
+        from curling_score.ingest import cache
+        from curling_score.live import recorder
+
+        refs, kept = [], []
+
+        class Ref(Recorder):
+            def __init__(self, vid, directory, **kw):
+                super().__init__(None)
+                self.vid, self.path = vid, Path(directory) / "rec.ts"
+                refs.append(self)
+
+            def whole(self):
+                return True
+
+        monkeypatch.setattr(recorder, "YtDlpRecorder", Ref)
+        monkeypatch.setattr(cache, "keep_recording",
+                            lambda path, vid, root: kept.append((path, vid)) or path)
+        m = manager_mod.LiveManager(
+            Api([camera_job(3)]), "ryzen", model_id="m", gpu=None, root=tmp_path,
+            kinds=("camera_live",), cameras=True, keep_youtube=True,
+            make_recorder=lambda job: CamRecorder(job),
+            make_aligner=lambda job, rec: None, background=lambda fn: fn())
+        m.poll_once()
+        (s,) = m.streams()
+        (ref,) = refs
+        assert s.reference is ref and ref.started and ref.vid == "liveVid0003"
+        m.finish(s)
+        assert ref.stopped and kept == [(ref.path, "liveVid0003")]
+
+    def test_a_youtube_recording_that_will_not_start_leaves_the_game_going(self, monkeypatch,
+                                                                         tmp_path):
+        from curling_score.live import recorder
+
+        def broken(*a, **k):
+            raise RuntimeError("bot check")
+
+        monkeypatch.setattr(recorder, "YtDlpRecorder", broken)
+        api = Api([camera_job(3)])
+        m = manager_mod.LiveManager(
+            api, "ryzen", model_id="m", gpu=None, root=tmp_path, kinds=("camera_live",),
+            cameras=True, keep_youtube=True, make_recorder=lambda job: CamRecorder(job),
+            make_aligner=lambda job, rec: None)
+        m.poll_once()
+        (s,) = m.streams()
+        assert s.reference is None and api.failed == []
+
+
+class Aligned:
+    def __init__(self, clock=None):
+        self.value, self.stopped = clock, False
+
+    def clock(self):
+        return self.value
+
+
+class ClockedSession(Session):
+    def __init__(self, stream, publish, **kw):
+        super().__init__(stream, publish, **kw)
+        self.wait_for_clock, self.clocks = False, []
+
+    def set_clock(self, clock):
+        self.clocks.append(clock)
+
+
+class TestACameraGameInTheLane:
+    def camera_stream(self, n, clock=None):
+        job = camera_job(n)
+        return manager_mod.Stream(job=job, recorder=CamRecorder(job), aligner=Aligned(clock))
+
+    def test_its_session_waits_for_the_clock_and_gets_it(self):
+        api = Api()
+        s = self.camera_stream(3)
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: ClockedSession(st, pub, ends=5)})
+        ln.step()
+        assert s.session.wait_for_clock and s.session.clocks == []
+        clock = {"kind": "cameras", "aligned": "segment", "offset_s": -908.0,
+                 "steps": [[0.0, -908.0]]}
+        s.aligner.value = clock
+        ln.step()
+        assert s.session.clocks[-1] == clock
+
+    def test_the_end_of_its_stream_finishes_the_recording_once(self):
+        api = Api()
+        s = self.camera_stream(3)
+        ln, m, _ = lane(api, [s], {"j_3": lambda st, pub: ClockedSession(st, pub, ends=2)})
+        ln.step()
+        s.stop_requested = True
+        while ln.busy():
+            ln.step()
+        assert s.recorder.finished_stream == 1
+        assert m.finished == ["j_3"]
+
+
+def test_a_worker_that_sees_the_cameras_claims_camera_games(monkeypatch, tmp_path):
+    from curling_score.service import worker
+
+    seen = {}
+    monkeypatch.setattr(manager_mod, "LiveManager",
+                        lambda *a, **kw: seen.update(kw) or SimpleNamespace(start=lambda: None))
+    for cameras, practice in (("1", "1"), ("0", "1"), ("1", "0")):
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("WORKER_CAMERAS", cameras)
+        monkeypatch.setenv("WORKER_PRACTICE", practice)
+        monkeypatch.setenv("CAMERA_KEEP_YOUTUBE", "1")
+        worker.build_live("http://api", "t", "w", root=tmp_path, weights=None, start=False)
+        assert ("camera_live" in seen["kinds"]) == (cameras == "1")
+        assert seen["keep_youtube"] is True

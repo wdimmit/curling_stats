@@ -502,6 +502,18 @@ def _enable_stack_dumps():
     enable_stack_dumps()
 
 
+def live_kinds() -> tuple:
+    """The live jobs this worker claims: league games from the stream; from
+    the cameras too where it can see them (WORKER_CAMERAS=1); practice where
+    WORKER_PRACTICE=1."""
+    kinds = ["live"]
+    if os.environ.get("WORKER_CAMERAS") == "1":
+        kinds.append("camera_live")
+    if os.environ.get("WORKER_PRACTICE") == "1":
+        kinds.append("practice")
+    return tuple(kinds)
+
+
 def build_live(api_url, token, worker_id, *, root: Path, weights,
                skip_longview: bool = False, start: bool = True,
                cache_gb: float | None = None, min_free_gb: float = 0.0,
@@ -544,8 +556,8 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
         gpu=gpu_name() if start else None, root=root,
         max_streams=int(os.environ.get("LIVE_MAX_STREAMS", manager.MAX_STREAMS)),
         prune=prune_cache if cache_gb is not None else None,
-        kinds=("live", "practice") if os.environ.get("WORKER_PRACTICE") == "1" else ("live",),
-        cameras=os.environ.get("WORKER_CAMERAS") == "1")
+        kinds=live_kinds(), cameras=os.environ.get("WORKER_CAMERAS") == "1",
+        keep_youtube=os.environ.get("CAMERA_KEEP_YOUTUBE") == "1")
     if start:
         mgr.start()
     return lane.LiveLane(

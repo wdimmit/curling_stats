@@ -395,3 +395,43 @@ def test_probe_reads_a_keyframe_with_ffprobe(tmp_path):
     assert camrec.probe(path) == GOOD
     path.write_bytes(b"not video")
     assert camrec.probe(path) != GOOD
+
+
+# --- a league game's recording: whole when its stream ended -----------------------------
+
+def test_a_recording_stopped_because_its_stream_ended_is_whole(tmp_path):
+    world = World(tmp_path, heads=heads([4.0], [4.0], [4.0], [4.0]))
+    rec = world.recorder().start()
+    settle(rec)
+    rec.finish_stream()
+    assert rec.whole() and rec.ended()
+    assert all(p.terminated for p in world.captures)
+
+
+def test_a_plain_stop_is_not_whole(tmp_path):
+    world = World(tmp_path)
+    rec = world.recorder().start()
+    rec.stop()
+    assert not rec.whole()
+
+
+def test_a_stall_then_the_streams_end_is_not_whole(tmp_path):
+    world = World(tmp_path, heads=heads([4.0], [4.0], [4.0], [4.0]))
+    rec = world.recorder().start()
+    settle(rec)
+    rec.check()
+    world.t += camrec.STALL_S
+    with pytest.raises(LiveError):
+        rec.check()
+    rec.finish_stream()
+    assert not rec.whole()
+
+
+def test_the_cap_then_the_streams_end_is_not_whole(tmp_path):
+    world = World(tmp_path, heads=heads([4.0], [4.0], [4.0], [4.0]))
+    rec = world.recorder(max_s=3.0).start()
+    settle(rec)
+    rec.check()
+    assert rec.ended()
+    rec.finish_stream()
+    assert not rec.whole()

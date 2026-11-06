@@ -14,7 +14,7 @@ from pathlib import Path
 
 from curling_score import timeline
 from curling_score.ingest import source
-from curling_score.live.manager import is_practice
+from curling_score.live.manager import is_camera_game, is_practice
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -51,6 +51,18 @@ class LiveLane:
     def busy(self) -> bool:
         return self.manager.has_streams()
 
+    def _camera_tick(self, stream):
+        """A camera game's clock passed on as it is found or changes (the
+        session publishes the game again on it), and its recording finished
+        once its stream is over -- the cameras would go on for ever."""
+        clock = stream.aligner.clock() if stream.aligner is not None else None
+        if clock is not None:
+            stream.session.set_clock(clock)
+        if stream.stop_requested and not stream.stream_finished:
+            stream.stream_finished = True
+            log.info("live job %s: its stream is over; recording finished", stream.job["id"])
+            stream.recorder.finish_stream()
+
     def step(self) -> bool:
         """Do one unit of live work; False when there was nothing to do.
 
@@ -75,6 +87,9 @@ class LiveLane:
                         stream, lambda doc, s=stream: self._publish(s, doc))
                 except Exception as exc:  # noqa: BLE001
                     return self._trouble(stream, exc)
+                if is_camera_game(stream.job):
+                    # Published on the video's clock, so nothing before it is known.
+                    stream.session.wait_for_clock = True
         # A document that did not go out goes before anything new is built.
         for stream in ready:
             if stream.pending is not None:
@@ -104,6 +119,12 @@ class LiveLane:
                 self._last_practice = stream.job["id"]
                 return True
         ready = [s for s in ready if not is_practice(s.job)]
+        for stream in ready:
+            if is_camera_game(stream.job):
+                try:
+                    self._camera_tick(stream)
+                except Exception as exc:  # noqa: BLE001
+                    return self._trouble(stream, exc)
         first, due, idle = [], [], []
         for i, stream in enumerate(ready):
             try:

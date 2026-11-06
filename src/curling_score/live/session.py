@@ -150,6 +150,10 @@ class LiveSession:
         # A camera game's published clock (``timeline.build_document``): the
         # recording's offset from the video, set by the lane once it is known.
         self.clock = None
+        # A camera game publishes nothing until its clock is known: set by the
+        # lane for a camera job; ``_held`` says something waits to go out.
+        self.wait_for_clock = False
+        self._held = False
         self.min_end_s = fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S
 
         self.calibration = None     # the newest one that worked
@@ -401,7 +405,26 @@ class LiveSession:
         self.ends[key] = end
         self.built_with[key] = _worth(self.calibration)
         self._read_board(game)
+        self._publish()
+
+    def _publish(self):
+        """Publish the document as it stands -- unless this is a camera game
+        whose clock is not known yet: its times would be on the cameras', not
+        the video's. It is published as soon as the clock is (``set_clock``)."""
+        if self.wait_for_clock and self.clock is None:
+            self._held = True
+            return
+        self._held = False
         self.publish(self.document())
+
+    def set_clock(self, clock):
+        """A camera game's clock, new or changed: the whole game is published
+        again on it, so every end moves to where the video has it."""
+        if clock == self.clock:
+            return
+        self.clock = clock
+        if self._held or self.built:
+            self._publish()
 
     def _read_board(self, game):
         # A closed game's board is read the way analyze() reads it, from the
@@ -427,7 +450,7 @@ class LiveSession:
             if game.ends and any((game.index, e.number) in self.built for e in game.ends):
                 self._read_board(game)
         self.done = True
-        self.publish(self.document())
+        self._publish()
         return "finished"
 
     # --- the document ---------------------------------------------------------

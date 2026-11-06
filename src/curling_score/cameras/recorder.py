@@ -103,8 +103,8 @@ class CameraRecorder:
 
     The interface is ``YtDlpRecorder``'s, as the manager and the practice watch
     use it, but ``path`` is a camera feed: never one camera's file. The
-    recording starts at Start, so it never holds anything from before, and is
-    never ``whole``.
+    recording starts at Start, so it never holds anything from before. It is
+    ``whole`` only when a league game's stream ended it (``finish_stream``).
     """
 
     def __init__(self, sheet: int, directory: Path, *, popen=subprocess.Popen,
@@ -130,6 +130,7 @@ class CameraRecorder:
         # a check that ends the recording stops it from inside.
         self._lock = threading.RLock()
         self._ended = self._stopped = False
+        self._whole = False
         self._started_at = self._progress_at = None
         self._progress_head = 0.0
 
@@ -281,7 +282,17 @@ class CameraRecorder:
         return self._ended
 
     def whole(self) -> bool:
-        return False
+        """The whole game: stopped because its stream ended (``finish_stream``),
+        never before by itself -- a stall, every camera gone, the cap."""
+        return self._whole
+
+    def finish_stream(self):
+        """The game's stream is over: stop recording, and the recording is
+        whole if nothing had ended it before."""
+        with self._lock:
+            whole = self._started_at is not None and not self._ended and not self._stopped
+            self.stop()
+            self._ended, self._whole = True, whole
 
     def stop(self):
         """Stop the captures."""

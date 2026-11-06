@@ -946,3 +946,30 @@ class TestPublishedClock:
         assert shifted["live"]["recorded_s"] == pytest.approx(plain["live"]["recorded_s"] + 50.0)
         assert shifted["source"]["clock"]["offset_s"] == 50.0
         assert "clock" not in plain["source"]
+
+
+class TestWaitingForTheClock:
+    CLOCK = {"kind": "cameras", "aligned": "segment", "offset_s": 50.0, "steps": [[0.0, 50.0]]}
+
+    def test_a_camera_game_publishes_nothing_until_its_clock_is_known(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        s.wait_for_clock = True
+        run_until(s, rec, 3300.0)
+        assert pub == [] and built_ends(pipe)            # built, not published
+        s.set_clock(self.CLOCK)
+        assert len(pub) == 1 and pub[0]["source"]["clock"] == self.CLOCK
+        assert len(pub[0]["games"][0]["ends"]) == len(built_ends(pipe))
+
+    def test_a_new_clock_is_published_at_once(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        s.wait_for_clock = True
+        s.set_clock(self.CLOCK)
+        run_until(s, rec, 3300.0)
+        n = len(pub)
+        stepped = dict(self.CLOCK, steps=[[0.0, 50.0], [2000.0, 44.0]])
+        s.set_clock(stepped)
+        assert len(pub) == n + 1 and pub[-1]["source"]["clock"] == stepped
+        s.set_clock(dict(stepped))                       # the same again: nothing
+        assert len(pub) == n + 1
