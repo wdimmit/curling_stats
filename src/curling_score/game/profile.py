@@ -196,7 +196,19 @@ def count_frame(frame, setups, detector=None) -> tuple[int, int, bool, bool]:
     one, by the colour thresholds. A panel too dark to play counts none, and
     no panel counts a stone beyond its painted sidelines or wholly beyond its
     painted back line (`PanelSetup.in_play`)."""
-    panels = {name: setups[name].crop(frame) for name in ("top", "bottom")}
+    return _count({name: setups[name].crop(frame) for name in ("top", "bottom")},
+                  setups, detector)
+
+
+def count_views(views: dict, setups, detector=None) -> tuple[int, int, bool, bool]:
+    """:func:`count_frame` for a camera feed: each house from its own view's
+    picture (``views["top"]``, ``views["bottom"]``), as :func:`sweep` pairs
+    them."""
+    return _count({name: setups[name].crop(views[name]) for name in ("top", "bottom")},
+                  setups, detector)
+
+
+def _count(panels, setups, detector):
     playable = {name: lighting.is_playable(panel) for name, panel in panels.items()}
     lit = [name for name in ("top", "bottom") if playable[name]]
     counts = {"top": 0, "bottom": 0}
@@ -224,16 +236,66 @@ def panels_file(video):
     return top
 
 
+# A camera feed's two house cameras send keyframes on their own clocks, each
+# about every 2 s: a top keyframe is paired with the nearest bottom one within
+# this, and one with none that near is no sample.
+PAIR_S = 1.1
+
+
+def feed_sweep(video, start_s=None, end_s=None):
+    """``(t, picture)`` for every keyframe the activity profile reads: of the
+    one file both houses are in, or -- a camera feed, each house in its own
+    camera's file -- ``(t, {"top": picture, "bottom": picture})``, every top
+    keyframe with the nearest bottom one (:data:`PAIR_S`)."""
+    from curling_score.ingest import frames as F
+
+    feed = as_feed(video)
+    top, bottom = feed.path_for("top"), feed.path_for("bottom")
+    if top == bottom:
+        return F.keyframe_sweep(top, start_s=start_s, end_s=end_s)
+    return _paired_sweep(feed, start_s, end_s)
+
+
+sweep = feed_sweep
+
+
+def _paired_sweep(feed, start_s, end_s):
+    from collections import deque
+
+    from curling_score.cameras import layout as camera_layout
+    from curling_score.feeds.cameras import view_cuts
+    from curling_score.ingest import frames as F
+
+    cuts = view_cuts(camera_layout.load(feed.sheet))
+    tops = F.keyframe_sweep(feed, start_s=start_s, end_s=end_s, cut=cuts["top"])
+    bottoms = F.keyframe_sweep(feed, start_s=start_s,
+                               end_s=None if end_s is None else end_s + PAIR_S,
+                               cut=cuts["bottom"])
+    buf, done = deque(), False
+    for t, top in tops:
+        while not done and (not buf or buf[-1][0] <= t + PAIR_S):
+            try:
+                buf.append(next(bottoms))
+            except StopIteration:
+                done = True
+        while buf and buf[0][0] < t - PAIR_S:
+            buf.popleft()
+        near = [b for b in buf if abs(b[0] - t) <= PAIR_S]
+        if near:
+            _bt, bottom = min(near, key=lambda b: abs(b[0] - t))
+            yield t, {"top": top, "bottom": bottom}
+
+
 def build_profile(video, setups, sweep=None, detector=None) -> list[Sample]:
     """Sweep the whole video and record activity at every keyframe, the stones
     counted by ``detector`` when there is one (:func:`count_frame`).
-    ``video`` is a path or a ``Feed``; a ``sweep`` already made is used as is."""
-    from curling_score.ingest import frames as F
-
-    source = sweep if sweep is not None else F.keyframe_sweep(panels_file(video))
+    ``video`` is a path or a ``Feed``; a ``sweep`` already made is used as is,
+    and a camera feed's pairs each house's picture (:func:`feed_sweep`)."""
+    source = sweep if sweep is not None else feed_sweep(video)
     out = []
     for t, frame in source:
-        top, bottom, tp, bp = count_frame(frame, setups, detector)
+        count = count_views if isinstance(frame, dict) else count_frame
+        top, bottom, tp, bp = count(frame, setups, detector)
         out.append(
             Sample(
                 t=t,

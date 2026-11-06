@@ -247,3 +247,67 @@ class TestSetupCut:
         assert moved.name == "top" and moved.transform is None
         assert moved.cut == Cut("top", tuple(moved.rect))
         assert moved.rect != s.rect
+
+
+# --- a camera feed: each house in its own file ----------------------------------------------
+
+class ViewSetup(Setup):
+    """A panel setup on its own view: the whole picture is the panel."""
+
+    def crop(self, frame):
+        return frame
+
+
+def view(n):
+    return np.full((4, 4, 3), n, np.uint8)
+
+
+def fake_sweeps(monkeypatch, times):
+    """keyframe_sweep of each house view: ``times[name]`` are its keyframes,
+    each picture holding its own time's whole seconds."""
+    from curling_score.ingest import frames as F
+
+    asked = []
+
+    def sweep(path, decode=True, start_s=None, end_s=None, cut=None):
+        asked.append((cut.name, start_s, end_s))
+        for t in times[cut.name]:
+            if (start_s is None or t >= start_s) and (end_s is None or t <= end_s):
+                yield t, view(int(t))
+
+    monkeypatch.setattr(F, "keyframe_sweep", sweep)
+    return asked
+
+
+class TestACameraFeedsProfile:
+    def test_each_top_keyframe_is_paired_with_the_nearest_bottom_one(self, monkeypatch,
+                                                                    tmp_path):
+        from curling_score.feeds.cameras import camera_feed
+
+        asked = fake_sweeps(monkeypatch, {"top": [0.0, 2.0, 4.0, 10.0],
+                                          "bottom": [0.7, 1.9, 4.2, 4.9]})
+        got = [(t, int(v["top"][0, 0, 0]), int(v["bottom"][0, 0, 0]))
+               for t, v in profile.sweep(camera_feed(tmp_path, 3), start_s=0.0, end_s=20.0)]
+        # 10.0 has no bottom keyframe within PAIR_S: no sample there.
+        assert got == [(0.0, 0, 0), (2.0, 2, 1), (4.0, 4, 4)]
+        assert sorted(a[0] for a in asked) == ["bottom", "top"]
+        assert all(a[1:] == (0.0, 20.0 + profile.PAIR_S) or a[0] == "top" for a in asked)
+
+    def test_its_profile_counts_each_house_from_its_own_picture(self, monkeypatch, tmp_path):
+        from curling_score.feeds.cameras import camera_feed
+
+        monkeypatch.setattr(profile.lighting, "is_playable", lambda panel: True)
+        fake_sweeps(monkeypatch, {"top": [0.0, 2.0], "bottom": [0.1, 2.1]})
+        setups = {"top": ViewSetup(0, "top-calib"), "bottom": ViewSetup(0, "bottom-calib")}
+        det = Detector()
+        got = profile.build_profile(camera_feed(tmp_path, 3), setups, detector=det)
+        assert [(s.t, s.top_stones, s.bottom_stones) for s in got] == [(0.0, 0, 0), (2.0, 2, 2)]
+        assert det.calls[0] == ["top-calib", "bottom-calib"]
+
+    def test_a_single_files_sweep_is_the_files_own(self, monkeypatch, tmp_path):
+        from curling_score.ingest import frames as F
+
+        monkeypatch.setattr(F, "keyframe_sweep",
+                            lambda path, **kw: iter([(kw.get("start_s"), str(path))]))
+        assert list(profile.sweep(tmp_path / "v.mp4", start_s=5.0)) == \
+            [(5.0, str(tmp_path / "v.mp4"))]

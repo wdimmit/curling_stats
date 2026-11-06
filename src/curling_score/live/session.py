@@ -566,10 +566,9 @@ class VideoPipeline:
 
     def samples(self, path, setups, from_s, until_s, detector=None):
         from curling_score.game import profile
-        from curling_score.ingest import frames as F
 
         return profile.build_profile(
-            path, setups, sweep=F.keyframe_sweep(path, start_s=from_s, end_s=until_s),
+            path, setups, sweep=profile.feed_sweep(path, start_s=from_s, end_s=until_s),
             detector=detector)
 
     def build_end(self, ctx, game, end, prev_end_s):

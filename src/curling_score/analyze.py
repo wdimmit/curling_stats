@@ -1151,7 +1151,7 @@ def _read_games(url, info, sheet, fmt, feed, read_feed, setups, read_setups, sid
     progress("building activity profile...")
     sweep = None
     if start_s is not None or end_s is not None:
-        sweep = F.keyframe_sweep(profile.panels_file(read_feed), start_s=start_s, end_s=end_s)
+        sweep = profile.feed_sweep(read_feed, start_s=start_s, end_s=end_s)
     samples = profile.build_profile(read_feed, read_setups, sweep=sweep, detector=detector)
     games = segment.segment_games(
         samples, min_end_s=fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S)
