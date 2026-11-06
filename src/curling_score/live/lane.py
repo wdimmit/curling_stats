@@ -299,7 +299,7 @@ class LiveLane:
 
 def video_sessions(weights, *, imgsz: int = 448, device=None,
                    skip_longview: bool = False, progress=log.info,
-                   fp_harvest=None, cal_root: Path | None = None):
+                   fp_harvest=None, cal_root: Path | None = None, club=None):
     """A ``make_session`` for the lane that processes real video.
 
     The models are loaded once, on the first stream, and shared by every
@@ -313,6 +313,9 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
     calibration under ``cal_root`` (``cameras/calstore.py``): the root that
     ``curling-score cameras-calibrate`` saves under, the worker's cache. Without
     one it calibrates from its own recording every time.
+
+    ``club`` calibrates a league stream by that club's profile (`clubs`), as a
+    VOD of it is; None is Granite's.
     """
     from curling_score import analyze, fpframes, version
     from curling_score.fpframes import record
@@ -394,7 +397,7 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             recording=stream.recorder, fmt=format_mod.by_name(job.get("format") or "fours"),
             pipeline=live.VideoPipeline(weights=weights, skip_longview=skip_longview,
                                         line=models.line_model is not None,
-                                        progress=progress),
+                                        progress=progress, club=club),
             sheet=_sheet(job), models=models, publish=publish, progress=progress,
             fp_recorder=recorder_for(job))
 

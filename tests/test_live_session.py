@@ -926,3 +926,24 @@ class TestTheReleaseInTheVersion:
     def test_a_machine_without_a_gpu_does_not(self, monkeypatch, tmp_path):
         got = self.version(monkeypatch, tmp_path, False)
         assert "+spin-spin-" in got and "+release" not in got
+
+
+def test_the_video_pipeline_calibrates_by_its_club(monkeypatch):
+    """A stream from another club is calibrated by that club's profile, as its VOD is."""
+    from curling_score import analyze, clubs
+    from curling_score.ingest import frames as F
+    from curling_score.live.session import VideoPipeline
+
+    got = {}
+    monkeypatch.setattr(F, "spread_keyframes", lambda path, until_s, count: ["a", "b"])
+
+    def calibrate_from(frames, **kw):
+        got.update(kw)
+        return "panels", "setups", None
+
+    monkeypatch.setattr(analyze, "calibrate_from", calibrate_from)
+    VideoPipeline(club=clubs.DALLAS).calibrate("rec.ts", 600.0)
+    assert got["club"] is clubs.DALLAS
+    got.clear()
+    VideoPipeline().calibrate("rec.ts", 600.0)
+    assert "club" not in got  # Granite's, analyze's own default

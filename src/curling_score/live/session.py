@@ -507,9 +507,12 @@ class VideoPipeline:
     """
 
     def __init__(self, *, weights=None, skip_longview=False, line=True,
-                 progress=log.info):
+                 progress=log.info, club=None):
+        """``club``: the profile the stream is calibrated by (`clubs`), Granite's
+        when None -- as `analyze.analyze` takes it for a VOD."""
         self.weights, self.skip_longview = weights, skip_longview
         self.line, self.progress = line, progress
+        self.club = club
 
     def calibrate(self, path, until_s):
         from curling_score.geometry import layout
@@ -521,7 +524,8 @@ class VideoPipeline:
                                    f"{until_s:.0f} s; need at least two")
         try:
             panels, setups, sideviews = analyze.calibrate_from(
-                frames, skip_longview=self.skip_longview, progress=self.progress)
+                frames, skip_longview=self.skip_longview, progress=self.progress,
+                **({"club": self.club} if self.club is not None else {}))
         except layout.LayoutError as exc:
             raise CalibrationError(f"panels not found: {exc}") from exc
         return Calibration(panels=panels, setups=setups, sideviews=sideviews,
