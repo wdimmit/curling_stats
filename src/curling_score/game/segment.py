@@ -15,7 +15,7 @@ timestamps. Deliberately does not use the scoreboard: it is often updated late,
 so it validates but never times.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from curling_score.geometry import constants as C
 
@@ -340,3 +340,14 @@ def settled_ends(samples, min_end_s: float = MIN_END_S, *,
             game.closed = False
             out.append(game)
     return out
+
+
+def one_game(games: list[GameSegment]) -> list[GameSegment]:
+    """Every end of ``games`` as one game: for a club whose streams are each
+    one game (`clubs.Club.one_game_per_stream`), so a long pause, or practice
+    slides once the game is over, never start a second."""
+    if not games:
+        return []
+    ends = [replace(e, number=i + 1) for i, e in enumerate(e for g in games for e in g.ends)]
+    return [GameSegment(index=0, start_s=games[0].start_s, end_s=games[-1].end_s,
+                        ends=ends, closed=games[-1].closed)]

@@ -314,6 +314,9 @@ class EndContext:
     # The hand model, which reads where the thrower let go along the line's
     # delivery path (`load_release_model`); None reads no releases.
     release_model: object = None
+    # A club whose streams are each one game of this many ends
+    # (`clubs.Club.one_game_per_stream`); None: as many as were played.
+    scheduled_ends: int | None = None
 
 
 @dataclass
@@ -949,12 +952,20 @@ def score_before_last(game, out_ends, scores) -> dict | None:
 
 
 def finish_game(game, out_ends, board: BoardRead | None, fmt,
-                progress=log.info, *, recorded_s=None) -> dict:
+                progress=log.info, *, recorded_s=None, scheduled_ends=None) -> dict:
     """A game's timeline dict from its built ends and its board, if read.
 
     A finished game -- ``closed``, and recorded ``CONCEDE_MIN_AFTER_S`` past
     its end (``recorded_s``) -- whose last end stopped short may have been
     conceded (`timeline.concede`)."""
+    if scheduled_ends:
+        kept = timeline.past_scheduled(out_ends, scheduled_ends)
+        if len(kept) < len(out_ends):
+            progress(f"  game {game.index + 1}: {len(out_ends) - len(kept)} end(s) after "
+                     f"the {scheduled_ends} scheduled left off -- the game was over")
+            out_ends = kept
+            game = replace(game, end_s=out_ends[-1]["end_s"],
+                           ends=game.ends[:len(out_ends)])
     scores = board.scores if board is not None else None
     board_block_ = board.block if board is not None else None
     if (game.closed and out_ends and recorded_s is not None
@@ -1110,7 +1121,8 @@ def build_games(ctx: EndContext, games, *, read_board=None,
                 board = read_board(kept)
                 put_board_scores(out_ends, board)
         out_game = finish_game(replace(kept, index=len(out_games)), out_ends,
-                               board, ctx.fmt, progress, recorded_s=ctx.recording_end_s)
+                               board, ctx.fmt, progress, recorded_s=ctx.recording_end_s,
+                               scheduled_ends=ctx.scheduled_ends)
         # Kept, but marked: the service leaves practice out of the catalogue.
         out_game["practice"] = timeline.is_practice(out_game)
         if out_game["practice"]:
@@ -1249,6 +1261,9 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         if len(games) > n_before:
             progress(f"the scoreboard split {len(games) - n_before} changeover(s) "
                      "the empty sheet did not")
+    if club.one_game_per_stream and len(games) > 1:
+        progress(f"{len(games)} game(s) found; this club's streams are one game each")
+        games = segment.one_game(games)
     progress(f"{len(games)} game(s), {[len(g.ends) for g in games]} ends")
     phase("profile", 1.0, f"{len(games)} game(s)")
 
@@ -1259,6 +1274,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         recording_start_s=float(start_s or 0.0),
         recording_end_s=samples[-1].t if samples else None,
         frame_setups=setups, release_model=release_model,
+        scheduled_ends=club.scheduled_ends if club.one_game_per_stream else None,
     )
     out_games = build_games(
         ctx, games, phase=phase,

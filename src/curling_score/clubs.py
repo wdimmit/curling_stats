@@ -39,6 +39,11 @@ class Club:
     # layout (curling_score.broadcast) every frame is converted through before
     # anything reads it. None: the stream is read as it is.
     broadcast_layout: str | None = None
+    # Each stream is one game of ``scheduled_ends`` (DFW's): no second game,
+    # and ends past the last are dropped unless they break a tie
+    # (`segment.one_game`, `timeline.past_scheduled`).
+    one_game_per_stream: bool = False
+    scheduled_ends: int | None = None
     panel_layout: PanelLayout | None = None
     # The rows of the side views that are ice and not broadcast graphics.
     side_rows: tuple[int, int] | None = None
@@ -177,7 +182,7 @@ DALLAS = Club("dallas", (
     house: (side, EndPaint(ring=(BLUE_HSV,), inner_radius_m=C.R_8FT_M, hog="dark"))
     for house, side in (("top", "right"), ("bottom", "left"))
 }, panel_layout=PanelLayout(top=(764, 0, 379, 526), bottom=(764, 526, 379, 554)),
-    broadcast_layout="dfw-5u",
+    broadcast_layout="dfw-5u", one_game_per_stream=True, scheduled_ends=8,
     # The long cameras' ice starts below the far wall: the clubhouse window
     # above it holds a blue neon cowboy hat, which in the 5U Qualifier's
     # framing (46wEMds_tYQ) outweighs the ring and was fitted as the house.

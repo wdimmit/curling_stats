@@ -275,9 +275,16 @@ class LiveSession:
         games = segment.settled_ends(self.samples, self.min_end_s, ended=ended)
         games = boardsplit.join_games(self._decidable(games), self._board_across)
         games = [self._unparked(g) for g in boardsplit.split_games(games, self._board_across)]
+        if self._club_one_game():
+            games = segment.one_game(games)
         for game in games:
             self.games[game.index] = game
         return games
+
+    def _club_one_game(self) -> bool:
+        """Whether the club's streams are each one game (`clubs.Club.one_game_per_stream`)."""
+        club = getattr(self.pipeline, "club", None)
+        return bool(club is not None and club.one_game_per_stream)
 
     def _unparked(self, game):
         """``game`` without the ends at its head found to be stones parked in
@@ -478,7 +485,9 @@ class LiveSession:
             seg = GameSegment(index=len(out_games), start_s=game.start_s,
                               end_s=segs[-1].end_s, ends=segs, closed=game.closed)
             out = analyze.finish_game(seg, ends, board, self.fmt, self.progress,
-                                      recorded_s=head)
+                                      recorded_s=head,
+                                      scheduled_ends=(self.pipeline.club.scheduled_ends
+                                                      if self._club_one_game() else None))
             out["in_progress"] = not (self.done or (game.closed and len(built) == len(game.ends)))
             # Only a finished game: the club often posts its first cards ends late.
             out["practice"] = not out["in_progress"] and timeline.is_practice(out)

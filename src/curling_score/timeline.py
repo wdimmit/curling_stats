@@ -328,6 +328,27 @@ def build_end(number, house, start_s, end_s, shots, board_score=None, fmt=None,
     return out
 
 
+def past_scheduled(ends: list[dict], scheduled_ends: int) -> list[dict]:
+    """``ends`` without those after the game's ``scheduled_ends``, except an
+    extra end played to break a tie: while the running score -- the board's
+    where an end has it, else the detector's -- is level after the scheduled
+    ends, ends are kept up to and including the first that breaks it.
+    Anything after that is rocks thrown once the game was over (practice
+    slides on DFW's sheets), not an end of it."""
+    if len(ends) <= scheduled_ends:
+        return ends
+    total = {"red": 0, "yellow": 0}
+    kept = []
+    for i, e in enumerate(ends):
+        if i >= scheduled_ends and total["red"] != total["yellow"]:
+            break
+        kept.append(e)
+        score = e.get("score") or e.get("detected_score") or {}
+        for c in total:
+            total[c] += int(score.get(c) or 0)
+    return kept
+
+
 def build_game(index, start_s, end_s, ends, board=None, fmt=None) -> dict:
     """One game, with the board's running score carried across its ends.
 
