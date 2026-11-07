@@ -90,7 +90,17 @@ The stones are read the same: the detected score is equal on every end of both s
        inferred from the shared code, not seen.
    - Box load at the end was ~4.7; the practice guard never fired.
 
-## Still open before Gate B
+## The live stream's timing (Task 5 step 5, 11/06 evening)
 
-- The Task 5 live check on the live stream's timing (pts against the worker's own
-  recording), and the +-30 s first-search window.
+Checked on two of the Friday league's live streams while they played, 18:46-19:00 PST:
+AP8h9VwexkY (worker 1) and 3KTI93qJwoc (worker 2). Script and output:
+`scratch/camera-direct/livecheck/`.
+
+- Both playlists still began at segment 0, about 17 minutes in.
+- Segments at 600 s and near the live edge (860 s, 870 s) were placed on the video's clock
+  from their pts against segment 0's. Each one's picture is in the worker's own recording
+  (`rec.0.ts`) at exactly that time: 0 frames off, with an identical match.
+- YouTube's PROGRAM-DATE-TIME was 6.1 s and 7.5 s before the listed start
+  (actualStartTime). The clock's first search, +-30 s around the start, covers that.
+
+**Pass.** Nothing is left open before Gate B except the user's go.
