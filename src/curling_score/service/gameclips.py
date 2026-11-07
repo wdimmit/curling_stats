@@ -168,6 +168,10 @@ def shot_state(repo, run, name: str, now) -> dict:
     return {"state": "failed", "reason": got.get("reason") or "cut_failed"}
 
 
+# Who an automatic ask is in the name of (`ask_all`): nobody signed in.
+AUTO_USER = "auto"
+
+
 def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
              calibration: dict | None, now) -> dict:
     """Ask for a clip of one shot, ``rock`` as `find_rock` gives it, unless
@@ -188,6 +192,27 @@ def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
         spec={"calibration": sides, "rocks": [rock],
               **({"live": True} if run.status == "live" else {})}))
     return shot_state(repo, run, name, now)
+
+
+def ask_all(repo, run, doc: dict, now, sources: dict | None = None) -> int:
+    """Ask for a clip of every rock in ``doc`` that was seen released and has
+    none asked for on ``run`` yet -- for a site that cuts every rock without
+    anyone asking (service/site.py ``auto_clips``). ``sources`` maps a game's
+    index to its source id, where known. How many it asked for."""
+    asked = 0
+    calibration = doc.get("calibration")
+    for game in doc.get("games", []):
+        sid = (sources or {}).get(game.get("index"), "")
+        for end in game.get("ends", []):
+            for s in end.get("shots") or []:
+                if s.get("missing") or s.get("t_release_s") is None:
+                    continue
+                rock = rock_spec(game, end, s)
+                if shot_state(repo, run, rock["name"], now)["state"] != "none":
+                    continue
+                ask_shot(repo, run, sid, AUTO_USER, rock, calibration, now)
+                asked += 1
+    return asked
 
 
 def state_for(repo, play_id: str, run) -> dict:

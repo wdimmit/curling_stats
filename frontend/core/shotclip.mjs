@@ -59,3 +59,10 @@ export function shotClipStatus(got) {
   if (s === "failed") return { busy: false, text: "The clip could not be cut." };
   return { busy: false, text: null };
 }
+
+/* Whether a clip that could not be cut is offered "Try again": asking again
+ * is somebody's ask, so not where every rock is cut without asking (a site's
+ * `auto_clips`), and never for a rock nobody saw released. */
+export function clipRetryOffered(got, site) {
+  return got?.state === "failed" && got.reason !== "no_release" && !site?.auto_clips;
+}

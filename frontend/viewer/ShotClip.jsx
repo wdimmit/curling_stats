@@ -7,7 +7,7 @@
  * plays at once. Otherwise it is asked for -- which needs someone signed in,
  * asked about only here -- and the dialog says where it is until it is cut. */
 import { useEffect, useRef, useState } from "react";
-import { SHOT_CLIP_POLL_MS, shotClipStatus } from "../core/index.mjs";
+import { SHOT_CLIP_POLL_MS, clipRetryOffered, currentSite, shotClipStatus } from "../core/index.mjs";
 import { accountsOn, signInNow, whoIsSignedIn } from "../runtime/auth.mjs";
 import { askShotClip, fetchShotClip } from "../runtime/shotclips.mjs";
 
@@ -108,7 +108,7 @@ function AskedClip({ path, rock, text, onClose }) {
     body = <Working text={status.text} />;
   } else {
     body = <p className="sc-say">{status.text}</p>;
-    if (got?.state === "failed" && got.reason !== "no_release")
+    if (clipRetryOffered(got, currentSite()))
       action = <button type="button" className="on" onClick={again}>Try again</button>;
   }
 

@@ -2859,7 +2859,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         sid, run = shot_clip_target(path, rock)
         if run.status not in ("ready", "live"):
             return {"state": "busy"}
-        return shot_clip_answer(run, rock, sid, gameclips.shot_state(repo, run, rock, now()))
+        state = gameclips.shot_state(repo, run, rock, now())
+        if (state["state"] == "none" and settings.site.auto_clips
+                and not gameclips.shot_expired(run, now())):
+            # Nobody asks on this site: every rock seen released will be cut.
+            spec = gameclips.find_rock(run_doc(run), rock)
+            if spec is None:
+                raise HTTPException(404, "no such shot")
+            state = ({"state": "failed", "reason": "no_release"} if spec.get("t_release_s") is None
+                     else {"state": "queued", "ahead": 0})
+        return shot_clip_answer(run, rock, sid, state)
 
     @app.post("/api/shot-clips")
     async def api_ask_shot_clip(request: Request, authorization: str | None = Header(default=None)):
@@ -3460,7 +3469,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             if src.game_end_s != float(game["end_s"]):
                 repo.update_source(src.id, game_end_s=float(game["end_s"]))
             sources.append(src.id)
+        auto_clips(run, {g.get("index"): sid for g, sid in zip(games, sources)}, t)
         return {"ok": True, "sources": sources}
+
+    def auto_clips(run: Run, sources: dict, t) -> None:
+        """On a site that cuts every rock (site.auto_clips), ask for the
+        clips of the rocks just published or completed. Never the worker's
+        problem: a failure here is logged and the publish stands."""
+        if not settings.site.auto_clips:
+            return
+        try:
+            n = gameclips.ask_all(repo, run, run_doc(run), t, sources)
+        except Exception:  # noqa: BLE001
+            log.exception("run %s: auto clips not asked for", run.id)
+            return
+        if n:
+            clip_queue_stirred()
 
     @app.post("/api/worker/jobs/{job_id}/complete")
     async def complete(job_id: str, request: Request,
@@ -3514,6 +3538,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         resolved = dedupe.resolve_charts_for_run(repo, run, t)
         learn_play_starts_for_run(run)
         settle_sources_for_run(run)
+        auto_clips(run, {s.game_index: s.id for s in repo.sources_for_video(run.video_id)
+                         if s.current_run_id == run.id}, t)
         return {"ok": True, "charts_resolved": resolved}
 
     @app.post("/api/worker/jobs/{job_id}/fail")

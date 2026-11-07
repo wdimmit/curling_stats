@@ -92,6 +92,7 @@ export const bundledClip = core.bundledClip;
 export const visibleLinks = core.visibleLinks;
 export const siteName = core.siteName;
 export const siteReadOnly = core.siteReadOnly;
+export const clipRetryOffered = core.clipRetryOffered;
 export const houseImageCaption = core.houseImageCaption;
 export const houseImageName = core.houseImageName;
 export const settleWithin = core.settleWithin;

@@ -7069,3 +7069,16 @@ class TestSiteProfile:
         assert run_js("out(siteName(null));") == "curling.dimmit.net"
         assert run_js("out(siteReadOnly(null));") is False
         assert run_js(f"out(siteReadOnly({json.dumps(self.DFW)}));") is True
+
+
+class TestRetryingAClip:
+    def test_a_failed_clip_is_asked_for_again_only_where_people_ask(self):
+        got = run_js("out([clipRetryOffered({state: 'failed'}, null),"
+                     " clipRetryOffered({state: 'failed', reason: 'no_release'}, null),"
+                     " clipRetryOffered({state: 'failed'}, {auto_clips: true}),"
+                     " clipRetryOffered({state: 'ready'}, null)]);")
+        assert got == [True, False, False, False]
+
+    def test_the_dialog_uses_it(self):
+        src = (Path(__file__).resolve().parents[1] / "frontend/viewer/ShotClip.jsx").read_text()
+        assert "clipRetryOffered(got, currentSite())" in src
