@@ -42,6 +42,10 @@ https://curling.dimmit.net; the token is tried with one cheap admin read before
 the model loads, and is never printed). --weights, or POSE_WEIGHTS, is the
 pose checkpoint; nothing is downloaded.
 
+--starts DIR takes the pre-boxes from a model's own labels instead: the class-2
+lines of `<DIR>/<stem>.txt` (with a confidence column, as overhead-4's), and no
+pose model is loaded (overhead-4's hard-2 batch, 2026-11-03).
+
 --dry-run sends nothing and needs no token. --out, with or without it, writes
 each item's JSON and `contact.jpg`, the starts (green) and stones over 40 random
 frames, for a look before publishing.
@@ -148,6 +152,31 @@ def pose_starts(img, model) -> list[dict]:
             continue
         out.append({"x0": round(x0, 1), "y0": round(y0, 1), "x1": round(x1, 1),
                     "y1": round(y1, 1), "conf": round(float(cf), 3)})
+    return out
+
+
+def starts_from_label(txt: str, w: int, h: int) -> list[dict]:
+    """The player lines (class 2) of a YOLO label file as starts, in pixels: a
+    model's own boxes in place of the pose model's (--starts). A sixth column
+    is the box's confidence. Clipped and dropped as pose_starts' are."""
+    out = []
+    for line in txt.splitlines():
+        parts = line.split()
+        if len(parts) < 5 or parts[0] != "2":
+            continue
+        try:
+            cx, cy, bw, bh = (float(v) for v in parts[1:5])
+            conf = float(parts[5]) if len(parts) > 5 else None
+        except ValueError:
+            continue
+        x0, y0 = max(0.0, (cx - bw / 2) * w), max(0.0, (cy - bh / 2) * h)
+        x1, y1 = min(float(w), (cx + bw / 2) * w), min(float(h), (cy + bh / 2) * h)
+        if not x1 - x0 >= MIN_BOX_PX or not y1 - y0 >= MIN_BOX_PX:
+            continue
+        start = {"x0": round(x0, 1), "y0": round(y0, 1), "x1": round(x1, 1), "y1": round(y1, 1)}
+        if conf is not None:
+            start["conf"] = round(conf, 3)
+        out.append(start)
     return out
 
 
@@ -377,6 +406,8 @@ def main(argv=None) -> int:
                         "rock-box items of their own)")
     p.add_argument("--sides", type=Path, metavar="JSON",
                    help="sort's output: publish only the frames it keeps")
+    p.add_argument("--starts", type=Path, metavar="DIR",
+                   help="pre-boxes from <DIR>/<stem>.txt's class-2 lines, not the pose model")
     e = sub.add_parser("ends", help="every end's span and house, from timelines")
     e.add_argument("--timelines", type=Path, nargs="+", required=True, metavar="DIR")
     e.add_argument("--out", type=Path, required=True, metavar="JSON")
@@ -399,8 +430,8 @@ def main(argv=None) -> int:
     if not args.images.is_dir():
         print(f"no such images folder: {args.images}", file=sys.stderr)
         return 2
-    if not args.weights:
-        print("give --weights or set POSE_WEIGHTS", file=sys.stderr)
+    if not args.weights and not args.starts:
+        print("give --weights, set POSE_WEIGHTS or give --starts", file=sys.stderr)
         return 2
     paths = _frames(args.images)
     bad = val_frames(args.images, paths) if args.fold != "val" else []
@@ -436,7 +467,7 @@ def main(argv=None) -> int:
     import torch
 
     torch.set_num_threads(args.threads)
-    model = load_model(args.weights)
+    model = None if args.starts else load_model(args.weights)
     # Only the contact sheet's frames stay decoded, and an image's bytes are read
     # again when its page is published: a run over thousands of frames on a box
     # shared with workers holds the items and paths, not the pixels.
@@ -452,7 +483,12 @@ def main(argv=None) -> int:
             label = args.labels / path.relative_to(args.images).with_suffix(".txt")
             stones = stones_from_label(label.read_text(), w, h) if label.is_file() else []
             side = (sides.get(path.stem) or {}).get("side")
-            item = item_for(args.dataset, args.fold, path.stem, w, h, pose_starts(img, model),
+            if args.starts:
+                given = args.starts / path.relative_to(args.images).with_suffix(".txt")
+                starts = starts_from_label(given.read_text(), w, h) if given.is_file() else []
+            else:
+                starts = pose_starts(img, model)
+            item = item_for(args.dataset, args.fold, path.stem, w, h, starts,
                             stones, args.batch,
                             {**extra.get(path.stem, {}), **({"side": side} if side else {})},
                             args.lock_stones)

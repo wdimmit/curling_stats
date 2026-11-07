@@ -141,7 +141,6 @@ export function Status() {
     <>
       <header>
         <h1>curling.dimmit.net</h1>
-        <a href="/submit">Submit another</a>
         <a href="/">All games</a>
       </header>
       <main>

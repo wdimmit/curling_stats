@@ -42,8 +42,8 @@ spec:
             - { name: PRACTICE_MAX_CAMERA_WATCHES, value: "5" }
             # League games on a `cameras` playlist: the sheets whose cameras may
             # be read for one, and how many at once; the rest are read from the
-            # stream (camera-direct phase 3). The gate night sets 3,4.
-            - { name: CAMERA_SHEETS, value: "1,2,3,4,5" }
+            # stream (camera-direct phase 3). 3,4 from the Gate B night (2026-11-08).
+            - { name: CAMERA_SHEETS, value: "3,4" }
             - { name: CAMERA_MAX_SHEETS, value: "2" }
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:

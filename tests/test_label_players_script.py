@@ -497,3 +497,30 @@ def test_lock_stones_marks_every_item_and_is_off_by_default(tmp_path, monkeypatc
     payloads = lambda d: [json.loads(f.read_text())["payload"] for f in (tmp_path / d).glob("p_*.json")]
     assert all("stones_locked" not in p for p in payloads("open"))
     assert [p["stones_locked"] for p in payloads("locked")] == [True, True]
+
+
+def test_a_label_files_player_lines_become_starts_with_their_confidence():
+    # 0/1 are stones, not starts; a 6th column is the confidence; under 3 px once
+    # clipped is dropped, as the pose starts are.
+    txt = ("0 0.5 0.5 0.2 0.1\n2 0.5 0.2 0.2 0.2 0.83\n2 0.95 0.5 0.2 0.2\n"
+           "2 0.5 0.5 0.001 0.5 0.9\n")
+    assert lp.starts_from_label(txt, 300, 500) == [
+        {"x0": 120.0, "y0": 50.0, "x1": 180.0, "y1": 150.0, "conf": 0.83},
+        {"x0": 255.0, "y0": 200.0, "x1": 300.0, "y1": 300.0}]
+
+
+def test_starts_from_a_folder_load_no_model_and_need_no_weights(tmp_path, monkeypatch):
+    images, labels = _dataset(tmp_path)
+    starts = tmp_path / "starts"
+    starts.mkdir()
+    (starts / "a.txt").write_text("2 0.3 0.5 0.4 0.5 0.7\n")
+    monkeypatch.setattr(lp, "load_model", lambda path: pytest.fail("no model with --starts"))
+    out = tmp_path / "out"
+    rc = lp.main(["publish", "--images", str(images), "--labels", str(labels), "--dataset", "d",
+                  "--fold", "f", "--batch", "pl", "--starts", str(starts), "--dry-run",
+                  "--out", str(out)])
+    assert rc == 0
+    by_stem = {p["origin"]["stem"]: p for p in
+               (json.loads(f.read_text())["payload"] for f in out.glob("p_*.json"))}
+    assert by_stem["a"]["starts"] == [{"x0": 10.0, "y0": 50.0, "x1": 50.0, "y1": 150.0, "conf": 0.7}]
+    assert by_stem["b"]["starts"] == []                 # no file: no starts
