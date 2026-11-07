@@ -492,6 +492,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         claims = claims_of(authorization)
         return user_for_claims(claims) if claims else None
 
+    def require_editor(authorization) -> User:
+        """Who corrects a game: someone signed in -- or, on a read-only site
+        with no accounts (service/site.py), its operator with the admin token,
+        as an admin. The only way a misread end, league or team name is put
+        right there."""
+        if (settings.site.read_only and not auth.enabled
+                and bearer_ok(authorization, settings.admin_token)):
+            return User(id="operator", created_at=now(), name="operator", role="admin")
+        return require_user(authorization)
+
     def require_user(authorization) -> User:
         if not auth.enabled:
             raise HTTPException(503, "accounts are not configured")
@@ -1248,7 +1258,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         label that survived only on the source would be a label that a
         reprocess quietly dropped.
         """
-        me = require_user(authorization)
+        me = require_editor(authorization)
         label = str(body.get("league") or "").strip()
         if len(label) > 60:
             raise HTTPException(422, "that name is too long for a league")
@@ -1401,7 +1411,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         change them, so each change is kept with who made it (TeamNameEdit)
         for the admin to read.
         """
-        me = require_user(authorization)
+        me = require_editor(authorization)
         if me.role not in ROLES:
             raise HTTPException(403, "naming teams is open to validated accounts")
         names = {}
@@ -1516,7 +1526,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         later. ``end`` is the end number the review link shows -- the game as
         ``game_doc`` serves it from the current run and play start.
         """
-        me = require_user(authorization)
+        me = require_editor(authorization)
         src = repo.get_source(source_id)
         if src is None:
             raise HTTPException(404, "no such game")

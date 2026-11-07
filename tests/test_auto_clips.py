@@ -101,3 +101,41 @@ def test_an_unasked_rock_is_asked_for_when_its_page_looks():
     got = w["client"].get("/api/shot-clips", params={"path": f"/g/{sid}/", "rock": "0.1.1"}).json()
     assert got["state"] == "queued"
     assert clip_jobs(w) == ["cs_r_1_0.1.1"]
+
+
+# --- the operator corrects a game (read-only site, no accounts) ------------------------
+
+ADMIN = {"Authorization": "Bearer admin-secret"}
+
+
+def finished(profile):
+    w = make_world(profile)
+    doc = released_doc()
+    doc["schema_version"] = 10
+    work_through(w, doc=doc)
+    return w, w["repo"].sources_for_video(VID)[0].id
+
+
+def test_the_operator_enters_an_ends_score():
+    w, sid = finished(site.DFW)
+    c = w["client"]
+    assert c.post(f"/api/games/{sid}/scores", json={"end": 1, "red": 0, "yellow": 1}).status_code == 403
+    r = c.post(f"/api/games/{sid}/scores", json={"end": 1, "red": 0, "yellow": 1}, headers=ADMIN)
+    assert r.status_code == 200, r.text
+    assert w["repo"].get_source(sid).entered_scores
+
+
+def test_the_operator_names_the_league_and_teams():
+    w, sid = finished(site.DFW)
+    c = w["client"]
+    assert c.post(f"/api/games/{sid}/league", json={"league": "DFW 5U Qualifier"},
+                  headers=ADMIN).status_code == 200
+    assert c.post(f"/api/games/{sid}/teams", json={"red": "Rice", "yellow": "Casey"},
+                  headers=ADMIN).status_code == 200
+
+
+def test_granite_still_needs_an_account():
+    w, sid = finished(site.GRANITE)
+    r = w["client"].post(f"/api/games/{sid}/scores", json={"end": 1, "red": 0, "yellow": 1},
+                         headers=ADMIN)
+    assert r.status_code == 503
