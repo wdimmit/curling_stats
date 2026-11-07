@@ -47,8 +47,36 @@ services:
       resources:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
-  # Every rock's clip (the site cuts them without asking), from the worker's
-  # cache, read-only. CPU only.
+  # Recordings only. A worker holding a live stream claims no recording
+  # (service/worker.py run_forever), and an event's draws run back to back, so
+  # the draws charted from their recordings would wait all day: this one takes
+  # them. Its own cache -- no two workers may share one.
+  worker2:
+    image: curling-worker:dfw
+    pull_policy: never
+    restart: unless-stopped
+    env_file: worker.env
+    cap_add: [SYS_PTRACE]
+    shm_size: 2gb
+    environment:
+      CLUB: dallas
+      WORKER_ID: dfw-laptop-vod
+      CURLING_SCORE_CACHE: /data/cache
+      WORKER_LIVE: "0"
+      WORKER_CACHE_GB: "60"
+      WORKER_MIN_FREE_GB: "30"
+      YTDLP_POT_PROVIDER: http://pot:4416
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+      WORKER_FP_HARVEST: "0"
+    depends_on: [pot]
+    volumes:
+      - /data/wdd/dfw-cache-2:/data/cache
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+  # Every rock's clip (the site cuts them without asking), from both workers'
+  # caches, read-only. CPU only.
   clips:
     image: curling-worker:dfw
     pull_policy: never
@@ -60,10 +88,11 @@ services:
       WORKER_ROLE: clips
       WORKER_LIVE: "0"
       CURLING_SCORE_CACHE: /data/cache
-      WORKER_CLIP_SOURCES: /data/src1
+      WORKER_CLIP_SOURCES: /data/src1:/data/src2
     volumes:
       - /data/wdd/dfw-clips:/data/cache
       - /data/wdd/dfw-cache:/data/src1:ro
+      - /data/wdd/dfw-cache-2:/data/src2:ro
     cpus: "4.0"
   pot:
     image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
