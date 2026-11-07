@@ -39,6 +39,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
+from curling_score.service import site as site_mod
 from curling_score.service import (dedupe, gameclips, ice_report, labelling, playlist_index,
                                    playlists, practice, signin, slug, team_names, thinking_report)
 from curling_score.service.auth import NoAuth
@@ -264,6 +265,8 @@ class Settings:
     firebase_api_key: str = ""
     firebase_auth_domain: str = ""
     auth_emulator: str = ""
+    # Which site this deploy is (service/site.py): Granite's unless SITE says.
+    site: site_mod.SiteProfile = site_mod.GRANITE
 
     @property
     def processing_version(self) -> str:
@@ -273,7 +276,9 @@ class Settings:
     def from_env(cls):
         env = os.environ.get
         chans = {c.strip() for c in env("ALLOWED_CHANNEL_IDS", "").split(",") if c.strip()}
+        profile = site_mod.from_env()
         return cls(
+            site=profile,
             public_base_url=env("PUBLIC_BASE_URL", "").rstrip("/"),
             worker_token=env("WORKER_TOKEN", ""),
             admin_token=env("ADMIN_TOKEN", ""),
@@ -283,7 +288,7 @@ class Settings:
             club_ips=frozenset(ip.strip() for ip in env("PRACTICE_CLUB_IPS", "").split(",")
                                if ip.strip()),
             practice_max_camera_watches=int(env("PRACTICE_MAX_CAMERA_WATCHES", "2")),
-            club_tz=env("CLUB_TZ", "America/Los_Angeles"),
+            club_tz=env("CLUB_TZ") or profile.tz,
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
             max_queued=int(env("MAX_QUEUED", "10")),
@@ -370,11 +375,31 @@ def _flag_json(flag) -> dict:
 
 
 def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) -> FastAPI:
-    app = FastAPI(title="curling.dimmit.net", docs_url=None, redoc_url=None)
+    app = FastAPI(title=settings.site.name, docs_url=None, redoc_url=None)
     # Cloud Run sends what it is given, and a game's timeline is 350-500 KB of
     # JSON that gzip takes to about a quarter. Level 6 is gzip's own default:
     # 9 saves 2% more on a timeline for over twice the time (41 ms, not 17).
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
+    if settings.site.read_only:
+        # A public site with no accounts (service/site.py): what anyone can
+        # do is look. A write needs the admin token, except the worker's own
+        # routes and the admin's, which have their tokens already.
+        @app.middleware("http")
+        async def read_only(request: Request, call_next):
+            path = request.url.path
+            if (request.method not in ("GET", "HEAD", "OPTIONS")
+                    and not path.startswith(("/api/worker/", "/api/admin/"))
+                    and path not in site_mod.PUBLIC_POSTS
+                    and not bearer_ok(request.headers.get("authorization"), settings.admin_token)):
+                return JSONResponse({"detail": "this site is read-only"}, status_code=403)
+            return await call_next(request)
+
+    @app.get("/api/site")
+    def site_config():
+        p = settings.site
+        return {"name": p.name, "club": p.club_name, "nav_hidden": sorted(p.nav_hidden),
+                "read_only": p.read_only, "auto_clips": p.auto_clips}
     # Keyword with a default, so every caller that predates accounts keeps
     # working and gets a service with no accounts in it.
     auth = auth or NoAuth()
