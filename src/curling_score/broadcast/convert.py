@@ -8,6 +8,7 @@ dissolve is only known once it is over, so frames are held GUARD behind.
 
 import functools
 import subprocess
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -17,7 +18,7 @@ import numpy as np
 from curling_score.broadcast.layout import GUARD, H, UNKNOWN, W, Layout
 
 # How many frames of matched/unmatched history `Converter.stats` can look back over.
-HISTORY_FRAMES = 36_000
+HISTORY_FRAMES = 60_000
 
 
 class Converter:
@@ -126,6 +127,17 @@ def convert_file(src, dst, layout: Layout, *, follow: bool = False, timeout_s: f
     w, h = layout.size
     reader, writer = _reader(src, (w, h), follow, timeout_s), _writer(dst, fps, encoder)
     size, written, said = w * h * 3, 0, 0.0
+    done = threading.Event()
+    if stop is not None:
+        # A reader following a file that has stopped growing blocks in its
+        # read until -rw_timeout: told to stop, it is killed, and what it read
+        # is flushed as usual.
+        def watch():
+            while not done.wait(1.0):
+                if stop():
+                    reader.kill()
+                    return
+        threading.Thread(target=watch, name="convert-stop", daemon=True).start()
 
     def write(frames):
         nonlocal written
@@ -147,6 +159,7 @@ def convert_file(src, dst, layout: Layout, *, follow: bool = False, timeout_s: f
                 said = now
         write(conv.flush())
     finally:
+        done.set()
         reader.kill()
         reader.wait()
         writer.stdin.close()

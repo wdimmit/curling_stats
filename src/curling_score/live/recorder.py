@@ -253,6 +253,12 @@ class YtDlpRecorder:
     def path(self) -> Path:
         return self._current().path
 
+    def newest_path(self) -> Path:
+        """The part begun last, whether or not it has caught up yet: what a
+        converter of the recording follows from its first frame."""
+        with self._lock:
+            return self._parts[-1].path
+
     def head_s(self) -> float:
         return self._current().head if self._parts else 0.0
 
