@@ -11,8 +11,8 @@
  * what a corner may do, the answer's shape -- is core/labelling.mjs, tested in
  * node; this file draws and listens.
  *
- * Three flows share one page, chosen by the URL hash (#boxes, the default,
- * #players or #releases). Each is a component handed the item and the few
+ * Four flows share one page, chosen by the URL hash (#boxes, the default,
+ * #players, #brooms or #releases). Brooms are boxed as players are. Each is a component handed the item and the few
  * things the queue does (submit, skip, back); useLabelQueue holds what is not
  * flow specific: the item in front of the member, one fetched ahead, and the one
  * before for Back. A flow is signed-in only, and needs a computer: boxing a
@@ -58,7 +58,7 @@ function useWindowSize() {
 }
 
 function readFlow() {
-  return ["#releases", "#players"].includes(location.hash) ? location.hash.slice(1) : "boxes";
+  return ["#releases", "#players", "#brooms"].includes(location.hash) ? location.hash.slice(1) : "boxes";
 }
 
 const post = (url, body) => authedFetch(url, {
@@ -653,6 +653,12 @@ const FLOWS = {
                  caption: "Cut off at the edge: box what shows." },
                { src: "/static/label-player-broom.jpg",
                  caption: "A broom reaching over a stone: box the player, not the broom." }] },
+  brooms: { kind: "broom", name: "Broom boxes", Flow: PlayerFlow,
+            howto: "Box every broom head on the ice: the pad at the end of the broom, where it "
+                   + "touches or nearly touches the ice -- the skip's target above all, and any "
+                   + "other broom on the ice. Not the shaft, not the person holding it. A broom "
+                   + "head cut off at the edge gets a box over the part you can see. If there is "
+                   + "none, press Enter. The grey boxes are stones, for context." },
   releases: { kind: "release", name: "Release marks", Flow: ReleaseFlow,
               howto: "Find the first frame where the hand is clearly off the handle. If the "
                      + "thrower lets go and grabs it again, mark the last let-go." },

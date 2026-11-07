@@ -93,7 +93,7 @@ def test_two_members_label_an_item_and_counts_go_up(w):
     assert first["items"][0]["image_url"].endswith("/api/label/image/b_0")
     r = answer(w, SARAH, "b_0")
     assert r.json() == {"result": "added", "count": 1}
-    assert w["client"].get("/api/label/me", headers=SARAH).json() == {"box": 1, "release": 0, "player": 0}
+    assert w["client"].get("/api/label/me", headers=SARAH).json() == {"box": 1, "release": 0, "player": 0, "broom": 0}
     # The half-done item goes to the next member before the untouched one.
     second = w["client"].get("/api/label/box/next", headers=ALEX).json()
     assert [i["id"] for i in second["items"]] == ["b_0"]

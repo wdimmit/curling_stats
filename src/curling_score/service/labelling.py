@@ -20,7 +20,7 @@ from curling_score.service.records import LABEL_KINDS, LabelItem
 HOLD_S = 600
 # Labels an item gets before it is done. A player image is one member's
 # answer; a stone or a release is checked by a second.
-LABELS_NEEDED = {"box": 2, "release": 2, "player": 1}
+LABELS_NEEDED = {"box": 2, "release": 2, "player": 1, "broom": 1}
 # Skips by different members before an item is retired as not worth asking.
 RETIRE_AFTER_SKIPS = 5
 # Items read from the repo per query.
@@ -246,7 +246,8 @@ def check_answer(item: LabelItem, answer: dict) -> dict:
         return _check_box_answer(item, answer)
     if item.kind == "release":
         return _check_release_answer(item, answer)
-    if item.kind == "player":
+    if item.kind in ("player", "broom"):
+        # A broom head is boxed as a player is: no colour, the stones for context.
         return _check_player_answer(item, answer)
     raise ValueError(f"unknown kind {item.kind!r}")
 

@@ -359,3 +359,29 @@ def test_an_item_past_the_first_page_is_still_offered(repo):
     for n in range(1, labelling.PAGE + 6):
         put(repo, n, n_labels=1, by=["u1"])
     assert ids(next_items(repo, "box", "u1", T0)) == ["b_0"]
+
+
+def broom_item():
+    item = player_item()
+    item.id, item.kind = "w_1", "broom"
+    item.payload = {**item.payload, "stones_locked": True}
+    return item
+
+
+def test_a_broom_answer_keeps_boxes_without_a_colour():
+    got = check_answer(broom_item(), {"cant_tell": False, "starts": ["untouched"],
+                                      "boxes": [player_box()]})
+    assert got["boxes"] and "color" not in got["boxes"][0]
+
+
+def test_a_broom_box_with_a_colour_is_refused():
+    import pytest
+    with pytest.raises(ValueError):
+        check_answer(broom_item(), {"cant_tell": False, "starts": ["untouched"],
+                                    "boxes": [player_box(color="red")]})
+
+
+def test_broom_is_a_label_kind():
+    from curling_score.service import labelling
+    from curling_score.service.records import LABEL_KINDS
+    assert "broom" in LABEL_KINDS and labelling.LABELS_NEEDED["broom"] == 1

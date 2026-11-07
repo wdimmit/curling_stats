@@ -278,3 +278,9 @@ def test_a_409_names_who_has_the_item():
     assert js('L.conflictNotice("full")') == "Someone else finished this one."
     assert js('L.conflictNotice("closed")') == "Someone else finished this one."
     assert js("L.conflictNotice(undefined)") == "Someone else finished this one."
+
+
+def test_the_page_has_a_broom_flow():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "frontend/site/Label.jsx").read_text()
+    assert '"#brooms"' in src and 'brooms: { kind: "broom"' in src

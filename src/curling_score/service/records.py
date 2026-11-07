@@ -678,8 +678,9 @@ def sensor_timing_id(user_id: str, client_id: str) -> str:
 # the same few people the way an item's `max_labels` says (service/repo.py).
 # "box" is a rock the detector found, to be boxed or called not-a-rock;
 # "release" is a delivery, to be marked where the hand lets go; "player" is an
-# overhead frame, to box the people in it.
-LABEL_KINDS = ("box", "release", "player")
+# overhead frame, to box the people in it; "broom" is a long-camera frame of the
+# destination house, to box the broom heads on the ice (a player's answer, no colour).
+LABEL_KINDS = ("box", "release", "player", "broom")
 # "pending" is made but not yet handed out; "open" is being labelled; "done"
 # has its labels; "retired" was skipped by too many to be worth asking.
 LABEL_STATES = ("pending", "open", "done", "retired")
