@@ -35,6 +35,12 @@ class Club:
     # paint). None fits them Granite's way.
     long_cameras: dict | None = None
     # A composite whose panels have no letterbox bars to find them by: fixed.
+    # Where the overheads show only the houses (DFW): the long camera behind the
+    # thrower times the far hog line (`fartime.time_far_crossings_from_long_camera`),
+    # and places the guards resting beyond this far in front of the tee, which no
+    # panel shows (`game/longguards.py`). None: no long-camera guards.
+    far_hog_from_long: bool = False
+    guards_from_long_m: float | None = None
     panel_layout: PanelLayout | None = None
     # The rows of the side views that are ice and not broadcast graphics.
     side_rows: tuple[int, int] | None = None
@@ -172,6 +178,7 @@ DALLAS = Club("dallas", (
     house: (side, EndPaint(ring=(BLUE_HSV,), inner_radius_m=C.R_8FT_M, hog="dark"))
     for house, side in (("top", "right"), ("bottom", "left"))
 }, panel_layout=PanelLayout(top=(764, 0, 379, 526), bottom=(764, 526, 379, 554)),
+    far_hog_from_long=True, guards_from_long_m=3.3,
     # The long cameras' ice starts below the far wall: the clubhouse window
     # above it holds a blue neon cowboy hat, which in the 5U Qualifier's
     # framing (46wEMds_tYQ) outweighs the ring and was fitted as the house.
