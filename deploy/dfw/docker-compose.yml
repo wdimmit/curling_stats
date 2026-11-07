@@ -71,6 +71,10 @@ services:
     depends_on: [pot]
     volumes:
       - /data/wdd/dfw-cache-2:/data/cache
+    # Live games come first on a 16-core laptop: the recordings worker takes at
+    # most 6. Set here, never with `docker update`, which on this host drops a
+    # running container's GPU (2026-11-07: "No CUDA GPUs are available").
+    cpus: "6.0"
     deploy:
       resources:
         reservations:
