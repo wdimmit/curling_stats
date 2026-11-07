@@ -35,6 +35,10 @@ class Club:
     # paint). None fits them Granite's way.
     long_cameras: dict | None = None
     # A composite whose panels have no letterbox bars to find them by: fixed.
+    # A broadcast that cuts between camera layouts (DFW's): the name of the
+    # layout (curling_score.broadcast) every frame is converted through before
+    # anything reads it. None: the stream is read as it is.
+    broadcast_layout: str | None = None
     panel_layout: PanelLayout | None = None
     # The rows of the side views that are ice and not broadcast graphics.
     side_rows: tuple[int, int] | None = None
@@ -161,9 +165,10 @@ MARTENSVILLE = Club("martensville", (
 # houses paint 12-to-8 blue around a red 4-foot, with the club's logo on the
 # button. Hog lines are dark grey; the centre line is painted. The stones are green
 # and yellow; green is the red_stone class. The overheads are exposed darker
-# than Granite's (value p95 ~145 against 185-204, lights fully on). No channel
-# id until the worker normalises the stream itself: the raw stream under this
-# profile reads nothing.
+# than Granite's (value p95 ~145 against 185-204, lights fully on). The worker
+# converts the raw stream through the 5U event's layout (`broadcast_layout`)
+# before anything reads it. Its own models mean no channel id: a DFW worker is
+# set up with CLUB=dallas (a worker loads one overhead model).
 _DFW_HOUSE = HousePaint(twelve_ft=(BLUE_HSV,), four_ft=RED_HSV, lit_min_p95=120.0)
 DALLAS = Club("dallas", (
     ("top", Panel("top", _DFW_HOUSE)),
@@ -172,6 +177,7 @@ DALLAS = Club("dallas", (
     house: (side, EndPaint(ring=(BLUE_HSV,), inner_radius_m=C.R_8FT_M, hog="dark"))
     for house, side in (("top", "right"), ("bottom", "left"))
 }, panel_layout=PanelLayout(top=(764, 0, 379, 526), bottom=(764, 526, 379, 554)),
+    broadcast_layout="dfw-5u",
     # The long cameras' ice starts below the far wall: the clubhouse window
     # above it holds a blue neon cowboy hat, which in the 5U Qualifier's
     # framing (46wEMds_tYQ) outweighs the ring and was fitted as the house.
