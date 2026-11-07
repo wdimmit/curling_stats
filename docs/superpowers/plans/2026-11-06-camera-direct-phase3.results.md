@@ -7,14 +7,14 @@ touch the replay path). Each sheet was checked against its published YouTube cha
 dbV9wuA45Z0 (S3, run r_0u0xlUwa0UbLzsACW) and kXOQ06TmD0U (S4, run r_15O9OtXwS7GBhay0a).
 Outputs are in `scratch/camera-direct/p3-gate/s3`, `s4`.
 
-## Verdict: MISS on the board; the clock passes
+## Verdict: passes after the board fix (61b6a3fd, ef1a12db); the clock passed as run
 
 | Gate | S3 | S4 | |
 |---|---|---|---|
 | Games and end counts equal | 6 = 6 | 7 = 7 | pass (see note 1) |
 | Shots matched (>= 95%) | 96/96 | 111/112 | pass |
-| Board scores equal | 1/6 | 1/7 | **MISS** (note 2) |
-| Splits, median abs diff <= 0.05 s | 0.165 s | 0.04 s | S3 misses as written (note 3) |
+| Board scores equal | 1/6, after the fix 5/5 | 1/7, after the fix 6/6 | pass after the fix (note 2) |
+| Splits, median abs diff <= 0.05 s | 0.165 s | 0.04 s | S3 accepted by the user (note 3) |
 | Clock: two checks agree within 2 frames | -908.1566 | -908.9555, then -914.7215 | pass |
 | S4 step placed within 10 s | -- | video ~3017 vs. ~3000 estimated | pass in effect (note 4) |
 | Deep links | all 96 within 0.29 s | all 111 within 0.11 s | pass (note 5) |
@@ -38,9 +38,22 @@ The stones are read the same: the detected score is equal on every end of both s
    - `scoreboard.find_board` takes the largest readable marker pair, which on the camera
      picture is often a neighbour's board. Every per-end card read differs from YouTube's;
      the 1/6 and 1/7 that agree are chance.
-   - **Proposed fix:** cut the `board` view with the layout's `long_h` crop, giving the
-     same pixels YouTube showed. The alternative is choosing the pair nearest the sheet's
-     expected position.
+   - **Fixed (61b6a3fd):** the camera feed's board is read through the layout's `long_h`
+     crop (`feeds.cameras.board_cut`, `frames.board_sweep`), the same pixels YouTube
+     showed.
+   - **Second fix (ef1a12db), found by the re-read:** sheet 4's end 4 card was still
+     missed.
+     - `read_cards_at` medians the first 40 keyframes of +-90 s. That assumed YouTube's
+       5 s keyframes; the cameras key every 2 s, so a read covered only t-90..t-12.
+     - On 11/05, two players stood over the red row through those seconds
+       (`p3-gate/s4-board-median.png`).
+     - Frames are now taken at least 4.5 s apart, so a read spans its whole window. At
+       5 s every keyframe is still taken, so YouTube reads are unchanged.
+   - **Re-read** (`p3-gate/board_reread.py`, game 1's final board read, camera feed):
+     S3 ends 1-5 and S4 ends 1-6 equal YouTube's. The last end is unread on both paths,
+     as before.
+     - Only the final read was re-run, not the per-end reads a live game makes, so the
+       next full replay or league night is the full check.
    - This is analysis, not the clock.
 
 3. **S3 splits alternate in sign with the direction of play.** The per-end median
@@ -51,8 +64,8 @@ The stones are read the same: the detected score is equal on every end of both s
      +165/+178 ms and house_h -40..-91 ms. That is enough to make YouTube's splits long
      one way and short the other.
    - S4's YouTube views are nearly in step, and its splits agree (median abs diff 0.04 s).
-   - The camera splits come from one clock, so they are likely the right ones. Whether
-     to accept this is the user's call.
+   - The camera splits come from one clock, so they are likely the right ones.
+   - The user accepted the splits on 11/06.
 
 4. **S4 step.** The tracker put the 5.78 s step at camera t 3932, which is video t
    ~3017.
@@ -79,7 +92,5 @@ The stones are read the same: the detected score is equal on every end of both s
 
 ## Still open before Gate B
 
-- The board fix (note 2), tested against these two sheets again.
-- The user's call on the S3 splits (note 3).
 - The Task 5 live check on the live stream's timing (pts against the worker's own
   recording), and the +-30 s first-search window.
