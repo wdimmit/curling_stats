@@ -59,7 +59,8 @@ class LiveManager:
     def __init__(self, api, worker_id, *, model_id, gpu, root=None,
                  max_streams: int = MAX_STREAMS, make_recorder=None,
                  heartbeat_s: float = HEARTBEAT_S, clock=time.monotonic,
-                 prune=None, background=_in_background, kinds=("live",), cameras=False):
+                 prune=None, background=_in_background, kinds=("live",), cameras=False,
+                 club=None):
         """``prune`` is called once a recording has been kept, to hold the
         cache to its budget; ``background`` runs the keeping, which copies
         gigabytes, somewhere other than the lane's thread. ``kinds`` are the
@@ -73,6 +74,9 @@ class LiveManager:
         self.max_streams, self.heartbeat_s, self.clock = max_streams, heartbeat_s, clock
         self.make_recorder = make_recorder or self._recorder
         self.prune, self.background = prune, background
+        # A club whose broadcast cuts between layouts records converted
+        # (live/converting.py): what the lane reads, keeps and clips.
+        self.club = club
         self._streams = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -88,9 +92,16 @@ class LiveManager:
             return CameraRecorder(int(job["sheet"]), self.root / "live" / job["video_id"])
         from curling_score.live.recorder import YtDlpRecorder
 
-        return YtDlpRecorder(job["video_id"], self.root / "live" / job["video_id"],
-                             pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
-                             cookies=os.environ.get("YTDLP_COOKIES"))
+        directory = self.root / "live" / job["video_id"]
+        rec = YtDlpRecorder(job["video_id"], directory,
+                            pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
+                            cookies=os.environ.get("YTDLP_COOKIES"))
+        layout = getattr(self.club, "broadcast_layout", None)
+        if layout:
+            from curling_score.live.converting import ConvertingRecorder
+
+            rec = ConvertingRecorder(rec, layout, directory)
+        return rec
 
     # --- what the lane sees ---------------------------------------------------
 
@@ -142,6 +153,11 @@ class LiveManager:
             kept = None
             try:
                 kept = file_it(path, vid, self.root)
+                layout = getattr(stream.recorder, "layout_name", None)
+                if kept is not None and whole and layout:
+                    # Already converted: a reprocess must not convert it again.
+                    from curling_score.broadcast import vod
+                    vod.mark(kept, layout)
                 if kept is not None:
                     log.info("kept the %s recording of %s as %s",
                              "whole" if whole else "partial", vid, kept)

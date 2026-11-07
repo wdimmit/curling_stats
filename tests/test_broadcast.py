@@ -177,3 +177,14 @@ def test_vod_keeps_pinned_mtime(dfw, tmp_path):
     os.utime(path, ns=(path.stat().st_atime_ns, cache.PINNED_MTIME_NS))
     V.ensure_converted(path, "dfw-5u")
     assert path.stat().st_mtime_ns == cache.PINNED_MTIME_NS
+
+
+def test_converter_counts_frames_and_the_first_match(dfw):
+    good, grey = view_frame(dfw), np.full((720, 1280, 3), 120, np.uint8)
+    conv = C.Converter(dfw)
+    for f in [grey] * 3:
+        conv.push(f)
+    assert (conv.frames, conv.first_match) == (3, None)
+    for f in [good, grey]:
+        conv.push(f)
+    assert (conv.frames, conv.first_match) == (5, 3)

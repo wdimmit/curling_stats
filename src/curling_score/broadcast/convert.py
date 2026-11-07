@@ -31,6 +31,8 @@ class Converter:
         self._last = layout.T.copy()
         self._matched = deque(maxlen=history)
         self._any = False
+        self.frames = 0                            # frames pushed
+        self.first_match = None                    # the index of the first that matched a view
 
     def _guarded(self, back: int) -> bool:
         """Whether the frame ``back`` from the newest is in or beside a dissolve."""
@@ -48,6 +50,9 @@ class Converter:
         kind = self.layout.classify(frame)
         self.counts[kind] = self.counts.get(kind, 0) + 1
         hit = kind != UNKNOWN
+        if hit and self.first_match is None:
+            self.first_match = self.frames
+        self.frames += 1
         self._any = self._any or hit
         self._matched.append(hit)
         self._kinds.append(kind)

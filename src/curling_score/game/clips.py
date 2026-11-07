@@ -149,7 +149,10 @@ def find_video(video_id: str, roots) -> Path | None:
             return path
     live = []
     for root in roots:
-        for path in (Path(root) / "live" / video_id).glob("rec.*.ts"):
+        d = Path(root) / "live" / video_id
+        # A club whose broadcast is converted as it is recorded clips the
+        # converted copy, never the raw stream's switching layouts.
+        for path in (list(d.glob("norm.*.ts")) or list(d.glob("rec.*.ts"))):
             try:
                 live.append((path.stat().st_size, path))
             except FileNotFoundError:     # the stream ended and it was filed just now
