@@ -11,6 +11,7 @@ Nothing here knows about HTTP: the API turns a ValueError from check_answer
 into a 422 carrying its message.
 """
 
+import random
 from datetime import datetime
 
 from curling_score.service.records import LABEL_KINDS, LabelItem
@@ -53,7 +54,8 @@ def _is_free(item: LabelItem, uid: str, now: datetime) -> bool:
     return item.hold_uid in (None, uid) or item.hold_until is None or item.hold_until <= now
 
 
-def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[LabelItem]:
+def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1, *,
+               shuffle: bool = False, rng=None) -> list[LabelItem]:
     """Up to ``n`` items for this member, each now held for them.
 
     Order: the member's own live hold (a reload resumes), then the open items
@@ -61,7 +63,13 @@ def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[Lab
     older than that lapses after HOLD_S like any other. Pages on until ``n``
     are found or the open items run out. A hold that comes back None was lost
     to someone else, so we move on.
+
+    ``shuffle``: after the own hold, items at random from every open one (up
+    to SHUFFLE_MAX), so no batch is labelled all before the next -- an open
+    site's one labeller (service/site.py). ``rng`` is a random.Random.
     """
+    if shuffle:
+        return _shuffled(repo, kind, uid, now, n, rng or random.Random())
     page = repo.open_label_items(kind, PAGE)
     own = [i for i in page if i.hold_uid == uid and _is_free(i, uid, now)]
     own_ids = {i.id for i in own}
@@ -82,6 +90,32 @@ def next_items(repo, kind: str, uid: str, now: datetime, n: int = 1) -> list[Lab
     while len(got) < n and len(page) >= PAGE:
         page = repo.open_label_items(kind, PAGE, before=page[-1].created_at)
         take([i for i in page if i.id not in own_ids])
+    return got
+
+
+# The most open items a shuffled hand-out draws from: every one, for a set
+# of a few hundred, at one read each.
+SHUFFLE_MAX = 2000
+
+
+def _shuffled(repo, kind, uid, now, n, rng) -> list[LabelItem]:
+    items, page = [], repo.open_label_items(kind, PAGE)
+    while page:
+        items += page
+        if len(page) < PAGE or len(items) >= SHUFFLE_MAX:
+            break
+        page = repo.open_label_items(kind, PAGE, before=page[-1].created_at)
+    own = [i for i in items if i.hold_uid == uid and _is_free(i, uid, now)]
+    rest = [i for i in items if not (i.hold_uid == uid and _is_free(i, uid, now))]
+    rng.shuffle(rest)
+    got: list[LabelItem] = []
+    for item in own + rest:
+        if len(got) >= n:
+            break
+        if _is_free(item, uid, now):
+            held = repo.hold_label_item(item.id, uid, now, HOLD_S)
+            if held is not None:
+                got.append(held)
     return got
 
 

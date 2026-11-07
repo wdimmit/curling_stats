@@ -429,3 +429,29 @@ def test_with_a_bucket_the_image_route_is_not_there(w, monkeypatch):
     assert shown["image_url"].startswith("https://bucket.example/")
     assert w["client"].put("/api/admin/label-items/b_0/image", content=b"x",
                            headers=ADMIN).status_code in (404, 409)
+
+
+def test_shuffled_items_come_in_no_fixed_order_but_a_hold_comes_first():
+    """An open site hands its labeller items at random from all that are open
+    (labelling.next_items shuffle=True), so one batch is not labelled all
+    before the next -- past the first page of newest items too. A reload
+    still resumes the item held."""
+    import random
+    from datetime import datetime, timedelta, timezone
+    from curling_score.service import labelling
+    from curling_score.service.records import LabelItem
+    from curling_score.service.repo import MemoryRepo
+
+    repo = MemoryRepo()
+    t0 = datetime(2026, 11, 7, tzinfo=timezone.utc)
+    for i in range(120):
+        repo.put_label_item(LabelItem(id=f"b_{i:03d}", kind="box", created_at=t0 + timedelta(seconds=i),
+                                      batch="t", payload=BOX_PAYLOAD, state="open"))
+    now = t0 + timedelta(hours=1)
+    rng = random.Random(7)
+    first = labelling.next_items(repo, "box", "u", now, 1, shuffle=True, rng=rng)[0]
+    assert labelling.next_items(repo, "box", "u", now, 1, shuffle=True, rng=rng)[0].id == first.id
+    order = [labelling.next_items(repo, "box", f"v{k}", now, 1, shuffle=True, rng=rng)[0].id
+             for k in range(10)]
+    assert len(set(order)) == 10
+    assert any(int(i[2:]) < 120 - labelling.PAGE for i in order), "never past the first page"

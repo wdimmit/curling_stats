@@ -2347,7 +2347,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                    authorization: str | None = Header(default=None)):
         me = require_labeller(authorization)
         label_kind(kind)
-        items = labelling.next_items(repo, kind, me.id, now(), n)
+        # An open site's one labeller gets them at random (site.open_labelling).
+        items = labelling.next_items(repo, kind, me.id, now(), n,
+                                     shuffle=settings.site.open_labelling)
         return {"items": [labelling.for_member(i, label_image_url(i)) for i in items],
                 "count": repo.label_count(me.id, kind)}
 
