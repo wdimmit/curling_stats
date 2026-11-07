@@ -78,3 +78,34 @@ def test_public_posts_allowed():
     c = client(site.DFW)
     for path in site.PUBLIC_POSTS:
         assert c.post(path, json={}).status_code != 403, path
+
+
+# --- pages ------------------------------------------------------------------------------
+
+def test_dfw_terms_page_served():
+    body = client(site.DFW).get("/terms").text.split("<main", 1)[1]
+    assert "DFW Curling Club" in body and "dfwcurling.dimmit.net" in body
+    privacy = client(site.DFW).get("/privacy").text.split("<main", 1)[1]
+    assert "DFW Curling Club" in privacy and "sign in" not in privacy.lower()
+
+
+def test_titles_carry_the_site_name():
+    text = client(site.DFW).get("/games").text
+    title = text[text.index("<title>"):text.index("</title>")]
+    assert "dfwcurling.dimmit.net" in title and "curling.dimmit.net" not in title.replace("dfwcurling.dimmit.net", "")
+
+
+def test_pages_carry_the_site_for_the_frontend():
+    import json
+    text = client(site.DFW).get("/games").text
+    start = text.index("window.SITE=") + len("window.SITE=")
+    got = json.loads(text[start:text.index(";</script>", start)])
+    assert got["name"] == "dfwcurling.dimmit.net" and got["read_only"] is True
+    assert "/ice" in got["nav_hidden"]
+
+
+def test_granite_pages_unchanged():
+    c = client(site.GRANITE)
+    assert "window.SITE" not in c.get("/games").text
+    terms = c.get("/terms").text
+    assert "DFW" not in terms and "<title>Terms of use · curling.dimmit.net</title>" in terms

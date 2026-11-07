@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · dfwcurling.dimmit.net</title>
+<link rel="stylesheet" href="/static/site.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&amp;display=swap">
+<!-- DFW's site (SITE=dfw). What it says is kept has to match what this deploy
+     keeps: no accounts, the request logs, the worker's video cache, clips. -->
+<body>
+<header>
+  <h1><a href="/">dfwcurling.dimmit.net</a></h1>
+  <a href="/terms">Terms</a>
+  <a href="/privacy" class="here" aria-current="page">Privacy</a>
+  <a href="/measurements">Measurements</a>
+</header>
+<main class="legal">
+<h1>Privacy</h1>
+<p class="muted">Last updated November 7, 2026</p>
+
+<p>Will Dimmit runs dfwcurling.dimmit.net and is responsible for what it keeps. For questions, or to have something corrected or removed, write to <a href="mailto:will@ultimatetrip.net">will@ultimatetrip.net</a>.</p>
+<p>In short, the site has no accounts and keeps nothing about its visitors beyond a standard request log. It does not sell anything about anyone. It shows no ads and uses no analytics or tracking services.</p>
+
+<h2>What is public</h2>
+<p>Anyone can see the games of DFW Curling Club's events that the site charts, what the software read from the video, and a clip of each rock. Search engines are asked not to index the site.</p>
+
+<h2>Logs</h2>
+<p>Google Cloud, which hosts the site, keeps a standard log of each request for 30 days: the IP address, the browser it came from, the page asked for and the time. The logs are used to keep the site running and to count visitors.</p>
+
+<h2>Game video</h2>
+<p>The site reads games from DFW Curling Club's public YouTube streams, which show the people playing. To read a game, the video is copied to a processing computer run by the operator and deleted within about three weeks. Some still frames may be kept longer to test and train the software that reads them. Clips are kept in private cloud storage, shared only through links that expire, for about three weeks. Nothing on the site identifies anyone from their face.</p>
+
+<h2>Who else handles it</h2>
+<ul>
+  <li><strong>Google</strong> hosts the site and its data (Cloud Run, Firestore, Cloud Storage, Cloud Logging).</li>
+  <li><strong>YouTube</strong> plays the video on a game's page through its own embedded player. YouTube may set its own cookies.</li>
+  <li><strong>Google Fonts</strong> serves the site's fonts. Your browser fetches them from Google, which sees your IP address.</li>
+</ul>
+<p>Google's handling of all of these is covered by <a href="https://policies.google.com/privacy">Google's privacy policy</a>. Nothing is shared with anyone else unless the law requires it.</p>
+
+<h2>Your browser</h2>
+<p>The site keeps a few settings in your browser's own storage, such as where you were in a game. There are no advertising cookies.</p>
+</main>
+<footer><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/measurements">Measurements</a></footer>

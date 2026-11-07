@@ -870,11 +870,30 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(404, "the chart's run is missing")
         return chart, run, kind == "s"
 
+    def sited(text: str) -> str:
+        """A page as this site serves it: on a site other than Granite's
+        (service/site.py), its title names the site, and the page carries the
+        profile (``window.SITE``) its script reads for the name, the nav and
+        whether anything can be changed. Granite's pages are left as they are."""
+        p = settings.site
+        if not p.key:
+            return text
+        text = re.sub(r"<title>([^<]*)</title>",
+                      lambda m: f"<title>{m.group(1).replace(site_mod.GRANITE.name, p.name)}</title>",
+                      text, count=1)
+        blob = json.dumps({"key": p.key, "name": p.name, "club": p.club_name,
+                           "nav_hidden": sorted(p.nav_hidden), "read_only": p.read_only,
+                           "auto_clips": p.auto_clips}).replace("</", "<\\/")
+        # Right after the title: every page has one, and it comes before any
+        # script that reads the profile.
+        return text.replace("</title>", f"</title>\n<script>window.SITE={blob};</script>", 1)
+
     def page(name: str, **subs) -> HTMLResponse:
-        text = (STATIC_DIR / name).read_text()
+        own = STATIC_DIR / settings.site.pages_dir / name if settings.site.pages_dir else None
+        text = (own if own is not None and own.is_file() else STATIC_DIR / name).read_text()
         for k, v in subs.items():
             text = text.replace("{{" + k + "}}", v)
-        return HTMLResponse(text)
+        return HTMLResponse(sited(text))
 
     def status_payload(chart: Chart, run: Run, read_only: bool) -> dict:
         job = repo.job_for_run(run.id)
@@ -1996,14 +2015,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # access.json before it unlocks editing (may_edit_chart). Never on
             # a view link, an unowned chart, or with accounts off -- those boot
             # exactly as they always have.
-            return HTMLResponse(viewer.boot_page({
+            return HTMLResponse(sited(viewer.boot_page({
                 "slug": key if read_only else chart.id,
                 "mode": "view" if read_only else "edit",
                 "merge": True,
                 "shared": chart.team_id is not None,
                 "guarded": (not read_only and auth.enabled
                             and bool(chart.owner_user_id or chart.team_id)),
-            }))
+            })))
 
         @app.get(prefix + "/status.json")
         def status_json(key: str):
@@ -2174,7 +2193,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.get("/g/{sid}/", response_class=HTMLResponse)
     def review_page(sid: str):
         lookup_source(sid)
-        return HTMLResponse(viewer.boot_page({"mode": "review", "source": sid}))
+        return HTMLResponse(sited(viewer.boot_page({"mode": "review", "source": sid})))
 
     @app.get("/g/{sid}/timeline.json")
     def review_timeline(sid: str, request: Request):

@@ -6,6 +6,7 @@
  * come back later.
  */
 import { Fragment, useEffect, useState } from "react";
+import { currentSite, siteName, visibleLinks } from "../core/index.mjs";
 import { hms, mmss } from "./fmt.js";
 import { Card, Warn } from "./ui.jsx";
 
@@ -140,8 +141,8 @@ export function Status() {
   return (
     <>
       <header>
-        <h1>curling.dimmit.net</h1>
-        <a href="/submit">Submit another</a>
+        <h1>{siteName(currentSite())}</h1>
+        {visibleLinks([["/submit"]], currentSite()).length ? <a href="/submit">Submit another</a> : null}
         <a href="/">All games</a>
       </header>
       <main>

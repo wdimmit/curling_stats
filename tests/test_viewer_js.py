@@ -524,7 +524,7 @@ class TestThinkingTimeNeedsSignIn:
         header = ui[ui.index("export function Header("):]
         only = re.search(r"const SIGNED_IN_ONLY = new Set\(\[(.*?)\]\);", ui)
         assert only and '"/thinking"' in only.group(1)
-        assert ("links.filter(([href]) => !SIGNED_IN_ONLY.has(href)"
+        assert ("visibleLinks(links, site).filter(([href]) => !SIGNED_IN_ONLY.has(href)"
                 " || (ready && (!accounts || !!user)))") in " ".join(header.split())
 
 class TestChartingSignsYouInFirst:
@@ -3630,7 +3630,7 @@ class TestTheFlagButton:
         # puts it before ⋯, and everywhere else the menu renders it here.
         assert 'const reportBtn = (\n    <button id="reportBtn"' in app
         assert menu.index("{tablet ? null : <>{thinkBtn}{reportBtn}</>}") < menu.index('id="flagBtn"')
-        assert "hidden={!config.hosted}" in menu[menu.index('id="flagBtn"'):]
+        assert "hidden={!config.hosted || siteReadOnly(currentSite())}" in menu[menu.index('id="flagBtn"'):]
 
     def test_review_mode_does_not_hide_it_and_the_desktop_orders_it(self):
         css = self.src("src/curling_score/viewer/style.css")
@@ -6069,7 +6069,7 @@ class TestThePlayedDialog:
     def test_the_button_is_only_where_there_is_a_game_and_a_server(self):
         app = self.src("frontend/viewer/App.jsx")
         button = app[app.index('<button id="playedBtn"'):]
-        assert "hidden={!config.hosted || !doc.chart?.source_id}" in button[:400]
+        assert "hidden={!config.hosted || !doc.chart?.source_id || siteReadOnly(currentSite())}" in button[:400]
         assert "<PlayedDialog playing={ui.playing} onClose={closePlayed} onSaved={reload} />" in app
 
     def test_sign_in_is_asked_only_once_the_dialog_is_open(self):
@@ -6265,7 +6265,7 @@ class TestNamingTheTeams:
     def test_the_button_is_only_where_there_is_a_game_and_a_server(self):
         app = self.src("frontend/viewer/App.jsx")
         button = app[app.index('<button id="teamsBtn"'):]
-        assert "hidden={!config.hosted || !doc.chart?.source_id}" in button[:400]
+        assert "hidden={!config.hosted || !doc.chart?.source_id || siteReadOnly(currentSite())}" in button[:400]
         assert "names: typedTeamNames(view.game)" in button[:400]
         assert "<TeamsDialog naming={ui.naming} onClose={closeNaming} onSaved={reload} />" in app
 
@@ -7051,3 +7051,21 @@ class TestTheTabletBranch:
         for needle in ('id="missSheet"', 'id="noteSheet"', 'id="orderSheet"', "{...miss}", "{...note}",
                        "miss.onChange({ target: { value: r } })"):
             assert needle in bar, needle
+
+
+class TestSiteProfile:
+    """A deploy's site (service/site.py), as the pages read it from window.SITE."""
+
+    DFW = {"name": "dfwcurling.dimmit.net", "nav_hidden": ["/ice", "/thinking"], "read_only": True}
+
+    def test_hidden_links_are_left_out(self):
+        links = [["/thinking", "Thinking time"], ["/ice", "Ice report"], ["/games", "Games"]]
+        got = run_js(f"out(visibleLinks({json.dumps(links)}, {json.dumps(self.DFW)}));")
+        assert got == [["/games", "Games"]]
+        assert run_js(f"out(visibleLinks({json.dumps(links)}, null));") == links
+
+    def test_the_sites_name(self):
+        assert run_js(f"out(siteName({json.dumps(self.DFW)}));") == "dfwcurling.dimmit.net"
+        assert run_js("out(siteName(null));") == "curling.dimmit.net"
+        assert run_js("out(siteReadOnly(null));") is False
+        assert run_js(f"out(siteReadOnly({json.dumps(self.DFW)}));") is True

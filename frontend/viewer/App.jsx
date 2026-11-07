@@ -17,7 +17,7 @@ import {
   identity, isBlank, isGraded, liveGame, nextBlankAfter, chartedNext, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
-  shotClipName, shotClipsOffered, bundledClip, houseImageCaption, houseImageName, endChoices, switchedEnds,
+  shotClipName, shotClipsOffered, bundledClip, currentSite, siteName, siteReadOnly, houseImageCaption, houseImageName, endChoices, switchedEnds,
   chartSwapOff, endIdentity, restPassed,
 } from "../core/index.mjs";
 import { accountsOn, whoIsSignedIn } from "../runtime/auth.mjs";
@@ -824,7 +824,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
   // it against and accounts to keep it with.
   const playedBtn = (
     <button id="playedBtn" title="Say which rocks of this game you threw"
-            hidden={!config.hosted || !doc.chart?.source_id}
+            hidden={!config.hosted || !doc.chart?.source_id || siteReadOnly(currentSite())}
             onClick={() => dispatch({ type: "set", patch: { playing: {
               opened: Date.now(), sourceId: doc.chart.source_id,
               teams: teamNames(view.game), format: view.format,
@@ -841,7 +841,7 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
   // it needs one, and saving needs someone signed in.
   const teamsBtn = (
     <button id="teamsBtn" title="Say who played this game"
-            hidden={!config.hosted || !doc.chart?.source_id}
+            hidden={!config.hosted || !doc.chart?.source_id || siteReadOnly(currentSite())}
             onClick={() => dispatch({ type: "set", patch: { naming: {
               opened: Date.now(), sourceId: doc.chart.source_id,
               names: typedTeamNames(view.game),
@@ -865,7 +865,8 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
     </button>
   );
   // Whether the wide layout's ⋯ has any of them to offer.
-  const more = !config.readOnly || (config.hosted && !!doc.chart?.source_id) || clipOffered;
+  const more = !config.readOnly || clipOffered
+    || (config.hosted && !!doc.chart?.source_id && !siteReadOnly(currentSite()));
   const reportBtn = (
     <button id="reportBtn" className={ui.reporting ? "on" : undefined}
             onClick={() => dispatch({ type: "set", patch: { reporting: !ui.reporting } })}>
@@ -874,8 +875,8 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
   );
   return (
     <header>
-      <h1>{config.hosted ? <a href="/games" title="All games">curling.dimmit.net</a>
-                         : "curling.dimmit.net"}</h1>
+      <h1>{config.hosted ? <a href="/games" title="All games">{siteName(currentSite())}</a>
+                         : siteName(currentSite())}</h1>
       <span className="muted" id="src">
         sheet {src.sheet ?? "?"} &middot;{" "}
         <a href={src.url} target="_blank" rel="noopener">{src.video_id}</a>
@@ -926,7 +927,8 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
         {wide ? null : downloadBtn}
         {endBtn}
         {tablet ? null : <>{thinkBtn}{reportBtn}</>}
-        <button id="flagBtn" title="Flag an issue with this rock" hidden={!config.hosted}
+        <button id="flagBtn" title="Flag an issue with this rock"
+                hidden={!config.hosted || siteReadOnly(currentSite())}
                 onClick={() => {
                   // `opened` keys the dialog's form, so every opening starts fresh.
                   const at = flagPlace(view, ui.ei, ui.si, view.format);

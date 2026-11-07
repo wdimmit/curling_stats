@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { signIn, signOff } from "./auth.js";
 import { useAuthUser, useResource } from "./useAuth.js";
+import { currentSite, siteName, visibleLinks } from "../core/index.mjs";
 
 /* Signed out until the SDK says otherwise, and silent when accounts are off:
  * an empty chip is the state the whole site was in before accounts existed,
@@ -43,11 +44,14 @@ const SIGNED_IN_ONLY = new Set(["/thinking", "/ice", "/label"]);
 /* `links` are [href, text] pairs; a third element marks the page you are on. */
 export function Header({ links = [], children }) {
   const { user, ready, accounts } = useAuthUser();
-  const shown = links.filter(([href]) => !SIGNED_IN_ONLY.has(href)
+  // A site may leave pages out altogether (service/site.py): DFW's has no
+  // thinking time or ice report.
+  const site = currentSite();
+  const shown = visibleLinks(links, site).filter(([href]) => !SIGNED_IN_ONLY.has(href)
                                          || (ready && (!accounts || !!user)));
   return (
     <header>
-      <h1><a href="/">curling.dimmit.net</a></h1>
+      <h1><a href="/">{siteName(site)}</a></h1>
       {shown.map(([href, text, here]) => (
         <a key={href} href={href} className={here ? "here" : undefined}
            aria-current={here ? "page" : undefined}>{text}</a>

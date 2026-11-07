@@ -13,6 +13,7 @@
  * Supper League 2026-2027", one letter apart.
  */
 import { useEffect, useState } from "react";
+import { currentSite, siteReadOnly } from "../core/index.mjs";
 import { authedFetch, ensureSignedIn } from "./auth.js";
 import { clockParts, dayParts, localDay } from "./fmt.js";
 import { useAuthUser, useResource } from "./useAuth.js";
@@ -270,7 +271,9 @@ function Actions({ game, mine, team }) {
       {/* Already charting it? Say so, and go straight there. A second press
           used to hand back a blank chart with the first one's grading
           stranded behind it. */}
-      {have ? <a className="btn primary" href={`/c/${have}/`}>Open your chart</a>
+      {/* A look-only site (service/site.py) makes no charts. */}
+      {siteReadOnly(currentSite()) ? null
+       : have ? <a className="btn primary" href={`/c/${have}/`}>Open your chart</a>
             : <button className="chart" disabled={busy || game.status === "failed"}
                       onClick={chart}>Chart</button>}
     </div>
@@ -403,9 +406,9 @@ export function Games() {
       <main>
         <p className="muted">Every game we've processed. <strong>Watch</strong> steps
         through a game shot by shot — no link to keep, nothing to fill in.{" "}
-        <span className="chartnote"><strong>Chart</strong> starts your own chart of the
+        {siteReadOnly(currentSite()) ? null : <span className="chartnote"><strong>Chart</strong> starts your own chart of the
         game. Only you, or your team, can change it; send the link and others can
-        watch.</span></p>
+        watch.</span>}</p>
         <TeamPicker value={team} onChange={setTeam} me={me} />
         <div id="list">
           {/* Only before the first answer: the live refresh must not fold the
