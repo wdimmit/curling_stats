@@ -16,6 +16,8 @@ from datetime import date
 # a signed-in or editing action (frontend/: teams, scores, flags, plays,
 # overrides, submissions, clip asks -- which an auto-clips site never needs).
 PUBLIC_POSTS: frozenset = frozenset()
+# And under these, on a site whose labelling is open (`open_labelling`).
+LABEL_POSTS = "/api/label/"
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,10 @@ class SiteProfile:
     auto_clips: bool = False
     pages_dir: str | None = None
     discover_ranges: tuple | None = None
+    # /label without accounts: whoever has its (unlinked) address labels, as
+    # one labeller, and one label finishes an item. For a temporary site
+    # whose operator is its only labeller.
+    open_labelling: bool = False
 
 
 GRANITE = SiteProfile(key="", name="curling.dimmit.net", club_name="Granite Curling Club",
@@ -37,7 +43,7 @@ DFW = SiteProfile(
     key="dfw", name="dfwcurling.dimmit.net", club_name="DFW Curling Club", tz="America/Chicago",
     nav_hidden=frozenset({"/thinking", "/ice", "/practice", "/label", "/submit", "/playlists",
                           "/mine", "/shots"}),
-    read_only=True, auto_clips=True, pages_dir="dfw", discover_ranges=())
+    read_only=True, auto_clips=True, pages_dir="dfw", discover_ranges=(), open_labelling=True)
 SITES = {p.key: p for p in (GRANITE, DFW)}
 
 

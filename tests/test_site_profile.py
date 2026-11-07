@@ -109,3 +109,38 @@ def test_granite_pages_unchanged():
     assert "window.SITE" not in c.get("/games").text
     terms = c.get("/terms").text
     assert "DFW" not in terms and "<title>Terms of use · curling.dimmit.net</title>" in terms
+
+
+# --- labelling without accounts (an open site: DFW's) -----------------------------------
+
+from test_labelling_api import FULL_BOX, answer, publish  # noqa: E402
+
+
+def label_world(profile):
+    store = MemoryStore()
+    settings = Settings(public_base_url="https://x.example", worker_token="worker-secret",
+                        admin_token="admin-secret", model_id="m", site=profile)
+    client = TestClient(create_app(MemoryRepo(), store, FakeYouTube(), settings))
+    return {"client": client, "store": store}
+
+
+def test_dfw_labels_without_signing_in_and_one_label_finishes_an_item():
+    w = label_world(site.DFW)
+    publish(w, 2)
+    c = w["client"]
+    nxt = c.get("/api/label/box/next")
+    assert nxt.status_code == 200 and nxt.json()["items"]
+    first = nxt.json()["items"][0]["id"]
+    r = answer(w, {}, first)
+    assert r.status_code == 200, r.text
+    assert c.get("/api/label/me").json()["box"] == 1
+    # done with one label: it is not handed out again
+    ids = [i["id"] for i in c.get("/api/label/box/next", params={"n": 2}).json()["items"]]
+    assert first not in ids
+    assert c.post(f"/api/label/box/{ids[0]}/skip").status_code == 200
+
+
+def test_granite_labelling_still_needs_an_account():
+    w = label_world(site.GRANITE)
+    publish(w, 1)
+    assert w["client"].get("/api/label/box/next").status_code == 503

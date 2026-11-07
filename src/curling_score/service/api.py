@@ -391,6 +391,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             if (request.method not in ("GET", "HEAD", "OPTIONS")
                     and not path.startswith(("/api/worker/", "/api/admin/"))
                     and path not in site_mod.PUBLIC_POSTS
+                    and not (settings.site.open_labelling and path.startswith(site_mod.LABEL_POSTS))
                     and not bearer_ok(request.headers.get("authorization"), settings.admin_token)):
                 return JSONResponse({"detail": "this site is read-only"}, status_code=403)
             return await call_next(request)
@@ -501,6 +502,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 and bearer_ok(authorization, settings.admin_token)):
             return User(id="operator", created_at=now(), name="operator", role="admin")
         return require_user(authorization)
+
+    def require_labeller(authorization) -> User:
+        """Who labels: someone signed in -- or, on a site whose labelling is
+        open and that has no accounts (site.open_labelling), the one labeller
+        everyone with the page's address is."""
+        if settings.site.open_labelling and not auth.enabled:
+            return User(id="open-labeller", created_at=now(), name="labeller")
+        return require_user(authorization)
+
+    def labels_needed(kind: str) -> int:
+        # An open site's one labeller is all the labels an item gets.
+        return 1 if settings.site.open_labelling else labelling.LABELS_NEEDED[kind]
 
     def require_user(authorization) -> User:
         if not auth.enabled:
@@ -2326,13 +2339,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     @app.get("/api/label/me")
     def label_me(authorization: str | None = Header(default=None)):
-        me = require_user(authorization)
+        me = require_labeller(authorization)
         return {k: repo.label_count(me.id, k) for k in LABEL_KINDS}
 
     @app.get("/api/label/{kind}/next")
     def label_next(kind: str, n: int = Query(1, ge=1, le=2),
                    authorization: str | None = Header(default=None)):
-        me = require_user(authorization)
+        me = require_labeller(authorization)
         label_kind(kind)
         items = labelling.next_items(repo, kind, me.id, now(), n)
         return {"items": [labelling.for_member(i, label_image_url(i)) for i in items],
@@ -2341,7 +2354,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     @app.post("/api/label/{kind}/{item_id}")
     async def label_submit(kind: str, item_id: str, request: Request,
                            authorization: str | None = Header(default=None)):
-        me = require_user(authorization)
+        me = require_labeller(authorization)
         label_kind(kind)
         raw = await request.body()
         if len(raw) > MAX_LABEL_BYTES:
@@ -2368,7 +2381,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         result, _ = repo.submit_label(
             LabelAnswer(id=label_answer_id(item_id, me.id), item_id=item_id, kind=kind,
                         uid=me.id, at=t, seconds=seconds, answer=checked),
-            t, labelling.LABELS_NEEDED[kind])
+            t, labels_needed(kind))
         if result == "missing":
             raise HTTPException(404, "no such item")
         if result in ("full", "held", "closed"):
@@ -2377,7 +2390,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     @app.post("/api/label/{kind}/{item_id}/skip")
     def label_skip(kind: str, item_id: str, authorization: str | None = Header(default=None)):
-        me = require_user(authorization)
+        me = require_labeller(authorization)
         label_kind(kind)
         got = repo.get_label_item(item_id)
         if got is None or got.kind != kind:
