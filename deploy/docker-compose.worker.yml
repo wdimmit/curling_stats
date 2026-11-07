@@ -82,7 +82,7 @@ services:
       # as any live game's recording is: the reference camera-direct's league
       # gate compares against (user 2026-11-06), and Clip... for those games
       # until the clips worker reads the cameras' files.
-      CAMERA_KEEP_YOUTUBE: "0"
+      CAMERA_KEEP_YOUTUBE: "1"
     depends_on: [pot]
     volumes:
       # /data is a 1.5 TB volume of its own (1.4 TB free on 2026-10-06). The
