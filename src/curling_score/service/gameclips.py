@@ -194,24 +194,41 @@ def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
     return shot_state(repo, run, name, now)
 
 
+def ask_auto(repo, run, source_id: str, rock: dict, sides: dict, now) -> bool:
+    """Queue a clip of ``rock`` in nobody's name (an auto-clips site), unless
+    one was asked for on this run already -- whatever came of it: a failed cut
+    is not asked again and again. One read and at most one write: never the
+    queue scans `shot_state` makes. ``sides`` is `clip_calibration`'s. Whether
+    it asked."""
+    if rock.get("t_release_s") is None:
+        return False
+    job = repo.get_clip_job(shot_job_id(run.id, rock["name"]))
+    if job is not None and not (run.ready_at is not None and job.created_at < run.ready_at):
+        return False
+    repo.put_clip_job(ClipJob(
+        id=shot_job_id(run.id, rock["name"]), play_id="", user_id=AUTO_USER,
+        source_id=source_id or "", run_id=run.id, video_id=run.video_id, state="queued",
+        created_at=now, run_after=now,
+        spec={"calibration": sides, "rocks": [rock],
+              **({"live": True} if run.status == "live" else {})}))
+    return True
+
+
 def ask_all(repo, run, doc: dict, now, sources: dict | None = None) -> int:
     """Ask for a clip of every rock in ``doc`` that was seen released and has
-    none asked for on ``run`` yet -- for a site that cuts every rock without
-    anyone asking (service/site.py ``auto_clips``). ``sources`` maps a game's
-    index to its source id, where known. How many it asked for."""
+    none asked for on ``run`` yet (`ask_auto`) -- for a site that cuts every
+    rock without anyone asking (service/site.py ``auto_clips``). ``sources``
+    maps a game's index to its source id, where known. How many it asked for.
+    A live run's clips are asked for again when it completes: its rocks are
+    final only then."""
     asked = 0
-    calibration = doc.get("calibration")
+    sides = clip_calibration(doc.get("calibration"))
     for game in doc.get("games", []):
         sid = (sources or {}).get(game.get("index"), "")
         for end in game.get("ends", []):
             for s in end.get("shots") or []:
-                if s.get("missing") or s.get("t_release_s") is None:
-                    continue
-                rock = rock_spec(game, end, s)
-                if shot_state(repo, run, rock["name"], now)["state"] != "none":
-                    continue
-                ask_shot(repo, run, sid, AUTO_USER, rock, calibration, now)
-                asked += 1
+                if not s.get("missing"):
+                    asked += ask_auto(repo, run, sid, rock_spec(game, end, s), sides, now)
     return asked
 
 

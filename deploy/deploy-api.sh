@@ -19,6 +19,15 @@
 set -euo pipefail
 : "${PROJECT_ID:?set PROJECT_ID}"
 REGION="${REGION:-us-west1}"
+
+# A site that charts only its events' dates (deploy/dfw/cloudrun.yaml) needs
+# them said every deploy: `services replace` would otherwise set them empty,
+# and an empty range charts nothing. DISCOVER_RANGES= (empty) says so on purpose.
+if grep -q DISCOVER_RANGES_VALUE "${SERVICE_YAML:-deploy/cloudrun.yaml}" && [ -z "${DISCOVER_RANGES+set}" ]; then
+  echo "set DISCOVER_RANGES (e.g. 2026-11-05/2026-11-09; empty to chart nothing)" >&2
+  exit 1
+fi
+
 TAG="$(git rev-parse --short HEAD)$(git diff --quiet || echo -dirty)"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/curling/api:${TAG}"
 

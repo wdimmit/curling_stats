@@ -74,3 +74,30 @@ def test_an_unasked_rock_reads_as_it_will_be_on_an_auto_site():
     assert got["state"] == "queued"
     got = c.get("/api/shot-clips", params={"path": f"/g/{sid}/", "rock": "0.1.2"}).json()
     assert got == {"state": "failed", "reason": "no_release"}
+
+
+def test_ask_all_never_scans_the_queue(monkeypatch):
+    """Asking 128 rocks at a game's end must cost reads per rock, not per rock
+    times the clip queue: each scan of the queue reads every queued job."""
+    w = make_world(site.DFW)
+    run = w["repo"].get_run("r_1")
+    scans = []
+    real = w["repo"].clip_jobs_in_state
+    monkeypatch.setattr(w["repo"], "clip_jobs_in_state", lambda s: scans.append(s) or real(s))
+    doc = released_doc()
+    gameclips.ask_all(w["repo"], run, doc, T0)
+    gameclips.ask_all(w["repo"], run, doc, T0)
+    assert scans == []
+    assert clip_jobs(w) == ["cs_r_1_0.1.1"]
+
+
+def test_an_unasked_rock_is_asked_for_when_its_page_looks():
+    """If the ask at publish never happened (a timeout, a worker retry), the
+    page's own look asks for it -- it must never wait on a clip nobody asked for."""
+    w = make_world(site.DFW)
+    work_through(w, doc=released_doc())
+    w["repo"].clip_jobs.clear()
+    sid = w["repo"].sources_for_video(VID)[0].id
+    got = w["client"].get("/api/shot-clips", params={"path": f"/g/{sid}/", "rock": "0.1.1"}).json()
+    assert got["state"] == "queued"
+    assert clip_jobs(w) == ["cs_r_1_0.1.1"]

@@ -249,7 +249,11 @@ class TestDiscoveryByDate:
         result = poll(repo, yt, ranges=((date(2026, 11, 6), date(2026, 11, 9)),))
         assert result["created"] == [] and result["live"] == []
         assert ("vidL", "out_of_range") in result["skipped"]
-        assert "vidL" in repo.get_playlist("p").last_seen_video_ids
+        # Never marked seen: a range set wrong, or left empty by a redeploy,
+        # must not lose a draw for good -- set right, the next poll takes it.
+        assert "vidL" not in repo.get_playlist("p").last_seen_video_ids
+        result = poll(repo, yt, ranges=((date(2026, 10, 1), date(2026, 10, 1)),))
+        assert len(result["created"]) == 1
 
     def test_empty_ranges_queue_nothing(self):
         repo, yt = self.setup()

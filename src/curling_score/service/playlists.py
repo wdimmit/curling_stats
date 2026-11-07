@@ -111,8 +111,9 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
 
     ``ranges`` -- ((first date, last date), ...), inclusive, in ``tz`` -- limits
     what is queued to videos played on those dates (a site's events,
-    service/site.py); anything else is seen and skipped. An upcoming stream is
-    looked at again: its date is when it was made. None: every video.
+    service/site.py); anything else is skipped, and looked at again next time
+    (an upcoming stream's date is when it was made, and a range may be set
+    late). None: every video.
     """
     created, live_created, skipped, errors = [], [], [], []
     n_queued = 0
@@ -135,8 +136,9 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
         accepted_now = []
         for meta in youtube.videos(new_ids) if new_ids else []:
             if ranges is not None and not in_ranges(meta.published_at, ranges, tz):
-                if meta.live_status != "upcoming":
-                    accepted_now.append(meta.video_id)
+                # Never marked seen: a range set wrong, or left empty by a
+                # redeploy, must not lose a draw for good. The cost is one
+                # metadata read per poll for the channel's other uploads.
                 skipped.append((meta.video_id, "out_of_range"))
                 continue
             if meta.live_status == "live":
