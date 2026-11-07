@@ -1,0 +1,70 @@
+# DFW Curling Club's site (dfwcurling.dimmit.net, SITE=dfw): its one worker host,
+# the GPU laptop (administrator@100.80.66.81, an RTX 3070 Laptop GPU, 8 GB).
+# Its own compose project (-p dfw), caches and ids, so nothing here touches
+# Granite's workers or the other club tests on the laptop. Copy worker.env.example
+# to worker.env, fill it in, then from this directory:
+#   docker compose -p dfw build worker && docker compose -p dfw up -d
+# Never set WORKER_CAMERAS here: these workers see no club's cameras.
+services:
+  worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.worker
+      # DFW's own models (clubs.DALLAS): the image's weight env beats a club
+      # profile's, and the API's MODEL_ID must be dfw1a's (version.model_id).
+      args: { MODEL: dfw1a.pt, SIDE_MODEL: dfw2b.pt }
+    image: curling-worker:dfw
+    restart: unless-stopped
+    env_file: worker.env
+    cap_add: [SYS_PTRACE]
+    shm_size: 2gb
+    environment:
+      # The Dallas profile: its broadcast is converted through the 5U event's
+      # layout (curling_score.broadcast) before anything reads it, live and VOD.
+      CLUB: dallas
+      CURLING_SCORE_CACHE: /data/cache
+      WORKER_LIVE: "1"
+      # Up to three of DFW's streams at once (the event's most).
+      LIVE_MAX_STREAMS: "3"
+      # The laptop's disk is shared (125 GB free on 2026-11-07): a game's raw
+      # recording and its converted copy are a few GB each.
+      WORKER_CACHE_GB: "80"
+      WORKER_MIN_FREE_GB: "30"
+      WORKER_RECORDING_DAYS: "21"
+      YTDLP_POT_PROVIDER: http://pot:4416
+      # NVENC for the converted copy needs the GPU's video capability.
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+      WORKER_FP_HARVEST: "0"
+      # A rehearsal: a recording at /data/replays/<video id>.ts plays as that
+      # video's live stream (live/manager.py), for an admin-made live run.
+      WORKER_REPLAY_DIR: /data/replays
+      WORKER_REPLAY_SPEED: "1"
+    depends_on: [pot]
+    volumes:
+      - /data/wdd/dfw-cache:/data/cache
+      - /data/wdd/dfw-replays:/data/replays:ro
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+  # Every rock's clip (the site cuts them without asking), from the worker's
+  # cache, read-only. CPU only.
+  clips:
+    image: curling-worker:dfw
+    pull_policy: never
+    restart: unless-stopped
+    env_file: worker.env
+    command: ["python", "-m", "curling_score.service.clipworker"]
+    environment:
+      WORKER_ID: dfw-laptop-clips
+      WORKER_ROLE: clips
+      WORKER_LIVE: "0"
+      CURLING_SCORE_CACHE: /data/cache
+      WORKER_CLIP_SOURCES: /data/src1
+    volumes:
+      - /data/wdd/dfw-clips:/data/cache
+      - /data/wdd/dfw-cache:/data/src1:ro
+    cpus: "4.0"
+  pot:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
+    restart: unless-stopped

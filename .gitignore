@@ -36,6 +36,7 @@ build/
 # committing the token to a public repo. The Firebase key is a public
 # identifier and no secret, but it is still deploy config, not source.
 deploy/worker.env
+deploy/dfw/worker.env
 firebase_api_key.json
 
 # Training binaries that live on the GPU box, not in a public repo. The
