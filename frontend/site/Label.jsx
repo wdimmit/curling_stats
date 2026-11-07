@@ -239,7 +239,13 @@ const PLAYER_MODE = {
   alt: "The ice with its stones greyed, and the people on it to be boxed" };
 
 function BoxFlow(props) { return <BoxEditor mode={BOX_MODE} {...props} />; }
+// Brooms are boxed as players are, but with no stones drawn: over a broom
+// strip the greyed stone boxes only confused.
+const BROOM_MODE = { ...PLAYER_MODE, stones: false,
+  alt: "The ice around the house, with the broom heads on it to be boxed" };
+
 function PlayerFlow(props) { return <BoxEditor mode={PLAYER_MODE} {...props} />; }
+function BroomFlow(props) { return <BoxEditor mode={BROOM_MODE} {...props} />; }
 
 function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSkip, onBack }) {
   const [s, setS] = useState(() => restore || mode.start(item));
@@ -406,7 +412,8 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
   const w = item.w * scale, h = item.h * scale;
   // Grey context: the stones (as fixed so far) behind the players, or the
   // players, dimmed, behind the stones being fixed.
-  const stones = mode.coloured || fixing ? [] : s.stones?.boxes || item.stones || [];
+  const stones = mode.coloured || fixing || mode.stones === false ? []
+    : s.stones?.boxes || item.stones || [];
   const dimmed = fixing ? s.boxes : [];
   const fixed = canFix && stonesFixed(s);
 
@@ -499,8 +506,9 @@ function BoxEditor({ mode, item, restore, busy, canBack, paused, onSubmit, onSki
           <>Drag a corner to resize, drag inside a box to move it, drag on empty ice to draw one.{" "}
             <kbd>R</kbd> red, <kbd>Y</kbd> yellow for the selected box (or the next one you draw).</>
         ) : (
-          <>Drag a corner to resize, drag inside a box to move it, drag anywhere else, even over a
-            grey stone, to draw one. With nobody to box, just press <kbd>Enter</kbd>.
+          <>Drag a corner to resize, drag inside a box to move it, drag anywhere else
+            {mode.stones === false ? null : ", even over a grey stone,"} to draw one.
+            {mode.stones === false ? " With none to box" : " With nobody to box"}, just press <kbd>Enter</kbd>.
             {canFix ? <> A stone's box wrong, or a stone with none? <kbd>F</kbd> fixes the stones.</> : null}
             {fixed ? <> <strong>You've changed the stones.</strong></> : null}</>
         )}
@@ -653,12 +661,12 @@ const FLOWS = {
                  caption: "Cut off at the edge: box what shows." },
                { src: "/static/label-player-broom.jpg",
                  caption: "A broom reaching over a stone: box the player, not the broom." }] },
-  brooms: { kind: "broom", name: "Broom boxes", Flow: PlayerFlow,
+  brooms: { kind: "broom", name: "Broom boxes", Flow: BroomFlow,
             howto: "Box every broom head on the ice: the pad at the end of the broom, where it "
                    + "touches or nearly touches the ice -- the skip's target above all, and any "
                    + "other broom on the ice. Not the shaft, not the person holding it. A broom "
                    + "head cut off at the edge gets a box over the part you can see. If there is "
-                   + "none, press Enter. The grey boxes are stones, for context." },
+                   + "none, press Enter." },
   releases: { kind: "release", name: "Release marks", Flow: ReleaseFlow,
               howto: "Find the first frame where the hand is clearly off the handle. If the "
                      + "thrower lets go and grabs it again, mark the last let-go." },

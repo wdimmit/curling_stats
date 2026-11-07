@@ -284,3 +284,13 @@ def test_the_page_has_a_broom_flow():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "frontend/site/Label.jsx").read_text()
     assert '"#brooms"' in src and 'brooms: { kind: "broom"' in src
+
+
+def test_the_broom_flow_draws_no_stones():
+    """Greyed stone boxes over a broom strip only confused (the user, 2026-11-07)."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "frontend/site/Label.jsx").read_text()
+    assert "const BROOM_MODE = { ...PLAYER_MODE, stones: false" in src
+    assert 'brooms: { kind: "broom", name: "Broom boxes", Flow: BroomFlow' in src
+    assert "mode.stones === false ? []" in src
+    assert "The grey boxes are stones" not in src[src.index("brooms: {"):src.index("releases: {")]
