@@ -3379,6 +3379,14 @@ class TestShotClip:
         d["source"].pop("analysed_at", None)
         assert run_js(f"const d = {json.dumps(d)}; out(shotClipsOffered(d, 0));") is False
 
+    def test_a_static_page_brings_its_own_clips(self):
+        d = doc([shot(1, "red", "lead")])
+        d["chart"] = {"read_only": True, "clips": {"0.1.1": "clips/0.1.1.mp4", "0.1.2": ""}}
+        got = run_js(f"const d = {json.dumps(d)};"
+                     " out([bundledClip(d, '0.1.1'), bundledClip(d, '0.1.2'), bundledClip(d, '0.1.3'),"
+                     " bundledClip(d, null), bundledClip({}, '0.1.1')]);")
+        assert got == ["clips/0.1.1.mp4", None, None, None, None]
+
     def test_what_the_dialog_says(self):
         got = run_js("out([{state: 'queued', ahead: 0}, {state: 'queued', ahead: 2},"
                      " {state: 'cutting'}, {state: 'ready'}, {state: 'gone'}, {state: 'expired'},"
@@ -3394,6 +3402,7 @@ class TestShotClip:
     def test_the_menu_offers_it_and_the_page_names_the_dialog(self):
         app = (Path(__file__).resolve().parents[1] / "frontend/viewer/App.jsx").read_text()
         assert 'id="clipBtn"' in app and "shotClipsOffered(doc, openedAt)" in app
+        assert "bundledClip(doc, clipName)" in app
         assert "<ShotClipDialog clipping={ui.clipping}" in app
         css = (VIEWER / "style.css").read_text()
         assert "header #clipBtn    { order: 15; }" in css, "the desktop header puts it first"

@@ -31,7 +31,13 @@ export function ShotClipDialog({ clipping, onClose }) {
 const UNREACHABLE = "Could not reach the server. Try again.";
 
 function ShotClip({ clipping, onClose }) {
-  const { path, rock, text } = clipping;
+  const { path, rock, text, url } = clipping;
+  // One that came with the page plays at once; there is nobody to ask.
+  if (url) return <ClipView text={text} got={{ state: "ready", url, download: url }} onClose={onClose} />;
+  return <AskedClip path={path} rock={rock} text={text} onClose={onClose} />;
+}
+
+function AskedClip({ path, rock, text, onClose }) {
   // "looking", then "signin" (nobody), "slow" (sign-in did not answer),
   // "off" (no accounts here), "error", or "asked" -- with `got`, the API's
   // last word on the clip.
@@ -97,15 +103,7 @@ function ShotClip({ clipping, onClose }) {
     body = null;
     action = <button type="button" className="on" onClick={again}>Try again</button>;
   } else if (got?.state === "ready") {
-    body = (
-      <>
-        <video className="sc-video" src={got.url} controls playsInline autoPlay muted
-               preload="metadata" />
-        <p className="sc-legend">Solid: the line it was thrown on · dashed: hack to broom ·
-          ring: the broom · dots: the rock from the hack to past the hog line</p>
-      </>
-    );
-    action = <a className="sc-download on" href={got.download} download>⬇ Download</a>;
+    return <ClipView text={text} got={got} error={error} onClose={onClose} />;
   } else if (status.busy) {
     body = <Working text={status.text} />;
   } else {
@@ -123,6 +121,24 @@ function ShotClip({ clipping, onClose }) {
       <div className="sc-foot">
         <button type="button" onClick={onClose}>Close</button>
         {action}
+      </div>
+    </div>
+  );
+}
+
+function ClipView({ text, got, error = null, onClose }) {
+  return (
+    <div>
+      <h2 id="clipTitle">Clip of this rock</h2>
+      {text && <p className="sc-what">{text}</p>}
+      <video className="sc-video" src={got.url} controls playsInline autoPlay muted
+             preload="metadata" />
+      <p className="sc-legend">Solid: the line it was thrown on · dashed: hack to broom ·
+        ring: the broom · dots: the rock from the hack to past the hog line</p>
+      {error && <p className="sc-error" role="alert">{error}</p>}
+      <div className="sc-foot">
+        <button type="button" onClick={onClose}>Close</button>
+        <a className="sc-download on" href={got.download} download>⬇ Download</a>
       </div>
     </div>
   );

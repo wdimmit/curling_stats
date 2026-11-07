@@ -88,6 +88,7 @@ export const noteProblem = core.noteProblem;
 export const shotClipName = core.shotClipName;
 export const shotClipsOffered = core.shotClipsOffered;
 export const shotClipStatus = core.shotClipStatus;
+export const bundledClip = core.bundledClip;
 export const houseImageCaption = core.houseImageCaption;
 export const houseImageName = core.houseImageName;
 export const settleWithin = core.settleWithin;

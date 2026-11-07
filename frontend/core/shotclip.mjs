@@ -23,6 +23,14 @@ export function shotClipName(view, ei, si) {
   return `${gi}.${endIdentity(e)}.${identity(raw)}`;
 }
 
+/* A clip that came with the page: a static demo has no API to ask, so its
+ * timeline lists the clips cut for it (scripts/dallas/cut_clips.py), by name,
+ * as links beside the page (`chart.clips`). Null when this rock has none. */
+export function bundledClip(doc, name) {
+  const url = name ? doc?.chart?.clips?.[name] : null;
+  return typeof url === "string" && url ? url : null;
+}
+
 /* Whether to offer a clip of this game's shots now: until its video is past
  * the days it is kept. A game still being streamed is no exception: every
  * rock on the page is in an end already published, and the clips worker cuts

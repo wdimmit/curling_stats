@@ -17,7 +17,7 @@ import {
   identity, isBlank, isGraded, liveGame, nextBlankAfter, chartedNext, blankQueue, peekMode,
   renumberNotice, shotVideoTime, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
-  shotClipName, shotClipsOffered, houseImageCaption, houseImageName, endChoices, switchedEnds,
+  shotClipName, shotClipsOffered, bundledClip, houseImageCaption, houseImageName, endChoices, switchedEnds,
   chartSwapOff, endIdentity, restPassed,
 } from "../core/index.mjs";
 import { accountsOn, whoIsSignedIn } from "../runtime/auth.mjs";
@@ -852,18 +852,20 @@ function Header({ doc, config, ui, status, queue, view, shot, dispatch, goTo, de
   );
   // A clip of this rock, while the game's video is kept: one already cut plays
   // at once, and asking for one needs someone signed in.
+  // A static demo brings its clips with it (bundledClip): no API, no sign-in.
+  const clipUrl = bundledClip(doc, clipName);
+  const clipOffered = !!clipUrl || (config.hosted && !!clipName && shotClipsOffered(doc, openedAt));
   const clipBtn = (
     <button id="clipBtn" title="A clip of this rock, to watch or save"
-            hidden={!config.hosted || !clipName || !shotClipsOffered(doc, openedAt)}
+            hidden={!clipOffered}
             onClick={() => dispatch({ type: "set", patch: { clipping: {
-              opened: Date.now(), path: location.pathname, rock: clipName,
+              opened: Date.now(), path: location.pathname, rock: clipName, url: clipUrl,
               text: flagPlace(view, ui.ei, ui.si, view.format).text } } })}>
       Clip…
     </button>
   );
   // Whether the wide layout's ⋯ has any of them to offer.
-  const more = !config.readOnly || (config.hosted && !!doc.chart?.source_id)
-    || (config.hosted && !!clipName && shotClipsOffered(doc, openedAt));
+  const more = !config.readOnly || (config.hosted && !!doc.chart?.source_id) || clipOffered;
   const reportBtn = (
     <button id="reportBtn" className={ui.reporting ? "on" : undefined}
             onClick={() => dispatch({ type: "set", patch: { reporting: !ui.reporting } })}>
