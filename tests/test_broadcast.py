@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -188,3 +189,64 @@ def test_converter_counts_frames_and_the_first_match(dfw):
     for f in [good, grey]:
         conv.push(f)
     assert (conv.frames, conv.first_match) == (5, 3)
+
+
+def test_vod_conversion_reports_progress_and_can_be_stopped(dfw, tmp_path, monkeypatch):
+    """A 2.5 h game converts for most of an hour: the job's lease is renewed
+    through its progress, and a job given away stops the conversion."""
+    path = tmp_path / "abc.mp4"
+    write_clip(path, view_frame(dfw))
+
+    def fake_convert(src, dst, layout, *, on_head=None, **kw):
+        Path(dst).write_bytes(b"partial")
+        for s in (60.0, 120.0, 180.0):
+            on_head(s, None)
+        return {"T": 100}
+    monkeypatch.setattr(V, "convert_file", fake_convert)
+    seen = []
+    V.ensure_converted(path, "dfw-5u", on_progress=seen.append)
+    assert seen == [60.0, 120.0, 180.0]
+
+    class Lost(Exception):
+        pass
+    path2 = tmp_path / "def.mp4"
+    write_clip(path2, view_frame(dfw))
+    before = path2.read_bytes()
+
+    def lost(s):
+        raise Lost()
+    with pytest.raises(Lost):
+        V.ensure_converted(path2, "dfw-5u", on_progress=lost)
+    assert path2.read_bytes() == before and not list(tmp_path.glob("def.*conv*"))
+
+
+def test_vod_temp_file_is_a_part_file(dfw, tmp_path, monkeypatch):
+    """The pruner leaves *.part* files alone; the conversion's must be one."""
+    path = tmp_path / "abc.mp4"
+    write_clip(path, view_frame(dfw))
+    names = []
+
+    def fake_convert(src, dst, layout, **kw):
+        names.append(Path(dst).name)
+        Path(dst).write_bytes(Path(src).read_bytes())
+        return {"T": 30}
+    monkeypatch.setattr(V, "convert_file", fake_convert)
+    V.ensure_converted(path, "dfw-5u")
+    assert ".part" in names[0] and names[0].endswith(".mp4")
+
+
+def test_the_pruner_keeps_a_videos_layout_marker_with_it(tmp_path):
+    """The marker is no media of its own: it goes with its video, and only then."""
+    import os
+    from curling_score.ingest import prune
+    videos = tmp_path / "videos"
+    videos.mkdir()
+    (videos / "abc.mp4").write_bytes(b"x" * 2000)
+    V.mark(videos / "abc.mp4", "dfw-5u")
+    old = 1_000_000.0
+    os.utime(videos / "abc.mp4", (old, old))
+    os.utime(videos / "abc.layout", (old - 100, old - 100))      # older than its video
+    assert videos / "abc.layout" not in prune.media_files(tmp_path)
+    removed = prune.prune(tmp_path, keep_gb=0.0, now=old + 10 * 86400.0, free_bytes=10**12)
+    assert videos / "abc.mp4" in removed
+    assert not (videos / "abc.layout").exists()

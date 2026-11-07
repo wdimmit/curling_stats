@@ -28,6 +28,14 @@ MEDIA_DIRS = ("videos", "proxies", cache.KEPT_DIR)
 DAY_S = 86400.0
 
 
+def _unlink(path: Path) -> None:
+    """Delete a media file; a video's broadcast-layout marker
+    (broadcast/vod.py, ``<id>.layout``) goes with it, and only with it."""
+    path.unlink(missing_ok=True)
+    if path.suffix == ".mp4" and path.parent.name == "videos":
+        path.with_suffix(".layout").unlink(missing_ok=True)
+
+
 def media_files(root) -> list[Path]:
     root = Path(root)
     out = []
@@ -35,7 +43,7 @@ def media_files(root) -> list[Path]:
         d = root / name
         if d.is_dir():
             out.extend(p for p in d.iterdir()
-                       if p.is_file() and p.suffix not in (".json", ".tmp"))
+                       if p.is_file() and p.suffix not in (".json", ".tmp", ".layout"))
     return out
 
 
@@ -100,7 +108,7 @@ def expire_recordings(root, days: float, now: float | None = None) -> list[tuple
         if any(now - st.st_atime < RECENT_S for _p, st in files):
             continue
         for p, st in files:
-            p.unlink(missing_ok=True)
+            _unlink(p)
             removed.append((p, st.st_size))
         cache.kept_marker(vid, root).unlink(missing_ok=True)
     return removed
@@ -140,7 +148,7 @@ def prune(root, keep_gb: float, now=None, *, min_free_gb: float = 0.0,
 
     def take(path, size):
         nonlocal total, free
-        path.unlink(missing_ok=True)
+        _unlink(path)
         removed.append(path)
         total -= size
         free += size

@@ -1201,7 +1201,15 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         from curling_score.broadcast import vod as broadcast_vod
 
         phase("download", 1.0, f"converting the broadcast ({club.broadcast_layout})")
-        path = broadcast_vod.ensure_converted(path, club.broadcast_layout)
+        ticked = [time.monotonic()]
+
+        def converting(seconds):
+            # The job's lease is renewed by its progress: a game takes most
+            # of an hour to convert, and the lease is ten minutes.
+            if time.monotonic() - ticked[0] >= 60.0:
+                ticked[0] = time.monotonic()
+                phase("download", 0.99, f"converting the broadcast: {seconds / 60:.0f} min done")
+        path = broadcast_vod.ensure_converted(path, club.broadcast_layout, on_progress=converting)
 
     phase("calibrate", 0.0, "sampling keyframes")
     progress("sampling keyframes for layout and calibration...")

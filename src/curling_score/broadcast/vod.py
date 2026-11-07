@@ -32,15 +32,23 @@ def is_converted(path, layout_name: str) -> bool:
         return False
 
 
-def ensure_converted(path, layout_name: str | None) -> Path:
-    """``path`` converted through ``layout_name`` (None: untouched)."""
+def ensure_converted(path, layout_name: str | None, on_progress=None) -> Path:
+    """``path`` converted through ``layout_name`` (None: untouched).
+
+    A game converts for most of an hour: ``on_progress(seconds_written)`` is
+    called as it goes (the worker renews the job's lease there), and whatever
+    it raises -- the job given away -- stops the conversion and leaves the
+    download as it was."""
     path = Path(path)
     if layout_name is None or is_converted(path, layout_name):
         return path
-    tmp = path.with_name(f"{path.stem}.converting-{os.getpid()}.mp4")
+    # ".part" in the name: the pruner leaves a file being written alone.
+    tmp = path.with_name(f"{path.stem}.part-converting-{os.getpid()}.mp4")
     st = path.stat()
     try:
-        counts = convert_file(path, tmp, Layout.load(layout_name))
+        counts = convert_file(path, tmp, Layout.load(layout_name),
+                              on_head=None if on_progress is None
+                              else (lambda seconds, _conv: on_progress(seconds)))
         total = sum(counts.values())
         matched = total - counts.get("?", 0)
         if not total or matched / total < MIN_MATCHED:

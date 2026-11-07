@@ -233,7 +233,7 @@ class TestABroadcastIsConvertedAfterDownload:
         seen = []
         monkeypatch.setattr(cache, "ensure_cached", lambda url, root=None, **kw: tmp_path / "v.mp4")
 
-        def fake_convert(path, layout):
+        def fake_convert(path, layout, on_progress=None):
             seen.append((path, layout))
             raise RuntimeError("stop here")
         monkeypatch.setattr(vod, "ensure_converted", fake_convert)
