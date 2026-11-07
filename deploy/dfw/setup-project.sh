@@ -29,6 +29,12 @@ gcloud services enable run.googleapis.com firestore.googleapis.com storage.googl
 
 say "Firestore"
 ok gcloud firestore databases create --location="$REGION" "${G[@]}"
+# A database just made refuses index requests for a while; and the two
+# charts-overrides index exemptions need a gcloud with --disable-indexes (DFW's
+# read-only site makes no charts, so they only save write costs it never has).
+for _ in $(seq 30); do
+  gcloud firestore indexes composite list "${G[@]}" >/dev/null 2>&1 && break; sleep 10
+done
 python3 - "$PROJECT_ID" <<'PY' | while read -r line; do eval "$line" || true; done
 import json, shlex, sys
 proj = sys.argv[1]
