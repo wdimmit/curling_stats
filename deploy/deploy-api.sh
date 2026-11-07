@@ -72,8 +72,9 @@ sed -e "s|PROJECT_ID|${PROJECT_ID}|g" \
     -e "s|api:latest|api:${TAG}|" \
     -e "/name: MODEL_ID,/s|value: \"[^\"]*\"|value: \"${MODEL_ID}\"|" \
     -e "s|https://chart.example.org|${PUBLIC_BASE_URL:-}|" \
+    -e "s|DISCOVER_RANGES_VALUE|${DISCOVER_RANGES:-}|" \
     ${FB[@]+"${FB[@]}"} \
-    deploy/cloudrun.yaml > "$WORK/service.yaml"
+    "${SERVICE_YAML:-deploy/cloudrun.yaml}" > "$WORK/service.yaml"
 gcloud run services replace "$WORK/service.yaml" --project "$PROJECT_ID" --region "$REGION"
 
 # The site is public; the worker and admin surfaces are guarded by their tokens.
