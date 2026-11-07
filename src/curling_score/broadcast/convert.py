@@ -75,12 +75,16 @@ class Converter:
 
 @functools.cache
 def _has_nvenc() -> bool:
+    """Whether NVENC really opens here: listed among ffmpeg's encoders is not
+    enough (a build with it, on a machine or container without the GPU's
+    video capability, lists it and then fails to open it)."""
     try:
-        out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True,
-                             text=True, timeout=30).stdout
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+                            "-i", "color=s=256x144:d=0.2", "-c:v", "h264_nvenc", "-f", "null", "-"],
+                           capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return False
-    return "h264_nvenc" in out
+    return r.returncode == 0
 
 
 def _reader(src: Path, size, follow: bool, timeout_s: float):

@@ -1183,6 +1183,13 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     )
     phase("download", 1.0, "video ready")
     progress(f"video at {path}")
+    if club.broadcast_layout:
+        # A broadcast that cuts between layouts is read only through its
+        # club's layout: converted in place, once, before anything is keyed on it.
+        from curling_score.broadcast import vod as broadcast_vod
+
+        phase("download", 1.0, f"converting the broadcast ({club.broadcast_layout})")
+        path = broadcast_vod.ensure_converted(path, club.broadcast_layout)
 
     phase("calibrate", 0.0, "sampling keyframes")
     progress("sampling keyframes for layout and calibration...")

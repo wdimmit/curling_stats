@@ -120,3 +120,60 @@ def test_dallas_names_its_layout():
     from curling_score import clubs
     assert clubs.DALLAS.broadcast_layout == "dfw-5u"
     assert clubs.GRANITE.broadcast_layout is None
+
+
+# --- a VOD, converted once -------------------------------------------------------------
+
+from curling_score.broadcast import vod as V  # noqa: E402
+
+
+def write_clip(path, frame, n=30):
+    w = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24",
+                          "-s", f"{frame.shape[1]}x{frame.shape[0]}", "-r", "30", "-i", "-",
+                          "-c:v", "libx264", "-pix_fmt", "yuv420p", str(path)], stdin=subprocess.PIPE)
+    for _ in range(n):
+        w.stdin.write(frame.tobytes())
+    w.stdin.close()
+    assert w.wait() == 0
+
+
+def test_vod_converted_once(dfw, tmp_path, monkeypatch):
+    path = tmp_path / "videos" / "abc.mp4"
+    path.parent.mkdir()
+    write_clip(path, view_frame(dfw))
+    assert V.ensure_converted(path, "dfw-5u") == path
+    cap = cv2.VideoCapture(str(path))
+    assert int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) == L.W
+    assert (tmp_path / "videos" / "abc.layout").read_text().strip() == "dfw-5u"
+
+    def boom(*a, **k):
+        raise AssertionError("converted twice")
+    monkeypatch.setattr(V, "convert_file", boom)
+    assert V.ensure_converted(path, "dfw-5u") == path
+
+
+def test_vod_no_layout_is_untouched(tmp_path):
+    path = tmp_path / "abc.mp4"
+    path.write_bytes(b"not a video")
+    assert V.ensure_converted(path, None) == path
+    assert path.read_bytes() == b"not a video"
+
+
+def test_vod_wrong_layout_fails(tmp_path):
+    path = tmp_path / "abc.mp4"
+    write_clip(path, np.full((720, 1280, 3), 120, np.uint8))
+    before = path.read_bytes()
+    with pytest.raises(RuntimeError, match="broadcast layout mismatch"):
+        V.ensure_converted(path, "dfw-5u")
+    assert path.read_bytes() == before
+    assert not list(tmp_path.glob("*.converting-*"))
+
+
+def test_vod_keeps_pinned_mtime(dfw, tmp_path):
+    import os
+    from curling_score.ingest import cache
+    path = tmp_path / "abc.mp4"
+    write_clip(path, view_frame(dfw))
+    os.utime(path, ns=(path.stat().st_atime_ns, cache.PINNED_MTIME_NS))
+    V.ensure_converted(path, "dfw-5u")
+    assert path.stat().st_mtime_ns == cache.PINNED_MTIME_NS

@@ -220,3 +220,34 @@ class TestHowFarBackTheBoardIsRead:
         asked = self._asked(monkeypatch)
         live.VideoPipeline(progress=lambda m: None).read_board("rec.ts", self._game())
         assert asked.get("back_to_s") is None
+
+
+class TestABroadcastIsConvertedAfterDownload:
+    """A club whose broadcast cuts between layouts (DFW) is read only through
+    its layout: the downloaded video is converted before anything reads it."""
+
+    def _run(self, tmp_path, monkeypatch, club):
+        from curling_score import analyze as analyze_mod
+        from curling_score.broadcast import vod
+        from curling_score.ingest import cache
+        seen = []
+        monkeypatch.setattr(cache, "ensure_cached", lambda url, root=None, **kw: tmp_path / "v.mp4")
+
+        def fake_convert(path, layout):
+            seen.append((path, layout))
+            raise RuntimeError("stop here")
+        monkeypatch.setattr(vod, "ensure_converted", fake_convert)
+        info = type("I", (), {"title": "t", "duration_s": 1.0, "sheet": 2, "video_id": "abc"})()
+        try:
+            analyze_mod.analyze("abc", info=info, club=club, on_phase=lambda *a, **k: None)
+        except Exception:  # noqa: BLE001 - the stop, or the missing video further on
+            pass
+        return seen
+
+    def test_dallas_converts_the_download(self, tmp_path, monkeypatch):
+        from curling_score import clubs
+        assert self._run(tmp_path, monkeypatch, clubs.DALLAS) == [(tmp_path / "v.mp4", "dfw-5u")]
+
+    def test_granite_does_not(self, tmp_path, monkeypatch):
+        from curling_score import clubs
+        assert self._run(tmp_path, monkeypatch, clubs.GRANITE) == []
