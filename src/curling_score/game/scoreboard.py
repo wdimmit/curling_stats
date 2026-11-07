@@ -840,13 +840,19 @@ def read_cards_at(video, t_seconds, window_s=90.0, max_frames=40):
     from curling_score.ingest import frames as F
 
     lo, hi = max(0.0, t_seconds - window_s), t_seconds + window_s
-    imgs = []
+    # Frames this far apart at least, so ``max_frames`` span the whole window
+    # whatever the keyframe interval: YouTube keys every 5 s and every one is
+    # taken, the cameras every 2 s, whose first 40 reached only t - 12 and could
+    # all have a player in front of a card row (11/05 sheet 4, end 4).
+    gap = 2 * window_s / max_frames
+    imgs, last = [], None
     for t, img in F.board_sweep(video, start_s=lo, end_s=hi):
-        if t < lo:
+        if t < lo or (last is not None and t - last < gap - 1e-6):
             continue
         if len(imgs) >= max_frames:
             break
         imgs.append(img)
+        last = t
     if not imgs:
         return None
     image = median_frame(imgs)

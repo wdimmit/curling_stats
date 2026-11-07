@@ -505,3 +505,40 @@ class TestMedianFrameInBands:
         frames = [rng.integers(0, 256, shape, dtype=np.uint8) for _ in range(n)]
         want = np.median(np.stack(frames), axis=0).astype(np.uint8)
         assert np.array_equal(SB.median_frame(frames), want)
+
+
+# --- the frames a read takes, whatever the keyframe interval -------------------
+#
+# YouTube keys every 5 s, so 40 keyframes span read_cards_at's whole +-90 s.
+# The cameras key every 2 s: the first 40 covered only t-90..t-12, and on
+# 11/05 sheet 4 two players stood over the red row through most of that
+# (Gate A re-read: end 4's card missed; YouTube's read of the same moment saw it).
+
+
+def _frames_read(monkeypatch, every_s, t=1000.0):
+    from curling_score.game import scoreboard as sb
+    from curling_score.ingest import frames as F
+
+    def sweep(video, start_s=None, end_s=None):
+        k = start_s - every_s
+        while k <= end_s:
+            yield k, k
+            k += every_s
+
+    used = []
+    monkeypatch.setattr(F, "board_sweep", sweep)
+    monkeypatch.setattr(sb, "median_frame", lambda imgs: used.extend(imgs) or None)
+    monkeypatch.setattr(sb, "find_board", lambda image: None)
+    sb.read_cards_at("/v/x.mp4", t)
+    return used
+
+
+def test_a_read_spans_its_whole_window_with_2s_keyframes(monkeypatch):
+    used = _frames_read(monkeypatch, 2.0)
+    assert len(used) <= 40
+    assert min(used) >= 910.0 and max(used) >= 1080.0
+
+
+def test_a_read_of_5s_keyframes_takes_every_one(monkeypatch):
+    used = _frames_read(monkeypatch, 5.0)
+    assert used == [910.0 + 5.0 * i for i in range(len(used))] and len(used) >= 36
