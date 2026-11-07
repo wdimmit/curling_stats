@@ -79,6 +79,26 @@ class TestReplayRecording:
         rec.stop()
         assert not rec.ended()
 
+    def test_a_replay_of_the_whole_source_that_ran_to_its_end_is_whole(self, tmp_path, clip):
+        """It holds the whole video, as a stream recorded from its first
+        segment does: kept as the video's copy, so clips of its last end are cut."""
+        rec = replay.ReplayRecording(clip, tmp_path / "rec.ts", speed=16.0).start()
+        deadline = time.monotonic() + 30
+        while not rec.ended() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        rec.stop()
+        assert rec.whole()
+        part = replay.ReplayRecording(clip, tmp_path / "part.ts", speed=16.0, start_s=5.0).start()
+        deadline = time.monotonic() + 30
+        while not part.ended() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        part.stop()
+        assert not part.whole()
+        early = replay.ReplayRecording(clip, tmp_path / "early.ts", speed=1.0).start()
+        time.sleep(0.5)
+        early.stop()
+        assert not early.whole()
+
     def test_a_window_begins_at_the_keyframe_before_its_start(self, tmp_path, clip):
         rec = replay.ReplayRecording(clip, tmp_path / "rec.ts", speed=8.0,
                                      start_s=5.5, end_s=12.0)

@@ -93,9 +93,19 @@ class LiveManager:
         from curling_score.live.recorder import YtDlpRecorder
 
         directory = self.root / "live" / job["video_id"]
-        rec = YtDlpRecorder(job["video_id"], directory,
-                            pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
-                            cookies=os.environ.get("YTDLP_COOKIES"))
+        # A rehearsal: a recording in WORKER_REPLAY_DIR named for the video
+        # plays as its live stream (live/replay.py), at WORKER_REPLAY_SPEED.
+        replays = os.environ.get("WORKER_REPLAY_DIR")
+        source = Path(replays) / f"{job['video_id']}.ts" if replays else None
+        if source is not None and source.is_file():
+            from curling_score.live.replay import ReplayRecording
+
+            rec = ReplayRecording(source, directory / "rec.0.ts",
+                                  speed=float(os.environ.get("WORKER_REPLAY_SPEED") or 1.0))
+        else:
+            rec = YtDlpRecorder(job["video_id"], directory,
+                                pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
+                                cookies=os.environ.get("YTDLP_COOKIES"))
         layout = getattr(self.club, "broadcast_layout", None)
         if layout:
             from curling_score.live.converting import ConvertingRecorder

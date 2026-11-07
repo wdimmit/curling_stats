@@ -188,3 +188,21 @@ def test_manager_wraps_when_the_club_has_a_layout(tmp_path):
     assert isinstance(m._recorder(job), CV.ConvertingRecorder)
     m = manager_mod.LiveManager(None, "w", model_id="m", gpu=None, root=tmp_path)
     assert not isinstance(m._recorder(job), CV.ConvertingRecorder)
+
+
+def test_replay_dir_makes_a_replay_recorder(tmp_path, monkeypatch):
+    from curling_score.live import replay
+    (tmp_path / "replays").mkdir()
+    (tmp_path / "replays" / "vid.ts").write_bytes(b"ts")
+    monkeypatch.setenv("WORKER_REPLAY_DIR", str(tmp_path / "replays"))
+    monkeypatch.setenv("WORKER_REPLAY_SPEED", "2")
+    job = {"id": "j", "video_id": "vid", "kind": "live"}
+    rec = manager_mod.LiveManager(None, "w", model_id="m", gpu=None, root=tmp_path)._recorder(job)
+    assert isinstance(rec, replay.ReplayRecording) and rec.speed == 2.0
+    rec = manager_mod.LiveManager(None, "w", model_id="m", gpu=None, root=tmp_path,
+                                  club=clubs.DALLAS)._recorder(job)
+    assert isinstance(rec, CV.ConvertingRecorder) and isinstance(rec.inner, replay.ReplayRecording)
+    other = {"id": "k", "video_id": "nope", "kind": "live"}
+    assert not isinstance(manager_mod.LiveManager(None, "w", model_id="m", gpu=None,
+                                                  root=tmp_path)._recorder(other),
+                          replay.ReplayRecording)

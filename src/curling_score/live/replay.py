@@ -109,6 +109,12 @@ class ReplayRecording:
         self._reader.join(timeout=5)
         return self._finished and self._proc.returncode == 0
 
+    def whole(self) -> bool:
+        """Whether it holds the whole source: from its start, to its end, and
+        not stopped early -- what `YtDlpRecorder.whole` says of a stream
+        recorded from its first segment until it ended."""
+        return self.start_s == 0 and self.end_s is None and self.ended()
+
     def failed(self) -> bool:
         """ffmpeg gave up: a source it could not read, an option it lacks.
         Without this a replay that never began looks exactly like one still

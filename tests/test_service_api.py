@@ -2128,3 +2128,28 @@ class TestPractice:
                                     json={"practice": True}).status_code == 404
         assert world["client"].post(f"/api/admin/sources/{pages[0].id}/practice",
                                     headers=ADMIN, json={"practice": "yes"}).status_code == 422
+
+
+class TestAdminLiveRuns:
+    """A recording replayed as a live stream (WORKER_REPLAY_DIR), for rehearsals:
+    the admin makes the live run YouTube would have."""
+
+    def test_needs_the_admin_token(self, world):
+        r = world["client"].post("/api/admin/live-runs", json={"video_id": "replay00001"})
+        assert r.status_code in (401, 403)
+
+    def test_creates_a_claimable_live_job(self, world):
+        c = world["client"]
+        r = c.post("/api/admin/live-runs", headers=ADMIN,
+                   json={"video_id": "replay00001", "title": "DFW 5U · Draw 3", "format": "fours"})
+        assert r.status_code == 201
+        run = world["repo"].get_run(r.json()["run_id"])
+        assert run.kind == "live" and run.status == "queued" and run.title == "DFW 5U · Draw 3"
+        job = c.post("/api/worker/claim", headers=WORKER,
+                     json={"worker_id": "home", "model_id": "m-abc", "kinds": ["live"]}).json()
+        assert job["job"]["run_id"] == run.id
+
+    def test_a_second_while_one_is_live_is_refused(self, world):
+        c = world["client"]
+        assert c.post("/api/admin/live-runs", headers=ADMIN, json={"video_id": "replay00001"}).status_code == 201
+        assert c.post("/api/admin/live-runs", headers=ADMIN, json={"video_id": "replay00001"}).status_code == 409

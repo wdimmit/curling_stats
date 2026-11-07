@@ -3644,6 +3644,30 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t, run_after=t))
         return {"ok": True, "status": "queued"}
 
+    @app.post("/api/admin/live-runs", status_code=201)
+    def admin_live_run(body: dict, authorization: str | None = Header(default=None)):
+        """A live run made by hand: what `playlists.poll` makes for a stream it
+        finds live, without asking YouTube -- for a recording replayed as a live
+        stream on a worker (WORKER_REPLAY_DIR), to rehearse before an event."""
+        require_admin(authorization)
+        vid = str(body.get("video_id") or "").strip()
+        if not vid:
+            raise HTTPException(400, "video_id is required")
+        if any(r.kind == "live" and r.status in ("queued", "processing", "live")
+               for r in repo.runs_for_video(vid)):
+            raise HTTPException(409, "a live run of this video is already under way")
+        t = now()
+        title = str(body.get("title") or vid)
+        run = Run(id=slug.new_run_id(), video_id=vid,
+                  processing_version=settings.processing_version, status="queued",
+                  created_at=t, title=title, published_at=t,
+                  format=str(body.get("format") or source.format_from_title(title)),
+                  kind="live", sheet=source.sheet_from_title(title))
+        repo.put_run(run)
+        repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued",
+                         created_at=t, run_after=t, kind="live"))
+        return {"run_id": run.id}
+
     @app.post("/api/admin/runs/{run_id}/retry")
     def admin_retry(run_id: str, authorization: str | None = Header(default=None)):
         require_admin(authorization)
