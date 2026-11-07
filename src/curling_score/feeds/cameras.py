@@ -8,7 +8,8 @@ trained on; the long cameras a plain crop, since they are placed 1:1.
 
 The view names stay the composite's. The layouts put house_h above house_a
 and long_a left of long_h on every sheet, so ``top`` is house_h and ``left``
-long_a; the board hangs in long_h's picture.
+long_a; the board hangs in long_h's picture, and is read through long_h's crop
+(``board_cut``).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from curling_score.feeds.feed import Feed
 VIEW_ROLE = {"top": "house_h", "bottom": "house_a", "left": "long_a",
              "right": "long_h", "board": "long_h"}
 # The views a calibration has: two panels and two side views. The board is
-# long_h's picture, read whole.
+# long_h's picture, read whole within long_h's crop (``board_cut``).
 CUT_VIEWS = ("top", "bottom", "left", "right")
 
 
@@ -55,6 +56,19 @@ def view_cut(name: str, p: Placement) -> Cut:
 def view_cuts(sheet_layout: SheetLayout) -> dict[str, Cut]:
     """Every calibrated view's cut: the two panels and the two side views."""
     return {n: view_cut(n, placement_for(sheet_layout, n)) for n in CUT_VIEWS}
+
+
+def board_cut(feed) -> Cut | None:
+    """How the wall board's frames are taken: on a camera feed, long_h through
+    its placement's crop -- the pixels YouTube's composite shows, where the
+    home board is the only whole one. The raw camera also shows the next
+    sheets' boards whole, and ``scoreboard.find_board`` took one of those
+    (Gate A, 11/05 sheets 3 and 4). None for a YouTube feed: the whole frame."""
+    from curling_score.cameras import layout
+
+    if feed.kind != "cameras":
+        return None
+    return view_cut("board", placement_for(layout.load(feed.sheet), "board"))
 
 
 # --- calibrating a camera feed ----------------------------------------------------

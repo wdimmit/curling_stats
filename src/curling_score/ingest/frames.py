@@ -242,6 +242,19 @@ def keyframe_sweep(path, decode: bool = True, start_s=None, end_s=None, cut=None
             yield held[0], (convert(held[1]) if decode else None)
 
 
+def board_sweep(video, start_s=None, end_s=None):
+    """``keyframe_sweep`` of the wall board: the whole frame of the file the
+    board view is in, cut as ``feeds.cameras.board_cut`` says on a camera feed.
+    ``video`` is a path or a ``Feed``."""
+    from curling_score.feeds import cameras
+
+    feed = as_feed(video)
+    cut = cameras.board_cut(feed)
+    if cut is None:
+        return keyframe_sweep(feed.path_for("board"), start_s=start_s, end_s=end_s)
+    return keyframe_sweep(feed, start_s=start_s, end_s=end_s, cut=cut)
+
+
 # Decoder threads for a pass over a file. PyAV's own choice is one per core,
 # and on the GPU worker -- three workers on 32 threads -- that was slower
 # alone (60 s of 1080p in 1.6 s against 1.25 at eight) and slower still with

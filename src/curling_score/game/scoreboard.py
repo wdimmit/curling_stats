@@ -17,7 +17,6 @@ and the next begins; see ``game/boardsplit.py``.)
 
 from dataclasses import dataclass
 
-from curling_score.feeds import as_feed
 from curling_score.geometry import constants as C
 
 SLOTS = 14
@@ -820,7 +819,7 @@ def read_cards_at(video, t_seconds, window_s=90.0, max_frames=40):
     """The cards around a moment in the video, de-occluded by median.
 
     ``video`` is a path or a ``Feed``; the whole frame is read from the file
-    the feed gives the ``board`` view.
+    the feed gives the ``board`` view (``frames.board_sweep``).
 
     Samples keyframes rather than a fixed frame rate. A fixed rate still makes
     the decoder reconstruct every frame in the window -- roughly 180 s of
@@ -842,7 +841,7 @@ def read_cards_at(video, t_seconds, window_s=90.0, max_frames=40):
 
     lo, hi = max(0.0, t_seconds - window_s), t_seconds + window_s
     imgs = []
-    for t, img in F.keyframe_sweep(as_feed(video).path_for("board"), start_s=lo, end_s=hi):
+    for t, img in F.board_sweep(video, start_s=lo, end_s=hi):
         if t < lo:
             continue
         if len(imgs) >= max_frames:

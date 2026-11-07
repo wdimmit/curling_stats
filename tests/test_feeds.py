@@ -337,3 +337,68 @@ def test_view_keyframes_cuts_each_view_and_trims_to_the_shortest(monkeypatch):
     got = cameras.view_keyframes(feed, cameras.view_cuts(sl), 60.0, 8, start_s=5.0)
     assert {n: len(v) for n, v in got.items()} == {n: 3 for n in cameras.CUT_VIEWS}
     assert sorted(seen) == sorted((n, 60.0, 8, 5.0) for n in cameras.CUT_VIEWS)
+
+
+# --- the wall board on a camera feed ------------------------------------------
+#
+# Gate A (11/05, sheets 3 and 4): the raw long_h picture shows sheets 2-4's
+# boards whole, and find_board took a neighbour's -- 1/6 and 1/7 ends agreed
+# with YouTube. YouTube's composite shows long_h through its placement's crop,
+# where only the home board is whole.
+
+
+@pytest.mark.parametrize("sheet", [1, 2, 3, 4, 5])
+def test_a_camera_feeds_board_is_long_h_cut_as_youtube_showed_it(sheet):
+    long_h = next(p for p in layout.load(sheet).placements if p.role == "long_h")
+    cut = cameras.board_cut(cameras.camera_feed(Path("d"), sheet))
+    assert cut == Cut("board", long_h.crop) and cut.is_crop
+
+
+def test_a_youtube_feeds_board_is_the_whole_frame():
+    assert cameras.board_cut(as_feed("/v/x.mp4")) is None
+
+
+class TestCameraBoardReads:
+    def sweeps(self, monkeypatch):
+        from curling_score.ingest import frames as F
+
+        asked = []
+        monkeypatch.setattr(F, "keyframe_sweep",
+                            lambda path, **kw: asked.append((path, kw.get("cut"))) or iter(()))
+        return asked
+
+    def test_both_board_readers_read_long_h_through_its_crop(self, monkeypatch):
+        from curling_score.game import boardsplit, scoreboard
+
+        asked = self.sweeps(monkeypatch)
+        feed = cameras.camera_feed(Path("d"), 3)
+        boardsplit.board_states(feed, 0.0, 10.0)
+        assert scoreboard.read_cards_at(feed, 100.0) is None
+        want = cameras.board_cut(feed)
+        assert [(as_feed(p).path_for(c.name), c) for p, c in asked] == \
+            [(Path("d/long_h.ts"), want)] * 2
+
+
+def test_board_sweep_gives_frames_of_the_crop(tmp_path):
+    """Through a real camera file: the board's keyframes are long_h's crop."""
+    from fractions import Fraction
+
+    import av
+
+    from curling_score.ingest import frames as F
+
+    with av.open(str(tmp_path / "long_h.ts"), "w", format="mpegts") as out:
+        stream = out.add_stream("libx264", rate=60)
+        stream.width, stream.height, stream.pix_fmt = 1920, 1080, "yuv420p"
+        stream.codec_context.time_base = Fraction(1, 60)
+        for i in range(3):
+            frame = av.VideoFrame.from_ndarray(np.full((1080, 1920, 3), 60 * i, np.uint8),
+                                               format="rgb24")
+            frame.pts = i
+            for packet in stream.encode(frame):
+                out.mux(packet)
+        for packet in stream.encode(None):
+            out.mux(packet)
+    feed = cameras.camera_feed(tmp_path, 3)
+    frames = [img for _, img in F.board_sweep(feed)]
+    assert frames and all(img.shape == (1080, 800, 3) for img in frames)
