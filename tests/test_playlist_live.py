@@ -218,3 +218,51 @@ class TestTheRecordingWaitsForItsLiveRun:
         poll(repo, yt)
         (run,) = repo.list_runs()
         assert run.sheet == 3
+
+
+class TestDiscoveryByDate:
+    """A site that charts only its events' streams (service/site.py
+    DISCOVER_RANGES): a video outside every range is seen, and never queued."""
+
+    def setup(self, live_status="live", start=THU_7PM):
+        repo = MemoryRepo()
+        repo.put_playlist(watched(schedule=NIGHT))
+        yt = FakeYouTube(playlists={"PL1": ["vidL"]})
+        yt.add(VideoMeta("vidL", "10/1 - Sheet 3 - Thursday League", "UCclub",
+                         0.0 if live_status == "live" else 7200.0, live_status, start))
+        return repo, yt
+
+    def test_uploads_playlist_id(self):
+        from curling_score.service import youtube
+        assert youtube.uploads_playlist("UCle7XmcABZIpyveRduQH10w") == "UUle7XmcABZIpyveRduQH10w"
+
+    def test_in_range_live_is_queued_live(self):
+        from datetime import date
+        repo, yt = self.setup()
+        # 7 pm on Thursday 1 October in Seattle is 2 October in UTC: the range is in the club's zone
+        result = poll(repo, yt, ranges=((date(2026, 10, 1), date(2026, 10, 1)),))
+        assert len(result["live"]) == 1
+
+    def test_out_of_range_not_queued(self):
+        from datetime import date
+        repo, yt = self.setup(live_status="none")
+        result = poll(repo, yt, ranges=((date(2026, 11, 6), date(2026, 11, 9)),))
+        assert result["created"] == [] and result["live"] == []
+        assert ("vidL", "out_of_range") in result["skipped"]
+        assert "vidL" in repo.get_playlist("p").last_seen_video_ids
+
+    def test_empty_ranges_queue_nothing(self):
+        repo, yt = self.setup()
+        result = poll(repo, yt, ranges=())
+        assert result["live"] == [] and result["created"] == []
+
+    def test_none_ranges_unchanged(self):
+        repo, yt = self.setup()
+        assert len(poll(repo, yt, ranges=None)["live"]) == 1
+
+    def test_an_upcoming_stream_is_looked_at_again(self):
+        """Scheduled days ahead, its date is when it was made, not when it will be played."""
+        from datetime import date
+        repo, yt = self.setup(live_status="upcoming")
+        result = poll(repo, yt, ranges=((date(2026, 11, 6), date(2026, 11, 9)),))
+        assert result["live"] == [] and "vidL" not in repo.get_playlist("p").last_seen_video_ids

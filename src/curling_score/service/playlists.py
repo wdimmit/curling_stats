@@ -88,10 +88,19 @@ def due(pl, now: datetime, tz: str) -> bool:
     return (now - pl.last_polled_at).total_seconds() >= interval - DUE_SLACK_S
 
 
+def in_ranges(at, ranges, tz: str) -> bool:
+    """Whether ``at`` falls, in ``tz``, on a date inside one of ``ranges``."""
+    if at is None:
+        return False
+    day = at.astimezone(ZoneInfo(tz)).date()
+    return any(lo <= day <= hi for lo, hi in ranges)
+
+
 def poll(repo, youtube, *, processing_version: str, now: datetime,
          allowed_channels: set[str] | None = None, max_hours: float = 5.0,
          max_new: int = MAX_AUTO_PER_POLL, initial_status: str = "queued",
-         tz: str = "America/Los_Angeles", force: bool = False) -> dict:
+         tz: str = "America/Los_Angeles", force: bool = False,
+         ranges: tuple | None = None) -> dict:
     """Look at every enabled playlist that is due. Returns what happened.
 
     A run's format comes from its title. ``force`` polls every playlist
@@ -99,6 +108,11 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
     job, which skips approval -- the admin chose the playlist -- and the
     recording cap, and leaves the video unseen until its recording is
     archived.
+
+    ``ranges`` -- ((first date, last date), ...), inclusive, in ``tz`` -- limits
+    what is queued to videos played on those dates (a site's events,
+    service/site.py); anything else is seen and skipped. An upcoming stream is
+    looked at again: its date is when it was made. None: every video.
     """
     created, live_created, skipped, errors = [], [], [], []
     n_queued = 0
@@ -120,6 +134,11 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
         new_ids = [v for v in ids if v not in seen]
         accepted_now = []
         for meta in youtube.videos(new_ids) if new_ids else []:
+            if ranges is not None and not in_ranges(meta.published_at, ranges, tz):
+                if meta.live_status != "upcoming":
+                    accepted_now.append(meta.video_id)
+                skipped.append((meta.video_id, "out_of_range"))
+                continue
             if meta.live_status == "live":
                 if allowed_channels and meta.channel_id not in allowed_channels:
                     accepted_now.append(meta.video_id)

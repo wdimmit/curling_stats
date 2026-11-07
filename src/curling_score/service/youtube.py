@@ -238,3 +238,9 @@ class YtDlpYouTube:
         # A development host without an API key has no league index; the
         # thinking report falls back to the league in each stream's title.
         return []
+
+
+def uploads_playlist(channel_id: str) -> str:
+    """The playlist of everything a channel has uploaded, its streams among
+    them: ``UU`` and the channel id after its ``UC``."""
+    return "UU" + channel_id[2:]

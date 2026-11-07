@@ -4266,7 +4266,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             allowed_channels=settings.allowed_channels or None,
             max_hours=min(settings.max_hours, dedupe.MAX_WHOLE_S / 3600),
             initial_status="pending_approval" if settings.require_approval else "queued",
-            tz=settings.club_tz, force=force,
+            tz=settings.club_tz, force=force, ranges=settings.site.discover_ranges,
         )
         # A league stream going live closes practice on every sheet: leagues
         # use all five. Before the index's early return, so it never waits for
