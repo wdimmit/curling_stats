@@ -155,3 +155,96 @@ def time_far_crossings_from_end_camera(shots, video, view, *, model=None, decode
         shot.far_crossing = dataclasses.replace(old, t=got[0], reach=0.0)
         n += 1
     return n
+
+
+# --- from the long camera behind the thrower ---------------------------------------------
+#
+# A club whose overheads show only the houses (DFW) has no destination hog line
+# in a panel, and no end camera. The long camera at the throwing end looks down
+# the sheet at the destination house and has that hog line in view: the stone
+# goes away from it, across the paint, small but tracked by the side model.
+
+LONG_WINDOW_S = (4.0, 20.0)           # after the throwing end's crossing
+LONG_WINDOW_FROM_RELEASE_S = (6.0, 24.0)
+LONG_FPS = 10.0
+# Samples this close to the line, either side, are fitted for the crossing.
+LONG_FIT_M = 1.5
+# A thrown stone at the far hog line: slower than a hit can be, faster than a
+# stone a few metres from stopping. Outside it, the track is something else.
+LONG_SPEED_M_S = (0.6, 5.0)
+LONG_MIN_SAMPLES = 3
+
+
+def long_camera_crossing(tracks, view, t_from):
+    """``(t, speed_m_s)`` of a stone's leading edge reaching the destination
+    hog line's outer edge, seen from the long camera behind the thrower, or
+    None. A track's rows are its near edge (toward the camera), so the leading
+    edge is a stone's width further on. Fitted, track by track, to the samples
+    within LONG_FIT_M of the line: a stone going away from the camera at a
+    thrown stone's pace; the earliest such crossing after ``t_from`` wins."""
+    from curling_score.geometry import constants as C
+
+    line = C.TEE_TO_HOGLINE_M + C.HOGLINE_WIDTH_M
+    _c, horizon = view._map()                # rows at or above it are no point on the ice
+    best = None
+    for track in tracks.values():
+        pts = [(t, view.metres_at(row) - 2 * C.STONE_RADIUS_M) for t, row, *_ in track
+               if t >= t_from and row > horizon + 1]
+        near = [(t, y) for t, y in pts if abs(y - line) <= LONG_FIT_M]
+        if len(near) < LONG_MIN_SAMPLES:
+            continue
+        ts = np.array([t for t, _ in near])
+        ys = np.array([y for _, y in near])
+        if ys.max() <= line or ys.min() >= line or np.ptp(ts) <= 0:
+            continue                       # the line was not crossed within the samples
+        b, a = np.polyfit(ts, ys, 1)
+        if not (LONG_SPEED_M_S[0] <= -b <= LONG_SPEED_M_S[1]):
+            continue
+        t = (line - a) / b
+        if t < t_from or not (ts.min() - 0.5 <= t <= ts.max() + 0.5):
+            continue
+        if best is None or t < best[0]:
+            best = (float(t), float(-b))
+    return best
+
+
+def time_far_crossings_from_long_camera(shots, video, view, *, model=None, decode=None,
+                                        propose=None) -> int:
+    """For each shot nothing else timed at the far hog line, the long camera
+    behind the thrower's (`long_camera_crossing`). In place; how many it timed."""
+    from curling_score.detect import longview, sidemodel
+
+    if view is None or not getattr(view, "has_lateral", True):
+        return 0
+    model = model or sidemodel.default_model()
+    if model is None:
+        return 0
+    decode = decode or longview.decode
+    propose = propose or sidemodel.propose
+    n = 0
+    for shot in shots:
+        if getattr(shot, "missing", False):
+            continue
+        have = crossing(shot)
+        if have is not None and have.t is not None:
+            continue
+        t_hog = getattr(shot, "t_hog_s", None)
+        rel = getattr(shot, "release", None)
+        if t_hog is not None:
+            t0, t1 = t_hog + LONG_WINDOW_S[0], t_hog + LONG_WINDOW_S[1]
+        elif rel is not None:
+            t0, t1 = rel.t + LONG_WINDOW_FROM_RELEASE_S[0], rel.t + LONG_WINDOW_FROM_RELEASE_S[1]
+        else:
+            continue
+        frames, times = decode(video, view.rect, t0, t1, LONG_FPS)
+        if not len(frames):
+            continue
+        tracks = sidemodel.split_at_gaps(propose(model, frames, view, shot.color, times),
+                                         sidemodel.STRADDLE_GAP_MAX_S)
+        got = long_camera_crossing(tracks, view, t0)
+        if got is None:
+            continue
+        old = have or split.FarCrossing(t=None)
+        shot.far_crossing = dataclasses.replace(old, t=got[0], reach=0.0)
+        n += 1
+    return n

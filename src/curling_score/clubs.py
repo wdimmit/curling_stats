@@ -42,6 +42,12 @@ class Club:
     # Each stream is one game of ``scheduled_ends`` (DFW's): no second game,
     # and ends past the last are dropped unless they break a tie
     # (`segment.one_game`, `timeline.past_scheduled`).
+    # Where the overheads show only the houses (DFW): the long camera behind the
+    # thrower times the far hog line (`fartime.time_far_crossings_from_long_camera`),
+    # and places the guards resting beyond this far in front of the tee, which no
+    # panel shows (`game/longguards.py`). None: no long-camera guards.
+    far_hog_from_long: bool = False
+    guards_from_long_m: float | None = None
     one_game_per_stream: bool = False
     scheduled_ends: int | None = None
     panel_layout: PanelLayout | None = None
@@ -183,6 +189,7 @@ DALLAS = Club("dallas", (
     for house, side in (("top", "right"), ("bottom", "left"))
 }, panel_layout=PanelLayout(top=(764, 0, 379, 526), bottom=(764, 526, 379, 554)),
     broadcast_layout="dfw-5u", one_game_per_stream=True, scheduled_ends=8,
+    far_hog_from_long=True, guards_from_long_m=3.3,
     # The long cameras' ice starts below the far wall: the clubhouse window
     # above it holds a blue neon cowboy hat, which in the 5U Qualifier's
     # framing (46wEMds_tYQ) outweighs the ring and was fitted as the house.

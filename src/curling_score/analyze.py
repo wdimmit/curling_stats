@@ -24,6 +24,7 @@ from curling_score.game import (
     farfollow,
     fartime,
     fit,
+    longguards,
     hogtime,
     linetime,
     placement,
@@ -317,6 +318,11 @@ class EndContext:
     # A club whose streams are each one game of this many ends
     # (`clubs.Club.one_game_per_stream`); None: as many as were played.
     scheduled_ends: int | None = None
+    # A club whose overheads show only the houses: the long camera behind the
+    # thrower times the far hog line, and places guards beyond this far in
+    # front of the tee (clubs.Club.far_hog_from_long, guards_from_long_m).
+    far_hog_from_long: bool = False
+    guards_from_long_m: float | None = None
 
 
 @dataclass
@@ -845,12 +851,23 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         stages.mark("far")
         if n_far:
             progress(f"    end {end.number}: far hog line {n_far}/{len(shots)} from the end camera")
+        if ctx.far_hog_from_long:
+            n_long = fartime.time_far_crossings_from_long_camera(
+                shots, path, sideviews[hogtime.CAMERA_FOR[end.house]])
+            stages.mark("far")
+            progress(f"    end {end.number}: far hog line {n_long}/{len(shots)} from the long camera")
     built = timeline.build_end(
         end.number, end.house, end.start_s, end.end_s, shots,
         board_score=board_score,
         fmt=fmt,
         placement=placed,
     )
+    if sideviews is not None and ctx.guards_from_long_m is not None:
+        view = sideviews[hogtime.CAMERA_FOR[end.house]]
+        n_guards = longguards.add(built, view, longguards.stones_reader(path, view),
+                                  ctx.guards_from_long_m)
+        progress(f"    end {end.number}: {n_guards} stone(s) placed from the long camera "
+                 f"beyond the overhead's view")
     if built.get("placement") is not None:
         built["placement"]["candidates_dropped"] = (
             len(before_placement) + len(recovered_early))
@@ -1283,6 +1300,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         recording_end_s=samples[-1].t if samples else None,
         frame_setups=setups, release_model=release_model,
         scheduled_ends=club.scheduled_ends if club.one_game_per_stream else None,
+        far_hog_from_long=club.far_hog_from_long, guards_from_long_m=club.guards_from_long_m,
     )
     out_games = build_games(
         ctx, games, phase=phase,

@@ -380,7 +380,11 @@ class LiveSession:
             detector=self.models.detector, broom_model=self.models.broom_model,
             line_model=self.models.line_model, fmt=self.fmt, use_cache=False,
             one_pass=True, progress=self.progress,
-            release_model=self.models.release_model)
+            release_model=self.models.release_model,
+            far_hog_from_long=bool(getattr(getattr(self.pipeline, "club", None),
+                                           "far_hog_from_long", False)),
+            guards_from_long_m=getattr(getattr(self.pipeline, "club", None),
+                                       "guards_from_long_m", None))
         run_up = self.run_up[key] if again else self.prev_end_s
         # The recorder only notes what the checks reject; the frames are cut
         # later, on the manager's keep thread, never inside an end's build.
