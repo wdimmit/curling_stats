@@ -3540,6 +3540,26 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             clip_queue_stirred()
         return {"asked": asked}
 
+    @app.post("/api/admin/clips/restore-auto")
+    def admin_restore_auto(body: dict = Body(default={}),
+                           authorization: str | None = Header(default=None)):
+        """Undo queued recuts (recut-auto) of every run but ``keep_runs``: each
+        is the clip it replaced again, done in the older style -- its file is
+        still under the same key until a recut overwrites it."""
+        require_admin(authorization)
+        if not settings.site.auto_clips:
+            raise HTTPException(409, "this site does not cut clips by itself")
+        keep = set(body.get("keep_runs") or [])
+        restored = 0
+        for job in repo.clip_jobs_in_state("queued"):
+            if job.user_id != gameclips.AUTO_USER or job.play_id or job.run_id in keep:
+                continue
+            names = [r["name"] for r in (job.spec or {}).get("rocks") or []]
+            repo.update_clip_job(job.id, state="done", rocks={
+                n: {"clip": True, "burned": True, "style": gameclips.CLIP_STYLE - 1} for n in names})
+            restored += 1
+        return {"restored": restored}
+
     @app.post("/api/worker/jobs/{job_id}/complete")
     async def complete(job_id: str, request: Request, background: BackgroundTasks,
                        authorization: str | None = Header(default=None)):

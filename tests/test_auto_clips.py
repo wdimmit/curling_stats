@@ -170,3 +170,27 @@ def test_recut_needs_the_admin_token_and_an_auto_clips_site():
 def test_clip_styles_agree():
     from curling_score.game import clips as game_clips
     assert game_clips.CLIP_STYLE == gameclips.CLIP_STYLE == 3
+
+
+def test_restore_puts_queued_recuts_back_except_the_runs_kept():
+    """Recuts asked for and not wanted after all: back to the clip they replaced
+    (its file is still under the same key), but for the runs named to keep."""
+    w, sid = finished(site.DFW)
+    done_job(w, gameclips.CLIP_STYLE - 1)
+    w["client"].post("/api/admin/clips/recut-auto", headers=ADMIN)
+    assert w["repo"].get_clip_job("cs_r_1_0.1.1").state == "queued"
+    r = w["client"].post("/api/admin/clips/restore-auto", headers=ADMIN, json={"keep_runs": ["r_other"]})
+    assert r.status_code == 200 and r.json()["restored"] == 1
+    j = w["repo"].get_clip_job("cs_r_1_0.1.1")
+    assert j.state == "done" and j.rocks["0.1.1"]["clip"] is True
+    got = w["client"].get("/api/shot-clips", params={"path": f"/g/{sid}/", "rock": "0.1.1"}).json()
+    assert got["state"] == "ready"
+
+
+def test_restore_leaves_the_kept_runs_queued():
+    w, _ = finished(site.DFW)
+    done_job(w, gameclips.CLIP_STYLE - 1)
+    w["client"].post("/api/admin/clips/recut-auto", headers=ADMIN)
+    r = w["client"].post("/api/admin/clips/restore-auto", headers=ADMIN, json={"keep_runs": ["r_1"]})
+    assert r.json()["restored"] == 0
+    assert w["repo"].get_clip_job("cs_r_1_0.1.1").state == "queued"
