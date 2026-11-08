@@ -1,7 +1,7 @@
 # DFW Curling Club's site, dfwcurling.dimmit.net, in its own project (SITE=dfw,
 # service/site.py): public, no accounts, read-only, every rock's clip cut. Deploy:
 #   PROJECT_ID=<dfw project> SERVICE_YAML=deploy/dfw/cloudrun.yaml ACCOUNTS=off \
-#     PUBLIC_BASE_URL=https://dfwcurling.dimmit.net MODEL_ID=dfw1a-584c18d0 \
+#     PUBLIC_BASE_URL=https://dfwcurling.dimmit.net MODEL_ID=dfw1b-b13dda44 \
 #     DISCOVER_RANGES=2026-11-06/2026-11-09 ./deploy/deploy-api.sh
 # deploy-api.sh fills PROJECT_ID, REGION, the tag, MODEL_ID, the base URL and
 # DISCOVER_RANGES; `services replace` is declarative, so set them every time.
@@ -39,8 +39,8 @@ spec:
             - { name: ALLOWED_CHANNEL_IDS, value: UCle7XmcABZIpyveRduQH10w }
             - { name: REQUIRE_APPROVAL,   value: "0" }
             - { name: PRACTICE_ENABLED,   value: "0" }
-            # curling-worker:dfw's (version.model_id of dfw1a.pt); pass MODEL_ID=dfw1a-584c18d0 to deploy-api.sh.
-            - { name: MODEL_ID,           value: "dfw1a-584c18d0" }
+            # curling-worker:dfw's (version.model_id of dfw1b.pt); pass MODEL_ID=dfw1b-b13dda44 to deploy-api.sh.
+            - { name: MODEL_ID,           value: "dfw1b-b13dda44" }
             - { name: MAX_QUEUED,         value: "10" }
             - { name: FIREBASE_PROJECT,     value: "" }
             - { name: FIREBASE_API_KEY,     value: "" }
