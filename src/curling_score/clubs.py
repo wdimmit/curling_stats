@@ -196,7 +196,7 @@ DALLAS = Club("dallas", (
     side_rows=(390, 1080),
     # overhead-3 and long-1 have never seen a green stone: they missed DFW's
     # or read them as yellow (dfw1, dfw2).
-    overhead_model="dfw1a.pt", side_model="dfw2b.pt")
+    overhead_model="dfw1b.pt", side_model="dfw2c.pt")
 
 CLUBS = {c.name: c for c in (GRANITE, CINCINNATI, SWIFT_CURRENT, ARDSLEY, MARTENSVILLE, DALLAS)}
 

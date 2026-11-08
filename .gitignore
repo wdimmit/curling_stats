@@ -93,6 +93,11 @@ weights/*.pt
 !weights/dfw1a.pt
 !weights/dfw2a.pt
 !weights/dfw2b.pt
+# 2026-11-07, labelled on dfwcurling.dimmit.net/label: dfw1b (overhead), dfw2c (long),
+# bdfw1 (broom4 fine-tuned on DFW's target brooms).
+!weights/dfw1b.pt
+!weights/dfw2c.pt
+!weights/bdfw1.pt
 
 # Harvested board frames for the card-digit training set. What training
 # consumes is the ~24x22 px card window, and those are committed in

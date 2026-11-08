@@ -11,8 +11,8 @@ services:
       context: ../..
       dockerfile: Dockerfile.worker
       # DFW's own models (clubs.DALLAS): the image's weight env beats a club
-      # profile's, and the API's MODEL_ID must be dfw1a's (version.model_id).
-      args: { MODEL: dfw1a.pt, SIDE_MODEL: dfw2b.pt }
+      # profile's, and the API's MODEL_ID must be dfw1b's (version.model_id).
+      args: { MODEL: dfw1b.pt, SIDE_MODEL: dfw2c.pt, BROOM_MODEL: bdfw1.pt }
     image: curling-worker:dfw
     restart: unless-stopped
     env_file: worker.env
