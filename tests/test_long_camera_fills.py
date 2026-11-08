@@ -156,3 +156,52 @@ def test_the_zoom_on_the_thrower_is_no_longer_held_below_the_view_top():
     top_old_px = fr_old.box[1] * VIEW.rect[3] + VIEW.rect[1]
     top_new_px = fr_new.box[1] * tall.rect[3]
     assert top_new_px < top_old_px - 50       # it reaches up into the players
+
+
+# --- rocks seen at neither end ----------------------------------------------------------------
+
+def test_the_long_camera_follows_lost_rocks_only_where_the_overhead_misses_guards():
+    from curling_score.analyze import follows_lost
+    long_view = SimpleNamespace(end_camera=False)
+    end_view = SimpleNamespace(end_camera=True)
+    assert follows_lost(long_view, 3.3)            # DFW
+    assert not follows_lost(long_view, None)       # Granite: unchanged
+    assert follows_lost(end_view, None)            # Cincinnati's end camera
+    assert not follows_lost(None, 3.3)
+
+
+def test_a_rock_with_no_arrival_is_read_once_it_has_stopped_and_named_a_guard():
+    """A release the far house never saw arrive "rests" 6 s after it -- still
+    sliding mid-sheet -- so its guard was never found at that read. Timed
+    across the far hog line, it is read after that instead (before the next
+    rock is thrown) and the guard of its colour that appeared is the rock."""
+    end = {"house": "top", "shots": [
+        {"number": 1, "color": "yellow", "t_release_s": 100.0, "t_rest_s": 106.0,
+         "t_far_s": 119.0, "shot_type": "unknown", "stones": [], "delivered_stone_index": None},
+        {"number": 2, "color": "red", "t_release_s": 140.0, "t_rest_s": 160.0,
+         "stones": [], "delivered_stone_index": None, "shot_type": "draw"}],
+        "final_stones": []}
+    guard = edge_of(0.03, 4.5)
+    reads = []
+
+    def read(t):
+        reads.append(t)
+        return [(*guard, "yellow")] if t >= 122.0 else []
+
+    longguards.add(end, VIEW, read, from_m=3.3)
+    s1 = end["shots"][0]
+    assert 122.0 <= reads[0] < 140.0
+    assert s1["delivered_stone_index"] == 0 and s1["shot_type"] == "guard"
+    assert s1["stones"][0]["y"] == pytest.approx(4.5, abs=0.05)
+
+
+def test_a_rock_read_after_its_far_crossing_is_read_before_the_next_throw():
+    end = {"house": "top", "shots": [
+        {"number": 1, "color": "yellow", "t_release_s": 100.0, "t_rest_s": 106.0,
+         "t_far_s": 119.0, "shot_type": "unknown", "stones": [], "delivered_stone_index": None},
+        {"number": 2, "color": "red", "t_release_s": 124.0, "t_rest_s": 150.0,
+         "stones": [], "delivered_stone_index": None, "shot_type": "draw"}],
+        "final_stones": []}
+    reads = []
+    longguards.add(end, VIEW, lambda t: reads.append(t) or [], from_m=3.3)
+    assert reads[0] <= 123.0

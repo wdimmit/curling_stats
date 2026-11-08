@@ -102,7 +102,13 @@ def classify(delivery, house_delta=None, *, t_hog=None, v_hog=None, far=None):
         return UNKNOWN, 0.0
     # Seen leaving the thrower's house and never arriving here: taken out of
     # play at the hog line. The house cannot say anything about it.
+    # Unless a camera timed it crossing the far hog line: then it was not
+    # hogged, whatever the far house failed to see (DFW's long camera timed 26
+    # of the 5U qualifier's 63 "hogged" rocks there). Where it went, nothing
+    # saw.
     if delivery.reason == "hogged":
+        if far is not None and far.t is not None:
+            return UNKNOWN, 0.0
         return HOGGED, CONF_CLEAR_REST
     # Seen thrown, arrival unseen, and a stone went missing from the house
     # meanwhile: it ran through and took that stone with it.

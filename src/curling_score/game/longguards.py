@@ -11,7 +11,9 @@ seeing that ice at a shallow angle (roughly +/-0.2-0.4 m). A stone already
 in the overhead's state (within DEDUPE_M) is not added twice. Each rock's
 state is read at its own rest, so a guard stays until it is hit or the end is
 over. A rock the overhead could not place (no ``delivered_stone_index``) is
-marked as the long stone of its colour that its own rest brought.
+marked as the long stone of its colour that its own rest brought -- and one the
+far house never saw arrive, timed across the far hog line, is read once it has
+had time to stop there (`_read_at`) and, found, is a guard.
 """
 
 import math
@@ -24,6 +26,27 @@ DEDUPE_M = 0.45
 MAX_Y_M = C.TEE_TO_HOGLINE_M + C.STONE_RADIUS_M
 # Read this long after a rock's rest: the stone has stopped, sweepers moving off.
 AFTER_REST_S = 0.5
+# A rock the far house never saw arrive has no rest of its own -- it "rests"
+# MIN_LAG_S after its release, still sliding mid-sheet. Timed across the far
+# hog line, it is read this long after that crossing instead: DFW's guards
+# stop 3-5 s past the line (46wEMds_tYQ end 3 rock 1: crossed at +19.0 s,
+# still from +23.5 s). Never later than just before the next rock is thrown.
+AFTER_FAR_S = 6.0
+BEFORE_NEXT_S = 1.0
+# What a rock nothing else could name becomes when the guard it left is found.
+NAMEABLE = ("unknown", "hogged")
+
+
+def _read_at(shot, next_shot) -> float:
+    """When to read the stones a rock left: just after its rest, or for one with
+    no arrival but a far hog crossing, once it has had time to stop past it."""
+    t = shot["t_rest_s"] + AFTER_REST_S
+    if shot.get("delivered_stone_index") is None and shot.get("t_far_s") is not None:
+        t = max(t, shot["t_far_s"] + AFTER_FAR_S)
+        nxt = (next_shot or {}).get("t_release_s")
+        if nxt is not None:
+            t = min(t, nxt - BEFORE_NEXT_S)
+    return t
 
 
 def place(stones, view, known, from_m: float) -> list[dict]:
@@ -51,16 +74,20 @@ def add(end: dict, view, read_stones, from_m: float) -> int:
     the stones the view shows at ``t``. Returns how many long stones it added
     in all."""
     n, last = 0, []
-    for shot in end.get("shots") or []:
+    shots = end.get("shots") or []
+    for i, shot in enumerate(shots):
         if shot.get("missing") or shot.get("t_rest_s") is None:
             continue
         stones = shot.setdefault("stones", [])
-        extra = place(read_stones(shot["t_rest_s"] + AFTER_REST_S), view, stones, from_m)
+        nxt = next((s for s in shots[i + 1:] if not s.get("missing")), None)
+        extra = place(read_stones(_read_at(shot, nxt)), view, stones, from_m)
         if shot.get("delivered_stone_index") is None:
             new = [g for g in extra if g["color"] == shot.get("color")
                    and not any(math.hypot(g["x"] - p["x"], g["y"] - p["y"]) < DEDUPE_M for p in last)]
             if len(new) == 1:
                 shot["delivered_stone_index"] = len(stones) + extra.index(new[0])
+                if shot.get("shot_type") in NAMEABLE and shot.get("t_far_s") is not None:
+                    shot["shot_type"] = "guard"
         stones.extend(extra)
         n += len(extra)
         last = extra

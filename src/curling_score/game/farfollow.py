@@ -229,6 +229,31 @@ def _follow(samples, t_release, seed_min_y_m=SEED_MIN_Y_M, parked=()):
     return path
 
 
+def _lost_moving(path) -> bool:
+    """Whether the follower lost the stone while it was still on its way: short
+    of the far hog line and never once still. Sweepers walking between the
+    camera and the stone hide it for seconds -- DFW's 46wEMds_tYQ end 3 rock 1
+    went from 16.4 m to 10.0 m unseen over 5 s -- which is longer than
+    LOST_AFTER_S, so the follower gives up on a stone that is still coming."""
+    if not path or path[-1][2] <= IN_PLAY_MAX_Y_M:
+        return False
+    return all(_still_from(path, i) is None for i in range(len(path)))
+
+
+def _follow_on(samples, t_release, **kw):
+    """`_follow`, picked up again from the next sighting down the sheet each
+    time it lost a stone that was still on its way (`_lost_moving`). A stone
+    that stopped short stays lost: one moving later is somebody else's."""
+    path = _follow(samples, t_release, **kw)
+    while _lost_moving(path):
+        later = [(t, dets) for t, dets in samples if t > path[-1][0]]
+        more = _follow(later, t_release, **kw)
+        if not more or more[0][2] > path[-1][2] + GATE_Y_MIN_M:
+            break
+        path = path + more
+    return path
+
+
 def _in_time(path, t_release) -> bool:
     """Whether the stone crossed the far hog line soon enough after its release
     to have had the pace to run through the house."""
@@ -236,17 +261,19 @@ def _in_time(path, t_release) -> bool:
     return crossed is not None and crossed - t_release <= THROUGH_MAX_LAG_S
 
 
-def read_outcome(samples, t_release, *, seed_min_y_m=SEED_MIN_Y_M, skip_parked=False) -> Outcome | None:
+def read_outcome(samples, t_release, *, seed_min_y_m=SEED_MIN_Y_M) -> Outcome | None:
     """What became of the throw, from the rock colour's sightings per frame.
 
     ``samples`` is ``[(t, [(x_m, y_m, conf), ...]), ...]`` in time order, in
     house metres from the far tee (+y toward the thrower). None when the
-    stone was never followed, or its ending is ambiguous. ``seed_min_y_m`` and
-    ``skip_parked`` are for an end camera, whose view ends at the hog line.
+    stone was never followed, or its ending is ambiguous. ``seed_min_y_m`` is
+    for an end camera, whose view ends at the hog line.
     """
-    end = ({"seed_min_y_m": seed_min_y_m, "parked": _parked(samples)} if skip_parked
-           else {"seed_min_y_m": seed_min_y_m} if seed_min_y_m != SEED_MIN_Y_M else {})
-    path = _follow(samples, t_release, **end)
+    # Stones already sitting where the throw is looked for when the window
+    # opens are not it -- for an end camera a guard parked at the view's edge,
+    # for a long camera a hog from earlier in the end not yet moved off: DFW's
+    # sit at 8-11 m, and the follower took one for the throw and stayed on it.
+    path = _follow_on(samples, t_release, seed_min_y_m=seed_min_y_m, parked=_parked(samples))
     if len(path) < 3:
         return None
     k = _restarted(path)
@@ -335,7 +362,7 @@ def follow(video, view, color, t_release, *, model=None, decode=None, detect=Non
             dets.append((x, y, conf))
         samples.append((t, dets))
     if getattr(view, "end_camera", False):
-        return read_outcome(samples, t_release, skip_parked=True,
+        return read_outcome(samples, t_release,
                             seed_min_y_m=view.metres_at(hi - EDGE_ROWS) - END_SEED_BAND_M)
     return read_outcome(samples, t_release)
 
