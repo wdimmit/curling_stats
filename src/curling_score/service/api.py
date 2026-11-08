@@ -3522,6 +3522,24 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if n:
             clip_queue_stirred()
 
+    @app.post("/api/admin/clips/recut-auto")
+    def admin_recut_auto(authorization: str | None = Header(default=None)):
+        """On an auto-clips site, ask again for every clip of a ready run cut in
+        an older style than the clips worker's (gameclips.CLIP_STYLE)."""
+        require_admin(authorization)
+        if not settings.site.auto_clips:
+            raise HTTPException(409, "this site does not cut clips by itself")
+        t, asked = now(), 0
+        for run in repo.list_runs(status="ready", limit=1000):
+            sources = {s.game_index: s.id for s in repo.sources_for_video(run.video_id)
+                       if s.current_run_id == run.id}
+            if not sources:
+                continue
+            asked += gameclips.ask_all(repo, run, run_doc(run), t, sources, again=True)
+        if asked:
+            clip_queue_stirred()
+        return {"asked": asked}
+
     @app.post("/api/worker/jobs/{job_id}/complete")
     async def complete(job_id: str, request: Request, background: BackgroundTasks,
                        authorization: str | None = Header(default=None)):

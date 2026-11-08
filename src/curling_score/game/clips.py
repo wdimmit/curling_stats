@@ -39,7 +39,7 @@ OVERHEAD_MIN_S = 1.0
 # How a clip is cut, as its result says: 2, the arrival from overhead. The
 # API asks again for a clip older than its own word on this
 # (service/gameclips.CLIP_STYLE, which must agree).
-CLIP_STYLE = 2
+CLIP_STYLE = 3   # 3: the long camera cut from its full height (`full_height`)
 
 
 def _release_timed(rock: dict) -> bool:

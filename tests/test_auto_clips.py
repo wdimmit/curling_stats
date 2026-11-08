@@ -139,3 +139,34 @@ def test_granite_still_needs_an_account():
     r = w["client"].post(f"/api/games/{sid}/scores", json={"end": 1, "red": 0, "yellow": 1},
                          headers=ADMIN)
     assert r.status_code == 503
+
+
+# --- recutting old-style clips ------------------------------------------------------------
+
+def done_job(w, style):
+    j = w["repo"].get_clip_job("cs_r_1_0.1.1")
+    w["repo"].update_clip_job(j.id, state="done", rocks={"0.1.1": {"clip": True, "burned": True,
+                                                                  "style": style}})
+
+
+def test_recut_re_asks_old_style_clips_only():
+    w, sid = finished(site.DFW)
+    done_job(w, gameclips.CLIP_STYLE - 1)
+    r = w["client"].post("/api/admin/clips/recut-auto", headers=ADMIN)
+    assert r.status_code == 200 and r.json()["asked"] == 1
+    assert w["repo"].get_clip_job("cs_r_1_0.1.1").state == "queued"
+    done_job(w, gameclips.CLIP_STYLE)
+    assert w["client"].post("/api/admin/clips/recut-auto", headers=ADMIN).json()["asked"] == 0
+    assert w["repo"].get_clip_job("cs_r_1_0.1.1").state == "done"
+
+
+def test_recut_needs_the_admin_token_and_an_auto_clips_site():
+    w, _ = finished(site.DFW)
+    assert w["client"].post("/api/admin/clips/recut-auto").status_code in (401, 403)
+    g, _ = finished(site.GRANITE)
+    assert g["client"].post("/api/admin/clips/recut-auto", headers=ADMIN).status_code == 409
+
+
+def test_clip_styles_agree():
+    from curling_score.game import clips as game_clips
+    assert game_clips.CLIP_STYLE == gameclips.CLIP_STYLE == 3

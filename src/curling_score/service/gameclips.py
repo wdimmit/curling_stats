@@ -43,7 +43,7 @@ SHOT_JOB = "cs_"
 # How a clip is cut, as the clips worker says (game/clips.CLIP_STYLE, which
 # must agree): 2, the arrival from the overhead camera. A clip of an older
 # style is cut again when the backfill asks for that (`recut`).
-CLIP_STYLE = 2
+CLIP_STYLE = 3
 # Of each overhead panel's calibration, what a clip is drawn by.
 _PANEL_KEYS = ("rect", "center_px", "px_per_m", "flipped", "aspect")
 # How long a game's video is taken to stay in the workers' caches after its
@@ -194,7 +194,7 @@ def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
     return shot_state(repo, run, name, now)
 
 
-def ask_auto(repo, run, source_id: str, rock: dict, sides: dict, now) -> bool:
+def ask_auto(repo, run, source_id: str, rock: dict, sides: dict, now, *, again: bool = False) -> bool:
     """Queue a clip of ``rock`` in nobody's name (an auto-clips site), unless
     one was asked for on this run already -- whatever came of it: a failed cut
     is not asked again and again. One read and at most one write: never the
@@ -204,7 +204,12 @@ def ask_auto(repo, run, source_id: str, rock: dict, sides: dict, now) -> bool:
         return False
     job = repo.get_clip_job(shot_job_id(run.id, rock["name"]))
     if job is not None and not (run.ready_at is not None and job.created_at < run.ready_at):
-        return False
+        # ``again``: a clip cut in an older style than the worker's is asked
+        # for once more (its key is the same: the new one replaces it).
+        got = (job.rocks or {}).get(rock["name"]) or {}
+        if not (again and job.state == "done" and got.get("clip") is True
+                and (got.get("style") or 0) < CLIP_STYLE):
+            return False
     repo.put_clip_job(ClipJob(
         id=shot_job_id(run.id, rock["name"]), play_id="", user_id=AUTO_USER,
         source_id=source_id or "", run_id=run.id, video_id=run.video_id, state="queued",
@@ -214,7 +219,7 @@ def ask_auto(repo, run, source_id: str, rock: dict, sides: dict, now) -> bool:
     return True
 
 
-def ask_all(repo, run, doc: dict, now, sources: dict | None = None) -> int:
+def ask_all(repo, run, doc: dict, now, sources: dict | None = None, *, again: bool = False) -> int:
     """Ask for a clip of every rock in ``doc`` that was seen released and has
     none asked for on ``run`` yet (`ask_auto`) -- for a site that cuts every
     rock without anyone asking (service/site.py ``auto_clips``). ``sources``
@@ -228,7 +233,8 @@ def ask_all(repo, run, doc: dict, now, sources: dict | None = None) -> int:
         for end in game.get("ends", []):
             for s in end.get("shots") or []:
                 if not s.get("missing"):
-                    asked += ask_auto(repo, run, sid, rock_spec(game, end, s), sides, now)
+                    asked += ask_auto(repo, run, sid, rock_spec(game, end, s), sides, now,
+                                      again=again)
     return asked
 
 
