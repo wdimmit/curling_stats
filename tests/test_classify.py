@@ -283,3 +283,26 @@ class TestRefusingToGuess:
         blank = Shot(number=3, color="red", stones=[], t_rest_s=float("nan"),
                      missing=True, state_known=False)
         assert classify.classify_shot(blank) == (classify.UNKNOWN, 0.0)
+
+
+class TestHoggedButCrossedTheFarHogLine:
+    """A release the far house never saw arrive was taken as hogged. DFW's
+    long camera times the far hog-line crossing of many of them -- 26 of the 63
+    "hogged" rocks across the 5U qualifier -- and a stone that crossed the far
+    hog line was not hogged. Where it went, nothing saw."""
+
+    def _hogged(self):
+        return delivery(reason="hogged", came_to_rest=False, track=())
+
+    def test_without_a_far_crossing_it_stays_hogged(self):
+        assert classify.classify(self._hogged(), None)[0] == classify.HOGGED
+
+    def test_with_a_far_crossing_it_is_not_hogged(self):
+        far = split_mod.FarCrossing(t=120.0)
+        got, conf = classify.classify(self._hogged(), None, t_hog=104.0, far=far)
+        assert got == classify.UNKNOWN
+        assert conf == 0.0
+
+    def test_a_far_crossing_with_no_time_does_not_count(self):
+        far = split_mod.FarCrossing(t=None)
+        assert classify.classify(self._hogged(), None, far=far)[0] == classify.HOGGED

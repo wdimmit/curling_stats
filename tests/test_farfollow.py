@@ -129,7 +129,7 @@ class TestReadOutcome:
         That failed the whole job rather than the one throw."""
         path = ([(T0 + 24 + k / 4, 0.3, 3.0) for k in range(8)]
                 + [(T0 + 26 + k / 4, 0.7, 3.0) for k in range(8)])
-        monkeypatch.setattr(FF, "_follow", lambda _samples, _t: path)
+        monkeypatch.setattr(FF, "_follow", lambda _samples, _t, **_kw: path)
         assert FF.read_outcome(samples(until=T0 + 60), T0) is None
 
 
@@ -502,12 +502,12 @@ class TestEndCamera:
     def test_a_guard_first_seen_at_the_hog_line_is_followed_to_rest(self):
         p = hold(slide(4.2, x=0.4, start_y=6.3, start_at=T0 + 12.0, stop_at=T0 + 16.0), T0 + 45)
         assert FF.read_outcome(samples(p), T0) is None              # a long camera's seed: 7.5 m
-        got = FF.read_outcome(samples(p), T0, seed_min_y_m=5.5, skip_parked=True)
+        got = FF.read_outcome(samples(p), T0, seed_min_y_m=5.5)
         assert got.kind == FF.REST and got.y_m == pytest.approx(4.2, abs=0.1)
 
     def test_a_stone_parked_by_the_line_is_not_the_throw(self):
         p = hold(slide(3.5, x=-0.8, start_y=6.3, start_at=T0 + 14.0, stop_at=T0 + 18.0), T0 + 45)
-        got = FF.read_outcome(samples(p, static=[(0.5, 5.9)]), T0, seed_min_y_m=5.5, skip_parked=True)
+        got = FF.read_outcome(samples(p, static=[(0.5, 5.9)]), T0, seed_min_y_m=5.5)
         assert got.kind == FF.REST and got.x_m == pytest.approx(-0.8, abs=0.05)
 
 
@@ -522,3 +522,34 @@ class TestFollowLost:
         r = R.Release("red", T0, 9.0, 2.0)
         got, n = FF.follow_lost([R.as_delivery(r)], lambda color, t: None)
         assert n == 0 and got[0].reason == R.REASON
+
+
+class TestSweepersAndParkedStones:
+    """DFW's long camera faces the house from low behind the far end: the
+    sweepers walk between it and the stone for seconds at a time, and stones
+    already out of play sit up the sheet. Draw 3 end 3 rock 1 (46wEMds_tYQ,
+    2026-11-07) was seen at 17 m, hidden 4.5 s, seen again at 10 m and
+    followed to rest as a guard at 4.5 m -- and was charted hogged."""
+
+    def test_a_stone_hidden_by_sweepers_is_picked_up_again(self):
+        p = slide(4.5, x=0.0, start_y=17.2, start_at=T0 + 9.5, stop_at=T0 + 23.5)
+        p = [q for q in p if not T0 + 10.1 < q[0] < T0 + 14.9]
+        got = FF.read_outcome(samples(hold(p, T0 + 45)), T0)
+        assert got is not None and got.kind == FF.REST
+        assert got.y_m == pytest.approx(4.5, abs=0.3)
+
+    def test_a_stone_parked_up_the_sheet_is_not_the_throw(self):
+        """A hog from earlier in the end, still sitting at 11 m when the window
+        opens, was taken for the throw and the throw was never followed."""
+        p = hold(slide(3.9, x=0.3, start_y=17.0, start_at=T0 + 12.0), T0 + 45)
+        got = FF.read_outcome(samples(p, static=[(-1.6, 11.3)]), T0)
+        assert got is not None and got.kind == FF.REST
+        assert got.y_m == pytest.approx(3.9, abs=0.3)
+
+    def test_a_stone_that_stopped_short_is_not_traded_for_a_later_one(self):
+        """Lost because it STOPPED short of the line, not because it was
+        hidden: a stone moving later is someone else's business."""
+        p = hold(slide(8.4, x=-1.0, start_y=15.0, start_at=T0 + 10.0, stop_at=T0 + 21.0), T0 + 25)
+        other = [(T0 + 25.5 + k / 4, 0.2, 9.0 - k * 0.3) for k in range(20)]
+        got = FF.read_outcome(samples(p, hold(other, T0 + 45)), T0)
+        assert got is None or got.kind != FF.REST

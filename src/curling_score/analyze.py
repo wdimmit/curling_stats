@@ -180,6 +180,18 @@ def _no_phase(name, fraction, message=None):
 JOIN_S = 30.0
 
 
+def follows_lost(dest_view, guards_from_long_m) -> bool:
+    """Whether the camera facing the house is asked where the rocks seen at
+    neither end went (`farfollow.follow_lost`). An end camera watches the
+    guard zone; so does the long camera where the overheads show only the
+    houses (``guards_from_long_m`` set, DFW): rocks it could follow to rest in
+    play were charted hogged without it. Not Granite's long camera, whose
+    overhead sees to the hog line."""
+    if dest_view is None:
+        return False
+    return bool(getattr(dest_view, "end_camera", False)) or guards_from_long_m is not None
+
+
 def joined_late(prev_end_s, start_s: float, recording_start_s: float = 0.0) -> bool:
     """Whether the recording began inside this end: it is the recording's
     first (nothing before it closed) and it opens with the recording. Its
@@ -709,12 +721,15 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
         if lost:
             progress(f"    end {end.number}: {len(lost)} rock(s) the overhead saw at "
                      f"neither end, from the long camera")
-            # An end camera sees a guard the house-only overhead never could.
-            if getattr(dest_view, "end_camera", False):
+            # An end camera sees a guard the house-only overhead never could,
+            # and so does a long camera where the overhead shows only the
+            # houses (DFW): there every guard short of the house is lost.
+            if follows_lost(dest_view, ctx.guards_from_long_m):
                 lost, n_placed = farfollow.follow_lost(
                     lost, lambda color, t: farfollow.follow(path, dest_view, color, t))
                 if n_placed:
-                    progress(f"    end {end.number}: {n_placed} of them placed from the end camera")
+                    progress(f"    end {end.number}: {n_placed} of them placed from the camera "
+                             f"facing the house")
             unaccounted = unaccounted + lost
             deliveries, kept = by_the_rules(unaccounted)
     # Audit what detection actually offered, before the rules trim
@@ -875,7 +890,9 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
     built["deliveries_seen"] = len(deliveries)
     built["releases_seen"] = len(releases)
     built["releases_unaccounted"] = len(unaccounted)
-    built["hogged"] = sum(1 for d in unaccounted if d.reason == release.REASON)
+    # The rocks the chart calls hogged: not every release the far house missed
+    # (a far hog crossing, or the long camera, can say it was not).
+    built["hogged"] = sum(1 for s in built.get("shots") or [] if s.get("shot_type") == "hogged")
     built["lost_rocks_found"] = len(lost)
     built["deliveries_recovered"] = len(recovered)
     built["deliveries_dropped"] = dropped
