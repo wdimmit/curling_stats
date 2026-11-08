@@ -94,6 +94,26 @@ def sideviews_from_calibration(cal: dict | None) -> dict:
     return out
 
 
+def full_height(view: SideView) -> SideView:
+    """The same camera with its rectangle raised to the top of the picture.
+
+    A long camera's view is cut where its ice begins (a club's ``side_rows``:
+    DFW's starts 390 rows down, below the clubhouse window), which is right for
+    reading stones and wrong for watching a throw: the thrower and the house
+    sit at its top edge, and a clip cut from it loses the players above the
+    waist. Every row moves down by the rows added; nothing else changes, so a
+    point on the ice is the same pixel of the picture in either."""
+    import dataclasses
+
+    x, y, w, h = view.rect
+    if y <= 0:
+        return view
+    line = view.centre_line
+    return dataclasses.replace(
+        view, rect=(x, 0, w, y + h), tee_row=view.tee_row + y, hog_row=view.hog_row + y,
+        centre_line=None if line is None else (line[0] - line[1] * y, line[1]))
+
+
 def panels_from_calibration(cal: dict | None) -> dict:
     """The overhead panels, by house, as a run calibrated them; a house the
     record lacks is left out, and its clips keep the camera behind."""
@@ -172,6 +192,9 @@ def clip_rocks(rocks, video, sideviews, workdir, deliver, *, panels=None, cut=cl
     longer ours) ends the lot."""
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
+    # Clips are cut from each long camera's full height (`full_height`), and
+    # placed and framed by it, so the players and the whole house show.
+    sideviews = {name: full_height(sv) for name, sv in sideviews.items()}
     views = {name: (video, sv.rect) for name, sv in sideviews.items()}
     results = {}
     for rock in rocks:

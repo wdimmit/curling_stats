@@ -126,3 +126,33 @@ def test_dallas_turns_both_on_and_granite_neither():
     from curling_score import clubs
     assert clubs.DALLAS.far_hog_from_long and clubs.DALLAS.guards_from_long_m == pytest.approx(3.3)
     assert not clubs.GRANITE.far_hog_from_long and clubs.GRANITE.guards_from_long_m is None
+
+
+# --- clips cut from the long camera's full height --------------------------------------------
+
+def test_a_view_raised_to_the_frame_top_puts_every_point_where_it_was():
+    from curling_score.game import clips as gc
+    tall = gc.full_height(VIEW)
+    assert tall.rect == (VIEW.rect[0], 0, VIEW.rect[2], VIEW.rect[1] + VIEW.rect[3])
+    for x_m, y_m in ((0.0, 0.0), (0.8, 3.0), (-1.2, 6.4), (0.3, 15.0)):
+        c0, r0 = VIEW.to_image(x_m, y_m)
+        c1, r1 = tall.to_image(x_m, y_m)
+        assert c1 == pytest.approx(c0, abs=1e-6) and r1 == pytest.approx(r0 + VIEW.rect[1], abs=1e-6)
+        assert tall.to_house(c1, r1) == pytest.approx(VIEW.to_house(c0, r0), abs=1e-6)
+
+
+def test_the_zoom_on_the_thrower_is_no_longer_held_below_the_view_top():
+    """DFW's view starts 390 rows down, below the clubhouse window: the old zoom
+    box was clamped to that edge and cut the players at the waist."""
+    from curling_score.game import clipburn, clips as gc
+    from curling_score.practice import clips as practice_clips
+    throw = {"house": "bottom", "line": {"start": {"x": 0.0, "y": 38.0}, "at_hog_x": 0.2},
+             "t_release_s": 10.0, "t_hog_s": 11.0, "v_hog_m_s": 2.5}
+    plan = practice_clips.ClipPlan((practice_clips.Piece("left", 5.0, 20.0),))
+    tall = gc.full_height(VIEW)
+    fr_old = clipburn.framing(throw, plan, {"left": VIEW})
+    fr_new = clipburn.framing(throw, plan, {"left": tall})
+    assert fr_old is not None and fr_new is not None
+    top_old_px = fr_old.box[1] * VIEW.rect[3] + VIEW.rect[1]
+    top_new_px = fr_new.box[1] * tall.rect[3]
+    assert top_new_px < top_old_px - 50       # it reaches up into the players

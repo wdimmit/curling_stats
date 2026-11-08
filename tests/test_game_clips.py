@@ -144,7 +144,7 @@ class TestClipRocks:
         # The cutter marks it from the rock and the cameras; nothing is left
         # for the page to draw.
         assert cuts[0][2]["throw"]["id"] == "0.3.5"
-        assert cuts[0][2]["sideviews"] is self.VIEWS
+        assert cuts[0][2]["sideviews"] == self.VIEWS   # views already full height pass unchanged
         assert got["0.3.5"] == {"clip": True, "burned": True, "style": gc.CLIP_STYLE}
         assert list((tmp_path / "w").iterdir()) == []
 
