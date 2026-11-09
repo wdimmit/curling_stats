@@ -82,7 +82,7 @@ def test_live_replay_cameras_replays_the_four_files(tmp_path, monkeypatch):
     _camera_replay(monkeypatch, started, sessions)
     out = tmp_path / "out"
     assert cli.main(["live-replay", "--cameras", str(tmp_path / "s3-1"), "--sheet", "3",
-                     "--video-id", "dbV9wuA45Z0", "--out", str(out), "--weights", "none"]) == 0
+                     "--video-id", "dbV9wuA45Z0", "--out", str(out), "--weights", _model(tmp_path)]) == 0
     assert started == {"source": str(tmp_path / "s3-1"), "sheet": 3, "speed": 1.0, "stopped": True}
     assert sessions[0].video_id == "dbV9wuA45Z0" and sessions[0].sheet == 3
     assert (out / "publishes" / "001.json").exists()
@@ -99,7 +99,7 @@ def test_live_replay_offset_goes_on_the_session(tmp_path, monkeypatch):
     sessions = []
     _camera_replay(monkeypatch, {}, sessions)
     assert cli.main(["live-replay", "--cameras", str(tmp_path), "--sheet", "3",
-                     "--offset-s", "600", "--out", str(tmp_path / "o"), "--weights", "none"]) == 0
+                     "--offset-s", "600", "--out", str(tmp_path / "o"), "--weights", _model(tmp_path)]) == 0
     assert sessions[0].clock == {"kind": "cameras", "aligned": "segment", "offset_s": 600.0,
                                  "steps": [[0.0, 600.0]]}
 
@@ -122,7 +122,7 @@ def test_align_to_puts_the_tracked_clock_on_the_session(tmp_path, monkeypatch):
     cams = tmp_path / "s4-1"
     assert cli.main(["live-replay", "--cameras", str(cams), "--sheet", "4",
                      "--align-to", str(tmp_path / "v.mp4"), "--guess-s", "-905",
-                     "--out", str(tmp_path / "o"), "--weights", "none"]) == 0
+                     "--out", str(tmp_path / "o"), "--weights", _model(tmp_path)]) == 0
     assert asked == {"video": str(tmp_path / "v.mp4"), "camera": str(cams / "long_a.ts"),
                      "sheet": 4, "guess": -905.0}
     assert sessions[0].clock == track.clock()
@@ -137,5 +137,5 @@ def test_align_to_that_finds_no_clock_exits_1(tmp_path, monkeypatch):
     monkeypatch.setattr(align, "length_s", lambda p: 11698.0)
     assert cli.main(["live-replay", "--cameras", str(tmp_path), "--sheet", "4",
                      "--align-to", str(tmp_path / "v.mp4"), "--guess-s", "-905",
-                     "--out", str(tmp_path / "o"), "--weights", "none"]) == 1
+                     "--out", str(tmp_path / "o"), "--weights", _model(tmp_path)]) == 1
     assert sessions == []

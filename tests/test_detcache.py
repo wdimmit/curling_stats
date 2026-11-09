@@ -114,8 +114,9 @@ class TestKeyCoversWhatChangesDetections:
 
 
 # The key as the code before cuts built it, for a fixed file and source: warm
-# caches on the workers keep hitting only while this does not move.
-TODAYS_KEY = "f6b9e31e6c365cdba2c041c4d3167050"
+# caches on the workers keep hitting only while this does not move. It moved
+# once on purpose, 2026-11-10: FORMAT_VERSION 2 stores each frame's players.
+TODAYS_KEY = "9dfe8937984d6b0a2676c9b2b83260b4"
 
 
 class TestKeyThroughTheCut:
@@ -266,7 +267,7 @@ class TestPlayers:
         p = box()
 
         class Setup:
-            rect = (0, 0, 10, 10)
+            cut = (0, 0, 10, 10)
             calib = calib()
 
             def on_sheet(self, stones):
@@ -293,7 +294,7 @@ class TestADetectorPerSpan:
         calib = calib()
 
         def __init__(self, rect):
-            self.rect = rect
+            self.cut = rect
 
         def on_sheet(self, stones):
             return list(stones)

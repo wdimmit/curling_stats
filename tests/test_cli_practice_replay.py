@@ -145,6 +145,6 @@ def test_practice_replay_takes_cameras_or_a_video(tmp_path, monkeypatch):
     monkeypatch.setattr(harness, "run", run)
     monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
     assert cli.main(["practice-replay", "--cameras", str(tmp_path / "cams"), "--sheet", "3",
-                     "--speed", "2", "--out", str(tmp_path / "o"), "--weights", "none"]) == 0
+                     "--speed", "2", "--out", str(tmp_path / "o"), "--weights", _model(tmp_path)]) == 0
     assert made["source"] == str(tmp_path / "cams") and made["sheet"] == 3
     assert made["speed"] == 2.0 and made["stopped"] and isinstance(made["rec"], Cams)
