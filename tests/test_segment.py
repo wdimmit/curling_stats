@@ -393,3 +393,55 @@ class TestTheFloorIsAParameter:
         two = segment.segment_games(samples, min_end_s=10 * segment.MIN_DELIVERY_GAP_S)
         assert [e.house for g in four for e in g.ends] == ["bottom"]
         assert [e.house for g in two for e in g.ends] == ["top", "bottom"]
+
+
+class TestAStrayStoneInAChangeover:
+    """11/03 Tuesday Super League sheet 4: four minutes into the 7 pm to 9 pm
+    changeover, a broom head held into the corner of the empty top house read
+    as a stone in two keyframes, 130 s and 115 s of empty sheet either side.
+    It joined the 7 pm game's last end, and the two games came out as one."""
+
+    def _night(self, stray=2, before=31, after=28, house=(1, 0)):
+        # 155 s and 140 s of empty keyframes: 130 s and 115 s once the
+        # smoothing has spread the stones either side, as on 11/03.
+        return profile([(180, 0, 6), (180, 5, 0),          # the 7 pm game's last two ends
+                        (before, 0, 0), (stray, *house), (after, 0, 0),
+                        (180, 0, 4), (180, 3, 0)])         # the 9 pm game's first two
+
+    def test_it_does_not_hold_the_game_open(self):
+        games = segment.segment_games(self._night())
+        assert [len(g.ends) for g in games] == [2, 2]
+        # The last end finishes with its stones, not at the stray: within the
+        # smoothing's couple of keyframes of 1800 s.
+        assert games[0].ends[-1].end_s <= 1800.0 + 10.0
+
+    def test_in_either_house(self):
+        assert len(segment.segment_games(self._night(house=(0, 1)))) == 2
+
+    def test_three_keyframes_are_a_stone_held_there(self):
+        assert len(segment.segment_games(self._night(stray=3))) == 1
+
+    def test_not_with_under_a_minute_of_empty_sheet_on_one_side(self):
+        # 200 s before it and 50 s after: as long as a changeover in all, but
+        # the stone is not alone.
+        assert len(segment.segment_games(self._night(before=40, after=10))) == 1
+
+    def test_inside_a_game_it_still_finishes_the_end_it_follows(self):
+        """Under GAME_GAP_S in all, nothing moves: a delivery thrown through an
+        emptied house is still in its end's window."""
+        samples = profile([(180, 0, 6), (180, 5, 0), (13, 0, 0), (1, 1, 0), (13, 0, 0),
+                           (180, 0, 4)])
+        (game,) = segment.segment_games(samples)
+        assert [e.house for e in game.ends] == ["bottom", "top", "bottom"]
+        assert game.ends[1].end_s == samples[180 + 180 + 13 + 2].t
+
+    def test_a_stream_being_recorded_posts_the_same_ends(self):
+        """Every end settled at every point of the recording is the end the
+        whole night gives (`settled_ends`)."""
+        samples = self._night()
+        whole = [[(e.house, e.start_s, e.end_s) for e in g.ends]
+                 for g in segment.segment_games(samples)]
+        for n in range(1, len(samples) + 1, 3):
+            for g in segment.settled_ends(samples[:n]):
+                for e in g.ends:
+                    assert (e.house, e.start_s, e.end_s) in whole[g.index]

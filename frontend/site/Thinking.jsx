@@ -133,8 +133,7 @@ export function Thinking() {
 
   return (
     <>
-      <Header links={[["/", "All games"], ["/thinking", "Thinking time", true], ["/ice", "Ice report"],
-                      ["/submit", "Submit a link"]]} />
+      <Header links={[["/", "All games"], ["/thinking", "Thinking time", true], ["/ice", "Ice report"]]} />
       <main>
         <p className="muted" style={{ marginTop: 0 }}>How long a team took to decide its shots,
         divided by the ends it played, grouped by league. The first two tables list a team once for

@@ -136,6 +136,8 @@ def calibration_block(setups, sideviews) -> dict:
                 "hog_line": None if s.hog_line is None else s.hog_line.to_json(),
                 "hog_line_error": s.hog_line_error,
                 "sidelines": None if s.sidelines is None else s.sidelines.to_json(),
+                "back_line": None if getattr(s, "back_line", None) is None else s.back_line.to_json(),
+                "back_line_error": getattr(s, "back_line_error", None),
             }
             for name, s in setups.items()
         },
@@ -154,7 +156,7 @@ def _proxy_setups(setups, strip):
             rect=proxy.translate(s.rect, strip), calib=s.calib,
             # The lines are in panel pixels, so moving the panel does not move them.
             hog_line=s.hog_line, hog_line_error=s.hog_line_error,
-            sidelines=s.sidelines,
+            sidelines=s.sidelines, back_line=s.back_line, back_line_error=s.back_line_error,
         )
         for name, s in setups.items()
     }
@@ -333,6 +335,9 @@ def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info):
             f"{name} panel {setup.rect} {setup.calib.px_per_m:.1f} px/m "
             f"(residual {setup.calib.residual_m * 100:.2f} cm)"
         )
+        back = setup.back_line
+        progress(f"{name} panel back line: {back.columns} columns ({back.scatter_px:.2f} px)"
+                 if back is not None else f"{name} panel back line: none; {setup.back_line_error}")
         sides = setup.sidelines
         if sides is None:
             continue
