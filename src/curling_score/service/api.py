@@ -2854,6 +2854,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         except KeyError:
             return None
 
+    def practice_color(body):
+        """The one colour a session keeps to, from a request's body: None for
+        every rock."""
+        color = body.get("color")
+        if color is not None and color not in practice.COLORS:
+            raise HTTPException(422, "a colour is red or yellow")
+        return color
+
     def my_session(session_id, me):
         s = repo.get_session(session_id)
         if s is None or s.user_id != me.id:
@@ -2875,6 +2883,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             sheet = int(body.get("sheet"))
         except (TypeError, ValueError):
             raise HTTPException(422, "say which sheet") from None
+        color = practice_color(body)
         # Asked before the rate limit, so a refusal costs no one a session's worth.
         if practice.league_on(repo, now()):
             raise HTTPException(409, LEAGUE_ON)
@@ -2888,7 +2897,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(429, "that is a lot of sessions; try again later")
         try:
             s = practice.start(repo, me, sheet, body.get("hand", "right"), now(),
-                               settings.processing_version)
+                               settings.processing_version, color=color)
         except practice.NoCameras:
             raise HTTPException(404, f"Sheet {sheet} has no cameras.") from None
         except practice.LeagueOn:    # one began between the check and the start
@@ -2902,6 +2911,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         s = practice.settle(repo, my_session(session_id, require_user(authorization)), now())
         view = practice.session_view(repo, practice_doc(repo.get_watch(s.watch_id)), s, now())
         return json_revalidated(request, view, "private")
+
+    @app.patch("/api/practice/sessions/{session_id}")
+    async def practice_change(session_id: str, request: Request,
+                              authorization: str | None = Header(default=None)):
+        """Keep a session to one colour's rocks, or to every rock again."""
+        practice_on()
+        s = my_session(session_id, require_user(authorization))
+        body = await request.json()
+        if "color" in body:
+            practice.set_color(repo, s, practice_color(body))
+        return {"ok": True}
 
     @app.post("/api/practice/sessions/{session_id}/stop")
     def practice_stop(session_id: str, authorization: str | None = Header(default=None)):

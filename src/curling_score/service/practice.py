@@ -132,10 +132,12 @@ def camera_watches(repo) -> int:
                for w in repo.watches_for_sheet(sheet) if watch_alive(repo, w))
 
 
-def start(repo, user, sheet: int, hand: str, now, processing_version: str):
+def start(repo, user, sheet: int, hand: str, now, processing_version: str,
+          color: str | None = None):
     """A new session for ``user`` on ``sheet``: on the sheet's running watch,
     or a new one on its cameras. NoCameras for a sheet without any; LeagueOn
-    while a league game is on."""
+    while a league game is on. ``color`` is one of COLORS or None (see
+    PracticeSession)."""
     if league_on(repo, now):
         raise LeagueOn(sheet)
     watch = alive_watch(repo, sheet)
@@ -156,7 +158,7 @@ def start(repo, user, sheet: int, hand: str, now, processing_version: str):
         repo.put_watch(watch)
     session = PracticeSession(id=slug.new_slug(slug.SHORT_BYTES, "ps_"), user_id=user.id,
                               sheet=sheet, watch_id=watch.id, started_at=now,
-                              hand="left" if hand == "left" else "right")
+                              hand="left" if hand == "left" else "right", color=color)
     repo.put_session(session)
     return session
 
@@ -194,10 +196,28 @@ def placed(th) -> bool:
     return th.get("arrived") and th.get("release_source") is None
 
 
+# The colours a session can keep to: the stone model's two.
+COLORS = ("red", "yellow")
+
+
+def other_color(session, th) -> bool:
+    """A rock of the colour the session's partner throws."""
+    return session.color is not None and th.get("color") in COLORS \
+        and th["color"] != session.color
+
+
+def hidden(session, th) -> bool:
+    """Not the owner's: "Not my throw", or the other colour's rock unless
+    they kept it as theirs after all."""
+    if th["id"] in session.hidden:
+        return True
+    return other_color(session, th) and th["id"] not in session.kept
+
+
 def throw_count(doc, session, now) -> int:
     """How many throws the session's page shows as the owner's."""
     return sum(1 for th, _ in in_window(doc, session, now)
-               if not placed(th) and th["id"] not in session.hidden)
+               if not placed(th) and not hidden(session, th))
 
 
 def session_view(repo, doc, session, now) -> dict:
@@ -214,7 +234,8 @@ def session_view(repo, doc, session, now) -> dict:
     matched, unpaired = match_timings(doc, session, timings, now)
     throws = []
     for th, at in in_window(doc, session, now):
-        th = {**th, "released_at": _iso(at), "hidden": th["id"] in session.hidden}
+        th = {**th, "released_at": _iso(at), "hidden": hidden(session, th),
+              "other_color": other_color(session, th)}
         if th["id"] in matched:
             timing, gap = matched[th["id"]]
             th["sensor"] = {**timing_view(timing), "gap_s": gap}
@@ -224,6 +245,7 @@ def session_view(repo, doc, session, now) -> dict:
     pending = status == "active" and session.active
     return {
         "session": {"id": session.id, "sheet": session.sheet, "hand": session.hand,
+                    "color": session.color,
                     "started_at": _iso(session.started_at), "ended_at": _iso(session.ended_at),
                     "end_reason": session.end_reason, "status": status},
         "watch": {"status": None if watch is None else watch.status,
@@ -265,9 +287,18 @@ def settle(repo, session, now):
 MAX_HIDDEN = 500
 
 
-def hide(repo, session, throw_id: str, hidden: bool):
-    ids = [t for t in session.hidden if t != throw_id] + ([throw_id] if hidden else [])
-    repo.update_session(session.id, hidden=ids[-MAX_HIDDEN:])
+def hide(repo, session, throw_id: str, hide: bool):
+    """"Not my throw" (``hide``) or "Mine after all". Mine after all also
+    keeps a rock of the other colour, so the colour cannot hide it again;
+    for one of the session's own colour that is harmless."""
+    ids = [t for t in session.hidden if t != throw_id] + ([throw_id] if hide else [])
+    kept = [t for t in session.kept if t != throw_id] + ([] if hide else [throw_id])
+    repo.update_session(session.id, hidden=ids[-MAX_HIDDEN:], kept=kept[-MAX_HIDDEN:])
+
+
+def set_color(repo, session, color: str | None):
+    """Keep the session to one colour's rocks, or (None) to every rock."""
+    repo.update_session(session.id, color=color)
 
 
 def sweep(repo, watch, doc, now) -> int:

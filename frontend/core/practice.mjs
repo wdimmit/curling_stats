@@ -143,6 +143,24 @@ export function shown(throws) {
   return (throws ?? []).filter(t => !(t.arrived && t.release_source == null));
 }
 
+/* A session kept to one colour (service/practice.py other_color) leaves the
+ * partner's rocks out of the list, numbering and all. ``showOthers`` puts
+ * them back, muted, so a misread one can be kept as "Mine after all". A rock
+ * hidden by "Not my throw" stays listed, as it always has. */
+const leftOutOne = t => t.other_color && t.hidden;
+
+export function listed(throws, { showOthers = false } = {}) {
+  return showOthers ? (throws ?? []) : (throws ?? []).filter(t => !leftOutOne(t));
+}
+
+export function leftOut(throws) {
+  return (throws ?? []).filter(leftOutOne);
+}
+
+export function leftOutText(n, color) {
+  return `${n} ${color} rock${n === 1 ? "" : "s"} left out`;
+}
+
 export function summary(throws) {
   const mine = (throws ?? []).filter(t => !t.hidden);
   const splits = mine.map(t => t.split_s).filter(s => s != null);

@@ -600,7 +600,10 @@ class PracticeWatch:
 class PracticeSession:
     """A person's practice: the throws on a sheet between their Start and
     their Stop (or the time it ran out). `hand` turns curl into in- or
-    out-turn; `hidden` are throws they said were not theirs."""
+    out-turn; `hidden` are throws they said were not theirs. `color` is the
+    one colour they throw, when they share the sheet with a partner throwing
+    the other: the other colour's rocks read as hidden, but for those in
+    `kept`, which they said were theirs after all (a misread colour)."""
 
     id: str
     user_id: str
@@ -611,6 +614,8 @@ class PracticeSession:
     ended_at: datetime | None = None
     end_reason: str | None = None     # stop | idle | max | league | stream_ended | failed
     hidden: list = field(default_factory=list)
+    color: str | None = None          # red | yellow | None (every rock)
+    kept: list = field(default_factory=list)
 
     @property
     def active(self) -> bool:

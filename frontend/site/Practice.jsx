@@ -10,8 +10,9 @@ import { authedFetch, signIn } from "./auth.js";
 import { signInTrouble } from "./signinState.mjs";
 import { useAuthUser, useResource } from "./useAuth.js";
 import { Card, Header, Pill, Warn } from "./ui.jsx";
-import { aimFigures, clipState, curlText, lengthText, lineText, mergeTimings, restText, sensorText,
-         rotationText, shown, summary, weightText } from "../core/practice.mjs";
+import { aimFigures, clipState, curlText, leftOut, leftOutText, lengthText, lineText, listed,
+         mergeTimings, restText, sensorText, rotationText, shown, summary,
+         weightText } from "../core/practice.mjs";
 import { DELIVERYBOX, deliveryGeometry } from "../core/index.mjs";
 import { ClipPlayer } from "./clip.jsx";
 import { DeliveryChart, dotColours } from "../viewer/Delivery.jsx";
@@ -54,6 +55,21 @@ function savedHand() {
 
 function saveHand(hand) {
   try { localStorage.setItem(HAND_KEY, hand); } catch { /* private window */ }
+}
+
+/* Which rocks are mine: every rock, or one colour's when a partner throws
+ * the other (service/practice.py other_color). */
+function ColourPick({ name, color, onChange }) {
+  return (
+    <p className="choices colour-pick">Your rocks{" "}
+      {[[null, "All"], ["red", "Red"], ["yellow", "Yellow"]].map(([c, word]) => (
+        <label key={word}>
+          <input type="radio" name={name} checked={color === c} onChange={() => onChange(c)} />{" "}
+          {c && <span className={`rock-dot ${c}`} aria-hidden="true" />}{word}
+        </label>
+      ))}
+    </p>
+  );
 }
 
 function ago(iso) {
@@ -246,6 +262,8 @@ function Live({ id, onDone, heading }) {
   const [picked, setPicked] = useState(null);
   // The throw just hidden, offered back for a few seconds.
   const [undo, setUndo] = useState(null);
+  // The partner's rocks, put back in the list to rescue a misread colour.
+  const [showOthers, setShowOthers] = useState(false);
   const load = useCallback(async () => {
     const res = await authedFetch(`/api/practice/sessions/${encodeURIComponent(id)}`,
                                   { cache: "no-cache" });
@@ -270,7 +288,9 @@ function Live({ id, onDone, heading }) {
 
   if (!view) return <p className="muted">{err || "Loading…"}</p>;
   const { session, watch } = view;
-  const throws = shown(view.throws);
+  const all = shown(view.throws);
+  const throws = listed(all, { showOthers });
+  const others = leftOut(all);
   const mine = throws.filter(t => !t.hidden);
   const shownIndex = picked != null ? throws.findIndex(t => t.id === picked) : -1;
   const card = shownIndex >= 0 ? throws[shownIndex] : mine[mine.length - 1];
@@ -291,6 +311,13 @@ function Live({ id, onDone, heading }) {
     await authedFetch(`/api/practice/sessions/${id}/stop`, { method: "POST" });
     load();
   };
+  const setColour = async color => {
+    await authedFetch(`/api/practice/sessions/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ color }) });
+    load();
+  };
+  const otherColour = session.color === "red" ? "yellow" : "red";
   // Sensor times show only on a session a sensor app has pushed to.
   const sensors = !!view.has_sensors;
   const rows = mergeTimings(throws, sensors ? view.timings : []);
@@ -306,6 +333,14 @@ function Live({ id, onDone, heading }) {
         {!live && onDone && <> <button className="primary" onClick={onDone}>Start another</button></>}
         {!live && !onDone && <> <a className="btn primary" href={`/practice/sheet/${session.sheet}`}>Practise on sheet {session.sheet} again</a></>}
       </p>
+      <ColourPick name="colour-live" color={session.color ?? null} onChange={setColour} />
+      {session.color && others.length > 0 && (
+        <p className="muted">
+          {leftOutText(others.length, otherColour)} ·{" "}
+          <button className="quiet" onClick={() => setShowOthers(!showOthers)}>
+            {showOthers ? "Hide them" : "Show them"}</button>
+        </p>
+      )}
       {err && <Warn>{err}</Warn>}
       {card && <Latest t={card} n={cardN} sid={id} live={live} newest={picked == null}
                        sensors={sensors} onHide={hideFromCard} />}
@@ -326,7 +361,8 @@ function Live({ id, onDone, heading }) {
               <tr key={t.id} className={t.hidden ? "muted" : undefined}
                   onClick={() => setPicked(t.id)} style={{ cursor: "pointer",
                     background: t.id === card?.id ? "rgba(242,194,0,0.18)" : undefined }}>
-                <td>{n}</td>
+                <td className="n">{session.color && t.color &&
+                      <span className={`rock-dot ${t.color}`} aria-label={t.color} />}{n}</td>
                 <td>{rotationText(t, session.hand) ?? "–"}</td>
                 <td>{weightText(t.split_s) ?? "–"}</td>
                 <td>{lineText(t.line, { short: true }) ?? "–"}</td>
@@ -357,6 +393,8 @@ function Live({ id, onDone, heading }) {
 
 function Start({ sheet, onStarted }) {
   const [hand, setHand] = useState(savedHand);
+  // Not remembered: a forgotten colour would hide half a solo session.
+  const [color, setColor] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const go = async () => {
@@ -364,7 +402,7 @@ function Start({ sheet, onStarted }) {
     try {
       const res = await authedFetch("/api/practice/sessions", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sheet, hand }) });
+        body: JSON.stringify({ sheet, hand, color }) });
       const body = await res.json().catch(() => ({}));
       if (res.ok) onStarted(body.id);
       else setErr(body.detail || (res.status === 404 ? `Sheet ${sheet} has no cameras.`
@@ -373,18 +411,21 @@ function Start({ sheet, onStarted }) {
   };
   return (
     <Card>
-      <p>You throw{" "}
+      <p className="choices">You throw{" "}
         {["right", "left"].map(h => (
-          <label key={h} style={{ marginRight: 12 }}>
+          <label key={h}>
             <input type="radio" name="hand" checked={hand === h}
                    onChange={() => { setHand(h); saveHand(h); }} /> {h}-handed
           </label>
         ))}
       </p>
+      <ColourPick name="colour" color={color} onChange={setColor} />
       <p><button className="primary" disabled={busy} onClick={go}>
         {busy ? "Starting…" : "Start session"}</button></p>
       <p className="muted">Every throw on sheet {sheet} counts until you end it. It ends by
-        itself after 15 minutes with no throws. If someone else throws, tap it, then "Not my throw".</p>
+        itself after 15 minutes with no throws. Sharing the sheet with a partner? Pick your
+        colour and their rocks stay out of your list. If someone else throws, tap it, then
+        "Not my throw".</p>
       {err && <Warn>{err}</Warn>}
     </Card>
   );

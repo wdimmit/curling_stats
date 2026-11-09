@@ -62,9 +62,11 @@ def w():
     return world
 
 
-def start(w, sheet=3, who=SARAH, hand="right", fwd=None):
-    """``fwd`` is the X-Forwarded-For the request arrives with."""
-    return w["client"].post("/api/practice/sessions", json={"sheet": sheet, "hand": hand},
+def start(w, sheet=3, who=SARAH, hand="right", fwd=None, **extra):
+    """``fwd`` is the X-Forwarded-For the request arrives with; ``extra``
+    goes in the body (``color``)."""
+    return w["client"].post("/api/practice/sessions",
+                            json={"sheet": sheet, "hand": hand, **extra},
                             headers={**who, **({"X-Forwarded-For": fwd} if fwd else {})})
 
 
@@ -744,6 +746,62 @@ class TestHiding:
             c.patch(f"/api/practice/sessions/{sid}/throws/t_{i}.0", json={"hidden": True},
                     headers=SARAH)
         assert len(w["repo"].get_session(sid).hidden) == 500
+
+
+class TestOneColour:
+    """Two people practising together, each throwing one colour: each one's
+    session leaves the other's rocks out."""
+
+    def thrown(self, w, color="red"):
+        sid = start(w, color=color).json()["id"]
+        job = claim(w)
+        publish(w, job, doc([throw(60.0), {**throw(90.0), "color": "yellow"}], T0.timestamp()))
+        w["clock"].advance(300)
+        return sid
+
+    def test_the_other_colour_reads_as_hidden(self, w):
+        v = view(w, self.thrown(w)).json()
+        assert v["session"]["color"] == "red"
+        assert [(t["id"], t["hidden"], t["other_color"]) for t in v["throws"]] == [
+            ("t_60.0", False, False), ("t_90.0", True, True)]
+
+    def test_without_a_colour_every_rock_is_mine(self, w):
+        v = view(w, self.thrown(w, color=None)).json()
+        assert v["session"]["color"] is None
+        assert [(t["hidden"], t["other_color"]) for t in v["throws"]] == [(False, False)] * 2
+
+    def test_a_rock_of_the_other_colour_can_be_mine_after_all(self, w):
+        # The colour was misread: "Mine after all" keeps it, "Not my throw" undoes that.
+        sid = self.thrown(w)
+        c = w["client"]
+        c.patch(f"/api/practice/sessions/{sid}/throws/t_90.0", json={"hidden": False}, headers=SARAH)
+        t = view(w, sid).json()["throws"][1]
+        assert (t["hidden"], t["other_color"]) == (False, True)
+        c.patch(f"/api/practice/sessions/{sid}/throws/t_90.0", json={"hidden": True}, headers=SARAH)
+        assert view(w, sid).json()["throws"][1]["hidden"] is True
+
+    def test_the_colour_can_be_changed_or_dropped_mid_session(self, w):
+        sid = self.thrown(w)
+        c = w["client"]
+        r = c.patch(f"/api/practice/sessions/{sid}", json={"color": "yellow"}, headers=SARAH)
+        assert r.status_code == 200
+        assert [t["hidden"] for t in view(w, sid).json()["throws"]] == [True, False]
+        c.patch(f"/api/practice/sessions/{sid}", json={"color": None}, headers=SARAH)
+        assert [t["hidden"] for t in view(w, sid).json()["throws"]] == [False, False]
+
+    def test_only_red_or_yellow_and_only_the_owner(self, w):
+        sid = start(w).json()["id"]
+        c = w["client"]
+        assert c.patch(f"/api/practice/sessions/{sid}", json={"color": "blue"},
+                       headers=SARAH).status_code == 422
+        assert c.patch(f"/api/practice/sessions/{sid}", json={"color": "red"},
+                       headers=ALEX).status_code == 404
+        assert start(w, sheet=4, color="green").status_code == 422
+
+    def test_my_practice_counts_only_my_colour(self, w):
+        self.thrown(w)
+        (s,) = w["client"].get("/api/me/practice", headers=SARAH).json()["sessions"]
+        assert s["throws"] == 1
 
 
 class TestMine:
