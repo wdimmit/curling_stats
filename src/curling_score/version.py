@@ -350,7 +350,17 @@ from pathlib import Path
 # stop at their rocks instead of running on into the post-game; no chart end's
 # last rest falls outside its end (839 ends; tail after it median 49 -> 46 s,
 # min 8 -> 6 s). Tracking is unchanged.
-PIPELINE_VERSION = "2026.11.04.1"
+# 2026.11.10.1: each end's receiving panel reads with overhead-5, which boxes
+# players as well as stones (`weights.RECEIVING_NAME`; the processing version
+# gains "+house-overhead-5-..."), and a stone the house read lost is kept
+# where it was when a player was over its spot as it went (`detect/cover.py`).
+# overhead-3 keeps the throwing panel and the activity profile. On the 16
+# harness games: board 42 -> 43/54, impossible additions 15 -> 9, no stone
+# lost; of the stones overhead-3 lost, 17 are held and 7 seen, and no hold
+# checked on video is false. 1MK77SP66GE (112 rocks): releases, hog times,
+# colours and scores unchanged; splits 107 -> 106. No run reads stones by
+# colour any more: without a stone model it does not start.
+PIPELINE_VERSION = "2026.11.10.1"
 
 
 def model_id(weights) -> str:
