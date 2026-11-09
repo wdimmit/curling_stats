@@ -182,3 +182,25 @@ def test_saving_never_raises(tmp_path):
     assert store.save_frames(rec, root=blocker, video="v.ts",
                              reader=frame_reader) == 0
     assert store.save_frames(None, root=tmp_path, video="v.ts") == 0
+
+
+class TestModelIds:
+    """Which detectors a harvested frame came from (`fpframes.model_ids`)."""
+
+    def test_two_models_name_the_receiving_one(self, tmp_path):
+        from curling_score import fpframes, version
+
+        stones, house = tmp_path / "overhead-3.pt", tmp_path / "overhead-5.pt"
+        stones.write_bytes(b"3"); house.write_bytes(b"5")
+        got = fpframes.model_ids(stones, house)
+        assert got["overhead"] == version.model_id(stones)
+        assert got["receiving"] == version.model_id(house)
+
+    def test_one_model_for_both_keeps_the_old_names(self, tmp_path):
+        # Rows saved before there were two models compare equal (has_models).
+        from curling_score import fpframes
+
+        stones = tmp_path / "overhead-3.pt"
+        stones.write_bytes(b"3")
+        assert "receiving" not in fpframes.model_ids(stones, stones)
+        assert "receiving" not in fpframes.model_ids(stones)

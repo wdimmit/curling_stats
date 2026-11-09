@@ -518,7 +518,7 @@ class TestVideoSessions:
         monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
         ids = []
         monkeypatch.setattr(fpframes, "model_ids",
-                            lambda w: ids.append(w) or {"overhead": "o", "side": None})
+                            lambda w, house=None: ids.append(w) or {"overhead": "o", "side": None})
         make = lane_mod.video_sessions("w.pt", progress=lambda m: None,
                                        fp_harvest=fpframes.Settings(True))
         a, b = make(stream(1), lambda d: None), make(stream(2), lambda d: None)
@@ -541,7 +541,7 @@ class TestVideoSessions:
 
         monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
 
-        def boom(weights):
+        def boom(weights, house=None):
             raise FileNotFoundError("side weights")
 
         monkeypatch.setattr(fpframes, "model_ids", boom)
@@ -553,7 +553,7 @@ class TestVideoSessions:
         from curling_score import analyze, fpframes
 
         monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
-        monkeypatch.setattr(fpframes, "model_ids", lambda w: {"overhead": "o", "side": None})
+        monkeypatch.setattr(fpframes, "model_ids", lambda w, house=None: {"overhead": "o", "side": None})
         make = lane_mod.video_sessions("w.pt", progress=lambda m: None,
                                        fp_harvest=fpframes.Settings(True))
         watch = make(pstream(1), lambda d: None)

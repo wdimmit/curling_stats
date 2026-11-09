@@ -35,26 +35,42 @@ weights into that string.
 
 Resolution order:
 
-1. ``CURLING_SCORE_WEIGHTS``, so a deployment can pin its own model. The literal
-   ``none`` selects the classical colour detector.
+1. ``CURLING_SCORE_WEIGHTS``, so a deployment can pin its own model.
 2. ``weights/<DEFAULT_NAME>`` beside the installed package or the repository.
 
-A path that is set but missing raises. Dropping to the colour detector without
-saying so would leave every downstream number quietly incomparable.
+There is no fallback. The classical colour detector is gone from every run
+(2026-11-09): stones are read with a trained model or the run does not start.
+A path that is set but missing raises, and so does ``none`` -- reading with
+the colour thresholds instead would leave every downstream number quietly
+incomparable.
 """
 
+import logging
 import os
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 DEFAULT_NAME = "overhead-3.pt"
 ENV_VAR = "CURLING_SCORE_WEIGHTS"
 
 # The receiving panel's detector: each end's house played to, where the
-# deliveries are tracked and the house is read. A model of its own there
-# (overhead-4, with a player class) while DEFAULT_NAME keeps the thrower's
-# panel, the profile that finds games and ends, and practice. Until it ships
-# the receiving panel reads with DEFAULT_NAME's file, and one file for both
-# is one model loaded and the processing version unchanged.
+# deliveries are tracked and the house is read. A model of its own there,
+# with a player class (2) for the cover check (`detect/cover.py`), while
+# DEFAULT_NAME keeps the thrower's panel, the profile that finds games and
+# ends, and practice.
+#
+# overhead-5 as of 2026-11-10: overhead-3's stones plus players, the second
+# player-class model (overhead-4, 2026-11-02, never shipped: 13 impossible
+# additions on the house-read harness against a bar of 10, three of them red
+# shoes read as red stones). overhead-5 adds 251 frames where overhead-3 and
+# overhead-4 disagreed, boxed on /label (hard-2), and keeps the training set's
+# throwing-panel frames. On the harness: board 43/54 (overhead-3 42),
+# impossible additions 9 (15), no stone lost, no false hold; on 1MK77SP66GE's
+# releases, hog times and colours nothing changes and splits are 106 against
+# 107, the one short a stone crossing the far hog line under a sweeper.
+# See datasets/overhead-5.
+RECEIVING_NAME = "overhead-5.pt"
 RECEIVING_ENV_VAR = "CURLING_SCORE_RECEIVING_WEIGHTS"
 
 # The SIDE-view detector, which times the throwing end's hog crossing. A
@@ -154,17 +170,45 @@ def _candidates(name=DEFAULT_NAME):
         yield base / "weights" / name
 
 
+class NoModelError(RuntimeError):
+    """A run was asked to read stones without a trained model.
+
+    The classical colour detector that once stood in is gone (2026-11-09):
+    a run reads with a model or does not run at all."""
+
+
+def _no_model(what: str) -> NoModelError:
+    return NoModelError(
+        f"{what}: there is no stone model, and runs no longer fall back to the "
+        f"classical colour detector. Set {ENV_VAR} to a weights file, or put "
+        f"{DEFAULT_NAME} in weights/.")
+
+
+def require(weights):
+    """``weights`` unchanged if it names a weights file, else raise.
+
+    :class:`NoModelError` for None, ``""``, ``none`` or ``classical`` -- the
+    ways a caller used to ask for the colour detector -- and
+    ``FileNotFoundError`` for a path that is not there.
+    """
+    if weights is None or str(weights).strip().lower() in ("", "none", "classical"):
+        raise _no_model(f"weights {weights!r}")
+    if not Path(weights).is_file():
+        raise FileNotFoundError(f"weights {weights} does not exist")
+    return weights
+
+
 def default_path():
-    """The weights to detect with, or None for the classical detector."""
+    """The weights to detect with: ``CURLING_SCORE_WEIGHTS``, else the bundled
+    default. Raises rather than return nothing -- see the module docstring."""
     chosen = os.environ.get(ENV_VAR)
     if chosen:
-        if chosen.strip().lower() in ("none", "classical", ""):
-            return None
+        if chosen.strip().lower() in ("none", "classical"):
+            raise _no_model(f"{ENV_VAR}={chosen}")
         path = Path(chosen)
         if not path.is_file():
             raise FileNotFoundError(
-                f"{ENV_VAR}={chosen} does not exist. Set it to a weights file, "
-                f"or to 'none' for the classical colour detector.")
+                f"{ENV_VAR}={chosen} does not exist. Set it to a weights file.")
         return path
 
     for path in _candidates():
@@ -173,13 +217,14 @@ def default_path():
     raise FileNotFoundError(
         f"no {DEFAULT_NAME} found in a weights/ directory near "
         f"{Path(__file__).resolve().parents[2]}. Set {ENV_VAR} to a weights "
-        f"file, or to 'none' for the classical colour detector.")
+        f"file.")
 
 
 def receiving_path():
     """The receiving panel's weights: ``CURLING_SCORE_RECEIVING_WEIGHTS``, else
-    :func:`default_path`'s. ``none`` is no model of its own -- None, and the
-    panel reads with the stone weights. A path that is set but missing raises.
+    ``weights/<RECEIVING_NAME>``, else :func:`default_path`'s. ``none`` is no
+    model of its own -- None, and the panel reads with the stone weights. A
+    path that is set but missing raises (:func:`receiving_for` catches it).
     """
     chosen = os.environ.get(RECEIVING_ENV_VAR)
     if chosen:
@@ -192,6 +237,9 @@ def receiving_path():
                 f"file, or to 'none' to read the receiving panel with the stone "
                 f"weights.")
         return path
+    for path in _candidates(RECEIVING_NAME):
+        if path.is_file():
+            return path
     return default_path()
 
 
@@ -202,13 +250,25 @@ def receiving_for(weights):
     other than :func:`default_path`'s); else ``weights`` itself, so a run
     pinned to other stone weights -- an A/B -- reads both panels with them,
     as it did before there were two models.
+
+    A receiving model that is pinned but missing does not stop the run: the
+    panel reads with ``weights``, which is still a trained model, and a
+    warning says so. It is resolved where a worker starts, and a typo in one
+    setting must not take a lane down.
     """
     if os.environ.get(RECEIVING_ENV_VAR):
-        return receiving_path() or weights
+        try:
+            return receiving_path() or weights
+        except FileNotFoundError as exc:
+            log.warning("receiving panel reads with the stone weights %s: %s",
+                        weights, exc)
+            return weights
     try:
         house, stones = receiving_path(), default_path()
-    except FileNotFoundError:
+    except (FileNotFoundError, NoModelError):
         return weights
+    if not same_file(weights, stones):
+        return weights      # an A/B on other stone weights: both panels with them
     return weights if same_file(house, stones) else house
 
 

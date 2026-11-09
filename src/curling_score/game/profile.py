@@ -3,22 +3,22 @@
 Uses the keyframe sweep, which decodes roughly one frame per five seconds. The
 full four-hour reference VOD profiles in about a minute.
 
-The stones are counted by the trained detector whenever there is one. The
-colour thresholds also count people: 10/15 Thursday Mens sheet 1 read one to
-three "stones" in the top house all through the 7 pm to 9 pm changeover -- the
-ice being cleaned, the next teams coming on -- so the sheet never sat empty
-long enough to end the game, and the last end ran on 400 s past its last rock
-into a gap too short for the board to be asked. One fourteen-end game was
-charted where two of seven were played. Later that night, players walking
-through the far house read as two to four stones and cut an end off after its
-eleventh rock. Of the 39 stones the thresholds counted in the top house over
-that changeover, ds17b counted 2, and of the 63 in the far house over that end,
-4; on its counts the night splits into its two games.
+The stones are counted by the trained detector, which is required: since
+2026-11-09 nothing falls back to the colour thresholds, which counted people.
+10/15 Thursday Mens sheet 1 read one to three "stones" in the top house all
+through the 7 pm to 9 pm changeover -- the ice being cleaned, the next teams
+coming on -- so the sheet never sat empty long enough to end the game, and the
+last end ran on 400 s past its last rock into a gap too short for the board to
+be asked. One fourteen-end game was charted where two of seven were played.
+Later that night, players walking through the far house read as two to four
+stones and cut an end off after its eleventh rock. Of the 39 stones the
+thresholds counted in the top house over that changeover, ds17b counted 2, and
+of the 63 in the far house over that end, 4; on its counts the night splits
+into its two games.
 """
 
 from dataclasses import dataclass
 
-from curling_score.detect import rocks
 from curling_score.game.segment import Sample
 from curling_score.geometry import calibrate, hogpaint, layout, lighting, sidepaint
 
@@ -139,18 +139,19 @@ def calibrate_panels(frames, panels: layout.PanelLayout):
 
 def count_frame(frame, setups, detector=None) -> tuple[int, int, bool, bool]:
     """Stone counts and playability for both panels of one frame, counted by
-    ``detector`` -- a trained one, see the module docstring -- or, without
-    one, by the colour thresholds. A panel too dark to play counts none, and
+    ``detector`` -- a trained one, see the module docstring; required, there
+    is no colour-threshold fallback. A panel too dark to play counts none, and
     no panel counts a stone beyond its painted sidelines (`PanelSetup.on_sheet`)."""
+    if detector is None:
+        from curling_score import weights
+
+        raise weights.NoModelError("the activity profile needs a trained stone detector")
     panels = {name: setups[name].crop(frame) for name in ("top", "bottom")}
     playable = {name: lighting.is_playable(panel) for name, panel in panels.items()}
     lit = [name for name in ("top", "bottom") if playable[name]]
     counts = {"top": 0, "bottom": 0}
-    if detector is not None:
-        found = detector.find_stones_each([panels[n] for n in lit],
-                                          [setups[n].calib for n in lit])
-    else:
-        found = [rocks.find_stones(panels[n], setups[n].calib) for n in lit]
+    found = detector.find_stones_each([panels[n] for n in lit],
+                                      [setups[n].calib for n in lit])
     for name, stones in zip(lit, found):
         counts[name] = len(setups[name].on_sheet(stones))
     return counts["top"], counts["bottom"], playable["top"], playable["bottom"]

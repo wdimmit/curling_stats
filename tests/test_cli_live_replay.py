@@ -5,6 +5,13 @@ import json
 from curling_score import cli
 
 
+def _model(tmp_path):
+    """A weights file to name: load_models is faked, so it is never read."""
+    path = tmp_path / "model.pt"
+    path.write_bytes(b"x")
+    return str(path)
+
+
 def test_each_published_timeline_lands_in_the_out_directory(tmp_path, monkeypatch):
     from curling_score import analyze
     from curling_score.live import replay, runner
@@ -33,7 +40,7 @@ def test_each_published_timeline_lands_in_the_out_directory(tmp_path, monkeypatc
     monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
     out = tmp_path / "live"
     assert cli.main(["live-replay", str(tmp_path / "abcdefghijk.mp4"), "--out", str(out),
-                     "--speed", "4", "--weights", "none"]) == 0
+                     "--speed", "4", "--weights", _model(tmp_path)]) == 0
     assert started == {"source": str(tmp_path / "abcdefghijk.mp4"), "speed": 4.0,
                        "stopped": True}
     doc = json.loads((out / "timeline.json").read_text())

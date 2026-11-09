@@ -21,6 +21,7 @@ from curling_score.game.profile import PanelSetup
 from curling_score.game.segment import EndSegment, GameSegment
 from curling_score.geometry.calibrate import PanelCalib
 from curling_score.ingest import frames as F
+from tests import synth
 
 pytestmark = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
 
@@ -63,9 +64,10 @@ def panel(rect):
 
 def test_detecting_on_both_at_once_is_detecting_on_each(clip):
     near, far = panel(A), panel(B)
-    both = sequence.detect_spans(clip, [(near, 9.0, 10.0), (far, 11.3, 5.0)], 20.0)
-    one = sequence.detect_span(clip, near, 9.0, 20.0, 10.0, use_cache=False)
-    two = sequence.detect_span(clip, far, 11.3, 20.0, 5.0, use_cache=False)
+    det = synth.ColourDetector()
+    both = sequence.detect_spans(clip, [(near, 9.0, 10.0), (far, 11.3, 5.0)], 20.0, det)
+    one = sequence.detect_span(clip, near, 9.0, 20.0, 10.0, det, use_cache=False)
+    two = sequence.detect_span(clip, far, 11.3, 20.0, 5.0, det, use_cache=False)
     assert [t for t, _ in both[0]] == [t for t, _ in one]
     assert [t for t, _ in both[1]] == [t for t, _ in two]
     assert [len(d) for _, d in both[0]] == [len(d) for _, d in one]

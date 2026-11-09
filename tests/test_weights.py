@@ -27,9 +27,29 @@ class TestDefaultPath:
         with pytest.raises(FileNotFoundError, match="gone.pt"):
             weights.default_path()
 
-    def test_can_be_asked_for_nothing_at_all(self, monkeypatch):
-        monkeypatch.setenv("CURLING_SCORE_WEIGHTS", "none")
-        assert weights.default_path() is None
+    @pytest.mark.parametrize("asked", ["none", "classical", "None"])
+    def test_cannot_be_asked_for_the_colour_detector(self, monkeypatch, asked):
+        # User rule 2026-11-09: no model, no run -- never the colour thresholds.
+        monkeypatch.setenv("CURLING_SCORE_WEIGHTS", asked)
+        with pytest.raises(weights.NoModelError, match="classical colour detector"):
+            weights.default_path()
+
+
+class TestRequire:
+    def test_a_weights_file_passes_through_unchanged(self, tmp_path):
+        f = tmp_path / "m.pt"
+        f.write_bytes(b"x")
+        assert weights.require(str(f)) == str(f)
+        assert weights.require(f) == f
+
+    @pytest.mark.parametrize("asked", [None, "", "none", "classical", " None "])
+    def test_no_model_is_refused(self, asked):
+        with pytest.raises(weights.NoModelError):
+            weights.require(asked)
+
+    def test_a_missing_file_is_refused(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="gone.pt"):
+            weights.require(tmp_path / "gone.pt")
 
 
 class TestSidePath:
@@ -179,11 +199,19 @@ class TestReleasePath:
 
 
 class TestReceivingPath:
-    """The receiving panel's model (overhead-4 once it ships): pinned by its
-    own variable, else the stone model's file."""
+    """The receiving panel's model: pinned by its own variable, else the
+    bundled RECEIVING_NAME, else the stone model's file."""
 
-    def test_unset_it_is_the_stone_model(self, monkeypatch):
+    def test_unset_it_is_the_bundled_receiving_model(self, monkeypatch):
         monkeypatch.delenv(weights.RECEIVING_ENV_VAR, raising=False)
+        got = weights.receiving_path()
+        assert got.name == weights.RECEIVING_NAME == "overhead-5.pt"
+        assert got.is_file()
+        assert not weights.same_file(got, weights.default_path())
+
+    def test_without_the_bundled_file_it_is_the_stone_model(self, monkeypatch):
+        monkeypatch.delenv(weights.RECEIVING_ENV_VAR, raising=False)
+        monkeypatch.setattr(weights, "RECEIVING_NAME", "no-such-model.pt")
         assert weights.receiving_path() == weights.default_path()
 
     def test_a_set_path_is_used(self, monkeypatch, tmp_path):
@@ -222,6 +250,31 @@ class TestReceivingFor:
         monkeypatch.setenv(weights.RECEIVING_ENV_VAR, "none")
         other = tmp_path / "other.pt"; other.write_bytes(b"x")
         assert weights.receiving_for(other) == other
+
+    def test_the_default_stones_get_the_bundled_receiving_model(self, monkeypatch):
+        # The production pair: overhead-3 throwing, overhead-5 receiving.
+        monkeypatch.delenv(weights.RECEIVING_ENV_VAR, raising=False)
+        monkeypatch.delenv(weights.ENV_VAR, raising=False)
+        got = weights.receiving_for(weights.default_path())
+        assert got.name == "overhead-5.pt"
+
+    def test_an_ab_on_other_stones_reads_both_panels_with_them(self, monkeypatch, tmp_path):
+        # The bundled receiving model exists, but a run pinned to other stone
+        # weights is an A/B of those weights: one model for both panels.
+        monkeypatch.delenv(weights.RECEIVING_ENV_VAR, raising=False)
+        monkeypatch.delenv(weights.ENV_VAR, raising=False)
+        other = tmp_path / "ds17b.pt"; other.write_bytes(b"x")
+        assert weights.receiving_for(other) == other
+
+    def test_a_pinned_model_that_is_missing_warns_and_reads_with_the_stones(
+            self, monkeypatch, tmp_path, caplog):
+        # Resolved where a worker starts: a typo must not take a lane down,
+        # and the stone weights are still a trained model.
+        monkeypatch.setenv(weights.RECEIVING_ENV_VAR, str(tmp_path / "typo.pt"))
+        stones = weights.default_path()
+        with caplog.at_level("WARNING"):
+            assert weights.receiving_for(stones) == stones
+        assert "typo.pt" in caplog.text
 
 
 class TestSameFile:

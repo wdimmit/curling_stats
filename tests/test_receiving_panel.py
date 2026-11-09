@@ -194,9 +194,17 @@ class TestAnalyze:
         assert f"+house-{version.model_id(o4)}" in seen["doc"]["processing_version"]
 
     def test_one_weights_file_changes_nothing(self, monkeypatch, tmp_path):
-        monkeypatch.delenv(weights_mod.RECEIVING_ENV_VAR, raising=False)
         stones = weights_mod.default_path()
+        monkeypatch.setenv(weights_mod.RECEIVING_ENV_VAR, str(stones))
         seen = self.run(monkeypatch, tmp_path, stones)
         assert seen["profile"] == "overhead-3"
         assert seen["ctx"].house_detector == "overhead-3"
         assert "+house" not in seen["doc"]["processing_version"]
+
+    def test_unpinned_the_receiving_panel_reads_with_the_bundled_model(
+            self, monkeypatch, tmp_path):
+        monkeypatch.delenv(weights_mod.RECEIVING_ENV_VAR, raising=False)
+        monkeypatch.delenv(weights_mod.ENV_VAR, raising=False)
+        seen = self.run(monkeypatch, tmp_path, weights_mod.default_path())
+        assert seen["ctx"].house_detector == "overhead-4"   # the fake's second model
+        assert "+house-overhead-5-" in seen["doc"]["processing_version"]

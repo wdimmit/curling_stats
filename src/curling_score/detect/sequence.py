@@ -83,6 +83,16 @@ class _DetectBehind:
                 pool.shutdown(wait=True)
 
 
+def _need(detector):
+    """Raise unless there is a detector: stones are never read by colour now."""
+    if detector is None:
+        from curling_score import weights
+
+        raise weights.NoModelError(
+            "detection needs a trained stone detector; the classical colour "
+            "detector is no longer used")
+
+
 def detect_end(path, setup, end, fps: float, detector=None,
                use_cache: bool = True, from_s: float | None = None):
     """Detections for one end, with enough run-up to judge its first shot.
@@ -107,17 +117,13 @@ def detect_end(path, setup, end, fps: float, detector=None,
 
 def detect_span(path, setup, start_s: float, end_s: float, fps: float,
                 detector=None, use_cache: bool = True):
-    """Detections at ``fps`` across ``[start_s, end_s]`` for one panel."""
-    from curling_score.detect import rocks
+    """Detections at ``fps`` across ``[start_s, end_s]`` for one panel, by
+    ``detector`` -- required: there is no colour-threshold fallback."""
+    _need(detector)
 
     def produce():
         out = []
         batches = F.chunked(path, start_s, end_s, fps, size=BATCH, crop=setup.rect)
-        if detector is None:
-            for batch in batches:
-                out.extend((t, rocks.find_stones(img, setup.calib))
-                           for t, img in batch)
-            return out
         with _DetectBehind(detector) as behind:
             for batch in batches:
                 behind.submit(out, batch, setup.calib)
@@ -151,29 +157,26 @@ def detect_spans(path, specs, end_s: float, detector=None):
     which has no strip proxy and no detection cache: decoding each frame once
     for both panels halves the dominant cost of a live end.
 
-    A spec may name its own detector, ``(setup, start_s, fps, detector)``
-    (None for the classical one): the receiving panel reads with overhead-4,
-    the thrower's with overhead-3. One without reads with ``detector``. Each
-    detector runs behind the decode once, however many spans share it.
+    A spec may name its own detector, ``(setup, start_s, fps, detector)``:
+    the receiving panel reads with overhead-4, the thrower's with overhead-3.
+    One without reads with ``detector``. Each detector runs behind the decode
+    once, however many spans share it. Every span needs one.
     """
-    from curling_score.detect import rocks
-
     out = [[] for _ in specs]
     batches = [[] for _ in specs]
     dets = [spec[3] if len(spec) > 3 else detector for spec in specs]
+    for det in dets:
+        _need(det)
     behinds = {}
 
     def flush(i):
         setup, batch = specs[i][0], batches[i]
-        if dets[i] is None:
-            out[i].extend((t, rocks.find_stones(img, setup.calib)) for t, img in batch)
-        else:
-            behinds[id(dets[i])].submit(out[i], batch, setup.calib)
+        behinds[id(dets[i])].submit(out[i], batch, setup.calib)
         batches[i] = []
 
     with ExitStack() as stack:
         for det in dets:
-            if det is not None and id(det) not in behinds:
+            if id(det) not in behinds:
                 behinds[id(det)] = stack.enter_context(_DetectBehind(det))
         for i, t, img in F.windows(path, [(spec[1], spec[2], spec[0].rect)
                                           for spec in specs], end_s):

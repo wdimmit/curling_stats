@@ -363,10 +363,11 @@ def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info):
 def load_models(weights, imgsz: int, device, *, skip_longview: bool,
                 skip_line: bool, progress=log.info):
     """The overhead detector, the broom model and the line model: ``(detector,
-    broom_model, line_model)``, each None where it is not wanted or not there."""
-    detector = _overhead_detector(weights, imgsz, device) if weights else None
-    if detector is not None:
-        progress(f"detecting with {weights} at imgsz={imgsz}")
+    broom_model, line_model)``. The broom and line models are None where they
+    are not wanted or not there; the overhead detector never is -- without
+    ``weights`` this raises (`weights.require`), before any decoding."""
+    detector = _overhead_detector(weights_mod.require(weights), imgsz, device)
+    progress(f"detecting with {weights} at imgsz={imgsz}")
     # The skip's target broom, read in the camera that sees the destination
     # house. None without a model -- no brooms, the same timeline otherwise.
     broom_model = None if skip_longview else broommodel.default_model()
@@ -1073,8 +1074,13 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     the stages run, for a caller that wants to show progress. ``info`` lets a
     caller that already fetched the metadata pass it in rather than ask
     YouTube twice.
+    ``weights`` None is the bundled default (`weights.default_path`), which
+    raises when it is missing: stones are read with a trained model or the
+    run does not start.
     """
     phase = on_phase or _no_phase
+    # Before any fetching: a run without a model stops here, not after the download.
+    weights = weights_mod.default_path() if weights is None else weights_mod.require(weights)
     info = info or source.fetch_info(url)
     sheet = sheet if sheet is not None else info.sheet
     fmt = resolve_format(game_format, info.title)

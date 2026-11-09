@@ -48,7 +48,7 @@ SETUPS = {"top": Setup(0, "top-calib"), "bottom": Setup(4, "bottom-calib")}
 class TestCountFrame:
     def test_the_detector_counts_both_houses_each_in_its_own_calibration(self, monkeypatch):
         monkeypatch.setattr(profile.lighting, "is_playable", lambda panel: True)
-        monkeypatch.setattr(profile.rocks, "find_stones",
+        monkeypatch.setattr("curling_score.detect.rocks.find_stones",
                             lambda *a: (_ for _ in ()).throw(AssertionError("thresholds")))
         det = Detector()
         assert profile.count_frame(frame(3, 1), SETUPS, det) == (3, 1, True, True)
@@ -60,11 +60,15 @@ class TestCountFrame:
         assert profile.count_frame(frame(9, 2), SETUPS, det) == (0, 2, False, True)
         assert det.calls == [["bottom-calib"]]
 
-    def test_without_a_detector_the_thresholds_count(self, monkeypatch):
+    def test_without_a_detector_nothing_is_counted_by_colour(self, monkeypatch):
+        # User rule 2026-11-09: no model, no profile -- never the thresholds.
+        from curling_score import weights
+
         monkeypatch.setattr(profile.lighting, "is_playable", lambda panel: True)
-        monkeypatch.setattr(profile.rocks, "find_stones",
-                            lambda panel, calib: [object()] * (2 if calib == "top-calib" else 5))
-        assert profile.count_frame(frame(0, 0), SETUPS) == (2, 5, True, True)
+        monkeypatch.setattr("curling_score.detect.rocks.find_stones",
+                            lambda *a: (_ for _ in ()).throw(AssertionError("thresholds")))
+        with pytest.raises(weights.NoModelError):
+            profile.count_frame(frame(0, 0), SETUPS)
 
     def test_build_profile_counts_with_the_detector_it_is_given(self, monkeypatch):
         monkeypatch.setattr(profile.lighting, "is_playable", lambda panel: True)

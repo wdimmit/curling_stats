@@ -299,12 +299,23 @@ class TestADetectorPerSpan:
         assert made == [one]
         assert [len(s) for s in got] == [2, 2]
 
-    def test_a_span_may_name_the_classical_detector(self, monkeypatch):
+    def test_a_span_without_a_detector_is_refused(self, monkeypatch):
+        # User rule 2026-11-09: never the colour thresholds, not for one span.
+        from curling_score import weights
+
         self.windows(monkeypatch)
         monkeypatch.setattr("curling_score.detect.rocks.find_stones",
-                            lambda img, calib: [det("classical")])
+                            lambda img, calib: pytest.fail("read by colour"))
         near, far = self.Setup((0, 0, 4, 4)), self.Setup((4, 0, 4, 4))
-        got = sequence.detect_spans("v.mp4", [(near, 0.0, 5.0, None), (far, 0.0, 2.5)],
-                                    1.0, self.Tagger("stones"))
-        assert {d.color for _, f in got[0] for d in f} == {"classical"}
-        assert {d.color for _, f in got[1] for d in f} == {"stones"}
+        with pytest.raises(weights.NoModelError):
+            sequence.detect_spans("v.mp4", [(near, 0.0, 5.0, None), (far, 0.0, 2.5)],
+                                  1.0, self.Tagger("stones"))
+        with pytest.raises(weights.NoModelError):
+            sequence.detect_spans("v.mp4", [(near, 0.0, 5.0), (far, 0.0, 2.5)], 1.0)
+
+    def test_a_span_without_a_detector_is_refused_alone_too(self):
+        from curling_score import weights
+
+        with pytest.raises(weights.NoModelError):
+            sequence.detect_span("v.mp4", self.Setup((0, 0, 4, 4)), 0.0, 1.0, 5.0,
+                                 use_cache=False)

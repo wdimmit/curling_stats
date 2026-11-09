@@ -5,6 +5,13 @@ import json
 from curling_score import cli
 
 
+def _model(tmp_path):
+    """A weights file to name: load_models is faked, so it is never read."""
+    path = tmp_path / "model.pt"
+    path.write_bytes(b"x")
+    return str(path)
+
+
 def test_a_replay_begins_at_start_and_writes_its_throws(tmp_path, monkeypatch):
     from curling_score import analyze
     from curling_score.live import replay
@@ -44,7 +51,7 @@ def test_a_replay_begins_at_start_and_writes_its_throws(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
     out = tmp_path / "practice"
     assert cli.main(["practice-replay", str(tmp_path / "abcdefghijk.mp4"), "--from", "3000",
-                     "--to", "4800", "--out", str(out), "--weights", "none"]) == 0
+                     "--to", "4800", "--out", str(out), "--weights", _model(tmp_path)]) == 0
     assert made == {"source": str(tmp_path / "abcdefghijk.mp4"), "speed": 1.0,
                     "start_s": 3000.0, "end_s": 4800.0, "t0_s": 2995.0, "stopped": True}
     assert json.loads((out / "practice.json").read_text())["status"] == "ended"
@@ -89,6 +96,6 @@ def test_with_clips_a_replay_keeps_each_throws_clip_in_its_out_directory(tmp_pat
     monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
     out = tmp_path / "practice"
     assert cli.main(["practice-replay", str(tmp_path / "abcdefghijk.mp4"), "--from", "3000",
-                     "--to", "3100", "--out", str(out), "--weights", "none", "--clips"]) == 0
+                     "--to", "3100", "--out", str(out), "--weights", _model(tmp_path), "--clips"]) == 0
     c = seen["clipper"]
     assert isinstance(c, Clipper) and c.keep and c.workdir == out / "clips"

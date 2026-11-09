@@ -17,8 +17,8 @@ skip outright; yolo11l-pose at 0.3 found him only once he had settled, and
 yolo11x-pose at 0.1 nearly throughout. The harness (16 games, 1,718 rocks)
 put back 15 stones that way, every one checked against the video. The
 overhead detector, trained on players, reads them without that second model;
-a frame with no ``players`` attribute -- a plain list, the classical detector,
-a two-class model -- has none, and nothing is put back from it.
+a frame with no ``players`` attribute -- a plain list or a two-class model
+-- has none, and nothing is put back from it.
 """
 
 from curling_score.geometry import constants as C

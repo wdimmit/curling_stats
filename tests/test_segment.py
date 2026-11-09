@@ -336,7 +336,13 @@ class TestOnTheReferenceVod:
         panels = layout.detect_panels(calib_frames)
         setups = profile.calibrate_panels(calib_frames, panels)
 
-        samples = profile.build_profile(primary_video, setups, sweep=sweep)
+        # Counted by the default model, as a run counts them; the colour
+        # thresholds this was first measured with are no longer used.
+        from curling_score import analyze, weights
+
+        detector = analyze._overhead_detector(weights.default_path(), 448, None)
+        samples = profile.build_profile(primary_video, setups, sweep=sweep,
+                                        detector=detector)
         games = segment.segment_games(samples)
 
         # Measured during planning: an ~17 min changeover at 1.80-2.09 h splits

@@ -334,7 +334,7 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
             return None
         try:
             if not ids:
-                ids.append(fpframes.model_ids(weights))
+                ids.append(fpframes.model_ids(weights, house_weights))
             return record.Recorder(job["video_id"], models=ids[0],
                                    pipeline=version.PIPELINE_VERSION, job=job["id"],
                                    title=job.get("title"))

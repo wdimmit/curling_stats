@@ -303,8 +303,11 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
     recorder = None
     if fp_harvest is not None and fp_harvest.enabled:
         try:
+            from curling_score import weights as weights_mod
+
             recorder = record.Recorder(
-                info.video_id, models=fpframes.model_ids(weights),
+                info.video_id,
+                models=fpframes.model_ids(weights, weights_mod.receiving_for(weights)),
                 pipeline=version.PIPELINE_VERSION, job=job["id"], title=info.title)
         except Exception:  # noqa: BLE001 - a harvest problem must not cost the job
             log.exception("job %s: false-positive recorder not started", job["id"])
@@ -375,29 +378,20 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
 
 
 def resolve_weights():
-    """Which model this worker runs.
+    """Which model this worker runs: ``WEIGHTS`` if set, else the project
+    default (``weights.default_path``).
 
-    ``WEIGHTS`` still wins, so a deployment can pin a model or ask for the
-    classical detector with ``none``. Unset now means the project default
-    (``weights.DEFAULT_NAME``) rather than the colour detector.
-
-    A worker that cannot find the default falls back to classical and says so,
-    rather than refusing to start. That is safe here only because
-    ``version.model_id`` writes the model into every timeline's
-    ``processing_version``: the fallback is recorded, not hidden.
+    No model means no worker. It raises -- ``none``/``classical``, a pinned
+    file that is not there, or no default -- and the worker does not start,
+    rather than reading stones by colour (dropped 2026-11-09): a run on the
+    colour thresholds is not comparable with anything else the site shows.
     """
     from curling_score import weights as weights_mod
 
     chosen = os.environ.get("WEIGHTS")
     if chosen:
-        return None if chosen.strip().lower() in ("none", "classical") else chosen
-    try:
-        path = weights_mod.default_path()
-    except FileNotFoundError as exc:
-        log.warning("no default weights (%s); falling back to the classical "
-                    "detector, which will show in processing_version", exc)
-        return None
-    return str(path) if path else None
+        return str(weights_mod.require(chosen))
+    return str(weights_mod.default_path())
 
 
 def resolve_skip_longview() -> bool:

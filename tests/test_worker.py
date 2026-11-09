@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from curling_score import weights as weights_mod
 from curling_score.ingest import cache
 from curling_score.ingest.source import VideoInfo
 from curling_score.service import worker
@@ -330,8 +331,10 @@ class TestARestartHandsBackWhatItHeld:
         monkeypatch.setattr(worker, "build_live",
                             lambda *a, **kw: events.append(("live lane",)))
         monkeypatch.setattr(worker, "run_forever", lambda *a, **kw: events.append(("claims",)))
+        model = tmp_path / "model.pt"   # resolved, never loaded: run_forever is faked
+        model.write_bytes(b"x")
         for name, value in (("API_URL", "http://api"), ("WORKER_TOKEN", "t"),
-                            ("WORKER_ID", "ryzen-3080"), ("WEIGHTS", "none"),
+                            ("WORKER_ID", "ryzen-3080"), ("WEIGHTS", str(model)),
                             ("CURLING_SCORE_CACHE", str(tmp_path))):
             monkeypatch.setenv(name, value)
         monkeypatch.delenv("WORKER_ROLE", raising=False)
@@ -416,14 +419,24 @@ class TestLoop:
 
 
 class TestResolveWeights:
-    def test_an_explicit_setting_wins(self, monkeypatch):
+    def test_an_explicit_setting_wins(self, tmp_path, monkeypatch):
         # A deployment must be able to pin its own model.
-        monkeypatch.setenv("WEIGHTS", "/models/pinned.pt")
-        assert worker.resolve_weights() == "/models/pinned.pt"
+        pinned = tmp_path / "pinned.pt"
+        pinned.write_bytes(b"x")
+        monkeypatch.setenv("WEIGHTS", str(pinned))
+        assert worker.resolve_weights() == str(pinned)
 
-    def test_none_selects_the_classical_detector(self, monkeypatch):
-        monkeypatch.setenv("WEIGHTS", "none")
-        assert worker.resolve_weights() is None
+    @pytest.mark.parametrize("asked", ["none", "classical"])
+    def test_the_colour_detector_cannot_be_asked_for(self, monkeypatch, asked):
+        # User rule 2026-11-09: no model, no worker.
+        monkeypatch.setenv("WEIGHTS", asked)
+        with pytest.raises(weights_mod.NoModelError):
+            worker.resolve_weights()
+
+    def test_a_pinned_file_that_is_not_there_stops_the_worker(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("WEIGHTS", str(tmp_path / "absent.pt"))
+        with pytest.raises(FileNotFoundError, match="absent.pt"):
+            worker.resolve_weights()
 
     def test_unset_means_the_project_default(self, monkeypatch):
         # Standardised on overhead-3 (ds17b before 2026-10-30, ds16a before 2026-10-09, ds15a before 2026-09-28, ds11a before 2026-09-23): unset used to mean the colour detector.
@@ -432,15 +445,12 @@ class TestResolveWeights:
         got = worker.resolve_weights()
         assert got is not None and got.endswith("overhead-3.pt")
 
-    def test_a_missing_default_falls_back_loudly_not_silently(
-            self, tmp_path, monkeypatch, caplog):
-        # Safe only because model_id writes the fallback into every timeline's
-        # processing_version, so it is recorded rather than hidden.
+    def test_a_missing_default_stops_the_worker(self, tmp_path, monkeypatch):
+        # It once fell back to the colour detector; now there is no fallback.
         monkeypatch.delenv("WEIGHTS", raising=False)
         monkeypatch.setenv("CURLING_SCORE_WEIGHTS", str(tmp_path / "absent.pt"))
-        with caplog.at_level("WARNING"):
-            assert worker.resolve_weights() is None
-        assert "classical" in caplog.text
+        with pytest.raises(FileNotFoundError, match="absent.pt"):
+            worker.resolve_weights()
 
 
 class TestResolveSkipLongview:
@@ -674,7 +684,7 @@ class TestFalsePositiveFrames:
         from curling_score import fpframes
         from curling_score.fpframes import record, store
 
-        monkeypatch.setattr(fpframes, "model_ids", lambda weights: {"overhead": "o", "side": None})
+        monkeypatch.setattr(fpframes, "model_ids", lambda weights, house=None: {"overhead": "o", "side": None})
         api = FakeApi([])
         events = []
         seen = {}
@@ -741,7 +751,7 @@ class TestFalsePositiveFrames:
         from curling_score import fpframes
         from curling_score.fpframes import record, store
 
-        def broken(weights):
+        def broken(weights, house=None):
             raise FileNotFoundError("no such weights")
 
         monkeypatch.setattr(fpframes, "model_ids", broken)
