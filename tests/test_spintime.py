@@ -267,14 +267,17 @@ class TestModelsAreLoadedAtTheStart:
     start, not on every end after the expensive part."""
 
     def load(self, monkeypatch, spin, **kw):
-        from curling_score import analyze
+        from curling_score import analyze, weights
         from curling_score.detect import broommodel, sidemodel, spinmodel
         monkeypatch.setattr(broommodel, "default_model", lambda: object())
         monkeypatch.setattr(sidemodel, "default_model", lambda: object())
         monkeypatch.setattr(spinmodel, "default_model", spin)
+        # A stone model is required; this one is named, never loaded.
+        monkeypatch.setattr(analyze, "_overhead_detector", lambda *a: object())
         args = dict(skip_longview=False, skip_line=False)
         args.update(kw)
-        return analyze.load_models(None, 448, None, progress=lambda *_: None, **args)
+        return analyze.load_models(weights.default_path(), 448, None,
+                                   progress=lambda *_: None, **args)
 
     def test_it_is_loaded_with_the_line_model(self, monkeypatch):
         calls = []

@@ -7,8 +7,11 @@ from curling_score.detect import sequence
 from curling_score.feeds import Cut, as_feed
 from curling_score.game.profile import PanelSetup
 from curling_score.geometry.calibrate import PanelCalib
+from tests import synth
 
 RECT = (4, 6, 40, 60)
+# Runs have no colour fallback; the test's frames are read by the test double.
+DET = synth.ColourDetector()
 
 
 def setup(**over):
@@ -37,14 +40,14 @@ def seen(monkeypatch):
 
 def test_detect_span_reads_the_panel_through_its_cut(seen):
     s = setup(name="top")
-    sequence.detect_span("v.mp4", s, 0.0, 1.0, 5.0, use_cache=False)
+    sequence.detect_span("v.mp4", s, 0.0, 1.0, 5.0, DET, use_cache=False)
     assert seen == [("chunked", "v.mp4", s.cut)]
 
 
 def test_detect_span_feed_equals_path(seen):
     s = setup(name="top")
-    sequence.detect_span("v.mp4", s, 0.0, 1.0, 5.0, use_cache=False)
-    sequence.detect_span(as_feed("v.mp4"), s, 0.0, 1.0, 5.0, use_cache=False)
+    sequence.detect_span("v.mp4", s, 0.0, 1.0, 5.0, DET, use_cache=False)
+    sequence.detect_span(as_feed("v.mp4"), s, 0.0, 1.0, 5.0, DET, use_cache=False)
     (_, _, by_path), (_, feed, by_feed) = seen
     assert by_feed == by_path == Cut("top", RECT)
     assert str(feed) == "v.mp4"
@@ -52,8 +55,8 @@ def test_detect_span_feed_equals_path(seen):
 
 def test_detect_spans_feed_equals_path(seen):
     specs = [(setup(name="top"), 0.0, 5.0), (setup(name="bottom"), 0.0, 5.0)]
-    sequence.detect_spans("v.mp4", specs, 1.0)
-    sequence.detect_spans(as_feed("v.mp4"), specs, 1.0)
+    sequence.detect_spans("v.mp4", specs, 1.0, DET)
+    sequence.detect_spans(as_feed("v.mp4"), specs, 1.0, DET)
     assert seen[0][2] == seen[1][2] == [Cut("top", RECT), Cut("bottom", RECT)]
 
 
@@ -62,6 +65,6 @@ def test_a_cached_span_keys_the_same_for_a_feed(seen, tmp_path, monkeypatch):
     v = tmp_path / "v.mp4"
     v.write_bytes(b"x" * 64)
     s = setup(name="top")
-    sequence.detect_span(str(v), s, 0.0, 1.0, 5.0)
-    sequence.detect_span(as_feed(v), s, 0.0, 1.0, 5.0)
+    sequence.detect_span(str(v), s, 0.0, 1.0, 5.0, DET)
+    sequence.detect_span(as_feed(v), s, 0.0, 1.0, 5.0, DET)
     assert [c[0] for c in seen] == ["chunked"]  # the second was a hit
