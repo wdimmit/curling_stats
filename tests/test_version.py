@@ -113,3 +113,35 @@ class TestTheReleaseModelIsPartOfTheIdentity:
         assert version.processing_version(w, side, broom, line=True, spin_weights=spin,
                                           release_weights=None) == \
             version.processing_version(w, side, broom, line=True, spin_weights=spin)
+
+
+class TestTheReceivingPanelsModelIsPartOfTheIdentity:
+    """overhead-4 reads each end's receiving panel, overhead-3 the rest: a
+    new model on either changes the timeline, so both are named. With one
+    file for both -- every timeline before overhead-4 -- the identity is the
+    one it was published with."""
+
+    def files(self, tmp_path):
+        out = [tmp_path / n for n in ("overhead-3.pt", "overhead-4.pt", "other.pt", "side.pt")]
+        for i, f in enumerate(out):
+            f.write_bytes(bytes([i]))
+        return out
+
+    def test_processing_version_names_both_weights(self, tmp_path):
+        o3, o4, other, side = self.files(tmp_path)
+        got = version.processing_version(o3, side, house_weights=o4)
+        assert f"+house-{version.model_id(o4)}" in got
+        assert got != version.processing_version(other, side, house_weights=o4)
+        assert got != version.processing_version(o3, side, house_weights=other)
+
+    def test_one_file_for_both_keeps_the_identity(self, tmp_path):
+        o3, _o4, _other, side = self.files(tmp_path)
+        assert version.processing_version(o3, side, house_weights=o3) == \
+            version.processing_version(o3, side)
+        assert version.processing_version(o3, side, house_weights=str(o3)) == \
+            version.processing_version(o3, side)
+
+    def test_none_keeps_the_identity(self, tmp_path):
+        o3, _o4, _other, side = self.files(tmp_path)
+        assert version.processing_version(o3, side, house_weights=None) == \
+            version.processing_version(o3, side)

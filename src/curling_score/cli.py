@@ -17,13 +17,23 @@ def _default_weights():
 
     Resolved for --help and for the default value, so the help text names the
     model that will actually run. A missing file must not stop `--help` or a
-    subcommand that never detects, so the error is deferred to use.
+    subcommand that never detects, so the error is deferred to use: a command
+    that detects passes its ``--weights`` through :func:`_weights`.
     """
     try:
         path = weights_mod.default_path()
-    except FileNotFoundError:
+    except (FileNotFoundError, weights_mod.NoModelError):
         return None
-    return str(path) if path else None
+    return str(path)
+
+
+def _weights(given):
+    """``--weights`` checked before any work: a file, or the command stops.
+    There is no colour-detector fallback (``none`` is refused)."""
+    try:
+        return weights_mod.require(given)
+    except (FileNotFoundError, weights_mod.NoModelError) as exc:
+        raise SystemExit(f"--weights: {exc}") from exc
 
 
 def _score_label(score, board):
@@ -49,7 +59,7 @@ def _score_label(score, board):
 def _analyze(args) -> int:
     doc = analyze_mod.analyze(args.url, root=args.cache_root, shot_fps=args.fps,
                               use_proxy=not args.no_proxy,
-                              weights=args.weights, imgsz=args.imgsz,
+                              weights=_weights(args.weights), imgsz=args.imgsz,
                               device=args.device, start_s=args.start,
                               end_s=args.end, sheet=args.sheet,
                               game_format=args.format,
@@ -112,13 +122,11 @@ def _review(args) -> int:
         read_path = proxy.ensure_proxy(path, info.video_id, strip, progress=print)
         read_setups = _proxy_setups(setups, strip)
 
-    detector = None
-    if args.weights:
-        from curling_score.detect import yolo
+    from curling_score.detect import yolo
 
-        detector = yolo.YoloDetector(args.weights, conf=0.30, device=args.device,
-                                     imgsz=args.imgsz)
-        detector.model.overrides["half"] = True
+    detector = yolo.YoloDetector(_weights(args.weights), conf=0.30,
+                                 device=args.device, imgsz=args.imgsz)
+    detector.model.overrides["half"] = True
 
     games = segment.segment_games(profile.build_profile(read_path, read_setups,
                                                         detector=detector))
@@ -280,13 +288,11 @@ def _inspect(args) -> int:
                                        progress=print)
         read_setups = _proxy_setups(setups, strip)
 
-    detector = None
-    if args.weights:
-        from curling_score.detect import yolo
+    from curling_score.detect import yolo
 
-        detector = yolo.YoloDetector(args.weights, conf=0.30,
-                                     device=args.device, imgsz=args.imgsz)
-        detector.model.overrides["half"] = True
+    detector = yolo.YoloDetector(_weights(args.weights), conf=0.30,
+                                 device=args.device, imgsz=args.imgsz)
+    detector.model.overrides["half"] = True
 
     houses = [args.house] if args.house else ["top", "bottom"]
     out_dir = Path(args.out)
@@ -562,11 +568,14 @@ def _live_replay(args) -> int:
             print(f"no clock: {args.align_to} never matched {camera} twice in a row")
             return 1
         print(f"clock: {json.dumps(clock)}")
-    weights = None if (args.weights or "").lower() in ("", "none", "classical") \
-        else args.weights
+    weights = _weights(args.weights)
     detector, broom_model, line_model = analyze_mod.load_models(
         weights, args.imgsz, args.device, skip_longview=args.no_longview,
         skip_line=args.no_line, progress=print)
+    # The receiving panel's model, pinned by CURLING_SCORE_RECEIVING_WEIGHTS.
+    house_weights = weights_mod.receiving_for(weights)
+    house_detector = analyze_mod.load_house_detector(
+        detector, weights, house_weights, args.imgsz, args.device, print)
     release_model = analyze_mod.load_release_model(line_model, print)
     if args.cameras:
         rec = replay.CameraReplay(args.cameras, out / "cameras", args.sheet,
@@ -594,10 +603,12 @@ def _live_replay(args) -> int:
     session = live.LiveSession(
         video_id=vid, url=url, recording=rec, fmt=format_mod.by_name(args.format),
         pipeline=live.VideoPipeline(weights=weights, skip_longview=args.no_longview,
-                                    line=line_model is not None, progress=print),
+                                    line=line_model is not None, progress=print,
+                                    house_weights=house_weights),
         sheet=args.sheet,
         models=live.Models(detector=detector, broom_model=broom_model,
-                           line_model=line_model, release_model=release_model),
+                           line_model=line_model, release_model=release_model,
+                           house_detector=house_detector),
         publish=publish, progress=print)
     session.clock = clock
     try:
@@ -620,8 +631,7 @@ def _practice_replay(args) -> int:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    weights = None if (args.weights or "").lower() in ("", "none", "classical") \
-        else args.weights
+    weights = _weights(args.weights)
     detector, broom_model, line_model = analyze_mod.load_models(
         weights, args.imgsz, args.device, skip_longview=args.no_longview,
         skip_line=args.no_line, progress=print)
@@ -781,7 +791,7 @@ def main(argv=None) -> int:
                    help="decode the full frame instead of a cropped strip proxy")
     p.add_argument("--weights", default=_default_weights(),
                    help=f"a trained YOLO model to detect with "
-                        f"(default: {_default_weights() or 'classical'})")
+                        f"(default: {_default_weights() or 'none found -- required'})")
     p.add_argument("--imgsz", type=int, default=448)
     p.add_argument("--device", default=None)
     p.add_argument("--start", type=float, default=None,
@@ -826,7 +836,7 @@ def main(argv=None) -> int:
     p.add_argument("--speed", type=float, default=1.0,
                    help="playback speed against real time (default: 1)")
     p.add_argument("--weights", default=_default_weights(),
-                   help="a trained YOLO model to detect with, or 'none'")
+                   help="a trained YOLO model to detect with")
     p.add_argument("--imgsz", type=int, default=448)
     p.add_argument("--device", default=None)
     p.add_argument("--sheet", type=int, default=None)
@@ -855,7 +865,7 @@ def main(argv=None) -> int:
                    help="playback speed against real time (default: 1)")
     p.add_argument("--out", default="out/practice/run", help="output directory")
     p.add_argument("--weights", default=_default_weights(),
-                   help="a trained YOLO model to detect with, or 'none'")
+                   help="a trained YOLO model to detect with")
     p.add_argument("--imgsz", type=int, default=448)
     p.add_argument("--device", default=None)
     p.add_argument("--no-longview", action="store_true",
@@ -903,7 +913,7 @@ def main(argv=None) -> int:
     p.add_argument("--fps", type=float, default=10.0)
     p.add_argument("--weights", default=_default_weights(),
                    help=f"a trained YOLO model to detect with "
-                        f"(default: {_default_weights() or 'classical'})")
+                        f"(default: {_default_weights() or 'none found -- required'})")
     p.add_argument("--imgsz", type=int, default=448)
     p.add_argument("--device", default=None)
     p.add_argument("--no-proxy", action="store_true")
@@ -923,7 +933,7 @@ def main(argv=None) -> int:
     p.add_argument("--out", default="inspect")
     p.add_argument("--weights", default=_default_weights(),
                    help=f"a trained YOLO model to detect with "
-                        f"(default: {_default_weights() or 'classical'})")
+                        f"(default: {_default_weights() or 'none found -- required'})")
     p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--device")
     p.add_argument("--no-proxy", action="store_true")

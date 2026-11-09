@@ -350,7 +350,17 @@ from pathlib import Path
 # stop at their rocks instead of running on into the post-game; no chart end's
 # last rest falls outside its end (839 ends; tail after it median 49 -> 46 s,
 # min 8 -> 6 s). Tracking is unchanged.
-PIPELINE_VERSION = "2026.11.04.1"
+# 2026.11.10.1: each end's receiving panel reads with overhead-5, which boxes
+# players as well as stones (`weights.RECEIVING_NAME`; the processing version
+# gains "+house-overhead-5-..."), and a stone the house read lost is kept
+# where it was when a player was over its spot as it went (`detect/cover.py`).
+# overhead-3 keeps the throwing panel and the activity profile. On the 16
+# harness games: board 42 -> 43/54, impossible additions 15 -> 9, no stone
+# lost; of the stones overhead-3 lost, 17 are held and 7 seen, and no hold
+# checked on video is false. 1MK77SP66GE (112 rocks): releases, hog times,
+# colours and scores unchanged; splits 107 -> 106. No run reads stones by
+# colour any more: without a stone model it does not start.
+PIPELINE_VERSION = "2026.11.10.1"
 
 
 def model_id(weights) -> str:
@@ -370,7 +380,7 @@ def model_id(weights) -> str:
 
 
 def processing_version(weights, side_weights=None, broom_weights=None, line=False,
-                       spin_weights=None, release_weights=None) -> str:
+                       spin_weights=None, release_weights=None, house_weights=None) -> str:
     """The full identity of one analysis configuration.
 
     ``side_weights`` is folded in because the side-view detector changes the
@@ -398,8 +408,18 @@ def processing_version(weights, side_weights=None, broom_weights=None, line=Fals
     ``release_weights``, the hand model, puts the release on every rock's
     delivery path, so a new one moves those points. It is named after the
     spin, and only with the line, whose delivery path it reads along.
+
+    ``house_weights``, the receiving panel's model (overhead-4), reads every
+    end's deliveries and house, so it is named right after the stone model --
+    but only when it is a file of its own: None, or the same file as
+    ``weights``, is one model for both, and every timeline made that way keeps
+    the identity it was published with.
     """
+    from curling_score.weights import same_file
+
     base = f"{PIPELINE_VERSION}+{model_id(weights)}"
+    if house_weights is not None and not same_file(house_weights, weights):
+        base = f"{base}+house-{model_id(house_weights)}"
     out = base if side_weights is None else f"{base}+side-{model_id(side_weights)}"
     out = out if broom_weights is None else f"{out}+broom-{model_id(broom_weights)}"
     if not (line and side_weights is not None):

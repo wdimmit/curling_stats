@@ -103,9 +103,12 @@ def main(argv=None) -> int:
 
     video = Path(args.video)
     _panels, setups, sideviews = calibration(video, args.calib_until, args.calib)
+    stones = weights_mod.default_path()
     detector, broom_model, line_model = analyze.load_models(
-        weights_mod.default_path(), args.imgsz, None, skip_longview=False,
+        stones, args.imgsz, None, skip_longview=False,
         skip_line=False, progress=print)
+    house_detector = analyze.load_house_detector(
+        detector, stones, weights_mod.receiving_for(stones), args.imgsz, None, print)
 
     said = []
 
@@ -117,7 +120,8 @@ def main(argv=None) -> int:
         path=video, read_path=video, read_setups=setups, sideviews=sideviews,
         detector=detector, broom_model=broom_model, line_model=line_model,
         fmt=format_mod.FOURS, use_cache=False, one_pass=True, progress=progress,
-        release_model=analyze.load_release_model(line_model, print))
+        release_model=analyze.load_release_model(line_model, print),
+        house_detector=house_detector)
     ends = []
     for spec in args.end:
         house, number, start, stop = spec.split(":")

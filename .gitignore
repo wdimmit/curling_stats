@@ -59,6 +59,9 @@ weights/*.pt
 # boxes from the overhead panels and 45 empty panels of an ice logo
 # (datasets/overhead-3). ds17b is kept as its baseline.
 !weights/overhead-3.pt
+# overhead-5 reads the receiving panel beside it (2026-11-10): overhead-3's
+# stones plus players, for the cover check (datasets/overhead-5).
+!weights/overhead-5.pt
 # ds13a does not supersede ds11a: they read different cameras. ds11a detects
 # stones in the overhead panels, looking straight down; ds13a detects them in
 # the wide side view, edge-on at thirty metres, to time the hog crossing.

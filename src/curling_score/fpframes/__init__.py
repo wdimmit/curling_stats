@@ -62,16 +62,23 @@ def settings(env=os.environ) -> Settings:
     return Settings(enabled=env.get("WORKER_FP_HARVEST") == "1", cap_gb=cap)
 
 
-def model_ids(weights) -> dict:
+def model_ids(weights, house_weights=None) -> dict:
     """The overhead and side detectors in use, as ``version.model_id`` names.
 
     ``side`` is None when the side-view model is switched off (``none``).
+    ``receiving`` names the receiving panel's model (``house_weights``,
+    `weights.receiving_for`) when it is a file of its own; with one model
+    for both panels the key is left out, so the names match those saved
+    before there were two.
     """
     from .. import version
     from .. import weights as weights_mod
 
     side = weights_mod.side_path()
-    return {
+    out = {
         "overhead": version.model_id(weights),
         "side": version.model_id(side) if side else None,
     }
+    if house_weights is not None and not weights_mod.same_file(house_weights, weights):
+        out["receiving"] = version.model_id(house_weights)
+    return out

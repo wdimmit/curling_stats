@@ -1043,3 +1043,45 @@ def test_the_pipeline_calibrates_a_camera_feed_from_where_it_is_told(monkeypatch
     pipe.calibrate("feed", 2705.0, start_s=1800.0)
     pipe.calibrate("feed", 905.0)
     assert asked == [(2705.0, 1800.0), (905.0, None)]
+
+
+class TestTheReceivingPanelsModel:
+    """A live end reads its receiving panel with overhead-4 and the rest with
+    overhead-3, and its chart says so."""
+
+    def test_an_end_is_built_with_both_detectors(self):
+        class Noted(Pipeline):
+            def build_end(self, ctx, game, end, prev_end_s):
+                self.detectors = (ctx.detector, ctx.house_detector)
+                return super().build_end(ctx, game, end, prev_end_s)
+
+        pipe, rec, pub = Noted(), Recording(), []
+        s = live.LiveSession(
+            video_id="liveVid0001", url="https://www.youtube.com/watch?v=liveVid0001",
+            recording=rec, fmt=format_mod.FOURS, pipeline=pipe, sheet=3,
+            models=live.Models(detector="overhead-3", house_detector="overhead-4"),
+            publish=pub.append, progress=lambda m: None, now=lambda: NOW)
+        run_until(s, rec, 1800.0)
+        assert pipe.built and pipe.detectors == ("overhead-3", "overhead-4")
+
+    def version(self, monkeypatch, tmp_path, **kw):
+        from curling_score import weights as weights_mod
+        files = {}
+        for name in ("det", "o4", "side"):
+            files[name] = tmp_path / f"{name}.pt"
+            files[name].write_bytes(name.encode())
+        monkeypatch.setattr(weights_mod, "side_path", lambda: files["side"])
+        monkeypatch.setattr(weights_mod, "broom_path", lambda: None)
+        house = {k: files[v] for k, v in kw.items()}
+        pipe = live.VideoPipeline(weights=files["det"], progress=lambda m: None, **house)
+        return pipe.processing_version({"left": object()}), files
+
+    def test_the_version_names_the_house_model(self, monkeypatch, tmp_path):
+        from curling_score import version
+        got, files = self.version(monkeypatch, tmp_path, house_weights="o4")
+        assert f"+house-{version.model_id(files['o4'])}" in got
+
+    def test_one_weights_file_keeps_the_version(self, monkeypatch, tmp_path):
+        same, _ = self.version(monkeypatch, tmp_path, house_weights="det")
+        before, _ = self.version(monkeypatch, tmp_path)
+        assert same == before and "+house" not in same

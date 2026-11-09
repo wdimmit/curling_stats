@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from curling_score.detect import cache
-from curling_score.detect.rocks import Detection
+from curling_score.detect import sequence
+from curling_score.detect.rocks import Detection, PlayerBox, Seen
 from curling_score.feeds import Cut, as_feed
 from curling_score.geometry.calibrate import PanelCalib
 
@@ -208,3 +209,154 @@ class TestWeightsAreKnownByContent:
         a, b = tmp_path / "a.pt", tmp_path / "b.pt"
         a.write_bytes(b"one"); b.write_bytes(b"two")
         assert cache._weights_identity(a)[2] != cache._weights_identity(b)[2]
+
+
+def box(x=0.5, conf=0.8):
+    return PlayerBox(x0_px=10.0 + x, y0_px=20.0, x1_px=40.0 + x, y1_px=90.0,
+                     x0_m=x - 0.2, y0_m=-1.1, x1_m=x + 0.2, y1_m=1.3,
+                     confidence=conf)
+
+
+class TestPlayers:
+    def test_cache_round_trips_players(self, tmp_path):
+        k = cache.key(**args(tmp_path))
+        a, b = box(0.5), box(-1.25, 0.61)
+        frames = [(0.0, Seen([det()], players=())),
+                  (0.2, Seen([], players=(a,))),
+                  (0.4, Seen([det("yellow", 1.0, 2.0)], players=(a, b)))]
+        cache.save(k, frames)
+        got = cache.load(k)
+        assert got == frames
+        assert all(isinstance(f, Seen) for _, f in got)
+        assert [f.players for _, f in got] == [(), (a,), (a, b)]
+        assert all(type(v) is float for _, f in got for p in f.players
+                   for v in vars(p).values())
+
+    def test_plain_lists_load_as_seen_without_players(self, tmp_path):
+        k = cache.key(**args(tmp_path))
+        cache.save(k, seq())
+        got = cache.load(k)
+        assert got == seq()
+        assert all(isinstance(f, Seen) and f.players == () for _, f in got)
+
+    def test_the_stored_format_is_version_2(self):
+        assert cache.FORMAT_VERSION == 2
+
+    def test_on_sheet_keeps_players(self):
+        class Setup:
+            def on_sheet(self, stones):
+                return [d for d in stones if d.x_m < 1.0]
+
+        p = box()
+        out = sequence._on_sheet(
+            Setup(), [(0.0, Seen([det(), det("yellow", 5.0, 0.0)], players=(p,)))])
+        assert [len(f) for _, f in out] == [1]
+        assert out[0][1].players == (p,)
+
+    def test_on_sheet_from_the_classical_detector_has_no_players(self):
+        class Setup:
+            def on_sheet(self, stones):
+                return list(stones)
+
+        out = sequence._on_sheet(Setup(), [(0.0, [det()])])
+        assert out[0][1] == [det()]
+        assert out[0][1].players == ()
+
+    def test_detect_spans_keeps_players(self, monkeypatch):
+        p = box()
+
+        class Setup:
+            rect = (0, 0, 10, 10)
+            calib = calib()
+
+            def on_sheet(self, stones):
+                return list(stones)
+
+        class Detector:
+            def find_stones_batch(self, imgs, calib):
+                return [Seen([det()], players=(p,)) for _ in imgs]
+
+        img = np.zeros((4, 4, 3), np.uint8)
+        monkeypatch.setattr(sequence.F, "windows",
+                            lambda path, wins, end_s: iter([(0, 0.0, img), (0, 0.2, img)]))
+        (got,) = sequence.detect_spans("v.mp4", [(Setup(), 0.0, 5.0)], 1.0,
+                                       Detector())
+        assert len(got) == 2
+        assert all(f.players == (p,) and len(f) == 1 for _, f in got)
+
+
+class TestADetectorPerSpan:
+    """overhead-4 reads the receiving panel and overhead-3 the thrower's,
+    from one decode: a span may name its own detector."""
+
+    class Setup:
+        calib = calib()
+
+        def __init__(self, rect):
+            self.rect = rect
+
+        def on_sheet(self, stones):
+            return list(stones)
+
+    class Tagger:
+        def __init__(self, tag):
+            self.tag, self.batches = tag, 0
+
+        def find_stones_batch(self, imgs, calib):
+            self.batches += 1
+            return [Seen([det(self.tag)]) for _ in imgs]
+
+    def windows(self, monkeypatch):
+        img = np.zeros((4, 4, 3), np.uint8)
+        monkeypatch.setattr(sequence.F, "windows", lambda path, wins, end_s: iter(
+            [(0, 0.0, img), (1, 0.0, img), (0, 0.2, img), (1, 0.4, img)]))
+
+    def test_detect_spans_uses_each_spans_detector(self, monkeypatch):
+        self.windows(monkeypatch)
+        house, stones = self.Tagger("house"), self.Tagger("stones")
+        near, far = self.Setup((0, 0, 4, 4)), self.Setup((4, 0, 4, 4))
+        got = sequence.detect_spans("v.mp4", [(near, 0.0, 5.0, house), (far, 0.0, 2.5)],
+                                    1.0, stones)
+        assert [[d.color for d in f] for _, f in got[0]] == [["house"], ["house"]]
+        assert [[d.color for d in f] for _, f in got[1]] == [["stones"], ["stones"]]
+
+    def test_spans_sharing_a_detector_share_its_threads(self, monkeypatch):
+        """One model in memory and one pair of detection threads, as before:
+        a detector given twice is not run twice over."""
+        self.windows(monkeypatch)
+        made = []
+        real = sequence._DetectBehind
+
+        class Counted(real):
+            def __init__(self, detector):
+                made.append(detector)
+                super().__init__(detector)
+
+        monkeypatch.setattr(sequence, "_DetectBehind", Counted)
+        one = self.Tagger("stones")
+        near, far = self.Setup((0, 0, 4, 4)), self.Setup((4, 0, 4, 4))
+        got = sequence.detect_spans("v.mp4", [(near, 0.0, 5.0, one), (far, 0.0, 2.5)],
+                                    1.0, one)
+        assert made == [one]
+        assert [len(s) for s in got] == [2, 2]
+
+    def test_a_span_without_a_detector_is_refused(self, monkeypatch):
+        # User rule 2026-11-09: never the colour thresholds, not for one span.
+        from curling_score import weights
+
+        self.windows(monkeypatch)
+        monkeypatch.setattr("curling_score.detect.rocks.find_stones",
+                            lambda img, calib: pytest.fail("read by colour"))
+        near, far = self.Setup((0, 0, 4, 4)), self.Setup((4, 0, 4, 4))
+        with pytest.raises(weights.NoModelError):
+            sequence.detect_spans("v.mp4", [(near, 0.0, 5.0, None), (far, 0.0, 2.5)],
+                                  1.0, self.Tagger("stones"))
+        with pytest.raises(weights.NoModelError):
+            sequence.detect_spans("v.mp4", [(near, 0.0, 5.0), (far, 0.0, 2.5)], 1.0)
+
+    def test_a_span_without_a_detector_is_refused_alone_too(self):
+        from curling_score import weights
+
+        with pytest.raises(weights.NoModelError):
+            sequence.detect_span("v.mp4", self.Setup((0, 0, 4, 4)), 0.0, 1.0, 5.0,
+                                 use_cache=False)

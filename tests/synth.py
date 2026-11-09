@@ -191,3 +191,24 @@ def side_view_strip(img, view, *, centre=40.0, edges=40.0, half_m=0.6096, smear_
             wgt = np.clip(1.0 - np.abs(cols - c) / width, 0.0, 1.0)
             out[r, cols] -= depth * wgt[:, None]
     return out.clip(0, 255).astype(np.uint8)
+
+
+class ColourDetector:
+    """The colour-threshold stone finder (`detect.rocks.find_stones`) behind a
+    trained detector's interface, for tests on synthetic panels only.
+
+    Runs no longer have a classical detector -- detection without a model
+    raises `weights.NoModelError` -- so a test that draws stones by colour reads
+    them back by passing this in, where a run would pass its YOLO detector.
+    """
+
+    def find_stones(self, panel, calib):
+        from curling_score.detect import rocks
+
+        return rocks.find_stones(panel, calib)
+
+    def find_stones_batch(self, panels, calib):
+        return [self.find_stones(p, calib) for p in panels]
+
+    def find_stones_each(self, panels, calibs):
+        return [self.find_stones(p, c) for p, c in zip(panels, calibs)]

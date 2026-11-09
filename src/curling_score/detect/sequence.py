@@ -11,9 +11,10 @@ from __future__ import annotations
 import logging
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import nullcontext
+from contextlib import ExitStack
 
 from curling_score.detect import cache
+from curling_score.detect.rocks import Seen
 from curling_score.ingest import frames as F
 
 log = logging.getLogger(__name__)
@@ -82,6 +83,16 @@ class _DetectBehind:
                 pool.shutdown(wait=True)
 
 
+def _need(detector):
+    """Raise unless there is a detector: stones are never read by colour now."""
+    if detector is None:
+        from curling_score import weights
+
+        raise weights.NoModelError(
+            "detection needs a trained stone detector; the classical colour "
+            "detector is no longer used")
+
+
 def detect_end(path, setup, end, fps: float, detector=None,
                use_cache: bool = True, from_s: float | None = None):
     """Detections for one end, with enough run-up to judge its first shot.
@@ -106,20 +117,16 @@ def detect_end(path, setup, end, fps: float, detector=None,
 
 def detect_span(path, setup, start_s: float, end_s: float, fps: float,
                 detector=None, use_cache: bool = True):
-    """Detections at ``fps`` across ``[start_s, end_s]`` for one panel.
+    """Detections at ``fps`` across ``[start_s, end_s]`` for one panel, by
+    ``detector`` -- required: there is no colour-threshold fallback.
 
     ``path`` is a file or a `feeds.Feed`; the panel is taken from the file its
     cut's view lives in."""
-    from curling_score.detect import rocks
+    _need(detector)
 
     def produce():
         out = []
         batches = F.chunked(path, start_s, end_s, fps, size=BATCH, crop=setup.cut)
-        if detector is None:
-            for batch in batches:
-                out.extend((t, rocks.find_stones(img, setup.calib))
-                           for t, img in batch)
-            return out
         with _DetectBehind(detector) as behind:
             for batch in batches:
                 behind.submit(out, batch, setup.calib)
@@ -136,11 +143,13 @@ def detect_span(path, setup, start_s: float, end_s: float, fps: float,
 
 def _on_sheet(setup, seq):
     """``seq`` without the stones beyond ``setup``'s painted sidelines
-    (`profile.PanelSetup.on_sheet`)."""
+    (`profile.PanelSetup.on_sheet`). A frame's players stay, whatever the
+    sidelines drop: `on_sheet` hands back a plain list, which has none."""
     on_sheet = getattr(setup, "on_sheet", None)
     if on_sheet is None:
         return seq
-    return [(t, on_sheet(stones)) for t, stones in seq]
+    return [(t, Seen(on_sheet(stones), getattr(stones, "players", ())))
+            for t, stones in seq]
 
 
 def detect_spans(path, specs, end_s: float, detector=None):
@@ -150,24 +159,30 @@ def detect_spans(path, specs, end_s: float, detector=None):
     ``detect_span(..., use_cache=False)`` would give it. For a live recording,
     which has no strip proxy and no detection cache: decoding each frame once
     for both panels halves the dominant cost of a live end.
-    """
-    from curling_score.detect import rocks
 
+    A spec may name its own detector, ``(setup, start_s, fps, detector)``:
+    the receiving panel reads with overhead-4, the thrower's with overhead-3.
+    One without reads with ``detector``. Each detector runs behind the decode
+    once, however many spans share it. Every span needs one.
+    """
     out = [[] for _ in specs]
     batches = [[] for _ in specs]
-    behind = _DetectBehind(detector) if detector is not None else None
+    dets = [spec[3] if len(spec) > 3 else detector for spec in specs]
+    for det in dets:
+        _need(det)
+    behinds = {}
 
     def flush(i):
         setup, batch = specs[i][0], batches[i]
-        if behind is None:
-            out[i].extend((t, rocks.find_stones(img, setup.calib)) for t, img in batch)
-        else:
-            behind.submit(out[i], batch, setup.calib)
+        behinds[id(dets[i])].submit(out[i], batch, setup.calib)
         batches[i] = []
 
-    with behind or nullcontext():
-        for i, t, img in F.windows(path, [(start, fps, setup.cut)
-                                          for setup, start, fps in specs], end_s):
+    with ExitStack() as stack:
+        for det in dets:
+            if id(det) not in behinds:
+                behinds[id(det)] = stack.enter_context(_DetectBehind(det))
+        for i, t, img in F.windows(path, [(spec[1], spec[2], spec[0].cut)
+                                          for spec in specs], end_s):
             batches[i].append((t, img))
             if len(batches[i]) >= BATCH:
                 flush(i)
