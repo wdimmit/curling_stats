@@ -35,6 +35,13 @@ def is_camera_game(job) -> bool:
     return job.get("kind") == "camera_live"
 
 
+def is_standby(job) -> bool:
+    """A sheet's cameras recorded from its league's schedule start, before
+    its stream is found: no clock, no session, until the API hands it the
+    game (``LiveManager._hand_over``)."""
+    return job.get("kind") == "camera_standby"
+
+
 def _published_at(job):
     from datetime import datetime
 
@@ -42,6 +49,15 @@ def _published_at(job):
         return datetime.fromisoformat(job["published_at"]) if job.get("published_at") else None
     except ValueError:
         return None
+
+
+def stream_start_s(job, recorder) -> float:
+    """Where in a camera recording its game's stream began: past 0 when the
+    cameras were recorded ahead of it (a standby), else 0."""
+    began, wall = _published_at(job), getattr(recorder, "wall_started", None)
+    if began is None or wall is None:
+        return 0.0
+    return max(began.timestamp() - wall, 0.0)
 
 
 @dataclass
@@ -109,10 +125,10 @@ class LiveManager:
     def _recorder(self, job):
         import os
 
-        if is_practice(job) or is_camera_game(job):
+        if is_practice(job) or is_camera_game(job) or is_standby(job):
             from curling_score.cameras import recorder as cameras
 
-            if is_camera_game(job) and self.cams_root is not None:
+            if (is_camera_game(job) or is_standby(job)) and self.cams_root is not None:
                 # Where it is kept from by a rename (the same mount), under
                 # this worker's name: the other's start-up never clears it.
                 directory = self.cams_root / "live" / self.worker_id / job["video_id"]
@@ -136,8 +152,12 @@ class LiveManager:
 
         from curling_score.live.clock import Aligner
 
+        # Its waits count from where the stream began: behind a standby, the
+        # recording is long already when the stream is found.
+        start = stream_start_s(job, recorder)
         return Aligner(job["video_id"], int(job["sheet"]), recorder.dir,
-                       recorder.wall_started, _published_at(job), head=recorder.head_s,
+                       recorder.wall_started, _published_at(job),
+                       head=lambda: recorder.head_s() - start,
                        pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
                        cookies=os.environ.get("YTDLP_COOKIES")).start()
 
@@ -173,7 +193,8 @@ class LiveManager:
         with self._lock:
             if stream in self._streams:
                 self._streams.remove(stream)
-        if is_camera_game(stream.job):
+        if is_camera_game(stream.job) or is_standby(stream.job):
+            # A standby never handed its stream is never whole: deleted.
             self._file_camera_game(stream, keep)
             return
         if self.root is None:
@@ -246,8 +267,22 @@ class LiveManager:
             {"sheet": int(stream.job["sheet"]), "wall_started": rec.wall_started,
              "clock": clock}))
         log.info("kept the cameras of %s in %s", vid, dest)
-        if self.prune is not None:
-            self.background(self.prune)
+        # Recorded from the schedule's start (a standby): only the broadcast
+        # is kept. Cut on the keeping thread -- it copies gigabytes.
+        cut = stream_start_s(stream.job, rec)
+
+        def trim_then_prune():
+            from curling_score.cameras import trim
+
+            if cut >= trim.MIN_CUT_S:
+                try:
+                    trim.trim_kept(dest, cut)
+                except Exception:  # noqa: BLE001 - kept uncut; pruned in days
+                    log.exception("could not cut the kept cameras of %s at %.0f s", vid, cut)
+            if self.prune is not None:
+                self.prune()
+
+        self.background(trim_then_prune)
 
     def _keep_reference(self, stream):
         """The YouTube stream recorded beside a camera game, stopped and kept
@@ -309,18 +344,39 @@ class LiveManager:
             return
         stream = Stream(job=job, recorder=recorder, last_beat=self.clock())
         if is_camera_game(job):
-            stream.aligner = self.make_aligner(job, recorder)
-            if self.keep_youtube and self.root is not None:
-                try:
-                    stream.reference = self._youtube(
-                        job["video_id"], self.root / "live" / f"{job['video_id']}-youtube")
-                    stream.reference.start()
-                except Exception as exc:  # noqa: BLE001 - the game goes on without it
-                    log.warning("live job %s: its stream is not recorded beside it: %s",
-                                job["id"], exc)
-                    stream.reference = None
+            self._follow(stream, job)
         with self._lock:
             self._streams.append(stream)
+
+    def _follow(self, stream, job):
+        """A camera game's clock, and its stream recorded beside it when
+        CAMERA_KEEP_YOUTUBE asks."""
+        stream.aligner = self.make_aligner(job, stream.recorder)
+        if self.keep_youtube and self.root is not None:
+            try:
+                stream.reference = self._youtube(
+                    job["video_id"], self.root / "live" / f"{job['video_id']}-youtube")
+                stream.reference.start()
+            except Exception as exc:  # noqa: BLE001 - the game goes on without it
+                log.warning("live job %s: its stream is not recorded beside it: %s",
+                            job["id"], exc)
+                stream.reference = None
+
+    def _hand_over(self, stream, game: dict):
+        """A standby's stream was found: the recording goes on, now the
+        game's. Its clock and YouTube copy start, then the job says it is the
+        game -- last, so the lane, on its own thread, never sees a camera game
+        without them -- and the lane gives it its session."""
+        job = {**stream.job, **game, "kind": "camera_live"}
+        log.info("live job %s: the stream of sheet %s was found: %s", job["id"],
+                 job.get("sheet"), job.get("video_id"))
+        try:
+            self._follow(stream, job)
+        except Exception:  # noqa: BLE001 - recorded still; tried again next heartbeat
+            log.exception("live job %s: its clock did not start", job["id"])
+            stream.aligner = None
+            return
+        stream.job = job
 
     def _fail(self, job, error, kind="permanent"):
         try:
@@ -358,6 +414,9 @@ class LiveManager:
             # A practice watch nobody is on any more: the API says stop.
             if isinstance(got, dict) and got.get("stop"):
                 stream.stop_requested = True
+            # A standby whose stream the poll found: it is the game now.
+            if isinstance(got, dict) and got.get("game") and is_standby(stream.job):
+                self._hand_over(stream, got["game"])
         except Exception as exc:  # noqa: BLE001
             from curling_score.service.worker import Lost
 

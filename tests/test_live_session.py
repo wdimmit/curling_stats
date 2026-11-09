@@ -973,3 +973,73 @@ class TestWaitingForTheClock:
         assert len(pub) == n + 1 and pub[-1]["source"]["clock"] == stepped
         s.set_clock(dict(stepped))                       # the same again: nothing
         assert len(pub) == n + 1
+
+
+class TestARecordingThatBeganBeforeItsStream:
+    """A camera game's standby recorded the sheet from its schedule's start;
+    the game is read from where its stream began (``start_s``), as a stream
+    recorded from its own start would be."""
+
+    class Pipe(Pipeline):
+        def __init__(self):
+            super().__init__()
+            self.calibrated_from, self.sampled_from, self.recording_start = [], [], []
+
+        def calibrate(self, path, until_s, start_s=None):
+            self.calibrated_from.append(start_s)
+            return super().calibrate(path, until_s)
+
+        def samples(self, path, setups, from_s, until_s, detector=None):
+            self.sampled_from.append(from_s)
+            # The sheet as `activity` has it, from the stream's start.
+            out = super().samples(path, setups, None if from_s is None else from_s - 1800.0,
+                                  until_s - 1800.0, detector)
+            return [Sample(t=x.t + 1800.0, top_stones=x.top_stones,
+                           bottom_stones=x.bottom_stones) for x in out]
+
+        def build_end(self, ctx, game, end, prev_end_s):
+            self.recording_start.append(ctx.recording_start_s)
+            return super().build_end(ctx, game, end, prev_end_s)
+
+    def started(self, start_s=1800.0):
+        pipe, rec, pub = self.Pipe(), Recording(), []
+        s = live.LiveSession(
+            video_id="liveVid0001", url="https://www.youtube.com/watch?v=liveVid0001",
+            recording=rec, fmt=format_mod.FOURS, pipeline=pipe, sheet=3,
+            publish=pub.append, progress=lambda m: None, now=lambda: NOW, start_s=start_s)
+        return s, pipe, rec, pub
+
+    def test_it_calibrates_fifteen_minutes_after_the_stream_began_from_there(self):
+        s, pipe, rec, _ = self.started()
+        rec.head = 1800.0 + 890.0
+        assert s.step() is None
+        rec.head = 1800.0 + 905.0
+        assert s.step() == "calibrated"
+        assert pipe.calibrated_at == [2705.0] and pipe.calibrated_from == [1800.0]
+
+    def test_it_reads_the_sheet_from_the_streams_start(self):
+        s, pipe, rec, _ = self.started()
+        run_until(s, rec, 1800.0 + 2400.0)
+        assert pipe.sampled_from[0] == 1800.0
+        assert min(x.t for x in s.samples) > 1800.0
+        assert pipe.built and set(pipe.recording_start) == {1800.0}
+
+    def test_from_its_start_it_is_read_as_before(self):
+        s, pipe, rec, _ = self.started(start_s=0.0)
+        rec.head = 905.0
+        assert s.step() == "calibrated"
+        assert pipe.calibrated_from == [None]
+
+
+def test_the_pipeline_calibrates_a_camera_feed_from_where_it_is_told(monkeypatch):
+    from curling_score.feeds import cameras
+
+    asked = []
+    monkeypatch.setattr(live, "as_feed", lambda path: SimpleNamespace(kind="cameras"))
+    monkeypatch.setattr(cameras, "calibrate",
+                        lambda feed, until_s, start_s=None, **kw:
+                        asked.append((until_s, start_s)) or (None, {}, None))
+    pipe = live.VideoPipeline(skip_longview=True, progress=lambda m: None)
+    pipe.calibrate("feed", 2705.0, start_s=1800.0)
+    pipe.calibrate("feed", 905.0)
+    assert asked == [(2705.0, 1800.0), (905.0, None)]

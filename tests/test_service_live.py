@@ -249,6 +249,57 @@ class TestCameraGames:
         assert beat()["stop"] is True
 
 
+class TestAStandby:
+    def test_its_claim_says_cameras_and_its_sheet(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        world["repo"].update_run("r_sb", kind="standby", video_id="standby-3-x",
+                                 published_at=None)
+        job = camera_claim(world, ["live", "camera_live", "camera_standby"]).json()["job"]
+        assert (job["id"], job["kind"], job["source"], job["sheet"]) == \
+            ("j_sb", "camera_standby", "cameras", 3)
+
+    def test_a_worker_without_cameras_never_gets_one(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        assert camera_claim(world, ["live", "camera_standby"], cameras=False).status_code == 204
+
+    def beat(self, world, job_id):
+        return world["client"].post(
+            f"/api/worker/jobs/{job_id}/progress", headers=WORKER,
+            json={"worker_id": "home", "phase": "live", "fraction": None,
+                  "message": "recorded 10 min"})
+
+    def test_handed_to_its_stream_the_heartbeat_says_which_game(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        world["repo"].update_run("r_sb", kind="standby", video_id="standby-3-x",
+                                 published_at=None)
+        camera_claim(world, ["camera_standby"])
+        assert "game" not in self.beat(world, "j_sb").json()
+        world["repo"].update_run("r_sb", kind="live", video_id=LIVE, published_at=T0,
+                                 title="Tonight - Sheet 3")
+        world["repo"].update_job("j_sb", kind="camera_live")
+        game = self.beat(world, "j_sb").json()["game"]
+        assert game["video_id"] == LIVE and game["published_at"] == T0.isoformat()
+        assert (game["kind"], game["sheet"], game["title"], game["format"]) == \
+            ("camera_live", 3, "Tonight - Sheet 3", "fours")
+
+    def test_a_stream_found_and_over_between_two_heartbeats_still_says_which_game(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        world["repo"].update_run("r_sb", kind="standby", video_id="standby-3-x",
+                                 published_at=None)
+        camera_claim(world, ["camera_standby"])
+        world["repo"].update_run("r_sb", kind="live", video_id=LIVE, published_at=T0,
+                                 stream_ended_at=T0)
+        world["repo"].update_job("j_sb", kind="camera_live")
+        got = self.beat(world, "j_sb").json()
+        assert got["stop"] is True and got["game"]["video_id"] == LIVE
+
+    def test_given_up_its_heartbeat_is_refused(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        camera_claim(world, ["camera_standby"])
+        world["repo"].update_job("j_sb", state="failed")
+        assert self.beat(world, "j_sb").status_code == 409
+
+
 class TestACameraGameEndToEnd:
     def test_it_publishes_and_completes_like_a_live_game(self, world):
         """Review 1: the API refused every publish that was not kind "live"."""

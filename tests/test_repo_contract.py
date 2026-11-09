@@ -222,6 +222,20 @@ class TestJobsAndClaiming:
         assert [repo.claim_job("w", at(100), kinds=kinds).id for _ in range(3)] == \
             ["j_cl", "j_cv", "j_vod"]
 
+    def test_a_standby_is_claimed_with_games_being_played(self, repo):
+        """A sheet's cameras recorded ahead of its stream: claimed before
+        practice and recordings, and only by a worker that asks for it."""
+        repo.put_run(run())
+        repo.put_run(run(id="r_sb", kind="standby"))
+        repo.put_job(job(id="j_vod", created_at=at(0), run_after=at(0)))
+        repo.put_job(job(id="j_sb", run_id="r_sb", kind="camera_standby",
+                         created_at=at(50), run_after=at(50)))
+        assert repo.claim_job("w", at(100), kinds=("live", "camera_live", "vod")).id == "j_vod"
+        repo.put_job(job(id="j_vod2", created_at=at(0), run_after=at(0)))
+        kinds = ("live", "camera_live", "camera_standby", "practice", "camera_vod", "vod")
+        assert repo.claim_job("w", at(100), kinds=kinds).id == "j_sb"
+        assert repo.get_run("r_sb").status == "processing"
+
     def test_a_worker_asking_only_for_live_work_gets_no_recording(self, repo):
         repo.put_run(run())
         repo.put_job(job())

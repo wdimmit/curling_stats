@@ -208,6 +208,27 @@ class TestACamerasPlaylist:
         (run,) = [r for r in repo.list_runs() if r.kind == "live"]
         assert run.source == "cameras" and repo.job_for_run(run.id).kind == "camera_live"
 
+    def test_the_poll_opens_standbys_at_the_window_and_ends_practice(self, monkeypatch):
+        """The scheduler's poll records each camera sheet from the window's
+        start; sheet 3's stream, live already, is its own camera game."""
+        from curling_score.service import practice
+
+        ended = []
+        monkeypatch.setattr(practice, "end_for_league",
+                            lambda repo, t: ended.append(t) or 0)
+        client, repo, _ = make()
+        # T0 is Friday 05:00 in Vancouver.
+        add(client, playlist_id="PLabc", input="cameras",
+            schedule=[{"days": ["fri"], "start": "05:00", "end": "08:00"}])
+        got = client.post("/api/admin/poll-playlists", headers=ADMIN).json()
+        (game,) = [r for r in repo.list_runs() if r.kind == "live"]
+        assert game.sheet == 3 and repo.job_for_run(game.id).kind == "camera_live"
+        # Under the default cap of two: one standby beside the game.
+        (standby,) = [r for r in repo.list_runs() if r.kind == "standby"]
+        assert standby.sheet == 1 and repo.job_for_run(standby.id).kind == "camera_standby"
+        assert got["standby"]["opened"] == [standby.id]
+        assert ended
+
     def test_the_settings_say_which_sheets_and_how_many(self, monkeypatch):
         from curling_score.service.api import Settings
 

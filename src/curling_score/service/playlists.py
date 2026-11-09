@@ -33,6 +33,13 @@ DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 # polled a little under its interval ago is due, or a 180 s interval would slip
 # to 360 s.
 DUE_SLACK_S = 20.0
+# A sheet's standby (its cameras recorded from the schedule's start, ahead of
+# its stream) that no stream has taken over by this long after it was opened
+# is given up and its recording deleted: the sheet has no game tonight, or its
+# stream went somewhere the poll cannot see. Its stream, if it turns up after
+# all, is read as one without a standby is. Streams go up about 30 min into
+# the window (Monday Open: 18:00 window, 18:30 streams).
+STANDBY_MAX_S = 90 * 60
 
 
 def _minutes(hhmm: str) -> int:
@@ -78,6 +85,29 @@ def in_window(schedule, now: datetime, tz: str) -> bool:
     return False
 
 
+def window_start(schedule, now: datetime, tz: str) -> datetime | None:
+    """When the window ``now`` is in began, or None outside every window."""
+    zone = ZoneInfo(tz)
+    local = now.astimezone(zone)
+    day, prev = DAYS[local.weekday()], DAYS[(local.weekday() - 1) % 7]
+    t = local.hour * 60 + local.minute
+
+    def at(date, minutes):
+        return datetime(date.year, date.month, date.day, minutes // 60, minutes % 60,
+                        tzinfo=zone).astimezone(now.tzinfo)
+
+    for w in schedule or []:
+        start, end = _minutes(w["start"]), _minutes(w["end"])
+        if start < end:
+            if day in w["days"] and start <= t < end:
+                return at(local, start)
+        elif day in w["days"] and t >= start:
+            return at(local, start)
+        elif prev in w["days"] and t < end:
+            return at(local - timedelta(days=1), start)
+    return None
+
+
 def due(pl, now: datetime, tz: str) -> bool:
     """Whether a playlist should be polled now, by its schedule."""
     if pl.last_polled_at is None:
@@ -93,10 +123,133 @@ _CAMERA_GOING = ("queued", "processing", "live")
 
 
 def camera_games(repo) -> int:
-    """How many league games are being read from the cameras: what the cap
-    (CAMERA_MAX_SHEETS) counts."""
+    """How many league games are being read from the cameras, standbys
+    among them: what the cap (CAMERA_MAX_SHEETS) counts."""
     return sum(1 for status in _CAMERA_GOING for r in repo.list_runs(status=status, limit=500)
-               if r.kind == "live" and r.source == "cameras")
+               if r.kind in ("live", "standby") and r.source == "cameras")
+
+
+def _waiting_standbys(repo) -> list:
+    """The standbys still waiting for their streams, oldest first."""
+    runs = [r for status in ("queued", "processing") for r in repo.list_runs(status=status, limit=500)
+            if r.kind == "standby"]
+    return sorted(runs, key=lambda r: r.created_at)
+
+
+def _standby_for(repo, playlist_id: str, sheet) -> Run | None:
+    """The sheet's standby for this playlist, if one is waiting and its job
+    is queued or recording."""
+    for r in _waiting_standbys(repo):
+        if r.playlist_id == playlist_id and r.sheet == sheet:
+            job = repo.job_for_run(r.id)
+            if job is not None and job.state in ("queued", "running"):
+                return r
+    return None
+
+
+def _sheet_busy(repo, sheet) -> bool:
+    """Whether something is reading the sheet's cameras: a camera game whose
+    stream has not ended, a standby, or practice. Two readers on one camera
+    are never tried."""
+    return any(r.sheet == sheet and r.source == "cameras" and r.stream_ended_at is None
+               and r.kind in ("live", "standby", "practice")
+               for status in _CAMERA_GOING for r in repo.list_runs(status=status, limit=500))
+
+
+def _found_already(repo, playlist_id: str, sheet, since: datetime) -> bool:
+    """Whether this window's stream on the sheet was found already."""
+    return any(r.kind == "live" and r.playlist_id == playlist_id and r.sheet == sheet
+               and r.created_at >= since
+               for status in _CAMERA_GOING for r in repo.list_runs(status=status, limit=500))
+
+
+def _give_up(repo, run, now: datetime, why: str) -> None:
+    error = f"no stream on sheet {run.sheet}: {why}; its recording is deleted"
+    job = repo.job_for_run(run.id)
+    if job is not None and job.state in ("queued", "running"):
+        # A worker recording it is told at its next heartbeat (409: not
+        # its job any more), and deletes what it recorded.
+        repo.update_job(job.id, state="failed", error=error, error_kind="permanent",
+                        finished_at=now)
+    repo.update_run(run.id, status="failed", error=error)
+
+
+def standbys(repo, *, processing_version: str, now: datetime,
+             tz: str = "America/Los_Angeles", camera_sheets: set | frozenset = frozenset(),
+             camera_max_sheets: int = 0) -> dict:
+    """Record each camera sheet from its league's schedule start.
+
+    On an enabled ``cameras`` playlist whose window has just opened (within
+    ``STANDBY_MAX_S``), each sheet in ``camera_sheets`` gets a standby: a run
+    (kind "standby") whose job ("camera_standby") records the sheet's cameras
+    until the poll finds its stream and hands the job to the game
+    (``poll``). Once a window a sheet; while fewer than ``camera_max_sheets``
+    camera games and standbys are going; never on a sheet whose cameras
+    something else is reading (it waits for the next call), nor on one whose
+    stream was found already.
+
+    A standby no stream has taken over within ``STANDBY_MAX_S``, or whose
+    playlist no longer reads the cameras in an open window, is given up: its
+    job fails, and the worker deletes its recording. Returns the runs
+    ``opened`` and ``closed``.
+    """
+    opened, closed = [], []
+    pls = {pl.playlist_id: pl for pl in repo.list_playlists()}
+    for run in _waiting_standbys(repo):
+        pl = pls.get(run.playlist_id)
+        if now - run.created_at >= timedelta(seconds=STANDBY_MAX_S):
+            why = f"none within {STANDBY_MAX_S / 60:.0f} min of the schedule's start"
+        elif (pl is None or not pl.enabled or pl.input != "cameras"
+              or window_start(pl.schedule, now, tz) is None):
+            why = "its playlist stopped reading the cameras"
+        else:
+            continue
+        _give_up(repo, run, now, why)
+        closed.append(run.id)
+
+    for pl in pls.values():
+        if not pl.enabled or pl.input != "cameras":
+            continue
+        began = window_start(pl.schedule, now, tz)
+        if began is None or now - began >= timedelta(seconds=STANDBY_MAX_S):
+            continue
+        key = began.isoformat()
+        done = list(pl.standby_sheets) if pl.standby_window == key else []
+        before = list(done)
+        for sheet in sorted(camera_sheets):
+            if sheet in done:
+                continue
+            if _found_already(repo, pl.playlist_id, sheet, began):
+                done.append(sheet)
+                continue
+            if camera_games(repo) >= camera_max_sheets:
+                break
+            if _sheet_busy(repo, sheet):
+                continue
+            run = Run(id=slug.new_run_id(),
+                      video_id=f"standby-{sheet}-{now.strftime('%Y%m%dT%H%M%S')}",
+                      processing_version=processing_version, status="queued", created_at=now,
+                      title=f"Sheet {sheet} - {pl.label} - waiting for the stream",
+                      playlist_id=pl.playlist_id, league=pl.label, kind="standby",
+                      sheet=sheet, source="cameras")
+            repo.put_run(run)
+            repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued",
+                             created_at=now, run_after=now, kind="camera_standby"))
+            opened.append(run.id)
+            done.append(sheet)
+        if pl.standby_window != key or done != before:
+            repo.update_playlist(pl.id, standby_window=key, standby_sheets=sorted(done))
+    return {"opened": opened, "closed": closed}
+
+
+def _hand_over(repo, standby: Run, meta, pl, now: datetime) -> None:
+    """The sheet's standby becomes its stream's game: the same run and job,
+    now the stream's. A worker recording it learns at its next heartbeat."""
+    repo.update_run(standby.id, video_id=meta.video_id, title=meta.title,
+                    channel_id=meta.channel_id, published_at=meta.published_at,
+                    league=pl.label, format=source.format_from_title(meta.title),
+                    kind="live", source="cameras", created_at=now)
+    repo.update_job(repo.job_for_run(standby.id).id, kind="camera_live")
 
 
 def camera_playlists(repo) -> set:
@@ -168,6 +321,12 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                 # recording's ordinary run, not queued again every poll.
                 if not any(r.kind == "live" for r in repo.runs_for_video(meta.video_id)):
                     sheet = source.sheet_from_title(meta.title)
+                    standby = (_standby_for(repo, pl.playlist_id, sheet)
+                               if pl.input == "cameras" and sheet is not None else None)
+                    if standby is not None:
+                        _hand_over(repo, standby, meta, pl, now)
+                        live_created.append(standby.id)
+                        continue
                     cameras = (pl.input == "cameras" and sheet in camera_sheets
                                and camera_games(repo) < camera_max_sheets)
                     run = Run(

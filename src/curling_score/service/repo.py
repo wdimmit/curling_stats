@@ -26,7 +26,7 @@ LEASE_S = 600.0
 # The order jobs are claimed in: games being played (from the stream or the
 # cameras) cannot wait; a practice card is due seconds after a stone stops;
 # then a camera game read again (its files are kept only days); then the rest.
-CLAIM_ORDER = {"live": 0, "camera_live": 0, "practice": 1, "camera_vod": 2, "vod": 3}
+CLAIM_ORDER = {"live": 0, "camera_live": 0, "camera_standby": 0, "practice": 1, "camera_vod": 2, "vod": 3}
 HEARTBEAT_STALE_S = 90.0
 # What one chart's overrides may grow to. Firestore's hard limit is 1 MiB per
 # document and a fully hand-placed game measures ~300 KB, so this leaves room

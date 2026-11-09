@@ -3213,7 +3213,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # A practice watch is recorded from the sheet's cameras, from its claim
         # on; one handed out again resumes its session (practice_resume).
         practice_fields = {}
-        if job.kind in ("camera_live", "camera_vod"):
+        if job.kind in ("camera_live", "camera_vod", "camera_standby"):
             practice_fields = {"source": practice.CAMERAS}
             if job.kind == "camera_live":
                 # Where the stream began: the clock's first guess, and its
@@ -3305,10 +3305,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return {"ok": True, "lease_expires_at": _iso(lease), "stop": True}
         if job.kind == "camera_live":
             run = repo.get_run(job.run_id)
-            if run is not None and run.stream_ended_at is not None:
-                # The stream is over (the poller saw it): the cameras would
-                # go on for ever, so the worker stops recording them.
-                return {"ok": True, "lease_expires_at": _iso(lease), "stop": True}
+            if run is not None:
+                # Which game this is: a worker that claimed it as a standby
+                # (playlists.standbys) learns here that its stream was found.
+                got = {"ok": True, "lease_expires_at": _iso(lease), "game": {
+                    "kind": "camera_live", "video_id": run.video_id, "title": run.title,
+                    "channel_id": run.channel_id, "sheet": run.sheet,
+                    "format": run.format or "fours", "published_at": _iso(run.published_at),
+                    "source": practice.CAMERAS}}
+                if run.stream_ended_at is not None:
+                    # The stream is over (the poller saw it): the cameras would
+                    # go on for ever, so the worker stops recording them.
+                    got["stop"] = True
+                return got
         return {"ok": True, "lease_expires_at": _iso(lease)}
 
     @app.post("/api/worker/jobs/{job_id}/artifacts")
@@ -4182,6 +4191,19 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             tz=settings.club_tz, force=force,
             camera_sheets=settings.camera_sheets, camera_max_sheets=settings.camera_max_sheets,
         )
+        # A cameras playlist's sheets are recorded from its window's start,
+        # and given up when no stream comes. After the poll, which hands any
+        # stream it found to its sheet's standby or gives it a camera game of
+        # its own, so a stream live already is never left to YouTube by the
+        # cap the standbys fill.
+        try:
+            result["standby"] = playlists.standbys(
+                repo, processing_version=settings.processing_version, now=t,
+                tz=settings.club_tz, camera_sheets=settings.camera_sheets,
+                camera_max_sheets=settings.camera_max_sheets)
+        except Exception as e:  # noqa: BLE001 - the streams are queued already
+            log.warning("camera standbys failed: %s", e)
+            result["standby"] = {"opened": [], "closed": [], "error": str(e)}
         # A league stream going live closes practice on every sheet: leagues
         # use all five. Before the index's early return, so it never waits for
         # the hour; and a failure here must not stop the poll. The live run is
@@ -4189,7 +4211,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # still running, every poll ends practice again: one failed ending
         # must not leave a session reading the cameras into the league.
         try:
-            if result["live"] or (settings.practice_enabled
+            if result["live"] or result["standby"]["opened"] or (settings.practice_enabled
                                   and practice.league_over_practice(repo, t)):
                 ended = practice.end_for_league(repo, t)
                 if ended:

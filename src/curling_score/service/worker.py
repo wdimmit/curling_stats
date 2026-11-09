@@ -548,11 +548,12 @@ def _enable_stack_dumps():
 
 def live_kinds() -> tuple:
     """The live jobs this worker claims: league games from the stream; from
-    the cameras too where it can see them (WORKER_CAMERAS=1); practice where
+    the cameras too where it can see them (WORKER_CAMERAS=1), and their
+    standbys, the cameras recorded ahead of the stream; practice where
     WORKER_PRACTICE=1."""
     kinds = ["live"]
     if os.environ.get("WORKER_CAMERAS") == "1":
-        kinds.append("camera_live")
+        kinds += ["camera_live", "camera_standby"]
     if os.environ.get("WORKER_PRACTICE") == "1":
         kinds.append("practice")
     return tuple(kinds)

@@ -42,9 +42,11 @@ spec:
             - { name: PRACTICE_MAX_CAMERA_WATCHES, value: "5" }
             # League games on a `cameras` playlist: the sheets whose cameras may
             # be read for one, and how many at once; the rest are read from the
-            # stream (camera-direct phase 3). 3,4 from the Gate B night (2026-11-08).
-            - { name: CAMERA_SHEETS, value: "3,4" }
-            - { name: CAMERA_MAX_SHEETS, value: "2" }
+            # stream (camera-direct phase 3). 3,4 for the Gate B night (2026-11-08);
+            # all five from the Monday Open League, 2026-11-09 (the user). The cap
+            # counts each sheet's standby too (playlists.standbys).
+            - { name: CAMERA_SHEETS, value: "1,2,3,4,5" }
+            - { name: CAMERA_MAX_SHEETS, value: "5" }
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'

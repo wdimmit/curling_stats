@@ -14,7 +14,8 @@ from pathlib import Path
 
 from curling_score import timeline
 from curling_score.ingest import source
-from curling_score.live.manager import is_camera_game, is_practice
+from curling_score.live.manager import (is_camera_game, is_practice, is_standby,
+                                        stream_start_s)
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -77,7 +78,8 @@ class LiveLane:
                 log.warning("live job %s was taken away; letting it go", stream.job["id"])
                 self.manager.finish(stream)
                 return True
-        ready = [s for s in streams if s.retry_at <= now]
+        # A standby only records until its stream is found: nothing to read.
+        ready = [s for s in streams if s.retry_at <= now and not is_standby(s.job)]
         for stream in ready:
             if stream.session is None:
                 if is_practice(stream.job):
@@ -410,7 +412,11 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
                 models=models, t0_s=t0_s, wall_t0=began,
                 publish=publish, progress=progress, clipper=clipper,
                 saved_calibration=saved, save_calibration=save, prior_throws=prior)
+        # The cameras recorded from the schedule's start (a standby): the
+        # game is read from where its stream began.
+        start_s = stream_start_s(job, stream.recorder) if is_camera_game(job) else 0.0
         return live.LiveSession(
+            start_s=start_s,
             video_id=job["video_id"], url=source.canonical_url(job["video_id"]),
             recording=stream.recorder, fmt=format_mod.by_name(job.get("format") or "fours"),
             pipeline=live.VideoPipeline(weights=weights, skip_longview=skip_longview,

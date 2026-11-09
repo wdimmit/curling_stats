@@ -174,7 +174,8 @@ class FirestoreRepo:
 
             # Games being played first, from the stream or the cameras, the
             # older of the two; then in CLAIM_ORDER.
-            playing = [d for d in (first(k) for k in ("live", "camera_live") if k in kinds) if d]
+            playing = [d for d in (first(k) for k in ("live", "camera_live", "camera_standby")
+                                   if k in kinds) if d]
             snap = min(playing, key=lambda d: d.to_dict()["created_at"]) if playing else None
             # Practice next: a card is due seconds after a stone stops.
             if snap is None and "practice" in kinds:

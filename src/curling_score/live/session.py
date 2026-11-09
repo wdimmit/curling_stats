@@ -140,8 +140,15 @@ def _worth(cal) -> int:
 class LiveSession:
     def __init__(self, video_id, url, recording, fmt, pipeline, *, sheet=None,
                  models=None, publish=None, progress=log.info,
-                 now=lambda: datetime.now(timezone.utc), fp_recorder=None):
+                 now=lambda: datetime.now(timezone.utc), fp_recorder=None,
+                 start_s: float = 0.0):
+        """``start_s``: where in the recording the game's stream began. A
+        camera game's cameras are recorded from its league's schedule start
+        (``playlists.standbys``), ahead of its stream; nothing before
+        ``start_s`` is read, and every wait counts from it, as if the
+        recording had begun there."""
         self.video_id, self.url, self.sheet, self.fmt = video_id, url, sheet, fmt
+        self.start_s = max(float(start_s or 0.0), 0.0)
         self.recording, self.pipeline = recording, pipeline
         self.models = models or Models()
         self.publish = publish or (lambda doc: None)
@@ -158,7 +165,7 @@ class LiveSession:
 
         self.calibration = None     # the newest one that worked
         self.steady = False         # two complete calibrations in a row agreed
-        self.next_calibration_s = CALIB_FIRST_S
+        self.next_calibration_s = self.start_s + CALIB_FIRST_S
         self.samples = []
         self.profiled_to = None     # t of the last keyframe in the profile
         self.games = {}             # index -> newest settled GameSegment
@@ -199,9 +206,9 @@ class LiveSession:
             return None
         head, ended = self.recording.head_s(), self.recording.ended()
         if ended and self.calibration is None and (
-                head <= 0 or self._ended_calib_tries >= ENDED_CALIB_TRIES):
+                head <= self.start_s or self._ended_calib_tries >= ENDED_CALIB_TRIES):
             raise LiveError("the stream ended before it could be calibrated"
-                            if head > 0 else "the stream ended with nothing recorded")
+                            if head > self.start_s else "the stream ended with nothing recorded")
         if self._calibration_due(head, ended):
             return self._calibrate(head)
         if self.calibration is None:
@@ -224,7 +231,7 @@ class LiveSession:
     def _calibration_due(self, head, ended):
         if self.steady:
             return False
-        if self.calibration is not None and head >= CALIB_GIVE_UP_S:
+        if self.calibration is not None and head - self.start_s >= CALIB_GIVE_UP_S:
             return False          # a working calibration is kept after an hour
         if self.calibration is None and ended:
             return True           # a stream shorter than the wait still gets one
@@ -235,10 +242,11 @@ class LiveSession:
         if self.recording.ended():
             self._ended_calib_tries += 1
         try:
-            got = self.pipeline.calibrate(self.recording.path, head)
+            got = self.pipeline.calibrate(
+                self.recording.path, head, **({"start_s": self.start_s} if self.start_s else {}))
         except CalibrationError as exc:
             self.progress(f"calibration from {head:.0f} s failed: {exc}")
-            if self.calibration is None and head >= CALIB_GIVE_UP_S:
+            if self.calibration is None and head - self.start_s >= CALIB_GIVE_UP_S:
                 raise LiveError(f"no calibration after {head:.0f} s: {exc}") from exc
             return "calibration failed"
         if (got.side_expected and self.calibration is not None
@@ -269,14 +277,16 @@ class LiveSession:
         if (self.profiled_to is not None and not self.recording.ended()
                 and head - self.profiled_to < PROFILE_EVERY_S):
             return
+        start = self.profiled_to if self.profiled_to is not None else (self.start_s or None)
         new = self.pipeline.samples(self.recording.path, self.calibration.setups,
-                                    self.profiled_to, head, detector=self.models.detector)
-        new = [s for s in new if self.profiled_to is None or s.t > self.profiled_to]
+                                    start, head, detector=self.models.detector)
+        new = [s for s in new if (self.profiled_to is None or s.t > self.profiled_to)
+               and s.t >= self.start_s]
         if new:
             self.samples.extend(new)
             self.profiled_to = new[-1].t
         elif self.profiled_to is None:
-            self.profiled_to = 0.0
+            self.profiled_to = self.start_s
 
     def _settled(self):
         ended = self.recording.ended()
@@ -381,14 +391,14 @@ class LiveSession:
             detector=self.models.detector, broom_model=self.models.broom_model,
             line_model=self.models.line_model, fmt=self.fmt, use_cache=False,
             one_pass=True, progress=self.progress,
-            release_model=self.models.release_model)
+            release_model=self.models.release_model, recording_start_s=self.start_s)
         run_up = self.run_up[key] if again else self.prev_end_s
         # The recorder only notes what the checks reject; the frames are cut
         # later, on the manager's keep thread, never inside an end's build.
         with record.recording(self.fp_recorder):
             built, closed = self.pipeline.build_end(ctx, game, end, run_up)
         if (not again and end.number == game.ends[0].number and timeline.nothing_thrown(built)
-                and analyze.leaves_off_head(game, end, run_up)):
+                and analyze.leaves_off_head(game, end, run_up, self.start_s)):
             # Stones parked in a house ahead of this game's first end, which
             # the board split put at its head (`boardsplit.board_decides`), or
             # people in a house before the stream's first game.
@@ -540,7 +550,8 @@ class VideoPipeline:
         self.weights, self.skip_longview = weights, skip_longview
         self.line, self.progress = line, progress
 
-    def calibrate(self, path, until_s):
+    def calibrate(self, path, until_s, start_s=None):
+        """From keyframes spread over ``[start_s or 0, until_s]``."""
         from curling_score.geometry import layout
         from curling_score.ingest import frames as F
 
@@ -549,10 +560,11 @@ class VideoPipeline:
             from curling_score.feeds import cameras
 
             panels, setups, sideviews = cameras.calibrate(
-                path, until_s, skip_longview=self.skip_longview, progress=self.progress)
+                path, until_s, start_s=start_s, skip_longview=self.skip_longview,
+                progress=self.progress)
             return Calibration(panels=panels, setups=setups, sideviews=sideviews,
                                until_s=until_s, side_expected=not self.skip_longview)
-        frames = F.spread_keyframes(path, until_s, count=analyze.CALIB_FRAMES)
+        frames = F.spread_keyframes(path, until_s, count=analyze.CALIB_FRAMES, start_s=start_s)
         if len(frames) < 2:
             raise CalibrationError(f"{len(frames)} keyframe(s) in the first "
                                    f"{until_s:.0f} s; need at least two")

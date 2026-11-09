@@ -42,6 +42,9 @@ CAMERA_SHEETS = (1, 2, 3, 4, 5)
 # closed out, which must not shut practice for ever.
 LEAGUE_STATUSES = ("queued", "processing", "live")
 LEAGUE_FRESH_S = 6 * 3600
+# A league game, or a sheet's cameras recorded ahead of its stream
+# (playlists.standbys): both mean league ice.
+LEAGUE_KINDS = ("live", "standby")
 # A run a worker is on: claimed, or published. Few at any time, unlike the
 # queue of recordings waiting.
 WORKED_ON = ("processing", "live")
@@ -99,7 +102,7 @@ def league_on(repo, now) -> bool:
     """Whether a league game is on, on any sheet: leagues use every sheet, so
     while one is, nobody practises."""
     cutoff = now - timedelta(seconds=LEAGUE_FRESH_S)
-    return any(run.kind == "live" and run.created_at >= cutoff
+    return any(run.kind in LEAGUE_KINDS and run.created_at >= cutoff
                for status in LEAGUE_STATUSES for run in repo.list_runs(status=status))
 
 
@@ -109,7 +112,7 @@ def league_over_practice(repo, now) -> bool:
     the league went live have failed. Reads only the runs being worked on."""
     cutoff = now - timedelta(seconds=LEAGUE_FRESH_S)
     runs = [run for status in WORKED_ON for run in repo.list_runs(status=status)]
-    return (any(run.kind == "live" and run.created_at >= cutoff for run in runs)
+    return (any(run.kind in LEAGUE_KINDS and run.created_at >= cutoff for run in runs)
             and any(run.kind == "practice" for run in runs))
 
 

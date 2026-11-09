@@ -22,9 +22,12 @@ RUN_STATUSES = ("pending_approval", "queued", "processing", "live", "ready",
 # "practice" reads a sheet's cameras while someone practises on it.
 # "camera_live" is a league game read from its sheet's cameras instead of the
 # stream, and "camera_vod" one read again from those cameras' kept files.
-JOB_KINDS = ("vod", "live", "practice", "camera_live", "camera_vod")
+# "camera_standby" records a sheet's cameras from its league's schedule start,
+# until the sheet's stream is found and the job becomes its "camera_live"
+# (playlists.standbys).
+JOB_KINDS = ("vod", "live", "practice", "camera_live", "camera_vod", "camera_standby")
 # The jobs only a worker that can see the club's cameras may take.
-CAMERA_KINDS = ("practice", "camera_live", "camera_vod")
+CAMERA_KINDS = ("practice", "camera_live", "camera_vod", "camera_standby")
 # Where a playlist's live games are read from.
 PLAYLIST_INPUTS = ("youtube", "cameras")
 JOB_STATES = ("queued", "running", "done", "failed")
@@ -56,7 +59,9 @@ class Run:
     # "fours" or "doubles"; None is a record from before formats, read as fours
     format: str | None = None
     # "vod" or "live", as on the run's job. A live run is published end by
-    # end while its stream plays; `revised_at` changes with every publish,
+    # end while its stream plays; "standby" is a sheet's cameras recorded
+    # ahead of its stream, which becomes "live" when the stream is found
+    # (its `video_id` a name we made up until then); `revised_at` changes with every publish,
     # the way `ready_at` does at completion, so each is served fresh.
     kind: str = "vod"
     # "cameras" for a practice watch read from the club's own cameras, whose
@@ -386,6 +391,10 @@ class WatchedPlaylist:
     # Where its live games are read from: "youtube" (the stream) or "cameras"
     # (each sheet's own cameras, up to the API's CAMERA_MAX_SHEETS at once).
     input: str = "youtube"
+    # The schedule window (its start, ISO) the sheets' standbys were opened
+    # for, and the sheets opened: each sheet once a window.
+    standby_window: str | None = None
+    standby_sheets: list = field(default_factory=list)
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

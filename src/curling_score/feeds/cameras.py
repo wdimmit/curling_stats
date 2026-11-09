@@ -137,16 +137,19 @@ def localize(setups: dict, sideviews: dict | None, sheet_layout: SheetLayout):
     return setups, sideviews
 
 
-def calibrate(feed: Feed, until_s: float, *, skip_longview: bool, progress):
+def calibrate(feed: Feed, until_s: float, *, skip_longview: bool, progress,
+              start_s: float | None = None):
     """``analyze.calibrate_from`` for a camera feed: ``(panels, setups,
-    sideviews)``, the panels as composed and the rest in their views' pixels."""
+    sideviews)``, the panels as composed and the rest in their views' pixels,
+    from keyframes over ``[start_s or 0, until_s]``."""
     from curling_score import analyze
     from curling_score.cameras import layout
     from curling_score.geometry.calibrate import CalibrationError
     from curling_score.geometry.layout import PanelLayout
 
     sheet_layout = layout.load(feed.sheet)
-    views = view_keyframes(feed, view_cuts(sheet_layout), until_s, analyze.CALIB_FRAMES)
+    views = view_keyframes(feed, view_cuts(sheet_layout), until_s, analyze.CALIB_FRAMES,
+                           start_s=start_s)
     n = len(views["top"])
     if n < 2:
         raise CalibrationError(f"{n} keyframe(s) in the first {until_s:.0f} s; need at least two")
