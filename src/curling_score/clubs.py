@@ -107,6 +107,10 @@ SWIFT_CURRENT = Club("swift-current", (
     for house, side in (("top", "left"), ("bottom", "right"))
 }, panel_layout=PanelLayout(top=(730, 8, 460, 454), bottom=(730, 613, 460, 454)),
     side_rows=(0, 990),
+    # The overheads end ~1.9 m in front of the tee (454 rows at ~118 px/m,
+    # tee ~222 rows down): no hog line, no guards. The long camera behind the
+    # thrower has the destination hog line in view (row ~620 of 990).
+    far_hog_from_long=True, guards_from_long_m=1.9,
     # The Pepsi logo at centre ice, near the bottom of both long cameras.
     logo_rows={"left": (770, 990), "right": (800, 990)})
 

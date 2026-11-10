@@ -128,6 +128,12 @@ def test_dallas_turns_both_on_and_granite_neither():
     assert not clubs.GRANITE.far_hog_from_long and clubs.GRANITE.guards_from_long_m is None
 
 
+def test_swift_current_reads_guards_from_where_its_house_only_overheads_end():
+    from curling_score import clubs
+    sc = clubs.SWIFT_CURRENT
+    assert sc.far_hog_from_long and sc.guards_from_long_m == pytest.approx(1.9)
+
+
 # --- rocks seen at neither end ----------------------------------------------------------------
 
 def test_the_long_camera_follows_lost_rocks_only_where_the_overhead_misses_guards():
