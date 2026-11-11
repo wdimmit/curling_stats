@@ -113,6 +113,21 @@ class TestPublishingOneEndAtATime:
         (again,) = world["repo"].sources_for_video(LIVE)
         assert again.id == src.id and again.game_end_s == doc["games"][0]["end_s"]
 
+    def test_the_api_keeps_one_copy_of_a_live_game_s_timeline(self, world):
+        # Every end is a new version of the same key; keeping each one is
+        # what ran the instance out of memory on league nights (doccache).
+        add_live_run(world)
+        job = claim(world, ["live"]).json()["job"]
+        c = world["client"]
+        for ends in (1, 2, 3):
+            world["clock"].advance(900)
+            doc = one_game(ends)
+            upload(world, job["id"], doc)
+            assert publish(world, job["id"], doc).status_code == 200
+            (src,) = world["repo"].sources_for_video(LIVE)
+            assert len(c.get(f"/g/{src.id}/timeline.json").json()["games"][0]["ends"]) == ends
+        assert len(c.app.state.docs) == 1
+
     def test_publishing_keeps_the_job_leased(self, world):
         add_live_run(world)
         job = claim(world, ["live"]).json()["job"]
