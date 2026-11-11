@@ -39,8 +39,9 @@ from starlette.middleware.gzip import GZipMiddleware
 from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
-from curling_score.service import (dedupe, gameclips, ice_report, labelling, playlist_index,
-                                   playlists, practice, signin, slug, team_names, thinking_report)
+from curling_score.service import (dedupe, doccache, gameclips, ice_report, labelling,
+                                   playlist_index, playlists, practice, signin, slug, team_names,
+                                   thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
     JOB_KINDS, LABEL_KINDS, ROLES, ApiKey, ClipJob, Chart, Flag, Invite, Job, LabelAnswer,
@@ -571,21 +572,23 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
     def url_for(path: str) -> str:
         return f"{settings.public_base_url}{path}"
 
-    @lru_cache(maxsize=64)
+    # The timelines read so far, as bytes: see doccache for why not parsed.
+    docs = doccache.DocCache(store.get_bytes)
+    app.state.docs = docs
+
     def load_doc(key: str, version: str | None = None) -> dict:
-        """The parsed timeline at `key`, as it stood at `version`.
+        """The parsed timeline at `key`, as it stood at `version` -- a copy
+        of the caller's own.
 
         A retry runs a run again in place, and the worker uploads the new
         timeline over the old one at the same key. Cached by key alone, every
         instance that had served the game went on serving the old document --
         to the review link, every chart, and the thinking summary computed
         from it. The run's `ready_at` changes each time it completes, so it
-        goes in the key the way the stat does in `_asset_bytes`.
+        goes in the key the way the stat does in `_asset_bytes`; the cache
+        keeps only the newest version of each.
         """
-        data = store.get_bytes(key)
-        if data is None:
-            raise KeyError(key)
-        return json.loads(data)
+        return docs.load(key, version)
 
     def run_doc(run: Run) -> dict:
         # A live run's timeline is rewritten at the same key after every end;
@@ -615,7 +618,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         for. The source-level review routes below pass nothing and so keep
         seeing the whole of what was detected.
         """
-        doc = json.loads(json.dumps(run_doc(run)))  # a private copy
+        doc = run_doc(run)  # parsed afresh: this request's own to cut down
         if game_index is not None:
             doc["games"] = [g for g in doc["games"] if g["index"] == game_index]
         doc = timeline.trim_to_start(doc, start_s)
