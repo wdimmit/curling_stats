@@ -203,3 +203,57 @@ class TestGivingUp:
         self.claimed(repo)
         repo.update_playlist("p", input="youtube")
         assert len(standbys(repo, later(THU_6PM, 5))["closed"]) == 5
+
+
+class TestBackToBackLeagues:
+    """Two leagues on the same sheets, the second's streams going up as the
+    first's come down (Tuesday: Supper until 19:00, Super from 19:00)."""
+
+    def first_league(self, repo, ended_at=None, sheets=(1, 2, 3, 4, 5)):
+        for s in sheets:
+            repo.put_run(Run(id=f"r_sup{s}", video_id=f"sup{s}", processing_version="p",
+                             status="processing", created_at=later(THU_7PM, -120), kind="live",
+                             source="cameras", sheet=s, playlist_id="PL0", league="Supper",
+                             stream_ended_at=ended_at))
+
+    def game(self, repo, vid):
+        runs = repo.runs_for_video(vid)
+        return runs[0] if runs else None
+
+    def test_a_game_whose_stream_ended_does_not_hold_a_place_under_the_cap(self):
+        repo = setup()
+        self.first_league(repo, ended_at=later(THU_7PM, -5))
+        yt = FakeYouTube(playlists={"PL1": []})
+        stream(yt, "vid3", 3)
+        poll(repo, yt, cap=5)
+        assert self.game(repo, "vid3").source == "cameras"
+
+    def test_a_stream_waits_while_its_sheet_still_records_the_last_game(self):
+        repo = setup()
+        self.first_league(repo)
+        yt = FakeYouTube(playlists={"PL1": []})
+        stream(yt, "vid3", 3)
+        poll(repo, yt, cap=5)
+        assert self.game(repo, "vid3") is None
+        assert "vid3" not in repo.get_playlist("p").last_seen_video_ids
+
+    def test_and_waits_a_moment_more_while_the_worker_lets_the_cameras_go(self):
+        repo = setup()
+        self.first_league(repo, ended_at=later(THU_7PM, 2))
+        yt = FakeYouTube(playlists={"PL1": []})
+        stream(yt, "vid3", 3)
+        poll(repo, yt, later(THU_7PM, 2.5), cap=5)
+        assert self.game(repo, "vid3") is None
+        poll(repo, yt, later(THU_7PM, 5.5), cap=5)
+        assert self.game(repo, "vid3").source == "cameras"
+
+    def test_a_sheet_that_never_comes_free_goes_to_youtube_after_15_minutes(self):
+        repo = setup()
+        self.first_league(repo)
+        yt = FakeYouTube(playlists={"PL1": []})
+        stream(yt, "vid3", 3)
+        poll(repo, yt, later(THU_7PM, 13), cap=5)
+        assert self.game(repo, "vid3") is None
+        poll(repo, yt, later(THU_7PM, 16), cap=5)
+        run = self.game(repo, "vid3")
+        assert run.source is None and repo.job_for_run(run.id).kind == "live"

@@ -122,11 +122,22 @@ def due(pl, now: datetime, tz: str) -> bool:
 _CAMERA_GOING = ("queued", "processing", "live")
 
 
+# A camera game whose stream has ended lets its cameras go at the worker's
+# next heartbeat (live.manager.HEARTBEAT_S, 60 s): until then its sheet is
+# still being read.
+RELEASE_S = 120.0
+# A stream on a sheet still read by the game before it waits this long for
+# the cameras, then is read from the stream instead.
+CAMERA_WAIT_S = 15 * 60.0
+
+
 def camera_games(repo) -> int:
     """How many league games are being read from the cameras, standbys
-    among them: what the cap (CAMERA_MAX_SHEETS) counts."""
+    among them: what the cap (CAMERA_MAX_SHEETS) counts. A game whose stream
+    has ended, finishing its last ends, reads no camera any more."""
     return sum(1 for status in _CAMERA_GOING for r in repo.list_runs(status=status, limit=500)
-               if r.kind in ("live", "standby") and r.source == "cameras")
+               if r.kind in ("live", "standby") and r.source == "cameras"
+               and r.stream_ended_at is None)
 
 
 def _waiting_standbys(repo) -> list:
@@ -147,11 +158,15 @@ def _standby_for(repo, playlist_id: str, sheet) -> Run | None:
     return None
 
 
-def _sheet_busy(repo, sheet) -> bool:
+def _sheet_busy(repo, sheet, now: datetime | None = None) -> bool:
     """Whether something is reading the sheet's cameras: a camera game whose
-    stream has not ended, a standby, or practice. Two readers on one camera
-    are never tried."""
-    return any(r.sheet == sheet and r.source == "cameras" and r.stream_ended_at is None
+    stream has not ended (or, given ``now``, ended within ``RELEASE_S``), a
+    standby, or practice. Two readers on one camera are never tried."""
+    def reading(r):
+        if r.stream_ended_at is None:
+            return True
+        return now is not None and (now - r.stream_ended_at).total_seconds() < RELEASE_S
+    return any(r.sheet == sheet and r.source == "cameras" and reading(r)
                and r.kind in ("live", "standby", "practice")
                for status in _CAMERA_GOING for r in repo.list_runs(status=status, limit=500))
 
@@ -327,8 +342,18 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                         _hand_over(repo, standby, meta, pl, now)
                         live_created.append(standby.id)
                         continue
-                    cameras = (pl.input == "cameras" and sheet in camera_sheets
-                               and camera_games(repo) < camera_max_sheets)
+                    on_cameras = pl.input == "cameras" and sheet in camera_sheets
+                    if on_cameras and _sheet_busy(repo, sheet, now):
+                        # The game before it still has the cameras (back to
+                        # back leagues): wait for them, the stream left unseen
+                        # so the next poll looks again -- for a while.
+                        waited = ((now - meta.published_at).total_seconds()
+                                  if meta.published_at is not None else CAMERA_WAIT_S)
+                        if waited < CAMERA_WAIT_S:
+                            skipped.append((meta.video_id, "cameras_busy"))
+                            continue
+                        on_cameras = False
+                    cameras = on_cameras and camera_games(repo) < camera_max_sheets
                     run = Run(
                         id=slug.new_run_id(), video_id=meta.video_id,
                         processing_version=processing_version, status="queued",
