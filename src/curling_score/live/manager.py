@@ -51,6 +51,19 @@ def _published_at(job):
         return None
 
 
+def _name_video(recorder, video_id: str) -> None:
+    """Write the game's video id into a camera recording's directory: the
+    clips worker finds a game still being recorded by it, whatever the
+    directory is called (a standby's is named for the standby)."""
+    directory = getattr(recorder, "dir", None)
+    if not directory:
+        return
+    try:
+        (Path(directory) / "video_id").write_text(video_id)
+    except OSError as exc:
+        log.warning("could not name the recording in %s: %s", directory, exc)
+
+
 def stream_start_s(job, recorder) -> float:
     """Where in a camera recording its game's stream began: past 0 when the
     cameras were recorded ahead of it (a standby), else 0."""
@@ -262,23 +275,28 @@ class LiveManager:
         dest = self.cams_root / "kept" / vid
         shutil.rmtree(dest, ignore_errors=True)
         dest.parent.mkdir(parents=True, exist_ok=True)
+        from curling_score.cameras import trim
+
         os.rename(directory, dest)
-        (dest / "clock.json").write_text(json.dumps(
-            {"sheet": int(stream.job["sheet"]), "wall_started": rec.wall_started,
-             "clock": clock}))
-        log.info("kept the cameras of %s in %s", vid, dest)
         # Recorded from the schedule's start (a standby): only the broadcast
-        # is kept. Cut on the keeping thread -- it copies gigabytes.
+        # is kept. Cut on the keeping thread -- it copies gigabytes. Until it
+        # is, the clips worker leaves the files alone (trim.PENDING).
         cut = stream_start_s(stream.job, rec)
+        meta = {"sheet": int(stream.job["sheet"]), "wall_started": rec.wall_started,
+                "clock": clock, "kept_at": time.time()}
+        if cut >= trim.MIN_CUT_S:
+            meta[trim.PENDING] = True
+        (dest / "clock.json").write_text(json.dumps(meta))
+        log.info("kept the cameras of %s in %s", vid, dest)
 
         def trim_then_prune():
-            from curling_score.cameras import trim
-
             if cut >= trim.MIN_CUT_S:
                 try:
                     trim.trim_kept(dest, cut)
                 except Exception:  # noqa: BLE001 - kept uncut; pruned in days
                     log.exception("could not cut the kept cameras of %s at %.0f s", vid, cut)
+                finally:
+                    trim.clear_pending(dest)
             if self.prune is not None:
                 self.prune()
 
@@ -344,6 +362,7 @@ class LiveManager:
             return
         stream = Stream(job=job, recorder=recorder, last_beat=self.clock())
         if is_camera_game(job):
+            _name_video(recorder, job["video_id"])
             self._follow(stream, job)
         with self._lock:
             self._streams.append(stream)
@@ -376,6 +395,7 @@ class LiveManager:
             log.exception("live job %s: its clock did not start", job["id"])
             stream.aligner = None
             return
+        _name_video(stream.recorder, job["video_id"])
         stream.job = job
 
     def _fail(self, job, error, kind="permanent"):

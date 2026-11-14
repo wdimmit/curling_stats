@@ -30,6 +30,9 @@ log = logging.getLogger(__name__)
 
 # A cut this close to the start is not worth copying the files for.
 MIN_CUT_S = 1.0
+# In a kept game's clock.json while its files are still to be cut: a reader
+# (the clips worker) waits rather than read files being replaced.
+PENDING = "trim_pending"
 
 
 def _trim_file(path: Path, cut_s: float) -> None:
@@ -96,9 +99,28 @@ def shift_clock(clock: dict | None, cut_s: float) -> dict | None:
     return moved
 
 
+def _rewrite(meta_path: Path, meta: dict) -> None:
+    tmp = meta_path.with_name("clock.json.tmp")
+    tmp.write_text(json.dumps(meta))
+    os.replace(tmp, meta_path)
+
+
+def clear_pending(directory) -> None:
+    """The kept game's files are as they will stay: ``PENDING`` dropped from
+    its clock.json. Nothing to do when it has no flag, or no clock.json."""
+    meta_path = Path(directory) / "clock.json"
+    try:
+        meta = json.loads(meta_path.read_text())
+    except (FileNotFoundError, ValueError):
+        return
+    if meta.pop(PENDING, None) is not None:
+        _rewrite(meta_path, meta)
+
+
 def trim_kept(directory, cut_s: float) -> float:
     """A kept camera game (``<role>.ts`` and ``clock.json``) cut at ``cut_s``,
-    its clock moved with it and the cut noted (``start_trimmed_s``)."""
+    its clock moved with it and the cut noted (``start_trimmed_s``); its
+    ``PENDING`` flag dropped whether or not a cut was made."""
     directory = Path(directory)
     made = trim_files(directory, cut_s)
     if made:
@@ -107,8 +129,9 @@ def trim_kept(directory, cut_s: float) -> float:
         meta["wall_started"] = meta["wall_started"] + made
         meta["clock"] = shift_clock(meta.get("clock"), made)
         meta["start_trimmed_s"] = made
-        tmp = meta_path.with_name("clock.json.tmp")
-        tmp.write_text(json.dumps(meta))
-        os.replace(tmp, meta_path)
+        meta.pop(PENDING, None)
+        _rewrite(meta_path, meta)
         log.info("kept cameras in %s cut at %.1f s, where the stream began", directory, made)
+    else:
+        clear_pending(directory)
     return made

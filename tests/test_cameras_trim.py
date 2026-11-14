@@ -81,3 +81,38 @@ def test_kept_files_are_cut_and_their_clock_moved(tmp_path):
     assert kept["clock"]["offset_s"] == pytest.approx(0.2)
     assert kept["start_trimmed_s"] == pytest.approx(1.2)
     assert read_ts(d / "long_a.ts")[0][:2] == (0.0, True)
+
+
+def _pending_dir(tmp_path):
+    d = tmp_path / "kept" / "vid"
+    d.mkdir(parents=True)
+    (d / "long_a.ts").write_bytes(b"ts")
+    (d / "clock.json").write_text(json.dumps(
+        {"sheet": 3, "wall_started": 1000.0, "clock": {"offset_s": -10.0},
+         "kept_at": 2000.0, trim.PENDING: True}))
+    return d
+
+
+def test_trim_kept_clears_the_pending_flag(tmp_path, monkeypatch):
+    monkeypatch.setattr(trim, "trim_files", lambda d, cut: cut)
+    d = _pending_dir(tmp_path)
+    assert trim.trim_kept(d, 5.0) == 5.0
+    meta = json.loads((d / "clock.json").read_text())
+    assert trim.PENDING not in meta
+    assert meta["start_trimmed_s"] == 5.0 and meta["kept_at"] == 2000.0
+    assert meta["wall_started"] == 1005.0
+
+
+def test_a_cut_too_small_still_clears_the_flag(tmp_path):
+    d = _pending_dir(tmp_path)
+    assert trim.trim_kept(d, 0.2) == 0.0
+    meta = json.loads((d / "clock.json").read_text())
+    assert trim.PENDING not in meta and "start_trimmed_s" not in meta
+
+
+def test_clear_pending_leaves_a_clock_without_the_flag_alone(tmp_path):
+    d = _pending_dir(tmp_path)
+    trim.clear_pending(d)
+    trim.clear_pending(d)
+    assert trim.PENDING not in json.loads((d / "clock.json").read_text())
+    trim.clear_pending(tmp_path / "nowhere")        # a directory gone is no error

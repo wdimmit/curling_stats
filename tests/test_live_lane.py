@@ -1202,9 +1202,15 @@ class TestKeepingACameraGame:
         kept = cams / "kept" / "liveVid0003"
         assert sorted(p.name for p in kept.iterdir()) == \
             ["clock.json", "house_a.ts", "house_h.ts", "long_a.ts", "long_h.ts"]
-        assert json.loads((kept / "clock.json").read_text()) == \
-            {"sheet": 3, "wall_started": 1793900701.0, "clock": self.CLOCK}
+        meta = json.loads((kept / "clock.json").read_text())
+        assert isinstance(meta.pop("kept_at"), float)
+        assert meta == {"sheet": 3, "wall_started": 1793900701.0, "clock": self.CLOCK}
         assert not (cams / "live" / "ryzen" / "liveVid0003").exists()
+
+    def test_a_camera_recording_names_its_video(self, tmp_path):
+        m, cams = self.manager(tmp_path, whole=True)
+        (s,) = m.streams()
+        assert (s.recorder.dir / "video_id").read_text() == "liveVid0003"
 
     def test_a_game_that_did_not_end_with_its_stream_is_not_kept(self, tmp_path):
         m, cams = self.manager(tmp_path, whole=False)
@@ -1439,6 +1445,66 @@ class TestKeepingAGameFromAStandby:
         (s,) = m.streams()
         m.finish(s)
         assert cuts == [(cams / "kept" / "liveVid0003", 1860.0)]
+
+    def standby_manager(self, tmp_path, monkeypatch, trim_kept, background):
+        from datetime import datetime
+
+        from curling_score.cameras import trim
+
+        monkeypatch.setattr(trim, "trim_kept", trim_kept)
+        cams = tmp_path / "cams"
+        began = datetime.fromisoformat(found(3)["published_at"]).timestamp()
+
+        class Files(CamRecorder):
+            def __init__(self, job):
+                super().__init__(job)
+                self.wall_started = began - 1860.0
+                self.dir = cams / "live" / "ryzen" / job["video_id"]
+                self.dir.mkdir(parents=True)
+                (self.dir / "long_a.ts").write_bytes(b"ts")
+
+            def whole(self):
+                return True
+
+        api = Api([standby_job(3)])
+        t = [0.0]
+        m = manager_mod.LiveManager(
+            api, "ryzen", model_id="m", gpu=None, root=tmp_path / "cache", clock=lambda: t[0],
+            kinds=("camera_standby",), cameras=True, cams_root=cams, make_recorder=Files,
+            make_aligner=lambda job, rec: Aligned(), background=background)
+        m.poll_once()
+        api.games["j_3"] = found(3)
+        t[0] = 61.0
+        m.poll_once()
+        return m, cams
+
+    def test_a_standby_game_is_kept_with_its_trim_pending_until_cut(self, tmp_path,
+                                                                     monkeypatch):
+        import json
+
+        later = []
+        m, cams = self.standby_manager(tmp_path, monkeypatch, lambda d, cut: cut, later.append)
+        (s,) = m.streams()
+        assert (s.recorder.dir / "video_id").read_text() == "liveVid0003"
+        m.finish(s)
+        meta_path = cams / "kept" / "liveVid0003" / "clock.json"
+        assert json.loads(meta_path.read_text())["trim_pending"] is True
+        for fn in later:
+            fn()
+        meta = json.loads(meta_path.read_text())
+        assert "trim_pending" not in meta and isinstance(meta["kept_at"], float)
+
+    def test_a_failed_trim_clears_the_pending_flag(self, tmp_path, monkeypatch):
+        import json
+
+        def broken(d, cut):
+            raise OSError("ffmpeg fell over")
+
+        m, cams = self.standby_manager(tmp_path, monkeypatch, broken, lambda fn: fn())
+        (s,) = m.streams()
+        m.finish(s)
+        meta = json.loads((cams / "kept" / "liveVid0003" / "clock.json").read_text())
+        assert "trim_pending" not in meta and isinstance(meta["kept_at"], float)
 
     def test_a_game_recorded_from_its_claim_is_not_cut(self, tmp_path, monkeypatch):
         from curling_score.cameras import trim
