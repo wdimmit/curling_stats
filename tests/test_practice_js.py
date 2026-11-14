@@ -169,6 +169,25 @@ def test_the_summary_strip():
                    "withBroom": 3}
 
 
+OTHERS = ('[{id: "a", color: "red", hidden: false, other_color: false},'
+          '{id: "b", color: "yellow", hidden: true, other_color: true},'
+          '{id: "c", color: "yellow", hidden: false, other_color: true},'
+          '{id: "d", color: "red", hidden: true, other_color: false}]')
+
+
+def test_the_other_colours_rocks_are_left_out_of_the_list():
+    # b is the partner's; c is a yellow kept as mine after all; d is a red
+    # hidden by "Not my throw", which stays listed (muted) as before.
+    assert js(f"P.listed({OTHERS}).map(t => t.id)") == ["a", "c", "d"]
+    assert js(f"P.listed({OTHERS}, {{showOthers: true}}).map(t => t.id)") == ["a", "b", "c", "d"]
+    assert js(f"P.leftOut({OTHERS}).map(t => t.id)") == ["b"]
+
+
+def test_how_many_of_the_other_colour_were_left_out():
+    assert js('P.leftOutText(1, "yellow")') == "1 yellow rock left out"
+    assert js('P.leftOutText(7, "red")') == "7 red rocks left out"
+
+
 def test_how_long_a_session_ran():
     got = js('[0, 40, 600, 3540, 3600, 5520, 10800].map(P.lengthText)')
     assert got == ["under a minute", "under a minute", "10 min", "59 min", "1 h",
