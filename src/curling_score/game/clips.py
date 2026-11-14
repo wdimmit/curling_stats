@@ -171,6 +171,10 @@ class NotReady(RuntimeError):
 
 # Each camera's file in a camera recording's directory (cameras/recorder.py).
 CAMERA_ROLES = ("house_a", "house_h", "long_a", "long_h")
+# A kept game whose cut is still pending this long after it was kept lost
+# its cutting thread (a restart): its files are not read, and its YouTube copy
+# is used if there is one.
+TRIM_STALE_S = 3600.0
 
 
 @dataclass(frozen=True)
@@ -209,6 +213,9 @@ def _kept_cameras(cams, video_id: str) -> ClipSource | None:
     from curling_score.cameras import trim
 
     if meta.get(trim.PENDING):
+        if time.time() - float(meta.get("kept_at") or 0.0) > TRIM_STALE_S:
+            log.warning("%s was left half cut: not read", directory)
+            return None
         raise NotReady(f"{directory} is still being cut where its stream began")
     return ClipSource("cameras", directory, int(meta["sheet"]), meta.get("clock"))
 

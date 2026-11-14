@@ -41,6 +41,9 @@ RETRY_S = 60.0
 # no longer than this past the run's ready_at: after that they are gone.
 NOT_READY_WAIT_S = 120.0
 NOT_READY_MAX_S = 3 * 3600.0
+# A job on a run not yet ready waits at most this long from when it was asked
+# for: a live game's stream runs at most ~5 h (the recorders' cap).
+NOT_READY_LIVE_MAX_S = 6 * 3600.0
 # An overlay is ~1 KB a rock; one far bigger is not one.
 MAX_OVERLAY_BYTES = 16_000
 # A clip of one shot, asked for from its page: its job's id begins so.
@@ -369,10 +372,16 @@ def fail(repo, job, error: str, now) -> bool:
 def later(repo, job, run, reason: str, now) -> bool:
     """A camera game's job whose files the clips worker could not read yet:
     queued again shortly, the try it took given back -- unless the run has
-    been ready for longer than NOT_READY_MAX_S, when its files are not
+    been ready for longer than NOT_READY_MAX_S, failed, or (never ready) was
+    asked for longer than NOT_READY_LIVE_MAX_S ago, when its files are not
     coming and every rock is ``video_gone``. True when it was put back."""
     ready = getattr(run, "ready_at", None) if run is not None else None
-    if run is not None and (ready is None or now < ready + timedelta(seconds=NOT_READY_MAX_S)):
+    if ready is not None:
+        waiting = now < ready + timedelta(seconds=NOT_READY_MAX_S)
+    else:
+        waiting = (run is not None and run.status != "failed"
+                   and now < job.created_at + timedelta(seconds=NOT_READY_LIVE_MAX_S))
+    if waiting:
         repo.update_clip_job(job.id, state="queued", error=reason, worker_id=None,
                              lease_expires_at=None, attempts=max(0, job.attempts - 1),
                              run_after=now + timedelta(seconds=NOT_READY_WAIT_S))

@@ -116,3 +116,28 @@ def test_clear_pending_leaves_a_clock_without_the_flag_alone(tmp_path):
     trim.clear_pending(d)
     assert trim.PENDING not in json.loads((d / "clock.json").read_text())
     trim.clear_pending(tmp_path / "nowhere")        # a directory gone is no error
+
+
+def test_a_trim_that_fails_partway_replaces_no_file(tmp_path, monkeypatch):
+    d = _pending_dir(tmp_path)
+    for role in ("house_a", "house_h", "long_h"):
+        (d / f"{role}.ts").write_bytes(f"orig-{role}".encode())
+    (d / "long_a.ts").write_bytes(b"orig-long_a")
+    calls = []
+
+    def write_one(path, cut_s):
+        calls.append(path.name)
+        if len(calls) == 2:
+            raise OSError("No space left on device")
+        out = path.with_name(path.name + ".trim")
+        out.write_bytes(b"cut")
+        return out
+
+    monkeypatch.setattr(trim, "_write_trim", write_one)
+    with pytest.raises(OSError):
+        trim.trim_kept(d, 30.0)
+    for role in ("house_a", "house_h", "long_a", "long_h"):
+        assert (d / f"{role}.ts").read_bytes() == f"orig-{role}".encode()
+    assert list(d.glob("*.trim")) == []
+    meta = json.loads((d / "clock.json").read_text())
+    assert "start_trimmed_s" not in meta and meta["wall_started"] == 1000.0

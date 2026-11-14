@@ -307,6 +307,26 @@ class TestFindSource:
         with pytest.raises(gc.NotReady):
             gc.find_source("VID", [], [tmp_path], feed=FEED)
 
+    def test_a_trim_left_pending_long_ago_falls_through_to_the_copy(self, tmp_path):
+        import time
+
+        cams, cache = tmp_path / "cams", tmp_path / "cache"
+        kept_dir(cams, extra={"trim_pending": True, "kept_at": time.time() - 2 * 3600})
+        (cache / "videos").mkdir(parents=True)
+        (cache / "videos" / "VID.mp4").write_bytes(b"x")
+        got = gc.find_source("VID", [cache], [cams], feed=FEED)
+        assert got.kind == "composite"
+
+    def test_a_recent_pending_trim_is_still_waited_for(self, tmp_path):
+        import time
+
+        cams, cache = tmp_path / "cams", tmp_path / "cache"
+        kept_dir(cams, extra={"trim_pending": True, "kept_at": time.time() - 60})
+        (cache / "videos").mkdir(parents=True)
+        (cache / "videos" / "VID.mp4").write_bytes(b"x")
+        with pytest.raises(gc.NotReady):
+            gc.find_source("VID", [cache], [cams], feed=FEED)
+
     def test_a_kept_dir_without_its_clock_is_not_ready(self, tmp_path):
         kept_dir(tmp_path, clock_json=False)
         with pytest.raises(gc.NotReady):

@@ -317,10 +317,18 @@ class TestCameraGames:
         from tests.test_game_clips import RIGHT
         assert seen == [(cache[1] / "videos" / "VID.mp4", RIGHT.rect)]
 
-    def test_starts_with_only_the_cameras(self, tmp_path, monkeypatch):
+    def test_a_cache_without_videos_is_refused_even_with_cameras(self, tmp_path, monkeypatch):
         (tmp_path / "cams" / "kept").mkdir(parents=True)
         (tmp_path / "src").mkdir()
         _clip_env(monkeypatch, tmp_path, str(tmp_path / "src"))
+        monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
+        monkeypatch.setattr(clipworker, "run_forever",
+                            lambda *a, **kw: pytest.fail("it started"))
+        assert clipworker.main([]) == 2
+
+    def test_starts_with_only_the_cameras(self, tmp_path, monkeypatch):
+        (tmp_path / "cams" / "kept").mkdir(parents=True)
+        _clip_env(monkeypatch, tmp_path, "")
         monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
         got = {}
         monkeypatch.setattr(clipworker, "run_forever",

@@ -35,7 +35,8 @@ MIN_CUT_S = 1.0
 PENDING = "trim_pending"
 
 
-def _trim_file(path: Path, cut_s: float) -> None:
+def _write_trim(path: Path, cut_s: float) -> Path:
+    """``path`` cut at ``cut_s``, written beside it as ``<name>.trim``."""
     out_path = path.with_name(path.name + ".trim")
     out = None
     try:
@@ -71,17 +72,28 @@ def _trim_file(path: Path, cut_s: float) -> None:
         # Nothing at or after the cut: an empty view, as a camera that sent
         # nothing would leave.
         out_path.write_bytes(b"")
-    os.replace(out_path, path)
+    return out_path
 
 
 def trim_files(directory, cut_s: float) -> float:
     """Each ``<role>.ts`` in ``directory`` cut to begin at ``cut_s`` on the
     recording's clock; returns the cut made (0.0 when it was too small to
-    make: ``MIN_CUT_S``)."""
+    make: ``MIN_CUT_S``). Every file is cut beside itself before any is
+    replaced, so a cut that fails (a full disk) leaves all of them as they
+    were, on the clock they share, never some cut and some not."""
     if cut_s < MIN_CUT_S:
         return 0.0
-    for path in sorted(Path(directory).glob("*.ts")):
-        _trim_file(path, cut_s)
+    paths = sorted(Path(directory).glob("*.ts"))
+    written = []
+    try:
+        for path in paths:
+            written.append((_write_trim(path, cut_s), path))
+    except BaseException:
+        for path in paths:
+            path.with_name(path.name + ".trim").unlink(missing_ok=True)
+        raise
+    for out_path, path in written:
+        os.replace(out_path, path)
     return cut_s
 
 

@@ -488,8 +488,21 @@ class TestLater:
         assert job.rocks == {"1.2.13": {"clip": None, "reason": "video_gone"},
                              "1.2.15": {"clip": None, "reason": "video_gone"}}
 
-    def test_a_run_not_yet_ready_is_always_waited_for(self):
+    def test_a_live_run_is_waited_for_while_a_game_could_last(self):
         repo, run, _ = world(status="live")
         queued(repo, ["1.2.13"], state="running")
         assert gameclips.later(repo, repo.get_clip_job("cj_x"), run, "live",
-                               T + timedelta(days=3))
+                               T + timedelta(hours=5))
+
+    def test_a_run_never_ready_is_given_up_in_the_end(self):
+        repo, run, _ = world(status="live")
+        queued(repo, ["1.2.13"], state="running")
+        assert not gameclips.later(repo, repo.get_clip_job("cj_x"), run, "live",
+                                   T + timedelta(seconds=gameclips.NOT_READY_LIVE_MAX_S + 1))
+        assert repo.get_clip_job("cj_x").rocks["1.2.13"]["reason"] == "video_gone"
+
+    def test_a_failed_run_is_given_up_at_once(self):
+        repo, run, _ = world(status="failed")
+        queued(repo, ["1.2.13"], state="running")
+        assert not gameclips.later(repo, repo.get_clip_job("cj_x"), run, "failed",
+                                   T + timedelta(minutes=5))
