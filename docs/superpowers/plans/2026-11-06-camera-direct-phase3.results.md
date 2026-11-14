@@ -104,3 +104,56 @@ AP8h9VwexkY (worker 1) and 3KTI93qJwoc (worker 2). Script and output:
   (actualStartTime). The clock's first search, +-30 s around the start, covers that.
 
 **Pass.** Nothing is left open before Gate B except the user's go.
+
+## Gate B: Sunday Skips, 2026-11-08, sheets 3 and 4 live from the cameras
+
+Live charts: N3g-IC3MqeI (S3, r_1dr5CBBOjw5F8gCgy) and u1SZyYuCVzc (S4, r_1A7I8jVrVWa8FrBSN),
+both on worker2, recorded 19:03-21:30 PST, ready 81 s (S4) and 104 s (S3) after the stream
+ended. The reference is each game's own YouTube copy (CAMERA_KEEP_YOUTUBE), analysed after
+the ice closed (22:19-22:40 PST) with the deployed image in throwaway containers,
+`scratch/camera-direct/gateb-1108/yt/`. Comparison script and frames: session scratchpad
+`gateb/gb_compare.py`.
+
+| | S3 | S4 |
+|---|---|---|
+| Clock | `segment`, 190.468 then 190.501 s | `segment`, 188.281 s |
+| Ends | 6 = 6 | 8 = 8 |
+| Shots matched (compare_timelines) | 96/96 | 120/128 |
+| Board scores | 5/5 read, all equal | camera 0 read; YouTube 3 (ends 1-3) |
+| Detected score per end | 6/6 equal | 7/8 (end 6: camera red 1, YouTube red 3) |
+| Rest, median / worst (paired) | 0.9 / 1.7 cm | 0.9 cm; outliers 138 cm (e7 s11), 15 cm (e8 s12) |
+| Hog crossing (long camera) | -0.01 to -0.07 s | 0.0 to -0.09 s |
+| Release, rest, deep link (overhead) | -0.2 s every end | +0.2 to +0.3 s every end |
+| Camera capture | no reconnects or warnings | same |
+
+Findings:
+
+1. **The cameras start when the poll finds the stream.** The streams opened at 19:00:18;
+   the 3-minute poll (`live_poll_s` 180) made the runs at 19:03:04 and recording began
+   19:03:20. YouTube can go back to segment 0; the cameras cannot. S3's game began after
+   that, so it lost nothing. S4 lost end 1's first 5 rocks (`joined_late` 5).
+2. **S4's board: the blank-end card covers the red marker.** End 1 was blanked, and its
+   "1" card hangs on the hook over the red team marker. `scoreboard.find_board` needs both
+   markers, so it found no board in any frame after that (probe: `gateb-1108/board/`). The
+   board is found at camera t 5 and 60 s, before the card went up. The YouTube read also
+   failed after end 3 ("None in 13 reads, ends 4-8 not posted"). This is the board finder,
+   not the cameras; S3's board read every end.
+3. **S4 end 6, last rock: the camera read the house in the clearing.** Camera t_rest
+   5696.35, YouTube 5688.03. YouTube frames show the stones in place at 5686, being swept
+   off at 5690, and gone by 5698. The camera chart kept 2 stones and scored red 1. The
+   board's cards (red to 5 after end 6) agree with YouTube's red 3. This is the known
+   last-rock read in the clearing.
+4. **S4 end 7, shot 11: the camera is right.** YouTube put the rest at 6270.95, but the
+   thrown red is still running at 6274-6276; the camera's 6278.56 rest at (1.11, 0.70) is
+   after it stopped. Both charts end with the same stones.
+5. **Times.** The long-camera hog crossings agree within 0.1 s, so the clock is right.
+   Overhead times differ by a constant per sheet (S3 -0.2 s, S4 +0.3 s), with no drift
+   and no change with direction. That fits YouTube's house panels being out of step with
+   its long views, as measured at Gate A; the camera times come from one clock. Deep links
+   are within 0.32 s (S3) and 0.33 s per-end median (S4).
+6. **S4 rejects many offered deliveries** (camera 4-10 an end, YouTube 3-8). That is the
+   sheet, not the cameras, and both still count 16 per end.
+
+**Verdict:** S3 passes on every measure. S4 matches except finding 1 (a start-up gap
+specific to the cameras) and finding 3 (one end's score). Findings 2 and 3 also affect
+YouTube games.
