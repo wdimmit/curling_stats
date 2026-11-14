@@ -407,3 +407,89 @@ def test_a_clip_is_drawn_by_four_facts_of_each_panel():
         "left": {"rect": [0, 0, 1, 1], "tee_row": 1.0},
         "top": {"rect": [1, 2, 3, 4], "center_px": [5, 6], "px_per_m": 7.0, "flipped": False}}
     assert gameclips.clip_calibration(None) == {}
+
+
+CAM_CLOCK = {"kind": "cameras", "aligned": "segment", "offset_s": -908.16,
+             "steps": [[0.0, -908.16]]}
+
+
+def camera_world(status="ready"):
+    repo, run, play = world(status)
+    run.source, run.sheet = "cameras", 3
+    repo.put_run(run)
+    doc = a_doc([shot(13, "red", 4)])
+    doc["source"] = {"video_id": "VID", "sheet": 3, "clock": CAM_CLOCK}
+    return repo, run, play, doc
+
+
+class TestCameraFeedSpec:
+    def test_camera_feed_spec_for_a_camera_run(self):
+        _, run, _, doc = camera_world()
+        assert gameclips.camera_feed_spec(run, doc) == \
+            {"kind": "cameras", "sheet": 3, "clock": CAM_CLOCK}
+
+    def test_the_sheet_from_the_doc_when_the_run_lacks_it(self):
+        _, run, _, doc = camera_world()
+        run.sheet = None
+        assert gameclips.camera_feed_spec(run, doc)["sheet"] == 3
+
+    def test_none_for_a_youtube_run(self):
+        _, run, _ = world()
+        assert gameclips.camera_feed_spec(run, a_doc([shot(13, "red", 4)])) is None
+
+    def test_none_without_a_clock(self):
+        _, run, _, doc = camera_world()
+        del doc["source"]["clock"]
+        assert gameclips.camera_feed_spec(run, doc) is None
+
+    def test_ask_shot_carries_the_feed(self):
+        repo, run, _, doc = camera_world()
+        spec = gameclips.find_rock(doc, "1.2.13")
+        feed = gameclips.camera_feed_spec(run, doc)
+        gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T, feed=feed)
+        job = repo.get_clip_job(gameclips.shot_job_id("r1", "1.2.13"))
+        assert job.spec["feed"] == feed
+
+    def test_a_youtube_shot_has_no_feed(self):
+        repo, run, _ = world()
+        spec = gameclips.find_rock(a_doc([shot(13, "red", 4)]), "1.2.13")
+        gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T)
+        assert "feed" not in repo.get_clip_job(gameclips.shot_job_id("r1", "1.2.13")).spec
+
+    def test_ensure_carries_the_feed(self):
+        repo, run, play, doc = camera_world()
+        rocks = gameclips.player_rocks(doc, "red", 4)
+        feed = gameclips.camera_feed_spec(run, doc)
+        gameclips.ensure(repo, play, run, rocks, CAL, T, feed=feed)
+        (job,) = repo.clip_jobs_in_state("queued")
+        assert job.spec["feed"] == feed
+
+
+class TestLater:
+    def test_later_puts_it_back_without_an_attempt(self):
+        repo, run, _ = world()
+        run.ready_at = T
+        queued(repo, ["1.2.13"], state="running")
+        repo.update_clip_job("cj_x", attempts=1, worker_id="w", lease_expires_at=T)
+        now = T + timedelta(minutes=5)
+        assert gameclips.later(repo, repo.get_clip_job("cj_x"), run, "still being cut", now)
+        job = repo.get_clip_job("cj_x")
+        assert (job.state, job.attempts, job.worker_id) == ("queued", 0, None)
+        assert job.run_after == now + timedelta(seconds=gameclips.NOT_READY_WAIT_S)
+
+    def test_later_past_the_bound_is_video_gone(self):
+        repo, run, _ = world()
+        run.ready_at = T
+        queued(repo, ["1.2.13", "1.2.15"], state="running")
+        now = T + timedelta(seconds=gameclips.NOT_READY_MAX_S + 1)
+        assert not gameclips.later(repo, repo.get_clip_job("cj_x"), run, "no files", now)
+        job = repo.get_clip_job("cj_x")
+        assert job.state == "done" and job.finished_at == now
+        assert job.rocks == {"1.2.13": {"clip": None, "reason": "video_gone"},
+                             "1.2.15": {"clip": None, "reason": "video_gone"}}
+
+    def test_a_run_not_yet_ready_is_always_waited_for(self):
+        repo, run, _ = world(status="live")
+        queued(repo, ["1.2.13"], state="running")
+        assert gameclips.later(repo, repo.get_clip_job("cj_x"), run, "live",
+                               T + timedelta(days=3))

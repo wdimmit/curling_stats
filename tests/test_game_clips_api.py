@@ -115,6 +115,22 @@ class TestTheClipsWorkersRoutes:
         assert wpost(w, "/api/worker/clips/cj_1/complete", {"rocks": {}}).status_code == 409
         assert wpost(w, "/api/worker/clips/cj_1/progress", {}).status_code == 409
 
+    def test_a_worker_can_put_a_clip_job_back(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        _, run = a_clip_job(w, src)
+        claim(w)
+        r = wpost(w, "/api/worker/clips/cj_1/later", {"reason": "still being cut"})
+        assert r.status_code == 200, r.text
+        assert r.json() == {"ok": True, "again": True}
+        job = w["repo"].get_clip_job("cj_1")
+        assert (job.state, job.attempts) == ("queued", 0)
+
+    def test_putting_back_a_job_not_held_is_refused(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        a_clip_job(w, src)
+        r = wpost(w, "/api/worker/clips/cj_1/later", {"reason": "x"})
+        assert r.status_code in (404, 409)
+
     def test_a_failure_goes_back_then_gives_up(self, w):  # noqa: F811
         _, _, src = a_played_game(w)
         _, run = a_clip_job(w, src)
@@ -342,6 +358,20 @@ class TestShotClips:
         assert job.spec["rocks"][0]["line"]["delivery"] == [[0.0, 38.0, 0.1]]
         assert ask(w, G.format(src), headers=ALEX).json()["state"] == "queued"
         assert len(w["repo"].clip_jobs_in_state("queued")) == 1
+
+    def test_the_shot_ask_of_a_camera_run_carries_its_feed(self, w):  # noqa: F811
+        doc = played_doc()
+        for s in doc["games"][0]["ends"][0]["shots"]:
+            s["t_release_s"] = s["t_rest_s"] - 20.0
+        clock = {"kind": "cameras", "aligned": "segment", "offset_s": -900.0,
+                 "steps": [[0.0, -900.0]]}
+        doc["source"] = {**doc.get("source", {}), "sheet": 3, "clock": clock}
+        _, _, src = a_played_game(w, doc)
+        run = w["repo"].get_run(w["repo"].get_source(src).current_run_id)
+        w["repo"].update_run(run.id, source="cameras", sheet=3)
+        assert ask(w, G.format(src)).status_code == 200
+        (job,) = w["repo"].clip_jobs_in_state("queued")
+        assert job.spec["feed"] == {"kind": "cameras", "sheet": 3, "clock": clock}
 
     def test_cut_then_played_and_saved_by_anyone(self, w):  # noqa: F811
         slug, src = released_game(w)

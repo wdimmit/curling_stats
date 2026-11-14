@@ -36,6 +36,11 @@ LIVE_RETRY_S = 300.0
 LIVE_SETTLE_S = 600.0
 # A clip job that failed is tried again this much later.
 RETRY_S = 60.0
+# A camera game's files the clips worker could not read yet -- being filed,
+# or cut where the stream began -- are looked for again this much later, and
+# no longer than this past the run's ready_at: after that they are gone.
+NOT_READY_WAIT_S = 120.0
+NOT_READY_MAX_S = 3 * 3600.0
 # An overlay is ~1 KB a rock; one far bigger is not one.
 MAX_OVERLAY_BYTES = 16_000
 # A clip of one shot, asked for from its page: its job's id begins so.
@@ -74,6 +79,27 @@ def clip_calibration(calibration: dict | None) -> dict:
         if isinstance(cal.get(house), dict):
             out[house] = {k: cal[house][k] for k in _PANEL_KEYS if k in cal[house]}
     return out
+
+
+def camera_feed_spec(run, doc: dict | None) -> dict | None:
+    """A camera game's word to the clips worker on its cameras: its sheet,
+    whose layout places each view, and the clock its rocks were published
+    on. None for a game read from YouTube, or one missing either."""
+    source = (doc or {}).get("source") or {}
+    clock = source.get("clock")
+    if not isinstance(clock, dict):
+        return None
+    if getattr(run, "source", None) != "cameras" and clock.get("kind") != "cameras":
+        return None
+    sheet = getattr(run, "sheet", None) or source.get("sheet")
+    if sheet is None:
+        return None
+    return {"kind": "cameras", "sheet": int(sheet), "clock": clock}
+
+
+def _spec(calibration, rocks, feed=None, **extra) -> dict:
+    return {"calibration": clip_calibration(calibration), "rocks": rocks,
+            **({"feed": feed} if feed else {}), **extra}
 
 
 def rock_spec(game: dict, end: dict, shot: dict) -> dict:
@@ -169,7 +195,7 @@ def shot_state(repo, run, name: str, now) -> dict:
 
 
 def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
-             calibration: dict | None, now) -> dict:
+             calibration: dict | None, now, *, feed: dict | None = None) -> dict:
     """Ask for a clip of one shot, ``rock`` as `find_rock` gives it, unless
     one is made, on its way or cannot be: a failed one is asked for again.
     Where it then stands, as `shot_state` says. One asked for while its
@@ -181,12 +207,11 @@ def ask_shot(repo, run, source_id: str, user_id: str, rock: dict,
         return state
     if rock.get("t_release_s") is None:
         return {"state": "failed", "reason": "no_release"}
-    sides = clip_calibration(calibration)
     repo.put_clip_job(ClipJob(
         id=shot_job_id(run.id, name), play_id="", user_id=user_id, source_id=source_id,
         run_id=run.id, video_id=run.video_id, state="queued", created_at=now, run_after=now,
-        spec={"calibration": sides, "rocks": [rock],
-              **({"live": True} if run.status == "live" else {})}))
+        spec=_spec(calibration, [rock], feed,
+                   **({"live": True} if run.status == "live" else {}))))
     return shot_state(repo, run, name, now)
 
 
@@ -225,7 +250,7 @@ def recut(state: dict, name: str) -> bool:
 
 
 def ensure(repo, play, run, rocks: list[dict], calibration: dict | None, now, *,
-           again: bool = False) -> dict:
+           again: bool = False, feed: dict | None = None) -> dict:
     """Ask for clips of those of ``rocks`` this play has nothing for on
     ``run`` yet -- none twice, and a failed one not again on that run -- and
     say where they all stand. ``again`` asks too for those whose clip is cut
@@ -235,11 +260,10 @@ def ensure(repo, play, run, rocks: list[dict], calibration: dict | None, now, *,
             or (again and recut(state, r["name"]))]
     if not todo:
         return state
-    sides = clip_calibration(calibration)
     repo.put_clip_job(ClipJob(
         id=slug.new_slug(slug.SHORT_BYTES, "cj_"), play_id=play.id, user_id=play.user_id,
         source_id=play.source_id, run_id=run.id, video_id=run.video_id, state="queued",
-        created_at=now, run_after=now, spec={"calibration": sides, "rocks": todo}))
+        created_at=now, run_after=now, spec=_spec(calibration, todo, feed)))
     return state_for(repo, play.id, run)
 
 
@@ -339,4 +363,21 @@ def fail(repo, job, error: str, now) -> bool:
         return True
     repo.update_clip_job(job.id, state="queued", error=error, worker_id=None,
                          lease_expires_at=None, run_after=now + timedelta(seconds=RETRY_S))
+    return False
+
+
+def later(repo, job, run, reason: str, now) -> bool:
+    """A camera game's job whose files the clips worker could not read yet:
+    queued again shortly, the try it took given back -- unless the run has
+    been ready for longer than NOT_READY_MAX_S, when its files are not
+    coming and every rock is ``video_gone``. True when it was put back."""
+    ready = getattr(run, "ready_at", None) if run is not None else None
+    if run is not None and (ready is None or now < ready + timedelta(seconds=NOT_READY_MAX_S)):
+        repo.update_clip_job(job.id, state="queued", error=reason, worker_id=None,
+                             lease_expires_at=None, attempts=max(0, job.attempts - 1),
+                             run_after=now + timedelta(seconds=NOT_READY_WAIT_S))
+        return True
+    rocks = {r["name"]: {"clip": None, "reason": "video_gone"} for r in job.spec.get("rocks", [])}
+    repo.update_clip_job(job.id, state="done", finished_at=now, error=reason, worker_id=None,
+                         lease_expires_at=None, rocks=rocks)
     return False

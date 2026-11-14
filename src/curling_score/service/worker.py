@@ -167,6 +167,10 @@ class ApiClient:
         return self._post(f"/api/worker/clips/{job_id}/fail",
                           {"worker_id": worker_id, "error": error})
 
+    def clip_later(self, job_id, worker_id, reason):
+        return self._post(f"/api/worker/clips/{job_id}/later",
+                          {"worker_id": worker_id, "reason": reason})
+
 
 def release_held(api, worker_id: str) -> None:
     """At startup, before anything claims: hand back the jobs the API still

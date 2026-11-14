@@ -2701,7 +2701,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             rocks = gameclips.player_rocks(doc, play.color, play.slot)
             clip_queue_stirred()
             return gameclips.ensure(repo, play, run, rocks, doc.get("calibration"), now(),
-                                    again=again)
+                                    again=again, feed=gameclips.camera_feed_spec(run, doc))
         except Exception:  # noqa: BLE001
             log.exception("clips for play %s were not asked for", play.id)
             return None
@@ -2836,7 +2836,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 raise HTTPException(429, "that is a lot of clips; try again later")
             clip_queue_stirred()
             state = gameclips.ask_shot(repo, run, sid or "", user.id, spec,
-                                       doc.get("calibration"), t)
+                                       doc.get("calibration"), t,
+                                       feed=gameclips.camera_feed_spec(run, doc))
         return shot_clip_answer(run, rock, sid, state)
 
     @app.get("/api/me/plays/{source_id}/clips/{rock}")
@@ -3644,6 +3645,20 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.update_clip_job(job.id, state="done", finished_at=now(), lease_expires_at=None,
                              rocks=gameclips.clean_results(job, body.get("rocks")))
         return {"ok": True}
+
+    @app.post("/api/worker/clips/{job_id}/later")
+    async def clips_later(job_id: str, request: Request,
+                          authorization: str | None = Header(default=None)):
+        """A camera game's files the clips worker could not read yet: put back
+        without costing a try, or, long after its run was ready, gone."""
+        require_worker(authorization)
+        body = await request.json()
+        job = owned_clip_job(job_id, body.get("worker_id"))
+        again = gameclips.later(repo, job, repo.get_run(job.run_id),
+                                str(body.get("reason", ""))[:500], now())
+        if again:
+            clip_queue_stirred()
+        return {"ok": True, "again": again}
 
     @app.post("/api/worker/clips/{job_id}/fail")
     async def clips_fail(job_id: str, request: Request,
