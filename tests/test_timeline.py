@@ -1726,6 +1726,29 @@ class TestSteppedClock:
         assert timeline.offset_at({"kind": "cameras", "offset_s": 600.0}, 5.0) == 600.0
         assert timeline.offset_at(600.0, 5.0) == 600.0
 
+    def test_camera_time_one_offset(self):
+        assert timeline.camera_time({"offset_s": -908.157}, 100.0) == pytest.approx(1008.157)
+
+    def test_camera_time_after_a_step(self):
+        # before the step: camera 3000 -> video 2091.06; after it: camera 4000 -> 3085.28
+        assert timeline.camera_time(self.STEPS, 2091.06) == pytest.approx(3000.0)
+        assert timeline.camera_time(self.STEPS, 3085.28) == pytest.approx(4000.0)
+        for t in (10.0, 3840.0, 3850.0, 5000.0):
+            v = t + timeline.offset_at(self.STEPS, t)
+            assert timeline.camera_time(self.STEPS, v) == pytest.approx(t)
+
+    def test_camera_time_in_a_steps_overlap_takes_the_later_step(self):
+        # the offset fell 5.78 s: video 2935.28-2940.06 is camera 3844.22-3850 under the
+        # first step and 3850-3854.78 under the second. The later one is taken.
+        assert timeline.camera_time(self.STEPS, 2938.0) == pytest.approx(3852.72)
+
+    def test_camera_time_bare_number(self):
+        assert timeline.camera_time(-5.0, 10.0) == 15.0
+
+    def test_clock_offset_for_matches_camera_time(self):
+        assert timeline.clock_offset_for(self.STEPS, 3085.28) == pytest.approx(-914.72)
+        assert timeline.clock_offset_for(self.STEPS, 2091.06) == pytest.approx(-908.94)
+
     def test_shift_with_steps_moves_each_moment_by_its_own_step(self):
         games = [{"start_s": 1000.0, "end_s": 5000.0, "ends": [{"start_s": 2900.0, "end_s": 4100.0,
                   "shots": [{"t_rest_s": 3000.0, "track": [[3849.9, 0.1, 4.0]]},

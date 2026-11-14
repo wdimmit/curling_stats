@@ -533,6 +533,25 @@ def offset_at(clock, t: float) -> float:
     return float(offset)
 
 
+def clock_offset_for(clock, v: float) -> float:
+    """The offset ``offset_at`` gave the moment now at ``v`` on the video's
+    clock: the last step whose camera time ``v - offset`` it covers."""
+    if isinstance(clock, (int, float)):
+        return float(clock)
+    steps = clock.get("steps") or [[0.0, clock["offset_s"]]]
+    offset = steps[0][1]
+    for start, step_offset in steps:
+        if v - step_offset >= start:
+            offset = step_offset
+    return float(offset)
+
+
+def camera_time(clock, v: float) -> float:
+    """The camera recording's moment that ``clock`` puts at ``v`` on the
+    video's clock: the inverse of ``offset_at``."""
+    return float(v) - clock_offset_for(clock, v)
+
+
 def shift_times(games: list, clock) -> list:
     """``games`` on the video's clock: a deep copy with every moment of the
     video in it (``VIDEO_TIME_KEYS``, ``VIDEO_TIME_ROWS``) moved by the step of
