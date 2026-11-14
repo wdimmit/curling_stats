@@ -263,3 +263,190 @@ class TestPanelsFromCalibration:
 
 def test_the_worker_and_the_api_agree_on_the_clip_style():
     assert gc.CLIP_STYLE == gameclips.CLIP_STYLE
+
+
+# ---------------------------------------------------------------- camera games
+CLOCK = {"kind": "cameras", "aligned": "segment", "offset_s": 996.0, "steps": [[0.0, 996.0]]}
+FEED = {"kind": "cameras", "sheet": 3, "clock": CLOCK}
+# A camera run's calibration: every view in its own pixels (feeds/cameras.localize).
+CAM_LEFT = SideView(rect=(0, 0, 800, 1080), tee_row=429.95, hog_row=520.0, centre_col=390.23,
+                    lat_px_per_m_at_tee=150.923, centre_line=(381.563, 0.008215), name="left")
+CAM_RIGHT = SideView(rect=(0, 0, 800, 1080), tee_row=431.0, hog_row=522.0, name="right")
+CAM_TOP = Panel(rect=(0, 0, 303, 522), center_px=(150.0, 136.0), px_per_m=67.0, flipped=False)
+CAM_BOTTOM = Panel(rect=(0, 0, 303, 531), center_px=(150.0, 390.0), px_per_m=67.0,
+                   flipped=True)
+ROLES = ("house_a", "house_h", "long_a", "long_h")
+
+
+def kept_dir(cams, vid="VID", **meta):
+    d = cams / "kept" / vid
+    d.mkdir(parents=True)
+    for role in ROLES:
+        (d / f"{role}.ts").write_bytes(b"ts")
+    if meta.get("clock_json", True):
+        body = {"sheet": 3, "wall_started": 1.0, "clock": {**CLOCK, "offset_s": 1000.0,
+                                                            "steps": [[0.0, 1000.0]]},
+                "kept_at": 2.0}
+        body.update(meta.get("extra", {}))
+        (d / "clock.json").write_text(__import__("json").dumps(body))
+    return d
+
+
+class TestFindSource:
+    def test_a_camera_game_prefers_its_kept_cameras(self, tmp_path):
+        cams, cache = tmp_path / "cams", tmp_path / "cache"
+        d = kept_dir(cams)
+        (cache / "videos").mkdir(parents=True)
+        (cache / "videos" / "VID.mp4").write_bytes(b"x")
+        got = gc.find_source("VID", [cache], [cams], feed=FEED)
+        assert (got.kind, got.path, got.sheet) == ("cameras", d, 3)
+        assert got.clock["offset_s"] == 1000.0           # clock.json's, for those files
+
+    def test_a_pending_trim_is_not_ready(self, tmp_path):
+        kept_dir(tmp_path, extra={"trim_pending": True})
+        with pytest.raises(gc.NotReady):
+            gc.find_source("VID", [], [tmp_path], feed=FEED)
+
+    def test_a_kept_dir_without_its_clock_is_not_ready(self, tmp_path):
+        kept_dir(tmp_path, clock_json=False)
+        with pytest.raises(gc.NotReady):
+            gc.find_source("VID", [], [tmp_path], feed=FEED)
+
+    def test_a_live_camera_recording_is_found_by_its_marker(self, tmp_path):
+        d = tmp_path / "live" / "w1" / "standby-3-20261110T020000"
+        d.mkdir(parents=True)
+        (d / "long_a.ts").write_bytes(b"ts")
+        (d / "video_id").write_text("VID")
+        other = tmp_path / "live" / "w1" / "OTHER"
+        other.mkdir()
+        (other / "long_a.ts").write_bytes(b"ts")
+        (other / "video_id").write_text("OTHER")
+        got = gc.find_source("VID", [], [tmp_path], feed=FEED)
+        assert (got.kind, got.path, got.clock) == ("cameras", d, CLOCK)
+
+    def test_a_camera_game_with_only_its_youtube_copy_is_the_composite(self, tmp_path):
+        (tmp_path / "videos").mkdir()
+        (tmp_path / "videos" / "VID.mp4").write_bytes(b"x")
+        got = gc.find_source("VID", [tmp_path], [tmp_path / "cams"], feed=FEED)
+        assert (got.kind, got.path, got.sheet) == ("composite", tmp_path / "videos" / "VID.mp4", 3)
+
+    def test_a_camera_game_with_nothing_is_not_ready(self, tmp_path):
+        with pytest.raises(gc.NotReady):
+            gc.find_source("VID", [tmp_path], [tmp_path / "cams"], feed=FEED)
+
+    def test_a_youtube_game_is_found_as_before(self, tmp_path):
+        assert gc.find_source("VID", [tmp_path]) is None
+        (tmp_path / "videos").mkdir()
+        (tmp_path / "videos" / "VID.mp4").write_bytes(b"x")
+        got = gc.find_source("VID", [tmp_path])
+        assert (got.kind, got.path) == ("youtube", tmp_path / "videos" / "VID.mp4")
+
+
+class TestSourceViews:
+    SIDES = {"left": CAM_LEFT, "right": CAM_RIGHT}
+    PANELS = {"top": CAM_TOP, "bottom": CAM_BOTTOM}
+
+    def test_camera_views_come_from_each_camera(self, tmp_path):
+        from curling_score.cameras import layout
+        from curling_score.feeds.cameras import placement_for, view_cut
+
+        src = gc.ClipSource("cameras", tmp_path, 3, CLOCK)
+        views = gc.source_views(src, self.SIDES, self.PANELS)
+        assert views["right"][0] == tmp_path / "long_h.ts"
+        assert views["left"][0] == tmp_path / "long_a.ts"
+        assert views["top"][0] == tmp_path / "house_h.ts"
+        assert views["bottom"][0] == tmp_path / "house_a.ts"
+        assert views["top"][1] == view_cut("top", placement_for(layout.load(3), "top"))
+
+    def test_composite_views_move_to_the_placements(self, tmp_path):
+        video = tmp_path / "v.mp4"
+        views = gc.source_views(gc.ClipSource("composite", video, 3), self.SIDES, self.PANELS)
+        assert views["right"] == (video, (1120, 0, 800, 1080))
+        assert views["left"] == (video, (0, 0, 800, 1080))
+        assert views["top"] == (video, (808, 10, 303, 522))
+
+    def test_a_youtube_games_views_are_its_rects(self, tmp_path):
+        video = tmp_path / "v.mp4"
+        top = Panel(rect=(812, 11, 298, 510), center_px=(145.0, 136.0), px_per_m=67.0,
+                    flipped=False)
+        views = gc.source_views(gc.ClipSource("youtube", video), {"left": LEFT, "right": RIGHT},
+                                {"top": top})
+        assert views == {"left": (video, LEFT.rect), "right": (video, RIGHT.rect),
+                         "top": (video, top.rect)}
+
+    def test_a_view_whose_size_changed_is_left_out(self, tmp_path):
+        wide = SideView(rect=(0, 0, 801, 1080), tee_row=431.0, hog_row=522.0, name="right")
+        for kind in ("cameras", "composite"):
+            views = gc.source_views(gc.ClipSource(kind, tmp_path, 3, CLOCK),
+                                    {"left": CAM_LEFT, "right": wide}, {})
+            assert "right" not in views and "left" in views
+
+
+class TestClipRocksFromCameras:
+    def test_each_rock_is_cut_at_its_own_offset(self, tmp_path):
+        seen = []
+
+        def cut(plan, views, out, **kw):
+            seen.append(kw["t0_s"])
+            Path(out).write_bytes(b"mp4")
+
+        clock = {"kind": "cameras", "offset_s": 996.0, "steps": [[0.0, 996.0], [50.0, 990.0]]}
+        src = gc.ClipSource("cameras", tmp_path, 3, clock)
+        gc.clip_rocks([rock(name="0.1.1"), rock(name="0.1.2", t_release_s=1100.0,
+                                                t_enter_s=1113.0, t_rest_s=1120.0)],
+                      src, {"left": CAM_LEFT, "right": CAM_RIGHT}, tmp_path / "w",
+                      lambda n, p: True, cut=cut)
+        assert seen == [996.0, 990.0]
+
+    def test_a_youtube_games_rocks_are_cut_on_its_own_clock(self, tmp_path):
+        seen = []
+
+        def cut(plan, views, out, **kw):
+            seen.append((views, kw["t0_s"]))
+            Path(out).write_bytes(b"mp4")
+
+        video = tmp_path / "v.mp4"
+        gc.clip_rocks([rock()], video, {"left": LEFT, "right": RIGHT}, tmp_path / "w",
+                      lambda n, p: True, cut=cut)
+        assert seen == [({"left": (video, LEFT.rect), "right": (video, RIGHT.rect)}, 0.0)]
+
+    @pytest.mark.skipif(__import__("shutil").which("ffmpeg") is None, reason="no ffmpeg")
+    def test_a_camera_clip_shows_the_house_camera_overhead(self, tmp_path):
+        import numpy as np
+
+        from curling_score.ingest import frames
+
+        cams = tmp_path / "rec"
+        cams.mkdir()
+        for role, colour in (("house_h", "lime"), ("house_a", "yellow"), ("long_a", "red"),
+                             ("long_h", "blue")):
+            subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                            f"color={colour}:s=1920x1080:r=5:d=12", "-c:v", "libx264",
+                            "-preset", "ultrafast", "-g", "5", "-pix_fmt", "yuv420p",
+                            "-f", "mpegts", str(cams / f"{role}.ts")], check=True)
+        # Released at camera 4 s = published 1000 s; into the top house at 1003.
+        r = rock(t_release_s=1000.0, t_enter_s=1003.0, t_rest_s=1004.0, line=None,
+                 target_broom=None)
+        out = tmp_path / "out"
+        out.mkdir()
+
+        def deliver(name, path):
+            (out / f"{name}.mp4").write_bytes(Path(path).read_bytes())
+            return True
+
+        got = gc.clip_rocks([r], gc.ClipSource("cameras", cams, 3, CLOCK),
+                            {"left": CAM_LEFT, "right": CAM_RIGHT}, tmp_path / "w", deliver,
+                            panels={"top": CAM_TOP})
+        assert got["0.3.5"]["clip"] is True
+        clip = out / "0.3.5.mp4"
+
+        def colour_at(t):
+            img = next(frames.window(clip, t, t + 0.5, 5))[1]
+            h, w = img.shape[:2]
+            return np.median(img[h // 3: 2 * h // 3, w // 3: 2 * w // 3].reshape(-1, 3), 0)
+
+        def near(bgr, want):
+            return np.abs(np.asarray(bgr, float) - np.asarray(want, float)).max() < 60
+
+        assert near(colour_at(1.0), (255, 0, 0))     # long_h (right) faces the thrower: blue
+        assert near(colour_at(7.0), (0, 255, 0))     # then house_h from overhead: lime

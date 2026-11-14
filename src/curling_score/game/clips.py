@@ -10,16 +10,23 @@ then trades the camera behind the thrower for the overhead camera above the
 house the rock was thrown to (`plan`): the rock coming in, and every stone it
 meets, from above.
 
-A game's times are on its video's own clock, so the cut needs no offset. The
-far hog line is the camera switch; timelines from before it was recorded
-switch at the rock's arrival in the far panel instead, a little early.
+A game's times are on its video's own clock. A game read from YouTube is cut
+from its video, so the cut needs no offset. A game read from the club's
+cameras is cut from the cameras' own files (`find_source`): each view from its
+camera, through the sheet layout's placement, and each rock at its clock's
+offset (`ClipSource.t0_at`). The far hog line is the camera switch; timelines
+from before it was recorded switch at the rock's arrival in the far panel
+instead, a little early.
 """
 
+import json
 import logging
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
+from curling_score import timeline
 from curling_score.game import clipburn
 from curling_score.game.hogtime import CAMERA_FOR
 from curling_score.geometry.sideview import SideView
@@ -157,19 +164,161 @@ def find_video(video_id: str, roots) -> Path | None:
     return max(live)[1] if live else None
 
 
-def clip_rocks(rocks, video, sideviews, workdir, deliver, *, panels=None, cut=clipburn.cut,
+class NotReady(RuntimeError):
+    """A camera game's files are expected but not there yet, or still being
+    cut where its stream began: the job is put back, not failed."""
+
+
+# Each camera's file in a camera recording's directory (cameras/recorder.py).
+CAMERA_ROLES = ("house_a", "house_h", "long_a", "long_h")
+
+
+@dataclass(frozen=True)
+class ClipSource:
+    """What a game's clips are cut from.
+
+    ``youtube``: a YouTube game's video, every view a rect of it.
+    ``composite``: a camera game's YouTube copy -- the club's composite, the
+    game's view-local rects placed by the sheet layout.
+    ``cameras``: a camera game's directory of camera files, each view cut from
+    its camera; ``clock`` maps the rocks' times onto the files'."""
+
+    kind: str
+    path: Path
+    sheet: int | None = None
+    clock: dict | None = None
+
+    def t0_at(self, v: float) -> float:
+        """Where the files begin on the rocks' clock, for a rock at ``v``."""
+        if self.kind != "cameras" or not self.clock:
+            return 0.0
+        return timeline.clock_offset_for(self.clock, v)
+
+
+def _kept_cameras(cams, video_id: str) -> ClipSource | None:
+    """A kept camera game (live/manager._file_camera_game), on its own
+    clock.json's clock -- moved with its files if they were cut. Not ready
+    while it is being filed or cut."""
+    directory = Path(cams) / "kept" / video_id
+    if not directory.is_dir():
+        return None
+    try:
+        meta = json.loads((directory / "clock.json").read_text())
+    except (FileNotFoundError, ValueError) as exc:
+        raise NotReady(f"{directory} is still being filed") from exc
+    from curling_score.cameras import trim
+
+    if meta.get(trim.PENDING):
+        raise NotReady(f"{directory} is still being cut where its stream began")
+    return ClipSource("cameras", directory, int(meta["sheet"]), meta.get("clock"))
+
+
+def _live_cameras(cams, video_id: str, sheet, clock) -> ClipSource | None:
+    """A camera game still being recorded: the directory whose ``video_id``
+    names it (live/manager._name_video), on the clock it is published on."""
+    for marker in (Path(cams) / "live").glob("*/*/video_id"):
+        try:
+            if marker.read_text().strip() != video_id:
+                continue
+        except OSError:
+            continue
+        if (marker.parent / "long_a.ts").is_file():
+            return ClipSource("cameras", marker.parent, sheet, clock)
+    return None
+
+
+def find_source(video_id: str, roots, cams_roots=(), *, feed: dict | None = None
+                ) -> ClipSource | None:
+    """What a game's clips are cut from. A camera game (``feed``, the clip
+    job's word on its cameras) is cut from its kept cameras, else the cameras
+    still recording it, else its YouTube copy; with none of them it is not
+    ready (`NotReady`), and the API says when that becomes gone. A YouTube
+    game is cut from its video, as `find_video` finds it, or None."""
+    if not feed:
+        path = find_video(video_id, roots)
+        return None if path is None else ClipSource("youtube", path)
+    sheet, clock = feed.get("sheet"), feed.get("clock")
+    for cams in cams_roots:
+        got = _kept_cameras(cams, video_id)
+        if got is not None:
+            return got
+    for cams in cams_roots:
+        got = _live_cameras(cams, video_id, sheet, clock)
+        if got is not None:
+            return got
+    for root in roots:
+        path = Path(root) / "videos" / f"{video_id}.mp4"
+        if path.is_file():
+            return ClipSource("composite", path, sheet)
+    raise NotReady(f"no camera files or copy of {video_id} in any cache yet")
+
+
+def _placements(sheet):
+    from curling_score.cameras import layout
+
+    try:
+        return layout.load(int(sheet))
+    except (FileNotFoundError, LookupError, TypeError, ValueError) as exc:
+        log.warning("no layout for sheet %s: %s", sheet, exc)
+        return None
+
+
+def source_views(source: ClipSource, sideviews: dict, panels: dict) -> dict:
+    """Each calibrated view of ``source`` as the cutter takes it: ``name ->
+    (file, rect or Cut)``, the side views and the overhead panels by house. A
+    camera game's view whose size is not its placement's -- the layout moved
+    since the game was read -- is left out, and so are views with no layout."""
+    rects = {**{n: sv.rect for n, sv in sideviews.items()},
+             **{h: p.rect for h, p in (panels or {}).items()}}
+    if source.kind == "youtube":
+        return {n: (source.path, r) for n, r in rects.items()}
+    from curling_score.feeds.cameras import VIEW_ROLE, placement_for, view_cut
+
+    sheet_layout = _placements(source.sheet)
+    if sheet_layout is None:
+        return {}
+    out = {}
+    for name, rect in rects.items():
+        try:
+            p = placement_for(sheet_layout, name)
+        except LookupError as exc:
+            log.warning("%s", exc)
+            continue
+        size = tuple(int(v) for v in rect[2:])
+        if source.kind == "composite":
+            if size != tuple(p.out[2:]):
+                log.warning("view %s is %s, its placement %s: left out", name, size, p.out[2:])
+                continue
+            out[name] = (source.path, (int(p.out[0]), int(p.out[1]), *size))
+        else:
+            cut = view_cut(name, p)
+            if tuple(cut.out_size) != size:
+                log.warning("view %s is %s, its camera's cut %s: left out", name, size,
+                            cut.out_size)
+                continue
+            out[name] = (Path(source.path) / f"{VIEW_ROLE[name]}.ts", cut)
+    return out
+
+
+def clip_rocks(rocks, source, sideviews, workdir, deliver, *, panels=None, cut=clipburn.cut,
                on_rock=None) -> dict:
-    """Cut, mark and deliver each rock's clip, one at a time; ``panels`` are
-    the overhead cameras by house (`panels_from_calibration`).
+    """Cut, mark and deliver each rock's clip, one at a time, from ``source``
+    (a `ClipSource`, or a YouTube game's video file); ``panels`` are the
+    overhead cameras by house (`panels_from_calibration`).
 
     ``deliver(name, path) -> bool`` sends a cut clip on; the file is removed
     afterwards whatever happens. ``on_rock(name, result)`` hears of each rock
     as it is done -- the worker renews its lease there. A failed cut or
     upload costs that rock; an exception from ``deliver`` (the job is no
     longer ours) ends the lot."""
+    if not isinstance(source, ClipSource):
+        source = ClipSource("youtube", Path(source))
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
-    views = {name: (video, sv.rect) for name, sv in sideviews.items()}
+    found = source_views(source, sideviews, panels or {})
+    sides = (sideviews if all(n in found for n in sideviews)
+             else {n: sv for n, sv in sideviews.items() if n in found})
+    views = {n: found[n] for n in sides}
     results = {}
     for rock in rocks:
         throw = throw_from_rock(rock)
@@ -178,22 +327,25 @@ def clip_rocks(rocks, video, sideviews, workdir, deliver, *, panels=None, cut=cl
         else:
             # The overhead camera over the house this rock was thrown to.
             panel = (panels or {}).get(throw["house"])
+            if throw["house"] not in found:
+                panel = None
             overhead = {} if panel is None else {OVERHEAD: panel}
-            cams = views if panel is None else {**views, OVERHEAD: (video, panel.rect)}
-            plan_ = plan(throw, sideviews, panel)
+            cams = views if panel is None else {**views, OVERHEAD: found[throw["house"]]}
+            plan_ = plan(throw, sides, panel)
             got = ({"clip": None, "reason": "no_camera"} if plan_ is None
-                   else _one(throw, plan_, cams, sideviews, overhead, workdir, deliver, cut))
+                   else _one(throw, plan_, cams, sides, overhead, workdir, deliver, cut,
+                             source.t0_at(throw["t_release_s"])))
         results[rock["name"]] = got
         if on_rock is not None:
             on_rock(rock["name"], got)
     return results
 
 
-def _one(throw, plan, views, sideviews, panels, workdir, deliver, cut) -> dict:
+def _one(throw, plan, views, sideviews, panels, workdir, deliver, cut, t0_s=0.0) -> dict:
     out = workdir / f"{throw['id']}.mp4"
     began = time.monotonic()
     try:
-        cut(plan, views, out, throw=throw, sideviews=sideviews, panels=panels)
+        cut(plan, views, out, throw=throw, sideviews=sideviews, panels=panels, t0_s=t0_s)
     except (subprocess.SubprocessError, OSError) as exc:
         log.warning("clip %s was not cut: %s", throw["id"], exc)
         out.unlink(missing_ok=True)
