@@ -12,6 +12,7 @@ class FakeClipApi:
     def __init__(self, jobs, lost_on=None):
         self.jobs, self.lost_on = list(jobs), lost_on
         self.completed, self.failed, self.uploads, self.progress = [], [], {}, 0
+        self.later_calls = []
 
     def claim_clips(self, worker_id):
         return self.jobs.pop(0) if self.jobs else None
@@ -38,6 +39,10 @@ class FakeClipApi:
     def clip_fail(self, job_id, worker_id, error):
         self.failed.append((job_id, error))
         return {"ok": True}
+
+    def clip_later(self, job_id, worker_id, reason):
+        self.later_calls.append(job_id)
+        return {"ok": True, "again": True}
 
 
 def a_job(*rocks):
@@ -143,6 +148,7 @@ def _clip_env(monkeypatch, tmp_path, sources):
     monkeypatch.setenv("CURLING_SCORE_CACHE", str(tmp_path))
     monkeypatch.setenv("WORKER_ID", "ryzen-clips")
     monkeypatch.setenv("WORKER_CLIP_SOURCES", sources)
+    monkeypatch.delenv("WORKER_CAMS", raising=False)
 
 
 def test_worker_role_clips_runs_the_clips_main_and_nothing_else(tmp_path, monkeypatch):
@@ -239,3 +245,85 @@ class TestScratchAndRetries:
         clipworker.run_forever(api, "w", sources=cache, workdir=tmp_path / "w",
                                sleep=lambda s: None, once=True, cut=made)
         assert api.failed == [("cj_1", "OSError: network")]
+
+
+class TestCameraGames:
+    """A camera game's clips, cut from its cameras (game/clips.find_source)."""
+
+    def camera_job(self):
+        from tests.test_game_clips import CAM_LEFT, CAM_RIGHT, FEED
+
+        from curling_score import analyze
+
+        job = a_job()
+        job["spec"]["calibration"] = analyze._side_calibration(
+            {"left": CAM_LEFT, "right": CAM_RIGHT})
+        job["spec"]["feed"] = FEED
+        return job
+
+    def test_a_camera_job_is_cut_from_its_kept_cameras(self, tmp_path):
+        from tests.test_game_clips import kept_dir
+
+        cams = tmp_path / "cams"
+        d = kept_dir(cams)
+        seen = []
+
+        def cut(plan, views, out, **kw):
+            seen.append((views["right"][0], kw["t0_s"]))
+            Path(out).write_bytes(b"mp4")
+
+        api = FakeClipApi([])
+        got = clipworker.process(self.camera_job(), api, "w", sources=[tmp_path / "c"],
+                                 workdir=tmp_path / "w", cams=[cams], cut=cut)
+        assert seen == [(d / "long_h.ts", 1000.0)]     # clock.json's offset, its files' clock
+        assert got["0.3.5"]["clip"] is True
+
+    def test_a_not_ready_camera_job_goes_back(self, tmp_path):
+        from tests.test_game_clips import kept_dir
+
+        cams = tmp_path / "cams"
+        kept_dir(cams, extra={"trim_pending": True})
+        api = FakeClipApi([])
+        got = clipworker.process(self.camera_job(), api, "w", sources=[], workdir=tmp_path / "w",
+                                 cams=[cams], cut=made)
+        assert got == {} and api.later_calls == ["cj_1"]
+        assert api.completed == [] and api.failed == []
+
+    def test_not_ready_falls_back_to_fail_on_an_older_api(self, tmp_path):
+        import httpx
+
+        api = FakeClipApi([self.camera_job()])
+
+        def old_api(job_id, worker_id, reason):
+            request = httpx.Request("POST", "http://api/x")
+            raise httpx.HTTPStatusError("404", request=request,
+                                        response=httpx.Response(404, request=request))
+
+        api.clip_later = old_api
+        clipworker.run_forever(api, "w", sources=[], workdir=tmp_path / "w",
+                               cams=[tmp_path / "cams"], sleep=lambda s: None, once=True,
+                               cut=made)
+        assert len(api.failed) == 1 and api.failed[0][0] == "cj_1"
+
+    def test_an_old_job_without_a_feed_is_cut_as_before(self, cache, tmp_path):
+        seen = []
+
+        def cut(plan, views, out, **kw):
+            seen.append(views["right"])
+            Path(out).write_bytes(b"mp4")
+
+        clipworker.process(a_job(), FakeClipApi([]), "w", sources=cache, workdir=tmp_path / "w",
+                           cams=[tmp_path / "cams"], cut=cut)
+        from tests.test_game_clips import RIGHT
+        assert seen == [(cache[1] / "videos" / "VID.mp4", RIGHT.rect)]
+
+    def test_starts_with_only_the_cameras(self, tmp_path, monkeypatch):
+        (tmp_path / "cams" / "kept").mkdir(parents=True)
+        (tmp_path / "src").mkdir()
+        _clip_env(monkeypatch, tmp_path, str(tmp_path / "src"))
+        monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
+        got = {}
+        monkeypatch.setattr(clipworker, "run_forever",
+                            lambda api, wid, **kw: got.update(kw))
+        assert clipworker.main([]) == 0
+        assert got["cams"] == [tmp_path / "cams"]
