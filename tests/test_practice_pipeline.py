@@ -57,3 +57,26 @@ def test_a_saved_calibration_is_checked_against_eight_spread_keyframes(monkeypat
     # A check made again reads the frames recorded since the last.
     PracticePipeline().check_saved("rec.ts", 10.0, 25.0, "CAL")
     assert asked[2] == {"path": "rec.ts", "start_s": 10.0, "until_s": 25.0, "count": 8}
+
+
+def test_check_saved_on_a_camera_feed_reads_per_view_keyframes(monkeypatch):
+    from pathlib import Path
+
+    from curling_score.cameras import calstore
+    from curling_score.feeds import Cut, cameras
+    from curling_score.practice.pipeline import CHECK_FRAMES
+
+    cut = {"top": Cut("top", (0, 0, 10, 20), 90), "bottom": Cut("bottom", (0, 0, 10, 20), 90)}
+    cal = SimpleNamespace(setups={n: SimpleNamespace(cut=c) for n, c in cut.items()})
+    asked = []
+
+    def view_keyframes(feed, cuts, until_s, count, *, start_s=None):
+        asked.append((feed, cuts, until_s, count, start_s))
+        return {"top": ["t"], "bottom": ["b"]}
+
+    monkeypatch.setattr(cameras, "view_keyframes", view_keyframes)
+    monkeypatch.setattr(calstore, "check_house",
+                        lambda c, frames: asked.append(frames) or calstore.HouseCheck.AGREES)
+    feed = cameras.camera_feed(Path("d"), 2)
+    assert PracticePipeline().check_saved(feed, 10.0, 25.0, cal) is calstore.HouseCheck.AGREES
+    assert asked == [(feed, cut, 25.0, CHECK_FRAMES, 10.0), {"top": ["t"], "bottom": ["b"]}]

@@ -2,11 +2,13 @@
 
 import shutil
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+from curling_score.feeds import Cut
 from curling_score.ingest import frames
 from curling_score.practice import clips as C
 
@@ -15,7 +17,8 @@ needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="no ffm
 
 def view(exit_m=20.0):
     """A long camera whose bottom row is ``exit_m`` from the far tee."""
-    return SimpleNamespace(rect=(0, 0, 800, 1080), metres_at=lambda row: exit_m)
+    return SimpleNamespace(rect=(0, 0, 800, 1080), cut=Cut("", (0, 0, 800, 1080)),
+                           metres_at=lambda row: exit_m)
 
 
 def both(exit_m=20.0):
@@ -177,8 +180,11 @@ class TestCut:
 
 class TestClipper:
     def cal(self):
-        return SimpleNamespace(sideviews={"left": SimpleNamespace(rect=(0, 0, 120, 180)),
-                                          "right": SimpleNamespace(rect=(200, 0, 120, 180))})
+        from curling_score.geometry.sideview import SideView
+
+        return SimpleNamespace(sideviews={
+            n: SideView(rect=r, tee_row=1.0, hog_row=2.0, name=n)
+            for n, r in (("left", (0, 0, 120, 180)), ("right", (200, 0, 120, 180)))})
 
     def test_a_cut_clip_is_delivered_then_removed(self, tmp_path):
         got, cuts = [], []
@@ -195,7 +201,7 @@ class TestClipper:
         th = throw()
         assert c.make(th, C.plan(th, both()), self.cal(), t0_s=7.0) is True
         assert got == [("t_100.0", b"mp4")]
-        assert cuts == [(("rec.ts", (200, 0, 120, 180)), 7.0)]
+        assert cuts == [((Path("rec.ts"), Cut("right", (200, 0, 120, 180))), 7.0)]
         assert list(tmp_path.iterdir()) == []
 
     def test_a_failed_cut_is_not_delivered(self, tmp_path):
@@ -232,3 +238,39 @@ class TestClipper:
         c = C.Clipper(SimpleNamespace(path="rec.ts"), lambda *a: True, ".")
         assert c.plan(throw(), SimpleNamespace(sideviews=both())) is not None
         assert c.plan(throw(), SimpleNamespace(sideviews=None)) is None
+
+
+class TestFromTheCameras:
+    """Phase 2: each piece from its own camera's file, through its view's cut."""
+
+    def test_clip_pieces_come_from_each_views_file(self, tmp_path, monkeypatch):
+        from curling_score.feeds import cameras
+        from curling_score.geometry.sideview import SideView
+
+        feed = cameras.camera_feed(tmp_path, 2)
+        cuts = {"left": Cut("left", (556, 0, 800, 1080)), "right": Cut("right", (569, 0, 800, 1080))}
+        sides = {n: SideView(rect=(0, 0, 800, 1080), tee_row=1.0, hog_row=2.0, name=n,
+                             transform=c) for n, c in cuts.items()}
+        seen = []
+        c = C.Clipper(SimpleNamespace(path=feed), lambda *a: True, tmp_path / "clips",
+                      cut=lambda plan, views, out, **k: seen.append(views) or out.write_bytes(b"x"))
+        th = throw()
+        assert c.make(th, C.plan(th, both()), SimpleNamespace(sideviews=sides))
+        assert seen == [{"left": (tmp_path / "long_a.ts", cuts["left"]),
+                         "right": (tmp_path / "long_h.ts", cuts["right"])}]
+
+        monkeypatch.setattr(frames, "stream_start_s", lambda src: 0.0)
+        plan = C.ClipPlan((C.Piece("right", 1.0, 3.0), C.Piece("left", 6.0, 8.0)))
+        args = C.decode_args(plan, seen[0], size=(60, 90), fps=10)
+        inputs = [args[i + 1] for i, a in enumerate(args) if a == "-i"]
+        assert inputs == [str(tmp_path / "long_h.ts"), str(tmp_path / "long_a.ts")]
+        graph = args[args.index("-filter_complex") + 1]
+        assert cuts["left"].steps() in graph and cuts["right"].steps() in graph
+
+    def test_a_turned_cut_goes_into_the_graph_whole(self, monkeypatch):
+        monkeypatch.setattr(frames, "stream_start_s", lambda src: 0.0)
+        turned = Cut("left", (100, 20, 400, 300), 90, (150, 200))
+        args = C.decode_args(C.ClipPlan((C.Piece("left", 1.0, 2.0),)), {"left": ("a.ts", turned)},
+                             size=(60, 90), fps=10)
+        graph = args[args.index("-filter_complex") + 1]
+        assert f",{turned.steps()},scale=60:90," in graph

@@ -1,9 +1,12 @@
 """The lane keeper: a grey strip of the delivery lane, kept from the long
 camera's own decodes so the release pass never decodes it again."""
+import dataclasses
+
 import numpy as np
 import pytest
 
 from curling_score.detect import lanekeep, longview
+from curling_score.feeds import Cut
 from curling_score.geometry.sideview import SideView
 
 # 10/20 Wed sheet 2's left view.
@@ -49,6 +52,20 @@ def test_two_decodes_of_one_frame_land_on_one_key():
     # Each stored time is the frame's own, so its pixels are its index.
     assert np.allclose(ts * FPS, np.round(ts * FPS))
     assert np.array_equal(strips[:, 0, 0], np.round(ts * FPS).astype(int) % 256)
+
+
+def test_lanekeep_matches_cut():
+    # A decode made through the view's cut is the view's, named or not, and a
+    # bare rect (a script's) is the view's if it is the view's crop.
+    named = dataclasses.replace(VIEW, name="left")
+    frames, times = synthetic(named, t0=1.0, n=10)
+    for view, offered in ((named, named.cut), (named, named.rect), (VIEW, VIEW.cut)):
+        k = lanekeep.LaneKeeper(view, windows=[(0, 99)])
+        k.offer(offered, frames, times, FPS)
+        assert k.frames_between(0, 99)[0].shape[0] == 10
+    k = lanekeep.LaneKeeper(named, windows=[(0, 99)])
+    k.offer(Cut("right", named.rect), frames, times, FPS)    # another file's view
+    assert k.frames_between(0, 99)[0].shape[0] == 0
 
 
 def test_another_cameras_frames_are_not_kept():
@@ -140,7 +157,7 @@ def test_decode_offers_frames_only_while_keeping(monkeypatch):
     with longview.keeping(k):
         assert longview.decode("v.mp4", VIEW.rect, 1.0, 1.1, 10.0) is got
         assert longview.decode("v.mp4", VIEW.rect, 1.0, 1.1) is got
-    assert [(a[0], a[3]) for a in seen] == [(VIEW.rect, 10.0), (VIEW.rect, 30.0)]
+    assert [(a[0], a[3]) for a in seen] == [(VIEW.cut, 10.0), (VIEW.cut, 30.0)]
     assert seen[0][1] is got[0] and seen[0][2] is got[1]
 
     longview.decode("v.mp4", VIEW.rect, 1.0, 1.1)      # the context closed

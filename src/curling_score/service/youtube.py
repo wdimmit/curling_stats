@@ -24,6 +24,10 @@ class VideoMeta:
     duration_s: float
     live_status: str          # "none" (an archived or plain video) | "live" | "upcoming"
     published_at: datetime | None = None
+    # A broadcast's scheduled start (the club adds each league day's to its
+    # playlists that morning), and when its stream actually ended.
+    scheduled_at: datetime | None = None
+    ended_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +94,8 @@ class YouTubeClient:
                     live_status=sn.get("liveBroadcastContent", "none"),
                     published_at=_parse_ts(live.get("actualStartTime")
                                            or sn.get("publishedAt")),
+                    scheduled_at=_parse_ts(live.get("scheduledStartTime")),
+                    ended_at=_parse_ts(live.get("actualEndTime")),
                 ))
         return out
 

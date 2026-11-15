@@ -99,3 +99,52 @@ def test_with_clips_a_replay_keeps_each_throws_clip_in_its_out_directory(tmp_pat
                      "--to", "3100", "--out", str(out), "--weights", _model(tmp_path), "--clips"]) == 0
     c = seen["clipper"]
     assert isinstance(c, Clipper) and c.keep and c.workdir == out / "clips"
+
+
+def test_practice_replay_takes_cameras_or_a_video(tmp_path, monkeypatch):
+    import pytest
+
+    from curling_score import analyze
+    from curling_score.live import replay
+    from curling_score.practice import harness
+
+    with pytest.raises(SystemExit):
+        cli.main(["practice-replay", "v.mp4", "--cameras", str(tmp_path), "--sheet", "3",
+                  "--out", str(tmp_path / "o")])
+    with pytest.raises(SystemExit):
+        cli.main(["practice-replay", "--out", str(tmp_path / "o")])
+    with pytest.raises(SystemExit):
+        cli.main(["practice-replay", "--cameras", str(tmp_path), "--out", str(tmp_path / "o")])
+
+    made = {}
+
+    class Cams:
+        def __init__(self, source_dir, out_dir, sheet, speed=1.0):
+            made.update(source=str(source_dir), sheet=sheet, speed=speed)
+            self.path, self.t0_s = "feed", 0.0
+
+        def start(self):
+            return self
+
+        def stop(self):
+            made["stopped"] = True
+
+    class Heads:
+        def start(self, rec):
+            return self
+
+        def stop(self):
+            pass
+
+    def run(watch, **kw):
+        made.update(rec=watch.rec)
+        watch.done = True
+
+    monkeypatch.setattr(replay, "CameraReplay", Cams)
+    monkeypatch.setattr(harness, "HeadClock", Heads)
+    monkeypatch.setattr(harness, "run", run)
+    monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
+    assert cli.main(["practice-replay", "--cameras", str(tmp_path / "cams"), "--sheet", "3",
+                     "--speed", "2", "--out", str(tmp_path / "o"), "--weights", _model(tmp_path)]) == 0
+    assert made["source"] == str(tmp_path / "cams") and made["sheet"] == 3
+    assert made["speed"] == 2.0 and made["stopped"] and isinstance(made["rec"], Cams)

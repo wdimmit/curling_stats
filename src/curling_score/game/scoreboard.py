@@ -815,8 +815,11 @@ class GameBoard:
     board: CardBoard
 
 
-def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
+def read_cards_at(video, t_seconds, window_s=90.0, max_frames=40):
     """The cards around a moment in the video, de-occluded by median.
+
+    ``video`` is a path or a ``Feed``; the whole frame is read from the file
+    the feed gives the ``board`` view (``frames.board_sweep``).
 
     Samples keyframes rather than a fixed frame rate. A fixed rate still makes
     the decoder reconstruct every frame in the window -- roughly 180 s of
@@ -837,13 +840,19 @@ def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
     from curling_score.ingest import frames as F
 
     lo, hi = max(0.0, t_seconds - window_s), t_seconds + window_s
-    imgs = []
-    for t, img in F.keyframe_sweep(video_path, start_s=lo, end_s=hi):
-        if t < lo:
+    # Frames this far apart at least, so ``max_frames`` span the whole window
+    # whatever the keyframe interval: YouTube keys every 5 s and every one is
+    # taken, the cameras every 2 s, whose first 40 reached only t - 12 and could
+    # all have a player in front of a card row (11/05 sheet 4, end 4).
+    gap = 2 * window_s / max_frames
+    imgs, last = [], None
+    for t, img in F.board_sweep(video, start_s=lo, end_s=hi):
+        if t < lo or (last is not None and t - last < gap - 1e-6):
             continue
         if len(imgs) >= max_frames:
             break
         imgs.append(img)
+        last = t
     if not imgs:
         return None
     image = median_frame(imgs)
@@ -855,7 +864,7 @@ def read_cards_at(video_path, t_seconds, window_s=90.0, max_frames=40):
     return read_cards(image, geom)
 
 
-def read_game_board(video_path, start_s, end_s, n_ends, *, read_at=None,
+def read_game_board(video, start_s, end_s, n_ends, *, read_at=None,
                     back_to_s=None):
     """The latest usable board state for one game, or None.
 
@@ -886,7 +895,7 @@ def read_game_board(video_path, start_s, end_s, n_ends, *, read_at=None,
     CardBoard | None`` replacing `read_cards_at`, so the sampler is testable
     without decoding any video.
     """
-    read_at = read_at or (lambda t: read_cards_at(video_path, t))
+    read_at = read_at or (lambda t: read_cards_at(video, t))
     t = end_s - BOARD_LEAD_S
     reads = 0
     while True:

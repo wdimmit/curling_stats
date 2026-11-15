@@ -67,6 +67,8 @@ export const chartedNotice = core.chartedNotice;
 export const openGroupFor = core.openGroupFor;
 export const subtypesOf = core.subtypesOf;
 export const shotVideoTime = s => core.shotVideoTime(s, state.leadIn);
+export const shotVideo = (s, docVideoId) => core.shotVideo(s, state.leadIn, docVideoId);
+export const shotLink = (s, docVideoId) => core.shotLink(s, state.leadIn, docVideoId);
 
 /* The watching surface reads the same view every other panel reads. */
 export const rockRows = () => core.rockRows(view(), state.ei, state.leadIn);

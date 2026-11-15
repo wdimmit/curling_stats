@@ -34,16 +34,22 @@ class Api:
         self.uploads, self.published, self.completed = [], [], []
         self.artifact_files = []
         self.lose, self.stop = set(), set()
+        self.games = {}       # job id -> the game a standby's heartbeat hands it
+        self.extras = []      # (job id, the heartbeat's extra fields)
 
     def claim(self, worker_id, model_id, gpu, kinds=None, cameras=False):
         self.claims.append(kinds)
         self.camera_claims.append(cameras)
         return self.jobs.pop(0) if self.jobs else None
 
-    def progress(self, job_id, worker_id, phase, fraction, message):
+    def progress(self, job_id, worker_id, phase, fraction, message, extra=None):
         if job_id in self.lose:
             raise Lost("not yours")
         self.progress_calls.append((job_id, phase, message))
+        if extra:
+            self.extras.append((job_id, extra))
+        if job_id in self.games:
+            return {"ok": True, "game": self.games[job_id]}
         return {"stop": True} if job_id in self.stop else None
 
     def fail(self, job_id, worker_id, error, kind, retry_after_s=None):
@@ -171,7 +177,8 @@ class TestTheManager:
     def test_it_claims_live_jobs_up_to_its_limit_and_records_them(self):
         api = Api([live_job(1), live_job(2), live_job(3)])
         m, _ = manager(api, max_streams=2)
-        m.poll_once()
+        for _ in range(3):                  # one a poll
+            m.poll_once()
         assert [s.job["id"] for s in m.streams()] == ["j_1", "j_2"]
         assert all(s.recorder.started for s in m.streams())
         assert set(map(tuple, api.claims)) == {("live",)}
@@ -186,6 +193,7 @@ class TestTheManager:
     def test_it_keeps_every_live_lease_alive(self):
         api = Api([live_job(1), live_job(2)])
         m, t = manager(api)
+        m.poll_once()
         m.poll_once()
         api.progress_calls.clear()
         t[0] = 30.0
@@ -886,8 +894,11 @@ def cstream(n, **extra):
 def calibration(hog="paint"):
     from curling_score.live.session import Calibration
 
+    # A transform: a camera feed's calibration is in its views' own pixels,
+    # and the store keeps no other kind.
     return Calibration(panels=None, until_s=10.0, sideviews=None, side_expected=False,
-                       setups={h: SimpleNamespace(hog_line=hog) for h in ("top", "bottom")})
+                       setups={h: SimpleNamespace(hog_line=hog, transform=f"cut {h}")
+                               for h in ("top", "bottom")})
 
 
 class TestCameraWatchesInTheLane:
@@ -992,3 +1003,768 @@ class TestPracticeClipsInTheLane:
         watch = lane_mod.video_sessions("w.pt", progress=lambda m: None)(ps, lambda d: None)
         assert isinstance(watch.clipper, Clipper) and watch.clipper.deliver is ps.send_clip
         assert watch.clipper.keep is False
+
+
+# --- a league game read from its sheet's cameras ------------------------------------------
+
+def camera_job(n):
+    return {**live_job(n), "kind": "camera_live", "source": "cameras",
+            "published_at": "2026-11-05T18:00:09+00:00"}
+
+
+class CamRecorder(Recorder):
+    """A camera recorder stand-in: finish_stream makes it whole."""
+
+    def __init__(self, job):
+        super().__init__(job)
+        self.wall_started, self.finished_stream = 1793900701.0, 0
+        self.dir = Path("/rec")
+
+    def head_s(self):
+        return 600.0
+
+    def finish_stream(self):
+        self.finished_stream += 1
+        self.stopped = True
+
+    def whole(self):
+        return self.finished_stream > 0
+
+
+class TestACameraGameInTheManager:
+    def test_it_is_recorded_from_its_cameras_and_its_clock_is_followed(self, monkeypatch,
+                                                                      tmp_path):
+        from curling_score.cameras import recorder as cameras
+        from curling_score.live import recorder
+
+        made, aligners = [], []
+
+        class Spy(CamRecorder):
+            def __init__(self, sheet, directory, **kw):
+                super().__init__(None)
+                made.append((sheet, directory))
+
+        monkeypatch.setattr(cameras, "CameraRecorder", Spy)
+        monkeypatch.setattr(recorder, "YtDlpRecorder",
+                            lambda *a, **k: (_ for _ in ()).throw(AssertionError("YouTube")))
+        m = manager_mod.LiveManager(
+            Api([camera_job(3)]), "ryzen", model_id="m", gpu=None, root=tmp_path,
+            kinds=("live", "camera_live"), cameras=True,
+            make_aligner=lambda job, rec: aligners.append((job["id"], rec)) or "aligner")
+        m.poll_once()
+        (s,) = m.streams()
+        assert made == [(3, tmp_path / "live" / "liveVid0003")]
+        assert aligners == [("j_3", s.recorder)] and s.aligner == "aligner"
+        assert s.reference is None
+
+    def test_with_keep_youtube_the_stream_is_recorded_beside_it_and_kept(self, monkeypatch,
+                                                                        tmp_path):
+        from curling_score.ingest import cache
+        from curling_score.live import recorder
+
+        refs, kept = [], []
+
+        class Ref(Recorder):
+            def __init__(self, vid, directory, **kw):
+                super().__init__(None)
+                self.vid, self.path = vid, Path(directory) / "rec.ts"
+                refs.append(self)
+
+            def whole(self):
+                return True
+
+        monkeypatch.setattr(recorder, "YtDlpRecorder", Ref)
+        monkeypatch.setattr(cache, "keep_recording",
+                            lambda path, vid, root: kept.append((path, vid)) or path)
+        m = manager_mod.LiveManager(
+            Api([camera_job(3)]), "ryzen", model_id="m", gpu=None, root=tmp_path,
+            kinds=("camera_live",), cameras=True, keep_youtube=True,
+            make_recorder=lambda job: CamRecorder(job),
+            make_aligner=lambda job, rec: None, background=lambda fn: fn())
+        m.poll_once()
+        (s,) = m.streams()
+        (ref,) = refs
+        assert s.reference is ref and ref.started and ref.vid == "liveVid0003"
+        m.finish(s)
+        assert ref.stopped and kept == [(ref.path, "liveVid0003")]
+
+    def test_a_youtube_recording_that_will_not_start_leaves_the_game_going(self, monkeypatch,
+                                                                         tmp_path):
+        from curling_score.live import recorder
+
+        def broken(*a, **k):
+            raise RuntimeError("bot check")
+
+        monkeypatch.setattr(recorder, "YtDlpRecorder", broken)
+        api = Api([camera_job(3)])
+        m = manager_mod.LiveManager(
+            api, "ryzen", model_id="m", gpu=None, root=tmp_path, kinds=("camera_live",),
+            cameras=True, keep_youtube=True, make_recorder=lambda job: CamRecorder(job),
+            make_aligner=lambda job, rec: None)
+        m.poll_once()
+        (s,) = m.streams()
+        assert s.reference is None and api.failed == []
+
+
+class Aligned:
+    def __init__(self, clock=None):
+        self.value, self.stopped = clock, False
+
+    def clock(self):
+        return self.value
+
+    def stop(self):
+        self.stopped = True
+
+
+class ClockedSession(Session):
+    def __init__(self, stream, publish, **kw):
+        super().__init__(stream, publish, **kw)
+        self.wait_for_clock, self.clocks = False, []
+
+    def set_clock(self, clock):
+        self.clocks.append(clock)
+
+
+class TestACameraGameInTheLane:
+    def camera_stream(self, n, clock=None):
+        job = camera_job(n)
+        return manager_mod.Stream(job=job, recorder=CamRecorder(job), aligner=Aligned(clock))
+
+    def test_its_session_waits_for_the_clock_and_gets_it(self):
+        api = Api()
+        s = self.camera_stream(3)
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: ClockedSession(st, pub, ends=5)})
+        ln.step()
+        assert s.session.wait_for_clock and s.session.clocks == []
+        clock = {"kind": "cameras", "aligned": "segment", "offset_s": -908.0,
+                 "steps": [[0.0, -908.0]]}
+        s.aligner.value = clock
+        ln.step()
+        assert s.session.clocks[-1] == clock
+
+    def test_the_end_of_its_stream_finishes_the_recording_once(self):
+        api = Api()
+        s = self.camera_stream(3)
+        ln, m, _ = lane(api, [s], {"j_3": lambda st, pub: ClockedSession(st, pub, ends=2)})
+        ln.step()
+        s.stop_requested = True
+        while ln.busy():
+            ln.step()
+        assert s.recorder.finished_stream == 1
+        assert m.finished == ["j_3"]
+
+
+def test_a_worker_that_sees_the_cameras_claims_camera_games(monkeypatch, tmp_path):
+    from curling_score.service import worker
+
+    seen = {}
+    monkeypatch.setattr(manager_mod, "LiveManager",
+                        lambda *a, **kw: seen.update(kw) or SimpleNamespace(start=lambda: None))
+    for cameras, practice in (("1", "1"), ("0", "1"), ("1", "0")):
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("WORKER_CAMERAS", cameras)
+        monkeypatch.setenv("WORKER_PRACTICE", practice)
+        monkeypatch.setenv("CAMERA_KEEP_YOUTUBE", "1")
+        worker.build_live("http://api", "t", "w", root=tmp_path, weights=None, start=False)
+        assert ("camera_live" in seen["kinds"]) == (cameras == "1")
+        assert seen["keep_youtube"] is True
+
+
+class TestKeepingACameraGame:
+    CLOCK = {"kind": "cameras", "aligned": "segment", "offset_s": -908.16,
+             "steps": [[0.0, -908.16]]}
+
+    def manager(self, tmp_path, whole):
+        cams = tmp_path / "cams"
+
+        class Files(CamRecorder):
+            def __init__(self, job):
+                super().__init__(job)
+                self.dir = cams / "live" / "ryzen" / job["video_id"]
+                self.dir.mkdir(parents=True)
+                for role in ("house_a", "house_h", "long_a", "long_h"):
+                    (self.dir / f"{role}.ts").write_bytes(b"ts")
+                self.path = self.dir
+
+            def whole(self):
+                return whole
+
+        m = manager_mod.LiveManager(
+            Api([camera_job(3)]), "ryzen", model_id="m", gpu=None, root=tmp_path / "cache",
+            kinds=("camera_live",), cameras=True, cams_root=cams,
+            make_recorder=Files, make_aligner=lambda job, rec: Aligned(self.CLOCK),
+            background=lambda fn: fn())
+        m.poll_once()
+        return m, cams
+
+    def test_a_whole_game_is_kept_with_its_clock(self, tmp_path):
+        import json
+
+        m, cams = self.manager(tmp_path, whole=True)
+        (s,) = m.streams()
+        m.finish(s)
+        kept = cams / "kept" / "liveVid0003"
+        assert sorted(p.name for p in kept.iterdir()) == \
+            ["clock.json", "house_a.ts", "house_h.ts", "long_a.ts", "long_h.ts"]
+        meta = json.loads((kept / "clock.json").read_text())
+        assert isinstance(meta.pop("kept_at"), float)
+        layout = meta.pop("layout")
+        assert layout["sheet"] == 3 and {p["role"] for p in layout["placements"]} == \
+            {"house_a", "house_h", "long_a", "long_h"}
+        assert meta == {"sheet": 3, "wall_started": 1793900701.0, "clock": self.CLOCK}
+        assert not (cams / "live" / "ryzen" / "liveVid0003").exists()
+
+    def test_a_camera_recording_names_its_video(self, tmp_path):
+        m, cams = self.manager(tmp_path, whole=True)
+        (s,) = m.streams()
+        assert (s.recorder.dir / "video_id").read_text() == "liveVid0003"
+
+    def test_a_game_that_did_not_end_with_its_stream_is_not_kept(self, tmp_path):
+        m, cams = self.manager(tmp_path, whole=False)
+        (s,) = m.streams()
+        m.finish(s)
+        assert not (cams / "kept").exists()
+        assert not (cams / "live" / "ryzen" / "liveVid0003").exists()
+
+    def test_a_camera_game_records_into_the_shared_place(self, monkeypatch, tmp_path):
+        from curling_score.cameras import recorder as cameras
+
+        made = []
+        monkeypatch.setattr(cameras, "CameraRecorder",
+                            lambda sheet, d, **kw: made.append(d) or CamRecorder(None))
+        m = manager_mod.LiveManager(Api(), "ryzen", model_id="m", gpu=None,
+                                    root=tmp_path / "cache", cams_root=tmp_path / "cams")
+        m._recorder(camera_job(3))
+        m._recorder({**camera_job(4), "kind": "practice"})
+        assert made == [tmp_path / "cams" / "live" / "ryzen" / "liveVid0003",
+                        tmp_path / "cache" / "live" / "liveVid0004"]
+
+
+def test_the_worker_records_camera_games_in_the_shared_place(monkeypatch, tmp_path):
+    from curling_score.ingest import prune
+    from curling_score.service import worker
+
+    seen, pruned = {}, []
+    monkeypatch.setattr(manager_mod, "LiveManager",
+                        lambda *a, **kw: seen.update(kw) or SimpleNamespace(start=lambda: None))
+    monkeypatch.setattr(prune, "prune", lambda *a, **kw: pruned.append(kw) or [])
+    cams = tmp_path / "cams"
+    stale = cams / "live" / "w" / "oldVid"
+    other = cams / "live" / "w2" / "theirs"
+    stale.mkdir(parents=True)
+    other.mkdir(parents=True)
+    monkeypatch.setenv("WORKER_LIVE", "1")
+    monkeypatch.setenv("WORKER_CAMERAS", "1")
+    monkeypatch.setenv("WORKER_CAMS", str(cams))
+    monkeypatch.setenv("WORKER_CAMERA_DAYS", "3")
+    worker.build_live("http://api", "t", "w", root=tmp_path / "cache", weights=None,
+                      start=False, cache_gb=300.0)
+    assert seen["cams_root"] == cams
+    assert not stale.exists() and other.exists()      # its own leftovers only
+    seen["prune"]()
+    assert pruned[0]["cams_root"] == cams and pruned[0]["camera_days"] == 3.0
+
+
+# --- a sheet recorded from its schedule's start, ahead of its stream -----------------------
+
+def standby_job(n):
+    return {"id": f"j_{n}", "run_id": f"r_{n}", "video_id": f"standby-{n}-20261110T020000",
+            "kind": "camera_standby", "source": "cameras", "sheet": n, "format": "fours",
+            "title": f"Sheet {n} - Monday - waiting for the stream"}
+
+
+def found(n):
+    """What a standby's heartbeat says once the poll found its stream."""
+    return {"kind": "camera_live", "video_id": f"liveVid000{n}", "title": f"Sheet {n}",
+            "sheet": n, "format": "fours", "source": "cameras", "channel_id": "UCclub",
+            "published_at": "2026-11-10T02:31:00+00:00"}
+
+
+class TestAStandbyInTheManager:
+    def manager(self, tmp_path, monkeypatch, api):
+        from curling_score.live import recorder
+
+        aligners, refs = [], []
+
+        class Ref(Recorder):
+            def __init__(self, vid, directory, **kw):
+                super().__init__(None)
+                self.vid = vid
+                refs.append(self)
+
+        monkeypatch.setattr(recorder, "YtDlpRecorder", Ref)
+        t = [0.0]
+        m = manager_mod.LiveManager(
+            api, "ryzen", model_id="m", gpu=None, root=tmp_path, clock=lambda: t[0],
+            kinds=("live", "camera_live", "camera_standby"), cameras=True, keep_youtube=True,
+            make_recorder=lambda job: CamRecorder(job),
+            make_aligner=lambda job, rec: aligners.append((dict(job), rec)) or Aligned())
+        return m, t, aligners, refs
+
+    def test_it_records_its_cameras_with_no_clock_and_no_stream_yet(self, tmp_path,
+                                                                    monkeypatch):
+        api = Api([standby_job(3)])
+        m, _, aligners, refs = self.manager(tmp_path, monkeypatch, api)
+        m.poll_once()
+        (s,) = m.streams()
+        assert s.recorder.started and s.aligner is None and s.reference is None
+        assert aligners == [] and refs == []
+
+    def test_its_heartbeat_hands_it_to_its_stream(self, tmp_path, monkeypatch):
+        api = Api([standby_job(3)])
+        m, t, aligners, refs = self.manager(tmp_path, monkeypatch, api)
+        m.poll_once()
+        (s,) = m.streams()
+        recorder = s.recorder
+        api.games["j_3"] = found(3)
+        t[0] = 61.0
+        m.poll_once()
+        assert s.recorder is recorder and not recorder.stopped
+        assert (s.job["kind"], s.job["video_id"], s.job["id"]) == \
+            ("camera_live", "liveVid0003", "j_3")
+        assert s.job["published_at"] == "2026-11-10T02:31:00+00:00"
+        ((job, rec),) = aligners
+        assert job["video_id"] == "liveVid0003" and rec is recorder
+        (ref,) = refs
+        assert s.reference is ref and ref.started and ref.vid == "liveVid0003"
+
+    def test_it_is_handed_over_once(self, tmp_path, monkeypatch):
+        api = Api([standby_job(3)])
+        m, t, aligners, refs = self.manager(tmp_path, monkeypatch, api)
+        m.poll_once()
+        api.games["j_3"] = found(3)
+        for k in (1, 2, 3):
+            t[0] = 61.0 * k
+            m.poll_once()
+        assert len(aligners) == 1 and len(refs) == 1
+
+    def test_given_up_it_is_lost_and_its_recording_deleted(self, tmp_path, monkeypatch):
+        cams = tmp_path / "cams"
+
+        class Files(CamRecorder):
+            def __init__(self, job):
+                super().__init__(job)
+                self.dir = cams / "live" / "ryzen" / job["video_id"]
+                self.dir.mkdir(parents=True)
+                (self.dir / "long_a.ts").write_bytes(b"ts")
+
+        api = Api([standby_job(3)])
+        t = [0.0]
+        m = manager_mod.LiveManager(
+            api, "ryzen", model_id="m", gpu=None, root=tmp_path / "cache", clock=lambda: t[0],
+            kinds=("camera_standby",), cameras=True, cams_root=cams, make_recorder=Files,
+            make_aligner=lambda job, rec: None, background=lambda fn: fn())
+        m.poll_once()
+        (s,) = m.streams()
+        api.lose.add("j_3")
+        t[0] = 61.0
+        m.poll_once()
+        assert s.lost
+        m.finish(s)
+        assert not (cams / "live" / "ryzen" / "standby-3-20261110T020000").exists()
+        assert not (cams / "kept").exists()
+
+
+class TestAStandbyInTheLane:
+    def test_it_gets_no_session_until_its_stream_is_found(self):
+        api = Api()
+        job = standby_job(3)
+        s = manager_mod.Stream(job=job, recorder=CamRecorder(job))
+        ln, _, made = lane(api, [s], {"j_3": lambda st, pub: ClockedSession(st, pub, ends=5)})
+        assert ln.step() is False and s.session is None and made == []
+        s.aligner = Aligned()
+        s.job = {**job, **found(3)}
+        ln.step()
+        assert made == ["j_3"] and s.session.wait_for_clock
+
+
+class TestASessionFromAStandby:
+    def make(self, monkeypatch, published_at, wall_started):
+        from curling_score import analyze
+
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: ("det", "broom", "line"))
+        job = {**standby_job(3), **found(3), "published_at": published_at}
+        rec = CamRecorder(job)
+        rec.wall_started = wall_started
+        st = manager_mod.Stream(job=job, recorder=rec)
+        return lane_mod.video_sessions("w.pt", progress=lambda m: None)(st, lambda d: None)
+
+    def test_it_is_read_from_where_its_stream_began(self, monkeypatch):
+        from datetime import datetime
+
+        began = datetime.fromisoformat("2026-11-10T02:31:00+00:00").timestamp()
+        session = self.make(monkeypatch, "2026-11-10T02:31:00+00:00", began - 1860.0)
+        assert session.start_s == 1860.0
+
+    def test_a_stream_older_than_the_recording_is_read_from_the_start(self, monkeypatch):
+        from datetime import datetime
+
+        began = datetime.fromisoformat("2026-11-10T02:31:00+00:00").timestamp()
+        assert self.make(monkeypatch, "2026-11-10T02:31:00+00:00", began + 200.0).start_s == 0.0
+        assert self.make(monkeypatch, None, began).start_s == 0.0
+
+
+def test_a_worker_that_sees_the_cameras_takes_standbys(monkeypatch, tmp_path):
+    from curling_score.service import worker
+
+    seen = {}
+    monkeypatch.setattr(manager_mod, "LiveManager",
+                        lambda *a, **kw: seen.update(kw) or SimpleNamespace(start=lambda: None))
+    for cameras in ("1", "0"):
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("WORKER_CAMERAS", cameras)
+        worker.build_live("http://api", "t", "w", root=tmp_path, weights=None, start=False)
+        assert ("camera_standby" in seen["kinds"]) == (cameras == "1")
+
+
+class TestKeepingAGameFromAStandby:
+    def test_its_files_are_cut_where_its_stream_began(self, tmp_path, monkeypatch):
+        from datetime import datetime
+
+        from curling_score.cameras import trim
+
+        cuts = []
+        monkeypatch.setattr(trim, "trim_kept", lambda d, cut: cuts.append((d, cut)) or cut)
+        cams = tmp_path / "cams"
+        began = datetime.fromisoformat(found(3)["published_at"]).timestamp()
+
+        class Files(CamRecorder):
+            def __init__(self, job):
+                super().__init__(job)
+                self.wall_started = began - 1860.0
+                self.dir = cams / "live" / "ryzen" / job["video_id"]
+                self.dir.mkdir(parents=True)
+                (self.dir / "long_a.ts").write_bytes(b"ts")
+
+            def whole(self):
+                return True
+
+        api = Api([standby_job(3)])
+        t = [0.0]
+        m = manager_mod.LiveManager(
+            api, "ryzen", model_id="m", gpu=None, root=tmp_path / "cache", clock=lambda: t[0],
+            kinds=("camera_standby",), cameras=True, cams_root=cams, make_recorder=Files,
+            make_aligner=lambda job, rec: Aligned(), background=lambda fn: fn())
+        m.poll_once()
+        api.games["j_3"] = found(3)
+        t[0] = 61.0
+        m.poll_once()
+        (s,) = m.streams()
+        m.finish(s)
+        assert cuts == [(cams / "kept" / "liveVid0003", 1860.0)]
+
+    def standby_manager(self, tmp_path, monkeypatch, trim_kept, background):
+        from datetime import datetime
+
+        from curling_score.cameras import trim
+
+        monkeypatch.setattr(trim, "trim_kept", trim_kept)
+        cams = tmp_path / "cams"
+        began = datetime.fromisoformat(found(3)["published_at"]).timestamp()
+
+        class Files(CamRecorder):
+            def __init__(self, job):
+                super().__init__(job)
+                self.wall_started = began - 1860.0
+                self.dir = cams / "live" / "ryzen" / job["video_id"]
+                self.dir.mkdir(parents=True)
+                (self.dir / "long_a.ts").write_bytes(b"ts")
+
+            def whole(self):
+                return True
+
+        api = Api([standby_job(3)])
+        t = [0.0]
+        m = manager_mod.LiveManager(
+            api, "ryzen", model_id="m", gpu=None, root=tmp_path / "cache", clock=lambda: t[0],
+            kinds=("camera_standby",), cameras=True, cams_root=cams, make_recorder=Files,
+            make_aligner=lambda job, rec: Aligned(), background=background)
+        m.poll_once()
+        api.games["j_3"] = found(3)
+        t[0] = 61.0
+        m.poll_once()
+        return m, cams
+
+    def test_a_standby_game_is_kept_with_its_trim_pending_until_cut(self, tmp_path,
+                                                                     monkeypatch):
+        import json
+
+        from curling_score.cameras import trim
+
+        def cut_beside(path, cut_s):
+            out = path.with_name(path.name + ".trim")
+            out.write_bytes(b"cut")
+            return out
+
+        monkeypatch.setattr(trim, "_write_trim", cut_beside)
+        later = []
+        m, cams = self.standby_manager(tmp_path, monkeypatch, trim.trim_kept, later.append)
+        (s,) = m.streams()
+        assert (s.recorder.dir / "video_id").read_text() == "liveVid0003"
+        m.finish(s)
+        meta_path = cams / "kept" / "liveVid0003" / "clock.json"
+        assert json.loads(meta_path.read_text())["trim_pending"] is True
+        for fn in later:
+            fn()
+        meta = json.loads(meta_path.read_text())
+        assert "trim_pending" not in meta and isinstance(meta["kept_at"], float)
+
+    def test_a_failed_trim_is_left_to_trim_and_the_disk_still_pruned(self, tmp_path,
+                                                                       monkeypatch):
+        import json
+
+        def broken(d, cut):
+            raise OSError("No space left on device")
+
+        m, cams = self.standby_manager(tmp_path, monkeypatch, broken, lambda fn: fn())
+        pruned = []
+        m.prune = lambda: pruned.append(1)
+        (s,) = m.streams()
+        m.finish(s)
+        meta = json.loads((cams / "kept" / "liveVid0003" / "clock.json").read_text())
+        # trim_kept says whether its files are readable; the manager does not guess.
+        assert meta["trim_pending"] is True and meta["trim_by"] == "ryzen"
+        assert pruned
+
+    def test_its_kept_files_begin_at_its_floor(self, tmp_path, monkeypatch):
+        later = []
+        cuts = []
+        m, cams = self.standby_manager(tmp_path, monkeypatch,
+                                       lambda d, cut: cuts.append(cut) or cut, later.append)
+        (s,) = m.streams()
+        s.session = SimpleNamespace(floor_s=5000.0)
+        m.finish(s)
+        for fn in later:
+            fn()
+        assert cuts == [5000.0]
+
+    def test_a_game_recorded_from_its_claim_is_not_cut(self, tmp_path, monkeypatch):
+        from curling_score.cameras import trim
+
+        cuts = []
+        monkeypatch.setattr(trim, "trim_kept", lambda d, cut: cuts.append((d, cut)) or cut)
+        cams = tmp_path / "cams"
+
+        class Files(CamRecorder):
+            def __init__(self, job):
+                super().__init__(job)
+                self.dir = cams / "live" / "ryzen" / job["video_id"]
+                self.dir.mkdir(parents=True)
+                (self.dir / "long_a.ts").write_bytes(b"ts")
+
+            def whole(self):
+                return True
+
+        # Claimed once its stream was found: recorded from after it began.
+        job = {**camera_job(3), "published_at": "2026-11-05T17:40:00+00:00"}
+        m = manager_mod.LiveManager(
+            Api([job]), "ryzen", model_id="m", gpu=None, root=tmp_path / "cache",
+            kinds=("camera_live",), cameras=True, cams_root=cams, make_recorder=Files,
+            make_aligner=lambda job, rec: Aligned(), background=lambda fn: fn())
+        m.poll_once()
+        (s,) = m.streams()
+        m.finish(s)
+        assert cuts == [] and (cams / "kept" / "liveVid0003" / "clock.json").exists()
+
+
+def test_a_games_clock_counts_its_waits_from_where_its_stream_began(monkeypatch):
+    """Behind a standby the recording is already long when the stream is found:
+    the clock's first checks and its give-up wait from the stream's start."""
+    from datetime import datetime
+
+    from curling_score.live import clock
+
+    made = {}
+
+    class Spy:
+        def __init__(self, *a, head, **kw):
+            made["head"] = head
+
+        def start(self):
+            return self
+
+    monkeypatch.setattr(clock, "Aligner", Spy)
+    job = {**standby_job(3), **found(3)}
+    rec = CamRecorder(job)
+    rec.wall_started = datetime.fromisoformat(job["published_at"]).timestamp() - 1860.0
+    rec.head_s = lambda: 2000.0
+    manager_mod.LiveManager(Api(), "ryzen", model_id="m", gpu=None)._aligner(job, rec)
+    assert made["head"]() == 140.0
+
+
+
+# ------------------------------------------- a sheet's games in a row (phase 3)
+WALL0 = 1793900701.0
+
+
+def iso(t):
+    from datetime import datetime, timezone
+
+    return datetime.fromtimestamp(t, timezone.utc).isoformat()
+
+
+class OwnedSession(ClockedSession):
+    """Records what it is told of its span; deciding until told its own end."""
+
+    def __init__(self, stream, publish, **kw):
+        super().__init__(stream, publish, **kw)
+        self.ownership, self.own_until_s, self.decide = [], None, False
+
+    def set_ownership(self, **kw):
+        self.ownership.append(kw)
+        if kw.get("stream_end_s") is not None:
+            self.decide = True
+
+    def deciding(self):
+        return self.decide and self.own_until_s is None
+
+
+class TestASheetsGamesInTheLane:
+    def camera_stream(self, n=3, **handoff):
+        job = {**camera_job(n), **handoff}
+        st = manager_mod.Stream(job=job, recorder=CamRecorder(job), aligner=Aligned(None))
+        st.handoff = dict(handoff)
+        return st
+
+    def test_a_lookahead_game_is_read_and_kept_from_its_opening(self):
+        job = {**camera_job(3), "analysis_from": iso(WALL0 + 1200.0)}
+        rec = CamRecorder(job)
+        assert manager_mod.analysis_start_s(job, rec) == pytest.approx(1200.0)
+        assert manager_mod.analysis_start_s(camera_job(3), rec) == \
+            manager_mod.stream_start_s(camera_job(3), rec)
+
+    def test_the_lane_passes_the_handoff_and_floor_to_the_session(self):
+        api = Api()
+        s = self.camera_stream(floor_pending=True, floor_at=None, handoff_at=None)
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=9)})
+        ln.step()
+        assert s.session.ownership[-1]["floor_pending"] is True
+        s.handoff = {"floor_pending": False, "floor_at": iso(WALL0 + 300.0),
+                     "handoff_at": iso(WALL0 + 3600.0)}
+        ln.step()
+        got = s.session.ownership[-1]
+        assert got["floor_s"] == pytest.approx(300.0)
+        assert got["handoff_s"] == pytest.approx(3600.0) and got["floor_pending"] is False
+
+    def test_a_game_still_going_when_its_stream_ends_keeps_recording(self):
+        api = Api()
+        s = self.camera_stream()
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.step()
+        s.stop_requested = True
+        for _ in range(5):
+            ln.step()
+        assert s.recorder.finished_stream == 0
+        assert [o["stream_end_s"] for o in s.session.ownership if "stream_end_s" in o] == [600.0]
+        s.session.own_until_s = 100.0            # head 600 >= 100 + the board margin
+        ln.step()
+        assert s.recorder.finished_stream == 1
+        assert s.own_until_wall == pytest.approx(WALL0 + 100.0)
+
+    def test_it_gives_up_following_after_45_minutes(self):
+        api = Api()
+        s = self.camera_stream()
+        t = [0.0]
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.clock = lambda: t[0]
+        ln.step()
+        s.stop_requested = True
+        ln.step()
+        t[0] = lane_mod.OVERRUN_MAX_S - 1
+        ln.step()
+        assert s.recorder.finished_stream == 0
+        t[0] = lane_mod.OVERRUN_MAX_S + 1
+        ln.step()
+        assert s.recorder.finished_stream == 1
+
+
+def test_own_until_is_sent_once():
+    api = Api([camera_job(3)])
+    t = [0.0]
+    m = manager_mod.LiveManager(
+        api, "ryzen", model_id="m", gpu=None, root=None, clock=lambda: t[0],
+        kinds=("camera_live",), cameras=True, make_recorder=lambda job: CamRecorder(job),
+        make_aligner=lambda job, rec: Aligned())
+    m.poll_once()
+    (s,) = m.streams()
+    s.own_until_wall = WALL0 + 100.0
+    for k in range(1, 4):
+        t[0] = 61.0 * k
+        m.poll_once()
+    assert api.extras == [("j_3", {"own_until": iso(WALL0 + 100.0)})]
+
+
+
+class TestTheReviewFixes:
+    def camera_stream(self, **handoff):
+        job = {**camera_job(3), **handoff}
+        st = manager_mod.Stream(job=job, recorder=CamRecorder(job), aligner=Aligned(None))
+        st.handoff = dict(handoff)
+        return st
+
+    def test_own_until_is_known_as_soon_as_decided(self):
+        api = Api()
+        s = self.camera_stream()
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.step()
+        s.session.own_until_s = 100.0
+        ln.step()
+        assert s.own_until_wall == pytest.approx(WALL0 + 100.0)
+
+    def test_a_game_that_found_its_end_stops_recording_before_its_stream_ends(self):
+        api = Api()
+        s = self.camera_stream()
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.step()
+        s.session.own_until_s = 100.0                 # head 600 >= 100 + the margin
+        ln.step()
+        assert s.recorder.finished_stream == 1 and not s.stop_requested
+
+    def test_the_stream_end_comes_from_the_api(self):
+        api = Api()
+        s = self.camera_stream(stream_ended_at=iso(WALL0 + 500.0))
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.step()
+        s.stop_requested = True
+        ln.step()
+        assert [o["stream_end_s"] for o in s.session.ownership
+                if "stream_end_s" in o] == [pytest.approx(500.0)]
+
+    def test_complete_carries_own_until(self):
+        api = Api()
+        s = self.camera_stream()
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=1)})
+        ln.step()
+        s.own_until_wall = WALL0 + 100.0
+        while ln.busy():
+            ln.step()
+        assert api.completed[-1][1]["own_until"] == iso(WALL0 + 100.0)
+
+
+def test_a_worker_claims_one_live_job_a_poll():
+    api = Api([camera_job(3), camera_job(4), camera_job(5)])
+    m = manager_mod.LiveManager(
+        api, "ryzen", model_id="m", gpu=None, root=None, kinds=("camera_live",), cameras=True,
+        make_recorder=lambda job: CamRecorder(job), make_aligner=lambda job, rec: Aligned())
+    m.poll_once()
+    assert len(m.streams()) == 1
+    m.poll_once()
+    assert len(m.streams()) == 2
+
+
+def test_own_until_is_sent_at_once():
+    api = Api([camera_job(3)])
+    t = [0.0]
+    m = manager_mod.LiveManager(
+        api, "ryzen", model_id="m", gpu=None, root=None, clock=lambda: t[0],
+        kinds=("camera_live",), cameras=True, make_recorder=lambda job: CamRecorder(job),
+        make_aligner=lambda job, rec: Aligned())
+    m.poll_once()
+    t[0] = 61.0
+    m.poll_once()                      # a heartbeat with nothing to say
+    (s,) = m.streams()
+    s.own_until_wall = WALL0 + 100.0
+    t[0] = 70.0                        # well inside the next minute
+    m.poll_once()
+    assert api.extras == [("j_3", {"own_until": iso(WALL0 + 100.0)})]

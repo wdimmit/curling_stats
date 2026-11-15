@@ -17,11 +17,11 @@
     "frontend/core/linechart.mjs": "def1cf0bc8f8a4d85469b4bd4a222f987f0aba06f417628b9cdee83475da4e3b",
     "frontend/core/myshots.mjs": "3ab84420bb611857d57b0ab5b67469c242f5e48a7ac1e1cdaa945ab3c399fd6b",
     "frontend/core/overrides.mjs": "20fe3c8155ed6df0ffcc2f8c394082c61773184cf470ae6011afbe1d4c4413ec",
-    "frontend/core/playlists.mjs": "f31edacfec52b689cfe7aa9edd6ebac90e171f5c2172b92a6ed1012abcc36204",
+    "frontend/core/playlists.mjs": "b118b071359b74b6ebcc0a5cd838c4a5dae3e6d58c3fb431d22264638d6087f9",
     "frontend/core/practice.mjs": "509017058ff4161a2da8ff7c50abf7ca5db87674385410f8e30bab203f498311",
     "frontend/core/report.mjs": "7bb9374198cdccf4ca7380a72ee620ced50868bdf0f0de19bbc87a4dd4480aaa",
     "frontend/core/shotclip.mjs": "cb4b6ee605e41308770edf681b824f5db06cfd206bffd3f81a4f47cebaf63ef5",
-    "frontend/core/shots.mjs": "069aec2c81a69a467885c2585228c23516ab646e5de0df7632fffeec28172102",
+    "frontend/core/shots.mjs": "0f5c2b7418741ce208daba635ccae4127403049f30a93a018e9250a1af576eb6",
     "frontend/core/speed.mjs": "99ef2edf1f96624b44954fca8c3fb688fc3681621b4a6cf0e08e4652c9abecc6",
     "frontend/core/stats.mjs": "e46d873b7c0f52055162813df60f9cfab5a4d526115fbbba60c973dd27325d07",
     "frontend/core/tablet.mjs": "9458c37883d15605f583ad07dc89a9d736935afd903da99cd779afe48f8e594d",
@@ -36,7 +36,7 @@
     "frontend/runtime/flag.mjs": "5be5eeb900c2056f6666966b5485709ca21ea3eaceabb5a5b2dc3559d3732f3c",
     "frontend/runtime/houseImage.mjs": "e00bb227ea4f748ebcf19a24d7b3660aa2b459152a13a30a261815ed018cd535",
     "frontend/runtime/overridesStore.mjs": "49a03e77ef091e4e3eceb0ce78565f31d513e9cc4f511995dc8a947f93c5408e",
-    "frontend/runtime/player.mjs": "f77b6bb6d669463bb15e52321e8bb157ddfedf12cdd3085a304d2004b0acf0b5",
+    "frontend/runtime/player.mjs": "e358f7f0a307fbaf563ae5edcad9a584958bba7cefb284ce5b2dc93d596e9ced",
     "frontend/runtime/plays.mjs": "0cf2559467795e374ea78dd2652567b756d0b94963cf34b73e57c02dca2c6462",
     "frontend/runtime/prefs.mjs": "5c039c2d8f351769e34c22d4c94fbdfc898c4336e269e49c1fe1a43fe99260d6",
     "frontend/runtime/scores.mjs": "51f0984f02f825dcc93ed3bc375e47130ec4026984b1fdab9c643ffe91b6deed",
@@ -50,7 +50,7 @@
     "frontend/site/Join.jsx": "4f915fd7c6d9de9aa5430ea63f61d30218b1ebbac63cc0076e09a9482eca4374",
     "frontend/site/Label.jsx": "0f4d4714f6324d048360fff8baa5aef90898e44982ff2d6e4b96220d53a33ed0",
     "frontend/site/Mine.jsx": "9012ae634457e1fd1f2e5347e192cd7942fa735107794ee7c50e3682a3580cf6",
-    "frontend/site/Playlists.jsx": "da55443aad9e78a7f0041caf35d233d64927f1ef4bea77f36e2e14c6ffbcf664",
+    "frontend/site/Playlists.jsx": "d70fb691b84f795a8d63dce6e949b7345778f2839b9e7b06dbc32440fd1a54ea",
     "frontend/site/Practice.jsx": "89e61e4b70169115c6ee4f26a0247fae7d3c4b6488422ee8d6d3aaeab5b4f397",
     "frontend/site/ShotCharts.jsx": "d27a5573b1d3edab135d269e381345da8546e1bca24bab18b862fd01048096fa",
     "frontend/site/Shots.jsx": "f8af8e9f1d2e795cfb2477021190f305ac04d0d9f162a80f55ce0ce3a627c912",
@@ -67,7 +67,7 @@
     "frontend/site/signinState.mjs": "341882fcb8e3c1e3412ca51c5e582597f078818a3b860f8beb82a3df7522a46e",
     "frontend/site/ui.jsx": "04a340c4c9cbbaebfb7d3516d7d6233c1cef25c91d84b1b4e59ab7488bc4a1c5",
     "frontend/site/useAuth.js": "637bd013b9d2171273d9b04d4d12482866a9ef008b3db63329ca0dc848952118",
-    "frontend/viewer/App.jsx": "93b73aa980a4e66ef5331fc91205ca266c9bfa7ed240d9a597ff7cf2d1e9e840",
+    "frontend/viewer/App.jsx": "ba963fc39652dea6970a0446299ad457bcfbbc66eef62d5a30b7ef0709169dc3",
     "frontend/viewer/ChartPanel.jsx": "922fc5ac6a29a627848cbb04d44270cbc6572231df0349c9fdc5410283cd0e55",
     "frontend/viewer/Charts.jsx": "31d5cbfa2ec2a23d36691a085970069e7c5e433c910024b8238f98c1d7f1b172",
     "frontend/viewer/Delivery.jsx": "3207f9bdfc9d56b0bbf5222d136dde05327fd98c60a499be9269bfc51f23d1a9",
@@ -88,11 +88,11 @@
     "frontend/viewer/ThinkingDialog.jsx": "6e25b3b58cd17c73482af2d66baeda160de4c135c91c9f84a1ddca4d34661a88",
     "frontend/viewer/Timing.jsx": "3526287fb4e9b7f36e12f2f5c8a7eacb7906d2b43b45f60ff4119fbe5b57f47c",
     "frontend/viewer/ViewOnly.jsx": "64f55d2286440b32e65009598b96d11b7301e91731cc00c261b96441a9d7dcce",
-    "frontend/viewer/Watch.jsx": "154dfc4696159136dcc4f9abeada08ec63c49956a693204b5f080437a707b589",
+    "frontend/viewer/Watch.jsx": "04502bc4695ff32169e503df5c9855dd7d3345903a67bfbe0a5431e281b2a87d",
     "frontend/viewer/main.jsx": "1e45734803d6687722c9109e2cf44d17017e4c70e5300eca42e4ea36f6c3bf22"
   },
   "outputs": {
-    "src/curling_score/service/static/site.js": "6cb261f05c0bb5d3ccd9fabd2c25933b0d9ccaf902fd52583818eb94caa8cca3",
-    "src/curling_score/viewer/app.js": "42109c57d2b864817ab611d1f3f8e96153acff019aaf2bceebb57b02f88864ec"
+    "src/curling_score/service/static/site.js": "ca7a90032fbc5cebfe4024113c232362ba785a103d58ddd03001de9baddca6d6",
+    "src/curling_score/viewer/app.js": "064d861209789d1eb92ec7ad7335ebd585674704f78518d2e72decdcf03cd64c"
   }
 }

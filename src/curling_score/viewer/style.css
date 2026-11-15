@@ -1799,3 +1799,11 @@ body[data-mode="view"] dialog.sheet #note { pointer-events: auto; opacity: 1; }
     min-width: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px;
     box-sizing: border-box; font-size: 13px; }
 }
+
+/* A shot no stream shows (one thrown before its stream began, with no stream
+   on before it): said over the player, which stays mounted beneath. */
+#video { position: relative; }
+#video .nostream { position: absolute; inset: 0; display: flex; align-items: center;
+                   justify-content: center; background: rgb(0 0 0 / 0.82); color: #fff;
+                   font-weight: 600; text-align: center; padding: 1rem; }
+#video .nostream[hidden] { display: none; }

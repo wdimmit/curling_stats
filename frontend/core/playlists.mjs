@@ -93,7 +93,15 @@ const minutes = seconds => String(Number((seconds / 60).toFixed(2)));
 export const newNight = () => ({ days: [], start: "18:00", end: "23:30" });
 
 export const emptyForm = () => ({ link: "", label: "", nights: [],
-                                  liveMin: "3", idleMin: "60", idleNever: false });
+                                  liveMin: "3", idleMin: "60", idleNever: false,
+                                  input: "cameras" });
+
+/* Where a playlist's live games are read from (WatchedPlaylist.input). */
+export function inputText(pl) {
+  return pl.input !== "youtube"
+    ? "Live games are read from each sheet's cameras, where the site can; the rest from the stream."
+    : "Live games are read from the stream.";
+}
 
 export function formFrom(pl) {
   return {
@@ -102,6 +110,7 @@ export function formFrom(pl) {
     liveMin: minutes(pl.live_poll_s ?? 180),
     idleMin: minutes(pl.idle_poll_s ?? 3600),
     idleNever: pl.idle_poll_s === null,
+    input: pl.input || "cameras",
   };
 }
 
@@ -139,5 +148,6 @@ export function bodyFrom(form, { adding = false } = {}) {
                                           start: w.start, end: w.end }));
   body.live_poll_s = Math.round(live * 60);
   body.idle_poll_s = form.idleNever ? null : Math.round(idle * 60);
+  body.input = form.input || "cameras";
   return { body };
 }

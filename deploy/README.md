@@ -306,10 +306,13 @@ cuts the clips of the rocks people say they threw: no GPU, four CPUs.
 
 ## Practice on the club's cameras
 
-A practice session reads the sheet's own cameras (the club's 20 NDI sources),
-so Start works whenever no league is on, streamed or not. Only a worker on the
-club's network can read them: the Ryzen's `worker` and `worker2`. The design is
-`docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md`. Practice
+A practice session reads the sheet's own cameras (the club's 20 cameras, over
+SRT on UDP 1600), so Start works whenever no league is on, streamed or not.
+Only a worker on the club's network can read them: the Ryzen's `worker` and
+`worker2`. The design is
+`docs/superpowers/specs/2026-10-24-practice-direct-feeds-design.md`, and since
+2026-11 `docs/superpowers/specs/2026-10-29-practice-srt-capture-design.md` (SRT
+in place of NDI). Practice
 read a sheet's YouTube practice stream until 2026-10-25; that path is gone, and
 there is no switching back to it. Sessions from then still read as they did.
 
@@ -357,8 +360,8 @@ feature (a value set only in a shell is gone at the next declarative deploy):
   one a sheet, split 3/2 between the workers, at the API's cap of five
   (`PRACTICE_MAX_CAMERA_WATCHES`, above). Keep it at 3 or more.
 - The workers stay on the compose project's network (`deploy_default`). They
-  find and read the cameras with the NDI config the capture writes for itself,
-  so no `network_mode: host` is needed.
+  call each camera's SRT listener (outgoing UDP to port 1600) from there, so no
+  `network_mode: host` is needed.
 - `worker` holds both GPUs, with `CUDA_VISIBLE_DEVICES=0` to keep its models and
   NVENC on card 0. NVENC on card 0 fails in a container that does not also have
   card 1 ("unsupported device"); card 1 alone encodes, so `worker2` keeps only
@@ -367,9 +370,10 @@ feature (a value set only in a shell is gone at the next declarative deploy):
 
 **Calibrating a sheet.** A watch records from Start, so it has no footage of
 the sheet from before, and at Start there are players on the ice. So each sheet
-keeps a calibration made while it was empty. With the sheet empty and no session on it, in each worker, one after
-the other, never both at once (one NDI connection per camera; let the first
-finish before starting the second):
+keeps a calibration made while it was empty. With the sheet empty and no
+session on it, in each worker (one after the other is simplest; at once is
+also fine, since a second SRT caller to a camera gets its own stream, and two
+of ours per house camera is within the limit):
 
 ```bash
 docker compose -f deploy/docker-compose.worker.yml exec worker  curling-score cameras-calibrate --sheet 2

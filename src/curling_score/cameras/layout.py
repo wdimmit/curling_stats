@@ -3,14 +3,17 @@
 The tracker, its models and its calibration were all built on YouTube's
 composite: the two long views either side, and the two house cameras turned
 into a grey-barred strip down the middle (``geometry/layout.py``). The camera
-path rebuilds that picture from the raw cameras, so each sheet needs the crop,
-turn and scale that put each camera where YouTube put it. Those are fitted
+path reads each camera's own file, cut to what YouTube showed of it
+(``feeds/cameras.py``), so each sheet needs the crop, turn and scale that put
+each camera where YouTube put it. Those are fitted
 once per sheet from a YouTube frame (``scripts/cameras/fit_layout.py``) and
 kept in ``layouts/sheet{N}.json``; panel sizes differ by sheet, and sheets 2-4's
 long cameras were re-aimed for 2026-27.
 
-``filtergraphs`` turns a layout into the FFmpeg ``-filter_complex`` graphs the
-composer runs.
+``filtergraphs`` turns a layout into the FFmpeg ``-filter_complex`` graphs that
+compose the four into YouTube's picture. Recording no longer does
+(``recorder.py``); ``scripts/cameras/compose_offline.py`` does, to compare
+the two ways of reading a sheet.
 """
 
 from __future__ import annotations
@@ -20,13 +23,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-Rect = tuple[int, int, int, int]  # x, y, w, h
+from curling_score.feeds.cut import ROTATIONS, Cut, Rect
 
 LAYOUTS = Path(__file__).with_name("layouts")
 WIDTH, HEIGHT, FPS = 1920, 1080, 60
-ROTATIONS = (0, 90, -90)
-# FFmpeg's transpose: 1 turns clockwise, 2 counter-clockwise, neither flips.
-_TRANSPOSE = {90: 1, -90: 2}
 
 
 @dataclass(frozen=True)
@@ -51,10 +51,9 @@ class SheetLayout:
     background: str  # the bars' grey, "0xRRGGBB"
 
 
-def save(sheet_layout: SheetLayout, path, *, fit: dict | None = None) -> None:
-    """Write the layout as JSON. ``fit`` is the fitter's record of how it got
-    there (which frames, inliers, residuals); ``load`` ignores it."""
-    doc = {
+def to_record(sheet_layout: SheetLayout) -> dict:
+    """The layout as its JSON has it (`save`, `from_record`)."""
+    return {
         "sheet": sheet_layout.sheet,
         "background": sheet_layout.background,
         "placements": [
@@ -62,6 +61,24 @@ def save(sheet_layout: SheetLayout, path, *, fit: dict | None = None) -> None:
             for p in sheet_layout.placements
         ],
     }
+
+
+def from_record(doc: dict) -> SheetLayout:
+    """A layout from its JSON record (`to_record`)."""
+    return SheetLayout(
+        sheet=doc["sheet"],
+        placements=tuple(
+            Placement(p["role"], tuple(p["crop"]), p["rotate"], tuple(p["out"]))
+            for p in doc["placements"]
+        ),
+        background=doc["background"],
+    )
+
+
+def save(sheet_layout: SheetLayout, path, *, fit: dict | None = None) -> None:
+    """Write the layout as JSON. ``fit`` is the fitter's record of how it got
+    there (which frames, inliers, residuals); ``load`` ignores it."""
+    doc = to_record(sheet_layout)
     if fit is not None:
         doc["fit"] = fit
     # A rectangle per line reads better than four.
@@ -75,15 +92,7 @@ def load(sheet: int, *, root: Path = LAYOUTS) -> SheetLayout:
     if not path.exists():
         raise LookupError(
             f"no camera layout for sheet {sheet} ({path}); fit one with scripts/cameras/fit_layout.py")
-    doc = json.loads(path.read_text())
-    return SheetLayout(
-        sheet=doc["sheet"],
-        placements=tuple(
-            Placement(p["role"], tuple(p["crop"]), p["rotate"], tuple(p["out"]))
-            for p in doc["placements"]
-        ),
-        background=doc["background"],
-    )
+    return from_record(json.loads(path.read_text()))
 
 
 def filtergraphs(sheet_layout: SheetLayout, *, inputs: dict[str, int]) -> list[str]:
@@ -104,15 +113,8 @@ def filtergraphs(sheet_layout: SheetLayout, *, inputs: dict[str, int]) -> list[s
     """
     graphs = []
     for p in sheet_layout.placements:
-        cx, cy, cw, ch = p.crop
-        _, _, ow, oh = p.out
-        # exact: on the cameras' yuv420p, crop otherwise rounds an odd x, y, w
-        # or h down to even, moving a 1:1 long view by a pixel.
-        steps = [f"crop={cw}:{ch}:{cx}:{cy}:exact=1"]
-        if p.rotate:
-            steps.append(f"transpose={_TRANSPOSE[p.rotate]}")
-        steps.append(f"scale={ow}:{oh}")
-        graphs.append(f"[{inputs[p.role]}:v]{','.join(steps)}[{p.role}]")
+        steps = Cut.from_placement(p.role, p).steps()
+        graphs.append(f"[{inputs[p.role]}:v]{steps}[{p.role}]")
     chains = [f"color=c={sheet_layout.background}:s={WIDTH}x{HEIGHT}:r={FPS}[base]"]
     below = "base"
     for i, p in enumerate(sheet_layout.placements, 1):

@@ -329,12 +329,14 @@ def _frame(img, box, size):
 def render(plan, views, out_path, piece_marks, fr: Framing | None = None, *,
            panels: dict | None = None, size=practice_clips.CLIP_SIZE,
            fps: int = practice_clips.CLIP_FPS,
-           timeout_s: float = practice_clips.CUT_TIMEOUT_S) -> None:
+           timeout_s: float = practice_clips.CUT_TIMEOUT_S, t0_s: float = 0.0) -> None:
     """Cut ``plan`` from ``views`` (as `practice_clips.cut` takes them) into
     ``out_path``, framed by ``fr`` and with ``piece_marks`` (one per piece,
     `marks`) burned in. A view named in ``panels`` is an overhead panel
-    (`Panel`): turned and kept at its own shape. Raises OSError or a
-    SubprocessError when no clip was made, as `cut` does."""
+    (`Panel`): turned and kept at its own shape. ``t0_s`` is where the
+    sources begin on the plan's clock (`practice_clips.decode_args`): a
+    camera game's files are on the cameras' clock, its rocks on the video's.
+    Raises OSError or a SubprocessError when no clip was made, as `cut` does."""
     panels = panels or {}
     width, height = size
     work = (int(round(width * WORK_SCALE)), int(round(height * WORK_SCALE)))
@@ -351,7 +353,7 @@ def render(plan, views, out_path, piece_marks, fr: Framing | None = None, *,
         sx, sy = zoom_px if zoomed else (width, height)
         pieces.append({**m, "dots": thin(m.get("dots") or [], sx, sy,
                                          DOT_GAP if zoomed else DOT_GAP_WHOLE)})
-    decode = practice_clips.decode_args(plan, views, size=work, fps=fps)
+    decode = practice_clips.decode_args(plan, views, t0_s=t0_s, size=work, fps=fps)
     decode += ["-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"]
     encode = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24",
               "-s", f"{width}x{height}", "-r", str(fps), "-i", "pipe:0", "-an",

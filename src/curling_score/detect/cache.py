@@ -27,6 +27,7 @@ from pathlib import Path
 import numpy as np
 
 from curling_score.detect.rocks import Detection, PlayerBox, Seen
+from curling_score.feeds import Cut, as_feed
 
 # Changing how a detection is stored or replayed must not read old files back.
 FORMAT_VERSION = 2
@@ -107,14 +108,21 @@ def _detector_identity(detector) -> list:
     ]
 
 
-def key(video_path, rect, calib, detector, start_s, end_s, step_s,
+def key(video_path, cut, calib, detector, start_s, end_s, step_s,
         extra=None) -> str:
-    """A digest of everything that can change the detections."""
+    """A digest of everything that can change the detections.
+
+    ``cut`` is a rect or a `feeds.Cut`, and ``video_path`` a path or a
+    `feeds.Feed`: the file is the one the cut's view lives in. A crop keys as
+    its rect, and a single-file feed as its path, exactly as before cuts
+    existed, so the workers' warm caches keep hitting.
+    """
+    cut = Cut.of(cut)
     parts = [
         FORMAT_VERSION,
         _source_digest(),
-        _file_identity(video_path),
-        list(rect),
+        _file_identity(os.fspath(as_feed(video_path).path_for(cut.name))),
+        list(cut.key()),
         asdict(calib) if is_dataclass(calib) else repr(calib),
         _detector_identity(detector),
         round(float(start_s), 3),

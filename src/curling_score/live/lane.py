@@ -14,7 +14,10 @@ from pathlib import Path
 
 from curling_score import timeline
 from curling_score.ingest import source
-from curling_score.live.manager import is_practice
+from curling_score.live import manager as manager_mod
+from curling_score.live.manager import (analysis_start_s, is_camera_game, is_practice,
+                                        is_standby)
+from curling_score.live.session import BOARD_BEHIND_S
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -24,6 +27,11 @@ log = logging.getLogger(__name__)
 # it is tried again. One stream's trouble never stops the others.
 MAX_FAILURES = 3
 RETRY_S = 60.0
+# A camera game still going when its stream ends is followed this long at
+# most (the user, 2026-11-14), and recorded this far past where its span of
+# the sheet ended, for the board's last read.
+OVERRUN_MAX_S = 45 * 60.0
+FINISH_MARGIN_S = BOARD_BEHIND_S + 30.0
 
 
 def _games(doc):
@@ -51,6 +59,61 @@ class LiveLane:
     def busy(self) -> bool:
         return self.manager.has_streams()
 
+    def _camera_tick(self, stream):
+        """A camera game's clock passed on as it is found or changes (the
+        session publishes the game again on it); its place on the sheet passed
+        on (`LiveSession.set_ownership`); and its recording finished once its
+        stream is over and its game is too -- followed past its stream's end
+        while it goes on (OVERRUN_MAX_S at most), and a little past the end of
+        its span (FINISH_MARGIN_S, for the board's last read)."""
+        clock = stream.aligner.clock() if stream.aligner is not None else None
+        if clock is not None:
+            stream.session.set_clock(clock)
+        session, rec = stream.session, stream.recorder
+        own = getattr(session, "set_ownership", None)
+        wall = getattr(rec, "wall_started", None)
+
+        def cam(text):
+            got = manager_mod._wall(text)
+            return None if got is None or wall is None else got - wall
+
+        if own is not None:
+            h = stream.handoff or {}
+            pending = bool(h.get("floor_pending"))
+            own(floor_s=None if pending else cam(h.get("floor_at")), floor_pending=pending,
+                handoff_s=cam(h.get("handoff_at")))
+        # Its span's end is said as soon as it is found: the next game on the
+        # sheet waits for it (the manager's heartbeat, and the completion).
+        until = getattr(session, "own_until_s", None)
+        if until is not None and wall is not None and stream.own_until_wall is None:
+            stream.own_until_wall = wall + until
+        if stream.stream_finished:
+            return
+        if until is not None and rec.head_s() >= until + FINISH_MARGIN_S:
+            # Its game is over (the next opened, then a changeover): the
+            # cameras are the next game's now, whatever its stream still shows.
+            stream.stream_finished = True
+            log.info("live job %s: its game's span of the sheet is over; recording finished",
+                     stream.job["id"])
+            rec.finish_stream()
+            return
+        if not stream.stop_requested:
+            return
+        if stream.stop_seen_at is None:
+            stream.stop_seen_at = self.clock()
+            if own is not None:
+                ended = cam((stream.handoff or {}).get("stream_ended_at"))
+                own(stream_end_s=ended if ended is not None else rec.head_s())
+        deciding = getattr(session, "deciding", lambda: False)()
+        overrun = self.clock() - stream.stop_seen_at >= OVERRUN_MAX_S
+        if not overrun and (deciding or (until is not None
+                                         and rec.head_s() < until + FINISH_MARGIN_S)):
+            return
+        stream.stream_finished = True
+        log.info("live job %s: its stream and its game are over; recording finished%s",
+                 stream.job["id"], " (gave up following)" if overrun else "")
+        rec.finish_stream()
+
     def step(self) -> bool:
         """Do one unit of live work; False when there was nothing to do.
 
@@ -65,7 +128,8 @@ class LiveLane:
                 log.warning("live job %s was taken away; letting it go", stream.job["id"])
                 self.manager.finish(stream)
                 return True
-        ready = [s for s in streams if s.retry_at <= now]
+        # A standby only records until its stream is found: nothing to read.
+        ready = [s for s in streams if s.retry_at <= now and not is_standby(s.job)]
         for stream in ready:
             if stream.session is None:
                 if is_practice(stream.job):
@@ -75,6 +139,9 @@ class LiveLane:
                         stream, lambda doc, s=stream: self._publish(s, doc))
                 except Exception as exc:  # noqa: BLE001
                     return self._trouble(stream, exc)
+                if is_camera_game(stream.job):
+                    # Published on the video's clock, so nothing before it is known.
+                    stream.session.wait_for_clock = True
         # A document that did not go out goes before anything new is built.
         for stream in ready:
             if stream.pending is not None:
@@ -104,6 +171,12 @@ class LiveLane:
                 self._last_practice = stream.job["id"]
                 return True
         ready = [s for s in ready if not is_practice(s.job)]
+        for stream in ready:
+            if is_camera_game(stream.job):
+                try:
+                    self._camera_tick(stream)
+                except Exception as exc:  # noqa: BLE001
+                    return self._trouble(stream, exc)
         first, due, idle = [], [], []
         for i, stream in enumerate(ready):
             try:
@@ -249,10 +322,17 @@ class LiveLane:
             return self._complete_practice(stream)
         job, doc = stream.job, stream.last_doc or {"games": [], "live": {"recorded_s": 0}}
         try:
-            self.api.complete(job["id"], self.worker_id, {
-                "games": _games(doc), "title": job.get("title"),
-                "format": job.get("format") or "fours", "sheet": _sheet(job),
-                "duration_s": doc["live"]["recorded_s"]})
+            payload = {"games": _games(doc), "title": job.get("title"),
+                       "format": job.get("format") or "fours", "sheet": _sheet(job),
+                       "duration_s": doc["live"]["recorded_s"]}
+            if stream.own_until_wall is not None:
+                # Where its game's span of the sheet ended, again: a heartbeat
+                # may not have said it before the game was done.
+                from datetime import datetime, timezone
+
+                payload["own_until"] = datetime.fromtimestamp(
+                    stream.own_until_wall, timezone.utc).isoformat()
+            self.api.complete(job["id"], self.worker_id, payload)
         except Lost:
             log.warning("live job %s was taken away before it completed", job["id"])
         except Exception as exc:  # noqa: BLE001 - try again shortly
@@ -395,7 +475,11 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
                 models=models, t0_s=t0_s, wall_t0=began,
                 publish=publish, progress=progress, clipper=clipper,
                 saved_calibration=saved, save_calibration=save, prior_throws=prior)
+        # The cameras recorded from the schedule's start (a standby): the
+        # game is read from where its stream began.
+        start_s = analysis_start_s(job, stream.recorder) if is_camera_game(job) else 0.0
         return live.LiveSession(
+            start_s=start_s,
             video_id=job["video_id"], url=source.canonical_url(job["video_id"]),
             recording=stream.recorder, fmt=format_mod.by_name(job.get("format") or "fours"),
             pipeline=live.VideoPipeline(weights=weights, skip_longview=skip_longview,

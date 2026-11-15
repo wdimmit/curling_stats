@@ -20,6 +20,12 @@ Only ``cameras-calibrate``, on an empty sheet, replaces a saved calibration. A
 watch keeps one only for a sheet that has none: one made from a busy sheet must
 not stand in for one made from an empty one.
 
+A calibration is in each house view's own pixels, the view's cut its
+transform (``feeds/cameras.py``): watches read each camera's own file. One
+saved from before, when watches read a composite of the four, has its panels
+in the composite's pixels and no transforms; it is not loaded, and the sheet
+is calibrated anew (``load``).
+
 The store is a pickle per sheet: ``PanelSetup`` and the side views are plain
 dataclasses, and the file is one this worker wrote for itself on the machine
 that sees the cameras. A file that will not load is the same as none -- the
@@ -78,6 +84,11 @@ class CalStore:
             log.warning("ignoring %s, which holds a %s, not a calibration",
                         path, type(cal).__name__)
             return None
+        if any(setup.transform is None for setup in cal.setups.values()):
+            log.warning("saved calibration for sheet %d is from the composite; a session will "
+                        "calibrate from the cameras and save a new one (or run "
+                        "cameras-calibrate)", sheet)
+            return None
         return cal
 
     def save(self, sheet: int, cal: Calibration) -> None:
@@ -102,9 +113,10 @@ class HouseCheck(enum.Enum):
     UNREADABLE = "unreadable"    # no frames, no well-lit frame, or no ring found
 
 
-def check_house(cal: Calibration, frames: list) -> HouseCheck:
+def check_house(cal: Calibration, frames) -> HouseCheck:
     """Whether the house rings in ``frames`` are where ``cal`` has them, if
-    they can be read at all.
+    they can be read at all. ``frames`` is a list of whole frames, or each
+    panel's own frames by name (a camera feed's views).
 
     On each panel's median over the frames, as the calibration itself reads
     them (`profile.panel_median`, which drops frames too dark to fit), the 12-ft
@@ -115,13 +127,14 @@ def check_house(cal: Calibration, frames: list) -> HouseCheck:
     -- no frames, no well-lit frame, no ring found -- leaves it UNREADABLE,
     never an error, and both panels agreeing AGREES.
     """
-    if not frames:
+    if not frames or (isinstance(frames, dict) and not any(frames.values())):
         log.info("saved calibration: no frames to check it against")
         return HouseCheck.UNREADABLE
     unreadable = False
     for name, setup in cal.setups.items():
+        own = frames.get(name, []) if isinstance(frames, dict) else frames
         try:
-            rings = calibrate.find_rings(profile.panel_median(frames, setup.rect, name))
+            rings = calibrate.find_rings(profile.panel_median(own, setup.rect, name))
         except calibrate.CalibrationError as exc:
             log.info("saved calibration: the %s house cannot be read: %s", name, exc)
             unreadable = True

@@ -14,6 +14,7 @@ from curling_score import timeline, version
 from curling_score import weights as weights_mod
 from curling_score.detect import (broommodel, delivery, longview, release, releasemodel,
                                   rocks, sequence, sidemodel, spinmodel)
+from curling_score.feeds import as_feed
 from curling_score.fpframes import record as fp_record
 from curling_score.game import (
     aimlines,
@@ -157,6 +158,9 @@ def _proxy_setups(setups, strip):
             # The lines are in panel pixels, so moving the panel does not move them.
             hog_line=s.hog_line, hog_line_error=s.hog_line_error,
             sidelines=s.sidelines, back_line=s.back_line, back_line_error=s.back_line_error,
+            # The view's name stays; ``transform`` is left None so ``cut``
+            # follows the translated rect.
+            name=s.name,
         )
         for name, s in setups.items()
     }
@@ -275,7 +279,10 @@ class EndContext:
     ``path`` is the full-resolution original, which the side views are decoded
     from. ``read_path`` is what the overhead detection reads -- the strip proxy
     for a recording, the recording itself for a live stream -- and
-    ``read_setups`` are the panels in its coordinates. ``use_cache`` is off for
+    ``read_setups`` are the panels in its coordinates. Both are a ``Feed``
+    (``feeds.as_feed``; a bare path still works wherever it is read), so a
+    recording's ``read_path`` has its top and bottom views on the proxy and
+    the rest on the original. ``use_cache`` is off for
     a file still being written: the detection cache keys on the file's size, so
     a growing file would never hit it and would store truncated spans.
     """
@@ -322,13 +329,18 @@ class BoardRead:
     block: dict
 
 
-def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info):
+def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info,
+                   panels=None, side_rects=None):
     """Panels, their calibrations and the side views, from a few keyframes.
 
     Returns ``(panels, setups, sideviews)``; ``sideviews`` is None when they
     were skipped or could not be read, which costs the splits and nothing else.
+    ``panels`` (a ``PanelLayout``) and ``side_rects`` say where they are,
+    where that is known (frames composed from a sheet's cameras,
+    ``feeds/cameras.py``); otherwise they are looked for.
     """
-    panels = layout.detect_panels(calib_frames)
+    if panels is None:
+        panels = layout.detect_panels(calib_frames)
     setups = profile.calibrate_panels(calib_frames, panels)
     for name, setup in setups.items():
         progress(
@@ -355,7 +367,7 @@ def calibrate_from(calib_frames, *, skip_longview: bool, progress=log.info):
         plate = np.median(
             np.stack([f.astype("float32") for f in calib_frames]), axis=0)
         try:
-            rects = sideview.locate(panels, width=w, height=h)
+            rects = side_rects or sideview.locate(panels, width=w, height=h)
             sideviews = {n: sideview.solve(plate, r, name=n)
                          for n, r in rects.items()}
             sideviews = {n: _with_lateral(plate, v, n, progress)
@@ -450,7 +462,8 @@ def board_block(got) -> BoardRead:
 
 def board_for_game(path, game, progress=log.info, *,
                    back_to_s=None) -> BoardRead | None:
-    """One game's wall board from the original, or None. Never raises."""
+    """One game's wall board from the original, or None. Never raises.
+    ``path`` is a path or a ``Feed``; the frames are the ``board`` view's."""
     progress(f"  game {game.index + 1}: reading the wall scoreboard...")
     got = read_board(path, game, progress=progress, back_to_s=back_to_s)
     if got is None:
@@ -826,7 +839,9 @@ def build_one_end(ctx: EndContext, game, end, prev_end_s, board_score):
             # The boxes are in the panel's own pixels; the rect is the panel's
             # place in the original frame, which a proxy read does not share.
             rec.close_end(
-                game=game.index, end=end.number, house=end.house, video=path,
+                # Whole frames: the file the board view is in (the composite).
+                game=game.index, end=end.number, house=end.house,
+                video=as_feed(path).path_for("board"),
                 near_rect=(ctx.frame_setups or read_setups)[end.house].rect,
                 near_seq=seq,
                 cameras={tuple(v.rect): n for n, v in (sideviews or {}).items()})
@@ -1057,7 +1072,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             skip_scoreboard: bool = False, skip_longview: bool = False,
             skip_line: bool = False,
             on_phase=None, info=None,
-            download_attempts=None) -> dict:
+            download_attempts=None, feed=None, clock: dict | None = None) -> dict:
     """Analyse a club VOD and return the timeline document.
 
     ``start_s``/``end_s`` bound the part of the stream that is *analysed*: the
@@ -1079,6 +1094,12 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     the stages run, for a caller that wants to show progress. ``info`` lets a
     caller that already fetched the metadata pass it in rather than ask
     YouTube twice.
+
+    ``feed`` reads a camera game again from its kept files (a ``cameras``
+    Feed) instead of the video: nothing is downloaded, there is no strip
+    proxy, and the sheet is calibrated from its cameras across
+    ``info.duration_s``. ``clock`` is the clock it was published on
+    (``timeline.build_document``), which this document keeps.
     ``weights`` None is the bundled default (`weights.default_path`), which
     raises when it is missing: stones are read with a trained model or the
     run does not start.
@@ -1091,6 +1112,12 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     fmt = resolve_format(game_format, info.title)
     progress(f"{info.title} ({info.duration_s / 3600:.2f} h, sheet {sheet}, {fmt.name})")
 
+    if feed is not None and as_feed(feed).kind == "cameras":
+        return _analyze_cameras(
+            url, as_feed(feed), info, sheet, fmt, clock, root=root, shot_fps=shot_fps,
+            progress=progress, weights=weights, imgsz=imgsz, device=device,
+            start_s=start_s, end_s=end_s, skip_scoreboard=skip_scoreboard,
+            skip_longview=skip_longview, skip_line=skip_line, phase=phase)
     phase("download", 0.0, "downloading video")
     download_kwargs = {}
     if download_attempts is not None:
@@ -1118,20 +1145,36 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     # Every later pass decodes only the overhead strip, which is about a
     # sixteenth of the frame. Analysis is decode-bound, so this is 3-4x cheaper
     # per pass; the one-off transcode pays for itself after the first run.
-    read_path, read_setups = path, setups
+    feed = as_feed(path)
+    read_feed, read_setups = feed, setups
     if use_proxy:
         strip = proxy.strip_rect(panels.top, panels.bottom)
         phase("proxy", 0.0, "building strip proxy")
-        read_path = proxy.ensure_proxy(
+        proxy_path = proxy.ensure_proxy(
             path, info.video_id, strip, root=root, progress=progress,
             tick=lambda: phase("proxy", 0.0, "building strip proxy"),
         )
+        # The proxy holds only the houses: the side views and the board are
+        # still read from the original.
+        read_feed = feed.on(("top", "bottom"), proxy_path)
         phase("proxy", 1.0, "proxy ready")
         read_setups = _proxy_setups(setups, strip)
         progress(f"reading from strip proxy {strip[2]}x{strip[3]}")
     else:
         phase("proxy", 1.0, "reading the full frame")
 
+    return _read_games(
+        url, info, sheet, fmt, feed, read_feed, setups, read_setups, sideviews,
+        shot_fps=shot_fps, progress=progress, weights=weights, imgsz=imgsz, device=device,
+        start_s=start_s, end_s=end_s, skip_scoreboard=skip_scoreboard,
+        skip_longview=skip_longview, skip_line=skip_line, phase=phase)
+
+def _read_games(url, info, sheet, fmt, feed, read_feed, setups, read_setups, sideviews, *,
+                shot_fps, progress, weights, imgsz, device, start_s, end_s,
+                skip_scoreboard, skip_longview, skip_line, phase, clock=None) -> dict:
+    """Everything after the source: the models, the activity profile, the
+    games and their ends, the timeline. ``feed`` is what the frames are read
+    from; ``read_feed`` the same or a strip proxy of its houses."""
     detector, broom_model, line_model = load_models(
         weights, imgsz, device, skip_longview=skip_longview,
         skip_line=skip_line, progress=progress)
@@ -1145,8 +1188,8 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     progress("building activity profile...")
     sweep = None
     if start_s is not None or end_s is not None:
-        sweep = F.keyframe_sweep(read_path, start_s=start_s, end_s=end_s)
-    samples = profile.build_profile(read_path, read_setups, sweep=sweep, detector=detector)
+        sweep = profile.feed_sweep(read_feed, start_s=start_s, end_s=end_s)
+    samples = profile.build_profile(read_feed, read_setups, sweep=sweep, detector=detector)
     games = segment.segment_games(
         samples, min_end_s=fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S)
     if not skip_scoreboard:
@@ -1157,7 +1200,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
         # and the board, cleared after it, splits it. Read from the original:
         # the proxy holds only the houses.
         def states(t0, t1):
-            return boardsplit.board_states(path, t0, t1)
+            return boardsplit.board_states(feed, t0, t1)
 
         n_before = len(games)
         games = boardsplit.join_games(games, states)
@@ -1173,7 +1216,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     phase("profile", 1.0, f"{len(games)} game(s)")
 
     ctx = EndContext(
-        path=path, read_path=read_path, read_setups=read_setups,
+        path=feed, read_path=read_feed, read_setups=read_setups,
         sideviews=sideviews, detector=detector, broom_model=broom_model,
         line_model=line_model, fmt=fmt, shot_fps=shot_fps, progress=progress,
         recording_start_s=float(start_s or 0.0),
@@ -1184,7 +1227,7 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
     out_games = build_games(
         ctx, games, phase=phase,
         read_board=(None if skip_scoreboard
-                    else recording_board_reader(path, progress)))
+                    else recording_board_reader(feed, progress)))
     phase("detect", 1.0, "all ends detected")
     phase("scoreboard", 1.0, "skipped" if skip_scoreboard else "scoreboard read")
     phase("rules", 1.0, "timeline built")
@@ -1212,7 +1255,28 @@ def analyze(url, root=None, shot_fps=SHOT_FPS, progress=log.info,
             house_weights=house_weights),
         fmt=fmt,
         check=check,
+        clock=clock,
     )
+
+def _analyze_cameras(url, feed, info, sheet, fmt, clock, *, root, shot_fps, progress, weights,
+                     imgsz, device, start_s, end_s, skip_scoreboard, skip_longview, skip_line,
+                     phase) -> dict:
+    """``analyze`` of a camera game's kept files: calibrated from its cameras
+    across the recording, read without a proxy, published on ``clock``."""
+    from curling_score.feeds import cameras
+
+    phase("download", 1.0, "the cameras' files")
+    progress(f"reading the cameras' files of {info.video_id}")
+    phase("calibrate", 0.0, "sampling keyframes")
+    panels, setups, sideviews = cameras.calibrate(
+        feed, info.duration_s, skip_longview=skip_longview, progress=progress)
+    phase("calibrate", 1.0, "calibrated")
+    phase("proxy", 1.0, "reading the cameras' files")
+    return _read_games(
+        url, info, sheet, fmt, feed, feed, setups, setups, sideviews,
+        shot_fps=shot_fps, progress=progress, weights=weights, imgsz=imgsz, device=device,
+        start_s=start_s, end_s=end_s, skip_scoreboard=skip_scoreboard,
+        skip_longview=skip_longview, skip_line=skip_line, phase=phase, clock=clock)
 
 
 def write(document: dict, out_dir) -> Path:

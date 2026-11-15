@@ -19,6 +19,7 @@ into its two games.
 
 from dataclasses import dataclass
 
+from curling_score.feeds import Cut, as_feed
 from curling_score.game.segment import Sample
 from curling_score.geometry import backpaint, calibrate, hogpaint, layout, lighting, sidepaint
 
@@ -41,6 +42,32 @@ class PanelSetup:
     # beyond one is on the next sheet, and is not counted or tracked here.
     # None -- a setup pickled before this existed -- excludes nothing.
     sidelines: sidepaint.Sidelines | None = None
+    # The view's name (``top``/``bottom``) and, for a camera that needs more
+    # than a crop, how it is taken from its file. Defaulted so a setup pickled
+    # before these existed still loads: it is nameless, and ``cut`` is a crop
+    # of ``rect`` as it always was.
+    name: str = ""
+    transform: Cut | None = None
+
+    def __post_init__(self):
+        # What the readers of ``rect`` slice is the transform's output, so the
+        # two must describe one panel: ``rect`` is the whole of it.
+        t = self.transform
+        if t is not None:
+            if t.name != self.name:
+                raise ValueError(
+                    f"panel {self.name!r}: transform is for {t.name!r}")
+            if tuple(self.rect) != (0, 0, *t.out_size):
+                raise ValueError(
+                    f"panel {self.name!r}: rect {tuple(self.rect)} is not the "
+                    f"transform's output (0, 0, {t.out_size[0]}, {t.out_size[1]})")
+
+    @property
+    def cut(self) -> Cut:
+        """How this panel is taken from its file: ``transform``, else a crop
+        of ``rect``."""
+        return self.transform or Cut(self.name, tuple(self.rect))
+
     # The panel's painted back line (``geometry/backpaint.py``): a stone
     # wholly beyond it is out of play, and the activity profile does not count
     # it. None -- not found, or a setup pickled before this existed -- excludes
@@ -49,6 +76,8 @@ class PanelSetup:
     back_line_error: str | None = None
 
     def crop(self, frame):
+        if self.transform is not None:
+            return self.cut.apply(frame)
         x, y, w, h = self.rect
         return frame[y : y + h, x : x + w]
 
@@ -120,7 +149,7 @@ def panel_median(frames, rect, name: str = "panel"):
     return np.median(np.stack(lit), axis=0).astype("uint8")
 
 
-def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> PanelSetup:
+def calibrate_panel(frames, rect, delivery_side: str, name: str = "") -> PanelSetup:
     """Calibrate one panel from the best-lit, cleanest frames available.
 
     The idle house -- the one not being played to -- is clean and unoccluded for
@@ -130,8 +159,12 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> Pa
     One panel at a time so a caller can keep the panel that worked when the
     other one's lights are out. The club kills the lights on a sheet as it
     finishes while others play on, so that is a normal night, not a broken one.
+
+    ``name`` is the panel's (``top``/``bottom``) and is stored on its setup,
+    ``""`` when unknown; errors call it "panel" then.
     """
-    median = panel_median(frames, rect, name)
+    label = name or "panel"
+    median = panel_median(frames, rect, label)
     calib = calibrate.solve(median, delivery_side)
     # The same median the rings were read from shows the hog line's paint. A
     # panel whose paint cannot be trusted keeps its calibration and says why;
@@ -139,13 +172,13 @@ def calibrate_panel(frames, rect, delivery_side: str, name: str = "panel") -> Pa
     try:
         line, err = hogpaint.find_hog_line(median, calib), None
     except hogpaint.HogPaintError as exc:
-        line, err = None, f"{name} panel: {exc}"
+        line, err = None, f"{label} panel: {exc}"
     # And the sidelines' paint, where the panel reaches them, and the back line's.
     back, back_err = backpaint.find_back_line(median, calib)
     return PanelSetup(rect=rect, calib=calib, hog_line=line, hog_line_error=err,
-                      sidelines=sidepaint.find_sidelines(median, calib),
+                      sidelines=sidepaint.find_sidelines(median, calib), name=name,
                       back_line=back,
-                      back_line_error=None if back_err is None else f"{name} panel: {back_err}")
+                      back_line_error=None if back_err is None else f"{label} panel: {back_err}")
 
 
 def calibrate_panels(frames, panels: layout.PanelLayout):
@@ -163,11 +196,22 @@ def count_frame(frame, setups, detector=None) -> tuple[int, int, bool, bool]:
     is no colour-threshold fallback. A panel too dark to play counts none, and
     no panel counts a stone beyond its painted sidelines or wholly beyond its
     painted back line (`PanelSetup.in_play`)."""
+    return _count({name: setups[name].crop(frame) for name in ("top", "bottom")},
+                  setups, detector)
+
+
+def count_views(views: dict, setups, detector=None) -> tuple[int, int, bool, bool]:
+    """:func:`count_frame` for a camera feed: each house from its own view's
+    picture (``views["top"]``, ``views["bottom"]``), as :func:`feed_sweep`
+    pairs them -- already cut to the view, so the picture is the panel."""
+    return _count({name: views[name] for name in ("top", "bottom")}, setups, detector)
+
+
+def _count(panels, setups, detector):
     if detector is None:
         from curling_score import weights
 
         raise weights.NoModelError("the activity profile needs a trained stone detector")
-    panels = {name: setups[name].crop(frame) for name in ("top", "bottom")}
     playable = {name: lighting.is_playable(panel) for name, panel in panels.items()}
     lit = [name for name in ("top", "bottom") if playable[name]]
     counts = {"top": 0, "bottom": 0}
@@ -178,15 +222,80 @@ def count_frame(frame, setups, detector=None) -> tuple[int, int, bool, bool]:
     return counts["top"], counts["bottom"], playable["top"], playable["bottom"]
 
 
-def build_profile(video_path, setups, sweep=None, detector=None) -> list[Sample]:
-    """Sweep the whole video and record activity at every keyframe, the stones
-    counted by ``detector`` when there is one (:func:`count_frame`)."""
+def panels_file(video):
+    """The one file both panels are read from: ``video`` is a path or a ``Feed``.
+
+    The profile sweeps the keyframes of that file and counts the stones in
+    both panels of each, so two files are two sweeps, which phase 2's cameras
+    need and this does not do.
+    """
+    feed = as_feed(video)
+    top, bottom = feed.path_for("top"), feed.path_for("bottom")
+    if top != bottom:
+        raise NotImplementedError("phase 2: the panels are in two files")
+    return top
+
+
+# A camera feed's two house cameras send keyframes on their own clocks, each
+# about every 2 s: a top keyframe is paired with the nearest bottom one within
+# this, and one with none that near is no sample.
+PAIR_S = 1.1
+
+
+def feed_sweep(video, start_s=None, end_s=None):
+    """``(t, picture)`` for every keyframe the activity profile reads: of the
+    one file both houses are in, or -- a camera feed, each house in its own
+    camera's file -- ``(t, {"top": picture, "bottom": picture})``, every top
+    keyframe with the nearest bottom one (:data:`PAIR_S`)."""
     from curling_score.ingest import frames as F
 
-    source = sweep if sweep is not None else F.keyframe_sweep(video_path)
+    feed = as_feed(video)
+    top, bottom = feed.path_for("top"), feed.path_for("bottom")
+    if top == bottom:
+        return F.keyframe_sweep(top, start_s=start_s, end_s=end_s)
+    return _paired_sweep(feed, start_s, end_s)
+
+
+sweep = feed_sweep
+
+
+def _paired_sweep(feed, start_s, end_s):
+    from collections import deque
+
+    from curling_score.cameras import layout as camera_layout
+    from curling_score.feeds.cameras import view_cuts
+    from curling_score.ingest import frames as F
+
+    cuts = view_cuts(camera_layout.load(feed.sheet))
+    tops = F.keyframe_sweep(feed, start_s=start_s, end_s=end_s, cut=cuts["top"])
+    bottoms = F.keyframe_sweep(feed, start_s=start_s,
+                               end_s=None if end_s is None else end_s + PAIR_S,
+                               cut=cuts["bottom"])
+    buf, done = deque(), False
+    for t, top in tops:
+        while not done and (not buf or buf[-1][0] <= t + PAIR_S):
+            try:
+                buf.append(next(bottoms))
+            except StopIteration:
+                done = True
+        while buf and buf[0][0] < t - PAIR_S:
+            buf.popleft()
+        near = [b for b in buf if abs(b[0] - t) <= PAIR_S]
+        if near:
+            _bt, bottom = min(near, key=lambda b: abs(b[0] - t))
+            yield t, {"top": top, "bottom": bottom}
+
+
+def build_profile(video, setups, sweep=None, detector=None) -> list[Sample]:
+    """Sweep the whole video and record activity at every keyframe, the stones
+    counted by ``detector`` when there is one (:func:`count_frame`).
+    ``video`` is a path or a ``Feed``; a ``sweep`` already made is used as is,
+    and a camera feed's pairs each house's picture (:func:`feed_sweep`)."""
+    source = sweep if sweep is not None else feed_sweep(video)
     out = []
     for t, frame in source:
-        top, bottom, tp, bp = count_frame(frame, setups, detector)
+        count = count_views if isinstance(frame, dict) else count_frame
+        top, bottom, tp, bp = count(frame, setups, detector)
         out.append(
             Sample(
                 t=t,

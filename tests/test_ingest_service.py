@@ -541,3 +541,126 @@ class TestAMarkerTakesOnlyWhatItKept:
         cache.keep_partial(rec, "v1", tmp_path)
         import json as _json
         assert _json.loads(cache.kept_marker("v1", tmp_path).read_text())["size"] == 123
+
+
+# --- kept camera games ------------------------------------------------------------------
+
+DAY = 86400.0
+
+
+def kept_game(cams, vid, age_days, now, size=1000):
+    d = cams / "kept" / vid
+    d.mkdir(parents=True)
+    for role in ("house_a", "house_h", "long_a", "long_h"):
+        (d / f"{role}.ts").write_bytes(b"x" * size)
+    (d / "clock.json").write_text("{}")
+    t = now - age_days * DAY
+    for p in [*d.iterdir(), d]:
+        os.utime(p, (t, t))
+    return d
+
+
+class TestKeptCameraGames:
+    def test_games_past_their_days_go_first(self, tmp_path):
+        now = 1_800_000_000.0
+        cams = tmp_path / "cams"
+        old = kept_game(cams, "old", 4, now)
+        new = kept_game(cams, "new", 1, now)
+        removed = prune.prune(tmp_path / "cache", keep_gb=1.0, now=now, cams_root=cams,
+                              camera_days=3, free_bytes=10**12)
+        assert old in removed and not old.exists() and new.exists()
+
+    def test_under_the_floor_the_oldest_game_goes_before_any_video(self, tmp_path):
+        now = 1_800_000_000.0
+        cams, root = tmp_path / "cams", tmp_path / "cache"
+        older = kept_game(cams, "older", 2, now, size=1000)
+        newer = kept_game(cams, "newer", 1, now, size=1000)
+        video = root / "videos" / "vid00000001.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"v" * 1000)
+        os.utime(video, (now - 30 * DAY, now - 30 * DAY))
+        # 3000 bytes short of the floor: one game (4000 bytes) is enough.
+        removed = prune.prune(root, keep_gb=1.0, now=now, cams_root=cams, camera_days=3,
+                              min_free_gb=10000e-9, free_bytes=7000)
+        assert not older.exists() and newer.exists() and video.exists()
+        assert older in removed
+
+
+def kept_game_at(cams, vid, age_days, now, size=1000, **meta):
+    import json as _json
+
+    d = kept_game(cams, vid, age_days, now, size)
+    (d / "clock.json").write_text(_json.dumps({"kept_at": now - age_days * DAY, **meta}))
+    return d
+
+
+class TestADayOfFootageOnceClipped:
+    NOW = 1_800_000_000.0
+
+    def run(self, tmp_path, clipped, **kw):
+        kw.setdefault("free_bytes", 10**12)
+        return prune.prune(tmp_path / "cache", keep_gb=1.0, now=self.NOW,
+                           cams_root=tmp_path / "cams", camera_days=1, camera_max_days=3,
+                           clipped=clipped, **kw)
+
+    def test_a_clipped_game_goes_after_a_day_an_unclipped_one_after_three(self, tmp_path):
+        cams = tmp_path / "cams"
+        a = kept_game_at(cams, "a", 1.5, self.NOW)
+        b = kept_game_at(cams, "b", 1.5, self.NOW)
+        c = kept_game_at(cams, "c", 3.5, self.NOW)
+        self.run(tmp_path, lambda names: {"a"} & set(names))
+        assert not a.exists() and b.exists() and not c.exists()
+
+    def test_without_word_from_the_api_nothing_is_clipped(self, tmp_path):
+        cams = tmp_path / "cams"
+        a = kept_game_at(cams, "a", 1.5, self.NOW)
+        self.run(tmp_path, None)
+        assert a.exists()
+
+    def test_under_the_floor_clipped_games_go_before_recordings_and_unclipped_last(
+            self, tmp_path):
+        import json as _json
+
+        cams, root = tmp_path / "cams", tmp_path / "cache"
+        cl = kept_game_at(cams, "cl", 0.5, self.NOW)
+        un = kept_game_at(cams, "un", 0.9, self.NOW)
+        video = root / "videos" / "recvid00001.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"v" * 1000)
+        os.utime(video, (self.NOW - 2 * DAY, self.NOW - 2 * DAY))
+        marker = cache.kept_marker("recvid00001", root)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(_json.dumps({"kept_at": self.NOW - 2 * DAY, "whole": True,
+                                       "size": 1000}))
+        # 3000 bytes short: the clipped game (4000) alone is enough.
+        self.run(tmp_path, lambda names: {"cl"}, min_free_gb=10000e-9, free_bytes=7000)
+        assert not cl.exists() and un.exists() and video.exists()
+        # 5000 short with the clipped game gone: the recording, then the unclipped game.
+        removed = self.run(tmp_path, lambda names: set(), min_free_gb=10000e-9,
+                           free_bytes=5000)
+        assert not video.exists() and not un.exists()
+        assert removed.index(video) < removed.index(un)
+
+    def test_a_game_still_being_cut_is_not_aged_out(self, tmp_path):
+        # Kept 30 min ago, clipped, past a short camera_days: its cut is spared.
+        d = kept_game_at(tmp_path / "cams", "a", 30 / 1440, self.NOW, trim_pending=True)
+        prune.prune(tmp_path / "cache", keep_gb=1.0, now=self.NOW, cams_root=tmp_path / "cams",
+                    camera_days=0.01, camera_max_days=3, clipped=lambda names: set(names),
+                    free_bytes=10**12)
+        assert d.exists()
+
+    def test_kept_at_dates_a_game_not_its_directory(self, tmp_path):
+        import json as _json
+
+        d = kept_game(tmp_path / "cams", "a", 0, self.NOW)
+        (d / "clock.json").write_text(_json.dumps({"kept_at": self.NOW - 4 * DAY}))
+        self.run(tmp_path, None)
+        assert not d.exists()
+
+
+def test_a_game_stuck_mid_cut_still_ages_out(tmp_path):
+    now = 1_800_000_000.0
+    d = kept_game_at(tmp_path / "cams", "a", 4, now, trim_pending=True)
+    prune.prune(tmp_path / "cache", keep_gb=1.0, now=now, cams_root=tmp_path / "cams",
+                camera_days=1, camera_max_days=3, clipped=None, free_bytes=10**12)
+    assert not d.exists()

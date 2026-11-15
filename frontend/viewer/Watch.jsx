@@ -43,7 +43,9 @@ function useFollow(view, leadIn, rows, following, ei, si, lag, actions) {
   useEffect(() => {
     if (!following || !rows.length) return undefined;
     const tick = () => {
-      if (!player.isPlaying()) return;
+      // Another stream's video (a shot before this one began) is not this
+      // game's clock: nothing to follow there.
+      if (!player.isPlaying() || !player.onOwnVideo()) return;
       const now = player.currentTime();
       const t = typeof now === "number" ? now - lag : now;
       const e = endAt(view, t, leadIn);

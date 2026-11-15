@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from curling_score.feeds import Cut
 from curling_score.geometry import constants as C
 
 Rect = tuple[int, int, int, int]
@@ -109,6 +110,31 @@ class SideView:
     # line itself leans up to 13 px over the rows below the house. None falls
     # back to `centre_col` everywhere.
     centre_line: tuple[float, float] | None = None
+    # The view's name (``left``/``right``) and, for a camera that needs more
+    # than a crop, how it is taken from its file. Defaulted so a view pickled
+    # before these existed still loads: it is nameless, and ``cut`` is a crop
+    # of ``rect`` as it always was.
+    name: str = ""
+    transform: Cut | None = None
+
+    def __post_init__(self):
+        # What the readers of ``rect`` slice is the transform's output, so the
+        # two must describe one view: ``rect`` is the whole of it.
+        t = self.transform
+        if t is not None:
+            if t.name != self.name:
+                raise ValueError(
+                    f"view {self.name!r}: transform is for {t.name!r}")
+            if tuple(self.rect) != (0, 0, *t.out_size):
+                raise ValueError(
+                    f"view {self.name!r}: rect {tuple(self.rect)} is not the "
+                    f"transform's output (0, 0, {t.out_size[0]}, {t.out_size[1]})")
+
+    @property
+    def cut(self) -> Cut:
+        """How this view is taken from its file: ``transform``, else a crop
+        of ``rect``."""
+        return self.transform or Cut(self.name, tuple(self.rect))
 
     @property
     def has_lateral(self) -> bool:
@@ -298,18 +324,22 @@ def _hog_row(lum, start, name):
     return start + int(np.argmin(dips))
 
 
-def solve(plate, rect: Rect, name: str = "side") -> SideView:
+def solve(plate, rect: Rect, name: str = "", label: str | None = None) -> SideView:
     """Fit the far house's tee and hog rows from paint alone.
 
     The tee is fitted, not taken as the green annulus's centroid: perspective
     magnifies its near half and drags a centroid about 2 px toward the camera.
     The hog line is the darkest full-width row below the house.
+
+    ``name`` is the view's (``left``/``right``) and is stored on it, ``""``
+    when unknown; ``label`` is what its errors call it, ``name`` by default.
     """
+    label = label or name or "side"
     green, lum = _green_profile(plate, rect)
     try:
-        return _solve_within(green, lum, rect, name, _HOUSE_SEARCH)
+        return _solve_within(green, lum, rect, name, label, _HOUSE_SEARCH)
     except SideViewError:
-        return _solve_within(green, lum, rect, name, _HOUSE_SEARCH_WIDE)
+        return _solve_within(green, lum, rect, name, label, _HOUSE_SEARCH_WIDE)
 
 
 # The most rows between two green runs of one ring: the 8-ft's interior, 20
@@ -382,28 +412,28 @@ def _without_slivers(runs, lo, last):
             or group[0][0] <= lo or group[-1][1] >= last]
 
 
-def _solve_within(green, lum, rect, name, search):
+def _solve_within(green, lum, rect, name, label, search):
     h = rect[3]
     lo, hi = int(h * search[0]), int(h * search[1])
     last = min(hi, len(green)) - 1
     ring = _ring_rows(green, lo, last)
     if ring is None:
-        raise SideViewError(f"{name}: found 0 green edges, need at least 2")
+        raise SideViewError(f"{label}: found 0 green edges, need at least 2")
     if ring[0] <= lo or ring[1] >= last:
         # The rows searched start or stop inside the ring, so the outermost
         # crossings are not the 12-ft ring's and a fit from them is wrong by
         # a band's width -- 8 px of tee on sheet 3, 2026-09-27.
         raise SideViewError(
-            f"{name}: the house runs past rows {lo}-{last} searched")
+            f"{label}: the house runs past rows {lo}-{last} searched")
     if ring[2] < 2:
         # One band alone, its two edges fitted as the 12-ft pair, put 7pm
         # sheet 3's right tee 13 px low on 2026-09-27 -- and 60.3 rows above
         # the hog line, just inside the plausible band. The far band had sat
         # wholly above the rows searched.
-        raise SideViewError(f"{name}: one green band where the ring shows two")
+        raise SideViewError(f"{label}: one green band where the ring shows two")
     edges = _crossings(green, ring[0] - 1, ring[1] + 2, _GREEN_THRESHOLD)
     if len(edges) < 2:
-        raise SideViewError(f"{name}: found {len(edges)} green edges, need at least 2")
+        raise SideViewError(f"{label}: found {len(edges)} green edges, need at least 2")
 
     # Fit from the outermost pair alone. A noisy plate can throw extra
     # crossings inside the annulus -- one of the club's ten views does,
@@ -416,17 +446,17 @@ def _solve_within(green, lum, rect, name, search):
     seen = [edges[0], edges[-1]]
     want = np.array([-C.R_12FT_M, C.R_12FT_M])
 
-    hog = _hog_row(lum, int(edges[-1]) + 12, name)
+    hog = _hog_row(lum, int(edges[-1]) + 12, label)
 
     def error(tee):
-        v = SideView(rect=rect, tee_row=tee, hog_row=hog)
+        v = SideView(rect=rect, tee_row=tee, hog_row=hog, name=name)
         return float(((np.array([v.row_for(x) for x in want]) - seen) ** 2).sum())
 
     tee = min(np.arange(hog - _HOG_SEARCH_PX, hog - 30, 0.05), key=error)
-    view = SideView(rect=rect, tee_row=float(tee), hog_row=float(hog))
+    view = SideView(rect=rect, tee_row=float(tee), hog_row=float(hog), name=name)
     if not PLAUSIBLE_ROWS[0] <= view.rows_tee_to_hog <= PLAUSIBLE_ROWS[1]:
         raise SideViewError(
-            f"{name}: tee to hog measured {view.rows_tee_to_hog:.1f} px, "
+            f"{label}: tee to hog measured {view.rows_tee_to_hog:.1f} px, "
             f"outside the {PLAUSIBLE_ROWS[0]:.0f}-{PLAUSIBLE_ROWS[1]:.0f} px "
             f"every sheet falls in -- the fit found the wrong row")
     return view

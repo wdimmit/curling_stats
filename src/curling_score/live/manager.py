@@ -30,6 +30,85 @@ def is_practice(job) -> bool:
     return job.get("kind") == "practice"
 
 
+def is_camera_game(job) -> bool:
+    """A league game read from its sheet's cameras instead of its stream."""
+    return job.get("kind") == "camera_live"
+
+
+def is_standby(job) -> bool:
+    """A sheet's cameras recorded from its league's schedule start, before
+    its stream is found: no clock, no session, until the API hands it the
+    game (``LiveManager._hand_over``)."""
+    return job.get("kind") == "camera_standby"
+
+
+def _published_at(job):
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(job["published_at"]) if job.get("published_at") else None
+    except ValueError:
+        return None
+
+
+def _layout_record(sheet: int) -> dict | None:
+    """Sheet ``sheet``'s camera layout as layout.save writes it, or None."""
+    from curling_score.cameras import layout
+
+    try:
+        sl = layout.load(sheet)
+    except (LookupError, OSError, ValueError) as exc:
+        log.warning("no layout of sheet %s to keep with its game: %s", sheet, exc)
+        return None
+    return layout.to_record(sl)
+
+
+def _name_video(recorder, video_id: str) -> None:
+    """Write the game's video id into a camera recording's directory: the
+    clips worker finds a game still being recorded by it, whatever the
+    directory is called (a standby's is named for the standby)."""
+    directory = getattr(recorder, "dir", None)
+    if not directory:
+        return
+    try:
+        (Path(directory) / "video_id").write_text(video_id)
+    except OSError as exc:
+        log.warning("could not name the recording in %s: %s", directory, exc)
+
+
+def stream_start_s(job, recorder) -> float:
+    """Where in a camera recording its game's stream began: past 0 when the
+    cameras were recorded ahead of it (a standby), else 0."""
+    began, wall = _published_at(job), getattr(recorder, "wall_started", None)
+    if began is None or wall is None:
+        return 0.0
+    return max(began.timestamp() - wall, 0.0)
+
+
+# What a camera game's claim and heartbeat say of its place on the sheet
+# (service/playlists.camera_game_fields).
+HANDOFF_KEYS = ("analysis_from", "handoff_at", "floor_at", "floor_pending")
+
+
+def _wall(text):
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(text).timestamp() if text else None
+    except (TypeError, ValueError):
+        return None
+
+
+def analysis_start_s(job, recorder) -> float:
+    """Where in a camera recording its game is read from: where the API says
+    (``analysis_from``: its lookahead opening, or a little before its
+    stream), else where its stream began (`stream_start_s`)."""
+    began, wall = _wall(job.get("analysis_from")), getattr(recorder, "wall_started", None)
+    if began is None or wall is None:
+        return stream_start_s(job, recorder)
+    return max(began - wall, 0.0)
+
+
 @dataclass
 class Stream:
     """One live job in hand: its recorder, and the lane's session for it."""
@@ -43,12 +122,25 @@ class Stream:
     # A practice watch's way to send a throw's clip up: set by the lane.
     send_clip: object = field(default=None, repr=False)
     last_beat: float = 0.0
+    # A camera game's clock (live/clock.Aligner), and the YouTube stream
+    # recorded beside it when CAMERA_KEEP_YOUTUBE asks.
+    aligner: object = None
+    reference: object = None
+    stream_finished: bool = False
     last_doc: dict | None = field(default=None, repr=False)
     # The lane's: a document not yet published, unexpected errors in a row,
     # and when a stream in trouble may be tried again.
     pending: dict | None = field(default=None, repr=False)
     failures: int = 0
     retry_at: float = 0.0
+    # A camera game's place on its sheet, as the API last said (HANDOFF_KEYS);
+    # the wall time its own span was found to end, told to the API once; and
+    # when its stream's end was first heard (the lane follows a game still
+    # going past it).
+    handoff: dict = field(default_factory=dict)
+    own_until_wall: float | None = None
+    own_until_sent: bool = False
+    stop_seen_at: float | None = None
 
 
 def _in_background(fn):
@@ -59,19 +151,28 @@ class LiveManager:
     def __init__(self, api, worker_id, *, model_id, gpu, root=None,
                  max_streams: int = MAX_STREAMS, make_recorder=None,
                  heartbeat_s: float = HEARTBEAT_S, clock=time.monotonic,
-                 prune=None, background=_in_background, kinds=("live",), cameras=False):
+                 prune=None, background=_in_background, kinds=("live",), cameras=False,
+                 keep_youtube=False, make_aligner=None, cams_root=None):
         """``prune`` is called once a recording has been kept, to hold the
         cache to its budget; ``background`` runs the keeping, which copies
         gigabytes, somewhere other than the lane's thread. ``kinds`` are the
         jobs it claims: league games, and practice where the worker allows.
         ``cameras``: it can see the club's cameras, and says so when it
-        claims, which is what a camera practice job waits for."""
+        claims, which is what a camera practice job waits for. A camera game
+        has its clock followed (``make_aligner(job, recorder)``) and, with
+        ``keep_youtube``, its stream recorded beside it and kept as any live
+        game's recording is. A camera game records under ``cams_root`` (the
+        workers' shared place), and one that ended with its stream is kept
+        there for reading again."""
         self.api, self.worker_id, self.model_id, self.gpu = api, worker_id, model_id, gpu
         self.kinds = tuple(kinds)
         self.cameras = cameras
         self.root = Path(root) if root is not None else None
         self.max_streams, self.heartbeat_s, self.clock = max_streams, heartbeat_s, clock
         self.make_recorder = make_recorder or self._recorder
+        self.keep_youtube = keep_youtube
+        self.cams_root = Path(cams_root) if cams_root is not None else None
+        self.make_aligner = make_aligner or self._aligner
         self.prune, self.background = prune, background
         self._streams = []
         self._lock = threading.Lock()
@@ -81,16 +182,41 @@ class LiveManager:
     def _recorder(self, job):
         import os
 
-        if is_practice(job):
-            from curling_score.cameras.recorder import CameraRecorder
+        if is_practice(job) or is_camera_game(job) or is_standby(job):
+            from curling_score.cameras import recorder as cameras
 
-            # In the directory finish() clears: a practice recording is never kept.
-            return CameraRecorder(int(job["sheet"]), self.root / "live" / job["video_id"])
-        from curling_score.live.recorder import YtDlpRecorder
+            if (is_camera_game(job) or is_standby(job)) and self.cams_root is not None:
+                # Where it is kept from by a rename (the same mount), under
+                # this worker's name: the other's start-up never clears it.
+                directory = self.cams_root / "live" / self.worker_id / job["video_id"]
+            else:
+                # In the directory finish() clears: a practice recording is never kept.
+                directory = self.root / "live" / job["video_id"]
+            return cameras.CameraRecorder(int(job["sheet"]), directory)
+        return self._youtube(job["video_id"], self.root / "live" / job["video_id"])
 
-        return YtDlpRecorder(job["video_id"], self.root / "live" / job["video_id"],
-                             pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
-                             cookies=os.environ.get("YTDLP_COOKIES"))
+    def _youtube(self, video_id, directory):
+        import os
+
+        from curling_score.live import recorder
+
+        return recorder.YtDlpRecorder(video_id, directory,
+                                      pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
+                                      cookies=os.environ.get("YTDLP_COOKIES"))
+
+    def _aligner(self, job, recorder):
+        import os
+
+        from curling_score.live.clock import Aligner
+
+        # Its waits count from where the stream began: behind a standby, the
+        # recording is long already when the stream is found.
+        start = stream_start_s(job, recorder)
+        return Aligner(job["video_id"], int(job["sheet"]), recorder.dir,
+                       recorder.wall_started, _published_at(job),
+                       head=lambda: recorder.head_s() - start,
+                       pot_provider=os.environ.get("YTDLP_POT_PROVIDER"),
+                       cookies=os.environ.get("YTDLP_COOKIES")).start()
 
     # --- what the lane sees ---------------------------------------------------
 
@@ -117,10 +243,17 @@ class LiveManager:
         read. It is not called for a recording that is not kept, and what it
         raises is logged and goes no further."""
         keep = keep and not is_practice(stream.job)
+        if stream.aligner is not None:
+            stream.aligner.stop()
+        self._keep_reference(stream)
         stream.recorder.stop()
         with self._lock:
             if stream in self._streams:
                 self._streams.remove(stream)
+        if is_camera_game(stream.job) or is_standby(stream.job):
+            # A standby never handed its stream is never whole: deleted.
+            self._file_camera_game(stream, keep)
+            return
         if self.root is None:
             return
         vid = stream.job["video_id"]
@@ -163,20 +296,112 @@ class LiveManager:
 
         self.background(keep_it)
 
+    def _file_camera_game(self, stream, keep: bool):
+        """A camera game that ended with its stream: its four files kept under
+        ``cams_root/kept/<video_id>/`` with ``clock.json`` -- the sheet, the
+        recording's wall start and the clock it was published on -- for
+        reading it again (``camera_vod``). Anything less is deleted."""
+        import json
+        import os
+
+        rec, vid = stream.recorder, stream.job["video_id"]
+        directory = Path(getattr(rec, "dir", "") or "")
+        whole = getattr(rec, "whole", lambda: False)()
+        if not (keep and whole and self.cams_root is not None and directory.is_dir()):
+            if directory.is_dir():
+                shutil.rmtree(directory, ignore_errors=True)
+            return
+        clock = stream.aligner.clock() if stream.aligner is not None else (
+            getattr(stream.session, "clock", None))
+        for extra in directory.iterdir():
+            if extra.suffix != ".ts":
+                extra.unlink(missing_ok=True)
+        dest = self.cams_root / "kept" / vid
+        shutil.rmtree(dest, ignore_errors=True)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        from curling_score.cameras import trim
+
+        os.rename(directory, dest)
+        # Recorded ahead of where its game is read from (a standby): only
+        # that is kept. Cut on the keeping thread -- it copies gigabytes. Until
+        # it is, the clips worker leaves the files alone (trim.PENDING).
+        cut = analysis_start_s(stream.job, rec)
+        # Only its own span of the sheet: the game before's end is not kept
+        # with it (a reprocess would read it).
+        floor = getattr(stream.session, "floor_s", None)
+        if isinstance(floor, (int, float)) and floor > cut:
+            cut = float(floor)
+        sheet = int(stream.job["sheet"])
+        meta = {"sheet": sheet, "wall_started": rec.wall_started, "clock": clock,
+                "kept_at": time.time()}
+        # The layout the game was read with: its clips are cut by it, whatever
+        # the sheet's layout says by then.
+        placed = _layout_record(sheet)
+        if placed is not None:
+            meta["layout"] = placed
+        if cut >= trim.MIN_CUT_S:
+            meta[trim.PENDING] = True
+            meta["trim_by"] = self.worker_id
+        (dest / "clock.json").write_text(json.dumps(meta))
+        log.info("kept the cameras of %s in %s", vid, dest)
+
+        def trim_then_prune():
+            if cut >= trim.MIN_CUT_S:
+                try:
+                    trim.trim_kept(dest, cut)
+                except Exception:  # noqa: BLE001 - trim_kept leaves it ready or pending
+                    log.exception("could not cut the kept cameras of %s at %.0f s", vid, cut)
+            if self.prune is not None:
+                try:
+                    self.prune()
+                except Exception:  # noqa: BLE001
+                    log.exception("prune after keeping %s failed", vid)
+
+        self.background(trim_then_prune)
+
+    def _keep_reference(self, stream):
+        """The YouTube stream recorded beside a camera game, stopped and kept
+        as any live game's recording is: whole as the video's cached copy."""
+        ref, stream.reference = stream.reference, None
+        if ref is None:
+            return
+        ref.stop()
+        if self.root is None:
+            return
+        vid = stream.job["video_id"]
+        directory = self.root / "live" / f"{vid}-youtube"
+        try:
+            path = ref.path
+        except (AttributeError, IndexError):
+            shutil.rmtree(directory, ignore_errors=True)
+            return
+        file_it = cache.keep_recording if ref.whole() else cache.keep_partial
+
+        def keep_it():
+            try:
+                file_it(path, vid, self.root)
+            except Exception:  # noqa: BLE001
+                log.exception("could not keep the stream beside %s", vid)
+            finally:
+                shutil.rmtree(directory, ignore_errors=True)
+
+        self.background(keep_it)
+
     # --- the thread -----------------------------------------------------------
 
     def poll_once(self):
-        while len(self.streams()) < self.max_streams:
+        # One a poll: two workers then share a draw opened all at once (each
+        # sheet's next game, playlists.standbys) rather than one taking it.
+        if len(self.streams()) < self.max_streams:
+            job = None
             try:
                 job = self.api.claim(self.worker_id, self.model_id, self.gpu,
                                      kinds=list(self.kinds),
                                      **({"cameras": True} if self.cameras else {}))
             except Exception as exc:  # noqa: BLE001 - the API may be down; next poll
                 log.warning("live claim failed: %s", exc)
-                break
-            if job is None:
-                break
-            self._begin(job)
+            if job is not None:
+                self._begin(job)
         for stream in self.streams():
             self._keep(stream)
 
@@ -193,8 +418,44 @@ class LiveManager:
             log.exception("live job %s: recorder did not start", job["id"])
             self._fail(job, f"{type(exc).__name__}: {exc}", kind="transient")
             return
+        stream = Stream(job=job, recorder=recorder, last_beat=self.clock(),
+                        handoff={k: job[k] for k in HANDOFF_KEYS if k in job})
+        if is_camera_game(job):
+            _name_video(recorder, job["video_id"])
+            self._follow(stream, job)
         with self._lock:
-            self._streams.append(Stream(job=job, recorder=recorder, last_beat=self.clock()))
+            self._streams.append(stream)
+
+    def _follow(self, stream, job):
+        """A camera game's clock, and its stream recorded beside it when
+        CAMERA_KEEP_YOUTUBE asks."""
+        stream.aligner = self.make_aligner(job, stream.recorder)
+        if self.keep_youtube and self.root is not None:
+            try:
+                stream.reference = self._youtube(
+                    job["video_id"], self.root / "live" / f"{job['video_id']}-youtube")
+                stream.reference.start()
+            except Exception as exc:  # noqa: BLE001 - the game goes on without it
+                log.warning("live job %s: its stream is not recorded beside it: %s",
+                            job["id"], exc)
+                stream.reference = None
+
+    def _hand_over(self, stream, game: dict):
+        """A standby's stream was found: the recording goes on, now the
+        game's. Its clock and YouTube copy start, then the job says it is the
+        game -- last, so the lane, on its own thread, never sees a camera game
+        without them -- and the lane gives it its session."""
+        job = {**stream.job, **game, "kind": "camera_live"}
+        log.info("live job %s: the stream of sheet %s was found: %s", job["id"],
+                 job.get("sheet"), job.get("video_id"))
+        try:
+            self._follow(stream, job)
+        except Exception:  # noqa: BLE001 - recorded still; tried again next heartbeat
+            log.exception("live job %s: its clock did not start", job["id"])
+            stream.aligner = None
+            return
+        _name_video(stream.recorder, job["video_id"])
+        stream.job = job
 
     def _fail(self, job, error, kind="permanent"):
         try:
@@ -203,6 +464,13 @@ class LiveManager:
             log.warning("could not report live job %s failing: %s", job["id"], exc)
 
     def _keep(self, stream):
+        if stream.reference is not None:
+            try:
+                stream.reference.check()
+            except Exception as exc:  # noqa: BLE001 - only the reference is lost
+                log.warning("live job %s: the stream beside it stopped: %s",
+                            stream.job["id"], exc)
+                self._keep_reference(stream)
         try:
             stream.recorder.check()
         except LiveError as exc:
@@ -214,17 +482,36 @@ class LiveManager:
             return
         except Exception:  # noqa: BLE001 - a bad check must not stop the others
             log.exception("checking the recorder of %s", stream.job["id"])
-        if stream.lost or self.clock() - stream.last_beat < self.heartbeat_s:
+        # A game's span found to end goes to the API at once: the next game
+        # on its sheet waits for it.
+        telling = stream.own_until_wall is not None and not stream.own_until_sent
+        if stream.lost or (self.clock() - stream.last_beat < self.heartbeat_s and not telling):
             return
         head = getattr(stream.recorder, "head_s", lambda: 0.0)()
         ends = sum(len(g["ends"]) for g in (stream.last_doc or {}).get("games", []))
+        extra = None
+        if stream.own_until_wall is not None and not stream.own_until_sent:
+            from datetime import datetime, timezone
+
+            extra = {"own_until": datetime.fromtimestamp(stream.own_until_wall,
+                                                         timezone.utc).isoformat()}
         try:
             got = self.api.progress(stream.job["id"], self.worker_id, "live", None,
-                                    f"recorded {head / 60:.0f} min, {ends} end(s) published")
+                                    f"recorded {head / 60:.0f} min, {ends} end(s) published",
+                                    **({"extra": extra} if extra else {}))
             stream.last_beat = self.clock()
+            if extra:
+                stream.own_until_sent = True
+            # A camera game's place on its sheet: the game before it, the next.
+            if isinstance(got, dict) and isinstance(got.get("game"), dict):
+                stream.handoff = {k: got["game"][k] for k in HANDOFF_KEYS
+                                  if k in got["game"]}
             # A practice watch nobody is on any more: the API says stop.
             if isinstance(got, dict) and got.get("stop"):
                 stream.stop_requested = True
+            # A standby whose stream the poll found: it is the game now.
+            if isinstance(got, dict) and got.get("game") and is_standby(stream.job):
+                self._hand_over(stream, got["game"])
         except Exception as exc:  # noqa: BLE001
             from curling_score.service.worker import Lost
 

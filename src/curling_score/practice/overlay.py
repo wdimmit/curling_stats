@@ -49,7 +49,8 @@ def to_view(view, facing: bool, x: float, y: float):
     if yv >= view.d_m - NEAR_CAMERA_M:
         return None
     col, row = view.to_image(xv, yv)
-    return [round(col / view.rect[2], 4), round(row / view.rect[3], 4)]
+    w, h = view.cut.out_size
+    return [round(col / w, 4), round(row / h, 4)]
 
 
 def _polyline(view, facing, a, b):

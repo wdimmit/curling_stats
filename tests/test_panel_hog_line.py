@@ -15,6 +15,16 @@ def _calibrate(monkeypatch, plate):
                                    "bottom", name="top")
 
 
+def test_a_panel_calibrated_without_a_name_stores_none_but_errors_say_panel(monkeypatch):
+    monkeypatch.setattr(profile.lighting, "is_calibratable", lambda p: True)
+    monkeypatch.setattr(profile.calibrate, "solve", lambda median, side: TOP)
+    plate = np.full((534, 300, 3), 225, np.uint8)
+    setup = profile.calibrate_panel([plate.copy() for _ in range(3)],
+                                    (0, 0, 300, 534), "bottom")
+    assert setup.name == ""
+    assert setup.hog_line_error.startswith("panel panel:")
+
+
 def test_a_panel_whose_paint_is_found_carries_its_line(monkeypatch):
     setup = _calibrate(monkeypatch, plate_with_line())
     assert setup.hog_line is not None

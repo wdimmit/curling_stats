@@ -22,6 +22,8 @@ from curling_score.ingest import cache, prune, source
 log = logging.getLogger("curling_score.worker")
 
 POLL_BUSY_S = 10.0    # after a job, look again soon: a league night queues five
+# An idle worker prunes the kept camera games this often (run_forever).
+CAMERA_PRUNE_S = 3600.0
 POLL_IDLE_S = 30.0    # otherwise stay well inside Firestore's free read quota
 HEARTBEAT_S = 60.0    # how often an idle worker says it is alive
 PROGRESS_MIN_GAP_S = 5.0
@@ -89,7 +91,7 @@ class ApiClient:
         r.raise_for_status()
         return r.json()["job"]
 
-    def progress(self, job_id, worker_id, phase, fraction, message):
+    def progress(self, job_id, worker_id, phase, fraction, message, extra=None):
         """Report where the job has got to. Best-effort by contract.
 
         A progress post is telemetry: it moves a bar on a page and pushes the
@@ -103,7 +105,7 @@ class ApiClient:
         """
         return self._post(f"/api/worker/jobs/{job_id}/progress",
                           {"worker_id": worker_id, "phase": phase,
-                           "fraction": fraction, "message": message},
+                           "fraction": fraction, "message": message, **(extra or {})},
                           timeout=PROGRESS_TIMEOUT_S)
 
     def artifacts(self, job_id, worker_id, files, detcache):
@@ -143,9 +145,10 @@ class ApiClient:
                           timeout=PROGRESS_TIMEOUT_S)
 
     # The clips worker's queue (service/clipworker.py).
-    def claim_clips(self, worker_id):
+    def claim_clips(self, worker_id, mode="ask"):
         r = self._http.post(f"{self.base}/api/worker/clips/claim", headers=self._headers,
-                            json={"worker_id": worker_id, "version": version.PIPELINE_VERSION})
+                            json={"worker_id": worker_id, "version": version.PIPELINE_VERSION,
+                                  "mode": mode})
         if r.status_code == 204:
             return None
         r.raise_for_status()
@@ -166,6 +169,17 @@ class ApiClient:
     def clip_fail(self, job_id, worker_id, error):
         return self._post(f"/api/worker/clips/{job_id}/fail",
                           {"worker_id": worker_id, "error": error})
+
+    def clips_done(self, video_ids) -> dict:
+        """Which kept camera games have had every delivery clipped."""
+        r = self._http.get(f"{self.base}/api/worker/clips/done", headers=self._headers,
+                           params={"videos": ",".join(video_ids)}, timeout=PROGRESS_TIMEOUT_S)
+        r.raise_for_status()
+        return r.json()
+
+    def clip_later(self, job_id, worker_id, reason):
+        return self._post(f"/api/worker/clips/{job_id}/later",
+                          {"worker_id": worker_id, "reason": reason})
 
 
 def release_held(api, worker_id: str) -> None:
@@ -198,7 +212,7 @@ def classify_error(exc: BaseException) -> str:
         return "blocked"
     permanent = ("private video", "video unavailable", "removed", "no panels",
                  "could not find two panels", "members-only", "no youtube video id",
-                 "not a youtube")
+                 "not a youtube", "no longer kept")
     if any(p in text for p in permanent):
         return "permanent"
     return "transient"
@@ -219,6 +233,51 @@ def gpu_name() -> str | None:
     except Exception:  # noqa: BLE001
         pass
     return None
+
+
+class CameraFilesGone(Exception):
+    """A camera game asked to be read again after its files were pruned."""
+
+
+class CameraFilesBusy(Exception):
+    """A camera game asked to be read again while its kept files are still
+    being cut where its stream began (cameras/trim.PENDING): tried again."""
+
+
+def vod_claim() -> dict:
+    """What the recordings loop claims: recordings, and camera games read
+    again where this worker can see the cameras' kept files (WORKER_CAMERAS=1)."""
+    if os.environ.get("WORKER_CAMERAS") == "1":
+        return {"kinds": ["vod", "camera_vod"], "cameras": True}
+    return {"kinds": ["vod"]}
+
+
+def kept_camera_game(job: dict, cams_root, probe=None):
+    """``(feed, info, clock)`` of a camera game's kept files, for reading it
+    again; CameraFilesGone once they are pruned -- never a download: the
+    run's YouTube reprocess is the way back then."""
+    import json
+
+    from curling_score.feeds.cameras import camera_feed
+
+    if probe is None:
+        from curling_score.ingest.frames import probe
+    vid = job["video_id"]
+    d = Path(cams_root) / "kept" / vid if cams_root else None
+    if d is None or not (d / "clock.json").is_file():
+        raise CameraFilesGone(f"the camera files of {vid} are no longer kept")
+    kept = json.loads((d / "clock.json").read_text())
+    from curling_score.cameras import trim
+
+    if kept.get(trim.PENDING):
+        raise CameraFilesBusy(f"the camera files of {vid} are still being cut; try again soon")
+    sheet = int(job.get("sheet") or kept["sheet"])
+    feed = camera_feed(d, sheet)
+    duration = float(probe(feed.path_for("left")).duration_s)
+    info = source.VideoInfo(
+        video_id=vid, title=job.get("title") or vid, duration_s=duration, was_live=True,
+        is_live=False, upload_date=None, sheet=sheet, channel_id=job.get("channel_id"))
+    return feed, info, kept.get("clock")
 
 
 def cached_info(job: dict, root: Path, probe=None) -> source.VideoInfo | None:
@@ -254,7 +313,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
                 weights: str | None, out_dir: Path, skip_longview: bool = False,
                 analyze_fn=None, fetch_info=source.fetch_info,
                 clock=time.monotonic, should_yield=None, probe=None,
-                fp_harvest: fpframes.Settings | None = None) -> dict:
+                fp_harvest: fpframes.Settings | None = None, cams_root=None) -> dict:
     """Run one job end to end. Raises on failure; the caller reports it.
 
     ``should_yield`` is asked at every progress report, and a yes raises
@@ -292,11 +351,18 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
             log.warning("progress (%s %.2f) not delivered: %s", name, fraction, exc)
 
     on_phase("download", 0.0, "checking the video")
-    info = cached_info(job, root, probe)
-    if info is None:
-        info = fetch_info(url)
+    camera_kw = {}
+    if job.get("kind") == "camera_vod":
+        cams_root = cams_root or os.environ.get("WORKER_CAMS")
+        feed, info, clock_ = kept_camera_game(job, cams_root, probe)
+        camera_kw = {"feed": feed, "clock": clock_}
+        log.info("job %s: %s read again from its cameras' kept files", job["id"], info.video_id)
     else:
-        log.info("job %s: %s is cached; not asking YouTube", job["id"], info.video_id)
+        info = cached_info(job, root, probe)
+        if info is None:
+            info = fetch_info(url)
+        else:
+            log.info("job %s: %s is cached; not asking YouTube", job["id"], info.video_id)
     det_dir = root / "detections"
     before = _snapshot(det_dir)
 
@@ -322,7 +388,7 @@ def process_job(job: dict, api: ApiClient, worker_id: str, *, root: Path,
             sheet=job.get("sheet"), game_format=job.get("format") or "fours",
             skip_scoreboard=False,
             skip_longview=skip_longview, on_phase=on_phase,
-            download_attempts=1,
+            download_attempts=1, **camera_kw,
         )
     run_dir = out_dir / job["run_id"]
     analyze_mod.write(doc, run_dir)
@@ -420,6 +486,7 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
     log.info("worker %s: model %s, gpu %s, cache %s", worker_id, model, gpu, root)
     idle_since = None
     served_live = False
+    last_cam_prune = None
     while True:
         if live is not None and live.busy():
             served_live = True
@@ -435,8 +502,9 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
         if once and served_live:
             return
         try:
-            job = (api.claim(worker_id, model, gpu) if live is None
-                   else api.claim(worker_id, model, gpu, kinds=["vod"]))
+            claim = vod_claim()
+            job = (api.claim(worker_id, model, gpu) if live is None and len(claim) == 1
+                   else api.claim(worker_id, model, gpu, **claim))
         except Exception as exc:  # noqa: BLE001 - the API may be down; keep trying
             log.warning("claim failed: %s", exc)
             job = None
@@ -446,6 +514,16 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
             continue
         if job is None:
             idle_since = idle_since or time.monotonic()
+            # The kept camera games are pruned as games are kept, and, as one
+            # is clipped long after, on a quiet day too.
+            prune_cams = getattr(getattr(live, "manager", None), "prune", None)
+            if prune_cams is not None and (last_cam_prune is None
+                                           or time.monotonic() - last_cam_prune > CAMERA_PRUNE_S):
+                last_cam_prune = time.monotonic()
+                try:
+                    prune_cams()
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("prune of the kept camera games failed: %s", exc)
             if once:
                 return
             sleep(POLL_IDLE_S if time.monotonic() - idle_since > HEARTBEAT_S else POLL_BUSY_S)
@@ -496,6 +574,19 @@ def _enable_stack_dumps():
     enable_stack_dumps()
 
 
+def live_kinds() -> tuple:
+    """The live jobs this worker claims: league games from the stream; from
+    the cameras too where it can see them (WORKER_CAMERAS=1), and their
+    standbys, the cameras recorded ahead of the stream; practice where
+    WORKER_PRACTICE=1."""
+    kinds = ["live"]
+    if os.environ.get("WORKER_CAMERAS") == "1":
+        kinds += ["camera_live", "camera_standby"]
+    if os.environ.get("WORKER_PRACTICE") == "1":
+        kinds.append("practice")
+    return tuple(kinds)
+
+
 def build_live(api_url, token, worker_id, *, root: Path, weights,
                skip_longview: bool = False, start: bool = True,
                cache_gb: float | None = None, min_free_gb: float = 0.0,
@@ -527,9 +618,38 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     from curling_score.live import lane, manager
 
     shutil.rmtree(root / "live", ignore_errors=True)
+    # Camera games record into the workers' shared place, each worker under
+    # its own name: its leftovers go, never the other worker's game.
+    cams_root = Path(os.environ["WORKER_CAMS"]) if os.environ.get("WORKER_CAMS") else None
+    if cams_root is not None:
+        shutil.rmtree(cams_root / "live" / worker_id, ignore_errors=True)
+        # A kept game this worker was cutting when it stopped: finished or
+        # undone, so its clips can be cut (cameras/trim.recover).
+        from curling_score.cameras import trim
+
+        try:
+            trim.recover_interrupted(cams_root / "kept", worker_id)
+        except OSError as exc:
+            log.warning("could not look for interrupted cuts: %s", exc)
+    # A kept camera game is its game's only video until every delivery is
+    # clipped (the API says which): then WORKER_CAMERA_DAYS, and at most
+    # WORKER_CAMERA_MAX_DAYS either way.
+    camera_days = float(os.environ.get("WORKER_CAMERA_DAYS", "3"))
+    camera_max_days = float(os.environ.get("WORKER_CAMERA_MAX_DAYS", camera_days))
+    asker = ApiClient(api_url, token)
+
+    def clipped(names):
+        try:
+            return {v for v, ok in asker.clips_done(names)["done"].items() if ok}
+        except Exception as exc:  # noqa: BLE001 - keep them all rather than guess
+            log.warning("could not learn which camera games are clipped: %s", exc)
+            return set()
+
     def prune_cache():
         removed = prune.prune(root, cache_gb, min_free_gb=min_free_gb,
-                              recording_days=recording_days)
+                              recording_days=recording_days,
+                              cams_root=cams_root, camera_days=camera_days,
+                              camera_max_days=camera_max_days, clipped=clipped)
         if removed:
             log.info("pruned %d cached media files", len(removed))
 
@@ -538,8 +658,8 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
         gpu=gpu_name() if start else None, root=root,
         max_streams=int(os.environ.get("LIVE_MAX_STREAMS", manager.MAX_STREAMS)),
         prune=prune_cache if cache_gb is not None else None,
-        kinds=("live", "practice") if os.environ.get("WORKER_PRACTICE") == "1" else ("live",),
-        cameras=os.environ.get("WORKER_CAMERAS") == "1")
+        kinds=live_kinds(), cameras=os.environ.get("WORKER_CAMERAS") == "1",
+        keep_youtube=os.environ.get("CAMERA_KEEP_YOUTUBE") == "1", cams_root=cams_root)
     if start:
         mgr.start()
     return lane.LiveLane(

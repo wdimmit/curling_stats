@@ -928,6 +928,123 @@ class TestTheReleaseInTheVersion:
         assert "+spin-spin-" in got and "+release" not in got
 
 
+class TestPublishedClock:
+    def test_a_session_with_a_clock_publishes_on_it(self):
+        docs = []
+        for clock in (None, {"kind": "cameras", "offset_s": 50.0, "aligned": "segment"}):
+            pipe, rec, pub = Pipeline(), Recording(), []
+            s = session(pipe, rec, pub)
+            s.clock = clock
+            run_until(s, rec, 3300.0)
+            docs.append(pub[-1])
+        plain, shifted = docs
+        # The fake pipeline's ends have no shots; their bounds are video times too.
+        bounds = [((ea["start_s"], ea["end_s"]), (eb["start_s"], eb["end_s"]))
+                  for ga, gb in zip(plain["games"], shifted["games"])
+                  for ea, eb in zip(ga["ends"], gb["ends"])]
+        assert bounds and all(b == pytest.approx((a[0] + 50.0, a[1] + 50.0)) for a, b in bounds)
+        assert shifted["live"]["recorded_s"] == pytest.approx(plain["live"]["recorded_s"] + 50.0)
+        assert shifted["source"]["clock"]["offset_s"] == 50.0
+        assert "clock" not in plain["source"]
+
+
+class TestWaitingForTheClock:
+    CLOCK = {"kind": "cameras", "aligned": "segment", "offset_s": 50.0, "steps": [[0.0, 50.0]]}
+
+    def test_a_camera_game_publishes_nothing_until_its_clock_is_known(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        s.wait_for_clock = True
+        run_until(s, rec, 3300.0)
+        assert pub == [] and built_ends(pipe)            # built, not published
+        s.set_clock(self.CLOCK)
+        assert len(pub) == 1 and pub[0]["source"]["clock"] == self.CLOCK
+        assert len(pub[0]["games"][0]["ends"]) == len(built_ends(pipe))
+
+    def test_a_new_clock_is_published_at_once(self):
+        pipe, rec, pub = Pipeline(), Recording(), []
+        s = session(pipe, rec, pub)
+        s.wait_for_clock = True
+        s.set_clock(self.CLOCK)
+        run_until(s, rec, 3300.0)
+        n = len(pub)
+        stepped = dict(self.CLOCK, steps=[[0.0, 50.0], [2000.0, 44.0]])
+        s.set_clock(stepped)
+        assert len(pub) == n + 1 and pub[-1]["source"]["clock"] == stepped
+        s.set_clock(dict(stepped))                       # the same again: nothing
+        assert len(pub) == n + 1
+
+
+class TestARecordingThatBeganBeforeItsStream:
+    """A camera game's standby recorded the sheet from its schedule's start;
+    the game is read from where its stream began (``start_s``), as a stream
+    recorded from its own start would be."""
+
+    class Pipe(Pipeline):
+        def __init__(self):
+            super().__init__()
+            self.calibrated_from, self.sampled_from, self.recording_start = [], [], []
+
+        def calibrate(self, path, until_s, start_s=None):
+            self.calibrated_from.append(start_s)
+            return super().calibrate(path, until_s)
+
+        def samples(self, path, setups, from_s, until_s, detector=None):
+            self.sampled_from.append(from_s)
+            # The sheet as `activity` has it, from the stream's start.
+            out = super().samples(path, setups, None if from_s is None else from_s - 1800.0,
+                                  until_s - 1800.0, detector)
+            return [Sample(t=x.t + 1800.0, top_stones=x.top_stones,
+                           bottom_stones=x.bottom_stones) for x in out]
+
+        def build_end(self, ctx, game, end, prev_end_s):
+            self.recording_start.append(ctx.recording_start_s)
+            return super().build_end(ctx, game, end, prev_end_s)
+
+    def started(self, start_s=1800.0):
+        pipe, rec, pub = self.Pipe(), Recording(), []
+        s = live.LiveSession(
+            video_id="liveVid0001", url="https://www.youtube.com/watch?v=liveVid0001",
+            recording=rec, fmt=format_mod.FOURS, pipeline=pipe, sheet=3,
+            publish=pub.append, progress=lambda m: None, now=lambda: NOW, start_s=start_s)
+        return s, pipe, rec, pub
+
+    def test_it_calibrates_fifteen_minutes_after_the_stream_began_from_there(self):
+        s, pipe, rec, _ = self.started()
+        rec.head = 1800.0 + 890.0
+        assert s.step() is None
+        rec.head = 1800.0 + 905.0
+        assert s.step() == "calibrated"
+        assert pipe.calibrated_at == [2705.0] and pipe.calibrated_from == [1800.0]
+
+    def test_it_reads_the_sheet_from_the_streams_start(self):
+        s, pipe, rec, _ = self.started()
+        run_until(s, rec, 1800.0 + 2400.0)
+        assert pipe.sampled_from[0] == 1800.0
+        assert min(x.t for x in s.samples) > 1800.0
+        assert pipe.built and set(pipe.recording_start) == {1800.0}
+
+    def test_from_its_start_it_is_read_as_before(self):
+        s, pipe, rec, _ = self.started(start_s=0.0)
+        rec.head = 905.0
+        assert s.step() == "calibrated"
+        assert pipe.calibrated_from == [None]
+
+
+def test_the_pipeline_calibrates_a_camera_feed_from_where_it_is_told(monkeypatch):
+    from curling_score.feeds import cameras
+
+    asked = []
+    monkeypatch.setattr(live, "as_feed", lambda path: SimpleNamespace(kind="cameras"))
+    monkeypatch.setattr(cameras, "calibrate",
+                        lambda feed, until_s, start_s=None, **kw:
+                        asked.append((until_s, start_s)) or (None, {}, None))
+    pipe = live.VideoPipeline(skip_longview=True, progress=lambda m: None)
+    pipe.calibrate("feed", 2705.0, start_s=1800.0)
+    pipe.calibrate("feed", 905.0)
+    assert asked == [(2705.0, 1800.0), (905.0, None)]
+
+
 class TestTheReceivingPanelsModel:
     """A live end reads its receiving panel with overhead-4 and the rest with
     overhead-3, and its chart says so."""
@@ -968,3 +1085,73 @@ class TestTheReceivingPanelsModel:
         same, _ = self.version(monkeypatch, tmp_path, house_weights="det")
         before, _ = self.version(monkeypatch, tmp_path)
         assert same == before and "+house" not in same
+
+
+
+class TestOwningASpanOfTheSheet:
+    """A camera game owns its span of the recording: from its floor (where the
+    game before said its own ended) to its first changeover after the next
+    game opened."""
+
+    class Pipe(Pipeline):
+        # Game A: top 600-1500, bottom 1500-2400; a 700 s changeover; game B:
+        # top 3100-4000, bottom 4000-4900; then an empty sheet.
+        def calibrate(self, path, until_s, start_s=None):
+            return super().calibrate(path, until_s)
+
+        def samples(self, path, setups, from_s, until_s, detector=None):
+            out, t = [], (int(from_s // 5) + 1) * 5.0 if from_s is not None else 0.0
+            while t <= until_s:
+                if 600 <= t < 1500 or 3100 <= t < 4000:
+                    top, bottom = 5, 0
+                elif 1500 <= t < 2400 or 4000 <= t < 4900:
+                    top, bottom = 0, 5
+                else:
+                    top, bottom = 0, 0
+                out.append(Sample(t=t, top_stones=top, bottom_stones=bottom))
+                t += 5.0
+            return out
+
+    def make(self):
+        pipe, rec, pub = self.Pipe(), Recording(), []
+        return session(pipe, rec, pub), pipe, rec, pub
+
+    def test_ends_past_its_own_until_are_not_built(self):
+        s, pipe, rec, pub = self.make()
+        s.set_ownership(handoff_s=2500.0)
+        assert s.deciding()
+        run_until(s, rec, 5400.0)
+        # Quiet ten minutes after A's last end: its span ends inside the gap.
+        assert 2400.0 < s.own_until_s < 3100.0 and not s.deciding()
+        assert pipe.built and all(b["end"] <= 2 for b in pipe.built)
+        assert all(e["start_s"] < s.own_until_s for g in pub[-1]["games"] for e in g["ends"])
+
+    def test_a_pending_floor_holds_every_end(self):
+        s, pipe, rec, _ = self.make()
+        s.set_ownership(floor_pending=True)
+        run_until(s, rec, 2800.0)
+        assert pipe.built == []
+        s.set_ownership(floor_s=0.0)
+        run_until(s, rec, 3000.0)
+        assert pipe.built
+
+    def test_the_floor_drops_the_game_before_it_and_numbers_from_one(self):
+        s, pipe, rec, pub = self.make()
+        s.set_ownership(floor_s=2750.0)
+        run_until(s, rec, 5600.0)
+        games = pub[-1]["games"]
+        assert len(games) == 1
+        assert [e["number"] for e in games[0]["ends"]] == [1, 2]
+        assert games[0]["ends"][0]["start_s"] >= 2750.0
+
+    def test_the_profile_stops_at_its_own_end(self):
+        s, pipe, rec, pub = self.make()
+        calls = []
+        real = pipe.samples
+        pipe.samples = lambda *a, **kw: calls.append(a[2:4]) or real(*a, **kw)
+        s.set_ownership(handoff_s=2500.0)
+        run_until(s, rec, 3200.0)
+        assert s.own_until_s is not None
+        before = len(calls)
+        run_until(s, rec, 5200.0)
+        assert len(calls) == before          # nothing past its own end is read again

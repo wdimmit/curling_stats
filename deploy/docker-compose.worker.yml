@@ -41,19 +41,20 @@ services:
       # rule) or it is charted from the recording instead.
       #
       # Practice takes its slots from the same pool. Five sessions, one a
-      # sheet, split 3/2 across the two workers, and the 6 slots hold them;
-      # camera practice needs at least 5 between the two, so keep this at 3 or
-      # more. Practice never overlaps a league, so the two never compete.
-      LIVE_MAX_STREAMS: "3"
+      # sheet, need at least 5 between the two workers. Each sheet's next game
+      # is recorded from 10 min before its scheduled start, while the last
+      # league's games finish (playlists.LOOKAHEAD_S, user 2026-11-14): two a
+      # sheet for those minutes, 10 on five sheets, so 5 a worker.
+      LIVE_MAX_STREAMS: "5"
       # Practice sessions' watches too (from LIVE_MAX_STREAMS' slots). The
       # club only runs practice ice when no league is on, so practice never
       # shares a lane with a league night; a session does pause VOD jobs.
       # worker2 inherits it.
       WORKER_PRACTICE: "1"
-      # This box can see the club's cameras (20 NDI sources, found and read
-      # from the compose project's network, deploy_default, with the NDI
-      # config the capture writes for itself, so no network_mode: host), and
-      # the API holds practice jobs for workers that say so.
+      # This box can see the club's cameras: it calls each one's SRT
+      # listener (UDP 1600, outgoing) from the compose project's network,
+      # deploy_default, so no network_mode: host. The API holds practice jobs
+      # for workers that say so.
       # worker2 inherits it; the clips service turns it off.
       WORKER_CAMERAS: "1"
       # CUDA work (the models, and ffmpeg's NVENC) stays on card 0, numbered as
@@ -69,11 +70,30 @@ services:
       # environment: block overrides worker.env; notes in fpframes/__init__.py.
       WORKER_FP_HARVEST: "1"
       WORKER_FP_HARVEST_GB: "20"
+      # League games read from the cameras (a `cameras` playlist) record into
+      # the workers' shared place, each worker under live/<WORKER_ID>/, and a
+      # game that ended with its stream is kept in kept/<video>/ for reading
+      # again (camera_vod) whichever worker takes it -- a rename, the same
+      # mount. ~16 GB a sheet-hour, so about a night fits. A kept game is its
+      # game's only video until every delivery is clipped (the clips
+      # service's auto loops, while nothing is recorded): then it goes after
+      # WORKER_CAMERA_DAYS; unclipped, after WORKER_CAMERA_MAX_DAYS. Under
+      # WORKER_MIN_FREE_GB clipped games go first, then the YouTube
+      # recordings, unclipped games last (user 2026-11-14: a day of footage).
+      # worker2 inherits all of it; the clips service reads it.
+      WORKER_CAMS: /data/cams
+      WORKER_CAMERA_DAYS: "1"
+      WORKER_CAMERA_MAX_DAYS: "3"
+      # "1" also records each camera game's YouTube stream beside it, kept as
+      # any live game's recording is. Off since 2026-11-14 (user): a camera
+      # game's clips come from its cameras.
+      CAMERA_KEEP_YOUTUBE: "0"
     depends_on: [pot]
     volumes:
       # /data is a 1.5 TB volume of its own (1.4 TB free on 2026-10-06). The
       # /data/wdd paths are the laptop's, kept so its scripts still apply.
       - /data/wdd/curling-cache:/data/cache
+      - /data/wdd/curling-cams:/data/cams
     # One card each for the models: this one card 0, worker2 card 1 (they are
     # loaded per worker, and one card took all three workers' before). But this
     # container holds both cards. Camera practice encodes its composite with
@@ -148,11 +168,21 @@ services:
       # It runs no pipeline, so it has no frames to save.
       WORKER_FP_HARVEST: "0"
       WORKER_CLIP_SOURCES: /data/src1:/data/src2
+      # Beside the loop that answers people's asks, this many cut the auto
+      # pass -- every delivery of a camera game -- and only while nothing is
+      # being recorded (the API holds their jobs otherwise). ~26 rocks a
+      # minute at ~24 threads (11/11): a five-sheet night in about an hour.
+      CLIP_AUTO_LOOPS: "5"
     volumes:
       - /data/wdd/curling-clips:/data/cache
       - /data/wdd/curling-cache:/data/src1:ro
       - /data/wdd/curling-cache-2:/data/src2:ro
-    cpus: "4.0"
+      - /data/wdd/curling-cams:/data/cams:ro
+    # Room for the auto loops, but the live workers (cpu_shares 1024, the
+    # default) win any contention: a game or practice that starts while the
+    # loops finish their last end never waits on them.
+    cpus: "20.0"
+    cpu_shares: 256
     deploy: !reset null
   # Mints the proof-of-origin tokens YouTube demands before it will serve a
   # video. This used to be off, on the theory that a residential IP rarely

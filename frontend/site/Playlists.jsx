@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { authedFetch, signIn } from "./auth.js";
 import {
-  DAYS, DAY_NAMES, bodyFrom, emptyForm, formFrom, lastLookText, newNight, pastMidnight,
+  DAYS, DAY_NAMES, bodyFrom, emptyForm, formFrom, inputText, lastLookText, newNight, pastMidnight,
   playlistUrl, pollText, scheduleText, statusOf, toggleDay, troubleText,
 } from "../core/playlists.mjs";
 import { useAuthUser, useResource } from "./useAuth.js";
@@ -119,6 +119,17 @@ function PlaylistForm({ initial, adding, clubTz, onDone, onCancel }) {
                  onChange={e => set({ idleNever: e.target.checked })} /> Never
         </label>
       </div>
+      <h3>Live games</h3>
+      <div className="row every">
+        <label className="inline" htmlFor={`${idp}-input`}>Read from</label>
+        <select id={`${idp}-input`} value={form.input}
+                onChange={e => set({ input: e.target.value })}>
+          <option value="youtube">the stream</option>
+          <option value="cameras">each sheet&apos;s cameras</option>
+        </select>
+      </div>
+      <p className="muted hint">From the cameras, a game is still the stream&apos;s on the site;
+        sheets past the site&apos;s limit are read from the stream.</p>
       <div className="row" style={{ marginTop: 16 }}>
         <button className="primary" type="submit" disabled={busy}>
           {adding ? "Watch it" : "Save"}</button>
@@ -166,6 +177,7 @@ function Playlist({ pl, clubTz, onChanged, onRemoved }) {
                               rel="noopener noreferrer">{pl.playlist_id}</a></p>
       <p>{scheduleText(pl.schedule) || "No league nights"}</p>
       <p className="muted">{pollText(pl)}</p>
+      <p className="muted">{inputText(pl)}</p>
       <p className="muted">{lastLookText(pl, Date.now())}</p>
       {trouble && <div className="warn">{trouble}</div>}
       {removing ? (

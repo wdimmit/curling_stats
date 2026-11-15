@@ -296,11 +296,11 @@ def follow(video, view, color, t_release, *, model=None, decode=None, detect=Non
     if detect is None:
         from curling_score.detect import sidemodel
         detect = sidemodel.detect_band
-    frames, times = decode(video, view.rect, t_release + WINDOW_S[0], t_release + WINDOW_S[1], FPS)
+    frames, times = decode(video, view.cut, t_release + WINDOW_S[0], t_release + WINDOW_S[1], FPS)
     if not len(frames):
         return None
     lo = int(view.tee_row) - ROWS_ABOVE_TEE
-    hi = min(int(view.rect[3]), int(view.hog_row) + ROWS_BELOW_HOG)
+    hi = min(int(view.cut.out_size[1]), int(view.hog_row) + ROWS_BELOW_HOG)
     boxes = detect(model, frames, times, lo, hi, color, imgsz=800, conf=CONF)
     rec = fp_record.active()
     samples = []

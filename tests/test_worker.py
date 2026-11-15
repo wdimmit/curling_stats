@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from types import SimpleNamespace
 
 from curling_score import weights as weights_mod
 from curling_score.ingest import cache
@@ -621,6 +622,64 @@ class TestBuildingTheLiveLane:
         worker.build_live("http://api", "t", "home", root=tmp_path, weights=None, start=False)
         assert got["cal_root"] == tmp_path
 
+    def test_its_interrupted_trims_are_recovered_at_start(self, monkeypatch, tmp_path):
+        from curling_score.cameras import trim
+
+        got = []
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
+        monkeypatch.setattr(trim, "recover_interrupted",
+                            lambda kept, wid, **kw: got.append((kept, wid)) or {})
+        worker.build_live("http://api", "t", "home", root=tmp_path, weights=None, start=False)
+        assert got == [(tmp_path / "cams" / "kept", "home")]
+
+    def test_a_camera_game_being_cut_is_tried_again_later(self, tmp_path):
+        import json
+
+        from curling_score.cameras import trim
+
+        d = tmp_path / "kept" / "VID"
+        d.mkdir(parents=True)
+        (d / "clock.json").write_text(json.dumps(
+            {"sheet": 3, "wall_started": 1.0, "clock": None, trim.PENDING: True}))
+        with pytest.raises(worker.CameraFilesBusy) as got:
+            worker.kept_camera_game({"video_id": "VID", "sheet": 3}, tmp_path,
+                                    probe=lambda p: None)
+        assert worker.classify_error(got.value) == "transient"
+
+    def test_the_live_prune_asks_the_api_what_is_clipped(self, monkeypatch, tmp_path):
+        calls = []
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
+        monkeypatch.setenv("WORKER_CAMERA_DAYS", "1")
+        monkeypatch.setenv("WORKER_CAMERA_MAX_DAYS", "3")
+        monkeypatch.setattr(worker.prune, "prune",
+                            lambda root, gb, **kw: calls.append(kw) or [])
+        monkeypatch.setattr(worker.ApiClient, "clips_done",
+                            lambda api, vids: {"done": {"a": True, "b": False}})
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False, cache_gb=10.0)
+        got.manager.prune()
+        (kw,) = calls
+        assert (kw["camera_days"], kw["camera_max_days"]) == (1.0, 3.0)
+        assert kw["clipped"](["a", "b"]) == {"a"}
+
+    def test_an_unreachable_api_means_nothing_is_clipped(self, monkeypatch, tmp_path):
+        calls = []
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
+        monkeypatch.setattr(worker.prune, "prune",
+                            lambda root, gb, **kw: calls.append(kw) or [])
+
+        def down(api, vids):
+            raise OSError("connection refused")
+
+        monkeypatch.setattr(worker.ApiClient, "clips_done", down)
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False, cache_gb=10.0)
+        got.manager.prune()
+        assert calls[0]["clipped"](["a"]) == set()
+
     def test_the_harvest_settings_reach_the_lane(self, monkeypatch, tmp_path):
         from curling_score import fpframes
 
@@ -641,7 +700,11 @@ class TestBuildingTheLiveLane:
                                 start=False, cache_gb=300.0, min_free_gb=40.0,
                                 recording_days=7.0)
         got.manager.prune()
-        assert calls == [(300.0, {"min_free_gb": 40.0, "recording_days": 7.0})]
+        (gb, kw), = calls
+        assert callable(kw.pop("clipped"))
+        assert (gb, kw) == (300.0, {"min_free_gb": 40.0, "recording_days": 7.0,
+                                    "cams_root": None, "camera_days": 3.0,
+                                    "camera_max_days": 3.0})
 
 
 class TestTheWorkerOutlivesItsLiveLane:
@@ -770,3 +833,94 @@ class TestFalsePositiveFrames:
                                     fp_harvest=fpframes.Settings(enabled=True))
         assert result == {"ok": True}
         assert seen["recorder"] is None and saved == []
+
+
+# --- a camera game read again from its kept files ------------------------------------
+
+CAMERA_JOB = {"id": "j_cv", "run_id": "r_cv", "video_id": "dbV9wuA45Z0", "kind": "camera_vod",
+              "source": "cameras", "sheet": 3, "title": "11/5 - Sheet 3 - Thursday Morning",
+              "format": "fours", "window_start_s": None, "window_end_s": None}
+CLOCK = {"kind": "cameras", "aligned": "segment", "offset_s": -908.16, "steps": [[0.0, -908.16]]}
+
+
+def kept(cams):
+    d = cams / "kept" / "dbV9wuA45Z0"
+    d.mkdir(parents=True)
+    for role in ("house_a", "house_h", "long_a", "long_h"):
+        (d / f"{role}.ts").write_bytes(b"ts")
+    (d / "clock.json").write_text(json.dumps({"sheet": 3, "wall_started": 1793900701.0,
+                                              "clock": CLOCK}))
+    return d
+
+
+class TestACameraGameReadAgain:
+    def test_it_reads_the_kept_files_on_their_clock(self, tmp_path):
+        d = kept(tmp_path / "cams")
+        seen = {}
+
+        def analyze_fn(url, **kw):
+            seen.update(kw)
+            return fake_doc()
+
+        def no_youtube(url):
+            raise AssertionError("asked YouTube")
+
+        worker.process_job(CAMERA_JOB, FakeApi([]), "ryzen", root=tmp_path / "cache",
+                           weights=None, out_dir=tmp_path / "out", analyze_fn=analyze_fn,
+                           fetch_info=no_youtube, cams_root=tmp_path / "cams",
+                           probe=lambda p: SimpleNamespace(duration_s=11699.0))
+        feed = seen["feed"]
+        assert feed.kind == "cameras" and feed.path_for("left") == d / "long_a.ts"
+        assert seen["clock"] == CLOCK
+        assert (seen["info"].video_id, seen["info"].duration_s) == ("dbV9wuA45Z0", 11699.0)
+
+    def test_files_gone_fail_it_for_good_without_a_download(self, tmp_path):
+        def no_youtube(url):
+            raise AssertionError("asked YouTube")
+
+        with pytest.raises(worker.CameraFilesGone) as exc:
+            worker.process_job(CAMERA_JOB, FakeApi([]), "ryzen", root=tmp_path / "cache",
+                               weights=None, out_dir=tmp_path / "out",
+                               analyze_fn=lambda url, **kw: fake_doc(),
+                               fetch_info=no_youtube, cams_root=tmp_path / "cams")
+        assert "no longer kept" in str(exc.value)
+        assert worker.classify_error(exc.value) == "permanent"
+
+    def test_a_worker_that_sees_the_cameras_claims_them_too(self, monkeypatch):
+        monkeypatch.setenv("WORKER_CAMERAS", "1")
+        assert worker.vod_claim() == {"kinds": ["vod", "camera_vod"], "cameras": True}
+        monkeypatch.setenv("WORKER_CAMERAS", "0")
+        assert worker.vod_claim() == {"kinds": ["vod"]}
+
+
+def test_an_idle_worker_prunes_the_cameras_hourly(tmp_path, monkeypatch):
+    pruned = []
+
+    class Lane:
+        def busy(self):
+            return False
+
+        class manager:  # noqa: N801 - stands in for LiveManager
+            prune = staticmethod(lambda: pruned.append(1))
+
+    api = FakeApi([])
+    monkeypatch.setattr(worker, "vod_claim", lambda: {"kinds": ["vod"]})
+    worker.run_forever(api, "home", root=tmp_path, weights=None, out_dir=tmp_path,
+                       cache_gb=1.0, sleep=lambda s: None, once=True, live=Lane())
+    assert pruned == [1]
+
+
+def test_progress_carries_extra_fields():
+    sent = {}
+
+    class Http:
+        def post(self, url, headers=None, json=None, timeout=None):
+            sent.update(json)
+            return type("R", (), {"status_code": 200, "content": b"{}",
+                                  "raise_for_status": lambda s: None,
+                                  "json": lambda s: {"ok": True}})()
+
+    api = worker.ApiClient("http://api", "t")
+    api._http = Http()
+    api.progress("j1", "w", "live", None, "msg", extra={"own_until": "2026-11-17T03:07:00+00:00"})
+    assert sent["own_until"] == "2026-11-17T03:07:00+00:00" and sent["phase"] == "live"

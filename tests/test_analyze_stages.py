@@ -161,3 +161,191 @@ class TestTheLongCameraPasses:
         assert [c[0] for c in calls][-2:] == ["release", "spin"]
         assert keeper.cleared and longview._keeping is None
         assert "release fell over" in caplog.text
+
+
+class TestTheContextCarriesFeeds:
+    """`analyze` hands the pipeline a `Feed`: the original for ``path``, and for
+    ``read_path`` the same, or with the overhead panels on the strip proxy."""
+
+    class Stop(Exception):
+        pass
+
+    def run(self, monkeypatch, tmp_path, use_proxy):
+        from pathlib import Path
+
+        from curling_score import weights as weights_mod  # noqa: F401
+        from curling_score.game import boardsplit, profile, segment
+        from curling_score.ingest import cache, frames as F, proxy
+
+        seen = {}
+        original = tmp_path / "VXU9xwmugRg.mp4"
+        strip_file = tmp_path / "proxies" / "VXU9xwmugRg.strip.mp4"
+        panels = SimpleNamespace(top=(0, 0, 297, 514), bottom=(0, 514, 297, 514))
+        setups = {n: split_context().read_setups[n] for n in ("top", "bottom")}
+        setups = {n: replace(s, name=n) for n, s in setups.items()}
+        monkeypatch.setattr(cache, "ensure_cached", lambda *a, **k: original)
+        monkeypatch.setattr(F, "sample_keyframes", lambda *a, **k: ["frame"])
+        monkeypatch.setattr(analyze, "calibrate_from",
+                            lambda *a, **k: (panels, setups, None))
+        monkeypatch.setattr(proxy, "ensure_proxy", lambda *a, **k: strip_file)
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
+        monkeypatch.setattr(analyze, "load_release_model", lambda *a, **k: None)
+        monkeypatch.setattr(F, "keyframe_sweep",
+                            lambda path, **k: seen.setdefault("sweep", []).append(path) or [])
+        monkeypatch.setattr(profile, "build_profile",
+                            lambda video, setups, sweep=None, detector=None:
+                            seen.update(profiled=video) or [])
+        monkeypatch.setattr(segment, "segment_games", lambda *a, **k: [])
+        monkeypatch.setattr(boardsplit, "join_games", lambda games, states: games)
+        monkeypatch.setattr(boardsplit, "split_games", lambda games, states: games)
+
+        def build_games(ctx, games, **k):
+            seen.update(ctx=ctx, board_reader=k["read_board"])
+            raise self.Stop
+
+        monkeypatch.setattr(analyze, "build_games", build_games)
+        info = SimpleNamespace(title="t", duration_s=1.0, sheet=2, video_id="VXU9xwmugRg")
+        try:
+            analyze.analyze("VXU9xwmugRg", info=info, use_proxy=use_proxy,
+                            start_s=0.0, end_s=60.0)
+        except self.Stop:
+            pass
+        return seen, original, strip_file
+
+    def test_endcontext_paths_are_feeds(self, monkeypatch, tmp_path):
+        from curling_score.feeds import Feed
+
+        seen, original, proxy_file = self.run(monkeypatch, tmp_path, use_proxy=True)
+        ctx = seen["ctx"]
+        assert isinstance(ctx.path, Feed) and isinstance(ctx.read_path, Feed)
+        assert ctx.path.single() == original
+        # The strip proxy holds the houses; the side views and the board stay on the original.
+        assert ctx.read_path.path_for("top") == proxy_file
+        assert ctx.read_path.path_for("bottom") == proxy_file
+        for view in ("left", "right", "board"):
+            assert ctx.read_path.path_for(view) == original
+        # The profile and its sweep read the proxy too.
+        assert seen["profiled"] == ctx.read_path
+        assert seen["sweep"] == [proxy_file]
+
+    def test_without_a_proxy_the_read_path_is_the_path(self, monkeypatch, tmp_path):
+        seen, original, _ = self.run(monkeypatch, tmp_path, use_proxy=False)
+        ctx = seen["ctx"]
+        assert ctx.read_path == ctx.path
+        assert ctx.path.single() == original
+        assert seen["sweep"] == [original]
+
+
+class TestAnalysingACameraGame:
+    """Phase 3: a camera game read again from its kept files -- no download, no
+    strip proxy, calibrated from the cameras, published on its clock."""
+
+    def test_its_files_are_read_and_its_clock_kept(self, monkeypatch, tmp_path):
+        from curling_score.feeds import cameras
+        from curling_score.game import boardsplit, profile, segment
+        from curling_score.ingest import cache, frames as F, proxy
+
+        def refuse(*a, **k):
+            raise AssertionError("asked for a download or a proxy")
+
+        panels = SimpleNamespace(top=(0, 0, 297, 514), bottom=(0, 514, 297, 514))
+        setups = {n: split_context().read_setups[n] for n in ("top", "bottom")}
+        setups = {n: replace(s, name=n) for n, s in setups.items()}
+        seen = {}
+        monkeypatch.setattr(cache, "ensure_cached", refuse)
+        monkeypatch.setattr(proxy, "ensure_proxy", refuse)
+        monkeypatch.setattr(cameras, "calibrate",
+                            lambda feed, until_s, **k: seen.update(cal=(feed, until_s))
+                            or (panels, setups, None))
+        monkeypatch.setattr(analyze, "load_models", lambda *a, **k: (None, None, None))
+        monkeypatch.setattr(analyze, "load_release_model", lambda *a, **k: None)
+        monkeypatch.setattr(F, "keyframe_sweep", lambda path, **k: [])
+        monkeypatch.setattr(profile, "build_profile", lambda *a, **k: [])
+        monkeypatch.setattr(segment, "segment_games", lambda *a, **k: [])
+        monkeypatch.setattr(boardsplit, "join_games", lambda games, states: games)
+        monkeypatch.setattr(boardsplit, "split_games", lambda games, states: games)
+        monkeypatch.setattr(analyze, "build_games",
+                            lambda ctx, games, **k: seen.update(ctx=ctx) or [])
+        feed = cameras.camera_feed(tmp_path / "kept" / "dbV9wuA45Z0", 3)
+        clock = {"kind": "cameras", "aligned": "segment", "offset_s": -908.16,
+                 "steps": [[0.0, -908.16]]}
+        info = SimpleNamespace(title="11/5 - Sheet 3", duration_s=11699.0, sheet=3,
+                               video_id="dbV9wuA45Z0")
+        doc = analyze.analyze("dbV9wuA45Z0", info=info, feed=feed, clock=clock,
+                              skip_scoreboard=True)
+        assert seen["cal"] == (feed, 11699.0)
+        assert seen["ctx"].path == feed and seen["ctx"].read_path == feed
+        assert doc["source"]["clock"] == clock
+        assert doc["source"]["duration_s"] == round(11699.0 - 908.16, 2)
+
+
+class TestCalibrateGivenPanels:
+    """Phase 2: a camera feed's panels and side views come from the sheet's
+    layout, not from looking for them."""
+
+    def test_calibrate_from_with_given_panels_skips_detection(self, monkeypatch):
+        import numpy as np
+
+        from curling_score.game import profile
+        from curling_score.geometry import layout as glayout
+        from curling_score.geometry import sideview
+
+        def refuse(*a, **k):
+            raise AssertionError("looked for what it was given")
+
+        seen = {}
+        monkeypatch.setattr(glayout, "detect_panels", refuse)
+        monkeypatch.setattr(sideview, "locate", refuse)
+        monkeypatch.setattr(profile, "calibrate_panels",
+                            lambda frames, panels: seen.setdefault("panels", panels) and {})
+        monkeypatch.setattr(sideview, "solve",
+                            lambda plate, rect, name="": seen.setdefault(name, rect))
+        monkeypatch.setattr(analyze, "_with_lateral", lambda plate, v, n, progress: v)
+        panels = glayout.PanelLayout(top=(810, 10, 297, 514), bottom=(810, 552, 297, 517))
+        rects = {"left": (0, 0, 800, 1080), "right": (1120, 0, 800, 1080)}
+        frames = [np.zeros((1080, 1920, 3), np.uint8)] * 2
+        got_panels, _, sides = analyze.calibrate_from(
+            frames, skip_longview=False, progress=lambda m: None, panels=panels,
+            side_rects=rects)
+        assert got_panels is panels and seen["panels"] is panels
+        assert seen["left"] == rects["left"] and seen["right"] == rects["right"]
+        assert sides == rects
+
+    def test_pipeline_calibrates_a_camera_feed_through_the_layout(self, monkeypatch):
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        import numpy as np
+
+        from curling_score.cameras import layout as clayout
+        from curling_score.feeds import cameras
+        from curling_score.game import profile
+        from curling_score.live.session import VideoPipeline
+
+        sl = clayout.load(2)
+        outs = {n: cameras.placement_for(sl, n).out for n in cameras.CUT_VIEWS}
+        views = {n: [np.zeros((h, w, 3), np.uint8)] * 3 for n, (_, _, w, h) in outs.items()}
+        monkeypatch.setattr(cameras, "view_keyframes", lambda feed, cuts, until_s, count, **k: views)
+        seen = {}
+
+        def calibrate_from(frames, *, skip_longview, progress, panels=None, side_rects=None):
+            seen.update(n=len(frames), shape=frames[0].shape, panels=panels, rects=side_rects)
+            setups = {n: profile.PanelSetup(rect=getattr(panels, n),
+                                            calib=SimpleNamespace(px_per_m=100.0))
+                      for n in ("top", "bottom")}
+            from curling_score.geometry.sideview import SideView
+            sides = {n: SideView(rect=r, tee_row=1.0, hog_row=2.0, name=n)
+                     for n, r in side_rects.items()}
+            return panels, setups, sides
+
+        monkeypatch.setattr(analyze, "calibrate_from", calibrate_from)
+        cal = VideoPipeline(progress=lambda m: None).calibrate(cameras.camera_feed(Path("d"), 2),
+                                                               60.0)
+        assert seen["n"] == 3 and seen["shape"] == (1080, 1920, 3)
+        assert (seen["panels"].top, seen["panels"].bottom) == (outs["top"], outs["bottom"])
+        assert seen["rects"] == {"left": outs["left"], "right": outs["right"]}
+        cuts = cameras.view_cuts(sl)
+        assert cal.setups["top"].transform == cuts["top"]
+        assert cal.setups["top"].rect == (0, 0, *cuts["top"].out_size)
+        assert cal.sideviews["right"].transform == cuts["right"]
+        assert cal.until_s == 60.0

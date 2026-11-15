@@ -47,11 +47,14 @@ class ReplayRecording:
     """
 
     def __init__(self, source, path, speed: float = 1.0, *, start_s: float = 0.0,
-                 end_s: float | None = None):
+                 end_s: float | None = None, copyts: bool = False):
+        """``copyts`` keeps the source's times in the copy, muxer and all:
+        what a camera's file needs, whose times are the recording's clock."""
         self.source = Path(source)
         self.path = Path(path)
         self.speed = float(speed)
         self.start_s, self.end_s = float(start_s), end_s
+        self.copyts = copyts
         # Where the recording begins on the source's clock, and where ffmpeg
         # was asked to seek to; set by start().
         self.t0_s = 0.0
@@ -79,9 +82,13 @@ class ReplayRecording:
             cmd += ["-ss", f"{self._seek_s:.3f}"]
         if self.end_s is not None:
             cmd += ["-t", f"{self.end_s - (self._seek_s or 0.0):.3f}"]
+        if self.copyts:
+            cmd += ["-copyts"]
         cmd += ["-i", str(self.source),
-                "-map", "0:v:0", "-c", "copy", "-f", "mpegts", "-flush_packets", "1",
-                "-progress", "pipe:1", "-stats_period", "0.2", str(self.path)]
+                "-map", "0:v:0", "-c", "copy", "-f", "mpegts", "-flush_packets", "1"]
+        if self.copyts:
+            cmd += ["-mpegts_copyts", "1"]
+        cmd += ["-progress", "pipe:1", "-stats_period", "0.2", str(self.path)]
         self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
         self._reader = threading.Thread(target=self._read_progress, daemon=True)
         self._reader.start()
@@ -124,3 +131,46 @@ class ReplayRecording:
                 self._proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self._proc.kill()
+
+
+class CameraReplay:
+    """A sheet's camera files (as ``cameras/recorder.py`` writes them) played
+    back as if their cameras were live: each file copied at ``speed``, with
+    its times kept, into ``out_dir``, read as a camera feed.
+
+    Each file starts at the recording's zero (the capture holds each camera's
+    first keyframe there), so all four replays start together and stay on
+    the one clock. ``head_s`` is how far every view reaches: the least of
+    the four.
+    """
+
+    def __init__(self, source_dir, out_dir, sheet: int, speed: float = 1.0):
+        from curling_score.feeds.cameras import VIEW_ROLE, camera_feed
+
+        source_dir, out_dir = Path(source_dir), Path(out_dir)
+        self.path = camera_feed(out_dir, sheet)
+        self.t0_s = 0.0
+        self._parts = [ReplayRecording(source_dir / f"{role}.ts", out_dir / f"{role}.ts", speed,
+                                       copyts=True)
+                       for role in sorted(set(VIEW_ROLE.values()))]
+
+    def start(self):
+        for part in self._parts:
+            part.start()
+        return self
+
+    def head_s(self) -> float:
+        return min(part.head_s() for part in self._parts)
+
+    def check(self):
+        """A replay needs no keeping."""
+
+    def ended(self) -> bool:
+        return all(part.ended() for part in self._parts)
+
+    def failed(self) -> bool:
+        return any(part.failed() for part in self._parts)
+
+    def stop(self):
+        for part in self._parts:
+            part.stop()

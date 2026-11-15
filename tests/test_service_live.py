@@ -2,6 +2,9 @@
 aside for it, and a game published one end at a time while its stream plays."""
 
 import json
+from datetime import timedelta
+
+import pytest
 
 from curling_score.service.records import Job, Run
 from tests.test_service_api import (  # noqa: F401 - world is a fixture
@@ -210,3 +213,211 @@ class TestAPausedRecordingSaysSo:
         assert status["status"] == "queued" and status["paused"] is True
         claim(world)
         assert world["client"].get(f"/c/{slug}/status.json").json().get("paused") is False
+
+
+# --- camera games ------------------------------------------------------------------
+
+def add_camera_run(w, kind="camera_live", run_id="r_cam", job_id="j_cam", **run_kw):
+    w["repo"].put_run(Run(id=run_id, video_id=LIVE, status="queued", created_at=T0,
+                          processing_version=w["settings"].processing_version,
+                          kind="live" if kind == "camera_live" else "vod", source="cameras",
+                          title="Tonight - Sheet 3", format="fours", sheet=3,
+                          published_at=T0, **run_kw))
+    w["repo"].put_job(Job(id=job_id, run_id=run_id, state="queued", created_at=T0,
+                          run_after=T0, kind=kind))
+
+
+def camera_claim(w, kinds, cameras=True):
+    body = {"worker_id": "home", "model_id": "m-abc", "kinds": kinds}
+    if cameras:
+        body["cameras"] = True
+    return w["client"].post("/api/worker/claim", json=body, headers=WORKER)
+
+
+class TestCameraGames:
+    def test_a_worker_without_cameras_never_gets_camera_work(self, world):
+        add_camera_run(world)
+        add_camera_run(world, kind="camera_vod", run_id="r_cv", job_id="j_cv")
+        add_live_run(world)
+        kinds = ["live", "camera_live", "camera_vod", "vod"]
+        assert camera_claim(world, kinds, cameras=False).json()["job"]["id"] == "j_live"
+        assert camera_claim(world, kinds, cameras=False).status_code == 204
+
+    def test_a_camera_game_is_claimed_before_a_recording(self, world):
+        assert submit(world).status_code == 201
+        add_camera_run(world)
+        job = camera_claim(world, ["live", "camera_live", "vod"]).json()["job"]
+        assert job["id"] == "j_cam"
+
+    def test_its_claim_says_cameras_and_when_the_stream_began(self, world):
+        add_camera_run(world)
+        job = camera_claim(world, ["live", "camera_live"]).json()["job"]
+        assert (job["kind"], job["source"], job["sheet"]) == ("camera_live", "cameras", 3)
+        assert job["published_at"] == T0.isoformat()
+
+    def test_its_heartbeat_says_stop_once_the_stream_has_ended(self, world):
+        add_camera_run(world)
+        camera_claim(world, ["live", "camera_live"])
+        beat = lambda: world["client"].post(  # noqa: E731
+            "/api/worker/jobs/j_cam/progress", headers=WORKER,
+            json={"worker_id": "home", "phase": "live", "fraction": None,
+                  "message": "recorded 10 min"}).json()
+        assert "stop" not in beat()
+        world["repo"].update_run("r_cam", stream_ended_at=T0)
+        assert beat()["stop"] is True
+
+
+class TestAStandby:
+    def test_its_claim_says_cameras_and_its_sheet(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        world["repo"].update_run("r_sb", kind="standby", video_id="standby-3-x",
+                                 published_at=None)
+        job = camera_claim(world, ["live", "camera_live", "camera_standby"]).json()["job"]
+        assert (job["id"], job["kind"], job["source"], job["sheet"]) == \
+            ("j_sb", "camera_standby", "cameras", 3)
+
+    def test_a_worker_without_cameras_never_gets_one(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        assert camera_claim(world, ["live", "camera_standby"], cameras=False).status_code == 204
+
+    def beat(self, world, job_id):
+        return world["client"].post(
+            f"/api/worker/jobs/{job_id}/progress", headers=WORKER,
+            json={"worker_id": "home", "phase": "live", "fraction": None,
+                  "message": "recorded 10 min"})
+
+    def test_handed_to_its_stream_the_heartbeat_says_which_game(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        world["repo"].update_run("r_sb", kind="standby", video_id="standby-3-x",
+                                 published_at=None)
+        camera_claim(world, ["camera_standby"])
+        assert "game" not in self.beat(world, "j_sb").json()
+        world["repo"].update_run("r_sb", kind="live", video_id=LIVE, published_at=T0,
+                                 title="Tonight - Sheet 3")
+        world["repo"].update_job("j_sb", kind="camera_live")
+        game = self.beat(world, "j_sb").json()["game"]
+        assert game["video_id"] == LIVE and game["published_at"] == T0.isoformat()
+        assert (game["kind"], game["sheet"], game["title"], game["format"]) == \
+            ("camera_live", 3, "Tonight - Sheet 3", "fours")
+
+    def test_a_stream_found_and_over_between_two_heartbeats_still_says_which_game(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        world["repo"].update_run("r_sb", kind="standby", video_id="standby-3-x",
+                                 published_at=None)
+        camera_claim(world, ["camera_standby"])
+        world["repo"].update_run("r_sb", kind="live", video_id=LIVE, published_at=T0,
+                                 stream_ended_at=T0)
+        world["repo"].update_job("j_sb", kind="camera_live")
+        got = self.beat(world, "j_sb").json()
+        assert got["stop"] is True and got["game"]["video_id"] == LIVE
+
+    def test_given_up_its_heartbeat_is_refused(self, world):
+        add_camera_run(world, kind="camera_standby", run_id="r_sb", job_id="j_sb")
+        camera_claim(world, ["camera_standby"])
+        world["repo"].update_job("j_sb", state="failed")
+        assert self.beat(world, "j_sb").status_code == 409
+
+
+class TestACameraGameEndToEnd:
+    def test_it_publishes_and_completes_like_a_live_game(self, world):
+        """Review 1: the API refused every publish that was not kind "live"."""
+        add_camera_run(world)
+        camera_claim(world, ["live", "camera_live"])
+        doc = one_game(2)
+        upload(world, "j_cam", doc)
+        r = publish(world, "j_cam", doc)
+        assert r.status_code == 200, r.text
+        assert world["repo"].get_run("r_cam").status == "live"
+
+    def test_a_camera_game_claimed_again_goes_to_youtube(self, world):
+        """Review 3: a worker restarting mid-game would record its cameras from
+        then on, and lose the game's start; the stream has it from segment 0."""
+        add_camera_run(world)
+        camera_claim(world, ["live", "camera_live"])
+        world["repo"].release_jobs("home", T0)
+        job = camera_claim(world, ["live", "camera_live"]).json()["job"]
+        assert job["kind"] == "live" and "source" not in job
+        assert world["repo"].get_run("r_cam").source is None
+
+
+class TestASheetsGamesInARow:
+    """The earlier game on a sheet says where it ended; the next reads from there."""
+
+    def beat(self, world, job_id="j_cam", **extra):
+        return world["client"].post(
+            f"/api/worker/jobs/{job_id}/progress", headers=WORKER,
+            json={"worker_id": "home", "phase": "live", "fraction": None,
+                  "message": "recorded 10 min", **extra}).json()
+
+    def test_a_lookahead_game_is_read_from_its_opening(self, world):
+        opened = T0 - timedelta(minutes=10)
+        add_camera_run(world, opened_at=opened)
+        job = camera_claim(world, ["camera_live"]).json()["job"]
+        assert job["analysis_from"] == opened.isoformat()
+        assert self.beat(world)["game"]["analysis_from"] == opened.isoformat()
+
+    def test_one_with_no_opening_is_read_from_ten_minutes_before_its_stream(self, world):
+        add_camera_run(world)
+        job = camera_claim(world, ["camera_live"]).json()["job"]
+        assert job["analysis_from"] == (T0 - timedelta(minutes=10)).isoformat()
+
+    def test_the_earlier_game_hears_when_the_next_one_opened(self, world):
+        add_camera_run(world)
+        camera_claim(world, ["camera_live"])
+        assert self.beat(world)["game"]["handoff_at"] is None
+        world["repo"].update_run("r_cam", handoff_at=T0 + timedelta(hours=2))
+        assert self.beat(world)["game"]["handoff_at"] == (T0 + timedelta(hours=2)).isoformat()
+
+    def test_the_later_game_waits_for_the_earlier_ones_word(self, world):
+        add_camera_run(world, run_id="r_A", job_id="j_A")
+        world["repo"].update_run("r_A", status="live")
+        add_camera_run(world, opened_at=T0, prev_run_id="r_A")
+        camera_claim(world, ["camera_live"])
+        camera_claim(world, ["camera_live"])
+        game = self.beat(world)["game"]
+        assert game["floor_pending"] is True and game["floor_at"] is None
+        until = T0 + timedelta(minutes=7)
+        self.beat(world, "j_A", own_until=until.isoformat())
+        assert world["repo"].get_run("r_A").own_until == until
+        game = self.beat(world)["game"]
+        assert game["floor_pending"] is False and game["floor_at"] == until.isoformat()
+
+    def test_a_first_game_on_its_sheet_reads_from_its_opening(self, world):
+        add_camera_run(world, opened_at=T0)
+        camera_claim(world, ["camera_live"])
+        game = self.beat(world)["game"]
+        assert (game["floor_pending"], game["floor_at"]) == (False, T0.isoformat())
+
+    @pytest.mark.parametrize("how", ["failed", "youtube", "too long"])
+    def test_a_dead_earlier_game_lets_the_later_one_go_in_the_end(self, world, how):
+        add_camera_run(world, run_id="r_A", job_id="j_A")
+        world["repo"].update_run("r_A", status="live")
+        add_camera_run(world, opened_at=T0, prev_run_id="r_A")
+        camera_claim(world, ["camera_live"])
+        camera_claim(world, ["camera_live"])
+        if how == "failed":
+            world["repo"].update_run("r_A", status="failed")
+        elif how == "youtube":
+            world["repo"].update_run("r_A", source=None)
+        else:
+            world["clock"].advance(45 * 60 + 1)
+        game = self.beat(world)["game"]
+        assert (game["floor_pending"], game["floor_at"]) == (False, T0.isoformat())
+
+
+    def test_a_finished_earlier_game_with_no_word_lets_the_later_go(self, world):
+        add_camera_run(world, run_id="r_A", job_id="j_A")
+        add_camera_run(world, opened_at=T0, prev_run_id="r_A")
+        camera_claim(world, ["camera_live"])
+        camera_claim(world, ["camera_live"])
+        world["repo"].update_run("r_A", status="ready")
+        game = self.beat(world)["game"]
+        assert (game["floor_pending"], game["floor_at"]) == (False, T0.isoformat())
+
+    def test_the_heartbeat_says_when_its_stream_ended(self, world):
+        add_camera_run(world)
+        camera_claim(world, ["camera_live"])
+        assert self.beat(world)["game"]["stream_ended_at"] is None
+        world["repo"].update_run("r_cam", stream_ended_at=T0 + timedelta(hours=2))
+        assert self.beat(world)["game"]["stream_ended_at"] == \
+            (T0 + timedelta(hours=2)).isoformat()

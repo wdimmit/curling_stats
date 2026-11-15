@@ -44,7 +44,7 @@ def crop_rows(view) -> tuple[int, int]:
     """The rows cut: the skip's legs and the shaft above the house, down past
     the hog line; clipped to the frame."""
     top = max(0, int(view.tee_row - ABOVE_TEE_ROWS))
-    bot = min(view.rect[3], int(view.row_for(PAST_Y_M) + BELOW_PAD))
+    bot = min(view.cut.out_size[1], int(view.row_for(PAST_Y_M) + BELOW_PAD))
     return top, bot
 
 

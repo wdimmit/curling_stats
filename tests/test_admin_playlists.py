@@ -188,3 +188,65 @@ class TestTheScheduledPoll:
         add(client, playlist_id="PLabc")
         client.post("/api/admin/poll-playlists", headers=ADMIN)
         assert len([r for r in repo.list_runs() if r.kind == "live"]) == 1
+
+
+class TestACamerasPlaylist:
+    def test_a_playlist_reads_the_cameras_unless_told_otherwise(self):
+        from curling_score.service.records import WatchedPlaylist
+
+        client, repo, _ = make()
+        pid = add(client, playlist_id="PLabc").json()["id"]
+        assert repo.get_playlist(pid).input == "cameras"
+        stored = repo.get_playlist(pid).to_dict()
+        del stored["input"]                         # a playlist from before inputs
+        assert WatchedPlaylist.from_dict(stored).input == "cameras"
+
+    def test_its_input_can_be_set_and_nonsense_is_refused(self):
+        client, repo, _ = make()
+        pid = add(client, playlist_id="PLabc", input="cameras").json()["id"]
+        assert repo.get_playlist(pid).input == "cameras"
+        assert client.patch(f"/api/admin/playlists/{pid}", headers=ADMIN,
+                            json={"input": "youtube"}).status_code == 200
+        assert repo.get_playlist(pid).input == "youtube"
+        assert client.patch(f"/api/admin/playlists/{pid}", headers=ADMIN,
+                            json={"input": "ndi"}).status_code == 422
+
+    def test_the_poll_reads_a_live_game_from_the_cameras(self):
+        client, repo, _ = make()
+        add(client, playlist_id="PLabc", input="cameras")
+        client.post("/api/admin/poll-playlists", headers=ADMIN)
+        (run,) = [r for r in repo.list_runs() if r.kind == "live"]
+        assert run.source == "cameras" and repo.job_for_run(run.id).kind == "camera_live"
+
+    def test_the_poll_opens_standbys_at_the_window_and_ends_practice(self, monkeypatch):
+        """The scheduler's poll records each camera sheet from the window's
+        start; sheet 3's stream, live already, is its own camera game."""
+        from curling_score.service import practice
+
+        ended = []
+        monkeypatch.setattr(practice, "end_for_league",
+                            lambda repo, t: ended.append(t) or 0)
+        client, repo, _ = make()
+        # T0 is Friday 05:00 in Vancouver.
+        add(client, playlist_id="PLabc", input="cameras",
+            schedule=[{"days": ["fri"], "start": "05:00", "end": "08:00"}])
+        got = client.post("/api/admin/poll-playlists", headers=ADMIN).json()
+        (game,) = [r for r in repo.list_runs() if r.kind == "live"]
+        assert game.sheet == 3 and repo.job_for_run(game.id).kind == "camera_live"
+        # Under the default cap of two: one standby beside the game.
+        (standby,) = [r for r in repo.list_runs() if r.kind == "standby"]
+        assert standby.sheet == 1 and repo.job_for_run(standby.id).kind == "camera_standby"
+        assert got["standby"]["opened"] == [standby.id]
+        assert ended
+
+    def test_the_settings_say_which_sheets_and_how_many(self, monkeypatch):
+        from curling_score.service.api import Settings
+
+        monkeypatch.setenv("CAMERA_SHEETS", "3, 4")
+        monkeypatch.setenv("CAMERA_MAX_SHEETS", "1")
+        s = Settings.from_env()
+        assert (s.camera_sheets, s.camera_max_sheets) == (frozenset({3, 4}), 1)
+        monkeypatch.delenv("CAMERA_SHEETS")
+        monkeypatch.delenv("CAMERA_MAX_SHEETS")
+        s = Settings.from_env()
+        assert (s.camera_sheets, s.camera_max_sheets) == (frozenset({1, 2, 3, 4, 5}), 2)

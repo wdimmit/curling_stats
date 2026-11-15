@@ -40,7 +40,7 @@ class PanelInfo:
         """The PanelSetup the rest of the pipeline expects."""
         if self.calib is None:
             raise ValueError(f"{self.name} panel was never calibrated: {self.error}")
-        return PanelSetup(rect=tuple(self.rect), calib=self.calib)
+        return PanelSetup(rect=tuple(self.rect), calib=self.calib, name=self.name)
 
 
 @dataclass(frozen=True)

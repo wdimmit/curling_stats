@@ -35,9 +35,17 @@ class PracticePipeline(VideoPipeline):
         """Whether ``cal`` still fits ``path`` between ``from_s`` and
         ``until_s`` (`calstore.check_house`): a check made again reads only
         the frames recorded since the one before."""
+        from curling_score.feeds import as_feed, cameras
         from curling_score.ingest import frames as F
 
-        frames = F.spread_keyframes(path, until_s, count=CHECK_FRAMES, start_s=from_s or None)
+        if as_feed(path).kind == "cameras":
+            # Each house from its own camera's file, through the cut the
+            # calibration was made through.
+            frames = cameras.view_keyframes(
+                path, {n: s.cut for n, s in cal.setups.items()}, until_s, CHECK_FRAMES,
+                start_s=from_s or None)
+        else:
+            frames = F.spread_keyframes(path, until_s, count=CHECK_FRAMES, start_s=from_s or None)
         return calstore.check_house(cal, frames)
 
     def detect(self, path, setups, from_s, until_s, detector) -> dict:

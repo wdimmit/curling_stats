@@ -40,12 +40,14 @@ from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
 from curling_score.service import (dedupe, doccache, gameclips, ice_report, labelling,
+                                   streamlinks,
                                    playlist_index, playlists, practice, signin, slug, team_names,
                                    thinking_report)
 from curling_score.service.auth import NoAuth
 from curling_score.service.records import (
-    JOB_KINDS, LABEL_KINDS, ROLES, ApiKey, ClipJob, Chart, Flag, Invite, Job, LabelAnswer,
-    LabelItem, Play, Review, Run, SigninRelay, Source, Team, TeamNameEdit, User, Worker,
+    CAMERA_KINDS, JOB_KINDS, LABEL_KINDS, PLAYLIST_INPUTS, ROLES, ApiKey, ClipJob, Chart,
+    Flag, Invite, Job, LabelAnswer, LabelItem, Play, Review, Run, SigninRelay, Source, Team,
+    TeamNameEdit, User, Worker,
     label_answer_id, play_id, review_id,
 )
 from curling_score.service.repo import LEASE_S, worker_online
@@ -190,6 +192,9 @@ SHOT_CLIP_DAY_LIMIT = 200
 # queued a clip job itself since: Firestore is asked twice a minute, not
 # twenty times, and a job queued on the other instance waits at most this.
 CLIP_QUIET_S = 30.0
+# How long an answer to "is a game or practice being recorded?" stands before
+# the auto clip pass asks again (gameclips.recording_now).
+AUTO_IDLE_CHECK_S = 60
 # The page a flag was sent from: an edit, view-only or review link.
 FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
 # A YouTube playlist's id: PL..., UU..., OL... and the rest, all URL-safe.
@@ -241,6 +246,10 @@ class Settings:
     # cameras fall into keyframe storms, which the club's own receivers see
     # too. A Start that joins a sheet's running watch is never counted.
     practice_max_camera_watches: int = 2
+    # League games on a `cameras` playlist: the sheets whose cameras may be
+    # read for one, and how many at once (the rest are read from the stream).
+    camera_sheets: frozenset = frozenset({1, 2, 3, 4, 5})
+    camera_max_sheets: int = 2
     # The club's own clock, which playlists' schedules are written in.
     club_tz: str = "America/Los_Angeles"
     model_id: str = "classical"
@@ -284,6 +293,9 @@ class Settings:
             club_ips=frozenset(ip.strip() for ip in env("PRACTICE_CLUB_IPS", "").split(",")
                                if ip.strip()),
             practice_max_camera_watches=int(env("PRACTICE_MAX_CAMERA_WATCHES", "2")),
+            camera_sheets=frozenset(int(n) for n in env("CAMERA_SHEETS", "1,2,3,4,5").split(",")
+                                    if n.strip()),
+            camera_max_sheets=int(env("CAMERA_MAX_SHEETS", "2")),
             club_tz=env("CLUB_TZ", "America/Los_Angeles"),
             model_id=env("MODEL_ID", "classical"),
             max_hours=float(env("MAX_HOURS", "12")),
@@ -653,7 +665,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             for colour, name in (("red", src.team_red), ("yellow", src.team_yellow)):
                 if name:
                     game.setdefault("teams", {}).setdefault(colour, {})["name"] = name
-        return doc
+        # A shot outside its own stream points at the stream that shows it.
+        return streamlinks.annotate(doc, run, repo.get_run)
+
+    def note_wall_t0(run: Run) -> None:
+        """A camera game's video placed on the wall clock, from its timeline
+        (timeline.build_document), for its shots' links (streamlinks)."""
+        try:
+            wall = (run_doc(run).get("source") or {}).get("wall_t0") or {}
+        except Exception:  # noqa: BLE001 - the links can wait for the next publish
+            return
+        if wall and (wall.get("start"), wall.get("end")) != (run.wall_t0, run.wall_t0_end):
+            repo.update_run(run.id, wall_t0=wall.get("start"), wall_t0_end=wall.get("end"))
 
     def refresh_thinking(src: Source, run: Run | None = None) -> Source:
         """Keep the game's thinking summary in step with what /g/ serves.
@@ -2677,11 +2700,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return None
 
     # When this instance last found no clip job to hand out, until when it
-    # may say so again without asking (CLIP_QUIET_S).
-    clip_quiet = {"until": None}
+    # may say so again without asking (CLIP_QUIET_S): for the asks, and for
+    # the auto pass, each its own.
+    clip_quiet = {"ask": None, "auto": None}
+    # Whether a game or practice was being recorded when last looked, and
+    # until when that answer stands (AUTO_IDLE_CHECK_S).
+    recording_seen = {"busy": False, "until": None}
 
     def clip_queue_stirred():
-        clip_quiet["until"] = None
+        clip_quiet["ask"] = None
+        clip_quiet["auto"] = None
+
+    def box_recording(t) -> bool:
+        if recording_seen["until"] is None or t >= recording_seen["until"]:
+            recording_seen["busy"] = gameclips.recording_now(repo, t)
+            recording_seen["until"] = t + timedelta(seconds=AUTO_IDLE_CHECK_S)
+        return recording_seen["busy"]
 
     def ask_for_clips(play: Play, doc: dict, run: Run, again: bool = False) -> dict | None:
         """Clips of the rocks this play names in ``doc`` (service/gameclips.py),
@@ -2693,7 +2727,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             rocks = gameclips.player_rocks(doc, play.color, play.slot)
             clip_queue_stirred()
             return gameclips.ensure(repo, play, run, rocks, doc.get("calibration"), now(),
-                                    again=again)
+                                    again=again, feed=gameclips.camera_feed_spec(run, doc))
         except Exception:  # noqa: BLE001
             log.exception("clips for play %s were not asked for", play.id)
             return None
@@ -2828,7 +2862,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 raise HTTPException(429, "that is a lot of clips; try again later")
             clip_queue_stirred()
             state = gameclips.ask_shot(repo, run, sid or "", user.id, spec,
-                                       doc.get("calibration"), t)
+                                       doc.get("calibration"), t,
+                                       feed=gameclips.camera_feed_spec(run, doc))
         return shot_clip_answer(run, rock, sid, state)
 
     @app.get("/api/me/plays/{source_id}/clips/{rock}")
@@ -3189,9 +3224,10 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # it whole.
         kinds = tuple(k for k in (body.get("kinds") or ("vod",)) if k in JOB_KINDS)
         if not body.get("cameras"):
-            # Practice reads the club's cameras, which only a worker that can
-            # see them (WORKER_CAMERAS=1) may claim: the stand-in must not.
-            kinds = tuple(k for k in kinds if k != "practice")
+            # Practice and camera games read the club's cameras, which only a
+            # worker that can see them (WORKER_CAMERAS=1) may claim: the
+            # stand-in must not.
+            kinds = tuple(k for k in kinds if k not in CAMERA_KINDS)
         while True:
             job = repo.claim_job(str(body.get("worker_id", "worker")), t, settings.lease_s,
                                  kinds=kinds)
@@ -3205,6 +3241,15 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # a stopped watch completes, and on to the next.
             log.info("practice job %s: no session left on it; finished unclaimed", job.id)
             practice_complete(job, {})
+        if job.kind == "camera_live" and job.attempts > 1:
+            # Handed out again (a worker restarted, a lease ran out): its
+            # cameras were recorded only from the first claim, and recording
+            # them again would lose the game's start. The stream has it all
+            # from segment 0, so it is followed from YouTube from now on.
+            log.info("camera game %s claimed again: followed from its stream", job.id)
+            repo.update_job(job.id, kind="live")
+            repo.update_run(job.run_id, source=None)
+            job.kind = "live"
         # Whatever went wrong last time is history now; leaving it set means the
         # status page shows a stale failure through an entirely healthy run.
         repo.update_job(job.id, error=None, error_kind=None, phase=None,
@@ -3218,6 +3263,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # A practice watch is recorded from the sheet's cameras, from its claim
         # on; one handed out again resumes its session (practice_resume).
         practice_fields = {}
+        if job.kind in ("camera_live", "camera_vod", "camera_standby"):
+            practice_fields = {"source": practice.CAMERAS}
+            if job.kind == "camera_live":
+                # Where the stream began: the clock's first guess, and its
+                # fallback when no piece of the stream matches the cameras.
+                practice_fields["published_at"] = _iso(run.published_at)
+            # Where to read from, and its place among the sheet's games.
+            practice_fields.update(playlists.camera_game_fields(repo, run, t))
         if job.kind == "practice":
             practice_fields = {"source": practice.CAMERAS}
             resume = practice_resume(job)
@@ -3302,6 +3355,31 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             # Nobody is watching this sheet any more (stopped, idle, or out of
             # time): the worker reads what it has, publishes, and completes.
             return {"ok": True, "lease_expires_at": _iso(lease), "stop": True}
+        if job.kind == "camera_live":
+            run = repo.get_run(job.run_id)
+            if run is not None and body.get("own_until") and run.own_until is None:
+                # Where this game said its own ended: the next on its sheet is
+                # read from there (playlists.camera_game_fields).
+                try:
+                    until = datetime.fromisoformat(str(body["own_until"]))
+                    repo.update_run(run.id, own_until=until)
+                    run = repo.get_run(run.id)
+                except ValueError:
+                    log.warning("job %s sent an unreadable own_until", job.id)
+            if run is not None:
+                # Which game this is: a worker that claimed it as a standby
+                # (playlists.standbys) learns here that its stream was found.
+                got = {"ok": True, "lease_expires_at": _iso(lease), "game": {
+                    "kind": "camera_live", "video_id": run.video_id, "title": run.title,
+                    "channel_id": run.channel_id, "sheet": run.sheet,
+                    "format": run.format or "fours", "published_at": _iso(run.published_at),
+                    "source": practice.CAMERAS,
+                    **playlists.camera_game_fields(repo, run, t)}}
+                if run.stream_ended_at is not None:
+                    # The stream is over (the poller saw it): the cameras would
+                    # go on for ever, so the worker stops recording them.
+                    got["stop"] = True
+                return got
         return {"ok": True, "lease_expires_at": _iso(lease)}
 
     @app.post("/api/worker/jobs/{job_id}/artifacts")
@@ -3395,7 +3473,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         job = owned_job(job_id, body.get("worker_id"))
         if job.kind == "practice":
             return practice_publish(job, body)
-        if (job.kind or "vod") != "live":
+        if (job.kind or "vod") not in ("live", "camera_live"):
             raise HTTPException(400, "only a live run publishes before it completes")
         run = repo.get_run(job.run_id)
         tkey = timeline_key(run.video_id, run.id)
@@ -3412,6 +3490,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.update_job(job.id, progress_at=t, phase="live",
                         lease_expires_at=t + timedelta(seconds=settings.lease_s))
         run = repo.get_run(run.id)
+        if run.source == "cameras":
+            note_wall_t0(run)
+            run = repo.get_run(run.id)
         sources = []
         for game in games:
             src = dedupe.find_or_create_source(repo, run, game, t)
@@ -3457,6 +3538,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         t = now()
         games = body.get("games") or []
         title = body.get("title", run.title)
+        if body.get("own_until") and run.own_until is None:
+            # Where its game's span of the sheet ended, if a heartbeat did not
+            # say it: the next game on the sheet is read from there.
+            try:
+                repo.update_run(run.id, own_until=datetime.fromisoformat(str(body["own_until"])))
+            except ValueError:
+                log.warning("job %s completed with an unreadable own_until", job.id)
         repo.update_run(run.id, status="ready", ready_at=t, games=games,
                         title=title,
                         # A label somebody set, or a playlist gave, outranks a
@@ -3472,6 +3560,15 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         resolved = dedupe.resolve_charts_for_run(repo, run, t)
         learn_play_starts_for_run(run)
         settle_sources_for_run(run)
+        if run.source == "cameras":
+            note_wall_t0(run)
+            # Every delivery clipped while its camera files are kept: the
+            # hourly catch-up asks again if this fails.
+            try:
+                if gameclips.queue_auto(repo, run, run_doc(run), t):
+                    clip_queue_stirred()
+            except Exception:  # noqa: BLE001 - the game is ready either way
+                log.exception("auto clips for run %s were not asked for", run.id)
         return {"ok": True, "charts_resolved": resolved}
 
     @app.post("/api/worker/jobs/{job_id}/fail")
@@ -3532,11 +3629,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         require_worker(authorization)
         body = await request.json()
         t = now()
-        if clip_quiet["until"] is not None and t < clip_quiet["until"]:
+        mode = "auto" if body.get("mode") == "auto" else "ask"
+        if clip_quiet[mode] is not None and t < clip_quiet[mode]:
             return Response(status_code=204)
-        job = gameclips.claim(repo, str(body.get("worker_id", "clips")), t, settings.lease_s)
+        # The auto pass cuts only while nothing is being recorded: the
+        # workers' CPU is the live games' and the practice sessions'.
+        if mode == "auto" and box_recording(t):
+            return Response(status_code=204)
+        job = gameclips.claim(repo, str(body.get("worker_id", "clips")), t, settings.lease_s,
+                              mode=mode)
         if job is None:
-            clip_quiet["until"] = t + timedelta(seconds=CLIP_QUIET_S)
+            clip_quiet[mode] = t + timedelta(seconds=CLIP_QUIET_S)
             return Response(status_code=204)
         return {"job": {"id": job.id, "run_id": job.run_id, "video_id": job.video_id,
                         "spec": job.spec, "attempt": job.attempts, "lease_s": settings.lease_s}}
@@ -3604,7 +3707,39 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         job = owned_clip_job(job_id, body.get("worker_id"))
         repo.update_clip_job(job.id, state="done", finished_at=now(), lease_expires_at=None,
                              rocks=gameclips.clean_results(job, body.get("rocks")))
+        note_auto_done(job.id)
         return {"ok": True}
+
+    def note_auto_done(job_id: str) -> None:
+        """An auto clip job finished: its run may now be clipped."""
+        try:
+            gameclips.note_auto_done(repo, repo.get_clip_job(job_id), now())
+        except Exception:  # noqa: BLE001 - the clip is kept either way
+            log.exception("could not note clip job %s done", job_id)
+
+    @app.get("/api/worker/clips/done")
+    def clips_done(videos: str = Query(""), authorization: str | None = Header(default=None)):
+        """Which of these kept camera games have had every delivery clipped:
+        the workers' prune keeps a game's camera files until then."""
+        require_worker(authorization)
+        names = [v for v in videos.split(",") if v][:200]
+        return {"done": {v: gameclips.clipped(repo, v) for v in names}}
+
+    @app.post("/api/worker/clips/{job_id}/later")
+    async def clips_later(job_id: str, request: Request,
+                          authorization: str | None = Header(default=None)):
+        """A camera game's files the clips worker could not read yet: put back
+        without costing a try, or, long after its run was ready, gone."""
+        require_worker(authorization)
+        body = await request.json()
+        job = owned_clip_job(job_id, body.get("worker_id"))
+        again = gameclips.later(repo, job, repo.get_run(job.run_id),
+                                str(body.get("reason", ""))[:500], now())
+        if again:
+            clip_queue_stirred()
+        else:
+            note_auto_done(job.id)
+        return {"ok": True, "again": again}
 
     @app.post("/api/worker/clips/{job_id}/fail")
     async def clips_fail(job_id: str, request: Request,
@@ -3613,6 +3748,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         body = await request.json()
         job = owned_clip_job(job_id, body.get("worker_id"))
         final = gameclips.fail(repo, job, str(body.get("error", ""))[:500], now())
+        if final:
+            note_auto_done(job.id)
         return {"ok": True, "final": final}
 
     # -------------------------------------------------------------- admin
@@ -3674,6 +3811,16 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         asked = requested_format(body.get("format"))
         prior = repo.runs_for_video(vid)
         base = prior[0] if prior else None
+        # "from": "cameras" reads a camera game again from its sheet's kept
+        # camera files (a worker that can see them); otherwise from YouTube.
+        cameras = body.get("from") == "cameras"
+        if body.get("from") not in (None, "youtube", "cameras"):
+            raise HTTPException(422, "from is youtube or cameras")
+        if cameras:
+            base = next((r for r in prior if r.source == "cameras" and r.kind != "practice"),
+                        None)
+            if base is None:
+                raise HTTPException(422, "that game was not read from the cameras")
         t = now()
         run = Run(id=slug.new_run_id(), video_id=vid,
                   processing_version=settings.processing_version, status="queued",
@@ -3684,9 +3831,11 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                   published_at=base.published_at if base else None,
                   league=base.league if base else None,
                   format=asked or (base.format if base else None),
-                  playlist_id=base.playlist_id if base else None)
+                  playlist_id=base.playlist_id if base else None,
+                  source="cameras" if cameras else None)
         repo.put_run(run)
-        repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t, run_after=t))
+        repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued", created_at=t,
+                         run_after=t, kind="camera_vod" if cameras else "vod"))
         return {"ok": True, "run_id": run.id}
 
     @app.post("/api/admin/clips/backfill")
@@ -4103,6 +4252,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                         raise ValueError(f"{key} is at least 60 seconds")
             if "live_poll_s" in fields and fields["live_poll_s"] is None:
                 raise ValueError("live_poll_s cannot be empty")
+            if "input" in fields and fields["input"] not in PLAYLIST_INPUTS:
+                raise ValueError(f"input is one of {', '.join(PLAYLIST_INPUTS)}")
         except (ValueError, TypeError) as e:
             raise HTTPException(422, str(e)) from e
         return fields
@@ -4115,7 +4266,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if any(p.playlist_id == pid for p in repo.list_playlists()):
             raise HTTPException(409, f"playlist {pid} is already watched")
         body["label"] = str(body.get("label") or "").strip() or pid
-        fields = playlist_fields(body, {"label", "schedule", "live_poll_s", "idle_poll_s"})
+        fields = playlist_fields(body, {"label", "schedule", "live_poll_s", "idle_poll_s",
+                                        "input"})
         pl = playlists.new_watched_playlist(pid, fields.pop("label"), now())
         for key, value in fields.items():
             setattr(pl, key, value)
@@ -4132,7 +4284,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             raise HTTPException(404, "no such playlist")
         fields = playlist_fields(await request.json(),
                                  {"label", "enabled", "schedule", "live_poll_s",
-                                  "idle_poll_s"})
+                                  "idle_poll_s", "input"})
         if fields.get("enabled") is True:
             fields.update(failures=0, last_error=None)
         pl = repo.update_playlist(pid, **fields)
@@ -4158,7 +4310,21 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             max_hours=min(settings.max_hours, dedupe.MAX_WHOLE_S / 3600),
             initial_status="pending_approval" if settings.require_approval else "queued",
             tz=settings.club_tz, force=force,
+            camera_sheets=settings.camera_sheets, camera_max_sheets=settings.camera_max_sheets,
         )
+        # A cameras playlist's sheets are recorded from its window's start,
+        # and given up when no stream comes. After the poll, which hands any
+        # stream it found to its sheet's standby or gives it a camera game of
+        # its own, so a stream live already is never left to YouTube by the
+        # cap the standbys fill.
+        try:
+            result["standby"] = playlists.standbys(
+                repo, processing_version=settings.processing_version, now=t,
+                tz=settings.club_tz, camera_sheets=settings.camera_sheets,
+                camera_max_sheets=settings.camera_max_sheets)
+        except Exception as e:  # noqa: BLE001 - the streams are queued already
+            log.warning("camera standbys failed: %s", e)
+            result["standby"] = {"opened": [], "closed": [], "error": str(e)}
         # A league stream going live closes practice on every sheet: leagues
         # use all five. Before the index's early return, so it never waits for
         # the hour; and a failure here must not stop the poll. The live run is
@@ -4166,7 +4332,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         # still running, every poll ends practice again: one failed ending
         # must not leave a session reading the cameras into the league.
         try:
-            if result["live"] or (settings.practice_enabled
+            if result["live"] or result["standby"]["opened"] or (settings.practice_enabled
                                   and practice.league_over_practice(repo, t)):
                 ended = practice.end_for_league(repo, t)
                 if ended:
@@ -4180,6 +4346,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if not (force or t.minute < 3):
             result["index"] = "not due"
             return result
+        try:
+            result["auto_clips"] = gameclips.catch_up_auto(repo, run_doc, t)
+            if result["auto_clips"]:
+                clip_queue_stirred()
+        except Exception as e:  # noqa: BLE001 - must never stop the poll
+            log.warning("auto clip catch-up failed: %s", e)
         try:
             result["index"] = index_playlists(always_stamp=False)
         except Exception as e:  # noqa: BLE001 - the index must never stop the poll

@@ -174,7 +174,7 @@ def side_points(video, view, color, t0, t1, *, model=None, decode=None, detect=N
     if model is None:
         from curling_score.detect import sidemodel
         model = sidemodel.default_model()
-    frames, times = decode(video, view.rect, t0, t1, FPS)
+    frames, times = decode(video, view.cut, t0, t1, FPS)
     if not len(frames):
         return []
     top, bot = _band(view)
@@ -338,7 +338,7 @@ def scan_points(video, view, t0, t1, *, fps=SCAN_FPS, model=None, decode=None,
     out = {"red": [], "yellow": []}
     t = t0
     while t < t1:
-        frames, times = decode(video, view.rect, t, min(t + SCAN_CHUNK_S, t1), fps)
+        frames, times = decode(video, view.cut, t, min(t + SCAN_CHUNK_S, t1), fps)
         if len(frames):
             for color in out:
                 out[color] += stone_points(

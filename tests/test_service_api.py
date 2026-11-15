@@ -813,6 +813,19 @@ class TestCatalogueAndAdmin:
             assert f'href="{other}"' in r.text
             assert 'href="/static/site.css"' in r.text
 
+    def test_the_privacy_page_says_league_games_may_be_read_from_the_cameras(self, world):
+        privacy = " ".join(world["client"].get("/privacy").text.split())
+        assert "read from the club's cameras directly, with the club's agreement, " \
+               "instead of the stream" in privacy
+        assert "for those games the stream's video is not copied" in privacy
+        assert ("recorded from ten minutes before each game's stream is scheduled to begin"
+                in privacy)
+        assert "followed to its end, for about 45 minutes at most" in privacy
+        assert "its recording keeps only its own part" in privacy
+        assert ("kept on the processing computer while a clip of every shot is made, "
+                "usually about a day and never more than three days") in privacy
+        assert Settings().camera_max_sheets == 2
+
     def test_the_terms_and_privacy_say_thinking_time_is_for_people_signed_in(self, world):
         c = world["client"]
         terms = " ".join(c.get("/terms").text.split())
@@ -1796,6 +1809,29 @@ class TestFormat:
         for bad in ("quads", ["doubles"]):
             assert c.post("/api/admin/reprocess", headers=ADMIN,
                           json={"video_id": VID, "format": bad}).status_code == 400
+
+    def test_a_camera_game_can_be_read_again_from_its_cameras(self, world):
+        repo, c = world["repo"], world["client"]
+        repo.put_run(Run(id="r_cam", video_id=VID, status="ready", created_at=T0,
+                         processing_version="p", kind="live", source="cameras", sheet=3,
+                         title="11/5 - Sheet 3", format="fours"))
+        r = c.post("/api/admin/reprocess", headers=ADMIN,
+                   json={"video_id": VID, "from": "cameras"})
+        assert r.status_code == 200, r.text
+        run = repo.get_run(r.json()["run_id"])
+        assert run.source == "cameras" and run.sheet == 3
+        assert repo.job_for_run(run.id).kind == "camera_vod"
+        # Without "from", the same game is read from YouTube, as any.
+        r = c.post("/api/admin/reprocess", headers=ADMIN, json={"video_id": VID})
+        assert repo.job_for_run(r.json()["run_id"]).kind in (None, "vod")
+
+    def test_only_a_camera_game_can_be_read_from_cameras(self, world):
+        submit(world)
+        r = world["client"].post("/api/admin/reprocess", headers=ADMIN,
+                                 json={"video_id": VID, "from": "cameras"})
+        assert r.status_code == 422
+        assert world["client"].post("/api/admin/reprocess", headers=ADMIN,
+                                    json={"video_id": VID, "from": "ndi"}).status_code == 422
 
     def test_the_poller_reads_a_doubles_title(self, world):
         add_doubles_video(world)

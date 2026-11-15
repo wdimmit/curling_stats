@@ -29,7 +29,7 @@ spec:
             - { name: REQUIRE_APPROVAL,   value: "0" }
             # PRACTICE_ENABLED ("1", "true" or "yes") opens /practice/sheet/N and
             # its API: a player starts a session on a sheet, which reads that
-            # sheet's own NDI cameras, and sees each throw. Only with workers
+            # sheet's own cameras (over SRT), and sees each throw. Only with workers
             # that can see the cameras (WORKER_PRACTICE=1, WORKER_CAMERAS=1: the
             # Ryzen's). "0" closes practice. On since 2026-10-10; on the
             # cameras since 2026-10-25.
@@ -37,8 +37,16 @@ spec:
             # Start needs a validated/admin account or a request from one of
             # these addresses (comma-separated, exact): the club's.
             - { name: PRACTICE_CLUB_IPS,  value: "71.212.197.184" }
-            # One a sheet, all five (2026-11-07): the link runs at gigabit and the workers have no composers.
+            # Sheets read from the cameras at once: all five (2026-11-07). The link is gigabit and
+            # carried all 20 cameras (2026-11-01); phase 2 took the composers off the workers.
             - { name: PRACTICE_MAX_CAMERA_WATCHES, value: "5" }
+            # League games on a `cameras` playlist: the sheets whose cameras may
+            # be read for one, and how many at once; the rest are read from the
+            # stream (camera-direct phase 3). 3,4 for the Gate B night (2026-11-08);
+            # all five from the Monday Open League, 2026-11-09 (the user). The cap
+            # counts each sheet's standby too (playlists.standbys).
+            - { name: CAMERA_SHEETS, value: "1,2,3,4,5" }
+            - { name: CAMERA_MAX_SHEETS, value: "5" }
             # Must equal the worker's model, or every claim is refused. Recompute
             # after changing Dockerfile.worker's MODEL:
             #   python -c 'from curling_score import weights, version; print(version.model_id(weights.default_path()))'

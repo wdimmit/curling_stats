@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from curling_score import analyze, timeline
+from curling_score.feeds import as_feed
 from curling_score.fpframes import record
 from curling_score.game import boardsplit, segment
 from curling_score.game.segment import EndSegment, GameSegment
@@ -142,18 +143,32 @@ def _worth(cal) -> int:
 class LiveSession:
     def __init__(self, video_id, url, recording, fmt, pipeline, *, sheet=None,
                  models=None, publish=None, progress=log.info,
-                 now=lambda: datetime.now(timezone.utc), fp_recorder=None):
+                 now=lambda: datetime.now(timezone.utc), fp_recorder=None,
+                 start_s: float = 0.0):
+        """``start_s``: where in the recording the game's stream began. A
+        camera game's cameras are recorded from its league's schedule start
+        (``playlists.standbys``), ahead of its stream; nothing before
+        ``start_s`` is read, and every wait counts from it, as if the
+        recording had begun there."""
         self.video_id, self.url, self.sheet, self.fmt = video_id, url, sheet, fmt
+        self.start_s = max(float(start_s or 0.0), 0.0)
         self.recording, self.pipeline = recording, pipeline
         self.models = models or Models()
         self.publish = publish or (lambda doc: None)
         self.progress, self.now = progress, now
         self.fp_recorder = fp_recorder      # collects the checks' false-positive firings
+        # A camera game's published clock (``timeline.build_document``): the
+        # recording's offset from the video, set by the lane once it is known.
+        self.clock = None
+        # A camera game publishes nothing until its clock is known: set by the
+        # lane for a camera job; ``_held`` says something waits to go out.
+        self.wait_for_clock = False
+        self._held = False
         self.min_end_s = fmt.delivered_per_end * segment.MIN_DELIVERY_GAP_S
 
         self.calibration = None     # the newest one that worked
         self.steady = False         # two complete calibrations in a row agreed
-        self.next_calibration_s = CALIB_FIRST_S
+        self.next_calibration_s = self.start_s + CALIB_FIRST_S
         self.samples = []
         self.profiled_to = None     # t of the last keyframe in the profile
         self.games = {}             # index -> newest settled GameSegment
@@ -168,6 +183,68 @@ class LiveSession:
         self.prev_end_s = None
         self.done = False
         self._ended_calib_tries = 0
+        # Its span of the sheet (set_ownership): from the floor -- where the
+        # game before said its own ended -- to its own first changeover after
+        # the next game opened, or after its stream ended.
+        self.floor_s = None
+        self.floor_pending = False
+        self.handoff_s = None
+        self.stream_end_s = None
+        self.own_until_s = None
+
+    def set_ownership(self, *, floor_s=None, floor_pending=False, handoff_s=None,
+                      stream_end_s=None):
+        """Where this game's span of the sheet begins and how its end is found,
+        in the recording's seconds. ``floor_pending``: the game before has not
+        said where its own ended, so nothing is built yet. ``floor_s``: read
+        from there, as if the recording began there. ``handoff_s`` (the next
+        game opened) or ``stream_end_s``: from the earlier of them, this game
+        ends at its first changeover (`boardsplit.first_changeover`), and
+        nothing after it is read."""
+        if floor_s is not None and self.floor_s is None:
+            self.floor_s = float(floor_s)
+            self.start_s = max(self.start_s, self.floor_s)
+            self.samples = [x for x in self.samples if x.t >= self.floor_s]
+        self.floor_pending = bool(floor_pending) and self.floor_s is None
+        if handoff_s is not None:
+            self.handoff_s = float(handoff_s)
+        if stream_end_s is not None:
+            self.stream_end_s = float(stream_end_s)
+
+    def deciding(self) -> bool:
+        """Whether this game is still finding where its span ends: its stream
+        is over or the next game opened, and its changeover has not come."""
+        return self.own_until_s is None and (self.handoff_s is not None
+                                             or self.stream_end_s is not None)
+
+    def _decide_own_until(self):
+        if not self.deciding():
+            return
+        mark = min(t for t in (self.handoff_s, self.stream_end_s) if t is not None)
+        ends = [e for g in segment.settled_ends(self.samples, self.min_end_s,
+                                                ended=self.recording.ended())
+                for e in g.ends]
+        moving = [x.t for x in self.samples if x.top_stones or x.bottom_stones]
+        before = [t for t in moving if t < mark]
+        got = boardsplit.first_changeover(
+            ends, mark, self.profiled_to if self.profiled_to is not None else self.start_s,
+            active_until=moving[-1] if moving else None,
+            active_before=before[-1] if before else None, cleared=self._cleared)
+        if got is None:
+            return
+        self.own_until_s = float(got)
+        self.samples = [x for x in self.samples if x.t < self.own_until_s]
+        self.progress(f"this game's span of the sheet ends at {self.own_until_s:.0f} s")
+
+    def _cleared(self, t_end, t_next):
+        """The board cleared across a gap, or None until it is recorded far
+        enough past it to tell."""
+        if (not self.recording.ended() and self.recording.head_s()
+                < t_next + boardsplit.LOOK_AFTER_S + boardsplit.HALF_S):
+            return None
+        return boardsplit.board_cleared(
+            self._board_across(t_end - boardsplit.LOOK_BEFORE_S,
+                               t_next + boardsplit.LOOK_AFTER_S), t_end)
 
     # --- what the lane asks -------------------------------------------------
 
@@ -194,14 +271,15 @@ class LiveSession:
             return None
         head, ended = self.recording.head_s(), self.recording.ended()
         if ended and self.calibration is None and (
-                head <= 0 or self._ended_calib_tries >= ENDED_CALIB_TRIES):
+                head <= self.start_s or self._ended_calib_tries >= ENDED_CALIB_TRIES):
             raise LiveError("the stream ended before it could be calibrated"
-                            if head > 0 else "the stream ended with nothing recorded")
+                            if head > self.start_s else "the stream ended with nothing recorded")
         if self._calibration_due(head, ended):
             return self._calibrate(head)
         if self.calibration is None:
             return None
         self._extend_profile()
+        self._decide_own_until()
         nxt = self._next_end()
         if nxt is not None:
             self._build(*nxt)
@@ -219,7 +297,7 @@ class LiveSession:
     def _calibration_due(self, head, ended):
         if self.steady:
             return False
-        if self.calibration is not None and head >= CALIB_GIVE_UP_S:
+        if self.calibration is not None and head - self.start_s >= CALIB_GIVE_UP_S:
             return False          # a working calibration is kept after an hour
         if self.calibration is None and ended:
             return True           # a stream shorter than the wait still gets one
@@ -230,10 +308,11 @@ class LiveSession:
         if self.recording.ended():
             self._ended_calib_tries += 1
         try:
-            got = self.pipeline.calibrate(self.recording.path, head)
+            got = self.pipeline.calibrate(
+                self.recording.path, head, **({"start_s": self.start_s} if self.start_s else {}))
         except CalibrationError as exc:
             self.progress(f"calibration from {head:.0f} s failed: {exc}")
-            if self.calibration is None and head >= CALIB_GIVE_UP_S:
+            if self.calibration is None and head - self.start_s >= CALIB_GIVE_UP_S:
                 raise LiveError(f"no calibration after {head:.0f} s: {exc}") from exc
             return "calibration failed"
         if (got.side_expected and self.calibration is not None
@@ -260,18 +339,23 @@ class LiveSession:
     # --- profile and ends -----------------------------------------------------
 
     def _extend_profile(self):
+        if self.own_until_s is not None:
+            return                # nothing past its own span is read again
         head = self.recording.head_s()
         if (self.profiled_to is not None and not self.recording.ended()
                 and head - self.profiled_to < PROFILE_EVERY_S):
             return
+        start = self.profiled_to if self.profiled_to is not None else (self.start_s or None)
         new = self.pipeline.samples(self.recording.path, self.calibration.setups,
-                                    self.profiled_to, head, detector=self.models.detector)
-        new = [s for s in new if self.profiled_to is None or s.t > self.profiled_to]
+                                    start, head, detector=self.models.detector)
+        new = [s for s in new if (self.profiled_to is None or s.t > self.profiled_to)
+               and s.t >= self.start_s
+               and (self.own_until_s is None or s.t < self.own_until_s)]
         if new:
             self.samples.extend(new)
             self.profiled_to = new[-1].t
         elif self.profiled_to is None:
-            self.profiled_to = 0.0
+            self.profiled_to = self.start_s
 
     def _settled(self):
         ended = self.recording.ended()
@@ -342,6 +426,10 @@ class LiveSession:
         return dataclasses.replace(game, ends=ends, end_s=ends[-1].end_s)
 
     def _next_end(self):
+        if self.floor_pending:
+            # The game before has not said where its own ended: anything near
+            # the start could be its.
+            return None
         for game in self._settled():
             for end in game.ends:
                 if (game.index, end.number) not in self.built:
@@ -376,7 +464,7 @@ class LiveSession:
             detector=self.models.detector, broom_model=self.models.broom_model,
             line_model=self.models.line_model, fmt=self.fmt, use_cache=False,
             one_pass=True, progress=self.progress,
-            release_model=self.models.release_model,
+            release_model=self.models.release_model, recording_start_s=self.start_s,
             house_detector=self.models.house_detector)
         run_up = self.run_up[key] if again else self.prev_end_s
         # The recorder only notes what the checks reject; the frames are cut
@@ -384,7 +472,7 @@ class LiveSession:
         with record.recording(self.fp_recorder):
             built, closed = self.pipeline.build_end(ctx, game, end, run_up)
         if (not again and end.number == game.ends[0].number and timeline.nothing_thrown(built)
-                and analyze.leaves_off_head(game, end, run_up)):
+                and analyze.leaves_off_head(game, end, run_up, self.start_s)):
             # Stones parked in a house ahead of this game's first end, which
             # the board split put at its head (`boardsplit.board_decides`), or
             # people in a house before the stream's first game.
@@ -401,7 +489,26 @@ class LiveSession:
         self.ends[key] = end
         self.built_with[key] = _worth(self.calibration)
         self._read_board(game)
+        self._publish()
+
+    def _publish(self):
+        """Publish the document as it stands -- unless this is a camera game
+        whose clock is not known yet: its times would be on the cameras', not
+        the video's. It is published as soon as the clock is (``set_clock``)."""
+        if self.wait_for_clock and self.clock is None:
+            self._held = True
+            return
+        self._held = False
         self.publish(self.document())
+
+    def set_clock(self, clock):
+        """A camera game's clock, new or changed: the whole game is published
+        again on it, so every end moves to where the video has it."""
+        if clock == self.clock:
+            return
+        self.clock = clock
+        if self._held or self.built:
+            self._publish()
 
     def _read_board(self, game):
         # A closed game's board is read the way analyze() reads it, from the
@@ -427,7 +534,7 @@ class LiveSession:
             if game.ends and any((game.index, e.number) in self.built for e in game.ends):
                 self._read_board(game)
         self.done = True
-        self.publish(self.document())
+        self._publish()
         return "finished"
 
     # --- the document ---------------------------------------------------------
@@ -496,8 +603,10 @@ class LiveSession:
             games=out_games, window=(None, None),
             processing_version=self.pipeline.processing_version(
                 None if cal is None else cal.sideviews),
-            fmt=self.fmt, check=timeline.format_check(out_games, self.fmt))
-        doc["live"] = {"in_progress": not self.done, "recorded_s": round(head, 1),
+            fmt=self.fmt, check=timeline.format_check(out_games, self.fmt),
+            clock=self.clock, wall_started=getattr(self.recording, "wall_started", None))
+        published_head = head + (timeline.offset_at(self.clock, head) if self.clock else 0.0)
+        doc["live"] = {"in_progress": not self.done, "recorded_s": round(published_head, 1),
                        "updated_at": self.now().isoformat()}
         return doc
 
@@ -518,11 +627,21 @@ class VideoPipeline:
         # None (or `weights`' file) is one model for both.
         self.house_weights = house_weights
 
-    def calibrate(self, path, until_s):
+    def calibrate(self, path, until_s, start_s=None):
+        """From keyframes spread over ``[start_s or 0, until_s]``."""
         from curling_score.geometry import layout
         from curling_score.ingest import frames as F
 
-        frames = F.spread_keyframes(path, until_s, count=analyze.CALIB_FRAMES)
+        if as_feed(path).kind == "cameras":
+            # Each view is in its camera's file, cut as the sheet's layout says.
+            from curling_score.feeds import cameras
+
+            panels, setups, sideviews = cameras.calibrate(
+                path, until_s, start_s=start_s, skip_longview=self.skip_longview,
+                progress=self.progress)
+            return Calibration(panels=panels, setups=setups, sideviews=sideviews,
+                               until_s=until_s, side_expected=not self.skip_longview)
+        frames = F.spread_keyframes(path, until_s, count=analyze.CALIB_FRAMES, start_s=start_s)
         if len(frames) < 2:
             raise CalibrationError(f"{len(frames)} keyframe(s) in the first "
                                    f"{until_s:.0f} s; need at least two")
@@ -536,15 +655,17 @@ class VideoPipeline:
 
     def samples(self, path, setups, from_s, until_s, detector=None):
         from curling_score.game import profile
-        from curling_score.ingest import frames as F
 
         return profile.build_profile(
-            path, setups, sweep=F.keyframe_sweep(path, start_s=from_s, end_s=until_s),
+            path, setups, sweep=profile.feed_sweep(path, start_s=from_s, end_s=until_s),
             detector=detector)
 
     def build_end(self, ctx, game, end, prev_end_s):
         # Built without a board score: the board is read again after every
         # end, and the session puts its newest scores on every end it publishes.
+        # The recording is one file, so one feed carries every view of it.
+        feed = as_feed(ctx.path)
+        ctx = dataclasses.replace(ctx, path=feed, read_path=as_feed(ctx.read_path))
         return analyze.build_one_end(ctx, game, end, prev_end_s, board_score=None)
 
     def read_board(self, path, game):

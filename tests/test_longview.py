@@ -6,6 +6,7 @@ play, so most of this is about refusing.
 import pytest
 
 from curling_score.detect import longview
+from curling_score.feeds import Cut, Feed, as_feed
 from curling_score.geometry.sideview import SideView
 
 VIEW = SideView(rect=(0, 0, 810, 1080), tee_row=430.0, hog_row=520.0)
@@ -215,3 +216,46 @@ class TestAStraySampleIsNotACrossing:
         assert longview.crossing_from_tracks(
             {3: self._tracks()[3]}, VIEW, offset_s=0.0,
             max_gap_s=None).key == longview.KEY_OK
+
+
+class TestCommandThroughACut:
+    ODD = (0, 0, 813, 1080)     # an odd width: real footage hit it, exact=1 is the fix
+
+    def test_command_crop_cut_identical(self):
+        p = "clip.mp4"
+        want = longview._command(p, self.ODD, 10.0, 12.0, 30, 0.0)
+        assert longview._command(p, Cut("left", self.ODD), 10.0, 12.0, 30, 0.0) == want
+        assert "crop=813:1080:0:0:exact=1,fps=30" in want
+
+    def test_command_feed_resolves_view_file(self):
+        names = ("top", "bottom", "left", "right", "board")
+        feed = Feed("cameras", {n: "b.ts" if n == "right" else "a.ts" for n in names})
+        cmd = longview._command(feed, Cut("right", self.ODD), 0.0, 2.0, 30, 0.0)
+        assert cmd[cmd.index("-i") + 1] == "b.ts"
+        cmd = longview._command(feed, Cut("left", self.ODD), 0.0, 2.0, 30, 0.0)
+        assert cmd[cmd.index("-i") + 1] == "a.ts"
+
+    def test_the_frame_is_sized_by_the_cut(self):
+        # a quarter turn swaps the output's axes; _run frames what ffmpeg gives
+        cut = Cut("left", (0, 0, 6, 4), rotate=90)
+        frames, times = longview._run(["sh", "-c", "head -c 144 /dev/zero"], cut, 0.0, 1.0)
+        assert frames.shape == (2, 6, 4, 3) and times == [0.0, 1.0]
+
+    def test_a_window_is_keyed_by_its_resolved_file_and_cut(self):
+        feed = as_feed("v.mp4")
+        a = longview._key(feed, Cut("left", self.ODD), 1, 2, 30)
+        assert a == longview._key("v.mp4", Cut("left", self.ODD), 1, 2, 30)
+        assert a[0] == "v.mp4"
+        assert a != longview._key(feed, Cut("left", (1, 0, 813, 1080)), 1, 2, 30)
+
+    def test_soon_takes_a_view_by_its_cut(self, monkeypatch):
+        seen = []
+
+        class Reading:
+            def soon(self, key):
+                seen.append(key)
+
+        monkeypatch.setattr(longview, "_reading", Reading())
+        longview.soon("v.mp4", VIEW, 1.0, 2.0, 10.0)
+        longview.soon("v.mp4", VIEW.rect, 1.0, 2.0, 10.0)
+        assert seen[0] == seen[1] == longview._key("v.mp4", VIEW.cut, 1.0, 2.0, 10.0)

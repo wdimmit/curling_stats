@@ -198,6 +198,44 @@ class TestJobsAndClaiming:
         assert repo.claim_job("w", at(10), kinds=("live",)) is None
         assert repo.claim_job("w", at(10), kinds=("live", "practice")).id == "j_p"
 
+    def test_camera_work_goes_only_to_a_worker_that_asks_for_it(self, repo):
+        repo.put_run(run(id="r_cl", kind="live"))
+        repo.put_run(run(id="r_cv"))
+        repo.put_job(job(id="j_cl", run_id="r_cl", kind="camera_live"))
+        repo.put_job(job(id="j_cv", run_id="r_cv", kind="camera_vod"))
+        # A recording-only worker: never a camera recording, though it is one.
+        assert repo.claim_job("w", at(10), kinds=("vod",)) is None
+        assert repo.claim_job("w", at(10), kinds=("live", "vod")) is None
+        assert repo.claim_job("w", at(10), kinds=("camera_vod",)).id == "j_cv"
+        assert repo.claim_job("w", at(10), kinds=("live", "camera_live")).id == "j_cl"
+
+    def test_a_camera_game_is_claimed_with_live_games_before_recordings(self, repo):
+        repo.put_run(run())
+        repo.put_run(run(id="r_cl", kind="live"))
+        repo.put_run(run(id="r_cv"))
+        repo.put_job(job(id="j_vod", created_at=at(0), run_after=at(0)))
+        repo.put_job(job(id="j_cv", run_id="r_cv", kind="camera_vod",
+                         created_at=at(10), run_after=at(10)))
+        repo.put_job(job(id="j_cl", run_id="r_cl", kind="camera_live",
+                         created_at=at(50), run_after=at(50)))
+        kinds = ("live", "camera_live", "practice", "camera_vod", "vod")
+        assert [repo.claim_job("w", at(100), kinds=kinds).id for _ in range(3)] == \
+            ["j_cl", "j_cv", "j_vod"]
+
+    def test_a_standby_is_claimed_with_games_being_played(self, repo):
+        """A sheet's cameras recorded ahead of its stream: claimed before
+        practice and recordings, and only by a worker that asks for it."""
+        repo.put_run(run())
+        repo.put_run(run(id="r_sb", kind="standby"))
+        repo.put_job(job(id="j_vod", created_at=at(0), run_after=at(0)))
+        repo.put_job(job(id="j_sb", run_id="r_sb", kind="camera_standby",
+                         created_at=at(50), run_after=at(50)))
+        assert repo.claim_job("w", at(100), kinds=("live", "camera_live", "vod")).id == "j_vod"
+        repo.put_job(job(id="j_vod2", created_at=at(0), run_after=at(0)))
+        kinds = ("live", "camera_live", "camera_standby", "practice", "camera_vod", "vod")
+        assert repo.claim_job("w", at(100), kinds=kinds).id == "j_sb"
+        assert repo.get_run("r_sb").status == "processing"
+
     def test_a_worker_asking_only_for_live_work_gets_no_recording(self, repo):
         repo.put_run(run())
         repo.put_job(job())

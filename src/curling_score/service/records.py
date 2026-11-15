@@ -20,7 +20,16 @@ RUN_STATUSES = ("pending_approval", "queued", "processing", "live", "ready",
 # A job is a recording to analyse whole, or a stream to follow while it plays.
 # Live jobs are claimed first; a record from before kinds is a recording.
 # "practice" reads a sheet's cameras while someone practises on it.
-JOB_KINDS = ("vod", "live", "practice")
+# "camera_live" is a league game read from its sheet's cameras instead of the
+# stream, and "camera_vod" one read again from those cameras' kept files.
+# "camera_standby" records a sheet's cameras from its league's schedule start,
+# until the sheet's stream is found and the job becomes its "camera_live"
+# (playlists.standbys).
+JOB_KINDS = ("vod", "live", "practice", "camera_live", "camera_vod", "camera_standby")
+# The jobs only a worker that can see the club's cameras may take.
+CAMERA_KINDS = ("practice", "camera_live", "camera_vod", "camera_standby")
+# Where a playlist's live games are read from.
+PLAYLIST_INPUTS = ("youtube", "cameras")
 JOB_STATES = ("queued", "running", "done", "failed")
 FAIL_KINDS = ("transient", "blocked", "permanent")
 
@@ -50,13 +59,38 @@ class Run:
     # "fours" or "doubles"; None is a record from before formats, read as fours
     format: str | None = None
     # "vod" or "live", as on the run's job. A live run is published end by
-    # end while its stream plays; `revised_at` changes with every publish,
+    # end while its stream plays; "standby" is a sheet's cameras recorded
+    # ahead of its stream, which becomes "live" when the stream is found
+    # (its `video_id` a name we made up until then); `revised_at` changes with every publish,
     # the way `ready_at` does at completion, so each is served fresh.
     kind: str = "vod"
     # "cameras" for a practice watch read from the club's own cameras, whose
     # `video_id` is a name we made up (practice.camera_video_id), not a
-    # YouTube id; None for everything read from YouTube.
+    # YouTube id, and for a league game read from its sheet's cameras (its
+    # `video_id` is the stream's); None for everything read from YouTube.
     source: str | None = None
+    # A camera league game's stream was seen over (the poller): the worker is
+    # told to stop recording its cameras.
+    stream_ended_at: datetime | None = None
+    # A camera game's every delivery is clipped (service/gameclips.queue_auto):
+    # the auto clip jobs asked for at its completion, and when the last of
+    # them finished -- the workers keep its camera files until then.
+    auto_clips: list = field(default_factory=list)
+    clipped_at: datetime | None = None
+    # A camera game recorded from a little before its stream's scheduled start
+    # (playlists.standbys): the stream it waits for, and when its cameras
+    # opened. A sheet's games in a row know each other: the earlier learns
+    # when the next opened (handoff_at), and says where its own game ended
+    # (own_until), from which the next is read. wall_t0 is the wall time of
+    # its video's t = 0 (the shots' links to a neighbouring stream).
+    expected_video_id: str | None = None
+    opened_at: datetime | None = None
+    prev_run_id: str | None = None
+    next_run_id: str | None = None
+    handoff_at: datetime | None = None
+    own_until: datetime | None = None
+    wall_t0: float | None = None
+    wall_t0_end: float | None = None
     revised_at: datetime | None = None
     timeline_key: str | None = None
     meta_key: str | None = None
@@ -373,6 +407,19 @@ class WatchedPlaylist:
     schedule: list = field(default_factory=list)
     live_poll_s: float = 180.0
     idle_poll_s: float | None = 3600.0
+    # Where its live games are read from: "cameras" (each sheet's own cameras,
+    # up to the API's CAMERA_MAX_SHEETS at once; the stream for the rest) or
+    # "youtube" (the stream). The cameras unless a playlist says otherwise,
+    # those saved before there was a choice among them.
+    input: str = "cameras"
+    # The schedule window (its start, ISO) the sheets' standbys were opened
+    # for, and the sheets opened: each sheet once a window.
+    standby_window: str | None = None
+    standby_sheets: list = field(default_factory=list)
+    # Each sheet's stream still to come, as the last poll saw it: [{"video_id",
+    # "sheet", "scheduled_at" (ISO)}]. Its cameras are recorded from a little
+    # before (playlists.standbys).
+    upcoming: list = field(default_factory=list)
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)

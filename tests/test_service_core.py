@@ -365,6 +365,23 @@ class TestValidation:
         assert yt.video("live").published_at == datetime(2026, 6, 19, 2, 0, 21, tzinfo=timezone.utc)
         assert yt.video("upload").published_at == datetime(2026, 6, 19, 18, 45, 24, tzinfo=timezone.utc)
 
+    def test_videos_reads_the_scheduled_and_actual_end_times(self):
+        class Http:
+            def get(self, url, params):
+                item = {"id": "v", "contentDetails": {"duration": "PT0S"},
+                        "snippet": {"title": "11/17 - Sheet 3", "channelId": "UCclub",
+                                    "liveBroadcastContent": "upcoming",
+                                    "publishedAt": "2026-11-17T13:00:00Z"},
+                        "liveStreamingDetails": {"scheduledStartTime": "2026-11-18T03:00:00Z",
+                                                 "actualEndTime": "2026-11-18T05:00:04Z"}}
+                return type("R", (), {"raise_for_status": lambda s: None,
+                                      "json": lambda s: {"items": [item]}})()
+
+        got = YouTubeClient("key", http=Http()).video("v")
+        assert got.scheduled_at == datetime(2026, 11, 18, 3, 0, tzinfo=timezone.utc)
+        assert got.ended_at == datetime(2026, 11, 18, 5, 0, 4, tzinfo=timezone.utc)
+        assert VideoMeta("x", "t", "c", 0.0, "none").scheduled_at is None
+
 
 class TestPlaylistWatcher:
     def _setup(self):

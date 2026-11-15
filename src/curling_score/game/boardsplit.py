@@ -159,11 +159,79 @@ def split_games(games, read_board) -> list[GameSegment]:
     return out
 
 
+# A game that began after a changeover this close before the mark (the next
+# league starting early on the sheet) is not the earlier game's.
+LOOKBACK_S = 900.0
+
+
+def first_changeover(ends, after_t: float, head_s: float, *, active_until=None,
+                     active_before=None, cleared=None, lookback_s: float = LOOKBACK_S
+                     ) -> float | None:
+    """Where the game going on at ``after_t`` handed the sheet over: the middle
+    of the first changeover after it, or None while that cannot be said yet.
+
+    A changeover is a gap between ends of ``JOIN_MAX_GAP_S`` or more -- a
+    game pauses for a measure or a break for minutes -- or of
+    ``CHANGEOVER_MIN_GAP_S`` or more that the board was cleared across
+    (``cleared(t_end, t_next) -> bool | None``, None while the board is not
+    yet recorded far enough). From the last end begun before ``after_t`` the
+    ends are followed to the first changeover; with no end after, the sheet
+    quiet for ``JOIN_MAX_GAP_S`` since its last end or stone moving
+    (``active_until``) is one. But if the ends ``after_t`` falls among began
+    after a changeover less than ``lookback_s`` before it, that changeover is
+    the one: the next league began a little early. No end begun before
+    ``after_t``, the recording past it and no stone moving in the game's gap
+    before it (``active_before``): the sheet was free then, and that is it."""
+    from curling_score.game.segment import GAME_GAP_S
+
+    if head_s < after_t:
+        return None
+    ends = sorted(ends, key=lambda e: e.start_s)
+    before = [i for i, e in enumerate(ends) if e.start_s < after_t]
+    if not before:
+        if active_before is not None and after_t - active_before < GAME_GAP_S:
+            return None            # an end still being played, not settled yet
+        return float(after_t)
+
+    def changeover(a, b):
+        gap = b.start_s - a.end_s
+        if gap >= JOIN_MAX_GAP_S:
+            return True
+        if gap >= CHANGEOVER_MIN_GAP_S and cleared is not None:
+            return cleared(a.end_s, b.start_s)
+        return False
+
+    i = before[-1]
+    j = i
+    while j > 0:
+        got = changeover(ends[j - 1], ends[j])
+        if got is None:
+            return None
+        if got:
+            middle = (ends[j - 1].end_s + ends[j].start_s) / 2
+            if middle >= after_t - lookback_s:
+                return middle
+            break
+        j -= 1
+    while i + 1 < len(ends):
+        got = changeover(ends[i], ends[i + 1])
+        if got is None:
+            return None
+        if got:
+            return (ends[i].end_s + ends[i + 1].start_s) / 2
+        i += 1
+    quiet = max(ends[i].end_s, active_until if active_until is not None else ends[i].end_s)
+    if head_s - quiet >= JOIN_MAX_GAP_S:
+        return quiet + CHANGEOVER_MIN_GAP_S
+    return None
+
+
 def board_states(video, t0: float, t1: float, *, step_s: float = STEP_S,
                  half_s: float = HALF_S) -> list:
     """The wall scoreboard every ``step_s`` over ``t0..t1``: (t, "cards",
     "blank" or None when it cannot be read), each from the median of the
-    keyframes within ``half_s``."""
+    keyframes within ``half_s``. ``video`` is a path or a ``Feed``
+    (``frames.board_sweep``)."""
     from curling_score.game import scoreboard as SB
     from curling_score.ingest import frames as F
 
@@ -178,7 +246,7 @@ def board_states(video, t0: float, t1: float, *, step_s: float = STEP_S,
         return (t, "blank" if SB.read_slots(image, geom).is_blank() else "cards")
 
     out, buf, t = [], deque(), t0
-    for ft, img in F.keyframe_sweep(video, start_s=max(0.0, t0 - half_s), end_s=t1 + half_s):
+    for ft, img in F.board_sweep(video, start_s=max(0.0, t0 - half_s), end_s=t1 + half_s):
         buf.append((ft, img))
         while t <= t1 and ft > t + half_s:
             out.append(read(t, buf))

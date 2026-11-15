@@ -261,3 +261,226 @@ class TestLoggingCallbackSeal:
         monkeypatch.setattr(av.logging, "set_libav_level", seen.append)
         av.logging.set_level(av.logging.ERROR)
         assert seen == [av.logging.ERROR]
+
+
+@pytest.fixture(scope="module")
+def clip(tmp_path_factory):
+    """Six seconds of a changing test pattern, a keyframe every second."""
+    import shutil
+    import subprocess
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("needs ffmpeg")
+    path = tmp_path_factory.mktemp("feeds") / "clip.mp4"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+         "-i", "testsrc2=size=320x240:rate=30", "-t", "6", "-g", "30",
+         "-keyint_min", "30", "-sc_threshold", "0", "-c:v", "libx264",
+         "-pix_fmt", "yuv420p", str(path)], check=True)
+    return path
+
+
+class TestFeeds:
+    """The readers take a ``Feed`` where they took a path, and a ``Cut`` where
+    they took a rect. A crop-only ``Cut`` reads exactly what its rect does."""
+
+    RECT = (11, 7, 101, 93)
+    OTHER = (150, 20, 120, 80)
+
+    def test_window_cut_equals_rect(self, clip):
+        from curling_score.feeds import Cut, as_feed
+
+        want = list(frames.window(clip, 1.0, 3.0, 5.0, crop=self.RECT))
+        got = list(frames.window(as_feed(clip), 1.0, 3.0, 5.0,
+                                 crop=Cut("left", self.RECT)))
+        assert want
+        assert [t for t, _ in got] == [t for t, _ in want]
+        assert all(np.array_equal(a, b) for (_, a), (_, b) in zip(got, want))
+        assert all(img.flags.c_contiguous for _, img in got)
+
+    def test_window_takes_a_feed_with_no_crop(self, clip):
+        from curling_score.feeds import as_feed
+
+        want = list(frames.window(clip, 1.0, 2.0, 5.0))
+        got = list(frames.window(as_feed(clip), 1.0, 2.0, 5.0))
+        assert [t for t, _ in got] == [t for t, _ in want]
+        assert all(np.array_equal(a, b) for (_, a), (_, b) in zip(got, want))
+
+    def test_windows_cuts_one_decode(self, clip):
+        from curling_score.feeds import Cut, as_feed
+
+        cuts = [Cut("left", self.RECT), Cut("right", self.OTHER)]
+        specs = [(1.0, 5.0, cuts[0]), (1.5, 10.0, cuts[1])]
+        got = {0: [], 1: []}
+        for i, t, img in frames.windows(as_feed(clip), specs, 3.0):
+            got[i].append((t, img))
+        for i, (start, fps, cut) in enumerate(specs):
+            want = list(frames.window(clip, start, 3.0, fps, crop=cut.crop))
+            assert want
+            assert [t for t, _ in got[i]] == [t for t, _ in want]
+            assert all(np.array_equal(a, b) for (_, a), (_, b) in zip(got[i], want))
+
+    def test_windows_rects_and_none_still_work(self, clip):
+        specs = [(1.0, 5.0, self.RECT), (1.0, 5.0, None)]
+        out = {0: [], 1: []}
+        for i, t, img in frames.windows(clip, specs, 2.0):
+            out[i].append(img)
+        assert out[0][0].shape == (93, 101, 3)
+        assert out[1][0].shape == (240, 320, 3)
+
+    def test_windows_mixed_specs_on_an_unnormalised_path(self, clip, monkeypatch):
+        from curling_score.feeds import Cut
+
+        monkeypatch.chdir(clip.parent)
+        path = f"./{clip.name}"
+        specs = [(1.0, 5.0, Cut("left", self.RECT)), (1.0, 5.0, self.OTHER)]
+        got = {0: [], 1: []}
+        for i, t, img in frames.windows(path, specs, 2.0):
+            got[i].append(img)
+        assert got[0][0].shape == (93, 101, 3)
+        assert got[1][0].shape == (80, 120, 3)
+
+    def test_chunked_takes_a_cut(self, clip):
+        from curling_score.feeds import Cut, as_feed
+
+        want = [item for b in frames.chunked(clip, 1.0, 3.0, 5.0, size=4, crop=self.RECT)
+                for item in b]
+        got = [item for b in frames.chunked(as_feed(clip), 1.0, 3.0, 5.0, size=4,
+                                            crop=Cut("left", self.RECT))
+               for item in b]
+        assert want
+        assert [t for t, _ in got] == [t for t, _ in want]
+        assert all(np.array_equal(a, b) for (_, a), (_, b) in zip(got, want))
+
+    def test_keyframe_sweep_takes_feed(self, clip):
+        from curling_score.feeds import as_feed
+
+        want = list(frames.keyframe_sweep(clip))
+        got = list(frames.keyframe_sweep(as_feed(clip)))
+        assert len(want) >= 5
+        assert [t for t, _ in got] == [t for t, _ in want]
+        assert all(np.array_equal(a, b) for (_, a), (_, b) in zip(got, want))
+
+    def test_the_other_readers_take_a_feed(self, clip):
+        from curling_score.feeds import as_feed
+
+        feed = as_feed(clip)
+        assert frames.probe(feed) == frames.probe(clip)
+        assert frames.keyframe_times(feed, 1.0, 4.0) == frames.keyframe_times(clip, 1.0, 4.0)
+        assert frames.stream_start_s(feed) == frames.stream_start_s(clip)
+        assert len(frames.sample_keyframes(feed, count=3, stride=1)) == 3
+        assert len(frames.spread_keyframes(feed, 5.0, count=3)) == 3
+
+    def test_seek_lead_of_ts_feed(self):
+        from pathlib import Path
+
+        from curling_score.feeds import as_feed
+
+        assert frames.seek_lead(as_feed(Path("a.ts"))) == frames.TS_SEEK_LEAD_S
+        assert frames.seek_lead(as_feed(Path("a.mp4"))) == 0.0
+
+
+def _pattern(path, *, seconds=2, size="1920x1080", rate=10, hue=None):
+    """A test pattern as H.264 MPEG-TS, a keyframe every second."""
+    import shutil
+    import subprocess
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("needs ffmpeg")
+    vf = ["-vf", f"hue=h={hue}"] if hue is not None else []
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+         "-i", f"testsrc2=size={size}:rate={rate}", "-t", str(seconds), *vf,
+         "-g", str(rate), "-keyint_min", str(rate), "-sc_threshold", "0",
+         "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+         "-f", "mpegts", str(path)], check=True)
+    return path
+
+
+@pytest.fixture(scope="module")
+def two_cameras(tmp_path_factory):
+    """Two camera files of different colours: six seconds, and two."""
+    d = tmp_path_factory.mktemp("cams")
+    return (_pattern(d / "house_h.ts", seconds=6, size="640x360"),
+            _pattern(d / "house_a.ts", seconds=2, size="640x360", hue=90))
+
+
+def _feed(top, bottom):
+    from curling_score.feeds import Feed
+
+    return Feed("cameras", {"top": top, "bottom": bottom, "left": top, "right": top,
+                            "board": top})
+
+
+class TestCameraCuts:
+    """Phase 2: views through turned and scaled cuts, from several files."""
+
+    def test_a_turned_cut_matches_ffmpegs_pixels(self, tmp_path):
+        import subprocess
+
+        import av
+
+        from curling_score.cameras import layout
+        from curling_score.feeds import cameras
+
+        path = _pattern(tmp_path / "cam.ts", seconds=1)
+        cut = cameras.view_cuts(layout.load(2))["top"]
+        w, h = cut.out_size
+        raw = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(path),
+             "-vf", cut.steps() + ",format=bgr24", "-frames:v", "1",
+             "-f", "rawvideo", "-"], check=True, capture_output=True).stdout
+        want = np.frombuffer(raw, np.uint8).reshape(h, w, 3)
+        with av.open(str(path)) as container:
+            frame = next(container.decode(video=0))
+            got = cut.frames()(frame)
+        assert got.shape == (h, w, 3) and got.flags.c_contiguous
+        assert np.array_equal(got, want), (
+            f"max {np.abs(got.astype(int) - want).max()}, "
+            f"mean {np.abs(got.astype(int) - want).mean():.4f}")
+
+    def test_window_through_a_turned_cut(self, two_cameras):
+        from curling_score.feeds import Cut
+
+        cut = Cut("top", (100, 20, 400, 300), 90, (150, 200))
+        got = list(frames.window(_feed(*two_cameras), 1.0, 2.0, 5.0, crop=cut))
+        assert len(got) == 6
+        assert all(img.shape == (200, 150, 3) for _, img in got)
+
+    def test_windows_reads_two_files(self, two_cameras):
+        from curling_score.feeds import Cut
+
+        top, bottom = two_cameras
+        specs = [(0.5, 5.0, Cut("top", (10, 10, 200, 100))),
+                 (0.0, 10.0, Cut("bottom", (20, 30, 120, 90)))]
+        got = {0: [], 1: []}
+        for i, t, img in frames.windows(_feed(top, bottom), specs, 1.5):
+            got[i].append((t, img))
+        for i, (start, fps, cut) in enumerate(specs):
+            want = list(frames.window([top, bottom][i], start, 1.5, fps, crop=cut.crop))
+            assert want
+            assert [t for t, _ in got[i]] == [t for t, _ in want]
+            assert all(np.array_equal(a, b) for (_, a), (_, b) in zip(got[i], want))
+        # different files, different pictures
+        assert not np.array_equal(got[0][0][1][:90, :120], got[1][0][1])
+
+    def test_a_view_past_its_files_end_gives_what_there_is(self, two_cameras):
+        from curling_score.feeds import Cut
+
+        specs = [(0.0, 5.0, Cut("top", (0, 0, 64, 36))),
+                 (0.0, 5.0, Cut("bottom", (0, 0, 64, 36)))]
+        times = {0: [], 1: []}
+        for i, t, _ in frames.windows(_feed(*two_cameras), specs, 5.0):
+            times[i].append(t)
+        assert times[0][-1] == pytest.approx(5.0, abs=0.11)
+        assert 1.7 < times[1][-1] < 2.0
+
+    def test_keyframe_sweep_through_a_cut(self, two_cameras):
+        from curling_score.feeds import Cut
+
+        cut = Cut("top", (100, 20, 400, 300), 90, (150, 200))
+        got = list(frames.keyframe_sweep(_feed(*two_cameras), cut=cut))
+        assert len(got) >= 5
+        assert all(img.shape == (200, 150, 3) for _, img in got)
+        spread = frames.spread_keyframes(_feed(*two_cameras), 6.0, count=3, cut=cut)
+        assert len(spread) == 3 and spread[0].shape == (200, 150, 3)

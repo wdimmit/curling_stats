@@ -118,12 +118,15 @@ def detect_end(path, setup, end, fps: float, detector=None,
 def detect_span(path, setup, start_s: float, end_s: float, fps: float,
                 detector=None, use_cache: bool = True):
     """Detections at ``fps`` across ``[start_s, end_s]`` for one panel, by
-    ``detector`` -- required: there is no colour-threshold fallback."""
+    ``detector`` -- required: there is no colour-threshold fallback.
+
+    ``path`` is a file or a `feeds.Feed`; the panel is taken from the file its
+    cut's view lives in."""
     _need(detector)
 
     def produce():
         out = []
-        batches = F.chunked(path, start_s, end_s, fps, size=BATCH, crop=setup.rect)
+        batches = F.chunked(path, start_s, end_s, fps, size=BATCH, crop=setup.cut)
         with _DetectBehind(detector) as behind:
             for batch in batches:
                 behind.submit(out, batch, setup.calib)
@@ -131,7 +134,7 @@ def detect_span(path, setup, start_s: float, end_s: float, fps: float,
 
     if not use_cache:
         return _on_sheet(setup, produce())
-    digest = cache.key(path, setup.rect, setup.calib, detector,
+    digest = cache.key(path, setup.cut, setup.calib, detector,
                        start_s, end_s, 1.0 / fps)
     # The cache holds every stone the detector saw; the next sheet's are
     # dropped on the way out, so finding a panel's sidelines re-detects nothing.
@@ -178,7 +181,7 @@ def detect_spans(path, specs, end_s: float, detector=None):
         for det in dets:
             if id(det) not in behinds:
                 behinds[id(det)] = stack.enter_context(_DetectBehind(det))
-        for i, t, img in F.windows(path, [(spec[1], spec[2], spec[0].rect)
+        for i, t, img in F.windows(path, [(spec[1], spec[2], spec[0].cut)
                                           for spec in specs], end_s):
             batches[i].append((t, img))
             if len(batches[i]) >= BATCH:

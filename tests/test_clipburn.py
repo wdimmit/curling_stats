@@ -204,6 +204,16 @@ def stream(tmp_path_factory):
     return out
 
 
+@pytest.fixture(scope="module")
+def halves(tmp_path_factory):
+    """Six seconds at 10 fps of a 120x90 picture: red for 3 s, then blue."""
+    out = tmp_path_factory.mktemp("halves") / "h.mp4"
+    graph = "color=red:s=120x90:r=10:d=3[a];color=blue:s=120x90:r=10:d=3[b];[a][b]concat=n=2[v]"
+    subprocess.run(["ffmpeg", "-v", "error", "-filter_complex", graph, "-map", "[v]",
+                    "-c:v", "libx264", "-g", "10", "-pix_fmt", "yuv420p", str(out)], check=True)
+    return out
+
+
 def frame_at(path, t):
     return next(frames.window(path, t, t + 0.5, 10))[1]
 
@@ -232,6 +242,22 @@ class TestRender:
         assert near(whole[70:, 50:].reshape(-1, 3).mean(0), (255, 0, 0))    # blue below
         assert magenta(whole)[:, 12:18].any()
         assert near(frame_at(out, 3.5).reshape(-1, 3).mean(0), (0, 255, 0))  # the right, lime
+
+    def test_a_source_on_another_clock_is_cut_where_the_plan_says(self, halves, tmp_path):
+        plan = practice_clips.ClipPlan((practice_clips.Piece("left", 11.0, 12.0),))
+        out = tmp_path / "c.mp4"
+        B.render(plan, {"left": (halves, None)}, out, [{}], size=(60, 90), fps=10,
+                 t0_s=10.0)                                   # the file's 1-2 s: red
+        assert near(frame_at(out, 0.5)[45, 30], (0, 0, 255))
+        B.render(plan, {"left": (halves, None)}, out, [{}], size=(60, 90), fps=10,
+                 t0_s=7.5)                                    # the file's 3.5-4.5 s: blue
+        assert near(frame_at(out, 0.5)[45, 30], (255, 0, 0))
+
+    def test_cut_passes_the_source_clock_on(self, halves, tmp_path):
+        plan = practice_clips.ClipPlan((practice_clips.Piece("left", 11.0, 12.0),))
+        out = tmp_path / "c.mp4"
+        B.cut(plan, {"left": (halves, None)}, out, size=(60, 90), fps=10, t0_s=7.5)
+        assert near(frame_at(out, 0.5)[45, 30], (255, 0, 0))
 
     def test_a_cut_past_the_end_raises(self, stream, tmp_path):
         p = practice_clips.ClipPlan((practice_clips.Piece("left", 20.0, 22.0),))

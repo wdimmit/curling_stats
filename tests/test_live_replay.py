@@ -172,3 +172,54 @@ class TestTheVideoPipeline:
 
         with pytest.raises(CalibrationError):
             live.VideoPipeline(progress=lambda m: None).calibrate(clip, until_s=0.5)
+
+
+def _camera_file(path, seconds=2.0, fps=60):
+    """A camera's file as the capture writes it: its first keyframe at 0,
+    then each frame at i / fps."""
+    from curling_score.cameras import capture
+    from tests.test_cameras_scripts import h264
+
+    out = capture._TsFile(path)
+    for i, (data, key) in enumerate(h264(int(seconds * fps), gop=30)):
+        out.write(data, i / fps, key)
+    return path
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+class TestCameraReplay:
+    def test_camera_replay_keeps_four_files_on_one_clock(self, tmp_path):
+        from curling_score.feeds import cameras
+
+        src = tmp_path / "src"
+        src.mkdir()
+        for role in ("house_a", "house_h", "long_a", "long_h"):
+            _camera_file(src / f"{role}.ts")
+        rec = replay.CameraReplay(src, tmp_path / "out", 2, speed=50.0).start()
+        try:
+            deadline = time.monotonic() + 30
+            while not rec.ended() and time.monotonic() < deadline:
+                assert not rec.failed()
+                time.sleep(0.1)
+        finally:
+            rec.stop()
+        assert rec.ended() and rec.t0_s == 0.0
+        assert rec.path == cameras.camera_feed(tmp_path / "out", 2)
+        for role in ("house_a", "house_h", "long_a", "long_h"):
+            times = [t for t, _ in F.window(tmp_path / "out" / f"{role}.ts", 0.0, 1.0, 60.0)]
+            assert times[0] == 0.0
+            assert times[30] == pytest.approx(0.5, abs=1 / 90_000)
+
+    def test_camera_replay_head_is_the_slowest(self, tmp_path, monkeypatch):
+        heads = iter([1.0, 2.0, 0.5, 3.0])
+
+        class Part:
+            def __init__(self, source, path, speed=1.0, *, copyts=False):
+                assert copyts
+                self.head = next(heads)
+
+            def head_s(self):
+                return self.head
+
+        monkeypatch.setattr(replay, "ReplayRecording", Part)
+        assert replay.CameraReplay(tmp_path, tmp_path / "out", 2).head_s() == 0.5

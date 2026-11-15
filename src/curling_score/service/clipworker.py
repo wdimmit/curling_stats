@@ -3,9 +3,11 @@
 A service of its own beside the main workers (deploy/docker-compose.worker.yml
 `clips`). Each main worker keeps its own cache, so a game's video is wherever
 the worker that ran it keeps it; this one reads all of them, read-only, and
-writes only to a scratch of its own. It loads no model, starts no live lane
-and never talks to YouTube: a game whose video has left every cache gets no
-clips (`video_gone`), not a download.
+writes only to a scratch of its own. A game read from the club's cameras is
+cut from the cameras' files (``WORKER_CAMS``, read-only too): kept, or still
+being recorded. It loads no model, starts no live lane and never talks to
+YouTube: a game whose video has left every cache gets no clips
+(`video_gone`), not a download.
 """
 
 import logging
@@ -13,6 +15,7 @@ import os
 import shutil
 import socket
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -51,19 +54,28 @@ def _complete(api, job_id, worker_id, results, sleep):
             sleep(COMPLETE_RETRY_S)
 
 
-def process(job: dict, api, worker_id: str, *, sources, workdir, cut=None,
+def process(job: dict, api, worker_id: str, *, sources, workdir, cams=(), cut=None,
             sleep=time.sleep) -> dict:
-    """Cut, upload and report one clip job's rocks; what came of each."""
+    """Cut, upload and report one clip job's rocks; what came of each. A
+    camera game whose files are not ready yet is handed back (``{}``)."""
     scratch = Path(workdir) / job["id"]
     try:
-        return _process(job, api, worker_id, sources, scratch, cut, sleep)
+        return _process(job, api, worker_id, sources, cams, scratch, cut, sleep)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _process(job, api, worker_id, sources, scratch, cut, sleep) -> dict:
+def _process(job, api, worker_id, sources, cams, scratch, cut, sleep) -> dict:
     rocks = job["spec"].get("rocks", [])
-    video = game_clips.find_video(job["video_id"], sources)
+    try:
+        video = game_clips.find_source(job["video_id"], sources, cams,
+                                       feed=job["spec"].get("feed"))
+    except game_clips.NotReady as exc:
+        # Being filed, or cut where its stream began: put back without
+        # costing a try. An API too old to take it back fails it instead.
+        log.info("clip job %s: %s; handed back", job["id"], exc)
+        api.clip_later(job["id"], worker_id, str(exc)[:500])
+        return {}
     if video is None and job["spec"].get("live"):
         # Asked for while its stream was on: between the stream ending and
         # its recording being filed under videos/ there is a moment with
@@ -105,14 +117,16 @@ def _process(job, api, worker_id, sources, scratch, cut, sleep) -> dict:
     return results
 
 
-def run_forever(api, worker_id: str, *, sources, workdir, sleep=time.sleep, once=False,
-                cut=None):
-    """Claim and cut clip jobs until stopped."""
-    log.info("clips worker %s: caches %s, scratch %s", worker_id,
-             [str(s) for s in sources], workdir)
+def run_forever(api, worker_id: str, *, sources, workdir, cams=(), mode="ask",
+                sleep=time.sleep, once=False, cut=None):
+    """Claim and cut clip jobs until stopped. ``mode="auto"`` is a loop of the
+    auto pass (service/gameclips.queue_auto): it claims only those jobs, and
+    the API hands them out only while nothing is being recorded."""
+    log.info("clips worker %s: caches %s, cameras %s, scratch %s", worker_id,
+             [str(s) for s in sources], [str(c) for c in cams], workdir)
     while True:
         try:
-            job = api.claim_clips(worker_id)
+            job = api.claim_clips(worker_id, mode=mode)
         except Exception as exc:  # noqa: BLE001 - the API may be down; keep trying
             log.warning("clips claim failed: %s", exc)
             job = None
@@ -122,8 +136,8 @@ def run_forever(api, worker_id: str, *, sources, workdir, sleep=time.sleep, once
             sleep(POLL_IDLE_S)
             continue
         try:
-            got = process(job, api, worker_id, sources=sources, workdir=workdir, cut=cut,
-                          sleep=sleep)
+            got = process(job, api, worker_id, sources=sources, workdir=workdir, cams=cams,
+                          cut=cut, sleep=sleep)
             log.info("clip job %s: %d of %d rocks clipped", job["id"],
                      sum(1 for r in got.values() if r.get("clip")), len(got))
         except Lost as exc:
@@ -147,16 +161,34 @@ def main(argv=None) -> int:
                         format="%(asctime)s %(levelname)s %(message)s")
     root = Path(os.environ.get("CURLING_SCORE_CACHE") or cache.default_root())
     sources = sources_from_env(os.environ.get("WORKER_CLIP_SOURCES"))
+    cams = [Path(p) for p in [os.environ.get("WORKER_CAMS")] if p]
     if not any((s / "videos").is_dir() for s in sources):
-        # Every job would be marked video_gone, for good: better not to start.
+        # Every YouTube game's job would be marked video_gone, for good:
+        # better not to start. The cameras are read besides, never instead.
         log.error("no cache with a videos/ directory in WORKER_CLIP_SOURCES=%r; "
                   "refusing to start", os.environ.get("WORKER_CLIP_SOURCES"))
         return 2
-    api = ApiClient(os.environ["API_URL"], os.environ["WORKER_TOKEN"])
     worker_id = os.environ.get("WORKER_ID") or socket.gethostname()
+    once = "--once" in argv
+    loops = []
+    # The auto pass's loops, each under a name of its own so what it held is
+    # handed back at a restart, beside the one that answers people's asks.
+    for i in range(1, int(os.environ.get("CLIP_AUTO_LOOPS", "0") or 0) + 1):
+        auto_id = f"{worker_id}-auto{i}"
+        auto_api = ApiClient(os.environ["API_URL"], os.environ["WORKER_TOKEN"])
+        release_held(auto_api, auto_id)
+        thread = threading.Thread(
+            target=run_forever, args=(auto_api, auto_id), name=auto_id, daemon=True,
+            kwargs={"sources": sources, "workdir": root / "clips", "cams": cams,
+                    "mode": "auto", "once": once})
+        thread.start()
+        loops.append(thread)
+    api = ApiClient(os.environ["API_URL"], os.environ["WORKER_TOKEN"])
     release_held(api, worker_id)
-    run_forever(api, worker_id, sources=sources, workdir=root / "clips",
-                once="--once" in argv)
+    run_forever(api, worker_id, sources=sources, workdir=root / "clips", cams=cams,
+                once=once)
+    for thread in loops:
+        thread.join()
     return 0
 
 
