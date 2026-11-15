@@ -1765,3 +1765,20 @@ class TestSteppedClock:
         doc = timeline.build_document("vid", "u", 4, 7000.0, {}, games_with_shot_at(86.7),
                                       clock=self.STEPS)
         assert doc["source"]["duration_s"] == round(7000.0 - 914.72, 2)
+
+
+
+class TestWallClock:
+    CLOCK = {"kind": "cameras", "aligned": "segment", "offset_s": -900.0,
+             "steps": [[0.0, -900.0], [3000.0, -905.0]]}
+
+    def test_the_document_carries_wall_t0(self):
+        doc = timeline.build_document("vid", "u", 3, 4000.0, {}, games_with_shot_at(950.0),
+                                      clock=self.CLOCK, wall_started=1_000_000.0)
+        assert doc["source"]["wall_t0"] == {"start": 1_000_900.0, "end": 1_000_905.0}
+
+    def test_a_shot_before_the_stream_has_no_negative_link(self):
+        doc = timeline.build_document("vid", "u", 3, 4000.0, {}, games_with_shot_at(600.0),
+                                      clock=self.CLOCK, wall_started=1_000_000.0)
+        shot = doc["games"][0]["ends"][0]["shots"][0]
+        assert shot["t_video_s"] < 0 and shot["youtube_url"] is None

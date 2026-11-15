@@ -40,6 +40,7 @@ from curling_score import autoreview, timeline, version, viewer
 from curling_score.game import format as format_mod
 from curling_score.ingest import source
 from curling_score.service import (dedupe, doccache, gameclips, ice_report, labelling,
+                                   streamlinks,
                                    playlist_index, playlists, practice, signin, slug, team_names,
                                    thinking_report)
 from curling_score.service.auth import NoAuth
@@ -664,7 +665,18 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             for colour, name in (("red", src.team_red), ("yellow", src.team_yellow)):
                 if name:
                     game.setdefault("teams", {}).setdefault(colour, {})["name"] = name
-        return doc
+        # A shot outside its own stream points at the stream that shows it.
+        return streamlinks.annotate(doc, run, repo.get_run)
+
+    def note_wall_t0(run: Run) -> None:
+        """A camera game's video placed on the wall clock, from its timeline
+        (timeline.build_document), for its shots' links (streamlinks)."""
+        try:
+            wall = (run_doc(run).get("source") or {}).get("wall_t0") or {}
+        except Exception:  # noqa: BLE001 - the links can wait for the next publish
+            return
+        if wall and (wall.get("start"), wall.get("end")) != (run.wall_t0, run.wall_t0_end):
+            repo.update_run(run.id, wall_t0=wall.get("start"), wall_t0_end=wall.get("end"))
 
     def refresh_thinking(src: Source, run: Run | None = None) -> Source:
         """Keep the game's thinking summary in step with what /g/ serves.
@@ -3478,6 +3490,9 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         repo.update_job(job.id, progress_at=t, phase="live",
                         lease_expires_at=t + timedelta(seconds=settings.lease_s))
         run = repo.get_run(run.id)
+        if run.source == "cameras":
+            note_wall_t0(run)
+            run = repo.get_run(run.id)
         sources = []
         for game in games:
             src = dedupe.find_or_create_source(repo, run, game, t)
@@ -3539,6 +3554,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         learn_play_starts_for_run(run)
         settle_sources_for_run(run)
         if run.source == "cameras":
+            note_wall_t0(run)
             # Every delivery clipped while its camera files are kept: the
             # hourly catch-up asks again if this fails.
             try:

@@ -582,7 +582,7 @@ def shift_times(games: list, clock) -> list:
 
 def build_document(video_id, url, sheet, duration_s, calibration, games,
                    window=None, processing_version=None, fmt=None, check=None,
-                   clock: dict | None = None) -> dict:
+                   clock: dict | None = None, wall_started: float | None = None) -> dict:
     """The whole analysis, ready to write to ``timeline.json``.
 
     ``window`` is the ``(start_s, end_s)`` of the stream that was analysed when
@@ -593,8 +593,15 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
     document without one reads as fours. ``clock`` (``{"kind": "cameras",
     "offset_s", "aligned"[, "steps"]}``) says the games were read on a camera
     recording's clock: they are published on the video's (:func:`offset_at`),
-    and the clock is kept in ``source``.
+    and the clock is kept in ``source``. With the recording's ``wall_started``
+    too, ``source.wall_t0`` is the wall time of the video's t = 0, as the
+    clock has it at the recording's start and at its end: a shot outside the
+    stream is placed on a neighbouring one by it (service/streamlinks).
     """
+    wall_t0 = None
+    if clock is not None and wall_started is not None:
+        wall_t0 = {"start": round(float(wall_started) - offset_at(clock, 0.0), 3),
+                   "end": round(float(wall_started) - offset_at(clock, float(duration_s)), 3)}
     if clock is not None:
         # A camera game: its moments move onto the video's clock before the
         # links to the video are made from them.
@@ -610,8 +617,10 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
                 t = shot.get("t_video_s")
                 if t is None:
                     t = shot.get("t_rest_s")
+                # Before the stream began (a camera game read from its
+                # opening): not in this video at all.
                 shot["youtube_url"] = (
-                    watch_url_at(video_id, t) if t is not None else None
+                    watch_url_at(video_id, t) if t is not None and t >= 0 else None
                 )
     start_s, end_s = window if window else (None, None)
     doc = {
@@ -633,6 +642,8 @@ def build_document(video_id, url, sheet, duration_s, calibration, games,
     }
     if clock is not None:
         doc["source"]["clock"] = dict(clock)
+    if wall_t0 is not None:
+        doc["source"]["wall_t0"] = wall_t0
     fmt = fmt or format_mod.FOURS
     if fmt is not format_mod.FOURS:
         # Written only when it says something: a four-player timeline stays

@@ -41,9 +41,10 @@ def canonical_url(url: str) -> str:
 def watch_url_at(vid: str, t_seconds: float) -> str:
     """A deep link to a moment in the video.
 
-    Truncates rather than rounds, so the link never lands after the event.
+    Truncates rather than rounds, so the link never lands after the event; a
+    moment before the video began links to its start.
     """
-    return f"https://youtu.be/{vid}?t={int(t_seconds)}"
+    return f"https://youtu.be/{vid}?t={max(int(t_seconds), 0)}"
 
 
 def parse_time(text) -> float | None:

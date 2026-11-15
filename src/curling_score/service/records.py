@@ -90,6 +90,7 @@ class Run:
     handoff_at: datetime | None = None
     own_until: datetime | None = None
     wall_t0: float | None = None
+    wall_t0_end: float | None = None
     revised_at: datetime | None = None
     timeline_key: str | None = None
     meta_key: str | None = None
